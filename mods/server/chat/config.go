@@ -115,13 +115,16 @@ func ExistsConfig(filename string) bool {
 	return true
 }
 
-func LoadConfig(d interface{}, filename string) error {
+func LoadConfig(d interface{}, filename string, createIfNotExist bool) error {
 	confDir, err := configDir()
 	if err != nil {
 		return err
 	}
 	confFile := filepath.Join(confDir, filename)
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
+		if !createIfNotExist {
+			return os.ErrNotExist
+		}
 		file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			return err

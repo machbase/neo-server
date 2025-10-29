@@ -1,7 +1,6 @@
 package mcpsvr
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -25,30 +24,42 @@ type MCPServerToolConfig struct {
 	Inputs      map[string]string `json:"inputs"`
 }
 
-func NewMCPServer() *MCPServer {
+func NewMCPServer(opts ...MCPServerOption) *MCPServer {
 	ret := &MCPServer{}
 	ret.mcpServer = server.NewMCPServer(
 		"neo-mcp",
 		"0.0.1",
 		server.WithLogging(),
 	)
-	if err := ret.ReloadTools(); err != nil {
-		fmt.Printf("Error loading tools: %v\n", err)
-		return nil
+	// Set the default tools
+	ret.mcpServer.SetTools(registeredTools...)
+	// Apply options
+	for _, opt := range opts {
+		opt(ret)
 	}
 	return ret
 }
+
+type MCPServerOption func(*MCPServer)
+
+func WithTools(tools ...server.ServerTool) MCPServerOption {
+	return func(ms *MCPServer) {
+		ms.mcpServer.AddTools(tools...)
+	}
+}
+
+func WithVersion(version string) MCPServerOption {
+	return func(ms *MCPServer) {
+		neoVersionString = version
+	}
+}
+
+var neoVersionString = "unknown"
 
 var registeredTools = []server.ServerTool{}
 
 func RegisterTools(ts ...server.ServerTool) {
 	registeredTools = append(registeredTools, ts...)
-}
-
-func (ms *MCPServer) ReloadTools() error {
-	// Set a tool
-	ms.mcpServer.SetTools(registeredTools...)
-	return nil
 }
 
 // Handler creates a new HTTP handler for the MCP SSE handler
@@ -64,7 +75,6 @@ func (ms *MCPServer) HandlerFunc() http.HandlerFunc {
 		)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		ms.ReloadTools()
 		ms.sseServer.ServeHTTP(w, r)
 	}
 }

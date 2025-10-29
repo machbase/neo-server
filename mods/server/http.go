@@ -367,7 +367,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/tql", svr.handleTqlQuery)
 			group.POST("/tql", svr.handleTqlQuery)
 			// machbase-neo MCP SSE endpoint /db/mcp/sse
-			group.Any("/mcp/*path", gin.WrapF(mcpsvr.NewMCPServer().HandlerFunc()))
+			group.Any("/mcp/*path", gin.WrapF(mcpsvr.NewMCPServer(mcpsvr.WithVersion(mods.VersionString())).HandlerFunc()))
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}

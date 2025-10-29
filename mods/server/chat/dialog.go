@@ -47,8 +47,8 @@ func (c DialogConfig) NewOllama() *OllamaDialog {
 		model:          c.Model,
 		log:            logging.GetLog("chat.ollama"),
 	}
-	LoadConfig(ret, "ollama.json")
-	LoadConfig(&ret.systemMessages, "system.json")
+	LoadConfig(ret, "ollama.json", false)
+	LoadConfig(&ret.systemMessages, "system.json", true)
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
@@ -64,8 +64,8 @@ func (c DialogConfig) NewClaude() *ClaudeDialog {
 		model:          c.Model,
 		log:            logging.GetLog("chat.claude"),
 	}
-	LoadConfig(ret, "claude.json")
-	LoadConfig(&ret.systemMessages, "system.json")
+	LoadConfig(ret, "claude.json", false)
+	LoadConfig(&ret.systemMessages, "system.json", true)
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
@@ -234,26 +234,37 @@ func RpcLLMGetProviders() []string {
 	return llmSupportedProviders
 }
 
-func RpcLLMGetProviderConfig(provider string) (any, error) {
-	var ret any
+type RpcLLMGetProviderConfigResponse struct {
+	Provider string      `json:"provider"`
+	Exist    bool        `json:"exist"`
+	Config   interface{} `json:"config"`
+}
+
+func RpcLLMGetProviderConfig(provider string) (RpcLLMGetProviderConfigResponse, error) {
+	var ret RpcLLMGetProviderConfigResponse
 	var err error
 	switch provider {
 	case "claude":
+		ret.Provider = provider
 		cfg := NewClaudeConfig()
-		err = LoadConfig(&cfg, provider+".json")
-		cfg.MaskSensitive()
-		ret = cfg
+		err = LoadConfig(&cfg, provider+".json", false)
+		if err == nil {
+			cfg.MaskSensitive()
+			ret.Exist = true
+		}
+		ret.Config = cfg
 	case "ollama":
+		ret.Provider = provider
 		cfg := NewOllamaConfig()
-		err = LoadConfig(&cfg, provider+".json")
-		ret = cfg
+		err = LoadConfig(&cfg, provider+".json", false)
+		if err == nil {
+			ret.Exist = true
+		}
+		ret.Config = cfg
 	default:
-		return nil, fmt.Errorf("unknown provider: %s", provider)
+		err = fmt.Errorf("unknown provider: %s", provider)
 	}
-	if err != nil {
-		return ret, err
-	}
-	return ret, nil
+	return ret, err
 }
 
 func RpcLLMSetProviderConfig(provider string, config any) error {

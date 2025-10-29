@@ -80,7 +80,8 @@ func main() {
 			defer wg.Done()
 			for n := 0; n < N; n++ {
 				tm := time.Now()
-				row := cliConn.QueryRow(ctx, querySQL, "tag1", "tag1")
+				tmstr := tm.In(time.Local).Format("2006-01-02 15:04:05") // '2025-10-15 09:05:59'
+				row := cliConn.QueryRow(ctx, querySQL, "tag1", tmstr, "tag1", tmstr)
 				if err := row.Err(); err != nil {
 					fmt.Println("Error query:", err)
 					panic(err)
@@ -111,14 +112,14 @@ FROM (
 	SELECT ROLLUP('minute', 1, time) as mtime, AVG(value) 
 	FROM tag 
 	WHERE name = ? AND 
-		time < DATE_TRUNC('minute', TO_DATE('2025-10-15 09:05:59')) - 1m 
+		time < DATE_TRUNC('minute', TO_DATE(?)) - 1m 
 	GROUP BY mtime 
 	ORDER BY mtime
 		UNION ALL
 	SELECT DATE_TRUNC('minute', time) as mtime, AVG(value)
 	FROM TAG
 	WHERE name = ? AND
-		time >= DATE_TRUNC('minute', TO_DATE('2025-10-15 09:05:59')) - 1m
+		time >= DATE_TRUNC('minute', TO_DATE(?)) - 1m
 	GROUP BY mtime
 	ORDER BY mtime
 )`

@@ -21,6 +21,7 @@ func init() {
 	RegisterTools(
 		ToolGetNowHandler,
 		ToolTimeformat,
+		ToolGetVersion,
 		ToolExecSQL,
 		ToolExecTQL,
 		ToolListTables,
@@ -136,6 +137,15 @@ func toolTimeformatFuncFunc(ctx context.Context, request mcp.CallToolRequest) (*
 	timeFormat := util.NewTimeFormatter(util.Timeformat(format), util.TimeLocation(location))
 	formattedTime := timeFormat.Format(unixTime)
 	return mcp.NewToolResultText(formattedTime), nil
+}
+
+var ToolGetVersion = server.ServerTool{
+	Tool:    mcp.NewTool("get_version", mcp.WithDescription("Get the current version of Machbase Neo server")),
+	Handler: toolGetVersionFunc,
+}
+
+func toolGetVersionFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText(neoVersionString), nil
 }
 
 var ToolDescribeTable = server.ServerTool{

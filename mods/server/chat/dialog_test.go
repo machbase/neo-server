@@ -74,20 +74,28 @@ func TestRpcLLMProviderConfig(t *testing.T) {
 
 	cfg, err := RpcLLMGetProviderConfig("claude")
 	require.NoError(t, err)
-	require.EqualValues(t, ClaudeConfig{
-		Key:       "some-rea*******************",
-		MaxTokens: 1000,
+	require.EqualValues(t, RpcLLMGetProviderConfigResponse{
+		Provider: "claude",
+		Exist:    true,
+		Config: ClaudeConfig{
+			Key:       "some-rea*******************",
+			MaxTokens: 1000,
+		},
 	}, cfg)
 
 	cfg, err = RpcLLMGetProviderConfig("ollama")
 	require.NoError(t, err)
-	require.EqualValues(t, OllamaConfig{
-		Url: "http://127.0.0.1:12345",
+	require.EqualValues(t, RpcLLMGetProviderConfigResponse{
+		Provider: "ollama",
+		Exist:    true,
+		Config: OllamaConfig{
+			Url: "http://127.0.0.1:12345",
+		},
 	}, cfg)
 
 	cfg, err = RpcLLMGetProviderConfig("unknown")
 	require.Error(t, err)
-	require.Nil(t, cfg)
+	require.Nil(t, cfg.Config)
 	err = RpcLLMSetProviderConfig("unknown", nil)
 	require.Error(t, err)
 
@@ -101,15 +109,23 @@ func TestRpcLLMProviderConfig(t *testing.T) {
 
 	cfg, err = RpcLLMGetProviderConfig("claude")
 	require.NoError(t, err)
-	require.EqualValues(t, ClaudeConfig{
-		Key:       "your-key",
-		MaxTokens: 1024,
+	require.EqualValues(t, RpcLLMGetProviderConfigResponse{
+		Provider: "claude",
+		Exist:    true,
+		Config: ClaudeConfig{
+			Key:       "your-key",
+			MaxTokens: 1024,
+		},
 	}, cfg)
 
 	cfg, err = RpcLLMGetProviderConfig("ollama")
 	require.NoError(t, err)
-	require.EqualValues(t, OllamaConfig{
-		Url: "http://127.0.0.1:11434",
+	require.EqualValues(t, RpcLLMGetProviderConfigResponse{
+		Provider: "ollama",
+		Exist:    true,
+		Config: OllamaConfig{
+			Url: "http://127.0.0.1:11434",
+		},
 	}, cfg)
 }
 
