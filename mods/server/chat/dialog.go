@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 
@@ -126,6 +127,46 @@ var llmSupportedProviders = []string{"claude", "ollama"}
 
 func isSupportedLLMProvider(provider string) bool {
 	return slices.Contains(llmSupportedProviders, provider)
+}
+
+type ListModels struct {
+	ConfigExist bool          `json:"config_exist"`
+	Models      []LLMProvider `json:"models"`
+}
+
+func RpcLLMListModels() map[string]ListModels {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
+	ret := map[string]ListModels{}
+	for _, provider := range llmSupportedProviders {
+		configExist := false
+		models := []LLMProvider{}
+		switch provider {
+		case "claude":
+			var cfg ClaudeConfig
+			err := LoadConfig(&cfg, provider+".json", false)
+			if err == nil {
+				configExist = true
+				models = llmProviders[provider]
+			} else if err != os.ErrNotExist {
+				logging.GetLog("chat").Error("Failed to load config for %s: %v", provider, err)
+			}
+		case "ollama":
+			var cfg OllamaConfig
+			err := LoadConfig(&cfg, provider+".json", false)
+			if err == nil {
+				configExist = true
+				models = llmProviders[provider]
+			} else if err != os.ErrNotExist {
+				logging.GetLog("chat").Error("Failed to load config for %s: %v", provider, err)
+			}
+		}
+		ret[provider] = ListModels{
+			ConfigExist: configExist,
+			Models:      models,
+		}
+	}
+	return ret
 }
 
 func RpcLLMGetModels() (map[string][]LLMProvider, error) {

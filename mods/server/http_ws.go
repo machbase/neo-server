@@ -264,6 +264,7 @@ func init() {
 	RegisterWebSocketRPCHandler("llmGetModels", chat.RpcLLMGetModels)
 	RegisterWebSocketRPCHandler("llmAddModels", chat.RpcLLMAddModels)
 	RegisterWebSocketRPCHandler("llmRemoveModels", chat.RpcLLMRemoveModels)
+	RegisterWebSocketRPCHandler("llmListModels", chat.RpcLLMListModels)
 	RegisterWebSocketRPCHandler("markdownRender", handleMarkdownRender)
 }
 
