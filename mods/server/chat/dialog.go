@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"slices"
@@ -37,11 +38,16 @@ func (c DialogConfig) NewDialog() Dialog {
 	return c.NewUnknown()
 }
 
+//go:embed system.md
+var systemMessages string
+
+const iam = "You are a friendly AI assistant for Machbase Neo DB."
+const lang = "Answer all responses in the language of the question"
+
 func (c DialogConfig) NewOllama() *OllamaDialog {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
 	ret := &OllamaDialog{
 		OllamaConfig:   NewOllamaConfig(),
-		systemMessages: []string{systemMessage},
+		systemMessages: []string{iam, lang, systemMessages},
 		topic:          c.Topic,
 		session:        c.Session,
 		msgID:          c.MsgID,
@@ -49,16 +55,15 @@ func (c DialogConfig) NewOllama() *OllamaDialog {
 		log:            logging.GetLog("chat.ollama"),
 	}
 	LoadConfig(ret, "ollama.json", false)
-	LoadConfig(&ret.systemMessages, "system.json", true)
+	LoadConfig(&ret.systemMessages, "system.json", false)
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
 
 func (c DialogConfig) NewClaude() *ClaudeDialog {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
 	ret := &ClaudeDialog{
 		ClaudeConfig:   NewClaudeConfig(),
-		systemMessages: []string{systemMessage},
+		systemMessages: []string{iam, lang, systemMessages},
 		topic:          c.Topic,
 		session:        c.Session,
 		msgID:          c.MsgID,
@@ -66,7 +71,7 @@ func (c DialogConfig) NewClaude() *ClaudeDialog {
 		log:            logging.GetLog("chat.claude"),
 	}
 	LoadConfig(ret, "claude.json", false)
-	LoadConfig(&ret.systemMessages, "system.json", true)
+	LoadConfig(&ret.systemMessages, "system.json", false)
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
