@@ -249,6 +249,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	ret := &Conn{
 		db:         db,
 		handle:     *handle,
+		user:       strings.ToUpper(user),
 		usedAt:     time.Now(),
 		returnChan: returnChan,
 	}
@@ -259,6 +260,7 @@ type Conn struct {
 	handle unsafe.Pointer
 	db     *Database
 
+	user       string
 	usedAt     time.Time
 	usedCount  int64
 	closeOnce  sync.Once
@@ -1061,7 +1063,7 @@ func (r *Rows) Scan(dest ...any) error {
 }
 
 func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-	db, user, table := api.TableName(tableName).Split()
+	db, user, table := api.TableName(tableName).SplitOr("MACHBASEDB", c.user)
 	dbId := -1
 	tableId := int64(-1)
 	var tableType api.TableType = api.TableType(-1)
@@ -1076,6 +1078,10 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 		if err := row.Scan(&dbId); err != nil {
 			return nil, err
 		}
+	}
+
+	if user == "" {
+		user = c.user
 	}
 
 	describeSqlText := `SELECT
