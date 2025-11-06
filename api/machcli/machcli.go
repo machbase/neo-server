@@ -113,7 +113,7 @@ func NewDatabase(conf *Config) (*Database, error) {
 		trustUsers: map[string]string{},
 	}
 	for u, p := range conf.TrustUsers {
-		ret.trustUsers[u] = p
+		ret.trustUsers[strings.ToUpper(u)] = p
 	}
 
 	if conf.MaxOpenConnFactor <= 0 {
@@ -189,8 +189,15 @@ func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
 func (db *Database) SetTrustUser(user, password string) error {
 	db.trustUsersMutex.Lock()
 	defer db.trustUsersMutex.Unlock()
-	db.trustUsers[user] = password
+	db.trustUsers[strings.ToUpper(user)] = password
 	return nil
+}
+
+func (db *Database) getTrustUser(user string) (string, bool) {
+	db.trustUsersMutex.RLock()
+	defer db.trustUsersMutex.RUnlock()
+	pass, ok := db.trustUsers[strings.ToUpper(user)]
+	return pass, ok
 }
 
 func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, string, error) {
@@ -215,12 +222,10 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			user = o.User
 			password = o.Password
 		case *api.ConnectOptionTrustUser:
-			db.trustUsersMutex.RLock()
-			if pass, ok := db.trustUsers[o.User]; ok {
-				user = o.User
+			if pass, ok := db.getTrustUser(o.User); ok {
+				user = strings.ToUpper(o.User)
 				password = pass
 			}
-			db.trustUsersMutex.RUnlock()
 			if user == "" {
 				return nil, errors.New("trust user not found")
 			}
