@@ -59,21 +59,24 @@ func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 		if !ok {
 			return nil, fmt.Errorf("f(FFT) sample should be a tuple of (time, value), but %T (%v)", value[i], value[i])
 		}
-		sampleTimes[i], ok = tuple[0].(time.Time)
-		if !ok {
-			if pt, ok := tuple[0].(*time.Time); !ok {
-				return nil, fmt.Errorf("f(FFT) invalid %dth sample time, but %T", i, tuple[0])
-			} else {
-				sampleTimes[i] = *pt
-			}
+		if len(tuple) != 2 {
+			return nil, fmt.Errorf("f(FFT) sample should be a tuple of (time, value), but len=%d", len(tuple))
 		}
-		sampleValues[i], ok = tuple[1].(float64)
-		if !ok {
-			if pt, ok := tuple[1].(*float64); !ok {
-				return nil, fmt.Errorf("f(FFT) invalid %dth sample value, but %T", i, tuple[1])
-			} else {
-				sampleValues[i] = *pt
-			}
+		switch val := tuple[0].(type) {
+		case time.Time:
+			sampleTimes[i] = val
+		case *time.Time:
+			sampleTimes[i] = *val
+		default:
+			return nil, fmt.Errorf("f(FFT) invalid %dth sample time, but %T", i, tuple[0])
+		}
+		switch val := tuple[1].(type) {
+		case float64:
+			sampleValues[i] = val
+		case *float64:
+			sampleValues[i] = *val
+		default:
+			return nil, fmt.Errorf("f(FFT) invalid %dth sample value, but %T", i, tuple[1])
 		}
 	}
 
