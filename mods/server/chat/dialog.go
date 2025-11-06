@@ -41,13 +41,12 @@ func (c DialogConfig) NewDialog() Dialog {
 //go:embed system.md
 var systemMessages string
 
-const iam = "You are a friendly AI assistant for Machbase Neo DB."
 const lang = "Answer all responses in the language of the question"
 
 func (c DialogConfig) NewOllama() *OllamaDialog {
 	ret := &OllamaDialog{
 		OllamaConfig:   NewOllamaConfig(),
-		systemMessages: []string{iam, lang, systemMessages},
+		systemMessages: []string{lang, systemMessages},
 		topic:          c.Topic,
 		session:        c.Session,
 		msgID:          c.MsgID,
@@ -63,7 +62,7 @@ func (c DialogConfig) NewOllama() *OllamaDialog {
 func (c DialogConfig) NewClaude() *ClaudeDialog {
 	ret := &ClaudeDialog{
 		ClaudeConfig:   NewClaudeConfig(),
-		systemMessages: []string{iam, lang, systemMessages},
+		systemMessages: []string{lang, systemMessages},
 		topic:          c.Topic,
 		session:        c.Session,
 		msgID:          c.MsgID,
