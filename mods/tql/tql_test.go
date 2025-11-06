@@ -1274,7 +1274,7 @@ func TestTql(t *testing.T) {
 				FFT()
 				CSV()
 				`,
-			ExpectErr: "f(FFT) invalid 0th sample time, but int",
+			ExpectErr: "f(FFT) sample should be a tuple of (time, value), but len=3",
 		},
 		{
 			Name: "FFT_3d",
