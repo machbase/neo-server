@@ -1143,7 +1143,7 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 	}
 	ret.stmt = stmt
 
-	if err := mach.CliAppendOpen(stmt.handle, ret.tableName, ret.errCheckCount); err != nil {
+	if err := mach.CliAppendOpen(stmt.handle, table, ret.errCheckCount); err != nil {
 		err = errorWithCause(stmt, err)
 		stmt.Close()
 		return nil, err
