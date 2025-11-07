@@ -55,6 +55,9 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
+			if req.Header == "skip" {
+				req.Heading = false
+			}
 		case "application/x-www-form-urlencoded":
 			req.SqlText = ctx.PostForm("q")
 			req.Timeformat = strString(ctx.PostForm("timeformat"), "ns")
