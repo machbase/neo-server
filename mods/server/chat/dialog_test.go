@@ -14,6 +14,20 @@ func TestMain(m *testing.M) {
 	os.RemoveAll("../../../tmp/chat_llm")
 }
 
+func TestRpcLLMListModels(t *testing.T) {
+	list := RpcLLMListModels()
+	require.EqualValues(t, map[string]ListModels{
+		"claude": {
+			ConfigExist: false,
+			Models:      []LLMProvider{},
+		},
+		"ollama": {
+			ConfigExist: false,
+			Models:      []LLMProvider{},
+		},
+	}, list)
+}
+
 func TestRpcLLMProviders(t *testing.T) {
 	types := RpcLLMGetProviders()
 	require.EqualValues(t, []string{"claude", "ollama"}, types)

@@ -261,14 +261,8 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 			return
 		}
 		switch message.StopReason {
-		case anthropic.StopReasonToolUse:
-			// Indicates the response was cut off because a stop sequence was generated.
 		case anthropic.StopReasonEndTurn:
 			// The most common stop reason. Indicates Claude finished its response naturally.
-			return
-		case anthropic.StopReasonPauseTurn:
-			// Used with server tools like web search when Claude needs to pause a long-running operation.
-			d.publishTextBlock("\n⏸️ Response paused to perform a long-running operation.\n")
 			return
 		case anthropic.StopReasonMaxTokens:
 			// Claude stopped because it reached the max_tokens limit specified in your request.
@@ -278,14 +272,15 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 			// Claude encountered one of your custom stop sequences.
 			d.publishTextBlock("\n⚠️ Response was cut off because a custom stop sequence was encountered.\n")
 			return
+		case anthropic.StopReasonToolUse:
+			// Indicates the response was cut off because a stop sequence was generated.
+		case anthropic.StopReasonPauseTurn:
+			// Used with server tools like web search when Claude needs to pause a long-running operation.
+			d.publishTextBlock("\n⏸️ Response paused to perform a long-running operation.\n")
+			return
 		case anthropic.StopReasonRefusal:
 			// Claude refused to generate a response due to safety concerns.
 			d.publishTextBlock("\n⚠️ Response was cut off due to safety concerns.\n")
-			return
-		case anthropic.StopReasonModelContextWindowExceeded:
-			// Claude stopped because it reached the model’s context window limit. This allows you to
-			// request the maximum possible tokens without knowing the exact input size.
-			d.publishTextBlock("\n⚠️ Response was cut off because the model's context window limit was exceeded.\n")
 			return
 		default:
 			d.publishTextBlock(fmt.Sprintf("\n⚠️ Response was cut off for unknown reason: %s\n", message.StopReason))
@@ -342,7 +337,7 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 							d.log.Tracef("%s Tool result:\n%s", block.ID, peek)
 						}
 						callResult = c.Text
-						d.publishTextBlock(c.Text)
+						d.publishTextBlock(fmt.Sprintf("```\n%s\n```\n", c.Text))
 					default:
 						d.SendError(fmt.Sprintf("😡 Unhandled content type from tool: %#v", c))
 					}

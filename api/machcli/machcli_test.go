@@ -39,4 +39,10 @@ func tcTrustUser(t *testing.T) {
 	require.NotNil(t, conn)
 	err = conn.Close()
 	require.NoError(t, err)
+
+	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	err = conn.Close()
+	require.NoError(t, err)
 }

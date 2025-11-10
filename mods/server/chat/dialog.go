@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 
@@ -36,11 +38,15 @@ func (c DialogConfig) NewDialog() Dialog {
 	return c.NewUnknown()
 }
 
+//go:embed system.md
+var systemMessages string
+
+const lang = "Answer all responses in the language of the question"
+
 func (c DialogConfig) NewOllama() *OllamaDialog {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
 	ret := &OllamaDialog{
 		OllamaConfig:   NewOllamaConfig(),
-		systemMessages: []string{systemMessage},
+		systemMessages: []string{lang, systemMessages},
 		topic:          c.Topic,
 		session:        c.Session,
 		msgID:          c.MsgID,
@@ -48,16 +54,15 @@ func (c DialogConfig) NewOllama() *OllamaDialog {
 		log:            logging.GetLog("chat.ollama"),
 	}
 	LoadConfig(ret, "ollama.json", false)
-	LoadConfig(&ret.systemMessages, "system.json", true)
+	LoadConfig(&ret.systemMessages, "system.json", false)
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
 
 func (c DialogConfig) NewClaude() *ClaudeDialog {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
 	ret := &ClaudeDialog{
 		ClaudeConfig:   NewClaudeConfig(),
-		systemMessages: []string{systemMessage},
+		systemMessages: []string{lang, systemMessages},
 		topic:          c.Topic,
 		session:        c.Session,
 		msgID:          c.MsgID,
@@ -65,7 +70,7 @@ func (c DialogConfig) NewClaude() *ClaudeDialog {
 		log:            logging.GetLog("chat.claude"),
 	}
 	LoadConfig(ret, "claude.json", false)
-	LoadConfig(&ret.systemMessages, "system.json", true)
+	LoadConfig(&ret.systemMessages, "system.json", false)
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
@@ -126,6 +131,46 @@ var llmSupportedProviders = []string{"claude", "ollama"}
 
 func isSupportedLLMProvider(provider string) bool {
 	return slices.Contains(llmSupportedProviders, provider)
+}
+
+type ListModels struct {
+	ConfigExist bool          `json:"config_exist"`
+	Models      []LLMProvider `json:"models"`
+}
+
+func RpcLLMListModels() map[string]ListModels {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
+	ret := map[string]ListModels{}
+	for _, provider := range llmSupportedProviders {
+		configExist := false
+		models := []LLMProvider{}
+		switch provider {
+		case "claude":
+			var cfg ClaudeConfig
+			err := LoadConfig(&cfg, provider+".json", false)
+			if err == nil {
+				configExist = true
+				models = llmProviders[provider]
+			} else if err != os.ErrNotExist {
+				logging.GetLog("chat").Error("Failed to load config for %s: %v", provider, err)
+			}
+		case "ollama":
+			var cfg OllamaConfig
+			err := LoadConfig(&cfg, provider+".json", false)
+			if err == nil {
+				configExist = true
+				models = llmProviders[provider]
+			} else if err != os.ErrNotExist {
+				logging.GetLog("chat").Error("Failed to load config for %s: %v", provider, err)
+			}
+		}
+		ret[provider] = ListModels{
+			ConfigExist: configExist,
+			Models:      models,
+		}
+	}
+	return ret
 }
 
 func RpcLLMGetModels() (map[string][]LLMProvider, error) {

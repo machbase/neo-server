@@ -175,7 +175,7 @@ func (d *OllamaDialog) Process(ctx context.Context, message string) {
 					switch c := content.(type) {
 					case mcp.TextContent:
 						req.Messages = append(req.Messages, api.Message{Role: "tool", ToolName: toolCall.Function.Name, Content: c.Text})
-						d.publishTextBlock(">>" + c.Text + "<<\n")
+						d.publishTextBlock("```\n" + c.Text + "\n```\n")
 					default:
 						d.publishTextBlock(fmt.Sprintf("😡 Unhandled content type from tool: %#v\n", c))
 					}
