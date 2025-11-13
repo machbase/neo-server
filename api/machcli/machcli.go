@@ -65,6 +65,9 @@ type Config struct {
 	Host string
 	Port int
 
+	AlternativeHost string
+	AlternativePort int
+
 	// MaxOpenConns
 	//
 	//	< 0 : unlimited
@@ -92,6 +95,9 @@ type Database struct {
 	host   string
 	port   int
 
+	alternativeHost string
+	alternativePort int
+
 	trustUsersMutex sync.RWMutex
 	trustUsers      map[string]string
 
@@ -107,10 +113,12 @@ func NewDatabase(conf *Config) (*Database, error) {
 		return nil, err
 	}
 	ret := &Database{
-		host:       conf.Host,
-		port:       conf.Port,
-		handle:     *handle,
-		trustUsers: map[string]string{},
+		host:            conf.Host,
+		port:            conf.Port,
+		alternativeHost: conf.AlternativeHost,
+		alternativePort: conf.AlternativePort,
+		handle:          *handle,
+		trustUsers:      map[string]string{},
 	}
 	for u, p := range conf.TrustUsers {
 		ret.trustUsers[strings.ToUpper(u)] = p
@@ -210,8 +218,19 @@ func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, 
 }
 
 func (db *Database) connectionString(user string, password string) string {
-	return fmt.Sprintf("SERVER=%s;UID=%s;PWD=%s;CONNTYPE=1;PORT_NO=%d",
-		db.host, strings.ToUpper(user), strings.ToUpper(password), db.port)
+	entries := []string{
+		fmt.Sprintf("SERVER=%s", db.host),
+		fmt.Sprintf("PORT_NO=%d", db.port),
+		fmt.Sprintf("UID=%s", strings.ToUpper(user)),
+		fmt.Sprintf("PWD=%s", strings.ToUpper(password)),
+		"CONNTYPE=1",
+	}
+	if db.alternativeHost != "" && db.alternativePort != 0 {
+		entries = append(entries,
+			fmt.Sprintf("ALTERNATIVE_SERVERS=%s:%d",
+				db.alternativeHost, db.alternativePort))
+	}
+	return strings.Join(entries, ";")
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
