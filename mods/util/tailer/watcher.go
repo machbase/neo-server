@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-type handler struct {
+type Handler struct {
 	Filename  string
 	CutPrefix string
 	fsServer  http.Handler
@@ -27,8 +27,10 @@ func Shutdown() {
 	close(shutdownCh)
 }
 
-func Handler(cutPrefix string, filepath string, opts ...Option) http.Handler {
-	return handler{
+var _ http.Handler = Handler{}
+
+func NewHandler(cutPrefix string, filepath string, opts ...Option) Handler {
+	return Handler{
 		Filename:  filepath,
 		CutPrefix: cutPrefix,
 		fsServer:  http.FileServerFS(staticFS),
@@ -40,7 +42,7 @@ func Handler(cutPrefix string, filepath string, opts ...Option) http.Handler {
 	}
 }
 
-func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "watch.stream") {
 		h.serveWatcher(w, r)
 	} else {
@@ -48,7 +50,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h handler) serveWatcher(w http.ResponseWriter, r *http.Request) {
+func (h Handler) serveWatcher(w http.ResponseWriter, r *http.Request) {
 	if h.Filename == "" {
 		http.Error(w, "Filename not configured", http.StatusNotImplemented)
 		return
@@ -138,7 +140,7 @@ var staticFS embed.FS
 
 var tmplIndex *template.Template
 
-func (h handler) serveStatic(w http.ResponseWriter, r *http.Request) {
+func (h Handler) serveStatic(w http.ResponseWriter, r *http.Request) {
 	if tmplIndex == nil {
 		if b, err := staticFS.ReadFile("static/index.html"); err != nil {
 			http.Error(w, "Failed to read index.html", http.StatusInternalServerError)
