@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xterm.js Example</title>
+
+    <style>
+        body {
+            margin: 0;
+            background-color: #0d1117;
+            color: white;
+            font-family: "Monaspace Neon", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        #container {
+            height: calc(100vh - 10px);
+            width: calc(100% - 20px);
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #filter-bar {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        #filter-input {
+            flex: 1;
+            padding: 8px 12px;
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: white;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        #filter-input:focus {
+            outline: none;
+            border-color: #0078d4;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #apply-btn {
+            background-color: #0078d4;
+            color: white;
+        }
+
+        #apply-btn:hover {
+            background-color: #005a9e;
+        }
+
+        #clear-btn {
+            background-color: #444;
+            color: white;
+        }
+
+        #clear-btn:hover {
+            background-color: #555;
+        }
+
+        #terminal {
+            flex: 1;
+            padding: 8px;
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            user-select: none;
+            /* Disable text selection */
+            -ms-user-select: none;
+            /* IE 10+ */
+            -moz-user-select: none;
+            /* Firefox */
+            -webkit-user-select: none;
+            /* Safari */
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Container for filter bar and terminal -->
+    <div id="container">
+        <!-- Filter bar -->
+        <div id="filter-bar">
+            <input type="text" id="filter-input" placeholder="Enter filter text..." />
+            <button id="apply-btn" class="filter-btn">Apply</button>
+            <button id="clear-btn" class="filter-btn">Clear</button>
+        </div>
+
+        <!-- Terminal container -->
+        <div id="terminal"></div>
+    </div>
+
+    <!-- Xterm.js CSS -->
+    <link rel="stylesheet" href="xterm.css" />
+    <!-- Xterm.js JS -->
+    <script src="xterm.js"></script>
+    <script src="addon-fit.min.js"></script>
+    <!-- <script src="addon-attach.min.js"></script> -->
+    <script src="addon-webgl.min.js"></script>
+
+    <script>
+        // Create a new terminal instance
+        const term = new Terminal({{ .TerminalOptions }});
+
+        // Create fit addon instance
+        const fitAddon = new window.FitAddon.FitAddon();
+        const webglAddon = new window.WebglAddon.WebglAddon();
+
+        // Load addon into terminal
+        term.loadAddon(fitAddon);
+        term.loadAddon(webglAddon);
+
+        // Attach terminal to the DOM
+        term.open(document.getElementById('terminal'));
+
+        // Fit terminal to container
+        fitAddon.fit();
+
+        // Refit on window resize
+        window.addEventListener('resize', () => fitAddon.fit());
+
+        // Auto-scroll management
+        let autoScroll = true;
+        let lastScrollTop = 0;
+
+        // Monitor user scrolling to disable/enable auto-scroll
+        term.element.querySelector('.xterm-viewport').addEventListener('scroll', (e) => {
+            const viewport = e.target;
+            const scrollTop = viewport.scrollTop;
+            const scrollHeight = viewport.scrollHeight;
+            const clientHeight = viewport.clientHeight;
+            
+            // Check if user scrolled to the bottom (with small threshold)
+            const isAtBottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 5;
+            
+            // Enable auto-scroll when user manually scrolls to bottom
+            if (isAtBottom) {
+                autoScroll = true;
+            } 
+            // Disable auto-scroll when user scrolls up
+            else if (scrollTop < lastScrollTop) {
+                autoScroll = false;
+            }
+            
+            lastScrollTop = scrollTop;
+        });
+
+        // Function to scroll to bottom
+        function scrollToBottom() {
+            if (autoScroll) {
+                term.scrollToBottom();
+            }
+        }
+
+        // SSE connection management
+        let eventSource = null;
+        let currentFilter = '';
+
+        function connectSSE(filter = '') {
+            // Close existing connection if any
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // Clear terminal
+            term.clear();
+
+            // Build URL with filter parameter
+            const url = filter ? `./watch.stream?filter=${encodeURIComponent(filter)}` : './watch.stream';
+            currentFilter = filter;
+
+            // Connect to SSE endpoint
+            eventSource = new EventSource(url);
+            
+            eventSource.onopen = () => {
+                const filterMsg = filter ? ` (filter: "${filter}")` : '';
+                term.writeln(`\x1b[32mConnected to log stream${filterMsg}...\x1b[0m`);
+                term.writeln('');
+            };
+
+            eventSource.onmessage = (event) => {
+                // Write each log line to terminal
+                term.writeln(event.data);
+                // Auto-scroll to bottom if enabled
+                scrollToBottom();
+            };
+
+            eventSource.onerror = (error) => {
+                term.writeln('\x1b[31mConnection error. Retrying...\x1b[0m');
+                console.error('SSE Error:', error);
+            };
+        }
+
+        // Initial connection without filter
+        connectSSE();
+
+        // Filter controls
+        const filterInput = document.getElementById('filter-input');
+        const applyBtn = document.getElementById('apply-btn');
+        const clearBtn = document.getElementById('clear-btn');
+
+        applyBtn.addEventListener('click', () => {
+            const filter = filterInput.value.trim();
+            connectSSE(filter);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            filterInput.value = '';
+            connectSSE();
+        });
+
+        // Allow Enter key to apply filter
+        filterInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const filter = filterInput.value.trim();
+                connectSSE(filter);
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+</body>
+
+</html>
