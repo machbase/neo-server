@@ -7,26 +7,31 @@
     <title>Xterm.js Example</title>
 
     <style>
-        body {
+        html, body {
             margin: 0;
-            background-color: #0d1117;
-            color: white;
-            font-family: "Monaspace Neon", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            padding: 0;
+            height: 100%;
             overflow: hidden;
             box-sizing: border-box;
         }
 
+        body {
+            background-color: #0d1117;
+            color: white;
+            font-family: {{.TerminalOption.FontFamily}};
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
         #container {
-            height: calc(100vh - 10px);
-            width: calc(100% - 20px);
+            height: calc(100vh - 20px);
+            width: calc(100vw - 40px);
             max-width: 1400px;
             display: flex;
             flex-direction: column;
             gap: 10px;
+            padding: 10px;
         }
 
         #filter-bar {
@@ -84,10 +89,12 @@
 
         #terminal {
             flex: 1;
+            min-height: 0;
             padding: 8px;
-            background-color: #1e1e1e;
+            background-color: {{.TerminalOption.Theme.Background}};
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
             user-select: none;
             /* Disable text selection */
             -ms-user-select: none;
@@ -140,8 +147,14 @@
         // Fit terminal to container
         fitAddon.fit();
 
-        // Refit on window resize
-        window.addEventListener('resize', () => fitAddon.fit());
+        // Refit on window resize with debounce
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                fitAddon.fit();
+            }, 100);
+        });
 
         // Auto-scroll management
         let autoScroll = true;

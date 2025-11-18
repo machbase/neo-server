@@ -70,9 +70,15 @@ func WithPattern(patterns ...string) Option {
 	}
 }
 
-func WithLastN(n int) Option {
+func WithLast(n int) Option {
 	return func(t *Tail) {
 		t.showLastN = n
+	}
+}
+
+func WithSyntaxColoring(syntax ...string) Option {
+	return func(t *Tail) {
+		t.plugins = append(t.plugins, NewSyntaxColoring(syntax...))
 	}
 }
 
