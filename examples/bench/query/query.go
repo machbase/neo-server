@@ -90,9 +90,9 @@ func main() {
 					var mtime time.Time
 					var avg float64
 					rows.Scan(&mtime, &avg)
-					measure.Add(float64(time.Since(tm).Nanoseconds()))
 				}
 				rows.Close()
+				measure.Add(float64(time.Since(tm).Nanoseconds()))
 			}
 		}(conn, N, c)
 	}
