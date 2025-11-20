@@ -81,14 +81,18 @@ func main() {
 			for n := 0; n < N; n++ {
 				tm := time.Now()
 				tmstr := tm.In(time.Local).Format("2006-01-02 15:04:05") // '2025-10-15 09:05:59'
-				row := cliConn.QueryRow(ctx, querySQL, "tag1", tmstr, "tag1", tmstr)
-				if err := row.Err(); err != nil {
+				rows, err := cliConn.Query(ctx, querySQL, "tag1", tmstr, "tag1", tmstr)
+				if err != nil {
 					fmt.Println("Error query:", err)
 					panic(err)
 				}
-				var count int64
-				row.Scan(&count)
-				measure.Add(float64(time.Since(tm).Nanoseconds()))
+				for rows.Next() {
+					var mtime time.Time
+					var avg float64
+					rows.Scan(&mtime, &avg)
+					measure.Add(float64(time.Since(tm).Nanoseconds()))
+				}
+				rows.Close()
 			}
 		}(conn, N, c)
 	}
@@ -107,7 +111,7 @@ func elapsed(f float64) string {
 	}
 }
 
-const querySQL = `SELECT COUNT(*)
+const querySQL = `SELECT mtime, avg
 FROM (
 	SELECT ROLLUP('minute', 1, time) as mtime, AVG(value) 
 	FROM tag 
