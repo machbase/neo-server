@@ -30,7 +30,7 @@ var ThemeSolarizedDark = TerminalTheme{
 // ThemeSolarizedLight provides the Solarized Light color scheme
 var ThemeSolarizedLight = TerminalTheme{
 	Background:          "#fdf6e3",
-	Foreground:          "#657b83",
+	Foreground:          "#1f4755",
 	Cursor:              "#657b83",
 	CursorAccent:        "#fdf6e3",
 	SelectionBackground: "#eee8d5",
@@ -125,4 +125,54 @@ var ThemeDefault = TerminalTheme{
 	BrightMagenta:       "#d670d6",
 	BrightCyan:          "#29b8db",
 	BrightWhite:         "#ffffff",
+}
+
+// ThemeDracula provides the Dracula color scheme
+var ThemeDracula = TerminalTheme{
+	Background:          "#282a36",
+	Foreground:          "#f8f8f2",
+	Cursor:              "#f8f8f2",
+	CursorAccent:        "#282a36",
+	SelectionBackground: "#44475a",
+	Black:               "#21222c",
+	Red:                 "#ff5555",
+	Green:               "#50fa7b",
+	Yellow:              "#f1fa8c",
+	Blue:                "#bd93f9",
+	Magenta:             "#ff79c6",
+	Cyan:                "#8be9fd",
+	White:               "#f8f8f2",
+	BrightBlack:         "#6272a4",
+	BrightRed:           "#ff6e6e",
+	BrightGreen:         "#69ff94",
+	BrightYellow:        "#ffffa5",
+	BrightBlue:          "#d6acff",
+	BrightMagenta:       "#ff92df",
+	BrightCyan:          "#a4ffff",
+	BrightWhite:         "#ffffff",
+}
+
+// ThemeNordic provides the Nordic color scheme
+var ThemeNordic = TerminalTheme{
+	Background:          "#2e3440",
+	Foreground:          "#d8dee9",
+	Cursor:              "#d8dee9",
+	CursorAccent:        "#2e3440",
+	SelectionBackground: "#434c5e",
+	Black:               "#3b4252",
+	Red:                 "#bf616a",
+	Green:               "#a3be8c",
+	Yellow:              "#ebcb8b",
+	Blue:                "#81a1c1",
+	Magenta:             "#b48ead",
+	Cyan:                "#88c0d0",
+	White:               "#e5e9f0",
+	BrightBlack:         "#4c566a",
+	BrightRed:           "#bf616a",
+	BrightGreen:         "#a3be8c",
+	BrightYellow:        "#ebcb8b",
+	BrightBlue:          "#81a1c1",
+	BrightMagenta:       "#b48ead",
+	BrightCyan:          "#8fbcbb",
+	BrightWhite:         "#eceff4",
 }

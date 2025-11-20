@@ -4,6 +4,7 @@
     {{- $opt := .Option -}}
     {{- $seriesIdx := .SeriesIdx -}}
 	<meta charset="UTF-8">
+    <title>{{.PageTitle}}</title>
     {{- range $opt.JsSrc }}
     <script src="{{ . }}"></script>
     {{ end -}}

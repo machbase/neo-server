@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
@@ -342,7 +343,6 @@ func (c *Collector) Start() {
 func (c *Collector) Stop() {
 	close(c.closeCh)
 	c.stopWg.Wait()
-	close(c.recvCh)
 	c.syncStorage()
 	// call DeInit() of inputs if exists
 	for _, input := range c.inputs {
@@ -356,6 +356,8 @@ func (c *Collector) Stop() {
 			hasDeInit.DeInit()
 		}
 	}
+	// close at the end to avoid sending to closed channel
+	close(c.recvCh)
 }
 
 func (c *Collector) makePublishName(metricName string) string {
@@ -442,6 +444,14 @@ type Product struct {
 	Period      time.Duration `json:"period,omitempty"`
 	Type        string        `json:"type,omitempty"`
 	Unit        Unit          `json:"unit,omitempty"`
+}
+
+func (p Product) String() string {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Sprintf("Product<error: %v>", err)
+	}
+	return string(b)
 }
 
 func (c *Collector) onProduct(prd Product) {
@@ -573,8 +583,7 @@ func (c *Collector) syncStorage() {
 	for _, mts := range c.timeseries {
 		for _, ts := range mts {
 			tb, meta := ts.LastBin()
-			var prd Product
-			ToProduct(&prd, tb, meta)
+			var prd Product = ToProduct(tb, meta)
 			id, err := NewSeriesID(prd.SeriesID, prd.Name, prd.Period, ts.maxCount)
 			if err != nil {
 				slog.Error("Failed to create series ID", "ID", prd.SeriesID, "error", err)

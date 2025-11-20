@@ -73,23 +73,32 @@ func (tv *TimeBin) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func ToProduct(prd *Product, tb TimeBin, meta any) bool {
-	mInfo, ok := meta.(SeriesInfo)
-	if !ok {
-		return false
+func ToProduct(tb TimeBin, meta any) Product {
+	if mInfo, ok := meta.(SeriesInfo); ok {
+		return Product{
+			Name:        mInfo.MeasureName,
+			Time:        tb.Time,
+			Value:       tb.Value,
+			IsNull:      tb.IsNull,
+			SeriesID:    mInfo.SeriesID.ID(),
+			SeriesTitle: mInfo.SeriesID.Title(),
+			Period:      mInfo.SeriesID.Period(),
+			Type:        mInfo.MeasureType.Name(),
+			Unit:        mInfo.MeasureType.Unit(),
+		}
+	} else {
+		return Product{
+			Name:   "",
+			Time:   tb.Time,
+			Value:  tb.Value,
+			IsNull: tb.IsNull,
+			// SeriesID:    "",
+			// SeriesTitle: "",
+			// Period:      mInfo.SeriesID.Period(),
+			// Type:        mInfo.MeasureType.Name(),
+			// Unit:        mInfo.MeasureType.Unit(),
+		}
 	}
-	*prd = Product{
-		Name:        mInfo.MeasureName,
-		Time:        tb.Time,
-		Value:       tb.Value,
-		IsNull:      tb.IsNull,
-		SeriesID:    mInfo.SeriesID.ID(),
-		SeriesTitle: mInfo.SeriesID.Title(),
-		Period:      mInfo.SeriesID.Period(),
-		Type:        mInfo.MeasureType.Name(),
-		Unit:        mInfo.MeasureType.Unit(),
-	}
-	return true
 }
 
 func FromProduct(prd []Product) []TimeBin {
@@ -328,10 +337,8 @@ func (ts *TimeSeries) add(tm time.Time, val float64) {
 
 	// Notify listener
 	if ts.lsnr != nil {
-		prd := Product{}
-		if ok := ToProduct(&prd, tb, ts.meta); ok {
-			ts.lsnr(prd)
-		}
+		prd := ToProduct(tb, ts.meta)
+		ts.lsnr(prd)
 	}
 
 	ts.data = append(ts.data, tb)

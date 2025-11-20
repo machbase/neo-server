@@ -373,7 +373,7 @@ func TestTailWithColoringPlugin(t *testing.T) {
 	f.Close()
 
 	// Create tail with coloring plugin
-	coloringPlugin := NewSyntaxColoring("levels")
+	coloringPlugin := NewWithSyntaxHighlighting("levels")
 	tail := New(testFile,
 		WithPollInterval(100*time.Millisecond),
 		WithPlugins(coloringPlugin),
@@ -440,5 +440,122 @@ func TestTailWithColoringPlugin(t *testing.T) {
 	// Check that ERROR has red color codes
 	if lines[4] != "\033[31mERROR\033[0m This is an error message" {
 		t.Errorf("Expected ERROR to be colored, got '%s'", lines[4])
+	}
+}
+
+func TestMultiTail(t *testing.T) {
+	// Create a temporary directory
+	tmpDir := t.TempDir()
+	testFile1 := filepath.Join(tmpDir, "test1.log")
+	testFile2 := filepath.Join(tmpDir, "test2.log")
+
+	// Create and write initial content to first file
+	f1, err := os.Create(testFile1)
+	if err != nil {
+		t.Fatalf("Failed to create test file 1: %v", err)
+	}
+	fmt.Fprintln(f1, "file1 line1")
+	fmt.Fprintln(f1, "file1 line2")
+	f1.Close()
+
+	// Create and write initial content to second file
+	f2, err := os.Create(testFile2)
+	if err != nil {
+		t.Fatalf("Failed to create test file 2: %v", err)
+	}
+	fmt.Fprintln(f2, "file2 line1")
+	fmt.Fprintln(f2, "file2 line2")
+	f2.Close()
+
+	// Create individual tails
+	tail1 := New(testFile1, WithPollInterval(100*time.Millisecond))
+	tail2 := New(testFile2, WithPollInterval(100*time.Millisecond))
+
+	// Create MultiTail
+	multiTail := NewMultiTail(tail1, tail2)
+	if err := multiTail.Start(); err != nil {
+		t.Fatalf("Failed to start MultiTail: %v", err)
+	}
+	defer func() {
+		multiTail.Stop()
+		// Give time for file handles to close on Windows
+		time.Sleep(50 * time.Millisecond)
+	}()
+
+	// Append new lines to both files
+	f1, err = os.OpenFile(testFile1, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open test file 1: %v", err)
+	}
+	fmt.Fprintln(f1, "file1 line3")
+	f1.Close()
+
+	f2, err = os.OpenFile(testFile2, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open test file 2: %v", err)
+	}
+	fmt.Fprintln(f2, "file2 line3")
+	f2.Close()
+
+	// Read the lines from MultiTail
+	// Should get: 2 from file1 + 2 from file2 + 1 new from file1 + 1 new from file2 = 6 total
+	timeout := time.After(2 * time.Second)
+	lines := []string{}
+
+	for i := 0; i < 6; i++ {
+		select {
+		case line := <-multiTail.Lines():
+			lines = append(lines, line)
+		case <-timeout:
+			t.Fatalf("Timeout waiting for lines, got %d lines: %v", len(lines), lines)
+		}
+	}
+
+	if len(lines) != 6 {
+		t.Fatalf("Expected 6 lines, got %d: %v", len(lines), lines)
+	}
+
+	// Check that lines are prefixed with filenames
+	foundFile1Line1 := false
+	foundFile1Line2 := false
+	foundFile1Line3 := false
+	foundFile2Line1 := false
+	foundFile2Line2 := false
+	foundFile2Line3 := false
+
+	for _, line := range lines {
+		switch line {
+		case "test1.log file1 line1":
+			foundFile1Line1 = true
+		case "test1.log file1 line2":
+			foundFile1Line2 = true
+		case "test1.log file1 line3":
+			foundFile1Line3 = true
+		case "test2.log file2 line1":
+			foundFile2Line1 = true
+		case "test2.log file2 line2":
+			foundFile2Line2 = true
+		case "test2.log file2 line3":
+			foundFile2Line3 = true
+		}
+	}
+
+	if !foundFile1Line1 {
+		t.Error("Did not find 'test1.log file1 line1'")
+	}
+	if !foundFile1Line2 {
+		t.Error("Did not find 'test1.log file1 line2'")
+	}
+	if !foundFile1Line3 {
+		t.Error("Did not find 'test1.log file1 line3'")
+	}
+	if !foundFile2Line1 {
+		t.Error("Did not find 'test2.log file2 line1'")
+	}
+	if !foundFile2Line2 {
+		t.Error("Did not find 'test2.log file2 line2'")
+	}
+	if !foundFile2Line3 {
+		t.Error("Did not find 'test2.log file2 line3'")
 	}
 }

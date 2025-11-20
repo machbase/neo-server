@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Xterm.js Example</title>
+    <title>{{ .Localize "Log Viewer"}}</title>
 
     <style>
         html, body {
@@ -18,7 +18,7 @@
         body {
             background-color: #0d1117;
             color: white;
-            font-family: {{.TerminalOption.FontFamily}};
+            font-family: {{.Terminal.FontFamily}};
             display: flex;
             justify-content: center;
             align-items: center;
@@ -41,6 +41,106 @@
             background-color: #1e1e1e;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            align-items: center;
+        }
+
+        .logtype-select-container {
+            position: relative;
+            min-width: 180px;
+        }
+
+        .logtype-select-button {
+            padding: 8px 12px;
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: white;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+
+        #logtype-select-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            margin-right: 8px;
+        }
+
+        .logtype-select-button:hover {
+            background-color: #3d3d3d;
+        }
+
+        .logtype-select-button:focus {
+            outline: none;
+            border-color: #0078d4;
+        }
+
+        .logtype-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 6px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .logtype-select-dropdown.open {
+            display: block;
+        }
+
+        .logtype-option {
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background-color 0.2s;
+        }
+
+        .logtype-option:hover {
+            background-color: #3d3d3d;
+        }
+
+        .logtype-option input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+
+        .logtype-option label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 14px;
+        }
+
+        .arrow-down {
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            display: inline-block;
+            padding: 3px;
+            transform: rotate(45deg);
+            -webkit-transform: rotate(45deg);
+            transition: transform 0.2s;
+        }
+
+        .arrow-down.open {
+            transform: rotate(-135deg);
+            -webkit-transform: rotate(-135deg);
         }
 
         #filter-input {
@@ -91,7 +191,7 @@
             flex: 1;
             min-height: 0;
             padding: 8px;
-            background-color: {{.TerminalOption.Theme.Background}};
+            background-color: {{.Terminal.Theme.Background}};
             border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             overflow: hidden;
@@ -112,9 +212,26 @@
     <div id="container">
         <!-- Filter bar -->
         <div id="filter-bar">
-            <input type="text" id="filter-input" placeholder="Enter filter text..." />
-            <button id="apply-btn" class="filter-btn">Apply</button>
-            <button id="clear-btn" class="filter-btn">Clear</button>
+            <!-- Log Multi-Select -->
+            {{if gt (len .Files) 1 }}
+            <div class="logtype-select-container">
+                <button class="logtype-select-button" id="logtype-select-btn">
+                    <span id="logtype-select-text">{{ .Localize "All Logs" }}</span>
+                    <span class="arrow-down" id="logtype-arrow"></span>
+                </button>
+                <div class="logtype-select-dropdown" id="logtype-dropdown">
+                    {{ range $name := .Files }}
+                    <div class="logtype-option">
+                        <input type="checkbox" id="logtype-{{$name}}" value="{{$name}}" checked>
+                        <label for="logtype-{{$name}}">{{$name}}</label>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+            {{end}}
+            <input type="text" id="filter-input" placeholder="{{ .Localize "Enter filter text..."}}" />
+            <button id="apply-btn" class="filter-btn">{{ .Localize "Apply"}}</button>
+            <button id="clear-btn" class="filter-btn">{{ .Localize "Clear"}}</button>
         </div>
 
         <!-- Terminal container -->
@@ -131,7 +248,7 @@
 
     <script>
         // Create a new terminal instance
-        const term = new Terminal({{ .TerminalOptions }});
+        const term = new Terminal({{ .Terminal }});
 
         // Create fit addon instance
         const fitAddon = new window.FitAddon.FitAddon();
@@ -193,7 +310,7 @@
         let eventSource = null;
         let currentFilter = '';
 
-        function connectSSE(filter = '') {
+        function connectSSE(filter = '', selectedLogTypes = []) {
             // Close existing connection if any
             if (eventSource) {
                 eventSource.close();
@@ -202,16 +319,38 @@
             // Clear terminal
             term.clear();
 
-            // Build URL with filter parameter
-            const url = filter ? `./watch.stream?filter=${encodeURIComponent(filter)}` : './watch.stream';
+            // Build URL with filter and selected parameters
+            let url = './watch.stream';
+            const params = new URLSearchParams();
+            
+            if (filter) {
+                params.append('filter', filter);
+            }
+            
+            if (selectedLogTypes.length > 0) {
+                selectedLogTypes.forEach(type => {
+                    params.append('file', type);
+                });
+            }
+            
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+            
             currentFilter = filter;
 
             // Connect to SSE endpoint
             eventSource = new EventSource(url);
             
             eventSource.onopen = () => {
-                const filterMsg = filter ? ` (filter: "${filter}")` : '';
-                term.writeln(`\x1b[32mConnected to log stream${filterMsg}...\x1b[0m`);
+                let msg = 'Connected to log stream';
+                if (selectedLogTypes.length > 0) {
+                    msg += ` (files: ${selectedLogTypes.join(', ')})`;
+                }
+                if (filter) {
+                    msg += ` (filter: "${filter}")`;
+                }
+                term.writeln(`\x1b[32m${msg}...\x1b[0m`);
                 term.writeln('');
             };
 
@@ -228,8 +367,58 @@
             };
         }
 
+        // Log type select dropdown controls
+        const logtypeSelectBtn = document.getElementById('logtype-select-btn');
+        const logtypeDropdown = document.getElementById('logtype-dropdown');
+        const logtypeSelectText = document.getElementById('logtype-select-text');
+        const logtypeArrow = document.getElementById('logtype-arrow');
+        const logtypeCheckboxes = document.querySelectorAll('.logtype-option input[type="checkbox"]');
+
+        // Toggle dropdown
+        if( logtypeSelectBtn ) {
+            logtypeSelectBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                logtypeDropdown.classList.toggle('open');
+                logtypeArrow.classList.toggle('open');
+            });
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!logtypeSelectBtn.contains(e.target) && !logtypeDropdown.contains(e.target)) {
+                logtypeDropdown.classList.remove('open');
+                logtypeArrow.classList.remove('open');
+            }
+        });
+
+        // Update button text when checkboxes change
+        function updateLogtypeSelectText() {
+            const selected = Array.from(logtypeCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+            
+            if (selected.length === 0) {
+                logtypeSelectText.textContent = '{{ .Localize "No Logs"}}';
+            } else if (selected.length === logtypeCheckboxes.length) {
+                logtypeSelectText.textContent = '{{ .Localize "All Logs" }}';
+            } else {
+                logtypeSelectText.textContent = selected.join(', ');
+            }
+        }
+
+        logtypeCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateLogtypeSelectText);
+        });
+
+        // Get selected log types
+        function getSelectedLogTypes() {
+            return Array.from(logtypeCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+        }
+
         // Initial connection without filter
-        connectSSE();
+        connectSSE('', getSelectedLogTypes());
 
         // Filter controls
         const filterInput = document.getElementById('filter-input');
@@ -238,19 +427,24 @@
 
         applyBtn.addEventListener('click', () => {
             const filter = filterInput.value.trim();
-            connectSSE(filter);
+            const selected = getSelectedLogTypes();
+            connectSSE(filter, selected);
         });
 
         clearBtn.addEventListener('click', () => {
             filterInput.value = '';
-            connectSSE();
+            // Reset all checkboxes to checked
+            logtypeCheckboxes.forEach(cb => cb.checked = true);
+            updateLogtypeSelectText();
+            connectSSE('', getSelectedLogTypes());
         });
 
         // Allow Enter key to apply filter
         filterInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 const filter = filterInput.value.trim();
-                connectSSE(filter);
+                const selected = getSelectedLogTypes();
+                connectSSE(filter, selected);
             }
         });
 

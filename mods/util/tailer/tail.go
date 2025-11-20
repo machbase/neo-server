@@ -4,16 +4,101 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
+
+type ITail interface {
+	Start() error
+	Stop() error
+	Lines() <-chan string
+}
+
+var _ ITail = (*Tail)(nil)
+var _ ITail = (*MultiTail)(nil)
+
+// MultiTail allows tailing multiple files and merging their output
+type MultiTail struct {
+	tails []ITail
+	wg    sync.WaitGroup
+	c     chan string
+}
+
+func NewMultiTail(tails ...ITail) ITail {
+	buff := len(tails) * 100
+	for _, tail := range tails {
+		if t, ok := tail.(*Tail); ok && buff < t.bufferSize {
+			buff = t.bufferSize
+		}
+	}
+	mt := &MultiTail{
+		tails: tails,
+		c:     make(chan string, buff),
+	}
+	return mt
+}
+
+func (mt *MultiTail) Start() error {
+	aliasWidth := 0
+	for _, tail := range mt.tails {
+		if err := tail.Start(); err != nil {
+			return fmt.Errorf("failed to start tail for %w", err)
+		}
+		if t, ok := tail.(*Tail); ok {
+			if l := len(StripAnsiCodes(t.label)); l > aliasWidth {
+				aliasWidth = l
+			}
+		}
+	}
+
+	for _, tail := range mt.tails {
+		mt.wg.Add(1)
+		go func(t ITail) {
+			defer mt.wg.Done()
+			label := ""
+			labelLen := 0
+			if tt, ok := t.(*Tail); ok {
+				label = tt.label
+				labelLen = len(StripAnsiCodes(label))
+			}
+			if labelLen < aliasWidth {
+				label = label + strings.Repeat(" ", aliasWidth-labelLen)
+			}
+			for line := range t.Lines() {
+				mt.c <- label + " " + line
+			}
+		}(tail)
+	}
+
+	return nil
+}
+
+func (mt *MultiTail) Stop() error {
+	var firstErr error
+	for _, tail := range mt.tails {
+		if err := tail.Stop(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	mt.wg.Wait()
+	defer close(mt.c)
+
+	return firstErr
+}
+
+func (mt *MultiTail) Lines() <-chan string {
+	return mt.c
+}
 
 // Tail provides functionality to tail a file
 // it works similar to 'tail -F' command in unix,
 // which follows the file even if it is rotated
 type Tail struct {
 	filepath     string
+	label        string // terminal display label for the file, it can contain ANSI color codes
 	c            chan string
 	stopChan     chan struct{}
 	pollInterval time.Duration
@@ -76,9 +161,15 @@ func WithLast(n int) Option {
 	}
 }
 
-func WithSyntaxColoring(syntax ...string) Option {
+func WithLabel(label string) Option {
 	return func(t *Tail) {
-		t.plugins = append(t.plugins, NewSyntaxColoring(syntax...))
+		t.label = label
+	}
+}
+
+func WithSyntaxHighlighting(syntax ...string) Option {
+	return func(t *Tail) {
+		t.plugins = append(t.plugins, NewWithSyntaxHighlighting(syntax...))
 	}
 }
 
@@ -89,9 +180,10 @@ func WithPlugins(p ...Plugin) Option {
 }
 
 // New creates Tail instance
-func New(filepath string, opts ...Option) *Tail {
+func New(filename string, opts ...Option) ITail {
 	t := &Tail{
-		filepath:     filepath,
+		filepath:     filename,
+		label:        filepath.Base(filename),
 		bufferSize:   100,
 		stopChan:     make(chan struct{}),
 		pollInterval: 1 * time.Second,
@@ -302,8 +394,6 @@ func (tail *Tail) run() {
 
 	for {
 		select {
-		case <-shutdownCh:
-			return
 		case <-tail.stopChan:
 			return
 		case <-ticker.C:

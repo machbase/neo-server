@@ -12,7 +12,18 @@ func TestTimeseries(t *testing.T) {
 	nowFunc = func() time.Time { return now }
 	timeZone = time.UTC
 
-	ts := NewTimeSeries(time.Second, 3, NewMeter())
+	expectIdx := 0
+	expectProducts := []Product{
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 5, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 1, Min: 1, First: 1, Last: 1, Sum: 1}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 2, Min: 2, First: 2, Last: 2, Sum: 2}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 3, Min: 3, First: 3, Last: 3, Sum: 3}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 8, 0, time.UTC), Value: &MeterValue{Samples: 3, Max: 5, Min: 4, First: 4, Last: 4.8, Sum: 13.8}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 10, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 6, Min: 6, First: 6, Last: 6, Sum: 6}},
+	}
+	ts := NewTimeSeries(time.Second, 3, NewMeter(), WithListener(func(p Product) {
+		require.Equal(t, expectProducts[expectIdx], p, "unexpected product at index %d", expectIdx)
+		expectIdx++
+	}))
 	ts.Add(1.0)
 
 	now = now.Add(time.Second)
@@ -80,6 +91,7 @@ func TestTimeseries(t *testing.T) {
 	require.JSONEq(t, `[`+
 		`{"ts":"2023-10-01 12:04:15","value":{"samples":1,"max":7,"min":7,"first":7,"last":7,"sum":7}}`+
 		`]`, ts.String())
+	require.Equal(t, len(expectProducts), expectIdx)
 }
 
 func TestTimeSeriesSubSeconds(t *testing.T) {
