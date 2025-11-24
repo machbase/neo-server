@@ -282,6 +282,12 @@ func scanFloat32(src float32, pDst any) error {
 		dst.Float64 = float64(src)
 	case *driver.Value:
 		*dst = driver.Value(src)
+	case *int:
+		*dst = int(src)
+	case *int32:
+		*dst = int32(src)
+	case *int64:
+		*dst = int64(src)
 	default:
 		return ErrDatabaseScanType("FLOAT32", pDst)
 	}
@@ -301,6 +307,12 @@ func scanFloat64(src float64, pDst any) error {
 		dst.Float64 = src
 	case *driver.Value:
 		*dst = driver.Value(src)
+	case *int:
+		*dst = int(src)
+	case *int32:
+		*dst = int32(src)
+	case *int64:
+		*dst = int64(src)
 	default:
 		return ErrDatabaseScanType("FLOAT64", pDst)
 	}
