@@ -45,6 +45,11 @@ func (h Handler) serveWatcher(w http.ResponseWriter, r *http.Request) {
 	if len(h.Terminal.tails) == 1 {
 		to := h.Terminal.tails[0]
 		selectedTails[to.Filename] = to.Options
+	} else if h.Terminal.controlBar.Hide {
+		// select all tails if control bar is not visible
+		for _, to := range h.Terminal.tails {
+			selectedTails[to.Filename] = to.Options
+		}
 	} else {
 		fileParams := r.URL.Query()["file"]
 		for _, to := range h.Terminal.tails {
@@ -152,15 +157,24 @@ func (h Handler) dataMap() TemplateData {
 	for _, to := range h.Terminal.tails {
 		files = append(files, to.Alias)
 	}
+	ctrlBar := h.Terminal.controlBar
+	if ctrlBar.FontSize == 0 {
+		ctrlBar.FontSize = h.Terminal.FontSize
+	}
+	if ctrlBar.FontFamily == "" {
+		ctrlBar.FontFamily = h.Terminal.FontFamily
+	}
 	return TemplateData{
-		Terminal: h.Terminal,
-		Files:    files,
+		Terminal:   h.Terminal,
+		ControlBar: ctrlBar,
+		Files:      files,
 	}
 }
 
 type TemplateData struct {
-	Terminal Terminal
-	Files    []string
+	Terminal   Terminal
+	ControlBar ControlBar
+	Files      []string
 }
 
 func (td TemplateData) Localize(s string) string {
@@ -182,6 +196,7 @@ type Terminal struct {
 	ConvertEol          bool          `json:"convertEol,omitempty"`
 
 	tails        []TailOption      `json:"-"`
+	controlBar   ControlBar        `json:"-"`
 	closeCh      chan struct{}     `json:"-"`
 	Localization map[string]string `json:"-"`
 }
@@ -191,6 +206,12 @@ type TailOption struct {
 	Options  []Option `json:"options"`
 	Alias    string   `json:"alias"`
 	Label    string   `json:"label"`
+}
+
+type ControlBar struct {
+	Hide       bool   `json:"hide"`
+	FontSize   int    `json:"fontSize,omitempty"`
+	FontFamily string `json:"fontFamily,omitempty"`
 }
 
 type TerminalTheme struct {
@@ -248,6 +269,12 @@ func WithScrollback(lines int) TerminalOption {
 func WithTheme(theme TerminalTheme) TerminalOption {
 	return func(to *Terminal) {
 		to.Theme = theme
+	}
+}
+
+func WithControlBar(cb ControlBar) TerminalOption {
+	return func(to *Terminal) {
+		to.controlBar = cb
 	}
 }
 
