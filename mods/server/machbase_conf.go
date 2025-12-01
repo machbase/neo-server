@@ -228,7 +228,7 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		c.DEFAULT_LSM_MAX_LEVEL = 0                                    //
 		c.MAX_QPX_MEM = 256 * 1024 * 1024                              // 256MB
 		c.ROLLUP_FETCH_COUNT_LIMIT = 10000                             // Max speed of 32bit rollup : 10000rec/sec
-		c.DISK_TAG_INDEX_BLOCKS = 128                                  //
+		c.DISK_TAG_INDEX_BLOCKS = 512                                  //
 		c.STREAM_THREAD_COUNT = 0                                      //
 		c.DISK_BUFFER_COUNT = 1                                        //
 		c.TAG_CACHE_ENABLE = 3                                         //
