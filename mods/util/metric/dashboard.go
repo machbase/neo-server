@@ -299,7 +299,7 @@ func (d Dashboard) HandleFunc(w http.ResponseWriter, r *http.Request) {
 
 func (d Dashboard) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	// BasePath
-	d.Option.BasePath = r.URL.Path
+	// d.Option.BasePath = r.URL.Path
 	// tsIdx
 	tsIdxStr := r.URL.Query().Get("tsIdx")
 	if _, err := fmt.Sscanf(tsIdxStr, "%d", &d.SeriesIdx); err != nil {
