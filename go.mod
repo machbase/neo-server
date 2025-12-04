@@ -15,7 +15,7 @@ require (
 	github.com/dop251/goja v0.0.0-20250309171923-bcd7cc6bf64c
 	github.com/dop251/goja_nodejs v0.0.0-20211022123610-8dd9abb0616d
 	github.com/eclipse/paho.golang v0.21.0
-	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fergusstrange/embedded-postgres v1.30.0
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.10.0
@@ -60,10 +60,10 @@ require (
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	github.com/zclconf/go-cty v1.13.2
 	go.abhg.dev/goldmark/mermaid v0.5.0
-	golang.org/x/crypto v0.40.0
-	golang.org/x/sys v0.34.0
-	golang.org/x/term v0.33.0
-	golang.org/x/text v0.27.0
+	golang.org/x/crypto v0.45.0
+	golang.org/x/sys v0.38.0
+	golang.org/x/term v0.37.0
+	golang.org/x/text v0.31.0
 	gonum.org/v1/gonum v0.15.0
 	google.golang.org/grpc v1.74.2
 	google.golang.org/protobuf v1.36.6
@@ -167,10 +167,10 @@ require (
 	golang.org/x/arch v0.14.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/image v0.22.0 // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/plot v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250721164621-a45f3dfb1074 // indirect
