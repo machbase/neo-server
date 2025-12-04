@@ -479,7 +479,7 @@ func TestMultiTail(t *testing.T) {
 	defer func() {
 		multiTail.Stop()
 		// Give time for file handles to close on Windows
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 	}()
 
 	// Append new lines to both files
