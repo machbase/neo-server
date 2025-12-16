@@ -11,8 +11,7 @@ jobs:
       matrix:
         platform:
           - macos-15
-          - macos-14
-          - macos-13
+          - macos-15-intel
           - ubuntu-22.04
           - ubuntu-22.04-arm
           - ubuntu-24.04
