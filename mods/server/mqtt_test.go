@@ -483,7 +483,7 @@ func TestMqttWrite(t *testing.T) {
 		if len(vers) == 0 {
 			vers = []uint{4, 5}
 		}
-		for _, ver := range vers {
+		for n, ver := range vers {
 			t.Run(tt.TC.Name, func(t *testing.T) {
 				tt.TC.Ver = ver
 				runMqttTest(t, &tt.TC)
@@ -493,7 +493,7 @@ func TestMqttWrite(t *testing.T) {
 				conn.QueryRow(context.Background(), "EXEC table_flush(test_mqtt)")
 				var count int
 				conn.QueryRow(context.Background(), tt.ExpectSql).Scan(&count)
-				require.Equal(t, tt.ExpectCount, count)
+				require.Equal(t, tt.ExpectCount*(n+1), count)
 				conn.Close()
 			})
 		}
@@ -501,9 +501,11 @@ func TestMqttWrite(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
-	jsonData := []byte(`[["my-car", 1705291859000000000, 1.2345], ["my-car", 1705291860000000000, 2.3456]]`)
-	csvData := []byte("my-car,1705291859000000000,1.2345\nmy-car,1705291860000000000,2.3456")
-	csvDataWithHeader := []byte("Value,time,NAme\n1.2345,1705291859000000000,my-car\n2.3456,1705291860000000000,my-car")
+	jsonData := []byte(`[["my-append", 1705291859000000000, 1.2345], ["my-append", 1705291860000000000, 2.3456]]`)
+	ndjsonData := []byte(`{"NAME":"my-append", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
+		`{"NAME":"my-append", "TIME":1705291860, "VALUE":2.3456}` + "\n")
+	csvData := []byte("my-append,1705291859000000000,1.2345\nmy-append,1705291860000000000,2.3456")
+	csvDataWithHeader := []byte("Value,time,NAme\n1.2345,1705291859000000000,my-append\n2.3456,1705291860000000000,my-append")
 	jsonGzipData := compress(jsonData)
 	csvGzipData := compress(csvData)
 	tests := []MqttTestCase{
@@ -514,7 +516,7 @@ func TestAppend(t *testing.T) {
 			Ver:     uint(4),
 		},
 		{
-			Name:    "db/append/example",
+			Name:    "db/append/example_v5",
 			Topic:   "db/append/example",
 			Payload: jsonData,
 			Ver:     uint(5),
@@ -596,11 +598,9 @@ func TestAppend(t *testing.T) {
 			Ver:     uint(5),
 		},
 		{
-			Name:  "db/write/example?format=ndjson&method=append",
-			Topic: "db/write/example",
-			Payload: []byte(
-				`{"NAME":"my-car", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
-					`{"NAME":"my-car", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
+			Name:       "db/write/example?format=ndjson&method=append",
+			Topic:      "db/write/example",
+			Payload:    ndjsonData,
 			Ver:        uint(5),
 			Properties: map[string]string{"method": "append", "format": "ndjson", "timeformat": "s"},
 		},
@@ -609,6 +609,9 @@ func TestAppend(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
 			runMqttTest(t, &tt)
+			// TODO: how to ensure data is flushed before query?
+			// - mqtt works asynchronously
+			time.Sleep(1000 * time.Millisecond)
 
 			conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 			if err != nil {
@@ -617,13 +620,14 @@ func TestAppend(t *testing.T) {
 			defer conn.Close()
 			conn.QueryRow(context.Background(), "EXEC table_flush(example)")
 			var count int
-			var tag = "my-car"
+			var tag = "my-append"
 			conn.QueryRow(context.Background(), "select count(*) from example where name = ?", tag).Scan(&count)
 			if count != 2 {
 				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 				t.Fail()
 			}
 			conn.QueryRow(context.Background(), "delete from example where name = ?", tag)
+			conn.QueryRow(context.Background(), "EXEC table_flush(example)")
 		})
 	}
 }
@@ -643,7 +647,7 @@ func compress(data []byte) []byte {
 }
 
 func TestTql(t *testing.T) {
-	csvData := []byte("my-car,1705291859000000000,1.2345\nmy-car,1705291860000000000,2.3456")
+	csvData := []byte("my-mqtt-tql,1705291859000000000,1.2345\nmy-mqtt-tql,1705291860000000000,2.3456")
 
 	tests := []MqttTestCase{
 		{
@@ -658,6 +662,10 @@ func TestTql(t *testing.T) {
 				tt.Ver = ver
 				runMqttTest(t, &tt)
 
+				// TODO: how to ensure data is flushed before query?
+				// - mqtt works asynchronously
+				time.Sleep(1000 * time.Millisecond)
+
 				conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 				if err != nil {
 					t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
@@ -665,13 +673,14 @@ func TestTql(t *testing.T) {
 				defer conn.Close()
 				conn.QueryRow(context.Background(), "EXEC table_flush(example)")
 				var count int
-				var tag = "my-car"
+				var tag = "my-mqtt-tql"
 				conn.QueryRow(context.Background(), "select count(*) from example where name = ?", tag).Scan(&count)
 				if count != 2 {
 					t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 					t.Fail()
 				}
 				conn.QueryRow(context.Background(), "delete from example where name = ?", tag)
+				conn.QueryRow(context.Background(), "EXEC table_flush(example)")
 			})
 		}
 	}

@@ -44,6 +44,8 @@ func TestMain(m *testing.M) {
 
 	// metric
 	api.StartMetrics()
+	// append worker
+	api.StartAppendWorkers()
 
 	// tql
 	fileDirs := []string{"/=./test"}
