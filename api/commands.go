@@ -218,10 +218,19 @@ func (p *CommandTokenizer) Tokens() []string {
 }
 
 func (ch *CommandHandler) IsKnownVerb(v string) bool {
-	return slices.Contains(ch.Verbs(), v)
+	return slices.Contains(ch.Verbs(), strings.ToLower(v))
 }
 
 func (ch *CommandHandler) Exec(ctx context.Context, args []string, params ...any) error {
+	switch verb := strings.ToLower(args[0]); verb {
+	case "show":
+		args[0] = verb
+		if len(args) > 1 {
+			args[1] = strings.ToLower(args[1])
+		}
+	case "desc", "sql", "explain":
+		args[0] = verb
+	}
 	cmd := ch.MakeCommand()
 	cmd.SetArgs(args)
 	ch.params = params
