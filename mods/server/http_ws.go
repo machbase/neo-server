@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/server/chat"
 	"github.com/machbase/neo-server/v8/mods/server/cmd"
-	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
 type WebConsoleProcessor interface {
@@ -116,13 +114,13 @@ func (cons *WebConsole) readerLoop() {
 var wsRpcHandlers = map[string]any{}
 var wsRpcHandlersMutex sync.RWMutex
 
-func RegisterWebSocketRPCHandler(method string, handler any) {
+func RegisterJsonRpcHandler(method string, handler any) {
 	wsRpcHandlersMutex.Lock()
 	defer wsRpcHandlersMutex.Unlock()
 	wsRpcHandlers[method] = handler
 }
 
-func UnregisterWebSocketRPCHandler(method string) {
+func UnregisterJsonRpcHandler(method string) {
 	wsRpcHandlersMutex.Lock()
 	defer wsRpcHandlersMutex.Unlock()
 	delete(wsRpcHandlers, method)
@@ -258,23 +256,13 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 
 func init() {
 	chat.Init()
-	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
-	RegisterWebSocketRPCHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
-	RegisterWebSocketRPCHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
-	RegisterWebSocketRPCHandler("llmGetModels", chat.RpcLLMGetModels)
-	RegisterWebSocketRPCHandler("llmAddModels", chat.RpcLLMAddModels)
-	RegisterWebSocketRPCHandler("llmRemoveModels", chat.RpcLLMRemoveModels)
-	RegisterWebSocketRPCHandler("llmListModels", chat.RpcLLMListModels)
-	RegisterWebSocketRPCHandler("markdownRender", handleMarkdownRender)
-}
-
-func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
-	w := &strings.Builder{}
-	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
-	if err := conv.ConvertString(markdown, w); err != nil {
-		return "", err
-	}
-	return w.String(), nil
+	RegisterJsonRpcHandler("llmGetProviders", chat.RpcLLMGetProviders)
+	RegisterJsonRpcHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
+	RegisterJsonRpcHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
+	RegisterJsonRpcHandler("llmGetModels", chat.RpcLLMGetModels)
+	RegisterJsonRpcHandler("llmAddModels", chat.RpcLLMAddModels)
+	RegisterJsonRpcHandler("llmRemoveModels", chat.RpcLLMRemoveModels)
+	RegisterJsonRpcHandler("llmListModels", chat.RpcLLMListModels)
 }
 
 func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *eventbus.Message) {

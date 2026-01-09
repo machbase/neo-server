@@ -843,6 +843,10 @@ func (s *Server) startHttpServer() error {
 	if len(s.Http.Listeners) == 0 {
 		return nil
 	}
+
+	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
+	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
+
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
