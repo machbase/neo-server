@@ -640,17 +640,8 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 	return result
 }
 
-func (conn *Conn) Prepare(ctx context.Context, sqlText string) error {
-	var stmt unsafe.Pointer
-	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
-		return err
-	}
-	defer mach.EngFreeStmt(stmt)
-
-	if err := mach.EngPrepare(stmt, sqlText); err != nil {
-		return err
-	}
-	return nil
+func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
+	panic("not implemented")
 }
 
 // Query executes SQL statements that are expected multiple rows as result.

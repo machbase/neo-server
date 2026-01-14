@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machcli"
@@ -54,43 +54,49 @@ func main() {
 			panic(err)
 		}
 		defer conn.Close()
-		cliConn, ok := conn.(Preparer)
-		if !ok {
-			fmt.Println("Error: conn does not support Prepare")
-			panic(errors.New("invalid connection type"))
-		}
 		wg.Add(1)
-		go func(cliConn Preparer, N int, cliNo int) {
+		go func(cliConn api.Conn, N int, cliNo int) {
 			defer wg.Done()
+			stmt, err := cliConn.Prepare(ctx, prepareSQL)
+			if err != nil {
+				fmt.Println("Error preparing statement:", err)
+				panic(err)
+			}
+			defer stmt.Close()
 			for n := 0; n < N; n++ {
-				err := cliConn.Prepare(ctx, prepareSQL)
+				tm := time.Now()
+				tmStr := tm.In(time.Local).Format("2006-01-02 15:04:05") // '2025-10-15 09:05:59'
+				rows, err := stmt.Query(ctx, "tag1", tmStr, "tag1", tmStr)
 				if err != nil {
 					fmt.Println("Error preparing statement:", err)
 					panic(err)
 				}
+				for rows.Next() {
+				}
+				rows.Close()
 			}
-		}(cliConn, N, c)
+		}(conn, N, c)
 	}
 	wg.Wait()
 }
 
 type Preparer interface {
-	Prepare(ctx context.Context, query string) error
+	Prepare(ctx context.Context, query string) (*machcli.PreparedStmt, error)
 }
 
-const prepareSQL = `SELECT COUNT(*)
+const prepareSQL = `SELECT mtime, avg
 FROM (
 	SELECT ROLLUP('minute', 1, time) as mtime, AVG(value) 
 	FROM tag 
 	WHERE name = ? AND 
-		time < DATE_TRUNC('minute', TO_DATE('2025-10-15 09:05:59')) - 1m 
+		time < DATE_TRUNC('minute', TO_DATE(?))
 	GROUP BY mtime 
 	ORDER BY mtime
 		UNION ALL
 	SELECT DATE_TRUNC('minute', time) as mtime, AVG(value)
 	FROM TAG
 	WHERE name = ? AND
-		time >= DATE_TRUNC('minute', TO_DATE('2025-10-15 09:05:59')) - 1m
+		time >= DATE_TRUNC('minute', TO_DATE(?))
 	GROUP BY mtime
 	ORDER BY mtime
 )`

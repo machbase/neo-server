@@ -377,18 +377,17 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	}
 }
 
-func (c *Conn) Prepare(ctx context.Context, query string) error {
+func (c *Conn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
 	stmt, err := c.NewStmt()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer stmt.Close()
 
 	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
 	if err := stmt.prepare(query); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return &PreparedStmt{Stmt: stmt}, nil
 }
 
 func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row {
@@ -458,6 +457,76 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 	}
 	ret.rowsCount = stmt.rowCount
 	return ret, nil
+}
+
+type PreparedStmt struct {
+	*Stmt
+}
+
+func (stmt *PreparedStmt) Close() error {
+	return stmt.Stmt.Close()
+}
+
+func (stmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
+	ret := &Result{}
+	if err := stmt.bindParams(params...); err != nil {
+		ret.err = err
+		return ret
+	}
+	if err := stmt.execute(); err != nil {
+		ret.err = err
+		return ret
+	}
+	ret.rowCount = stmt.rowCount
+	return ret
+}
+
+func (stmt *PreparedStmt) Query(ctx context.Context, args ...any) (api.Rows, error) {
+	if err := stmt.bindParams(args...); err != nil {
+		return nil, err
+	}
+	if err := stmt.execute(); err != nil {
+		return nil, err
+	}
+	ret := &Rows{
+		stmt: stmt.Stmt,
+	}
+	ret.rowsCount = stmt.rowCount
+	return ret, nil
+}
+
+func (stmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
+	ret := &Row{}
+	if err := stmt.bindParams(params...); err != nil {
+		ret.err = err
+		return ret
+	}
+	if err := stmt.execute(); err != nil {
+		ret.err = err
+		return ret
+	}
+	ret.rowCount = stmt.rowCount
+	if values, err := stmt.fetch(); err != nil {
+		if err == io.EOF {
+			// it means no row fetched
+			ret.err = sql.ErrNoRows
+		} else {
+			ret.err = err
+		}
+		return ret
+	} else {
+		ret.values = values
+	}
+	ret.columns = make(api.Columns, len(stmt.columnDescs))
+	for i, desc := range stmt.columnDescs {
+		ret.columns[i] = &api.Column{
+			Name:     desc.Name,
+			Length:   desc.Size,
+			Type:     desc.Type.ColumnType(),
+			DataType: desc.Type.DataType(),
+		}
+	}
+	return ret
 }
 
 func (stmt *Stmt) prepare(query string) error {

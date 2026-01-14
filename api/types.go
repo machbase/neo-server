@@ -64,6 +64,25 @@ type Conn interface {
 	//	row.Scan(&cnt)
 	QueryRow(ctx context.Context, sqlText string, params ...any) Row
 
+	// Prepare creates a prepared statement for later executions.
+	//
+	// Example:
+	//	ctx, cancelFunc := context.WithTimeout(context.Background(), 5*time.Second)
+	//	defer cancelFunc()
+	//
+	//	stmt, err := conn.Prepare(ctx, "SELECT * FROM my_table WHERE name = ?")
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	defer stmt.Close()
+	//
+	//	rows, err := stmt.Query(ctx, "my_name")
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	defer rows.Close()
+	Prepare(ctx context.Context, query string) (Stmt, error)
+
 	// Appender creates a new Appender for the given table.
 	// The Appender should be closed as soon as the work is finished to prevent server-side resource leaks.
 	//
@@ -79,6 +98,41 @@ type Conn interface {
 	// Explain returns the execution plan for the given SQL statement.
 	// If full is true, it returns a detailed execution plan.
 	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
+
+type Stmt interface {
+	// Close closes the prepared statement.
+	Close() error
+
+	// ExecContext executes a prepared statement that does not return results,
+	// such as 'ALTER', 'CREATE TABLE', 'DROP TABLE', etc.
+	Exec(ctx context.Context, params ...any) Result
+	// Query executes a prepared statement that is expected to return multiple rows.
+	// Commonly used to execute 'SELECT * FROM <TABLE>'.
+	//
+	// Rows returned by Query() must be closed to prevent server-side resource leaks.
+	//
+	// Example:
+	//	ctx, cancelFunc := context.WithTimeout(context.Background(), 5*time.Second)
+	//	defer cancelFunc()
+	//
+	//	rows, err := stmt.Query(ctx, my_name)
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//	defer rows.Close()
+	Query(ctx context.Context, params ...any) (Rows, error)
+
+	// QueryRow executes a prepared statement that expects a single row result.
+	//
+	// Example:
+	//	ctx, cancelFunc := context.WithTimeout(context.Background(), 5*time.Second)
+	//	defer cancelFunc()
+	//
+	//	var cnt int
+	//	row := stmt.QueryRow(ctx, "my_name")
+	//	row.Scan(&cnt)
+	QueryRow(ctx context.Context, params ...any) Row
 }
 
 type Rows interface {
