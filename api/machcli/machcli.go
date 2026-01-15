@@ -387,7 +387,7 @@ func (c *Conn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
 	if err := stmt.prepare(query); err != nil {
 		return nil, err
 	}
-	return &PreparedStmt{Stmt: stmt}, nil
+	return &PreparedStmt{stmt: stmt}, nil
 }
 
 func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row {
@@ -460,53 +460,58 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 }
 
 type PreparedStmt struct {
-	*Stmt
+	stmt *Stmt
 }
 
-func (stmt *PreparedStmt) Close() error {
-	return stmt.Stmt.Close()
+func (pStmt *PreparedStmt) Close() error {
+	if pStmt.stmt == nil {
+		return nil
+	}
+	err := pStmt.stmt.Close()
+	pStmt.stmt = nil
+	return err
 }
 
-func (stmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
+func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
 	ret := &Result{}
-	if err := stmt.bindParams(params...); err != nil {
+	if err := pStmt.stmt.bindParams(params...); err != nil {
 		ret.err = err
 		return ret
 	}
-	if err := stmt.execute(); err != nil {
+	if err := pStmt.stmt.execute(); err != nil {
 		ret.err = err
 		return ret
 	}
-	ret.rowCount = stmt.rowCount
+	ret.rowCount = pStmt.stmt.rowCount
 	return ret
 }
 
-func (stmt *PreparedStmt) Query(ctx context.Context, args ...any) (api.Rows, error) {
-	if err := stmt.bindParams(args...); err != nil {
+func (pStmt *PreparedStmt) Query(ctx context.Context, args ...any) (api.Rows, error) {
+	if err := pStmt.stmt.bindParams(args...); err != nil {
 		return nil, err
 	}
-	if err := stmt.execute(); err != nil {
+	if err := pStmt.stmt.execute(); err != nil {
 		return nil, err
 	}
 	ret := &Rows{
-		stmt: stmt.Stmt,
+		stmt: pStmt.stmt,
 	}
-	ret.rowsCount = stmt.rowCount
+	ret.rowsCount = pStmt.stmt.rowCount
 	return ret, nil
 }
 
-func (stmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
+func (pStmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
 	ret := &Row{}
-	if err := stmt.bindParams(params...); err != nil {
+	if err := pStmt.stmt.bindParams(params...); err != nil {
 		ret.err = err
 		return ret
 	}
-	if err := stmt.execute(); err != nil {
+	if err := pStmt.stmt.execute(); err != nil {
 		ret.err = err
 		return ret
 	}
-	ret.rowCount = stmt.rowCount
-	if values, err := stmt.fetch(); err != nil {
+	ret.rowCount = pStmt.stmt.rowCount
+	if values, err := pStmt.stmt.fetch(); err != nil {
 		if err == io.EOF {
 			// it means no row fetched
 			ret.err = sql.ErrNoRows
@@ -517,8 +522,8 @@ func (stmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
 	} else {
 		ret.values = values
 	}
-	ret.columns = make(api.Columns, len(stmt.columnDescs))
-	for i, desc := range stmt.columnDescs {
+	ret.columns = make(api.Columns, len(pStmt.stmt.columnDescs))
+	for i, desc := range pStmt.stmt.columnDescs {
 		ret.columns[i] = &api.Column{
 			Name:     desc.Name,
 			Length:   desc.Size,
