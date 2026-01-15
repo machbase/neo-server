@@ -153,6 +153,40 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, result.Err(), "table_flush fail")
 	sysConn.Close()
 
+	// TODO: currently only machcli supports Prepare statement
+	if _, ok := db.(*machcli.Database); ok {
+		func() {
+			stmt, err := conn.Prepare(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`)
+			require.NoError(t, err, "prepare fail")
+			defer stmt.Close()
+			rows, err := stmt.Query(ctx, "insert-once")
+			require.NoError(t, err, "query fail")
+			defer rows.Close()
+			numRows := 0
+			for rows.Next() {
+				numRows++
+				var name string
+				var timeVal time.Time
+				var value float64
+				var short_value int16
+				var int_value int32
+				var long_value int64
+				var str_value string
+				var json_value string
+				err := rows.Scan(&name, &timeVal, &value, &short_value, &int_value, &long_value, &str_value, &json_value)
+				require.NoError(t, err, "scan fail")
+				require.Equal(t, "insert-once", name)
+				require.Equal(t, now.Unix(), timeVal.Unix())
+				require.Equal(t, 1.23, value)
+				require.Equal(t, int16(1), short_value)
+				require.Equal(t, int32(2), int_value)
+				require.Equal(t, int64(3), long_value)
+				require.Equal(t, "str1", str_value)
+				require.Equal(t, `{"key1": "value1"}`, json_value)
+			}
+			require.Equal(t, 1, numRows)
+		}()
+	}
 	// select
 	rows, err := conn.Query(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`,
 		"insert-once")

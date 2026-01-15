@@ -66,6 +66,10 @@ type Conn interface {
 
 	// Prepare creates a prepared statement for later executions.
 	//
+	// Caution: Only machcli.Conn supports prepared statements. The other implementations panic when this method is called.
+	//
+	// Caution: Prepared statements must be closed as soon as the work is finished to prevent server-side resource leaks.
+	//
 	// Example:
 	//	ctx, cancelFunc := context.WithTimeout(context.Background(), 5*time.Second)
 	//	defer cancelFunc()
