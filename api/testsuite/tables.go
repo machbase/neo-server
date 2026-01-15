@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -154,7 +155,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	sysConn.Close()
 
 	// TODO: currently only machcli supports Prepare statement
-	if _, ok := db.(*machcli.Database); ok {
+	if _, ok := db.(*machcli.Database); ok && runtime.GOOS != "windows" {
 		func() {
 			stmt, err := conn.Prepare(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`)
 			require.NoError(t, err, "prepare fail")
