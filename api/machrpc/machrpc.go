@@ -292,6 +292,10 @@ func (r *Result) Message() string {
 	return r.message
 }
 
+func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
+	panic("not implemented")
+}
+
 // Query executes SQL statements that are expected multiple rows as result.
 // Commonly used to execute 'SELECT * FROM <TABLE>'
 //

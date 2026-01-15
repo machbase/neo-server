@@ -23,6 +23,10 @@ func (c *Conn) Close() error {
 	return c.sqlConn.Close()
 }
 
+func (c *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
+	panic("not implemented")
+}
+
 func (c *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	r, err := c.sqlConn.ExecContext(ctx, sqlText, params...)
 	return &Result{sqlResult: r, err: err}

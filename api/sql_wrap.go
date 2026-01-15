@@ -27,6 +27,10 @@ func (c *WrappedSqlConn) Exec(ctx context.Context, sqlText string, params ...any
 	return &WrappedSqlResult{sqlType: DetectSQLStatementType(sqlText), sqlResult: r, err: err}
 }
 
+func (c *WrappedSqlConn) Prepare(ctx context.Context, sqlText string) (Stmt, error) {
+	panic("not implemented")
+}
+
 func (c *WrappedSqlConn) Query(ctx context.Context, sqlText string, params ...any) (Rows, error) {
 	r, err := c.sqlConn.QueryContext(ctx, sqlText, params...)
 	return &WrappedSqlRows{sqlRows: r}, err

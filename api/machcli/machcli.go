@@ -377,18 +377,17 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	}
 }
 
-func (c *Conn) Prepare(ctx context.Context, query string) error {
+func (c *Conn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
 	stmt, err := c.NewStmt()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer stmt.Close()
 
 	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
 	if err := stmt.prepare(query); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return &PreparedStmt{stmt: stmt}, nil
 }
 
 func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row {
@@ -458,6 +457,81 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 	}
 	ret.rowsCount = stmt.rowCount
 	return ret, nil
+}
+
+type PreparedStmt struct {
+	stmt *Stmt
+}
+
+func (pStmt *PreparedStmt) Close() error {
+	if pStmt.stmt == nil {
+		return nil
+	}
+	err := pStmt.stmt.Close()
+	pStmt.stmt = nil
+	return err
+}
+
+func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
+	ret := &Result{}
+	if err := pStmt.stmt.bindParams(params...); err != nil {
+		ret.err = err
+		return ret
+	}
+	if err := pStmt.stmt.execute(); err != nil {
+		ret.err = err
+		return ret
+	}
+	ret.rowCount = pStmt.stmt.rowCount
+	return ret
+}
+
+func (pStmt *PreparedStmt) Query(ctx context.Context, args ...any) (api.Rows, error) {
+	if err := pStmt.stmt.bindParams(args...); err != nil {
+		return nil, err
+	}
+	if err := pStmt.stmt.execute(); err != nil {
+		return nil, err
+	}
+	ret := &Rows{
+		stmt: pStmt.stmt,
+	}
+	ret.rowsCount = pStmt.stmt.rowCount
+	return ret, nil
+}
+
+func (pStmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
+	ret := &Row{}
+	if err := pStmt.stmt.bindParams(params...); err != nil {
+		ret.err = err
+		return ret
+	}
+	if err := pStmt.stmt.execute(); err != nil {
+		ret.err = err
+		return ret
+	}
+	ret.rowCount = pStmt.stmt.rowCount
+	if values, err := pStmt.stmt.fetch(); err != nil {
+		if err == io.EOF {
+			// it means no row fetched
+			ret.err = sql.ErrNoRows
+		} else {
+			ret.err = err
+		}
+		return ret
+	} else {
+		ret.values = values
+	}
+	ret.columns = make(api.Columns, len(pStmt.stmt.columnDescs))
+	for i, desc := range pStmt.stmt.columnDescs {
+		ret.columns[i] = &api.Column{
+			Name:     desc.Name,
+			Length:   desc.Size,
+			Type:     desc.Type.ColumnType(),
+			DataType: desc.Type.DataType(),
+		}
+	}
+	return ret
 }
 
 func (stmt *Stmt) prepare(query string) error {
