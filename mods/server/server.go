@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
@@ -846,6 +847,9 @@ func (s *Server) startHttpServer() error {
 
 	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
 	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
+	RegisterJsonRpcHandler("getShellList", s.getShellList)
+	RegisterJsonRpcHandler("addShell", s.addShell)
+	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
 
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
@@ -967,6 +971,40 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 		return ports[i].Service < ports[j].Service
 	})
 	return ports, nil
+}
+
+func (s *Server) getShellList() []*model.ShellDefinition {
+	return s.models.ShellProvider().GetAllShells(false)
+}
+
+func (s *Server) addShell(name string, command string) (string, error) {
+	def := &model.ShellDefinition{}
+	if len(name) > 16 {
+		return "", fmt.Errorf("name is too long, should be shorter than 16 characters")
+	}
+	uid, err := uuid.DefaultGenerator.NewV4()
+	if err != nil {
+		return "", err
+	}
+	def.Id = uid.String()
+	def.Label = name
+	def.Type = model.SHELL_TERM
+	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
+
+	if len(strings.TrimSpace(command)) == 0 {
+		return "", fmt.Errorf("command not specified")
+	} else {
+		def.Command = command
+	}
+
+	if err := s.models.ShellProvider().SaveShell(def); err != nil {
+		return "", err
+	}
+	return def.Id, nil
+}
+
+func (s *Server) deleteShell(id string) error {
+	return s.models.ShellProvider().RemoveShell(id)
 }
 
 func (s *Server) ServerPrivateKeyPath() string {
