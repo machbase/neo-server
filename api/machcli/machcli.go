@@ -710,11 +710,11 @@ func (rs *Result) RowsAffected() int64 {
 }
 
 func (c *Conn) NewStmt() (*Stmt, error) {
-	handle := new(unsafe.Pointer)
-	if err := mach.CliAllocStmt(c.handle, handle); err != nil {
+	var handle unsafe.Pointer
+	if err := mach.CliAllocStmt(c.handle, &handle); err != nil {
 		return nil, errorWithCause(c, err)
 	}
-	ret := &Stmt{conn: c, handle: *handle}
+	ret := &Stmt{conn: c, handle: handle}
 	return ret, nil
 }
 
