@@ -303,6 +303,7 @@ func (svr *httpd) Router() *gin.Engine {
 			})
 			group.Any("/api/query", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
+			group.POST("/api/rpc", svr.handleHttpRpc)
 			group.POST("/api/splitter/sql", svr.handleSplitSQL)
 			group.POST("/api/splitter/http", svr.handleSplitHTTP)
 			group.POST("/api/relogin", svr.handleReLogin)
