@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
@@ -63,6 +64,54 @@ func BenchmarkAppend(b *testing.B) {
 	appender.Close()
 }
 
+// go test -benchmem -run=^$ -bench ^BenchmarkMachCliAppend$ github.com/machbase/neo-server/v8/test -benchtime=1m
+//
+// 2026.01/19
+// goos: darwin
+// goarch: arm64
+// pkg: github.com/machbase/neo-server/v8/test
+// cpu: Apple M1
+// BenchmarkMachCliAppend-8        21441284              2873 ns/op             676 B/op         11 allocs/op
+
+func BenchmarkMachCliAppend(b *testing.B) {
+	db, err := machcli.NewDatabase(&machcli.Config{
+		Host:         "127.0.0.1",
+		Port:         5566,
+		MaxOpenConn:  -1,
+		MaxOpenQuery: -1,
+	})
+	require.NoError(b, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	if err != nil {
+		b.Error(err.Error())
+	}
+	defer conn.Close()
+
+	appender, err := conn.Appender(ctx, benchmarkTableName)
+	require.Nil(b, err)
+
+	var appendFunc func(...any) error
+	if syncAppender, ok := appender.(interface{ AppendSync(...any) error }); ok {
+		appendFunc = syncAppender.AppendSync
+	} else {
+		appendFunc = appender.Append
+	}
+
+	idGen := uuid.NewGen()
+
+	for i := 0; i < b.N; i++ {
+		id, _ := idGen.NewV6()
+		idStr := id.String()
+		jsonStr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
+		appendFunc("benchmark.tagname", time.Now(), 1.001*float32(i), idStr, jsonStr)
+	}
+	appender.Close()
+}
+
 // go test -benchmem -run=^$ -bench ^BenchmarkSelect$ github.com/machbase/neo-server/v8/test -benchtime=1m
 //
 // 2022.12.13 mac-mini(m1) utm-ubuntu (4 core, 4G mem)
@@ -88,6 +137,69 @@ func BenchmarkSelect(b *testing.B) {
 	defer cancel()
 
 	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	if err != nil {
+		b.Error(err.Error())
+	}
+	defer conn.Close()
+
+	appender, err := conn.Appender(ctx, benchmarkTableName)
+	require.Nil(b, err)
+
+	idGen := uuid.NewGen()
+
+	for i := 0; i < 10000; i++ {
+		id, _ := idGen.NewV6()
+		idStr := id.String()
+		jsonStr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
+		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idStr, jsonStr)
+	}
+	appender.Close()
+
+	var prevId = ""
+	for i := 0; i < b.N; i++ {
+		rows, err := conn.Query(ctx, fmt.Sprintf("select name, time, value, id, jsondata from %s where id > ? limit 100", benchmarkTableName), prevId)
+		require.Nil(b, err)
+
+		var sName string
+		var sTime time.Time
+		var sValue float64
+		var sJson string
+		var fetched bool
+
+		for rows.Next() {
+			err = rows.Scan(&sName, &sTime, &sValue, &prevId, &sJson)
+			require.Nil(b, err)
+			fetched = true
+		}
+		rows.Close()
+
+		if !fetched {
+			prevId = ""
+		}
+	}
+}
+
+// go test -benchmem -run=^$ -bench ^BenchmarkMachCliSelect$ github.com/machbase/neo-server/v8/test -benchtime=1m
+//
+// 2026.01.19
+// goos: darwin
+// goarch: arm64
+// pkg: github.com/machbase/neo-server/v8/test
+// cpu: Apple M1
+// BenchmarkMachCliAppend-8        33936595              2646 ns/op             676 B/op         11 allocs/op
+func BenchmarkMachCliSelect(b *testing.B) {
+	db, err := machcli.NewDatabase(&machcli.Config{
+		Host:         "127.0.0.1",
+		Port:         5566,
+		MaxOpenConn:  -1,
+		MaxOpenQuery: -1,
+	})
+	require.NoError(b, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		b.Error(err.Error())
 	}
