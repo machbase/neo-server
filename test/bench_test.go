@@ -67,12 +67,10 @@ func BenchmarkAppend(b *testing.B) {
 // go test -benchmem -run=^$ -bench ^BenchmarkMachCliAppend$ github.com/machbase/neo-server/v8/test -benchtime=1m
 //
 // 2026.01/19
-// goos: darwin
-// goarch: arm64
-// pkg: github.com/machbase/neo-server/v8/test
 // cpu: Apple M1
 // BenchmarkMachCliAppend-8        21441284              2873 ns/op             676 B/op         11 allocs/op
-
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkMachCliAppend-24       11255041              9143 ns/op             677 B/op         11 allocs/op
 func BenchmarkMachCliAppend(b *testing.B) {
 	db, err := machcli.NewDatabase(&machcli.Config{
 		Host:         "127.0.0.1",
@@ -187,6 +185,8 @@ func BenchmarkSelect(b *testing.B) {
 // pkg: github.com/machbase/neo-server/v8/test
 // cpu: Apple M1
 // BenchmarkMachCliAppend-8        33936595              2646 ns/op             676 B/op         11 allocs/op
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkMachCliSelect-24         171459            408538 ns/op            2060 B/op         52 allocs/op
 func BenchmarkMachCliSelect(b *testing.B) {
 	db, err := machcli.NewDatabase(&machcli.Config{
 		Host:         "127.0.0.1",
@@ -205,18 +205,18 @@ func BenchmarkMachCliSelect(b *testing.B) {
 	}
 	defer conn.Close()
 
-	appender, err := conn.Appender(ctx, benchmarkTableName)
-	require.Nil(b, err)
+	// appender, err := conn.Appender(ctx, benchmarkTableName)
+	// require.Nil(b, err)
 
-	idGen := uuid.NewGen()
+	// idGen := uuid.NewGen()
 
-	for i := 0; i < 10000; i++ {
-		id, _ := idGen.NewV6()
-		idStr := id.String()
-		jsonStr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
-		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idStr, jsonStr)
-	}
-	appender.Close()
+	// for i := 0; i < 10000; i++ {
+	// 	id, _ := idGen.NewV6()
+	// 	idStr := id.String()
+	// 	jsonStr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
+	// 	appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idStr, jsonStr)
+	// }
+	// appender.Close()
 
 	var prevId = ""
 	for i := 0; i < b.N; i++ {
