@@ -184,7 +184,7 @@ func BenchmarkSelect(b *testing.B) {
 // goarch: arm64
 // pkg: github.com/machbase/neo-server/v8/test
 // cpu: Apple M1
-// BenchmarkMachCliAppend-8        33936595              2646 ns/op             676 B/op         11 allocs/op
+// BenchmarkMachCliSelect-8          550742            125481 ns/op            2004 B/op         52 allocs/op
 // cpu: AMD Ryzen 9 3900X 12-Core Processor
 // BenchmarkMachCliSelect-24         171459            408538 ns/op            2060 B/op         52 allocs/op
 func BenchmarkMachCliSelect(b *testing.B) {
