@@ -1058,7 +1058,8 @@ func (r *Rows) Err() error {
 func (r *Rows) Close() error {
 	if r.stmt != nil {
 		if r.isPrepared {
-			mach.CliExecuteClean(r.stmt.handle)
+			r.stmt.reachEOF = false
+			return mach.CliExecuteClean(r.stmt.handle)
 		} else {
 			return r.stmt.Close()
 		}
