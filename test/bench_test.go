@@ -185,8 +185,11 @@ func BenchmarkSelect(b *testing.B) {
 // pkg: github.com/machbase/neo-server/v8/test
 // cpu: Apple M1
 // BenchmarkMachCliSelect-8          550742            125481 ns/op            2004 B/op         52 allocs/op
-// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// cpu: AMD Ryzen 9 3900X 12-Core Processor (Go 1.24)
 // BenchmarkMachCliSelect-24         171459            408538 ns/op            2060 B/op         52 allocs/op
+// cpu: AMD Ryzen 9 3900X 12-Core Processor (Go 1.25 with GOEXPERIMENT=greenteagc)
+// BenchmarkMachCliSelect-24         202346            392777 ns/op            2062 B/op         37 allocs/op
+
 func BenchmarkMachCliSelect(b *testing.B) {
 	db, err := machcli.NewDatabase(&machcli.Config{
 		Host:         "127.0.0.1",
