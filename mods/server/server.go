@@ -29,6 +29,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/mgmt"
@@ -850,6 +851,15 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("getShellList", s.getShellList)
 	RegisterJsonRpcHandler("addShell", s.addShell)
 	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
+	RegisterJsonRpcHandler("getBridgeList", s.getBridgeList)
+	RegisterJsonRpcHandler("addBridge", s.addBridge)
+	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
+	RegisterJsonRpcHandler("testBridge", s.testBridge)
+	RegisterJsonRpcHandler("statsBridge", s.statsBridge)
+	RegisterJsonRpcHandler("execBridge", s.execBridge)
+	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
+	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
+	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
 
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
@@ -1005,6 +1015,228 @@ func (s *Server) addShell(name string, command string) (string, error) {
 
 func (s *Server) deleteShell(id string) error {
 	return s.models.ShellProvider().RemoveShell(id)
+}
+
+func (s *Server) getBridgeList() ([]*bridgerpc.Bridge, error) {
+	ctx := context.Background()
+	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {
+		return nil, err
+	} else {
+		return rsp.Bridges, nil
+	}
+}
+
+func (s *Server) addBridge(name string, typ string, conn string) error {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridgerpc.AddBridgeRequest{
+		Name: name,
+		Type: typ,
+		Path: conn,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) deleteBridge(name string) error {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.DelBridge(ctx, &bridgerpc.DelBridgeRequest{
+		Name: name,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) testBridge(name string) (bool, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridgerpc.TestBridgeRequest{
+		Name: name,
+	})
+	if err != nil {
+		return false, err
+	}
+	if !rsp.Success {
+		return false, errors.New(rsp.Reason)
+	}
+	return true, nil
+}
+
+type BridgeStats struct {
+	InMsgs   uint64
+	InBytes  uint64
+	OutMsgs  uint64
+	OutBytes uint64
+	Inserted uint64
+	Appended uint64
+}
+
+func (s *Server) statsBridge(name string) (BridgeStats, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridgerpc.StatsBridgeRequest{
+		Name: name,
+	})
+	ret := BridgeStats{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+	ret.InMsgs = rsp.InMsgs
+	ret.InBytes = rsp.InBytes
+	ret.OutMsgs = rsp.OutMsgs
+	ret.OutBytes = rsp.OutBytes
+	ret.Inserted = rsp.Inserted
+	ret.Appended = rsp.Appended
+	return ret, nil
+}
+
+type BridgeExecResult struct {
+	Reason         string
+	LastInsertedId int64
+	RowsAffected   int64
+}
+
+func (s *Server) execBridge(name string, command string) (BridgeExecResult, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.Exec(ctx, &bridgerpc.ExecRequest{
+		Name: name,
+		Command: &bridgerpc.ExecRequest_SqlExec{
+			SqlExec: &bridgerpc.SqlRequest{
+				SqlText: command,
+			},
+		},
+	})
+	ret := BridgeExecResult{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+	result := rsp.GetSqlExecResult()
+	ret.Reason = rsp.Reason
+	ret.LastInsertedId = result.LastInsertedId
+	ret.RowsAffected = result.RowsAffected
+	return ret, nil
+}
+
+type BridgeQueryResult struct {
+	Handle  string
+	Columns []BridgeQueryColumn
+}
+
+type BridgeQueryColumn struct {
+	Name   string
+	Type   string
+	Size   int
+	Length int
+}
+
+func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.Exec(ctx, &bridgerpc.ExecRequest{
+		Name: name,
+		Command: &bridgerpc.ExecRequest_SqlQuery{
+			SqlQuery: &bridgerpc.SqlRequest{
+				SqlText: query,
+			},
+		},
+	})
+	ret := BridgeQueryResult{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+	result := rsp.GetSqlQueryResult()
+	ret.Handle = result.Handle
+	for _, col := range result.Fields {
+		ret.Columns = append(ret.Columns, BridgeQueryColumn{
+			Name:   col.Name,
+			Type:   col.Type,
+			Size:   int(col.Size),
+			Length: int(col.Length),
+		})
+	}
+	return ret, nil
+}
+
+type BridgeQueryRow struct {
+	HasNoRows bool
+	Values    []interface{}
+}
+
+func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.SqlQueryResultFetch(ctx, &bridgerpc.SqlQueryResult{
+		Handle: handle,
+	})
+	ret := BridgeQueryRow{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+
+	ret.HasNoRows = rsp.HasNoRows
+	for _, v := range rsp.Values {
+		switch val := v.Value.(type) {
+		case *bridgerpc.Datum_VInt32:
+			ret.Values = append(ret.Values, val.VInt32)
+		case *bridgerpc.Datum_VUint32:
+			ret.Values = append(ret.Values, val.VUint32)
+		case *bridgerpc.Datum_VInt64:
+			ret.Values = append(ret.Values, val.VInt64)
+		case *bridgerpc.Datum_VUint64:
+			ret.Values = append(ret.Values, val.VUint64)
+		case *bridgerpc.Datum_VFloat:
+			ret.Values = append(ret.Values, val.VFloat)
+		case *bridgerpc.Datum_VDouble:
+			ret.Values = append(ret.Values, val.VDouble)
+		case *bridgerpc.Datum_VString:
+			ret.Values = append(ret.Values, val.VString)
+		case *bridgerpc.Datum_VBytes:
+			ret.Values = append(ret.Values, val.VBytes)
+		case *bridgerpc.Datum_VBool:
+			ret.Values = append(ret.Values, val.VBool)
+		case *bridgerpc.Datum_VTime:
+			t := time.UnixMilli(val.VTime)
+			ret.Values = append(ret.Values, t)
+		case *bridgerpc.Datum_VIp:
+			ret.Values = append(ret.Values, val.VIp)
+		case *bridgerpc.Datum_VNull:
+			ret.Values = append(ret.Values, nil)
+		default:
+			ret.Values = append(ret.Values, nil)
+		}
+	}
+	return ret, nil
+}
+
+func (s *Server) closeResultBridge(handle string) error {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.SqlQueryResultClose(ctx, &bridgerpc.SqlQueryResult{
+		Handle: handle,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
 }
 
 func (s *Server) ServerPrivateKeyPath() string {
