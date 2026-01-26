@@ -33,6 +33,7 @@ import (
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/mgmt"
+	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
@@ -860,6 +861,14 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
 	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
 	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
+	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
+	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
+	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
+	RegisterJsonRpcHandler("listTimers", s.listTimers)
+	RegisterJsonRpcHandler("addTimer", s.addTimer)
+	RegisterJsonRpcHandler("deleteTimer", s.deleteTimer)
+	RegisterJsonRpcHandler("startTimer", s.startTimer)
+	RegisterJsonRpcHandler("stopTimer", s.stopTimer)
 
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
@@ -1230,6 +1239,90 @@ func (s *Server) closeResultBridge(handle string) error {
 	rsp, err := s.bridgeSvc.SqlQueryResultClose(ctx, &bridgerpc.SqlQueryResult{
 		Handle: handle,
 	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) listSSHKeys() ([]*AuthorizedSshKey, error) {
+	rsp, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp) == 0 {
+		return []*AuthorizedSshKey{}, nil
+	}
+	return rsp, nil
+}
+
+func (s *Server) addSSHKey(keyType string, key string, comment string) error {
+	return s.AddAuthorizedSshKey(keyType, key, comment)
+}
+
+func (s *Server) deleteSSHKey(key string) error {
+	return s.RemoveAuthorizedSshKey(key)
+}
+
+func (s *Server) listTimers(ctx context.Context) ([]*schedrpc.Schedule, error) {
+	rsp, err := s.schedSvc.ListSchedule(ctx, &schedrpc.ListScheduleRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp.Schedules) == 0 {
+		return []*schedrpc.Schedule{}, nil
+	}
+	return rsp.Schedules, nil
+}
+
+func (s *Server) addTimer(ctx context.Context, name string, spec string, command string, autoStart bool) error {
+	req := schedrpc.AddScheduleRequest{
+		Name:      strings.ToLower(name),
+		Type:      "timer",
+		AutoStart: autoStart,
+		Schedule:  spec,
+		Task:      command,
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) deleteTimer(ctx context.Context, name string) error {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.DelSchedule(ctx, &schedrpc.DelScheduleRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) startTimer(ctx context.Context, name string) error {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.StartSchedule(ctx, &schedrpc.StartScheduleRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) stopTimer(ctx context.Context, name string) error {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.StopSchedule(ctx, &schedrpc.StopScheduleRequest{Name: name})
 	if err != nil {
 		return err
 	}

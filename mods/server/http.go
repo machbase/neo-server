@@ -635,7 +635,6 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessToken(req.LoginName)
-	svr.log.Tracef("'%s' login success %s", req.LoginName, refreshTokenId)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

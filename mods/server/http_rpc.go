@@ -86,6 +86,12 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 		if len(resultValues) > 0 {
 			result = resultValues[0].Interface()
 		}
+		if len(resultValues) == 1 && result != nil {
+			if errVal, ok := result.(error); ok {
+				result = nil
+				err = errVal
+			}
+		}
 		if len(resultValues) > 1 {
 			if !resultValues[1].IsNil() {
 				err = resultValues[1].Interface().(error)
