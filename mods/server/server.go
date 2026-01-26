@@ -864,11 +864,13 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
 	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
 	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
-	RegisterJsonRpcHandler("listTimers", s.listTimers)
-	RegisterJsonRpcHandler("addTimer", s.addTimer)
-	RegisterJsonRpcHandler("deleteTimer", s.deleteTimer)
-	RegisterJsonRpcHandler("startTimer", s.startTimer)
-	RegisterJsonRpcHandler("stopTimer", s.stopTimer)
+	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
+	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
+	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
+	RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
+	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
+	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
+	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
 
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
@@ -1267,7 +1269,7 @@ func (s *Server) deleteSSHKey(key string) error {
 	return s.RemoveAuthorizedSshKey(key)
 }
 
-func (s *Server) listTimers(ctx context.Context) ([]*schedrpc.Schedule, error) {
+func (s *Server) listSchedules(ctx context.Context) ([]*schedrpc.Schedule, error) {
 	rsp, err := s.schedSvc.ListSchedule(ctx, &schedrpc.ListScheduleRequest{})
 	if err != nil {
 		return nil, err
@@ -1278,10 +1280,10 @@ func (s *Server) listTimers(ctx context.Context) ([]*schedrpc.Schedule, error) {
 	return rsp.Schedules, nil
 }
 
-func (s *Server) addTimer(ctx context.Context, name string, spec string, command string, autoStart bool) error {
+func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
 	req := schedrpc.AddScheduleRequest{
 		Name:      strings.ToLower(name),
-		Type:      "timer",
+		Type:      "TIMER",
 		AutoStart: autoStart,
 		Schedule:  spec,
 		Task:      command,
@@ -1296,7 +1298,25 @@ func (s *Server) addTimer(ctx context.Context, name string, spec string, command
 	return nil
 }
 
-func (s *Server) deleteTimer(ctx context.Context, name string) error {
+func (s *Server) addSubscriberSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
+	req := schedrpc.AddScheduleRequest{
+		Name:      strings.ToLower(name),
+		Type:      "SUBSCRIBER",
+		AutoStart: autoStart,
+		Schedule:  spec,
+		Task:      command,
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) deleteSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.DelSchedule(ctx, &schedrpc.DelScheduleRequest{Name: name})
 	if err != nil {
@@ -1308,7 +1328,7 @@ func (s *Server) deleteTimer(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *Server) startTimer(ctx context.Context, name string) error {
+func (s *Server) startSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.StartSchedule(ctx, &schedrpc.StartScheduleRequest{Name: name})
 	if err != nil {
@@ -1320,7 +1340,7 @@ func (s *Server) startTimer(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *Server) stopTimer(ctx context.Context, name string) error {
+func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.StopSchedule(ctx, &schedrpc.StopScheduleRequest{Name: name})
 	if err != nil {

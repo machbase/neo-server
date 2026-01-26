@@ -69,7 +69,9 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 				paramValue = reflect.ValueOf(ctx)
 			} else if paramType.String() == "context.Context" {
 				implicitParams++
-				paramValue = reflect.ValueOf(ctx.Request.Context())
+				// passing gin.Context as context.Context
+				// it is used in shutdown server rpc to identify requester info
+				paramValue = reflect.ValueOf(ctx)
 			} else if i-implicitParams < len(req.Params) {
 				paramValue = reflect.ValueOf(req.Params[i-implicitParams])
 			} else {
