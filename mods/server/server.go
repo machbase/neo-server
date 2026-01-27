@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -864,6 +865,10 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
 	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
 	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
+	RegisterJsonRpcHandler("listKeys", s.listKeys)
+	RegisterJsonRpcHandler("genKey", s.genKey)
+	RegisterJsonRpcHandler("deleteKey", s.deleteKey)
+	RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
 	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
 	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
 	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
@@ -871,6 +876,11 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
 	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
 	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
+	RegisterJsonRpcHandler("listSessions", s.listSessions)
+	RegisterJsonRpcHandler("killSession", s.killSession)
+	RegisterJsonRpcHandler("statSession", s.statSession)
+	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
+	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
 
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
@@ -1269,6 +1279,68 @@ func (s *Server) deleteSSHKey(key string) error {
 	return s.RemoveAuthorizedSshKey(key)
 }
 
+func (s *Server) listKeys(ctx context.Context) ([]*mgmt.KeyInfo, error) {
+	rsp, err := s.ListKey(ctx, &mgmt.ListKeyRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Keys, nil
+}
+
+func (s *Server) genKey(ctx context.Context, id string) (any, error) {
+	id = strings.ToLower(id)
+	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", id)
+	if !pass {
+		return nil, fmt.Errorf("id contains invalid letter, use only alphnum and _.@-")
+	}
+
+	rsp, err := s.GenKey(ctx, &mgmt.GenKeyRequest{
+		Id:        id,
+		Type:      "ec",
+		NotBefore: time.Now().Unix(),
+		NotAfter:  time.Now().Add(10 * time.Hour * 24 * 365).Unix(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return map[string]string{
+		"id":          rsp.Id,
+		"certificate": rsp.Certificate,
+		"key":         rsp.Key,
+		"token":       rsp.Token,
+	}, nil
+}
+
+func (s *Server) deleteKey(ctx context.Context, id string) error {
+	rsp, err := s.DelKey(ctx, &mgmt.DelKeyRequest{
+		Id: id,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
+	rsp, err := s.ServerKey(ctx, &mgmt.ServerKeyRequest{})
+	if err != nil {
+		return "", err
+	}
+	if !rsp.Success {
+		return "", errors.New(rsp.Reason)
+	}
+	return rsp.Certificate, nil
+}
+
 func (s *Server) listSchedules(ctx context.Context) ([]*schedrpc.Schedule, error) {
 	rsp, err := s.schedSvc.ListSchedule(ctx, &schedrpc.ListScheduleRequest{})
 	if err != nil {
@@ -1343,6 +1415,111 @@ func (s *Server) startSchedule(ctx context.Context, name string) error {
 func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.StopSchedule(ctx, &schedrpc.StopScheduleRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
+	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
+		Statz: false, Sessions: true, ResetStatz: false,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Sessions, nil
+}
+
+func (s *Server) killSession(ctx context.Context, id string, force bool) error {
+	rsp, err := s.KillSession(ctx, &mgmt.KillSessionRequest{
+		Id:    id,
+		Force: force,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) statSession(ctx context.Context, reset bool) (*mgmt.Statz, error) {
+	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
+		Statz: true, Sessions: false, ResetStatz: reset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Statz, nil
+}
+
+type SessionLimit struct {
+	MaxPoolSize       int
+	MaxOpenConn       int
+	RemainedOpenConn  int
+	MaxOpenQuery      int
+	RemainedOpenQuery int
+}
+
+func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
+	rsp, err := s.LimitSession(ctx, &mgmt.LimitSessionRequest{
+		Cmd: "get",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	ret := &SessionLimit{
+		MaxPoolSize:       int(rsp.MaxPoolSize),
+		MaxOpenConn:       int(rsp.MaxOpenConn),
+		RemainedOpenConn:  int(rsp.RemainedOpenConn),
+		MaxOpenQuery:      int(rsp.MaxOpenQuery),
+		RemainedOpenQuery: int(rsp.RemainedOpenQuery),
+	}
+	return ret, nil
+}
+
+func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
+	var limit = SessionLimit{
+		MaxPoolSize:  -1,
+		MaxOpenConn:  -1,
+		MaxOpenQuery: -1,
+	}
+	if v, ok := m["MaxPoolSize"]; ok {
+		if vi, ok := v.(float64); ok {
+			limit.MaxPoolSize = int(vi)
+		}
+	}
+	if v, ok := m["MaxOpenConn"]; ok {
+		if vi, ok := v.(float64); ok {
+			limit.MaxOpenConn = int(vi)
+		}
+	}
+	if v, ok := m["MaxOpenQuery"]; ok {
+		if vi, ok := v.(float64); ok {
+			limit.MaxOpenQuery = int(vi)
+		}
+	}
+
+	rsp, err := s.LimitSession(ctx, &mgmt.LimitSessionRequest{
+		Cmd:          "set",
+		MaxPoolSize:  int32(limit.MaxPoolSize),
+		MaxOpenConn:  int32(limit.MaxOpenConn),
+		MaxOpenQuery: int32(limit.MaxOpenQuery),
+	})
 	if err != nil {
 		return err
 	}
