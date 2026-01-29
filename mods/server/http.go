@@ -307,6 +307,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/splitter/http", svr.handleSplitHTTP)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.POST("/api/chpasswd", svr.handleChangePassword)
 			group.GET("/api/shell/:id", svr.handleGetShell)
 			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
 			group.POST("/api/shell/:id", svr.handlePostShell)
@@ -576,6 +577,16 @@ type LoginCheckRsp struct {
 	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
 
+type ChangePasswordReq struct {
+	NewPassword string `json:"newPassword"`
+}
+
+type ChangePasswordRsp struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
 type ServerInfo struct {
 	Version string `json:"version,omitempty"`
 }
@@ -590,6 +601,66 @@ type ReferenceItem struct {
 	Title  string `json:"title"`
 	Addr   string `json:"address"`
 	Target string `json:"target,omitempty"`
+}
+
+func (svr *httpd) handleChangePassword(ctx *gin.Context) {
+	var req = &ChangePasswordReq{}
+	var rsp = &ChangePasswordRsp{
+		Success: false,
+		Reason:  "not specified",
+	}
+
+	tick := time.Now()
+
+	err := ctx.Bind(req)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	if len(req.NewPassword) == 0 || strings.Contains(req.NewPassword, "'") {
+		rsp.Reason = "invalid new password"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	claim, ok := svr.getJwtClaim(ctx)
+	if !ok {
+		rsp.Reason = "unauthorized request"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+
+	conn, err := svr.db.Connect(ctx, api.WithTrustUser(claim.Subject))
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	defer conn.Close()
+
+	result := conn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s IDENTIFIED BY '%s'", claim.Subject, req.NewPassword))
+	if err := result.Err(); err != nil {
+		rsp.Reason = result.Message()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	// cache username and password for web-terminal uses
+	svr.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Elapse = time.Since(tick).String()
+
+	ctx.JSON(http.StatusOK, rsp)
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {
