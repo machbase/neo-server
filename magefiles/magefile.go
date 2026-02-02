@@ -65,7 +65,10 @@ func Build(target string, strip bool) error {
 	gitSHA := vLastCommit[0:8]
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
-	env := map[string]string{"GO111MODULE": "on"}
+	env := map[string]string{
+		"GO111MODULE":  "on",
+		"GOEXPERIMENT": "greenteagc",
+	}
 	if target == "neoshell" {
 		// FIXME: neoshell should not link to engine
 		env["CGO_ENABLED"] = "1"
