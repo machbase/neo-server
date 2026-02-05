@@ -635,7 +635,7 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 	}
 	stmtType, err := mach.EngStmtType(stmt)
 	result.affectedRows = affectedRows
-	result.stmtType = StmtType(stmtType)
+	result.stmtType = mach.StmtType(stmtType)
 	result.err = err
 	return result
 }
@@ -702,7 +702,7 @@ func (conn *Conn) QuerySync(ctx context.Context, sqlText string, params ...any) 
 		mach.EngFreeStmt(rows.stmt)
 		return nil, err
 	} else {
-		rows.stmtType = StmtType(stmtType)
+		rows.stmtType = mach.StmtType(stmtType)
 	}
 
 	if cols, err := stmtColumns(rows.stmt); err != nil {
@@ -866,7 +866,7 @@ func (conn *Conn) QueryRowSync(ctx context.Context, sqlText string, params ...an
 		row.err = err
 		return row
 	} else {
-		row.stmtType = StmtType(typ)
+		row.stmtType = mach.StmtType(typ)
 	}
 
 	// Do not proceed if the statement is not a SELECT

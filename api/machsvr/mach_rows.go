@@ -16,7 +16,7 @@ import (
 type Result struct {
 	err          error
 	affectedRows int64
-	stmtType     StmtType
+	stmtType     mach.StmtType
 }
 
 var _ api.Result = (*Result)(nil)
@@ -57,49 +57,6 @@ func (r *Result) Message() string {
 	return fmt.Sprintf("ok.(%d)", r.stmtType)
 }
 
-// * DDL: 1-255
-// * ALTER SYSTEM: 256-511
-// * SELECT: 512
-// * INSERT: 513
-// * DELETE: 514-518
-// * INSERT_SELECT: 519
-// * UPDATE: 520
-// * EXEC_ROLLUP: 522-524
-
-type StmtType int
-
-func (typ StmtType) IsSelect() bool {
-	return typ == 512
-}
-
-func (typ StmtType) IsDDL() bool {
-	return typ >= 1 && typ <= 255
-}
-
-func (typ StmtType) IsAlterSystem() bool {
-	return typ >= 256 && typ <= 511
-}
-
-func (typ StmtType) IsInsert() bool {
-	return typ == 513
-}
-
-func (typ StmtType) IsDelete() bool {
-	return typ >= 514 && typ <= 518
-}
-
-func (typ StmtType) IsInsertSelect() bool {
-	return typ == 519
-}
-
-func (typ StmtType) IsUpdate() bool {
-	return typ == 520
-}
-
-func (typ StmtType) IsExecRollup() bool {
-	return typ >= 522 && typ <= 524
-}
-
 type Row struct {
 	ok      bool
 	err     error
@@ -107,7 +64,7 @@ type Row struct {
 	values  []any
 
 	affectedRows int64
-	stmtType     StmtType
+	stmtType     mach.StmtType
 }
 
 var _ api.Row = (*Row)(nil)
@@ -183,7 +140,7 @@ func (row *Row) Scan(cols ...any) error {
 
 type Rows struct {
 	stmt       unsafe.Pointer
-	stmtType   StmtType
+	stmtType   mach.StmtType
 	sqlText    string
 	columns    api.Columns
 	fetchError error
@@ -241,7 +198,7 @@ func (rows *Rows) IsFetchable() bool {
 	return rows.stmtType.IsSelect()
 }
 
-func (rows *Rows) StatementType() StmtType {
+func (rows *Rows) StatementType() mach.StmtType {
 	return rows.stmtType
 }
 

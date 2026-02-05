@@ -15,6 +15,8 @@ import (
 
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/api"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 func errorWithCause(obj any, cause error) error {
@@ -363,7 +365,12 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 			ret.err = errorWithCause(c, err)
 		}
 		ret.rowCount, ret.err = mach.CliRowCount(stmt.handle)
-		return ret
+		if typ, err := mach.CliGetStmtType(stmt.handle); err != nil {
+			ret.err = err
+			return ret
+		} else {
+			ret.stmtType = mach.StmtType(typ)
+		}
 	} else {
 		if ret.err = stmt.prepare(query); ret.err != nil {
 			return ret
@@ -373,8 +380,14 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 		}
 		ret.err = stmt.execute()
 		ret.rowCount = stmt.rowCount
-		return ret
+		if typ, err := mach.CliGetStmtType(stmt.handle); err != nil {
+			ret.err = err
+			return ret
+		} else {
+			ret.stmtType = mach.StmtType(typ)
+		}
 	}
+	return ret
 }
 
 func (c *Conn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
@@ -409,6 +422,12 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	}
 	if ret.err = stmt.execute(); ret.err != nil {
 		return ret
+	}
+	if typ, err := mach.CliGetStmtType(stmt.handle); err != nil {
+		ret.err = err
+		return ret
+	} else {
+		ret.stmtType = mach.StmtType(typ)
 	}
 	ret.rowCount = stmt.rowCount
 	if values, err := stmt.fetch(); err != nil {
@@ -455,6 +474,12 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 	ret := &Rows{
 		stmt: stmt,
 	}
+	if typ, err := mach.CliGetStmtType(stmt.handle); err != nil {
+		stmt.Close()
+		return nil, err
+	} else {
+		ret.stmtType = mach.StmtType(typ)
+	}
 	ret.rowsCount = stmt.rowCount
 	return ret, nil
 }
@@ -483,6 +508,12 @@ func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
 		return ret
 	}
 	ret.rowCount = pStmt.stmt.rowCount
+	if typ, err := mach.CliGetStmtType(pStmt.stmt.handle); err != nil {
+		ret.err = err
+		return ret
+	} else {
+		ret.stmtType = mach.StmtType(typ)
+	}
 	return ret
 }
 
@@ -689,6 +720,7 @@ type Result struct {
 	message  string
 	err      error
 	rowCount int64
+	stmtType mach.StmtType
 }
 
 var _ api.Result = (*Result)(nil)
@@ -990,6 +1022,7 @@ type Row struct {
 	values   []any
 	columns  api.Columns
 	rowCount int64
+	stmtType mach.StmtType
 }
 
 var _ api.Row = (*Row)(nil)
@@ -1031,8 +1064,32 @@ func (r *Row) RowsAffected() int64 {
 }
 
 func (r *Row) Message() string {
-	// TODO implement
-	return ""
+	if r.err != nil {
+		return r.err.Error()
+	}
+	rows := "no rows"
+	if r.rowCount == 1 {
+		rows = "a row"
+	} else if r.rowCount > 1 {
+		p := message.NewPrinter(language.English)
+		rows = p.Sprintf("%d rows", r.rowCount)
+	}
+	if r.stmtType.IsSelect() {
+		return rows + " selected."
+	} else if r.stmtType.IsInsert() {
+		return rows + " inserted."
+	} else if r.stmtType.IsUpdate() {
+		return rows + " updated."
+	} else if r.stmtType.IsDelete() {
+		return rows + " deleted."
+	} else if r.stmtType.IsInsertSelect() {
+		return rows + " inserted from select."
+	} else if r.stmtType.IsAlterSystem() {
+		return "system altered."
+	} else if r.stmtType.IsDDL() {
+		return "ok."
+	}
+	return fmt.Sprintf("ok.(%d)", r.stmtType)
 }
 
 type Rows struct {
@@ -1040,6 +1097,7 @@ type Rows struct {
 	err       error
 	row       []any
 	rowsCount int64
+	stmtType  mach.StmtType
 }
 
 var _ api.Rows = (*Rows)(nil)
@@ -1072,40 +1130,58 @@ func (r *Rows) Columns() (api.Columns, error) {
 	return ret, nil
 }
 
-func (r *Rows) Message() string {
+func (r *Rows) definedMessage() (string, bool) {
 	switch r.stmt.sqlHead {
-	case "SELECT":
-		return "Select successfully."
-	case "INSERT":
-		switch r.rowsCount {
-		case 0:
-			return "no rows inserted."
-		case 1:
-			return "a row inserted."
-		default:
-			return fmt.Sprintf("%d rows inserted.", r.rowsCount)
-		}
-	case "DELETE":
-		switch r.rowsCount {
-		case 0:
-			return "no rows deleted."
-		case 1:
-			return "a row deleted."
-		default:
-			return fmt.Sprintf("%d rows deleted.", r.rowsCount)
-		}
 	case "CREATE":
-		return "Created successfully."
+		return "Created successfully.", true
 	case "DROP":
-		return "Dropped successfully."
+		return "Dropped successfully.", true
 	case "TRUNCATE":
-		return "Truncated successfully."
+		return "Truncated successfully.", true
 	case "ALTER":
-		return "Altered successfully."
+		return "Altered successfully.", true
 	case "CONNECT":
-		return "Connected successfully."
+		return "Connected successfully.", true
+	}
+	return "", false
+}
+
+func (r *Rows) Message() string {
+	var verb = ""
+
+	if r.stmtType >= 1 && r.stmtType <= 255 {
+		if msg, ok := r.definedMessage(); ok {
+			return msg
+		}
+		return "executed."
+	} else if r.stmtType >= 256 && r.stmtType <= 511 {
+		if msg, ok := r.definedMessage(); ok {
+			return msg
+		}
+		return "system altered."
+	} else if r.stmtType.IsSelect() {
+		verb = "selected."
+	} else if r.stmtType.IsInsert() {
+		verb = "inserted."
+	} else if r.stmtType.IsDelete() {
+		verb = "deleted."
+	} else if r.stmtType.IsInsertSelect() {
+		verb = "inserted from select."
+	} else if r.stmtType.IsUpdate() {
+		verb = "updated."
+	} else if r.stmtType.IsExecRollup() {
+		return "rollup executed."
+	} else {
+		return fmt.Sprintf("executed (%d).", r.stmtType)
+	}
+	switch r.rowsCount {
+	case 0:
+		return "no rows " + verb
+	case 1:
+		return "a row " + verb
 	default:
-		return r.stmt.sqlHead + " executed."
+		p := message.NewPrinter(language.English)
+		return p.Sprintf("%d rows %s", r.rowsCount, verb)
 	}
 }
 
