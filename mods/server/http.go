@@ -303,6 +303,7 @@ func (svr *httpd) Router() *gin.Engine {
 			})
 			group.Any("/api/query", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
+			group.POST("/api/rpc", svr.handleHttpRpc)
 			group.POST("/api/splitter/sql", svr.handleSplitSQL)
 			group.POST("/api/splitter/http", svr.handleSplitHTTP)
 			group.POST("/api/relogin", svr.handleReLogin)
@@ -705,7 +706,6 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessToken(req.LoginName)
-	svr.log.Tracef("'%s' login success %s", req.LoginName, refreshTokenId)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

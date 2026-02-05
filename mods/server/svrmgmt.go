@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
@@ -414,7 +415,22 @@ func (s *Server) DelSshKey(ctx context.Context, req *mgmt.DelSshKeyRequest) (*mg
 }
 
 // // mgmt server implements
-func (s *Server) Shutdown(ctx context.Context, req *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
+func (s *Server) Shutdown(ctx context.Context, _ *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
+	if ctx, ok := ctx.(*gin.Context); ok {
+		remoteAddr := ctx.RemoteIP()
+		isTcpLocal := false
+		switch remoteAddr {
+		case "127.0.0.1":
+			isTcpLocal = true
+		case "0:0:0:0:0:0:0:1", "::1":
+			isTcpLocal = true
+		}
+		if !isTcpLocal {
+			return nil, fmt.Errorf("remote shutdown not allowed")
+		}
+		booter.NotifySignal()
+		return nil, nil
+	}
 	tick := time.Now()
 	rsp := &mgmt.ShutdownResponse{}
 	if runtime.GOOS != "windows" {

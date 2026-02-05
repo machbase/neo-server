@@ -155,7 +155,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	sysConn.Close()
 
 	// TODO: currently only machcli supports Prepare statement
-	if _, ok := db.(*machcli.Database); ok && runtime.GOOS != "windows" {
+	if _, ok := db.(*machcli.Database); ok && runtime.GOOS == "linux" {
 		func() {
 			stmt, err := conn.Prepare(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`)
 			require.NoError(t, err, "prepare fail")

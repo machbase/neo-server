@@ -21,16 +21,20 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/mgmt"
+	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
@@ -843,6 +847,41 @@ func (s *Server) startHttpServer() error {
 	if len(s.Http.Listeners) == 0 {
 		return nil
 	}
+
+	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
+	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
+	RegisterJsonRpcHandler("getShellList", s.getShellList)
+	RegisterJsonRpcHandler("addShell", s.addShell)
+	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
+	RegisterJsonRpcHandler("getBridgeList", s.getBridgeList)
+	RegisterJsonRpcHandler("addBridge", s.addBridge)
+	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
+	RegisterJsonRpcHandler("testBridge", s.testBridge)
+	RegisterJsonRpcHandler("statsBridge", s.statsBridge)
+	RegisterJsonRpcHandler("execBridge", s.execBridge)
+	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
+	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
+	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
+	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
+	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
+	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
+	RegisterJsonRpcHandler("listKeys", s.listKeys)
+	RegisterJsonRpcHandler("genKey", s.genKey)
+	RegisterJsonRpcHandler("deleteKey", s.deleteKey)
+	RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
+	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
+	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
+	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
+	RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
+	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
+	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
+	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
+	RegisterJsonRpcHandler("listSessions", s.listSessions)
+	RegisterJsonRpcHandler("killSession", s.killSession)
+	RegisterJsonRpcHandler("statSession", s.statSession)
+	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
+	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
+
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
@@ -963,6 +1002,531 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 		return ports[i].Service < ports[j].Service
 	})
 	return ports, nil
+}
+
+func (s *Server) getShellList() []*model.ShellDefinition {
+	return s.models.ShellProvider().GetAllShells(false)
+}
+
+func (s *Server) addShell(name string, command string) (string, error) {
+	def := &model.ShellDefinition{}
+	if len(name) > 16 {
+		return "", fmt.Errorf("name is too long, should be shorter than 16 characters")
+	}
+	uid, err := uuid.DefaultGenerator.NewV4()
+	if err != nil {
+		return "", err
+	}
+	def.Id = uid.String()
+	def.Label = name
+	def.Type = model.SHELL_TERM
+	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
+
+	if len(strings.TrimSpace(command)) == 0 {
+		return "", fmt.Errorf("command not specified")
+	} else {
+		def.Command = command
+	}
+
+	if err := s.models.ShellProvider().SaveShell(def); err != nil {
+		return "", err
+	}
+	return def.Id, nil
+}
+
+func (s *Server) deleteShell(id string) error {
+	return s.models.ShellProvider().RemoveShell(id)
+}
+
+func (s *Server) getBridgeList() ([]*bridgerpc.Bridge, error) {
+	ctx := context.Background()
+	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {
+		return nil, err
+	} else {
+		return rsp.Bridges, nil
+	}
+}
+
+func (s *Server) addBridge(name string, typ string, conn string) error {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridgerpc.AddBridgeRequest{
+		Name: name,
+		Type: typ,
+		Path: conn,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) deleteBridge(name string) error {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.DelBridge(ctx, &bridgerpc.DelBridgeRequest{
+		Name: name,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) testBridge(name string) (bool, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridgerpc.TestBridgeRequest{
+		Name: name,
+	})
+	if err != nil {
+		return false, err
+	}
+	if !rsp.Success {
+		return false, errors.New(rsp.Reason)
+	}
+	return true, nil
+}
+
+type BridgeStats struct {
+	InMsgs   uint64
+	InBytes  uint64
+	OutMsgs  uint64
+	OutBytes uint64
+	Inserted uint64
+	Appended uint64
+}
+
+func (s *Server) statsBridge(name string) (BridgeStats, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridgerpc.StatsBridgeRequest{
+		Name: name,
+	})
+	ret := BridgeStats{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+	ret.InMsgs = rsp.InMsgs
+	ret.InBytes = rsp.InBytes
+	ret.OutMsgs = rsp.OutMsgs
+	ret.OutBytes = rsp.OutBytes
+	ret.Inserted = rsp.Inserted
+	ret.Appended = rsp.Appended
+	return ret, nil
+}
+
+type BridgeExecResult struct {
+	Reason         string
+	LastInsertedId int64
+	RowsAffected   int64
+}
+
+func (s *Server) execBridge(name string, command string) (BridgeExecResult, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.Exec(ctx, &bridgerpc.ExecRequest{
+		Name: name,
+		Command: &bridgerpc.ExecRequest_SqlExec{
+			SqlExec: &bridgerpc.SqlRequest{
+				SqlText: command,
+			},
+		},
+	})
+	ret := BridgeExecResult{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+	result := rsp.GetSqlExecResult()
+	ret.Reason = rsp.Reason
+	ret.LastInsertedId = result.LastInsertedId
+	ret.RowsAffected = result.RowsAffected
+	return ret, nil
+}
+
+type BridgeQueryResult struct {
+	Handle  string
+	Columns []BridgeQueryColumn
+}
+
+type BridgeQueryColumn struct {
+	Name   string
+	Type   string
+	Size   int
+	Length int
+}
+
+func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.Exec(ctx, &bridgerpc.ExecRequest{
+		Name: name,
+		Command: &bridgerpc.ExecRequest_SqlQuery{
+			SqlQuery: &bridgerpc.SqlRequest{
+				SqlText: query,
+			},
+		},
+	})
+	ret := BridgeQueryResult{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+	result := rsp.GetSqlQueryResult()
+	ret.Handle = result.Handle
+	for _, col := range result.Fields {
+		ret.Columns = append(ret.Columns, BridgeQueryColumn{
+			Name:   col.Name,
+			Type:   col.Type,
+			Size:   int(col.Size),
+			Length: int(col.Length),
+		})
+	}
+	return ret, nil
+}
+
+type BridgeQueryRow struct {
+	HasNoRows bool
+	Values    []interface{}
+}
+
+func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.SqlQueryResultFetch(ctx, &bridgerpc.SqlQueryResult{
+		Handle: handle,
+	})
+	ret := BridgeQueryRow{}
+	if err != nil {
+		return ret, err
+	}
+	if !rsp.Success {
+		return ret, errors.New(rsp.Reason)
+	}
+
+	ret.HasNoRows = rsp.HasNoRows
+	for _, v := range rsp.Values {
+		switch val := v.Value.(type) {
+		case *bridgerpc.Datum_VInt32:
+			ret.Values = append(ret.Values, val.VInt32)
+		case *bridgerpc.Datum_VUint32:
+			ret.Values = append(ret.Values, val.VUint32)
+		case *bridgerpc.Datum_VInt64:
+			ret.Values = append(ret.Values, val.VInt64)
+		case *bridgerpc.Datum_VUint64:
+			ret.Values = append(ret.Values, val.VUint64)
+		case *bridgerpc.Datum_VFloat:
+			ret.Values = append(ret.Values, val.VFloat)
+		case *bridgerpc.Datum_VDouble:
+			ret.Values = append(ret.Values, val.VDouble)
+		case *bridgerpc.Datum_VString:
+			ret.Values = append(ret.Values, val.VString)
+		case *bridgerpc.Datum_VBytes:
+			ret.Values = append(ret.Values, val.VBytes)
+		case *bridgerpc.Datum_VBool:
+			ret.Values = append(ret.Values, val.VBool)
+		case *bridgerpc.Datum_VTime:
+			t := time.UnixMilli(val.VTime)
+			ret.Values = append(ret.Values, t)
+		case *bridgerpc.Datum_VIp:
+			ret.Values = append(ret.Values, val.VIp)
+		case *bridgerpc.Datum_VNull:
+			ret.Values = append(ret.Values, nil)
+		default:
+			ret.Values = append(ret.Values, nil)
+		}
+	}
+	return ret, nil
+}
+
+func (s *Server) closeResultBridge(handle string) error {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.SqlQueryResultClose(ctx, &bridgerpc.SqlQueryResult{
+		Handle: handle,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) listSSHKeys() ([]*AuthorizedSshKey, error) {
+	rsp, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp) == 0 {
+		return []*AuthorizedSshKey{}, nil
+	}
+	return rsp, nil
+}
+
+func (s *Server) addSSHKey(keyType string, key string, comment string) error {
+	return s.AddAuthorizedSshKey(keyType, key, comment)
+}
+
+func (s *Server) deleteSSHKey(key string) error {
+	return s.RemoveAuthorizedSshKey(key)
+}
+
+func (s *Server) listKeys(ctx context.Context) ([]*mgmt.KeyInfo, error) {
+	rsp, err := s.ListKey(ctx, &mgmt.ListKeyRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Keys, nil
+}
+
+func (s *Server) genKey(ctx context.Context, id string) (any, error) {
+	id = strings.ToLower(id)
+	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", id)
+	if !pass {
+		return nil, fmt.Errorf("id contains invalid letter, use only alphnum and _.@-")
+	}
+
+	rsp, err := s.GenKey(ctx, &mgmt.GenKeyRequest{
+		Id:        id,
+		Type:      "ec",
+		NotBefore: time.Now().Unix(),
+		NotAfter:  time.Now().Add(10 * time.Hour * 24 * 365).Unix(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return map[string]string{
+		"id":          rsp.Id,
+		"certificate": rsp.Certificate,
+		"key":         rsp.Key,
+		"token":       rsp.Token,
+	}, nil
+}
+
+func (s *Server) deleteKey(ctx context.Context, id string) error {
+	rsp, err := s.DelKey(ctx, &mgmt.DelKeyRequest{
+		Id: id,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
+	rsp, err := s.ServerKey(ctx, &mgmt.ServerKeyRequest{})
+	if err != nil {
+		return "", err
+	}
+	if !rsp.Success {
+		return "", errors.New(rsp.Reason)
+	}
+	return rsp.Certificate, nil
+}
+
+func (s *Server) listSchedules(ctx context.Context) ([]*schedrpc.Schedule, error) {
+	rsp, err := s.schedSvc.ListSchedule(ctx, &schedrpc.ListScheduleRequest{})
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp.Schedules) == 0 {
+		return []*schedrpc.Schedule{}, nil
+	}
+	return rsp.Schedules, nil
+}
+
+func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
+	req := schedrpc.AddScheduleRequest{
+		Name:      strings.ToLower(name),
+		Type:      "TIMER",
+		AutoStart: autoStart,
+		Schedule:  spec,
+		Task:      command,
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) addSubscriberSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
+	req := schedrpc.AddScheduleRequest{
+		Name:      strings.ToLower(name),
+		Type:      "SUBSCRIBER",
+		AutoStart: autoStart,
+		Schedule:  spec,
+		Task:      command,
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) deleteSchedule(ctx context.Context, name string) error {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.DelSchedule(ctx, &schedrpc.DelScheduleRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) startSchedule(ctx context.Context, name string) error {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.StartSchedule(ctx, &schedrpc.StartScheduleRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) stopSchedule(ctx context.Context, name string) error {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.StopSchedule(ctx, &schedrpc.StopScheduleRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
+	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
+		Statz: false, Sessions: true, ResetStatz: false,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Sessions, nil
+}
+
+func (s *Server) killSession(ctx context.Context, id string, force bool) error {
+	rsp, err := s.KillSession(ctx, &mgmt.KillSessionRequest{
+		Id:    id,
+		Force: force,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (s *Server) statSession(ctx context.Context, reset bool) (*mgmt.Statz, error) {
+	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
+		Statz: true, Sessions: false, ResetStatz: reset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Statz, nil
+}
+
+type SessionLimit struct {
+	MaxPoolSize       int
+	MaxOpenConn       int
+	RemainedOpenConn  int
+	MaxOpenQuery      int
+	RemainedOpenQuery int
+}
+
+func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
+	rsp, err := s.LimitSession(ctx, &mgmt.LimitSessionRequest{
+		Cmd: "get",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	ret := &SessionLimit{
+		MaxPoolSize:       int(rsp.MaxPoolSize),
+		MaxOpenConn:       int(rsp.MaxOpenConn),
+		RemainedOpenConn:  int(rsp.RemainedOpenConn),
+		MaxOpenQuery:      int(rsp.MaxOpenQuery),
+		RemainedOpenQuery: int(rsp.RemainedOpenQuery),
+	}
+	return ret, nil
+}
+
+func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
+	var limit = SessionLimit{
+		MaxPoolSize:  -1,
+		MaxOpenConn:  -1,
+		MaxOpenQuery: -1,
+	}
+	if v, ok := m["MaxPoolSize"]; ok {
+		if vi, ok := v.(float64); ok {
+			limit.MaxPoolSize = int(vi)
+		}
+	}
+	if v, ok := m["MaxOpenConn"]; ok {
+		if vi, ok := v.(float64); ok {
+			limit.MaxOpenConn = int(vi)
+		}
+	}
+	if v, ok := m["MaxOpenQuery"]; ok {
+		if vi, ok := v.(float64); ok {
+			limit.MaxOpenQuery = int(vi)
+		}
+	}
+
+	rsp, err := s.LimitSession(ctx, &mgmt.LimitSessionRequest{
+		Cmd:          "set",
+		MaxPoolSize:  int32(limit.MaxPoolSize),
+		MaxOpenConn:  int32(limit.MaxOpenConn),
+		MaxOpenQuery: int32(limit.MaxOpenQuery),
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
 }
 
 func (s *Server) ServerPrivateKeyPath() string {
