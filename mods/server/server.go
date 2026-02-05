@@ -881,7 +881,7 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("statSession", s.statSession)
 	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
 	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
-
+	RegisterJsonRpcHandler("splitSqlStatements", s.splitSqlStatements)
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
@@ -1527,6 +1527,14 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 		return errors.New(rsp.Reason)
 	}
 	return nil
+}
+
+func (s *Server) splitSqlStatements(ctx context.Context, content string) ([]*util.SqlStatement, error) {
+	stmts, err := util.SplitSqlStatements(strings.NewReader(content))
+	if err != nil {
+		return nil, err
+	}
+	return stmts, nil
 }
 
 func (s *Server) ServerPrivateKeyPath() string {
