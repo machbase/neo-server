@@ -55,7 +55,7 @@ func CallTool(ctx context.Context, toolCall mcp.CallToolRequest) (*mcp.CallToolR
 				}
 			case api.ToolCallFunctionArguments: // ollama style
 				var args = map[string]interface{}{}
-				for k, v := range raw {
+				for k, v := range raw.ToMap() {
 					args[k] = v
 				}
 				toolCall.Params.Arguments = args

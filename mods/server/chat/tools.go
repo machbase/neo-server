@@ -54,13 +54,7 @@ func ConvertToOllamaTools(tools []mcp.Tool) []api.Tool {
 			Function: api.ToolFunction{
 				Name:        tool.Name,
 				Description: tool.Description,
-				Parameters: struct {
-					Type       string                      `json:"type"`
-					Defs       any                         `json:"$defs,omitempty"`
-					Items      any                         `json:"items,omitempty"`
-					Required   []string                    `json:"required"`
-					Properties map[string]api.ToolProperty `json:"properties"`
-				}{
+				Parameters: api.ToolFunctionParameters{
 					Type:       tool.InputSchema.Type,
 					Required:   tool.InputSchema.Required,
 					Properties: convertProperties(tool.InputSchema.Properties),
@@ -72,8 +66,8 @@ func ConvertToOllamaTools(tools []mcp.Tool) []api.Tool {
 }
 
 // Helper function to convert properties to Ollama's format
-func convertProperties(props map[string]interface{}) map[string]api.ToolProperty {
-	result := make(map[string]api.ToolProperty)
+func convertProperties(props map[string]interface{}) *api.ToolPropertiesMap {
+	ret := api.NewToolPropertiesMap()
 
 	for name, prop := range props {
 		if propMap, ok := prop.(map[string]interface{}); ok {
@@ -91,11 +85,11 @@ func convertProperties(props map[string]interface{}) map[string]api.ToolProperty
 				}
 			}
 
-			result[name] = prop
+			ret.Set(name, prop)
 		}
 	}
 
-	return result
+	return ret
 }
 
 // Helper function to safely get string values from map

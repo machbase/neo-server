@@ -1,8 +1,8 @@
 module github.com/machbase/neo-server/v8
 
-go 1.24.0
+go 1.24.1
 
-toolchain go1.24.5
+toolchain go1.24.11
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
@@ -37,13 +37,13 @@ require (
 	github.com/magefile/mage v1.15.0
 	github.com/mark3labs/mcp-go v0.37.0
 	github.com/mattn/go-colorable v0.1.13
-	github.com/mattn/go-sqlite3 v1.14.17
+	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/microsoft/go-mssqldb v1.5.0
 	github.com/mochi-mqtt/server/v2 v2.7.9
 	github.com/nats-io/nats.go v1.36.0
 	github.com/nyaosorg/go-box/v2 v2.1.4
 	github.com/nyaosorg/go-readline-ny v1.0.1
-	github.com/ollama/ollama v0.12.6
+	github.com/ollama/ollama v0.15.4
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/paulmach/orb v0.11.1
 	github.com/pkg/sftp v1.13.6
@@ -167,7 +167,7 @@ require (
 	golang.org/x/arch v0.14.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/image v0.22.0 // indirect
-	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
