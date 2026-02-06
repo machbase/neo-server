@@ -88,6 +88,9 @@ type Server struct {
 	authorizedSshKeysLock sync.RWMutex
 	genSnowflake          *snowflake.Node
 	snowflakes            []string
+
+	neoShellAddress string
+	neoShellAccount map[string]string
 }
 
 var _ booter.Boot = (*Server)(nil)
@@ -101,8 +104,9 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:       *conf,
-		servicePorts: make(map[string][]*model.ServicePort),
+		Config:          *conf,
+		servicePorts:    make(map[string][]*model.ServicePort),
+		neoShellAccount: make(map[string]string),
 	}, nil
 }
 

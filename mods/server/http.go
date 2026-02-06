@@ -63,8 +63,7 @@ func NewHttp(db api.Database, options ...HttpOption) (*httpd, error) {
 			{Prefix: "/metrics", Handler: "influx"},
 			{Prefix: "/web", Handler: "web"},
 		},
-		neoShellAccount: make(map[string]string),
-		pathMap:         map[string]string{},
+		pathMap: map[string]string{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -85,7 +84,6 @@ type httpd struct {
 	httpServer        *http.Server
 	listeners         []net.Listener
 	jwtCache          JwtCache
-	authServer        AuthServer
 	bakd              *backupd
 	mgmtImpl          mgmt.ManagementServer
 	schedMgmtImpl     schedule.ManagementServer
@@ -93,11 +91,9 @@ type httpd struct {
 	bridgeRuntimeImpl bridge.RuntimeServer
 	pkgMgr            *pkgs.PkgManager
 
-	neoShellAddress string
-	neoShellAccount map[string]string
-
-	tqlLoader tql.Loader
-	serverFs  *ssfs.SSFS
+	authServer *Server
+	tqlLoader  tql.Loader
+	serverFs   *ssfs.SSFS
 
 	eulaPassed             bool
 	eulaFilePath           string
@@ -655,7 +651,7 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	svr.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
+	svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
 
 	rsp.Success = true
 	rsp.Reason = "success"
@@ -714,7 +710,9 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	svr.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
+	if svr.authServer != nil {
+		svr.authServer.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
+	}
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
@@ -1338,11 +1336,11 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 	termLoginName := claim.Subject
-	termPassword := svr.neoShellAccount[strings.ToLower(termLoginName)]
+	termPassword := svr.authServer.neoShellAccount[strings.ToLower(termLoginName)]
 	if len(termPassword) == 0 {
 		termPassword = "manager"
 	}
-	termAddress := svr.neoShellAddress
+	termAddress := svr.authServer.neoShellAddress
 	if len(termAddress) == 0 {
 		termAddress = "127.0.0.1:5652"
 	}

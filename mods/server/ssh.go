@@ -27,9 +27,8 @@ type SshOption func(s *sshd)
 // Factory
 func NewSsh(options ...SshOption) (*sshd, error) {
 	s := &sshd{
-		log:             logging.GetLog("sshd"),
-		neoShellAccount: map[string]string{},
-		forwardHandler:  &ssh.ForwardedTCPHandler{},
+		log:            logging.GetLog("sshd"),
+		forwardHandler: &ssh.ForwardedTCPHandler{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -59,7 +58,7 @@ func WithSshIdleTimeout(timeout time.Duration) SshOption {
 }
 
 // AuthServer
-func WithSshAuthServer(authSvc AuthServer) SshOption {
+func WithSshAuthServer(authSvc *Server) SshOption {
 	return func(s *sshd) {
 		s.authServer = authSvc
 	}
@@ -89,7 +88,7 @@ type sshd struct {
 	idleTimeout     time.Duration
 	serverKeyPath   string
 	motdMessage     string
-	authServer      AuthServer
+	authServer      *Server
 
 	sshServer *ssh.Server
 	listeners []net.Listener
@@ -99,8 +98,6 @@ type sshd struct {
 	children       map[int]*os.Process
 
 	shellProvider func(user string, shellId string) *SshShell
-
-	neoShellAccount map[string]string
 }
 
 func (svr *sshd) Start() error {
@@ -251,7 +248,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	ok, otp, err := svr.authServer.ValidateUserPassword(user, password)
+	ok, _, err := svr.authServer.ValidateUserPassword(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
@@ -259,8 +256,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 	if !ok {
 		svr.log.Tracef("'%s' login fail password mis-matched", user)
 	}
-
-	svr.neoShellAccount[user] = fmt.Sprintf("$otp$:%s", otp)
+	svr.authServer.neoShellAccount[strings.ToLower(user)] = password
 	return ok
 }
 
@@ -273,13 +269,10 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	ok, otp, err := svr.authServer.ValidateUserPublicKey(user, key)
+	ok, _, err := svr.authServer.ValidateUserPublicKey(user, key)
 	if err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
-	}
-	if ok {
-		svr.neoShellAccount[user] = fmt.Sprintf("$otp$:%s", otp)
 	}
 	return ok
 }
@@ -399,7 +392,7 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 
 	if shellId == model.SHELLID_SHELL {
 		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.neoShellAccount[strings.ToLower(user)]))
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
 	}
 
 	cmdArr := []string{shell.Cmd}

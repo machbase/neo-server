@@ -48,31 +48,7 @@ func (act *Actor) Prompt() {
 	for {
 		var line string
 		var err error
-		if editor.Tty != nil && editor.Tty.Buffered() {
-			var remains []rune
-			for editor.Tty.Buffered() {
-				if r, err := editor.Tty.ReadRune(); err != nil {
-					break
-				} else if r == '\t' {
-					remains = append(remains, ' ')
-					remains = append(remains, ' ')
-				} else if r == '\r' || r == '\n' {
-					break
-				} else {
-					remains = append(remains, r)
-				}
-			}
-			if len(remains) > 0 {
-				line = string(remains)
-				if onPromptCont {
-					fmt.Println(act.conf.PromptCont, line)
-				} else {
-					fmt.Println(act.conf.Prompt, line)
-				}
-			}
-		} else {
-			line, err = editor.ReadLine(act.ctx)
-		}
+		line, err = editor.ReadLine(act.ctx)
 		if err != nil {
 			if err == io.EOF {
 				break

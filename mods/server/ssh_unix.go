@@ -62,7 +62,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	} else {
 		if shellId == model.SHELLID_SHELL {
 			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.neoShellAccount[strings.ToLower(user)]))
+			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
 		}
 	}
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"runtime"
 	"sort"
@@ -12,20 +13,19 @@ import (
 
 func (s *Server) initShellProvider() error {
 	candidates := []string{}
-	for _, addr := range s.Grpc.Listeners {
-		if runtime.GOOS == "windows" && strings.HasPrefix(addr, "unix://") {
+	for _, addr := range s.Http.Listeners {
+		if !strings.HasPrefix(addr, "tcp://") {
 			continue
 		}
-		candidates = append(candidates, addr)
+		candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		if strings.HasPrefix(candidates[i], "unix://") {
-			return true
+		iLoop := isLoopbackCandidate(candidates[i])
+		jLoop := isLoopbackCandidate(candidates[j])
+		if iLoop != jLoop {
+			return iLoop
 		}
-		if candidates[i] == "127.0.0.1" || candidates[i] == "localhost" {
-			return true
-		}
-		return false
+		return candidates[i] < candidates[j]
 	})
 	if len(candidates) == 0 {
 		s.log.Warn("no port found for internal communication")
@@ -40,13 +40,25 @@ func (s *Server) initShellProvider() error {
 			shellCmd = exename
 		}
 	}
-	if s.Grpc.Insecure {
-		shellCmd = fmt.Sprintf(`"%s" shell --insecure --server %s`, shellCmd, candidates[0])
-	} else {
-		shellCmd = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
-	}
+	shellCmd = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
 	s.models.ShellProvider().SetDefaultShellCommand(shellCmd)
 	return nil
+}
+
+func isLoopbackCandidate(candidate string) bool {
+	host := candidate
+	if parsedHost, _, err := net.SplitHostPort(candidate); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
 // sshd shell provider
