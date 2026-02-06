@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 func (s *Server) initShellProvider() error {
@@ -32,16 +33,29 @@ func (s *Server) initShellProvider() error {
 		return nil
 	}
 
-	shellCmd := ""
+	shellCmd := []string{}
 	if len(os.Args) > 0 {
-		if exename, err := os.Executable(); err != nil {
-			shellCmd = os.Args[0]
+		if executable, err := os.Executable(); err != nil {
+			shellCmd = append(shellCmd, fmt.Sprintf("%q", os.Args[0]), "shell")
 		} else {
-			shellCmd = exename
+			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "shell")
 		}
 	}
-	shellCmd = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
-	s.models.ShellProvider().SetDefaultShellCommand(shellCmd)
+	fsMgr := ssfs.Default()
+	lst := fsMgr.ListMounts()
+	for _, mnt := range lst {
+		if mnt == "/" {
+			if root, err := fsMgr.RealPath("/"); err == nil {
+				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work=%s"`, root))
+			}
+		} else {
+			if realPath, err := fsMgr.RealPath(mnt); err == nil {
+				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work%s=%s"`, mnt, realPath))
+			}
+		}
+	}
+	shellCmd = append(shellCmd, "--server", candidates[0])
+	s.models.ShellProvider().SetDefaultShellCommand(strings.Join(shellCmd, " "))
 	return nil
 }
 
