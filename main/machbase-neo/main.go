@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/machbase/neo-server/v8/mods/args"
-	"github.com/machbase/neo-shell/entry"
+	"github.com/machbase/neo-server/v8/shell/entry"
 )
 
 func main() {

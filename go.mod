@@ -32,9 +32,9 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.10.9
+	github.com/machbase/jsh v0.0.0-20260206050449-84c5523557ad
 	github.com/machbase/neo-engine/v8 v8.0.61-0.20260205071248-fa4ebb047f27
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
-	github.com/machbase/neo-shell v0.0.0-20260206050644-f9233d34405a
 	github.com/magefile/mage v1.15.0
 	github.com/mark3labs/mcp-go v0.37.0
 	github.com/mattn/go-colorable v0.1.14
@@ -132,7 +132,6 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
-	github.com/machbase/jsh v0.0.0-20260206050449-84c5523557ad // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect

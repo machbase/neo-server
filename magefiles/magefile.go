@@ -251,6 +251,7 @@ func TestN(p int) error {
 		"./booter/...",
 		"./api/...",
 		"./mods/...",
+		"./shell/...",
 	)
 
 	if runtime.GOOS != "windows" {
