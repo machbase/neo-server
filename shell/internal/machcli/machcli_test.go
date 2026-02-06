@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/jsh/engine"
-	"github.com/machbase/jsh/root"
 	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/shell/internal/session"
 )
 

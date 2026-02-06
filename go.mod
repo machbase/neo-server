@@ -27,12 +27,12 @@ require (
 	github.com/gopcua/opcua v0.7.4
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/hymkor/go-multiline-ny v0.22.4
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.10.9
-	github.com/machbase/jsh v0.0.0-20260206050449-84c5523557ad
 	github.com/machbase/neo-engine/v8 v8.0.61-0.20260205071248-fa4ebb047f27
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.15.0
@@ -44,6 +44,7 @@ require (
 	github.com/nats-io/nats.go v1.36.0
 	github.com/nyaosorg/go-box/v2 v2.1.4
 	github.com/nyaosorg/go-readline-ny v1.14.1
+	github.com/nyaosorg/go-ttyadapter v0.3.0
 	github.com/ollama/ollama v0.15.4
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/paulmach/orb v0.11.1
@@ -119,7 +120,6 @@ require (
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hymkor/go-multiline-ny v0.22.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
@@ -143,7 +143,6 @@ require (
 	github.com/nats-io/nkeys v0.4.7 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/nyaosorg/go-box/v3 v3.0.0 // indirect
-	github.com/nyaosorg/go-ttyadapter v0.3.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

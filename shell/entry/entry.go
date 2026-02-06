@@ -10,9 +10,9 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/machbase/jsh/engine"
-	"github.com/machbase/jsh/native"
-	"github.com/machbase/jsh/root"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/native"
+	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/shell/internal"
 	"github.com/machbase/neo-server/v8/shell/internal/machcli"
 	"github.com/machbase/neo-server/v8/shell/internal/pretty"
