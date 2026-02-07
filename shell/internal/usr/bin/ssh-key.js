@@ -1,8 +1,8 @@
 'use strict';
 
 const process = require('process');
+const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
-const pretty = require('/usr/lib/pretty');
 const { parseAndRun } = require('/usr/lib/opts');
 
 const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
@@ -64,7 +64,7 @@ function doList(config, args) {
     client.listSSHKeys()
         .then((rows) => {
             let box = pretty.Table(config);
-            box.appendHeader(["NAME", "KEY TYPE", "FIGERPRINT"]);
+            box.appendHeader(["NAME", "KEY TYPE", "FINGERPRINT"]);
             for (const row of rows) {
                 box.append([row.Comment, row.KeyType, row.Fingerprint]);
             }

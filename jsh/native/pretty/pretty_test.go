@@ -26,7 +26,6 @@ func RunTest(t *testing.T, tc TestCase) {
 			Code: tc.script,
 			FSTabs: []engine.FSTab{
 				root.RootFSTab(),
-				{MountPoint: "/usr", Source: "../usr/"},
 			},
 			Env: map[string]any{
 				"PATH": "/sbin:/lib:/usr/bin:/usr/lib:/work",
@@ -70,7 +69,7 @@ func TestBytes(t *testing.T) {
 		{
 			name: "Bytes_various_sizes",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Bytes(512));
 				console.println(pretty.Bytes(1536));
 				console.println(pretty.Bytes(1048576));
@@ -96,7 +95,7 @@ func TestInts(t *testing.T) {
 		{
 			name: "Ints_formatting",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Ints(1234567890));
 				console.println(pretty.Ints(0));
 				console.println(pretty.Ints(-999));
@@ -118,7 +117,7 @@ func TestDurations(t *testing.T) {
 		{
 			name: "Durations_nanoseconds",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Durations(1));
 				console.println(pretty.Durations(500));
 				console.println(pretty.Durations(999));
@@ -132,7 +131,7 @@ func TestDurations(t *testing.T) {
 		{
 			name: "Durations_microseconds",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Durations(1000));
 				console.println(pretty.Durations(1234));
 				console.println(pretty.Durations(5000));
@@ -148,7 +147,7 @@ func TestDurations(t *testing.T) {
 		{
 			name: "Durations_milliseconds",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Durations(1000000));
 				console.println(pretty.Durations(2340000));
 				console.println(pretty.Durations(100000000));
@@ -164,7 +163,7 @@ func TestDurations(t *testing.T) {
 		{
 			name: "Durations_seconds",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Durations(1000000000));
 				console.println(pretty.Durations(3010000000));
 				console.println(pretty.Durations(45000000000));
@@ -180,7 +179,7 @@ func TestDurations(t *testing.T) {
 		{
 			name: "Durations_minutes_hours",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Durations(60000000000));
 				console.println(pretty.Durations(125000000000));
 				console.println(pretty.Durations(3661000000000));
@@ -196,7 +195,7 @@ func TestDurations(t *testing.T) {
 		{
 			name: "Durations_days",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				console.println(pretty.Durations(86400000000000));
 				console.println(pretty.Durations(90061000000000));
 				console.println(pretty.Durations(172861000000000));

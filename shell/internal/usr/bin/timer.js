@@ -1,8 +1,8 @@
 'use strict';
 
 const process = require('process');
+const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
-const pretty = require('/usr/lib/pretty');
 const { parseAndRun } = require('/usr/lib/opts');
 
 const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }

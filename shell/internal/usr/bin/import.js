@@ -1,12 +1,12 @@
 'use strict';
 
 const process = require('process');
-const parseArgs = require('util/parseArgs');
-const machcli = require('/usr/lib/machcli');
-const pretty = require('/usr/lib/pretty');
+const pretty = require('pretty');
 const fs = require('fs');
 const parser = require('parser');
 const zlib = require('zlib');
+const parseArgs = require('util/parseArgs');
+const machcli = require('/usr/lib/machcli');
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },

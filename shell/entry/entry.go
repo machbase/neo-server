@@ -15,7 +15,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/shell/internal"
 	"github.com/machbase/neo-server/v8/shell/internal/machcli"
-	"github.com/machbase/neo-server/v8/shell/internal/pretty"
 	"github.com/machbase/neo-server/v8/shell/internal/session"
 	"github.com/nyaosorg/go-readline-ny"
 	"golang.org/x/term"
@@ -141,12 +140,12 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		conf.FSTabs = append([]engine.FSTab{root.RootFSTab()}, conf.FSTabs...)
 	}
 	if !conf.FSTabs.HasMountPoint("/usr") {
-		dirfs, _ := fs.Sub(internal.FsUsr, "usr")
-		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/usr", FS: dirfs})
+		fsDir, _ := fs.Sub(internal.FsUsr, "usr")
+		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/usr", FS: fsDir})
 	}
 	if !conf.FSTabs.HasMountPoint("/work") {
-		dirfs, _ := engine.DirFS(".")
-		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/work", FS: dirfs})
+		fsDir, _ := engine.DirFS(".")
+		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/work", FS: fsDir})
 	}
 	// setup ExecBuilder to enable re-execution
 	conf.ExecBuilder = func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
@@ -175,7 +174,6 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 	native.Enable(eng)
 	eng.RegisterNativeModule("@jsh/session", session.Module)
 	eng.RegisterNativeModule("@jsh/machcli", machcli.Module)
-	eng.RegisterNativeModule("@jsh/pretty", pretty.Module)
 
 	// configure default session
 	if err := session.Configure(session.Config{

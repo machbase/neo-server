@@ -7,7 +7,7 @@ func TestProgress(t *testing.T) {
 		{
 			name: "Progress_basic",
 			script: `
-				const pretty = require('/usr/lib/pretty');
+				const pretty = require('pretty');
 				const pw = pretty.Progress();
 				const tracker = pw.tracker({message: 'Processing', total: 0});
 				

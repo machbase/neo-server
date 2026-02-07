@@ -2,8 +2,8 @@
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
+const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
-const pretty = require('/usr/lib/pretty');
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
@@ -96,7 +96,7 @@ function listShells(config, args) {
 }
 
 function addShell(config, args) {
-     const client = new neoapi.Client(config);
+    const client = new neoapi.Client(config);
     if (args.length < 2) {
         console.println('Error: Missing parameters. Usage: add <name> <bin_path> [args...]');
         return;

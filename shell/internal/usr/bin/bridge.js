@@ -1,8 +1,8 @@
 'use strict';
 
 const process = require('process');
+const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
-const pretty = require('/usr/lib/pretty');
 const { parseAndRun } = require('/usr/lib/opts');
 
 // '-t' ('--type') is duplicated in pretty.TableArgOptions, so remove it here
