@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -313,6 +314,9 @@ func (m *FS) AppendFile(name string, data []byte) error {
 // Chmod changes the permission mode of a file or directory at the specified path
 func (m *FS) Chmod(name string, mode uint32) error {
 	return m.performOSOperation(name, func(target string) error {
+		if runtime.GOOS == "windows" {
+			return nil // Chmod is not supported on Windows
+		}
 		return os.Chmod(target, fs.FileMode(mode))
 	})
 }
@@ -320,6 +324,9 @@ func (m *FS) Chmod(name string, mode uint32) error {
 // Chown changes the uid and gid of a file or directory at the specified path
 func (m *FS) Chown(name string, uid, gid int) error {
 	return m.performOSOperation(name, func(target string) error {
+		if runtime.GOOS == "windows" {
+			return nil // Chown is not supported on Windows
+		}
 		return os.Chown(target, uid, gid)
 	})
 }
@@ -356,7 +363,11 @@ func (m *FS) Readlink(name string) (string, error) {
 		return "", err
 	}
 
-	return os.Readlink(target)
+	result, err := os.Readlink(target)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(result), nil
 }
 
 // OpenFD opens a file and returns a file descriptor
@@ -483,6 +494,10 @@ func (m *FS) FchmodFD(fd int, mode uint32) error {
 		return fs.ErrInvalid
 	}
 
+	if runtime.GOOS == "windows" {
+		return nil // Fchmod is not supported on Windows
+	}
+
 	return file.Chmod(fs.FileMode(mode))
 }
 
@@ -494,6 +509,10 @@ func (m *FS) FchownFD(fd int, uid, gid int) error {
 
 	if !ok {
 		return fs.ErrInvalid
+	}
+
+	if runtime.GOOS == "windows" {
+		return nil // Fchown is not supported on Windows
 	}
 
 	return file.Chown(uid, gid)
@@ -510,6 +529,14 @@ func (m *FS) FsyncFD(fd int) error {
 	}
 
 	return file.Sync()
+}
+
+func (m *FS) Platform() string {
+	return runtime.GOOS
+}
+
+func (m *FS) Arch() string {
+	return runtime.GOARCH
 }
 
 // ReadDir implements fs.ReadDirFS
@@ -744,6 +771,10 @@ func (jr *JSRuntime) Filesystem(vm *goja.Runtime, module *goja.Object) {
 	exports.Set("fchown", func(fd int, uid, gid int) error { return jr.filesystem.FchownFD(fd, uid, gid) })
 	exports.Set("fsync", func(fd int) error { return jr.filesystem.FsyncFD(fd) })
 	exports.Set("countLines", func(path string) (int, error) { return jr.filesystem.CountLines(path) })
+
+	// helper functions
+	exports.Set("platform", func() string { return jr.filesystem.Platform() })
+	exports.Set("arch", func() string { return jr.filesystem.Arch() })
 
 	// Export OS-specific file constants from Go
 	// These values are platform-specific and must come from the os package

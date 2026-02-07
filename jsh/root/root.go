@@ -11,6 +11,6 @@ import (
 var rootFS embed.FS
 
 func RootFSTab() engine.FSTab {
-	dirfs, _ := fs.Sub(rootFS, "embed")
-	return engine.FSTab{MountPoint: "/", FS: dirfs}
+	fsDir, _ := fs.Sub(rootFS, "embed")
+	return engine.FSTab{MountPoint: "/", FS: fsDir}
 }

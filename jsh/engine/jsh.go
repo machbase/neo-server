@@ -21,10 +21,10 @@ func New(conf Config) (*JSRuntime, error) {
 	filesystem := NewFS()
 	for _, tab := range conf.FSTabs {
 		if tab.FS == nil {
-			if dirfs, err := DirFS(tab.Source); err != nil {
+			if fsDir, err := DirFS(filepath.FromSlash(tab.Source)); err != nil {
 				return nil, fmt.Errorf("error mounting %s to %s: %v", tab.Source, tab.MountPoint, err)
 			} else {
-				filesystem.Mount(tab.MountPoint, dirfs)
+				filesystem.Mount(tab.MountPoint, fsDir)
 			}
 		} else {
 			filesystem.Mount(tab.MountPoint, tab.FS)

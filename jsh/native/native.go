@@ -5,6 +5,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/native/http"
 	"github.com/machbase/neo-server/v8/jsh/native/mqtt"
 	"github.com/machbase/neo-server/v8/jsh/native/net"
+	"github.com/machbase/neo-server/v8/jsh/native/os"
 	"github.com/machbase/neo-server/v8/jsh/native/parser"
 	"github.com/machbase/neo-server/v8/jsh/native/readline"
 	"github.com/machbase/neo-server/v8/jsh/native/shell"
@@ -25,4 +26,5 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/zlib", zlib.Module)
 	n.RegisterNativeModule("@jsh/net", net.Module)
 	n.RegisterNativeModule("@jsh/parser", parser.Module)
+	n.RegisterNativeModule("@jsh/os", os.Module)
 }

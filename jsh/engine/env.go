@@ -238,18 +238,23 @@ func (env *Env) GlobalFolders() []string {
 }
 
 func (env *Env) PathResolver(base, path string) string {
-	if base == "." || strings.HasPrefix(base, "./") {
-		cwd := env.Get("PWD")
-		if cwdStr, ok := cwd.(string); ok {
-			base = filepath.ToSlash(filepath.Join(cwdStr, base))
+	var resolved string
+	if strings.HasPrefix(path, "/") {
+		resolved = path
+	} else {
+		if base == "." || strings.HasPrefix(base, "./") {
+			cwd := env.Get("PWD")
+			if cwdStr, ok := cwd.(string); ok {
+				base = filepath.ToSlash(filepath.Join(cwdStr, base))
+			}
+		} else if base == ".." || strings.HasPrefix(base, "../") {
+			cwd := env.Get("PWD")
+			if cwdStr, ok := cwd.(string); ok {
+				base = filepath.ToSlash(filepath.Join(cwdStr, base))
+			}
 		}
-	} else if base == ".." || strings.HasPrefix(base, "../") {
-		cwd := env.Get("PWD")
-		if cwdStr, ok := cwd.(string); ok {
-			base = filepath.ToSlash(filepath.Join(cwdStr, base))
-		}
+		resolved = require.DefaultPathResolver(base, path)
 	}
-	resolved := require.DefaultPathResolver(base, path)
 	resolved = filepath.ToSlash(resolved)
 
 	var filesystem fs.FS = env.Filesystem()
@@ -314,7 +319,7 @@ func (env *Env) LoadSource(moduleName string) ([]byte, error) {
 func loadSource(fileSystem fs.FS, moduleName string) ([]byte, error) {
 	file, err := fileSystem.Open(moduleName)
 	if err != nil {
-		if !strings.HasSuffix(moduleName, ".js") {
+		if !strings.HasSuffix(moduleName, ".js") && !strings.HasSuffix(moduleName, ".json") {
 			file, err = fileSystem.Open(moduleName + ".js")
 		}
 		if err != nil {

@@ -1043,6 +1043,13 @@ const constants = {
     O_APPEND: _fs.O_APPEND,
 };
 
+function platform() {
+    return _fs.platform();
+}
+function arch() {
+    return _fs.arch();
+}
+
 // Export all functions
 module.exports = {
     // File operations
@@ -1067,6 +1074,10 @@ module.exports = {
     existsSync,
     accessSync,
     countLinesSync,
+
+    // helper functions
+    platform,
+    arch,
 
     // Symlink operations
     symlinkSync,
