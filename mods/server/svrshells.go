@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"runtime"
-	"sort"
 	"strings"
 
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -13,24 +12,40 @@ import (
 )
 
 func (s *Server) initShellProvider() error {
-	candidates := []string{}
+	tcpCandidates := []string{}
 	for _, addr := range s.Http.Listeners {
 		if !strings.HasPrefix(addr, "tcp://") {
 			continue
 		}
-		candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
+		tcpCandidates = append(tcpCandidates, strings.TrimPrefix(addr, "tcp://"))
 	}
-	sort.Slice(candidates, func(i, j int) bool {
-		iLoop := isLoopbackCandidate(candidates[i])
-		jLoop := isLoopbackCandidate(candidates[j])
-		if iLoop != jLoop {
-			return iLoop
-		}
-		return candidates[i] < candidates[j]
-	})
-	if len(candidates) == 0 {
+	if len(tcpCandidates) == 0 {
 		s.log.Warn("no port found for internal communication")
 		return nil
+	}
+
+	candidate := ""
+	for _, addr := range tcpCandidates {
+		if isLoopbackCandidate(addr) {
+			candidate = addr
+			break
+		}
+	}
+	if candidate == "" {
+		for _, addr := range tcpCandidates {
+			if !isAnyIfaceCandidate(addr) {
+				continue
+			}
+			_, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				continue
+			}
+			candidate = net.JoinHostPort("127.0.0.1", port)
+			break
+		}
+	}
+	if candidate == "" {
+		candidate = tcpCandidates[0]
 	}
 
 	shellCmd := []string{}
@@ -54,8 +69,9 @@ func (s *Server) initShellProvider() error {
 			}
 		}
 	}
-	shellCmd = append(shellCmd, "--server", candidates[0])
+	shellCmd = append(shellCmd, "--server", candidate)
 	s.models.ShellProvider().SetDefaultShellCommand(strings.Join(shellCmd, " "))
+	s.log.Info("Set shell command:", strings.Join(shellCmd, " "))
 	return nil
 }
 
@@ -73,6 +89,20 @@ func isLoopbackCandidate(candidate string) bool {
 		return false
 	}
 	return ip.IsLoopback()
+}
+
+// isAnyIfaceCandidate checks if the candidate address is bound to any interface (
+func isAnyIfaceCandidate(candidate string) bool {
+	host := candidate
+	if parsedHost, _, err := net.SplitHostPort(candidate); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsUnspecified()
 }
 
 // sshd shell provider

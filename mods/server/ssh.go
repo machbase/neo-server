@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/pkg/sftp"
@@ -377,18 +376,18 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		return
 	}
 
-	if cmd := ss.Command(); len(cmd) > 0 && cmd[0] == "jsh" {
-		jsCmd := "@.js"
-		jsArgs := []string{}
-		if len(cmd) > 1 {
-			jsCmd = cmd[1]
-		}
-		if len(cmd) > 2 {
-			jsArgs = cmd[2:]
-		}
-		svr.jshHandler(ss, jsCmd, jsArgs, shell.Envs)
-		return
-	}
+	// if cmd := ss.Command(); len(cmd) > 0 && cmd[0] == "jsh" {
+	// 	jsCmd := "@.js"
+	// 	jsArgs := []string{}
+	// 	if len(cmd) > 1 {
+	// 		jsCmd = cmd[1]
+	// 	}
+	// 	if len(cmd) > 2 {
+	// 		jsArgs = cmd[2:]
+	// 	}
+	// 	svr.jshHandler(ss, jsCmd, jsArgs, shell.Envs)
+	// 	return
+	// }
 
 	if shellId == model.SHELLID_SHELL {
 		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
@@ -604,38 +603,5 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 		}
 	default:
 		return nil, fmt.Errorf("parsing private key failed, unsupported key type %q", block.Type)
-	}
-}
-
-func (svr *sshd) jshHandler(ss ssh.Session, cmd string, args []string, env []string) {
-	_ = env
-
-	user, _, _ := svr.findShell(ss)
-
-	// if ssh session is not interactive, disable echo
-	echo := len(ss.Command()) == 0
-
-	j := jsh.NewJsh(
-		ss.Context(),
-		jsh.WithNativeModules(jsh.NativeModuleNames()...),
-		jsh.WithParent(nil),
-		jsh.WithReader(ss),
-		jsh.WithWriter(ss),
-		jsh.WithEcho(echo),
-		jsh.WithUserName(user),
-	)
-	err := j.Exec(append([]string{cmd}, args...))
-	if err != nil {
-		if cmd == "@.js" {
-			cmd = "jsh"
-		}
-		for _, err := range j.Errors() {
-			svr.log.Warnf("%s %s", cmd, jsh.ErrorToString(err))
-		}
-		ss.Exit(1)
-		return
-	} else {
-		ss.Exit(0)
-		return
 	}
 }

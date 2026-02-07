@@ -158,6 +158,12 @@ func anyToPrintable(val any) any {
 			f = append(f, fmt.Sprintf("%s:%v", k, anyToPrintable(v)))
 		}
 		return fmt.Sprintf("{%s}", strings.Join(f, ", "))
+	case []map[string]any:
+		f := []string{}
+		for _, m := range val {
+			f = append(f, fmt.Sprintf("%v", anyToPrintable(m)))
+		}
+		return fmt.Sprintf("[%s]", strings.Join(f, ", "))
 	case []byte:
 		return string(val)
 	case []any:
