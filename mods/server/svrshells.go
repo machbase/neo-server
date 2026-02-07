@@ -36,11 +36,16 @@ func (s *Server) initShellProvider() error {
 			if !isAnyIfaceCandidate(addr) {
 				continue
 			}
-			_, port, err := net.SplitHostPort(addr)
+			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
 				continue
 			}
-			candidate = net.JoinHostPort("127.0.0.1", port)
+			// Use IPv6 loopback for IPv6 any address, IPv4 loopback for IPv4 any address
+			loopbackIP := "127.0.0.1"
+			if strings.Contains(host, ":") {
+				loopbackIP = "::1"
+			}
+			candidate = net.JoinHostPort(loopbackIP, port)
 			break
 		}
 	}
