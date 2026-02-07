@@ -129,6 +129,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 			"NEOSHELL_PASSWORD": engine.SecureString(neoPassword),
 		}
 		conf.Aliases = map[string]string{
+			"jsh":      "/sbin/shell.js",
 			"describe": "show table",
 			"desc":     "show table",
 		}
@@ -152,7 +153,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		conf := engine.Config{
 			Code:   code,
 			Args:   args,
-			FSTabs: fstabs,
+			FSTabs: conf.FSTabs,
 			Env:    env,
 		}
 		secretBox, err := engine.NewSecretBox(conf)

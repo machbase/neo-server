@@ -14,9 +14,9 @@ func Main() int {
 	cli, err := ParseCommand(os.Args)
 	if err != nil {
 		if cli != nil {
-			doHelp(cli.Command, "")
+			doHelp(cli.Command)
 		} else {
-			doHelp("", "")
+			doHelp("")
 		}
 		fmt.Println("ERR", err.Error())
 		return 1
@@ -30,7 +30,7 @@ func Main() int {
 	case "version":
 		fmt.Println(mods.GenBanner())
 	case "help":
-		doHelp(cli.Help.Command, cli.Help.SubCommand)
+		doHelp(cli.Help.Command)
 	case "serve":
 		return doServe(cli.Serve.Preset, false, false)
 	case "serve-headless":
