@@ -2,12 +2,9 @@
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
-const machcli = require('/usr/lib/machcli');
 const neoapi = require('/usr/lib/neoapi');
-const pretty = require('/usr/lib/pretty');
 const fs = require('fs');
-const parser = require('parser');
-const zlib = require('zlib');
+const { splitFields } = require('util')
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
@@ -67,13 +64,17 @@ try {
 }
 
 
+const SQL_VERBS = new Set([
+    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER',
+    'TRUNCATE', 'GRANT', 'REVOKE', 'COMMIT', 'ROLLBACK', 'SAVEPOINT',
+    'BACKUP', "MOUNT",
+]);
+
 function runSqlStatements(statements) {
     if (!statements || statements.length === 0) {
         console.println(`No SQL statements found in file '${filename}'.`);
         return;
     }
-    const db = new machcli.Client(config);
-    const conn = db.connect();
     try {
         for (let i = 0; i < statements.length; i++) {
             const stmt = statements[i];
@@ -84,12 +85,26 @@ function runSqlStatements(statements) {
                 let sqlText = stmt.text.split('\n').map(line => line.trim()).filter(line => line.length > 0).join(' ');
                 console.println(`\n[${i + 1}/${statements.length}] Line ${stmt.beginLine}~${stmt.endLine}: ${sqlText}`);
             }
-            process.exec('sql', stmt.text);
+            stmt.text = stmt.text.replace(/;+\s*$/g, ''); // remove trailing semicolons
+            let fields = splitFields(stmt.text);
+            let firstField = fields[0];
+
+            // Handle aliased commands
+            const aliasedCommand = process.env.alias(firstField);
+            if (aliasedCommand) {
+                firstField = aliasedCommand[0]
+                fields = [...aliasedCommand, ...fields.slice(1)];
+            }
+
+            if (SQL_VERBS.has(firstField.toUpperCase())) {
+                // Handle SQL commands
+                process.exec("sql.js", stmt.text);
+            } else {
+                // Handle other commands
+                process.exec(firstField, ...fields.slice(1));
+            }
         }
     } catch (err) {
         console.println(`Error executing statements: ${err.message}`);
-    } finally {
-        conn && conn.close();
-        db && db.close();
     }
 }
