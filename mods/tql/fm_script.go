@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -136,6 +138,9 @@ type JSContext struct {
 var predefModules map[string][]byte
 
 func RegisterPredefModule(name string, content []byte) {
+	if runtime.GOOS == "windows" {
+		name = filepath.FromSlash(strings.TrimPrefix(name, "/"))
+	}
 	if predefModules == nil {
 		predefModules = map[string][]byte{}
 	}
@@ -143,6 +148,9 @@ func RegisterPredefModule(name string, content []byte) {
 }
 
 func UnregisterPredefModule(name string) {
+	if runtime.GOOS == "windows" {
+		name = filepath.FromSlash(strings.TrimPrefix(name, "/"))
+	}
 	if predefModules != nil {
 		delete(predefModules, name)
 	}
