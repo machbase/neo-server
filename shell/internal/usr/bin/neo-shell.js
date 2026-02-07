@@ -10,6 +10,8 @@ if (!actor.user) {
     actor.user = env.get('NEOSHELL_USER');
     if (!actor.user) {
         actor.user = 'sys';
+    } else {
+        actor.user = actor.user.toLowerCase();
     }
 }
 if (!actor.password) {
