@@ -238,6 +238,19 @@ func TestOSBasicFunctions(t *testing.T) {
 			},
 		},
 		{
+			name: "bootTime",
+			script: `
+				const os = require('os');
+				const bootTime = os.bootTime();
+				console.println('has bootTime:', bootTime >= 0);
+				console.println('is number:', typeof bootTime === 'number');
+			`,
+			output: []string{
+				"has bootTime: true",
+				"is number: true",
+			},
+		},
+		{
 			name: "cpus",
 			script: `
 				const os = require('os');
@@ -259,6 +272,18 @@ func TestOSBasicFunctions(t *testing.T) {
 			},
 		},
 		{
+			name: "cpuCounts",
+			script: `
+				const os = require('os');
+				console.println("cpu logical:", os.cpuCounts(true) > 0);
+				console.println("cpu physical:", os.cpuCounts(false) > 0);
+			`,
+			output: []string{
+				"cpu logical: true",
+				"cpu physical: true",
+			},
+		},
+		{
 			name: "loadavg",
 			script: `
 				const os = require('os');
@@ -271,6 +296,39 @@ func TestOSBasicFunctions(t *testing.T) {
 				"is array: true",
 				"has 3 elements: true",
 				"all numbers: true",
+			},
+		},
+		{
+			name: "hostInfo",
+			script: `
+				const os = require('os');
+				const info = os.hostInfo();
+				console.println('is object:', typeof info === 'object');
+				console.println('has hostname:', typeof info.hostname === 'string');
+				console.println('has uptime:', typeof info.uptime === 'number');
+				console.println('has bootTime:', typeof info.bootTime === 'number');
+				console.println('has procs:', typeof info.procs === 'number');
+				console.println('has os:', typeof info.os === 'string');
+				console.println('has platform:', typeof info.platform === 'string');
+				console.println('has platformFamily:', typeof info.platformFamily === 'string');
+				console.println('has platformVersion:', typeof info.platformVersion === 'string');
+				console.println('has kernelVersion:', typeof info.kernelVersion === 'string');
+				console.println('has kernelArch:', typeof info.kernelArch === 'string');
+				console.println('has hostId:', typeof info.hostId === 'string');
+			`,
+			output: []string{
+				"is object: true",
+				"has hostname: true",
+				"has uptime: true",
+				"has bootTime: true",
+				"has procs: true",
+				"has os: true",
+				"has platform: true",
+				"has platformFamily: true",
+				"has platformVersion: true",
+				"has kernelVersion: true",
+				"has kernelArch: true",
+				"has hostId: true",
 			},
 		},
 		{

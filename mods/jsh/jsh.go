@@ -15,11 +15,9 @@ import (
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
-	"github.com/machbase/neo-server/v8/mods/jsh/analysis"
 	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 	"github.com/machbase/neo-server/v8/mods/jsh/db"
 	"github.com/machbase/neo-server/v8/mods/jsh/filter"
-	"github.com/machbase/neo-server/v8/mods/jsh/generator"
 	"github.com/machbase/neo-server/v8/mods/jsh/http"
 	"github.com/machbase/neo-server/v8/mods/jsh/mat"
 	"github.com/machbase/neo-server/v8/mods/jsh/mqtt"
@@ -318,9 +316,7 @@ func init() {
 		"@jsh/db":        db.NewModuleLoader,
 		"@jsh/publisher": publisher.NewModuleLoader,
 		"@jsh/filter":    filter.NewModuleLoader,
-		"@jsh/analysis":  analysis.NewModuleLoader,
 		"@jsh/spatial":   spatial.NewModuleLoader,
-		"@jsh/generator": generator.NewModuleLoader,
 		"@jsh/mat":       mat.NewModuleLoader,
 		"@jsh/mqtt":      mqtt.NewModuleLoader,
 		"@jsh/http":      http.NewModuleLoader,

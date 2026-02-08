@@ -45,6 +45,10 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	m.Set("networkInterfaces", func() interface{} { return networkInterfaces() })
 	m.Set("EOL", eol())
 
+	m.Set("cpuCounts", func(logical bool) (int, error) { return cpu.Counts(logical) })
+	m.Set("bootTime", func() (uint64, error) { return host.BootTime() })
+	m.Set("hostInfo", func(call goja.FunctionCall) interface{} { return hostInfo() })
+
 	constants := rt.NewObject()
 	signals := rt.NewObject()
 	signals.Set("SIGHUP", 1)
@@ -94,8 +98,16 @@ func cpus() interface{} {
 	result := make([]map[string]interface{}, 0, len(info))
 	for i, cpuInfo := range info {
 		cpuMap := map[string]interface{}{
-			"model": cpuInfo.ModelName,
-			"speed": cpuInfo.Mhz,
+			"cpu":        cpuInfo.CPU,
+			"vendor":     cpuInfo.VendorID,
+			"family":     cpuInfo.Family,
+			"model":      cpuInfo.Model,
+			"stepping":   cpuInfo.Stepping,
+			"physicalId": cpuInfo.PhysicalID,
+			"coreId":     cpuInfo.CoreID,
+			"cores":      cpuInfo.Cores,
+			"modelName":  cpuInfo.ModelName,
+			"speed":      cpuInfo.Mhz,
 		}
 
 		if i < len(times) {
@@ -209,6 +221,10 @@ func uptime() int64 {
 }
 
 func userInfo(options map[string]interface{}) interface{} {
+	// {encoding: 'utf8'} default.
+	// If encoding is set to 'buffer', the username, shell, and homedir values will be Buffer instances.
+	_ = options // currently unused,
+
 	currentUser, err := user.Current()
 	if err != nil {
 		return map[string]interface{}{
@@ -254,6 +270,30 @@ func userInfo(options map[string]interface{}) interface{} {
 	}
 	result["shell"] = shell
 
+	return result
+}
+
+func hostInfo() interface{} {
+	n, err := host.Info()
+	if err != nil {
+		return map[string]interface{}{}
+	}
+
+	result := map[string]interface{}{
+		"hostname":             n.Hostname,
+		"uptime":               n.Uptime,
+		"bootTime":             n.BootTime,
+		"procs":                n.Procs,                // number of processes
+		"os":                   n.OS,                   // ex: freebsd, linux
+		"platform":             n.Platform,             // ex: ubuntu
+		"platformFamily":       n.PlatformFamily,       // ex: debian, rhel
+		"platformVersion":      n.PlatformVersion,      // version of the complete OS
+		"kernelVersion":        n.KernelVersion,        // version of the OS kernel (if available)
+		"kernelArch":           n.KernelArch,           // native cpu architecture queried at runtime, as returned by `uname -m` or empty string in case of error
+		"virtualizationSystem": n.VirtualizationSystem, //
+		"virtualizationRole":   n.VirtualizationRole,   // guest or host
+		"hostId":               n.HostID,               // ex: uuid
+	}
 	return result
 }
 

@@ -120,6 +120,14 @@ function uptime() {
 }
 
 /**
+ * Returns the system boot time as a timestamp
+ * @returns 
+ */
+function bootTime() {
+    return _os.bootTime();
+}
+
+/**
  * Returns information about the currently effective user
  * @param {Object} [options] - Optional configuration
  * @param {string} [options.encoding='utf8'] - Character encoding (currently not used)
@@ -127,6 +135,18 @@ function uptime() {
  */
 function userInfo(options) {
     return _os.userInfo(options);
+}
+
+/**
+ * Returns information about the host system
+ * @returns {Object} Host information object
+ */
+function hostInfo() {
+    return _os.hostInfo();
+}
+
+function cpuCounts(logical = false) {
+    return _os.cpuCounts(logical);
 }
 
 /**
@@ -144,6 +164,7 @@ const EOL = _os.EOL;
 module.exports = {
     arch,
     cpus,
+    cpuCounts,
     endianness,
     freemem,
     homedir,
@@ -156,7 +177,9 @@ module.exports = {
     totalmem,
     type,
     uptime,
+    bootTime,
     userInfo,
+    hostInfo,
     constants,
     EOL
 };
