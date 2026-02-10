@@ -498,6 +498,7 @@ func (pStmt *PreparedStmt) Close() error {
 }
 
 func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
+	defer mach.CliExecuteClean(pStmt.stmt.handle)
 	ret := &Result{}
 	if err := pStmt.stmt.bindParams(params...); err != nil {
 		ret.err = err
@@ -517,15 +518,16 @@ func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
 	return ret
 }
 
-func (pStmt *PreparedStmt) Query(ctx context.Context, args ...any) (api.Rows, error) {
-	if err := pStmt.stmt.bindParams(args...); err != nil {
+func (pStmt *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, error) {
+	if err := pStmt.stmt.bindParams(params...); err != nil {
 		return nil, err
 	}
 	if err := pStmt.stmt.execute(); err != nil {
 		return nil, err
 	}
 	ret := &Rows{
-		stmt: pStmt.stmt,
+		stmt:       pStmt.stmt,
+		isPrepared: true,
 	}
 	ret.rowsCount = pStmt.stmt.rowCount
 	return ret, nil
@@ -861,6 +863,7 @@ type Stmt struct {
 	reachEOF    bool
 	sqlHead     string
 	rowCount    int64
+	execCount   int64
 }
 
 func (stmt *Stmt) Close() error {
@@ -879,13 +882,18 @@ func (stmt *Stmt) execute() error {
 	if err := mach.CliExecute(stmt.handle); err != nil {
 		return errorWithCause(stmt, err)
 	}
+	defer func() {
+		stmt.execCount++
+	}()
 
 	if rowCount, err := mach.CliRowCount(stmt.handle); err != nil {
 		return errorWithCause(stmt, err)
 	} else {
 		stmt.rowCount = rowCount
 	}
-
+	if stmt.execCount > 0 {
+		return nil
+	}
 	if stmt.sqlHead != "SELECT" {
 		return nil
 	}
@@ -1093,11 +1101,12 @@ func (r *Row) Message() string {
 }
 
 type Rows struct {
-	stmt      *Stmt
-	err       error
-	row       []any
-	rowsCount int64
-	stmtType  mach.StmtType
+	stmt       *Stmt
+	err        error
+	row        []any
+	rowsCount  int64
+	stmtType   mach.StmtType
+	isPrepared bool
 }
 
 var _ api.Rows = (*Rows)(nil)
@@ -1108,7 +1117,12 @@ func (r *Rows) Err() error {
 
 func (r *Rows) Close() error {
 	if r.stmt != nil {
-		return r.stmt.Close()
+		if r.isPrepared {
+			r.stmt.reachEOF = false
+			return mach.CliExecuteClean(r.stmt.handle)
+		} else {
+			return r.stmt.Close()
+		}
 	}
 	return nil
 }

@@ -641,7 +641,157 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 }
 
 func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
-	panic("not implemented")
+	conn.SetLatestSql(sqlText)
+	var stmt unsafe.Pointer
+	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
+		return nil, err
+	}
+	api.AllocStmt()
+	if err := mach.EngPrepare(stmt, sqlText); err != nil {
+		mach.EngFreeStmt(stmt)
+		return nil, err
+	}
+	return &PreparedStmt{stmt: stmt, sqlText: sqlText}, nil
+}
+
+type PreparedStmt struct {
+	stmt    unsafe.Pointer
+	sqlText string
+
+	stmtType     mach.StmtType
+	affectedRows int64
+	columns      api.Columns
+}
+
+func (ps *PreparedStmt) Close() error {
+	if err := mach.EngFreeStmt(ps.stmt); err != nil {
+		return err
+	}
+	api.FreeStmt()
+	return nil
+}
+
+func (ps *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
+	defer mach.EngExecuteClean(ps.stmt)
+	var result = &Result{}
+	for i, p := range params {
+		if result.err = bind(ps.stmt, i, p); result.err != nil {
+			ps.Close()
+			return result
+		}
+	}
+	if result.err = ps.execute(); result.err != nil {
+		ps.Close()
+		return result
+	}
+	result.affectedRows = ps.affectedRows
+	result.stmtType = ps.stmtType
+	return result
+}
+
+func (ps *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, error) {
+	rows := &Rows{}
+	for i, p := range params {
+		if err := bind(rows.stmt, i, p); err != nil {
+			mach.EngFreeStmt(rows.stmt)
+			return nil, err
+		}
+	}
+	rows.stmt = ps.stmt
+
+	if err := ps.execute(); err != nil {
+		ps.Close()
+		return nil, err
+	}
+	rows.stmt = ps.stmt
+	rows.stmtType = ps.stmtType
+	rows.sqlText = ps.sqlText
+	rows.columns = ps.columns
+	rows.isPrepared = true
+
+	return rows, nil
+}
+
+func (ps *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
+	defer mach.EngExecuteClean(ps.stmt)
+	var row = &Row{}
+	for i, p := range params {
+		if row.err = bind(ps.stmt, i, p); row.err != nil {
+			return row
+		}
+	}
+	if row.err = ps.execute(); row.err != nil {
+		return row
+	}
+	if !ps.stmtType.IsSelect() {
+		row.affectedRows = ps.affectedRows
+		row.ok = true
+		return row
+	}
+	var fetched bool
+	if fetched, row.err = mach.EngFetch(ps.stmt); row.err != nil {
+		// fetch error
+		return row
+	}
+
+	// nothing fetched
+	if !fetched {
+		row.err = sql.ErrNoRows
+		return row
+	}
+
+	if cols, err := stmtColumns(ps.stmt); err != nil {
+		row.err = err
+		return row
+	} else {
+		row.columns = cols
+		row.values, row.err = cols.MakeBuffer()
+		if row.err != nil {
+			return row
+		}
+		for i, col := range cols {
+			rawType, err := columnDataTypeToRawType(col.DataType)
+			if err != nil {
+				row.err = err
+				return row
+			}
+			isNull := false
+			row.err = readColumnData(ps.stmt, rawType, i, row.values[i], &isNull)
+			if row.err != nil {
+				return row
+			}
+			if isNull {
+				row.values[i] = nil
+			}
+		}
+	}
+	if row.err == nil {
+		row.affectedRows = 1
+		row.ok = true
+	}
+	return row
+}
+
+func (ps *PreparedStmt) execute() error {
+	if err := mach.EngExecute(ps.stmt); err != nil {
+		return err
+	}
+	if stmtType, err := mach.EngStmtType(ps.stmt); err != nil {
+		return err
+	} else {
+		ps.stmtType = mach.StmtType(stmtType)
+	}
+	if affectedRows, err := mach.EngEffectRows(ps.stmt); err != nil {
+		return err
+	} else {
+		ps.affectedRows = affectedRows
+	}
+	if cols, err := stmtColumns(ps.stmt); err != nil {
+		return err
+	} else {
+		ps.columns = cols
+	}
+	return nil
 }
 
 // Query executes SQL statements that are expected multiple rows as result.

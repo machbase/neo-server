@@ -145,6 +145,7 @@ type Rows struct {
 	columns    api.Columns
 	fetchError error
 
+	isPrepared          bool
 	returnChan          chan struct{}
 	candidateReturnChan chan struct{}
 }
@@ -183,7 +184,11 @@ func (rows *Rows) CloseSync() error {
 	var err error
 	if rows.stmt != nil {
 		api.FreeStmt()
-		err = mach.EngFreeStmt(rows.stmt)
+		if rows.isPrepared {
+			err = mach.EngExecuteClean(rows.stmt)
+		} else {
+			err = mach.EngFreeStmt(rows.stmt)
+		}
 		rows.stmt = nil
 	}
 	rows.sqlText = ""
