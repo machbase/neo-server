@@ -885,7 +885,6 @@ func (stmt *Stmt) execute() error {
 	defer func() {
 		stmt.execCount++
 	}()
-
 	if rowCount, err := mach.CliRowCount(stmt.handle); err != nil {
 		return errorWithCause(stmt, err)
 	} else {
