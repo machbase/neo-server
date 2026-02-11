@@ -256,6 +256,113 @@ func (conn *Conn) Explain(ctx context.Context, sqlText string, full bool) (strin
 	return rsp.Plan, nil
 }
 
+type Stmt struct {
+	conn    *Conn
+	handle  *PreparedStatementHandle
+	sqlText string
+}
+
+func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
+	req := &PrepareRequest{Conn: conn.handle, Sql: sqlText}
+	rsp, err := conn.client.cli.Prepare(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	stmt := &Stmt{
+		conn:    conn,
+		handle:  rsp.StmtHandle,
+		sqlText: sqlText,
+	}
+	return stmt, nil
+}
+
+func (stmt *Stmt) Close() error {
+	req := stmt.handle
+	rsp, err := stmt.conn.client.cli.PrepareClose(context.Background(), req)
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+func (stmt *Stmt) Exec(ctx context.Context, params ...any) api.Result {
+	pbParams, err := ConvertAnyToPb(params)
+	if err != nil {
+		return &Result{err: err}
+	}
+	req := &PreparedExecRequest{Stmt: stmt.handle, Params: pbParams}
+	rsp, err := stmt.conn.client.cli.PreparedExec(ctx, req)
+	if err != nil {
+		return &Result{err: err}
+	}
+	if !rsp.Success {
+		return &Result{err: errors.New(rsp.Reason), message: rsp.Reason}
+	}
+	return &Result{message: rsp.Reason, rowsAffected: rsp.RowsAffected}
+}
+
+func (stmt *Stmt) Query(ctx context.Context, params ...any) (api.Rows, error) {
+	pbParams, err := ConvertAnyToPb(params)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &PreparedQueryRequest{Stmt: stmt.handle, Params: pbParams}
+	rsp, err := stmt.conn.client.cli.PreparedQuery(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if rsp.Success {
+		return &Rows{
+			ctx:          ctx,
+			client:       stmt.conn.client,
+			rowsAffected: rsp.RowsAffected,
+			message:      rsp.Reason,
+			handle:       rsp.RowsHandle,
+		}, nil
+	} else {
+		if len(rsp.Reason) > 0 {
+			return nil, errors.New(rsp.Reason)
+		}
+		return nil, errors.New("unknown error")
+	}
+}
+
+func (stmt *Stmt) QueryRow(ctx context.Context, params ...any) api.Row {
+	rows, err := stmt.Query(ctx, params...)
+	if err != nil {
+		return &Row{success: false, err: err}
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return &Row{success: false, err: rows.Err()}
+	}
+
+	var row = &Row{}
+	row.success = true
+	row.err = nil
+	err = rows.Scan(&row.values)
+	if err != nil {
+		row.success = false
+		row.err = err
+		return row
+	}
+	row.columns, err = rows.Columns()
+	if err != nil {
+		row.success = false
+		row.err = err
+		return row
+	}
+	return row
+}
+
 // Exec executes SQL statements that does not return result
 // like 'ALTER', 'CREATE TABLE', 'DROP TABLE', ...
 func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
@@ -290,10 +397,6 @@ func (r *Result) RowsAffected() int64 {
 
 func (r *Result) Message() string {
 	return r.message
-}
-
-func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
-	panic("not implemented")
 }
 
 // Query executes SQL statements that are expected multiple rows as result.

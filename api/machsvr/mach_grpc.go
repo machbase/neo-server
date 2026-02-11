@@ -177,6 +177,128 @@ func (s *RPCServer) Explain(ctx context.Context, req *machrpc.ExplainRequest) (*
 	return rsp, nil
 }
 
+func (s *RPCServer) Prepare(ctx context.Context, req *machrpc.PrepareRequest) (*machrpc.PrepareResponse, error) {
+	rsp := &machrpc.PrepareResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Prepare panic recover", "error", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	var rawConn api.Conn
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
+		rsp.Reason = "invalid connection handle"
+		return rsp, nil
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
+		return rsp, nil
+	} else {
+		rawConn = conn.rawConn
+	}
+	realStmt, err := rawConn.Prepare(ctx, req.Sql)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	stmt := s.detainPreparedStatement(realStmt, req.Sql)
+	rsp.StmtHandle = &machrpc.PreparedStatementHandle{
+		Conn:   req.Conn,
+		Handle: stmt.Id(),
+	}
+	rsp.Reason = "success"
+	rsp.Success = true
+	return rsp, nil
+}
+
+func (s *RPCServer) PrepareClose(ctx context.Context, req *machrpc.PreparedStatementHandle) (*machrpc.PrepareCloseResponse, error) {
+	rsp := &machrpc.PrepareCloseResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("PrepareClose panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	stmtWrap, err := s.getPreparedStatement(req.Handle)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	stmtWrap.Release()
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}
+
+func (s *RPCServer) PreparedQuery(ctx context.Context, req *machrpc.PreparedQueryRequest) (*machrpc.PreparedQueryResponse, error) {
+	rsp := &machrpc.PreparedQueryResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("PreparedQuery panic recover", "error", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	stmtWrap, err := s.getPreparedStatement(req.Stmt.Handle)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	rawStmt := stmtWrap.Stmt
+	params := machrpc.ConvertPbToAny(req.Params)
+	rawRows, err := rawStmt.Query(ctx, params...)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	if rawRows.IsFetchable() {
+		rows := s.detainRows(rawRows, stmtWrap.sqlText)
+		rsp.RowsHandle = &machrpc.RowsHandle{
+			Handle: rows.Id(),
+		}
+		rsp.Reason = "success"
+	} else {
+		rsp.RowsAffected = rawRows.RowsAffected()
+		rsp.Reason = rawRows.Message()
+	}
+	rsp.Success = true
+	return rsp, nil
+}
+
+func (s *RPCServer) PreparedExec(ctx context.Context, req *machrpc.PreparedExecRequest) (*machrpc.PreparedExecResponse, error) {
+	rsp := &machrpc.PreparedExecResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("PreparedExec panic recover", "error", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	stmtWrap, err := s.getPreparedStatement(req.Stmt.Handle)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	rawStmt := stmtWrap.Stmt
+	params := machrpc.ConvertPbToAny(req.Params)
+	result := rawStmt.Exec(ctx, params...)
+	if result.Err() == nil {
+		rsp.RowsAffected = result.RowsAffected()
+		rsp.Success = true
+		rsp.Reason = result.Message()
+	} else {
+		rsp.Success = false
+		rsp.Reason = result.Message()
+	}
+	return rsp, nil
+}
+
 func (s *RPCServer) Exec(ctx context.Context, req *machrpc.ExecRequest) (*machrpc.ExecResponse, error) {
 	rsp := &machrpc.ExecResponse{}
 	tick := time.Now()
@@ -601,6 +723,49 @@ func (s *RPCServer) UserAuth(ctx context.Context, req *machrpc.UserAuthRequest) 
 	return rsp, nil
 }
 
+func (s *RPCServer) getPreparedStatement(id string) (*PreparedStatementParole, error) {
+	value, exists := s.inflightMap.Get(id)
+	if !exists {
+		return nil, fmt.Errorf("handle '%s' not found", id)
+	}
+	ret, ok := value.(*PreparedStatementParole)
+	if !ok {
+		return nil, fmt.Errorf("handle '%s' is not valid", id)
+	}
+	ret.lastAccessTime = time.Now()
+	return ret, nil
+}
+
+func (s *RPCServer) detainPreparedStatement(stmt api.Stmt, sqlText string) *PreparedStatementParole {
+	ser := atomic.AddInt64(&s.idSerial, 1)
+	key := fmt.Sprintf("%p#%d", stmt, ser)
+	return s.detainPreparedStatement0(key, stmt, sqlText)
+}
+
+func (s *RPCServer) detainPreparedStatement0(key string, stmt api.Stmt, sqlText string) *PreparedStatementParole {
+	ret := &PreparedStatementParole{
+		Stmt:       stmt,
+		id:         key,
+		sqlText:    sqlText,
+		createTime: time.Now(),
+	}
+	ret.lastAccessTime = ret.createTime
+	ret.release = func() {
+		s.inflightMap.RemoveCb(ret.id, func(key string, v any, exists bool) bool {
+			if ret.Stmt != nil {
+				err := ret.Stmt.Close()
+				if err != nil {
+					s.log.Warn("error on stmt.close; %s,", "error", err.Error(), "statement", ret.String())
+				}
+				ret.releaseTime = time.Now()
+			}
+			return true
+		})
+	}
+	s.inflightMap.Set(key, ret)
+	return ret
+}
+
 func (s *RPCServer) getRows(id string) (*RowsParole, error) {
 	value, exists := s.inflightMap.Get(id)
 	if !exists {
@@ -714,6 +879,32 @@ func (svr *RPCServer) removeSession(handle string) {
 	svr.sessionsLock.Lock()
 	delete(svr.sessions, handle)
 	svr.sessionsLock.Unlock()
+}
+
+type PreparedStatementParole struct {
+	Stmt        api.Stmt
+	id          string
+	release     func()
+	releaseOnce sync.Once
+	sqlText     string
+
+	createTime     time.Time
+	lastAccessTime time.Time
+	releaseTime    time.Time
+}
+
+func (ps *PreparedStatementParole) String() string {
+	return fmt.Sprintf("STMT %s %s %s", ps.id, time.Since(ps.createTime).String(), ps.sqlText)
+}
+
+func (ps *PreparedStatementParole) Id() string {
+	return ps.id
+}
+
+func (ps *PreparedStatementParole) Release() {
+	if ps.release != nil {
+		ps.releaseOnce.Do(ps.release)
+	}
 }
 
 type RowsParole struct {

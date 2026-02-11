@@ -6,19 +6,41 @@ option go_package = "github.com/machbase/neo-grpc/machrpc";
 
 import "google/protobuf/any.proto";
 
+// Machbase defines the gRPC service for Machbase database operations.
 service Machbase {
+    // Conn establishes a connection to the Machbase server with the provided credentials.
     rpc Conn(ConnRequest) returns(ConnResponse) {}
+    // ConnClose closes an existing connection to the Machbase server.
     rpc ConnClose(ConnCloseRequest) returns (ConnCloseResponse) {}
+    // Ping checks the connectivity and responsiveness of the Machbase server.
     rpc Ping(PingRequest) returns(PingResponse) {}
+    // Prepare prepares a SQL statement for execution.
+    rpc Prepare(PrepareRequest) returns(PrepareResponse) {}
+    // PrepareClose closes a previously prepared SQL statement.
+    rpc PrepareClose(PreparedStatementHandle) returns (PrepareCloseResponse) {}
+    // PreparedQuery executes a previously prepared SQL statement with parameters.
+    rpc PreparedQuery(PreparedQueryRequest) returns(PreparedQueryResponse) {}
+    // PrepareExec prepares a SQL statement for execution that does not return rows.
+    rpc PreparedExec(PreparedExecRequest) returns(PreparedExecResponse) {}
+    // Exec executes a SQL statement that does not return rows (e.g., INSERT, UPDATE).
     rpc Exec(ExecRequest) returns(ExecResponse) {}
+    // QueryRow executes a SQL statement that returns a single row.
     rpc QueryRow(QueryRowRequest) returns(QueryRowResponse) {}
+    // Query executes a SQL statement that returns multiple rows.
     rpc Query(QueryRequest) returns(QueryResponse) {}
+    // Columns retrieves the column metadata for a given set of rows.
     rpc Columns(RowsHandle) returns (ColumnsResponse) {}
+    // RowsFetch fetches rows of data from a previously executed query.
     rpc RowsFetch(RowsHandle) returns(RowsFetchResponse) {}
+    // RowsClose closes a previously opened rows handle.
     rpc RowsClose(RowsHandle) returns (RowsCloseResponse) {}
+    // Appender creates an appender for batch inserting data into a table.
     rpc Appender(AppenderRequest) returns (AppenderResponse){}
+    // Append streams data to the appender for insertion.
     rpc Append(stream AppendData) returns(AppendDone) {}
+    // Explain provides the execution plan for a given SQL statement.
     rpc Explain(ExplainRequest) returns(ExplainResponse) {}
+    // UserAuth authenticates a user with the Machbase server.
     rpc UserAuth(UserAuthRequest) returns(UserAuthResponse) {}
 }
 
@@ -155,6 +177,54 @@ message QueryRowResponse {
     int64 rowsAffected = 5;
     reserved 6;                        // string message = 6;
     repeated Column columns = 7;
+}
+
+message PrepareRequest {
+    ConnHandle conn = 1;
+    string sql = 2;
+}
+
+message PrepareResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    PreparedStatementHandle stmtHandle = 4;
+}
+
+message PrepareCloseResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message PreparedQueryRequest {
+    PreparedStatementHandle stmt = 1;
+    repeated google.protobuf.Any params = 2;
+}
+
+message PreparedQueryResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    RowsHandle rowsHandle = 4; // only available if stmt is fetchable
+    int64 rowsAffected = 5;
+}
+
+message PreparedExecRequest {
+    PreparedStatementHandle stmt = 1;
+    repeated google.protobuf.Any params = 2;
+}
+
+message PreparedExecResponse {
+    bool     success      = 1;
+    string   reason       = 2;
+    string   elapse       = 3;
+    int64    rowsAffected = 4;
+}
+
+message PreparedStatementHandle {
+    string handle = 1;
+    ConnHandle conn = 2;
 }
 
 message QueryRequest {
