@@ -223,7 +223,11 @@ func describe(ctx context.Context, conn Conn, name TableName, includeHiddenColum
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if rows != nil {
+			rows.Close()
+		}
+	}()
 
 	for rows.Next() {
 		col := &Column{}
@@ -237,6 +241,9 @@ func describe(ctx context.Context, conn Conn, name TableName, includeHiddenColum
 		col.DataType = col.Type.DataType()
 		d.Columns = append(d.Columns, col)
 	}
+	rows.Close()
+	rows = nil
+
 	if indexes, err := describe_idx(ctx, conn, d.Id, dbId); err != nil {
 		return nil, err
 	} else {
@@ -576,7 +583,11 @@ func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo
 		callback(&SessionInfo{err: err})
 		return
 	}
-	defer rows.Close()
+	defer func() {
+		if rows != nil {
+			rows.Close()
+		}
+	}()
 	for rows.Next() {
 		rec := &SessionInfo{}
 		rec.err = rows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.MaxQPXMem)
@@ -584,13 +595,19 @@ func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo
 			return
 		}
 	}
+	rows.Close()
+	rows = nil
 
 	neoRows, err := conn.Query(ctx, "SELECT ID, USER_ID, USER_NAME, STMT_COUNT FROM V$NEO_SESSION")
 	if err != nil {
 		callback(&SessionInfo{err: err})
 		return
 	}
-	defer neoRows.Close()
+	defer func() {
+		if neoRows != nil {
+			neoRows.Close()
+		}
+	}()
 
 	for neoRows.Next() {
 		rec := &SessionInfo{IsNeo: true}
@@ -599,4 +616,6 @@ func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo
 			return
 		}
 	}
+	neoRows.Close()
+	neoRows = nil
 }

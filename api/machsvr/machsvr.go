@@ -690,25 +690,23 @@ func (ps *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
 }
 
 func (ps *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, error) {
-	rows := &Rows{}
 	for i, p := range params {
-		if err := bind(rows.stmt, i, p); err != nil {
-			mach.EngFreeStmt(rows.stmt)
+		if err := bind(ps.stmt, i, p); err != nil {
+			mach.EngFreeStmt(ps.stmt)
 			return nil, err
 		}
 	}
-	rows.stmt = ps.stmt
-
 	if err := ps.execute(); err != nil {
 		ps.Close()
 		return nil, err
 	}
-	rows.stmt = ps.stmt
-	rows.stmtType = ps.stmtType
-	rows.sqlText = ps.sqlText
-	rows.columns = ps.columns
-	rows.isPrepared = true
-
+	rows := &Rows{
+		stmt:       ps.stmt,
+		stmtType:   ps.stmtType,
+		sqlText:    ps.sqlText,
+		columns:    ps.columns,
+		isPrepared: true,
+	}
 	return rows, nil
 }
 
