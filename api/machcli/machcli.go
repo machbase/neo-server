@@ -468,6 +468,7 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 		return nil, err
 	}
 	if err := stmt.execute(); err != nil {
+		fmt.Println("----> execute error:", err, args)
 		stmt.Close()
 		return nil, err
 	}
@@ -583,6 +584,9 @@ func (stmt *Stmt) bindParams(args ...any) error {
 		return api.ErrParamCount(numParam, len(args))
 	}
 
+	// Clear previous buffers
+	stmt.boundBuffers = make([][]byte, 0, numParam)
+
 	for idx, arg := range args {
 		var value unsafe.Pointer
 		var valueLen int
@@ -678,43 +682,54 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				cType = mach.MACHCLI_C_TYPE_CHAR
 				sqlType = mach.MACHCLI_SQL_TYPE_IPV4
 				bStr := []byte(ipv4.String())
-				value = (unsafe.Pointer)(&bStr[0])
+				if len(bStr) > 0 {
+					value = unsafe.Pointer(&bStr[0])
+				}
 				valueLen = len(bStr)
+				stmt.boundBuffers = append(stmt.boundBuffers, bStr)
 			} else {
 				cType = mach.MACHCLI_C_TYPE_CHAR
 				sqlType = mach.MACHCLI_SQL_TYPE_IPV6
 				bStr := []byte(val.To16().String())
-				value = (unsafe.Pointer)(&bStr[0])
+				if len(bStr) > 0 {
+					value = unsafe.Pointer(&bStr[0])
+				}
 				valueLen = len(bStr)
+				stmt.boundBuffers = append(stmt.boundBuffers, bStr)
 			}
 		case string:
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_STRING
 			bStr := []byte(val)
 			if len(bStr) > 0 {
-				value = (unsafe.Pointer)(&bStr[0])
+				value = unsafe.Pointer(&bStr[0])
 			}
 			valueLen = len(bStr)
+			stmt.boundBuffers = append(stmt.boundBuffers, bStr)
 		case *string:
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_STRING
 			bStr := []byte(*val)
 			if len(bStr) > 0 {
-				value = (unsafe.Pointer)(&bStr[0])
+				value = unsafe.Pointer(&bStr[0])
 			}
 			valueLen = len(bStr)
+			stmt.boundBuffers = append(stmt.boundBuffers, bStr)
 		case []byte:
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_BINARY
 			if len(val) > 0 {
-				value = (unsafe.Pointer)(&val[0])
+				value = unsafe.Pointer(&val[0])
 			}
 			valueLen = len(val)
+			stmt.boundBuffers = append(stmt.boundBuffers, val)
 		}
 		if err := mach.CliBindParam(stmt.handle, idx, cType, sqlType, value, valueLen); err != nil {
 			return errorWithCause(stmt, err)
 		}
 	}
+	// Keep bound buffers alive until CliExecute completes
+	runtime.KeepAlive(stmt.boundBuffers)
 	return nil
 }
 
@@ -857,13 +872,14 @@ type ColumnDesc struct {
 }
 
 type Stmt struct {
-	handle      unsafe.Pointer
-	conn        *Conn
-	columnDescs []ColumnDesc
-	reachEOF    bool
-	sqlHead     string
-	rowCount    int64
-	execCount   int64
+	handle       unsafe.Pointer
+	conn         *Conn
+	columnDescs  []ColumnDesc
+	reachEOF     bool
+	sqlHead      string
+	rowCount     int64
+	execCount    int64
+	boundBuffers [][]byte // Keeps byte slices alive until execute completes
 }
 
 func (stmt *Stmt) Close() error {
@@ -884,6 +900,8 @@ func (stmt *Stmt) execute() error {
 	}
 	defer func() {
 		stmt.execCount++
+		// Clear bound buffers after execute completes
+		stmt.boundBuffers = nil
 	}()
 	if rowCount, err := mach.CliRowCount(stmt.handle); err != nil {
 		return errorWithCause(stmt, err)
