@@ -207,6 +207,11 @@ func (ap *Appender) WithInputColumns(columns ...string) api.Appender {
 	return ap
 }
 
+func (ap *Appender) WithInputFormats(formats ...string) api.Appender {
+	// noop, handled in Append
+	return ap
+}
+
 func (ap *Appender) Close() (int64, int64, error) {
 	if _env.database.enableWorkerPool {
 		return ap.CloseAsync()

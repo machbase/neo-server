@@ -281,6 +281,9 @@ type Appender interface {
 
 	// WithInputColumns sets the input column names for the Appender.
 	WithInputColumns(columns ...string) Appender
+
+	// WithInputFormats sets the input formats for the Appender.
+	WithInputFormats(formats ...string) Appender
 }
 
 type Flusher interface {

@@ -256,6 +256,11 @@ func (aw *AppendWorker) WithInputColumns(columns ...string) Appender {
 	return ret
 }
 
+func (aw *AppendWorker) WithInputFormats(formats ...string) Appender {
+	// noop, handled in Append
+	return aw
+}
+
 type AppenderWithWorker struct {
 	*AppendWorker
 	inputColumns []AppenderInputColumn

@@ -1404,6 +1404,7 @@ type Appender struct {
 	columnNames   []string
 	columnTypes   []mach.SqlType
 	inputColumns  []AppenderInputColumn
+	inputFormats  []string
 	closed        bool
 	successCount  int64
 	failCount     int64
@@ -1448,6 +1449,11 @@ func (a *Appender) WithInputColumns(columns ...string) api.Appender {
 			}
 		}
 	}
+	return a
+}
+
+func (a *Appender) WithInputFormats(formats ...string) api.Appender {
+	a.inputFormats = formats
 	return a
 }
 
@@ -1523,7 +1529,7 @@ func (a *Appender) append(values ...any) error {
 		return api.ErrDatabaseNoConnection
 	}
 
-	if err := mach.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, values); err != nil {
+	if err := mach.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, values, a.inputFormats); err != nil {
 		return errorWithCause(a.stmt, err)
 	}
 	return nil

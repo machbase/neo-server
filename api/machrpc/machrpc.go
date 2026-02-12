@@ -774,6 +774,11 @@ func (appender *Appender) WithInputColumns(columns ...string) api.Appender {
 	return appender
 }
 
+func (appender *Appender) WithInputFormats(formats ...string) api.Appender {
+	// noop, handled in Append
+	return appender
+}
+
 // Close releases all resources that allocated to the Appender
 func (appender *Appender) Close() (int64, int64, error) {
 	if appender.appendClient == nil {
