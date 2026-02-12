@@ -468,7 +468,6 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 		return nil, err
 	}
 	if err := stmt.execute(); err != nil {
-		fmt.Println("----> execute error:", err, args)
 		stmt.Close()
 		return nil, err
 	}
