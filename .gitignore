@@ -30,6 +30,9 @@ mods/service/httpd/web/ui/*
 mods/server/web/ui/*
 mach-grpc.sock
 
+mods/jsh/db/test/postgres/*
+jsh/native/db/test/postgres/*
+
 native/**/*_dummy.o
 
 # mage temp file
