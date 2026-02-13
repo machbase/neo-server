@@ -32,7 +32,7 @@ const TableArgOptions = {
     rownum: { type: 'boolean', description: "show row numbers", default: true },
     timeformat: { type: 'string', short: 't', description: "time format [ns|us|ms|s|<timeformat>]", default: 'default' },
     tz: { type: 'string', description: "time zone for handling datetime (default: time zone)", default: 'local' },
-    precision: { type: 'integer', short: 'p', description: "set precision of float value to force round", default: -1 },
+    precision: { type: 'integer', description: "set precision of float value to force round", default: -1 },
     header: { type: 'boolean', description: "print header", default: true },
     footer: { type: 'boolean', description: "print footer", default: true },
     pause: { type: 'boolean', description: "pause for the screen paging", default: true },

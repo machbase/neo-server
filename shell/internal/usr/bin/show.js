@@ -1288,8 +1288,26 @@ function showTags(config, args) {
         box.setStringEscape(true);
         if (meta.hasSummarized) {
             box.appendHeader(["_ID", meta.tagNameColumn, "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"]);
+            box.setColumnConfigs([
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // _ID
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // tag name
+                { align: pretty.Align.right, alignHeader: pretty.Align.left }, // ROW_COUNT
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_TIME
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MAX_TIME
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // RECENT_ROW_TIME
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_VALUE
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_VALUE_TIME
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MAX_VALUE
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }]); // MAX_VALUE_TIME
         } else {
             box.appendHeader(["_ID", meta.tagNameColumn, "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME"]);
+            box.setColumnConfigs([
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // _ID
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // tag name
+                { align: pretty.Align.right, alignHeader: pretty.Align.left }, // ROW_COUNT
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_TIME
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MAX_TIME
+                { align: pretty.Align.left, alignHeader: pretty.Align.left }]); // RECENT_ROW_TIME
         }
 
         if (tags.length > 0) {
@@ -1313,7 +1331,7 @@ function showTags(config, args) {
                     box.append([
                         row._ID,
                         stat.NAME,
-                        stat.ROW_COUNT,
+                        pretty.Ints(stat.ROW_COUNT),
                         stat.MIN_TIME,
                         stat.MAX_TIME,
                         stat.RECENT_ROW_TIME,
@@ -1326,7 +1344,7 @@ function showTags(config, args) {
                     box.append([
                         row._ID,
                         stat.NAME,
-                        stat.ROW_COUNT,
+                        pretty.Ints(stat.ROW_COUNT),
                         stat.MIN_TIME,
                         stat.MAX_TIME,
                         stat.RECENT_ROW_TIME,
