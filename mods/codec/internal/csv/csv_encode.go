@@ -34,6 +34,7 @@ type Exporter struct {
 
 	heading  bool
 	colNames []string
+	colTypes []api.DataType
 
 	closeOnce sync.Once
 }
@@ -81,12 +82,16 @@ func (ex *Exporter) SetHeader(show bool) {
 }
 
 func (ex *Exporter) SetDelimiter(delimiter string) {
-	delmiter, _ := utf8.DecodeRuneInString(delimiter)
-	ex.comma = delmiter
+	comma, _ := utf8.DecodeRuneInString(delimiter)
+	ex.comma = comma
 }
 
 func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
+}
+
+func (ex *Exporter) SetColumnTypes(types ...api.DataType) {
+	ex.colTypes = types
 }
 
 func (ex *Exporter) SetSubstituteNull(alternative any) {
@@ -101,7 +106,7 @@ func (ex *Exporter) Open() error {
 	}
 
 	if ex.heading {
-		// TODO check if write() returns error, when csvWritter.Comma is not valid
+		// TODO check if write() returns error, when csvWriter.Comma is not valid
 		if ex.showRownum {
 			ex.writer.Write(append([]string{"ROWNUM"}, ex.colNames...))
 		} else {
@@ -133,7 +138,7 @@ func (ex *Exporter) AddRow(values []any) error {
 	defer func() {
 		o := recover()
 		if o != nil {
-			fmt.Println("PANIC (csvexporter)", o)
+			fmt.Println("PANIC (csv)", o)
 			debug.PrintStack()
 		}
 	}()
@@ -141,6 +146,10 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]string, len(values))
 
 	for i, r := range values {
+		treatIntValueAsFloat := false
+		if ex.precision > 0 && i < len(ex.colTypes) && (ex.colTypes[i] == api.DataTypeFloat64 || ex.colTypes[i] == api.DataTypeFloat32) {
+			treatIntValueAsFloat = true
+		}
 		if r == nil {
 			r = ex.nullAlternative
 		}
@@ -206,65 +215,63 @@ func (ex *Exporter) AddRow(values []any) error {
 				r = ex.nullAlternative
 			}
 		}
-		switch v := r.(type) {
-		case *string:
-			cols[i] = *v
+		switch v := api.Unbox(r).(type) {
 		case string:
 			cols[i] = v
-		case *time.Time:
-			cols[i] = ex.timeformat.Format(*v)
 		case time.Time:
 			cols[i] = ex.timeformat.Format(v)
-		case *float64:
-			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:
 			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
-		case *float32:
-			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
 			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
-		case *int:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
-			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int8:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
+			if treatIntValueAsFloat {
+				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+			} else {
+				cols[i] = strconv.FormatInt(int64(v), 10)
+			}
 		case int8:
-			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int16:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
+			if treatIntValueAsFloat {
+				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+			} else {
+				cols[i] = strconv.FormatInt(int64(v), 10)
+			}
 		case int16:
-			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int32:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
+			if treatIntValueAsFloat {
+				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+			} else {
+				cols[i] = strconv.FormatInt(int64(v), 10)
+			}
 		case int32:
-			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int64:
-			cols[i] = strconv.FormatInt(*v, 10)
+			if treatIntValueAsFloat {
+				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+			} else {
+				cols[i] = strconv.FormatInt(int64(v), 10)
+			}
 		case int64:
-			cols[i] = strconv.FormatInt(v, 10)
-		case *bool:
-			cols[i] = strconv.FormatBool(*v)
+			if treatIntValueAsFloat {
+				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 64)
+			} else {
+				cols[i] = strconv.FormatInt(v, 10)
+			}
 		case bool:
 			cols[i] = strconv.FormatBool(v)
-		case *net.IP:
-			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
 		case uint8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *[]uint8:
-			strs := []string{}
+			strArr := []string{}
 			for _, c := range *v {
-				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+				strArr = append(strArr, fmt.Sprintf("\\x%02X", c))
 			}
-			cols[i] = strings.Join(strs, "")
+			cols[i] = strings.Join(strArr, "")
 		case []uint8:
-			strs := []string{}
+			strArr := []string{}
 			for _, c := range v {
-				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+				strArr = append(strArr, fmt.Sprintf("\\x%02X", c))
 			}
-			cols[i] = strings.Join(strs, "")
+			cols[i] = strings.Join(strArr, "")
 		case *nums.LatLon:
 			cols[i] = fmt.Sprintf("[%v,%v]", v.Lat, v.Lon)
 		case *nums.SingleLatLon:

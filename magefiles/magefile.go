@@ -249,6 +249,8 @@ func TestN(p int) error {
 	testArgs = append(testArgs,
 		"-cover", "-coverprofile", "./tmp/cover.out",
 		"./booter/...",
+		"./shell/...",
+		"./jsh/...",
 		"./api/...",
 		"./mods/...",
 	)

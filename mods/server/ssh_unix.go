@@ -29,11 +29,6 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		return
 	}
 
-	if shellId == model.SHELLID_JSH {
-		svr.jshHandler(ss, shell.Cmd, shell.Args, shell.Envs)
-		return
-	}
-
 	ptyReq, winCh, isPty := ss.Pty()
 
 	if !isPty && strings.ToLower(user) == "sys" {
@@ -60,9 +55,9 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		}
 		shell.Envs = filtered
 	} else {
-		if shellId == model.SHELLID_SHELL {
+		if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
 			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.neoShellAccount[strings.ToLower(user)]))
+			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
 		}
 	}
 

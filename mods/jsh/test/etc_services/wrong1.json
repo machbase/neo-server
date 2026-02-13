@@ -1,7 +1,0 @@
-{
-    "enabled": true,
-    "start_cmd": "/sbin/svc.js",
-    "start_args": ["start", "arg1"],
-    "stop_cmd": "/sbin/svc.js",
-    "stop_args": "stop"
-}

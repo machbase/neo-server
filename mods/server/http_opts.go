@@ -26,7 +26,7 @@ func WithHttpListenAddress(addrs ...string) HttpOption {
 }
 
 // AuthServer
-func WithHttpAuthServer(authSvc AuthServer, enabled bool) HttpOption {
+func WithHttpAuthServer(authSvc *Server, enabled bool) HttpOption {
 	return func(s *httpd) {
 		s.authServer = authSvc
 		s.enableTokenAuth = enabled
@@ -44,7 +44,7 @@ func WithHttpNeoShellAddress(addrs ...string) HttpOption {
 		candidates := []string{}
 		for _, addr := range addrs {
 			if strings.HasPrefix(addr, "tcp://127.0.0.1:") || strings.HasPrefix(addr, "tcp://localhost:") {
-				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+				s.authServer.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
 				// if loopback is available, use it for web-terminal
 				// eliminate other candiates
 				candidates = candidates[:0]
@@ -55,7 +55,7 @@ func WithHttpNeoShellAddress(addrs ...string) HttpOption {
 		}
 		if len(candidates) > 0 {
 			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
-			s.neoShellAddress = candidates[0]
+			s.authServer.neoShellAddress = candidates[0]
 		}
 	}
 }

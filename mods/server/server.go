@@ -38,7 +38,6 @@ import (
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -88,6 +87,9 @@ type Server struct {
 	authorizedSshKeysLock sync.RWMutex
 	genSnowflake          *snowflake.Node
 	snowflakes            []string
+
+	neoShellAddress string
+	neoShellAccount map[string]string
 }
 
 var _ booter.Boot = (*Server)(nil)
@@ -101,8 +103,9 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:       *conf,
-		servicePorts: make(map[string][]*model.ServicePort),
+		Config:          *conf,
+		servicePorts:    make(map[string][]*model.ServicePort),
+		neoShellAccount: make(map[string]string),
 	}, nil
 }
 
@@ -255,24 +258,6 @@ func (s *Server) Start() error {
 	}
 	s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
 		dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
-
-	// jsh service
-	if svcList, err := jsh.ReadServices(); err != nil {
-		if err != os.ErrNotExist {
-			s.log.Warn("JshServices read failed.", err.Error())
-		}
-	} else {
-		svcList.Update(func(sc *jsh.ServiceConfig, act string, err error) {
-			if err != nil {
-				s.log.Info("JshService", act, err.Error())
-			} else {
-				s.log.Info("JshService", act)
-			}
-		})
-	}
-	util.AddShutdownHook(func() {
-		jsh.ShutdownAll()
-	})
 
 	// pkgs
 	s.pkgMgr.Start()
@@ -753,6 +738,7 @@ func (s *Server) startGrpcServer() error {
 	util.AddShutdownHook(func() { s.grpcd.Stop() })
 
 	tql.SetGrpcAddresses(s.Grpc.Listeners)
+	tql.SetHttpAddresses(s.Http.Listeners)
 
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
 	util.AddShutdownHook(func() { tql.StopCache() })
@@ -876,6 +862,7 @@ func (s *Server) startHttpServer() error {
 	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
 	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
 	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
+	RegisterJsonRpcHandler("setHttpDebug", s.setHttpDebug)
 	RegisterJsonRpcHandler("listSessions", s.listSessions)
 	RegisterJsonRpcHandler("killSession", s.killSession)
 	RegisterJsonRpcHandler("statSession", s.statSession)
@@ -1422,6 +1409,51 @@ func (s *Server) stopSchedule(ctx context.Context, name string) error {
 		return errors.New(rsp.Reason)
 	}
 	return nil
+}
+
+func (s *Server) getHttpServer(ctx context.Context, m map[string]any) (map[string]any, error) {
+	cmd := m["cmd"]
+	if cmdStr, ok := cmd.(string); !ok || cmdStr == "" {
+		return nil, fmt.Errorf("cmd not specified")
+	} else {
+		cmd = cmdStr
+	}
+	switch cmd.(string) {
+	case "debug":
+		debugEnabled, debugLatency := s.httpd.DebugMode()
+		m["enable"] = debugEnabled
+		m["logLatency"] = debugLatency
+	default:
+		return nil, fmt.Errorf("unknown cmd '%s'", cmd.(string))
+	}
+	return m, nil
+}
+
+func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string]any, error) {
+	enableAny, hasEnable := m["enable"]
+	latencyAny, hasLatency := m["logLatency"]
+
+	if hasEnable || hasLatency {
+		enableBool, ok := enableAny.(bool)
+		if !ok {
+			return nil, fmt.Errorf("enable should be boolean")
+		}
+		latencyStr, ok := latencyAny.(string)
+		if !ok {
+			return nil, fmt.Errorf("logLatency should be duration")
+		}
+		latency := time.Duration(-1)
+		if d, err := time.ParseDuration(latencyStr); err == nil {
+			latency = d
+		}
+		s.httpd.SetDebugMode(enableBool, latency)
+	}
+
+	debugEnabled, debugLatency := s.httpd.DebugMode()
+	m["enable"] = debugEnabled
+	m["logLatency"] = fmt.Sprintf("%v", debugLatency)
+
+	return m, nil
 }
 
 func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {

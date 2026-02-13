@@ -834,14 +834,16 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
 	task.SetInputReader(input)
-	task.SetLogWriter(logging.GetLog("_nonamed.tql"))
+	task.SetLogWriter(logging.GetLog("anonymous.tql"))
 	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
 	if claim != nil && consoleInfo.consoleId != "" {
 		if svr.authServer == nil {
 			task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
 		} else {
-			otp, _ := svr.authServer.GenerateOtp(claim.Subject)
-			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+			password := svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)]
+			task.SetConsole(claim.Subject, consoleInfo.consoleId, password)
+			// otp, _ := svr.authServer.GenerateOtp(claim.Subject)
+			// task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
 		}
 	}
 	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)

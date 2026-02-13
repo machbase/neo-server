@@ -34,7 +34,7 @@ var reservedWebShellDef = map[string]*ShellDefinition{
 	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
 	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
 	SHELLID_DSH: {Type: "dsh", Label: "DASHBOARD", Icon: "dashboard", Id: SHELLID_DSH},
-	SHELLID_JSH: {Type: SHELL_TERM, Label: "JSH", Icon: "fish", Id: SHELLID_JSH, Command: "@.js",
+	SHELLID_JSH: {Type: SHELL_TERM, Label: "JSH", Icon: "fish", Id: SHELLID_JSH,
 		Attributes: &ShellAttributes{},
 	},
 	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,

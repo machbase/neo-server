@@ -107,6 +107,7 @@ func TestWebConsole(t *testing.T) {
 	}()
 	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		reader := bytes.NewBufferString(`
 			FAKE(linspace(0,1,5))
 			SCRIPT("js", {
@@ -124,7 +125,6 @@ func TestWebConsole(t *testing.T) {
 		require.Equal(t, http.StatusOK, rsp.StatusCode)
 		result, _ := io.ReadAll(rsp.Body)
 		require.Equal(t, strings.Join([]string{"1,0.00", "2,0.25", "3,0.50", "4,0.75", "5,1.00", "\n"}, "\n"), string(result))
-		wg.Done()
 	}()
 	wg.Wait()
 }
