@@ -73,7 +73,37 @@ actor.process = (line) => {
 
         // Handle SQL commands
         if (SQL_VERBS.has(firstField.toUpperCase())) {
-            process.exec("sql.js", line);
+            firstField = "sql";
+            fields = [firstField, line]; // normalize to sql.js command
+        }
+        for (const cmd of ["sql", "sql.js"]) {
+            const firstFieldLower = firstField.toLowerCase();
+            // e.g., sql, /usr/bin/sql, ../bin/sql.js, etc.
+            if (firstFieldLower !== cmd && !firstFieldLower.endsWith('/' + cmd)) {
+                continue;
+            }
+            fields = fields.slice(1);
+            // find sql verb in the line, and split the rest as sql args
+            const lineUpper = line.toUpperCase();
+            for (const verb of SQL_VERBS.values()) {
+                const index = lineUpper.indexOf(verb);
+                if (index < 0) {
+                    continue;
+                }
+                const sqlText = line.substring(index);
+                // find remove fields after the verb
+                for (let i = 0; i < fields.length; i++) {
+                    if (fields[i].toUpperCase() === verb) {
+                        fields = fields.slice(0, i);
+                        fields.push(sqlText);
+                        process.exec(firstField, ...fields);
+                        return;
+                    }
+                }
+            }
+            // if no sql verb found, join all args as a sql text.
+            const sqlArgs = fields.join(' ');
+            process.exec(firstField, sqlArgs);
             return;
         }
 
