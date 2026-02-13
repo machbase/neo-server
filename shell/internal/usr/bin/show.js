@@ -1171,7 +1171,7 @@ function showRollupGap_prev_8_0_60(config, conn) {
                 row.ROLLUP_TABLE,
                 row.SRC_END_RID,
                 row.ROLLUP_END_RID,
-                row.GAP,
+                pretty.Ints(row.GAP),
                 pretty.Durations(row.LAST_ELAPSED * 1e6)
             ]);
         }
@@ -1204,13 +1204,20 @@ function showRollupGap_since_8_0_60(config, conn) {
 
         let box = pretty.Table(config);
         box.appendHeader(["SRC_TABLE", "ROLLUP_TABLE", "SRC_END_RID", "ROLLUP_END_RID", "GAP", "LAST_ELAPSED"]);
+        box.setColumnConfigs([
+            { align: pretty.Align.left, alignHeader: pretty.Align.left }, // SRC_TABLE
+            { align: pretty.Align.left, alignHeader: pretty.Align.left }, // ROLLUP_TABLE
+            { align: pretty.Align.right, alignHeader: pretty.Align.left }, // SRC_END_RID
+            { align: pretty.Align.right, alignHeader: pretty.Align.left }, // ROLLUP_END_RID
+            { align: pretty.Align.right, alignHeader: pretty.Align.left }, // GAP
+            { align: pretty.Align.right, alignHeader: pretty.Align.left }]); // LAST_ELAPSED
         for (const row of rows) {
             box.append([
                 row.SRC_TABLE,
                 row.ROLLUP_TABLE,
                 row.SRC_END_RID,
                 row.ROLLUP_END_RID,
-                row.GAP,
+                pretty.Ints(row.GAP),
                 pretty.Durations(row.LAST_ELAPSED * 1e6)
             ]);
         }

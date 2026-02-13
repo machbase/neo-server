@@ -53,9 +53,7 @@ var banner = "\n" +
 	"\x1B[91m ╚════╝  ╚══════╝ ╚═╝  ╚═╝" + "\n" +
 	"\x1B[0m" + "\n"
 
-func (sh *Shell) Run(call goja.FunctionCall) goja.Value {
-	env := call.Arguments[0].Export().(*engine.Env)
-
+func (sh *Shell) Run(env *engine.Env) int {
 	var ed multiline.Editor
 	ed.SetTty(NewTty()) // See TtyWrap comment
 	ed.SetPrompt(sh.prompt)
@@ -81,10 +79,10 @@ func (sh *Shell) Run(call goja.FunctionCall) goja.Value {
 		var forHistory string
 		if input, err := ed.Read(ctx); err != nil {
 			if err == readline.CtrlC || err == io.EOF {
-				return sh.rt.ToValue(0)
+				return 0
 			}
 			log.Printf("Error input: %v\n", err)
-			return sh.rt.ToValue(1)
+			return 1
 		} else {
 			forHistory = strings.Join(input, "\n")
 			for i, ln := range input {
@@ -96,7 +94,7 @@ func (sh *Shell) Run(call goja.FunctionCall) goja.Value {
 		// expand environment variables in the line
 		line = env.Expand(line)
 		if _, alive := sh.process(line); !alive {
-			return sh.rt.ToValue(0)
+			return 0
 		}
 		// this makes to prevent adding 'exit' command to history
 		sh.history.Add(forHistory)

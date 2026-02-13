@@ -59,9 +59,15 @@ func (h *History) At(at int) string {
 	return h.buffer[at]
 }
 func (h *History) Add(line string) {
-	if len(h.buffer) > 0 && h.buffer[len(h.buffer)-1] == line {
-		return
+	// Check if line already exists in buffer and remove it
+	for i := 0; i < len(h.buffer); i++ {
+		if h.buffer[i] == line {
+			// Remove the existing entry
+			h.buffer = append(h.buffer[:i], h.buffer[i+1:]...)
+			break
+		}
 	}
+	// Add the line at the end
 	h.buffer = append(h.buffer, line)
 	h.trimLimit()
 }
