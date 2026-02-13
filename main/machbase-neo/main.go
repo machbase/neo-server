@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/machbase/neo-server/v8/mods/args"
-	"github.com/machbase/neo-server/v8/shell/entry"
+	"github.com/machbase/neo-server/v8/shell/session"
 )
 
 func main() {
@@ -16,7 +16,7 @@ func main() {
 			panic(err)
 		}
 		flagSet := flag.NewFlagSet("shell", flag.ExitOnError)
-		entry.Main(flagSet, []string{self, "shell"}, os.Args[2:])
+		session.Main(flagSet, []string{self, "shell"}, os.Args[2:])
 	} else {
 		// handling "machbase-neo serve ..." or others
 		os.Exit(args.Main())

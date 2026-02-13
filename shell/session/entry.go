@@ -1,4 +1,4 @@
-package entry
+package session
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/native"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/shell/internal"
-	"github.com/machbase/neo-server/v8/shell/internal/session"
 	"github.com/nyaosorg/go-readline-ny"
 	"golang.org/x/term"
 )
@@ -175,10 +174,10 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		os.Exit(1)
 	}
 	native.Enable(eng)
-	eng.RegisterNativeModule("@jsh/session", session.Module)
+	eng.RegisterNativeModule("@jsh/session", Module)
 
 	// configure default session
-	if err := session.Configure(session.Config{
+	if err := Configure(Config{
 		Server:   neoHost,
 		User:     neoUser,
 		Password: neoPassword,
