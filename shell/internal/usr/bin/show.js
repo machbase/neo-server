@@ -20,6 +20,7 @@ const infoConfig = {
     command: 'info',
     usage: 'show info',
     description: 'Display server information',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -31,6 +32,7 @@ const licenseConfig = {
     command: 'license',
     usage: 'show license',
     description: 'Display license information',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -42,6 +44,7 @@ const portsConfig = {
     command: 'ports',
     usage: 'show ports [service]',
     description: 'Display service ports configuration',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -56,6 +59,7 @@ const usersConfig = {
     command: 'users',
     usage: 'show users',
     description: 'List all database users',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -67,6 +71,7 @@ const tablesConfig = {
     command: 'tables',
     usage: 'show tables [-a]',
     description: 'List tables',
+    allowNegative: true,
     options: {
         help: optionHelp,
         all: { type: 'boolean', short: 'a', description: 'Show all hidden tables', default: false },
@@ -79,6 +84,7 @@ const tableConfig = {
     command: 'table',
     usage: 'show table [-a] <table>',
     description: 'Show table schema and details',
+    allowNegative: true,
     options: {
         help: optionHelp,
         all: { type: 'boolean', short: 'a', description: 'Show all hidden columns', default: false },
@@ -94,6 +100,7 @@ const metaTablesConfig = {
     command: 'meta-tables',
     usage: 'show meta-tables',
     description: 'List meta/system tables',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -105,6 +112,7 @@ const virtualTablesConfig = {
     command: 'virtual-tables',
     usage: 'show virtual-tables',
     description: 'List virtual tables',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -116,6 +124,7 @@ const sessionsConfig = {
     command: 'sessions',
     usage: 'show sessions',
     description: 'List active database sessions',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -127,6 +136,7 @@ const statementsConfig = {
     command: 'statements',
     usage: 'show statements',
     description: 'List currently running SQL statements',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -138,6 +148,7 @@ const indexesConfig = {
     command: 'indexes',
     usage: 'show indexes',
     description: 'List all indexes',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -149,6 +160,7 @@ const indexConfig = {
     command: 'index',
     usage: 'show index <index>',
     description: 'Show index structure and details',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -163,6 +175,7 @@ const storageConfig = {
     command: 'storage',
     usage: 'show storage',
     description: 'Display storage statistics',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -174,6 +187,7 @@ const tableUsageConfig = {
     command: 'table-usage',
     usage: 'show table-usage',
     description: 'Show storage usage by table',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -185,6 +199,7 @@ const lsmConfig = {
     command: 'lsm',
     usage: 'show lsm',
     description: 'Display LSM tree status',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -196,6 +211,7 @@ const indexgapConfig = {
     command: 'indexgap',
     usage: 'show indexgap',
     description: 'Show index gap information',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -207,6 +223,7 @@ const rollupgapConfig = {
     command: 'rollupgap',
     usage: 'show rollupgap',
     description: 'Show rollup gap information',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -218,6 +235,7 @@ const tagindexgapConfig = {
     command: 'tagindexgap',
     usage: 'show tagindexgap',
     description: 'Show tag index gap information',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -229,6 +247,7 @@ const tagsConfig = {
     command: 'tags',
     usage: 'show tags <table> [tag...]',
     description: 'List all/specific tags in the specified table',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -244,6 +263,7 @@ const tagstatConfig = {
     command: 'tagstat',
     usage: 'show tagstat <table> [tag...]',
     description: 'Show statistics for the specific tags',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -1059,26 +1079,29 @@ function showTagIndexGap(config, args) {
     try {
         db = newMachCliClient(config);
         conn = db.connect();
-        rows = conn.query(`SELECT
-            ID,
-            INDEX_STATE AS STATUS,
-            TABLE_END_RID - DISK_INDEX_END_RID AS DISK_GAP,
-            TABLE_END_RID - MEMORY_INDEX_END_RID AS MEMORY_GAP
-        FROM
-            V$STORAGE_TAG_TABLES
-        ORDER BY 1`);
+        rows = conn.query(`select 
+            t.NAME AS TABLE_NAME,
+            i.INDEX_STATE AS STATUS,
+            i.TABLE_END_RID - i.DISK_INDEX_END_RID AS DISK_GAP,
+            i.TABLE_END_RID - i.MEMORY_INDEX_END_RID AS MEMORY_GAP
+        from
+            M$SYS_TABLES t,
+            V$STORAGE_TAG_INDEX i
+        where
+            t.ID = i.TABLE_ID
+        order by id`);
 
         let box = pretty.Table(config);
-        box.appendHeader(["ID", "STATUS", "DISK_GAP", "MEMORY_GAP"]); // tag table
+        box.appendHeader(["TABLE_NAME", "STATUS", "DISK_GAP", "MEMORY_GAP"]); // tag table
         box.setColumnConfigs([
-            { align: pretty.Align.right, alignHeader: pretty.Align.left },
+            { align: pretty.Align.left, alignHeader: pretty.Align.left },
             { align: pretty.Align.left, alignHeader: pretty.Align.left },
             { align: pretty.Align.right, alignHeader: pretty.Align.left },
             { align: pretty.Align.right, alignHeader: pretty.Align.left }]);
 
         for (const row of rows) {
             box.append([
-                row.ID,
+                row.TABLE_NAME,
                 row.STATUS,
                 pretty.Ints(row.DISK_GAP),
                 pretty.Ints(row.MEMORY_GAP)
@@ -1209,7 +1232,7 @@ function showTags(config, args) {
     const tableName = args.table;
     const tags = args.tag && args.tag.length > 0 ? args.tag : [];
 
-    let db, conn, colsRows, tagsRows;
+    let db, conn, tagsRows;
     try {
         db = newMachCliClient(config);
         conn = db.connect();
@@ -1223,44 +1246,52 @@ function showTags(config, args) {
             process.exit(1);
         }
 
-        let hasSummarized = false;
+        let meta = {
+            hasSummarized: false,
+            tagNameColumn: 'NAME'
+        };
 
-        colsRows = conn.query(`SELECT
+        let result = conn.queryRow(`SELECT
                 j.ID as TABLE_ID,
                 j.TYPE as TABLE_TYPE,
                 j.FLAG as TABLE_FLAG,
-                j.COLCOUNT as TABLE_COLCOUNT
+                j.COLCOUNT as TABLE_COLCOUNT,
+                c.NAME as TAG_NAME
             FROM
                 M$SYS_USERS u,
-                M$SYS_TABLES j
+                M$SYS_TABLES j,
+                M$SYS_COLUMNS c
             WHERE
                 u.NAME = ?
             AND j.USER_ID = u.USER_ID
             AND j.DATABASE_ID = ?
-            AND j.NAME = ?`, names[1], dbId, names[2]);
-        for (const col of colsRows) {
-            if ((col.TABLE_FLAG & machcli.TABLE_FLAG_SUMMARIZED) !== 0) {
-                hasSummarized = true;
-                break;
+            AND j.NAME = ?
+            AND c.DATABASE_ID = ?
+            AND c.TABLE_ID = j.ID
+            AND c.FLAG = ?`, names[1], dbId, names[2], dbId, machcli.ColumnFlag.TagName);
+
+        if (result) {
+            if ((result.TABLE_FLAG & machcli.TABLE_FLAG_SUMMARIZED) !== 0) {
+                meta.hasSummarized = true;
             }
+            meta.tagNameColumn = result.TAG_NAME;
         }
-        colsRows.close();
-        colsRows = null;
 
         let box = pretty.Table(config);
         box.setStringEscape(true);
-        if (hasSummarized) {
-            box.appendHeader(["_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"]);
+        if (meta.hasSummarized) {
+            box.appendHeader(["_ID", meta.tagNameColumn, "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"]);
         } else {
-            box.appendHeader(["_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"]);
+            box.appendHeader(["_ID", meta.tagNameColumn, "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME"]);
         }
 
         if (tags.length > 0) {
-            tagsRows = conn.query(`SELECT _ID, NAME FROM ${names[0]}.${names[1]}._${names[2]}_META WHERE NAME IN (${tags.map(() => '?').join(',')})`, ...tags);
+            tagsRows = conn.query(`SELECT _ID, ${meta.tagNameColumn} FROM ${names[0]}.${names[1]}._${names[2]}_META WHERE ${meta.tagNameColumn} IN (${tags.map(() => '?').join(',')})`, ...tags);
         } else {
-            tagsRows = conn.query(`SELECT _ID, NAME FROM ${names[0]}.${names[1]}._${names[2]}_META`);
+            tagsRows = conn.query(`SELECT _ID, ${meta.tagNameColumn} FROM ${names[0]}.${names[1]}._${names[2]}_META`);
         }
         for (const row of tagsRows) {
+            const tagName = row[meta.tagNameColumn];
             try {
                 let stat = conn.queryRow(`SELECT
                     NAME, ROW_COUNT,
@@ -1269,12 +1300,12 @@ function showTags(config, args) {
                     RECENT_ROW_TIME
                 FROM
                     ${names[0]}.${names[1]}.V$${names[2]}_STAT
-                WHERE NAME = ?`, row.NAME);
+                WHERE NAME = ?`, tagName);
 
-                if (hasSummarized) {
+                if (meta.hasSummarized) {
                     box.append([
                         row._ID,
-                        row.NAME,
+                        stat.NAME,
                         stat.ROW_COUNT,
                         stat.MIN_TIME,
                         stat.MAX_TIME,
@@ -1287,18 +1318,15 @@ function showTags(config, args) {
                 } else {
                     box.append([
                         row._ID,
-                        row.NAME,
+                        stat.NAME,
                         stat.ROW_COUNT,
                         stat.MIN_TIME,
                         stat.MAX_TIME,
                         stat.RECENT_ROW_TIME,
-                        stat.MIN_VALUE,
-                        stat.MIN_VALUE_TIME,
-                        stat.MAX_VALUE,
-                        stat.MAX_VALUE_TIME
                     ]);
                 }
             } catch (err) {
+                err && console.error("Debug: showTagStat:", err.message);
                 // in case of no stats available for the tag
                 // for example, the tag name is not a printable string, most likely broken data
                 box.append([row._ID, row.NAME, null, null, null, null, null, null, null, null]);
@@ -1318,7 +1346,6 @@ function showTags(config, args) {
     } catch (err) {
         console.println("Error: ", err.message);
     } finally {
-        colsRows && colsRows.close();
         tagsRows && tagsRows.close();
         conn && conn.close();
         db && db.close();
