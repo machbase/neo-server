@@ -53,6 +53,11 @@ var banner = "\n" +
 	"\x1B[91m ╚════╝  ╚══════╝ ╚═╝  ╚═╝" + "\n" +
 	"\x1B[0m" + "\n"
 
+var betaWarn = "" +
+	"    This is an JSH command line runtime in BETA stage.\n" +
+	"    The commands and features are subject to change without deprecation.\n" +
+	"    Type 'exit' to quit the shell.\n"
+
 func (sh *Shell) Run(env *engine.Env) int {
 	var ed multiline.Editor
 	ed.SetTty(NewTty()) // See TtyWrap comment
@@ -74,6 +79,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 	})
 	ctx := context.Background()
 	log.Println(banner)
+	log.Println(betaWarn)
 	for {
 		var line string
 		var forHistory string
