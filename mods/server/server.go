@@ -482,7 +482,9 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 
 func (s *Server) preparePorts() error {
 	// port-check MACH
-	if !HeadOnly {
+	if HeadOnly {
+		s.AddServicePort("mach", fmt.Sprintf("tcp://%s", strings.TrimPrefix(s.DataDir, "machbase://")))
+	} else {
 		if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
 			return fmt.Errorf("MACH port not available, %s", err.Error())
 		} else {
