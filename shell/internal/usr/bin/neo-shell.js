@@ -26,9 +26,9 @@ actor.prompt = (lineno) => {
 };
 
 const SQL_VERBS = new Set([
-    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER',
-    'TRUNCATE', 'GRANT', 'REVOKE', 'COMMIT', 'ROLLBACK', 'SAVEPOINT',
-    'BACKUP', "MOUNT",
+    'ALTER', 'BACKUP', 'CREATE', 'COMMIT', 'DELETE', 'DROP',
+    'EXEC', 'GRANT', 'INSERT', 'MOUNT', 'REVOKE', 'ROLLBACK',
+    'SAVEPOINT', 'SELECT', 'TRUNCATE', 'UNMOUNT', 'UPDATE',
 ]);
 
 actor.submitOnEnterWhen = (lines, idx) => {
