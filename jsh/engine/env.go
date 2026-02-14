@@ -456,6 +456,12 @@ func (e *Env) ExecBuilder() ExecBuilderFunc {
 	return e.execBuilder
 }
 
+func (e *Env) ForEach(f func(key string, value any)) {
+	for k, v := range e.vars {
+		f(k, v)
+	}
+}
+
 func (e *Env) Set(key string, value any) {
 	if e.vars == nil {
 		e.vars = make(map[string]any)

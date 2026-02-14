@@ -366,6 +366,10 @@ func (svr *httpd) Router() *gin.Engine {
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
+	// public group
+	publicGroup := r.Group("/public")
+	publicGroup.Any("/*path", svr.handlePublic)
+
 	// debug group
 	debugGroup := r.Group("/debug")
 	debugGroup.Use(svr.allowDebug)
