@@ -345,16 +345,22 @@ func tokenize(input string) []string {
 
 		// Track quote boundaries and exclude quote characters from the token
 		// Quotes must not be escaped with backslash to be treated as delimiters
+		// Nested quotes (different quote type inside a quoted string) are preserved
 		if (ch == '"' || ch == '\'') && prevCh != '\\' {
 			if !inQuote {
+				// Starting a quote - exclude this character
 				inQuote = true
 				quoteChar = ch
+				prevCh = ch
+				continue
 			} else if ch == quoteChar {
+				// Ending the matching quote - exclude this character
 				inQuote = false
 				quoteChar = 0
+				prevCh = ch
+				continue
 			}
-			prevCh = ch
-			continue // Quote chars are not included in the resulting token
+			// else: nested quote (different from quoteChar) - include it in the token
 		}
 
 		// Whitespace acts as token separator only outside quoted strings

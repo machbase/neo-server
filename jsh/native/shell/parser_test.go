@@ -587,6 +587,26 @@ func TestTokenize(t *testing.T) {
 			input:    "echo    hello     world",
 			expected: []string{"echo", "hello", "world"},
 		},
+		{
+			name:     "nested single quote in double quotes",
+			input:    `cmd "hello 'hi'"`,
+			expected: []string{"cmd", "hello 'hi'"},
+		},
+		{
+			name:     "nested double quote in single quotes",
+			input:    `cmd 'hello "hi"'`,
+			expected: []string{"cmd", `hello "hi"`},
+		},
+		{
+			name:     "multiple nested quotes",
+			input:    `echo "say 'hello' and 'world'"`,
+			expected: []string{"echo", "say 'hello' and 'world'"},
+		},
+		{
+			name:     "nested quotes with redirection",
+			input:    `echo "test 'value'" > file.txt`,
+			expected: []string{"echo", "test 'value'", ">", "file.txt"},
+		},
 	}
 
 	for _, tt := range tests {
