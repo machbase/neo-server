@@ -525,27 +525,27 @@ func (s *Server) preparePorts() error {
 
 func (s *Server) preparePrefDir() error {
 	if path, err := filepath.Abs(s.PrefDir); err != nil {
-		return fmt.Errorf("prefdir: %s", err.Error())
+		return fmt.Errorf("prefDir: %s", err.Error())
 	} else {
 		s.prefDirPath = path
 	}
 	if err := util.MkDirIfNotExists(filepath.Dir(s.prefDirPath)); err != nil {
-		return fmt.Errorf("prefdir: %s", err.Error())
+		return fmt.Errorf("prefDir: %s", err.Error())
 	}
 	if err := mkDirIfNotExists(s.prefDirPath); err != nil {
-		return fmt.Errorf("prefdir: %s", err.Error())
+		return fmt.Errorf("prefDir: %s", err.Error())
 	}
 	s.certDirPath = filepath.Join(s.prefDirPath, "cert")
 	if err := mkDirIfNotExistsMode(s.certDirPath, 0700); err != nil {
-		return fmt.Errorf("prefdir cert: %s", err.Error())
+		return fmt.Errorf("prefDir cert: %s", err.Error())
 	}
 	if err := s.mkKeysIfNotExists(); err != nil {
-		return fmt.Errorf("prefdir keys: %s", err.Error())
+		return fmt.Errorf("prefDir keys: %s", err.Error())
 	}
 
 	s.authorizedKeysDir = filepath.Join(s.certDirPath, "authorized_keys")
 	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
-		return fmt.Errorf("authorized keys: %s", err.Error())
+		return fmt.Errorf("prefDir authorized keys: %s", err.Error())
 	}
 
 	s.licenseFilePath = filepath.Join(s.prefDirPath, "license.dat")
@@ -990,11 +990,18 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 		}
 		return ports[i].Service < ports[j].Service
 	})
+	if ports == nil {
+		ports = []*model.ServicePort{}
+	}
 	return ports, nil
 }
 
 func (s *Server) getShellList() []*model.ShellDefinition {
-	return s.models.ShellProvider().GetAllShells(false)
+	lst := s.models.ShellProvider().GetAllShells(false)
+	if lst == nil {
+		return []*model.ShellDefinition{}
+	}
+	return lst
 }
 
 func (s *Server) addShell(name string, command string) (string, error) {
@@ -1032,6 +1039,9 @@ func (s *Server) getBridgeList() ([]*bridgerpc.Bridge, error) {
 	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {
 		return nil, err
 	} else {
+		if rsp.Bridges == nil {
+			return []*bridgerpc.Bridge{}, nil
+		}
 		return rsp.Bridges, nil
 	}
 }
@@ -1468,6 +1478,9 @@ func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
 	if !rsp.Success {
 		return nil, errors.New(rsp.Reason)
 	}
+	if rsp.Sessions == nil {
+		return []*mgmt.Session{}, nil
+	}
 	return rsp.Sessions, nil
 }
 
@@ -1564,11 +1577,11 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 }
 
 func (s *Server) splitSqlStatements(ctx context.Context, content string) ([]*util.SqlStatement, error) {
-	stmts, err := util.SplitSqlStatements(strings.NewReader(content))
+	statements, err := util.SplitSqlStatements(strings.NewReader(content))
 	if err != nil {
 		return nil, err
 	}
-	return stmts, nil
+	return statements, nil
 }
 
 func (s *Server) ServerPrivateKeyPath() string {
