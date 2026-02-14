@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/fs"
@@ -230,6 +231,25 @@ func (m *FS) ReadFile(name string) ([]byte, error) {
 	}
 	defer f.Close()
 	return io.ReadAll(f)
+}
+
+func (m *FS) ReadLines(name string) ([]string, error) {
+	name = CleanPath(name)
+	f, err := m.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
 }
 
 // Mkdir creates a directory at the specified path

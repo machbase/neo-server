@@ -327,7 +327,7 @@
     // Syntax highlighter for YAML
     function highlightYAML(line) {
         let result = '';
-        
+
         // Comments
         if (line.trimStart().startsWith('#')) {
             return colors.comment + line + colors.reset;
@@ -338,7 +338,7 @@
         if (match) {
             const [, indent, key, value] = match;
             result = indent + colors.property + key + colors.reset + colors.operator + ':' + colors.reset;
-            
+
             const trimmedValue = value.trim();
             if (trimmedValue.startsWith('"') || trimmedValue.startsWith("'")) {
                 result += value.replace(trimmedValue, colors.string + trimmedValue + colors.reset);
@@ -377,7 +377,7 @@
         if (match) {
             const [, indent, key, value] = match;
             let result = indent + colors.property + key.trim() + colors.reset + colors.operator + ' = ' + colors.reset;
-            
+
             const trimmedValue = value.trim();
             if (trimmedValue.startsWith('"') || trimmedValue.startsWith("'")) {
                 result += value.replace(trimmedValue, colors.string + trimmedValue + colors.reset);
@@ -397,7 +397,7 @@
     // Select highlighter based on file extension
     function getHighlighter(filename) {
         const ext = getExtension(filename);
-        
+
         switch (ext) {
             case '.js':
                 return highlightJS;
@@ -426,11 +426,9 @@
         }
 
         try {
-            const raw = fs.readFile(fullPath);
-            const content = String.fromCharCode(...raw);
-            const lines = content.split('\n');
+            const lines = fs.readLines(fullPath);
             let prevEmpty = false;
-            
+
             lines.forEach((line, idx) => {
                 // Squeeze blank lines if -s flag
                 if (values.squeeze) {
