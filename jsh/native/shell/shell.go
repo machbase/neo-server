@@ -85,7 +85,8 @@ func (sh *Shell) Run(env *engine.Env) int {
 		var forHistory string
 		if input, err := ed.Read(ctx); err != nil {
 			if err == readline.CtrlC || err == io.EOF {
-				return 0
+				log.Println(err.Error())
+				continue
 			}
 			log.Printf("Error input: %v\n", err)
 			return 1
