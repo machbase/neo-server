@@ -380,7 +380,16 @@ func (tail *Tail) openFile() error {
 
 	tail.file = file
 	tail.lastSize = stat.Size()
-	tail.lastInode = getInode(stat)
+
+	// Get the file's unique identifier
+	// On Windows, use the actual file index from the handle
+	// On Unix, use the inode from stat
+	inode, err := getFileIDFromHandle(file)
+	if err != nil {
+		// Fallback to stat-based inode
+		inode = getInode(stat)
+	}
+	tail.lastInode = inode
 	tail.lastPos = 0
 
 	return nil
@@ -422,11 +431,32 @@ func (tail *Tail) checkAndRead() error {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	currentInode := getInode(stat)
 	currentSize := stat.Size()
 
-	// Check if file was rotated (inode changed)
-	if currentInode != tail.lastInode {
+	// Check if file was rotated by comparing file IDs
+	// On Windows, we need to open the file to get its actual ID (not size-based)
+	// On Unix, we can use the inode from stat
+	fileWasRotated := false
+
+	// Try to get the ID of the file currently at the path
+	tempFile, err := openFileShared(tail.filepath)
+	if err == nil {
+		defer tempFile.Close()
+		newFileID, err := getFileIDFromHandle(tempFile)
+		if err == nil && newFileID != tail.lastInode {
+			fileWasRotated = true
+		}
+	}
+
+	// Also check using getInode for compatibility (fallback)
+	if !fileWasRotated {
+		currentInode := getInode(stat)
+		if currentInode != 0 && currentInode != tail.lastInode && tail.lastInode != 0 {
+			fileWasRotated = true
+		}
+	}
+
+	if fileWasRotated {
 		// File was rotated - read remaining content from old file then switch to new file
 		if _, err := tail.file.Seek(tail.lastPos, io.SeekStart); err == nil {
 			tail.readLines()
