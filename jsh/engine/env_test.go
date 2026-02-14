@@ -33,6 +33,9 @@ func TestWhich(t *testing.T) {
 		{"with .js extension", "/bin", "shell.js", "/bin/shell.js"},
 		{"not found", "/bin:/lib", "notfound", ""},
 		{"absolute path", "/bin", "/lib/util.js", "/lib/util.js"},
+		{"relative path", "/bin", "./shell", "/work/subdir/shell.js"},
+		{"home path", "/bin", "~/shell", "/work/shell.js"},
+		{"variable in path", "/bin", "$HOME/shell", "/work/shell.js"},
 		{"empty path", "", "shell", ""},
 	}
 
@@ -40,6 +43,8 @@ func TestWhich(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env := NewEnv(WithFilesystem(mfs))
 			env.Set("PATH", tt.path)
+			env.Set("HOME", "/work")
+			env.Set("PWD", "/work/subdir")
 
 			got := env.Which(tt.command)
 			if got != tt.want {

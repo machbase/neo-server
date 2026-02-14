@@ -35,8 +35,17 @@ func (env *Env) Which(command string) string {
 	if !strings.HasSuffix(command, ".js") {
 		command += ".js"
 	}
-	if strings.HasPrefix(command, "/") {
-		return command
+	command = env.Expand(command)
+	if strings.HasPrefix(command, "/") || strings.HasPrefix(command, "~/") {
+		return env.ResolvePath(command)
+	}
+	if strings.HasPrefix(command, "./") || strings.HasPrefix(command, "../") {
+		cwd := env.Get("PWD")
+		if cwdStr, ok := cwd.(string); ok {
+			return env.ResolvePath(cwdStr + "/" + command)
+		} else {
+			return env.ResolvePath(command)
+		}
 	}
 	filesystem := env.Filesystem()
 	pathVar := env.Get("PATH")
@@ -469,6 +478,9 @@ func (e *Env) Set(key string, value any) {
 	if value == nil {
 		delete(e.vars, key)
 		return
+	}
+	if str, ok := value.(string); ok {
+		value = e.Expand(str)
 	}
 	e.vars[key] = value
 }
