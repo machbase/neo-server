@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 	}()
 
 	testServer := testsuite.NewServer("./test/tmp")
-	testServer.StartServer(m)
+	testServer.StartServer()
 	testServer.CreateTestTables()
 
 	db := testServer.DatabaseSVR()
@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 
 	testServer.DropTestTables()
-	testServer.StopServer(m)
+	testServer.StopServer()
 }
 
 type TestCase struct {

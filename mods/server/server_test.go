@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 	dataPath := "./testsuite_tmp"
 	// database
 	testServer := testsuite.NewServer(dataPath)
-	testServer.StartServer(m)
+	testServer.StartServer()
 	testServer.CreateTestTables()
 	database := testServer.DatabaseSVR()
 	initTestData(database)
@@ -107,7 +107,7 @@ func TestMain(m *testing.M) {
 	httpServer.Stop()
 	api.StopMetrics()
 	testServer.DropTestTables()
-	testServer.StopServer(m)
+	testServer.StopServer()
 }
 
 func initTestData(db api.Database) {

@@ -3,7 +3,6 @@ package machcli
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,16 +11,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/root"
 )
-
-var testServer *testsuite.Server
-
-func TestMain(m *testing.M) {
-	tmpDir := os.TempDir()
-	testServer = testsuite.NewServer(tmpDir)
-	testServer.StartServer(m)
-	defer testServer.StopServer(m)
-	os.Exit(m.Run())
-}
 
 type TestCase struct {
 	name   string
@@ -79,6 +68,13 @@ func RunTest(t *testing.T, tc TestCase) {
 }
 
 func TestDatabase(t *testing.T) {
+	var testServer *testsuite.Server
+	testServer = testsuite.NewServer(t.TempDir())
+	testServer.StartServer()
+	defer func() {
+		testServer.StopServer()
+	}()
+
 	tick, _ := time.ParseInLocation(time.DateTime, "2025-12-17 16:49:28", time.Local)
 
 	tests := []TestCase{

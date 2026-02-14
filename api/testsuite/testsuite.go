@@ -193,7 +193,7 @@ func (s *Server) checkListenPort() {
 	lsnr.Close()
 }
 
-func (s *Server) StartServer(m *testing.M) {
+func (s *Server) StartServer() {
 	// prepare
 	homePath, err := filepath.Abs(filepath.Join(s.machsvrDataDir, "machbase"))
 	if err != nil {
@@ -293,7 +293,7 @@ func (s *Server) StartServer(m *testing.M) {
 	}
 }
 
-func (s *Server) StopServer(m *testing.M) {
+func (s *Server) StopServer() {
 	if err := s.machcliDatabase.Close(); err != nil {
 		panic(err)
 	}
