@@ -4,9 +4,9 @@ import (
 	"flag"
 	"os"
 
-	"github.com/machbase/neo-server/v8/jsh/cmd"
+	jshSession "github.com/machbase/neo-server/v8/jsh/session"
 	"github.com/machbase/neo-server/v8/mods/args"
-	"github.com/machbase/neo-server/v8/shell/session"
+	shellSession "github.com/machbase/neo-server/v8/shell/session"
 )
 
 func main() {
@@ -17,7 +17,7 @@ func main() {
 			panic(err)
 		}
 		flagSet := flag.NewFlagSet("shell", flag.ExitOnError)
-		session.Main(flagSet, []string{self, "shell"}, os.Args[2:])
+		shellSession.Main(flagSet, []string{self, "shell"}, os.Args[2:])
 	} else if len(os.Args) > 1 && os.Args[1] == "jsh" {
 		// handling "machbase-neo jsh ..."
 		self, err := os.Executable()
@@ -25,7 +25,7 @@ func main() {
 			panic(err)
 		}
 		flagSet := flag.NewFlagSet("jsh", flag.ExitOnError)
-		cmd.Main(flagSet, []string{self, "jsh"}, os.Args[2:])
+		jshSession.Main(flagSet, []string{self, "jsh"}, os.Args[2:])
 	} else {
 		// handling "machbase-neo serve ..." or others
 		os.Exit(args.Main())
