@@ -87,6 +87,9 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 			}
 		}
 		if !strings.HasPrefix(neoHost, "unix://") {
+			neoHost = strings.TrimPrefix(neoHost, "http://")
+			neoHost = strings.TrimPrefix(neoHost, "https://")
+			neoHost = strings.TrimPrefix(neoHost, "tcp://")
 			if _, port, err := net.SplitHostPort(neoHost); err != nil {
 				port, err = readLine("Port", "5654")
 				if err != nil {

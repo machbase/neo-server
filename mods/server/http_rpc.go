@@ -10,10 +10,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
-func init() {
-	RegisterJsonRpcHandler("markdownRender", rpcMarkdownRender)
-}
-
 func rpcMarkdownRender(markdown string, darkMode bool) (string, error) {
 	w := &strings.Builder{}
 	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
@@ -118,4 +114,46 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 
 	// Always return HTTP 200 as per JSON-RPC 2.0 specification
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+func RegisterJsonRpcHandlers(s *Server) {
+	RegisterJsonRpcHandler("markdownRender", rpcMarkdownRender)
+	if s == nil {
+		return
+	}
+	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
+	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
+	RegisterJsonRpcHandler("listShells", s.listShells)
+	RegisterJsonRpcHandler("addShell", s.addShell)
+	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
+	RegisterJsonRpcHandler("listBridges", s.listBridges)
+	RegisterJsonRpcHandler("addBridge", s.addBridge)
+	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
+	RegisterJsonRpcHandler("testBridge", s.testBridge)
+	RegisterJsonRpcHandler("statsBridge", s.statsBridge)
+	RegisterJsonRpcHandler("execBridge", s.execBridge)
+	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
+	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
+	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
+	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
+	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
+	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
+	RegisterJsonRpcHandler("listKeys", s.listKeys)
+	RegisterJsonRpcHandler("genKey", s.genKey)
+	RegisterJsonRpcHandler("deleteKey", s.deleteKey)
+	RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
+	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
+	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
+	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
+	RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
+	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
+	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
+	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
+	RegisterJsonRpcHandler("setHttpDebug", s.setHttpDebug)
+	RegisterJsonRpcHandler("listSessions", s.listSessions)
+	RegisterJsonRpcHandler("killSession", s.killSession)
+	RegisterJsonRpcHandler("statSession", s.statSession)
+	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
+	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
+	RegisterJsonRpcHandler("splitSqlStatements", s.splitSqlStatements)
 }

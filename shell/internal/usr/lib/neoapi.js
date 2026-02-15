@@ -206,9 +206,9 @@ class Client extends _Client {
                 callback(null, err);
             });
     }
-    getShellList() {
+    listShells() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('getShellList', []);
+            return this._rpcRequest('listShells', []);
         });
     }
     addShell(label, command) {
@@ -221,9 +221,9 @@ class Client extends _Client {
             return this._rpcRequest('deleteShell', [id]);
         });
     }
-    getBridgeList() {
+    listBridges() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('getBridgeList', []);
+            return this._rpcRequest('listBridges', []);
         });
     }
     addBridge(name, type, conn) {

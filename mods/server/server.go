@@ -225,6 +225,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("package manager: %w", err)
 	}
 
+	// register JSON-RPC handlers
+	RegisterJsonRpcHandlers(s)
+
 	// http server
 	if err := s.startHttpServer(); err != nil {
 		return fmt.Errorf("http server: %w", err)
@@ -835,42 +838,6 @@ func (s *Server) startHttpServer() error {
 	if len(s.Http.Listeners) == 0 {
 		return nil
 	}
-
-	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
-	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
-	RegisterJsonRpcHandler("getShellList", s.getShellList)
-	RegisterJsonRpcHandler("addShell", s.addShell)
-	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
-	RegisterJsonRpcHandler("getBridgeList", s.getBridgeList)
-	RegisterJsonRpcHandler("addBridge", s.addBridge)
-	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
-	RegisterJsonRpcHandler("testBridge", s.testBridge)
-	RegisterJsonRpcHandler("statsBridge", s.statsBridge)
-	RegisterJsonRpcHandler("execBridge", s.execBridge)
-	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
-	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
-	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
-	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
-	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
-	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
-	RegisterJsonRpcHandler("listKeys", s.listKeys)
-	RegisterJsonRpcHandler("genKey", s.genKey)
-	RegisterJsonRpcHandler("deleteKey", s.deleteKey)
-	RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
-	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
-	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
-	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
-	RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
-	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
-	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
-	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
-	RegisterJsonRpcHandler("setHttpDebug", s.setHttpDebug)
-	RegisterJsonRpcHandler("listSessions", s.listSessions)
-	RegisterJsonRpcHandler("killSession", s.killSession)
-	RegisterJsonRpcHandler("statSession", s.statSession)
-	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
-	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
-	RegisterJsonRpcHandler("splitSqlStatements", s.splitSqlStatements)
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
@@ -996,7 +963,7 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	return ports, nil
 }
 
-func (s *Server) getShellList() []*model.ShellDefinition {
+func (s *Server) listShells() []*model.ShellDefinition {
 	lst := s.models.ShellProvider().GetAllShells(false)
 	if lst == nil {
 		return []*model.ShellDefinition{}
@@ -1034,7 +1001,7 @@ func (s *Server) deleteShell(id string) error {
 	return s.models.ShellProvider().RemoveShell(id)
 }
 
-func (s *Server) getBridgeList() ([]*bridgerpc.Bridge, error) {
+func (s *Server) listBridges() ([]*bridgerpc.Bridge, error) {
 	ctx := context.Background()
 	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {
 		return nil, err
@@ -1285,6 +1252,9 @@ func (s *Server) listKeys(ctx context.Context) ([]*mgmt.KeyInfo, error) {
 	}
 	if !rsp.Success {
 		return nil, errors.New(rsp.Reason)
+	}
+	if rsp.Keys == nil {
+		return []*mgmt.KeyInfo{}, nil
 	}
 	return rsp.Keys, nil
 }

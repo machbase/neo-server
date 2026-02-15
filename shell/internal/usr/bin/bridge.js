@@ -148,7 +148,7 @@ parseAndRun(process.argv.slice(2), defaultConfig, commands);
 
 function listBridges(config, args) {
     const client = new neoapi.Client(config);
-    client.getBridgeList()
+    client.listBridges()
         .then((lst) => {
             let box = pretty.Table(config);
             box.appendHeader(['NAME', 'TYPE', 'CONNECTION']);

@@ -83,6 +83,9 @@ function doList(config, args) {
             }
             console.println(box.render());
         })
+        .catch((err) => {
+            console.println('Error:', err.message);
+        });
 }
 
 function doGen(config, args) {

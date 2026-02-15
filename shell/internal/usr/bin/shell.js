@@ -81,7 +81,7 @@ commands[args.command].func(config, args.params);
 
 function listShells(config, args) {
     const client = new neoapi.Client(config);
-    client.getShellList()
+    client.listShells()
         .then((lst) => {
             let box = pretty.Table(config);
             box.appendHeader(['ID', 'NAME', 'COMMAND']);

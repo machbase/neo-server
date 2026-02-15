@@ -2,6 +2,10 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -16,6 +20,8 @@ import (
 )
 
 var testTimeTick = time.Unix(1705291859, 0)
+
+var machServerAddress = ""
 
 var mqttServer *mqttd
 var mqttServerAddress = ""
@@ -41,6 +47,8 @@ func TestMain(m *testing.M) {
 	testServer.CreateTestTables()
 	database := testServer.DatabaseSVR()
 	initTestData(database)
+
+	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", testServer.MachPort())
 
 	// metric
 	api.StartMetrics()
@@ -152,4 +160,110 @@ func TestRepresentativePort(t *testing.T) {
 	} else {
 		require.Equal(t, "  > Unix:    /var/run/neo-server.sock", representativePort("unix:///var/run/neo-server.sock"))
 	}
+}
+
+func TestShell(t *testing.T) {
+	var projRoot = filepath.FromSlash("../../")
+	var binPath = filepath.Join(projRoot, "tmp", "neo-shell")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+	buildShellCmd := []string{
+		"go", "build", "-o", binPath, filepath.Join(projRoot, "shell"),
+	}
+	err := exec.Command(buildShellCmd[0], buildShellCmd[1:]...).Run()
+	require.NoError(t, err, "Failed to build shell binary")
+
+	var server, _ = NewServer(&Config{
+		PrefDir:  filepath.Join(projRoot, "tmp", "test", "cert"),
+		FileDirs: []string{filepath.Join(projRoot, "tmp", "test", "files")},
+	})
+	server.preparePrefDir()
+	server.startModelService()
+	server.startBridgeAndSchedulerService()
+	server.AddServicePort("mach", machServerAddress)
+	RegisterJsonRpcHandlers(server)
+
+	var binArgs = []string{
+		binPath,
+		"--server", httpServerAddress,
+		"--user", "sys",
+		"--password", "manager",
+	}
+	tests := []ShellTestCase{
+		{
+			name: "key_list",
+			args: append(binArgs, "key", "list"),
+			expect: []string{
+				"┌────────┬────┬──────────────────┬─────────────────┐",
+				"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
+				"├────────┼────┼──────────────────┼─────────────────┤",
+				"└────────┴────┴──────────────────┴─────────────────┘",
+			},
+		},
+		{
+			name: "bridge_list",
+			args: append(binArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "show_license",
+			args: append(binArgs, "show", "license", "--box-style", "simple"),
+			expect: []string{
+				"+--------+----------+-----------+----------+---------+--------------+---------------------+-------------+--------+",
+				"| ROWNUM | ID       | TYPE      | CUSTOMER | PROJECT | COUNTRY_CODE | INSTALL_DATE        |  ISSUE_DATE | STATUS |",
+				"+--------+----------+-----------+----------+---------+--------------+---------------------+-------------+--------+",
+				`/r/|      1 | 00000000 | COMMUNITY | NONE     | NONE    | KR           | [0-9\- :]+ | 20991231    | VALID  |`,
+				"+--------+----------+-----------+----------+---------+--------------+---------------------+-------------+--------+",
+			},
+		},
+		{
+			name: "show_tables",
+			args: append(binArgs, "show", "tables", "--format", "csv"),
+			expect: []string{
+				"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
+				"1,MACHBASEDB,SYS,EXAMPLE,19,Tag,",
+				"2,MACHBASEDB,SYS,LOG_DATA,13,Log,",
+				"3,MACHBASEDB,SYS,TAG_DATA,6,Tag,",
+				"4,MACHBASEDB,SYS,TAG_SIMPLE,12,Tag,",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := exec.Command(tt.args[0], tt.args[1:]...)
+			output, err := cmd.CombinedOutput()
+			require.NoError(t, err, "Shell command failed: %s", string(output))
+			outputLines := strings.Split(string(output), "\n")
+			for i, outputLine := range outputLines {
+				if i >= len(tt.expect) {
+					if outputLine != "" || i != len(outputLines)-1 {
+						require.Fail(t, "Unexpected extra output", "Line: %s", outputLine)
+					}
+					continue
+				}
+				expect := tt.expect[i]
+				if strings.HasPrefix(expect, "/r/") {
+					// regular expression match
+					pattern := expect[3:]
+					matched, err := regexp.MatchString(pattern, outputLine)
+					require.NoError(t, err, "Invalid regular expression: %s", pattern)
+					require.True(t, matched, "Output line does not match pattern. Line: %s, Pattern: %s", outputLine, pattern)
+				} else {
+					require.Equal(t, expect, outputLine)
+				}
+			}
+		})
+	}
+}
+
+type ShellTestCase struct {
+	name   string
+	args   []string
+	expect []string
 }

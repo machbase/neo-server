@@ -17,6 +17,8 @@ func TestHttpRpc(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, at)
 
+	RegisterJsonRpcHandlers(nil) // register handlers for testing without starting the server
+
 	tests := []struct {
 		name     string
 		method   string
