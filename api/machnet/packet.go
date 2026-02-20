@@ -33,7 +33,6 @@ func buildPacket(protocolID byte, stmtID uint32, adds uint16, flag byte, body []
 func readPacketNoDeadline(reader io.Reader) (packet, error) {
 	var h [packetHeaderSize]byte
 	if _, err := io.ReadFull(reader, h[:]); err != nil {
-		fmt.Println("readPacketNoDeadline-1: read header error", err.Error())
 		return packet{}, err
 	}
 	lenField := binary.BigEndian.Uint32(h[4:8])
@@ -41,7 +40,6 @@ func readPacketNoDeadline(reader io.Reader) (packet, error) {
 	body := make([]byte, bodyLen)
 	if bodyLen > 0 {
 		if _, err := io.ReadFull(reader, body); err != nil {
-			fmt.Println("readPacketNoDeadline-2: read body error", err.Error())
 			return packet{}, err
 		}
 	}
@@ -122,7 +120,6 @@ func readNextProtocolFrom(reader io.Reader, conn net.Conn, timeout time.Duration
 		_ = conn.SetReadDeadline(time.Now().Add(timeout))
 		defer conn.SetReadDeadline(time.Time{})
 	}
-        fmt.Println("readPacketNoDeadline() : Before1")
 	first, err := readPacketNoDeadline(reader)
 	if err != nil {
 		return 0, nil, err
@@ -133,7 +130,6 @@ func readNextProtocolFrom(reader io.Reader, conn net.Conn, timeout time.Duration
 	total := len(first.body)
 	flag := first.flag
 	for flag != 0 && flag != 3 {
-                fmt.Println("readPacketNoDeadline() : Before4")
 		pkt, err := readPacketNoDeadline(reader)
 		if err != nil {
 			return 0, nil, err

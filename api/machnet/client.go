@@ -17,7 +17,6 @@ type nativeConn struct {
 
 	netConn net.Conn
 	br      *bufio.Reader
-	bw      *bufio.Writer
 
 	host         string
 	port         int
@@ -119,7 +118,6 @@ func dialNative(host string, port int, user string, password string, alts []net.
 		nc := &nativeConn{
 			netConn:      c,
 			br:           bufio.NewReaderSize(c, defaultReadBufferSize),
-			bw:           bufio.NewWriterSize(c, defaultWriteBufferSize),
 			host:         host,
 			port:         port,
 			user:         user,
@@ -220,12 +218,9 @@ func (c *nativeConn) sendPackets(packets [][]byte, expected byte, timeout time.D
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writeAllNoDeadline(c.netConn, p); err != nil {
 			return nil, err
 		}
-	}
-	if err := c.bw.Flush(); err != nil {
-		return nil, err
 	}
 	return readProtocolFrom(c.br, c.netConn, expected, timeout)
 }
@@ -241,12 +236,9 @@ func (c *nativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Durati
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writeAllNoDeadline(c.netConn, p); err != nil {
 			return err
 		}
-	}
-	if err := c.bw.Flush(); err != nil {
-		return err
 	}
 	return nil
 }
@@ -262,12 +254,9 @@ func (c *nativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writeAllNoDeadline(c.netConn, p); err != nil {
 			return nil, false, err
 		}
-	}
-	if err := c.bw.Flush(); err != nil {
-		return nil, false, err
 	}
 	// Probe 1 byte first so optional timeout does not partially consume protocol data.
 	if timeout > 0 {
@@ -656,14 +645,12 @@ func (c *nativeConn) appendData(stmtID uint32, rows [][]byte, checkResponse bool
 	}
 	packets := w.finalize()
 	if !checkResponse {
-		fmt.Println("sendPacketsNoResponse() : Before 11")
 		return c.sendPacketsNoResponse(packets, c.queryTimeout)
 	}
 	timeout := 5 * time.Millisecond
 	if c.queryTimeout > 0 && timeout > c.queryTimeout {
 		timeout = c.queryTimeout
 	}
-        fmt.Println("sendPacketsNoResponse() : Before 22")
 	body, ok, err := c.sendPacketsOptional(packets, cmiAppendDataProtocol, timeout)
 	if err != nil {
 		return err
@@ -717,35 +704,33 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
-              		fmt.Println("readNextProtocolFrom() : Err1")
+		if err := writeAllNoDeadline(c.netConn, p); err != nil {
 			return 0, 0, err
 		}
 	}
-	if err := c.bw.Flush(); err != nil {
-		fmt.Println("readNextProtocolFrom() : Err2")
-		return 0, 0, err
-	}
 
+	var appendDataErr error
 	for {
-		fmt.Println("readNextProtocolFrom() : Before")
 		protocol, body, err := readNextProtocolFrom(c.br, c.netConn, c.queryTimeout)
 		if err != nil {
-                       fmt.Println("readNextProtocolFrom() : Err3")
 			return 0, 0, err
 		}
 		switch protocol {
 		case cmiAppendDataProtocol:
-                        fmt.Println("cmiAppendDataProtocol - GET1")
-			if err := parseAppendDataResponse(body); err != nil {
-                                fmt.Println("readNextProtocolFrom() : Err4")
-				return 0, 0, err
+			if err := parseAppendDataResponse(body); err != nil && appendDataErr == nil {
+				// Keep draining until APPEND_CLOSE to keep protocol stream in sync.
+				appendDataErr = err
 			}
 		case cmiAppendCloseProtocol:
-                        fmt.Println("cmiAppendCloseProtocol - GET2")
-			return parseAppendCloseResponse(body)
+			succ, fail, err := parseAppendCloseResponse(body)
+			if err != nil {
+				return succ, fail, err
+			}
+			if appendDataErr != nil {
+				return succ, fail, appendDataErr
+			}
+			return succ, fail, nil
 		default:
-                        fmt.Println("Close - GET3")
 			return 0, 0, fmt.Errorf("unexpected protocol %d expected %d", protocol, cmiAppendCloseProtocol)
 		}
 	}
