@@ -46,22 +46,25 @@ const (
 )
 
 type stmtHandle struct {
-	mu        sync.Mutex
-	conn      *connHandle
-	id        uint32
-	closed    bool
-	prepared  bool
-	sql       string
-	stmtType  int
-	rowCount  int64
-	columns   []columnMeta
-	paramDesc []CliParamDesc
-	rows      [][]any
-	rowPos    int
-	current   []any
-	bound     map[int]boundParam
-	app       *appendState
-	lastErr   cliErrorState
+	mu     sync.Mutex
+	conn   *connHandle
+	id     uint32
+	closed bool
+	// serverClosed indicates the server-side statement lifecycle is already closed
+	// (e.g. APPEND_CLOSE). In this case sending FREE again can timeout.
+	serverClosed bool
+	prepared     bool
+	sql          string
+	stmtType     int
+	rowCount     int64
+	columns      []columnMeta
+	paramDesc    []CliParamDesc
+	rows         [][]any
+	rowPos       int
+	current      []any
+	bound        map[int]boundParam
+	app          *appendState
+	lastErr      cliErrorState
 }
 
 func setErr(st *cliErrorState, err error) {
@@ -237,10 +240,13 @@ func CliFreeStmt(stmt unsafe.Pointer) error {
 	s.closed = true
 	conn := s.conn
 	id := s.id
+	serverClosed := s.serverClosed
 	s.mu.Unlock()
 	var err error
 	if conn != nil && conn.native != nil {
-		err = conn.native.free(id)
+		if !serverClosed {
+			err = conn.native.free(id)
+		}
 		if err == nil {
 			conn.native.releaseStmtID(id)
 		}
@@ -742,6 +748,7 @@ func CliAppendOpen(stmt unsafe.Pointer, tableName string, errCheckCount int) err
 		},
 		pendingRows: make([][]byte, 0, appendBatchMaxRows),
 	}
+	s.serverClosed = false
 	return nil
 }
 
@@ -861,6 +868,7 @@ func CliAppendClose(stmt unsafe.Pointer) (int64, int64, error) {
 	s.app.successCnt = succ
 	s.app.failCnt = fail
 	s.app = nil
+	s.serverClosed = true
 	return succ, fail, nil
 }
 

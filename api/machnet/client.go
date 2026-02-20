@@ -269,12 +269,23 @@ func (c *nativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 	if err := c.bw.Flush(); err != nil {
 		return nil, false, err
 	}
-	body, err := readProtocolFrom(c.br, c.netConn, expected, timeout)
-	if err != nil {
+	// Probe 1 byte first so optional timeout does not partially consume protocol data.
+	if timeout > 0 {
+		_ = c.netConn.SetReadDeadline(time.Now().Add(timeout))
+	}
+	_, peekErr := c.br.Peek(1)
+	if timeout > 0 {
+		_ = c.netConn.SetReadDeadline(time.Time{})
+	}
+	if peekErr != nil {
 		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
+		if errors.As(peekErr, &netErr) && netErr.Timeout() {
 			return nil, false, nil
 		}
+		return nil, false, peekErr
+	}
+	body, err := readProtocolFrom(c.br, c.netConn, expected, c.queryTimeout)
+	if err != nil {
 		return nil, false, err
 	}
 	return body, true, nil
