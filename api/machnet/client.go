@@ -718,10 +718,12 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 	}
 	for _, p := range packets {
 		if err := writeAllNoDeadline(c.bw, p); err != nil {
+              		fmt.Println("readNextProtocolFrom() : Err1")
 			return 0, 0, err
 		}
 	}
 	if err := c.bw.Flush(); err != nil {
+		fmt.Println("readNextProtocolFrom() : Err2")
 		return 0, 0, err
 	}
 
@@ -729,14 +731,17 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		fmt.Println("readNextProtocolFrom() : Before")
 		protocol, body, err := readNextProtocolFrom(c.br, c.netConn, c.queryTimeout)
 		if err != nil {
+                       fmt.Println("readNextProtocolFrom() : Err3")
 			return 0, 0, err
 		}
 		switch protocol {
 		case cmiAppendDataProtocol:
 			if err := parseAppendDataResponse(body); err != nil {
+                                fmt.Println("readNextProtocolFrom() : Err4")
 				return 0, 0, err
 			}
 		case cmiAppendCloseProtocol:
+                        fmt.Println("cmiAppendCloseProtocol - ok")
 			return parseAppendCloseResponse(body)
 		default:
 			return 0, 0, fmt.Errorf("unexpected protocol %d expected %d", protocol, cmiAppendCloseProtocol)
