@@ -741,7 +741,6 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 				return 0, 0, err
 			}
 		case cmiAppendCloseProtocol:
-                        fmt.Println("cmiAppendCloseProtocol - ok")
 			return parseAppendCloseResponse(body)
 		default:
 			return 0, 0, fmt.Errorf("unexpected protocol %d expected %d", protocol, cmiAppendCloseProtocol)
