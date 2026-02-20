@@ -724,10 +724,12 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 	}
 
 	for {
+		fmt.Println("readNextProtocolFrom() : Before")
 		protocol, body, err := readNextProtocolFrom(c.br, c.netConn, c.queryTimeout)
 		if err != nil {
 			return 0, 0, err
 		}
+		fmt.Println("readNextProtocolFrom() : After")
 		switch protocol {
 		case cmiAppendDataProtocol:
 			if err := parseAppendDataResponse(body); err != nil {
