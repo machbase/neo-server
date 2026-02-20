@@ -656,12 +656,14 @@ func (c *nativeConn) appendData(stmtID uint32, rows [][]byte, checkResponse bool
 	}
 	packets := w.finalize()
 	if !checkResponse {
+		fmt.Println("sendPacketsNoResponse() : Before 11")
 		return c.sendPacketsNoResponse(packets, c.queryTimeout)
 	}
 	timeout := 5 * time.Millisecond
 	if c.queryTimeout > 0 && timeout > c.queryTimeout {
 		timeout = c.queryTimeout
 	}
+        fmt.Println("sendPacketsNoResponse() : Before 22")
 	body, ok, err := c.sendPacketsOptional(packets, cmiAppendDataProtocol, timeout)
 	if err != nil {
 		return err

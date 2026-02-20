@@ -76,6 +76,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 			t.Fatal(err)
 		}
 	}
+        fmt.Println("appender.Close() : Before99")
 	sc, fc, err := appender.Close()
 	require.NoError(t, err)
 	require.Equal(t, int64(expectCount), sc)
