@@ -198,6 +198,7 @@ func (s *svr) RemoveBridge(name string) error {
 
 func (s *svr) SetDefaultShellCommand(cmd string) {
 	reservedWebShellDef[SHELLID_SHELL].Command = cmd
+	reservedWebShellDef[SHELLID_JSH].Command = cmd + " /sbin/shell.js"
 }
 
 func (s *svr) GetShell(id string) (*ShellDefinition, error) {
@@ -287,10 +288,10 @@ func (s *svr) RenameWebShell(name string, newName string) error {
 }
 
 func (s *svr) SaveShell(def *ShellDefinition) error {
-	id := strings.ToUpper(def.Id)
+	def.Id = strings.ToUpper(def.Id)
 	for _, n := range reservedShellNames {
-		if id == n {
-			return fmt.Errorf("'%s' is not allowed for the custom shell name", id)
+		if def.Id == n {
+			return fmt.Errorf("'%s' is not allowed for the custom shell name", def.Id)
 		}
 	}
 	if len(def.Command) == 0 {
@@ -321,7 +322,7 @@ func (s *svr) SaveShell(def *ShellDefinition) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", id))
+	path := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", def.Id))
 	return os.WriteFile(path, content, 0600)
 }
 

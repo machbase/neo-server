@@ -29,7 +29,7 @@ var testHttpAddress string
 
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./test/tmp")
-	testServer.StartServer(m)
+	testServer.StartServer()
 	testServer.CreateTestTables()
 
 	db := testServer.DatabaseSVR()
@@ -62,7 +62,7 @@ func TestMain(m *testing.M) {
 	http.Stop()
 	tql.Deinit()
 	testServer.DropTestTables()
-	testServer.StopServer(m)
+	testServer.StopServer()
 	os.Exit(code)
 }
 
@@ -144,9 +144,6 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 		return
 	}
 	result := task.Execute()
-	if logText := log.String(); logText != "" {
-		fmt.Println("LOG:", tc.Name, logText)
-	}
 	if tc.ExpectErr != "" {
 		require.Error(t, result.Err)
 		require.Equal(t, tc.ExpectErr, result.Err.Error())
@@ -162,16 +159,24 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
 		logLines = logLines[:len(logLines)-1]
 	}
-	for i, line := range logLines {
+	for i, expectLog := range tc.ExpectLog {
+		if i >= len(logLines) {
+			t.Errorf("Expected Log[%d] %q, but no log line", i, expectLog)
+			return
+		}
+		line := logLines[i]
 		if i >= len(tc.ExpectLog) {
 			break
 		}
-		if line != tc.ExpectLog[i] {
-			t.Errorf("Expected Log %q, got %q", tc.ExpectLog[i], line)
+		if line != expectLog {
+			t.Errorf("Expected Log[%d] %q, got %q", i, expectLog, line)
+			return
 		}
 	}
 	if len(logLines) > len(tc.ExpectLog) {
-		t.Errorf("Expected Log %d lines, got %d", len(tc.ExpectLog), len(logLines))
+		t.Errorf("Expected Log %d lines, got %d\n%s",
+			len(tc.ExpectLog), len(logLines), strings.Join(logLines[len(tc.ExpectLog):], "\n"))
+		return
 	}
 
 	switch task.OutputContentType() {
@@ -1608,7 +1613,26 @@ func TestScriptInterrupt(t *testing.T) {
 				CSV()
 			`,
 			CtxTimeout: 100 * time.Millisecond,
-			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:5:39(9))"},
+			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
+			ExpectFunc: func(t *testing.T, result string) {
+				// SCRIPT should be interrupted by context timeout,
+				// so no result should be returned
+				require.Equal(t, "\n", result)
+			},
+		},
+		{
+			Name: "js-timeout",
+			Script: `
+				FAKE( linspace(1,10,10))
+				SCRIPT("js", {
+					while(true) {
+					}
+					$.yield(123)
+				})
+				CSV()
+			`,
+			CtxTimeout: 100 * time.Millisecond,
+			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
 			ExpectFunc: func(t *testing.T, result string) {
 				// SCRIPT should be interrupted by context timeout,
 				// so no result should be returned
@@ -1648,7 +1672,7 @@ func TestScriptInterrupt(t *testing.T) {
 				CSV()
 			`,
 			CtxTimeout: 100 * time.Millisecond,
-			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:4:6(1))"},
+			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:2:6(1))"},
 			ExpectFunc: func(t *testing.T, result string) {
 				// SCRIPT was interrupted during the finalize()
 				// so the result exists
@@ -1926,7 +1950,7 @@ func TestBridgeSqlite(t *testing.T) {
 				require.True(t, gjson.Get(result, "success").Bool())
 				require.Equal(t, "success", gjson.Get(result, "reason").String())
 				require.Equal(t, `["column0","column1","column2","column3"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["double","string","double","string"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `["int64","string","int64","string"]`, gjson.Get(result, "data.types").Raw, result)
 				require.Equal(t, `[300,"charlie",30,"street-300"]`, gjson.Get(result, "data.rows.0").Raw, result)
 			},
 		},
@@ -2113,7 +2137,7 @@ func TestPragma(t *testing.T) {
 func TestRestClient(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "restclient-query-csv",
+			Name: "rest-client-query-csv",
 			Script: fmt.Sprintf(`
 				HTTP({
 					GET %s/db/query

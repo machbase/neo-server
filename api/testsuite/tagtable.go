@@ -70,6 +70,12 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 			t.Fatal(err)
 		}
 	}
+	if flusher, ok := appender.(api.Flusher); ok {
+		err = flusher.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	sc, fc, err := appender.Close()
 	require.NoError(t, err)
 	require.Equal(t, int64(expectCount), sc)

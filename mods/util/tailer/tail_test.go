@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -456,7 +457,10 @@ func TestMultiTail(t *testing.T) {
 	}
 	fmt.Fprintln(f1, "file1 line1")
 	fmt.Fprintln(f1, "file1 line2")
-	f1.Close()
+	err = f1.Close()
+	if err != nil {
+		t.Fatalf("Failed to close test file 1: %v", err)
+	}
 
 	// Create and write initial content to second file
 	f2, err := os.Create(testFile2)
@@ -465,11 +469,14 @@ func TestMultiTail(t *testing.T) {
 	}
 	fmt.Fprintln(f2, "file2 line1")
 	fmt.Fprintln(f2, "file2 line2")
-	f2.Close()
+	err = f2.Close()
+	if err != nil {
+		t.Fatalf("Failed to close test file 2: %v", err)
+	}
 
 	// Create individual tails
-	tail1 := New(testFile1, WithPollInterval(100*time.Millisecond))
-	tail2 := New(testFile2, WithPollInterval(100*time.Millisecond))
+	tail1 := New(testFile1, WithPollInterval(10*time.Millisecond))
+	tail2 := New(testFile2, WithPollInterval(10*time.Millisecond))
 
 	// Create MultiTail
 	multiTail := NewMultiTail(tail1, tail2)
@@ -479,7 +486,9 @@ func TestMultiTail(t *testing.T) {
 	defer func() {
 		multiTail.Stop()
 		// Give time for file handles to close on Windows
-		time.Sleep(1000 * time.Millisecond)
+		if runtime.GOOS == "windows" {
+			time.Sleep(3 * time.Second)
+		}
 	}()
 
 	// Append new lines to both files
@@ -488,14 +497,28 @@ func TestMultiTail(t *testing.T) {
 		t.Fatalf("Failed to open test file 1: %v", err)
 	}
 	fmt.Fprintln(f1, "file1 line3")
-	f1.Close()
+	err = f1.Sync() // Ensure data is written to disk
+	if err != nil {
+		t.Fatalf("Failed to sync test file 1: %v", err)
+	}
+	err = f1.Close()
+	if err != nil {
+		t.Fatalf("Failed to close test file 1: %v", err)
+	}
 
 	f2, err = os.OpenFile(testFile2, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Fatalf("Failed to open test file 2: %v", err)
 	}
 	fmt.Fprintln(f2, "file2 line3")
-	f2.Close()
+	err = f2.Sync() // Ensure data is written to disk
+	if err != nil {
+		t.Fatalf("Failed to sync test file 2: %v", err)
+	}
+	err = f2.Close()
+	if err != nil {
+		t.Fatalf("Failed to close test file 2: %v", err)
+	}
 
 	// Read the lines from MultiTail
 	// Should get: 2 from file1 + 2 from file2 + 1 new from file1 + 1 new from file2 = 6 total

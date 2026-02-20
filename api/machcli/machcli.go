@@ -727,8 +727,6 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			return errorWithCause(stmt, err)
 		}
 	}
-	// Keep bound buffers alive until CliExecute completes
-	runtime.KeepAlive(stmt.boundBuffers)
 	return nil
 }
 
@@ -1144,7 +1142,7 @@ func (r *Rows) Close() error {
 }
 
 func (r *Rows) IsFetchable() bool {
-	return r.stmt.sqlHead == "SELECT"
+	return r.stmtType.IsSelect()
 }
 
 func (r *Rows) Columns() (api.Columns, error) {

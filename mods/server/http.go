@@ -34,8 +34,6 @@ import (
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
-	"github.com/machbase/neo-server/v8/mods/jsh"
-	jshHttp "github.com/machbase/neo-server/v8/mods/jsh/http"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -63,8 +61,7 @@ func NewHttp(db api.Database, options ...HttpOption) (*httpd, error) {
 			{Prefix: "/metrics", Handler: "influx"},
 			{Prefix: "/web", Handler: "web"},
 		},
-		neoShellAccount: make(map[string]string),
-		pathMap:         map[string]string{},
+		pathMap: map[string]string{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -85,7 +82,6 @@ type httpd struct {
 	httpServer        *http.Server
 	listeners         []net.Listener
 	jwtCache          JwtCache
-	authServer        AuthServer
 	bakd              *backupd
 	mgmtImpl          mgmt.ManagementServer
 	schedMgmtImpl     schedule.ManagementServer
@@ -93,11 +89,9 @@ type httpd struct {
 	bridgeRuntimeImpl bridge.RuntimeServer
 	pkgMgr            *pkgs.PkgManager
 
-	neoShellAddress string
-	neoShellAccount map[string]string
-
-	tqlLoader tql.Loader
-	serverFs  *ssfs.SSFS
+	authServer *Server
+	tqlLoader  tql.Loader
+	serverFs   *ssfs.SSFS
 
 	eulaPassed             bool
 	eulaFilePath           string
@@ -177,7 +171,6 @@ func (svr *httpd) Start() error {
 	}
 	router := svr.Router()
 	svr.httpServer.Handler = router
-	jshHttp.SetDefaultRouter(router)
 
 	for _, listen := range svr.listenAddresses {
 		lsnr, err := util.MakeListener(listen)
@@ -373,6 +366,10 @@ func (svr *httpd) Router() *gin.Engine {
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
+	// public group
+	publicGroup := r.Group("/public")
+	publicGroup.Any("/*path", svr.handlePublic)
+
 	// debug group
 	debugGroup := r.Group("/debug")
 	debugGroup.Use(svr.allowDebug)
@@ -655,7 +652,7 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	svr.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
+	svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
 
 	rsp.Success = true
 	rsp.Reason = "success"
@@ -714,7 +711,9 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	svr.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
+	if svr.authServer != nil {
+		svr.authServer.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
+	}
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
@@ -843,8 +842,6 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 		// delete stored refresh token by claim.ID
 		svr.jwtCache.RemoveRefreshToken(refreshClaim.ID)
 	}
-
-	svr.log.Tracef("logout '%s' success rt.id:'%s'", refreshClaim.Subject, refreshClaim.ID)
 
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.Elapse = time.Since(tick).String()
@@ -1338,11 +1335,11 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 	termLoginName := claim.Subject
-	termPassword := svr.neoShellAccount[strings.ToLower(termLoginName)]
+	termPassword := svr.authServer.neoShellAccount[strings.ToLower(termLoginName)]
 	if len(termPassword) == 0 {
 		termPassword = "manager"
 	}
-	termAddress := svr.neoShellAddress
+	termAddress := svr.authServer.neoShellAddress
 	if len(termAddress) == 0 {
 		termAddress = "127.0.0.1:5652"
 	}
@@ -1358,38 +1355,38 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	if userShell == model.SHELLID_JSH {
-		// TODO: client should send X-Console-Id,
-		// but this handler is for the web socket
-		// and web socket can not assign http header of the request.
-		consoleInfo := parseConsoleId(ctx)
-		wsRw := &WsReadWriter{Conn: conn}
-		terminals.Register(termKey, (*WebTerm)(nil)) // TODO set windows size for JSH
-		defer terminals.Unregister(termKey)
-		j := jsh.NewJsh(
-			ctx,
-			jsh.WithNativeModules(jsh.NativeModuleNames()...),
-			jsh.WithParent(nil),
-			jsh.WithReader(wsRw),
-			jsh.WithWriter(wsRw),
-			jsh.WithEcho(true),
-			jsh.WithNewLineCRLF(true),
-			jsh.WithUserName(termLoginName),
-			jsh.WithConsoleId(consoleInfo.consoleId),
-		)
-		err = j.Exec([]string{"@"})
-		if err != nil {
-			for _, err := range j.Errors() {
-				svr.log.Warnf("term jsh %s", jsh.ErrorToString(err))
-				// Check if the connection is hijacked by attempting a zero-byte write.
-				_, err := ctx.Writer.Write(nil)
-				if !errors.Is(err, http.ErrHijacked) {
-					ctx.String(http.StatusInternalServerError, jsh.ErrorToString(err))
-				}
-			}
-		}
-		return
-	}
+	// if userShell == model.SHELLID_JSH {
+	// 	// TODO: client should send X-Console-Id,
+	// 	// but this handler is for the web socket
+	// 	// and web socket can not assign http header of the request.
+	// 	consoleInfo := parseConsoleId(ctx)
+	// 	wsRw := &WsReadWriter{Conn: conn}
+	// 	terminals.Register(termKey, (*WebTerm)(nil)) // TODO set windows size for JSH
+	// 	defer terminals.Unregister(termKey)
+	// 	j := jsh.NewJsh(
+	// 		ctx,
+	// 		jsh.WithNativeModules(jsh.NativeModuleNames()...),
+	// 		jsh.WithParent(nil),
+	// 		jsh.WithReader(wsRw),
+	// 		jsh.WithWriter(wsRw),
+	// 		jsh.WithEcho(true),
+	// 		jsh.WithNewLineCRLF(true),
+	// 		jsh.WithUserName(termLoginName),
+	// 		jsh.WithConsoleId(consoleInfo.consoleId),
+	// 	)
+	// 	err = j.Exec([]string{"@"})
+	// 	if err != nil {
+	// 		for _, err := range j.Errors() {
+	// 			svr.log.Warnf("term jsh %s", jsh.ErrorToString(err))
+	// 			// Check if the connection is hijacked by attempting a zero-byte write.
+	// 			_, err := ctx.Writer.Write(nil)
+	// 			if !errors.Is(err, http.ErrHijacked) {
+	// 				ctx.String(http.StatusInternalServerError, jsh.ErrorToString(err))
+	// 			}
+	// 		}
+	// 	}
+	// 	return
+	// }
 
 	_, _, err = net.SplitHostPort(termAddress)
 	if err != nil {

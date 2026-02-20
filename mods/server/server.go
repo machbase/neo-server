@@ -38,14 +38,12 @@ import (
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	_ "github.com/machbase/neo-server/v8/mods/util/jemalloc"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"golang.org/x/crypto/ssh"
@@ -88,6 +86,9 @@ type Server struct {
 	authorizedSshKeysLock sync.RWMutex
 	genSnowflake          *snowflake.Node
 	snowflakes            []string
+
+	neoShellAddress string
+	neoShellAccount map[string]string
 }
 
 var _ booter.Boot = (*Server)(nil)
@@ -101,8 +102,9 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:       *conf,
-		servicePorts: make(map[string][]*model.ServicePort),
+		Config:          *conf,
+		servicePorts:    make(map[string][]*model.ServicePort),
+		neoShellAccount: make(map[string]string),
 	}, nil
 }
 
@@ -222,6 +224,9 @@ func (s *Server) Start() error {
 		return fmt.Errorf("package manager: %w", err)
 	}
 
+	// register JSON-RPC handlers
+	RegisterJsonRpcHandlers(s)
+
 	// http server
 	if err := s.startHttpServer(); err != nil {
 		return fmt.Errorf("http server: %w", err)
@@ -255,24 +260,6 @@ func (s *Server) Start() error {
 	}
 	s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
 		dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
-
-	// jsh service
-	if svcList, err := jsh.ReadServices(); err != nil {
-		if err != os.ErrNotExist {
-			s.log.Warn("JshServices read failed.", err.Error())
-		}
-	} else {
-		svcList.Update(func(sc *jsh.ServiceConfig, act string, err error) {
-			if err != nil {
-				s.log.Info("JshService", act, err.Error())
-			} else {
-				s.log.Info("JshService", act)
-			}
-		})
-	}
-	util.AddShutdownHook(func() {
-		jsh.ShutdownAll()
-	})
 
 	// pkgs
 	s.pkgMgr.Start()
@@ -497,7 +484,9 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 
 func (s *Server) preparePorts() error {
 	// port-check MACH
-	if !HeadOnly {
+	if HeadOnly {
+		s.AddServicePort("mach", fmt.Sprintf("tcp://%s", strings.TrimPrefix(s.DataDir, "machbase://")))
+	} else {
 		if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
 			return fmt.Errorf("MACH port not available, %s", err.Error())
 		} else {
@@ -538,27 +527,27 @@ func (s *Server) preparePorts() error {
 
 func (s *Server) preparePrefDir() error {
 	if path, err := filepath.Abs(s.PrefDir); err != nil {
-		return fmt.Errorf("prefdir: %s", err.Error())
+		return fmt.Errorf("prefDir: %s", err.Error())
 	} else {
 		s.prefDirPath = path
 	}
 	if err := util.MkDirIfNotExists(filepath.Dir(s.prefDirPath)); err != nil {
-		return fmt.Errorf("prefdir: %s", err.Error())
+		return fmt.Errorf("prefDir: %s", err.Error())
 	}
 	if err := mkDirIfNotExists(s.prefDirPath); err != nil {
-		return fmt.Errorf("prefdir: %s", err.Error())
+		return fmt.Errorf("prefDir: %s", err.Error())
 	}
 	s.certDirPath = filepath.Join(s.prefDirPath, "cert")
 	if err := mkDirIfNotExistsMode(s.certDirPath, 0700); err != nil {
-		return fmt.Errorf("prefdir cert: %s", err.Error())
+		return fmt.Errorf("prefDir cert: %s", err.Error())
 	}
 	if err := s.mkKeysIfNotExists(); err != nil {
-		return fmt.Errorf("prefdir keys: %s", err.Error())
+		return fmt.Errorf("prefDir keys: %s", err.Error())
 	}
 
 	s.authorizedKeysDir = filepath.Join(s.certDirPath, "authorized_keys")
 	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
-		return fmt.Errorf("authorized keys: %s", err.Error())
+		return fmt.Errorf("prefDir authorized keys: %s", err.Error())
 	}
 
 	s.licenseFilePath = filepath.Join(s.prefDirPath, "license.dat")
@@ -753,6 +742,7 @@ func (s *Server) startGrpcServer() error {
 	util.AddShutdownHook(func() { s.grpcd.Stop() })
 
 	tql.SetGrpcAddresses(s.Grpc.Listeners)
+	tql.SetHttpAddresses(s.Http.Listeners)
 
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
 	util.AddShutdownHook(func() { tql.StopCache() })
@@ -847,41 +837,6 @@ func (s *Server) startHttpServer() error {
 	if len(s.Http.Listeners) == 0 {
 		return nil
 	}
-
-	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
-	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
-	RegisterJsonRpcHandler("getShellList", s.getShellList)
-	RegisterJsonRpcHandler("addShell", s.addShell)
-	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
-	RegisterJsonRpcHandler("getBridgeList", s.getBridgeList)
-	RegisterJsonRpcHandler("addBridge", s.addBridge)
-	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
-	RegisterJsonRpcHandler("testBridge", s.testBridge)
-	RegisterJsonRpcHandler("statsBridge", s.statsBridge)
-	RegisterJsonRpcHandler("execBridge", s.execBridge)
-	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
-	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
-	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
-	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
-	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
-	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
-	RegisterJsonRpcHandler("listKeys", s.listKeys)
-	RegisterJsonRpcHandler("genKey", s.genKey)
-	RegisterJsonRpcHandler("deleteKey", s.deleteKey)
-	RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
-	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
-	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
-	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
-	RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
-	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
-	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
-	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
-	RegisterJsonRpcHandler("listSessions", s.listSessions)
-	RegisterJsonRpcHandler("killSession", s.killSession)
-	RegisterJsonRpcHandler("statSession", s.statSession)
-	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
-	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
-	RegisterJsonRpcHandler("splitSqlStatements", s.splitSqlStatements)
 	opts := []HttpOption{
 		WithHttpLicenseFilePath(s.licenseFilePath),
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
@@ -1001,11 +956,18 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 		}
 		return ports[i].Service < ports[j].Service
 	})
+	if ports == nil {
+		ports = []*model.ServicePort{}
+	}
 	return ports, nil
 }
 
-func (s *Server) getShellList() []*model.ShellDefinition {
-	return s.models.ShellProvider().GetAllShells(false)
+func (s *Server) listShells() []*model.ShellDefinition {
+	lst := s.models.ShellProvider().GetAllShells(false)
+	if lst == nil {
+		return []*model.ShellDefinition{}
+	}
+	return lst
 }
 
 func (s *Server) addShell(name string, command string) (string, error) {
@@ -1038,11 +1000,14 @@ func (s *Server) deleteShell(id string) error {
 	return s.models.ShellProvider().RemoveShell(id)
 }
 
-func (s *Server) getBridgeList() ([]*bridgerpc.Bridge, error) {
+func (s *Server) listBridges() ([]*bridgerpc.Bridge, error) {
 	ctx := context.Background()
 	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {
 		return nil, err
 	} else {
+		if rsp.Bridges == nil {
+			return []*bridgerpc.Bridge{}, nil
+		}
 		return rsp.Bridges, nil
 	}
 }
@@ -1287,6 +1252,9 @@ func (s *Server) listKeys(ctx context.Context) ([]*mgmt.KeyInfo, error) {
 	if !rsp.Success {
 		return nil, errors.New(rsp.Reason)
 	}
+	if rsp.Keys == nil {
+		return []*mgmt.KeyInfo{}, nil
+	}
 	return rsp.Keys, nil
 }
 
@@ -1424,6 +1392,51 @@ func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
+func (s *Server) getHttpServer(ctx context.Context, m map[string]any) (map[string]any, error) {
+	cmd := m["cmd"]
+	if cmdStr, ok := cmd.(string); !ok || cmdStr == "" {
+		return nil, fmt.Errorf("cmd not specified")
+	} else {
+		cmd = cmdStr
+	}
+	switch cmd.(string) {
+	case "debug":
+		debugEnabled, debugLatency := s.httpd.DebugMode()
+		m["enable"] = debugEnabled
+		m["logLatency"] = debugLatency
+	default:
+		return nil, fmt.Errorf("unknown cmd '%s'", cmd.(string))
+	}
+	return m, nil
+}
+
+func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string]any, error) {
+	enableAny, hasEnable := m["enable"]
+	latencyAny, hasLatency := m["logLatency"]
+
+	if hasEnable || hasLatency {
+		enableBool, ok := enableAny.(bool)
+		if !ok {
+			return nil, fmt.Errorf("enable should be boolean")
+		}
+		latencyStr, ok := latencyAny.(string)
+		if !ok {
+			return nil, fmt.Errorf("logLatency should be duration")
+		}
+		latency := time.Duration(-1)
+		if d, err := time.ParseDuration(latencyStr); err == nil {
+			latency = d
+		}
+		s.httpd.SetDebugMode(enableBool, latency)
+	}
+
+	debugEnabled, debugLatency := s.httpd.DebugMode()
+	m["enable"] = debugEnabled
+	m["logLatency"] = fmt.Sprintf("%v", debugLatency)
+
+	return m, nil
+}
+
 func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
 	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
 		Statz: false, Sessions: true, ResetStatz: false,
@@ -1433,6 +1446,9 @@ func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
 	}
 	if !rsp.Success {
 		return nil, errors.New(rsp.Reason)
+	}
+	if rsp.Sessions == nil {
+		return []*mgmt.Session{}, nil
 	}
 	return rsp.Sessions, nil
 }
@@ -1530,11 +1546,11 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 }
 
 func (s *Server) splitSqlStatements(ctx context.Context, content string) ([]*util.SqlStatement, error) {
-	stmts, err := util.SplitSqlStatements(strings.NewReader(content))
+	statements, err := util.SplitSqlStatements(strings.NewReader(content))
 	if err != nil {
 		return nil, err
 	}
-	return stmts, nil
+	return statements, nil
 }
 
 func (s *Server) ServerPrivateKeyPath() string {

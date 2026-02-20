@@ -27,11 +27,6 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		return
 	}
 
-	if shellId == model.SHELLID_JSH {
-		svr.jshHandler(ss, shell.Cmd, shell.Args, shell.Envs)
-		return
-	}
-
 	ptyReq, winCh, isPty := ss.Pty()
 	if !isPty {
 		// If the user is sys and the pty is not requested, use the system shell.
@@ -54,6 +49,11 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	defer cpty.Close()
 
 	shell.Envs = append(shell.Envs, fmt.Sprintf("TERM=%s", ptyReq.Term))
+
+	if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
+	}
 
 	go func() {
 		for win := range winCh {

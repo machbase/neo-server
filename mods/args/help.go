@@ -6,11 +6,10 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/machbase/neo-server/v8/mods/shell"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
-func doHelp(command string, subcommand string) error {
+func doHelp(command string) error {
 	showShellHelp := true
 	showServeHelp := true
 
@@ -29,7 +28,7 @@ func doHelp(command string, subcommand string) error {
 		showShellHelp = false
 		showServeHelp = false
 	case "timeformat":
-		fmt.Println("  timeformats:")
+		fmt.Println("  timeformat:")
 		fmt.Printf("%s\n", util.HelpTimeformats())
 		return nil
 	case "tz":
@@ -49,7 +48,7 @@ func doHelp(command string, subcommand string) error {
 	}
 
 	if showShellHelp {
-		shell.PrintHelp(subcommand, helpShellText)
+		fmt.Println(helpShellText)
 	}
 	return nil
 }
@@ -79,8 +78,18 @@ serve flags:
   -c, --config=<file>     config file path
       --pname=<pname>     assign process name`
 
-const helpShellText = `flags:
-  -s, --server=<addr>     server address (default %s)
-      --user=<user>       username (default 'sys')
-      --password=<pass>   password (default 'manager')
-`
+const helpShellText = `Usage of shell:
+  -C string
+        command to execute
+  -S string
+        configured file to start from
+  -e value
+        environment variable (format: name=value)
+  -password string
+        password (default: manager)
+  -server string
+        machbase-neo host
+  -user string
+        user name (default: sys)
+  -v value
+        volume to mount (format: /mountpoint=source)`

@@ -157,6 +157,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	// prepare and query
 	stmt, err := conn.Prepare(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`)
 	require.NoError(t, err, "prepare fail")
+	defer stmt.Close()
 	for nth := range 10 {
 		rows, err := stmt.Query(ctx, "insert-once")
 		require.NoError(t, err, "query fail")
@@ -185,7 +186,6 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		rows.Close()
 		require.Equal(t, 1, numRows, "expect 1 row in nth=%d", nth+1)
 	}
-	stmt.Close()
 
 	// select
 	rows, err := conn.Query(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`,

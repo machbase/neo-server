@@ -66,16 +66,6 @@ func Build(target string, strip bool) error {
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
 	env := map[string]string{"GO111MODULE": "on"}
-
-	// Check if Go version >= 1.25
-	goVersionStr := strings.TrimPrefix(runtime.Version(), "go")
-	if goVer, err := semver.NewVersion(goVersionStr); err == nil {
-		constraint, _ := semver.NewConstraint(">= 1.25")
-		if constraint.Check(goVer) {
-			env["GOEXPERIMENT"] = "greenteagc"
-		}
-	}
-
 	if target == "neoshell" {
 		// FIXME: neoshell should not link to engine
 		env["CGO_ENABLED"] = "1"
@@ -249,6 +239,8 @@ func TestN(p int) error {
 	testArgs = append(testArgs,
 		"-cover", "-coverprofile", "./tmp/cover.out",
 		"./booter/...",
+		"./shell/...",
+		"./jsh/...",
 		"./api/...",
 		"./mods/...",
 	)

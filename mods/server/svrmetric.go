@@ -8,7 +8,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/jemalloc"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
@@ -50,11 +49,6 @@ func collectSysStatz(g *metric.Gather) error {
 	}
 
 	g.Add("sys:sysmem", float64(usageTotal), metric.GaugeType(metric.UnitBytes))
-	if jemalloc.Enabled {
-		stat := &jemalloc.Stat{}
-		jemalloc.HeapStat(stat)
-		g.Add("sys:jemalloc_active", float64(stat.Active), metric.GaugeType(metric.UnitBytes))
-	}
 	return nil
 }
 

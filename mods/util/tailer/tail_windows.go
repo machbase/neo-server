@@ -9,18 +9,31 @@ import (
 )
 
 // getInode returns a unique file identifier on Windows
-// Windows doesn't have inodes, but we can use the file index which serves a similar purpose
+// On Windows, this relies on the file handle to get the true file index
+// This should only be used as a fallback - getFileID with file handle is preferred
 func getInode(stat os.FileInfo) uint64 {
-	if sys, ok := stat.Sys().(*syscall.Win32FileAttributeData); ok {
-		// On Windows, we can use a combination of VolumeSerialNumber and FileIndex
-		// to uniquely identify a file
-		return uint64(sys.FileSizeHigh)<<32 | uint64(sys.FileSizeLow)
-	}
+	// On Windows, os.FileInfo.Sys() returns Win32FileAttributeData which doesn't contain
+	// the file index. This function returns 0 to indicate we should use getFileID instead.
+	// We keep this for compatibility but callers should use getFileID when possible.
 	return 0
 }
 
 // getFileID returns the actual file ID on Windows
 func getFileID(f *os.File) (uint64, error) {
+	var info syscall.ByHandleFileInformation
+	err := syscall.GetFileInformationByHandle(syscall.Handle(f.Fd()), &info)
+	if err != nil {
+		return 0, err
+	}
+
+	// Combine FileIndexHigh and FileIndexLow to create a unique identifier
+	fileID := uint64(info.FileIndexHigh)<<32 | uint64(info.FileIndexLow)
+	return fileID, nil
+}
+
+// getFileIDFromHandle gets the unique file ID from an open file handle
+// This is Windows-specific and returns the actual file index
+func getFileIDFromHandle(f *os.File) (uint64, error) {
 	var info syscall.ByHandleFileInformation
 	err := syscall.GetFileInformationByHandle(syscall.Handle(f.Fd()), &info)
 	if err != nil {

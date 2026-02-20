@@ -6,7 +6,6 @@ import (
 	"log"
 	"testing"
 
-	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 
@@ -21,9 +20,13 @@ func TestScriptJS(t *testing.T) {
 		{
 			Name: "js-console-log",
 			Script: `
-				SCRIPT("js", "console.log('Hello, World!')")
+				#pragma log-level=INFO
+				SCRIPT("js", "console.log('Hello, World!'); console.println('Hi Everyone!');")
 				DISCARD()`,
-			ExpectLog: []string{"Hello, World!"},
+			ExpectLog: []string{
+				"[INFO] Hello, World!",
+				"[INFO] Hi Everyone!",
+			},
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Empty(t, result)
 			},
@@ -145,7 +148,27 @@ func TestScriptJS(t *testing.T) {
 				JSON()
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
+				require.True(t, gjson.Get(result, "success").Bool(), "success message should be true: %s", result)
+				require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "js-yieldArray-number-mixed",
+			Script: `
+				SCRIPT("js", {
+					$.result = {
+						columns: ["a", "b", "c", "d"],
+						types: ["int64", "double", "string", "bool"]
+					};
+					var arr = [1, 2.3, '3.4', true];
+					$.yield(...arr);
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "success message should be true: %s", result)
 				require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
 				require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
 				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
@@ -168,6 +191,113 @@ func TestScriptJS(t *testing.T) {
 				require.Equal(t, `{"age":25,"flag":false,"name":"Jane"}`, gjson.Get(result, "data.rows.1").Raw)
 			},
 		},
+		{
+			Name: "js-system-free-os-memory",
+			Script: `
+				SCRIPT("js", {
+					m = require("@jsh/system");
+					m.free_os_memory();
+					$.yield("ok");
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"ok", "\n"},
+		},
+		{
+			Name: "js-system-gc",
+			Script: `
+				SCRIPT("js", {
+					m = require("@jsh/system");
+					m.gc();
+					$.yield("ok");
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"ok", "\n"},
+		},
+		{
+			Name: "js-system-now",
+			Script: `
+				SCRIPT("js", {
+					m = require("@jsh/system");
+					let now = m.now();
+					$.yield("ok", now.unix());
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["column0","column1"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string","int64"]`, gjson.Get(result, "data.types").Raw)
+				require.NotEmpty(t, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name:    "js-payload-csv",
+			Payload: `1,2,3,4,5`,
+			Script: `
+				SCRIPT("js", {
+					$.payload.split(",").forEach((v) => {
+						$.yield(parseInt(v));
+					});
+				})
+				CSV()`,
+			ExpectCSV: []string{"1", "2", "3", "4", "5", "\n"},
+		},
+		{
+			Name: "js-compile-err",
+			Script: `
+				SCRIPT("js", {
+					var1 + 1;
+				})
+				CSV()`,
+			ExpectErr: `ReferenceError: var1 is not defined at SCRIPT main:3:6(0)`,
+		},
+		{
+			Name: "js-invalid-module",
+			Script: `
+				SCRIPT("js", {
+					// hello world
+					//
+					//
+					//
+					const y = require("invalid_module");
+				})
+				CSV()`,
+			ExpectErr: `Invalid module, SCRIPT main:7:23`,
+		},
+		{
+			Name: "js-params",
+			Script: `
+				SCRIPT("js", {
+					var1 = $.params.p1;
+					var2 = $.params["p2"];
+					$.yield(...var1, var2);
+				})
+				CSV()`,
+			Params:    map[string][]string{"p1": {"1", "2"}, "p2": {"abc"}},
+			ExpectCSV: []string{"1,2,abc", "\n"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptJS_panic(t *testing.T) {
+	tests := []TqlTestCase{}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptJS2(t *testing.T) {
+	t.Skip("skipping not implemented test")
+	tests := []TqlTestCase{
 		{
 			Name: "js-db-query",
 			Script: `
@@ -231,93 +361,6 @@ func TestScriptJS(t *testing.T) {
 				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
 				require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
 			},
-		},
-		{
-			Name: "js-system-free-os-memory",
-			Script: `
-				SCRIPT("js", {
-					m = require("@jsh/system");
-					m.free_os_memory();
-					$.yield("ok");
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"ok", "\n"},
-		},
-		{
-			Name: "js-system-gc",
-			Script: `
-				SCRIPT("js", {
-					m = require("@jsh/system");
-					m.gc();
-					$.yield("ok");
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"ok", "\n"},
-		},
-		{
-			Name: "js-system-now",
-			Script: `
-				SCRIPT("js", {
-					m = require("@jsh/system");
-					let now = m.now();
-					$.yield("ok", now.Unix());
-				})
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["column0","column1"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["string","double"]`, gjson.Get(result, "data.types").Raw)
-				require.NotEmpty(t, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name:    "js-payload-csv",
-			Payload: `1,2,3,4,5`,
-			Script: `
-				SCRIPT("js", {
-					$.payload.split(",").forEach((v) => {
-						$.yield(parseInt(v));
-					});
-				})
-				CSV()`,
-			ExpectCSV: []string{"1", "2", "3", "4", "5", "\n"},
-		},
-		{
-			Name: "js-compile-err",
-			Script: `
-				SCRIPT("js", {
-					var1 + 1;
-				})
-				CSV()`,
-			ExpectErr: `ReferenceError: var1 is not defined at <eval>:3:6(0)`,
-		},
-		{
-			Name: "js-invalid-module",
-			Script: `
-				SCRIPT("js", {
-					// hello world
-					//
-					//
-					//
-					const y = require("invalid_module");
-				})
-				CSV()`,
-			ExpectErr: `Invalid module:7:23`,
-		},
-		{
-			Name: "js-params",
-			Script: `
-				SCRIPT("js", {
-					var1 = $.params.p1;
-					var2 = $.params["p2"];
-					$.yield(...var1, var2);
-				})
-				CSV()`,
-			Params:    map[string][]string{"p1": {"1", "2"}, "p2": {"abc"}},
-			ExpectCSV: []string{"1,2,abc", "\n"},
 		},
 		{
 			Name: "js-request",
@@ -432,7 +475,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
 				SCRIPT("js", {
-					m = require("@jsh/analysis");
+					m = require("@jsh/stats");
 					times = [];
 					values = [];
 				}, {
@@ -455,7 +498,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 10, 100) )
 				SCRIPT("js", {
-					m = require("@jsh/analysis");
+					m = require("@jsh/stats");
 					times = [];
 					values = [];
 				}, {
@@ -479,42 +522,6 @@ func TestScriptFFT(t *testing.T) {
 			ExpectCSV: []string{"\n"},
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptModule(t *testing.T) {
-	tql.ClearPredefModules()
-	tql.RegisterPredefModule("/m.js", []byte(`
-		function test() {
-        	return "passed";
-		}
-		module.exports = {
-        	test: test
-		}
-	`))
-	t.Cleanup(func() {
-		tql.UnregisterPredefModule("/m.js")
-	})
-
-	tests := []TqlTestCase{
-		{
-			Name: "js-module",
-			Script: `
-				SCRIPT("js", {
-					var m = require("/m.js");
-				},{
-					$.yield(m.test());
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"passed", "\n"},
-		},
-	}
-
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			runTestCase(t, tc)

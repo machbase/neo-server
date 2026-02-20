@@ -1,6 +1,6 @@
 package jemalloc
 
-const JMALLOC_STRING = "jemalloc"
+const JEMALLOC_STRING = "jemalloc"
 
 var Enabled bool = false
 

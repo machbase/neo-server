@@ -392,7 +392,9 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		}
 		ch.PostExecute = func(args []string, message string, err error) {
 			if err != nil {
-				x.task.LogError("╰─➤", err.Error())
+				// Log level must match the SQL statement logging level
+				// to keep error messages coupled with their queries
+				x.task.LogInfo("╰─➤", err.Error())
 			} else {
 				x.task.LogInfo("╰─➤", resultMsg, time.Since(tick).String())
 			}

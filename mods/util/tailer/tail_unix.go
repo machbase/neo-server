@@ -7,6 +7,16 @@ import (
 	"syscall"
 )
 
+// getFileIDFromHandle gets the unique file ID from an open file handle
+// On Unix systems, this returns the inode number
+func getFileIDFromHandle(f *os.File) (uint64, error) {
+	stat, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	return getInode(stat), nil
+}
+
 // getInode returns the inode number of a file
 // This is used to detect when a file has been rotated
 func getInode(stat os.FileInfo) uint64 {

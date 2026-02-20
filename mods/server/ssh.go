@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/pkg/sftp"
@@ -27,9 +26,8 @@ type SshOption func(s *sshd)
 // Factory
 func NewSsh(options ...SshOption) (*sshd, error) {
 	s := &sshd{
-		log:             logging.GetLog("sshd"),
-		neoShellAccount: map[string]string{},
-		forwardHandler:  &ssh.ForwardedTCPHandler{},
+		log:            logging.GetLog("sshd"),
+		forwardHandler: &ssh.ForwardedTCPHandler{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -59,7 +57,7 @@ func WithSshIdleTimeout(timeout time.Duration) SshOption {
 }
 
 // AuthServer
-func WithSshAuthServer(authSvc AuthServer) SshOption {
+func WithSshAuthServer(authSvc *Server) SshOption {
 	return func(s *sshd) {
 		s.authServer = authSvc
 	}
@@ -89,7 +87,7 @@ type sshd struct {
 	idleTimeout     time.Duration
 	serverKeyPath   string
 	motdMessage     string
-	authServer      AuthServer
+	authServer      *Server
 
 	sshServer *ssh.Server
 	listeners []net.Listener
@@ -99,8 +97,6 @@ type sshd struct {
 	children       map[int]*os.Process
 
 	shellProvider func(user string, shellId string) *SshShell
-
-	neoShellAccount map[string]string
 }
 
 func (svr *sshd) Start() error {
@@ -251,7 +247,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	ok, otp, err := svr.authServer.ValidateUserPassword(user, password)
+	ok, _, err := svr.authServer.ValidateUserPassword(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
@@ -259,8 +255,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 	if !ok {
 		svr.log.Tracef("'%s' login fail password mis-matched", user)
 	}
-
-	svr.neoShellAccount[user] = fmt.Sprintf("$otp$:%s", otp)
+	svr.authServer.neoShellAccount[strings.ToLower(user)] = password
 	return ok
 }
 
@@ -273,13 +268,10 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	ok, otp, err := svr.authServer.ValidateUserPublicKey(user, key)
+	ok, _, err := svr.authServer.ValidateUserPublicKey(user, key)
 	if err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
-	}
-	if ok {
-		svr.neoShellAccount[user] = fmt.Sprintf("$otp$:%s", otp)
 	}
 	return ok
 }
@@ -384,22 +376,22 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		return
 	}
 
-	if cmd := ss.Command(); len(cmd) > 0 && cmd[0] == "jsh" {
-		jsCmd := "@.js"
-		jsArgs := []string{}
-		if len(cmd) > 1 {
-			jsCmd = cmd[1]
-		}
-		if len(cmd) > 2 {
-			jsArgs = cmd[2:]
-		}
-		svr.jshHandler(ss, jsCmd, jsArgs, shell.Envs)
-		return
-	}
+	// if cmd := ss.Command(); len(cmd) > 0 && cmd[0] == "jsh" {
+	// 	jsCmd := "@.js"
+	// 	jsArgs := []string{}
+	// 	if len(cmd) > 1 {
+	// 		jsCmd = cmd[1]
+	// 	}
+	// 	if len(cmd) > 2 {
+	// 		jsArgs = cmd[2:]
+	// 	}
+	// 	svr.jshHandler(ss, jsCmd, jsArgs, shell.Envs)
+	// 	return
+	// }
 
 	if shellId == model.SHELLID_SHELL {
 		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.neoShellAccount[strings.ToLower(user)]))
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
 	}
 
 	cmdArr := []string{shell.Cmd}
@@ -611,38 +603,5 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 		}
 	default:
 		return nil, fmt.Errorf("parsing private key failed, unsupported key type %q", block.Type)
-	}
-}
-
-func (svr *sshd) jshHandler(ss ssh.Session, cmd string, args []string, env []string) {
-	_ = env
-
-	user, _, _ := svr.findShell(ss)
-
-	// if ssh session is not interactive, disable echo
-	echo := len(ss.Command()) == 0
-
-	j := jsh.NewJsh(
-		ss.Context(),
-		jsh.WithNativeModules(jsh.NativeModuleNames()...),
-		jsh.WithParent(nil),
-		jsh.WithReader(ss),
-		jsh.WithWriter(ss),
-		jsh.WithEcho(echo),
-		jsh.WithUserName(user),
-	)
-	err := j.Exec(append([]string{cmd}, args...))
-	if err != nil {
-		if cmd == "@.js" {
-			cmd = "jsh"
-		}
-		for _, err := range j.Errors() {
-			svr.log.Warnf("%s %s", cmd, jsh.ErrorToString(err))
-		}
-		ss.Exit(1)
-		return
-	} else {
-		ss.Exit(0)
-		return
 	}
 }

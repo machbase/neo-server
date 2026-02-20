@@ -24,9 +24,9 @@ var testServer *testsuite.Server
 
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./testsuite_tmp")
-	testServer.StartServer(m)
+	testServer.StartServer()
 	code := m.Run()
-	testServer.StopServer(m)
+	testServer.StopServer()
 	os.Exit(code)
 }
 

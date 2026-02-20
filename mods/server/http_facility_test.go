@@ -30,6 +30,9 @@ type mockServer struct {
 	accessToken  string
 	refreshToken string
 
+	neoShellAddress string
+	neoShellAccount map[string]string
+
 	ctx    *gin.Context
 	engine *gin.Engine
 }
@@ -78,10 +81,9 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 	singleMockServer.Lock()
 	ret := &mockServer{}
 	svr := &httpd{
-		log:             logging.GetLog("httpd-fake"),
-		db:              ret,
-		neoShellAccount: map[string]string{},
-		jwtCache:        NewJwtCache(),
+		log:      logging.GetLog("httpd-fake"),
+		db:       ret,
+		jwtCache: NewJwtCache(),
 	}
 	ctx, engine := gin.CreateTestContext(w)
 	engine.POST("/web/api/login", svr.handleLogin)

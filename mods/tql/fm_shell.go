@@ -1,9 +1,12 @@
 package tql
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -23,6 +26,23 @@ func SetGrpcAddresses(addrs []string) {
 			_grpcServer = addr
 		} else {
 			_grpcServer = addr
+		}
+	}
+}
+
+var _httpServer string
+
+func SetHttpAddresses(addrs []string) {
+	for _, addr := range addrs {
+		// if strings.HasPrefix(addr, "unix://") && runtime.GOOS != "windows" {
+		// 	_httpServer = addr
+		// 	break
+		// }
+		if strings.HasPrefix(addr, "tcp://127.0.0.1:") {
+			_httpServer = addr
+			break
+		} else {
+			_httpServer = addr
 		}
 	}
 }
@@ -62,7 +82,7 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		subArgs = append(subArgs, args0)
 	}
 
-	tmpFile, err := os.CreateTemp("", "runner")
+	tmpFile, err := os.CreateTemp("", "runner*.sql")
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
@@ -83,14 +103,14 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 	tmpFile.Close()
 
 	var cmd *exec.Cmd
-	if args, err := ShellExecutable(_grpcServer, tmpFile.Name()); err != nil {
+	if args, err := ShellExecutable(_httpServer, tmpFile.Name()); err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	} else {
 		cmd = exec.Command(args[0], args[1:]...)
 		cmd.Env = append(os.Environ(), "NEOSHELL_USER="+node.task.consoleUser)
 		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.task.consoleOtp)
-
+		cmd.Stderr = &bytes.Buffer{}
 		if _, ok := node.GetValue("shell"); !ok {
 			cols := []*api.Column{
 				api.MakeColumnRownum(),
@@ -99,6 +119,11 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 			node.task.SetResultColumns(cols)
 		}
 		if output, err := cmd.Output(); err != nil {
+			if cmd.Stderr != nil {
+				if bs, _ := io.ReadAll(cmd.Stderr.(*bytes.Buffer)); len(bs) > 0 {
+					err = fmt.Errorf("%s", string(bs))
+				}
+			}
 			node.task.LogError(err.Error())
 			ErrorRecord(err).Tell(node.next)
 		} else {
@@ -117,7 +142,8 @@ var ShellExecutable = func(serverAddr string, scriptPath string) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
+	serverAddr = strings.TrimPrefix(serverAddr, "tcp://")
 	return []string{
-		ex, "shell", "--server", serverAddr, "run", scriptPath,
+		ex, "shell", "--server", serverAddr, "-v", "/tmp=" + filepath.Dir(scriptPath), "run", "/tmp/" + filepath.Base(scriptPath),
 	}, nil
 }

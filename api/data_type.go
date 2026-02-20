@@ -36,10 +36,18 @@ func DataTypeOf(v any) DataType {
 	switch v.(type) {
 	default:
 		return DataTypeAny
+	case *bool, bool:
+		return DataTypeBoolean
 	case *string, string:
 		return DataTypeString
 	case *time.Time, time.Time:
 		return DataTypeDatetime
+	case int16, *int16:
+		return DataTypeInt16
+	case int32, *int32:
+		return DataTypeInt32
+	case int64, *int64:
+		return DataTypeInt64
 	case *float32, float32:
 		return DataTypeFloat32
 	case *float64, float64:

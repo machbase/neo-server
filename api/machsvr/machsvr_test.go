@@ -20,7 +20,7 @@ var machcliDB api.Database
 
 func TestMain(m *testing.M) {
 	s := testsuite.NewServer("./testsuite_tmp")
-	s.StartServer(m)
+	s.StartServer()
 	rpcClient = machrpc.NewMachbaseClient(s.ClientConn())
 	machsvrDB = s.DatabaseSVR()
 	machrpcDB = s.DatabaseRPC()
@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	s.StopServer(m)
+	s.StopServer()
 	os.Exit(code)
 }
 

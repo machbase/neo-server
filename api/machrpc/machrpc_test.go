@@ -20,7 +20,7 @@ var testServer *testsuite.Server
 
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./testsuite_tmp")
-	testServer.StartServer(m)
+	testServer.StartServer()
 	testServer.CreateTestTables()
 
 	sql.Register("machbase", &machrpc.Driver{
@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 		// workaround for windows, it crash randomly when closing a connection of "drop table"
 		testServer.DropTestTables()
 	}
-	testServer.StopServer(m)
+	testServer.StopServer()
 	os.Exit(code)
 }
 
