@@ -729,7 +729,6 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		if err != nil {
 			return 0, 0, err
 		}
-		fmt.Println("readNextProtocolFrom() : After")
 		switch protocol {
 		case cmiAppendDataProtocol:
 			if err := parseAppendDataResponse(body); err != nil {

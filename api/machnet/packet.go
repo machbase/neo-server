@@ -124,11 +124,9 @@ func readNextProtocolFrom(reader io.Reader, conn net.Conn, timeout time.Duration
 	}
         fmt.Println("readPacketNoDeadline() : Before1")
 	first, err := readPacketNoDeadline(reader)
-        fmt.Println("readPacketNoDeadline() : After2")
 	if err != nil {
 		return 0, nil, err
 	}
-        fmt.Println("readPacketNoDeadline() : After3")
 	protocol := first.protocol
 	chunks := make([][]byte, 0, 2)
 	chunks = append(chunks, first.body)
@@ -137,7 +135,6 @@ func readNextProtocolFrom(reader io.Reader, conn net.Conn, timeout time.Duration
 	for flag != 0 && flag != 3 {
                 fmt.Println("readPacketNoDeadline() : Before4")
 		pkt, err := readPacketNoDeadline(reader)
-                fmt.Println("readPacketNoDeadline() : After5")
 		if err != nil {
 			return 0, nil, err
 		}
