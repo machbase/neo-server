@@ -11,6 +11,7 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machcli"
+	"github.com/machbase/neo-server/v8/api/machgo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -534,6 +535,9 @@ func BitTable(t *testing.T, db api.Database, ctx context.Context) {
 	if _, ok := conn.(*machcli.Conn); ok {
 		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
 		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	} else if _, ok := conn.(*machgo.Conn); ok {
+		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
+		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 	} else {
 		require.NoError(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
 		require.False(t, rows.Next(), "select bit table BITAND(i4, 1) should fail")
@@ -548,6 +552,9 @@ func BitTable(t *testing.T, db api.Database, ctx context.Context) {
 
 	rows, err = conn.Query(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
 	if _, ok := conn.(*machcli.Conn); ok {
+		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
+		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	} else if _, ok := conn.(*machgo.Conn); ok {
 		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
 		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 	} else {

@@ -27,6 +27,7 @@ func TestAll(t *testing.T) {
 		testServer.DatabaseSVR(),
 		testServer.DatabaseRPC(),
 		testServer.DatabaseCLI(),
+		testServer.DatabaseGO(),
 	} {
 		if err := testsuite.CreateTestTables(db); err != nil {
 			t.Fatalf("ERROR: %s", err)
