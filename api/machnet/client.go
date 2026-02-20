@@ -736,13 +736,16 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		}
 		switch protocol {
 		case cmiAppendDataProtocol:
+                        fmt.Println("cmiAppendDataProtocol - GET1")
 			if err := parseAppendDataResponse(body); err != nil {
                                 fmt.Println("readNextProtocolFrom() : Err4")
 				return 0, 0, err
 			}
 		case cmiAppendCloseProtocol:
+                        fmt.Println("cmiAppendCloseProtocol - GET2")
 			return parseAppendCloseResponse(body)
 		default:
+                        fmt.Println("Close - GET3")
 			return 0, 0, fmt.Errorf("unexpected protocol %d expected %d", protocol, cmiAppendCloseProtocol)
 		}
 	}
