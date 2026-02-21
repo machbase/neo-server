@@ -57,39 +57,6 @@ func buildPacket(protocolID byte, stmtID uint32, adds uint16, flag byte, body []
 	return ret
 }
 
-func readPacket(reader io.Reader) (Packet, error) {
-	var dst Packet
-	if err := readPacketInto(reader, &dst); err != nil {
-		return Packet{}, err
-	}
-	return dst, nil
-}
-
-func readPacketInto(reader io.Reader, dst *Packet) error {
-	var h [packetHeaderSize]byte
-	protocol, flag, adds, stmtID, bodyLen, err := readPacketHeader(reader, &h)
-	if err != nil {
-		return err
-	}
-	dst.protocol = protocol
-	dst.flag = flag
-	dst.adds = adds
-	dst.stmtID = stmtID
-	if bodyLen == 0 {
-		dst.body = dst.body[:0]
-		return nil
-	}
-	if cap(dst.body) < bodyLen {
-		dst.body = make([]byte, bodyLen)
-	} else {
-		dst.body = dst.body[:bodyLen]
-	}
-	if _, err := io.ReadFull(reader, dst.body); err != nil {
-		return err
-	}
-	return nil
-}
-
 func writePacket(writer io.Writer, buf []byte) error {
 	for len(buf) > 0 {
 		n, err := writer.Write(buf)
@@ -101,44 +68,29 @@ func writePacket(writer io.Writer, buf []byte) error {
 	return nil
 }
 
-func readProtocolFrom(reader io.Reader, expected byte) ([]byte, error) {
+func (pkt *Packet) Read(reader io.Reader) error {
 	var h [packetHeaderSize]byte
-	protocol, flag, _, _, bodyLen, err := readPacketHeader(reader, &h)
+	protocol, flag, adds, stmtID, bodyLen, err := readPacketHeader(reader, &h)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if protocol != expected {
-		return nil, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
+	pkt.protocol = protocol
+	pkt.flag = flag
+	pkt.adds = adds
+	pkt.stmtID = stmtID
+	if bodyLen == 0 {
+		pkt.body = pkt.body[:0]
+		return nil
 	}
-	var out []byte
-	out = ensureAppendCapacity(out, bodyLen)
-	if bodyLen > 0 {
-		if _, err := io.ReadFull(reader, out[:bodyLen]); err != nil {
-			return nil, err
-		}
+	if cap(pkt.body) < bodyLen {
+		pkt.body = make([]byte, bodyLen)
+	} else {
+		pkt.body = pkt.body[:bodyLen]
 	}
-	if flag == 0 || flag == 3 {
-		return out, nil
+	if _, err := io.ReadFull(reader, pkt.body); err != nil {
+		return err
 	}
-	for {
-		protocol, flag, _, _, bodyLen, err = readPacketHeader(reader, &h)
-		if err != nil {
-			return nil, err
-		}
-		if protocol != expected {
-			return nil, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
-		}
-		oldLen := len(out)
-		out = ensureAppendCapacity(out, bodyLen)
-		if bodyLen > 0 {
-			if _, err := io.ReadFull(reader, out[oldLen:oldLen+bodyLen]); err != nil {
-				return nil, err
-			}
-		}
-		if flag == 0 || flag == 3 {
-			return out, nil
-		}
-	}
+	return nil
 }
 
 func readNextProtocolFrom(reader io.Reader) (byte, []byte, error) {

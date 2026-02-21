@@ -200,6 +200,8 @@ func (client *Client) Connect(ctx context.Context, opts ...api.ConnectOption) (a
 			req.Password = v.Password
 		case *api.ConnectOptionTrustUser:
 			return nil, errors.New("trust user option is not supported")
+		case *api.ConnectOptionStatementCache:
+			// currently statement cache is only supported in prepared statements, so it is ignored here
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}

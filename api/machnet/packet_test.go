@@ -40,7 +40,8 @@ func benchmarkReadPacket(b *testing.B, bodySize int) {
 
 	for i := 0; i < b.N; i++ {
 		reader.Reset(pkt)
-		decoded, err := readPacket(&reader)
+		var decoded Packet
+		err := decoded.Read(&reader)
 		if err != nil {
 			b.Fatalf("readPacket failed: %v", err)
 		}
@@ -62,7 +63,7 @@ func benchmarkReadPacketIntoReuse(b *testing.B, bodySize int) {
 
 	for i := 0; i < b.N; i++ {
 		reader.Reset(pkt)
-		if err := readPacketInto(&reader, &decoded); err != nil {
+		if err := decoded.Read(&reader); err != nil {
 			b.Fatalf("readPacketInto failed: %v", err)
 		}
 		if len(decoded.body) != bodySize {
@@ -114,9 +115,12 @@ func benchmarkReadProtocolFromFragmented(b *testing.B, bodySize int, chunkSize i
 
 	for i := 0; i < b.N; i++ {
 		reader.Reset(stream)
-		decoded, err := readProtocolFrom(&reader, protocol)
+		nextProtocol, decoded, err := readNextProtocolFrom(&reader)
 		if err != nil {
 			b.Fatalf("readProtocolFrom failed: %v", err)
+		}
+		if nextProtocol != protocol {
+			b.Fatalf("unexpected protocol: got %d, want %d", nextProtocol, protocol)
 		}
 		if !bytes.Equal(decoded, expected) {
 			b.Fatalf("decoded payload mismatch: got %d bytes, want %d", len(decoded), len(expected))

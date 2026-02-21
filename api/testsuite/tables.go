@@ -140,7 +140,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	// TODO: improve this behavior
 	nowStrInLocal := now.In(time.Local).Format("2006-01-02 15:04:05")
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"), api.WithStatementCache(api.StatementCacheAuto))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -149,7 +149,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		`values('insert-once', '`+nowStrInLocal+`', 1.23, 1, 2, 3, 'str1', '{"key1": "value1"}')`)
 	require.NoError(t, result.Err(), "insert fail")
 
-	sysConn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	sysConn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"), api.WithStatementCache(api.StatementCacheAuto))
 	result = sysConn.Exec(ctx, `EXEC table_flush(tag_data)`)
 	require.NoError(t, result.Err(), "table_flush fail")
 	sysConn.Close()

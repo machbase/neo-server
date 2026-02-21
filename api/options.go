@@ -31,6 +31,24 @@ func WithTrustUser(user string) ConnectOption {
 	return &ConnectOptionTrustUser{User: user}
 }
 
+type StatementCacheMode int
+
+const (
+	StatementCacheOff  StatementCacheMode = 0
+	StatementCacheOn   StatementCacheMode = 1
+	StatementCacheAuto StatementCacheMode = 2
+)
+
+func WithStatementCache(mode StatementCacheMode) ConnectOption {
+	return &ConnectOptionStatementCache{Mode: mode}
+}
+
+type ConnectOptionStatementCache struct {
+	Mode StatementCacheMode
+}
+
+func (ConnectOptionStatementCache) connectOption() {}
+
 type AppenderOption interface {
 	appenderOption()
 }

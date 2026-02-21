@@ -250,6 +250,8 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			if user == "" {
 				return nil, errors.New("trust user not found")
 			}
+		case *api.ConnectOptionStatementCache:
+			// currently statement cache is only supported in prepared statements, so it is ignored here
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}

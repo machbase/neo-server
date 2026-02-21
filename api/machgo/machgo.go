@@ -251,6 +251,7 @@ func (db *Database) connectionString(user string, password string) string {
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
 	var user, password string
+	var stmtReuse = db.statementReuseMode
 	for _, opt := range opts {
 		switch o := opt.(type) {
 		case *api.ConnectOptionPassword:
@@ -263,6 +264,15 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			}
 			if user == "" {
 				return nil, errors.New("trust user not found")
+			}
+		case *api.ConnectOptionStatementCache:
+			switch o.Mode {
+			case api.StatementCacheAuto:
+				stmtReuse = StatementReuseAuto
+			case api.StatementCacheOn:
+				stmtReuse = StatementReuseOn
+			default:
+				stmtReuse = StatementReuseOff
 			}
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
@@ -301,7 +311,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		user:                   strings.ToUpper(user),
 		usedAt:                 time.Now(),
 		returnChan:             returnChan,
-		queryStmtReuseMode:     db.statementReuseMode,
+		queryStmtReuseMode:     stmtReuse,
 		queryStmtPool:          map[string][]*Stmt{},
 		queryStmtPoolCap:       defaultQueryStmtPoolCap,
 		queryStmtPoolPerKeyCap: defaultQueryStmtPoolPerQueryCap,

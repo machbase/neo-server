@@ -222,7 +222,14 @@ func (c *NativeConn) sendPackets(packets [][]byte, expected byte, timeout time.D
 			return nil, err
 		}
 	}
-	return readProtocolFrom(c.netConn, expected)
+	protocol, body, err := readNextProtocolFrom(c.netConn)
+	if err != nil {
+		return nil, err
+	}
+	if protocol != expected {
+		return nil, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
+	}
+	return body, nil
 }
 
 func (c *NativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Duration) error {
@@ -258,13 +265,16 @@ func (c *NativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 			return nil, false, err
 		}
 	}
-	body, err := readProtocolFrom(c.netConn, expected)
+	protocol, body, err := readNextProtocolFrom(c.netConn)
 	if err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
 			return nil, false, nil
 		}
 		return nil, false, err
+	}
+	if protocol != expected {
+		return nil, false, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
 	}
 	return body, true, nil
 }
