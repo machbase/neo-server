@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -24,12 +23,12 @@ const (
 	defaultQueryStmtPoolPerQueryCap = 8
 )
 
-type queryStmtReuseMode int
+type StatementReuseMode int
 
 const (
-	queryStmtReuseOff queryStmtReuseMode = iota
-	queryStmtReuseOn
-	queryStmtReuseAuto
+	StatementReuseOff StatementReuseMode = iota
+	StatementReuseOn
+	StatementReuseAuto
 )
 
 func errorWithCause(obj any, cause error) error {
@@ -65,26 +64,6 @@ func errorWithCause(obj any, cause error) error {
 	}
 }
 
-func parseQueryStmtReuseMode() queryStmtReuseMode {
-	legacy := strings.ToLower(strings.TrimSpace(os.Getenv("MACHCLI2_QUERY_STMT_REUSE")))
-	switch legacy {
-	case "1", "true", "on", "yes":
-		return queryStmtReuseOn
-	case "0", "false", "off", "no":
-		return queryStmtReuseOff
-	}
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("MACHCLI2_QUERY_STMT_REUSE_MODE"))) {
-	case "on":
-		return queryStmtReuseOn
-	case "off":
-		return queryStmtReuseOff
-	case "auto":
-		return queryStmtReuseAuto
-	default:
-		return queryStmtReuseAuto
-	}
-}
-
 type Config struct {
 	Host string
 	Port int
@@ -108,6 +87,8 @@ type Config struct {
 	MaxOpenQuery       int
 	MaxOpenQueryFactor float64
 
+	StatementResuseMode StatementReuseMode
+
 	TrustUsers map[string]string
 
 	// unused
@@ -127,6 +108,8 @@ type Database struct {
 
 	maxConnsMutex sync.RWMutex
 	maxConnsChan  chan struct{}
+
+	statementReuseMode StatementReuseMode
 }
 
 var _ api.Database = (*Database)(nil)
@@ -145,6 +128,8 @@ func NewDatabase(conf *Config) (*Database, error) {
 		alternativePort: conf.AlternativePort,
 		handle:          handle,
 		trustUsers:      map[string]string{},
+
+		statementReuseMode: conf.StatementResuseMode,
 	}
 	for u, p := range conf.TrustUsers {
 		ret.trustUsers[strings.ToUpper(u)] = p
@@ -321,7 +306,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		user:                   strings.ToUpper(user),
 		usedAt:                 time.Now(),
 		returnChan:             returnChan,
-		queryStmtReuseMode:     parseQueryStmtReuseMode(),
+		queryStmtReuseMode:     db.statementReuseMode,
 		queryStmtPool:          map[string][]*Stmt{},
 		queryStmtPoolCap:       defaultQueryStmtPoolCap,
 		queryStmtPoolPerKeyCap: defaultQueryStmtPoolPerQueryCap,
@@ -339,7 +324,7 @@ type Conn struct {
 	closeOnce  sync.Once
 	returnChan chan struct{}
 
-	queryStmtReuseMode     queryStmtReuseMode
+	queryStmtReuseMode     StatementReuseMode
 	queryStmtPoolMu        sync.Mutex
 	queryStmtFastKey       string
 	queryStmtFast          *Stmt
@@ -386,9 +371,9 @@ func queryHead(query string) string {
 
 func (c *Conn) shouldReuseStmtForQuery(query string) bool {
 	switch c.queryStmtReuseMode {
-	case queryStmtReuseOn:
+	case StatementReuseOn:
 		return true
-	case queryStmtReuseOff:
+	case StatementReuseOff:
 		return false
 	default:
 		switch queryHead(query) {
@@ -493,7 +478,7 @@ func (c *Conn) releaseQueryStmt(query string, stmt *Stmt, reusable bool) error {
 }
 
 func (c *Conn) closeQueryStmtPool() error {
-	if c.queryStmtReuseMode == queryStmtReuseOff {
+	if c.queryStmtReuseMode == StatementReuseOff {
 		return nil
 	}
 	c.queryStmtPoolMu.Lock()
