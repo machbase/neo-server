@@ -1,6 +1,7 @@
 package machnet
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 type NativeConn struct {
 	mu      sync.Mutex
 	netConn net.Conn
+	br      *bufio.Reader
+	bw      *bufio.Writer
 
 	host         string
 	port         int
@@ -114,6 +117,8 @@ func dialNative(host string, port int, user string, password string, alts []net.
 		}
 		nc := &NativeConn{
 			netConn:      c,
+			br:           bufio.NewReaderSize(c, defaultReadBufferSize),
+			bw:           bufio.NewWriterSize(c, defaultWriteBufferSize),
 			host:         host,
 			port:         port,
 			user:         user,
@@ -193,12 +198,17 @@ func (c *NativeConn) handshake() error {
 	if defaultConnectTimeout > 0 {
 		_ = c.netConn.SetWriteDeadline(time.Now().Add(defaultConnectTimeout))
 		defer c.netConn.SetWriteDeadline(time.Time{})
+		_ = c.netConn.SetReadDeadline(time.Now().Add(defaultConnectTimeout))
+		defer c.netConn.SetReadDeadline(time.Time{})
 	}
-	if err := writePacket(c.netConn, payload); err != nil {
+	if err := writePacket(c.bw, payload); err != nil {
+		return err
+	}
+	if err := c.bw.Flush(); err != nil {
 		return err
 	}
 	resp := make([]byte, cmiProtoCnt)
-	if _, err := io.ReadFull(c.netConn, resp); err != nil {
+	if _, err := io.ReadFull(c.br, resp); err != nil {
 		return err
 	}
 	if string(resp) != cmiHandshakeReady {
@@ -218,11 +228,14 @@ func (c *NativeConn) sendPackets(packets [][]byte, expected byte, timeout time.D
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writePacket(c.netConn, p); err != nil {
+		if err := writePacket(c.bw, p); err != nil {
 			return nil, err
 		}
 	}
-	protocol, body, err := readNextProtocolFrom(c.netConn)
+	if err := c.bw.Flush(); err != nil {
+		return nil, err
+	}
+	protocol, body, err := readNextProtocolFrom(c.br)
 	if err != nil {
 		return nil, err
 	}
@@ -241,11 +254,16 @@ func (c *NativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Durati
 	if timeout > 0 {
 		_ = c.netConn.SetWriteDeadline(time.Now().Add(timeout))
 		defer c.netConn.SetWriteDeadline(time.Time{})
+		_ = c.netConn.SetReadDeadline(time.Now().Add(timeout))
+		defer c.netConn.SetReadDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writePacket(c.netConn, p); err != nil {
+		if err := writePacket(c.bw, p); err != nil {
 			return err
 		}
+	}
+	if err := c.bw.Flush(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -259,13 +277,18 @@ func (c *NativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 	if timeout > 0 {
 		_ = c.netConn.SetWriteDeadline(time.Now().Add(timeout))
 		defer c.netConn.SetWriteDeadline(time.Time{})
+		_ = c.netConn.SetReadDeadline(time.Now().Add(timeout))
+		defer c.netConn.SetReadDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writePacket(c.netConn, p); err != nil {
+		if err := writePacket(c.bw, p); err != nil {
 			return nil, false, err
 		}
 	}
-	protocol, body, err := readNextProtocolFrom(c.netConn)
+	if err := c.bw.Flush(); err != nil {
+		return nil, false, err
+	}
+	protocol, body, err := readNextProtocolFrom(c.br)
 	if err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
@@ -646,6 +669,7 @@ func (c *NativeConn) appendData(stmtID uint32, rows [][]byte, checkResponse bool
 	if !checkResponse {
 		return c.sendPacketsNoResponse(packets, c.queryTimeout)
 	}
+	// CAUTION: This is a short timeout for low latency append. But prone to cause false-timeout.
 	timeout := 5 * time.Millisecond
 	if c.queryTimeout > 0 && timeout > c.queryTimeout {
 		timeout = c.queryTimeout
@@ -703,16 +727,19 @@ func (c *NativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writePacket(c.netConn, p); err != nil {
+		if err := writePacket(c.bw, p); err != nil {
 			return 0, 0, err
 		}
+	}
+	if err := c.bw.Flush(); err != nil {
+		return 0, 0, err
 	}
 
 	for {
 		if c.queryTimeout > 0 {
 			_ = c.netConn.SetReadDeadline(time.Now().Add(c.queryTimeout))
 		}
-		protocol, body, err := readNextProtocolFrom(c.netConn)
+		protocol, body, err := readNextProtocolFrom(c.br)
 		if c.queryTimeout > 0 {
 			c.netConn.SetReadDeadline(time.Time{})
 		}
