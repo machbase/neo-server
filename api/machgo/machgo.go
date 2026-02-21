@@ -26,9 +26,9 @@ const (
 type StatementReuseMode int
 
 const (
-	StatementReuseOff StatementReuseMode = iota
+	StatementReuseAuto StatementReuseMode = iota
 	StatementReuseOn
-	StatementReuseAuto
+	StatementReuseOff
 )
 
 func errorWithCause(obj any, cause error) error {
