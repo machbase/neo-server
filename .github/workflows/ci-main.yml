@@ -56,7 +56,8 @@ jobs:
           netsh int tcp set global autotuninglevel=disabled
 
           Write-Host "===== AFTER SETTINGS ====="
-          netsh int ipv4 show dynamicport tcp      - name: Setup zig
+          netsh int ipv4 show dynamicport tcp
+      - name: Setup zig
         if: matrix.os == 'linux' && matrix.arch == 'arm32'
         uses: goto-bus-stop/setup-zig@v2
         with:
