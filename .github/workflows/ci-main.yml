@@ -37,7 +37,26 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      - name: Setup zig
+      - name: Windows Network Tuning
+        if: matrix.os == 'windows'
+        shell: powershell
+        run: |
+          Write-Host "===== BEFORE SETTINGS ====="
+          netsh int tcp show global
+          netsh int ipv4 show dynamicport tcp
+
+          Write-Host "===== EXPAND DYNAMIC PORT ====="
+          netsh int ipv4 set dynamicport tcp start=10000 num=55000
+
+          Write-Host "===== REDUCE TIME_WAIT ====="
+          reg add HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters `
+            /v TcpTimedWaitDelay /t REG_DWORD /d 30 /f
+
+          Write-Host "===== DISABLE TCP AUTOTUNING ====="
+          netsh int tcp set global autotuninglevel=disabled
+
+          Write-Host "===== AFTER SETTINGS ====="
+          netsh int ipv4 show dynamicport tcp      - name: Setup zig
         if: matrix.os == 'linux' && matrix.arch == 'arm32'
         uses: goto-bus-stop/setup-zig@v2
         with:
