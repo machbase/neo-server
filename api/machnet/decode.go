@@ -52,7 +52,7 @@ func buildColumns(units map[uint32][]MarshalUnit) []ColumnMeta {
 	return ret
 }
 
-func buildParamDescs(units map[uint32][]MarshalUnit, count int) []ParamDesc {
+func buildParamDesc(units map[uint32][]MarshalUnit, count int) []ParamDesc {
 	typUnits := units[cmiPParamTypeID]
 	if count <= 0 {
 		count = len(typUnits)

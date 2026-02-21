@@ -38,7 +38,7 @@ type StmtExecResult struct {
 	message    string
 	rowCount   int64
 	columns    []ColumnMeta
-	paramDescs []ParamDesc
+	paramDesc  []ParamDesc
 	rows       [][]any
 	lastResult bool
 }
@@ -160,12 +160,12 @@ func (c *NativeConn) nextStmtID() (uint32, error) {
 	}
 	start := c.stmtCursor % stmtIDLimit
 	for i := uint32(0); i < stmtIDLimit; i++ {
-		cand := (start + i) % stmtIDLimit
-		if !c.stmtUsed[cand] {
-			c.stmtUsed[cand] = true
+		candidate := (start + i) % stmtIDLimit
+		if !c.stmtUsed[candidate] {
+			c.stmtUsed[candidate] = true
 			c.stmtUsedCnt++
-			c.stmtCursor = (cand + 1) % stmtIDLimit
-			return cand, nil
+			c.stmtCursor = (candidate + 1) % stmtIDLimit
+			return candidate, nil
 		}
 	}
 	return 0, makeClientErr(fmt.Sprintf("Statement ID overflow (Limit = %d, Curr = %d).", stmtIDLimit, c.stmtUsedCnt))
@@ -343,13 +343,13 @@ func parseStmtResponse(body []byte, sql string, fallbackCols []ColumnMeta) (*Stm
 	paramTypeUnits := units[cmiPParamTypeID]
 	switch {
 	case len(paramTypeUnits) > 0:
-		ret.paramDescs = buildParamDescs(units, len(paramTypeUnits))
+		ret.paramDesc = buildParamDesc(units, len(paramTypeUnits))
 	default:
 		qCount := countSQLPlaceholders(sql)
 		if qCount > 0 {
-			ret.paramDescs = make([]ParamDesc, qCount)
-			for i := range ret.paramDescs {
-				ret.paramDescs[i] = ParamDesc{Type: MACHCLI_SQL_TYPE_STRING, Nullable: true}
+			ret.paramDesc = make([]ParamDesc, qCount)
+			for i := range ret.paramDesc {
+				ret.paramDesc[i] = ParamDesc{Type: MACHCLI_SQL_TYPE_STRING, Nullable: true}
 			}
 		}
 	}
@@ -377,16 +377,16 @@ func parseStmtResponse(body []byte, sql string, fallbackCols []ColumnMeta) (*Stm
 				ret.lastResult = true
 			}
 			if st != cmiOKResult && st != cmiLastResult {
-				emsg := ""
+				errMsg := ""
 				if em, ok := firstUnit(units, cmiREMessageID); ok {
-					emsg = string(em.data)
+					errMsg = string(em.data)
 				}
 				msg := ret.message
-				if emsg != "" {
+				if errMsg != "" {
 					if msg == "" {
-						msg = emsg
+						msg = errMsg
 					} else {
-						msg = msg + "; " + emsg
+						msg = msg + "; " + errMsg
 					}
 				}
 				return nil, makeServerErr(statusErrNo(statusVal), msg)
@@ -666,15 +666,15 @@ func parseAppendCloseResponse(body []byte) (int64, int64, error) {
 			return 0, 0, makeServerErr(statusErrNo(statusVal), msg)
 		}
 	}
-	var succ int64
+	var success int64
 	var fail int64
 	if v, ok := firstUnit(units, cmiXAppendSuccessID); ok && len(v.data) >= 8 {
-		succ = int64(binary.LittleEndian.Uint64(v.data))
+		success = int64(binary.LittleEndian.Uint64(v.data))
 	}
 	if v, ok := firstUnit(units, cmiXAppendFailureID); ok && len(v.data) >= 8 {
 		fail = int64(binary.LittleEndian.Uint64(v.data))
 	}
-	return succ, fail, nil
+	return success, fail, nil
 }
 
 func (c *NativeConn) appendClose(stmtID uint32) (int64, int64, error) {

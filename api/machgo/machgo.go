@@ -31,39 +31,6 @@ const (
 	StatementReuseAuto
 )
 
-func errorWithCause(obj any, cause error) error {
-	var code int
-	var msg string
-	switch x := obj.(type) {
-	case *Database:
-		code, msg = x.handle.Error()
-	case *Conn:
-		code, msg = x.handle.Error()
-	case *Stmt:
-		code, msg = x.handle.Error()
-	default:
-		return cause
-	}
-	if code == 0 && msg == "" && cause == nil {
-		// no error
-		return nil
-	} else if code == 0 && msg != "" {
-		// code == 0 means client-side error
-		if cause == nil {
-			return fmt.Errorf("MACHCLI %s", msg)
-		} else {
-			return fmt.Errorf("MACHCLI %s, %s", msg, cause.Error())
-		}
-	} else {
-		// code > 0 means server-side error
-		if cause == nil {
-			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
-		} else {
-			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
-		}
-	}
-}
-
 type Config struct {
 	Host string
 	Port int
@@ -152,7 +119,29 @@ func (db *Database) Close() error {
 	if err := db.handle.Finalize(); err == nil {
 		return nil
 	} else {
-		return errorWithCause(db, err)
+		return db.ErrorOf(err)
+	}
+}
+
+func (db *Database) ErrorOf(cause error) error {
+	code, msg := db.handle.Error()
+	if code == 0 && msg == "" && cause == nil {
+		// no error
+		return nil
+	} else if code == 0 && msg != "" {
+		// code == 0 means client-side error
+		if cause == nil {
+			return fmt.Errorf("MACHCLI %s", msg)
+		} else {
+			return fmt.Errorf("MACHCLI %s, %s", msg, cause.Error())
+		}
+	} else {
+		// code > 0 means server-side error
+		if cause == nil {
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
+		} else {
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
+		}
 	}
 }
 
@@ -299,7 +288,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 
 	var handle *machnet.ConnHandle
 	if c, err := db.handle.Connect(db.connectionString(user, password)); err != nil {
-		return nil, errorWithCause(db, err)
+		return nil, db.ErrorOf(err)
 	} else {
 		handle = c
 	}
@@ -357,7 +346,7 @@ func (c *Conn) Close() (ret error) {
 		}
 		if err := c.handle.Disconnect(); err != nil {
 			if ret == nil {
-				ret = errorWithCause(c, err)
+				ret = c.ErrorOf(err)
 			}
 		}
 	})
@@ -365,7 +354,29 @@ func (c *Conn) Close() (ret error) {
 }
 
 func (c *Conn) Error() error {
-	return errorWithCause(c, nil)
+	return c.ErrorOf(nil)
+}
+
+func (c *Conn) ErrorOf(cause error) error {
+	code, msg := c.handle.Error()
+	if code == 0 && msg == "" && cause == nil {
+		// no error
+		return nil
+	} else if code == 0 && msg != "" {
+		// code == 0 means client-side error
+		if cause == nil {
+			return fmt.Errorf("MACHCLI %s", msg)
+		} else {
+			return fmt.Errorf("MACHCLI %s, %s", msg, cause.Error())
+		}
+	} else {
+		// code > 0 means server-side error
+		if cause == nil {
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
+		} else {
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
+		}
+	}
 }
 
 func queryHead(query string) string {
@@ -460,7 +471,7 @@ func (c *Conn) releaseQueryStmt(query string, stmt *Stmt, reusable bool) error {
 	stmt.reachEOF = false
 	if err := stmt.handle.ExecuteClean(); err != nil {
 		_ = stmt.Close()
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	}
 
 	keep := false
@@ -497,21 +508,21 @@ func (c *Conn) closeQueryStmtPool() error {
 	if c.queryStmtFast != nil {
 		capHint++
 	}
-	stmts := make([]*Stmt, 0, capHint)
+	statements := make([]*Stmt, 0, capHint)
 	if c.queryStmtFast != nil {
-		stmts = append(stmts, c.queryStmtFast)
+		statements = append(statements, c.queryStmtFast)
 		c.queryStmtFast = nil
 		c.queryStmtFastKey = ""
 	}
 	for key, pool := range c.queryStmtPool {
-		stmts = append(stmts, pool...)
+		statements = append(statements, pool...)
 		delete(c.queryStmtPool, key)
 	}
 	c.queryStmtPoolCount = 0
 	c.queryStmtPoolMu.Unlock()
 
 	var firstErr error
-	for _, stmt := range stmts {
+	for _, stmt := range statements {
 		if stmt == nil {
 			continue
 		}
@@ -531,20 +542,20 @@ func (c *Conn) Explain(ctx context.Context, query string, full bool) (string, er
 
 	var stmt *machnet.StmtHandle
 	if s, err := c.handle.AllocStmt(); err != nil {
-		return "", errorWithCause(c, err)
+		return "", c.ErrorOf(err)
 	} else {
 		stmt = s
 	}
 	defer stmt.Free()
 
 	if err := stmt.ExecDirect(query); err != nil {
-		return "", errorWithCause(c, err)
+		return "", c.ErrorOf(err)
 	}
 
 	ret := make([]string, 0, 20)
 	for {
 		if row, err := stmt.Fetch(); err != nil {
-			return "", errorWithCause(c, err)
+			return "", err
 		} else if row == nil {
 			break
 		} else {
@@ -574,7 +585,7 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 
 		stmt.sqlHead = queryHead(query)
 		if err := stmt.handle.ExecDirect(query); err != nil {
-			ret.err = errorWithCause(c, err)
+			ret.err = c.ErrorOf(err)
 		}
 		ret.rowCount, ret.err = stmt.handle.RowCount()
 		if typ, err := stmt.handle.GetStmtType(); err != nil {
@@ -662,8 +673,8 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	} else {
 		ret.values = values
 	}
-	ret.columns = make(api.Columns, len(stmt.columnDescs))
-	for i, desc := range stmt.columnDescs {
+	ret.columns = make(api.Columns, len(stmt.columnDesc))
+	for i, desc := range stmt.columnDesc {
 		ret.columns[i] = &api.Column{
 			Name:     desc.Name,
 			Length:   desc.Size,
@@ -779,8 +790,8 @@ func (pStmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row 
 	} else {
 		ret.values = values
 	}
-	ret.columns = make(api.Columns, len(pStmt.stmt.columnDescs))
-	for i, desc := range pStmt.stmt.columnDescs {
+	ret.columns = make(api.Columns, len(pStmt.stmt.columnDesc))
+	for i, desc := range pStmt.stmt.columnDesc {
 		ret.columns[i] = &api.Column{
 			Name:     desc.Name,
 			Length:   desc.Size,
@@ -793,7 +804,7 @@ func (pStmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row 
 
 func (stmt *Stmt) prepare(query string) error {
 	if err := stmt.handle.Prepare(query); err != nil {
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	}
 	return nil
 }
@@ -801,7 +812,7 @@ func (stmt *Stmt) prepare(query string) error {
 func (stmt *Stmt) bindParams(args ...any) error {
 	numParam, err := stmt.handle.NumParam()
 	if err != nil {
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	}
 	if len(args) != numParam {
 		return api.ErrParamCount(numParam, len(args))
@@ -880,7 +891,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			value = val
 		}
 		if err := stmt.handle.BindParam(idx, sqlType, value); err != nil {
-			return errorWithCause(stmt, err)
+			return stmt.ErrorOf(err)
 		}
 	}
 	return nil
@@ -914,7 +925,7 @@ func (rs *Result) RowsAffected() int64 {
 func (c *Conn) NewStmt() (*Stmt, error) {
 	var handle *machnet.StmtHandle
 	if h, err := c.handle.AllocStmt(); err != nil {
-		return nil, errorWithCause(c, err)
+		return nil, c.ErrorOf(err)
 	} else {
 		handle = h
 	}
@@ -1027,37 +1038,60 @@ type ColumnDesc struct {
 }
 
 type Stmt struct {
-	handle      *machnet.StmtHandle
-	conn        *Conn
-	columnDescs []ColumnDesc
-	reachEOF    bool
-	sqlHead     string
-	rowCount    int64
-	execCount   int64
+	handle     *machnet.StmtHandle
+	conn       *Conn
+	columnDesc []ColumnDesc
+	reachEOF   bool
+	sqlHead    string
+	rowCount   int64
+	execCount  int64
 }
 
 func (stmt *Stmt) Close() error {
 	if err := stmt.handle.Free(); err == nil {
 		return nil
 	} else {
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	}
 }
 
 func (stmt *Stmt) Error() error {
-	return errorWithCause(stmt, nil)
+	return stmt.ErrorOf(nil)
+}
+
+func (stmt *Stmt) ErrorOf(cause error) error {
+	code, msg := stmt.handle.Error()
+	if code == 0 && msg == "" && cause == nil {
+		// no error
+		return nil
+	} else if code == 0 && msg != "" {
+		// code == 0 means client-side error
+		if cause == nil {
+			return fmt.Errorf("MACHCLI %s", msg)
+		} else {
+			return fmt.Errorf("MACHCLI %s, %s", msg, cause.Error())
+		}
+	} else {
+		// code > 0 means server-side error
+		if cause == nil {
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
+		} else {
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
+		}
+	}
+
 }
 
 func (stmt *Stmt) execute() error {
 	stmt.reachEOF = false
 	if err := stmt.handle.Execute(); err != nil {
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	}
 	defer func() {
 		stmt.execCount++
 	}()
 	if rowCount, err := stmt.handle.RowCount(); err != nil {
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	} else {
 		stmt.rowCount = rowCount
 	}
@@ -1069,15 +1103,15 @@ func (stmt *Stmt) execute() error {
 	}
 	num, err := stmt.handle.NumResultCol()
 	if err != nil {
-		return errorWithCause(stmt, err)
+		return stmt.ErrorOf(err)
 	}
-	stmt.columnDescs = make([]ColumnDesc, num)
+	stmt.columnDesc = make([]ColumnDesc, num)
 	for i := 0; i < num; i++ {
 		d := ColumnDesc{}
 		if err := stmt.handle.DescribeCol(i, &d.Name, (*machnet.SqlType)(&d.Type), &d.Size, &d.Scale, &d.Nullable); err != nil {
-			return errorWithCause(stmt, err)
+			return stmt.ErrorOf(err)
 		}
-		stmt.columnDescs[i] = d
+		stmt.columnDesc[i] = d
 	}
 	return nil
 }
@@ -1218,8 +1252,8 @@ func (r *Rows) Columns() (api.Columns, error) {
 	if r.stmt == nil {
 		return nil, nil
 	}
-	ret := make(api.Columns, len(r.stmt.columnDescs))
-	for i, desc := range r.stmt.columnDescs {
+	ret := make(api.Columns, len(r.stmt.columnDesc))
+	for i, desc := range r.stmt.columnDesc {
 		ret[i] = &api.Column{
 			Name:     desc.Name,
 			Length:   desc.Size,
@@ -1318,7 +1352,7 @@ func (r *Rows) ColumnDescriptions() []ColumnDesc {
 	if r.stmt == nil {
 		return nil
 	}
-	return r.stmt.columnDescs
+	return r.stmt.columnDesc
 }
 
 func (r *Rows) Scan(dest ...any) error {
@@ -1433,7 +1467,7 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 	ret.stmt = stmt
 
 	if err := stmt.handle.AppendOpen(table, ret.errCheckCount); err != nil {
-		err = errorWithCause(stmt, err)
+		err = stmt.ErrorOf(err)
 		stmt.Close()
 		return nil, err
 	}
@@ -1510,7 +1544,7 @@ func (a *Appender) Close() (int64, int64, error) {
 	a.successCount, a.failCount, err = a.stmt.handle.AppendClose()
 
 	if errClose := a.stmt.Close(); errClose != nil {
-		return a.successCount, a.failCount, errorWithCause(a.stmt.conn, errClose)
+		return a.successCount, a.failCount, a.stmt.ErrorOf(errClose)
 	}
 	return a.successCount, a.failCount, err
 }
@@ -1553,7 +1587,7 @@ func (a *Appender) Flush() error {
 	if err := a.stmt.handle.AppendFlush(); err == nil {
 		return nil
 	} else {
-		return errorWithCause(a.stmt, err)
+		return a.stmt.ErrorOf(err)
 	}
 }
 
@@ -1608,7 +1642,7 @@ func (a *Appender) append(values ...any) error {
 	}
 
 	if err := a.stmt.handle.AppendData(a.columnTypes, a.columnNames, values, a.inputFormats); err != nil {
-		return errorWithCause(a.stmt, err)
+		return a.stmt.ErrorOf(err)
 	}
 	return nil
 }

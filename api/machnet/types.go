@@ -1,6 +1,7 @@
 package machnet
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -204,17 +205,12 @@ type ParamDesc struct {
 	Nullable  bool
 }
 
-type cliErrorState struct {
+type StatusError struct {
 	code int
 	msg  string
 }
 
-type statusError struct {
-	code int
-	msg  string
-}
-
-func (e *statusError) Error() string {
+func (e *StatusError) Error() string {
 	if e.msg == "" {
 		return fmt.Sprintf("server error code=%d", e.code)
 	}
@@ -222,6 +218,28 @@ func (e *statusError) Error() string {
 		return fmt.Sprintf("server error code=%d message=%s", e.code, e.msg)
 	}
 	return e.msg
+}
+
+func (st *StatusError) setErr(err error) {
+	if st == nil {
+		return
+	}
+	if err == nil {
+		st.code = 0
+		st.msg = ""
+		return
+	}
+	var se *StatusError
+	if errors.As(err, &se) {
+		st.code = se.code
+		st.msg = se.msg
+		if st.msg == "" {
+			st.msg = err.Error()
+		}
+		return
+	}
+	st.code = 0
+	st.msg = err.Error()
 }
 
 func protocolVersion() uint64 {
@@ -234,11 +252,11 @@ func makeClientErr(msg string) error {
 	if msg == "" {
 		msg = "unknown client error"
 	}
-	return &statusError{code: 0, msg: msg}
+	return &StatusError{code: 0, msg: msg}
 }
 
 func makeServerErr(code int, msg string) error {
-	return &statusError{code: code, msg: msg}
+	return &StatusError{code: code, msg: msg}
 }
 
 func sqlTypeToCmdType(sqlType SqlType) int {

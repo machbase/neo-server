@@ -1,7 +1,6 @@
 package machnet
 
 import (
-	"errors"
 	"sync"
 	"time"
 )
@@ -9,7 +8,7 @@ import (
 type EnvHandle struct {
 	mu      sync.Mutex
 	closed  bool
-	lastErr cliErrorState
+	lastErr StatusError
 	conns   map[*ConnHandle]struct{}
 }
 
@@ -23,7 +22,7 @@ type ConnHandle struct {
 	env     *EnvHandle
 	native  *NativeConn
 	closed  bool
-	lastErr cliErrorState
+	lastErr StatusError
 }
 
 // Error() returns the last error code and message for the connection handle.
@@ -65,34 +64,12 @@ type StmtHandle struct {
 	rowPos    int
 	bound     map[int]BoundParam
 	app       *AppendState
-	lastErr   cliErrorState
+	lastErr   StatusError
 }
 
 // Error() returns the last error code and message for the statement handle.
 func (stmt *StmtHandle) Error() (int, string) {
 	return stmt.lastErr.code, stmt.lastErr.msg
-}
-
-func setErr(st *cliErrorState, err error) {
-	if st == nil {
-		return
-	}
-	if err == nil {
-		st.code = 0
-		st.msg = ""
-		return
-	}
-	var se *statusError
-	if errors.As(err, &se) {
-		st.code = se.code
-		st.msg = se.msg
-		if st.msg == "" {
-			st.msg = err.Error()
-		}
-		return
-	}
-	st.code = 0
-	st.msg = err.Error()
 }
 
 func Initialize() (*EnvHandle, error) {
@@ -126,12 +103,12 @@ func (env *EnvHandle) Connect(connStr string) (*ConnHandle, error) {
 	}
 	host, port, user, pass, alts, err := parseConnString(connStr)
 	if err != nil {
-		setErr(&env.lastErr, err)
+		env.lastErr.setErr(err)
 		return nil, err
 	}
 	nc, err := dialNative(host, port, user, pass, alts)
 	if err != nil {
-		setErr(&env.lastErr, err)
+		env.lastErr.setErr(err)
 		return nil, err
 	}
 	ch := &ConnHandle{env: env, native: nc}
@@ -140,12 +117,12 @@ func (env *EnvHandle) Connect(connStr string) (*ConnHandle, error) {
 		env.mu.Unlock()
 		_ = nc.close()
 		err = makeClientErr("environment closed")
-		setErr(&env.lastErr, err)
+		env.lastErr.setErr(err)
 		return nil, err
 	}
 	env.conns[ch] = struct{}{}
 	env.mu.Unlock()
-	setErr(&env.lastErr, nil)
+	env.lastErr.setErr(nil)
 	return ch, nil
 }
 
@@ -163,7 +140,7 @@ func (conn *ConnHandle) Disconnect() error {
 	conn.mu.Unlock()
 
 	err := nc.close()
-	setErr(&conn.lastErr, err)
+	conn.lastErr.setErr(err)
 	if conn.env != nil {
 		conn.env.mu.Lock()
 		delete(conn.env.conns, conn)
@@ -180,12 +157,12 @@ func (conn *ConnHandle) AllocStmt() (*StmtHandle, error) {
 	defer conn.mu.Unlock()
 	if conn.closed || conn.native == nil {
 		err := makeClientErr("connection closed")
-		setErr(&conn.lastErr, err)
+		conn.lastErr.setErr(err)
 		return nil, err
 	}
 	id, err := conn.native.nextStmtID()
 	if err != nil {
-		setErr(&conn.lastErr, err)
+		conn.lastErr.setErr(err)
 		return nil, err
 	}
 	stmt := &StmtHandle{
@@ -193,7 +170,7 @@ func (conn *ConnHandle) AllocStmt() (*StmtHandle, error) {
 		id:    id,
 		bound: map[int]BoundParam{},
 	}
-	setErr(&conn.lastErr, nil)
+	conn.lastErr.setErr(nil)
 	return stmt, nil
 }
 
@@ -217,9 +194,9 @@ func (stmt *StmtHandle) Free() error {
 			conn.native.releaseStmtID(id)
 		}
 	}
-	setErr(&stmt.lastErr, err)
+	stmt.lastErr.setErr(err)
 	if conn != nil {
-		setErr(&conn.lastErr, err)
+		conn.lastErr.setErr(err)
 	}
 	return err
 }
@@ -232,19 +209,19 @@ func (stmt *StmtHandle) Prepare(query string) error {
 	defer stmt.mu.Unlock()
 	if stmt.closed || stmt.conn == nil || stmt.conn.native == nil {
 		err := makeClientErr("statement closed")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	res, err := stmt.conn.native.prepare(stmt.id, query)
-	setErr(&stmt.lastErr, err)
-	setErr(&stmt.conn.lastErr, err)
+	stmt.lastErr.setErr(err)
+	stmt.conn.lastErr.setErr(err)
 	if err != nil {
 		return err
 	}
 	stmt.prepared = true
 	stmt.sql = query
 	stmt.columns = res.columns
-	stmt.paramDesc = res.paramDescs
+	stmt.paramDesc = res.paramDesc
 	stmt.stmtType = res.stmtType
 	stmt.rowCount = res.rowCount
 	stmt.rows = nil
@@ -260,12 +237,12 @@ func (stmt *StmtHandle) Execute() error {
 	defer stmt.mu.Unlock()
 	if stmt.closed || stmt.conn == nil || stmt.conn.native == nil {
 		err := makeClientErr("statement closed")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	if !stmt.prepared {
 		err := makeClientErr("statement is not prepared")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	paramCnt := len(stmt.paramDesc)
@@ -285,8 +262,8 @@ func (stmt *StmtHandle) Execute() error {
 		}
 	}
 	res, err := stmt.conn.native.executePrepared(stmt.id, stmt.sql, params, stmt.columns)
-	setErr(&stmt.lastErr, err)
-	setErr(&stmt.conn.lastErr, err)
+	stmt.lastErr.setErr(err)
+	stmt.conn.lastErr.setErr(err)
 	if err != nil {
 		return err
 	}
@@ -308,12 +285,12 @@ func (stmt *StmtHandle) ExecDirect(query string) error {
 	defer stmt.mu.Unlock()
 	if stmt.closed || stmt.conn == nil || stmt.conn.native == nil {
 		err := makeClientErr("statement closed")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	res, err := stmt.conn.native.execDirect(stmt.id, query)
-	setErr(&stmt.lastErr, err)
-	setErr(&stmt.conn.lastErr, err)
+	stmt.lastErr.setErr(err)
+	stmt.conn.lastErr.setErr(err)
 	if err != nil {
 		return err
 	}
@@ -322,7 +299,7 @@ func (stmt *StmtHandle) ExecDirect(query string) error {
 	stmt.stmtType = res.stmtType
 	stmt.rowCount = res.rowCount
 	stmt.columns = res.columns
-	stmt.paramDesc = res.paramDescs
+	stmt.paramDesc = res.paramDesc
 	stmt.rows = res.rows
 	stmt.rowPos = 0
 	return nil
@@ -368,12 +345,12 @@ func (stmt *StmtHandle) BindParam(paramNo int, sqlType SqlType, value any) error
 	defer stmt.mu.Unlock()
 	if paramNo < 0 {
 		err := makeClientErr("invalid parameter index")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	bp := BoundParam{sqlType: sqlType, value: value, isNull: value == nil}
 	stmt.bound[paramNo] = bp
-	setErr(&stmt.lastErr, nil)
+	stmt.lastErr.setErr(nil)
 	return nil
 }
 
@@ -415,7 +392,7 @@ func (stmt *StmtHandle) DescribeCol(columnNo int, pName *string, pType *SqlType,
 	defer stmt.mu.Unlock()
 	if columnNo < 0 || columnNo >= len(stmt.columns) {
 		err := makeClientErr("invalid column index")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	col := stmt.columns[columnNo]
@@ -468,12 +445,12 @@ func (stmt *StmtHandle) AppendOpen(tableName string, errCheckCount int) error {
 	defer stmt.mu.Unlock()
 	if stmt.closed || stmt.conn == nil || stmt.conn.native == nil {
 		err := makeClientErr("statement closed")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	res, err := stmt.conn.native.appendOpen(stmt.id, tableName, errCheckCount)
-	setErr(&stmt.lastErr, err)
-	setErr(&stmt.conn.lastErr, err)
+	stmt.lastErr.setErr(err)
+	stmt.conn.lastErr.setErr(err)
 	if err != nil {
 		return err
 	}
@@ -504,8 +481,8 @@ func (stmt *StmtHandle) flushAppendBufferedLocked(checkResponse bool) error {
 	stmt.app.firstQueuedAt = time.Time{}
 
 	err := stmt.conn.native.appendData(stmt.id, pending, checkResponse)
-	setErr(&stmt.lastErr, err)
-	setErr(&stmt.conn.lastErr, err)
+	stmt.lastErr.setErr(err)
+	stmt.conn.lastErr.setErr(err)
 	if err != nil {
 		stmt.app.failCnt += int64(pendingCount)
 		return err
@@ -524,24 +501,24 @@ func (stmt *StmtHandle) AppendData(types []SqlType, names []string, args []any, 
 	defer stmt.mu.Unlock()
 	if stmt.closed || stmt.conn == nil || stmt.conn.native == nil {
 		err := makeClientErr("statement closed")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	if stmt.app == nil {
 		err := makeClientErr("append not opened")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	if len(names) != len(args) {
 		err := makeClientErr("append argument mismatch")
-		setErr(&stmt.lastErr, err)
+		stmt.lastErr.setErr(err)
 		return err
 	}
 	if !stmt.app.bindingsReady {
 		bindings, err := buildAppendBindings(stmt.app.columns, names)
 		if err != nil {
-			setErr(&stmt.lastErr, err)
-			setErr(&stmt.conn.lastErr, err)
+			stmt.lastErr.setErr(err)
+			stmt.conn.lastErr.setErr(err)
 			stmt.app.failCnt++
 			return err
 		}
@@ -550,8 +527,8 @@ func (stmt *StmtHandle) AppendData(types []SqlType, names []string, args []any, 
 	}
 	rowPayload, err := encodeAppendRow(stmt.app.columns, stmt.app.bindings, args, stmt.conn.native.serverEndian)
 	if err != nil {
-		setErr(&stmt.lastErr, err)
-		setErr(&stmt.conn.lastErr, err)
+		stmt.lastErr.setErr(err)
+		stmt.conn.lastErr.setErr(err)
 		stmt.app.failCnt++
 		return err
 	}
@@ -595,8 +572,8 @@ func (stmt *StmtHandle) AppendClose() (int64, int64, error) {
 	}
 
 	succ, fail, err := stmt.conn.native.appendClose(stmt.id)
-	setErr(&stmt.lastErr, err)
-	setErr(&stmt.conn.lastErr, err)
+	stmt.lastErr.setErr(err)
+	stmt.conn.lastErr.setErr(err)
 	if err != nil {
 		localSucc := stmt.app.sentCount - stmt.app.failCnt
 		if localSucc < 0 {
