@@ -21,7 +21,7 @@ type ColumnMeta struct {
 	nullable   bool
 }
 
-func buildColumns(units map[uint32][]marshalUnit) []ColumnMeta {
+func buildColumns(units map[uint32][]MarshalUnit) []ColumnMeta {
 	names := units[cmiPColNameID]
 	types := units[cmiPColTypeID]
 	count := len(names)
@@ -52,7 +52,7 @@ func buildColumns(units map[uint32][]marshalUnit) []ColumnMeta {
 	return ret
 }
 
-func buildParamDescs(units map[uint32][]marshalUnit, count int) []ParamDesc {
+func buildParamDescs(units map[uint32][]MarshalUnit, count int) []ParamDesc {
 	typUnits := units[cmiPParamTypeID]
 	if count <= 0 {
 		count = len(typUnits)
@@ -71,7 +71,7 @@ func buildParamDescs(units map[uint32][]marshalUnit, count int) []ParamDesc {
 	return ret
 }
 
-func decodeRowsFromUnits(units []marshalUnit, columns []ColumnMeta) ([][]any, error) {
+func decodeRowsFromUnits(units []MarshalUnit, columns []ColumnMeta) ([][]any, error) {
 	rows := make([][]any, len(units))
 	if len(units) == 0 {
 		return rows, nil

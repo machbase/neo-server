@@ -8,12 +8,41 @@ import (
 
 const packetHeaderSize = 16
 
-type packet struct {
+type Packet struct {
 	protocol byte
 	flag     byte
 	adds     uint16
 	stmtID   uint32
 	body     []byte
+}
+
+func readPacketHeader(reader io.Reader, h *[packetHeaderSize]byte) (byte, byte, uint16, uint32, int, error) {
+	if _, err := io.ReadFull(reader, h[:]); err != nil {
+		return 0, 0, 0, 0, 0, err
+	}
+	lenField := binary.BigEndian.Uint32(h[4:8])
+	return h[3], byte((lenField >> 30) & 0x3), binary.BigEndian.Uint16(h[1:3]), binary.BigEndian.Uint32(h[8:12]), int(lenField & 0x3fffffff), nil
+}
+
+func ensureAppendCapacity(dst []byte, appendLen int) []byte {
+	if appendLen == 0 {
+		return dst
+	}
+	oldLen := len(dst)
+	newLen := oldLen + appendLen
+	if newLen <= cap(dst) {
+		return dst[:newLen]
+	}
+	newCap := cap(dst) * 2
+	if newCap < newLen {
+		newCap = newLen
+	}
+	if newCap == 0 {
+		newCap = appendLen
+	}
+	grown := make([]byte, newLen, newCap)
+	copy(grown, dst)
+	return grown
 }
 
 func buildPacket(protocolID byte, stmtID uint32, adds uint16, flag byte, body []byte) []byte {
@@ -28,26 +57,37 @@ func buildPacket(protocolID byte, stmtID uint32, adds uint16, flag byte, body []
 	return ret
 }
 
-func readPacket(reader io.Reader) (packet, error) {
+func readPacket(reader io.Reader) (Packet, error) {
+	var dst Packet
+	if err := readPacketInto(reader, &dst); err != nil {
+		return Packet{}, err
+	}
+	return dst, nil
+}
+
+func readPacketInto(reader io.Reader, dst *Packet) error {
 	var h [packetHeaderSize]byte
-	if _, err := io.ReadFull(reader, h[:]); err != nil {
-		return packet{}, err
+	protocol, flag, adds, stmtID, bodyLen, err := readPacketHeader(reader, &h)
+	if err != nil {
+		return err
 	}
-	lenField := binary.BigEndian.Uint32(h[4:8])
-	bodyLen := int(lenField & 0x3fffffff)
-	body := make([]byte, bodyLen)
-	if bodyLen > 0 {
-		if _, err := io.ReadFull(reader, body); err != nil {
-			return packet{}, err
-		}
+	dst.protocol = protocol
+	dst.flag = flag
+	dst.adds = adds
+	dst.stmtID = stmtID
+	if bodyLen == 0 {
+		dst.body = dst.body[:0]
+		return nil
 	}
-	return packet{
-		protocol: h[3],
-		flag:     byte((lenField >> 30) & 0x3),
-		adds:     binary.BigEndian.Uint16(h[1:3]),
-		stmtID:   binary.BigEndian.Uint32(h[8:12]),
-		body:     body,
-	}, nil
+	if cap(dst.body) < bodyLen {
+		dst.body = make([]byte, bodyLen)
+	} else {
+		dst.body = dst.body[:bodyLen]
+	}
+	if _, err := io.ReadFull(reader, dst.body); err != nil {
+		return err
+	}
+	return nil
 }
 
 func writePacket(writer io.Writer, buf []byte) error {
@@ -62,63 +102,79 @@ func writePacket(writer io.Writer, buf []byte) error {
 }
 
 func readProtocolFrom(reader io.Reader, expected byte) ([]byte, error) {
-	chunks := make([][]byte, 0, 2)
-	total := 0
+	var h [packetHeaderSize]byte
+	protocol, flag, _, _, bodyLen, err := readPacketHeader(reader, &h)
+	if err != nil {
+		return nil, err
+	}
+	if protocol != expected {
+		return nil, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
+	}
+	var out []byte
+	out = ensureAppendCapacity(out, bodyLen)
+	if bodyLen > 0 {
+		if _, err := io.ReadFull(reader, out[:bodyLen]); err != nil {
+			return nil, err
+		}
+	}
+	if flag == 0 || flag == 3 {
+		return out, nil
+	}
 	for {
-		pkt, err := readPacket(reader)
+		protocol, flag, _, _, bodyLen, err = readPacketHeader(reader, &h)
 		if err != nil {
 			return nil, err
 		}
-		if pkt.protocol != expected {
-			return nil, fmt.Errorf("unexpected protocol %d expected %d", pkt.protocol, expected)
+		if protocol != expected {
+			return nil, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
 		}
-		chunks = append(chunks, pkt.body)
-		total += len(pkt.body)
-		if pkt.flag == 0 || pkt.flag == 3 {
-			if len(chunks) == 1 {
-				return chunks[0], nil
+		oldLen := len(out)
+		out = ensureAppendCapacity(out, bodyLen)
+		if bodyLen > 0 {
+			if _, err := io.ReadFull(reader, out[oldLen:oldLen+bodyLen]); err != nil {
+				return nil, err
 			}
-			out := make([]byte, total)
-			off := 0
-			for _, c := range chunks {
-				copy(out[off:], c)
-				off += len(c)
-			}
+		}
+		if flag == 0 || flag == 3 {
 			return out, nil
 		}
 	}
 }
 
 func readNextProtocolFrom(reader io.Reader) (byte, []byte, error) {
-	first, err := readPacket(reader)
+	var h [packetHeaderSize]byte
+	protocol, flag, _, _, bodyLen, err := readPacketHeader(reader, &h)
 	if err != nil {
 		return 0, nil, err
 	}
-	protocol := first.protocol
-	chunks := make([][]byte, 0, 2)
-	chunks = append(chunks, first.body)
-	total := len(first.body)
-	flag := first.flag
-	for flag != 0 && flag != 3 {
-		pkt, err := readPacket(reader)
+	var out []byte
+	out = ensureAppendCapacity(out, bodyLen)
+	if bodyLen > 0 {
+		if _, err := io.ReadFull(reader, out[:bodyLen]); err != nil {
+			return 0, nil, err
+		}
+	}
+	if flag == 0 || flag == 3 {
+		return protocol, out, nil
+	}
+	for {
+		nextProtocol, nextFlag, _, _, nextBodyLen, err := readPacketHeader(reader, &h)
 		if err != nil {
 			return 0, nil, err
 		}
-		if pkt.protocol != protocol {
-			return 0, nil, fmt.Errorf("unexpected protocol %d expected %d", pkt.protocol, protocol)
+		if nextProtocol != protocol {
+			return 0, nil, fmt.Errorf("unexpected protocol %d expected %d", nextProtocol, protocol)
 		}
-		chunks = append(chunks, pkt.body)
-		total += len(pkt.body)
-		flag = pkt.flag
+		oldLen := len(out)
+		out = ensureAppendCapacity(out, nextBodyLen)
+		if nextBodyLen > 0 {
+			if _, err := io.ReadFull(reader, out[oldLen:oldLen+nextBodyLen]); err != nil {
+				return 0, nil, err
+			}
+		}
+		flag = nextFlag
+		if flag == 0 || flag == 3 {
+			return protocol, out, nil
+		}
 	}
-	if len(chunks) == 1 {
-		return protocol, chunks[0], nil
-	}
-	out := make([]byte, total)
-	off := 0
-	for _, c := range chunks {
-		copy(out[off:], c)
-		off += len(c)
-	}
-	return protocol, out, nil
 }

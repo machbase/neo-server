@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machgo"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/stretchr/testify/require"
 )
@@ -46,4 +48,33 @@ func tcTrustUser(t *testing.T) {
 	require.NotNil(t, conn)
 	err = conn.Close()
 	require.NoError(t, err)
+}
+
+func TestConnectFailureReturnsMaxOpenToken(t *testing.T) {
+	db, err := machgo.NewDatabase(&machgo.Config{
+		Host:        "127.0.0.1",
+		Port:        1,
+		MaxOpenConn: 1,
+	})
+	require.NoError(t, err)
+	defer db.Close()
+
+	limit, remains := db.MaxOpenConns()
+	require.Equal(t, 1, limit)
+	require.Equal(t, 1, remains)
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel1()
+	_, err = db.Connect(ctx1, api.WithPassword("sys", "manager"))
+	require.Error(t, err)
+	_, remains = db.MaxOpenConns()
+	require.Equal(t, 1, remains, "token must be returned after failed connect")
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel2()
+	_, err = db.Connect(ctx2, api.WithPassword("sys", "manager"))
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "connect canceled")
+	_, remains = db.MaxOpenConns()
+	require.Equal(t, 1, remains, "token must remain available after repeated failed connects")
 }

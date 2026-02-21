@@ -86,8 +86,7 @@ type Config struct {
 
 	MaxOpenQuery       int
 	MaxOpenQueryFactor float64
-
-	StatementResuseMode StatementReuseMode
+	StatementReuse     StatementReuseMode
 
 	TrustUsers map[string]string
 
@@ -129,7 +128,7 @@ func NewDatabase(conf *Config) (*Database, error) {
 		handle:          handle,
 		trustUsers:      map[string]string{},
 
-		statementReuseMode: conf.StatementResuseMode,
+		statementReuseMode: conf.StatementReuse,
 	}
 	for u, p := range conf.TrustUsers {
 		ret.trustUsers[strings.ToUpper(u)] = p
@@ -282,14 +281,21 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	}
 
 	returnChan := db.maxConnsChan
+	tokenAcquired := false
 
 	if returnChan != nil {
 		select {
 		case <-returnChan:
+			tokenAcquired = true
 		case <-ctx.Done():
 			return nil, api.NewError("connect canceled")
 		}
 	}
+	defer func() {
+		if tokenAcquired && returnChan != nil {
+			returnChan <- struct{}{}
+		}
+	}()
 
 	var handle *machnet.ConnHandle
 	if c, err := db.handle.Connect(db.connectionString(user, password)); err != nil {
@@ -311,6 +317,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		queryStmtPoolCap:       defaultQueryStmtPoolCap,
 		queryStmtPoolPerKeyCap: defaultQueryStmtPoolPerQueryCap,
 	}
+	tokenAcquired = false
 	return ret, nil
 }
 
