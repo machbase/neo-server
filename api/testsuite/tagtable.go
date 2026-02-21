@@ -46,7 +46,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 		require.Equal(t, expectCols[i].Length, c.Length, "diff column: "+c.Name)
 	}
 
-	expectCount := 6250
+	expectCount := 6875
 	for i := 0; i < expectCount; i++ {
 		ip4 := net.ParseIP(fmt.Sprintf("192.168.0.%d", i%255))
 		ip6 := net.ParseIP(fmt.Sprintf("12:FF:FF:FF:CC:EE:FF:%02X", i%255))
