@@ -12,7 +12,7 @@ const (
 	appendBindingArrival = -2
 )
 
-type appendBindings struct {
+type AppendBindings struct {
 	byColumn   []int
 	arrivalArg int
 }
@@ -26,7 +26,7 @@ func normalizeIdentifier(name string) string {
 	return strings.ToUpper(normalized)
 }
 
-func isAppendArrivalColumn(col columnMeta, idx int) bool {
+func isAppendArrivalColumn(col ColumnMeta, idx int) bool {
 	name := normalizeIdentifier(col.name)
 	if idx == 0 && name == "" {
 		return true
@@ -34,7 +34,7 @@ func isAppendArrivalColumn(col columnMeta, idx int) bool {
 	return name == "_ARRIVAL_TIME"
 }
 
-func buildAppendBindings(columns []columnMeta, names []string) (appendBindings, error) {
+func buildAppendBindings(columns []ColumnMeta, names []string) (AppendBindings, error) {
 	inputByName := make(map[string]int, len(names))
 	matched := make([]bool, len(names))
 	arrivalArg := -1
@@ -47,11 +47,11 @@ func buildAppendBindings(columns []columnMeta, names []string) (appendBindings, 
 			arrivalArg = idx
 		}
 		if _, exists := inputByName[key]; exists {
-			return appendBindings{}, fmt.Errorf("duplicate append column %s", name)
+			return AppendBindings{}, fmt.Errorf("duplicate append column %s", name)
 		}
 		inputByName[key] = idx
 	}
-	bindings := appendBindings{
+	bindings := AppendBindings{
 		byColumn:   make([]int, len(columns)),
 		arrivalArg: arrivalArg,
 	}
@@ -78,13 +78,13 @@ func buildAppendBindings(columns []columnMeta, names []string) (appendBindings, 
 			continue
 		}
 		if !matched[idx] {
-			return appendBindings{}, fmt.Errorf("append column %s is not accepted by server metadata", name)
+			return AppendBindings{}, fmt.Errorf("append column %s is not accepted by server metadata", name)
 		}
 	}
 	return bindings, nil
 }
 
-func encodeAppendRow(columns []columnMeta, bindings appendBindings, args []any, serverEndian uint32) ([]byte, error) {
+func encodeAppendRow(columns []ColumnMeta, bindings AppendBindings, args []any, serverEndian uint32) ([]byte, error) {
 	nullBytes := 0
 	if len(columns) > 0 {
 		nullBytes = (len(columns) / 8) + 1
@@ -186,7 +186,7 @@ func encodeAppendVarField(data []byte, serverEndian uint32) []byte {
 	return ret
 }
 
-func encodeAppendColumnValue(col columnMeta, value any, serverEndian uint32) ([]byte, error) {
+func encodeAppendColumnValue(col ColumnMeta, value any, serverEndian uint32) ([]byte, error) {
 	switch col.spinerType {
 	case cmdBoolType:
 		b, err := toAppendBool(value)

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type columnMeta struct {
+type ColumnMeta struct {
 	name       string
 	cmType     uint64
 	precision  int
@@ -21,14 +21,14 @@ type columnMeta struct {
 	nullable   bool
 }
 
-func buildColumns(units map[uint32][]marshalUnit) []columnMeta {
+func buildColumns(units map[uint32][]marshalUnit) []ColumnMeta {
 	names := units[cmiPColNameID]
 	types := units[cmiPColTypeID]
 	count := len(names)
 	if len(types) < count {
 		count = len(types)
 	}
-	ret := make([]columnMeta, 0, count)
+	ret := make([]ColumnMeta, 0, count)
 	for i := 0; i < count; i++ {
 		cmType := uint64(0)
 		if len(types[i].data) >= 8 {
@@ -36,7 +36,7 @@ func buildColumns(units map[uint32][]marshalUnit) []columnMeta {
 		}
 		spiner := extractSpinerType(cmType)
 		precision := extractPrecision(cmType)
-		meta := columnMeta{
+		meta := ColumnMeta{
 			name:       string(names[i].data),
 			cmType:     cmType,
 			precision:  precision,
@@ -52,14 +52,14 @@ func buildColumns(units map[uint32][]marshalUnit) []columnMeta {
 	return ret
 }
 
-func buildParamDescs(units map[uint32][]marshalUnit, count int) []CliParamDesc {
+func buildParamDescs(units map[uint32][]marshalUnit, count int) []ParamDesc {
 	typUnits := units[cmiPParamTypeID]
 	if count <= 0 {
 		count = len(typUnits)
 	}
-	ret := make([]CliParamDesc, count)
+	ret := make([]ParamDesc, count)
 	for i := 0; i < count; i++ {
-		d := CliParamDesc{Type: MACHCLI_SQL_TYPE_STRING, Nullable: true}
+		d := ParamDesc{Type: MACHCLI_SQL_TYPE_STRING, Nullable: true}
 		if i < len(typUnits) && len(typUnits[i].data) >= 8 {
 			cmType := binary.LittleEndian.Uint64(typUnits[i].data)
 			d.Type = spinerTypeToSQLType(extractSpinerType(cmType))
@@ -71,7 +71,7 @@ func buildParamDescs(units map[uint32][]marshalUnit, count int) []CliParamDesc {
 	return ret
 }
 
-func decodeRowsFromUnits(units []marshalUnit, columns []columnMeta) ([][]any, error) {
+func decodeRowsFromUnits(units []marshalUnit, columns []ColumnMeta) ([][]any, error) {
 	rows := make([][]any, len(units))
 	if len(units) == 0 {
 		return rows, nil
@@ -90,7 +90,7 @@ func decodeRowsFromUnits(units []marshalUnit, columns []columnMeta) ([][]any, er
 	return rows, nil
 }
 
-func decodeRowInto(ret []any, data []byte, columns []columnMeta) error {
+func decodeRowInto(ret []any, data []byte, columns []ColumnMeta) error {
 	if len(ret) < len(columns) {
 		return fmt.Errorf("invalid row buffer size: have=%d need=%d", len(ret), len(columns))
 	}
@@ -129,7 +129,7 @@ func decodeRowInto(ret []any, data []byte, columns []columnMeta) error {
 	return nil
 }
 
-func decodeVariableField(col columnMeta, field []byte) any {
+func decodeVariableField(col ColumnMeta, field []byte) any {
 	switch col.spinerType {
 	case cmdVarcharType, cmdTextType, cmdCharType, cmdJSONType, cmdClobType:
 		return string(field)
@@ -146,7 +146,7 @@ func decodeVariableField(col columnMeta, field []byte) any {
 	}
 }
 
-func decodeFixedField(col columnMeta, field []byte) any {
+func decodeFixedField(col ColumnMeta, field []byte) any {
 	switch col.spinerType {
 	case cmdBoolType, cmdInt16Type:
 		if len(field) < 2 {

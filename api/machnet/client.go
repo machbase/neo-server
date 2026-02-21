@@ -1,7 +1,6 @@
 package machnet
 
 import (
-	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -12,12 +11,9 @@ import (
 	"time"
 )
 
-type nativeConn struct {
-	mu sync.Mutex
-
+type NativeConn struct {
+	mu      sync.Mutex
 	netConn net.Conn
-	br      *bufio.Reader
-	bw      *bufio.Writer
 
 	host         string
 	port         int
@@ -37,12 +33,12 @@ type nativeConn struct {
 
 const stmtIDLimit = 1024
 
-type stmtExecResult struct {
+type StmtExecResult struct {
 	stmtType   int
 	message    string
 	rowCount   int64
-	columns    []columnMeta
-	paramDescs []CliParamDesc
+	columns    []ColumnMeta
+	paramDescs []ParamDesc
 	rows       [][]any
 	lastResult bool
 }
@@ -99,7 +95,7 @@ func countSQLPlaceholders(sql string) int {
 	return cnt
 }
 
-func dialNative(host string, port int, user string, password string, alts []net.TCPAddr) (*nativeConn, error) {
+func dialNative(host string, port int, user string, password string, alts []net.TCPAddr) (*NativeConn, error) {
 	endpoints := make([]string, 0, 1+len(alts))
 	endpoints = append(endpoints, fmt.Sprintf("%s:%d", host, port))
 	for _, alt := range alts {
@@ -116,10 +112,8 @@ func dialNative(host string, port int, user string, password string, alts []net.
 			lastErr = err
 			continue
 		}
-		nc := &nativeConn{
+		nc := &NativeConn{
 			netConn:      c,
-			br:           bufio.NewReaderSize(c, defaultReadBufferSize),
-			bw:           bufio.NewWriterSize(c, defaultWriteBufferSize),
 			host:         host,
 			port:         port,
 			user:         user,
@@ -144,7 +138,7 @@ func dialNative(host string, port int, user string, password string, alts []net.
 	return nil, lastErr
 }
 
-func (c *nativeConn) close() error {
+func (c *NativeConn) close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -157,7 +151,7 @@ func (c *nativeConn) close() error {
 	return nil
 }
 
-func (c *nativeConn) nextStmtID() (uint32, error) {
+func (c *NativeConn) nextStmtID() (uint32, error) {
 	c.stmtMu.Lock()
 	defer c.stmtMu.Unlock()
 
@@ -177,7 +171,7 @@ func (c *nativeConn) nextStmtID() (uint32, error) {
 	return 0, makeClientErr(fmt.Sprintf("Statement ID overflow (Limit = %d, Curr = %d).", stmtIDLimit, c.stmtUsedCnt))
 }
 
-func (c *nativeConn) releaseStmtID(id uint32) {
+func (c *NativeConn) releaseStmtID(id uint32) {
 	if id >= stmtIDLimit {
 		return
 	}
@@ -191,12 +185,16 @@ func (c *nativeConn) releaseStmtID(id uint32) {
 	}
 }
 
-func (c *nativeConn) handshake() error {
+func (c *NativeConn) handshake() error {
 	payload := []byte(cmiHandshakePayload)
 	if len(payload) != cmiProtoCnt {
 		return fmt.Errorf("invalid handshake payload size")
 	}
-	if err := writeAll(c.netConn, payload, defaultConnectTimeout); err != nil {
+	if defaultConnectTimeout > 0 {
+		_ = c.netConn.SetWriteDeadline(time.Now().Add(defaultConnectTimeout))
+		defer c.netConn.SetWriteDeadline(time.Time{})
+	}
+	if err := writePacket(c.netConn, payload); err != nil {
 		return err
 	}
 	resp := make([]byte, cmiProtoCnt)
@@ -209,7 +207,7 @@ func (c *nativeConn) handshake() error {
 	return nil
 }
 
-func (c *nativeConn) sendPackets(packets [][]byte, expected byte, timeout time.Duration) ([]byte, error) {
+func (c *NativeConn) sendPackets(packets [][]byte, expected byte, timeout time.Duration) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -220,17 +218,14 @@ func (c *nativeConn) sendPackets(packets [][]byte, expected byte, timeout time.D
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writePacket(c.netConn, p); err != nil {
 			return nil, err
 		}
 	}
-	if err := c.bw.Flush(); err != nil {
-		return nil, err
-	}
-	return readProtocolFrom(c.br, c.netConn, expected, timeout)
+	return readProtocolFrom(c.netConn, expected)
 }
 
-func (c *nativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Duration) error {
+func (c *NativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -241,17 +236,14 @@ func (c *nativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Durati
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writePacket(c.netConn, p); err != nil {
 			return err
 		}
-	}
-	if err := c.bw.Flush(); err != nil {
-		return err
 	}
 	return nil
 }
 
-func (c *nativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeout time.Duration) ([]byte, bool, error) {
+func (c *NativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeout time.Duration) ([]byte, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -262,14 +254,11 @@ func (c *nativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writePacket(c.netConn, p); err != nil {
 			return nil, false, err
 		}
 	}
-	if err := c.bw.Flush(); err != nil {
-		return nil, false, err
-	}
-	body, err := readProtocolFrom(c.br, c.netConn, expected, timeout)
+	body, err := readProtocolFrom(c.netConn, expected)
 	if err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
@@ -280,7 +269,7 @@ func (c *nativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 	return body, true, nil
 }
 
-func (c *nativeConn) connectProtocol() error {
+func (c *NativeConn) connectProtocol() error {
 	w := newMarshalWriter(cmiConnectProtocol, 0, 0)
 	w.addUInt64(cmiCVersionID, protocolVersion())
 	w.addString(cmiCClientID, "CLI")
@@ -330,12 +319,12 @@ func (c *nativeConn) connectProtocol() error {
 	return nil
 }
 
-func parseStmtResponse(body []byte, sql string, fallbackCols []columnMeta) (*stmtExecResult, error) {
+func parseStmtResponse(body []byte, sql string, fallbackCols []ColumnMeta) (*StmtExecResult, error) {
 	units, err := collectUnits(body)
 	if err != nil {
 		return nil, err
 	}
-	ret := &stmtExecResult{stmtType: inferStmtType(sql)}
+	ret := &StmtExecResult{stmtType: inferStmtType(sql)}
 
 	if m, ok := firstUnit(units, cmiRMessageID); ok {
 		ret.message = string(m.data)
@@ -358,16 +347,16 @@ func parseStmtResponse(body []byte, sql string, fallbackCols []columnMeta) (*stm
 	default:
 		qCount := countSQLPlaceholders(sql)
 		if qCount > 0 {
-			ret.paramDescs = make([]CliParamDesc, qCount)
+			ret.paramDescs = make([]ParamDesc, qCount)
 			for i := range ret.paramDescs {
-				ret.paramDescs[i] = CliParamDesc{Type: MACHCLI_SQL_TYPE_STRING, Nullable: true}
+				ret.paramDescs[i] = ParamDesc{Type: MACHCLI_SQL_TYPE_STRING, Nullable: true}
 			}
 		}
 	}
 
 	ret.columns = buildColumns(units)
 	if len(ret.columns) == 0 && len(fallbackCols) > 0 {
-		ret.columns = append([]columnMeta(nil), fallbackCols...)
+		ret.columns = append([]ColumnMeta(nil), fallbackCols...)
 	}
 	if v := units[cmiFValueID]; len(v) > 0 && len(ret.columns) > 0 {
 		rows, deErr := decodeRowsFromUnits(v, ret.columns)
@@ -407,7 +396,7 @@ func parseStmtResponse(body []byte, sql string, fallbackCols []columnMeta) (*stm
 	return ret, nil
 }
 
-func (c *nativeConn) fetchRows(stmtID uint32, columns []columnMeta) ([][]any, error) {
+func (c *NativeConn) fetchRows(stmtID uint32, columns []ColumnMeta) ([][]any, error) {
 	ret := make([][]any, 0, 32)
 	for {
 		w := newMarshalWriter(cmiFetchProtocol, stmtID, 0)
@@ -460,7 +449,7 @@ func (c *nativeConn) fetchRows(stmtID uint32, columns []columnMeta) ([][]any, er
 	return ret, nil
 }
 
-func (c *nativeConn) execDirect(stmtID uint32, sql string) (*stmtExecResult, error) {
+func (c *NativeConn) execDirect(stmtID uint32, sql string) (*StmtExecResult, error) {
 	w := newMarshalWriter(cmiExecDirectProtocol, stmtID, 0)
 	w.addString(cmiDStatementID, sql)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
@@ -488,7 +477,7 @@ func (c *nativeConn) execDirect(stmtID uint32, sql string) (*stmtExecResult, err
 	return ret, nil
 }
 
-func (c *nativeConn) prepare(stmtID uint32, sql string) (*stmtExecResult, error) {
+func (c *NativeConn) prepare(stmtID uint32, sql string) (*StmtExecResult, error) {
 	w := newMarshalWriter(cmiPrepareProtocol, stmtID, 0)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
 	w.addString(cmiPStatementID, sql)
@@ -506,7 +495,7 @@ func (c *nativeConn) prepare(stmtID uint32, sql string) (*stmtExecResult, error)
 	return ret, nil
 }
 
-func (c *nativeConn) executePrepared(stmtID uint32, sql string, params []boundParam, preparedCols []columnMeta) (*stmtExecResult, error) {
+func (c *NativeConn) executePrepared(stmtID uint32, sql string, params []BoundParam, preparedCols []ColumnMeta) (*StmtExecResult, error) {
 	w := newMarshalWriter(cmiExecuteProtocol, stmtID, 0)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
 	w.addSInt64(cmiFRowsID, 1000)
@@ -543,7 +532,7 @@ func (c *nativeConn) executePrepared(stmtID uint32, sql string, params []boundPa
 	return ret, nil
 }
 
-func (c *nativeConn) free(stmtID uint32) error {
+func (c *NativeConn) free(stmtID uint32) error {
 	w := newMarshalWriter(cmiFreeProtocol, stmtID, 0)
 	w.addUInt64(cmiXIDID, uint64(stmtID))
 	body, err := c.sendPackets(w.finalize(), cmiFreeProtocol, c.queryTimeout)
@@ -571,7 +560,7 @@ func (c *nativeConn) free(stmtID uint32) error {
 	return nil
 }
 
-func (c *nativeConn) appendOpen(stmtID uint32, table string, errCheckCount int) (*stmtExecResult, error) {
+func (c *NativeConn) appendOpen(stmtID uint32, table string, errCheckCount int) (*StmtExecResult, error) {
 	_ = errCheckCount
 	w := newMarshalWriter(cmiAppendOpenProtocol, stmtID, 0)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
@@ -632,7 +621,7 @@ func parseAppendDataResponse(body []byte) error {
 	return nil
 }
 
-func (c *nativeConn) appendData(stmtID uint32, rows [][]byte, checkResponse bool) error {
+func (c *NativeConn) appendData(stmtID uint32, rows [][]byte, checkResponse bool) error {
 	if len(rows) == 0 {
 		return nil
 	}
@@ -688,7 +677,7 @@ func parseAppendCloseResponse(body []byte) (int64, int64, error) {
 	return succ, fail, nil
 }
 
-func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
+func (c *NativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 	w := newMarshalWriter(cmiAppendCloseProtocol, stmtID, 0)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
 	packets := w.finalize()
@@ -704,16 +693,20 @@ func (c *nativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		defer c.netConn.SetWriteDeadline(time.Time{})
 	}
 	for _, p := range packets {
-		if err := writeAllNoDeadline(c.bw, p); err != nil {
+		if err := writePacket(c.netConn, p); err != nil {
 			return 0, 0, err
 		}
 	}
-	if err := c.bw.Flush(); err != nil {
-		return 0, 0, err
-	}
 
 	for {
-		protocol, body, err := readNextProtocolFrom(c.br, c.netConn, c.queryTimeout)
+		if c.queryTimeout > 0 {
+			_ = c.netConn.SetReadDeadline(time.Now().Add(c.queryTimeout))
+		}
+		protocol, body, err := readNextProtocolFrom(c.netConn)
+		if c.queryTimeout > 0 {
+			c.netConn.SetReadDeadline(time.Time{})
+		}
+
 		if err != nil {
 			return 0, 0, err
 		}

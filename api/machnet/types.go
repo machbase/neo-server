@@ -160,14 +160,6 @@ func align8(v int) int {
 	return (v + 7) &^ 7
 }
 
-type HandleType int
-
-const (
-	MACHCLI_HANDLE_ENV  HandleType = 1
-	MACHCLI_HANDLE_DBC  HandleType = 2
-	MACHCLI_HANDLE_STMT HandleType = 3
-)
-
 type SqlType int
 
 const (
@@ -205,7 +197,7 @@ func (typ StmtType) IsInsertSelect() bool { return typ == 519 }
 func (typ StmtType) IsUpdate() bool       { return typ == 520 }
 func (typ StmtType) IsExecRollup() bool   { return typ >= 522 && typ <= 524 }
 
-type CliParamDesc struct {
+type ParamDesc struct {
 	Type      SqlType
 	Precision int
 	Scale     int

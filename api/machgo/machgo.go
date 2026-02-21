@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machnet"
@@ -34,30 +33,19 @@ const (
 )
 
 func errorWithCause(obj any, cause error) error {
-	var handle unsafe.Pointer
-	var handleType machnet.HandleType
+	var code int
+	var msg string
 	switch x := obj.(type) {
 	case *Database:
-		handle = x.handle
-		handleType = machnet.MACHCLI_HANDLE_ENV
+		code, msg = x.handle.Error()
 	case *Conn:
-		handle = x.handle
-		handleType = machnet.MACHCLI_HANDLE_DBC
+		code, msg = x.handle.Error()
 	case *Stmt:
-		handle = x.handle
-		handleType = machnet.MACHCLI_HANDLE_STMT
+		code, msg = x.handle.Error()
 	default:
 		return cause
 	}
-	var code int
-	var msg string
-	if reErr := machnet.CliError(handle, handleType, &code, &msg); reErr != nil {
-		if cause == nil {
-			return fmt.Errorf("MACHCLI Fail to get error, %s", reErr.Error())
-		} else {
-			return fmt.Errorf("MACHCLI Fail to get error code of %s, %s", cause.Error(), reErr.Error())
-		}
-	} else if code == 0 && msg == "" && cause == nil {
+	if code == 0 && msg == "" && cause == nil {
 		// no error
 		return nil
 	} else if code == 0 && msg != "" {
@@ -127,7 +115,7 @@ type Config struct {
 }
 
 type Database struct {
-	handle unsafe.Pointer
+	handle *machnet.EnvHandle
 	host   string
 	port   int
 
@@ -144,16 +132,18 @@ type Database struct {
 var _ api.Database = (*Database)(nil)
 
 func NewDatabase(conf *Config) (*Database, error) {
-	handle := new(unsafe.Pointer)
-	if err := machnet.CliInitialize(handle); err != nil {
+	var handle *machnet.EnvHandle
+	if h, err := machnet.Initialize(); err != nil {
 		return nil, err
+	} else {
+		handle = h
 	}
 	ret := &Database{
 		host:            conf.Host,
 		port:            conf.Port,
 		alternativeHost: conf.AlternativeHost,
 		alternativePort: conf.AlternativePort,
-		handle:          *handle,
+		handle:          handle,
 		trustUsers:      map[string]string{},
 	}
 	for u, p := range conf.TrustUsers {
@@ -175,7 +165,7 @@ func NewDatabase(conf *Config) (*Database, error) {
 }
 
 func (db *Database) Close() error {
-	if err := machnet.CliFinalize(db.handle); err == nil {
+	if err := db.handle.Finalize(); err == nil {
 		return nil
 	} else {
 		return errorWithCause(db, err)
@@ -316,16 +306,18 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		}
 	}
 
-	handle := new(unsafe.Pointer)
-	if err := machnet.CliConnect(db.handle, db.connectionString(user, password), handle); err != nil {
+	var handle *machnet.ConnHandle
+	if c, err := db.handle.Connect(db.connectionString(user, password)); err != nil {
 		return nil, errorWithCause(db, err)
+	} else {
+		handle = c
 	}
 
 	db.SetTrustUser(user, password)
 
 	ret := &Conn{
 		db:                     db,
-		handle:                 *handle,
+		handle:                 handle,
 		user:                   strings.ToUpper(user),
 		usedAt:                 time.Now(),
 		returnChan:             returnChan,
@@ -338,7 +330,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 }
 
 type Conn struct {
-	handle unsafe.Pointer
+	handle *machnet.ConnHandle
 	db     *Database
 
 	user       string
@@ -371,7 +363,7 @@ func (c *Conn) Close() (ret error) {
 		if err := c.closeQueryStmtPool(); err != nil && ret == nil {
 			ret = err
 		}
-		if err := machnet.CliDisconnect(c.handle); err != nil {
+		if err := c.handle.Disconnect(); err != nil {
 			if ret == nil {
 				ret = errorWithCause(c, err)
 			}
@@ -430,7 +422,6 @@ func (c *Conn) acquireQueryStmt(query string) (*Stmt, error) {
 
 		stmt.sqlHead = queryHead(query)
 		stmt.reachEOF = false
-		stmt.boundBuffers = nil
 		return stmt, nil
 	}
 	if pool := c.queryStmtPool[query]; len(pool) > 0 {
@@ -448,7 +439,6 @@ func (c *Conn) acquireQueryStmt(query string) (*Stmt, error) {
 
 		stmt.sqlHead = queryHead(query)
 		stmt.reachEOF = false
-		stmt.boundBuffers = nil
 		return stmt, nil
 	}
 	c.queryStmtPoolMu.Unlock()
@@ -476,8 +466,7 @@ func (c *Conn) releaseQueryStmt(query string, stmt *Stmt, reusable bool) error {
 		return stmt.Close()
 	}
 	stmt.reachEOF = false
-	stmt.boundBuffers = nil
-	if err := machnet.CliExecuteClean(stmt.handle); err != nil {
+	if err := stmt.handle.ExecuteClean(); err != nil {
 		_ = stmt.Close()
 		return errorWithCause(stmt, err)
 	}
@@ -548,28 +537,34 @@ func (c *Conn) Explain(ctx context.Context, query string, full bool) (string, er
 		query = "explain " + query
 	}
 
-	var stmt unsafe.Pointer
-	if err := machnet.CliAllocStmt(c.handle, &stmt); err != nil {
+	var stmt *machnet.StmtHandle
+	if s, err := c.handle.AllocStmt(); err != nil {
 		return "", errorWithCause(c, err)
+	} else {
+		stmt = s
 	}
-	defer machnet.CliFreeStmt(stmt)
+	defer stmt.Free()
 
-	if err := machnet.CliExecDirect(stmt, query); err != nil {
+	if err := stmt.ExecDirect(query); err != nil {
 		return "", errorWithCause(c, err)
 	}
 
 	ret := make([]string, 0, 20)
-	buf := make([]byte, 256)
 	for {
-		if eof, err := machnet.CliFetch(stmt); err != nil {
+		if row, err := stmt.Fetch(); err != nil {
 			return "", errorWithCause(c, err)
-		} else if eof {
+		} else if row == nil {
 			break
-		}
-		if n, err := machnet.CliGetData(stmt, 0, machnet.MACHCLI_C_TYPE_CHAR, (unsafe.Pointer)(&buf[0]), len(buf)); err != nil {
-			return "", errorWithCause(c, err)
 		} else {
-			ret = append(ret, string(buf[:n]))
+			line := make([]string, 0, len(row))
+			for _, col := range row {
+				if col == nil {
+					line = append(line, "NULL")
+				} else {
+					line = append(line, fmt.Sprintf("%v", col))
+				}
+			}
+			ret = append(ret, strings.Join(line, " "))
 		}
 	}
 	return strings.Join(ret, "\n"), nil
@@ -586,11 +581,11 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 		defer stmt.Close()
 
 		stmt.sqlHead = queryHead(query)
-		if err := machnet.CliExecDirect(stmt.handle, query); err != nil {
+		if err := stmt.handle.ExecDirect(query); err != nil {
 			ret.err = errorWithCause(c, err)
 		}
-		ret.rowCount, ret.err = machnet.CliRowCount(stmt.handle)
-		if typ, err := machnet.CliGetStmtType(stmt.handle); err != nil {
+		ret.rowCount, ret.err = stmt.handle.RowCount()
+		if typ, err := stmt.handle.GetStmtType(); err != nil {
 			ret.err = err
 			return ret
 		} else {
@@ -616,7 +611,7 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	}
 	ret.err = stmt.execute()
 	ret.rowCount = stmt.rowCount
-	if typ, err := machnet.CliGetStmtType(stmt.handle); err != nil {
+	if typ, err := stmt.handle.GetStmtType(); err != nil {
 		ret.err = err
 		return ret
 	} else {
@@ -657,7 +652,7 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	if ret.err = stmt.execute(); ret.err != nil {
 		return ret
 	}
-	if typ, err := machnet.CliGetStmtType(stmt.handle); err != nil {
+	if typ, err := stmt.handle.GetStmtType(); err != nil {
 		ret.err = err
 		return ret
 	} else {
@@ -709,7 +704,7 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 		queryStmtKey:    query,
 		queryStmtPooled: true,
 	}
-	if typ, err := machnet.CliGetStmtType(stmt.handle); err != nil {
+	if typ, err := stmt.handle.GetStmtType(); err != nil {
 		if relErr := c.releaseQueryStmt(query, stmt, false); relErr != nil {
 			return nil, relErr
 		}
@@ -735,7 +730,7 @@ func (pStmt *PreparedStmt) Close() error {
 }
 
 func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
-	defer machnet.CliExecuteClean(pStmt.stmt.handle)
+	defer pStmt.stmt.handle.ExecuteClean()
 	ret := &Result{}
 	if err := pStmt.stmt.bindParams(params...); err != nil {
 		ret.err = err
@@ -746,7 +741,7 @@ func (pStmt *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
 		return ret
 	}
 	ret.rowCount = pStmt.stmt.rowCount
-	if typ, err := machnet.CliGetStmtType(pStmt.stmt.handle); err != nil {
+	if typ, err := pStmt.stmt.handle.GetStmtType(); err != nil {
 		ret.err = err
 		return ret
 	} else {
@@ -805,14 +800,14 @@ func (pStmt *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row 
 }
 
 func (stmt *Stmt) prepare(query string) error {
-	if err := machnet.CliPrepare(stmt.handle, query); err != nil {
+	if err := stmt.handle.Prepare(query); err != nil {
 		return errorWithCause(stmt, err)
 	}
 	return nil
 }
 
 func (stmt *Stmt) bindParams(args ...any) error {
-	numParam, err := machnet.CliNumParam(stmt.handle)
+	numParam, err := stmt.handle.NumParam()
 	if err != nil {
 		return errorWithCause(stmt, err)
 	}
@@ -820,152 +815,82 @@ func (stmt *Stmt) bindParams(args ...any) error {
 		return api.ErrParamCount(numParam, len(args))
 	}
 
-	// Clear previous buffers
-	stmt.boundBuffers = make([][]byte, 0, numParam)
-
 	for idx, arg := range args {
-		var value unsafe.Pointer
-		var valueLen int
-		var cType machnet.CType
+		var value any
 		var sqlType machnet.SqlType
 		switch val := arg.(type) {
 		default:
-			pd, _ := machnet.CliDescribeParam(stmt.handle, idx)
+			pd, _ := stmt.handle.DescribeParam(idx)
 			if val == nil {
-				cType = machnet.MACHCLI_C_TYPE_CHAR
 				sqlType = pd.Type
 				value = nil
-				valueLen = 0
 			} else {
 				return api.ErrDatabaseBindUnknownType(idx, fmt.Sprintf("%T, expect: %d", val, pd.Type))
 			}
 		case int16:
-			cType = machnet.MACHCLI_C_TYPE_INT16
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT16
-			value = unsafe.Pointer(&val)
-			valueLen = 2
+			value = val
 		case *int16:
-			cType = machnet.MACHCLI_C_TYPE_INT16
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT16
-			value = unsafe.Pointer(val)
-			valueLen = 2
+			value = *val
 		case int32:
-			cType = machnet.MACHCLI_C_TYPE_INT32
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT32
-			value = unsafe.Pointer(&val)
-			valueLen = 4
+			value = val
 		case *int32:
-			cType = machnet.MACHCLI_C_TYPE_INT32
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT32
-			value = unsafe.Pointer(val)
-			valueLen = 4
+			value = *val
 		case int:
-			cType = machnet.MACHCLI_C_TYPE_INT32
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT32
-			value = unsafe.Pointer(&val)
-			valueLen = 4
+			value = val
 		case *int:
-			cType = machnet.MACHCLI_C_TYPE_INT32
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT32
-			value = unsafe.Pointer(val)
-			valueLen = 4
+			value = *val
 		case int64:
-			cType = machnet.MACHCLI_C_TYPE_INT64
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT64
-			value = unsafe.Pointer(&val)
-			valueLen = 8
+			value = val
 		case *int64:
-			cType = machnet.MACHCLI_C_TYPE_INT64
 			sqlType = machnet.MACHCLI_SQL_TYPE_INT64
-			value = unsafe.Pointer(val)
-			valueLen = 8
+			value = *val
 		case time.Time:
-			cType = machnet.MACHCLI_C_TYPE_INT64
 			sqlType = machnet.MACHCLI_SQL_TYPE_DATETIME
-			n := new(int64)
-			*n = val.UnixNano()
-			value = unsafe.Pointer(n)
-			valueLen = 8
+			value = val.UnixNano()
 		case *time.Time:
-			cType = machnet.MACHCLI_C_TYPE_INT64
 			sqlType = machnet.MACHCLI_SQL_TYPE_DATETIME
-			n := new(int64)
-			*n = val.UnixNano()
-			value = unsafe.Pointer(n)
-			valueLen = 8
+			value = (*val).UnixNano()
 		case float32:
-			cType = machnet.MACHCLI_C_TYPE_FLOAT
 			sqlType = machnet.MACHCLI_SQL_TYPE_FLOAT
-			value = unsafe.Pointer(&val)
-			valueLen = 4
+			value = val
 		case *float32:
-			cType = machnet.MACHCLI_C_TYPE_FLOAT
 			sqlType = machnet.MACHCLI_SQL_TYPE_FLOAT
-			value = unsafe.Pointer(val)
-			valueLen = 4
+			value = *val
 		case float64:
-			cType = machnet.MACHCLI_C_TYPE_DOUBLE
 			sqlType = machnet.MACHCLI_SQL_TYPE_DOUBLE
-			value = unsafe.Pointer(&val)
-			valueLen = 8
+			value = val
 		case *float64:
-			cType = machnet.MACHCLI_C_TYPE_DOUBLE
 			sqlType = machnet.MACHCLI_SQL_TYPE_DOUBLE
-			value = unsafe.Pointer(val)
-			valueLen = 8
+			value = *val
 		case net.IP:
 			if ipv4 := val.To4(); ipv4 != nil {
-				cType = machnet.MACHCLI_C_TYPE_CHAR
 				sqlType = machnet.MACHCLI_SQL_TYPE_IPV4
-				bStr := []byte(ipv4.String())
-				if len(bStr) > 0 {
-					value = unsafe.Pointer(&bStr[0])
-				}
-				valueLen = len(bStr)
-				stmt.boundBuffers = append(stmt.boundBuffers, bStr)
+				value = []byte(ipv4.String())
 			} else {
-				cType = machnet.MACHCLI_C_TYPE_CHAR
 				sqlType = machnet.MACHCLI_SQL_TYPE_IPV6
-				bStr := []byte(val.To16().String())
-				if len(bStr) > 0 {
-					value = unsafe.Pointer(&bStr[0])
-				}
-				valueLen = len(bStr)
-				stmt.boundBuffers = append(stmt.boundBuffers, bStr)
+				value = []byte(val.To16().String())
 			}
 		case string:
-			cType = machnet.MACHCLI_C_TYPE_CHAR
 			sqlType = machnet.MACHCLI_SQL_TYPE_STRING
-			bStr := []byte(val)
-			if len(bStr) > 0 {
-				value = unsafe.Pointer(&bStr[0])
-			}
-			valueLen = len(bStr)
-			stmt.boundBuffers = append(stmt.boundBuffers, bStr)
+			value = val
 		case *string:
-			cType = machnet.MACHCLI_C_TYPE_CHAR
 			sqlType = machnet.MACHCLI_SQL_TYPE_STRING
-			bStr := []byte(*val)
-			if len(bStr) > 0 {
-				value = unsafe.Pointer(&bStr[0])
-			}
-			valueLen = len(bStr)
-			stmt.boundBuffers = append(stmt.boundBuffers, bStr)
+			value = val
 		case []byte:
-			cType = machnet.MACHCLI_C_TYPE_CHAR
 			sqlType = machnet.MACHCLI_SQL_TYPE_BINARY
-			if len(val) > 0 {
-				value = unsafe.Pointer(&val[0])
-			}
-			valueLen = len(val)
-			stmt.boundBuffers = append(stmt.boundBuffers, val)
+			value = val
 		}
-		if err := machnet.CliBindParam(stmt.handle, idx, cType, sqlType, value, valueLen); err != nil {
+		if err := stmt.handle.BindParam(idx, sqlType, value); err != nil {
 			return errorWithCause(stmt, err)
 		}
 	}
-	// Keep bound buffers alive until CliExecute completes
-	runtime.KeepAlive(stmt.boundBuffers)
 	return nil
 }
 
@@ -995,9 +920,11 @@ func (rs *Result) RowsAffected() int64 {
 }
 
 func (c *Conn) NewStmt() (*Stmt, error) {
-	var handle unsafe.Pointer
-	if err := machnet.CliAllocStmt(c.handle, &handle); err != nil {
+	var handle *machnet.StmtHandle
+	if h, err := c.handle.AllocStmt(); err != nil {
 		return nil, errorWithCause(c, err)
+	} else {
+		handle = h
 	}
 	ret := &Stmt{conn: c, handle: handle}
 	return ret, nil
@@ -1108,18 +1035,17 @@ type ColumnDesc struct {
 }
 
 type Stmt struct {
-	handle       unsafe.Pointer
-	conn         *Conn
-	columnDescs  []ColumnDesc
-	reachEOF     bool
-	sqlHead      string
-	rowCount     int64
-	execCount    int64
-	boundBuffers [][]byte // Keeps byte slices alive until execute completes
+	handle      *machnet.StmtHandle
+	conn        *Conn
+	columnDescs []ColumnDesc
+	reachEOF    bool
+	sqlHead     string
+	rowCount    int64
+	execCount   int64
 }
 
 func (stmt *Stmt) Close() error {
-	if err := machnet.CliFreeStmt(stmt.handle); err == nil {
+	if err := stmt.handle.Free(); err == nil {
 		return nil
 	} else {
 		return errorWithCause(stmt, err)
@@ -1132,15 +1058,13 @@ func (stmt *Stmt) Error() error {
 
 func (stmt *Stmt) execute() error {
 	stmt.reachEOF = false
-	if err := machnet.CliExecute(stmt.handle); err != nil {
+	if err := stmt.handle.Execute(); err != nil {
 		return errorWithCause(stmt, err)
 	}
 	defer func() {
 		stmt.execCount++
-		// Clear bound buffers after execute completes
-		stmt.boundBuffers = nil
 	}()
-	if rowCount, err := machnet.CliRowCount(stmt.handle); err != nil {
+	if rowCount, err := stmt.handle.RowCount(); err != nil {
 		return errorWithCause(stmt, err)
 	} else {
 		stmt.rowCount = rowCount
@@ -1151,14 +1075,14 @@ func (stmt *Stmt) execute() error {
 	if stmt.sqlHead != "SELECT" {
 		return nil
 	}
-	num, err := machnet.CliNumResultCol(stmt.handle)
+	num, err := stmt.handle.NumResultCol()
 	if err != nil {
 		return errorWithCause(stmt, err)
 	}
 	stmt.columnDescs = make([]ColumnDesc, num)
 	for i := 0; i < num; i++ {
 		d := ColumnDesc{}
-		if err := machnet.CliDescribeCol(stmt.handle, i, &d.Name, (*machnet.SqlType)(&d.Type), &d.Size, &d.Scale, &d.Nullable); err != nil {
+		if err := stmt.handle.DescribeCol(i, &d.Name, (*machnet.SqlType)(&d.Type), &d.Size, &d.Scale, &d.Nullable); err != nil {
 			return errorWithCause(stmt, err)
 		}
 		stmt.columnDescs[i] = d
@@ -1172,11 +1096,11 @@ func (stmt *Stmt) fetch() ([]any, error) {
 	if stmt.reachEOF {
 		return nil, api.ErrDatabaseFetch(fmt.Errorf("reached end of the result set"))
 	}
-	row, end, err := machnet.CliFetchCurrent(stmt.handle)
+	row, err := stmt.handle.Fetch()
 	if err != nil {
 		return nil, err
 	}
-	stmt.reachEOF = end
+	stmt.reachEOF = row == nil
 	if stmt.reachEOF {
 		return nil, io.EOF
 	}
@@ -1286,7 +1210,7 @@ func (r *Rows) Close() error {
 	r.stmt = nil
 	if r.isPrepared {
 		stmt.reachEOF = false
-		return machnet.CliExecuteClean(stmt.handle)
+		return stmt.handle.ExecuteClean()
 	}
 	if r.queryStmtPooled && stmt.conn != nil {
 		return stmt.conn.releaseQueryStmt(r.queryStmtKey, stmt, true)
@@ -1516,7 +1440,7 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 	}
 	ret.stmt = stmt
 
-	if err := machnet.CliAppendOpen(stmt.handle, table, ret.errCheckCount); err != nil {
+	if err := stmt.handle.AppendOpen(table, ret.errCheckCount); err != nil {
 		err = errorWithCause(stmt, err)
 		stmt.Close()
 		return nil, err
@@ -1591,7 +1515,7 @@ func (a *Appender) Close() (int64, int64, error) {
 	var err error
 
 	//// even if error occurred, we should close the statement
-	a.successCount, a.failCount, err = machnet.CliAppendClose(a.stmt.handle)
+	a.successCount, a.failCount, err = a.stmt.handle.AppendClose()
 
 	if errClose := a.stmt.Close(); errClose != nil {
 		return a.successCount, a.failCount, errorWithCause(a.stmt.conn, errClose)
@@ -1634,7 +1558,7 @@ func (a *Appender) Columns() (api.Columns, error) {
 }
 
 func (a *Appender) Flush() error {
-	if err := machnet.CliAppendFlush(a.stmt.handle); err == nil {
+	if err := a.stmt.handle.AppendFlush(); err == nil {
 		return nil
 	} else {
 		return errorWithCause(a.stmt, err)
@@ -1691,7 +1615,7 @@ func (a *Appender) append(values ...any) error {
 		return api.ErrDatabaseNoConnection
 	}
 
-	if err := machnet.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, values, a.inputFormats); err != nil {
+	if err := a.stmt.handle.AppendData(a.columnTypes, a.columnNames, values, a.inputFormats); err != nil {
 		return errorWithCause(a.stmt, err)
 	}
 	return nil
