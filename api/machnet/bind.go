@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-type boundParam struct {
+type BoundParam struct {
 	sqlType SqlType
 	value   any
 	isNull  bool
 }
 
-func encodeParams(params []boundParam) ([]byte, error) {
+func encodeParams(params []BoundParam) ([]byte, error) {
 	if len(params) == 0 {
 		return nil, nil
 	}
@@ -50,7 +50,7 @@ func encodeParams(params []boundParam) ([]byte, error) {
 	return buf, nil
 }
 
-func encodeBoundParam(p boundParam) (int, []byte, error) {
+func encodeBoundParam(p BoundParam) (int, []byte, error) {
 	cmdType := sqlTypeToCmdType(p.sqlType)
 	if p.isNull || p.value == nil {
 		switch p.sqlType {

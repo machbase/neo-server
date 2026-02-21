@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"net"
-	"time"
 )
 
 const packetHeaderSize = 16
@@ -30,10 +28,9 @@ func buildPacket(protocolID byte, stmtID uint32, adds uint16, flag byte, body []
 	return ret
 }
 
-func readPacketNoDeadline(reader io.Reader) (packet, error) {
+func readPacket(reader io.Reader) (packet, error) {
 	var h [packetHeaderSize]byte
 	if _, err := io.ReadFull(reader, h[:]); err != nil {
-		fmt.Println("readPacketNoDeadline-1: read header error", err.Error())
 		return packet{}, err
 	}
 	lenField := binary.BigEndian.Uint32(h[4:8])
@@ -41,7 +38,6 @@ func readPacketNoDeadline(reader io.Reader) (packet, error) {
 	body := make([]byte, bodyLen)
 	if bodyLen > 0 {
 		if _, err := io.ReadFull(reader, body); err != nil {
-			fmt.Println("readPacketNoDeadline-2: read body error", err.Error())
 			return packet{}, err
 		}
 	}
@@ -54,15 +50,7 @@ func readPacketNoDeadline(reader io.Reader) (packet, error) {
 	}, nil
 }
 
-func readPacket(conn net.Conn, timeout time.Duration) (packet, error) {
-	if timeout > 0 {
-		_ = conn.SetReadDeadline(time.Now().Add(timeout))
-		defer conn.SetReadDeadline(time.Time{})
-	}
-	return readPacketNoDeadline(conn)
-}
-
-func writeAllNoDeadline(writer io.Writer, buf []byte) error {
+func writePacket(writer io.Writer, buf []byte) error {
 	for len(buf) > 0 {
 		n, err := writer.Write(buf)
 		if err != nil {
@@ -73,23 +61,11 @@ func writeAllNoDeadline(writer io.Writer, buf []byte) error {
 	return nil
 }
 
-func writeAll(conn net.Conn, buf []byte, timeout time.Duration) error {
-	if timeout > 0 {
-		_ = conn.SetWriteDeadline(time.Now().Add(timeout))
-		defer conn.SetWriteDeadline(time.Time{})
-	}
-	return writeAllNoDeadline(conn, buf)
-}
-
-func readProtocolFrom(reader io.Reader, conn net.Conn, expected byte, timeout time.Duration) ([]byte, error) {
-	if timeout > 0 {
-		_ = conn.SetReadDeadline(time.Now().Add(timeout))
-		defer conn.SetReadDeadline(time.Time{})
-	}
+func readProtocolFrom(reader io.Reader, expected byte) ([]byte, error) {
 	chunks := make([][]byte, 0, 2)
 	total := 0
 	for {
-		pkt, err := readPacketNoDeadline(reader)
+		pkt, err := readPacket(reader)
 		if err != nil {
 			return nil, err
 		}
@@ -113,16 +89,8 @@ func readProtocolFrom(reader io.Reader, conn net.Conn, expected byte, timeout ti
 	}
 }
 
-func readProtocol(conn net.Conn, expected byte, timeout time.Duration) ([]byte, error) {
-	return readProtocolFrom(conn, conn, expected, timeout)
-}
-
-func readNextProtocolFrom(reader io.Reader, conn net.Conn, timeout time.Duration) (byte, []byte, error) {
-	if timeout > 0 {
-		_ = conn.SetReadDeadline(time.Now().Add(timeout))
-		defer conn.SetReadDeadline(time.Time{})
-	}
-	first, err := readPacketNoDeadline(reader)
+func readNextProtocolFrom(reader io.Reader) (byte, []byte, error) {
+	first, err := readPacket(reader)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -132,7 +100,7 @@ func readNextProtocolFrom(reader io.Reader, conn net.Conn, timeout time.Duration
 	total := len(first.body)
 	flag := first.flag
 	for flag != 0 && flag != 3 {
-		pkt, err := readPacketNoDeadline(reader)
+		pkt, err := readPacket(reader)
 		if err != nil {
 			return 0, nil, err
 		}
