@@ -469,6 +469,8 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 			connTimeout = v.Timeout
 		case *api.ConnectOptionStatementCache:
 			// currently statement cache is only supported in prepared statements, so it is ignored here
+		case *api.ConnectOptionFetchRows:
+			// currently fetch rows in CLI is ignored, so it is ignored here
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}

@@ -21,6 +21,7 @@ import (
 const (
 	defaultQueryStmtPoolCap         = 128
 	defaultQueryStmtPoolPerQueryCap = 8
+	defaultFetchRows                = 1000
 )
 
 type StatementReuseMode int
@@ -53,7 +54,15 @@ type Config struct {
 
 	MaxOpenQuery       int
 	MaxOpenQueryFactor float64
-	StatementReuse     StatementReuseMode
+
+	// StatementReuse controls the statement reuse mode for the connection.
+	// Statement reuse can improve performance by reusing prepared statements for identical queries.
+	// It can be set for each connection using the ConnectOptionStatementCache option in the Connect method.
+	StatementReuse StatementReuseMode
+
+	// FetchRows is used to the default fetch rows if the option is not specified in Connect options.
+	// If the value is not specified or less than or equal to 0, the defaultFetchRows is used.
+	FetchRows int64
 
 	TrustUsers map[string]string
 
@@ -76,6 +85,7 @@ type Database struct {
 	maxConnsChan  chan struct{}
 
 	statementReuseMode StatementReuseMode
+	fetchRows          int64
 }
 
 var _ api.Database = (*Database)(nil)
@@ -96,6 +106,10 @@ func NewDatabase(conf *Config) (*Database, error) {
 		trustUsers:      map[string]string{},
 
 		statementReuseMode: conf.StatementReuse,
+		fetchRows:          conf.FetchRows,
+	}
+	if ret.fetchRows <= 0 {
+		ret.fetchRows = defaultFetchRows
 	}
 	for u, p := range conf.TrustUsers {
 		ret.trustUsers[strings.ToUpper(u)] = p
@@ -233,13 +247,14 @@ func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, 
 	return true, "", err
 }
 
-func (db *Database) connectionString(user string, password string) string {
+func (db *Database) connectionString(user string, password string, fetchRows int64) string {
 	entries := []string{
 		fmt.Sprintf("SERVER=%s", db.host),
 		fmt.Sprintf("PORT_NO=%d", db.port),
 		fmt.Sprintf("UID=%s", strings.ToUpper(user)),
 		fmt.Sprintf("PWD=%s", strings.ToUpper(password)),
 		"CONNTYPE=1",
+		fmt.Sprintf("FETCH_ROWS=%d", fetchRows),
 	}
 	if db.alternativeHost != "" && db.alternativePort != 0 {
 		entries = append(entries,
@@ -252,6 +267,7 @@ func (db *Database) connectionString(user string, password string) string {
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
 	var user, password string
 	var stmtReuse = db.statementReuseMode
+	var fetchRows = db.fetchRows
 	for _, opt := range opts {
 		switch o := opt.(type) {
 		case *api.ConnectOptionPassword:
@@ -274,6 +290,8 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			default:
 				stmtReuse = StatementReuseOff
 			}
+		case *api.ConnectOptionFetchRows:
+			fetchRows = o.Rows
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
@@ -297,7 +315,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	}()
 
 	var handle *machnet.ConnHandle
-	if c, err := db.handle.Connect(db.connectionString(user, password)); err != nil {
+	if c, err := db.handle.Connect(db.connectionString(user, password, fetchRows)); err != nil {
 		return nil, db.ErrorOf(err)
 	} else {
 		handle = c

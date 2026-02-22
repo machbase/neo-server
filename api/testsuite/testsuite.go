@@ -49,6 +49,7 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		LogTableExec,
 		LogTableAppend,
 		TagTableAppend,
+		FetchRowsChunk,
 		BitTable,
 		WatchLogTable,
 		DemoUser,

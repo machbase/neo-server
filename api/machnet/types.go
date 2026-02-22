@@ -309,7 +309,7 @@ func spinerTypeToSQLType(spinerType int) SqlType {
 	}
 }
 
-func parseConnString(connStr string) (host string, port int, user string, pass string, alt []net.TCPAddr, err error) {
+func parseConnString(connStr string) (host string, port int, user string, pass string, alt []net.TCPAddr, fetchRows int64, err error) {
 	m := map[string]string{}
 	for _, entry := range strings.Split(connStr, ";") {
 		entry = strings.TrimSpace(entry)
@@ -332,11 +332,20 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 	if p := strings.TrimSpace(m["PORT_NO"]); p != "" {
 		_, scanErr := fmt.Sscanf(p, "%d", &port)
 		if scanErr != nil {
-			return "", 0, "", "", nil, fmt.Errorf("invalid PORT_NO: %w", scanErr)
+			return "", 0, "", "", nil, 0, fmt.Errorf("invalid PORT_NO: %w", scanErr)
 		}
 	}
 	user = m["UID"]
 	pass = m["PWD"]
+	fetchRows = defaultFetchRows
+	if rowsStr := strings.TrimSpace(m["FETCH_ROWS"]); rowsStr != "" {
+		if _, scanErr := fmt.Sscanf(rowsStr, "%d", &fetchRows); scanErr != nil {
+			return "", 0, "", "", nil, 0, fmt.Errorf("invalid FETCH_ROWS: %w", scanErr)
+		}
+		if fetchRows <= 0 {
+			return "", 0, "", "", nil, 0, fmt.Errorf("invalid FETCH_ROWS: %d", fetchRows)
+		}
+	}
 	if altEntry := strings.TrimSpace(m["ALTERNATIVE_SERVERS"]); altEntry != "" {
 		for _, token := range strings.Split(altEntry, ",") {
 			token = strings.TrimSpace(token)
@@ -354,7 +363,7 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 			alt = append(alt, net.TCPAddr{IP: net.ParseIP(strings.TrimSpace(h)), Port: p})
 		}
 	}
-	return host, port, user, pass, alt, nil
+	return host, port, user, pass, alt, fetchRows, nil
 }
 
 func inferStmtType(sql string) int {

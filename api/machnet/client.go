@@ -24,6 +24,7 @@ type NativeConn struct {
 	user         string
 	password     string
 	queryTimeout time.Duration
+	fetchRows    int64
 
 	sessionID    uint64
 	serverEndian uint32
@@ -36,6 +37,7 @@ type NativeConn struct {
 }
 
 const stmtIDLimit = 1024
+const defaultFetchRows int64 = 1000
 
 type StmtExecResult struct {
 	stmtType   int
@@ -99,7 +101,10 @@ func countSQLPlaceholders(sql string) int {
 	return cnt
 }
 
-func dialNative(host string, port int, user string, password string, alts []net.TCPAddr) (*NativeConn, error) {
+func dialNative(host string, port int, user string, password string, alts []net.TCPAddr, fetchRows int64) (*NativeConn, error) {
+	if fetchRows <= 0 {
+		fetchRows = defaultFetchRows
+	}
 	endpoints := make([]string, 0, 1+len(alts))
 	endpoints = append(endpoints, fmt.Sprintf("%s:%d", host, port))
 	for _, alt := range alts {
@@ -125,6 +130,7 @@ func dialNative(host string, port int, user string, password string, alts []net.
 			user:         user,
 			password:     password,
 			queryTimeout: defaultQueryTimeout,
+			fetchRows:    fetchRows,
 		}
 		if err := nc.handshake(); err != nil {
 			_ = c.Close()
@@ -428,63 +434,72 @@ func parseStmtResponse(body []byte, sql string, fallbackCols []ColumnMeta) (*Stm
 	return ret, nil
 }
 
-func (c *NativeConn) fetchRows(stmtID uint32, columns []ColumnMeta) ([][]any, error) {
-	ret := make([][]any, 0, 32)
-	for {
-		w := newMarshalWriter(cmiFetchProtocol, stmtID, 0)
-		w.addUInt32(cmiFIDID, stmtID)
-		w.addSInt64(cmiFRowsID, 1000)
-		body, err := c.sendPackets(w.finalize(), cmiFetchProtocol, c.queryTimeout)
-		if err != nil {
-			return nil, err
+func (c *NativeConn) fetchRowsChunk(stmtID uint32, columns []ColumnMeta, fetchRows int64) ([][]any, bool, error) {
+	if fetchRows <= 0 {
+		fetchRows = c.fetchRows
+		if fetchRows <= 0 {
+			fetchRows = defaultFetchRows
 		}
-		units, err := collectUnits(body)
-		if err != nil {
-			return nil, err
-		}
-		last := false
-		if results := units[cmiRResultID]; len(results) > 0 {
-			for _, result := range results {
-				if len(result.data) < 8 {
-					continue
-				}
-				statusVal := binary.LittleEndian.Uint64(result.data)
-				st := statusCode(statusVal)
-				if st == cmiLastResult {
-					last = true
-				}
-				if st != cmiOKResult && st != cmiLastResult {
-					msg := ""
-					if m, ok := firstUnit(units, cmiRMessageID); ok {
-						msg = string(m.data)
-					}
-					return nil, makeServerErr(statusErrNo(statusVal), msg)
-				}
+	}
+	w := newMarshalWriter(cmiFetchProtocol, stmtID, 0)
+	w.addUInt32(cmiFIDID, stmtID)
+	w.addSInt64(cmiFRowsID, fetchRows)
+	body, err := c.sendPackets(w.finalize(), cmiFetchProtocol, c.queryTimeout)
+	if err != nil {
+		return nil, false, err
+	}
+	units, err := collectUnits(body)
+	if err != nil {
+		return nil, false, err
+	}
+
+	last := false
+	if results := units[cmiRResultID]; len(results) > 0 {
+		for _, result := range results {
+			if len(result.data) < 8 {
+				continue
 			}
-		}
-		if vals := units[cmiFValueID]; len(vals) > 0 {
-			rows, deErr := decodeRowsFromUnits(vals, columns)
-			if deErr != nil {
-				return nil, deErr
+			statusVal := binary.LittleEndian.Uint64(result.data)
+			st := statusCode(statusVal)
+			if st == cmiLastResult {
+				last = true
 			}
-			ret = append(ret, rows...)
-		}
-		if last {
-			break
-		}
-		if r, ok := firstUnit(units, cmiFRowsID); ok {
-			if v, ok := readUIntLE(r.data); ok && int64(v) == 0 && len(units[cmiFValueID]) == 0 {
-				break
+			if st != cmiOKResult && st != cmiLastResult {
+				msg := ""
+				if m, ok := firstUnit(units, cmiRMessageID); ok {
+					msg = string(m.data)
+				}
+				return nil, false, makeServerErr(statusErrNo(statusVal), msg)
 			}
 		}
 	}
-	return ret, nil
+
+	var rows [][]any
+	if vals := units[cmiFValueID]; len(vals) > 0 {
+		decoded, deErr := decodeRowsFromUnits(vals, columns)
+		if deErr != nil {
+			return nil, false, deErr
+		}
+		rows = append(rows, decoded...)
+	}
+
+	// Some server paths can return an empty fetch block without explicit LAST.
+	if !last && len(rows) == 0 {
+		if r, ok := firstUnit(units, cmiFRowsID); ok {
+			if v, ok := readUIntLE(r.data); ok && int64(v) == 0 {
+				last = true
+			}
+		}
+	}
+
+	return rows, last, nil
 }
 
 func (c *NativeConn) execDirect(stmtID uint32, sql string) (*StmtExecResult, error) {
 	w := newMarshalWriter(cmiExecDirectProtocol, stmtID, 0)
 	w.addString(cmiDStatementID, sql)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
+	w.addSInt64(cmiFRowsID, c.fetchRows)
 	body, err := c.sendPackets(w.finalize(), cmiExecDirectProtocol, c.queryTimeout)
 	if err != nil {
 		return nil, err
@@ -493,14 +508,7 @@ func (c *NativeConn) execDirect(stmtID uint32, sql string) (*StmtExecResult, err
 	if err != nil {
 		return nil, err
 	}
-	if len(ret.columns) > 0 {
-		if !ret.lastResult {
-			rows, fErr := c.fetchRows(stmtID, ret.columns)
-			if fErr != nil {
-				return nil, fErr
-			}
-			ret.rows = append(ret.rows, rows...)
-		}
+	if ret.lastResult && ret.rowCount == 0 && len(ret.columns) > 0 {
 		ret.rowCount = int64(len(ret.rows))
 	}
 	if ret.stmtType == 0 {
@@ -530,7 +538,7 @@ func (c *NativeConn) prepare(stmtID uint32, sql string) (*StmtExecResult, error)
 func (c *NativeConn) executePrepared(stmtID uint32, sql string, params []BoundParam, preparedCols []ColumnMeta) (*StmtExecResult, error) {
 	w := newMarshalWriter(cmiExecuteProtocol, stmtID, 0)
 	w.addUInt64(cmiPIDID, uint64(stmtID))
-	w.addSInt64(cmiFRowsID, 1000)
+	w.addSInt64(cmiFRowsID, c.fetchRows)
 	if len(params) > 0 {
 		p, err := encodeParams(params)
 		if err != nil {
@@ -548,14 +556,7 @@ func (c *NativeConn) executePrepared(stmtID uint32, sql string, params []BoundPa
 	if err != nil {
 		return nil, err
 	}
-	if len(ret.columns) > 0 {
-		if !ret.lastResult {
-			rows, fErr := c.fetchRows(stmtID, ret.columns)
-			if fErr != nil {
-				return nil, fErr
-			}
-			ret.rows = append(ret.rows, rows...)
-		}
+	if ret.lastResult && ret.rowCount == 0 && len(ret.columns) > 0 {
 		ret.rowCount = int64(len(ret.rows))
 	}
 	if ret.stmtType == 0 {

@@ -49,6 +49,16 @@ type ConnectOptionStatementCache struct {
 
 func (ConnectOptionStatementCache) connectOption() {}
 
+func WithFetchRows(rows int64) ConnectOption {
+	return &ConnectOptionFetchRows{Rows: rows}
+}
+
+type ConnectOptionFetchRows struct {
+	Rows int64
+}
+
+func (ConnectOptionFetchRows) connectOption() {}
+
 type AppenderOption interface {
 	appenderOption()
 }

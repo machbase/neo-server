@@ -62,6 +62,8 @@ type StmtHandle struct {
 	paramDesc []ParamDesc
 	rows      [][]any
 	rowPos    int
+	fetchLast bool
+	fetchSize int64
 	bound     map[int]BoundParam
 	app       *AppendState
 	lastErr   StatusError
@@ -101,12 +103,12 @@ func (env *EnvHandle) Connect(connStr string) (*ConnHandle, error) {
 	if env == nil {
 		return nil, makeClientErr("invalid environment")
 	}
-	host, port, user, pass, alts, err := parseConnString(connStr)
+	host, port, user, pass, alts, fetchRows, err := parseConnString(connStr)
 	if err != nil {
 		env.lastErr.setErr(err)
 		return nil, err
 	}
-	nc, err := dialNative(host, port, user, pass, alts)
+	nc, err := dialNative(host, port, user, pass, alts, fetchRows)
 	if err != nil {
 		env.lastErr.setErr(err)
 		return nil, err
@@ -166,9 +168,14 @@ func (conn *ConnHandle) AllocStmt() (*StmtHandle, error) {
 		return nil, err
 	}
 	stmt := &StmtHandle{
-		conn:  conn,
-		id:    id,
-		bound: map[int]BoundParam{},
+		conn:      conn,
+		id:        id,
+		fetchLast: true,
+		fetchSize: conn.native.fetchRows,
+		bound:     map[int]BoundParam{},
+	}
+	if stmt.fetchSize <= 0 {
+		stmt.fetchSize = defaultFetchRows
 	}
 	conn.lastErr.setErr(nil)
 	return stmt, nil
@@ -226,6 +233,7 @@ func (stmt *StmtHandle) Prepare(query string) error {
 	stmt.rowCount = res.rowCount
 	stmt.rows = nil
 	stmt.rowPos = 0
+	stmt.fetchLast = true
 	return nil
 }
 
@@ -274,6 +282,10 @@ func (stmt *StmtHandle) Execute() error {
 	}
 	stmt.rows = res.rows
 	stmt.rowPos = 0
+	stmt.fetchLast = res.lastResult || len(stmt.columns) == 0
+	if stmt.fetchSize <= 0 {
+		stmt.fetchSize = defaultFetchRows
+	}
 	return nil
 }
 
@@ -302,6 +314,10 @@ func (stmt *StmtHandle) ExecDirect(query string) error {
 	stmt.paramDesc = res.paramDesc
 	stmt.rows = res.rows
 	stmt.rowPos = 0
+	stmt.fetchLast = res.lastResult || len(stmt.columns) == 0
+	if stmt.fetchSize <= 0 {
+		stmt.fetchSize = defaultFetchRows
+	}
 	return nil
 }
 
@@ -313,6 +329,7 @@ func (stmt *StmtHandle) ExecuteClean() error {
 	defer stmt.mu.Unlock()
 	stmt.rows = nil
 	stmt.rowPos = 0
+	stmt.fetchLast = true
 	return nil
 }
 
@@ -429,12 +446,37 @@ func (stmt *StmtHandle) Fetch() ([]any, error) {
 	}
 	stmt.mu.Lock()
 	defer stmt.mu.Unlock()
-	if stmt.rowPos >= len(stmt.rows) {
-		return nil, nil
+	for {
+		if stmt.rowPos < len(stmt.rows) {
+			ret := stmt.rows[stmt.rowPos]
+			stmt.rowPos++
+			if stmt.rowPos >= len(stmt.rows) {
+				stmt.rows = nil
+				stmt.rowPos = 0
+			}
+			return ret, nil
+		}
+
+		if stmt.fetchLast || len(stmt.columns) == 0 {
+			return nil, nil
+		}
+		if stmt.conn == nil || stmt.conn.native == nil {
+			return nil, nil
+		}
+
+		rows, last, err := stmt.conn.native.fetchRowsChunk(stmt.id, stmt.columns, stmt.fetchSize)
+		stmt.fetchLast = last
+		stmt.lastErr.setErr(err)
+		stmt.conn.lastErr.setErr(err)
+		if err != nil {
+			return nil, err
+		}
+		stmt.rows = rows
+		stmt.rowPos = 0
+		if len(stmt.rows) == 0 && stmt.fetchLast {
+			return nil, nil
+		}
 	}
-	ret := stmt.rows[stmt.rowPos]
-	stmt.rowPos++
-	return ret, nil
 }
 
 func (stmt *StmtHandle) AppendOpen(tableName string, errCheckCount int) error {
