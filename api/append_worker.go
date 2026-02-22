@@ -261,6 +261,21 @@ func (aw *AppendWorker) WithInputFormats(formats ...string) Appender {
 	return aw
 }
 
+func (aw *AppendWorker) WithBatchMaxRows(rows int) Appender {
+	// noop, handled in Append
+	return aw
+}
+
+func (aw *AppendWorker) WithBatchMaxBytes(bytes int) Appender {
+	// noop, handled in Append
+	return aw
+}
+
+func (aw *AppendWorker) WithBatchMaxDelay(duration time.Duration) Appender {
+	// noop, handled in Append
+	return aw
+}
+
 type AppenderWithWorker struct {
 	*AppendWorker
 	inputColumns []AppenderInputColumn

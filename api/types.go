@@ -284,6 +284,18 @@ type Appender interface {
 
 	// WithInputFormats sets the input formats for the Appender.
 	WithInputFormats(formats ...string) Appender
+
+	// WithBatchMaxRows sets the maximum batch size in rows for batch append. If the batch size exceeds the limit, it will be flushed immediately.
+	// The default value is 512 rows. The minimum value is 1 row.
+	WithBatchMaxRows(rows int) Appender
+
+	// WithBatchMaxBytes sets the maximum batch size in bytes for batch append. If the batch size exceeds the limit, it will be flushed immediately.
+	// The default value is 512KB. The minimum value is 4KB.
+	WithBatchMaxBytes(bytes int) Appender
+
+	// WithBatchMaxDelay sets the maximum delay for batch append. If the batch is not full, it will be flushed when the delay is reached.
+	// The default value is 5 milliseconds. The minimum value is 1 millisecond.
+	WithBatchMaxDelay(duration time.Duration) Appender
 }
 
 type Flusher interface {

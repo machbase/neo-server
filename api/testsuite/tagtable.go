@@ -22,6 +22,14 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 		t.Fatal(err)
 	}
 
+	// On systems with slow network configurations (e.g., GitHub Actions runners),
+	// the appender may flush data too frequently (default: 5ms), causing rapid,
+	// fragmented exchanges that can fail tests. Disable delay based flushing by setting it to 0.
+	appender = appender.
+		WithBatchMaxDelay(0).
+		WithBatchMaxBytes(1024). // reduce tcp packet size
+		WithBatchMaxRows(2000)
+
 	expectCols := []*api.Column{
 		{Name: "NAME", Type: api.ColumnTypeVarchar, Length: 100, DataType: api.DataTypeString},
 		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},

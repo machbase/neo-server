@@ -783,6 +783,21 @@ func (appender *Appender) WithInputFormats(formats ...string) api.Appender {
 	return appender
 }
 
+func (a *Appender) WithBatchMaxRows(rows int) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
+func (a *Appender) WithBatchMaxBytes(bytes int) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
+func (a *Appender) WithBatchMaxDelay(duration time.Duration) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
 // Close releases all resources that allocated to the Appender
 func (appender *Appender) Close() (int64, int64, error) {
 	if appender.appendClient == nil {

@@ -1458,6 +1458,21 @@ func (a *Appender) WithInputFormats(formats ...string) api.Appender {
 	return a
 }
 
+func (a *Appender) WithBatchMaxRows(rows int) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
+func (a *Appender) WithBatchMaxBytes(bytes int) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
+func (a *Appender) WithBatchMaxDelay(duration time.Duration) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
 func (a *Appender) TableName() string {
 	return a.tableName
 }

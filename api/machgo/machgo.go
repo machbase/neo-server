@@ -1603,6 +1603,49 @@ func (a *Appender) WithInputFormats(formats ...string) api.Appender {
 	return a
 }
 
+// WithBatchMaxRows sets the maximum batch size in rows for batch append. If the batch size exceeds the limit, it will be flushed immediately.
+// The default value is 512 rows. The minimum value is 1 row.
+func (a *Appender) WithBatchMaxRows(rows int) api.Appender {
+	if a.stmt == nil || a.stmt.handle == nil {
+		return a
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	a.stmt.handle.SetAppendBatchMaxRows(rows)
+	return a
+}
+
+// WithBatchMaxBytes sets the maximum batch size in bytes for batch append. If the batch size exceeds the limit, it will be flushed immediately.
+// The default value is 512KB. The minimum value is 4KB.
+func (a *Appender) WithBatchMaxBytes(bytes int) api.Appender {
+	if a.stmt == nil || a.stmt.handle == nil {
+		return a
+	}
+	if bytes < 4*1024 {
+		bytes = 4 * 1024
+	}
+	a.stmt.handle.SetAppendBatchMaxBytes(bytes)
+	return a
+}
+
+// WithBatchMaxDelay sets the maximum delay for batch append. If the batch is not full, it will be flushed when the delay is reached.
+// The default value is 5 milliseconds.
+// The minimum value is 1ms.
+// 0 means no delay-based flush.
+func (a *Appender) WithBatchMaxDelay(duration time.Duration) api.Appender {
+	if a.stmt == nil || a.stmt.handle == nil {
+		return a
+	}
+	if duration <= 0 {
+		duration = 0
+	} else if duration < time.Millisecond {
+		duration = time.Millisecond
+	}
+	a.stmt.handle.SetAppendBatchMaxDelay(duration)
+	return a
+}
+
 func (a *Appender) TableName() string {
 	return a.tableName
 }

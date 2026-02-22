@@ -212,6 +212,21 @@ func (ap *Appender) WithInputFormats(formats ...string) api.Appender {
 	return ap
 }
 
+func (a *Appender) WithBatchMaxRows(rows int) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
+func (a *Appender) WithBatchMaxBytes(bytes int) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
+func (a *Appender) WithBatchMaxDelay(duration time.Duration) api.Appender {
+	// noop, handled in Append
+	return a
+}
+
 func (ap *Appender) Close() (int64, int64, error) {
 	if _env.database.enableWorkerPool {
 		return ap.CloseAsync()

@@ -512,6 +512,39 @@ func (stmt *StmtHandle) AppendOpen(tableName string, errCheckCount int) error {
 	return nil
 }
 
+func (atmt *StmtHandle) SetAppendBatchMaxRows(maxRows int) {
+	if atmt == nil {
+		return
+	}
+	atmt.mu.Lock()
+	if atmt.app != nil {
+		atmt.app.appendBatchMaxRows = maxRows
+	}
+	atmt.mu.Unlock()
+}
+
+func (atmt *StmtHandle) SetAppendBatchMaxBytes(maxBytes int) {
+	if atmt == nil {
+		return
+	}
+	atmt.mu.Lock()
+	if atmt.app != nil {
+		atmt.app.appendBatchMaxBytes = maxBytes
+	}
+	atmt.mu.Unlock()
+}
+
+func (atmt *StmtHandle) SetAppendBatchMaxDelay(maxDelay time.Duration) {
+	if atmt == nil {
+		return
+	}
+	atmt.mu.Lock()
+	if atmt.app != nil {
+		atmt.app.appendBatchMaxDelay = maxDelay
+	}
+	atmt.mu.Unlock()
+}
+
 func (stmt *StmtHandle) flushAppendBufferedLocked(checkResponse bool) error {
 	if stmt == nil || stmt.app == nil || len(stmt.app.pendingRows) == 0 {
 		return nil
@@ -585,7 +618,10 @@ func (stmt *StmtHandle) AppendData(types []SqlType, names []string, args []any, 
 	flushNow := checkResponse ||
 		len(stmt.app.pendingRows) >= stmt.app.appendBatchMaxRows ||
 		stmt.app.pendingBytes >= stmt.app.appendBatchMaxBytes
-	if !flushNow && !stmt.app.firstQueuedAt.IsZero() && time.Since(stmt.app.firstQueuedAt) >= stmt.app.appendBatchMaxDelay {
+	if !flushNow &&
+		stmt.app.appendBatchMaxDelay > 0 &&
+		!stmt.app.firstQueuedAt.IsZero() &&
+		time.Since(stmt.app.firstQueuedAt) >= stmt.app.appendBatchMaxDelay {
 		flushNow = true
 	}
 	if flushNow {
