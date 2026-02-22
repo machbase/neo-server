@@ -366,7 +366,7 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 	return host, port, user, pass, alt, fetchRows, nil
 }
 
-func inferStmtType(sql string) int {
+func inferStmtType(sql string) StmtType {
 	t := strings.TrimSpace(strings.ToUpper(sql))
 	if t == "" {
 		return 0

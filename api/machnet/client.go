@@ -40,7 +40,7 @@ const stmtIDLimit = 1024
 const defaultFetchRows int64 = 1000
 
 type StmtExecResult struct {
-	stmtType   int
+	stmtType   StmtType
 	message    string
 	rowCount   int64
 	columns    []ColumnMeta
@@ -374,7 +374,7 @@ func parseStmtResponse(body []byte, sql string, fallbackCols []ColumnMeta) (*Stm
 	}
 	if st, ok := firstUnit(units, cmimIDStmtType); ok {
 		if len(st.data) >= 4 {
-			ret.stmtType = int(int32(binary.LittleEndian.Uint32(st.data[:4])))
+			ret.stmtType = StmtType(int32(binary.LittleEndian.Uint32(st.data[:4])))
 		}
 	}
 

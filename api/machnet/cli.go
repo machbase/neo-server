@@ -56,7 +56,7 @@ type StmtHandle struct {
 	closed    bool
 	prepared  bool
 	sql       string
-	stmtType  int
+	stmtType  StmtType
 	rowCount  int64
 	columns   []ColumnMeta
 	paramDesc []ParamDesc
@@ -380,7 +380,7 @@ func (stmt *StmtHandle) RowCount() (int64, error) {
 	return stmt.rowCount, nil
 }
 
-func (stmt *StmtHandle) GetStmtType() (int, error) {
+func (stmt *StmtHandle) GetStmtType() (StmtType, error) {
 	if stmt == nil {
 		return 0, makeClientErr("invalid statement")
 	}
@@ -617,11 +617,11 @@ func (stmt *StmtHandle) AppendClose() (int64, int64, error) {
 	stmt.lastErr.setErr(err)
 	stmt.conn.lastErr.setErr(err)
 	if err != nil {
-		localSucc := stmt.app.sentCount - stmt.app.failCnt
-		if localSucc < 0 {
-			localSucc = 0
+		localSuccess := stmt.app.sentCount - stmt.app.failCnt
+		if localSuccess < 0 {
+			localSuccess = 0
 		}
-		return localSucc, stmt.app.failCnt, err
+		return localSuccess, stmt.app.failCnt, err
 	}
 	stmt.app.successCnt = success
 	stmt.app.failCnt = fail

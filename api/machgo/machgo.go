@@ -1273,7 +1273,11 @@ func (r *Rows) Close() error {
 }
 
 func (r *Rows) IsFetchable() bool {
-	return r.stmt != nil && r.stmt.sqlHead == "SELECT"
+	if r.stmt == nil || r.stmt.handle == nil {
+		return false
+	}
+	typ, _ := r.stmt.handle.GetStmtType()
+	return typ.IsSelect()
 }
 
 func (r *Rows) Columns() (api.Columns, error) {
