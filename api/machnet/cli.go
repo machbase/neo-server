@@ -564,14 +564,14 @@ func (stmt *StmtHandle) AppendClose() (int64, int64, error) {
 		return 0, 0, nil
 	}
 	if err := stmt.flushAppendBufferedLocked(false); err != nil {
-		localSucc := stmt.app.sentCount - stmt.app.failCnt
-		if localSucc < 0 {
-			localSucc = 0
+		localSuccess := stmt.app.sentCount - stmt.app.failCnt
+		if localSuccess < 0 {
+			localSuccess = 0
 		}
-		return localSucc, stmt.app.failCnt, err
+		return localSuccess, stmt.app.failCnt, err
 	}
 
-	succ, fail, err := stmt.conn.native.appendClose(stmt.id)
+	success, fail, err := stmt.conn.native.appendClose(stmt.id)
 	stmt.lastErr.setErr(err)
 	stmt.conn.lastErr.setErr(err)
 	if err != nil {
@@ -581,10 +581,10 @@ func (stmt *StmtHandle) AppendClose() (int64, int64, error) {
 		}
 		return localSucc, stmt.app.failCnt, err
 	}
-	stmt.app.successCnt = succ
+	stmt.app.successCnt = success
 	stmt.app.failCnt = fail
 	stmt.app = nil
-	return succ, fail, nil
+	return success, fail, nil
 }
 
 func (stmt *StmtHandle) AppendFlush() error {

@@ -40,7 +40,7 @@ func benchmarkReadPacket(b *testing.B, bodySize int) {
 
 	for i := 0; i < b.N; i++ {
 		reader.Reset(pkt)
-		var decoded Packet
+		var decoded = new(Packet)
 		err := decoded.Read(&reader)
 		if err != nil {
 			b.Fatalf("readPacket failed: %v", err)
@@ -56,7 +56,7 @@ func benchmarkReadPacketIntoReuse(b *testing.B, bodySize int) {
 	pkt := buildPacket(0x11, 42, 0, 0, body)
 
 	var reader bytes.Reader
-	var decoded Packet
+	var decoded = new(Packet)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(pkt)))
 	b.ResetTimer()
@@ -72,35 +72,35 @@ func benchmarkReadPacketIntoReuse(b *testing.B, bodySize int) {
 	}
 }
 
-func BenchmarkReadPacketBody0(b *testing.B) {
+func BenchmarkRead_0(b *testing.B) {
 	benchmarkReadPacket(b, 0)
 }
 
-func BenchmarkReadPacketBody128(b *testing.B) {
+func BenchmarkRead_128(b *testing.B) {
 	benchmarkReadPacket(b, 128)
 }
 
-func BenchmarkReadPacketBody4K(b *testing.B) {
+func BenchmarkRead_4K(b *testing.B) {
 	benchmarkReadPacket(b, 4*1024)
 }
 
-func BenchmarkReadPacketBody64K(b *testing.B) {
+func BenchmarkRead_64K(b *testing.B) {
 	benchmarkReadPacket(b, 64*1024)
 }
 
-func BenchmarkReadPacketIntoReuseBody0(b *testing.B) {
+func BenchmarkRead_Reuse_0(b *testing.B) {
 	benchmarkReadPacketIntoReuse(b, 0)
 }
 
-func BenchmarkReadPacketIntoReuseBody128(b *testing.B) {
+func BenchmarkRead_Reuse_128(b *testing.B) {
 	benchmarkReadPacketIntoReuse(b, 128)
 }
 
-func BenchmarkReadPacketIntoReuseBody4K(b *testing.B) {
+func BenchmarkRead_Reuse_4K(b *testing.B) {
 	benchmarkReadPacketIntoReuse(b, 4*1024)
 }
 
-func BenchmarkReadPacketIntoReuseBody64K(b *testing.B) {
+func BenchmarkRead_Reuse_64K(b *testing.B) {
 	benchmarkReadPacketIntoReuse(b, 64*1024)
 }
 
@@ -115,33 +115,9 @@ func benchmarkReadProtocolFromFragmented(b *testing.B, bodySize int, chunkSize i
 
 	for i := 0; i < b.N; i++ {
 		reader.Reset(stream)
-		nextProtocol, decoded, err := readNextProtocolFrom(&reader)
-		if err != nil {
-			b.Fatalf("readProtocolFrom failed: %v", err)
-		}
-		if nextProtocol != protocol {
-			b.Fatalf("unexpected protocol: got %d, want %d", nextProtocol, protocol)
-		}
-		if !bytes.Equal(decoded, expected) {
-			b.Fatalf("decoded payload mismatch: got %d bytes, want %d", len(decoded), len(expected))
-		}
-	}
-}
-
-func benchmarkReadNextProtocolFromFragmented(b *testing.B, bodySize int, chunkSize int) {
-	const protocol = byte(0x33)
-	stream, expected := buildFragmentedProtocolStream(protocol, bodySize, chunkSize)
-
-	var reader bytes.Reader
-	b.ReportAllocs()
-	b.SetBytes(int64(len(stream)))
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		reader.Reset(stream)
 		actualProtocol, decoded, err := readNextProtocolFrom(&reader)
 		if err != nil {
-			b.Fatalf("readNextProtocolFrom failed: %v", err)
+			b.Fatalf("readProtocolFrom failed: %v", err)
 		}
 		if actualProtocol != protocol {
 			b.Fatalf("unexpected protocol: got %d, want %d", actualProtocol, protocol)
@@ -152,18 +128,42 @@ func benchmarkReadNextProtocolFromFragmented(b *testing.B, bodySize int, chunkSi
 	}
 }
 
-func BenchmarkReadProtocolFromFragmented4K_256(b *testing.B) {
+func benchmarkReadNext(b *testing.B, bodySize int, chunkSize int) {
+	const protocol = byte(0x33)
+	stream, expected := buildFragmentedProtocolStream(protocol, bodySize, chunkSize)
+
+	var reader bytes.Reader
+	b.ReportAllocs()
+	b.SetBytes(int64(len(stream)))
+	b.ResetTimer()
+
+	var decoded Packet
+	for i := 0; i < b.N; i++ {
+		reader.Reset(stream)
+		if err := decoded.Read(&reader); err != nil {
+			b.Fatalf("readNext failed: %v", err)
+		}
+		if decoded.protocol != protocol {
+			b.Fatalf("unexpected protocol: got %d, want %d", decoded.protocol, protocol)
+		}
+		if !bytes.Equal(decoded.body, expected) {
+			b.Fatalf("decoded payload mismatch: got %d bytes, want %d", len(decoded.body), len(expected))
+		}
+	}
+}
+
+func BenchmarkReadProtocolFrom_4K_256(b *testing.B) {
 	benchmarkReadProtocolFromFragmented(b, 4*1024, 256)
 }
 
-func BenchmarkReadProtocolFromFragmented64K_1K(b *testing.B) {
+func BenchmarkReadProtocolFrom_64K_1K(b *testing.B) {
 	benchmarkReadProtocolFromFragmented(b, 64*1024, 1024)
 }
 
-func BenchmarkReadNextProtocolFromFragmented4K_256(b *testing.B) {
-	benchmarkReadNextProtocolFromFragmented(b, 4*1024, 256)
+func BenchmarkRead_4K_256(b *testing.B) {
+	benchmarkReadNext(b, 4*1024, 256)
 }
 
-func BenchmarkReadNextProtocolFromFragmented64K_1K(b *testing.B) {
-	benchmarkReadNextProtocolFromFragmented(b, 64*1024, 1024)
+func BenchmarkRead_64K_1K(b *testing.B) {
+	benchmarkReadNext(b, 64*1024, 1024)
 }

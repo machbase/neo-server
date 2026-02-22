@@ -78,19 +78,39 @@ func (pkt *Packet) Read(reader io.Reader) error {
 	pkt.flag = flag
 	pkt.adds = adds
 	pkt.stmtID = stmtID
+	pkt.body = pkt.body[:0]
 	if bodyLen == 0 {
-		pkt.body = pkt.body[:0]
 		return nil
 	}
-	if cap(pkt.body) < bodyLen {
-		pkt.body = make([]byte, bodyLen)
-	} else {
-		pkt.body = pkt.body[:bodyLen]
+	pkt.body = ensureAppendCapacity(pkt.body, bodyLen)
+	if bodyLen > 0 {
+		if _, err := io.ReadFull(reader, pkt.body[:bodyLen]); err != nil {
+			return err
+		}
 	}
-	if _, err := io.ReadFull(reader, pkt.body); err != nil {
-		return err
+	if flag == 0 || flag == 3 {
+		return nil
 	}
-	return nil
+	for {
+		nextProtocol, nextFlag, _, _, nextBodyLen, err := readPacketHeader(reader, &h)
+		if err != nil {
+			return err
+		}
+		if nextProtocol != protocol {
+			return fmt.Errorf("unexpected protocol %d expected %d", nextProtocol, protocol)
+		}
+		oldLen := len(pkt.body)
+		pkt.body = ensureAppendCapacity(pkt.body, nextBodyLen)
+		if nextBodyLen > 0 {
+			if _, err := io.ReadFull(reader, pkt.body[oldLen:oldLen+nextBodyLen]); err != nil {
+				return err
+			}
+		}
+		flag = nextFlag
+		if flag == 0 || flag == 3 {
+			return nil
+		}
+	}
 }
 
 func readNextProtocolFrom(reader io.Reader) (byte, []byte, error) {

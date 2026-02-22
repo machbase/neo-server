@@ -17,6 +17,7 @@ type NativeConn struct {
 	netConn net.Conn
 	br      *bufio.Reader
 	bw      *bufio.Writer
+	packet  Packet
 
 	host         string
 	port         int
@@ -235,14 +236,13 @@ func (c *NativeConn) sendPackets(packets [][]byte, expected byte, timeout time.D
 	if err := c.bw.Flush(); err != nil {
 		return nil, err
 	}
-	protocol, body, err := readNextProtocolFrom(c.br)
-	if err != nil {
+	if err := c.packet.Read(c.br); err != nil {
 		return nil, err
 	}
-	if protocol != expected {
-		return nil, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
+	if c.packet.protocol != expected {
+		return nil, fmt.Errorf("unexpected protocol %d expected %d", c.packet.protocol, expected)
 	}
-	return body, nil
+	return c.packet.body, nil
 }
 
 func (c *NativeConn) sendPacketsNoResponse(packets [][]byte, timeout time.Duration) error {
@@ -288,18 +288,17 @@ func (c *NativeConn) sendPacketsOptional(packets [][]byte, expected byte, timeou
 	if err := c.bw.Flush(); err != nil {
 		return nil, false, err
 	}
-	protocol, body, err := readNextProtocolFrom(c.br)
-	if err != nil {
+	if err := c.packet.Read(c.br); err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
 			return nil, false, nil
 		}
 		return nil, false, err
 	}
-	if protocol != expected {
-		return nil, false, fmt.Errorf("unexpected protocol %d expected %d", protocol, expected)
+	if c.packet.protocol != expected {
+		return nil, false, fmt.Errorf("unexpected protocol %d expected %d", c.packet.protocol, expected)
 	}
-	return body, true, nil
+	return c.packet.body, true, nil
 }
 
 func (c *NativeConn) connectProtocol() error {
@@ -739,7 +738,7 @@ func (c *NativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		if c.queryTimeout > 0 {
 			_ = c.netConn.SetReadDeadline(time.Now().Add(c.queryTimeout))
 		}
-		protocol, body, err := readNextProtocolFrom(c.br)
+		err := c.packet.Read(c.br)
 		if c.queryTimeout > 0 {
 			c.netConn.SetReadDeadline(time.Time{})
 		}
@@ -747,15 +746,15 @@ func (c *NativeConn) appendClose(stmtID uint32) (int64, int64, error) {
 		if err != nil {
 			return 0, 0, err
 		}
-		switch protocol {
+		switch c.packet.protocol {
 		case cmiAppendDataProtocol:
-			if err := parseAppendDataResponse(body); err != nil {
+			if err := parseAppendDataResponse(c.packet.body); err != nil {
 				return 0, 0, err
 			}
 		case cmiAppendCloseProtocol:
-			return parseAppendCloseResponse(body)
+			return parseAppendCloseResponse(c.packet.body)
 		default:
-			return 0, 0, fmt.Errorf("unexpected protocol %d expected %d", protocol, cmiAppendCloseProtocol)
+			return 0, 0, fmt.Errorf("unexpected protocol %d expected %d", c.packet.protocol, cmiAppendCloseProtocol)
 		}
 	}
 }
