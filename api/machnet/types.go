@@ -386,14 +386,15 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 }
 
 func inferStmtType(sql string) StmtType {
-	t := strings.TrimSpace(strings.ToUpper(sql))
+	t := strings.ToUpper(stripLeadingSQLComments(sql))
 	if t == "" {
 		return 0
 	}
-	head := t
-	if idx := strings.IndexByte(t, ' '); idx >= 0 {
-		head = t[:idx]
+	parts := strings.Fields(t)
+	if len(parts) == 0 {
+		return 0
 	}
+	head := parts[0]
 	switch head {
 	case "SELECT":
 		return 512
@@ -418,6 +419,30 @@ func inferStmtType(sql string) StmtType {
 	default:
 		return 0
 	}
+}
+
+func stripLeadingSQLComments(sql string) string {
+	t := strings.TrimSpace(sql)
+	for t != "" {
+		if strings.HasPrefix(t, "--") {
+			idx := strings.IndexByte(t, '\n')
+			if idx < 0 {
+				return ""
+			}
+			t = strings.TrimSpace(t[idx+1:])
+			continue
+		}
+		if strings.HasPrefix(t, "/*") {
+			idx := strings.Index(t, "*/")
+			if idx < 0 {
+				return ""
+			}
+			t = strings.TrimSpace(t[idx+2:])
+			continue
+		}
+		break
+	}
+	return t
 }
 
 func isVariableSpinerType(spinerType int) bool {
