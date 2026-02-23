@@ -17,6 +17,7 @@ type NativeConn struct {
 	netConn net.Conn
 	br      *bufio.Reader
 	bw      *bufio.Writer
+	ioBytes *ioByteCounter
 	packet  Packet
 
 	host         string
@@ -101,7 +102,7 @@ func countSQLPlaceholders(sql string) int {
 	return cnt
 }
 
-func dialNative(host string, port int, user string, password string, alts []net.TCPAddr, fetchRows int64) (*NativeConn, error) {
+func dialNative(host string, port int, user string, password string, alts []net.TCPAddr, fetchRows int64, trackIOBytes bool) (*NativeConn, error) {
 	if fetchRows <= 0 {
 		fetchRows = defaultFetchRows
 	}
@@ -121,10 +122,22 @@ func dialNative(host string, port int, user string, password string, alts []net.
 			lastErr = err
 			continue
 		}
+		var counter *ioByteCounter
+		var br *bufio.Reader
+		var bw *bufio.Writer
+		if trackIOBytes {
+			counter = newIOByteCounter(true)
+			br = bufio.NewReaderSize(&countingReader{r: c, counter: counter}, defaultReadBufferSize)
+			bw = bufio.NewWriterSize(&countingWriter{w: c, counter: counter}, defaultWriteBufferSize)
+		} else {
+			br = bufio.NewReaderSize(c, defaultReadBufferSize)
+			bw = bufio.NewWriterSize(c, defaultWriteBufferSize)
+		}
 		nc := &NativeConn{
 			netConn:      c,
-			br:           bufio.NewReaderSize(c, defaultReadBufferSize),
-			bw:           bufio.NewWriterSize(c, defaultWriteBufferSize),
+			br:           br,
+			bw:           bw,
+			ioBytes:      counter,
 			host:         host,
 			port:         port,
 			user:         user,
@@ -148,6 +161,21 @@ func dialNative(host string, port int, user string, password string, alts []net.
 		lastErr = errors.New("connect failed")
 	}
 	return nil, lastErr
+}
+
+func (c *NativeConn) ioByteMetrics() (readBytes uint64, writtenBytes uint64, enabled bool) {
+	if c == nil || c.ioBytes == nil {
+		return 0, 0, false
+	}
+	r, w := c.ioBytes.snapshot()
+	return r, w, c.ioBytes.isEnabled()
+}
+
+func (c *NativeConn) resetIOByteMetrics() {
+	if c == nil || c.ioBytes == nil {
+		return
+	}
+	c.ioBytes.reset()
 }
 
 func (c *NativeConn) close() error {

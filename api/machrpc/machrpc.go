@@ -204,6 +204,8 @@ func (client *Client) Connect(ctx context.Context, opts ...api.ConnectOption) (a
 			// currently statement cache is only supported in prepared statements, so it is ignored here
 		case *api.ConnectOptionFetchRows:
 			// currently fetch rows in CLI is ignored, so it is ignored here
+		case *api.ConnectOptionIOMetrics:
+			// currently IO metrics in CLI is ignored, so it is ignored here
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}

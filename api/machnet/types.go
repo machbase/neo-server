@@ -309,7 +309,18 @@ func spinerTypeToSQLType(spinerType int) SqlType {
 	}
 }
 
-func parseConnString(connStr string) (host string, port int, user string, pass string, alt []net.TCPAddr, fetchRows int64, err error) {
+func parseBoolOption(v string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "f", "no", "n", "off":
+		return false, nil
+	case "1", "true", "t", "yes", "y", "on":
+		return true, nil
+	default:
+		return false, fmt.Errorf("invalid bool value %q", v)
+	}
+}
+
+func parseConnString(connStr string) (host string, port int, user string, pass string, alt []net.TCPAddr, fetchRows int64, trackIOBytes bool, err error) {
 	m := map[string]string{}
 	for _, entry := range strings.Split(connStr, ";") {
 		entry = strings.TrimSpace(entry)
@@ -332,7 +343,7 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 	if p := strings.TrimSpace(m["PORT_NO"]); p != "" {
 		_, scanErr := fmt.Sscanf(p, "%d", &port)
 		if scanErr != nil {
-			return "", 0, "", "", nil, 0, fmt.Errorf("invalid PORT_NO: %w", scanErr)
+			return "", 0, "", "", nil, 0, false, fmt.Errorf("invalid PORT_NO: %w", scanErr)
 		}
 	}
 	user = m["UID"]
@@ -340,12 +351,20 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 	fetchRows = defaultFetchRows
 	if rowsStr := strings.TrimSpace(m["FETCH_ROWS"]); rowsStr != "" {
 		if _, scanErr := fmt.Sscanf(rowsStr, "%d", &fetchRows); scanErr != nil {
-			return "", 0, "", "", nil, 0, fmt.Errorf("invalid FETCH_ROWS: %w", scanErr)
+			return "", 0, "", "", nil, 0, false, fmt.Errorf("invalid FETCH_ROWS: %w", scanErr)
 		}
 		if fetchRows <= 0 {
-			return "", 0, "", "", nil, 0, fmt.Errorf("invalid FETCH_ROWS: %d", fetchRows)
+			return "", 0, "", "", nil, 0, false, fmt.Errorf("invalid FETCH_ROWS: %d", fetchRows)
 		}
 	}
+
+	if opt := strings.TrimSpace(m["IO_METRICS"]); opt != "" {
+		trackIOBytes, err = parseBoolOption(opt)
+		if err != nil {
+			return "", 0, "", "", nil, 0, false, fmt.Errorf("invalid IO_METRICS: %w", err)
+		}
+	}
+
 	if altEntry := strings.TrimSpace(m["ALTERNATIVE_SERVERS"]); altEntry != "" {
 		for _, token := range strings.Split(altEntry, ",") {
 			token = strings.TrimSpace(token)
@@ -363,7 +382,7 @@ func parseConnString(connStr string) (host string, port int, user string, pass s
 			alt = append(alt, net.TCPAddr{IP: net.ParseIP(strings.TrimSpace(h)), Port: p})
 		}
 	}
-	return host, port, user, pass, alt, fetchRows, nil
+	return host, port, user, pass, alt, fetchRows, trackIOBytes, nil
 }
 
 func inferStmtType(sql string) StmtType {

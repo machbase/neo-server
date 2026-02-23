@@ -103,12 +103,12 @@ func (env *EnvHandle) Connect(connStr string) (*ConnHandle, error) {
 	if env == nil {
 		return nil, makeClientErr("invalid environment")
 	}
-	host, port, user, pass, alts, fetchRows, err := parseConnString(connStr)
+	host, port, user, pass, alts, fetchRows, trackIOBytes, err := parseConnString(connStr)
 	if err != nil {
 		env.lastErr.setErr(err)
 		return nil, err
 	}
-	nc, err := dialNative(host, port, user, pass, alts, fetchRows)
+	nc, err := dialNative(host, port, user, pass, alts, fetchRows, trackIOBytes)
 	if err != nil {
 		env.lastErr.setErr(err)
 		return nil, err
@@ -126,6 +126,34 @@ func (env *EnvHandle) Connect(connStr string) (*ConnHandle, error) {
 	env.mu.Unlock()
 	env.lastErr.setErr(nil)
 	return ch, nil
+}
+
+func (conn *ConnHandle) IOMetrics() (readBytes uint64, writtenBytes uint64, enabled bool) {
+	if conn == nil {
+		return 0, 0, false
+	}
+	conn.mu.Lock()
+	nc := conn.native
+	conn.mu.Unlock()
+	if nc == nil {
+		return 0, 0, false
+	}
+	return nc.ioByteMetrics()
+}
+
+func (conn *ConnHandle) ResetIOMetrics() (readBytes uint64, writtenBytes uint64, enabled bool) {
+	if conn == nil {
+		return 0, 0, false
+	}
+	conn.mu.Lock()
+	nc := conn.native
+	conn.mu.Unlock()
+	if nc != nil {
+		r, w, b := nc.ioByteMetrics()
+		nc.resetIOByteMetrics()
+		return r, w, b
+	}
+	return 0, 0, false
 }
 
 func (conn *ConnHandle) Disconnect() error {

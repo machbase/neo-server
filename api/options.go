@@ -59,6 +59,16 @@ type ConnectOptionFetchRows struct {
 
 func (ConnectOptionFetchRows) connectOption() {}
 
+func WithIOMetrics(enabled bool) ConnectOption {
+	return &ConnectOptionIOMetrics{Enabled: enabled}
+}
+
+type ConnectOptionIOMetrics struct {
+	Enabled bool
+}
+
+func (ConnectOptionIOMetrics) connectOption() {}
+
 type AppenderOption interface {
 	appenderOption()
 }

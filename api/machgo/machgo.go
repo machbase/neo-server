@@ -247,7 +247,7 @@ func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, 
 	return true, "", err
 }
 
-func (db *Database) connectionString(user string, password string, fetchRows int64) string {
+func (db *Database) connectionString(user string, password string, fetchRows int64, ioMetrics bool) string {
 	entries := []string{
 		fmt.Sprintf("SERVER=%s", db.host),
 		fmt.Sprintf("PORT_NO=%d", db.port),
@@ -255,6 +255,9 @@ func (db *Database) connectionString(user string, password string, fetchRows int
 		fmt.Sprintf("PWD=%s", strings.ToUpper(password)),
 		"CONNTYPE=1",
 		fmt.Sprintf("FETCH_ROWS=%d", fetchRows),
+	}
+	if ioMetrics {
+		entries = append(entries, "IO_METRICS=1")
 	}
 	if db.alternativeHost != "" && db.alternativePort != 0 {
 		entries = append(entries,
@@ -268,6 +271,8 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	var user, password string
 	var stmtReuse = db.statementReuseMode
 	var fetchRows = db.fetchRows
+	var enabledIOMetrics bool = false
+
 	for _, opt := range opts {
 		switch o := opt.(type) {
 		case *api.ConnectOptionPassword:
@@ -292,6 +297,8 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			}
 		case *api.ConnectOptionFetchRows:
 			fetchRows = o.Rows
+		case *api.ConnectOptionIOMetrics:
+			enabledIOMetrics = o.Enabled
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
@@ -313,9 +320,8 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			returnChan <- struct{}{}
 		}
 	}()
-
 	var handle *machnet.ConnHandle
-	if c, err := db.handle.Connect(db.connectionString(user, password, fetchRows)); err != nil {
+	if c, err := db.handle.Connect(db.connectionString(user, password, fetchRows, enabledIOMetrics)); err != nil {
 		return nil, db.ErrorOf(err)
 	} else {
 		handle = c
@@ -379,6 +385,20 @@ func (c *Conn) Close() (ret error) {
 		}
 	})
 	return ret
+}
+
+func (c *Conn) IOMetrics() (readBytes uint64, writtenBytes uint64, enabled bool) {
+	if c == nil || c.handle == nil {
+		return 0, 0, false
+	}
+	return c.handle.IOMetrics()
+}
+
+func (c *Conn) ResetIOMetrics() (readBytes uint64, writtenBytes uint64, enabled bool) {
+	if c == nil || c.handle == nil {
+		return
+	}
+	return c.handle.ResetIOMetrics()
 }
 
 func (c *Conn) Error() error {

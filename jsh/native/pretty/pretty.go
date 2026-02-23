@@ -20,8 +20,8 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	exports.Set("MakeRow", MakeRow)
 	exports.Set("Progress", Progress)
 	// formatting helpers
-	exports.Set("Bytes", Bytes)
-	exports.Set("Ints", Ints)
+	exports.Set("Bytes", doBytes)
+	exports.Set("Ints", doInts)
 	exports.Set("Durations", Durations)
 	// time parsing helper
 	exports.Set("parseTime", parseTime)
@@ -138,7 +138,11 @@ var (
 	defaultLang language.Tag = language.English
 )
 
-func Bytes(v int64) string {
+func Bytes[T ~int64 | ~int | ~uint64 | ~uint | ~float64 | ~float32](v T) string {
+	return doBytes(int64(v))
+}
+
+func doBytes(v int64) string {
 	p := message.NewPrinter(defaultLang)
 	f := float64(v)
 	u := ""
@@ -161,7 +165,11 @@ func Bytes(v int64) string {
 	return p.Sprintf("%.1f%s", f, u)
 }
 
-func Ints(v int64) string {
+func Ints[T ~int64 | ~int | ~uint64 | ~uint | ~float32 | ~float64](v T) string {
+	return doInts(int64(v))
+}
+
+func doInts(v int64) string {
 	p := message.NewPrinter(defaultLang)
 	return p.Sprintf("%d", v)
 }
