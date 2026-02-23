@@ -238,6 +238,8 @@ func (svr *sshd) shell(user string, shellId string) *SshShell {
 	return svr.shellProvider(user, shellId)
 }
 
+const sshContextPasswordKey = "ssh-password"
+
 func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 	if svr.authServer == nil {
 		return false
@@ -247,16 +249,18 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	ok, _, err := svr.authServer.ValidateUserPassword(user, password)
+	valid, _, err := svr.authServer.ValidateUserPassword(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
 	}
-	if !ok {
-		svr.log.Tracef("'%s' login fail password mis-matched", user)
+	if valid {
+		// pass the password to the ssh session context for later use in shell environment variable.
+		// it is needed for the neo-shell/jsh to work with database connection.
+		ctx.SetValue(sshContextPasswordKey, password)
+		svr.authServer.neoShellAccount[strings.ToLower(user)] = password
 	}
-	svr.authServer.neoShellAccount[strings.ToLower(user)] = password
-	return ok
+	return valid
 }
 
 func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
@@ -268,12 +272,26 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	ok, _, err := svr.authServer.ValidateUserPublicKey(user, key)
+	valid, _, err := svr.authServer.ValidateUserPublicKey(user, key)
 	if err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
 	}
-	return ok
+	// If public key auth is successful,
+	if valid {
+		// How to pass the password to the ssh session context for later use in shell environment variable?
+		// --> ssh client shows password prompt,
+		// because neo-shell/jsh requires password.
+		if pass, ok := svr.authServer.neoShellAccount[strings.ToLower(user)]; ok {
+			ctx.SetValue(sshContextPasswordKey, pass)
+		} else {
+			// TODO: what if the ssh client is connected without password
+			// and then web terminal is connected with password?
+			// In this case, the ssh session should be updated with the password in the context.
+			svr.log.Tracef("'%s' login with public key, but password is not found in the auth server", user)
+		}
+	}
+	return valid
 }
 
 type SshShell struct {

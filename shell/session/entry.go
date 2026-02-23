@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -200,8 +201,15 @@ func readPassword(prompt string, defaultValue string) (string, error) {
 	if defaultValue != "" {
 		prompt = fmt.Sprintf("%s [%s]", prompt, defaultValue)
 	}
-	fmt.Printf("%s: ", prompt)
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		// terminal (stdin) is not available (e.g. connected via pipe)
+		return "", errors.New("terminal stdin is not available")
+	}
+	fmt.Fprintf(os.Stdout, "%s: ", prompt)
 	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
 	fmt.Println()
 	if len(b) == 0 && defaultValue != "" {
 		return defaultValue, err

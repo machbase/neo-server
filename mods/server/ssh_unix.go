@@ -46,18 +46,30 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 			shell.Args = []string{}
 			shell.Envs = append(shell.Envs, "SHELL="+shell.Cmd)
 		}
-		filtered := []string{}
-		for _, env := range shell.Envs {
-			if strings.HasPrefix(env, "TERM") || strings.Contains(env, "TERM=") {
-				continue
-			}
-			filtered = append(filtered, env)
-		}
-		shell.Envs = filtered
+		// If the user is sys and the pty is not requested,
+		// we can set the TERM env to "dumb" to avoid some issues with non-pty shells.
+		//
+		// Note: If some envs are not to be set for non-pty shells, we can filter them here.
+		//
+		// filtered := []string{}
+		// for _, env := range shell.Envs {
+		// 	if strings.HasPrefix(env, "TERM") || strings.Contains(env, "TERM=") {
+		// 		continue
+		// 	}
+		// 	filtered = append(filtered, env)
+		// }
+		// shell.Envs = filtered
 	} else {
 		if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
 			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
+
+			// ssh context contains the password only when it provided by the client.
+			// If it contains the password, the client is web terminal.
+			// If the clients is ssh client, the password is not provided in the context for security reason.
+			pass := ss.Context().Value(sshContextPasswordKey)
+			if password, ok := pass.(string); ok && password != "" {
+				shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", password))
+			}
 		}
 	}
 

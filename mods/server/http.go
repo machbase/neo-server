@@ -1355,39 +1355,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	// if userShell == model.SHELLID_JSH {
-	// 	// TODO: client should send X-Console-Id,
-	// 	// but this handler is for the web socket
-	// 	// and web socket can not assign http header of the request.
-	// 	consoleInfo := parseConsoleId(ctx)
-	// 	wsRw := &WsReadWriter{Conn: conn}
-	// 	terminals.Register(termKey, (*WebTerm)(nil)) // TODO set windows size for JSH
-	// 	defer terminals.Unregister(termKey)
-	// 	j := jsh.NewJsh(
-	// 		ctx,
-	// 		jsh.WithNativeModules(jsh.NativeModuleNames()...),
-	// 		jsh.WithParent(nil),
-	// 		jsh.WithReader(wsRw),
-	// 		jsh.WithWriter(wsRw),
-	// 		jsh.WithEcho(true),
-	// 		jsh.WithNewLineCRLF(true),
-	// 		jsh.WithUserName(termLoginName),
-	// 		jsh.WithConsoleId(consoleInfo.consoleId),
-	// 	)
-	// 	err = j.Exec([]string{"@"})
-	// 	if err != nil {
-	// 		for _, err := range j.Errors() {
-	// 			svr.log.Warnf("term jsh %s", jsh.ErrorToString(err))
-	// 			// Check if the connection is hijacked by attempting a zero-byte write.
-	// 			_, err := ctx.Writer.Write(nil)
-	// 			if !errors.Is(err, http.ErrHijacked) {
-	// 				ctx.String(http.StatusInternalServerError, jsh.ErrorToString(err))
-	// 			}
-	// 		}
-	// 	}
-	// 	return
-	// }
-
 	_, _, err = net.SplitHostPort(termAddress)
 	if err != nil {
 		svr.log.Warnf("term invalid address %s", err.Error())

@@ -52,7 +52,14 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 	if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
 		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
+
+		// ssh context contains the password only when it provided by the client.
+		// If it contains the password, the client is web terminal.
+		// If the clients is ssh client, the password is not provided in the context for security reason.
+		pass := ss.Context().Value(sshContextPasswordKey)
+		if password, ok := pass.(string); ok && password != "" {
+			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", password))
+		}
 	}
 
 	go func() {
