@@ -1252,7 +1252,6 @@ function showTags(config, args) {
             console.println(`Error: table '${tableName}' is not a tag table`);
             process.exit(1);
         }
-
         let meta = {
             hasSummarized: false,
             tagNameColumn: 'NAME'
@@ -1263,7 +1262,7 @@ function showTags(config, args) {
                 j.TYPE as TABLE_TYPE,
                 j.FLAG as TABLE_FLAG,
                 j.COLCOUNT as TABLE_COLCOUNT,
-                c.NAME as TAG_NAME
+                c.NAME as TAG_COLUMN_NAME
             FROM
                 M$SYS_USERS u,
                 M$SYS_TABLES j,
@@ -1281,7 +1280,7 @@ function showTags(config, args) {
             if ((result.TABLE_FLAG & machcli.TABLE_FLAG_SUMMARIZED) !== 0) {
                 meta.hasSummarized = true;
             }
-            meta.tagNameColumn = result.TAG_NAME;
+            meta.tagNameColumn = result.TAG_COLUMN_NAME;
         }
 
         let box = pretty.Table(config);

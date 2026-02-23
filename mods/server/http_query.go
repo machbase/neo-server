@@ -596,7 +596,20 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		isCancelled = true
 	}()
 
-	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo) bool {
+	desc, err := api.DescribeTable(ctx, conn, table, false)
+	if err != nil {
+		rsp.Success, rsp.Reason = false, err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if desc.Type != api.TableTypeTag {
+		rsp.Success, rsp.Reason = false, "not a tag table"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	api.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *api.TagInfo) bool {
 		if tag.Err != nil {
 			rsp.Success, rsp.Reason = false, tag.Err.Error()
 			return false
@@ -650,6 +663,20 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 	defer conn.Close()
+
+	desc, err := api.DescribeTable(ctx, conn, table, false)
+	if err != nil {
+		rsp.Success, rsp.Reason = false, err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if desc.Type != api.TableTypeTag {
+		rsp.Success, rsp.Reason = false, "not a tag table"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
 
 	nfo, err := api.TagStat(ctx, conn, table, tag)
 	if err != nil {

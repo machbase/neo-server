@@ -92,6 +92,10 @@ type TableDescription struct {
 	Flag     TableFlag           `json:"flag,omitempty"`
 	Columns  Columns             `json:"columns"`
 	Indexes  []*IndexDescription `json:"indexes"`
+
+	Summarized       bool   `json:"summarized"`
+	SummarizedColumn string `json:"summarizedColum,omitempty"`
+	TagNameColumn    string `json:"tagNameColumn,omitempty"`
 }
 
 // String returns string representation of table type.

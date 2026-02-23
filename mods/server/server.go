@@ -450,7 +450,11 @@ func (s *Server) startMachbaseCli() error {
 func (s *Server) AddServicePort(svc string, addr string) error {
 	svc = strings.ToLower(svc)
 	if strings.HasPrefix(addr, "tcp://") {
-		host, port, err := net.SplitHostPort(strings.TrimPrefix(addr, "tcp://"))
+		u, err := url.Parse(addr)
+		if err != nil {
+			return fmt.Errorf("%s address invalid, %s", svc, err.Error())
+		}
+		host, port, err := net.SplitHostPort(u.Host)
 		if err != nil {
 			return fmt.Errorf("%s host:port invalid syntax, %s", svc, err.Error())
 		}
@@ -485,13 +489,17 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 func (s *Server) preparePorts() error {
 	// port-check MACH
 	if HeadOnly {
-		s.AddServicePort("mach", fmt.Sprintf("tcp://%s", strings.TrimPrefix(s.DataDir, "machbase://")))
+		if err := s.AddServicePort("mach", fmt.Sprintf("tcp://%s", strings.TrimPrefix(s.DataDir, "machbase://"))); err != nil {
+			return fmt.Errorf("MACH port not available, %s", err.Error())
+		}
 	} else {
 		if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
 			return fmt.Errorf("MACH port not available, %s", err.Error())
 		} else {
 			machPort := fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
-			s.AddServicePort("mach", machPort)
+			if err := s.AddServicePort("mach", machPort); err != nil {
+				return fmt.Errorf("MACH port not available, %s", err.Error())
+			}
 		}
 	}
 	// port-check gRPC

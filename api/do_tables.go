@@ -240,6 +240,14 @@ func describe(ctx context.Context, conn Conn, name TableName, includeHiddenColum
 		}
 		col.DataType = col.Type.DataType()
 		d.Columns = append(d.Columns, col)
+
+		if col.Flag&ColumnFlagSummarized > 0 {
+			d.Summarized = true
+			d.SummarizedColumn = col.Name
+		}
+		if col.Flag&ColumnFlagTagName > 0 {
+			d.TagNameColumn = col.Name
+		}
 	}
 	rows.Close()
 	rows = nil

@@ -82,7 +82,14 @@ func toolMachbaseListTagsFunc(ctx context.Context, request mcp.CallToolRequest) 
 	}
 	defer conn.Close()
 
-	tags, err := api.ListTags(ctx, conn, table)
+	desc, err := api.DescribeTable(ctx, conn, table, false)
+	if err != nil {
+		return mcp.NewToolResultError("failed to describe table: " + err.Error()), nil
+	}
+	if desc.Type != api.TableTypeTag {
+		return mcp.NewToolResultError(fmt.Sprintf("table '%s' is not a tag table", table)), nil
+	}
+	tags, err := api.ListTags(ctx, conn, table, desc.TagNameColumn)
 	if err != nil {
 		return mcp.NewToolResultError("failed to list tags: " + err.Error()), nil
 	}

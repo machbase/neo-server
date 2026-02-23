@@ -578,19 +578,12 @@ func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 	if desc.Type != TableTypeTag {
 		return fmt.Errorf("table '%s' is not a tag table", tableName)
 	}
-	summarized := false
-	for _, c := range desc.Columns {
-		if c.Flag&ColumnFlagSummarized > 0 {
-			summarized = true
-			break
-		}
-	}
 	nrow := int64(0)
-	ListTagsWalk(ctx, conn, tableName, func(tag *TagInfo) bool {
+	ListTagsWalk(ctx, conn, tableName, desc.TagNameColumn, func(tag *TagInfo) bool {
 		if err = tag.Err; err != nil {
 			return false
 		}
-		tag.Summarized = summarized
+		tag.Summarized = desc.Summarized
 		if stat, err := TagStat(ctx, conn, tableName, tag.Name); err != nil {
 			// some tags may not have stat
 			// the err may be 'no rows in result set'

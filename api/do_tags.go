@@ -5,15 +5,15 @@ import (
 	"fmt"
 )
 
-func ListTagsSql(fullTable string) string {
+func ListTagsSql(fullTable string, tagNameColumn string) string {
 	database, user, table := TableName(fullTable).Split()
-	return fmt.Sprintf(`SELECT _ID, NAME FROM %s.%s._%s_META`, database, user, table)
+	return fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, user, table)
 }
 
-func ListTags(ctx context.Context, conn Conn, fullTable string) ([]*TagInfo, error) {
+func ListTags(ctx context.Context, conn Conn, fullTable string, tagNameColumn string) ([]*TagInfo, error) {
 	var tags []*TagInfo
 	database, user, table := TableName(fullTable).Split()
-	rows, err := conn.Query(ctx, ListTagsSql(fullTable))
+	rows, err := conn.Query(ctx, ListTagsSql(fullTable, tagNameColumn))
 	if err != nil {
 		return nil, err
 	}
@@ -30,8 +30,8 @@ func ListTags(ctx context.Context, conn Conn, fullTable string) ([]*TagInfo, err
 	return tags, nil
 }
 
-func ListTagsWalk(ctx context.Context, conn Conn, table string, callback func(*TagInfo) bool) {
-	rows, err := conn.Query(ctx, ListTagsSql(table))
+func ListTagsWalk(ctx context.Context, conn Conn, table string, tagNameColumn string, callback func(*TagInfo) bool) {
+	rows, err := conn.Query(ctx, ListTagsSql(table, tagNameColumn))
 	if err != nil {
 		callback(&TagInfo{Err: err})
 		return
@@ -48,7 +48,7 @@ func ListTagsWalk(ctx context.Context, conn Conn, table string, callback func(*T
 	}
 }
 
-func TagStatSql(fullTable string, tag string) string {
+func TagStatSql(fullTable string) string {
 	database, user, table := TableName(fullTable).Split()
 	return SqlTidy(`SELECT`,
 		`NAME, ROW_COUNT,`,
@@ -62,7 +62,7 @@ func TagStatSql(fullTable string, tag string) string {
 
 func TagStat(ctx context.Context, conn Conn, table string, tag string) (*TagStatInfo, error) {
 	database, user, table := TableName(table).Split()
-	sqlText := TagStatSql(table, tag)
+	sqlText := TagStatSql(table)
 	nfo := &TagStatInfo{
 		Database: database,
 		User:     user,

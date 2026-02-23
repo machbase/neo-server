@@ -55,10 +55,10 @@ type Config struct {
 	MaxOpenQuery       int
 	MaxOpenQueryFactor float64
 
-	// StatementReuse controls the statement reuse mode for the connection.
-	// Statement reuse can improve performance by reusing prepared statements for identical queries.
+	// StatementCache controls the statement cache mode for the connection.
+	// Statement cache can improve performance by reusing prepared statements for identical queries.
 	// It can be set for each connection using the ConnectOptionStatementCache option in the Connect method.
-	StatementReuse StatementReuseMode
+	StatementCache StatementReuseMode
 
 	// FetchRows is used to the default fetch rows if the option is not specified in Connect options.
 	// If the value is not specified or less than or equal to 0, the defaultFetchRows is used.
@@ -84,8 +84,8 @@ type Database struct {
 	maxConnsMutex sync.RWMutex
 	maxConnsChan  chan struct{}
 
-	statementReuseMode StatementReuseMode
-	fetchRows          int64
+	statementCache StatementReuseMode
+	fetchRows      int64
 }
 
 var _ api.Database = (*Database)(nil)
@@ -104,9 +104,8 @@ func NewDatabase(conf *Config) (*Database, error) {
 		alternativePort: conf.AlternativePort,
 		handle:          handle,
 		trustUsers:      map[string]string{},
-
-		statementReuseMode: conf.StatementReuse,
-		fetchRows:          conf.FetchRows,
+		statementCache:  conf.StatementCache,
+		fetchRows:       conf.FetchRows,
 	}
 	if ret.fetchRows <= 0 {
 		ret.fetchRows = defaultFetchRows
@@ -269,7 +268,7 @@ func (db *Database) connectionString(user string, password string, fetchRows int
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
 	var user, password string
-	var stmtReuse = db.statementReuseMode
+	var stmtReuse = db.statementCache
 	var fetchRows = db.fetchRows
 	var enabledIOMetrics bool = false
 
@@ -710,6 +709,15 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 		ret.stmtType = machnet.StmtType(typ)
 	}
 	ret.rowCount = stmt.rowCount
+	ret.columns = make(api.Columns, len(stmt.columnDesc))
+	for i, desc := range stmt.columnDesc {
+		ret.columns[i] = &api.Column{
+			Name:     desc.Name,
+			Length:   desc.Size,
+			Type:     desc.Type.ColumnType(),
+			DataType: desc.Type.DataType(),
+		}
+	}
 	if values, err := stmt.fetch(); err != nil {
 		if err == io.EOF {
 			// it means no row fetched
@@ -720,15 +728,6 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 		return ret
 	} else {
 		ret.values = values
-	}
-	ret.columns = make(api.Columns, len(stmt.columnDesc))
-	for i, desc := range stmt.columnDesc {
-		ret.columns[i] = &api.Column{
-			Name:     desc.Name,
-			Length:   desc.Size,
-			Type:     desc.Type.ColumnType(),
-			DataType: desc.Type.DataType(),
-		}
 	}
 	return ret
 }
@@ -1207,6 +1206,9 @@ func (r *Row) Columns() (api.Columns, error) {
 }
 
 func (r *Row) Scan(dest ...any) error {
+	if r.err == sql.ErrNoRows {
+		return r.err
+	}
 	if len(dest) > len(r.values) {
 		return api.ErrParamCount(len(r.values), len(dest))
 	}

@@ -352,7 +352,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 
 	// tags
 	tags := []*api.TagInfo{}
-	api.ListTagsWalk(ctx, conn, "TAG_DATA", func(tag *api.TagInfo) bool {
+	api.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *api.TagInfo) bool {
 		// TODO: MACHCLI-ERR-3, Communication link failure
 		require.NoError(t, tag.Err, "tags fail")
 		require.Greater(t, tag.Id, int64(0))
@@ -360,7 +360,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		tags = append(tags, tag)
 		return true
 	})
-	tags2, err := api.ListTags(ctx, conn, "TAG_DATA")
+	tags2, err := api.ListTags(ctx, conn, "TAG_DATA", "NAME")
 	require.NoError(t, err, "tags fail")
 	require.EqualValues(t, tags, tags2)
 
