@@ -7,7 +7,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
+	"github.com/machbase/neo-server/v8/api/machgo"
 )
 
 func Module(rt *goja.Runtime, module *goja.Object) {
@@ -29,7 +29,7 @@ type Config struct {
 type Database struct {
 	Ctx      context.Context
 	Cancel   context.CancelFunc
-	cli      *machcli.Database
+	cli      *machgo.Database
 	user     string
 	password string
 }
@@ -44,7 +44,7 @@ func NewDatabase(data string) (*Database, error) {
 	if err := json.Unmarshal([]byte(data), &obj); err != nil {
 		return nil, err
 	}
-	conf := &machcli.Config{
+	conf := &machgo.Config{
 		Host:         obj.Host,
 		Port:         obj.Port,
 		MaxOpenConn:  -1,
@@ -56,7 +56,7 @@ func NewDatabase(data string) (*Database, error) {
 	if obj.AlternativePort != 0 {
 		conf.AlternativePort = obj.AlternativePort
 	}
-	db, err := machcli.NewDatabase(conf)
+	db, err := machgo.NewDatabase(conf)
 	if err != nil {
 		return nil, err
 	}
@@ -78,14 +78,14 @@ func (db *Database) User() string {
 	return db.user
 }
 
-func (db *Database) Connect() (*machcli.Conn, error) {
+func (db *Database) Connect() (*machgo.Conn, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	conn, err := db.cli.Connect(ctx, api.WithPassword(db.user, db.password))
 	if err != nil {
 		return nil, err
 	}
-	return conn.(*machcli.Conn), nil
+	return conn.(*machgo.Conn), nil
 }
 
 func (db *Database) NormalizeTableName(tableName string) [3]string {
