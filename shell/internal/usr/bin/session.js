@@ -19,6 +19,7 @@ const listConfig = {
     command: 'list',
     usage: 'session list',
     description: 'List all sessions',
+    allowNegative: true,
     options: {
         help: optionHelp,
         all: { type: 'boolean', description: 'Include details' },
@@ -45,6 +46,7 @@ const statConfig = {
     command: 'stat',
     usage: 'session stat [options]',
     description: 'Show detailed information about sessions',
+    allowNegative: true,
     options: {
         help: optionHelp,
         reset: { type: 'boolean', description: 'Reset statistics after showing', default: false },
@@ -57,6 +59,7 @@ const limitConfig = {
     command: 'limit',
     usage: 'session limit',
     description: 'Get session limits',
+    allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
@@ -94,7 +97,6 @@ function doList(config, args) {
                 sess[s.id] = s;
             }
             let box = pretty.Table(config);
-            box.setTitle('V$NEO_SESSION');
             box.appendHeader(["ID", "USER_NAME", "USER_ID", "STMT_COUNT", "CREATED", "LAST", "LAST SQL"]);
             try {
                 db = newMachCliClient(config);
@@ -131,7 +133,6 @@ function doList(config, args) {
                 }
 
                 box = pretty.Table(config);
-                box.setTitle('V$SESSION');
                 box.appendHeader(["ID", "USER_NAME", "USER_ID", "CREATED", "TYPE", "USER_IP"]);
                 sessRows = conn.query(`SELECT ID, USER_NAME, USER_ID, USER_IP, CLIENT_TYPE, LOGIN_TIME FROM V$SESSION`);
                 for (const row of sessRows) {
