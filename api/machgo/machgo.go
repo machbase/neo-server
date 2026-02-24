@@ -24,14 +24,6 @@ const (
 	defaultFetchRows                = 1000
 )
 
-type StatementReuseMode int
-
-const (
-	StatementReuseOff StatementReuseMode = iota
-	StatementReuseOn
-	StatementReuseAuto
-)
-
 type Config struct {
 	Host string
 	Port int
@@ -58,7 +50,7 @@ type Config struct {
 	// StatementCache controls the statement cache mode for the connection.
 	// Statement cache can improve performance by reusing prepared statements for identical queries.
 	// It can be set for each connection using the ConnectOptionStatementCache option in the Connect method.
-	StatementCache StatementReuseMode
+	StatementCache api.StatementCacheMode
 
 	// FetchRows is used to the default fetch rows if the option is not specified in Connect options.
 	// If the value is not specified or less than or equal to 0, the defaultFetchRows is used.
@@ -84,7 +76,7 @@ type Database struct {
 	maxConnsMutex sync.RWMutex
 	maxConnsChan  chan struct{}
 
-	statementCache StatementReuseMode
+	statementCache api.StatementCacheMode
 	fetchRows      int64
 }
 
@@ -286,14 +278,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 				return nil, errors.New("trust user not found")
 			}
 		case *api.ConnectOptionStatementCache:
-			switch o.Mode {
-			case api.StatementCacheAuto:
-				stmtReuse = StatementReuseAuto
-			case api.StatementCacheOn:
-				stmtReuse = StatementReuseOn
-			default:
-				stmtReuse = StatementReuseOff
-			}
+			stmtReuse = o.Mode
 		case *api.ConnectOptionFetchRows:
 			fetchRows = o.Rows
 		case *api.ConnectOptionIOMetrics:
@@ -353,7 +338,7 @@ type Conn struct {
 	closeOnce  sync.Once
 	returnChan chan struct{}
 
-	queryStmtReuseMode     StatementReuseMode
+	queryStmtReuseMode     api.StatementCacheMode
 	queryStmtPoolMu        sync.Mutex
 	queryStmtFastKey       string
 	queryStmtFast          *Stmt
@@ -436,9 +421,9 @@ func queryHead(query string) string {
 
 func (c *Conn) shouldReuseStmtForQuery(query string) bool {
 	switch c.queryStmtReuseMode {
-	case StatementReuseOn:
+	case api.StatementCacheOn:
 		return true
-	case StatementReuseOff:
+	case api.StatementCacheOff:
 		return false
 	default:
 		switch queryHead(query) {
@@ -543,7 +528,7 @@ func (c *Conn) releaseQueryStmt(query string, stmt *Stmt, reusable bool) error {
 }
 
 func (c *Conn) closeQueryStmtPool() error {
-	if c.queryStmtReuseMode == StatementReuseOff {
+	if c.queryStmtReuseMode == api.StatementCacheOff {
 		return nil
 	}
 	c.queryStmtPoolMu.Lock()
