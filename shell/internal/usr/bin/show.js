@@ -1227,6 +1227,10 @@ function showRollupGap_since_8_0_60(config, conn) {
                 { align: pretty.Align.left, alignHeader: pretty.Align.left },  // NEXT_WAKEUP_TIME
             ]);
             for (const row of rows) {
+                let elapsed = pretty.Durations(row.LAST_ELAPSED * 1e6);
+                if (elapsed == '0ns') elapsed = '0ms'; // since last_elapsed is in milliseconds
+                let lastWakeTime = row.LAST_WAKEUP_TIME && row.LAST_WAKEUP_TIME.unixNano() > 0 ? row.LAST_WAKEUP_TIME : '';
+                let nextWakeTime = row.NEXT_WAKEUP_TIME && row.NEXT_WAKEUP_TIME.unixNano() > 0 ? row.NEXT_WAKEUP_TIME : '';
                 box.append([
                     row.USER_NAME,
                     row.SRC_TABLE,
@@ -1235,9 +1239,9 @@ function showRollupGap_since_8_0_60(config, conn) {
                     row.ROLLUP_END_RID,
                     pretty.Ints(row.GAP),
                     row.RUN_STATE,
-                    pretty.Durations(row.LAST_ELAPSED * 1e6),
-                    row.LAST_WAKEUP_TIME,
-                    row.NEXT_WAKEUP_TIME
+                    elapsed,
+                    lastWakeTime,
+                    nextWakeTime
                 ]);
             }
         } else {
@@ -1251,13 +1255,15 @@ function showRollupGap_since_8_0_60(config, conn) {
                 { align: pretty.Align.right, alignHeader: pretty.Align.left }, // LAST_ELAPSED
             ]);
             for (const row of rows) {
+                let elapsed = pretty.Durations(row.LAST_ELAPSED * 1e6);
+                if (elapsed == '0ns') elapsed = '0ms'; // since last_elapsed is in milliseconds
                 box.append([
                     row.SRC_TABLE,
                     row.ROLLUP_TABLE,
                     row.SRC_END_RID,
                     row.ROLLUP_END_RID,
                     pretty.Ints(row.GAP),
-                    pretty.Durations(row.LAST_ELAPSED * 1e6)
+                    elapsed
                 ]);
             }
         }
