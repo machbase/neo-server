@@ -96,23 +96,45 @@ function doList(config, args) {
             for (const s of lst) {
                 sess[s.id] = s;
             }
-            let box = pretty.Table(config);
-            box.appendHeader(["ID", "USER_NAME", "USER_ID", "STMT_COUNT", "CREATED", "LAST", "LAST SQL"]);
             try {
                 db = newMachCliClient(config);
                 conn = db.connect();
+
+                let box = pretty.Table(config);
+                box.setTimeformat('DATETIME');
+                box.appendHeader(["ID", "USER_NAME", "USER_ID", "LOGIN_TIME", "TYPE", "USER_IP"]);
+                sessRows = conn.query(`SELECT ID, USER_NAME, USER_ID, USER_IP, CLIENT_TYPE, LOGIN_TIME FROM V$SESSION`);
+                for (const row of sessRows) {
+                    if (!sess[row.ID]) {
+                        box.append([
+                            row.ID,
+                            row.USER_NAME,
+                            row.USER_ID,
+                            row.LOGIN_TIME,
+                            row.CLIENT_TYPE,
+                            row.USER_IP,
+                        ]);
+                    }
+                }
+                if (box.length() > 0) {
+                    console.println(box.render());
+                }
+
+                box = pretty.Table(config);
+                box.setTimeformat('DATETIME');
+                box.appendHeader(["ID", "USER_NAME", "USER_ID", "STMT_COUNT", "LOGIN_TIME", "LAST", "LAST SQL"]);
                 neoRows = conn.query(`SELECT ID, USER_NAME, USER_ID, STMT_COUNT FROM V$NEO_SESSION`);
                 for (row of neoRows) {
                     let o = sess[row.ID];
                     if (o) {
-                        let created = new Date(o.creTime).toLocaleString();
+                        let loginTime = new Date(o.loginTime).toLocaleString();
                         let last = new Date(o.latestSqlTime).toLocaleString();
                         box.append([
                             row.ID,
                             row.USER_NAME,
                             row.USER_ID,
                             row.STMT_COUNT,
-                            created,
+                            loginTime,
                             last,
                             o.lastSQL ? o.lastSQL : '',
                         ]);
@@ -132,22 +154,6 @@ function doList(config, args) {
                     console.println(box.render());
                 }
 
-                box = pretty.Table(config);
-                box.appendHeader(["ID", "USER_NAME", "USER_ID", "CREATED", "TYPE", "USER_IP"]);
-                sessRows = conn.query(`SELECT ID, USER_NAME, USER_ID, USER_IP, CLIENT_TYPE, LOGIN_TIME FROM V$SESSION`);
-                for (const row of sessRows) {
-                    if (!sess[row.ID]) {
-                        box.append([
-                            row.ID,
-                            row.USER_NAME,
-                            row.USER_ID,
-                            row.LOGIN_TIME,
-                            row.CLIENT_TYPE,
-                            row.USER_IP,
-                        ]);
-                    }
-                }
-                console.println(box.render());
             }
             catch (err) {
                 console.println('Error:', err.message, err.stack);
