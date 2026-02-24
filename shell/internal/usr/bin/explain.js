@@ -39,19 +39,16 @@ if (showHelp || (!args.sql) || args.sql.length === 0) {
     process.exit(showHelp ? 0 : 1);
 }
 
-explain(config, args.sql.join(' '), config.full);
-
-function explain(config, sqlText, full = false) {
-    let db, conn;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        let result = conn.explain(sqlText, full);
-        console.println(result);
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        conn && conn.close();
-        db && db.close();
-    }
+const sqlText = args.sql.join(' ');
+let db, conn;
+try {
+    db = newMachCliClient(config);
+    conn = db.connect();
+    let result = conn.explain(sqlText, config.full);
+    console.println(result);
+} catch (err) {
+    console.println("Error: ", err.message);
+} finally {
+    conn && conn.close();
+    db && db.close();
 }

@@ -84,7 +84,10 @@ actor.process = (line) => {
             firstField = "sql";
             fields = [firstField, line]; // normalize to sql.js command
         }
-        for (const cmd of ["sql", "sql.js"]) {
+        // Keep quoted strings intact for `sql` and `explain` commands;
+        // otherwise, the SQL text may be parsed incorrectly.
+        // Example: explain select * from table where name='John Doe'
+        for (const cmd of ["sql", "sql.js", "explain", "explain.js"]) {
             const firstFieldLower = firstField.toLowerCase();
             // e.g., sql, /usr/bin/sql, ../bin/sql.js, etc.
             if (firstFieldLower !== cmd && !firstFieldLower.endsWith('/' + cmd)) {
