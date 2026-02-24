@@ -96,7 +96,7 @@ func tcDriverQuery(t *testing.T) {
 func tcDriver(t *testing.T) {
 	t.Skip("skip test, require server process running")
 	sql.Register("local-unix", &machrpc.Driver{
-		ServerAddr: "unix://../../tmp/mach-grpc.sock",
+		ServerAddr: "unix:///tmp/machbase-neo-grpc-5655.sock",
 		User:       "sys",
 		Password:   "manager",
 	})

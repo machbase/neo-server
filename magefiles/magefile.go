@@ -210,10 +210,18 @@ func BuildX(target string, targetOS string, targetArch string) error {
 }
 
 func Test() error {
-	return TestN(0)
+	return runTest()
 }
 
 func TestN(p int) error {
+	return runTest("-p", strconv.Itoa(p))
+}
+
+func TestAll() error {
+	return runTest("-count=1")
+}
+
+func runTest(extraArgs ...string) error {
 	mg.Deps(CheckTmp)
 
 	env := map[string]string{
@@ -231,11 +239,7 @@ func TestN(p int) error {
 	testArgs := []string{
 		"test",
 	}
-	if p > 0 {
-		testArgs = append(testArgs,
-			"-p", strconv.Itoa(p),
-		)
-	}
+	testArgs = append(testArgs, extraArgs...)
 	testArgs = append(testArgs,
 		"-cover", "-coverprofile", "./tmp/cover.out",
 		"./booter/...",
