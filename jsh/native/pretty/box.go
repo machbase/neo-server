@@ -3,7 +3,6 @@ package pretty
 import (
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"strings"
 	"time"
@@ -44,6 +43,7 @@ type TableWriter struct {
 	columnTypes  []string    // to store column types for JSON rendering
 	renderCount  int         // count of render calls
 
+	didSetColumnConfig   bool
 	output               io.Writer
 	nextPauseRow         int64
 	pageHeight           int
@@ -71,7 +71,6 @@ func Table(opt TableOption) (table.Writer, error) {
 		return nil, err
 	}
 	ret.SetAutoIndex(false)
-
 	// initialize terminal size and page height
 	if ret.pause && IsTerminal() {
 		if ts, err := GetTerminalSize(); err == nil {
@@ -232,6 +231,9 @@ func (tw *TableWriter) SetOutput(o any) {
 }
 
 func (tw *TableWriter) SetColumnConfigs(configs []table.ColumnConfig) {
+	if tw.didSetColumnConfig {
+		return
+	}
 	if tw.rownum {
 		// insert ROWNUM column config at the beginning
 		rc := table.ColumnConfig{
@@ -241,8 +243,10 @@ func (tw *TableWriter) SetColumnConfigs(configs []table.ColumnConfig) {
 	}
 	for i := range configs {
 		configs[i].Number = i + 1
+		configs[i].Transformer = tw.transformer
 	}
 	tw.Writer.SetColumnConfigs(configs)
+	tw.didSetColumnConfig = true
 }
 
 func (tw *TableWriter) SetStringEscape(escape bool) {
@@ -345,53 +349,58 @@ func (tw *TableWriter) ResetRows() {
 	tw.Writer.ResetRows()
 }
 
-func (tw *TableWriter) Row(values ...interface{}) table.Row {
-	for i, value := range values {
-		if value == nil {
-			values[i] = tw.nullValue
-			continue
-		}
-		switch val := value.(type) {
-		case time.Time:
-			switch tw.timeformat {
-			case "ns":
-				values[i] = val.In(tw.tz).UnixNano()
-			case "us":
-				values[i] = val.In(tw.tz).UnixMicro()
-			case "ms":
-				values[i] = val.In(tw.tz).UnixMilli()
-			case "s":
-				values[i] = val.In(tw.tz).Unix()
-			default:
-				values[i] = val.In(tw.tz).Format(tw.timeformat)
-			}
-		case float32:
-			if tw.precision >= 0 {
-				factor := math.Pow(10, float64(tw.precision))
-				values[i] = float32(math.Round(float64(val)*factor) / factor)
-			}
-		case float64:
-			if tw.precision >= 0 {
-				factor := math.Pow(10, float64(tw.precision))
-				values[i] = math.Round(val*factor) / factor
-			}
-		case string:
-			if tw.stringEscape {
-				var result strings.Builder
-				for _, r := range val {
-					if unicode.IsPrint(r) {
-						result.WriteRune(r)
-					} else {
-						result.WriteString(fmt.Sprintf("\\u%04x", r))
-					}
-				}
-				values[i] = result.String()
-			} else {
-				values[i] = val
-			}
+func (tw *TableWriter) transformer(value any) string {
+	if value == nil {
+		return tw.nullValue
+	}
+	switch val := value.(type) {
+	case time.Time:
+		switch tw.timeformat {
+		case "ns":
+			return fmt.Sprint(val.In(tw.tz).UnixNano())
+		case "us":
+			return fmt.Sprint(val.In(tw.tz).UnixMicro())
+		case "ms":
+			return fmt.Sprint(val.In(tw.tz).UnixMilli())
+		case "s":
+			return fmt.Sprint(val.In(tw.tz).Unix())
 		default:
-			values[i] = value
+			return fmt.Sprint(val.In(tw.tz).Format(tw.timeformat))
 		}
+	case float64, float32:
+		if tw.precision >= 0 {
+			return fmt.Sprintf("%."+fmt.Sprint(tw.precision)+"f", val)
+		} else {
+			return fmt.Sprint(val)
+		}
+	case string:
+		if tw.stringEscape {
+			var result strings.Builder
+			for _, r := range val {
+				if unicode.IsPrint(r) {
+					result.WriteRune(r)
+				} else {
+					result.WriteString(fmt.Sprintf("\\u%04x", r))
+				}
+			}
+			return result.String()
+		} else {
+			return val
+		}
+	default:
+		return fmt.Sprint(val)
+	}
+}
+
+func (tw *TableWriter) Row(values ...interface{}) table.Row {
+	if !tw.didSetColumnConfig {
+		// set column config with transformer if not set by user
+		colConfigs := make([]table.ColumnConfig, len(values))
+		for i := range colConfigs {
+			colConfigs[i].Number = i + 1
+			colConfigs[i].Transformer = tw.transformer
+		}
+		tw.SetColumnConfigs(colConfigs)
 	}
 	tr := table.Row(values)
 	return tr

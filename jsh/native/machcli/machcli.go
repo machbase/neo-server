@@ -15,6 +15,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	exports := module.Get("exports").(*goja.Object)
 	exports.Set("NewDatabase", NewDatabase)
 	exports.Set("Unbox", api.Unbox)
+	exports.Set("RowsScan", RowsScan)
 }
 
 type Config struct {
@@ -99,4 +100,22 @@ func (db *Database) NormalizeTableName(tableName string) [3]string {
 		return [3]string{toks[0], toks[1], toks[2]}
 	}
 	return [3]string{"", "", tableName}
+}
+
+// This helper function is used to fetch rows that includes null values,
+// which are not properly-handled by goja's variadic arguments in rows.Scan(...buffer).
+func RowsScan(rows *machgo.Rows) ([]any, error) {
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	buffer, err := cols.MakeBuffer()
+	if err != nil {
+		return nil, err
+	}
+	err = rows.Scan(buffer...)
+	if err != nil {
+		return nil, err
+	}
+	return buffer, nil
 }

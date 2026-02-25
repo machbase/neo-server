@@ -94,8 +94,7 @@ class Rows {
         if (!hasNext) {
             return { done: true };
         }
-        let buffer = this.cols.makeBuffer();
-        this.rows.scan(...buffer);
+        let buffer = _machcli.RowsScan(this.rows);
         this.rownum += 1;
         let row = new Row(this.cols, buffer);
         return { value: row, done: false };
