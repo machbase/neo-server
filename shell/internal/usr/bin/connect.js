@@ -9,7 +9,7 @@ const options = {
 }
 
 const positionals = [
-    { name: 'connection', type: 'string', description: 'connection string to use' }
+    { name: 'connection', type: 'string', optional: true, description: '[[user:password@]host[:port]]' }
 ];
 
 let showHelp = true;
@@ -32,7 +32,7 @@ catch (err) {
 
 if (showHelp) {
     console.println(parseArgs.formatHelp({
-        usage: 'Usage: connect [options] <connection_string>',
+        usage: 'Usage: connect [options] [user:password@]host[:port]',
         options,
         positionals: positionals
     }));
@@ -46,8 +46,10 @@ env.set('NEOSHELL_USER', null);
 env.set('NEOSHELL_PASSWORD', null);
 
 if (connection && connection.length > 0) {
-    // connection [user:password@]host[:port]
+    // connect [user:password@]host[:port]
     const atIdx = connection.indexOf('@');
+    // connect user/password
+    const slashIdx = connection.indexOf('/');
     if (atIdx > 0) {
         const authPart = connection.substring(0, atIdx);
         const hostPart = connection.substring(atIdx + 1);
@@ -58,7 +60,11 @@ if (connection && connection.length > 0) {
         } else {
             env.set('NEOSHELL_USER', authPart);
         }
-        connection = hostPart;
+        connection = hostPart; // update "NEOSHELL_HOST"
+    } else if (slashIdx > 0) {
+        env.set('NEOSHELL_USER', connection.substring(0, slashIdx));
+        env.set('NEOSHELL_PASSWORD', connection.substring(slashIdx + 1));
+        connection = ""; // keep current "NEOSHELL_HOST"
     }
     if (connection && connection.length > 0) {
         env.set('NEOSHELL_HOST', connection);

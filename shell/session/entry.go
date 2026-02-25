@@ -61,7 +61,11 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 			neoUser = user.(string)
 		}
 		if pass, ok := conf.Env["NEOSHELL_PASSWORD"]; ok {
-			neoPassword = pass.(engine.SecureString).Value()
+			if sec, ok := pass.(engine.SecureString); ok {
+				neoPassword = sec.Value()
+			} else {
+				neoPassword = pass.(string)
+			}
 		}
 		if neoUser == "" {
 			neoUser, err = readLine("User", "SYS")
