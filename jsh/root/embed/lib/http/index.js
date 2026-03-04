@@ -342,6 +342,18 @@ class Server {
         this.raw.get(path, callback);
         return this;
     }
+    post(path, callback) {
+        this.raw.post(path, callback);
+        return this;
+    }
+    put(path, callback) {
+        this.raw.put(path, callback);
+        return this;
+    }
+    delete(path, callback) {
+        this.raw.delete(path, callback);
+        return this;
+    }
     static(path, root) {
         this.raw.static(path, root);
         return this;
