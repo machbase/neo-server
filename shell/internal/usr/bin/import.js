@@ -18,6 +18,7 @@ const options = {
     header: { type: 'string', description: "header option [skip|columns|none]", default: 'none' },
     nullValue: { type: 'string', description: "string to represent null values", default: 'NULL' },
     dryRun: { type: 'boolean', description: "run in dry mode", default: false },
+    verbose: { type: 'boolean', description: "verbose mode, it works only with --dry-run", default: false },
 }
 
 const positionals = [
@@ -53,7 +54,15 @@ if (showHelp || (!tableName) || tableName.length === 0) {
 
 const db = newMachCliClient(config);
 const conn = db.connect();
-let appender = conn.append(tableName);
+let appender;
+try {
+    appender = conn.append(tableName);
+} catch (err) {
+    console.println(`Error opening table '${tableName}': ${err.message}`);
+    conn.close();
+    db.close();
+    process.exit(1);
+}
 const colDefs = appender.columns();
 
 let columnNames = [];
@@ -76,7 +85,7 @@ switch (config.header) {
         csvParser.headers = true;
         break;
     case 'skip':
-        csvParser.headers = true;
+        csvParser.headers = columnNames;
         break;
     case 'none':
         csvParser.headers = columnNames;
@@ -104,7 +113,7 @@ const onHeader = (headers) => {
     for (let i = 0; i < headers.length; i++) {
         let found = -1;
         for (let j = 0; j < colDefs.length; j++) {
-            if (headers[i].toUpperCase() === colDefs[j].Name) {
+            if (headers[i].toUpperCase() === colDefs[j].name) {
                 found = j;
                 break;
             }
@@ -112,7 +121,11 @@ const onHeader = (headers) => {
         if (found === -1) {
             throw new Error(`Column '${headers[i]}' not found in table '${tableName}'`);
         } else {
-            columnNames.push(colDefs[found].name);
+            // do not use `colDefs[found].name` here
+            // since the `row` object of `inputFile.on('data', row)` has case-sensitive keys
+            // which are the same as the original header names in the input file,
+            // so we need to use the original header name instead of the column name in the table schema (colDefs[found].name)
+            columnNames.push(headers[i]);
             columnTypes.push(colDefs[found].type.toString());
         }
     }
@@ -120,12 +133,20 @@ const onHeader = (headers) => {
 
 appender = appender.withInputColumns(...columnNames);
 
-fs.createReadStream(config.input, { highWaterMark: 1024 })
-    .pipe(csvParser)
-    .on('headers', onHeader)
+let inputFile = fs.createReadStream(config.input, { highWaterMark: 4 * 1024 })
+if (config.compress === 'gzip') {
+    inputFile = inputFile.pipe(zlib.createGunzip());
+}
+inputFile = inputFile.pipe(csvParser);
+
+inputFile.on('headers', onHeader)
     .on('data', (row) => {
         nRows++;
         tracker.increment(1);
+        if (nRows == 1 && config.header === 'skip') {
+            // skip header row, do nothing
+            return;
+        }
         let rec = [];
         for (let i = 0; i < columnNames.length; i++) {
             let colName = columnNames[i];
@@ -146,7 +167,11 @@ fs.createReadStream(config.input, { highWaterMark: 1024 })
                 rec.push(value);
             }
         }
-        if (!config.dryRun) {
+        if (config.dryRun) {
+            if (config.verbose) {
+                console.println(`Dry run #${nRows}:`, rec);
+            }
+        } else {
             appender.append(...rec);
         }
     })
