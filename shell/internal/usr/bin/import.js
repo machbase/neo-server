@@ -79,7 +79,6 @@ const csvParser = parser.csv({
     separator: config.format === 'tsv' ? '\t' : ',',
 })
 
-
 switch (config.header) {
     case 'columns':
         csvParser.headers = true;
@@ -95,15 +94,36 @@ switch (config.header) {
 }
 
 let nRows = 0;
-let totalLines = fs.countLines(config.input);
+let totalSize = 0;
+fs.statSync(config.input).isFile() ? totalSize = fs.statSync(config.input).size : totalSize = 0;
 
 const tracker = pretty.Progress({ showPercentage: true }).tracker({
     label: `Importing ${config.input} into ${tableName}`,
-    total: totalLines,
+    total: totalSize,
 })
 
-const onHeader = (headers) => {
-    tracker.increment(1);
+appender = appender.withInputColumns(...columnNames);
+
+let inputStat = () => { return 0 };
+
+let inputFile = fs.createReadStream(config.input, { highWaterMark: 4 * 1024, encoding: 'buffer' })
+if (config.compress === 'gzip') {
+    const gunzip = zlib.createGunzip();
+    gunzip.on('error', function (err) {
+        console.println(`Error during decompression: ${err.message}`);
+        tracker.markAsErrored();
+        conn && conn.close();
+        db && db.close();
+        process.exit(1);
+    });
+    inputFile = inputFile.pipe(gunzip);
+    inputStat = () => { return gunzip.bytesWritten; }
+} else {
+    inputStat = () => { return csvParser.bytesWritten; }
+}
+inputFile = inputFile.pipe(csvParser);
+
+inputFile.on('headers', (headers) => {
     if (config.header !== 'columns') {
         // skip header row, do nothing
         return;
@@ -129,73 +149,63 @@ const onHeader = (headers) => {
             columnTypes.push(colDefs[found].type.toString());
         }
     }
-}
-
-appender = appender.withInputColumns(...columnNames);
-
-let inputFile = fs.createReadStream(config.input, { highWaterMark: 4 * 1024 })
-if (config.compress === 'gzip') {
-    inputFile = inputFile.pipe(zlib.createGunzip());
-}
-inputFile = inputFile.pipe(csvParser);
-
-inputFile.on('headers', onHeader)
-    .on('data', (row) => {
-        nRows++;
-        tracker.increment(1);
-        if (nRows == 1 && config.header === 'skip') {
-            // skip header row, do nothing
-            return;
+});
+inputFile.on('data', (row) => {
+    nRows++;
+    tracker.setValue(inputStat());
+    if (nRows == 1 && config.header === 'skip') {
+        // skip header row, do nothing
+        return;
+    }
+    let rec = [];
+    for (let i = 0; i < columnNames.length; i++) {
+        let colName = columnNames[i];
+        let colType = columnTypes[i];
+        let value = row[colName];
+        switch (colType) {
+            case 'datetime':
+                value = pretty.parseTime(value, config.timeformat, config.tz);
+                break;
+            case "double":
+                value = parseFloat(value);
+                break;
         }
-        let rec = [];
-        for (let i = 0; i < columnNames.length; i++) {
-            let colName = columnNames[i];
-            let colType = columnTypes[i];
-            let value = row[colName];
-            switch (colType) {
-                case 'datetime':
-                    value = pretty.parseTime(value, config.timeformat, config.tz);
-                    break;
-                case "double":
-                    value = parseFloat(value);
-                    break;
-            }
-            if (value === config.nullValue) {
-                rec.push(null);
-                continue;
-            } else {
-                rec.push(value);
-            }
-        }
-        if (config.dryRun) {
-            if (config.verbose) {
-                console.println(`Dry run #${nRows}:`, rec);
-            }
+        if (value === config.nullValue) {
+            rec.push(null);
+            continue;
         } else {
-            appender.append(...rec);
+            rec.push(value);
         }
-    })
-    .on('error', (err) => {
-        console.println(`Error during import: ${err.message}`);
-        tracker.markAsErrored();
-        conn && conn.close();
-        db && db.close();
-        process.exit(1);
-    })
-    .on('end', () => {
-        let result = appender.close();
-        if (tracker.value() < totalLines) {
-            tracker.setValue(totalLines);
+    }
+    if (config.dryRun) {
+        if (config.verbose) {
+            console.println(`Dry run #${nRows}:`, rec);
         }
-        tracker.markAsDone();
-        setTimeout(() => {
-            if (config.dryRun) {
-                console.println(`Import ${pretty.Ints(nRows)} rows dry run completed.`);
-            } else {
-                console.println(`Import ${pretty.Ints(nRows)} rows completed. ${result}`);
-            }
-        }, 100);
-        conn && conn.close();
-        db && db.close();
-    });
+    } else {
+        appender.append(...rec);
+    }
+});
+inputFile.on('error', (err) => {
+    console.println(`Error during import: ${err.message}`);
+    tracker.markAsErrored();
+    conn && conn.close();
+    db && db.close();
+    process.exit(1);
+});
+inputFile.on('end', () => {
+    let result = appender.close();
+    if (tracker.value() < totalSize) {
+        tracker.setValue(totalSize);
+    }
+    tracker.markAsDone();
+    setTimeout(() => {
+        if (config.dryRun) {
+            console.println(`Import ${pretty.Ints(nRows)} rows dry run completed.`);
+        } else {
+            console.println(`Import ${pretty.Ints(nRows)} rows completed. ${result}`);
+        }
+    }, 100);
+    conn && conn.close();
+    db && db.close();
+});
 

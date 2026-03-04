@@ -210,9 +210,74 @@ gzip.end();
 - `write(data)` - Write data to stream
 - `end([data])` - End the stream (optionally write final data)
 - `on(event, callback)` - Register event listener ('data', 'end', 'error')
-- `pipe(dest)` - Pipe to destination stream
+- `pipe(dest[, options])` - Pipe to destination stream (Node-style `end` option supported)
+- `bytesWritten` - Total input bytes accepted by this zlib stream
+- `bytesRead` - Total output bytes produced by this zlib stream
 - `flush()` - Flush pending data
 - `close()` - Close the stream
+
+#### stream.pipe(dest[, options])
+
+`pipe()` supports both Node-style writable stream objects and legacy Go writer-backed objects.
+
+**Parameters:**
+- `dest` (object): Destination stream/object
+    - Node-style writable: object with `write(chunk)` (and optional `end()`) methods
+    - Go writer-backed: object containing `writer` (`io.Writer`/`io.WriteCloser`)
+- `options` (object, optional): Pipe options
+    - `end` (boolean, default: `true`): When `true`, destination `end()` is called when source ends
+
+**Returns:** destination object (`dest`)
+
+```javascript
+const zlib = require('/lib/zlib');
+
+const gzip = zlib.createGzip();
+const dest = {
+    write(chunk) {
+        // handle compressed chunk
+        return true;
+    },
+    end() {
+        console.println('dest ended');
+    }
+};
+
+// Prevent automatic destination end
+gzip.pipe(dest, { end: false });
+gzip.write('hello');
+gzip.end();
+```
+
+#### Stream progress tracking
+
+For large-file processing, zlib streams expose running byte counters:
+
+- `bytesWritten`: compressed input bytes consumed by the stream
+- `bytesRead`: decompressed/output bytes produced by the stream
+
+These counters are updated during streaming, so they can be read inside `on('data')` callbacks.
+
+```javascript
+const fs = require('/lib/fs');
+const zlib = require('/lib/zlib');
+
+const totalCompressed = fs.statSync('/tmp/sample.csv.gz').size;
+const inFile = fs.createReadStream('/tmp/sample.csv.gz', { encoding: 'buffer' });
+const gunzip = zlib.createGunzip();
+
+inFile.pipe(gunzip);
+
+gunzip.on('data', (chunk) => {
+    const inRatio = totalCompressed > 0
+        ? (gunzip.bytesWritten / totalCompressed)
+        : 0;
+
+    // If uncompressed total size is known, use bytesRead for output progress
+    console.println('input progress:', (inRatio * 100).toFixed(1) + '%');
+    console.println('out bytes:', gunzip.bytesRead);
+});
+```
 
 #### createGunzip()
 Create a gzip decompression stream.
@@ -405,6 +470,32 @@ gzip.write('compression!');
 gzip.end();
 ```
 
+### Pipe gunzip output to CSV parser
+
+```javascript
+const fs = require('/lib/fs');
+const zlib = require('/lib/zlib');
+const parser = require('/lib/parser');
+
+const inFile = fs.createReadStream('/tmp/sample.csv.gz', {
+    highWaterMark: 2048,
+    encoding: 'buffer' // 중요: gzip 파일은 binary로 읽어야 함
+});
+
+const gunzip = zlib.createGunzip();
+const csvParser = parser.csv();
+
+const parsed = inFile.pipe(gunzip).pipe(csvParser);
+
+parsed.on('headers', (headers) => {
+    console.println('header:', headers.join('|'));
+});
+
+parsed.on('data', (row) => {
+    console.println('row:', row.NAME + ',' + row.AGE);
+});
+```
+
 ### Destructuring Imports
 
 ```javascript
@@ -480,7 +571,7 @@ zlib.gunzip(invalidData, (err, result) => {
 - No support for Brotli or Zstd compression (only gzip and deflate)
 - Options like compression level, window bits, etc. are not yet configurable
 - All operations use default compression settings
-- Stream API is simplified compared to Node.js streams
+- Stream API is simplified compared to Node.js streams (but `pipe(dest, { end })` is supported)
 - No support for promisified versions (use callbacks or sync methods)
 
 ## See Also

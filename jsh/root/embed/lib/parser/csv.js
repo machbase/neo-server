@@ -3,6 +3,29 @@
 const { Transform } = require('stream');
 const _parser = require('@jsh/parser');
 
+function byteLen(value) {
+    if (value == null) {
+        return 0;
+    }
+    if (typeof value === 'string') {
+        if (typeof TextEncoder !== 'undefined') {
+            return new TextEncoder().encode(value).length;
+        }
+        return value.length;
+    }
+    if (value.byteLength !== undefined) {
+        return value.byteLength;
+    }
+    if (Array.isArray(value)) {
+        return value.length;
+    }
+    const str = String(value);
+    if (typeof TextEncoder !== 'undefined') {
+        return new TextEncoder().encode(str).length;
+    }
+    return str.length;
+}
+
 /**
  * CSV Parser
  * Parses CSV data and emits row objects
@@ -32,12 +55,17 @@ class CSVParser extends Transform {
         this.headersParsed = false;
         this.columnHeaders = null;
         this.skippedLines = 0;
+        this.bytesWritten = 0;
+        this.bytesRead = 0;
     }
 
     _transform(chunk, encoding, callback) {
         try {
+            const incomingBytes = byteLen(chunk);
+            this.bytesWritten += incomingBytes;
+
             // Convert chunk to string
-            const str = chunk.toString('utf-8');
+            const str = (typeof chunk === 'string') ? chunk : chunk.toString('utf-8');
 
             // Use array buffering to avoid O(n²) string concatenation
             this.bufferChunks.push(str);
@@ -54,6 +82,9 @@ class CSVParser extends Transform {
         try {
             // Join any remaining buffered chunks and process
             const remaining = this.bufferChunks.join('');
+            if (remaining.length > 0) {
+                this.bytesRead += byteLen(remaining);
+            }
             if (remaining.trim().length > 0) {
                 this.processLine(remaining, callback);
             }
@@ -78,6 +109,7 @@ class CSVParser extends Transform {
         // Process each complete line
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            this.bytesRead += byteLen(line + '\n');
             const err = this.processLine(line);
             if (err) {
                 return callback(err);

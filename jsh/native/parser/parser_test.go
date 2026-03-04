@@ -404,6 +404,70 @@ func TestParserModule(t *testing.T) {
 				"Bob from Los Angeles",
 			},
 		},
+		{
+			name: "csv-progress-bytes",
+			script: `
+				const fs = require('/lib/fs');
+				const parser = require('/lib/parser');
+				
+				const csvContent = 'name,age\nAlice,30\nBob,25\n';
+				fs.writeFileSync('/work/progress.csv', csvContent);
+
+				const decoder = parser.csv();
+				let progressSeen = false;
+
+				fs.createReadStream('/work/progress.csv', { highWaterMark: 8 })
+					.pipe(decoder)
+					.on('data', (row) => {
+						if (decoder.bytesWritten > 0 && decoder.bytesRead > 0 && decoder.bytesRead <= decoder.bytesWritten) {
+							progressSeen = true;
+						}
+					})
+					.on('end', () => {
+						console.println('progress seen:', progressSeen);
+						console.println('input reached total:', decoder.bytesWritten === csvContent.length);
+						console.println('parsed reached total:', decoder.bytesRead === csvContent.length);
+						fs.unlinkSync('/work/progress.csv');
+					});
+			`,
+			output: []string{
+				"progress seen: true",
+				"input reached total: true",
+				"parsed reached total: true",
+			},
+		},
+		{
+			name: "ndjson-progress-bytes",
+			script: `
+				const fs = require('/lib/fs');
+				const parser = require('/lib/parser');
+				
+				const ndjsonContent = '{"id":1}\n{"id":2}\n{"id":3}\n';
+				fs.writeFileSync('/work/progress.ndjson', ndjsonContent);
+
+				const decoder = parser.ndjson();
+				let progressSeen = false;
+
+				fs.createReadStream('/work/progress.ndjson', { highWaterMark: 7 })
+					.pipe(decoder)
+					.on('data', (obj) => {
+						if (decoder.bytesWritten > 0 && decoder.bytesRead > 0 && decoder.bytesRead <= decoder.bytesWritten) {
+							progressSeen = true;
+						}
+					})
+					.on('end', () => {
+						console.println('progress seen:', progressSeen);
+						console.println('input reached total:', decoder.bytesWritten === ndjsonContent.length);
+						console.println('parsed reached total:', decoder.bytesRead === ndjsonContent.length);
+						fs.unlinkSync('/work/progress.ndjson');
+					});
+			`,
+			output: []string{
+				"progress seen: true",
+				"input reached total: true",
+				"parsed reached total: true",
+			},
+		},
 	}
 
 	for _, tc := range tests {

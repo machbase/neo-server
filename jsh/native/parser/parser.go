@@ -16,14 +16,30 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	m.Set("NewLineReader", NewLineReader)
 }
 
+type countingReader struct {
+	reader io.Reader
+	read   int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.read += int64(n)
+	}
+	return n, err
+}
+
 // CSVReader wraps Go's csv.Reader
 type CSVReader struct {
-	reader *csv.Reader
+	reader      *csv.Reader
+	counter     *countingReader
+	decodedRead int64
 }
 
 // NewCSVReader creates a new CSV reader
 func NewCSVReader(reader io.Reader, options map[string]interface{}) *CSVReader {
-	csvReader := csv.NewReader(reader)
+	counter := &countingReader{reader: reader}
+	csvReader := csv.NewReader(counter)
 
 	// Apply options
 	if separator, ok := options["separator"].(string); ok && len(separator) > 0 {
@@ -50,33 +66,71 @@ func NewCSVReader(reader io.Reader, options map[string]interface{}) *CSVReader {
 	}
 
 	return &CSVReader{
-		reader: csvReader,
+		reader:  csvReader,
+		counter: counter,
 	}
 }
 
 // Read reads one CSV record (row)
 func (r *CSVReader) Read() ([]string, error) {
-	return r.reader.Read()
+	rec, err := r.reader.Read()
+	if err != nil {
+		return rec, err
+	}
+	for i, field := range rec {
+		r.decodedRead += int64(len(field))
+		if i < len(rec)-1 {
+			r.decodedRead++
+		}
+	}
+	return rec, nil
 }
 
 // ReadAll reads all remaining CSV records
 func (r *CSVReader) ReadAll() ([][]string, error) {
-	return r.reader.ReadAll()
+	records, err := r.reader.ReadAll()
+	if err != nil {
+		return records, err
+	}
+	for _, rec := range records {
+		for i, field := range rec {
+			r.decodedRead += int64(len(field))
+			if i < len(rec)-1 {
+				r.decodedRead++
+			}
+		}
+	}
+	return records, nil
+}
+
+func (r *CSVReader) BytesWritten() int64 {
+	if r.counter == nil {
+		return 0
+	}
+	return r.counter.read
+}
+
+func (r *CSVReader) BytesRead() int64 {
+	return r.decodedRead
 }
 
 // LineReader reads lines from a reader
 type LineReader struct {
-	reader io.Reader
-	buffer *bytes.Buffer
-	eof    bool
+	reader      io.Reader
+	counter     *countingReader
+	buffer      *bytes.Buffer
+	eof         bool
+	decodedRead int64
 }
 
 // NewLineReader creates a new line reader
 func NewLineReader(reader io.Reader) *LineReader {
+	counter := &countingReader{reader: reader}
 	return &LineReader{
-		reader: reader,
-		buffer: &bytes.Buffer{},
-		eof:    false,
+		reader:  counter,
+		counter: counter,
+		buffer:  &bytes.Buffer{},
+		eof:     false,
 	}
 }
 
@@ -90,6 +144,7 @@ func (r *LineReader) ReadLine() (string, error) {
 	for {
 		// Check if we have a complete line in the buffer
 		if line, found := r.scanLine(); found {
+			r.decodedRead += int64(len(line))
 			return line, nil
 		}
 
@@ -98,6 +153,7 @@ func (r *LineReader) ReadLine() (string, error) {
 			if r.buffer.Len() > 0 {
 				line := r.buffer.String()
 				r.buffer.Reset()
+				r.decodedRead += int64(len(line))
 				return line, nil
 			}
 			return "", io.EOF
@@ -187,4 +243,15 @@ func (r *LineReader) Peek(n int) ([]byte, error) {
 	}
 
 	return data[:n], nil
+}
+
+func (r *LineReader) BytesWritten() int64 {
+	if r.counter == nil {
+		return 0
+	}
+	return r.counter.read
+}
+
+func (r *LineReader) BytesRead() int64 {
+	return r.decodedRead
 }

@@ -7,6 +7,8 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/native/parser"
+	"github.com/machbase/neo-server/v8/jsh/native/stream"
 	"github.com/machbase/neo-server/v8/jsh/root"
 )
 
@@ -72,7 +74,7 @@ func RunTest(t *testing.T, tc TestCase) {
 		conf := engine.Config{
 			Name:   tc.name,
 			Code:   tc.script,
-			FSTabs: []engine.FSTab{root.RootFSTab(), {MountPoint: "/tmp", Source: "../../../tmp/"}},
+			FSTabs: []engine.FSTab{root.RootFSTab(), {MountPoint: "/tmp", Source: t.TempDir()}},
 			Env:    tc.vars,
 			Reader: &bytes.Buffer{},
 			Writer: &bytes.Buffer{},
@@ -81,7 +83,10 @@ func RunTest(t *testing.T, tc TestCase) {
 		if err != nil {
 			t.Fatalf("Failed to create JSRuntime: %v", err)
 		}
+		jr.RegisterNativeModule("@jsh/stream", stream.Module)
+		jr.RegisterNativeModule("@jsh/parser", parser.Module)
 		jr.RegisterNativeModule("@jsh/zlib", Module)
+		jr.RegisterNativeModule("@jsh/process", jr.Process)
 		jr.RegisterNativeModule("@jsh/fs", jr.Filesystem)
 
 		if len(tc.input) > 0 {
@@ -342,6 +347,107 @@ func TestZlibPipe(t *testing.T) {
 			},
 		},
 		{
+			name: "pipe-with-options-end-false",
+			script: `
+				const zlib = require('@jsh/zlib');
+				
+				const gzip = zlib.createGzip();
+				let writeCount = 0;
+				let endCalled = false;
+				
+				const dest = {
+					write(chunk) {
+						writeCount++;
+						return true;
+					},
+					end() {
+						endCalled = true;
+					}
+				};
+
+				gzip.pipe(dest, { end: false });
+				gzip.write('hello');
+				gzip.end();
+
+				console.println('write called:', writeCount > 0);
+				console.println('end called:', endCalled);
+			`,
+			output: []string{
+				"write called: true",
+				"end called: false",
+			},
+		},
+		{
+			name: "pipe-with-options-default-end-true",
+			script: `
+				const zlib = require('@jsh/zlib');
+				
+				const gzip = zlib.createGzip();
+				let writeCount = 0;
+				let endCalled = false;
+				
+				const dest = {
+					write(chunk) {
+						writeCount++;
+						return true;
+					},
+					end() {
+						endCalled = true;
+					}
+				};
+
+				gzip.pipe(dest);
+				gzip.write('hello');
+				gzip.end();
+
+				console.println('write called:', writeCount > 0);
+				console.println('end called:', endCalled);
+			`,
+			output: []string{
+				"write called: true",
+				"end called: true",
+			},
+		},
+		{
+			name: "pipe-with-progress-bytes",
+			script: `
+				const zlib = require('@jsh/zlib');
+				
+				const text = 'NAME,AGE\nAlice,30\nBob,25\nCharlie,40\n';
+				const compressed = zlib.gzipSync(text);
+				const compressedTotal = compressed.byteLength;
+
+				const gunzip = zlib.createGunzip();
+				let outTotal = 0;
+				let sawProgress = false;
+
+				gunzip.on('data', function(chunk) {
+					outTotal += chunk.byteLength;
+					if (gunzip.bytesWritten > 0 && gunzip.bytesRead >= outTotal) {
+						sawProgress = true;
+					}
+				});
+
+				gunzip.on('end', function() {
+					console.println('input processed > 0:', gunzip.bytesWritten > 0);
+					console.println('output processed > 0:', gunzip.bytesRead > 0);
+					console.println('progress observed:', sawProgress);
+					console.println('input reached total:', gunzip.bytesWritten === compressedTotal);
+					console.println('output reached total:', gunzip.bytesRead === text.length);
+				});
+
+				gunzip.write(compressed);
+				gunzip.end();
+			`,
+			output: []string{
+				"input processed > 0: true",
+				"output processed > 0: true",
+				"progress observed: true",
+				"input reached total: true",
+				"output reached total: true",
+			},
+		},
+		{
 			name: "pipe-with-file",
 			script: `
 				const zlib = require('zlib');
@@ -368,9 +474,6 @@ func TestZlibPipe(t *testing.T) {
 					gzip.pipe(outFile);
 					gzip.write(testData);
 					gzip.end();
-					
-					// Explicitly close the output file
-					outFile.end();
 					
 					// Wait for file writing to complete
 					const start = Date.now();
@@ -433,6 +536,99 @@ func TestZlibPipe(t *testing.T) {
 				"write error occurred: false",
 				"decompressed data: Test data for gzip compression",
 				"verification success: true",
+				"read error occurred: false",
+			},
+		},
+		{
+			name: "pipe-with-csv-file",
+			script: `
+				const zlib = require('zlib');
+				const parser = require('parser');
+				const fs = require('fs');
+				
+				// Clean up any existing file
+				const outputPath = '/tmp/output_test.csv.gz';
+				try {
+					if (fs.existsSync(outputPath)) {
+						fs.unlinkSync(outputPath);
+					}
+				} catch (e) {
+					// ignore
+				}
+				
+				// Write compressed data
+				const gzip = zlib.createGzip();
+				const outFile = fs.createWriteStream(outputPath);
+
+				let writeErrorOccurred = false;
+				const testData = 'NAME,AGE\nAlice,30\nBob,25\n';
+
+				try {
+					gzip.pipe(outFile);
+					gzip.write(testData);
+					gzip.end();
+					
+					// Wait for file writing to complete
+					const start = Date.now();
+					while (Date.now() - start < 300) {
+						// wait for file to be fully written and flushed
+					}
+				} catch (e) {
+					writeErrorOccurred = true;
+					console.println('write exception:', e.message);
+				}
+
+				console.println('write error occurred:', writeErrorOccurred);
+				
+				// Read and verify compressed data using stream with pipe()
+				let readErrorOccurred = false;
+				
+				try {
+					// Create read stream for compressed file
+					const inFile = fs.createReadStream(outputPath, { highWaterMark: 2048, encoding: 'buffer' });
+					const gunzip = zlib.createGunzip();
+					const csvParser = parser.csv();
+
+					// Pipe input file through gunzip and then through CSV parser
+					const parsed = inFile.pipe(gunzip).pipe(csvParser);
+
+					parsed.on('error', function(err) {
+						readErrorOccurred = true;
+						console.println('read file error:', err.message);
+					});
+
+					parsed.on('headers', function(headers) {
+						console.println('header:', headers.join('|'));
+					});
+
+					parsed.on('data', function(rec) {
+						console.println('record:', rec.NAME + ',' + rec.AGE);
+					});
+
+					parsed.on('end', function() {
+						console.println('read error occurred:', readErrorOccurred);
+					});
+					
+					gunzip.on('error', function(err) {
+						readErrorOccurred = true;
+						console.println('gunzip error:', err.message);
+					});
+					
+					// Wait for decompression to complete
+					const start = Date.now();
+					while (Date.now() - start < 500) {
+						// wait for decompression to complete
+					}
+				} catch (e) {
+					readErrorOccurred = true;
+					console.println('read error:', e.message);
+				}
+			`,
+			output: []string{
+				"write error occurred: false",
+				"header: NAME|AGE",
+				"record: Alice,30",
+				"record: Bob,25",
 				"read error occurred: false",
 			},
 		},

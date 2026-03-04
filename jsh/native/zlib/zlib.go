@@ -134,6 +134,8 @@ func (z ZlibStreamWriter) Close() error {
 // exportZlibStream creates a JavaScript object with the stream methods
 func exportZlibStream(rt *goja.Runtime, stream *ZlibStream) goja.Value {
 	obj := rt.NewObject()
+	stream.obj = obj
+	stream.updateStats()
 
 	// Export writer for direct access
 	obj.Set("writer", ZlibStreamWriter{stream})
@@ -211,7 +213,20 @@ func exportZlibStream(rt *goja.Runtime, stream *ZlibStream) goja.Value {
 		}
 
 		dest := call.Argument(0)
-		result, err := stream.Pipe(dest.Export())
+		options := PipeOptions{End: true}
+		if len(call.Arguments) > 1 {
+			optArg := call.Argument(1)
+			if !goja.IsUndefined(optArg) && !goja.IsNull(optArg) {
+				if optObj := optArg.ToObject(rt); optObj != nil {
+					endValue := optObj.Get("end")
+					if endValue != nil && !goja.IsUndefined(endValue) && !goja.IsNull(endValue) {
+						options.End = endValue.ToBoolean()
+					}
+				}
+			}
+		}
+
+		result, err := stream.Pipe(dest, options)
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
@@ -256,6 +271,7 @@ func exportZlibStream(rt *goja.Runtime, stream *ZlibStream) goja.Value {
 // ZlibStream represents a compression/decompression stream
 type ZlibStream struct {
 	rt              *goja.Runtime
+	obj             *goja.Object
 	buffer          *bytes.Buffer
 	writer          io.WriteCloser
 	reader          io.ReadCloser
@@ -264,6 +280,17 @@ type ZlibStream struct {
 	onDataCallback  goja.Callable
 	onEndCallback   goja.Callable
 	onErrorCallback goja.Callable
+	bytesWritten    int64
+	bytesRead       int64
+	decompressPipeW *io.PipeWriter
+	decompressOutCh chan []byte
+	decompressErrCh chan error
+	decompressDone  chan struct{}
+	decompressInit  bool
+}
+
+type PipeOptions struct {
+	End bool
 }
 
 func NewGzipStream(rt *goja.Runtime, _ bool) *ZlibStream {
@@ -361,13 +388,39 @@ func (z *ZlibStream) Write(data interface{}) (int, error) {
 		if z.writer == nil {
 			return 0, fmt.Errorf("writer not initialized")
 		}
-		return z.writer.Write(buf)
-	} else {
-		// For decompression, we need to handle data differently
-		if z.buffer == nil {
-			z.buffer = &bytes.Buffer{}
+		n, err := z.writer.Write(buf)
+		if err != nil {
+			return n, err
 		}
-		return z.buffer.Write(buf)
+		z.bytesWritten += int64(n)
+		z.updateStats()
+
+		if z.onDataCallback != nil {
+			z.emitCompressedAvailable()
+		}
+
+		return n, nil
+	} else {
+		if err := z.ensureDecompressPipeline(); err != nil {
+			return 0, err
+		}
+
+		n, err := z.decompressPipeW.Write(buf)
+		if err != nil {
+			return n, err
+		}
+		z.bytesWritten += int64(n)
+		z.updateStats()
+
+		if err := z.drainDecompressedChunks(false); err != nil {
+			if z.onErrorCallback != nil {
+				errObj := z.rt.NewGoError(err)
+				z.onErrorCallback(goja.Undefined(), errObj)
+			}
+			return n, err
+		}
+
+		return n, nil
 	}
 }
 
@@ -385,32 +438,33 @@ func (z *ZlibStream) End(data ...interface{}) error {
 			return err
 		}
 
-		// Emit data event
-		if z.onDataCallback != nil {
-			result := z.buffer.Bytes()
-			bufObj := z.rt.NewArrayBuffer(result)
-			z.onDataCallback(goja.Undefined(), z.rt.ToValue(bufObj))
-		}
+		z.emitCompressedAvailable()
 
 		// Emit end event
 		if z.onEndCallback != nil {
 			z.onEndCallback(goja.Undefined())
 		}
-	} else if !z.isCompress && z.buffer != nil {
-		// Decompress the data
-		result, err := z.decompress(z.buffer.Bytes())
-		if err != nil {
+	} else if !z.isCompress {
+		if z.decompressPipeW != nil {
+			if err := z.decompressPipeW.Close(); err != nil {
+				if z.onErrorCallback != nil {
+					errObj := z.rt.NewGoError(err)
+					z.onErrorCallback(goja.Undefined(), errObj)
+				}
+				return err
+			}
+		}
+
+		if z.decompressDone != nil {
+			<-z.decompressDone
+		}
+
+		if err := z.drainDecompressedChunks(true); err != nil {
 			if z.onErrorCallback != nil {
 				errObj := z.rt.NewGoError(err)
 				z.onErrorCallback(goja.Undefined(), errObj)
 			}
 			return err
-		}
-
-		// Emit data event
-		if z.onDataCallback != nil {
-			bufObj := z.rt.NewArrayBuffer(result)
-			z.onDataCallback(goja.Undefined(), z.rt.ToValue(bufObj))
 		}
 
 		// Emit end event
@@ -450,32 +504,207 @@ func (z *ZlibStream) decompress(data []byte) ([]byte, error) {
 	return result.Bytes(), nil
 }
 
-// Pipe connects this stream to another stream
-func (z *ZlibStream) Pipe(dest interface{}) (interface{}, error) {
-	var writer io.Writer
+func (z *ZlibStream) updateStats() {
+	if z.obj == nil {
+		return
+	}
+	z.obj.Set("bytesWritten", z.bytesWritten)
+	z.obj.Set("bytesRead", z.bytesRead)
+}
 
-	// Check if dest is a map with "writer" key
-	if destMap, ok := dest.(map[string]any); ok {
-		if writerVal, exists := destMap["writer"]; exists {
-			// Check if the writer value implements io.Writer or io.WriteCloser
-			if w, ok := writerVal.(io.WriteCloser); ok {
+func (z *ZlibStream) emitCompressedAvailable() {
+	if z.onDataCallback == nil || z.buffer == nil || z.buffer.Len() == 0 {
+		return
+	}
+
+	chunk := make([]byte, z.buffer.Len())
+	copy(chunk, z.buffer.Next(z.buffer.Len()))
+	z.bytesRead += int64(len(chunk))
+	z.updateStats()
+	bufObj := z.rt.NewArrayBuffer(chunk)
+	z.onDataCallback(goja.Undefined(), z.rt.ToValue(bufObj))
+}
+
+func (z *ZlibStream) ensureDecompressPipeline() error {
+	if z.decompressInit {
+		return nil
+	}
+
+	pr, pw := io.Pipe()
+	z.decompressPipeW = pw
+	z.decompressOutCh = make(chan []byte, 16)
+	z.decompressErrCh = make(chan error, 1)
+	z.decompressDone = make(chan struct{})
+	z.decompressInit = true
+
+	go func() {
+		defer close(z.decompressDone)
+		defer close(z.decompressOutCh)
+
+		var rdr io.ReadCloser
+		var err error
+
+		switch z.streamType {
+		case "gunzip", "unzip":
+			rdr, err = gzip.NewReader(pr)
+			if err != nil {
+				select {
+				case z.decompressErrCh <- err:
+				default:
+				}
+				return
+			}
+		case "inflate", "inflateRaw":
+			rdr = flate.NewReader(pr)
+		default:
+			err = fmt.Errorf("unsupported decompression type: %s", z.streamType)
+			select {
+			case z.decompressErrCh <- err:
+			default:
+			}
+			return
+		}
+
+		defer rdr.Close()
+
+		readBuf := make([]byte, 32*1024)
+		for {
+			n, readErr := rdr.Read(readBuf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, readBuf[:n])
+				z.decompressOutCh <- chunk
+			}
+
+			if readErr != nil {
+				if readErr != io.EOF {
+					select {
+					case z.decompressErrCh <- readErr:
+					default:
+					}
+				}
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (z *ZlibStream) drainDecompressedChunks(waitAll bool) error {
+	if z.decompressOutCh == nil {
+		return nil
+	}
+
+	drainChunk := func(chunk []byte) {
+		if len(chunk) == 0 || z.onDataCallback == nil {
+			return
+		}
+		z.bytesRead += int64(len(chunk))
+		z.updateStats()
+		bufObj := z.rt.NewArrayBuffer(chunk)
+		z.onDataCallback(goja.Undefined(), z.rt.ToValue(bufObj))
+	}
+
+	if waitAll {
+		for chunk := range z.decompressOutCh {
+			drainChunk(chunk)
+		}
+	} else {
+		for {
+			select {
+			case chunk, ok := <-z.decompressOutCh:
+				if !ok {
+					goto CHECK_ERR
+				}
+				drainChunk(chunk)
+			default:
+				goto CHECK_ERR
+			}
+		}
+	}
+
+CHECK_ERR:
+	select {
+	case err := <-z.decompressErrCh:
+		return err
+	default:
+		return nil
+	}
+}
+
+// Pipe connects this stream to another stream
+func (z *ZlibStream) Pipe(dest interface{}, options ...PipeOptions) (interface{}, error) {
+	pipeOptions := PipeOptions{End: true}
+	if len(options) > 0 {
+		pipeOptions = options[0]
+	}
+
+	var writer io.Writer
+	var jsDestObj *goja.Object
+	var jsWrite goja.Callable
+	var jsEnd goja.Callable
+
+	if destVal, ok := dest.(goja.Value); ok {
+		if goja.IsUndefined(destVal) || goja.IsNull(destVal) {
+			return nil, fmt.Errorf("destination is required")
+		}
+
+		obj := destVal.ToObject(z.rt)
+		if obj == nil {
+			return nil, fmt.Errorf("destination is required")
+		}
+
+		if endFn, ok := goja.AssertFunction(obj.Get("end")); ok {
+			jsDestObj = obj
+			jsEnd = endFn
+		}
+
+		if writerVal := obj.Get("writer"); writerVal != nil && !goja.IsUndefined(writerVal) && !goja.IsNull(writerVal) {
+			exported := writerVal.Export()
+			if w, ok := exported.(io.WriteCloser); ok {
 				writer = w
-			} else if w, ok := writerVal.(io.Writer); ok {
+			} else if w, ok := exported.(io.Writer); ok {
 				writer = w
 			} else {
 				return nil, fmt.Errorf("map[\"writer\"] must be io.Writer or io.WriteCloser")
 			}
-		} else {
-			return nil, fmt.Errorf("map must contain \"writer\" key")
 		}
-	} else if w, ok := dest.(io.WriteCloser); ok {
-		// dest is directly an io.WriteCloser
-		writer = w
-	} else if w, ok := dest.(io.Writer); ok {
-		// dest is directly an io.Writer
-		writer = w
+
+		if writer == nil {
+			if writeFn, ok := goja.AssertFunction(obj.Get("write")); ok {
+				jsDestObj = obj
+				jsWrite = writeFn
+			} else if obj.ClassName() == "Object" {
+				return nil, fmt.Errorf("map must contain \"writer\" key")
+			} else {
+				return nil, fmt.Errorf("dest must be io.Writer, io.WriteCloser, JS writable stream, or map with \"writer\" key")
+			}
+		}
 	} else {
-		return nil, fmt.Errorf("dest must be io.Writer, io.WriteCloser, or map with \"writer\" key")
+		// Check if dest is a map with "writer" key
+		if destMap, ok := dest.(map[string]any); ok {
+			if writerVal, exists := destMap["writer"]; exists {
+				// Check if the writer value implements io.Writer or io.WriteCloser
+				if w, ok := writerVal.(io.WriteCloser); ok {
+					writer = w
+				} else if w, ok := writerVal.(io.Writer); ok {
+					writer = w
+				} else {
+					return nil, fmt.Errorf("map[\"writer\"] must be io.Writer or io.WriteCloser")
+				}
+			} else {
+				return nil, fmt.Errorf("map must contain \"writer\" key")
+			}
+		} else if w, ok := dest.(io.WriteCloser); ok {
+			// dest is directly an io.WriteCloser
+			writer = w
+		} else if w, ok := dest.(io.Writer); ok {
+			// dest is directly an io.Writer
+			writer = w
+		} else {
+			return nil, fmt.Errorf("dest must be io.Writer, io.WriteCloser, JS writable stream, or map with \"writer\" key")
+		}
 	}
 
 	// Set up piping by registering a data callback
@@ -505,7 +734,24 @@ func (z *ZlibStream) Pipe(dest interface{}) (interface{}, error) {
 
 			// Write to destination
 			if len(bytes) > 0 {
-				if _, err := writer.Write(bytes); err != nil {
+				var err error
+				if writer != nil {
+					_, err = writer.Write(bytes)
+				} else if jsWrite != nil {
+					chunk := z.rt.ToValue(z.rt.NewArrayBuffer(bytes))
+					if bufferCtor := z.rt.Get("Buffer"); bufferCtor != nil && !goja.IsUndefined(bufferCtor) && !goja.IsNull(bufferCtor) {
+						if bufferObj := bufferCtor.ToObject(z.rt); bufferObj != nil {
+							if fromFn, ok := goja.AssertFunction(bufferObj.Get("from")); ok {
+								if bufferValue, fromErr := fromFn(bufferCtor, chunk); fromErr == nil {
+									chunk = bufferValue
+								}
+							}
+						}
+					}
+					_, err = jsWrite(jsDestObj, chunk)
+				}
+
+				if err != nil {
 					// Emit error event if write fails
 					if z.onErrorCallback != nil {
 						z.rt.Interrupt(func() {
@@ -525,6 +771,25 @@ func (z *ZlibStream) Pipe(dest interface{}) (interface{}, error) {
 	}
 
 	z.On("data", callback)
+
+	if pipeOptions.End && jsEnd != nil {
+		endCallback := z.rt.ToValue(func(call goja.FunctionCall) goja.Value {
+			if _, err := jsEnd(jsDestObj); err != nil {
+				if z.onErrorCallback != nil {
+					z.rt.Interrupt(func() {
+						z.onErrorCallback(goja.Undefined(), z.rt.ToValue(err))
+					})
+				}
+			}
+			return goja.Undefined()
+		})
+
+		endFn, ok := goja.AssertFunction(endCallback)
+		if !ok {
+			return nil, fmt.Errorf("failed to create pipe end callback")
+		}
+		z.On("end", endFn)
+	}
 
 	return dest, nil
 }

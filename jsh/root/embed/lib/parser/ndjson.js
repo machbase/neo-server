@@ -3,6 +3,29 @@
 const { Transform } = require('stream');
 const _parser = require('@jsh/parser');
 
+function byteLen(value) {
+    if (value == null) {
+        return 0;
+    }
+    if (typeof value === 'string') {
+        if (typeof TextEncoder !== 'undefined') {
+            return new TextEncoder().encode(value).length;
+        }
+        return value.length;
+    }
+    if (value.byteLength !== undefined) {
+        return value.byteLength;
+    }
+    if (Array.isArray(value)) {
+        return value.length;
+    }
+    const str = String(value);
+    if (typeof TextEncoder !== 'undefined') {
+        return new TextEncoder().encode(str).length;
+    }
+    return str.length;
+}
+
 /**
  * NDJSON (Newline Delimited JSON) Parser
  * Parses newline-delimited JSON data and emits objects
@@ -16,12 +39,17 @@ class NDJSONParser extends Transform {
         this.bufferChunks = [];  // Array of string chunks for O(n) concatenation
         this.bufferLength = 0;   // Track total buffer length
         this.lineNumber = 0;
+        this.bytesWritten = 0;
+        this.bytesRead = 0;
     }
 
     _transform(chunk, encoding, callback) {
         try {
+            const incomingBytes = byteLen(chunk);
+            this.bytesWritten += incomingBytes;
+
             // Convert chunk to string
-            const str = chunk.toString('utf-8');
+            const str = (typeof chunk === 'string') ? chunk : chunk.toString('utf-8');
 
             // Use array buffering to avoid O(n²) string concatenation
             this.bufferChunks.push(str);
@@ -39,6 +67,7 @@ class NDJSONParser extends Transform {
             // Parse each complete line
             for (const line of lines) {
                 this.lineNumber++;
+                this.bytesRead += byteLen(line + '\n');
 
                 // Skip empty lines
                 const trimmed = line.trim();
@@ -74,7 +103,11 @@ class NDJSONParser extends Transform {
     _flush(callback) {
         try {
             // Join any remaining buffered chunks and process
-            const remaining = this.bufferChunks.join('').trim();
+            const remainingRaw = this.bufferChunks.join('');
+            if (remainingRaw.length > 0) {
+                this.bytesRead += byteLen(remainingRaw);
+            }
+            const remaining = remainingRaw.trim();
             if (remaining.length > 0) {
                 this.lineNumber++;
 
