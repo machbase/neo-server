@@ -157,6 +157,19 @@ func TestOSBasicFunctions(t *testing.T) {
 			},
 		},
 		{
+			name: "release",
+			script: `
+				const os = require('os');
+				const release = os.release();
+				console.println('has release:', release.length > 0);
+				console.println('is string:', typeof release === 'string');
+			`,
+			output: []string{
+				"has release: true",
+				"is string: true",
+			},
+		},
+		{
 			name: "hostname",
 			script: `
 				const os = require('os');

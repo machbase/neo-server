@@ -3,6 +3,23 @@
 const _fs = require('@jsh/fs');
 const EventEmitter = require('events');
 
+/*
+## Features
+
+- **Node.js Compatible API**: Familiar function names and behavior similar to Node.js fs module
+- **Synchronous Operations**: All operations are synchronous (Sync suffix on function names)
+- **Path Resolution**: Automatically resolves relative paths to absolute paths
+- **Error Handling**: Proper error codes (ENOENT, EACCES, etc.) for better error handling
+- **File Type Detection**: Check if path is file, directory, symlink, etc.
+
+## Compatibility Notes
+
+- All functions are synchronous (no async/callback versions yet)
+- Some advanced features may not be fully implemented depending on jsh's native filesystem capabilities
+- Error codes and messages follow Node.js conventions where possible
+- Path resolution assumes Unix-style paths
+*/
+
 // Polyfill for Buffer.isBuffer if not available
 if (!Buffer.isBuffer) {
     Buffer.isBuffer = function (obj) {

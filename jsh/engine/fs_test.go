@@ -729,8 +729,8 @@ func TestFS_Module(t *testing.T) {
 
 		// 1. Read a file
 		try {
-			console.println('1. Reading /lib/fs/index.js (first 100 chars):');
-			const content = fs.readFileSync('/lib/fs/index.js', 'utf8');
+			console.println('1. Reading /lib/fs.js (first 100 chars):');
+			const content = fs.readFileSync('/lib/fs.js', 'utf8');
 			console.println(content.substring(0, 100) + '...\n');
 		} catch (e) {
 			console.println('Error reading file:', e);
@@ -931,7 +931,7 @@ func TestFS_Module(t *testing.T) {
 		// Check that key operations completed successfully
 		expectedStrings := []string{
 			"=== FS Module Example ===",
-			"1. Reading /lib/fs/index.js (first 100 chars):",
+			"1. Reading /lib/fs.js (first 100 chars):",
 			"2. Creating directory /work/tmp:",
 			"Directory created",
 			"Checking if directory exists: true",
@@ -979,7 +979,7 @@ func TestFS_Module(t *testing.T) {
 }
 
 func TestFSModule(t *testing.T) {
-	lib_fs_index_js, err := os.ReadFile("../root/embed/lib/fs/index.js")
+	lib_fs_index_js, err := os.ReadFile("../root/embed/lib/fs.js")
 	if err != nil {
 		t.Fatalf("Failed to read fs module source: %v", err)
 	}
@@ -1037,11 +1037,11 @@ func TestFSModule(t *testing.T) {
 			name: "fs_read_file",
 			script: `
 				const fs = require('/lib/fs');
-				const content = fs.readFile('/lib/fs/index.js', 'utf8');
-				console.println('Read /lib/fs/index.js, length =', content.length);
+				const content = fs.readFile('/lib/fs.js', 'utf8');
+				console.println('Read /lib/fs.js, length =', content.length);
 			`,
 			output: []string{
-				fmt.Sprintf("Read /lib/fs/index.js, length = %d", len(lib_fs_index_js)),
+				fmt.Sprintf("Read /lib/fs.js, length = %d", len(lib_fs_index_js)),
 			},
 		},
 		{
