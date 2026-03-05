@@ -4,12 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/dop251/goja"
@@ -31,13 +28,9 @@ func NewClient() *Client {
 		client: &http.Client{
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					if strings.HasPrefix(addr, "unix:") {
-						socketPath, err := resolveUnixSocketPath(addr)
-						if err != nil {
-							return nil, err
-						}
+					if sp, ok := ctx.Value(unixSocketPathKey{}).(string); ok && sp != "" {
 						var dialer net.Dialer
-						return dialer.DialContext(ctx, "unix", socketPath)
+						return dialer.DialContext(ctx, "unix", sp)
 					} else {
 						var dialer net.Dialer
 						return dialer.DialContext(ctx, network, addr)
@@ -48,36 +41,36 @@ func NewClient() *Client {
 	}
 }
 
-func resolveUnixSocketPath(addr string) (string, error) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	if strings.HasPrefix(addr, "unix://../") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("unix://../"):]))
-	} else if strings.HasPrefix(addr, "../") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("../"):]))
-	} else if strings.HasPrefix(addr, "unix://./") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("unix://./"):]))
-	} else if strings.HasPrefix(addr, "./") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("./"):]))
-	} else if strings.HasPrefix(addr, "/") {
-		addr = fmt.Sprintf("unix://%s", addr)
-	}
-
-	path := strings.TrimPrefix(addr, "unix://")
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(pwd, path)
-	}
-	path = filepath.Clean(path)
-	return path, nil
-}
-
 type Client struct {
 	client *http.Client
 }
 
+// package-level typed key (avoid string key collisions)
+type unixSocketPathKey struct{}
+
 func (agent *Client) Do(req *Request) (*Response, error) {
+	if req.URL != nil && req.URL.Scheme == "http" && req.URL.Host == "unix" {
+		// Extract socket path from URL path.
+		// e.g. http://unix/tmp/very/long/test.sock/path ->
+		//      socket: /tmp/very/long/test.sock, request path: /path
+		path := req.URL.Path
+		if idx := strings.Index(path, ".sock"); idx != -1 {
+			sockEnd := idx + len(".sock")
+			if sockEnd == len(path) || path[sockEnd] == '/' {
+				socketPath := path[:sockEnd]
+				newPath := path[sockEnd:]
+				if newPath == "" {
+					newPath = "/"
+				}
+				req.URL.Path = newPath
+				req.URL.RawPath = ""
+
+				// Pass socket path to DialContext via request context.
+				ctx := context.WithValue(req.Context(), unixSocketPathKey{}, socketPath)
+				req.Request = req.WithContext(ctx)
+			}
+		}
+	}
 	rsp, err := agent.client.Do(req.Request)
 	if err != nil {
 		return nil, err
