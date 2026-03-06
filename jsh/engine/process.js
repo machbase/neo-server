@@ -12,7 +12,7 @@ class Process extends EventEmitter {
                 // |
                 // v
                 // this[key] = _process[key].bind(_process); 
-                this[key] = _process[key]; 
+                this[key] = _process[key];
             } else {
                 this[key] = _process[key];
             }

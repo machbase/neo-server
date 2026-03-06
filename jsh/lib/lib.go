@@ -1,6 +1,8 @@
 package lib
 
 import (
+	_ "embed"
+
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/lib/filter"
@@ -42,12 +44,24 @@ func addFiles(files map[string][]byte) {
 	}
 }
 
+//go:embed path.js
+var path_js []byte
+
+func libFiles() map[string][]byte {
+	return map[string][]byte{
+		"path.js": path_js,
+	}
+}
+
 // Enable registers all native modules to the given JSRuntime
 // If you want to link only specific modules, register them individually.
 func Enable(n *engine.JSRuntime) {
 	// engine modules
 	n.RegisterNativeModule("@jsh/process", n.Process)
+	addFiles(n.ProcessFiles())
 	n.RegisterNativeModule("@jsh/fs", n.Filesystem)
+	// lib files
+	addFiles(libFiles())
 
 	// native modules
 	n.RegisterNativeModule("@jsh/db", db.Module)
@@ -83,7 +97,6 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/stream", stream.Module)
 	addFiles(stream.Files())
 	n.RegisterNativeModule("@jsh/system", system.Module)
-	addFiles(system.Files())
 	n.RegisterNativeModule("@jsh/util", util.Module)
 	addFiles(util.Files())
 	n.RegisterNativeModule("@jsh/ws", ws.Module)

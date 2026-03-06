@@ -1,7 +1,6 @@
 package system
 
 import (
-	_ "embed"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -13,35 +12,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
-
-//go:embed child_process.js
-var child_process_js []byte
-
-//go:embed events.js
-var events_js []byte
-
-//go:embed fs.js
-var fs_js []byte
-
-//go:embed path.js
-var path_js []byte
-
-//go:embed process.js
-var process_js []byte
-
-//go:embed string_decoder.js
-var string_decoder_js []byte
-
-func Files() map[string][]byte {
-	return map[string][]byte{
-		"child_process.js":  child_process_js,
-		"events.js":         events_js,
-		"fs.js":             fs_js,
-		"path.js":           path_js,
-		"process.js":        process_js,
-		"string_decoder.js": string_decoder_js,
-	}
-}
 
 func Module(rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/system")
