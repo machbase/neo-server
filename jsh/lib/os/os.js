@@ -121,7 +121,7 @@ function uptime() {
 
 /**
  * Returns the system boot time as a timestamp
- * @returns 
+ * @returns {number} System boot time as a timestamp
  */
 function bootTime() {
     return _os.bootTime();
@@ -145,26 +145,57 @@ function hostInfo() {
     return _os.hostInfo();
 }
 
+/**
+ * Returns the number of CPU cores
+ * @param {boolean} [logical=false] - Whether to count logical cores (default: false)
+ * @returns {number} Number of CPU cores
+ */
 function cpuCounts(logical = false) {
     return _os.cpuCounts(logical);
 }
 
+/**
+ * Returns the CPU usage percentage
+ * @param {number} [intervalSec=0] - Interval in seconds to calculate CPU usage (default: 0)
+ * @param {boolean} [perCPU=false] - Whether to return per-CPU usage (default: false)
+ * @returns {number|Array<number>} CPU usage percentage or array of percentages per CPU
+ */
 function cpuPercent(intervalSec = 0, perCPU = false) {
     return _os.cpuPercent(intervalSec, perCPU);
 }
 
+/**
+ * Returns information about disk partitions
+ * @param {boolean} [all=false] - Whether to include all partitions (default: false)
+ * @returns {Array<Object>} Array of disk partition information
+ */
 function diskPartitions(all = false) {
     return _os.diskPartitions(all);
 }
 
+/**
+ * Returns information about disk usage for a given path
+ * @param {string} path - Path to check disk usage
+ * @returns {Object} Disk usage information
+ */
 function diskUsage(path) {
     return _os.diskUsage(path);
 }
 
+/**
+ * Returns information about disk I/O counters
+ * @param {Array<string>} [names=[]] - Names of disks to include (default: all)
+ * @returns {Object} Disk I/O counters information
+ */
 function diskIOCounters(names = []) {
     return _os.diskIOCounters(names);
 }
 
+/**
+ * Returns network protocol counters
+ * @param {Array<string>} [proto=[]] - Protocols to include (default: all)
+ * @returns {Object} Network protocol counters information
+ */
 function netProtoCounters(proto = []) {
     return _os.netProtoCounters(proto);
 }
