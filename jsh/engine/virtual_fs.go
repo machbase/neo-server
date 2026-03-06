@@ -41,9 +41,11 @@ func NewVirtualFS() *VirtualFS {
 	return &VirtualFS{files: make(map[string]*virtualFileEntry)}
 }
 
-// CreateFile adds a virtual file entry with caller-provided content and metadata.
+type VirtualFileContent []byte
+
+// AddFile adds a virtual file entry with caller-provided content and metadata.
 // The content must be []byte or string.
-func (vfs *VirtualFS) CreateFile(name string, content any, prop VirtualFileProperty) error {
+func (vfs *VirtualFS) AddFile(name string, content any, prop VirtualFileProperty) error {
 	rel, err := normalizeVirtualPath("create", name, false)
 	if err != nil {
 		return err
@@ -289,6 +291,8 @@ func normalizeVirtualProperty(prop VirtualFileProperty) VirtualFileProperty {
 
 func toVirtualBytes(content any) ([]byte, error) {
 	switch v := content.(type) {
+	case VirtualFileContent:
+		return []byte(v), nil
 	case []byte:
 		ret := make([]byte, len(v))
 		copy(ret, v)

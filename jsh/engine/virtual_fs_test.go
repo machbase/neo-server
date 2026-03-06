@@ -19,10 +19,10 @@ func TestVirtualFS_CreateAndReadFile(t *testing.T) {
 		Mode:       0600,
 	}
 
-	if err := vfs.CreateFile("docs/readme.txt", "hello", prop); err != nil {
+	if err := vfs.AddFile("docs/readme.txt", "hello", prop); err != nil {
 		t.Fatalf("CreateFile(string) failed: %v", err)
 	}
-	if err := vfs.CreateFile("docs/data.bin", []byte{1, 2, 3}, VirtualFileProperty{}); err != nil {
+	if err := vfs.AddFile("docs/data.bin", []byte{1, 2, 3}, VirtualFileProperty{}); err != nil {
 		t.Fatalf("CreateFile([]byte) failed: %v", err)
 	}
 
@@ -62,9 +62,9 @@ func TestVirtualFS_ReadDir(t *testing.T) {
 		}
 	}
 
-	must(vfs.CreateFile("app/main.js", "x", VirtualFileProperty{}))
-	must(vfs.CreateFile("app/lib/util.js", "y", VirtualFileProperty{}))
-	must(vfs.CreateFile("app/readme.md", "z", VirtualFileProperty{}))
+	must(vfs.AddFile("app/main.js", "x", VirtualFileProperty{}))
+	must(vfs.AddFile("app/lib/util.js", "y", VirtualFileProperty{}))
+	must(vfs.AddFile("app/readme.md", "z", VirtualFileProperty{}))
 
 	entries, err := fs.ReadDir(vfs, "app")
 	if err != nil {
@@ -101,8 +101,8 @@ func TestVirtualFS_RemoveFileAndTree(t *testing.T) {
 		}
 	}
 
-	must(vfs.CreateFile("root/a.txt", "a", VirtualFileProperty{}))
-	must(vfs.CreateFile("root/sub/b.txt", "b", VirtualFileProperty{}))
+	must(vfs.AddFile("root/a.txt", "a", VirtualFileProperty{}))
+	must(vfs.AddFile("root/sub/b.txt", "b", VirtualFileProperty{}))
 
 	must(vfs.Remove("root/a.txt"))
 	if _, err := fs.Stat(vfs, "root/a.txt"); err == nil {
@@ -118,20 +118,20 @@ func TestVirtualFS_RemoveFileAndTree(t *testing.T) {
 func TestVirtualFS_InvalidCreate(t *testing.T) {
 	vfs := NewVirtualFS()
 
-	if err := vfs.CreateFile(".", "x", VirtualFileProperty{}); err == nil {
+	if err := vfs.AddFile(".", "x", VirtualFileProperty{}); err == nil {
 		t.Fatalf("creating root as file should fail")
 	}
-	if err := vfs.CreateFile("a.txt", 123, VirtualFileProperty{}); err == nil {
+	if err := vfs.AddFile("a.txt", 123, VirtualFileProperty{}); err == nil {
 		t.Fatalf("unsupported content type should fail")
 	}
 }
 
 func TestVirtualFS_ConflictingPaths(t *testing.T) {
 	vfs := NewVirtualFS()
-	if err := vfs.CreateFile("a/b.txt", "x", VirtualFileProperty{}); err != nil {
+	if err := vfs.AddFile("a/b.txt", "x", VirtualFileProperty{}); err != nil {
 		t.Fatalf("CreateFile failed: %v", err)
 	}
-	if err := vfs.CreateFile("a", "y", VirtualFileProperty{}); err == nil {
+	if err := vfs.AddFile("a", "y", VirtualFileProperty{}); err == nil {
 		t.Fatalf("file cannot replace existing virtual directory")
 	}
 }
@@ -147,10 +147,10 @@ func TestVirtualFS_MountedOnNewFS(t *testing.T) {
 	}
 
 	usr := NewVirtualFS()
-	if err := usr.CreateFile("bin/neo", "#!/bin/sh\necho neo\n", VirtualFileProperty{Mode: 0755}); err != nil {
+	if err := usr.AddFile("bin/neo", "#!/bin/sh\necho neo\n", VirtualFileProperty{Mode: 0755}); err != nil {
 		t.Fatalf("virtual create failed: %v", err)
 	}
-	if err := usr.CreateFile("share/doc/readme.txt", "neo docs", VirtualFileProperty{}); err != nil {
+	if err := usr.AddFile("share/doc/readme.txt", "neo docs", VirtualFileProperty{}); err != nil {
 		t.Fatalf("virtual create failed: %v", err)
 	}
 

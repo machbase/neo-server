@@ -40,7 +40,7 @@ func LibFS() *engine.VirtualFS {
 
 func addFiles(files map[string][]byte) {
 	for name, content := range files {
-		libFS.CreateFile(name, content, engine.VirtualFileProperty{Mode: 0444})
+		libFS.AddFile(name, engine.VirtualFileContent(content), engine.VirtualFileProperty{Mode: 0444})
 	}
 }
 
