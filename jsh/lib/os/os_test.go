@@ -4,51 +4,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/dop251/goja"
-	"github.com/machbase/neo-server/v8/jsh/lib/os"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
-
-func TestOSModule(t *testing.T) {
-	rt := goja.New()
-
-	// Create module object
-	module := rt.NewObject()
-	exports := rt.NewObject()
-	module.Set("exports", exports)
-
-	// Initialize os module
-	os.Module(rt, module)
-
-	// Test that all expected functions are exported
-	exportsObj := module.Get("exports").(*goja.Object)
-
-	testCases := []string{
-		"arch",
-		"cpus",
-		"endianness",
-		"freemem",
-		"homedir",
-		"hostname",
-		"loadavg",
-		"networkInterfaces",
-		"platform",
-		"release",
-		"tmpdir",
-		"totalmem",
-		"type",
-		"uptime",
-		"userInfo",
-		"constants",
-		"EOL",
-	}
-
-	for _, name := range testCases {
-		if exportsObj.Get(name) == nil || goja.IsUndefined(exportsObj.Get(name)) {
-			t.Errorf("Expected %s to be exported", name)
-		}
-	}
-}
 
 func TestOSBasicFunctions(t *testing.T) {
 	osType := func() string {

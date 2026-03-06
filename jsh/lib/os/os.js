@@ -87,6 +87,10 @@ function release() {
     return _os.release();
 }
 
+function version() {
+    return _os.version();
+}
+
 /**
  * Returns the operating system's default directory for temporary files
  * @returns {string} Temp directory path
@@ -120,7 +124,7 @@ function uptime() {
 }
 
 /**
- * Returns the system boot time as a timestamp
+ * Returns the system boot time as a timestamp in seconds since the Unix epoch
  * @returns {number} System boot time as a timestamp
  */
 function bootTime() {
@@ -161,7 +165,11 @@ function cpuCounts(logical = false) {
  * @returns {number|Array<number>} CPU usage percentage or array of percentages per CPU
  */
 function cpuPercent(intervalSec = 0, perCPU = false) {
-    return _os.cpuPercent(intervalSec, perCPU);
+    const result = _os.cpuPercent(intervalSec, perCPU);
+    if (Array.isArray(result) && result.length === 1) {
+        return result[0];
+    }
+    return result;
 }
 
 /**
@@ -229,6 +237,7 @@ module.exports = {
     netProtoCounters,
     platform,
     release,
+    version,
     tmpdir,
     totalmem,
     type,

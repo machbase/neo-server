@@ -39,6 +39,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	m.Set("loadavg", func() interface{} { return loadavg() })
 	m.Set("platform", func() string { return platform() })
 	m.Set("release", func() string { return release() })
+	m.Set("version", func() string { return version() })
 	m.Set("tmpdir", func() string { return tmpdir() })
 	m.Set("totalmem", func() uint64 { return totalmem() })
 	m.Set("type", func() string { return ostype() })
@@ -128,20 +129,29 @@ func cpus() interface{} {
 		}
 
 		if i < len(times) {
+			// Convert seconds to milliseconds
 			cpuMap["times"] = map[string]interface{}{
-				"user": times[i].User * 1000,
-				"nice": times[i].Nice * 1000,
-				"sys":  times[i].System * 1000,
-				"idle": times[i].Idle * 1000,
-				"irq":  times[i].Irq * 1000,
+				"user":      times[i].User * 1000,
+				"sys":       times[i].System * 1000,
+				"idle":      times[i].Idle * 1000,
+				"nice":      times[i].Nice * 1000,
+				"iowait":    times[i].Iowait * 1000,
+				"irq":       times[i].Irq * 1000,
+				"steal":     times[i].Steal * 1000,
+				"guest":     times[i].Guest * 1000,
+				"guestNice": times[i].GuestNice * 1000,
 			}
 		} else {
 			cpuMap["times"] = map[string]interface{}{
-				"user": 0,
-				"nice": 0,
-				"sys":  0,
-				"idle": 0,
-				"irq":  0,
+				"user":      0,
+				"sys":       0,
+				"idle":      0,
+				"nice":      0,
+				"iowait":    0,
+				"irq":       0,
+				"steal":     0,
+				"guest":     0,
+				"guestNice": 0,
 			}
 		}
 
@@ -202,6 +212,14 @@ func release() string {
 		return ""
 	}
 	return info.KernelVersion
+}
+
+func version() string {
+	info, err := host.Info()
+	if err != nil {
+		return ""
+	}
+	return info.PlatformVersion
 }
 
 func tmpdir() string {

@@ -27,6 +27,9 @@ func init() {
 	fmt.Printf("TestRunner initialized with testDir: %s\n", testDir)
 }
 
+// TestCase defines a single test case for the JS runtime.
+// Output lines can contain "$VAR" which will be expanded using the runtime's environment variables.
+// Output lines can end with "..." to indicate that only the prefix needs to match.
 type TestCase struct {
 	Name        string
 	Script      string
