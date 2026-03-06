@@ -7,7 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	"github.com/machbase/neo-server/v8/jsh/native"
+	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
 )
 
@@ -60,6 +60,9 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 	if !conf.FSTabs.HasMountPoint("/") {
 		conf.FSTabs = append([]engine.FSTab{root.RootFSTab()}, conf.FSTabs...)
 	}
+	if !conf.FSTabs.HasMountPoint("/lib") {
+		conf.FSTabs = append(conf.FSTabs, lib.LibFSTab())
+	}
 	if !conf.FSTabs.HasMountPoint("/work") {
 		fsDir, _ := engine.DirFS(".")
 		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/work", FS: fsDir})
@@ -88,7 +91,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	native.Enable(engine)
+	lib.Enable(engine)
 
 	return engine.Main()
 }

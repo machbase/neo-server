@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	"github.com/machbase/neo-server/v8/jsh/native"
+	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/shell/internal"
 	"github.com/nyaosorg/go-readline-ny"
@@ -149,6 +149,9 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 	if !conf.FSTabs.HasMountPoint("/") {
 		conf.FSTabs = append([]engine.FSTab{root.RootFSTab()}, conf.FSTabs...)
 	}
+	if !conf.FSTabs.HasMountPoint("/lib") {
+		conf.FSTabs = append(conf.FSTabs, lib.LibFSTab())
+	}
 	if !conf.FSTabs.HasMountPoint("/usr") {
 		fsDir, _ := fs.Sub(internal.FsUsr, "usr")
 		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/usr", FS: fsDir})
@@ -181,7 +184,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	native.Enable(eng)
+	lib.Enable(eng)
 	eng.RegisterNativeModule("@jsh/session", Module)
 
 	// configure default session

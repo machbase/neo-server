@@ -16,8 +16,8 @@ import (
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	"github.com/machbase/neo-server/v8/jsh/native"
-	mod_dbms "github.com/machbase/neo-server/v8/jsh/native/db"
+	"github.com/machbase/neo-server/v8/jsh/lib"
+	mod_dbms "github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
@@ -143,7 +143,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		return nil, err
 	}
 	// register native modules
-	native.Enable(jr)
+	lib.Enable(jr)
 
 	// create ctx
 	ctx := &JSContext{
