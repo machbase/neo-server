@@ -120,6 +120,9 @@ func anyToPrintable(val any) any {
 	}
 	switch val := val.(type) {
 	default:
+		if s, ok := val.(fmt.Stringer); ok {
+			return s.String()
+		}
 		return fmt.Sprintf("%v(%T)", val, val)
 	case string:
 		return val

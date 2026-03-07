@@ -1,4 +1,4 @@
-package matrix
+package mat
 
 import (
 	_ "embed"
@@ -13,12 +13,12 @@ var matrix_js []byte
 
 func Files() map[string][]byte {
 	return map[string][]byte{
-		"matrix.js": matrix_js,
+		"mathx/mat.js": matrix_js,
 	}
 }
 
 func Module(rt *goja.Runtime, module *goja.Object) {
-	// m = require("@jsh/mat")
+	// m = require("@jsh/mathx/mat")
 	o := module.Get("exports").(*goja.Object)
 	// format("%v", m, opts...)
 	o.Set("format", Format(rt))

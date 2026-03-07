@@ -15,13 +15,13 @@ func TestFS_Module(t *testing.T) {
 		const fs = require('fs');
 		const process = require('process');
 
-		console.println('=== FS Module Example ===\n');
+		console.println('=== FS Module Example ===');
 
 		// 1. Read a file
 		try {
 			console.println('1. Reading /lib/fs.js (first 100 chars):');
 			const content = fs.readFileSync('/lib/fs.js', 'utf8');
-			console.println(content.substring(0, 100) + '...\n');
+			console.println(content.substring(0, 101) + '...\n');
 		} catch (e) {
 			console.println('Error reading file:', e);
 			process.exit(1);
@@ -176,7 +176,6 @@ func TestFS_Module(t *testing.T) {
 			console.println('13. Removing directory:');
 			fs.rmdirSync('/work/tmp');
 			console.println('Directory removed');
-			console.println();
 		} catch (e) {
 			console.println('Error:', e);
 			process.exit(1);
@@ -192,6 +191,14 @@ func TestFS_Module(t *testing.T) {
 		Output: []string{
 			"=== FS Module Example ===",
 			"1. Reading /lib/fs.js (first 100 chars):",
+			"'use strict';",
+			"",
+			"const _fs = require('@jsh/fs');",
+			"const EventEmitter = require('events');",
+			"",
+			"/*",
+			"## Feature...",
+			"",
 			"2. Creating directory /work/tmp:",
 			"Directory created",
 			"Checking if directory exists: true",
@@ -199,32 +206,89 @@ func TestFS_Module(t *testing.T) {
 			"File written successfully",
 			"Reading back /work/tmp/test.txt:",
 			"Hello from fs module!",
+			"",
 			"4. Appending to /work/tmp/test.txt:",
 			"File content after append:",
+			"Hello from fs module!",
 			"Appended line!",
+			"",
 			"5. Checking if files exist:",
 			"/work/tmp/test.txt exists: true",
 			"/work/tmp/nonexistent.txt exists: false",
+			"",
 			"6. Getting stats for /work/tmp/test.txt:",
 			"Is file: true",
 			"Is directory: false",
+			"Size: 37 bytes",
+			"Modified: ...",
+			"",
 			"7. Listing /lib directory:",
+			"  - .",
+			"  - ..",
+			"  - events.js",
+			"  - fs.js",
+			"  - http.js",
+			"  - machcli.js",
+			"  - mathx",
+			"  - mathx.js",
+			"  - mqtt.js",
+			"  - net.js",
+			"  - opcua.js",
+			"  - os.js",
+			"  - parser",
+			"  - path.js",
+			"  - pretty.js",
+			"  - process.js",
+			"  - readline.js",
+			"  - stream.js",
+			"  - util",
+			"  - uuid.js",
+			"  - ws.js",
+			"  - zlib.js",
+			"",
 			"8. Listing /lib with file types:",
+			"  [DIR] .",
+			"  [DIR] ..",
+			"  [FILE] events.js",
+			"  [FILE] fs.js",
+			"  [FILE] http.js",
+			"  [FILE] machcli.js",
+			"  [DIR] mathx",
+			"  [FILE] mathx.js",
+			"  [FILE] mqtt.js",
+			"  [FILE] net.js",
+			"  [FILE] opcua.js",
+			"  [FILE] os.js",
+			"  [DIR] parser",
+			"  [FILE] path.js",
+			"  [FILE] pretty.js",
+			"  [FILE] process.js",
+			"  [FILE] readline.js",
+			"  [FILE] stream.js",
+			"  [DIR] util",
+			"  [FILE] uuid.js",
+			"  [FILE] ws.js",
+			"  [FILE] zlib.js",
+			"",
 			"9. Creating nested directories /work/tmp/a/b/c:",
 			"Nested directories created",
 			"Removing nested directories:",
 			"Nested directories removed",
+			"",
 			"10. Copying /work/tmp/test.txt to /work/tmp/test-copy.txt:",
 			"File copied",
 			"Original and copy match: true",
+			"",
 			"11. Renaming /work/tmp/test-copy.txt to /work/tmp/test-renamed.txt:",
 			"File renamed",
 			"Old file exists: false",
 			"New file exists: true",
+			"",
 			"12. Cleaning up test files:",
 			"Test files removed",
 			"13. Removing directory:",
 			"Directory removed",
+			"",
 			"=== Example Complete ===",
 		},
 	}
@@ -233,7 +297,7 @@ func TestFS_Module(t *testing.T) {
 }
 
 func TestFSModule(t *testing.T) {
-	lib_fs_index_js, err := os.ReadFile("../root/embed/lib/fs.js")
+	lib_fs_index_js, err := os.ReadFile("./fs.js")
 	if err != nil {
 		t.Fatalf("Failed to read fs module source: %v", err)
 	}
@@ -242,7 +306,7 @@ func TestFSModule(t *testing.T) {
 		{
 			Name: "fs_resolve_path",
 			Script: `
-				const fs = require('@jsh/fs');
+				const fs = require('fs');
 				paths = [
 					'$HOME/../lib/baz',
 					'local.text',
@@ -255,8 +319,9 @@ func TestFSModule(t *testing.T) {
 					console.println(p, '=>', resolved);
 				}
 			`,
+			// $$HOME means don't expand $HOME in the expected output.
 			Output: []string{
-				"$HOME/../lib/baz => /lib/baz",
+				"$$HOME/../lib/baz => /lib/baz",
 				"local.text => local.text",
 				"/absolute/path => /absolute/path",
 				"./relative/path => relative/path",
@@ -266,7 +331,7 @@ func TestFSModule(t *testing.T) {
 		{
 			Name: "fs_resolve_abs_path",
 			Script: `
-				const fs = require('@jsh/fs');
+				const fs = require('fs');
 				paths = [
 					'$HOME/../lib/baz',
 					'local.text',
@@ -279,8 +344,9 @@ func TestFSModule(t *testing.T) {
 					console.println(p, '=>', resolved);
 				}
 			`,
+			// $$HOME means don't expand $HOME in the expected output.
 			Output: []string{
-				"$HOME/../lib/baz => /lib/baz",
+				"$$HOME/../lib/baz => /lib/baz",
 				"local.text => /work/local.text",
 				"/absolute/path => /absolute/path",
 				"./relative/path => /work/relative/path",
@@ -290,7 +356,7 @@ func TestFSModule(t *testing.T) {
 		{
 			Name: "fs_read_file",
 			Script: `
-				const fs = require('/lib/fs');
+				const fs = require('fs');
 				const content = fs.readFile('/lib/fs.js', 'utf8');
 				console.println('Read /lib/fs.js, length =', content.length);
 			`,

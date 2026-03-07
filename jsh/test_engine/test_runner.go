@@ -91,13 +91,18 @@ func RunTest(t *testing.T, tc TestCase) {
 			return
 		}
 		lines := strings.Split(gotOutput, "\n")
-		if len(lines) != len(tc.Output)+1 { // +1 for trailing newline
-			t.Fatalf("Expected %d output lines, got %d\n%s", len(tc.Output), len(lines)-1, gotOutput)
-		}
-
 		for i, expectedLine := range tc.Output {
+			if len(lines) <= i {
+				t.Fatalf("Expected at least %d lines of output, got %d\nmissing:\n%s", i+1, len(lines)-1, strings.Join(tc.Output[i:], "\n"))
+			}
+			// Expand env variables in expected line
 			if strings.Contains(expectedLine, "$") {
-				expectedLine = jr.Env.Expand(expectedLine)
+				str := strings.ReplaceAll(expectedLine, "$$", "_")
+				if strings.Contains(str, "$") {
+					expectedLine = jr.Env.Expand(expectedLine)
+				} else {
+					expectedLine = strings.ReplaceAll(expectedLine, "$$", "$")
+				}
 			}
 			// Support prefix matching with "..." suffix
 			if strings.HasSuffix(expectedLine, "...") {
@@ -108,6 +113,9 @@ func RunTest(t *testing.T, tc TestCase) {
 			} else if lines[i] != expectedLine {
 				t.Errorf("Output line %d: expected %q, got %q", i, expectedLine, lines[i])
 			}
+		}
+		if len(lines) > len(tc.Output)+1 { // +1 for trailing newline
+			t.Fatalf("Expected %d output lines, got %d\nextra:\n%s", len(tc.Output), len(lines)-1, strings.Join(lines[len(tc.Output):], "\n"))
 		}
 	})
 }

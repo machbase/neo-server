@@ -1,19 +1,68 @@
-package stats
+package mathx
 
 import (
+	_ "embed"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
 	"github.com/dop251/goja"
+	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
 	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"
 )
 
+//go:embed mathx.js
+var mathx_js []byte
+
+func Files() map[string][]byte {
+	return map[string][]byte{
+		"mathx.js": mathx_js,
+	}
+}
+
 func Module(rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
+	// m.arrange(begin, end, step) => returns []float64
+	o.Set("arrange", func(start, stop, step float64) goja.Value {
+		if step == 0 {
+			return rt.NewGoError(fmt.Errorf("arrange: step must not be 0"))
+		}
+		if start == stop {
+			return rt.NewGoError(fmt.Errorf("arrange: start and stop must not be equal"))
+		}
+		if start < stop && step < 0 {
+			return rt.NewGoError(fmt.Errorf("arrange: step must be positive"))
+		}
+		if start > stop && step > 0 {
+			return rt.NewGoError(fmt.Errorf("arrange: step must be negative"))
+		}
+		length := int(math.Abs((stop-start)/step)) + 1
+		arr := make([]float64, length)
+		for i := 0; i < length; i++ {
+			arr[i] = start + float64(i)*step
+		}
+		return rt.ToValue(arr)
+	})
+	// m.linspace(begin, end, count) => returns []float64
+	o.Set("linspace", func(start, stop float64, count int) goja.Value {
+		return rt.ToValue(nums.Linspace(start, stop, count))
+	})
+	// m.meshgrid(arr1, arr2) => returns [][]float64
+	o.Set("meshgrid", func(arr1, arr2 []float64) goja.Value {
+		len_x := len(arr1)
+		len_y := len(arr2)
+		arr := make([][]float64, len_x*len_y)
+		for x, v1 := range arr1 {
+			for y, v2 := range arr2 {
+				arr[x*len_y+y] = []float64{v1, v2}
+			}
+		}
+		return rt.ToValue(arr)
+	})
 	// arr = m.sort(arr)
 	o.Set("sort", func(arr []float64) goja.Value {
 		slices.Sort(arr)

@@ -16,12 +16,12 @@ var filter_js []byte
 
 func Files() map[string][]byte {
 	return map[string][]byte{
-		"filter.js": filter_js,
+		"mathx/filter.js": filter_js,
 	}
 }
 
 func Module(rt *goja.Runtime, module *goja.Object) {
-	// m = require("@jsh/filter")
+	// m = require("@jsh/mathx/filter")
 	o := module.Get("exports").(*goja.Object)
 
 	// avg = new Avg();

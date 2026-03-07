@@ -75,6 +75,19 @@ func TestOSBasicFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "version",
+			Script: `
+				const os = require('os');
+				const version = os.version();
+				console.println('has version:', version.length > 0);
+				console.println('is string:', typeof version === 'string');
+			`,
+			Output: []string{
+				"has version: true",
+				"is string: true",
+			},
+		},
+		{
 			Name: "hostname",
 			Script: `
 				const os = require('os');

@@ -16,13 +16,12 @@ var spatial_js []byte
 
 func Files() map[string][]byte {
 	return map[string][]byte{
-		"spatial.js": spatial_js,
+		"mathx/spatial.js": spatial_js,
 	}
 }
 
 func Module(r *js.Runtime, module *js.Object) {
 	m := &M{rt: r}
-	// m = require("spatial")
 	o := module.Get("exports").(*js.Object)
 	// m.haversine(lat1, lon1, lat2, lon2)
 	// m.haversine([lat1, lon1], [lat2, lon2])

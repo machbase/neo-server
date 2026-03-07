@@ -1,6 +1,6 @@
 'use strict';
 
-const _spatial = require('@jsh/spatial');
+const _spatial = require('@jsh/mathx/spatial');
 
 // Haversine formula to calculate the great-circle distance between two points
 // on the Earth's surface given their latitude and longitude in decimal degrees.

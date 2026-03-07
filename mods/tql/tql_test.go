@@ -1982,7 +1982,7 @@ func TestGeoJSON(t *testing.T) {
 					var lat = 37.497850;
 					var lon =  127.027756;
 					var name = "Gangnam-cross";
-					m = require("@jsh/spatial");
+					m = require("mathx/spatial");
 					var obj = m.parseGeoJSON({
 						type: "Feature",
 						geometry: {
@@ -2019,7 +2019,7 @@ func TestGeoJSON(t *testing.T) {
 			Name: "js-geojson-polygon",
 			Script: `
 				SCRIPT("js", {
-					m = require("@jsh/spatial");
+					m = require("mathx/spatial");
 					obj = m.parseGeoJSON({
 						type:"Feature",
 						geometry: {

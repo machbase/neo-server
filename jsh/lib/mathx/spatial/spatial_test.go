@@ -11,7 +11,7 @@ func TestHaversine(t *testing.T) {
 		{
 			Name: "js-haversine",
 			Script: `
-				m = require("spatial");
+				m = require("mathx/spatial");
 				//buenos aires
 				lat1 = -34.83333;
 				lon1 = -58.5166646;
@@ -26,7 +26,7 @@ func TestHaversine(t *testing.T) {
 		{
 			Name: "js-haversine-latlon",
 			Script: `
-				m = require("spatial");
+				m = require("mathx/spatial");
 				//buenos aires
 				coord1 = [-34.83333, -58.5166646];
 				//paris
@@ -39,7 +39,7 @@ func TestHaversine(t *testing.T) {
 		{
 			Name: "js-haversine-coordinates-1",
 			Script: `
-				m = require("spatial");
+				m = require("mathx/spatial");
 				//buenos aires
 				coord1 = [-34.83333, -58.5166646];
 				//paris
@@ -52,7 +52,7 @@ func TestHaversine(t *testing.T) {
 		{
 			Name: "js-haversine-cities",
 			Script: `
-				m = require("spatial");
+				m = require("mathx/spatial");
 				l = [
 					[   {city: "Rio de Janeiro", coord: [22.55, 43.12]},
 						{city: "Bangkok", coord: [13.45, 100.28]},
@@ -107,7 +107,7 @@ func TestSimplify(t *testing.T) {
 		{
 			Name: "js-simplify",
 			Script: `
-				m = require("spatial");
+				m = require("mathx/spatial");
 				points = [[0, 0], [1, 2], [2, 7], [3, 1], [4, 8], [5, 2], [6, 8], [7, 3], [8, 3], [9, 0]];
 				console.println(m.simplify(0, ...points));
 				console.println(m.simplify(2, ...points));

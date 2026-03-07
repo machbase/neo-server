@@ -1,4 +1,4 @@
-package matrix_test
+package mat_test
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ func TestVecDense(t *testing.T) {
 		{
 			Name: "vector_dim_cap_len",
 			Script: `
-				const m = require("matrix")
+				const m = require("mathx/mat")
 				v = new m.VecDense(3, [4, 5, 6]) 
 				console.println("dim:", v.dims().rows, v.dims().cols)
 				console.println("cap:", v.cap())
@@ -26,7 +26,7 @@ func TestVecDense(t *testing.T) {
 		{
 			Name: "vector_at_set",
 			Script: `
-				const m = require("matrix")
+				const m = require("mathx/mat")
 				v = new m.VecDense(3, [4, 5, 6])
 				at = v.at(2, 0)
 				console.println("at(2,0):", at)
@@ -49,7 +49,7 @@ func TestVecDense(t *testing.T) {
 		{
 			Name: "vec",
 			Script: `
-				const m = require("matrix")
+				const m = require("mathx/mat")
 				v = new m.VecDense(3, [1.0, 2.0, 3.0])
 				console.println("dim:", v.dims().rows, v.dims().cols)
 				console.println("cap:", v.cap())
@@ -87,7 +87,7 @@ func TestDenseMat(t *testing.T) {
 		{
 			Name: "mat",
 			Script: `
-				const m = require("matrix")
+				const m = require("mathx/mat")
 				A = new m.Dense(4, 3, [
 					5.0e4, 1.0e4, 6.0e4,
 					2.0e4, 2.5e4, 1.0e3,

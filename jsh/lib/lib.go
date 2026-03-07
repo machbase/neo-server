@@ -5,11 +5,13 @@ import (
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib/db"
-	"github.com/machbase/neo-server/v8/jsh/lib/filter"
-	"github.com/machbase/neo-server/v8/jsh/lib/generator"
 	"github.com/machbase/neo-server/v8/jsh/lib/http"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
-	"github.com/machbase/neo-server/v8/jsh/lib/matrix"
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx"
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx/filter"
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx/mat"
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx/simplex"
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx/spatial"
 	"github.com/machbase/neo-server/v8/jsh/lib/mqtt"
 	"github.com/machbase/neo-server/v8/jsh/lib/net"
 	"github.com/machbase/neo-server/v8/jsh/lib/opcua"
@@ -19,11 +21,10 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/publisher"
 	"github.com/machbase/neo-server/v8/jsh/lib/readline"
 	"github.com/machbase/neo-server/v8/jsh/lib/shell"
-	"github.com/machbase/neo-server/v8/jsh/lib/spatial"
-	"github.com/machbase/neo-server/v8/jsh/lib/stats"
 	"github.com/machbase/neo-server/v8/jsh/lib/stream"
 	"github.com/machbase/neo-server/v8/jsh/lib/system"
 	"github.com/machbase/neo-server/v8/jsh/lib/util"
+	"github.com/machbase/neo-server/v8/jsh/lib/uuid"
 	"github.com/machbase/neo-server/v8/jsh/lib/ws"
 	"github.com/machbase/neo-server/v8/jsh/lib/zlib"
 )
@@ -67,14 +68,20 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/db", db.Module)
 	n.RegisterNativeModule("@jsh/filter", filter.Module)
 	addFiles(filter.Files())
-	n.RegisterNativeModule("@jsh/generator", generator.Module)
-	addFiles(generator.Files())
 	n.RegisterNativeModule("@jsh/http", http.Module)
 	addFiles(http.Files())
 	n.RegisterNativeModule("@jsh/machcli", machcli.Module)
 	addFiles(machcli.Files())
-	n.RegisterNativeModule("@jsh/matrix", matrix.Module)
-	addFiles(matrix.Files())
+	n.RegisterNativeModule("@jsh/mathx", mathx.Module)
+	addFiles(mathx.Files())
+	n.RegisterNativeModule("@jsh/mathx/mat", mat.Module)
+	addFiles(mat.Files())
+	n.RegisterNativeModule("@jsh/mathx/filter", filter.Module)
+	addFiles(filter.Files())
+	n.RegisterNativeModule("@jsh/mathx/simplex", simplex.Module)
+	addFiles(simplex.Files())
+	n.RegisterNativeModule("@jsh/mathx/spatial", spatial.Module)
+	addFiles(spatial.Files())
 	n.RegisterNativeModule("@jsh/mqtt", mqtt.Module)
 	addFiles(mqtt.Files())
 	n.RegisterNativeModule("@jsh/net", net.Module)
@@ -91,9 +98,6 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/readline", readline.Module)
 	addFiles(readline.Files())
 	n.RegisterNativeModule("@jsh/shell", shell.Module)
-	n.RegisterNativeModule("@jsh/spatial", spatial.Module)
-	addFiles(spatial.Files())
-	n.RegisterNativeModule("@jsh/stats", stats.Module)
 	n.RegisterNativeModule("@jsh/stream", stream.Module)
 	addFiles(stream.Files())
 	n.RegisterNativeModule("@jsh/system", system.Module)
@@ -101,6 +105,8 @@ func Enable(n *engine.JSRuntime) {
 	addFiles(util.Files())
 	n.RegisterNativeModule("@jsh/ws", ws.Module)
 	addFiles(ws.Files())
+	n.RegisterNativeModule("@jsh/uuid", uuid.Module)
+	addFiles(uuid.Files())
 	n.RegisterNativeModule("@jsh/zlib", zlib.Module)
 	addFiles(zlib.Files())
 }

@@ -5,7 +5,7 @@
 **Usage example**
 
 ```js
-const { arrange } = require("@jsh/generator");
+const { arrange } = require("@jsh/mathx");
 const m = require("@jsh/filter")
 const avg = new m.Avg();
 for( x of arrange(10, 30, 10) ) {
@@ -22,7 +22,7 @@ for( x of arrange(10, 30, 10) ) {
 **Usage example**
 
 ```js
-const { linspace } = require("@jsh/generator");
+const { linspace } = require("@jsh/mathx");
 const m = require("@jsh/filter")
 const movAvg = new m.MovAvg(10);
 for( x of linspace(0, 100, 100) ) {
@@ -45,7 +45,7 @@ for( x of linspace(0, 100, 100) ) {
 **Usage example**
 
 ```js
-const { arrange, Simplex } = require("@jsh/generator");
+const { arrange, Simplex } = require("@jsh/mathx");
 const m = require("@jsh/filter")
 const lpf = new m.Lowpass(0.3);
 const simplex = new Simplex(1);
@@ -111,7 +111,7 @@ for( x of [1.3, 10.2, 5.0, 3.4] ) {
 ```js
 SCRIPT({
     const { now } = require("@jsh/system");
-    const { arrange, Simplex } = require("@jsh/generator");
+    const { arrange, Simplex } = require("@jsh/mathx");
     const m = require("@jsh/filter")
     const simplex = new Simplex(1234);
     const kalmanFilter = new m.Kalman(0.1, 0.001, 1.0);

@@ -1,4 +1,4 @@
-package matrix_test
+package mat_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ func TestFormat(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "format",
-			Script: `const m = require("@jsh/matrix")
+			Script: `const m = require("mathx/mat")
 				A = new m.Dense(100, 100)
 				for (let i = 0; i < 100; i++) {
 					for (let j = 0; j < 100; j++) {

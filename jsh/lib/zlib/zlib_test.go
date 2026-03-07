@@ -59,7 +59,7 @@ func TestZlibSync(t *testing.T) {
 		{
 			Name: "gzipSync-gunzipSync",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				const testData = "Hello, World! This is a test string for compression.";
 				
 				const compressed = zlib.gzipSync(testData);
@@ -80,7 +80,7 @@ func TestZlibSync(t *testing.T) {
 		{
 			Name: "deflateSync-inflateSync",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				const testData = "Test data for deflate compression";
 				
 				const compressed = zlib.deflateSync(testData);
@@ -99,7 +99,7 @@ func TestZlibSync(t *testing.T) {
 		{
 			Name: "deflateRawSync-inflateRawSync",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				const testData = "Raw deflate test";
 				
 				const compressed = zlib.deflateRawSync(testData);
@@ -115,7 +115,7 @@ func TestZlibSync(t *testing.T) {
 		{
 			Name: "constants",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				const c = zlib.constants;
 				
 				console.println('Z_NO_FLUSH:', typeof c.Z_NO_FLUSH);
@@ -131,7 +131,7 @@ func TestZlibSync(t *testing.T) {
 		{
 			Name: "destructuring",
 			Script: `
-				const { gzipSync, gunzipSync, constants } = require('@jsh/zlib');
+				const { gzipSync, gunzipSync, constants } = require('zlib');
 				
 				const data = "test";
 				const compressed = gzipSync(data);
@@ -158,7 +158,7 @@ func TestZlibStream(t *testing.T) {
 		{
 			Name: "createGzip-stream-methods",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				const gzip = zlib.createGzip();
 				
 				console.println('has write:', typeof gzip.write);
@@ -176,7 +176,7 @@ func TestZlibStream(t *testing.T) {
 		{
 			Name: "createGunzip-stream-methods",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				const gunzip = zlib.createGunzip();
 				
 				console.println('has write:', typeof gunzip.write);
@@ -192,7 +192,7 @@ func TestZlibStream(t *testing.T) {
 		{
 			Name: "createDeflate-createInflate",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				console.println('createDeflate:', typeof zlib.createDeflate);
 				console.println('createInflate:', typeof zlib.createInflate);
@@ -220,7 +220,7 @@ func TestZlibPipe(t *testing.T) {
 		{
 			Name: "pipe-with-invalid-dest",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				const gzip = zlib.createGzip();
 				
@@ -245,7 +245,7 @@ func TestZlibPipe(t *testing.T) {
 		{
 			Name: "pipe-with-invalid-type",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				const gzip = zlib.createGzip();
 				
@@ -270,7 +270,7 @@ func TestZlibPipe(t *testing.T) {
 		{
 			Name: "pipe-with-null",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				const gzip = zlib.createGzip();
 				
@@ -291,7 +291,7 @@ func TestZlibPipe(t *testing.T) {
 		{
 			Name: "pipe-with-options-end-false",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				const gzip = zlib.createGzip();
 				let writeCount = 0;
@@ -322,7 +322,7 @@ func TestZlibPipe(t *testing.T) {
 		{
 			Name: "pipe-with-options-default-end-true",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				const gzip = zlib.createGzip();
 				let writeCount = 0;
@@ -353,7 +353,7 @@ func TestZlibPipe(t *testing.T) {
 		{
 			Name: "pipe-with-progress-bytes",
 			Script: `
-				const zlib = require('@jsh/zlib');
+				const zlib = require('zlib');
 				
 				const text = 'NAME,AGE\nAlice,30\nBob,25\nCharlie,40\n';
 				const compressed = zlib.gzipSync(text);

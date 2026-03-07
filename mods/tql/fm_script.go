@@ -132,9 +132,12 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		Code: `(()=>{})()`,
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
+			lib.LibFSTab(),
 			{MountPoint: "/work", Source: "."}, // TODO: /work directory should match with data directory of the process
 		},
-		Env:    map[string]any{},
+		Env: map[string]any{
+			"LIBRARY_PATH": "/lib",
+		},
 		Reader: node.task.inputReader,
 		Writer: &JSLog{w: node.task},
 	}

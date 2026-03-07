@@ -1,4 +1,4 @@
-package matrix_test
+package mat_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ func TestQR(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "qr_factorize",
-			Script: `const m = require("@jsh/matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(4, 2, [0, 1, 1, 1, 1, 1, 2, 1])
 				b = new m.Dense(4, 1, [1, 0, 2, 1])
 

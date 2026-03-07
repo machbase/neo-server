@@ -1,4 +1,4 @@
-package matrix_test
+package mat_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ func TestSymDenseSet(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_set",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				n = 5;
 				a = new m.SymDense(n, null);
 				count = 1.0;

@@ -1,4 +1,4 @@
-package matrix_test
+package mat_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ func TestDenseSet(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_set",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2)
 				a.set(0, 0, 1)
 				a.set(1, 1, 1)
@@ -35,7 +35,7 @@ func TestDenseAdd(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_add",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					1, 0,
 					1, 0,
@@ -67,7 +67,7 @@ func TestDenseSub(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_sub",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					1, 1,
 					1, 1,
@@ -98,7 +98,7 @@ func TestDenseMulElem(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_mul_elem",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					1, 2,
 					3, 4,
@@ -129,7 +129,7 @@ func TestDenseMul(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_mul",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					4, 0,
 					0, 4,
@@ -151,7 +151,7 @@ func TestDenseMul(t *testing.T) {
 		},
 		{
 			Name: "dense_mul",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				A = new m.Dense(2, 2, [
 					1, 2,
 					3, 4,
@@ -183,7 +183,7 @@ func TestDenseDivElem(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_div_elem",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					5, 10,
 					15, 20,
@@ -214,7 +214,7 @@ func TestDenseExp(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_exp",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					1, 0,
 					0, 1,
@@ -242,7 +242,7 @@ func TestDensePow(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_pow",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					4, 4,
 					4, 4,
@@ -277,7 +277,7 @@ func TestDenseScale(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_pow",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					4, 4,
 					4, 4,
@@ -305,7 +305,7 @@ func TestDenseInverse(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
 			Name: "dense_inverse",
-			Script: `const m = require("matrix")
+			Script: `const m = require("mathx/mat")
 				a = new m.Dense(2, 2, [
 					2, 1,
 					6, 4,

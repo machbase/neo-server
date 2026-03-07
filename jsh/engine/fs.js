@@ -1069,6 +1069,9 @@ function arch() {
 
 // Export all functions
 module.exports = {
+    resolvePath: _fs.resolvePath,
+    resolveAbsPath: _fs.resolveAbsPath,
+
     // File operations
     readFileSync,
     writeFileSync,

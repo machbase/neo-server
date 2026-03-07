@@ -1,4 +1,4 @@
-package matrix
+package mat
 
 import (
 	"github.com/dop251/goja"
