@@ -23,7 +23,7 @@ arrange(start, end, step)
 **Usage example**
 
 ```js
-const { arrange } = require("@jsh/generator")
+const { arrange } = require("@jsh/mathx")
 arrange(0, 6, 3).forEach((i) => console.log(i))
 
 // 0
@@ -54,7 +54,7 @@ linspace(start, end, count)
 **Usage example**
 
 ```js
-const { linspace } = require("@jsh/generator")
+const { linspace } = require("@jsh/mathx")
 linspace(0, 1, 3).forEach((i) => console.log(i))
 
 // 0
@@ -84,7 +84,7 @@ meshgrid(arr1, arr2)
 **Usage example**
 
 ```js
-const { meshgrid } = require("@jsh/generator")
+const { meshgrid } = require("@jsh/mathx")
 
 const gen = meshgrid([1, 2, 3], [4, 5]);
 for(i=0; i < gen.length; i++) {
@@ -120,7 +120,7 @@ None.
 **Usage example**
 
 ```js
-const { random } = require("@jsh/generator")
+const { random } = require("@jsh/mathx")
 for(i=0; i < 3; i++) {
     console.log(random().toFixed(2))
 }
@@ -172,7 +172,7 @@ eval(arg1, arg2, arg3, arg4)
 **Usage example**
 
 ```js
-const g = require("@jsh/generator")
+const g = require("@jsh/mathx")
 simplex = new g.Simplex(123);
 for(i=0; i < 5; i++) {
     noise = simplex.eval(i, i * 0.6).toFixed(3);
@@ -223,7 +223,7 @@ None.
 **Usage example**
 
 ```js
-const {UUID} = require("@jsh/generator")
+const {UUID} = require("uuid")
 gen = new UUID(1);
 for(i=0; i < 3; i++) {
     console.log(gen.eval());

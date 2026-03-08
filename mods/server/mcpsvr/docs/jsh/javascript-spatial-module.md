@@ -9,7 +9,7 @@ between two points on a sphere, given their latitudes and longitudes.
 **Usage example**
 
 ```js
-m = require("@jsh/spatial");
+m = require("mathx/spatial");
 latLon1 = [45.04, 7.42];  // Turin, Italy
 latLon2 = [3.09, 101.42]; // Kuala Lumpur, Malaysia
 distance = m.haversine({radius: 6371, coordinates:[latLon1, latLon2]})

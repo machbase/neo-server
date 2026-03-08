@@ -475,7 +475,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
 				SCRIPT("js", {
-					m = require("@jsh/stats");
+					m = require("mathx");
 					times = [];
 					values = [];
 				}, {
@@ -498,7 +498,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 10, 100) )
 				SCRIPT("js", {
-					m = require("@jsh/stats");
+					m = require("mathx");
 					times = [];
 					values = [];
 				}, {
@@ -654,7 +654,7 @@ func TestScriptOPCUA(t *testing.T) {
 			Name: "js-opcua-read",
 			Script: `
 				SCRIPT("js", {
-					ua = require("@jsh/opcua");
+					ua = require("opcua");
 					nodes = [
 						"ns=1;s=ro_bool",   // true
 						"ns=1;s=rw_bool",   // true
@@ -681,7 +681,7 @@ func TestScriptOPCUA(t *testing.T) {
 			Name: "js-opcua-read-perms",
 			Script: `
 				SCRIPT("js", {
-					ua = require("@jsh/opcua");
+					ua = require("opcua");
 					nodes = [
 						"ns=1;s=NoPermVariable",    // ua.StatusOK, int32(742)
 						"ns=1;s=ReadWriteVariable", // ua.StatusOK, 12.34

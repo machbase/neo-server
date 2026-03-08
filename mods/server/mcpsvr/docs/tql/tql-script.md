@@ -32,7 +32,7 @@ You can import JSH modules into the SCRIPT() using `require()`. All "@jsh" modul
 
 ```js
 SCRIPT({
-    const { arrange } = require("@jsh/generator")
+    const { arrange } = require("@jsh/mathx")
     arrange(0, 6, 3).forEach((i) =>$.yield(i))
 })
 CSV()

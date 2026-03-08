@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	"github.com/machbase/neo-server/v8/jsh/native"
+	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
 )
 
@@ -88,7 +88,7 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 			handleError(ctx, http.StatusInternalServerError, "engine error: "+err.Error(), tick)
 			return
 		}
-		native.Enable(jr)
+		lib.Enable(jr)
 		if err := jr.Run(); err != nil {
 			handleError(ctx, http.StatusInternalServerError, "engine run error: "+err.Error(), tick)
 		}

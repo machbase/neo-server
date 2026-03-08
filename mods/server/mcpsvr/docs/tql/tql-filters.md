@@ -164,7 +164,7 @@ Imagine the zero-point calibration process for sensors. When we accumulate conse
 SCRIPT({
     const filter = require("@jsh/filter")
     const avg = new filter.Avg();
-    const { arrange } = require("@jsh/generator");
+    const { arrange } = require("@jsh/mathx");
 }, {
     for( val of arrange(1, 5, 0.03)) {
         val = Math.round(val*100)/100;
@@ -219,7 +219,7 @@ Instead of calculating the average for the entire accumulated sample, we use a f
 SCRIPT({
     const filter = require("@jsh/filter")
     const movavg = new filter.MovAvg(10);
-    const { arrange } = require("@jsh/generator");
+    const { arrange } = require("@jsh/mathx");
     $.result = { columns: ["val", "sig", "ma10"], types: ["double", "double", "double"] }
 }, {
     for( val of arrange(1, 5, 0.03)) {
@@ -280,7 +280,7 @@ To address this, a common practice is to apply different weights to the most rec
 SCRIPT({
     const filter = require("@jsh/filter")
     const lowpass = new filter.Lowpass(0.40);
-    const { arrange } = require("@jsh/generator");
+    const { arrange } = require("@jsh/mathx");
     $.result = { columns: ["val", "sig", "lpf"], types: ["double", "double", "double"] }
 }, {
     for( val of arrange(1, 5, 0.03)) {
@@ -338,7 +338,7 @@ The example below demonstrates how changing the model’s value affects the grap
 SCRIPT({
     const filter = require("@jsh/filter")
     const kalman = new filter.Kalman(0.1, 0.5, 1.0);
-    const { arrange } = require("@jsh/generator");
+    const { arrange } = require("@jsh/mathx");
     var ts = require("@jsh/system").now();
     $.result = { columns: ["val", "sig", "kalman"], types: ["double", "double", "double"] }
 }, {

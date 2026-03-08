@@ -1,4 +1,4 @@
-package engine
+package engine_test
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/machbase/neo-server/v8/jsh/engine"
 )
 
 func TestJshMain(t *testing.T) {
@@ -118,7 +120,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name    string
 		jsonStr string
-		check   func(*testing.T, *Config)
+		check   func(*testing.T, *engine.Config)
 	}{
 		{
 			name: "simple env with SecureString",
@@ -129,18 +131,18 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 					"PASSWORD": "SecureString:my_password"
 				}
 			}`,
-			check: func(t *testing.T, c *Config) {
+			check: func(t *testing.T, c *engine.Config) {
 				if c.Name != "test" {
 					t.Errorf("Name = %v, want test", c.Name)
 				}
 				if c.Env["USER"] != "admin" {
 					t.Errorf("Env[USER] = %v, want admin", c.Env["USER"])
 				}
-				pass, ok := c.Env["PASSWORD"].(SecureString)
+				pass, ok := c.Env["PASSWORD"].(engine.SecureString)
 				if !ok {
 					t.Fatalf("Env[PASSWORD] is not SecureString, got %T", c.Env["PASSWORD"])
 				}
-				if pass != SecureString("my_password") {
+				if pass != engine.SecureString("my_password") {
 					t.Errorf("Env[PASSWORD] = %v, want my_password", pass)
 				}
 			},
@@ -156,7 +158,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 					}
 				}
 			}`,
-			check: func(t *testing.T, c *Config) {
+			check: func(t *testing.T, c *engine.Config) {
 				dbConfig, ok := c.Env["DB_CONFIG"].(map[string]any)
 				if !ok {
 					t.Fatalf("Env[DB_CONFIG] is not map, got %T", c.Env["DB_CONFIG"])
@@ -164,11 +166,11 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 				if dbConfig["host"] != "localhost" {
 					t.Errorf("DB_CONFIG[host] = %v, want localhost", dbConfig["host"])
 				}
-				pass, ok := dbConfig["password"].(SecureString)
+				pass, ok := dbConfig["password"].(engine.SecureString)
 				if !ok {
 					t.Fatalf("DB_CONFIG[password] is not SecureString, got %T", dbConfig["password"])
 				}
-				if pass != SecureString("db_secret") {
+				if pass != engine.SecureString("db_secret") {
 					t.Errorf("DB_CONFIG[password] = %v, want db_secret", pass)
 				}
 			},
@@ -181,7 +183,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 					"PASSWORDS": ["SecureString:pass1", "regular_string", "SecureString:pass2"]
 				}
 			}`,
-			check: func(t *testing.T, c *Config) {
+			check: func(t *testing.T, c *engine.Config) {
 				passwords, ok := c.Env["PASSWORDS"].([]any)
 				if !ok {
 					t.Fatalf("Env[PASSWORDS] is not array, got %T", c.Env["PASSWORDS"])
@@ -189,21 +191,21 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 				if len(passwords) != 3 {
 					t.Fatalf("PASSWORDS length = %d, want 3", len(passwords))
 				}
-				pass1, ok := passwords[0].(SecureString)
+				pass1, ok := passwords[0].(engine.SecureString)
 				if !ok {
 					t.Fatalf("PASSWORDS[0] is not SecureString, got %T", passwords[0])
 				}
-				if pass1 != SecureString("pass1") {
+				if pass1 != engine.SecureString("pass1") {
 					t.Errorf("PASSWORDS[0] = %v, want pass1", pass1)
 				}
 				if passwords[1] != "regular_string" {
 					t.Errorf("PASSWORDS[1] = %v, want regular_string", passwords[1])
 				}
-				pass2, ok := passwords[2].(SecureString)
+				pass2, ok := passwords[2].(engine.SecureString)
 				if !ok {
 					t.Fatalf("PASSWORDS[2] is not SecureString, got %T", passwords[2])
 				}
-				if pass2 != SecureString("pass2") {
+				if pass2 != engine.SecureString("pass2") {
 					t.Errorf("PASSWORDS[2] = %v, want pass2", pass2)
 				}
 			},
@@ -220,7 +222,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 					"NULL": null
 				}
 			}`,
-			check: func(t *testing.T, c *Config) {
+			check: func(t *testing.T, c *engine.Config) {
 				if c.Env["STRING"] != "value" {
 					t.Errorf("STRING = %v, want value", c.Env["STRING"])
 				}
@@ -230,11 +232,11 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 				if c.Env["BOOL"] != true {
 					t.Errorf("BOOL = %v, want true", c.Env["BOOL"])
 				}
-				secure, ok := c.Env["SECURE"].(SecureString)
+				secure, ok := c.Env["SECURE"].(engine.SecureString)
 				if !ok {
 					t.Fatalf("SECURE is not SecureString, got %T", c.Env["SECURE"])
 				}
-				if secure != SecureString("secret") {
+				if secure != engine.SecureString("secret") {
 					t.Errorf("SECURE = %v, want secret", secure)
 				}
 				if c.Env["NULL"] != nil {
@@ -246,7 +248,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var config Config
+			var config engine.Config
 			err := json.Unmarshal([]byte(tt.jsonStr), &config)
 			if err != nil {
 				t.Fatalf("Unmarshal error = %v", err)
@@ -278,8 +280,8 @@ func TestReadSecretBox(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	var config Config
-	if err := ReadSecretBox(tmpfile, &config); err != nil {
+	var config engine.Config
+	if err := engine.ReadSecretBox(tmpfile, &config); err != nil {
 		t.Fatalf("ReadSecretBox error = %v", err)
 	}
 
@@ -289,11 +291,11 @@ func TestReadSecretBox(t *testing.T) {
 	}
 
 	// Verify SecureString in env
-	password, ok := config.Env["PASSWORD"].(SecureString)
+	password, ok := config.Env["PASSWORD"].(engine.SecureString)
 	if !ok {
 		t.Fatalf("PASSWORD is not SecureString, got %T", config.Env["PASSWORD"])
 	}
-	if password != SecureString("super_secret") {
+	if password != engine.SecureString("super_secret") {
 		t.Errorf("PASSWORD = %v, want super_secret", password)
 	}
 
@@ -302,11 +304,11 @@ func TestReadSecretBox(t *testing.T) {
 	if !ok {
 		t.Fatalf("DB is not map, got %T", config.Env["DB"])
 	}
-	dbPass, ok := db["pass"].(SecureString)
+	dbPass, ok := db["pass"].(engine.SecureString)
 	if !ok {
 		t.Fatalf("DB pass is not SecureString, got %T", db["pass"])
 	}
-	if dbPass != SecureString("db_password") {
+	if dbPass != engine.SecureString("db_password") {
 		t.Errorf("DB pass = %v, want db_password", dbPass)
 	}
 
@@ -315,11 +317,11 @@ func TestReadSecretBox(t *testing.T) {
 	if !ok {
 		t.Fatalf("TOKENS is not array, got %T", config.Env["TOKENS"])
 	}
-	token1, ok := tokens[0].(SecureString)
+	token1, ok := tokens[0].(engine.SecureString)
 	if !ok {
 		t.Fatalf("TOKENS[0] is not SecureString, got %T", tokens[0])
 	}
-	if token1 != SecureString("token1") {
+	if token1 != engine.SecureString("token1") {
 		t.Errorf("TOKENS[0] = %v, want token1", token1)
 	}
 

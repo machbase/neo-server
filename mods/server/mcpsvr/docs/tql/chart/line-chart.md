@@ -198,7 +198,7 @@ APPEND(table("example"))
 
 ```js
 SCRIPT({
-    const gen = require("@jsh/generator");
+    const gen = require("@jsh/mathx");
     const sys = require("@jsh/system");
     ts = (new Date()).getTime() - 100 * 1000; // now - 100s.
     for(x of gen.arrange(1, 100, 1)) {

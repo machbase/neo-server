@@ -1,14 +1,16 @@
-package engine
+package engine_test
 
 import (
 	"testing"
+
+	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
 
 func TestEvents(t *testing.T) {
-	tests := []TestCase{
+	tests := []test_engine.TestCase{
 		{
-			name: "event_emitter_basic",
-			script: `
+			Name: "event_emitter_basic",
+			Script: `
 				const EventEmitter = require('/lib/events');
 				const emitter = new EventEmitter();
 				
@@ -19,14 +21,14 @@ func TestEvents(t *testing.T) {
 				emitter.emit("greet", "Alice");
 				emitter.emit("greet", "Bob");
 			`,
-			output: []string{
+			Output: []string{
 				"Hello, Alice!",
 				"Hello, Bob!",
 			},
 		},
 		{
-			name: "event_emitter_basic",
-			script: `
+			Name: "event_emitter_basic",
+			Script: `
 				const EventEmitter = require('/lib/events');
 				const emitter = new EventEmitter();
 				
@@ -37,12 +39,12 @@ func TestEvents(t *testing.T) {
 				emitter.emit("greet", "Alice");
 				emitter.emit("greet", "Bob");
 			`,
-			output: []string{
+			Output: []string{
 				"Hello, Alice!",
 			},
 		},
 	}
 	for _, tc := range tests {
-		RunTest(t, tc)
+		test_engine.RunTest(t, tc)
 	}
 }
