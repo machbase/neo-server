@@ -197,7 +197,7 @@ func TestFS_Module(t *testing.T) {
 			"const EventEmitter = require('events');",
 			"",
 			"/*",
-			"## Feature...",
+			"## F...",
 			"",
 			"2. Creating directory /work/tmp:",
 			"Directory created",
