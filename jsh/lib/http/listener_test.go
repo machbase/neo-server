@@ -3,6 +3,7 @@ package http_test
 import (
 	"bytes"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,10 @@ func TestServer(t *testing.T) {
 		{"unix", filepath.Join(t.TempDir(), "test_http_server.sock")},
 	}
 	for _, tn := range testNets {
+		if tn.network == "unix" && runtime.GOOS == "windows" {
+			t.Logf("Skipping unix socket test on Windows")
+			continue
+		}
 		var serverAddress = tn.address
 		if tn.network == "unix" {
 			serverAddress = "unix" + tn.address
