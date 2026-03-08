@@ -5,7 +5,7 @@ A JSH native module that provides WebSocket client functionality. Based on the G
 ## Installation
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 ```
 
 ## Classes
@@ -29,8 +29,20 @@ new WebSocket(url)
 **Example:**
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 const ws = new WebSocket("ws://localhost:8080");
+```
+
+**Validation Example:**
+
+```javascript
+const { WebSocket } = require("ws");
+
+try {
+    new WebSocket();
+} catch (e) {
+    console.println(e.message); // URL must be a string
+}
 ```
 
 #### Properties
@@ -178,7 +190,7 @@ ws.on("error", (err) => {
 ### Basic Connection
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://localhost:8080");
 
@@ -205,7 +217,7 @@ INFO  websocket closed
 ### Simple Close
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://localhost:8080");
 
@@ -228,7 +240,7 @@ websocket closed
 ### Send and Receive Messages
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://localhost:8080");
 
@@ -266,7 +278,7 @@ INFO  websocket closed
 ### Multiple Event Listeners
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://localhost:8080");
 
@@ -276,7 +288,7 @@ const onMessage = (m) => {
 
 // Register the same handler twice
 ws.on("message", onMessage);
-ws.addEventListener("message", onMessage);
+ws.addListener("message", onMessage);
 
 ws.on("open", () => {
     ws.send("trigger message");
@@ -298,7 +310,7 @@ websocket closed
 ### Handling Connection Errors
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 // Try to connect to a non-existent server
 const ws = new WebSocket("ws://127.0.0.1:9999");
@@ -316,7 +328,7 @@ err: dial tcp 127.0.0.1:9999: connect: connection refused
 ### Sending Without Connection
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://127.0.0.1:9999");
 
@@ -339,7 +351,7 @@ err: websocket is not open
 ### Checking Ready State
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://localhost:8080");
 
@@ -359,7 +371,7 @@ ws.on("close", () => {
 ### Echo Client Example
 
 ```javascript
-const { WebSocket } = require("/lib/ws");
+const { WebSocket } = require("ws");
 
 const ws = new WebSocket("ws://echo.websocket.org");
 
@@ -388,7 +400,7 @@ ws.on("error", (err) => {
 - The connection automatically starts when the WebSocket object is created
 - Messages are received in a background goroutine and dispatched as events
 - The `readyState` property reflects the current connection state
-- Both `on()` and `addEventListener()` can be used to register event listeners
+- Both `on()` and `addListener()` can be used to register event listeners
 - The module currently supports text and binary message types
 - Closing a WebSocket that is already closed has no effect
 - Attempting to send data on a closed or non-open WebSocket will emit an error event

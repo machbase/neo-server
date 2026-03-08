@@ -5,7 +5,7 @@ A Node.js-compatible command-line argument parser for JSH runtime, compatible wi
 ## Installation
 
 ```javascript
-const { parseArgs } = require('/lib/util');
+const { parseArgs } = require('util');
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ const { parseArgs } = require('/lib/util');
 ### Basic Example
 
 ```javascript
-const { parseArgs } = require('/lib/util');
+const { parseArgs } = require('util');
 
 const args = ['-f', '--bar', 'value', 'positional'];
 const result = parseArgs(args, {
@@ -31,7 +31,7 @@ console.log(result.positionals); // ['positional']
 ### Sub-command Example
 
 ```javascript
-const { parseArgs } = require('/lib/util');
+const { parseArgs } = require('util');
 
 // Define configs for different sub-commands
 const commitConfig = {

@@ -4,10 +4,10 @@ A Node.js-compatible compression module for jsh (JavaScript Shell). This module 
 
 ## Installation
 
-The module is located at `/lib/zlib` and can be required in your jsh scripts:
+The module can be required in your jsh scripts as `zlib`:
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 ```
 
 ## Features
@@ -28,7 +28,7 @@ These methods compress or decompress data synchronously and return ArrayBuffer.
 Compress data using gzip.
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 const compressed = zlib.gzipSync('Hello, World!');
 console.println('Compressed size:', compressed.byteLength);
 ```
@@ -42,7 +42,7 @@ console.println('Compressed size:', compressed.byteLength);
 Decompress gzip data.
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 const compressed = zlib.gzipSync('Hello, World!');
 const decompressed = zlib.gunzipSync(compressed);
 const text = String.fromCharCode.apply(null, new Uint8Array(decompressed));
@@ -124,7 +124,7 @@ These methods compress or decompress data asynchronously using callbacks.
 Compress data using gzip asynchronously.
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 zlib.gzip('Hello, World!', (err, compressed) => {
     if (err) {
         console.println('Error:', err.message);
@@ -184,7 +184,7 @@ Create compression/decompression streams for piping operations.
 Create a gzip compression stream.
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 const gzip = zlib.createGzip();
 
 let result = null;
@@ -230,7 +230,7 @@ gzip.end();
 **Returns:** destination object (`dest`)
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 const gzip = zlib.createGzip();
 const dest = {
@@ -259,8 +259,8 @@ For large-file processing, zlib streams expose running byte counters:
 These counters are updated during streaming, so they can be read inside `on('data')` callbacks.
 
 ```javascript
-const fs = require('/lib/fs');
-const zlib = require('/lib/zlib');
+const fs = require('fs');
+const zlib = require('zlib');
 
 const totalCompressed = fs.statSync('/tmp/sample.csv.gz').size;
 const inFile = fs.createReadStream('/tmp/sample.csv.gz', { encoding: 'buffer' });
@@ -328,7 +328,7 @@ const unzip = zlib.createUnzip();
 Access zlib constants for compression options and status codes.
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 const c = zlib.constants;
 
 console.println('Z_NO_FLUSH:', c.Z_NO_FLUSH);
@@ -373,7 +373,7 @@ console.println('Z_DEFAULT_COMPRESSION:', c.Z_DEFAULT_COMPRESSION);
 ### Basic Compression and Decompression
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 // Compress a string
 const original = "This is some text that will be compressed.";
@@ -391,7 +391,7 @@ console.println('Match:', result === original);
 ### Using Deflate
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 const data = "Data to compress with deflate";
 const compressed = zlib.deflateSync(data);
@@ -403,7 +403,7 @@ console.println('Result:', result);
 ### Async Compression
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 const data = "Async compression example";
 zlib.gzip(data, (err, compressed) => {
@@ -429,7 +429,7 @@ zlib.gzip(data, (err, compressed) => {
 ### Stream-based Compression
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 const gzip = zlib.createGzip();
 let compressedData = null;
@@ -473,13 +473,13 @@ gzip.end();
 ### Pipe gunzip output to CSV parser
 
 ```javascript
-const fs = require('/lib/fs');
-const zlib = require('/lib/zlib');
-const parser = require('/lib/parser');
+const fs = require('fs');
+const zlib = require('zlib');
+const parser = require('parser');
 
 const inFile = fs.createReadStream('/tmp/sample.csv.gz', {
     highWaterMark: 2048,
-    encoding: 'buffer' // 중요: gzip 파일은 binary로 읽어야 함
+    encoding: 'buffer' // gzip files should be read as binary
 });
 
 const gunzip = zlib.createGunzip();
@@ -492,14 +492,14 @@ parsed.on('headers', (headers) => {
 });
 
 parsed.on('data', (row) => {
-    console.println('row:', row.NAME + ',' + row.AGE);
+    console.println('record:', row.NAME + ',' + row.AGE);
 });
 ```
 
 ### Destructuring Imports
 
 ```javascript
-const { gzipSync, gunzipSync, constants } = require('/lib/zlib');
+const { gzipSync, gunzipSync, constants } = require('zlib');
 
 const compressed = gzipSync('Quick compression');
 const decompressed = gunzipSync(compressed);
@@ -517,7 +517,7 @@ When working with compressed data, remember:
 - Compressed data is binary and should not be converted to string before decompression
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 // Compress
 const text = "Hello, World!";
@@ -537,7 +537,7 @@ console.println(result); // "Hello, World!"
 ## Error Handling
 
 ```javascript
-const zlib = require('/lib/zlib');
+const zlib = require('zlib');
 
 try {
     // Try to decompress invalid data
@@ -577,5 +577,5 @@ zlib.gunzip(invalidData, (err, result) => {
 ## See Also
 
 - [Node.js zlib documentation](https://nodejs.org/api/zlib.html) - Reference for Node.js zlib module
-- `/lib/fs` - Filesystem module
-- `/lib/stream` - Stream module
+- `fs` - Filesystem module
+- `stream` - Stream module

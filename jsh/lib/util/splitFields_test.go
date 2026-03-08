@@ -11,7 +11,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_basic",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("  foo   bar baz  ");
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -22,7 +22,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_double_quotes",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields('hello "world foo" bar');
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -33,7 +33,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_single_quotes",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("hello 'world foo' bar");
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -44,7 +44,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_mixed_quotes",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("a \"b c\" d 'e f' g");
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -55,7 +55,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_empty_string",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("");
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -66,7 +66,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_only_whitespace",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("   \t  \n  ");
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -77,7 +77,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_tabs_and_newlines",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("foo\tbar\nbaz");
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -88,7 +88,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_quoted_with_tabs",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields('a "b\tc" d');
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -99,7 +99,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_multiple_quoted",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields('cmd "arg 1" "arg 2" "arg 3"');
 				console.println("Fields:", JSON.stringify(result));
 			`,
@@ -110,7 +110,7 @@ func TestUtilSplitFields(t *testing.T) {
 		{
 			Name: "util_splitFields_no_spaces",
 			Script: `
-				const {splitFields} = require("/lib/util");
+				const {splitFields} = require("util");
 				const result = splitFields("hello");
 				console.println("Fields:", JSON.stringify(result));
 			`,

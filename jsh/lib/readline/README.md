@@ -5,7 +5,7 @@ A JSH native module that provides interactive line-editing capabilities. Based o
 ## Installation
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const { ReadLine } = require('readline');
 ```
 
 ## Classes
@@ -30,7 +30,7 @@ new ReadLine(options)
 **Example:**
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const { ReadLine } = require('readline');
 const r = new ReadLine({
     prompt: (lineno) => { 
         return lineno === 0 ? "prompt> " : "....... "
@@ -67,6 +67,22 @@ Closes the readline session and cancels any pending read operations.
 
 ```javascript
 r.close();
+```
+
+### addHistory(line)
+
+Adds an input line to readline history.
+
+**Parameters:**
+- `line` (string): Line text to append to history
+
+**Example:**
+
+```javascript
+const line = r.readLine();
+if (!(line instanceof Error)) {
+    r.addHistory(line);
+}
 ```
 
 ## Options
@@ -127,7 +143,7 @@ An array of strings to automatically feed as input. Useful for automated testing
 const r = new ReadLine({
     autoInput: [
         "Hello World", 
-        ReadLine.Enter,
+        ReadLine.CtrlJ,
     ],
 });
 ```
@@ -152,6 +168,7 @@ The ReadLine class provides constants for special keys and control sequences:
 ### Special Keys
 
 - `ReadLine.Enter` - Enter key (`\r`)
+- `ReadLine.CtrlJ` - Line feed (`\n`), commonly used in test `autoInput`
 - `ReadLine.Escape` - Escape key
 - `ReadLine.Backspace` - Backspace key
 - `ReadLine.Delete` - Delete key
@@ -173,10 +190,12 @@ The ReadLine class provides constants for special keys and control sequences:
 ### Basic Input
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const { env } = require('process');
+const { ReadLine } = require('readline');
 
 const r = new ReadLine({
     prompt: (lineno) => { return "prompt> "},
+    autoInput: env.get("auto_input"),
 });
 
 console.println("PS:", r.options.prompt(0));
@@ -185,6 +204,7 @@ if (line instanceof Error) {
     throw line;
 }
 console.println("OK:", line);
+r.addHistory(line);
 ```
 
 **Output:**
@@ -196,9 +216,11 @@ OK: Hello World
 ### Multi-line Input with Custom Submit Logic
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const process = require('process');
+const { ReadLine } = require('readline');
 
 const r = new ReadLine({
+    autoInput: process.env.get("auto_input"),
     submitOnEnterWhen: (lines, idx) => {
         // Submit only when the current line ends with a semicolon
         return lines[idx].endsWith(";");
@@ -227,12 +249,12 @@ semi-colon;
 ### Automated Input (for testing)
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const { ReadLine } = require('readline');
 
 const r = new ReadLine({
     autoInput: [
         "Hello World",
-        ReadLine.Enter,
+        ReadLine.CtrlJ,
     ],
 });
 
@@ -243,12 +265,15 @@ console.println("Input:", line);
 ### Canceling Input
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const process = require('process');
+const { ReadLine } = require('readline');
 
 try {
-    const r = new ReadLine();
+    const r = new ReadLine({
+        autoInput: process.env.get("auto_input"),
+    });
     
-    // Close the readline after 200ms
+    // Close the readline after 200ms while readLine is waiting for Enter.
     const timeout = setTimeout(() => { 
         r.close() 
     }, 200);
@@ -269,7 +294,7 @@ ERR: EOF
 ### Custom Prompt for Each Line
 
 ```javascript
-const { ReadLine } = require('/lib/readline');
+const { ReadLine } = require('readline');
 
 const r = new ReadLine({
     prompt: (lineno) => {

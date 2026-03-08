@@ -11,7 +11,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_basic",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['-f', '--bar', 'value', 'positional'], {
 					options: {
 						foo: { type: 'boolean', short: 'f' },
@@ -30,7 +30,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_long_options",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['--verbose', '--output', 'file.txt'], {
 					options: {
 						verbose: { type: 'boolean' },
@@ -46,7 +46,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_short_options",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['-v', '-o', 'out.txt'], {
 					options: {
 						verbose: { type: 'boolean', short: 'v' },
@@ -62,7 +62,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_inline_value",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['--output=file.txt', '-o=out.txt'], {
 					options: {
 						output: { type: 'string', short: 'o' }
@@ -77,7 +77,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_multiple",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['--include', 'a.js', '--include', 'b.js', '-I', 'c.js'], {
 					options: {
 						include: { type: 'string', short: 'I', multiple: true }
@@ -92,7 +92,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_default_values",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['--foo'], {
 					options: {
 						foo: { type: 'boolean' },
@@ -109,7 +109,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_short_group",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['-abc'], {
 					options: {
 						a: { type: 'boolean', short: 'a' },
@@ -126,7 +126,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_terminator",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['--foo', '--', '--bar', 'baz'], {
 					options: {
 						foo: { type: 'boolean' },
@@ -145,7 +145,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_allow_negative",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['--no-color', '--verbose'], {
 					options: {
 						color: { type: 'boolean' },
@@ -162,7 +162,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_tokens",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['-f', '--bar', 'value'], {
 					options: {
 						foo: { type: 'boolean', short: 'f' },
@@ -183,7 +183,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_old_signature",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['-v', '--output', 'file.txt'], {
 					options: {
 						verbose: { type: 'boolean', short: 'v' },
@@ -199,7 +199,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_named_positionals",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['input.txt', 'output.txt'], {
 					options: {},
 					allowPositionals: true,
@@ -216,7 +216,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_optional_positionals",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['input.txt'], {
 					options: {},
 					allowPositionals: true,
@@ -234,7 +234,7 @@ func TestUtilParseArgs(t *testing.T) {
 		{
 			Name: "util_parseArgs_variadic_positionals",
 			Script: `
-				const {parseArgs} = require("/lib/util");
+				const {parseArgs} = require("util");
 				const result = parseArgs(['input.txt', 'out.txt', 'a.js', 'b.js'], {
 					options: {},
 					allowPositionals: true,

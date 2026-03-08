@@ -12,7 +12,7 @@ func TestReadLineModule(t *testing.T) {
 		{
 			Name: "module",
 			Script: `
-				const rl = require('/lib/readline');
+				const rl = require('readline');
 				console.println("MODULE:", typeof rl.ReadLine);
 			`,
 			Output: []string{
@@ -22,7 +22,7 @@ func TestReadLineModule(t *testing.T) {
 		{
 			Name: "constructor-no-args",
 			Script: `
-				const {ReadLine} = require('/lib/readline');
+				const {ReadLine} = require('readline');
 				const r = new ReadLine();
 				console.printf("RL: %X\n", ReadLine.CtrlJ);
 			`,
@@ -43,8 +43,8 @@ func TestReadLine(t *testing.T) {
 			Name: "readline-simple",
 			Script: `
 			try{
-				const {env} = require('/lib/process');
-				const {ReadLine} = require('/lib/readline');
+				const {env} = require('process');
+				const {ReadLine} = require('readline');
 				const r = new ReadLine({
 					prompt: (lineno) => { return "prompt> "},
 					autoInput: env.get("auto_input"),
@@ -82,8 +82,8 @@ func TestReadLineSubmitOnEnterWhen(t *testing.T) {
 			Name: "readline-submit-on-enter-when",
 			Script: `
 			try{
-				const process = require('/lib/process');
-				const {ReadLine} = require('/lib/readline');
+				const process = require('process');
+				const {ReadLine} = require('readline');
 				const r = new ReadLine({
 					autoInput: process.env.get("auto_input"),
 					submitOnEnterWhen: (lines, idx) => {
@@ -122,8 +122,8 @@ func TestReadLineCancel(t *testing.T) {
 			Name: "readline-cancel",
 			Script: `
 			try{
-				const process = require('/lib/process');
-				const {ReadLine} = require('/lib/readline');
+				const process = require('process');
+				const {ReadLine} = require('readline');
 				const r = new ReadLine({
 					autoInput: process.env.get("auto_input"),
 				});

@@ -5,7 +5,7 @@ A function that splits a string by whitespace characters, while treating quoted 
 ## Usage
 
 ```javascript
-const { splitFields } = require('/lib/util');
+const { splitFields } = require('util');
 
 // Basic usage
 const result = splitFields('foo bar baz');
