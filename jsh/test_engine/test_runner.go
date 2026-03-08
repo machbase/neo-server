@@ -110,7 +110,7 @@ func RunTest(t *testing.T, tc TestCase) {
 				if !strings.HasPrefix(lines[i], prefix) {
 					t.Errorf("Output line %d: expected to start with %q, got %q", i, prefix, lines[i])
 				}
-			} else if lines[i] != expectedLine {
+			} else if trimLine(lines[i]) != expectedLine {
 				t.Errorf("Output line %d: expected %q, got %q", i, expectedLine, lines[i])
 			}
 		}
@@ -118,4 +118,12 @@ func RunTest(t *testing.T, tc TestCase) {
 			t.Fatalf("Expected %d output lines, got %d\nextra:\n%s", len(tc.Output), len(lines)-1, strings.Join(lines[len(tc.Output):], "\n"))
 		}
 	})
+}
+
+func trimLine(s string) string {
+	if runtime.GOOS == "windows" {
+		return strings.TrimSuffix(s, "\r")
+	} else {
+		return s
+	}
 }
