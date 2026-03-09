@@ -29,6 +29,7 @@ func QueryRow(t *testing.T, db api.Database, ctx context.Context) {
 		"NAME", "TIME", "VALUE", "SHORT_VALUE", "USHORT_VALUE",
 		"INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
 		"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE",
+		"BIN_VALUE",
 	}
 	require.Equal(t, len(expectedColumns), len(columns))
 	for i, col := range columns {

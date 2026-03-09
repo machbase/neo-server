@@ -29,6 +29,7 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, DataType: api.DataTypeString},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, DataType: api.DataTypeIPv6},
+		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, DataType: api.DataTypeBinary},
 		{Name: "_RID", Type: api.ColumnTypeLong, DataType: api.DataTypeInt64},
 	}
 
@@ -46,6 +47,7 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		{"name": "JSON_VALUE", "type": "json", "data_type": "string", "length": 32767},
 		{"name": "IPV4_VALUE", "type": "ipv4", "data_type": "ipv4", "length": 5},
 		{"name": "IPV6_VALUE", "type": "ipv6", "data_type": "ipv6", "length": 17},
+		{"name": "BIN_VALUE", "type": "binary", "data_type": "binary", "length": 32767},
 		{"name": "_RID", "type": "long", "data_type": "int64", "length": 8},
 	}
 	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
@@ -80,7 +82,7 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		require.Equal(t, "SYS", m["user"])
 		require.Equal(t, "MACHBASEDB", m["database"])
 		require.Equal(t, "TagTable", m["type"])
-		require.Equal(t, 14, len(m["columns"].([]interface{})))
+		require.Equal(t, 15, len(m["columns"].([]interface{})))
 
 		columns := m["columns"].([]interface{})
 

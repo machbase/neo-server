@@ -111,7 +111,8 @@ func CreateTestTables(db api.Database) error {
 			str_value       varchar(400),
 			json_value      json,
 			ipv4_value      ipv4,
-			ipv6_value      ipv6
+			ipv6_value      ipv6,
+			bin_value		binary
 		) TAG_DUPLICATE_CHECK_DURATION=1;
 	`))
 	if err := result.Err(); err != nil {

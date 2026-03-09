@@ -44,6 +44,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeString},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
+		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 32767, DataType: api.DataTypeBinary},
 	}
 	cols, _ := appender.Columns()
 	require.Equal(t, len(expectCols), len(cols))
@@ -100,6 +101,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 			fmt.Sprintf("{\"json\":%d}", i), // json_value
 			ip4,                             // IPv4_value
 			ip6,                             // IPv6_value
+			[]byte{0x01, 0x02, 0x03},        // bin_value
 		)
 		if err != nil {
 			t.Fatal(err)
