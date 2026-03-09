@@ -1,7 +1,7 @@
 'use strict';
 
-const EventEmitter = require('/lib/events');
-const process = require('/lib/process');
+const EventEmitter = require('events');
+const process = require('process');
 const _mqtt = require('@jsh/mqtt');
 
 class Client extends EventEmitter {

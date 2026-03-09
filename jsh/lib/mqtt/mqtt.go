@@ -55,6 +55,9 @@ func ParseConfig(data string) (*autopaho.ClientConfig, error) {
 	ret.ConnectUsername = conf.Username
 	ret.ConnectPassword = []byte(conf.Password)
 	ret.KeepAlive = conf.KeepAlive
+	if ret.KeepAlive == 0 {
+		ret.KeepAlive = 30
+	}
 	ret.ReconnectBackoff = func(i int) time.Duration {
 		if i == 0 {
 			return 0
@@ -135,20 +138,64 @@ func (c *Client) Subscribe(topic string) (any, error) {
 
 // Publish a message to a topic
 // Returns the reason code for the publish
-func (c *Client) Publish(topic string, data any) (int, error) {
+func (c *Client) Publish(topic string, data any, options map[string]any) (int, error) {
 	var payload []byte
 	switch val := data.(type) {
 	case string:
 		payload = []byte(val)
 	case []byte:
 		payload = val
+	case map[string]any, []any: // If the data is an object or array from JS. Marshal it to JSON
+		if b, err := json.Marshal(val); err != nil {
+			return 0, fmt.Errorf("failed to marshal payload: %w", err)
+		} else {
+			payload = b
+		}
 	default:
 		return 0, fmt.Errorf("invalid payload type: %T", data)
 	}
-	pubAck, err := c.conn.Publish(c.ctx, &paho.Publish{
-		Topic:   topic,
-		Payload: payload,
-		QoS:     0,
-	})
+	pub := &paho.Publish{Topic: topic, Payload: payload, QoS: 0}
+	if options != nil {
+		if qos, ok := options["qos"].(float64); ok {
+			pub.QoS = byte(qos)
+		}
+		if retain, ok := options["retain"].(bool); ok {
+			pub.Retain = retain
+		}
+		if props, ok := options["properties"].(map[string]any); ok {
+			pub.Properties = &paho.PublishProperties{}
+			if pf, ok := props["payloadFormat"].(float64); ok {
+				pf := byte(pf)
+				pub.Properties.PayloadFormat = &pf
+			}
+			if me, ok := props["messageExpiry"].(float64); ok {
+				me := uint32(me)
+				pub.Properties.MessageExpiry = &me
+			}
+			if ct, ok := props["contentType"].(string); ok {
+				pub.Properties.ContentType = ct
+			}
+			if rt, ok := props["responseTopic"].(string); ok {
+				pub.Properties.ResponseTopic = rt
+			}
+			if cd, ok := props["correlationData"].(string); ok {
+				pub.Properties.CorrelationData = []byte(cd)
+			}
+			if ta, ok := props["topicAlias"].(float64); ok {
+				ta := uint16(ta)
+				pub.Properties.TopicAlias = &ta
+			}
+			if si, ok := props["subscriptionIdentifier"].(float64); ok {
+				si := int(si)
+				pub.Properties.SubscriptionIdentifier = &si
+			}
+			if userProps, ok := props["user"].(map[string]any); ok {
+				for k, v := range userProps {
+					pub.Properties.User.Add(k, fmt.Sprintf("%v", v))
+				}
+			}
+		}
+	}
+	pubAck, err := c.conn.Publish(c.ctx, pub)
 	return int(pubAck.ReasonCode), err
 }

@@ -88,8 +88,8 @@ func TestMqttConfig(t *testing.T) {
 		{
 			Name: "config",
 			Script: `
-				const addr = require("/lib/process").env.get('brokerAddr');
-				const mqtt = require("/lib/mqtt");
+				const addr = require("process").env.get('brokerAddr');
+				const mqtt = require("mqtt");
 				const client = new mqtt.Client({
 					servers: [addr],
 					username: "user",
@@ -133,8 +133,8 @@ func TestMqtt(t *testing.T) {
 		{
 			Name: "basic_ops",
 			Script: `
-				const addr = require("/lib/process").env.get('brokerAddr');
-				const mqtt = require("/lib/mqtt");
+				const addr = require("process").env.get('brokerAddr');
+				const mqtt = require("mqtt");
 				const client = new mqtt.Client({
 					servers: [addr],
 					username: "user",
