@@ -26,31 +26,31 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 
 	// avg = new Avg();
 	// newValue = avg.eval(value);
-	o.Set("avg", new_avg(rt))
+	o.Set("Avg", new_avg(rt))
 
 	// movAvg = new MovAvg(windowSize);
 	// newValue = movAvg.eval(value);
 	//
 	// windowsSize should be larger than 1
-	o.Set("movavg", new_movavg(rt))
+	o.Set("MovAvg", new_movavg(rt))
 
 	// lowpass = new Lowpass(alpha);
 	// newValue = lowpass.eval(value);
 	//
 	// alpha should be 0 < alpha < 1
-	o.Set("lowpass", new_lowpass(rt))
+	o.Set("Lowpass", new_lowpass(rt))
 
-	// kalman = new m.Kalman(initialVariance, processVariance, ObservationVariance);
+	// kalman = new Kalman(initialVariance, processVariance, ObservationVariance);
 	// or
-	// kalman = new m.Kalman({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
+	// kalman = new Kalman({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
 	// newValue = kalman.eval(time, ...vector);
-	o.Set("kalman", new_kalman(rt))
+	o.Set("Kalman", new_kalman(rt))
 
-	// smoother = new m.KalmanSmoother(initialVariance, processVariance, ObservationVariance);
+	// smoother = new KalmanSmoother(initialVariance, processVariance, ObservationVariance);
 	// or
-	// smoother = new m.KalmanSmoother({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
+	// smoother = new KalmanSmoother({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
 	// newValue = smoother.eval(time, ...vector);
-	o.Set("kalmanSmoother", new_kalman_smoother(rt))
+	o.Set("KalmanSmoother", new_kalman_smoother(rt))
 }
 
 func new_avg(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {

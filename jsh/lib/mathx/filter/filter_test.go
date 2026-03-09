@@ -30,7 +30,7 @@ func TestAvg(t *testing.T) {
 			Script: `
 				const { arrange } = require("mathx");
 				const m = require("mathx/filter")
-				const avg = new m.avg();
+				const avg = new m.Avg();
 				for( x of arrange(10, 30, 10) ) {
 					console.println(x,  avg.eval(x).toFixed(2));
 				}
@@ -57,7 +57,7 @@ func TestMovAvg(t *testing.T) {
 			Script: `
 				const { linspace } = require("mathx");
 				const m = require("mathx/filter")
-				const movAvg = new m.movavg(10);
+				const movAvg = new m.MovAvg(10);
 				for( x of linspace(0, 100, 100) ) {
 					console.println(""+x.toFixed(4)+","+movAvg.eval(x).toFixed(4));
 				}
@@ -81,7 +81,7 @@ func TestLowpass(t *testing.T) {
 				const { arrange } = require("mathx");
 				const { Simplex } = require("mathx/simplex");
 				const m = require("mathx/filter")
-				const lpf = new m.lowpass(0.3);
+				const lpf = new m.Lowpass(0.3);
 				const simplex = new Simplex(1);
 
 				for( x of arrange(1, 10, 1) ) {
@@ -117,7 +117,7 @@ func TestKalman(t *testing.T) {
 			Name: "js-kalman",
 			Script: `
 				const m = require("mathx/filter");
-				const kalman = new m.kalman(1.0, 1.0, 2.0);
+				const kalman = new m.Kalman(1.0, 1.0, 2.0);
 				var ts = 1745484444000; // ms
 
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
@@ -136,7 +136,7 @@ func TestKalman(t *testing.T) {
 			Name: "js-kalman-variances",
 			Script: `
 				const m = require("mathx/filter");
-				const kalman = new m.kalman({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
+				const kalman = new m.Kalman({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
 				var ts = 1745484444000; // ms
 			
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
@@ -165,7 +165,7 @@ func TestKalmanSmoother(t *testing.T) {
 			Name: "js-kalman-smoother",
 			Script: `
 				const m = require("mathx/filter");
-				const kalman = new m.kalmanSmoother(1.0, 1.0, 2.0);
+				const kalman = new m.KalmanSmoother(1.0, 1.0, 2.0);
 				var ts = 1745484444000; // ms
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
 					ts += 1000;
@@ -183,7 +183,7 @@ func TestKalmanSmoother(t *testing.T) {
 			Name: "js-kalman-smoother-variances",
 			Script: `
 				const m = require("mathx/filter");
-				const kalman = new m.kalmanSmoother({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
+				const kalman = new m.KalmanSmoother({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
 				var ts = 1745484444000; // ms			
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
 					ts += 1000;
