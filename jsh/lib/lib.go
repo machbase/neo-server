@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/filter"
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx/interp"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/mat"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/simplex"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/spatial"
@@ -74,6 +75,8 @@ func Enable(n *engine.JSRuntime) {
 	addFiles(mathx.Files())
 	n.RegisterNativeModule("@jsh/mathx/filter", filter.Module)
 	addFiles(filter.Files())
+	n.RegisterNativeModule("@jsh/mathx/interp", interp.Module)
+	addFiles(interp.Files())
 	n.RegisterNativeModule("@jsh/mathx/mat", mat.Module)
 	addFiles(mat.Files())
 	n.RegisterNativeModule("@jsh/mathx/simplex", simplex.Module)
