@@ -33,6 +33,78 @@ func TestMeshgrid(t *testing.T) {
 	}
 }
 
+func TestArrange(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-arrange",
+			Script: `
+				gen = require("mathx").arrange(1, 5, 1);
+				console.println(JSON.stringify(gen));
+			`,
+			Output: []string{
+				"[1,2,3,4,5]",
+			},
+		},
+		{
+			Name: "js-arrange-desc",
+			Script: `
+				gen = require("mathx").arrange(5, 1, -1);
+				console.println(JSON.stringify(gen));
+			`,
+			Output: []string{
+				"[5,4,3,2,1]",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestLinspace(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-linspace",
+			Script: `
+				gen = require("mathx").linspace(1, 5, 5);
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i]);
+				}
+			`,
+			Output: []string{
+				"1",
+				"2",
+				"3",
+				"4",
+				"5",
+			},
+		},
+		{
+			Name: "js-linspace-float",
+			Script: `
+				gen = require("mathx").linspace(0, 1, 5);
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i].toFixed(2));
+				}
+			`,
+			Output: []string{
+				"0.00",
+				"0.25",
+				"0.50",
+				"0.75",
+				"1.00",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
 func TestSort(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
@@ -374,6 +446,58 @@ func TestStdErr(t *testing.T) {
 		},
 	}
 
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestValidationErrors(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "mean-weight-length-check",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.mean([1, 2, 3], [1, 2])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"mean: x and weight should be the same length",
+			},
+		},
+		{
+			Name: "correlation-length-check",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.correlation([1, 2, 3], [1, 2])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"correlation: x and y should be the same length",
+			},
+		},
+		{
+			Name: "correlation-weight-length-check",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.correlation([1, 2, 3], [4, 5, 6], [1, 2])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"correlation: x, y and weight should be the same length",
+			},
+		},
+	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			test_engine.RunTest(t, tc)
