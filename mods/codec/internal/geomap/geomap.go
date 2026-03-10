@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
+	"github.com/paulmach/orb/geojson"
 )
 
 type GeoMap struct {
@@ -182,6 +183,28 @@ func (gm *GeoMap) AddRow(values []any) error {
 				return err
 			}
 			gm.layers = append(gm.layers, layer)
+		} else if fc, ok := val.(*geojson.FeatureCollection); ok {
+			for _, feat := range fc.Features {
+				layer := &Layer{Type: "geoJSON", Coordinates: feat, Properties: feat.Properties}
+				b := feat.Geometry.Bound()
+				gm.extendBound(b.Min.Lat(), b.Min.Lon())
+				gm.extendBound(b.Max.Lat(), b.Max.Lon())
+				gm.layers = append(gm.layers, layer)
+			}
+		} else if feat, ok := val.(*geojson.Feature); ok {
+			layer := &Layer{Type: "geoJSON", Coordinates: feat, Properties: feat.Properties}
+			b := feat.Geometry.Bound()
+			gm.extendBound(b.Min.Lat(), b.Min.Lon())
+			gm.extendBound(b.Max.Lat(), b.Max.Lon())
+			gm.layers = append(gm.layers, layer)
+		} else if geom, ok := val.(geojson.Geometry); ok {
+			layer := &Layer{Type: "geoJSON", Coordinates: geom}
+			b := geom.Geometry().Bound()
+			gm.extendBound(b.Min.Lat(), b.Min.Lon())
+			gm.extendBound(b.Max.Lat(), b.Max.Lon())
+			gm.layers = append(gm.layers, layer)
+		} else {
+			gm.logger.LogWarnf("GEOMAP unsupported value type: %T", val)
 		}
 	}
 	return nil

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
 )
 
@@ -247,6 +248,8 @@ func NewLayer(m map[string]interface{}, extendLatLon func(float64, float64)) (*L
 	}
 }
 
+var OrderedMarshalJS = true
+
 func MarshalJS(value any) (string, error) {
 	if value == nil {
 		return "null", nil
@@ -270,6 +273,65 @@ func MarshalJS(value any) (string, error) {
 			fields = append(fields, fmt.Sprintf("%s:%s", k, vv))
 		}
 		return "{" + strings.Join(fields, ",") + "}", nil
+	case *geojson.FeatureCollection:
+		if b, err := val.MarshalJSON(); err != nil {
+			return "", err
+		} else {
+			return string(b), nil
+		}
+	case *geojson.Feature:
+		if !OrderedMarshalJS {
+			if b, err := val.MarshalJSON(); err != nil {
+				return "", err
+			} else {
+				return string(b), nil
+			}
+		}
+		fields := []string{}
+		if val.ID != nil {
+			vv, err := MarshalJS(val.ID)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, fmt.Sprintf("id:%s", vv))
+		}
+		vv, err := MarshalJS(val.Geometry)
+		if err != nil {
+			return "", err
+		}
+		fields = append(fields, fmt.Sprintf("geometry:{coordinates:%s,type:%q}", vv, val.Geometry.GeoJSONType()))
+		vv, err = MarshalJS(val.Type)
+		if err != nil {
+			return "", err
+		}
+		fields = append(fields, fmt.Sprintf("type:%s", vv))
+		if val.BBox != nil {
+			vv, err = MarshalJS(val.BBox)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, fmt.Sprintf("bbox:%s", vv))
+		}
+		if val.Properties != nil {
+			vv, err = MarshalJS(val.Properties)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, fmt.Sprintf("properties:%s", vv))
+		}
+		return "{" + strings.Join(fields, ",") + "}", nil
+	case *geojson.Geometry:
+		if b, err := val.MarshalJSON(); err != nil {
+			return "", err
+		} else {
+			return string(b), nil
+		}
+	case orb.Geometry:
+		if b, err := json.Marshal(val); err != nil {
+			return "", err
+		} else {
+			return string(b), nil
+		}
 	case bool, int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8, float64:
 		return fmt.Sprintf("%v", val), nil
 	case string:

@@ -33,6 +33,78 @@ func TestMeshgrid(t *testing.T) {
 	}
 }
 
+func TestArrange(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-arrange",
+			Script: `
+				gen = require("mathx").arrange(1, 5, 1);
+				console.println(JSON.stringify(gen));
+			`,
+			Output: []string{
+				"[1,2,3,4,5]",
+			},
+		},
+		{
+			Name: "js-arrange-desc",
+			Script: `
+				gen = require("mathx").arrange(5, 1, -1);
+				console.println(JSON.stringify(gen));
+			`,
+			Output: []string{
+				"[5,4,3,2,1]",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestLinspace(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-linspace",
+			Script: `
+				gen = require("mathx").linspace(1, 5, 5);
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i]);
+				}
+			`,
+			Output: []string{
+				"1",
+				"2",
+				"3",
+				"4",
+				"5",
+			},
+		},
+		{
+			Name: "js-linspace-float",
+			Script: `
+				gen = require("mathx").linspace(0, 1, 5);
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i].toFixed(2));
+				}
+			`,
+			Output: []string{
+				"0.00",
+				"0.25",
+				"0.50",
+				"0.75",
+				"1.00",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
 func TestSort(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
@@ -279,6 +351,28 @@ func TestMedian(t *testing.T) {
 	}
 }
 
+func TestMedianInterp(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "medianInterp",
+			Script: `
+				const mathx = require("mathx")
+				x = [];
+				for( i=1; i<=100; i++) {
+					x.push(i);
+				}
+				console.println(mathx.medianInterp(x).toFixed(1))
+			`,
+			Output: []string{"50.0"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
 func TestQuantile(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
@@ -293,6 +387,29 @@ func TestQuantile(t *testing.T) {
 				console.println(mathx.quantile(0.90, x))
 			`,
 			Output: []string{"25", "90"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestQuantileInterp(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "quantileInterp",
+			Script: `
+				const mathx = require("mathx")
+				x = [];
+				for( i=1; i<=100; i++) {
+					x.push(i);
+				}
+				console.println(mathx.quantileInterp(0.25, x).toFixed(2))
+				console.println(mathx.quantileInterp(0.90, x).toFixed(2))
+			`,
+			Output: []string{"25.00", "90.00"},
 		},
 	}
 	for _, tc := range tests {
@@ -374,6 +491,255 @@ func TestStdErr(t *testing.T) {
 		},
 	}
 
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestMeanVariance(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "meanVariance",
+			Script: `
+				const mathx = require("mathx")
+				ret = mathx.meanVariance([1, 2, 3, 4])
+				console.println(ret.mean.toFixed(4))
+				console.println(ret.variance.toFixed(4))
+			`,
+			Output: []string{
+				"2.5000",
+				"1.6667",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestMeanStdDev(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "meanStdDev",
+			Script: `
+				const mathx = require("mathx")
+				ret = mathx.meanStdDev([1, 2, 3, 4])
+				console.println(ret.mean.toFixed(4))
+				console.println(ret.stdDev.toFixed(4))
+			`,
+			Output: []string{
+				"2.5000",
+				"1.2910",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestMode(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "mode",
+			Script: `
+				const mathx = require("mathx")
+				ret = mathx.mode([1, 2, 2, 3, 3, 3])
+				console.println(ret.value.toFixed(0))
+				console.println(ret.count.toFixed(0))
+			`,
+			Output: []string{
+				"3",
+				"3",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestMoment(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "moment",
+			Script: `
+				const mathx = require("mathx")
+				console.println(mathx.moment(2, [1, 2, 3, 4]).toFixed(4))
+			`,
+			Output: []string{
+				"1.2500",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestLinearRegression(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "linearRegression",
+			Script: `
+				const mathx = require("mathx")
+				ret = mathx.linearRegression([1, 2, 3], [2, 4, 6])
+				console.println(ret.intercept.toFixed(1))
+				console.println(ret.slope.toFixed(1))
+			`,
+			Output: []string{
+				"0.0",
+				"2.0",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestFft(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "fft",
+			Script: `
+				const mathx = require("mathx")
+				ret = mathx.fft(
+					[
+						new Date(0),
+						new Date(1000),
+						2000000000,
+						3000000000,
+						4000000000,
+						5000000000,
+					],
+					[0.1, 1.1, 0.2, -1.1, 0.3, 1.2],
+				)
+				console.println(ret.x.length)
+				console.println(ret.y.length)
+			`,
+			Output: []string{
+				"3",
+				"3",
+			},
+		},
+		{
+			Name: "fft-invalid-time",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.fft(["bad"], [1])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"fft invalid 0th sample time, but string",
+			},
+		},
+		{
+			Name: "fft-invalid-value",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.fft([0], ["bad"])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"fft invalid 0th sample value, but string",
+			},
+		},
+		{
+			Name: "fft-invalid-samples",
+			Script: `
+				const mathx = require("mathx");
+				const times = mathx.linspace(0, 10, 100);
+				const values = [];
+				for (let i = 0; i < times.length; i++) {
+					values.push(null);
+				}
+				try{
+					result = mathx.fft(times, values);
+					for( i = 0; i < result.x.length; i++ ) {
+						if (result.x[i] > 60)
+							break
+						$.yield(result.x[i], result.y[i])
+					}
+				} catch (e) {
+					console.error(e.message);
+				}
+		`,
+			Output: []string{
+				"ERROR fft invalid 0th sample value, but <nil>",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestValidationErrors(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "mean-weight-length-check",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.mean([1, 2, 3], [1, 2])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"mean: x and weight should be the same length",
+			},
+		},
+		{
+			Name: "correlation-length-check",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.correlation([1, 2, 3], [1, 2])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"correlation: x and y should be the same length",
+			},
+		},
+		{
+			Name: "correlation-weight-length-check",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.correlation([1, 2, 3], [4, 5, 6], [1, 2])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"correlation: x, y and weight should be the same length",
+			},
+		},
+	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			test_engine.RunTest(t, tc)

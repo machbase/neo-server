@@ -22,69 +22,26 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 
 	// m.PiecewiseConstant()
-	o.Set("PiecewiseConstant", new_piecewiseConstant(rt))
+	o.Set("PiecewiseConstant", func() Interpolator { return &interp.PiecewiseConstant{} })
 	// m.PiecewiseLinear()
-	o.Set("PiecewiseLinear", new_piecewiseLinear(rt))
+	o.Set("PiecewiseLinear", func() Interpolator { return &interp.PiecewiseLinear{} })
 	// m.AkimaSpline()
-	o.Set("AkimaSpline", new_akimaSpline(rt))
+	o.Set("AkimaSpline", func() Interpolator { return &interp.AkimaSpline{} })
 	// m.FritschButland()
-	o.Set("FritschButland", new_fritschButland(rt))
+	o.Set("FritschButland", func() Interpolator { return &interp.FritschButland{} })
 	// m.LinearRegression()
-	o.Set("LinearRegression", new_linearRegression(rt))
+	o.Set("LinearRegression", func() Interpolator { return &LinearRegression{} })
 	// m.ClampedCubic()
-	o.Set("ClampedCubic", new_clampedCubic(rt))
+	o.Set("ClampedCubic", func() Interpolator { return &interp.ClampedCubic{} })
 	// m.NaturalCubic()
-	o.Set("NaturalCubic", new_naturalCubic(rt))
+	o.Set("NaturalCubic", func() Interpolator { return &interp.NaturalCubic{} })
 	// m.NotAKnotCubic()
-	o.Set("NotAKnotCubic", new_notAKnotCubic(rt))
+	o.Set("NotAKnotCubic", func() Interpolator { return &interp.NotAKnotCubic{} })
 }
 
-func new_piecewiseConstant(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.PiecewiseConstant{})
-	}
-}
-
-func new_piecewiseLinear(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.PiecewiseLinear{})
-	}
-}
-
-func new_akimaSpline(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.AkimaSpline{})
-	}
-}
-
-func new_fritschButland(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.FritschButland{})
-	}
-}
-
-func new_linearRegression(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &LinearRegression{})
-	}
-}
-
-func new_clampedCubic(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.ClampedCubic{})
-	}
-}
-
-func new_naturalCubic(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.NaturalCubic{})
-	}
-}
-
-func new_notAKnotCubic(rt *goja.Runtime) func(c goja.ConstructorCall) *goja.Object {
-	return func(c goja.ConstructorCall) *goja.Object {
-		return newInterpolator(rt, &interp.NotAKnotCubic{})
-	}
+type Interpolator interface {
+	Fit(xs, ys []float64) error
+	Predict(x float64) float64
 }
 
 type LinearRegression struct {
@@ -112,67 +69,4 @@ func (lr *LinearRegression) Predict(x float64) float64 {
 		return 0
 	}
 	return lr.a + lr.b*x
-}
-
-type Interpolator struct {
-	rt     *goja.Runtime
-	interp interface {
-		Fit(xs, ys []float64) error
-		Predict(x float64) float64
-	}
-}
-
-func newInterpolator(rt *goja.Runtime, interp interface {
-	Fit(xs, ys []float64) error
-	Predict(x float64) float64
-}) *goja.Object {
-	ip := &Interpolator{rt: rt, interp: interp}
-	obj := rt.NewObject()
-	obj.Set("fit", ip.Fit)
-	obj.Set("predict", ip.Predict)
-	if _, ok := interp.(interface {
-		PredictDerivative(x float64) float64
-	}); ok {
-		obj.Set("predictDerivative", ip.PredictDerivative)
-	}
-	return obj
-}
-
-func (ip *Interpolator) Fit(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) != 2 {
-		panic(ip.rt.ToValue("fit: x and y are required"))
-	}
-	var x, y []float64
-	if err := ip.rt.ExportTo(call.Arguments[0], &x); err != nil {
-		panic(ip.rt.ToValue(fmt.Sprintf("fit: %v", err)))
-	}
-	if err := ip.rt.ExportTo(call.Arguments[1], &y); err != nil {
-		panic(ip.rt.ToValue(fmt.Sprintf("fit: %v", err)))
-	}
-	if len(x) != len(y) {
-		panic(ip.rt.ToValue("fit: x and y should be the same length"))
-	}
-	ip.interp.Fit(x, y)
-	return goja.Undefined()
-}
-
-func (ip *Interpolator) Predict(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) != 1 {
-		panic(ip.rt.ToValue("predict: x is required"))
-	}
-	x := call.Arguments[0].ToFloat()
-	return ip.rt.ToValue(ip.interp.Predict(x))
-}
-
-func (ip *Interpolator) PredictDerivative(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) != 1 {
-		panic(ip.rt.ToValue("predictDerivative: x is required"))
-	}
-	x := call.Arguments[0].ToFloat()
-	if derivative, ok := ip.interp.(interface {
-		PredictDerivative(x float64) float64
-	}); ok {
-		return ip.rt.ToValue(derivative.PredictDerivative(x))
-	}
-	panic(ip.rt.ToValue("predictDerivative: not supported"))
 }
