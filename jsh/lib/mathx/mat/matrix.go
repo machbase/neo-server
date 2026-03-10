@@ -21,96 +21,64 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/mathx/mat")
 	o := module.Get("exports").(*goja.Object)
 	// format("%v", m, opts...)
-	o.Set("format", Format(rt))
+	o.Set("format", Format)
 	// new Dense(rows, cols, []float64)
-	o.Set("Dense", new_dense(rt))
+	o.Set("Dense", new_dense)
 	// new SymDense(dims, []float64)
-	o.Set("SymDense", new_symDense(rt))
+	o.Set("SymDense", new_symDense)
 	// new QR()
-	o.Set("QR", new_qr(rt))
+	o.Set("QR", new_qr)
 	// new VecDense(n, []float64)
-	o.Set("VecDense", new_vecDense(rt))
+	o.Set("VecDense", new_vecDense)
 }
 
-func Format(rt *goja.Runtime) func(call goja.FunctionCall) goja.Value {
-	return func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) == 0 {
-			return goja.Undefined()
-		}
-		v, ok := call.Arguments[0].(*goja.Object).Get("$").Export().(mat.Matrix)
-		if !ok {
-			return goja.Undefined()
-		}
-
-		opts := struct {
-			Format  string `json:"format"`
-			Prefix  string `json:"prefix,omitempty"`
-			Excerpt int    `json:"excerpt,omitempty"`
-			Squeeze bool   `json:"squeeze,omitempty"`
-		}{
-			Format: "%v",
-		}
-
-		if len(call.Arguments) > 1 {
-			if err := rt.ExportTo(call.Arguments[1], &opts); err != nil {
-				panic(rt.ToValue(fmt.Sprintf("format: %v", err)))
-			}
-		}
-
-		o := []mat.FormatOption{}
-		if opts.Prefix != "" {
-			o = append(o, mat.Prefix(opts.Prefix))
-		}
-		if opts.Excerpt > 0 {
-			o = append(o, mat.Excerpt(opts.Excerpt))
-		}
-		if opts.Squeeze {
-			o = append(o, mat.Squeeze())
-		}
-		f := mat.Formatted(v, o...)
-		return rt.ToValue(fmt.Sprintf(opts.Format, f))
+func new_dense(rows, cols int, data []float64) *mat.Dense {
+	if rows <= 0 || cols <= 0 {
+		return &mat.Dense{}
 	}
+	return mat.NewDense(rows, cols, data)
 }
 
-type Matrix struct {
-	value mat.Matrix
-	rt    *goja.Runtime
-}
-
-func (m *Matrix) toValue() *goja.Object {
-	obj := m.rt.NewObject()
-	obj.Set("dims", m.Dims)
-	obj.Set("at", m.At)
-	obj.Set("T", m.T)
-	obj.Set("$", m.value)
-	obj.Set("toString", m.String)
-	return obj
-}
-
-func (m *Matrix) String() string {
-	return fmt.Sprintf("%v", mat.Formatted(m.value))
-}
-
-func (m *Matrix) Dims(call goja.FunctionCall) goja.Value {
-	r, c := m.value.Dims()
-	ret := m.rt.NewObject()
-	ret.Set("rows", r)
-	ret.Set("cols", c)
-	return ret
-}
-
-func (m *Matrix) At(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) < 2 {
-		return m.rt.ToValue("at: not enough arguments")
+func new_symDense(n int, data []float64) *mat.SymDense {
+	if n <= 0 {
+		return &mat.SymDense{}
 	}
-	i := int(call.Arguments[0].ToInteger())
-	j := int(call.Arguments[1].ToInteger())
-	v := m.value.At(i, j)
-	return m.rt.ToValue(v)
+	return mat.NewSymDense(n, data)
 }
 
-func (m *Matrix) T(call goja.FunctionCall) goja.Value {
-	val := m.value.T()
-	ret := &Matrix{value: val, rt: m.rt}
-	return ret.toValue()
+func new_vecDense(n int, data []float64) *mat.VecDense {
+	if n <= 0 {
+		return &mat.VecDense{}
+	}
+	return mat.NewVecDense(n, data)
+}
+
+func new_qr() *mat.QR {
+	return &mat.QR{}
+}
+
+type FormatOption struct {
+	Format  string `json:"format"`
+	Prefix  string `json:"prefix,omitempty"`
+	Excerpt int    `json:"excerpt,omitempty"`
+	Squeeze bool   `json:"squeeze,omitempty"`
+}
+
+func Format(v mat.Matrix, opts FormatOption) string {
+	if opts.Format == "" {
+		opts.Format = "%v"
+	}
+
+	o := []mat.FormatOption{}
+	if opts.Prefix != "" {
+		o = append(o, mat.Prefix(opts.Prefix))
+	}
+	if opts.Excerpt > 0 {
+		o = append(o, mat.Excerpt(opts.Excerpt))
+	}
+	if opts.Squeeze {
+		o = append(o, mat.Squeeze())
+	}
+	f := mat.Formatted(v, o...)
+	return fmt.Sprintf(opts.Format, f)
 }

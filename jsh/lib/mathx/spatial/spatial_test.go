@@ -125,3 +125,72 @@ func TestSimplify(t *testing.T) {
 		test_engine.RunTest(t, tc)
 	}
 }
+
+func TestParseGeoJSON(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-parse-geojson",
+			Script: `
+				m = require("mathx/spatial");
+				geojson = {
+					type: "FeatureCollection",
+					features: [
+						{
+							type: "Feature",
+							properties: { name: "Point A" },
+							geometry: {
+								type: "Point",
+								coordinates: [102.0, 0.5]
+							}
+						},
+						{
+							type: "Feature",
+							properties: { name: "Line B" },
+							geometry: {
+								type: "LineString",
+								coordinates: [
+									[102.0, 0.0],
+									[103.0, 1.0],
+									[104.0, 0.0],
+									[105.0, 1.0]
+								]
+							}
+						},
+						{
+							type: "Feature",
+							properties: { name: "Polygon C" },
+							geometry: {
+								type: "Polygon",
+								coordinates: [
+									[
+										[100.0, 0.0],
+										[101.0, 0.0],
+										[101.0, 1.0],
+										[100.0, 1.0],
+										[100.0, 0.0]
+									]
+								]
+							}
+						}
+					]
+				};
+				let features = m.parseGeoJSON(geojson);
+				console.println('type:', features.type);
+				console.println('features count:', features.features.length);
+				console.println('first feature type:', features.features[0].type);
+				console.println('first feature geometry:', features.features[0].geometry);
+				console.println('first feature name:', features.features[0].properties);
+			`,
+			Output: []string{
+				"type: FeatureCollection",
+				"features count: 3",
+				"first feature type: Feature",
+				"first feature geometry: [102 0.5](orb.Point)",
+				"first feature name: map[name:Point A](geojson.Properties)",
+			},
+		},
+	}
+	for _, tc := range tests {
+		test_engine.RunTest(t, tc)
+	}
+}

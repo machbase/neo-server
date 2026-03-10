@@ -2,6 +2,7 @@ package filter
 
 import (
 	_ "embed"
+	"errors"
 	"math"
 	"time"
 
@@ -26,306 +27,183 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 
 	// avg = new Avg();
 	// newValue = avg.eval(value);
-	o.Set("Avg", new_avg(rt))
+	o.Set("Avg", newAvg)
 
 	// movAvg = new MovAvg(windowSize);
 	// newValue = movAvg.eval(value);
 	//
 	// windowsSize should be larger than 1
-	o.Set("MovAvg", new_movavg(rt))
+	o.Set("MovAvg", newMovAvg)
 
 	// lowpass = new Lowpass(alpha);
 	// newValue = lowpass.eval(value);
 	//
 	// alpha should be 0 < alpha < 1
-	o.Set("Lowpass", new_lowpass(rt))
+	o.Set("Lowpass", newLowpass)
 
 	// kalman = new Kalman(initialVariance, processVariance, ObservationVariance);
-	// or
-	// kalman = new Kalman({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
 	// newValue = kalman.eval(time, ...vector);
-	o.Set("Kalman", new_kalman(rt))
+	o.Set("Kalman", newKalman)
 
 	// smoother = new KalmanSmoother(initialVariance, processVariance, ObservationVariance);
-	// or
-	// smoother = new KalmanSmoother({initialVariance: 1.0, processVariance: 1.0, observationVariance: 2.0});
 	// newValue = smoother.eval(time, ...vector);
-	o.Set("KalmanSmoother", new_kalman_smoother(rt))
+	o.Set("KalmanSmoother", newKalmanSmoother)
 }
 
-func new_avg(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
-	return func(call goja.ConstructorCall) *goja.Object {
-		ret := rt.NewObject()
-		count := 0
-		sum := 0.0
-		ret.Set("eval", func(call goja.FunctionCall) goja.Value {
-			var value float64
-			if len(call.Arguments) == 0 {
-				panic(rt.ToValue("avg: no argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[0], &value); err != nil {
-				panic(rt.ToValue("avg: invalid argument"))
-			}
-			if math.IsNaN(value) {
-				return rt.ToValue(math.NaN())
-			}
-			count++
-			sum += value
-			return rt.ToValue(sum / float64(count))
-		})
+type Avg struct {
+	count float64
+	sum   float64
+}
+
+func newAvg() *Avg {
+	return &Avg{}
+}
+
+func (a *Avg) Eval(value float64) float64 {
+	if math.IsNaN(value) {
+		return math.NaN()
+	}
+	a.count++
+	a.sum += value
+	return a.sum / a.count
+}
+
+type MovAvg struct {
+	count      int
+	sum        float64
+	window     []float64
+	windowSize int
+}
+
+func newMovAvg(windowSize int) *MovAvg {
+	return &MovAvg{
+		windowSize: windowSize,
+		window:     make([]float64, windowSize),
+	}
+}
+
+func (m *MovAvg) Eval(value float64) (float64, error) {
+	if math.IsNaN(value) {
+		return math.NaN(), nil
+	}
+	m.count++
+	m.sum += value
+	if m.count > m.windowSize {
+		m.sum -= m.window[m.count%m.windowSize]
+		m.window[m.count%m.windowSize] = value
+		return m.sum / float64(m.windowSize), nil
+	} else {
+		m.window[m.count%m.windowSize] = value
+		return m.sum / float64(m.count), nil
+	}
+}
+
+type Lowpass struct {
+	prev  float64
+	alpha float64
+}
+
+func newLowpass(alpha float64) *Lowpass {
+	return &Lowpass{
+		prev:  math.MaxInt64,
+		alpha: alpha,
+	}
+}
+
+func (l *Lowpass) Eval(value float64) (float64, error) {
+	if math.IsNaN(value) {
+		return math.NaN(), nil
+	}
+	if l.prev == math.MaxInt64 {
+		l.prev = value
+	} else {
+		l.prev = (1-l.alpha)*l.prev + l.alpha*value
+	}
+	return l.prev, nil
+}
+
+type Kalman struct {
+	kf    *kalman.KalmanFilter
+	model *models.BrownianModel
+	iv    float64
+	pv    float64
+	ov    float64
+}
+
+// InitialVariance, ProcessVariance, ObservationVariance
+func newKalman(initVariance, processVariance, observationVariance float64) *Kalman {
+	return &Kalman{
+		iv: initVariance,
+		pv: processVariance,
+		ov: observationVariance,
+	}
+}
+
+func (k *Kalman) Eval(ts time.Time, vec ...float64) []float64 {
+	if k.kf == nil {
+		k.model = models.NewBrownianModel(
+			ts,
+			mat.NewVecDense(len(vec), vec),
+			models.BrownianModelConfig{
+				InitialVariance:     k.iv,
+				ProcessVariance:     k.pv,
+				ObservationVariance: k.ov,
+			},
+		)
+		k.kf = kalman.NewKalmanFilter(k.model)
+		return vec
+	} else {
+		k.kf.Update(ts, k.model.NewMeasurement(mat.NewVecDense(len(vec), vec)))
+		newVal := k.model.Value(k.kf.State())
+		ret := make([]float64, newVal.Len())
+		for i := range ret {
+			ret[i] = newVal.AtVec(i)
+		}
 		return ret
 	}
 }
 
-func new_movavg(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
-	return func(call goja.ConstructorCall) *goja.Object {
-		windowSize := 0
-		if len(call.Arguments) == 0 {
-			panic(rt.ToValue("movavg: no argument"))
-		}
-		if err := rt.ExportTo(call.Arguments[0], &windowSize); err != nil {
-			panic(rt.ToValue("movavg: invalid argument"))
-		}
-		if windowSize <= 1 {
-			panic(rt.ToValue("movavg: windowSize should be larger than 1"))
-		}
-		ret := rt.NewObject()
-		count := 0
-		sum := 0.0
-		window := make([]float64, windowSize)
-		ret.Set("eval", func(call goja.FunctionCall) goja.Value {
-			var value float64
-			if len(call.Arguments) == 0 {
-				panic(rt.ToValue("movavg: no argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[0], &value); err != nil {
-				panic(rt.ToValue("movavg: invalid argument"))
-			}
-			if math.IsNaN(value) {
-				return rt.ToValue(math.NaN())
-			}
-			count++
-			sum += value
-			if count > windowSize {
-				sum -= window[count%windowSize]
-				window[count%windowSize] = value
-				return rt.ToValue(sum / float64(windowSize))
-			} else {
-				window[count%windowSize] = value
-				return rt.ToValue(sum / float64(count))
-			}
-		})
-		return ret
+type KalmanSmoother struct {
+	smoother *kalman.KalmanSmoother
+	model    *models.BrownianModel
+	iv       float64
+	pv       float64
+	ov       float64
+}
+
+// InitialVariance, ProcessVariance, ObservationVariance
+func newKalmanSmoother(initVariance, processVariance, observationVariance float64) *KalmanSmoother {
+	return &KalmanSmoother{
+		iv: initVariance,
+		pv: processVariance,
+		ov: observationVariance,
 	}
 }
 
-func new_lowpass(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
-	return func(call goja.ConstructorCall) *goja.Object {
-		alpha := 0.0
-		if len(call.Arguments) == 0 {
-			panic(rt.ToValue("lowpass: no argument"))
+func (k *KalmanSmoother) Eval(ts time.Time, vec ...float64) ([]float64, error) {
+	if k.smoother == nil {
+		k.model = models.NewBrownianModel(
+			ts,
+			mat.NewVecDense(len(vec), vec),
+			models.BrownianModelConfig{
+				InitialVariance:     k.iv,
+				ProcessVariance:     k.pv,
+				ObservationVariance: k.ov,
+			},
+		)
+		k.smoother = kalman.NewKalmanSmoother(k.model)
+		return vec, nil
+	} else {
+		states, err := k.smoother.Smooth(kalman.NewMeasurementAtTime(ts, k.model.NewMeasurement(mat.NewVecDense(len(vec), vec))))
+		if err != nil {
+			return nil, errors.New("kalman: " + err.Error())
 		}
-		if err := rt.ExportTo(call.Arguments[0], &alpha); err != nil {
-			panic(rt.ToValue("lowpass: invalid argument"))
+		newVal := k.model.Value(states[0].State)
+
+		ret := make([]float64, newVal.Len())
+		for i := range ret {
+			ret[i] = newVal.AtVec(i)
 		}
-		if alpha <= 0 || alpha >= 1 {
-			panic(rt.ToValue("lowpass: alpha should be 0 < alpha < 1"))
-		}
-		ret := rt.NewObject()
-		prev := float64(math.MaxInt64)
-		ret.Set("eval", func(call goja.FunctionCall) goja.Value {
-			var value float64
-			if len(call.Arguments) == 0 {
-				panic(rt.ToValue("lowpass: no argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[0], &value); err != nil {
-				panic(rt.ToValue("lowpass: invalid argument"))
-			}
-			if math.IsNaN(value) {
-				return rt.ToValue(math.NaN())
-			}
-			if prev == math.MaxInt64 {
-				prev = value
-			} else {
-				prev = (1-alpha)*prev + alpha*value
-			}
-			return rt.ToValue(prev)
-		})
-		return ret
-	}
-}
-
-func new_kalman(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
-	return func(call goja.ConstructorCall) *goja.Object {
-		ret := rt.NewObject()
-		var kf *kalman.KalmanFilter
-		var model *models.BrownianModel
-		var iv, pv, ov float64
-		if len(call.Arguments) == 1 {
-			opt := struct {
-				InitialVariance     float64 `json:"initialVariance"`
-				ProcessVariance     float64 `json:"processVariance"`
-				ObservationVariance float64 `json:"observationVariance"`
-			}{}
-			if err := rt.ExportTo(call.Arguments[0], &opt); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			iv = opt.InitialVariance
-			pv = opt.ProcessVariance
-			ov = opt.ObservationVariance
-		} else if len(call.Arguments) == 3 {
-			if err := rt.ExportTo(call.Arguments[0], &iv); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[1], &pv); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[2], &ov); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-		} else {
-			panic(rt.ToValue("kalman: invalid arguments"))
-		}
-		ret.Set("eval", func(call goja.FunctionCall) goja.Value {
-			if len(call.Arguments) < 2 {
-				panic(rt.ToValue("kalman: invalid arguments"))
-			}
-			var ts time.Time
-			var vec []float64
-
-			if err := rt.ExportTo(call.Arguments[0], &ts); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			for i := 1; i < len(call.Arguments); i++ {
-				var value float64
-				if err := rt.ExportTo(call.Arguments[i], &value); err != nil {
-					panic(rt.ToValue("kalman: invalid argument"))
-				}
-				if math.IsNaN(value) {
-					return rt.ToValue(math.NaN())
-				}
-				vec = append(vec, value)
-			}
-
-			if kf == nil {
-				model = models.NewBrownianModel(
-					ts,
-					mat.NewVecDense(len(vec), vec),
-					models.BrownianModelConfig{
-						InitialVariance:     iv,
-						ProcessVariance:     pv,
-						ObservationVariance: ov,
-					},
-				)
-				kf = kalman.NewKalmanFilter(model)
-				if len(vec) == 1 {
-					return rt.ToValue(vec[0])
-				}
-				return rt.ToValue(vec)
-			} else {
-				kf.Update(ts, model.NewMeasurement(mat.NewVecDense(len(vec), vec)))
-				newVal := model.Value(kf.State())
-
-				if dim := newVal.Len(); dim == 1 {
-					return rt.ToValue(newVal.AtVec(0))
-				} else {
-					ret := make([]float64, newVal.Len())
-					for i := range ret {
-						ret[i] = newVal.AtVec(i)
-					}
-					return rt.ToValue(ret)
-				}
-			}
-		})
-		return ret
-	}
-}
-
-func new_kalman_smoother(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
-	return func(call goja.ConstructorCall) *goja.Object {
-		ret := rt.NewObject()
-		var smoother *kalman.KalmanSmoother
-		var model *models.BrownianModel
-		var iv, pv, ov float64
-		if len(call.Arguments) == 1 {
-			opt := struct {
-				InitialVariance     float64 `json:"initialVariance"`
-				ProcessVariance     float64 `json:"processVariance"`
-				ObservationVariance float64 `json:"observationVariance"`
-			}{}
-			if err := rt.ExportTo(call.Arguments[0], &opt); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			iv = opt.InitialVariance
-			pv = opt.ProcessVariance
-			ov = opt.ObservationVariance
-		} else if len(call.Arguments) == 3 {
-			if err := rt.ExportTo(call.Arguments[0], &iv); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[1], &pv); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			if err := rt.ExportTo(call.Arguments[2], &ov); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-		} else {
-			panic(rt.ToValue("kalman: invalid arguments"))
-		}
-		ret.Set("eval", func(call goja.FunctionCall) goja.Value {
-			if len(call.Arguments) < 2 {
-				panic(rt.ToValue("kalman: invalid arguments"))
-			}
-			var ts time.Time
-			var vec []float64
-
-			if err := rt.ExportTo(call.Arguments[0], &ts); err != nil {
-				panic(rt.ToValue("kalman: invalid argument"))
-			}
-			for i := 1; i < len(call.Arguments); i++ {
-				var value float64
-				if err := rt.ExportTo(call.Arguments[i], &value); err != nil {
-					panic(rt.ToValue("kalman: invalid argument"))
-				}
-				if math.IsNaN(value) {
-					return rt.ToValue(math.NaN())
-				}
-				vec = append(vec, value)
-			}
-
-			if smoother == nil {
-				model = models.NewBrownianModel(
-					ts,
-					mat.NewVecDense(len(vec), vec),
-					models.BrownianModelConfig{
-						InitialVariance:     iv,
-						ProcessVariance:     pv,
-						ObservationVariance: ov,
-					},
-				)
-				smoother = kalman.NewKalmanSmoother(model)
-				if len(vec) == 1 {
-					return rt.ToValue(vec[0])
-				}
-				return rt.ToValue(vec)
-			} else {
-				states, err := smoother.Smooth(kalman.NewMeasurementAtTime(ts, model.NewMeasurement(mat.NewVecDense(len(vec), vec))))
-				if err != nil {
-					panic(rt.ToValue("kalman: " + err.Error()))
-				}
-				newVal := model.Value(states[0].State)
-
-				if dim := newVal.Len(); dim == 1 {
-					return rt.ToValue(newVal.AtVec(0))
-				} else {
-					ret := make([]float64, newVal.Len())
-					for i := range ret {
-						ret[i] = newVal.AtVec(i)
-					}
-					return rt.ToValue(ret)
-				}
-			}
-		})
-		return ret
+		return ret, nil
 	}
 }

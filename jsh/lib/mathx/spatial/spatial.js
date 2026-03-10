@@ -20,14 +20,19 @@ function haversine(coord1, coord2, radius = 6371000) {
         lat2 = coord2.lat;
         lon2 = coord2.lon;
     }
-    return _spatial.haversine({
-        radius: radius,
-        coord: [[lat1, lon1], [lat2, lon2]],
-    });
+    return _spatial.haversine([lat1, lon1], [lat2, lon2], radius);
+}
+
+function simplify(tolerance, ...coords) {
+    return _spatial.simplify(tolerance, coords);
+}
+
+function parseGeoJSON(obj) {
+    return _spatial.parseGeoJSON(obj);
 }
 
 module.exports = {
     haversine,
-    parseGeoJSON: _spatial.parseGeoJSON,
-    simplify: _spatial.simplify,
+    simplify,
+    parseGeoJSON,
 }

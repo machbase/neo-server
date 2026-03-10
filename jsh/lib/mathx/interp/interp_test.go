@@ -107,17 +107,93 @@ func TestInterpCubic(t *testing.T) {
 				kn.fit(xs, ys);
 
 				for( x of [0.5, 1.5, 2.5, 3.5] ) {
-					console.println(` + "`${x.toFixed(2)},${cc.predict(x).toFixed(2)},${nc.predict(x).toFixed(2)},${kn.predict(x).toFixed(2)}`);" +
+					cp = cc.predict(x);
+					np = nc.predict(x);
+					nd = nc.predictDerivative(x);
+					kp = kn.predict(x);
+					console.println(` + "`${x.toFixed(2)},${cp.toFixed(2)},${np.toFixed(2)},${nd.toFixed(2)},${kp.toFixed(2)}`);" +
 				`}`,
 			Output: []string{
-				"0.50,3.39,5.00,5.00",
-				"1.50,15.54,15.00,15.00",
-				"2.50,24.46,25.00,25.00",
-				"3.50,36.61,35.00,35.00",
+				"0.50,3.39,5.00,10.00,5.00",
+				"1.50,15.54,15.00,10.00,15.00",
+				"2.50,24.46,25.00,10.00,25.00",
+				"3.50,36.61,35.00,10.00,35.00",
 			},
 		},
 	}
 
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestValidationErrors(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "fit-missing-args",
+			Script: `
+				const m = require("mathx/interp");
+				const pc = new m.PiecewiseConstant();
+				try {
+					pc.fit([0, 1, 2]);
+				} catch (e) {
+					console.println(e.message);
+				}
+			`,
+			Output: []string{
+				"fit: x and y are required",
+			},
+		},
+		{
+			Name: "fit-length-mismatch",
+			Script: `
+				const m = require("mathx/interp");
+				const pc = new m.PiecewiseConstant();
+				try {
+					pc.fit([0, 1, 2], [0, 1]);
+				} catch (e) {
+					console.println(e.message);
+				}
+			`,
+			Output: []string{
+				"fit: x and y should be the same length",
+			},
+		},
+		{
+			Name: "predict-missing-arg",
+			Script: `
+				const m = require("mathx/interp");
+				const pc = new m.PiecewiseConstant();
+				pc.fit([0, 1], [0, 1]);
+				try {
+					pc.predict();
+				} catch (e) {
+					console.println(e.message);
+				}
+			`,
+			Output: []string{
+				"predict: x is required",
+			},
+		},
+		{
+			Name: "predict-derivative-not-supported",
+			Script: `
+				const m = require("mathx/interp");
+				const lr = new m.LinearRegression();
+				lr.fit([0, 1], [0, 1]);
+				if (typeof lr.predictDerivative === 'function') {
+					console.println("predictDerivative is supported");
+				} else {
+					console.println("predictDerivative is not supported");
+				}
+			`,
+			Output: []string{
+				"predictDerivative is not supported",
+			},
+		},
+	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			test_engine.RunTest(t, tc)

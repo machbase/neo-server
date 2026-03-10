@@ -513,7 +513,7 @@ func TestScriptFFT(t *testing.T) {
 							$.yield(result.x[i], result.y[i])
 						}
 					} catch (e) {
-					 	console.error(e);
+					 	console.error(e.message);
 					}
 				})
 				CSV()

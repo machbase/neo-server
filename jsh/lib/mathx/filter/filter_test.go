@@ -204,3 +204,85 @@ func TestKalmanSmoother(t *testing.T) {
 		})
 	}
 }
+
+func TestValidationErrors(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "avg-no-argument",
+			Script: `
+				const m = require("mathx/filter")
+				const avg = new m.Avg()
+				try {
+					avg.eval()
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"avg: no argument",
+			},
+		},
+		{
+			Name: "movavg-window-size",
+			Script: `
+				const m = require("mathx/filter")
+				try {
+					new m.MovAvg(1)
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"movavg: windowSize should be larger than 1",
+			},
+		},
+		{
+			Name: "lowpass-alpha-range",
+			Script: `
+				const m = require("mathx/filter")
+				try {
+					new m.Lowpass(1)
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"lowpass: alpha should be 0 < alpha < 1",
+			},
+		},
+		{
+			Name: "kalman-constructor-arguments",
+			Script: `
+				const m = require("mathx/filter")
+				try {
+					new m.Kalman(1, 2)
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"kalman: invalid arguments",
+			},
+		},
+		{
+			Name: "kalman-invalid-time",
+			Script: `
+				const m = require("mathx/filter")
+				const kalman = new m.Kalman(1.0, 1.0, 2.0)
+				try {
+					kalman.eval("bad", 1.0)
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"kalman: invalid argument",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
