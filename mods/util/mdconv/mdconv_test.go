@@ -39,3 +39,25 @@ func TestMdWithImage(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(w.String()))
 }
+
+func TestMdWithMermaid(t *testing.T) {
+	code := []string{
+		`# Mermaid test`,
+		"```mermaid",
+		`graph TD;`,
+		`A-->B;`,
+		"```",
+	}
+	expect := []string{
+		`<h1>Mermaid test</h1>`,
+		`<pre class="mermaid">graph TD;`,
+		`A--&gt;B;`,
+		`</pre>`,
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.Nil(t, err)
+	require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(w.String()))
+}
