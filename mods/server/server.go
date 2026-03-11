@@ -389,25 +389,9 @@ func (s *Server) startMachbaseSvr() error {
 }
 
 func (s *Server) startMachbaseCli() error {
-	addr, err := url.Parse(s.DataDir)
+	host, port, user, password, err := parseMachbaseAddress(s.DataDir)
 	if err != nil {
-		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
-	}
-	if addr.Scheme != "machbase" {
-		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
-	}
-	if addr.Host == "" {
-		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
-	}
-	if addr.Port() == "" {
-		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
-	}
-	host := strings.TrimSuffix(addr.Host, ":"+addr.Port())
-	port := 0
-	if p, err := strconv.ParseInt(addr.Port(), 10, 32); err == nil {
-		port = int(p)
-	} else {
-		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+		return err
 	}
 
 	db, err := machcli.NewDatabase(&machcli.Config{
@@ -423,21 +407,17 @@ func (s *Server) startMachbaseCli() error {
 		return err
 	}
 
-	if addr.User != nil {
-		user := addr.User.Username()
-		pass, set := addr.User.Password()
-		if set {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			ok, _, err := db.UserAuth(ctx, user, pass)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return fmt.Errorf("head-only mode user auth failed")
-			}
-			db.SetTrustUser(user, pass)
+	if user != "" && password != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ok, _, err := db.UserAuth(ctx, user, password)
+		if err != nil {
+			return err
 		}
+		if !ok {
+			return fmt.Errorf("head-only mode user auth failed")
+		}
+		db.SetTrustUser(user, password)
 	}
 	api.SetDefault(db)
 	api.StartAppendWorkers()
@@ -486,10 +466,45 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 	return nil
 }
 
+// returns host, port, user, password, error
+func parseMachbaseAddress(addrStr string) (string, int, string, string, error) {
+	addr, err := url.Parse(addrStr)
+	if err != nil {
+		return "", 0, "", "", fmt.Errorf("invalid --data address for headless mode, %s", addrStr)
+	}
+	if addr.Scheme != "machbase" {
+		return "", 0, "", "", fmt.Errorf("invalid --data address for headless mode, %s", addrStr)
+	}
+	if addr.Host == "" {
+		return "", 0, "", "", fmt.Errorf("invalid --data address for headless mode, %s", addrStr)
+	}
+	if addr.Port() == "" {
+		return "", 0, "", "", fmt.Errorf("invalid --data address for headless mode, %s", addrStr)
+	}
+	host := strings.TrimSuffix(addr.Host, ":"+addr.Port())
+	port := 0
+	if p, err := strconv.ParseInt(addr.Port(), 10, 32); err == nil {
+		port = int(p)
+	} else {
+		return "", 0, "", "", fmt.Errorf("invalid --data address for headless mode, %s", addrStr)
+	}
+	user := ""
+	pass := ""
+	if addr.User != nil {
+		user = addr.User.Username()
+		pass, _ = addr.User.Password()
+	}
+	return host, port, user, pass, nil
+}
+
 func (s *Server) preparePorts() error {
 	// port-check MACH
 	if HeadOnly {
-		if err := s.AddServicePort("mach", fmt.Sprintf("tcp://%s", strings.TrimPrefix(s.DataDir, "machbase://"))); err != nil {
+		host, port, _, _, err := parseMachbaseAddress(s.DataDir)
+		if err != nil {
+			return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+		}
+		if err := s.AddServicePort("mach", fmt.Sprintf("tcp://%s:%d", host, port)); err != nil {
 			return fmt.Errorf("MACH port not available, %s", err.Error())
 		}
 	} else {
