@@ -15,7 +15,7 @@ const options = {
     ...pretty.TableArgOptions,
 }
 const positionals = [
-    { name: 'sql', type: 'string', variadic: true, description: 'SQL query to explain' }
+    { name: 'sql', type: 'string', variadic: true, description: 'SQL query to execute' }
 ];
 
 let showHelp = true;

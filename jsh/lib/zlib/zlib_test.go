@@ -1,12 +1,28 @@
 package zlib_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"testing"
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/jsh/lib/zlib"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
+
+func gzipTestInput(t *testing.T, data string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(data)); err != nil {
+		t.Fatalf("failed to write gzip input: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("failed to close gzip writer: %v", err)
+	}
+	return buf.Bytes()
+}
 
 func TestZlibModule(t *testing.T) {
 	rt := goja.New()
@@ -568,6 +584,61 @@ func TestZlibPipe(t *testing.T) {
 			`,
 			Output: []string{
 				"write error occurred: false",
+				"header: NAME|AGE",
+				"record: Alice,30",
+				"record: Bob,25",
+				"read error occurred: false",
+			},
+		},
+		{
+			Name: "pipe-with-csv-stdin",
+			Script: `
+				const zlib = require('zlib');
+				const parser = require('parser');
+				const fs = require('fs');
+
+				let readErrorOccurred = false;
+
+				try {
+					const inFile = fs.createReadStream('-', { highWaterMark: 2048, encoding: 'buffer' });
+					const gunzip = zlib.createGunzip();
+					const csvParser = parser.csv();
+
+					const parsed = inFile.pipe(gunzip).pipe(csvParser);
+
+					parsed.on('error', function(err) {
+						readErrorOccurred = true;
+						console.println('read file error:', err.message);
+					});
+
+					parsed.on('headers', function(headers) {
+						console.println('header:', headers.join('|'));
+					});
+
+					parsed.on('data', function(rec) {
+						console.println('record:', rec.NAME + ',' + rec.AGE);
+					});
+
+					parsed.on('end', function() {
+						console.println('read error occurred:', readErrorOccurred);
+					});
+
+					gunzip.on('error', function(err) {
+						readErrorOccurred = true;
+						console.println('gunzip error:', err.message);
+					});
+
+					const start = Date.now();
+					while (Date.now() - start < 500) {
+						// wait for decompression to complete
+					}
+				} catch (e) {
+					readErrorOccurred = true;
+					console.println('read error:', e.message);
+				}
+			`,
+			InputBytes: gzipTestInput(t, "NAME,AGE\nAlice,30\nBob,25\n"),
+			Output: []string{
 				"header: NAME|AGE",
 				"record: Alice,30",
 				"record: Bob,25",

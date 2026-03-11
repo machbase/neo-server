@@ -41,6 +41,46 @@ function stringToBytes(str) {
     return bytes;
 }
 
+function chunkLength(chunk) {
+    if (chunk === null || chunk === undefined) {
+        return 0;
+    }
+    if (typeof chunk.byteLength === 'number') {
+        return chunk.byteLength;
+    }
+    return typeof chunk.length === 'number' ? chunk.length : 0;
+}
+
+function toBufferChunk(chunk) {
+    if (chunk instanceof ArrayBuffer) {
+        return new Uint8Array(chunk);
+    }
+    if (chunk instanceof Uint8Array) {
+        return chunk;
+    }
+    if (Buffer.isBuffer(chunk)) {
+        return new Uint8Array(chunk);
+    }
+    if (Array.isArray(chunk)) {
+        return Uint8Array.from(chunk);
+    }
+    return Uint8Array.from(stringToBytes(String(chunk)));
+}
+
+function toStringChunk(chunk) {
+    if (typeof chunk === 'string') {
+        return chunk;
+    }
+    if (chunk instanceof Uint8Array || Buffer.isBuffer(chunk) || Array.isArray(chunk)) {
+        return bytesToString(chunk);
+    }
+    return String(chunk);
+}
+
+function getProcessModule() {
+    return require('./process');
+}
+
 /**
  * Read file contents synchronously
  * @param {string} path - File path
@@ -94,12 +134,18 @@ function writeFileSync(path, data, options) {
 class ReadStream extends EventEmitter {
     constructor(path, options) {
         super();
-        this.fullPath = _fs.resolvePath(path);
+        this.path = path;
+        this.isStdin = path === '-';
+        this.fullPath = this.isStdin ? path : _fs.resolvePath(path);
         this.encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
         this.flags = constants.O_RDONLY;
         // Use highWaterMark for Node.js compatibility, fallback to bufferSize for backward compatibility
         this.bufferSize = options?.highWaterMark || options?.bufferSize || 64 * 1024; // 64KB (Node.js default)
         this.eof = false;
+        if (this.isStdin) {
+            this.reader = getProcessModule().stdin;
+            return;
+        }
         try {
             this.fd = _fs.open(this.fullPath, this.flags);
             this.reader = _fs.hostReader(this.fd);
@@ -112,8 +158,37 @@ class ReadStream extends EventEmitter {
             throw error;
         }
     }
+    _emitChunk(chunk) {
+        if (this.encoding === null || this.encoding === 'buffer') {
+            const data = toBufferChunk(chunk);
+            this.emit('data', data);
+            return data;
+        }
+
+        const data = toStringChunk(chunk);
+        this.emit('data', data);
+        return data;
+    }
+    _readFromStdin() {
+        const chunk = (this.encoding === null || this.encoding === 'buffer') && typeof this.reader.readBuffer === 'function'
+            ? this.reader.readBuffer(this.bufferSize)
+            : this.reader.readBytes(this.bufferSize);
+        const bytesRead = chunkLength(chunk);
+        if (bytesRead <= 0) {
+            this.eof = true;
+            this.emit('end');
+            return bytesRead;
+        }
+
+        this._emitChunk(chunk);
+        return bytesRead;
+    }
     _read() {
         try {
+            if (this.isStdin) {
+                return this._readFromStdin();
+            }
+
             // Allocate buffer once and reuse it
             if (!this._buffer) {
                 // Use Array for compatibility with _fs.read()
@@ -128,7 +203,6 @@ class ReadStream extends EventEmitter {
             }
 
             if (this.encoding === null || this.encoding === 'buffer') {
-                // Create Uint8Array view directly from buffer without slice
                 // Must copy since buffer will be reused in next read
                 const uint8Data = new Uint8Array(bytesRead);
                 for (let i = 0; i < bytesRead; i++) {
@@ -136,17 +210,19 @@ class ReadStream extends EventEmitter {
                 }
                 this.emit('data', uint8Data);
                 return uint8Data;
-            } else {
-                // For string mode, convert only the bytes read
-                let str = '';
-                for (let i = 0; i < bytesRead; i++) {
-                    str += String.fromCharCode(this._buffer[i]);
-                }
-                this.emit('data', str);
-                return str;
             }
+
+            // For string mode, convert only the bytes read
+            let str = '';
+            for (let i = 0; i < bytesRead; i++) {
+                str += String.fromCharCode(this._buffer[i]);
+            }
+            this.emit('data', str);
+            return str;
         } catch (e) {
-            _fs.close(this.fd);
+            if (!this.isStdin && this.fd !== undefined) {
+                _fs.close(this.fd);
+            }
             if (e.message === 'EOF') {
                 this.eof = true;
                 this.emit('end');
