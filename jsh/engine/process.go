@@ -15,23 +15,6 @@ import (
 	"github.com/dop251/goja_nodejs/eventloop"
 )
 
-//go:embed process.js
-var process_js []byte
-
-//go:embed events.js
-var events_js []byte
-
-//go:embed fs.js
-var fs_js []byte
-
-func (jr *JSRuntime) ProcessFiles() map[string][]byte {
-	return map[string][]byte{
-		"process.js": process_js,
-		"events.js":  events_js,
-		"fs.js":      fs_js,
-	}
-}
-
 func (jr *JSRuntime) Process(vm *goja.Runtime, module *goja.Object) {
 	executable, _ := os.Executable()
 	exports := module.Get("exports").(*goja.Object)

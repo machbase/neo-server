@@ -1,4 +1,4 @@
-package engine_test
+package lib_test
 
 import (
 	"fmt"

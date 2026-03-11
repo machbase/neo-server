@@ -46,12 +46,24 @@ func addFiles(files map[string][]byte) {
 	}
 }
 
+//go:embed events.js
+var events_js []byte
+
+//go:embed fs.js
+var fs_js []byte
+
 //go:embed path.js
 var path_js []byte
 
+//go:embed process.js
+var process_js []byte
+
 func libFiles() map[string][]byte {
 	return map[string][]byte{
-		"path.js": path_js,
+		"events.js":  events_js,
+		"fs.js":      fs_js,
+		"path.js":    path_js,
+		"process.js": process_js,
 	}
 }
 
@@ -60,7 +72,6 @@ func libFiles() map[string][]byte {
 func Enable(n *engine.JSRuntime) {
 	// engine modules
 	n.RegisterNativeModule("@jsh/process", n.Process)
-	addFiles(n.ProcessFiles())
 	n.RegisterNativeModule("@jsh/fs", n.Filesystem)
 	// lib files
 	addFiles(libFiles())
