@@ -34,6 +34,7 @@ type TestCase struct {
 	Name        string
 	Script      string
 	Input       []string
+	InputBytes  []byte
 	Output      []string
 	ExpectFunc  func(t *testing.T, result string)
 	Err         string
@@ -75,7 +76,9 @@ func RunTest(t *testing.T, tc TestCase) {
 		}
 		lib.Enable(jr)
 
-		if len(tc.Input) > 0 {
+		if len(tc.InputBytes) > 0 {
+			conf.Reader.(*bytes.Buffer).Write(tc.InputBytes)
+		} else if len(tc.Input) > 0 {
 			conf.Reader.(*bytes.Buffer).WriteString(strings.Join(tc.Input, "\n") + "\n")
 		}
 		if err := jr.Run(); err != nil {

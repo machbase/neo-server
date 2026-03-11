@@ -1459,6 +1459,35 @@ func TestFSStream(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_create_read_stream_from_stdin",
+			Script: `
+				const fs = require('fs');
+
+				const readStream = fs.createReadStream('-', { encoding: 'utf8', bufferSize: 4 });
+
+				let data = '';
+				readStream.on('data', chunk => {
+					data += chunk;
+				});
+
+				readStream.on('end', () => {
+					console.println('STDIN stream data:');
+					console.println(data);
+				});
+
+				readStream.on('error', err => {
+					console.println('Read stream error:', err.message);
+				});
+			`,
+			Input: []string{"alpha", "beta"},
+			Output: []string{
+				"STDIN stream data:",
+				"alpha",
+				"beta",
+				"",
+			},
+		},
+		{
 			Name: "fs_create_write_stream",
 			Script: `
 				const fs = require('fs');

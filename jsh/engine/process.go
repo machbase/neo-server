@@ -130,6 +130,23 @@ func (jr *JSRuntime) createStdin(vm *goja.Runtime) *goja.Object {
 		return vm.ToValue(string(buf[:bytesRead]))
 	})
 
+	// readBuffer(n) - read n bytes as ArrayBuffer for binary-safe consumers
+	stdin.Set("readBuffer", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return vm.NewGoError(fmt.Errorf("readBuffer requires a number argument"))
+		}
+		n := int(call.Argument(0).ToInteger())
+		if n <= 0 {
+			return vm.NewGoError(fmt.Errorf("readBuffer requires a positive number"))
+		}
+		buf := make([]byte, n)
+		bytesRead, err := reader.Read(buf)
+		if err != nil && err != io.EOF {
+			return vm.NewGoError(fmt.Errorf("stdin readBuffer error: %w", err))
+		}
+		return vm.ToValue(vm.NewArrayBuffer(buf[:bytesRead]))
+	})
+
 	// isTTY - check if stdin is a terminal
 	stdin.Set("isTTY", func(call goja.FunctionCall) goja.Value {
 		file, ok := reader.(*os.File)

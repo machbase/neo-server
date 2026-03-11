@@ -95,7 +95,9 @@ switch (config.header) {
 
 let nRows = 0;
 let totalSize = 0;
-fs.statSync(config.input).isFile() ? totalSize = fs.statSync(config.input).size : totalSize = 0;
+if (config.input !== '-') {
+    fs.statSync(config.input).isFile() ? totalSize = fs.statSync(config.input).size : totalSize = 0;
+}
 
 const tracker = pretty.Progress({ showPercentage: true }).tracker({
     label: `Importing ${config.input} into ${tableName}`,

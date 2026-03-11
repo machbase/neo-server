@@ -169,6 +169,21 @@ func TestProcessStdin(t *testing.T) {
 			},
 		},
 		{
+			Name: "stdin_readBuffer",
+			Script: `
+				const process = require("process");
+				const data = process.stdin.readBuffer(4);
+				const bytes = Array.from(new Uint8Array(data));
+				console.println("byteLength:", data.byteLength);
+				console.println("bytes:", bytes.join(","));
+			`,
+			InputBytes: []byte{0x1f, 0x8b, 0x08, 0x00},
+			Output: []string{
+				"byteLength: 4",
+				"bytes: 31,139,8,0",
+			},
+		},
+		{
 			Name: "stdin_isTTY",
 			Script: `
 				const process = require("process");
