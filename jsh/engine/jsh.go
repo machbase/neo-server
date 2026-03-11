@@ -309,9 +309,29 @@ func (m *FSTabs) Set(value string) error {
 	if len(tokens) != 2 {
 		return fmt.Errorf("invalid mount option: %s", value)
 	}
+	mountPoint, source := tokens[0], tokens[1]
+	info, err := os.Lstat(source) // Lstat to check for symbolic link
+	if err != nil {
+		return fmt.Errorf("stating source %q: %v", source, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		stat, err := os.Stat(source) // Stat to get info of the target
+		if err != nil {
+			return fmt.Errorf("stating symlink target %q: %v", source, err)
+		}
+		if !stat.IsDir() {
+			return fmt.Errorf("not a directory: %q", source)
+		}
+		// symbolic link path must end with path separator to be treated as directory
+		source = source + string(os.PathSeparator)
+	} else {
+		if !info.IsDir() {
+			return fmt.Errorf("not a directory: %q", source)
+		}
+	}
 	*m = append(*m, FSTab{
-		MountPoint: tokens[0],
-		Source:     tokens[1],
+		MountPoint: mountPoint,
+		Source:     source,
 	})
 	return nil
 }
