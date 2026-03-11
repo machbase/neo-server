@@ -85,6 +85,9 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		}
 	} else {
 		if neoHost == "" {
+			neoHost = os.Getenv("NEOSHELL_HOST")
+		}
+		if neoHost == "" {
 			neoHost, err = readLine("Server", "127.0.0.1:5654")
 			if err != nil {
 				fmt.Println("Error reading Server:", err.Error())
