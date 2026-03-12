@@ -68,10 +68,6 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/work", FS: fsDir})
 	}
 	conf.ExecBuilder = func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
-		self, err := os.Executable()
-		if err != nil {
-			return nil, err
-		}
 		conf := engine.Config{
 			Code:   code,
 			Args:   args,
@@ -82,7 +78,11 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 		if err != nil {
 			return nil, err
 		}
-		execCmd := exec.Command(self, "-S", secretBox.FilePath(), args[0])
+		execArgs := []string{"-S", secretBox.FilePath(), args[0]}
+		if len(executable) > 1 {
+			execArgs = append(executable[1:], execArgs...)
+		}
+		execCmd := exec.Command(executable[0], execArgs...)
 		return execCmd, nil
 	}
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -122,6 +123,29 @@ func anyToPrintable(val any) any {
 	default:
 		if s, ok := val.(fmt.Stringer); ok {
 			return s.String()
+		}
+		if k := reflect.TypeOf(val).Kind(); k == reflect.Slice || k == reflect.Array {
+			// If val is slice or array of concrete type, not []any.
+			elm := []string{}
+			v := reflect.ValueOf(val)
+			for i := 0; i < v.Len(); i++ {
+				elm = append(elm, fmt.Sprintf("%v", anyToPrintable(v.Index(i).Interface())))
+			}
+			return fmt.Sprintf("[%s]", strings.Join(elm, ", "))
+		} else if k == reflect.Map {
+			// If val is map of concrete type, not map[string]any.
+			keys := []string{}
+			v := reflect.ValueOf(val)
+			for _, k := range v.MapKeys() {
+				keys = append(keys, fmt.Sprintf("%v", k.Interface()))
+			}
+			slices.Sort(keys)
+			f := []string{}
+			for _, k := range keys {
+				v := v.MapIndex(reflect.ValueOf(k))
+				f = append(f, fmt.Sprintf("%s:%v", k, anyToPrintable(v.Interface())))
+			}
+			return fmt.Sprintf("{%s}", strings.Join(f, ", "))
 		}
 		return fmt.Sprintf("%v(%T)", val, val)
 	case string:

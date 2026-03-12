@@ -34,8 +34,7 @@ const replBanner = "\033[1;36m╔═══════════════�
 	"║     Welcome to \033[1;35mJSH REPL\033[1;36m              ║\n" +
 	"╚══════════════════════════════════════╝\033[0m\n" +
 	"\033[33mCommands:\033[0m\n" +
-	"  \033[32m\\quit\033[0m, \033[32m\\q\033[0m  - Exit REPL\n" +
-	"  \033[32m\\r\033[0m         - Run script (at the last line of script)\n"
+	"  \033[32m\\quit\033[0m, \033[32m\\q\033[0m  - Exit REPL\n"
 
 func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	var ed multiline.Editor
@@ -53,14 +52,16 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 			break
 		} else {
 			last := lines[len(lines)-1]
-			switch last {
-			case "\\r": // run script
-				// remove the last line and
-				input = strings.Join(lines, "\n")
-				repl.history.Add(input)
-				input = strings.TrimSuffix(input, "\\r")
-			case "\\exit", "\\q", "\\quit":
-				return repl.rt.ToValue(0)
+			if strings.HasPrefix(last, "\\") {
+				switch last {
+				case "\\exit", "\\q", "\\quit":
+					return repl.rt.ToValue(0)
+				}
+			} else {
+				if strings.HasSuffix(strings.TrimSpace(last), ";") {
+					input = strings.Join(lines, "\n")
+					repl.history.Add(input)
+				}
 			}
 		}
 		val, err := repl.rt.RunString(input)
@@ -81,15 +82,18 @@ func (repl *Repl) prompt(w io.Writer, lineNo int) (int, error) {
 	if lineNo == 0 {
 		return w.Write([]byte("repl> "))
 	} else {
-		return w.Write([]byte(fmt.Sprintf("%04d  ", lineNo)))
+		return w.Write([]byte(fmt.Sprintf("%04d  ", lineNo+1)))
 	}
 }
 
 // regular expression to match repl command that starts with \{command}
 var replCommandRegex = regexp.MustCompile(`^\\([a-zA-Z]+)(\s+.*)?$`)
 
+// javascript statement
+var replStatementRegexp = regexp.MustCompile(`^[\s\S]+;[\s]*$`)
+
 func (repl *Repl) submitOnEnterWhen(lines []string, lineNo int) bool {
-	return replCommandRegex.MatchString(lines[lineNo])
+	return replCommandRegex.MatchString(lines[lineNo]) || replStatementRegexp.MatchString(lines[lineNo])
 }
 
 func (repl *Repl) println(vals ...goja.Value) {

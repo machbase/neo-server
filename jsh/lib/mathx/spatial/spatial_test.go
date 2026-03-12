@@ -185,8 +185,8 @@ func TestParseGeoJSON(t *testing.T) {
 				"type: FeatureCollection",
 				"features count: 3",
 				"first feature type: Feature",
-				"first feature geometry: [102 0.5](orb.Point)",
-				"first feature name: map[name:Point A](geojson.Properties)",
+				"first feature geometry: [102, 0.5]",
+				"first feature name: {name:Point A}",
 			},
 		},
 	}
