@@ -90,7 +90,7 @@ func (repl *Repl) prompt(w io.Writer, lineNo int) (int, error) {
 var replCommandRegex = regexp.MustCompile(`^\\([a-zA-Z]+)(\s+.*)?$`)
 
 // javascript statement
-var replStatementRegexp = regexp.MustCompile(`^[\s\S]+;[\s]*$`)
+var replStatementRegexp = regexp.MustCompile(`^[\s\S]*;[\s]*$`)
 
 func (repl *Repl) submitOnEnterWhen(lines []string, lineNo int) bool {
 	return replCommandRegex.MatchString(lines[lineNo]) || replStatementRegexp.MatchString(lines[lineNo])

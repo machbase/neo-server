@@ -111,7 +111,7 @@ func TestMqttConfig(t *testing.T) {
 			Output: []string{
 				fmt.Sprintf("SERVERS: [%s]", brokerAddr),
 				"USERNAME: user",
-				"PASSWORD: &[112 97 115 115](*[]uint8)",
+				"PASSWORD: pass",
 				"KEEPALIVE: 60",
 				"RECONNECT_BACKOFF: 2s",
 				"CLEAN_START: true",

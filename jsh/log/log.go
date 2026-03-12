@@ -146,6 +146,9 @@ func anyToPrintable(val any) any {
 				f = append(f, fmt.Sprintf("%s:%v", k, anyToPrintable(v.Interface())))
 			}
 			return fmt.Sprintf("{%s}", strings.Join(f, ", "))
+		} else if k == reflect.Pointer {
+			// If val is pointer of concrete type, not *any.
+			return anyToPrintable(reflect.ValueOf(val).Elem().Interface())
 		}
 		return fmt.Sprintf("%v(%T)", val, val)
 	case string:
@@ -156,20 +159,24 @@ func anyToPrintable(val any) any {
 		return fmt.Sprintf("[%s]", strings.Join(val, ", "))
 	case bool:
 		return val
-	case int:
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return val
 	case *int:
 		return *val
-	case int32:
-		return val
+	case *int8:
+		return *val
+	case *int16:
+		return *val
 	case *int32:
 		return *val
-	case int64:
-		return val
 	case *int64:
 		return *val
-	case float64:
-		return val
+	case *uint:
+		return *val
+	case *uint32:
+		return *val
+	case *uint64:
+		return *val
 	case *float64:
 		return *val
 	case time.Time:
