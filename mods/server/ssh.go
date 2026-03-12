@@ -289,6 +289,7 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 			// and then web terminal is connected with password?
 			// In this case, the ssh session should be updated with the password in the context.
 			svr.log.Tracef("'%s' login with public key, but password is not found in the auth server", user)
+			valid = false // force to login with password
 		}
 	}
 	return valid
@@ -393,19 +394,6 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		ss.Exit(1)
 		return
 	}
-
-	// if cmd := ss.Command(); len(cmd) > 0 && cmd[0] == "jsh" {
-	// 	jsCmd := "@.js"
-	// 	jsArgs := []string{}
-	// 	if len(cmd) > 1 {
-	// 		jsCmd = cmd[1]
-	// 	}
-	// 	if len(cmd) > 2 {
-	// 		jsArgs = cmd[2:]
-	// 	}
-	// 	svr.jshHandler(ss, jsCmd, jsArgs, shell.Envs)
-	// 	return
-	// }
 
 	if shellId == model.SHELLID_SHELL {
 		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
