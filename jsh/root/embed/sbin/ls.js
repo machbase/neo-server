@@ -1,5 +1,6 @@
 (() => {
     const process = require('process');
+    const pretty = require('pretty');
     const parseArgs = require('util/parseArgs');
     const pwd = process.env.get("PWD");
     const fs = process.env.filesystem();
@@ -38,6 +39,21 @@
 
     let showDir = false;
 
+    let getTerminalWidth = function () {
+        if (!pretty.isTerminal()) {
+            return 0;
+        }
+        try {
+            const sz = pretty.getTerminalSize();
+            if (sz && typeof sz.width === "number" && sz.width > 0) {
+                return sz.width;
+            }
+        } catch (e) {
+            // Ignore errors and fallback to default
+        }
+        return 0;
+    };
+
     // Get color for file based on mode
     let getColor = function (nfo) {
         const mode = nfo.mode();
@@ -62,7 +78,7 @@
     };
 
     // Print function for detailed listing (-l)
-    let printDetailed = function (nfo, idx) {
+    let printDetailed = function (nfo) {
         const color = getColor(nfo);
         console.printf(`%-12s %10d %v %s%s%s\n`,
             nfo.mode().string(), nfo.size(), nfo.modTime(),
@@ -70,12 +86,53 @@
     };
 
     // Print function for simple listing (no -l)
-    let printSimple = function (nfo, idx) {
+    let printSimple = function (nfo, width, isLastColumn) {
         const color = getColor(nfo);
-        console.printf(`%s%s%s  `, color, nfo.name(), colors.reset);
+        const name = nfo.name();
+        const padding = isLastColumn ? "" : " ".repeat(Math.max(0, width - name.length + 2));
+        console.printf(`%s%s%s%s`, color, name, colors.reset, padding);
     };
 
-    let print = longFormat ? printDetailed : printSimple;
+    let printSimpleEntries = function (entries) {
+        if (entries.length === 0) {
+            return;
+        }
+
+        const maxNameWidth = entries.reduce((maxWidth, entry) => {
+            return Math.max(maxWidth, entry.name().length);
+        }, 0);
+        const columnWidth = Math.max(1, maxNameWidth + 2);
+        const terminalWidth = getTerminalWidth();
+        let columns = 3;
+
+        if (terminalWidth > 0) {
+            columns = Math.max(1, Math.floor(terminalWidth / columnWidth));
+        }
+
+        columns = Math.max(1, Math.min(columns, entries.length));
+
+        const rows = Math.ceil(entries.length / columns);
+
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < columns; col++) {
+                const idx = row + (col * rows);
+                if (idx >= entries.length) {
+                    continue;
+                }
+                const isLastColumn = (col === columns - 1) || (row + ((col + 1) * rows) >= entries.length);
+                printSimple(entries[idx], maxNameWidth, isLastColumn);
+            }
+            console.println();
+        }
+    };
+
+    let printEntries = function (entries) {
+        if (longFormat) {
+            entries.forEach(printDetailed);
+        } else {
+            printSimpleEntries(entries);
+        }
+    };
 
     let hasWildcard = function (value) {
         return /[*?]/.test(value);
@@ -183,7 +240,7 @@
         const entries = fs.readDir(dir).map((d) => d.info());
         const filtered = filterEntries(entries);
 
-        filtered.forEach(print);
+        printEntries(filtered);
 
         if (showDir || !longFormat) {
             console.println();
@@ -238,9 +295,7 @@
     });
 
     if (files.length > 0) {
-        files.forEach((info) => {
-            print(info);
-        });
+        printEntries(files);
         if (!longFormat) {
             console.println();
         }
