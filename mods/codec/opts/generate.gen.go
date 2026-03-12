@@ -30,7 +30,7 @@ func AutoRotate(speed float64) Option {
 
 // SetBoxDrawBorder
 //
-//	mods/codec/internal/box/box_encode.go:84:1
+//	mods/codec/internal/box/box_encode.go:92:1
 type CanSetBoxDrawBorder interface {
 	SetBoxDrawBorder(flag bool)
 }
@@ -45,7 +45,7 @@ func BoxDrawBorder(flag bool) Option {
 
 // SetBoxSeparateColumns
 //
-//	mods/codec/internal/box/box_encode.go:80:1
+//	mods/codec/internal/box/box_encode.go:88:1
 type CanSetBoxSeparateColumns interface {
 	SetBoxSeparateColumns(flag bool)
 }
@@ -60,7 +60,7 @@ func BoxSeparateColumns(flag bool) Option {
 
 // SetBoxStyle
 //
-//	mods/codec/internal/box/box_encode.go:76:1
+//	mods/codec/internal/box/box_encode.go:84:1
 type CanSetBoxStyle interface {
 	SetBoxStyle(style string)
 }
@@ -225,7 +225,9 @@ func ChartOption(opt string) Option {
 
 // SetColumnTypes
 //
+//	mods/codec/internal/box/box_encode.go:100:1
 //	mods/codec/internal/csv/csv_decode.go:81:1
+//	mods/codec/internal/csv/csv_encode.go:93:1
 //	mods/codec/internal/json/json_decode.go:44:1
 //	mods/codec/internal/json/json_encode.go:90:1
 //	mods/codec/internal/ndjson/decode.go:56:1
@@ -244,9 +246,9 @@ func ColumnTypes(types ...api.DataType) Option {
 
 // SetColumns
 //
-//	mods/codec/internal/box/box_encode.go:88:1
+//	mods/codec/internal/box/box_encode.go:96:1
 //	mods/codec/internal/csv/csv_decode.go:77:1
-//	mods/codec/internal/csv/csv_encode.go:88:1
+//	mods/codec/internal/csv/csv_encode.go:89:1
 //	mods/codec/internal/json/json_encode.go:86:1
 //	mods/codec/internal/markdown/md_encode.go:63:1
 //	mods/codec/internal/ndjson/decode.go:48:1
@@ -297,7 +299,7 @@ func DataZoom(typ string, minPercentage float32, maxPercentage float32) Option {
 // SetDelimiter
 //
 //	mods/codec/internal/csv/csv_decode.go:68:1
-//	mods/codec/internal/csv/csv_encode.go:83:1
+//	mods/codec/internal/csv/csv_encode.go:84:1
 type CanSetDelimiter interface {
 	SetDelimiter(newDelimiter string)
 }
@@ -312,7 +314,7 @@ func Delimiter(newDelimiter string) Option {
 
 // SetGeoMapJson
 //
-//	mods/codec/internal/geomap/geomap.go:121:1
+//	mods/codec/internal/geomap/geomap.go:122:1
 type CanSetGeoMapJson interface {
 	SetGeoMapJson(flag bool)
 }
@@ -327,7 +329,7 @@ func GeoMapJson(flag bool) Option {
 
 // SetGeomapID
 //
-//	mods/codec/internal/geomap/geomap.go:81:1
+//	mods/codec/internal/geomap/geomap.go:82:1
 type CanSetGeomapID interface {
 	SetGeomapID(id string)
 }
@@ -372,9 +374,9 @@ func GridSize(args ...float64) Option {
 
 // SetHeader
 //
-//	mods/codec/internal/box/box_encode.go:68:1
+//	mods/codec/internal/box/box_encode.go:76:1
 //	mods/codec/internal/csv/csv_decode.go:60:1
-//	mods/codec/internal/csv/csv_encode.go:79:1
+//	mods/codec/internal/csv/csv_encode.go:80:1
 //	mods/codec/internal/json/json_encode.go:78:1
 //	mods/codec/internal/ndjson/encode.go:69:1
 type CanSetHeader interface {
@@ -406,9 +408,9 @@ func HeaderColumns(headerColumns bool) Option {
 
 // SetHeading
 //
-//	mods/codec/internal/box/box_encode.go:72:1
+//	mods/codec/internal/box/box_encode.go:80:1
 //	mods/codec/internal/csv/csv_decode.go:56:1
-//	mods/codec/internal/csv/csv_encode.go:75:1
+//	mods/codec/internal/csv/csv_encode.go:76:1
 //	mods/codec/internal/json/json_encode.go:82:1
 //	mods/codec/internal/ndjson/encode.go:73:1
 type CanSetHeading interface {
@@ -440,7 +442,7 @@ func Html(flag bool) Option {
 
 // SetIcon
 //
-//	mods/codec/internal/geomap/geomap.go:140:1
+//	mods/codec/internal/geomap/geomap.go:141:1
 type CanSetIcon interface {
 	SetIcon(name string, opt string)
 }
@@ -455,7 +457,7 @@ func Icon(name string, opt string) Option {
 
 // SetInitialLocation
 //
-//	mods/codec/internal/geomap/geomap.go:100:1
+//	mods/codec/internal/geomap/geomap.go:101:1
 type CanSetInitialLocation interface {
 	SetInitialLocation(latlon *nums.LatLon, zoomLevel int)
 }
@@ -503,7 +505,7 @@ func LineWidth(width float64) Option {
 // SetLogger
 //
 //	mods/codec/internal/chart/chart.go:67:1
-//	mods/codec/internal/geomap/geomap.go:69:1
+//	mods/codec/internal/geomap/geomap.go:70:1
 //	mods/codec/internal/markdown/md_encode.go:55:1
 type CanSetLogger interface {
 	SetLogger(l facility.Logger)
@@ -519,7 +521,7 @@ func Logger(l facility.Logger) Option {
 
 // SetMapAssets
 //
-//	mods/codec/internal/geomap/geomap.go:90:1
+//	mods/codec/internal/geomap/geomap.go:91:1
 type CanSetMapAssets interface {
 	SetMapAssets(args ...string)
 }
@@ -594,10 +596,10 @@ func Opacity(opacity float64) Option {
 
 // SetOutputStream
 //
-//	mods/codec/internal/box/box_encode.go:48:1
+//	mods/codec/internal/box/box_encode.go:54:1
 //	mods/codec/internal/chart/chart.go:75:1
-//	mods/codec/internal/csv/csv_encode.go:54:1
-//	mods/codec/internal/geomap/geomap.go:77:1
+//	mods/codec/internal/csv/csv_encode.go:55:1
+//	mods/codec/internal/geomap/geomap.go:78:1
 //	mods/codec/internal/json/json_encode.go:52:1
 //	mods/codec/internal/markdown/md_encode.go:59:1
 //	mods/codec/internal/ndjson/encode.go:43:1
@@ -631,8 +633,8 @@ func Plugins(plugins ...string) Option {
 
 // SetPrecision
 //
-//	mods/codec/internal/box/box_encode.go:60:1
-//	mods/codec/internal/csv/csv_encode.go:66:1
+//	mods/codec/internal/box/box_encode.go:68:1
+//	mods/codec/internal/csv/csv_encode.go:67:1
 //	mods/codec/internal/json/json_encode.go:70:1
 //	mods/codec/internal/markdown/md_encode.go:75:1
 //	mods/codec/internal/ndjson/encode.go:61:1
@@ -650,8 +652,8 @@ func Precision(precision int) Option {
 
 // SetRownum
 //
-//	mods/codec/internal/box/box_encode.go:64:1
-//	mods/codec/internal/csv/csv_encode.go:70:1
+//	mods/codec/internal/box/box_encode.go:72:1
+//	mods/codec/internal/csv/csv_encode.go:71:1
 //	mods/codec/internal/json/json_encode.go:74:1
 //	mods/codec/internal/markdown/md_encode.go:79:1
 //	mods/codec/internal/ndjson/encode.go:65:1
@@ -715,7 +717,7 @@ func SeriesLabels(args ...string) Option {
 // SetSize
 //
 //	mods/codec/internal/chart/chart.go:89:1
-//	mods/codec/internal/geomap/geomap.go:85:1
+//	mods/codec/internal/geomap/geomap.go:86:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -730,7 +732,7 @@ func Size(width string, height string) Option {
 
 // SetSubstituteNull
 //
-//	mods/codec/internal/csv/csv_encode.go:92:1
+//	mods/codec/internal/csv/csv_encode.go:97:1
 type CanSetSubstituteNull interface {
 	SetSubstituteNull(alternative any)
 }
@@ -807,7 +809,7 @@ func Theme(theme string) Option {
 
 // SetTileGrayscale
 //
-//	mods/codec/internal/geomap/geomap.go:125:1
+//	mods/codec/internal/geomap/geomap.go:126:1
 type CanSetTileGrayscale interface {
 	SetTileGrayscale(grayscale float64)
 }
@@ -822,7 +824,7 @@ func TileGrayscale(grayscale float64) Option {
 
 // SetTileOption
 //
-//	mods/codec/internal/geomap/geomap.go:109:1
+//	mods/codec/internal/geomap/geomap.go:110:1
 type CanSetTileOption interface {
 	SetTileOption(opt string)
 }
@@ -837,7 +839,7 @@ func TileOption(opt string) Option {
 
 // SetTileTemplate
 //
-//	mods/codec/internal/geomap/geomap.go:105:1
+//	mods/codec/internal/geomap/geomap.go:106:1
 type CanSetTileTemplate interface {
 	SetTileTemplate(url string)
 }
@@ -852,9 +854,9 @@ func TileTemplate(url string) Option {
 
 // SetTimeLocation
 //
-//	mods/codec/internal/box/box_encode.go:56:1
+//	mods/codec/internal/box/box_encode.go:63:1
 //	mods/codec/internal/csv/csv_decode.go:51:1
-//	mods/codec/internal/csv/csv_encode.go:62:1
+//	mods/codec/internal/csv/csv_encode.go:63:1
 //	mods/codec/internal/json/json_decode.go:36:1
 //	mods/codec/internal/json/json_encode.go:63:1
 //	mods/codec/internal/markdown/md_encode.go:71:1
@@ -874,10 +876,10 @@ func TimeLocation(tz *time.Location) Option {
 
 // SetTimeformat
 //
-//	mods/codec/internal/box/box_encode.go:52:1
+//	mods/codec/internal/box/box_encode.go:58:1
 //	mods/codec/internal/chart/chartcompat.go:285:1
 //	mods/codec/internal/csv/csv_decode.go:47:1
-//	mods/codec/internal/csv/csv_encode.go:58:1
+//	mods/codec/internal/csv/csv_encode.go:59:1
 //	mods/codec/internal/json/json_decode.go:32:1
 //	mods/codec/internal/json/json_encode.go:56:1
 //	mods/codec/internal/markdown/md_encode.go:67:1
@@ -1003,7 +1005,7 @@ func VisualMapColor(min float64, max float64, colors ...string) Option {
 // SetVolatileFileWriter
 //
 //	mods/codec/internal/chart/chart.go:71:1
-//	mods/codec/internal/geomap/geomap.go:73:1
+//	mods/codec/internal/geomap/geomap.go:74:1
 type CanSetVolatileFileWriter interface {
 	SetVolatileFileWriter(w facility.VolatileFileWriter)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
@@ -24,10 +25,14 @@ type Exporter struct {
 	output          io.Writer
 	showRownum      bool
 	heading         bool
+	showTz          bool
+	timeformat      string
+	tz              string
 	precision       int
 	timeformatter   *util.TimeFormatter
 	binaryFormatter *util.BinaryFormatter
 	colNames        []string
+	colTypes        []api.DataType
 }
 
 func NewEncoder() *Exporter {
@@ -36,6 +41,7 @@ func NewEncoder() *Exporter {
 		separateColumns: true,
 		drawBorder:      true,
 		precision:       -1,
+		showTz:          true,
 		timeformatter:   util.NewTimeFormatter(),
 		binaryFormatter: util.NewBinaryFormatter(),
 	}
@@ -50,10 +56,12 @@ func (ex *Exporter) SetOutputStream(o io.Writer) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
+	ex.timeformat = format
 	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
+	ex.tz = tz.String()
 	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
@@ -89,6 +97,10 @@ func (ex *Exporter) SetColumns(names ...string) {
 	ex.colNames = names
 }
 
+func (ex *Exporter) SetColumnTypes(types ...api.DataType) {
+	ex.colTypes = types
+}
+
 func (ex *Exporter) Open() error {
 	ex.writer = table.NewWriter()
 	ex.writer.SetOutputMirror(ex.output)
@@ -113,8 +125,17 @@ func (ex *Exporter) Open() error {
 
 	if ex.heading {
 		vs := make([]any, len(ex.colNames))
+		showTz := ex.showTz && ex.timeformatter != nil
+		if showTz && slices.Contains([]string{"ns", "us", "ms", "s", "ns.str", "us.str", "ms.str", "s.str"}, ex.timeformat) {
+			// if timeformat is epoch time format, do not show timezone in header
+			showTz = false
+		}
 		for i, h := range ex.colNames {
-			vs[i] = h
+			if showTz && len(ex.colTypes) > i && ex.colTypes[i] == api.DataTypeDatetime {
+				vs[i] = fmt.Sprintf("%s(%s)", h, ex.tz)
+			} else {
+				vs[i] = h
+			}
 		}
 		if ex.showRownum {
 			ex.writer.AppendHeader(table.Row(append([]any{"ROWNUM"}, vs...)))
