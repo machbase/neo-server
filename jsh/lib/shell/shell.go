@@ -153,11 +153,7 @@ func (sh *Shell) process(line string) (int, bool) {
 			if v, ok := internal.Run(sh.rt, pipe.Command, pipe.Args...); ok {
 				returnValue = v
 			} else {
-				cmd := pipe.Command
-				if !strings.HasSuffix(cmd, ".js") {
-					cmd += ".js"
-				}
-				returnValue = sh.exec(cmd, pipe.Args)
+				returnValue = sh.exec(pipe.Command, pipe.Args)
 			}
 
 			exitCode := -1
@@ -187,13 +183,23 @@ func (sh *Shell) exec(command string, args []string) goja.Value {
 	str := strings.Join(parts, ", ")
 
 	val, err := sh.rt.RunString(fmt.Sprintf(`(()=>{
-		const {exec, which} = require("process");
-		const path = which('%s');
-		if (!path || path === "") {
-			throw new Error("command not found: " + %q);
+		const {exec, which, alias} = require("process");
+		let command = %q;
+		let args = [%s];
+		const aliased = alias(command);
+		if (aliased && aliased.length > 0) {
+			command = aliased[0];
+			args.unshift(...aliased.slice(1));
 		}
-		return exec(path, %s);
-	})()`, command, command, str))
+		if (!command.endsWith(".js")) {
+			command += ".js";
+		}
+		const path = which(command);
+		if (!path || path === "") {
+			throw new Error("command not found: " + command);
+		}
+		return exec(path, ...args);
+	})()`, command, str))
 
 	if err != nil {
 		if jsErr, ok := err.(*goja.Exception); ok {

@@ -16,6 +16,8 @@ func Run(vm *goja.Runtime, cmd string, args ...string) (goja.Value, bool) {
 	switch cmd {
 	case "cd":
 		script = strings.TrimSpace(cdJS) + "(" + formatArgs(args) + ");"
+	case "which":
+		script = strings.TrimSpace(whichJS) + "(" + formatArgs(args) + ");"
 	default:
 		return goja.Undefined(), false
 	}
@@ -50,3 +52,6 @@ func joinArgs(parts []string) string {
 
 //go:embed cd.js
 var cdJS string
+
+//go:embed which.js
+var whichJS string

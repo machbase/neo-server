@@ -4,7 +4,6 @@
     const parseArgs = require('util/parseArgs');
     const pwd = process.env.get("PWD");
     const fs = process.env.filesystem();
-
     // Parse command line arguments
     const { values, positionals } = parseArgs(process.argv.slice(2), {
         options: {
@@ -13,8 +12,9 @@
             time: { type: 'boolean', short: 't', default: false },
             recursive: { type: 'boolean', short: 'R', default: false }
         },
+        allowPositionals: true,
         strict: false,
-        allowPositionals: true
+        positionals: ['paths'],
     });
 
     // ANSI color codes
@@ -35,7 +35,7 @@
     const sortByTime = values.time;
     const recursive = values.recursive;
 
-    let rawArgs = positionals.length > 0 ? positionals : [pwd];
+    let rawArgs = positionals && positionals.length > 0 ? positionals : [pwd];
 
     let showDir = false;
 

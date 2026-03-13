@@ -47,6 +47,7 @@ func (jr *JSRuntime) Process(vm *goja.Runtime, module *goja.Object) {
 	exports.Set("addShutdownHook", jr.AddShutdownHook)
 	exports.Set("exit", doExit(vm))
 	exports.Set("which", jr.Env.Which)
+	exports.Set("alias", jr.Env.Alias)
 	exports.Set("expand", jr.Env.Expand)
 	exports.Set("exec", doExec(vm, jr.Exec))
 	exports.Set("execString", doExecString(vm, jr.Exec))

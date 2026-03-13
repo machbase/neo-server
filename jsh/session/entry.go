@@ -82,7 +82,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 		conf := engine.Config{
 			Code:   code,
 			Args:   args,
-			FSTabs: fsTabs,
+			FSTabs: conf.FSTabs,
 			Env:    env,
 		}
 		secretBox, err := engine.NewSecretBox(conf)
