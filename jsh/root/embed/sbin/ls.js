@@ -14,7 +14,7 @@
         },
         allowPositionals: true,
         strict: false,
-        positionals: ['paths'],
+        positionals: [{ name: 'paths', variadic: true, optional: true }],
     });
 
     // ANSI color codes
