@@ -1,35 +1,35 @@
-package zip_test
+package tar_test
 
 import (
 	"testing"
 
 	"github.com/dop251/goja"
-	ziplib "github.com/machbase/neo-server/v8/jsh/lib/zip"
+	tarlib "github.com/machbase/neo-server/v8/jsh/lib/archive/tar"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
 
-func TestZipModule(t *testing.T) {
+func TestTarModule(t *testing.T) {
 	rt := goja.New()
 	module := rt.NewObject()
 	exports := rt.NewObject()
 	module.Set("exports", exports)
-	ziplib.Module(rt, module)
+	tarlib.Module(rt, module)
 	exportsObj := module.Get("exports").(*goja.Object)
-	for _, name := range []string{"createZip", "createUnzip", "zip", "unzip", "zipSync", "unzipSync"} {
+	for _, name := range []string{"createTar", "createUntar", "tar", "untar", "tarSync", "untarSync"} {
 		if exportsObj.Get(name) == nil || goja.IsUndefined(exportsObj.Get(name)) {
 			t.Errorf("Expected %s to be exported", name)
 		}
 	}
 }
 
-func TestZipSync(t *testing.T) {
+func TestTarSync(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
-			Name: "zipSync-unzipSync-single-entry",
+			Name: "tarSync-untarSync-single-entry",
 			Script: `
-				const zip = require('zip');
-				const archive = zip.zipSync('zip payload');
-				const entries = zip.unzipSync(archive);
+				const tar = require('archive/tar');
+				const archive = tar.tarSync('tar payload');
+				const entries = tar.untarSync(archive);
 				const text = String.fromCharCode.apply(null, new Uint8Array(entries[0].data));
 				console.println('archive type:', archive.constructor.name);
 				console.println('entry count:', entries.length);
@@ -40,18 +40,18 @@ func TestZipSync(t *testing.T) {
 				"archive type: ArrayBuffer",
 				"entry count: 1",
 				"entry name: data",
-				"entry text: zip payload",
+				"entry text: tar payload",
 			},
 		},
 		{
-			Name: "zipSync-unzipSync-multi-entry",
+			Name: "tarSync-untarSync-multi-entry",
 			Script: `
-				const zip = require('zip');
-				const archive = zip.zipSync([
+				const tar = require('archive/tar');
+				const archive = tar.tarSync([
 					{ name: 'alpha.txt', data: 'Alpha' },
 					{ name: 'dir/beta.txt', data: 'Beta' }
 				]);
-				const entries = zip.unzipSync(archive);
+				const entries = tar.untarSync(archive);
 				const value0 = String.fromCharCode.apply(null, new Uint8Array(entries[0].data));
 				const value1 = String.fromCharCode.apply(null, new Uint8Array(entries[1].data));
 				console.println('entry count:', entries.length);
@@ -64,19 +64,41 @@ func TestZipSync(t *testing.T) {
 				"entry1: dir/beta.txt=Beta",
 			},
 		},
+		{
+			Name: "tarSync-untarSync-directory-and-symlink-entries",
+			Script: `
+				const tar = require('archive/tar');
+				const archive = tar.tarSync([
+					{ name: 'assets', isDir: true, type: 'dir' },
+					{ name: 'assets/readme.txt', data: 'hello' },
+					{ name: 'current', type: 'symlink', linkname: 'assets/readme.txt' }
+				]);
+				const entries = tar.untarSync(archive);
+				console.println('entry count:', entries.length);
+				console.println('dir entry:', entries[0].name + '|' + entries[0].isDir + '|' + entries[0].type);
+				console.println('file entry:', entries[1].name + '|' + entries[1].size + '|' + entries[1].type);
+				console.println('link entry:', entries[2].name + '|' + entries[2].type + '|' + entries[2].linkname);
+			`,
+			Output: []string{
+				"entry count: 3",
+				"dir entry: assets/|true|dir",
+				"file entry: assets/readme.txt|5|file",
+				"link entry: current|symlink|assets/readme.txt",
+			},
+		},
 	}
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
 	}
 }
 
-func TestZipStream(t *testing.T) {
+func TestTarStream(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
-			Name: "createZip-createUnzip-entry-events",
+			Name: "createTar-createUntar-entry-events",
 			Script: `
-				const zip = require('zip');
-				const archiveWriter = zip.createZip();
+				const tar = require('archive/tar');
+				const archiveWriter = tar.createTar();
 				let archive = null;
 
 				archiveWriter.on('data', function(chunk) {
@@ -84,13 +106,13 @@ func TestZipStream(t *testing.T) {
 				});
 
 				archiveWriter.on('end', function() {
-					const archiveReader = zip.createUnzip();
+					const archiveReader = tar.createUntar();
 					archiveReader.on('entry', function(entry) {
 						const text = String.fromCharCode.apply(null, new Uint8Array(entry.data));
 						console.println('entry:', entry.name + '=' + text);
 					});
 					archiveReader.on('end', function() {
-						console.println('unzip ended:', true);
+						console.println('untar ended:', true);
 					});
 					archiveReader.write(archive);
 					archiveReader.end();
@@ -103,7 +125,7 @@ func TestZipStream(t *testing.T) {
 			Output: []string{
 				"entry: one.txt=One",
 				"entry: two.txt=Two",
-				"unzip ended: true",
+				"untar ended: true",
 			},
 		},
 	}
@@ -112,25 +134,25 @@ func TestZipStream(t *testing.T) {
 	}
 }
 
-func TestZipClass(t *testing.T) {
+func TestTarClass(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
-			Name: "zip-class-addFile-writeTo",
+			Name: "tar-class-addFile-writeTo",
 			Script: `
 				const fs = require('fs');
-				const zip = require('zip');
-				const base = '/tmp/jsh-zip-class';
+				const tar = require('archive/tar');
+				const base = '/tmp/jsh-tar-class';
 				fs.rmSync(base, { recursive: true, force: true });
 				fs.mkdirSync(base + '/input', { recursive: true });
 				fs.writeFileSync(base + '/input/file1.txt', 'alpha', 'utf8');
 				fs.writeFileSync(base + '/input/file2.txt', 'beta', 'utf8');
 
-				const z = new zip.Zip();
-				z.addFile(base + '/input/file1.txt');
-				z.addFile(base + '/input/file2.txt');
-				z.writeTo(base + '/file.zip');
+				const t = new tar.Tar();
+				t.addFile(base + '/input/file1.txt');
+				t.addFile(base + '/input/file2.txt');
+				t.writeTo(base + '/file.tar');
 
-				const entries = zip.unzipSync(fs.readFileSync(base + '/file.zip', 'buffer'));
+				const entries = tar.untarSync(fs.readFileSync(base + '/file.tar', 'buffer'));
 				console.println('entry count:', entries.length);
 				console.println('entry0 name:', entries[0].name);
 				console.println('entry1 name:', entries[1].name);
@@ -142,15 +164,15 @@ func TestZipClass(t *testing.T) {
 			},
 		},
 		{
-			Name: "zip-class-addBuffer-addEntry",
+			Name: "tar-class-addBuffer-addEntry",
 			Script: `
-				const zip = require('zip');
-				const z = new zip.Zip();
-				z.addBuffer('alpha', 'alpha.txt');
-				z.addEntry({ name: 'beta.txt', data: 'beta' });
-				const entriesBeforeWrite = z.getEntries();
-				const archive = zip.zipSync(entriesBeforeWrite);
-				const entries = zip.unzipSync(archive);
+				const tar = require('archive/tar');
+				const t = new tar.Tar();
+				t.addBuffer('alpha', 'alpha.txt');
+				t.addEntry({ name: 'beta.txt', data: 'beta' });
+				const entriesBeforeWrite = t.getEntries();
+				const archive = tar.tarSync(entriesBeforeWrite);
+				const entries = tar.untarSync(archive);
 				const a = String.fromCharCode.apply(null, new Uint8Array(entries[0].data));
 				const b = String.fromCharCode.apply(null, new Uint8Array(entries[1].data));
 				console.println('entry count:', entriesBeforeWrite.length);
@@ -164,21 +186,21 @@ func TestZipClass(t *testing.T) {
 			},
 		},
 		{
-			Name: "zip-class-extractAllTo",
+			Name: "tar-class-extractAllTo",
 			Script: `
 				const fs = require('fs');
-				const zip = require('zip');
-				const base = '/tmp/jsh-zip-extract';
+				const tar = require('archive/tar');
+				const base = '/tmp/jsh-tar-extract';
 				fs.rmSync(base, { recursive: true, force: true });
 				fs.mkdirSync(base, { recursive: true });
-				const archive = zip.zipSync([
+				const archive = tar.tarSync([
 					{ name: 'dir/a.txt', data: 'A' },
 					{ name: 'dir/b.txt', data: 'B' }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.tar', Array.from(new Uint8Array(archive)), 'buffer');
 
-				const z = new zip.Zip(base + '/file.zip');
-				z.extractAllTo(base + '/out', true);
+				const t = new tar.Tar(base + '/file.tar');
+				t.extractAllTo(base + '/out', true);
 
 				console.println('a:', fs.readFileSync(base + '/out/dir/a.txt', 'utf8'));
 				console.println('b:', fs.readFileSync(base + '/out/dir/b.txt', 'utf8'));
@@ -189,20 +211,20 @@ func TestZipClass(t *testing.T) {
 			},
 		},
 		{
-			Name: "zip-class-extractAllTo-callback-filter-and-conflict",
+			Name: "tar-class-extractAllTo-callback-filter-and-conflict",
 			Script: `
 				const fs = require('fs');
-				const zip = require('zip');
-				const base = '/tmp/jsh-zip-filter';
+				const tar = require('archive/tar');
+				const base = '/tmp/jsh-tar-filter';
 				fs.rmSync(base, { recursive: true, force: true });
 				fs.mkdirSync(base, { recursive: true });
-				const archive = zip.zipSync([
+				const archive = tar.tarSync([
 					{ name: 'keep.txt', data: 'KEEP' },
 					{ name: 'skip.txt', data: 'SKIP' }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
-				const z = new zip.Zip(base + '/file.zip');
-				z.extractAllTo(base + '/out', {
+				fs.writeFileSync(base + '/file.tar', Array.from(new Uint8Array(archive)), 'buffer');
+				const t = new tar.Tar(base + '/file.tar');
+				t.extractAllTo(base + '/out', {
 					overwrite: true,
 					filter: function(entry) {
 						return entry.name === 'keep.txt';
@@ -212,7 +234,7 @@ func TestZipClass(t *testing.T) {
 				console.println('skip exists:', fs.existsSync(base + '/out/skip.txt'));
 				let msg = '';
 				try {
-					z.extractAllTo(base + '/out', false, {
+					t.extractAllTo(base + '/out', false, {
 						filter: function(entry) {
 							return entry.name === 'keep.txt';
 						}
@@ -229,26 +251,45 @@ func TestZipClass(t *testing.T) {
 			},
 		},
 		{
-			Name: "zip-class-getEntries-from-file",
+			Name: "tar-class-getEntries-from-file",
 			Script: `
 				const fs = require('fs');
-				const zip = require('zip');
-				const base = '/tmp/jsh-zip-getentries';
+				const tar = require('archive/tar');
+				const base = '/tmp/jsh-tar-getentries';
 				fs.rmSync(base, { recursive: true, force: true });
 				fs.mkdirSync(base, { recursive: true });
-				const archive = zip.zipSync([
+				const archive = tar.tarSync([
 					{ name: 'one.txt', data: 'one' },
 					{ name: 'two.txt', data: 'two' }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
-				const z = new zip.Zip(base + '/file.zip');
-				const entries = z.getEntries();
+				fs.writeFileSync(base + '/file.tar', Array.from(new Uint8Array(archive)), 'buffer');
+				const t = new tar.Tar(base + '/file.tar');
+				const entries = t.getEntries();
 				console.println('entry count:', entries.length);
 				console.println('entry names:', entries.map(e => e.name).join(','));
 			`,
 			Output: []string{
 				"entry count: 2",
 				"entry names: one.txt,two.txt",
+			},
+		},
+		{
+			Name: "tar-class-addEntry-directory-and-link-metadata",
+			Script: `
+				const tar = require('archive/tar');
+				const t = new tar.Tar();
+				t.addEntry({ name: 'docs', isDir: true, type: 'dir' });
+				t.addEntry({ name: 'docs/readme.txt', data: 'doc' });
+				t.addEntry({ name: 'latest', type: 'symlink', linkname: 'docs/readme.txt' });
+				const entries = tar.untarSync(t.tarSync ? t.tarSync() : tar.tarSync(t.getEntries()));
+				console.println('dir entry:', entries[0].name + '|' + entries[0].isDir + '|' + entries[0].type);
+				console.println('file entry:', entries[1].name + '|' + entries[1].size + '|' + entries[1].type);
+				console.println('link entry:', entries[2].name + '|' + entries[2].type + '|' + entries[2].linkname);
+			`,
+			Output: []string{
+				"dir entry: docs/|true|dir",
+				"file entry: docs/readme.txt|3|file",
+				"link entry: latest|symlink|docs/readme.txt",
 			},
 		},
 	}

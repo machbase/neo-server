@@ -5,7 +5,7 @@ ZIP archive module for jsh. This module handles file-entry based ZIP archive cre
 ## Installation
 
 ```javascript
-const zip = require('zip');
+const zip = require('archive/zip');
 ```
 
 ## API
@@ -24,7 +24,7 @@ const zip = require('zip');
 ### Zip class
 
 ```javascript
-const zip = require('zip');
+const zip = require('archive/zip');
 
 const z = new zip.Zip();
 z.addFile('./input/file1.txt');
@@ -33,14 +33,14 @@ z.writeTo('file.zip');
 ```
 
 ```javascript
-const zip = require('zip');
+const zip = require('archive/zip');
 
 const z = new zip.Zip('file.zip');
 z.extractAllTo('/output_folder', true);
 ```
 
 ```javascript
-const zip = require('zip');
+const zip = require('archive/zip');
 
 const z = new zip.Zip('/tmp/file.zip');
 const entries = z.getEntries();
@@ -74,7 +74,7 @@ z.extractAllTo('/output_folder', {
 `filter` can be a callback that receives each entry and returns `true` or `false`.
 
 ```javascript
-const zip = require('zip');
+const zip = require('archive/zip');
 
 const z = new zip.Zip('file.zip');
 z.extractAllTo('/output_folder', {

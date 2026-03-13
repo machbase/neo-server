@@ -1,15 +1,15 @@
 'use strict';
 
-const _zip = require('@jsh/zip');
+const _tar = require('@jsh/archive/tar');
 const fs = require('fs');
 const path = require('path');
 
-const createZip = _zip.createZip;
-const createUnzip = _zip.createUnzip;
-const zip = _zip.zip;
-const unzip = _zip.unzip;
-const zipSync = _zip.zipSync;
-const unzipSync = _zip.unzipSync;
+const createTar = _tar.createTar;
+const createUntar = _tar.createUntar;
+const tar = _tar.tar;
+const untar = _tar.untar;
+const tarSync = _tar.tarSync;
+const untarSync = _tar.untarSync;
 
 function ensureParentDir(targetPath) {
     const dir = path.dirname(targetPath);
@@ -48,13 +48,16 @@ function normalizeEntry(entry) {
     if (!entry.name || typeof entry.name !== 'string') {
         throw new TypeError('entry.name must be a non-empty string');
     }
-    if (entry.data === undefined || entry.data === null) {
+    const typeName = typeof entry.type === 'string' ? entry.type.toLowerCase() : '';
+    const isDirectory = !!entry.isDir || typeName === 'dir' || typeName === 'directory' || entry.typeflag === 53;
+    const isLink = typeName === 'symlink' || typeName === 'symboliclink' || typeName === 'link' || typeName === 'hardlink';
+    if (!isDirectory && !isLink && entry.data === undefined) {
         throw new TypeError('entry.data is required');
     }
     return {
         ...entry,
         name: entry.name,
-        data: normalizeEntryData(entry.data),
+        data: entry.data === undefined || entry.data === null ? entry.data : normalizeEntryData(entry.data),
     };
 }
 
@@ -91,7 +94,7 @@ function normalizeExtractOptions(overwriteOrOptions, maybeOptions) {
     };
 }
 
-class Zip {
+class Tar {
     constructor(filePath) {
         this.filePath = filePath || null;
         this.entries = [];
@@ -105,7 +108,7 @@ class Zip {
             return [];
         }
         const archive = fs.readFileSync(this.filePath, 'buffer');
-        this.entries = unzipSync(archive);
+        this.entries = untarSync(archive);
         return this.entries;
     }
 
@@ -145,7 +148,7 @@ class Zip {
         if (!targetPath) {
             throw new Error('writeTo() requires a target path');
         }
-        const archive = zipSync(this.entries);
+        const archive = tarSync(this.entries);
         ensureParentDir(targetPath);
         fs.writeFileSync(targetPath, toWritableBytes(archive), 'buffer');
         this.filePath = targetPath;
@@ -176,11 +179,11 @@ class Zip {
 }
 
 module.exports = {
-    createZip,
-    createUnzip,
-    zip,
-    unzip,
-    zipSync,
-    unzipSync,
-    Zip,
+    createTar,
+    createUntar,
+    tar,
+    untar,
+    tarSync,
+    untarSync,
+    Tar,
 };

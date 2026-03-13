@@ -4,6 +4,8 @@ import (
 	_ "embed"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/lib/archive/tar"
+	"github.com/machbase/neo-server/v8/jsh/lib/archive/zip"
 	"github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/lib/http"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
@@ -27,7 +29,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/util"
 	"github.com/machbase/neo-server/v8/jsh/lib/uuid"
 	"github.com/machbase/neo-server/v8/jsh/lib/ws"
-	"github.com/machbase/neo-server/v8/jsh/lib/zip"
 	"github.com/machbase/neo-server/v8/jsh/lib/zlib"
 )
 
@@ -78,6 +79,10 @@ func Enable(n *engine.JSRuntime) {
 	addFiles(libFiles())
 
 	// native modules
+	n.RegisterNativeModule("@jsh/archive/tar", tar.Module)
+	addFiles(tar.Files())
+	n.RegisterNativeModule("@jsh/archive/zip", zip.Module)
+	addFiles(zip.Files())
 	n.RegisterNativeModule("@jsh/db", db.Module)
 	n.RegisterNativeModule("@jsh/http", http.Module)
 	addFiles(http.Files())
@@ -120,8 +125,6 @@ func Enable(n *engine.JSRuntime) {
 	addFiles(ws.Files())
 	n.RegisterNativeModule("@jsh/uuid", uuid.Module)
 	addFiles(uuid.Files())
-	n.RegisterNativeModule("@jsh/zip", zip.Module)
-	addFiles(zip.Files())
 	n.RegisterNativeModule("@jsh/zlib", zlib.Module)
 	addFiles(zlib.Files())
 }

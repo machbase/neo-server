@@ -1,7 +1,7 @@
-package zip
+package tar
 
 import (
-	stdzip "archive/zip"
+	stdtar "archive/tar"
 	"bytes"
 	_ "embed"
 	"fmt"
@@ -12,35 +12,35 @@ import (
 	"github.com/dop251/goja"
 )
 
-//go:embed zip.js
-var zipJS []byte
+//go:embed tar.js
+var tarJS []byte
 
 func Files() map[string][]byte {
 	return map[string][]byte{
-		"zip.js": zipJS,
+		"archive/tar.js": tarJS,
 	}
 }
 
 func Module(rt *goja.Runtime, module *goja.Object) {
 	m := module.Get("exports").(*goja.Object)
 
-	m.Set("createZip", func() goja.Value {
+	m.Set("createTar", func() goja.Value {
 		return exportArchiveWriter(rt, newArchiveWriter(rt))
 	})
-	m.Set("createUnzip", func() goja.Value {
+	m.Set("createUntar", func() goja.Value {
 		return exportArchiveReader(rt, newArchiveReader(rt))
 	})
-	m.Set("zip", func(call goja.FunctionCall) goja.Value {
-		return asyncZipArchive(rt, call)
+	m.Set("tar", func(call goja.FunctionCall) goja.Value {
+		return asyncTarArchive(rt, call)
 	})
-	m.Set("unzip", func(call goja.FunctionCall) goja.Value {
-		return asyncUnzipArchive(rt, call)
+	m.Set("untar", func(call goja.FunctionCall) goja.Value {
+		return asyncUntarArchive(rt, call)
 	})
-	m.Set("zipSync", func(call goja.FunctionCall) goja.Value {
-		return syncZipArchive(rt, call)
+	m.Set("tarSync", func(call goja.FunctionCall) goja.Value {
+		return syncTarArchive(rt, call)
 	})
-	m.Set("unzipSync", func(call goja.FunctionCall) goja.Value {
-		return syncUnzipArchive(rt, call)
+	m.Set("untarSync", func(call goja.FunctionCall) goja.Value {
+		return syncUntarArchive(rt, call)
 	})
 }
 
@@ -67,14 +67,14 @@ type archiveReader struct {
 }
 
 type archiveEntry struct {
-	Name           string
-	Data           []byte
-	Comment        string
-	Method         uint16
-	Modified       time.Time
-	CompressedSize uint64
-	Uncompressed   uint64
-	IsDir          bool
+	Name     string
+	Data     []byte
+	Mode     int64
+	Modified time.Time
+	Size     int64
+	Typeflag byte
+	Linkname string
+	IsDir    bool
 }
 
 type archiveWriterProxy struct {
@@ -89,7 +89,7 @@ func (w archiveWriterProxy) Close() error {
 	return w.archiveWriter.Close()
 }
 
-const defaultZipEntryName = "data"
+const defaultTarEntryName = "data"
 
 func newArchiveWriter(rt *goja.Runtime) *archiveWriter {
 	return &archiveWriter{rt: rt}
@@ -397,7 +397,7 @@ func (r *archiveReader) updateStats() {
 	r.obj.Set("bytesRead", r.bytesRead)
 }
 
-func asyncZipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
+func asyncTarArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	if len(call.Arguments) < 2 {
 		panic(rt.NewTypeError("callback is required"))
 	}
@@ -410,10 +410,10 @@ func asyncZipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 		panic(rt.NewTypeError("last argument must be a callback function"))
 	}
 	go func() {
-		archive, zipErr := createArchive(entries)
+		archive, tarErr := createArchive(entries)
 		rt.Interrupt(func() {
-			if zipErr != nil {
-				callback(goja.Undefined(), rt.NewGoError(zipErr), goja.Null())
+			if tarErr != nil {
+				callback(goja.Undefined(), rt.NewGoError(tarErr), goja.Null())
 			} else {
 				callback(goja.Undefined(), goja.Null(), rt.ToValue(rt.NewArrayBuffer(archive)))
 			}
@@ -422,7 +422,7 @@ func asyncZipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	return goja.Undefined()
 }
 
-func asyncUnzipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
+func asyncUntarArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	if len(call.Arguments) < 2 {
 		panic(rt.NewTypeError("callback is required"))
 	}
@@ -435,10 +435,10 @@ func asyncUnzipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 		panic(rt.NewTypeError("last argument must be a callback function"))
 	}
 	go func() {
-		entries, unzipErr := openArchive(buf)
+		entries, untarErr := openArchive(buf)
 		rt.Interrupt(func() {
-			if unzipErr != nil {
-				callback(goja.Undefined(), rt.NewGoError(unzipErr), goja.Null())
+			if untarErr != nil {
+				callback(goja.Undefined(), rt.NewGoError(untarErr), goja.Null())
 			} else {
 				callback(goja.Undefined(), goja.Null(), entriesValue(rt, entries))
 			}
@@ -447,7 +447,7 @@ func asyncUnzipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	return goja.Undefined()
 }
 
-func syncZipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
+func syncTarArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	if len(call.Arguments) < 1 {
 		panic(rt.NewTypeError("data is required"))
 	}
@@ -462,7 +462,7 @@ func syncZipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	return rt.ToValue(rt.NewArrayBuffer(archive))
 }
 
-func syncUnzipArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
+func syncUntarArchive(rt *goja.Runtime, call goja.FunctionCall) goja.Value {
 	if len(call.Arguments) < 1 {
 		panic(rt.NewTypeError("data is required"))
 	}
@@ -495,7 +495,7 @@ func normalizeEntries(rt *goja.Runtime, value goja.Value) ([]archiveEntry, int, 
 		}
 		return entries, total, nil
 	}
-	entry, err := normalizeEntry(rt, value, defaultZipEntryName)
+	entry, err := normalizeEntry(rt, value, defaultTarEntryName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -503,80 +503,148 @@ func normalizeEntries(rt *goja.Runtime, value goja.Value) ([]archiveEntry, int, 
 }
 
 func normalizeEntry(rt *goja.Runtime, value goja.Value, fallbackName string) (archiveEntry, error) {
-	entry := archiveEntry{Name: fallbackName, Method: stdzip.Deflate, Modified: time.Now().UTC()}
+	entry := archiveEntry{Name: fallbackName, Mode: 0644, Modified: time.Now().UTC(), Typeflag: stdtar.TypeReg}
 	if value == nil || goja.IsUndefined(value) || goja.IsNull(value) {
-		return entry, fmt.Errorf("zip entry is required")
+		return entry, fmt.Errorf("tar entry is required")
 	}
 	if data, err := bytesFromValue(rt, value); err == nil {
 		entry.Data = data
-		entry.Uncompressed = uint64(len(data))
+		entry.Size = int64(len(data))
 		return entry, nil
 	}
 	obj := value.ToObject(rt)
 	if obj == nil {
-		return entry, fmt.Errorf("zip entry must be a Buffer, string, or object")
+		return entry, fmt.Errorf("tar entry must be a Buffer, string, or object")
 	}
-	dataValue := obj.Get("data")
-	if dataValue == nil || goja.IsUndefined(dataValue) || goja.IsNull(dataValue) {
-		return entry, fmt.Errorf("zip entry data is required")
-	}
-	data, err := bytesFromValue(rt, dataValue)
-	if err != nil {
-		return entry, err
-	}
-	entry.Data = data
-	entry.Uncompressed = uint64(len(data))
 	if name := obj.Get("name"); name != nil && !goja.IsUndefined(name) && !goja.IsNull(name) {
 		trimmed := strings.TrimSpace(name.String())
 		if trimmed != "" {
 			entry.Name = trimmed
 		}
 	}
-	if comment := obj.Get("comment"); comment != nil && !goja.IsUndefined(comment) && !goja.IsNull(comment) {
-		entry.Comment = comment.String()
+	if mode := obj.Get("mode"); mode != nil && !goja.IsUndefined(mode) && !goja.IsNull(mode) {
+		entry.Mode = mode.ToInteger()
 	}
-	if method := obj.Get("method"); method != nil && !goja.IsUndefined(method) && !goja.IsNull(method) {
-		switch strings.ToLower(method.String()) {
-		case "store", "stored":
-			entry.Method = stdzip.Store
-		case "deflate", "", "default":
-			entry.Method = stdzip.Deflate
-		default:
-			return entry, fmt.Errorf("unsupported zip method: %s", method.String())
+	if modified := obj.Get("modified"); modified != nil && !goja.IsUndefined(modified) && !goja.IsNull(modified) {
+		if parsed, err := time.Parse(time.RFC3339Nano, modified.String()); err == nil {
+			entry.Modified = parsed
 		}
+	}
+	if linkname := obj.Get("linkname"); linkname != nil && !goja.IsUndefined(linkname) && !goja.IsNull(linkname) {
+		entry.Linkname = linkname.String()
+	}
+	if typeflag := obj.Get("typeflag"); typeflag != nil && !goja.IsUndefined(typeflag) && !goja.IsNull(typeflag) {
+		entry.Typeflag = byte(typeflag.ToInteger())
+	}
+	if typeName := obj.Get("type"); typeName != nil && !goja.IsUndefined(typeName) && !goja.IsNull(typeName) {
+		resolved, err := resolveTypeflag(typeName.String())
+		if err != nil {
+			return entry, err
+		}
+		entry.Typeflag = resolved
+	}
+	if isDir := obj.Get("isDir"); isDir != nil && !goja.IsUndefined(isDir) && !goja.IsNull(isDir) {
+		entry.IsDir = isDir.ToBoolean()
+	}
+	dataValue := obj.Get("data")
+	if dataValue != nil && !goja.IsUndefined(dataValue) && !goja.IsNull(dataValue) {
+		data, err := bytesFromValue(rt, dataValue)
+		if err != nil {
+			return entry, err
+		}
+		entry.Data = data
+	}
+	if entry.IsDir || entry.Typeflag == stdtar.TypeDir {
+		entry.IsDir = true
+		entry.Typeflag = stdtar.TypeDir
+		entry.Data = nil
+		entry.Size = 0
+		if !strings.HasSuffix(entry.Name, "/") {
+			entry.Name += "/"
+		}
+		return entry, nil
+	}
+	if entry.Linkname != "" && (entry.Typeflag == stdtar.TypeSymlink || entry.Typeflag == stdtar.TypeLink) {
+		entry.Size = 0
+		entry.Data = nil
+		return entry, nil
+	}
+	if len(entry.Data) == 0 && entry.Linkname == "" && entry.Typeflag != stdtar.TypeReg && entry.Typeflag != stdtar.TypeRegA {
+		entry.Size = 0
+		return entry, nil
+	}
+	if dataValue == nil || goja.IsUndefined(dataValue) || goja.IsNull(dataValue) {
+		return entry, fmt.Errorf("tar entry data is required")
+	}
+	entry.Size = int64(len(entry.Data))
+	if entry.Typeflag == 0 {
+		entry.Typeflag = stdtar.TypeReg
 	}
 	return entry, nil
 }
 
+func resolveTypeflag(name string) (byte, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "file", "reg", "regular":
+		return stdtar.TypeReg, nil
+	case "dir", "directory":
+		return stdtar.TypeDir, nil
+	case "symlink", "symboliclink":
+		return stdtar.TypeSymlink, nil
+	case "link", "hardlink":
+		return stdtar.TypeLink, nil
+	default:
+		return 0, fmt.Errorf("unsupported tar type: %s", name)
+	}
+}
+
 func defaultEntryNameFor(index int) string {
 	if index <= 1 {
-		return defaultZipEntryName
+		return defaultTarEntryName
 	}
 	return fmt.Sprintf("entry-%d", index)
 }
 
 func createArchive(entries []archiveEntry) ([]byte, error) {
 	buf := &bytes.Buffer{}
-	writer := stdzip.NewWriter(buf)
+	writer := stdtar.NewWriter(buf)
 	for i, entry := range entries {
 		name := entry.Name
 		if strings.TrimSpace(name) == "" {
 			name = defaultEntryNameFor(i + 1)
 		}
-		hdr := &stdzip.FileHeader{
+		if entry.IsDir && !strings.HasSuffix(name, "/") {
+			name += "/"
+		}
+		typeflag := entry.Typeflag
+		if typeflag == 0 {
+			if entry.IsDir {
+				typeflag = stdtar.TypeDir
+			} else {
+				typeflag = stdtar.TypeReg
+			}
+		}
+		size := int64(len(entry.Data))
+		if entry.IsDir || typeflag == stdtar.TypeDir {
+			size = 0
+		}
+		hdr := &stdtar.Header{
 			Name:     name,
-			Method:   entry.Method,
-			Modified: entry.Modified,
-			Comment:  entry.Comment,
+			Mode:     entry.Mode,
+			ModTime:  entry.Modified,
+			Size:     size,
+			Typeflag: typeflag,
+			Linkname: entry.Linkname,
 		}
-		zipWriter, err := writer.CreateHeader(hdr)
-		if err != nil {
+		if err := writer.WriteHeader(hdr); err != nil {
 			writer.Close()
 			return nil, err
 		}
-		if _, err := zipWriter.Write(entry.Data); err != nil {
-			writer.Close()
-			return nil, err
+		if size > 0 {
+			if _, err := writer.Write(entry.Data); err != nil {
+				writer.Close()
+				return nil, err
+			}
 		}
 	}
 	if err := writer.Close(); err != nil {
@@ -586,51 +654,48 @@ func createArchive(entries []archiveEntry) ([]byte, error) {
 }
 
 func openArchive(data []byte) ([]archiveEntry, error) {
-	reader, err := stdzip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return nil, err
-	}
-	entries := make([]archiveEntry, 0, len(reader.File))
-	for _, file := range reader.File {
-		entry := archiveEntry{
-			Name:           file.Name,
-			Comment:        file.Comment,
-			Method:         file.Method,
-			Modified:       file.Modified,
-			CompressedSize: file.CompressedSize64,
-			Uncompressed:   file.UncompressedSize64,
-			IsDir:          file.FileInfo().IsDir(),
+	reader := stdtar.NewReader(bytes.NewReader(data))
+	entries := make([]archiveEntry, 0)
+	for {
+		hdr, err := reader.Next()
+		if err == io.EOF {
+			return entries, nil
 		}
-		if !entry.IsDir {
-			rc, err := file.Open()
-			if err != nil {
-				return nil, err
-			}
-			content, err := io.ReadAll(rc)
-			rc.Close()
+		if err != nil {
+			return nil, err
+		}
+		entry := archiveEntry{
+			Name:     hdr.Name,
+			Mode:     hdr.Mode,
+			Modified: hdr.ModTime,
+			Size:     hdr.Size,
+			Typeflag: hdr.Typeflag,
+			Linkname: hdr.Linkname,
+			IsDir:    hdr.FileInfo().IsDir() || hdr.Typeflag == stdtar.TypeDir,
+		}
+		if !entry.IsDir && hdr.Size > 0 {
+			content, err := io.ReadAll(reader)
 			if err != nil {
 				return nil, err
 			}
 			entry.Data = content
-			if entry.Uncompressed == 0 {
-				entry.Uncompressed = uint64(len(content))
-			}
+			entry.Size = int64(len(content))
 		}
 		entries = append(entries, entry)
 	}
-	return entries, nil
 }
 
 func entryValue(rt *goja.Runtime, entry archiveEntry) goja.Value {
 	obj := rt.NewObject()
 	obj.Set("name", entry.Name)
 	obj.Set("data", rt.NewArrayBuffer(entry.Data))
-	obj.Set("comment", entry.Comment)
-	obj.Set("method", entry.Method)
-	obj.Set("compressedSize", entry.CompressedSize)
-	obj.Set("size", entry.Uncompressed)
+	obj.Set("mode", entry.Mode)
+	obj.Set("size", entry.Size)
 	obj.Set("isDir", entry.IsDir)
 	obj.Set("modified", entry.Modified.Format(time.RFC3339Nano))
+	obj.Set("typeflag", int64(entry.Typeflag))
+	obj.Set("type", typeName(entry.Typeflag))
+	obj.Set("linkname", entry.Linkname)
 	return obj
 }
 
@@ -640,6 +705,19 @@ func entriesValue(rt *goja.Runtime, entries []archiveEntry) goja.Value {
 		arr.Set(fmt.Sprintf("%d", i), entryValue(rt, entry))
 	}
 	return arr
+}
+
+func typeName(typeflag byte) string {
+	switch typeflag {
+	case stdtar.TypeDir:
+		return "dir"
+	case stdtar.TypeSymlink:
+		return "symlink"
+	case stdtar.TypeLink:
+		return "link"
+	default:
+		return "file"
+	}
 }
 
 func bytesFromAny(rt *goja.Runtime, data interface{}) ([]byte, error) {
