@@ -170,6 +170,10 @@ func (b *Response) Json() (any, error) {
 	return result, nil
 }
 
+func (b *Response) ReadAll() ([]byte, error) {
+	return io.ReadAll(b.rsp.Body)
+}
+
 func (b *Response) String() (string, error) {
 	data, err := io.ReadAll(b.rsp.Body)
 	if err != nil {

@@ -23,6 +23,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/pretty"
 	"github.com/machbase/neo-server/v8/jsh/lib/publisher"
 	"github.com/machbase/neo-server/v8/jsh/lib/readline"
+	"github.com/machbase/neo-server/v8/jsh/lib/semver"
 	"github.com/machbase/neo-server/v8/jsh/lib/shell"
 	"github.com/machbase/neo-server/v8/jsh/lib/stream"
 	"github.com/machbase/neo-server/v8/jsh/lib/system"
@@ -115,6 +116,8 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/publisher", publisher.Module)
 	n.RegisterNativeModule("@jsh/readline", readline.Module)
 	addFiles(readline.Files())
+	n.RegisterNativeModule("@jsh/semver", semver.Module)
+	addFiles(semver.Files())
 	n.RegisterNativeModule("@jsh/shell", shell.Module)
 	n.RegisterNativeModule("@jsh/stream", stream.Module)
 	addFiles(stream.Files())

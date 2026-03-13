@@ -106,8 +106,8 @@ class IncomingMessage extends EventEmitter {
 
     // Read response body as buffer
     readBodyBuffer() {
-        if (this.raw && this.raw.read) {
-            return this.raw.read();
+        if (this.raw && this.raw.readAll) {
+            return this.raw.readAll();
         }
         return new Uint8Array(0);
     }
