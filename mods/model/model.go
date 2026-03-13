@@ -198,7 +198,10 @@ func (s *svr) RemoveBridge(name string) error {
 
 func (s *svr) SetDefaultShellCommand(cmd string) {
 	reservedWebShellDef[SHELLID_SHELL].Command = cmd
-	reservedWebShellDef[SHELLID_JSH].Command = cmd + " /sbin/shell.js"
+}
+
+func (s *svr) SetDefaultJshCommand(cmd string) {
+	reservedWebShellDef[SHELLID_JSH].Command = cmd
 }
 
 func (s *svr) GetShell(id string) (*ShellDefinition, error) {

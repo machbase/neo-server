@@ -55,10 +55,11 @@ func (s *Server) initShellProvider() error {
 
 	shellCmd := []string{}
 	if len(os.Args) > 0 {
+		// The "[[shell]]" is placeholder for "shell" and "jsh"
 		if executable, err := os.Executable(); err != nil {
-			shellCmd = append(shellCmd, fmt.Sprintf("%q", os.Args[0]), "shell")
+			shellCmd = append(shellCmd, fmt.Sprintf("%q", os.Args[0]), "[[shell]]")
 		} else {
-			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "shell")
+			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "[[shell]]")
 		}
 	}
 	fsMgr := ssfs.Default()
@@ -74,9 +75,15 @@ func (s *Server) initShellProvider() error {
 			}
 		}
 	}
-	shellCmd = append(shellCmd, "--server", candidate)
-	s.models.ShellProvider().SetDefaultShellCommand(strings.Join(shellCmd, " "))
-	s.log.Trace("Set shell command:", strings.Join(shellCmd, " "))
+	cmdLine := strings.Join(shellCmd, " ")
+	// neo-shell require -server option
+	defaultShellCmd := strings.Replace(cmdLine, "[[shell]]", "shell", 1) + " -server " + candidate
+	s.models.ShellProvider().SetDefaultShellCommand(defaultShellCmd)
+	s.log.Trace("Set shell command:", defaultShellCmd)
+	// jsh
+	defaultJshCmd := strings.Replace(cmdLine, "[[shell]]", "jsh", 1)
+	s.log.Trace("Set jsh command:", defaultShellCmd)
+	s.models.ShellProvider().SetDefaultJshCommand(defaultJshCmd)
 	return nil
 }
 
