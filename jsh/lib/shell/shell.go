@@ -191,12 +191,15 @@ func (sh *Shell) exec(command string, args []string) goja.Value {
 			command = aliased[0];
 			args.unshift(...aliased.slice(1));
 		}
-		if (!command.endsWith(".js")) {
-			command += ".js";
-		}
-		const path = which(command);
+		let path = which(command);
 		if (!path || path === "") {
-			throw new Error("command not found: " + command);
+			// try command as directory contains index.js
+			const pathAsDir = !command.endsWith(".js") ? which(command + "/index.js") : "";
+			if (!pathAsDir || pathAsDir === "") {
+				throw new Error("command not found: " + command);
+			} else {
+				path = pathAsDir;
+			}
 		}
 		return exec(path, ...args);
 	})()`, command, str))
