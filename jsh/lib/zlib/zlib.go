@@ -156,28 +156,7 @@ func exportZlibStream(rt *goja.Runtime, stream *ZlibStream) goja.Value {
 			panic(rt.NewTypeError("data is required"))
 		}
 
-		data := call.Argument(0)
-		var buf []byte
-
-		if exp := data.Export(); exp != nil {
-			switch v := exp.(type) {
-			case []byte:
-				buf = v
-			case string:
-				buf = []byte(v)
-			default:
-				// Try ArrayBuffer
-				if ab, ok := data.Export().(goja.ArrayBuffer); ok {
-					buf = ab.Bytes()
-				} else {
-					buf = []byte(data.String())
-				}
-			}
-		} else {
-			buf = []byte(data.String())
-		}
-
-		n, err := stream.Write(buf)
+		n, err := stream.Write(call.Argument(0))
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
@@ -188,23 +167,7 @@ func exportZlibStream(rt *goja.Runtime, stream *ZlibStream) goja.Value {
 	// Export end method
 	obj.Set("end", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) > 0 {
-			data := call.Argument(0)
-			var buf []byte
-
-			if exp := data.Export(); exp != nil {
-				switch v := exp.(type) {
-				case []byte:
-					buf = v
-				case string:
-					buf = []byte(v)
-				default:
-					buf = []byte(data.String())
-				}
-			} else {
-				buf = []byte(data.String())
-			}
-
-			if err := stream.End(buf); err != nil {
+			if err := stream.End(call.Argument(0)); err != nil {
 				panic(rt.NewGoError(err))
 			}
 		} else {
@@ -375,23 +338,9 @@ func NewUnzipStream(rt *goja.Runtime) *ZlibStream {
 
 // Write writes data to the stream
 func (z *ZlibStream) Write(data interface{}) (int, error) {
-	var buf []byte
-
-	switch v := data.(type) {
-	case []byte:
-		buf = v
-	case string:
-		buf = []byte(v)
-	case goja.ArrayBuffer:
-		buf = v.Bytes()
-	default:
-		if obj, ok := data.(goja.Value); ok {
-			if exp := obj.Export(); exp != nil {
-				if b, ok := exp.([]byte); ok {
-					buf = b
-				}
-			}
-		}
+	buf, err := z.coerceBytes(data)
+	if err != nil {
+		return 0, err
 	}
 
 	if z.isCompress {
@@ -486,34 +435,6 @@ func (z *ZlibStream) End(data ...interface{}) error {
 	return nil
 }
 
-func (z *ZlibStream) decompress(data []byte) ([]byte, error) {
-	buf := bytes.NewBuffer(data)
-	var reader io.ReadCloser
-	var err error
-
-	switch z.streamType {
-	case "gunzip", "unzip":
-		reader, err = gzip.NewReader(buf)
-	case "inflate", "inflateRaw":
-		reader = flate.NewReader(buf)
-	default:
-		return nil, fmt.Errorf("unsupported decompression type: %s", z.streamType)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-
-	result := &bytes.Buffer{}
-	_, err = io.Copy(result, reader)
-	if err != nil {
-		return nil, err
-	}
-
-	return result.Bytes(), nil
-}
-
 func (z *ZlibStream) updateStats() {
 	if z.obj == nil {
 		return
@@ -535,6 +456,23 @@ func (z *ZlibStream) emitCompressedAvailable() {
 	z.onDataCallback(goja.Undefined(), z.rt.ToValue(bufObj))
 }
 
+func (z *ZlibStream) coerceBytes(data interface{}) ([]byte, error) {
+	switch v := data.(type) {
+	case nil:
+		return nil, nil
+	case []byte:
+		return v, nil
+	case string:
+		return []byte(v), nil
+	case goja.ArrayBuffer:
+		return v.Bytes(), nil
+	case goja.Value:
+		return bytesFromValue(z.rt, v)
+	default:
+		return nil, fmt.Errorf("data must be a Buffer or string")
+	}
+}
+
 func (z *ZlibStream) ensureDecompressPipeline() error {
 	if z.decompressInit {
 		return nil
@@ -551,23 +489,8 @@ func (z *ZlibStream) ensureDecompressPipeline() error {
 		defer close(z.decompressDone)
 		defer close(z.decompressOutCh)
 
-		var rdr io.ReadCloser
-		var err error
-
-		switch z.streamType {
-		case "gunzip", "unzip":
-			rdr, err = gzip.NewReader(pr)
-			if err != nil {
-				select {
-				case z.decompressErrCh <- err:
-				default:
-				}
-				return
-			}
-		case "inflate", "inflateRaw":
-			rdr = flate.NewReader(pr)
-		default:
-			err = fmt.Errorf("unsupported decompression type: %s", z.streamType)
+		rdr, err := newDecompressReader(pr, z.streamType)
+		if err != nil {
 			select {
 			case z.decompressErrCh <- err:
 			default:
@@ -851,16 +774,9 @@ func asyncCompress(rt *goja.Runtime, call goja.FunctionCall, method string) goja
 	}
 
 	// Convert data to bytes
-	var buf []byte
-	if exp := data.Export(); exp != nil {
-		switch v := exp.(type) {
-		case []byte:
-			buf = v
-		case string:
-			buf = []byte(v)
-		default:
-			panic(rt.NewTypeError("data must be a Buffer or string"))
-		}
+	buf, err := bytesFromValue(rt, data)
+	if err != nil {
+		panic(rt.NewTypeError(err.Error()))
 	}
 
 	// Perform compression in background
@@ -895,16 +811,9 @@ func asyncDecompress(rt *goja.Runtime, call goja.FunctionCall, method string) go
 	}
 
 	// Convert data to bytes
-	var buf []byte
-	if exp := data.Export(); exp != nil {
-		switch v := exp.(type) {
-		case []byte:
-			buf = v
-		case string:
-			buf = []byte(v)
-		default:
-			panic(rt.NewTypeError("data must be a Buffer or string"))
-		}
+	buf, err := bytesFromValue(rt, data)
+	if err != nil {
+		panic(rt.NewTypeError(err.Error()))
 	}
 
 	// Perform decompression in background
@@ -935,21 +844,9 @@ func syncCompress(rt *goja.Runtime, call goja.FunctionCall, method string) goja.
 	data := call.Argument(0)
 
 	// Convert data to bytes
-	var buf []byte
-	exp := data.Export()
-	if exp != nil {
-		switch v := exp.(type) {
-		case []byte:
-			buf = v
-		case string:
-			buf = []byte(v)
-		default:
-			// Try to convert to string
-			buf = []byte(data.String())
-		}
-	} else {
-		// Try as string
-		buf = []byte(data.String())
+	buf, err := bytesFromValue(rt, data)
+	if err != nil {
+		panic(rt.NewTypeError(err.Error()))
 	}
 
 	result, err := compress(buf, method)
@@ -969,47 +866,9 @@ func syncDecompress(rt *goja.Runtime, call goja.FunctionCall, method string) goj
 	data := call.Argument(0)
 
 	// Convert data to bytes
-	var buf []byte
-	exp := data.Export()
-	if exp != nil {
-		switch v := exp.(type) {
-		case []byte:
-			buf = v
-		case string:
-			buf = []byte(v)
-		case goja.ArrayBuffer:
-			buf = v.Bytes()
-		default:
-			// Try ArrayBuffer through reflection
-			if obj, ok := exp.(goja.Value); ok {
-				if ab := obj.ToObject(rt); ab != nil {
-					// Check if it's an ArrayBuffer by trying to access byteLength
-					if byteLength := ab.Get("byteLength"); byteLength != nil && !goja.IsUndefined(byteLength) {
-						// It's likely an ArrayBuffer, try to get bytes
-						if bytes := ab.Export(); bytes != nil {
-							if b, ok := bytes.([]byte); ok {
-								buf = b
-							} else if ab, ok := bytes.(goja.ArrayBuffer); ok {
-								buf = ab.Bytes()
-							} else {
-								buf = []byte(data.String())
-							}
-						} else {
-							buf = []byte(data.String())
-						}
-					} else {
-						buf = []byte(data.String())
-					}
-				} else {
-					buf = []byte(data.String())
-				}
-			} else {
-				buf = []byte(data.String())
-			}
-		}
-	} else {
-		// Try as string
-		buf = []byte(data.String())
+	buf, err := bytesFromValue(rt, data)
+	if err != nil {
+		panic(rt.NewTypeError(err.Error()))
 	}
 
 	result, err := decompress(buf, method)
@@ -1023,19 +882,9 @@ func syncDecompress(rt *goja.Runtime, call goja.FunctionCall, method string) goj
 // compress compresses data based on the method
 func compress(data []byte, method string) ([]byte, error) {
 	buf := &bytes.Buffer{}
-	var writer io.WriteCloser
-	var err error
-
-	switch method {
-	case "gzip":
-		writer = gzip.NewWriter(buf)
-	case "deflate", "deflateRaw":
-		writer, err = flate.NewWriter(buf, flate.DefaultCompression)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unsupported compression method: %s", method)
+	writer, err := newCompressWriter(buf, method)
+	if err != nil {
+		return nil, err
 	}
 
 	_, err = writer.Write(data)
@@ -1054,20 +903,9 @@ func compress(data []byte, method string) ([]byte, error) {
 
 // decompress decompresses data based on the method
 func decompress(data []byte, method string) ([]byte, error) {
-	buf := bytes.NewBuffer(data)
-	var reader io.ReadCloser
-	var err error
-
-	switch method {
-	case "gunzip", "unzip":
-		reader, err = gzip.NewReader(buf)
-		if err != nil {
-			return nil, err
-		}
-	case "inflate", "inflateRaw":
-		reader = flate.NewReader(buf)
-	default:
-		return nil, fmt.Errorf("unsupported decompression method: %s", method)
+	reader, err := newDecompressReader(bytes.NewBuffer(data), method)
+	if err != nil {
+		return nil, err
 	}
 
 	defer reader.Close()
@@ -1079,4 +917,62 @@ func decompress(data []byte, method string) ([]byte, error) {
 	}
 
 	return result.Bytes(), nil
+}
+
+func newCompressWriter(w io.Writer, method string) (io.WriteCloser, error) {
+	switch method {
+	case "gzip":
+		return gzip.NewWriter(w), nil
+	case "deflate", "deflateRaw":
+		return flate.NewWriter(w, flate.DefaultCompression)
+	default:
+		return nil, fmt.Errorf("unsupported compression method: %s", method)
+	}
+}
+
+func newDecompressReader(r io.Reader, method string) (io.ReadCloser, error) {
+	switch method {
+	case "gunzip", "unzip":
+		return gzip.NewReader(r)
+	case "inflate", "inflateRaw":
+		return flate.NewReader(r), nil
+	default:
+		return nil, fmt.Errorf("unsupported decompression method: %s", method)
+	}
+}
+
+func bytesFromValue(rt *goja.Runtime, value goja.Value) ([]byte, error) {
+	if value == nil || goja.IsUndefined(value) || goja.IsNull(value) {
+		return nil, nil
+	}
+	if exp := value.Export(); exp != nil {
+		switch v := exp.(type) {
+		case []byte:
+			return v, nil
+		case string:
+			return []byte(v), nil
+		case goja.ArrayBuffer:
+			return v.Bytes(), nil
+		}
+	}
+	obj := value.ToObject(rt)
+	if obj != nil {
+		if byteLength := obj.Get("byteLength"); byteLength != nil && !goja.IsUndefined(byteLength) && !goja.IsNull(byteLength) {
+			if ab, ok := obj.Export().(goja.ArrayBuffer); ok {
+				return ab.Bytes(), nil
+			}
+		}
+		if buffer := obj.Get("buffer"); buffer != nil && !goja.IsUndefined(buffer) && !goja.IsNull(buffer) {
+			if ab, ok := buffer.Export().(goja.ArrayBuffer); ok {
+				return ab.Bytes(), nil
+			}
+		}
+		if obj.ClassName() != "Object" {
+			return []byte(value.String()), nil
+		}
+	}
+	if obj != nil && obj.ClassName() == "Object" {
+		return nil, fmt.Errorf("data must be a Buffer or string")
+	}
+	return []byte(value.String()), nil
 }
