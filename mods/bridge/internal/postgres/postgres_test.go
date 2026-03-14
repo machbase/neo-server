@@ -18,7 +18,7 @@ import (
 )
 
 func TestPostgres(t *testing.T) {
-	if runtime.GOOS == "windows" || (runtime.GOOS == "darwin" && os.Getenv("GITHUB_ACTIONS") == "true") {
+	if runtime.GOOS == "windows" || (runtime.GOOS == "darwin" && os.Getenv("CI") == "true") {
 		t.Skip("dockertest does not work well on non-linux platforms, skipping postgres test")
 	}
 	pool := dockertest.NewPoolT(t, "")
