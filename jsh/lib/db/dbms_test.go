@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -149,7 +150,7 @@ func TestDBMS(t *testing.T) {
 }
 
 func TestPostgreSql(t *testing.T) {
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS == "windows" || (runtime.GOOS == "darwin" && os.Getenv("GITHUB_ACTIONS") == "true") {
 		t.Skip("dockertest does not work well on non-linux platforms, skipping postgres test")
 	}
 	pool := dockertest.NewPoolT(t, "")
