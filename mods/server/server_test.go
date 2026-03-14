@@ -276,7 +276,7 @@ func TestShellShow(t *testing.T) {
 func TestShellBridge(t *testing.T) {
 	pool := dockertest.NewPoolT(t, "")
 	postgres := pool.RunT(t, "postgres",
-		dockertest.WithTag("16"),
+		dockertest.WithTag("16.13"),
 		dockertest.WithEnv([]string{
 			"POSTGRES_USER=dbuser",
 			"POSTGRES_PASSWORD=secret",
