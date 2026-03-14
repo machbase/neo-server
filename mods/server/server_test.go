@@ -274,10 +274,10 @@ func TestShellShow(t *testing.T) {
 }
 
 func TestShellBridge(t *testing.T) {
-	pool := dockertest.NewPoolT(t, "")
 	if runtime.GOOS == "windows" || (runtime.GOOS == "darwin" && os.Getenv("CI") == "true") {
 		t.Skip("dockertest does not work well on non-linux platforms, skipping postgres test")
 	}
+	pool := dockertest.NewPoolT(t, "")
 	postgres := pool.RunT(t, "postgres",
 		dockertest.WithTag("16"),
 		dockertest.WithEnv([]string{
