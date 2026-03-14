@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,6 +32,8 @@ var mqttServerAddress = ""
 
 var httpServer *httpd
 var httpServerAddress = ""
+
+var shellArgs = []string{}
 
 func TestMain(m *testing.M) {
 	// logging
@@ -47,7 +52,40 @@ func TestMain(m *testing.M) {
 	testServer.StartServer()
 	testServer.CreateTestTables()
 	database := testServer.DatabaseSVR()
-	initTestData(database)
+
+	func(db api.Database) {
+		ctx := context.TODO()
+		conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		result := conn.Exec(ctx, `CREATE TAG TABLE example (
+				name VARCHAR(40) PRIMARY KEY,
+				time DATETIME BASETIME,
+				value DOUBLE SUMMARIZED
+			) TAG_DUPLICATE_CHECK_DURATION=1`)
+		if result.Err() != nil {
+			panic(result.Err())
+		}
+
+		rows := [][]any{
+			{"temp", testTimeTick, 3.14},
+		}
+		for i := 1; i <= 10; i++ {
+			rows = append(rows,
+				[]any{"test.query", testTimeTick.Add(time.Duration(i) * time.Second), 1.5 * float64(i)},
+			)
+		}
+		for _, row := range rows {
+			result = conn.Exec(ctx, `INSERT INTO example VALUES (?, ?, ?)`, row[0], row[1], row[2])
+			if result.Err() != nil {
+				panic(result.Err())
+			}
+		}
+		conn.Exec(ctx, `EXEC table_flush(example)`)
+	}(database)
 
 	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", testServer.MachPort())
 
@@ -125,6 +163,30 @@ func TestMain(m *testing.M) {
 		mqttServerAddress = strings.TrimPrefix(addr.Address(), "tcp://")
 	}
 
+	// build shell binary for shell tests
+	func() {
+		var projRoot = filepath.FromSlash("../../")
+		var binPath = filepath.Join(projRoot, "tmp", "machbase-neo")
+		if runtime.GOOS == "windows" {
+			binPath += ".exe"
+		}
+		buildShellCmd := []string{
+			"go", "build", "-o", binPath, filepath.Join(projRoot, "main", "machbase-neo"),
+		}
+		err := exec.Command(buildShellCmd[0], buildShellCmd[1:]...).Run()
+		if err != nil {
+			panic(err)
+		}
+
+		shellArgs = []string{
+			binPath,
+			"shell",
+			"--server", httpServerAddress,
+			"--user", "sys",
+			"--password", "manager",
+		}
+	}()
+
 	// run tests
 	m.Run()
 
@@ -134,40 +196,6 @@ func TestMain(m *testing.M) {
 	api.StopMetrics()
 	testServer.DropTestTables()
 	testServer.StopServer()
-}
-
-func initTestData(db api.Database) {
-	ctx := context.TODO()
-	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	result := conn.Exec(ctx, `CREATE TAG TABLE example (
-		name VARCHAR(40) PRIMARY KEY,
-		time DATETIME BASETIME,
-		value DOUBLE SUMMARIZED
-	) TAG_DUPLICATE_CHECK_DURATION=1`)
-	if result.Err() != nil {
-		panic(result.Err())
-	}
-
-	rows := [][]any{
-		{"temp", testTimeTick, 3.14},
-	}
-	for i := 1; i <= 10; i++ {
-		rows = append(rows,
-			[]any{"test.query", testTimeTick.Add(time.Duration(i) * time.Second), 1.5 * float64(i)},
-		)
-	}
-	for _, row := range rows {
-		result = conn.Exec(ctx, `INSERT INTO example VALUES (?, ?, ?)`, row[0], row[1], row[2])
-		if result.Err() != nil {
-			panic(result.Err())
-		}
-	}
-	conn.Exec(ctx, `EXEC table_flush(example)`)
 }
 
 func TestRepresentativePort(t *testing.T) {
@@ -180,92 +208,46 @@ func TestRepresentativePort(t *testing.T) {
 	}
 }
 
-func TestShell(t *testing.T) {
-	var projRoot = filepath.FromSlash("../../")
-	var binPath = filepath.Join(projRoot, "tmp", "neo-shell")
-	if runtime.GOOS == "windows" {
-		binPath += ".exe"
-	}
-	buildShellCmd := []string{
-		"go", "build", "-o", binPath, filepath.Join(projRoot, "shell"),
-	}
-	err := exec.Command(buildShellCmd[0], buildShellCmd[1:]...).Run()
-	require.NoError(t, err, "Failed to build shell binary")
+type ShellTestCase struct {
+	name   string
+	args   []string
+	expect []string
+}
 
-	var binArgs = []string{
-		binPath,
-		"--server", httpServerAddress,
-		"--user", "sys",
-		"--password", "manager",
-	}
+func runShellTestCase(t *testing.T, tt ShellTestCase) {
+	t.Helper()
+	t.Run(tt.name, func(t *testing.T) {
+		t.Helper()
+		cmd := exec.Command(tt.args[0], tt.args[1:]...)
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Shell command failed: %s", string(output))
+		outputLines := strings.Split(string(output), "\n")
+		for i, outputLine := range outputLines {
+			if i >= len(tt.expect) {
+				if outputLine != "" || i != len(outputLines)-1 {
+					require.Fail(t, "Unexpected extra output", "Line: %s", outputLine)
+				}
+				continue
+			}
+			expect := tt.expect[i]
+			if strings.HasPrefix(expect, "/r/") {
+				// regular expression match
+				pattern := expect[3:]
+				matched, err := regexp.MatchString(pattern, outputLine)
+				require.NoError(t, err, "Invalid regular expression: %s", pattern)
+				require.True(t, matched, "Output line does not match pattern. Line: %s, Pattern: %s", outputLine, pattern)
+			} else {
+				require.Equal(t, expect, outputLine, "Outputs:\n%s", strings.Join(outputLines, "\n"))
+			}
+		}
+	})
+}
+
+func TestShellShow(t *testing.T) {
 	tests := []ShellTestCase{
 		{
-			name: "bridge_list",
-			args: append(binArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
-		},
-		{
-			name: "bridge_add",
-			args: append(binArgs, "bridge", "add", "test-bridge", "--type", "sqlite", "file::memory:?cache=shared"),
-			expect: []string{
-				"Adding bridge... test-bridge type: sqlite path: file::memory:?cache=shared",
-			},
-		},
-		{
-			name: "bridge_list_after_add",
-			args: append(binArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬─────────────┬────────┬────────────────────────────┐",
-				"│ ROWNUM │ NAME        │ TYPE   │ CONNECTION                 │",
-				"├────────┼─────────────┼────────┼────────────────────────────┤",
-				"│      1 │ test-bridge │ sqlite │ file::memory:?cache=shared │",
-				"└────────┴─────────────┴────────┴────────────────────────────┘",
-			},
-		},
-		{
-			name: "bridge_test",
-			args: append(binArgs, "bridge", "test", "test-bridge"),
-			expect: []string{
-				"Testing bridge... test-bridge",
-				"OK.",
-			},
-		},
-		{
-			name: "bridge_del",
-			args: append(binArgs, "bridge", "del", "test-bridge"),
-			expect: []string{
-				"Deleted.",
-			},
-		},
-		{
-			name: "bridge_list_after_del",
-			args: append(binArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
-		},
-
-		{
-			name: "key_list",
-			args: append(binArgs, "key", "list"),
-			expect: []string{
-				"┌────────┬────┬──────────────────┬─────────────────┐",
-				"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
-				"├────────┼────┼──────────────────┼─────────────────┤",
-				"└────────┴────┴──────────────────┴─────────────────┘",
-			},
-		},
-		{
 			name: "show_license",
-			args: append(binArgs, "show", "license", "--box-style", "simple"),
+			args: append(shellArgs, "show", "license", "--box-style", "simple"),
 			expect: []string{
 				"+--------+----------+-----------+----------+---------+--------------+---------------------+-------------+--------+",
 				"| ROWNUM | ID       | TYPE      | CUSTOMER | PROJECT | COUNTRY_CODE | INSTALL_DATE        |  ISSUE_DATE | STATUS |",
@@ -276,7 +258,7 @@ func TestShell(t *testing.T) {
 		},
 		{
 			name: "show_tables",
-			args: append(binArgs, "show", "tables", "--format", "csv"),
+			args: append(shellArgs, "show", "tables", "--format", "csv"),
 			expect: []string{
 				"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
 				"1,MACHBASEDB,SYS,EXAMPLE,19,Tag,",
@@ -287,35 +269,334 @@ func TestShell(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command(tt.args[0], tt.args[1:]...)
-			output, err := cmd.CombinedOutput()
-			require.NoError(t, err, "Shell command failed: %s", string(output))
-			outputLines := strings.Split(string(output), "\n")
-			for i, outputLine := range outputLines {
-				if i >= len(tt.expect) {
-					if outputLine != "" || i != len(outputLines)-1 {
-						require.Fail(t, "Unexpected extra output", "Line: %s", outputLine)
-					}
-					continue
-				}
-				expect := tt.expect[i]
-				if strings.HasPrefix(expect, "/r/") {
-					// regular expression match
-					pattern := expect[3:]
-					matched, err := regexp.MatchString(pattern, outputLine)
-					require.NoError(t, err, "Invalid regular expression: %s", pattern)
-					require.True(t, matched, "Output line does not match pattern. Line: %s, Pattern: %s", outputLine, pattern)
-				} else {
-					require.Equal(t, expect, outputLine)
-				}
-			}
-		})
+		runShellTestCase(t, tt)
 	}
 }
 
-type ShellTestCase struct {
-	name   string
-	args   []string
-	expect []string
+func TestShellBridge(t *testing.T) {
+	pool := dockertest.NewPoolT(t, "")
+	postgres := pool.RunT(t, "postgres",
+		dockertest.WithTag("16"),
+		dockertest.WithEnv([]string{
+			"POSTGRES_USER=dbuser",
+			"POSTGRES_PASSWORD=secret",
+			"POSTGRES_DB=db",
+		}),
+	)
+	mosquitto := pool.RunT(t, "eclipse-mosquitto",
+		dockertest.WithTag("2.0"),
+	)
+	// wait for mosquitto to be ready
+	var mosquittoHostPort string
+	err := pool.Retry(t.Context(), 30*time.Second, func() error {
+		mosquittoHostPort = mosquitto.GetHostPort("1883/tcp")
+		conn, err := net.Dial("tcp", mosquittoHostPort)
+		if err != nil {
+			return err
+		}
+		conn.Close()
+		return nil
+	})
+	require.NoError(t, err, "Mosquitto did not start in time")
+
+	// wait for postgres to be ready
+	var postgresDSN string
+	err = pool.Retry(t.Context(), 30*time.Second, func() error {
+		hostPort := postgres.GetHostPort("5432/tcp")
+		host, port, _ := net.SplitHostPort(hostPort)
+		postgresDSN = fmt.Sprintf("host=%s port=%s dbname=db user=dbuser password=secret sslmode=disable", host, port)
+		db, err := sql.Open("postgres", postgresDSN)
+		if err != nil {
+			return err
+		}
+		return db.Ping()
+	})
+	if err != nil {
+		t.Fatalf("could not connect to postgres: %v", err)
+	}
+
+	t.Run("shellBridgeSqliteTest", func(t *testing.T) {
+		shellBridgeSqliteTest(t)
+	})
+	t.Run("shellBridgePostgresTest", func(t *testing.T) {
+		shellBridgePostgresTest(t, postgresDSN)
+	})
+
+	t.Run("shellBridgeMqttTest", func(t *testing.T) {
+		shellBridgeMqttTest(t, mosquittoHostPort)
+	})
+}
+
+func shellBridgeSqliteTest(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name: "bridge_list",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_sqlite",
+			args: append(shellArgs, "bridge", "add", "br-sqlite", "--type", "sqlite", "file::memory:?cache=shared"),
+			expect: []string{
+				"Adding bridge... br-sqlite type: sqlite path: file::memory:?cache=shared",
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬───────────┬────────┬────────────────────────────┐",
+				"│ ROWNUM │ NAME      │ TYPE   │ CONNECTION                 │",
+				"├────────┼───────────┼────────┼────────────────────────────┤",
+				"│      1 │ br-sqlite │ sqlite │ file::memory:?cache=shared │",
+				"└────────┴───────────┴────────┴────────────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_test_sqlite",
+			args: append(shellArgs, "bridge", "test", "br-sqlite"),
+			expect: []string{
+				"Testing bridge... br-sqlite",
+				"OK.",
+			},
+		},
+		{
+			name: "bridge_exec_sqlite_create_table",
+			args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS ids(id INTEGER NOT NULL PRIMARY KEY, memo TEXT)"),
+			expect: []string{
+				"executed. LastInsertedId: 0, RowsAffected: 0",
+			},
+		},
+		{
+			name: "bridge_exec_sqlite_insert_1",
+			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(1, 'test-1')"),
+			expect: []string{
+				"executed. LastInsertedId: 1, RowsAffected: 1",
+			},
+		},
+		{
+			name: "bridge_exec_sqlite_insert_2",
+			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(2, 'test-2')"),
+			expect: []string{
+				"executed. LastInsertedId: 2, RowsAffected: 1",
+			},
+		},
+		{
+			name: "bridge_exec_sqlite_query",
+			args: append(shellArgs, "bridge", "query", "br-sqlite", "SELECT * FROM ids ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬────────┐",
+				"│ ROWNUM │ ID │ MEMO   │",
+				"├────────┼────┼────────┤",
+				"│      1 │  1 │ test-1 │",
+				"│      2 │  2 │ test-2 │",
+				"└────────┴────┴────────┘",
+			},
+		},
+		{
+			name: "bridge_del_sqlite",
+			args: append(shellArgs, "bridge", "del", "br-sqlite"),
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func shellBridgePostgresTest(t *testing.T, dsn string) {
+	tests := []ShellTestCase{
+		{
+			name: "bridge_list",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_postgres",
+			args: append(shellArgs, "bridge", "add", "br-postgres", "--type", "postgres", dsn),
+			expect: []string{
+				"Adding bridge... br-postgres type: postgres path: " + dsn,
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬─────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME        │ TYPE     │ CONNECTION                                                                      │",
+				"├────────┼─────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────┤",
+				"│      1 │ br-postgres │ postgres │ " + dsn + " │",
+				"└────────┴─────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_test_postgres",
+			args: append(shellArgs, "bridge", "test", "br-postgres"),
+			expect: []string{
+				"Testing bridge... br-postgres",
+				"OK.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_create_table",
+			args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"),
+			expect: []string{
+				"executed. LastInsertedId: -1, RowsAffected: 0",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_insert_1",
+			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-1')"),
+			expect: []string{
+				"executed. LastInsertedId: -1, RowsAffected: 1",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_insert_2",
+			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-2')"),
+			expect: []string{
+				"executed. LastInsertedId: -1, RowsAffected: 1",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query",
+			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT * FROM ids ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"│      1 │  1 │ pg-1 │",
+				"│      2 │  2 │ pg-2 │",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_del_postgres",
+			args: append(shellArgs, "bridge", "del", "br-postgres"),
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func shellBridgeMqttTest(t *testing.T, broker string) {
+	tests := []ShellTestCase{
+		{
+			name: "bridge_list",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_mqtt",
+			args: append(shellArgs, "bridge", "add", "br-mqtt", "--type", "mqtt", fmt.Sprintf("broker=%s", broker)),
+			expect: []string{
+				"Adding bridge... br-mqtt type: mqtt path: " + fmt.Sprintf("broker=%s", broker),
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬─────────┬──────┬────────────────────────┐",
+				"│ ROWNUM │ NAME    │ TYPE │ CONNECTION             │",
+				"├────────┼─────────┼──────┼────────────────────────┤",
+				"│      1 │ br-mqtt │ mqtt │ broker=" + broker + " │",
+				"└────────┴─────────┴──────┴────────────────────────┘",
+			},
+		},
+		{
+			name: "subscriber_add",
+			args: append(shellArgs, "subscriber", "add", "--autostart", "sub-mqtt", "br-mqtt", "test/topic", "db/append/example:csv"),
+			expect: []string{
+				"Subscriber 'sub-mqtt' added successfully.",
+			},
+		},
+		// TODO: add test case to verify subscriber is working by checking if the data is inserted into the destination table after publishing message to the topic
+		{
+			name: "subscriber_del",
+			args: append(shellArgs, "subscriber", "del", "sub-mqtt"),
+			expect: []string{
+				"Subscriber 'sub-mqtt' deleted successfully.",
+			},
+		},
+		{
+			name: "bridge_del_mqtt",
+			args: append(shellArgs, "bridge", "del", "br-mqtt"),
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func TestShellKey(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name: "key_list",
+			args: append(shellArgs, "key", "list"),
+			expect: []string{
+				"┌────────┬────┬──────────────────┬─────────────────┐",
+				"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
+				"├────────┼────┼──────────────────┼─────────────────┤",
+				"└────────┴────┴──────────────────┴─────────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
 }

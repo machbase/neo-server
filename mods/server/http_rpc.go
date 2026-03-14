@@ -1,6 +1,9 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -9,6 +12,74 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
+
+var (
+	ginContextType = reflect.TypeOf((*gin.Context)(nil))
+	contextType    = reflect.TypeOf((*context.Context)(nil)).Elem()
+	webConsoleType = reflect.TypeOf((*WebConsole)(nil))
+)
+
+type rpcImplicitParamResolver func(paramType reflect.Type) (reflect.Value, bool)
+
+func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplicitParamResolver) ([]reflect.Value, error) {
+	handlerType := reflect.TypeOf(handler)
+	params := make([]reflect.Value, 0, handlerType.NumIn())
+	explicitIndex := 0
+
+	for i := 0; i < handlerType.NumIn(); i++ {
+		paramType := handlerType.In(i)
+		if resolveImplicit != nil {
+			if implicitValue, ok := resolveImplicit(paramType); ok {
+				params = append(params, implicitValue)
+				continue
+			}
+		}
+
+		if explicitIndex >= len(rawParams) {
+			params = append(params, reflect.Zero(paramType))
+			continue
+		}
+
+		paramValue, err := convertRpcParam(rawParams[explicitIndex], paramType)
+		if err != nil {
+			return nil, fmt.Errorf("param %d: %w", explicitIndex, err)
+		}
+		params = append(params, paramValue)
+		explicitIndex++
+	}
+
+	return params, nil
+}
+
+func convertRpcParam(raw any, targetType reflect.Type) (reflect.Value, error) {
+	if raw == nil {
+		return reflect.Zero(targetType), nil
+	}
+
+	rawValue := reflect.ValueOf(raw)
+	if rawValue.IsValid() && rawValue.Type().AssignableTo(targetType) {
+		return rawValue, nil
+	}
+
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return reflect.Value{}, fmt.Errorf("marshal param: %w", err)
+	}
+
+	if targetType.Kind() == reflect.Pointer {
+		targetValue := reflect.New(targetType.Elem())
+		if err := json.Unmarshal(encoded, targetValue.Interface()); err != nil {
+			return reflect.Value{}, fmt.Errorf("unmarshal to %s: %w", targetType, err)
+		}
+		return targetValue, nil
+	}
+
+	targetValue := reflect.New(targetType)
+	if err := json.Unmarshal(encoded, targetValue.Interface()); err != nil {
+		return reflect.Value{}, fmt.Errorf("unmarshal to %s: %w", targetType, err)
+	}
+	return targetValue.Elem(), nil
+}
 
 func rpcMarkdownRender(markdown string, darkMode bool) (string, error) {
 	w := &strings.Builder{}
@@ -49,31 +120,24 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 	}
 
 	if ok {
-		// Reflection for the handler method signature
-		// Convert req.Params to the expected types of handler function
-		var params []reflect.Value
-		handlerType := reflect.TypeOf(handler)
-		implicitParams := 0
-
-		for i := 0; i < handlerType.NumIn(); i++ {
-			paramType := handlerType.In(i)
-			var paramValue reflect.Value
-
-			// Support implicit parameters
-			if paramType.String() == "*gin.Context" {
-				implicitParams++
-				paramValue = reflect.ValueOf(ctx)
-			} else if paramType.String() == "context.Context" {
-				implicitParams++
-				// passing gin.Context as context.Context
-				// it is used in shutdown server rpc to identify requester info
-				paramValue = reflect.ValueOf(ctx)
-			} else if i-implicitParams < len(req.Params) {
-				paramValue = reflect.ValueOf(req.Params[i-implicitParams])
-			} else {
-				paramValue = reflect.Zero(paramType)
+		params, bindErr := buildRpcCallParams(handler, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+			switch {
+			case paramType == ginContextType:
+				return reflect.ValueOf(ctx), true
+			case paramType == contextType:
+				// Pass gin.Context as context.Context to preserve requester information.
+				return reflect.ValueOf(ctx), true
+			default:
+				return reflect.Value{}, false
 			}
-			params = append(params, paramValue)
+		})
+		if bindErr != nil {
+			rsp["error"] = map[string]any{
+				"code":    -32602,
+				"message": bindErr.Error(),
+			}
+			ctx.JSON(http.StatusOK, rsp)
+			return
 		}
 
 		// Call the handler

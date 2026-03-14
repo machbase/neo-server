@@ -197,26 +197,29 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 		"id":      evt.ID,
 	}
 	if ok {
-		// reflection for the handler method signature
-		// convert evt.Params to the expected types of handler function.
-		var params []reflect.Value
-		handlerType := reflect.TypeOf(handler)
-		implicitParams := 0
-		for i := 0; i < handlerType.NumIn(); i++ {
-			paramType := handlerType.In(i)
-			var paramValue reflect.Value
-			if paramType.String() == "*server.WebConsole" {
-				implicitParams++
-				paramValue = reflect.ValueOf(cons)
-			} else if paramType.String() == "context.Context" {
-				implicitParams++
-				paramValue = reflect.ValueOf(ctx)
-			} else if i-implicitParams < len(evt.Params) {
-				paramValue = reflect.ValueOf(evt.Params[i-implicitParams])
-			} else {
-				paramValue = reflect.Zero(paramType)
+		params, bindErr := buildRpcCallParams(handler, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+			switch {
+			case paramType == webConsoleType:
+				return reflect.ValueOf(cons), true
+			case paramType == contextType:
+				return reflect.ValueOf(ctx), true
+			default:
+				return reflect.Value{}, false
 			}
-			params = append(params, paramValue)
+		})
+		if bindErr != nil {
+			rsp["error"] = map[string]any{
+				"code":    -32602,
+				"message": bindErr.Error(),
+			}
+			cons.connMutex.Lock()
+			cons.conn.WriteJSON(map[string]any{
+				"type":    eventbus.EVT_RPC_RSP,
+				"session": session,
+				"rpc":     rsp,
+			})
+			cons.connMutex.Unlock()
+			return
 		}
 		// call the handler
 		resultValues := reflect.ValueOf(handler).Call(params)

@@ -267,7 +267,7 @@ function execBridge(config, args) {
             if (result.LastInsertedId == 0 && result.AffectedRows == 0) {
                 console.println("executed.");
             } else {
-                console.println(`executed. LastInsertedId: ${result.LastInsertedId}, AffectedRows: ${result.AffectedRows}`);
+                console.println(`executed. LastInsertedId: ${result.LastInsertedId}, RowsAffected: ${result.RowsAffected}`);
             }
         })
         .catch((err) => {
@@ -289,35 +289,36 @@ function queryBridge(config, args) {
     const client = new neoapi.Client(config);
     client.queryBridge(name, command)
         .then((result) => {
-            if (result.Columns && result.Columns.length > 0) {
-                let header = [];
-                for (const col of result.Columns) {
-                    header.push(col.Name);
-                }
-                let box = pretty.Table(config);
-                let hasRows = true;
-                let values = [];
-                box.appendHeader(header);
-                // while (hasRows) {
-                //     client.fetchResultBridge(result.Handle)
-                //         .then((rows) => {
-                //             hasRows = !rows.HasNoRows;
-                //             values = rows.Values;
-                //         })
-                //         .catch((err) => {
-                //             console.println('Error:', err.message);
-                //             hasRows = false;
-                //         });
-                //     box.append(values);
-                // }
-                client.closeResultBridge(result.Handle)
+            if (!result.Columns || result.Columns.length === 0) {
+                console.println("executed.");
+                return;
+            }
+            let header = [];
+            for (const col of result.Columns) {
+                header.push(col.Name);
+            }
+            let box = pretty.Table(config);
+            box.appendHeader(header);
+
+            const fetchRows = () => {
+                client.fetchResultBridge(result.Handle)
+                    .then((rows) => {
+                        box.append(rows.Values);
+                        if (!rows.HasNoRows) {
+                            setImmediate(fetchRows);
+                        } else {
+                            console.println(box.render());
+                            client.closeResultBridge(result.Handle)
+                                .catch((err) => {
+                                    console.println('Error:', err.message);
+                                });
+                        }
+                    })
                     .catch((err) => {
                         console.println('Error:', err.message);
                     });
-                console.println(box.render());
-            } else {
-                console.println("executed.");
-            }
+            };
+            fetchRows();
         })
         .catch((err) => {
             console.println('Error:', err.message);

@@ -313,15 +313,16 @@ class Client extends _Client {
         const task = sch.task;
         const bridge = sch.bridge;
         const topic = sch.topic;
-        const autoStart = sch.autoStart || false;
+        const autostart = sch.autostart;
+        const qos = sch.qos || 0; // TODO: handle qos for subscriber type in the future
 
         return this._executeWithAuth(() => {
             if (type === 'SUBSCRIBER') {
                 return this._rpcRequest('addSubscriberSchedule',
-                    [name, bridge, topic, task, autoStart]);
+                    [name, bridge, task, true, topic, qos]);
             } else if (type === 'TIMER') {
                 return this._rpcRequest('addTimerSchedule',
-                    [name, spec, task, autoStart]);
+                    [name, "", spec, task, autostart]);
             } else {
                 throw new Error(`Unsupported schedule type: ${type}`);
             }

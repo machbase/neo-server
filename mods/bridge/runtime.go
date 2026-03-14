@@ -81,25 +81,25 @@ func (s *svr) execSqlBridge(br SqlBridge, ctx context.Context, req *bridgerpc.Ex
 	}()
 	params, err := ConvertFromDatum(cmd.Params...)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	conn, err := br.Connect(ctx)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	defer conn.Close()
 	result, err := conn.ExecContext(ctx, cmd.SqlText, params...)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	ret := &bridgerpc.SqlExecResult{}
 	if br.SupportLastInsertId() {
 		ret.LastInsertedId, err = result.LastInsertId()
 		if err != nil {
-			rsp.Reason = err.Error()
+			rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 			return rsp, nil
 		}
 	} else {
@@ -107,7 +107,7 @@ func (s *svr) execSqlBridge(br SqlBridge, ctx context.Context, req *bridgerpc.Ex
 	}
 	ret.RowsAffected, err = result.RowsAffected()
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	rsp.Success, rsp.Reason = true, "success"
@@ -127,7 +127,7 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 	}()
 	params, err := ConvertFromDatum(cmd.Params...)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	// context should be managed independently,
@@ -135,18 +135,18 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 	ctx := context.Background()
 	conn, err := br.Connect(ctx)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	rows, err := conn.QueryContext(ctx, cmd.SqlText, params...)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		conn.Close()
 		return rsp, nil
 	}
 	cols, err := rows.ColumnTypes()
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		rows.Close()
 		conn.Close()
 		return rsp, nil
@@ -203,18 +203,18 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	}()
 	rowsWrap, exists := s.ctxMap.Get(cr.Handle)
 	if !exists {
-		rsp.Reason = fmt.Sprintf("handle '%s' not found", cr.Handle)
+		rsp.Reason = fmt.Sprintf("SqlBridge: handle '%s' not found", cr.Handle)
 		return rsp, nil
 	}
 	if rowsWrap.rows == nil || rowsWrap.conn == nil {
-		rsp.Reason = fmt.Sprintf("handle '%s' is invalid", cr.Handle)
+		rsp.Reason = fmt.Sprintf("SqlBridge: handle '%s' is invalid", cr.Handle)
 		return rsp, nil
 	}
 
 	if !rowsWrap.rows.Next() {
 		if err := rowsWrap.rows.Err(); err != nil {
 			rsp.Success = false
-			rsp.Reason = err.Error()
+			rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		} else {
 			rsp.Success = true
 			rsp.Reason = "success"
@@ -226,7 +226,7 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	columns, err := rowsWrap.rows.ColumnTypes()
 	if err != nil {
 		rsp.Success = false
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 
@@ -237,13 +237,13 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	err = rowsWrap.rows.Scan(fields...)
 	if err != nil {
 		rsp.Success = false
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	rsp.Values, err = ConvertToDatum(fields...)
 	if err != nil {
 		rsp.Success = false
-		rsp.Reason = err.Error()
+		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	rsp.Success = true

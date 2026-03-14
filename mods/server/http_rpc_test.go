@@ -2,10 +2,12 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -258,4 +260,44 @@ func RunJsonRpcTest(t *testing.T, accessToken string, tc JsonRpcTestCase) {
 			require.JSONEq(t, tc.expectJSON, jsonRsp.Get("result").String())
 		}
 	})
+}
+
+func TestBuildRpcCallParams(t *testing.T) {
+	type rpcPayload struct {
+		Count int    `json:"count"`
+		Name  string `json:"name"`
+	}
+
+	handler := func(ctx context.Context, count int, enabled bool, payload rpcPayload, req *rpcPayload) error {
+		return nil
+	}
+
+	params, err := buildRpcCallParams(handler, []any{
+		float64(7),
+		true,
+		map[string]any{"count": float64(3), "name": "neo"},
+		map[string]any{"count": float64(9), "name": "rpc"},
+	}, func(paramType reflect.Type) (reflect.Value, bool) {
+		if paramType == contextType {
+			return reflect.ValueOf(context.Background()), true
+		}
+		return reflect.Value{}, false
+	})
+	require.NoError(t, err)
+	require.Len(t, params, 5)
+	require.Equal(t, 7, params[1].Interface().(int))
+	require.True(t, params[2].Interface().(bool))
+	require.Equal(t, rpcPayload{Count: 3, Name: "neo"}, params[3].Interface().(rpcPayload))
+	require.Equal(t, &rpcPayload{Count: 9, Name: "rpc"}, params[4].Interface().(*rpcPayload))
+}
+
+func TestBuildRpcCallParamsRejectsInvalidNumber(t *testing.T) {
+	handler := func(count int) error {
+		return nil
+	}
+
+	_, err := buildRpcCallParams(handler, []any{1.25}, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "param 0")
+	require.Contains(t, err.Error(), "int")
 }

@@ -1,34 +1,20 @@
 package db_test
 
 import (
+	"database/sql"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
-	embedded_postgres "github.com/fergusstrange/embedded-postgres"
+	_ "github.com/lib/pq"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
+	dockertest "github.com/ory/dockertest/v4"
 )
 
 func TestMain(m *testing.M) {
-	pgConf := embedded_postgres.DefaultConfig().
-		Username("dbuser").
-		Password("dbpass").
-		Database("db").
-		CachePath("./test/postgres").
-		Version(embedded_postgres.V16).
-		Port(15455)
-	pgdb := embedded_postgres.NewDatabase(pgConf)
-	if err := pgdb.Start(); err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := pgdb.Stop(); err != nil {
-			panic(err)
-		}
-	}()
-
 	testServer := testsuite.NewServer("./test/tmp")
 	testServer.StartServer()
 	testServer.CreateTestTables()
@@ -162,6 +148,30 @@ func TestDBMS(t *testing.T) {
 }
 
 func TestPostgreSql(t *testing.T) {
+	pool := dockertest.NewPoolT(t, "")
+	postgres := pool.RunT(t, "postgres",
+		dockertest.WithTag("16"),
+		dockertest.WithEnv([]string{
+			"POSTGRES_USER=dbuser",
+			"POSTGRES_PASSWORD=dbpass",
+			"POSTGRES_DB=db",
+		}),
+	)
+	hostPort := postgres.GetHostPort("5432/tcp")
+	host, port, _ := net.SplitHostPort(hostPort)
+	dsn := fmt.Sprintf("host=%s port=%s dbname=db user=dbuser password=dbpass sslmode=disable", host, port)
+	// wait for postgres to be ready
+	err := pool.Retry(t.Context(), 30*time.Second, func() error {
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			return err
+		}
+		return db.Ping()
+	})
+	if err != nil {
+		t.Fatalf("could not connect to postgres: %v", err)
+	}
+
 	tests := []test_engine.TestCase{
 		{
 			Name: "dbms-postgresql",
@@ -171,7 +181,7 @@ func TestPostgreSql(t *testing.T) {
 				
 				client = new db.Client({
 					driver: "postgres",
-					dataSource: "host=127.0.0.1 port=15455 dbname=db user=dbuser password=dbpass sslmode=disable",
+					dataSource: "` + dsn + `",
 					lowerCaseColumns:true,
 				});
 				var conn = null;

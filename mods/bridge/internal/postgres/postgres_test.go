@@ -2,47 +2,57 @@ package postgres_test
 
 import (
 	"context"
-	"os"
+	"database/sql"
+	"fmt"
+	"net"
 	"testing"
+	"time"
 
-	embedded_postgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
+	bridgePostgres "github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
+	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
 )
 
-var newConn func(context.Context) api.Conn
-
-func TestMain(m *testing.M) {
-	conf := embedded_postgres.DefaultConfig().
-		Username("dbuser").
-		Password("dbpass").
-		Database("db").
-		Port(15454)
-	pgdb := embedded_postgres.NewDatabase(conf)
-	if err := pgdb.Start(); err != nil {
-		panic(err)
+func TestPostgres(t *testing.T) {
+	pool := dockertest.NewPoolT(t, "")
+	postgres := pool.RunT(t, "postgres",
+		dockertest.WithTag("16"),
+		dockertest.WithEnv([]string{
+			"POSTGRES_USER=dbuser",
+			"POSTGRES_PASSWORD=dbpass",
+			"POSTGRES_DB=db",
+		}),
+	)
+	hostPort := postgres.GetHostPort("5432/tcp")
+	host, port, _ := net.SplitHostPort(hostPort)
+	dsn := fmt.Sprintf("host=%s port=%s dbname=db user=dbuser password=dbpass sslmode=disable", host, port)
+	// wait for postgres to be ready
+	err := pool.Retry(t.Context(), 30*time.Second, func() error {
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			return err
+		}
+		return db.Ping()
+	})
+	if err != nil {
+		t.Fatalf("could not connect to postgres: %v", err)
 	}
-	bridge := postgres.New("pg", "host=127.0.0.1 port=15454 dbname=db user=dbuser password=dbpass sslmode=disable")
+
+	bridge := bridgePostgres.New("pg", dsn)
 	bridge.BeforeRegister()
 	defer bridge.AfterUnregister()
-	newConn = func(ctx context.Context) api.Conn {
+
+	newConn := func(ctx context.Context) api.Conn {
 		conn, err := bridge.Connect(ctx)
 		if err != nil {
 			panic(err)
 		}
 		return internal.NewConn(conn)
 	}
-	code := m.Run()
-	if err := pgdb.Stop(); err != nil {
-		panic(err)
-	}
-	os.Exit(code)
-}
 
-func TestPostgres(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	conn := newConn(ctx)
 	defer conn.Close()
 

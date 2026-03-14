@@ -2,7 +2,7 @@
 
 const { ReadLine } = require('readline');
 const process = require('process');
-const { splitFields } = require('util')
+const { splitFields } = require('util');
 const env = process.env;
 
 const actor = {};
@@ -50,6 +50,53 @@ actor.submitOnEnterWhen = (lines, idx) => {
     return lines[idx].endsWith(";");
 };
 
+// Keep quoted strings intact for `sql`, `explain`, `bridge exec` and `bridge query` commands;
+// otherwise, the SQL text may be parsed incorrectly.
+// Example: explain select * from table where name='John Doe'
+function sqlArgument(fields, line) {
+    const firstField = fields[0];
+    let firstFieldLower = firstField.toLowerCase();
+    if (firstFieldLower.endsWith('.js')) {
+        firstFieldLower = firstFieldLower.substring(0, firstFieldLower.length - 3);
+    }
+    if (firstFieldLower !== 'sql' &&
+        firstFieldLower !== 'explain' &&
+        firstFieldLower !== 'bridge') {
+        return fields;
+    }
+    if (firstFieldLower === 'bridge') {
+        // bridge exec <bridge-name> <sql-text>
+        if (fields.length < 4) {
+            return fields;
+        }
+        const secondFieldLower = fields[1].toLowerCase();
+        if (secondFieldLower !== 'exec' && secondFieldLower !== 'query') {
+            return fields;
+        }
+    }
+
+    fields = fields.slice(1);
+    // find sql verb in the line, and split the rest as sql args
+    const lineUpper = line.toUpperCase();
+    for (const verb of SQL_VERBS.values()) {
+        const index = lineUpper.indexOf(verb);
+        if (index < 0) {
+            continue;
+        }
+        const sqlText = line.substring(index);
+        // find and remove fields after the verb
+        for (let i = 0; i < fields.length; i++) {
+            if (fields[i].toUpperCase() === verb) {
+                fields = [firstField, ...fields.slice(0, i), sqlText];
+                return fields;
+            }
+        }
+    }
+    // if no sql verb found, join all args as a sql text.
+    const sqlArgs = fields.join(' ');
+    return [firstField, sqlArgs];
+}
+
 actor.process = (line) => {
     const orgLine = line; // keep original line for history
 
@@ -84,39 +131,8 @@ actor.process = (line) => {
             firstField = "sql";
             fields = [firstField, line]; // normalize to sql.js command
         }
-        // Keep quoted strings intact for `sql` and `explain` commands;
-        // otherwise, the SQL text may be parsed incorrectly.
-        // Example: explain select * from table where name='John Doe'
-        for (const cmd of ["sql", "sql.js", "explain", "explain.js"]) {
-            const firstFieldLower = firstField.toLowerCase();
-            // e.g., sql, /usr/bin/sql, ../bin/sql.js, etc.
-            if (firstFieldLower !== cmd && !firstFieldLower.endsWith('/' + cmd)) {
-                continue;
-            }
-            fields = fields.slice(1);
-            // find sql verb in the line, and split the rest as sql args
-            const lineUpper = line.toUpperCase();
-            for (const verb of SQL_VERBS.values()) {
-                const index = lineUpper.indexOf(verb);
-                if (index < 0) {
-                    continue;
-                }
-                const sqlText = line.substring(index);
-                // find remove fields after the verb
-                for (let i = 0; i < fields.length; i++) {
-                    if (fields[i].toUpperCase() === verb) {
-                        fields = fields.slice(0, i);
-                        fields.push(sqlText);
-                        process.exec(firstField, ...fields);
-                        return;
-                    }
-                }
-            }
-            // if no sql verb found, join all args as a sql text.
-            const sqlArgs = fields.join(' ');
-            process.exec(firstField, sqlArgs);
-            return;
-        }
+        // Keep quoted strings intact for sql-text;
+        fields = sqlArgument(fields, line);
 
         // Handle backslash commands
         if (firstField === '\\') {

@@ -32,8 +32,8 @@ const addConfig = {
     description: 'Add a new subscriber to the topic via pre-defined bridge',
     options: {
         help: optionHelp,
-        autoStart: { type: 'boolean', description: 'Enable autostart for the subscriber', default: false },
-
+        autostart: { type: 'boolean', description: 'Enable autostart for the subscriber', default: false },
+        qos: { type: 'number', description: 'QoS level for MQTT bridge (0, 1, or 2)', default: 0 },
     },
     allowNegative: false,
     positionals: [
@@ -48,9 +48,9 @@ const addConfig = {
     subscriber add my_writer nats_bridge topic.in  db/write/EXAMPLE:csv:gzip
     `,
 }
-const deleteConfig = {
+const delConfig = {
     func: doDel,
-    command: 'delete',
+    command: 'del',
     usage: 'subscriber del <name>',
     description: 'Delete a subscriber by name',
     options: {
@@ -90,7 +90,7 @@ const stopConfig = {
 parseAndRun(process.argv.slice(2), defaultConfig, [
     listConfig,
     addConfig,
-    deleteConfig,
+    delConfig,
     startConfig,
     stopConfig,
 ]);
@@ -110,7 +110,7 @@ function doList(config, args) {
                     subs.bridge,
                     subs.topic,
                     subs.task,
-                    subs.autoStart ? 'YES' : 'NO',
+                    subs.autostart ? 'YES' : 'NO',
                     subs.state,
                 ]);
             }
@@ -128,8 +128,9 @@ function doAdd(config, args) {
     const bridge = args.bridge;
     const topic = args.topic;
     const destination = args.destination;
-    const autoStart = args.autoStart || false;
-    client.addSchedule({ name: name, type: 'SUBSCRIBER', bridge: bridge, topic: topic, task: destination, autoStart: autoStart })
+    const autostart = args.autostart || false;
+    const qos = args.qos || 0;
+    client.addSchedule({ name: name, type: 'SUBSCRIBER', bridge: bridge, topic: topic, task: destination, autostart: autostart, qos: qos })
         .then(() => {
             console.println(`Subscriber '${name}' added successfully.`);
         })

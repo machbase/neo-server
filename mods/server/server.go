@@ -1361,13 +1361,19 @@ func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string,
 	return nil
 }
 
-func (s *Server) addSubscriberSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
+func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge string, command string, autoStart bool, topic string, qos int) error {
 	req := schedrpc.AddScheduleRequest{
 		Name:      strings.ToLower(name),
 		Type:      "SUBSCRIBER",
 		AutoStart: autoStart,
-		Schedule:  spec,
 		Task:      command,
+		Bridge:    bridge,
+		Opt: &schedrpc.AddScheduleRequest_Mqtt{
+			Mqtt: &schedrpc.MqttOption{
+				Topic: topic,
+				QoS:   int32(qos),
+			},
+		},
 	}
 	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
 	if err != nil {
