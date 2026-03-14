@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 
@@ -148,9 +149,12 @@ func TestDBMS(t *testing.T) {
 }
 
 func TestPostgreSql(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("dockertest does not work well on non-linux platforms, skipping postgres test")
+	}
 	pool := dockertest.NewPoolT(t, "")
 	postgres := pool.RunT(t, "postgres",
-		dockertest.WithTag("16.13"),
+		dockertest.WithTag("16"),
 		dockertest.WithEnv([]string{
 			"POSTGRES_USER=dbuser",
 			"POSTGRES_PASSWORD=dbpass",
