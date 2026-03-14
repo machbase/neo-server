@@ -53,6 +53,9 @@ func TestMain(m *testing.M) {
 	testServer.CreateTestTables()
 	database := testServer.DatabaseSVR()
 
+	// default database
+	api.SetDefault(database)
+
 	func(db api.Database) {
 		ctx := context.TODO()
 		conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
@@ -286,8 +289,18 @@ func TestShellBridge(t *testing.T) {
 			"POSTGRES_DB=db",
 		}),
 	)
+	//
+	// find directory neo-server/mods/server/test
+	//
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("Failed to get current file path")
+	}
+	testDir := filepath.Join(filepath.Dir(filename), "test")
+
 	mosquitto := pool.RunT(t, "eclipse-mosquitto",
 		dockertest.WithTag("2.0"),
+		dockertest.WithMounts([]string{filepath.Join(testDir, "mosquitto.conf") + ":/mosquitto/config/mosquitto.conf:ro"}),
 	)
 	// wait for mosquitto to be ready
 	var mosquittoHostPort string
@@ -550,12 +563,49 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 		},
 		{
 			name: "subscriber_add",
-			args: append(shellArgs, "subscriber", "add", "--autostart", "sub-mqtt", "br-mqtt", "test/topic", "db/append/example:csv"),
+			args: append(shellArgs, "subscriber", "add", "--autostart", "sub-mqtt", "br-mqtt", "test/topic", "db/write/example"),
 			expect: []string{
 				"Subscriber 'sub-mqtt' added successfully.",
 			},
 		},
-		// TODO: add test case to verify subscriber is working by checking if the data is inserted into the destination table after publishing message to the topic
+		{
+			name:   "wait_for_mqtt_subscribe",
+			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
+			expect: []string{},
+		},
+		{
+			name: "mqtt_pub",
+			args: append(shellArgs, "mqtt_pub",
+				"--broker", broker,
+				"--topic", "test/topic",
+				"--message", `[["mqtt-test",1773466141000000000,42],["mqtt-test",1773466142000000000,43]]`),
+			expect: []string{},
+		},
+		{
+			name:   "wait_for_mqtt_publish",
+			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
+			expect: []string{},
+		},
+		{
+			name: "mqtt_pub_result",
+			args: append(shellArgs, "sql", "--tz", "GMT", "SELECT * FROM example WHERE name='mqtt-test' ORDER BY time"),
+			expect: []string{
+				"┌────────┬───────────┬─────────────────────┬───────┐",
+				"│ ROWNUM │ NAME      │ TIME                │ VALUE │",
+				"├────────┼───────────┼─────────────────────┼───────┤",
+				"│      1 │ mqtt-test │ 2026-03-14 05:29:01 │    42 │",
+				"│      2 │ mqtt-test │ 2026-03-14 05:29:02 │    43 │",
+				"└────────┴───────────┴─────────────────────┴───────┘",
+				"2 rows selected.",
+			},
+		},
+		{
+			name: "mqtt_pub_clean",
+			args: append(shellArgs, "sql", "DELETE FROM example WHERE name='mqtt-test'"),
+			expect: []string{
+				"2 rows deleted.",
+			},
+		},
 		{
 			name: "subscriber_del",
 			args: append(shellArgs, "subscriber", "del", "sub-mqtt"),

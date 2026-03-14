@@ -5,7 +5,7 @@ A JSH native module that provides an MQTT client. Based on the Eclipse Paho MQTT
 ## Installation
 
 ```javascript
-const mqtt = require("/lib/mqtt");
+const mqtt = require("mqtt");
 ```
 
 ## Classes
@@ -187,7 +187,7 @@ client.on('published', (topic, reason) => {
 ### Basic Pub/Sub Example
 
 ```javascript
-const mqtt = require("/lib/mqtt");
+const mqtt = require("mqtt");
 
 const client = new mqtt.Client({
     servers: ["tcp://127.0.0.1:1883"],
@@ -241,7 +241,7 @@ client.on('published', (topic, reason) => {
 ### Configuration Check Example
 
 ```javascript
-const mqtt = require("/lib/mqtt");
+const mqtt = require("mqtt");
 
 const client = new mqtt.Client({
     servers: ["tcp://127.0.0.1:1883"],
