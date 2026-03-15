@@ -276,9 +276,25 @@ func TestShellShow(t *testing.T) {
 	}
 }
 
+func skipDockerTestSupport() bool {
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	if runtime.GOOS == "darwin" {
+		if os.Getenv("CI") == "true" {
+			return true
+		}
+		_, err := os.Stat("/var/run/docker.sock")
+		if err != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func TestShellBridge(t *testing.T) {
-	if runtime.GOOS == "windows" || (runtime.GOOS == "darwin" && os.Getenv("CI") == "true") {
-		t.Skip("dockertest does not work well on non-linux platforms, skipping postgres test")
+	if skipDockerTestSupport() {
+		t.Skip("dockertest does not work in this environment")
 	}
 	pool := dockertest.NewPoolT(t, "")
 	postgres := pool.RunT(t, "postgres",
@@ -563,7 +579,7 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 		},
 		{
 			name: "subscriber_add",
-			args: append(shellArgs, "subscriber", "add", "--autostart", "sub-mqtt", "br-mqtt", "test/topic", "db/write/example"),
+			args: append(shellArgs, "subscriber", "add", "--autostart", "--qos", "1", "sub-mqtt", "br-mqtt", "test/topic", "db/write/example"),
 			expect: []string{
 				"Subscriber 'sub-mqtt' added successfully.",
 			},
@@ -572,6 +588,17 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 			name:   "wait_for_mqtt_subscribe",
 			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
 			expect: []string{},
+		},
+		{
+			name: "subscriber_list_after_add",
+			args: append(shellArgs, "subscriber", "list"),
+			expect: []string{
+				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+				"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
+				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
+			},
 		},
 		{
 			name: "mqtt_pub",
@@ -607,6 +634,25 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 			},
 		},
 		{
+			name: "subscriber_stop",
+			args: append(shellArgs, "subscriber", "stop", "sub-mqtt"),
+			expect: []string{
+				"Subscriber 'sub-mqtt' stopped successfully.",
+			},
+		},
+		{
+			name: "subscriber_list_after_stop",
+			args: append(shellArgs, "subscriber", "list"),
+			expect: []string{
+				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+				"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
+				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
+			},
+		},
+
+		{
 			name: "subscriber_del",
 			args: append(shellArgs, "subscriber", "del", "sub-mqtt"),
 			expect: []string{
@@ -628,6 +674,24 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
 				"├────────┼──────┼──────┼────────────┤",
 				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func TestShellTimer(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name: "timer_list",
+			args: append(shellArgs, "timer", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬─────┬───────────┬───────┐",
+				"│ ROWNUM │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
+				"├────────┼──────┼──────┼─────┼───────────┼───────┤",
+				"└────────┴──────┴──────┴─────┴───────────┴───────┘",
 			},
 		},
 	}

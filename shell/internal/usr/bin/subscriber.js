@@ -33,7 +33,7 @@ const addConfig = {
     options: {
         help: optionHelp,
         autostart: { type: 'boolean', description: 'Enable autostart for the subscriber', default: false },
-        qos: { type: 'number', description: 'QoS level for MQTT bridge (0, 1, or 2)', default: 0 },
+        qos: { type: 'integer', description: 'QoS level for MQTT bridge (0, 1, or 2)', default: 0 },
     },
     allowNegative: false,
     positionals: [
@@ -43,7 +43,7 @@ const addConfig = {
         { name: 'destination', description: 'Destination to forward messages to (e.g., tql path, writing path descriptor)' },
     ],
     longDescription: `  ex)
-    subscriber add --auto-start --qos=1 my_lsnr my_mqtt outer/events /my_event.tql
+    subscriber add --autostart --qos=1 my_lsnr my_mqtt outer/events /my_event.tql
     subscriber add my_append nats_bridge stream.in db/append/EXAMPLE:json
     subscriber add my_writer nats_bridge topic.in  db/write/EXAMPLE:csv:gzip
     `,
@@ -110,7 +110,7 @@ function doList(config, args) {
                     subs.bridge,
                     subs.topic,
                     subs.task,
-                    subs.autostart ? 'YES' : 'NO',
+                    subs.autoStart ? 'YES' : 'NO',
                     subs.state,
                 ]);
             }
@@ -128,8 +128,8 @@ function doAdd(config, args) {
     const bridge = args.bridge;
     const topic = args.topic;
     const destination = args.destination;
-    const autostart = args.autostart || false;
-    const qos = args.qos || 0;
+    const autostart = config.autostart || false;
+    const qos = config.qos || 0;
     client.addSchedule({ name: name, type: 'SUBSCRIBER', bridge: bridge, topic: topic, task: destination, autostart: autostart, qos: qos })
         .then(() => {
             console.println(`Subscriber '${name}' added successfully.`);

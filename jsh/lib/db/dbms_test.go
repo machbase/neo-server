@@ -149,9 +149,25 @@ func TestDBMS(t *testing.T) {
 	}
 }
 
+func skipDockerTestSupport() bool {
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	if runtime.GOOS == "darwin" {
+		if os.Getenv("CI") == "true" {
+			return true
+		}
+		_, err := os.Stat("/var/run/docker.sock")
+		if err != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func TestPostgreSql(t *testing.T) {
-	if runtime.GOOS == "windows" || (runtime.GOOS == "darwin" && os.Getenv("CI") == "true") {
-		t.Skip("dockertest does not work well on non-linux platforms, skipping postgres test")
+	if skipDockerTestSupport() {
+		t.Skip("dockertest does not work in this environment")
 	}
 	pool := dockertest.NewPoolT(t, "")
 	postgres := pool.RunT(t, "postgres",
