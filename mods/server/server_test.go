@@ -359,7 +359,7 @@ func TestShellBridge(t *testing.T) {
 	)
 	// wait for mosquitto to be ready
 	var mosquittoHostPort string
-	err := pool.Retry(t.Context(), 30*time.Second, func() error {
+	err := pool.Retry(t.Context(), 60*time.Second, func() error {
 		mosquittoHostPort = mosquitto.GetHostPort("1883/tcp")
 		conn, err := net.Dial("tcp", mosquittoHostPort)
 		if err != nil {
@@ -372,7 +372,7 @@ func TestShellBridge(t *testing.T) {
 
 	// wait for postgres to be ready
 	var postgresDSN string
-	err = pool.Retry(t.Context(), 30*time.Second, func() error {
+	err = pool.Retry(t.Context(), 60*time.Second, func() error {
 		hostPort := postgres.GetHostPort("5432/tcp")
 		host, port, _ := net.SplitHostPort(hostPort)
 		postgresDSN = fmt.Sprintf("host=%s port=%s dbname=db user=dbuser password=secret sslmode=disable", host, port)
@@ -388,7 +388,7 @@ func TestShellBridge(t *testing.T) {
 
 	// wait for mssql to be ready
 	var mssqlDSN string
-	err = pool.Retry(t.Context(), 30*time.Second, func() error {
+	err = pool.Retry(t.Context(), 60*time.Second, func() error {
 		hostPort := mssql.GetHostPort("1433/tcp")
 		db, err := sql.Open("sqlserver", fmt.Sprintf("sqlserver://sa:Your_password123@%s?database=master", hostPort))
 		if err != nil {
@@ -402,7 +402,7 @@ func TestShellBridge(t *testing.T) {
 	}
 
 	var mysqlDSN string
-	err = pool.Retry(t.Context(), 30*time.Second, func() error {
+	err = pool.Retry(t.Context(), 60*time.Second, func() error {
 		hostPort := mysql.GetHostPort("3306/tcp")
 		mysqlDSN = fmt.Sprintf("dbuser:secret@tcp(%s)/db?parseTime=true", hostPort)
 		db, err := sql.Open("mysql", mysqlDSN)
