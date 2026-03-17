@@ -1259,7 +1259,7 @@ function showRollupGap_since_8_0_60(config, conn) {
                 { align: pretty.Align.right, alignHeader: pretty.Align.left }, // LAST_ELAPSED
             ]);
             for (const row of rows) {
-                let elapsed = pretty.Durations(row.LAST_ELAPSED * 1e6);
+                let elapsed = pretty.Durations(row.LAST_ELAPSED_MSEC * 1e6);
                 if (elapsed == '0ns') elapsed = '0ms'; // since last_elapsed is in milliseconds
                 box.append([
                     row.ROLLUP_NAME,
