@@ -126,7 +126,7 @@ try {
     // footer message
     let footMessage = '';
     if (config.footer) {
-        footMessage += rows.message;
+        footMessage += rows.message();
     }
     // print elapsed time
     if (config.timing) {

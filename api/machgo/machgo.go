@@ -747,7 +747,11 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 	} else {
 		ret.stmtType = machnet.StmtType(typ)
 	}
-	ret.rowsCount = stmt.rowCount
+	if ret.stmtType.IsSelect() {
+		ret.rowsCount = 0
+	} else {
+		ret.rowsCount = stmt.rowCount
+	}
 	return ret, nil
 }
 
@@ -796,7 +800,16 @@ func (pStmt *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, 
 		stmt:       pStmt.stmt,
 		isPrepared: true,
 	}
-	ret.rowsCount = pStmt.stmt.rowCount
+	if typ, err := pStmt.stmt.handle.GetStmtType(); err != nil {
+		return nil, err
+	} else {
+		ret.stmtType = typ
+	}
+	if !ret.stmtType.IsSelect() {
+		ret.rowsCount = 0
+	} else {
+		ret.rowsCount = pStmt.stmt.rowCount
+	}
 	return ret, nil
 }
 
@@ -1380,6 +1393,7 @@ func (r *Rows) Next() bool {
 		return false
 	}
 	r.row = row
+	r.rowsCount++
 	return true
 }
 

@@ -106,7 +106,7 @@ func TestDatabase(t *testing.T) {
 					for (const row of rows) {
 						console.println("NAME:", row.NAME, "TIME:", row.TIME, "VALUE:", row.VALUE);
 					}
-					console.println(rows.message);
+					console.println(rows.message());
 				} catch(err) {
 					console.println("Error: ", err.message);
 				} finally {

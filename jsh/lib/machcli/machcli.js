@@ -78,13 +78,15 @@ class Rows {
         this.columnNames = this.cols.names();
         this.columnTypes = this.cols.dataTypes();
         this.rownum = 0;
-        this.message = dbRows.message();
     }
     close() {
         this.rows.close();
     }
     isFetchable() {
         return this.rows.isFetchable();
+    }
+    message() {
+        return this.rows.message();
     }
     next() {
         if (this.rows.isFetchable() == false) {
