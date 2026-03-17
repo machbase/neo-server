@@ -284,6 +284,9 @@ func TestShellShow(t *testing.T) {
 }
 
 func supportDockerTest() bool {
+	if runtime.GOOS == "linux" {
+		return runtime.GOARCH == "amd64"
+	}
 	if runtime.GOOS == "windows" {
 		return false
 	}
@@ -390,7 +393,7 @@ func TestShellBridge(t *testing.T) {
 
 	// wait for mssql to be ready
 	var mssqlDSN string
-	err = pool.Retry(t.Context(), 120*time.Second, func() error {
+	err = pool.Retry(t.Context(), 60*time.Second, func() error {
 		hostPort := mssql.GetHostPort("1433/tcp")
 		db, err := sql.Open("sqlserver", fmt.Sprintf("sqlserver://sa:Your_password123@%s?database=master", hostPort))
 		if err != nil {
