@@ -487,7 +487,8 @@ function describeTable(conn, names, config) {
     if (dbName != '' && dbName != 'MACHBASEDB') {
         let row = conn.queryRow(`SELECT BACKUP_TBSID FROM V$STORAGE_MOUNT_DATABASES WHERE MOUNTDB='${dbName}'`);
         if (!row || !row.BACKUP_TBSID) {
-            throw new Error(`Database '${dbName}' not found`);
+            console.println(`Database '${dbName}' not found`);
+            return;
         }
         dbId = row.BACKUP_TBSID;
     }
@@ -513,7 +514,8 @@ function describeTable(conn, names, config) {
         row = null;
     }
     if (!row || !row.TABLE_ID) {
-        throw new Error(`Table '${tableName}' not found`);
+        console.println(`Table '${dbName}.${userName}.${tableName}' not found`);
+        return;
     }
 
     const tableId = row.TABLE_ID;
@@ -572,7 +574,8 @@ function describeMVTable(conn, names, config) {
     try {
         let r = conn.queryRow(`SELECT NAME, TYPE, FLAG, ID, COLCOUNT FROM ${tablesTable} WHERE NAME = ?`, tableName);
         if (!r || !r.ID) {
-            throw new Error(`Table '${tableName}' not found`);
+            console.println(`Table '${dbName}.${userName}.${tableName}' not found`);
+            return;
         }
 
         console.println(`${tableName} (ID: ${r.ID}, ${machcli.stringTableDescription(r.TYPE, r.FLAG)} Table)`);
