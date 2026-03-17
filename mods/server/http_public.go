@@ -52,7 +52,12 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 			"}",
 		}, "\n")
 		// fmt.Println("Mount "+mountPoint, "->", appRealPath.AbsPath, "\ncode:\n", code)
-		fsTabs := []engine.FSTab{root.RootFSTab(), {MountPoint: mountPoint, Source: appRealPath.AbsPath}}
+		fsTabs := []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+			{MountPoint: mountPoint, Source: appRealPath.AbsPath},
+		}
+
 		env := contextToCGIEnv(ctx, path) // custom env
 		env["HOME"] = "/work"
 		env["PWD"] = mountPoint
