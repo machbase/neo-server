@@ -14,7 +14,7 @@ function parseArgs(args, ...configs) {
 
     if (configs.length > 1) {
         // Multiple configs provided - check for sub-command matching
-        const potentialCommand = args.length > 0 ? args[0] : null;
+        const potentialCommand = args.length > 0 ? args[0].toLowerCase() : null;
 
         for (const cfg of configs) {
             if (cfg.command && cfg.command === potentialCommand) {

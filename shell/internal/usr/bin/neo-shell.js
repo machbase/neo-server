@@ -77,13 +77,13 @@ actor.process = (line) => {
             // Execute js command (backslash prefix without semicolon)
             const command = firstField.substring(1);
             const args = fields.slice(1);
-            process.exec(command, ...args);
+            process.exec(command.toLowerCase(), ...args);
             return;
         }
 
         // Execute regular js commands (with semicolon)
         const args = fields.slice(1);
-        process.exec(firstField, ...args);
+        process.exec(firstField.toLowerCase(), ...args);
     } catch (e) {
         console.println("Process:", e.message);
     }

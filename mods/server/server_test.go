@@ -1019,7 +1019,7 @@ func TestShellRun(t *testing.T) {
 			name: "shell_run.txt",
 			args: append(shellArgs, "run", "shell_run.txt"),
 			expect: []string{
-				"show tables",
+				"SHOW TABLES",
 				"┌────────┬───────────────┬───────────┬────────────┬──────────┬────────────┬────────────┐",
 				"│ ROWNUM │ DATABASE_NAME │ USER_NAME │ TABLE_NAME │ TABLE_ID │ TABLE_TYPE │ TABLE_FLAG │",
 				"├────────┼───────────────┼───────────┼────────────┼──────────┼────────────┼────────────┤",

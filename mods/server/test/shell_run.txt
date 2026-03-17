@@ -1,4 +1,4 @@
-show tables;
+SHOW TABLES;
 -- insert
 INSERT INTO EXAMPLE VALUES('shell_run', 1773722371000000000, 1.234);
 

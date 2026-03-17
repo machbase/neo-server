@@ -79,8 +79,11 @@ function runSqlStatements(statements) {
             console.println(stmt.text);
 
             let fields = splitCmdLine(process.env, stmt.text);
+            if (!fields || fields.length === 0) {
+                continue;
+            }
             // Execute neo-shell commands
-            process.exec(fields[0], ...fields.slice(1));
+            process.exec(fields[0].toLowerCase(), ...fields.slice(1));
             console.println();
         }
     } catch (err) {
