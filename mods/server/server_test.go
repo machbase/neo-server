@@ -283,24 +283,24 @@ func TestShellShow(t *testing.T) {
 	}
 }
 
-func skipDockerTestSupport() bool {
+func supportDockerTest() bool {
 	if runtime.GOOS == "windows" {
-		return true
+		return false
 	}
 	if runtime.GOOS == "darwin" {
 		if os.Getenv("CI") == "true" {
-			return true
+			return false
 		}
 		_, err := os.Stat("/var/run/docker.sock")
 		if err != nil {
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func TestShellBridge(t *testing.T) {
-	if skipDockerTestSupport() {
+	if !supportDockerTest() {
 		t.Skip("dockertest does not work in this environment")
 	}
 	// dockertest pool
@@ -320,11 +320,13 @@ func TestShellBridge(t *testing.T) {
 	// start MSSQL
 	//
 	mssqlImage := "mcr.microsoft.com/mssql/server"
-	mssqlTag := "2019-latest"
-	if runtime.GOARCH == "arm64" { // for arm64, use azure-sql-edge which supports arm64
-		mssqlImage = "mcr.microsoft.com/azure-sql-edge"
-		mssqlTag = "latest"
-	}
+	mssqlTag := "2025-latest"
+	// azure-sql-edge was deprecated
+	//
+	// if runtime.GOARCH == "arm64" { // for arm64, use azure-sql-edge which supports arm64
+	// 	mssqlImage = "mcr.microsoft.com/azure-sql-edge"
+	// 	mssqlTag = "2.0.0"
+	// }
 	mssql := pool.RunT(t, mssqlImage,
 		dockertest.WithTag(mssqlTag),
 		dockertest.WithEnv([]string{
@@ -388,7 +390,7 @@ func TestShellBridge(t *testing.T) {
 
 	// wait for mssql to be ready
 	var mssqlDSN string
-	err = pool.Retry(t.Context(), 60*time.Second, func() error {
+	err = pool.Retry(t.Context(), 120*time.Second, func() error {
 		hostPort := mssql.GetHostPort("1433/tcp")
 		db, err := sql.Open("sqlserver", fmt.Sprintf("sqlserver://sa:Your_password123@%s?database=master", hostPort))
 		if err != nil {
