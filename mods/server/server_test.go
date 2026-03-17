@@ -312,8 +312,14 @@ func TestShellBridge(t *testing.T) {
 	//
 	// start MSSQL
 	//
-	mssql := pool.RunT(t, "mcr.microsoft.com/mssql/server",
-		dockertest.WithTag("2019-latest"),
+	mssqlImage := "mcr.microsoft.com/mssql/server"
+	mssqlTag := "2019-latest"
+	if runtime.GOARCH == "arm64" { // for arm64, use azure-sql-edge which supports arm64
+		mssqlImage = "mcr.microsoft.com/azure-sql-edge"
+		mssqlTag = "latest"
+	}
+	mssql := pool.RunT(t, mssqlImage,
+		dockertest.WithTag(mssqlTag),
 		dockertest.WithEnv([]string{
 			"ACCEPT_EULA=Y",
 			"MSSQL_SA_PASSWORD=Your_password123",
