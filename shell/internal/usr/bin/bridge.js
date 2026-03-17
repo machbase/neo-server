@@ -264,11 +264,8 @@ function execBridge(config, args) {
     const client = new neoapi.Client(config);
     client.execBridge(name, command)
         .then((result) => {
-            if (result.LastInsertedId == 0 && result.AffectedRows == 0) {
-                console.println("executed.");
-            } else {
-                console.println(`executed. LastInsertedId: ${result.LastInsertedId}, RowsAffected: ${result.RowsAffected}`);
-            }
+            console.println("executed.");
+            // DEBUG: console.println(`executed. LastInsertedId: ${result.LastInsertedId}, RowsAffected: ${result.RowsAffected}`);
         })
         .catch((err) => {
             console.println('Error:', err.message);

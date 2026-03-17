@@ -296,13 +296,39 @@ func TestShellBridge(t *testing.T) {
 	if skipDockerTestSupport() {
 		t.Skip("dockertest does not work in this environment")
 	}
+	// dockertest pool
 	pool := dockertest.NewPoolT(t, "")
+	//
+	// start postgreSQL
+	//
 	postgres := pool.RunT(t, "postgres",
 		dockertest.WithTag("16"),
 		dockertest.WithEnv([]string{
 			"POSTGRES_USER=dbuser",
 			"POSTGRES_PASSWORD=secret",
 			"POSTGRES_DB=db",
+		}),
+	)
+	//
+	// start MSSQL
+	//
+	mssql := pool.RunT(t, "mcr.microsoft.com/mssql/server",
+		dockertest.WithTag("2019-latest"),
+		dockertest.WithEnv([]string{
+			"ACCEPT_EULA=Y",
+			"MSSQL_SA_PASSWORD=Your_password123",
+		}),
+	)
+	//
+	// start MYSQL
+	//
+	mysql := pool.RunT(t, "mysql",
+		dockertest.WithTag("8.0"),
+		dockertest.WithEnv([]string{
+			"MYSQL_ROOT_PASSWORD=secret",
+			"MYSQL_DATABASE=db",
+			"MYSQL_USER=dbuser",
+			"MYSQL_PASSWORD=secret",
 		}),
 	)
 	//
@@ -347,13 +373,46 @@ func TestShellBridge(t *testing.T) {
 		t.Fatalf("could not connect to postgres: %v", err)
 	}
 
+	// wait for mssql to be ready
+	var mssqlDSN string
+	err = pool.Retry(t.Context(), 30*time.Second, func() error {
+		hostPort := mssql.GetHostPort("1433/tcp")
+		db, err := sql.Open("sqlserver", fmt.Sprintf("sqlserver://sa:Your_password123@%s?database=master", hostPort))
+		if err != nil {
+			return err
+		}
+		mssqlDSN = fmt.Sprintf("server=%s user=sa password=Your_password123 database=master encrypt=disable", hostPort)
+		return db.Ping()
+	})
+	if err != nil {
+		t.Fatalf("could not connect to mssql: %v", err)
+	}
+
+	var mysqlDSN string
+	err = pool.Retry(t.Context(), 30*time.Second, func() error {
+		hostPort := mysql.GetHostPort("3306/tcp")
+		mysqlDSN = fmt.Sprintf("dbuser:secret@tcp(%s)/db?parseTime=true", hostPort)
+		db, err := sql.Open("mysql", mysqlDSN)
+		if err != nil {
+			return err
+		}
+		return db.Ping()
+	})
+	if err != nil {
+		t.Fatalf("could not connect to mysql: %v", err)
+	}
 	t.Run("shellBridgeSqliteTest", func(t *testing.T) {
 		shellBridgeSqliteTest(t)
 	})
 	t.Run("shellBridgePostgresTest", func(t *testing.T) {
 		shellBridgePostgresTest(t, postgresDSN)
 	})
-
+	t.Run("shellBridgeMSSqlTest", func(t *testing.T) {
+		shellBridgeMSSqlTest(t, mssqlDSN)
+	})
+	t.Run("shellBridgeMySqlTest", func(t *testing.T) {
+		shellBridgeMySqlTest(t, mysqlDSN)
+	})
 	t.Run("shellBridgeMqttTest", func(t *testing.T) {
 		shellBridgeMqttTest(t, mosquittoHostPort)
 	})
@@ -401,21 +460,21 @@ func shellBridgeSqliteTest(t *testing.T) {
 			name: "bridge_exec_sqlite_create_table",
 			args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS ids(id INTEGER NOT NULL PRIMARY KEY, memo TEXT)"),
 			expect: []string{
-				"executed. LastInsertedId: 0, RowsAffected: 0",
+				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_sqlite_insert_1",
 			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(1, 'test-1')"),
 			expect: []string{
-				"executed. LastInsertedId: 1, RowsAffected: 1",
+				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_sqlite_insert_2",
 			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(2, 'test-2')"),
 			expect: []string{
-				"executed. LastInsertedId: 2, RowsAffected: 1",
+				"executed.",
 			},
 		},
 		{
@@ -495,21 +554,21 @@ func shellBridgePostgresTest(t *testing.T, dsn string) {
 			name: "bridge_exec_postgres_create_table",
 			args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"),
 			expect: []string{
-				"executed. LastInsertedId: -1, RowsAffected: 0",
+				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_postgres_insert_1",
 			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-1')"),
 			expect: []string{
-				"executed. LastInsertedId: -1, RowsAffected: 1",
+				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_postgres_insert_2",
 			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-2')"),
 			expect: []string{
-				"executed. LastInsertedId: -1, RowsAffected: 1",
+				"executed.",
 			},
 		},
 		{
@@ -525,8 +584,226 @@ func shellBridgePostgresTest(t *testing.T, dsn string) {
 			},
 		},
 		{
+			name: "bridge_exec_postgres_query_no_rows",
+			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
 			name: "bridge_del_postgres",
 			args: append(shellArgs, "bridge", "del", "br-postgres"),
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func shellBridgeMSSqlTest(t *testing.T, dsn string) {
+	tests := []ShellTestCase{
+		{
+			name: "bridge_list",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_mssql",
+			args: append(shellArgs, "bridge", "add", "br-ms", "--type", "mssql", dsn),
+			expect: []string{
+				"Adding bridge... br-ms type: mssql path: " + dsn,
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬───────┬───────┬──────────────────────────────────────────────────────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME  │ TYPE  │ CONNECTION                                                                               │",
+				"├────────┼───────┼───────┼──────────────────────────────────────────────────────────────────────────────────────────┤",
+				"│      1 │ br-ms │ mssql │ " + dsn + " │",
+				"└────────┴───────┴───────┴──────────────────────────────────────────────────────────────────────────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_test_mssql",
+			args: append(shellArgs, "bridge", "test", "br-ms"),
+			expect: []string{
+				"Testing bridge... br-ms",
+				"OK.",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_create_table",
+			args: append(shellArgs, "bridge", "exec", "br-ms", "CREATE TABLE ids(id INT NOT NULL PRIMARY KEY, memo TEXT)"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_insert_1",
+			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, memo) VALUES(1, 'ms-1')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_insert_2",
+			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, memo) VALUES(2, 'ms-2')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_query",
+			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"│      1 │  1 │ ms-1 │",
+				"│      2 │  2 │ ms-2 │",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_query_no_rows",
+			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_del_mssql",
+			args: append(shellArgs, "bridge", "del", "br-ms"),
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func shellBridgeMySqlTest(t *testing.T, dsn string) {
+	tests := []ShellTestCase{
+		{
+			name: "bridge_list",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_mysql",
+			args: append(shellArgs, "bridge", "add", "br-my", "--type", "mysql", dsn),
+			expect: []string{
+				"Adding bridge... br-my type: mysql path: " + dsn,
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬───────┬───────┬──────────────────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME  │ TYPE  │ CONNECTION                                           │",
+				"├────────┼───────┼───────┼──────────────────────────────────────────────────────┤",
+				"│      1 │ br-my │ mysql │ " + dsn + " │",
+				"└────────┴───────┴───────┴──────────────────────────────────────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_test_mysql",
+			args: append(shellArgs, "bridge", "test", "br-my"),
+			expect: []string{
+				"Testing bridge... br-my",
+				"OK.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_create_table",
+			args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, memo TEXT)"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_insert_1",
+			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo) VALUES('my-1')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_insert_2",
+			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo) VALUES('my-2')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_query",
+			args: append(shellArgs, "bridge", "query", "br-my", "SELECT * FROM ids ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"│      1 │  1 │ my-1 │",
+				"│      2 │  2 │ my-2 │",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_query_no_rows",
+			args: append(shellArgs, "bridge", "query", "br-my", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_del_mysql",
+			args: append(shellArgs, "bridge", "del", "br-my"),
 			expect: []string{
 				"Deleted.",
 			},
