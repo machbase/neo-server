@@ -187,6 +187,7 @@ func TestMain(m *testing.M) {
 			"--server", httpServerAddress,
 			"--user", "sys",
 			"--password", "manager",
+			"-v", "/work=./test",
 		}
 	}()
 
@@ -212,9 +213,10 @@ func TestRepresentativePort(t *testing.T) {
 }
 
 type ShellTestCase struct {
-	name   string
-	args   []string
-	expect []string
+	name      string
+	args      []string
+	expect    []string
+	expectErr string
 }
 
 func runShellTestCase(t *testing.T, tt ShellTestCase) {
@@ -223,6 +225,11 @@ func runShellTestCase(t *testing.T, tt ShellTestCase) {
 		t.Helper()
 		cmd := exec.Command(tt.args[0], tt.args[1:]...)
 		output, err := cmd.CombinedOutput()
+		if tt.expectErr != "" {
+			require.Error(t, err, "Expected error: %s", tt.expectErr)
+			require.Contains(t, string(output), tt.expectErr, "Expected error message not found")
+			return
+		}
 		require.NoError(t, err, "Shell command failed: %s", string(output))
 		outputLines := strings.Split(string(output), "\n")
 		for i, outputLine := range outputLines {
@@ -993,6 +1000,58 @@ func TestShellKey(t *testing.T) {
 				"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
 				"├────────┼────┼──────────────────┼─────────────────┤",
 				"└────────┴────┴──────────────────┴─────────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func TestShellRun(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name:      "run_invalid_command",
+			args:      append(shellArgs, "run", "invalid-command"),
+			expectErr: "ENOENT: no such file or directory, open '/work/invalid-command'",
+		},
+		{
+			name: "shell_run.txt",
+			args: append(shellArgs, "run", "shell_run.txt"),
+			expect: []string{
+				"show tables",
+				"┌────────┬───────────────┬───────────┬────────────┬──────────┬────────────┬────────────┐",
+				"│ ROWNUM │ DATABASE_NAME │ USER_NAME │ TABLE_NAME │ TABLE_ID │ TABLE_TYPE │ TABLE_FLAG │",
+				"├────────┼───────────────┼───────────┼────────────┼──────────┼────────────┼────────────┤",
+				"│      1 │ MACHBASEDB    │ SYS       │ EXAMPLE    │       19 │ Tag        │            │",
+				"│      2 │ MACHBASEDB    │ SYS       │ LOG_DATA   │       13 │ Log        │            │",
+				"│      3 │ MACHBASEDB    │ SYS       │ TAG_DATA   │        6 │ Tag        │            │",
+				"│      4 │ MACHBASEDB    │ SYS       │ TAG_SIMPLE │       12 │ Tag        │            │",
+				"└────────┴───────────────┴───────────┴────────────┴──────────┴────────────┴────────────┘",
+				"",
+				"INSERT INTO EXAMPLE VALUES('shell_run', 1773722371000000000, 1.234)",
+				"a row inserted.",
+				"",
+				"exec table_flush(example)",
+				"rollup executed.",
+				"",
+				"sql --timeformat kitchen --tz Asia/Seoul -Z --no-pause",
+				"SELECT",
+				"    *",
+				"FROM",
+				"    EXAMPLE",
+				"WHERE",
+				"    NAME = 'shell_run'",
+				"┌────────┬───────────┬──────────────────┬───────┐",
+				"│ ROWNUM │ NAME      │ TIME(ASIA/SEOUL) │ VALUE │",
+				"├────────┼───────────┼──────────────────┼───────┤",
+				"│      1 │ shell_run │ 1:39PM           │ 1.234 │",
+				"└────────┴───────────┴──────────────────┴───────┘",
+				"a row selected.",
+				"",
+				"DELETE FROM EXAMPLE WHERE NAME = 'shell_run'",
+				"a row deleted.",
+				"",
 			},
 		},
 	}

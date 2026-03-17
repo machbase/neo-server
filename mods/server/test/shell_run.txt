@@ -1,0 +1,19 @@
+show tables;
+-- insert
+INSERT INTO EXAMPLE VALUES('shell_run', 1773722371000000000, 1.234);
+
+-- flush
+exec table_flush(example);
+
+-- query table in multple lines
+sql --timeformat kitchen --tz Asia/Seoul -Z --no-pause
+SELECT
+    *
+FROM
+    EXAMPLE
+WHERE
+    NAME = 'shell_run';
+
+-- clean
+DELETE FROM EXAMPLE WHERE NAME = 'shell_run';
+
