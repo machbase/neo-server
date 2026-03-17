@@ -1232,7 +1232,7 @@ function showRollupGap_since_8_0_60(config, conn) {
                 { align: pretty.Align.left, alignHeader: pretty.Align.left },  // NEXT_WAKEUP_TIME
             ]);
             for (const row of rows) {
-                let elapsed = pretty.Durations(row.LAST_ELAPSED * 1e6);
+                let elapsed = pretty.Durations(row.LAST_ELAPSED_MSEC * 1e6);
                 if (elapsed == '0ns') elapsed = '0ms'; // since last_elapsed is in milliseconds
                 let lastWakeTime = row.LAST_WAKEUP_TIME && row.LAST_WAKEUP_TIME.unixNano() > 0 ? row.LAST_WAKEUP_TIME : '';
                 let nextWakeTime = row.NEXT_WAKEUP_TIME && row.NEXT_WAKEUP_TIME.unixNano() > 0 ? row.NEXT_WAKEUP_TIME : '';
