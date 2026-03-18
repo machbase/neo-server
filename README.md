@@ -14,10 +14,10 @@ API and Interfaces
 
 - [x] HTTP: Applications and sensors read/write data via HTTP REST API
 - [x] MQTT: Sensors write data via MQTT protocol
-- [x] gRPC: The first-class API for extensions
 - [x] SSH: Command line interface for human and batch processes
 - [x] WEB UI (Batteries included)
 - [x] UI API to build custom UI (Batteries replaceable)
+- [x] A zero-dependency Go client for building applications, available at https://github.com/machbase/neo-client
 
 ## Documents
 
@@ -63,7 +63,7 @@ docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages centos-build-env
 
 ## Build from Sources
 
-- Install Go 1.24
+- Install Go latest version
 - Require a C compiler and linker (e.g., gcc)
 - Checkout `machbase/neo-server`
 - Execute `go run mage.go install-neo-web` to download the web-UI package
