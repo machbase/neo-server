@@ -38,7 +38,6 @@ const addConfig = {
         { name: 'name', description: 'Name of the bridge' },
         { name: 'connection', variadic: true, description: 'Connection string' }
     ],
-    allowPositionals: true,
     longDescription: `
   Bridge types (-t, --type for 'add' command):
     sqlite        SQLite            https://sqlite.org
@@ -66,7 +65,6 @@ const delConfig = {
     positionals: [
         { name: 'name', description: 'Name of the bridge to remove' }
     ],
-    allowPositionals: true
 };
 
 const testConfig = {
@@ -80,7 +78,6 @@ const testConfig = {
     positionals: [
         { name: 'name', description: 'Name of the bridge to test' }
     ],
-    allowPositionals: true
 };
 
 const statsConfig = {
@@ -94,7 +91,6 @@ const statsConfig = {
     positionals: [
         { name: 'name', description: 'Name of the bridge' }
     ],
-    allowPositionals: true
 };
 
 const execConfig = {
@@ -109,7 +105,6 @@ const execConfig = {
         { name: 'name', description: 'Name of the bridge' },
         { name: 'command', variadic: true, description: 'Command to execute' }
     ],
-    allowPositionals: true
 };
 
 const queryConfig = {
@@ -124,7 +119,6 @@ const queryConfig = {
         { name: 'name', description: 'Name of the bridge' },
         { name: 'command', variadic: true, description: 'Query command' }
     ],
-    allowPositionals: true
 };
 
 const defaultConfig = {
@@ -134,7 +128,7 @@ const defaultConfig = {
     }
 };
 
-const commands = [
+parseAndRun(process.argv.slice(2), defaultConfig, [
     listConfig,
     addConfig,
     delConfig,
@@ -142,9 +136,7 @@ const commands = [
     statsConfig,
     execConfig,
     queryConfig,
-];
-
-parseAndRun(process.argv.slice(2), defaultConfig, commands);
+]);
 
 function listBridges(config, args) {
     const client = new neoapi.Client(config);

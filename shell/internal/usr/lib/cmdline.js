@@ -22,7 +22,14 @@ function sqlArgument(fields, line) {
             return fields;
         }
         const secondFieldLower = fields[1].toLowerCase();
-        if (secondFieldLower !== 'exec' && secondFieldLower !== 'query') {
+        if (secondFieldLower === 'exec' || secondFieldLower === 'query') {
+            let bridgeName = fields[2];
+            let verb = fields[3];
+            fields = [firstFieldLower, secondFieldLower, bridgeName];
+            let sqlText = line.substring(line.indexOf(verb)).trim();
+            fields.push(sqlText);
+            return fields;
+        } else {
             return fields;
         }
     }
