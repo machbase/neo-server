@@ -14,14 +14,16 @@ func TestWhich(t *testing.T) {
 	// Create a mounted filesystem with proper absolute paths
 	mfs := NewFS()
 	testFS := fstest.MapFS{
-		"shell.js": &fstest.MapFile{Data: []byte("content")},
-		"test.js":  &fstest.MapFile{Data: []byte("content")},
+		"shell.js":        &fstest.MapFile{Data: []byte("content")},
+		"test.js":         &fstest.MapFile{Data: []byte("content")},
+		"subdir/shell.js": &fstest.MapFile{Data: []byte("content")},
 	}
 	sbin := fstest.MapFS{
 		"util.js": &fstest.MapFile{Data: []byte("content")},
 	}
 	mfs.Mount("/bin", testFS)
 	mfs.Mount("/lib", sbin)
+	mfs.Mount("/work", testFS)
 
 	tests := []struct {
 		name    string
@@ -48,7 +50,7 @@ func TestWhich(t *testing.T) {
 
 			got := env.Which(tt.command)
 			if got != tt.want {
-				t.Errorf("Which() = %v, want %v", got, tt.want)
+				t.Errorf("Which(%s) = %v, want %v", tt.command, got, tt.want)
 			}
 		})
 	}

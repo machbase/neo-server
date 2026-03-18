@@ -35,27 +35,44 @@ func (env *Env) Which(command string) string {
 	if !strings.HasSuffix(command, ".js") {
 		command += ".js"
 	}
+	exists := func(path string) bool {
+		if f, err := env.Filesystem().Open(path); err == nil {
+			f.Close()
+			return true
+		}
+		return false
+	}
+
 	command = env.Expand(command)
 	if strings.HasPrefix(command, "/") || strings.HasPrefix(command, "~/") {
-		return env.ResolvePath(command)
+		resolved := env.ResolvePath(command)
+		if exists(resolved) {
+			return resolved
+		}
+		return ""
 	}
 	if strings.HasPrefix(command, "./") || strings.HasPrefix(command, "../") {
 		cwd := env.Get("PWD")
 		if cwdStr, ok := cwd.(string); ok {
-			return env.ResolvePath(cwdStr + "/" + command)
+			resolved := env.ResolvePath(cwdStr + "/" + command)
+			if exists(resolved) {
+				return resolved
+			}
 		} else {
-			return env.ResolvePath(command)
+			resolved := env.ResolvePath(command)
+			if exists(resolved) {
+				return resolved
+			}
 		}
+		return ""
 	}
-	filesystem := env.Filesystem()
 	pathVar := env.Get("PATH")
 	if pathStr, ok := pathVar.(string); ok {
 		paths := strings.Split(pathStr, ":")
 		for _, dir := range paths {
 			fullPath := filepath.Join(dir, command)
 			fullPath = env.ResolvePath(fullPath)
-			if fi, err := filesystem.Open(fullPath); err == nil {
-				fi.Close()
+			if exists(fullPath) {
 				return fullPath
 			}
 		}
