@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 )
 
@@ -186,7 +187,7 @@ type appender struct {
 }
 
 func (app *appender) Open(task *Task) (err error) {
-	aw, err := api.GetAppendWorker(task.ctx, task.db, app.table.Name)
+	aw, err := server_api.GetAppendWorker(task.ctx, task.db, app.table.Name)
 	if err != nil {
 		return
 	}

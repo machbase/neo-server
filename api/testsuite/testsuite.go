@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/api/machcli"
-	"github.com/machbase/neo-server/v8/api/machgo"
 	"github.com/machbase/neo-server/v8/api/machrpc"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"google.golang.org/grpc"

@@ -13,7 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -169,7 +170,7 @@ func tcBridge(t *testing.T) {
 			sqlConn, err := db.Connect(ctx)
 			require.NoError(t, err)
 
-			conn := api.WrapSqlConn(sqlConn)
+			conn := server_api.WrapSqlConn(sqlConn)
 			t.Cleanup(func() {
 				conn.Close()
 			})
@@ -356,7 +357,7 @@ func tcParseCommandLine(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			result := api.ParseCommandLine(tc.input)
+			result := server_api.ParseCommandLine(tc.input)
 			require.Equal(t, tc.expect, result)
 		})
 	}
@@ -573,7 +574,7 @@ func tcCommands(t *testing.T) {
 		},
 	}
 
-	h := &api.CommandHandler{
+	h := &server_api.CommandHandler{
 		Database: func(ctx context.Context) (api.Conn, error) {
 			return testServer.DatabaseSVR().Connect(ctx, api.WithPassword("sys", "manager"))
 		},
@@ -582,19 +583,19 @@ func tcCommands(t *testing.T) {
 	}
 
 	output := &bytes.Buffer{}
-	h.ShowTables = printShowResult[*api.TableInfo](t, output)
-	h.ShowIndexes = printShowResult[*api.IndexInfo](t, output)
+	h.ShowTables = printShowResult[*server_api.TableInfo](t, output)
+	h.ShowIndexes = printShowResult[*server_api.IndexInfo](t, output)
 	h.ShowIndex = showIndex(t, output)
-	h.ShowLsmIndexes = printShowResult[*api.LsmIndexInfo](t, output)
+	h.ShowLsmIndexes = printShowResult[*server_api.LsmIndexInfo](t, output)
 	h.DescribeTable = descTable(t, output)
 	h.ShowTags = showTags(t, output)
-	h.ShowIndexGap = printShowResult[*api.IndexGapInfo](t, output)
-	h.ShowTagIndexGap = printShowResult[*api.IndexGapInfo](t, output)
-	h.ShowRollupGap = printShowResult[*api.RollupGapInfo](t, output)
-	h.ShowSessions = printShowResult[*api.SessionInfo](t, output)
-	h.ShowStatements = printShowResult[*api.StatementInfo](t, output)
-	h.ShowStorage = printShowResult[*api.StorageInfo](t, output)
-	h.ShowTableUsage = printShowResult[*api.TableUsageInfo](t, output)
+	h.ShowIndexGap = printShowResult[*server_api.IndexGapInfo](t, output)
+	h.ShowTagIndexGap = printShowResult[*server_api.IndexGapInfo](t, output)
+	h.ShowRollupGap = printShowResult[*server_api.RollupGapInfo](t, output)
+	h.ShowSessions = printShowResult[*server_api.SessionInfo](t, output)
+	h.ShowStatements = printShowResult[*server_api.StatementInfo](t, output)
+	h.ShowStorage = printShowResult[*server_api.StorageInfo](t, output)
+	h.ShowTableUsage = printShowResult[*server_api.TableUsageInfo](t, output)
 	h.ShowLicense = showLicense(t, output)
 	h.Explain = explain(t, output)
 	h.SqlQuery = sqlQuery(t, output)
@@ -602,7 +603,7 @@ func tcCommands(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer output.Reset()
-			err := h.Exec(context.TODO(), api.ParseCommandLine(tt.input))
+			err := h.Exec(context.TODO(), server_api.ParseCommandLine(tt.input))
 			if err != nil {
 				if tt.expectErr != "" {
 					require.Contains(t, err.Error(), tt.expectErr)
@@ -626,7 +627,7 @@ func tcCommands(t *testing.T) {
 	}
 }
 
-func printShowResult[T api.InfoType](t *testing.T, output io.Writer) func(nfo T, nrow int64) bool {
+func printShowResult[T server_api.InfoType](t *testing.T, output io.Writer) func(nfo T, nrow int64) bool {
 	return func(nfo T, nrow int64) bool {
 		if nfo.Err() != nil {
 			if nfo.Err() != io.EOF {
@@ -647,8 +648,8 @@ func printShowResult[T api.InfoType](t *testing.T, output io.Writer) func(nfo T,
 	}
 }
 
-func showIndex(t *testing.T, output io.Writer) func(nfo *api.IndexInfo) bool {
-	return func(nfo *api.IndexInfo) bool {
+func showIndex(t *testing.T, output io.Writer) func(nfo *server_api.IndexInfo) bool {
+	return func(nfo *server_api.IndexInfo) bool {
 		if nfo.Err() != nil {
 			if nfo.Err() != io.EOF {
 				t.Fatal(nfo.Err())
@@ -660,8 +661,8 @@ func showIndex(t *testing.T, output io.Writer) func(nfo *api.IndexInfo) bool {
 	}
 }
 
-func showLicense(_ *testing.T, output io.Writer) func(ti *api.LicenseInfo) bool {
-	return func(ti *api.LicenseInfo) bool {
+func showLicense(_ *testing.T, output io.Writer) func(ti *server_api.LicenseInfo) bool {
+	return func(ti *server_api.LicenseInfo) bool {
 		fmt.Fprintln(output, ti.Values()...)
 		return true
 	}
@@ -684,8 +685,8 @@ func descTable(_ *testing.T, output io.Writer) func(desc *api.TableDescription) 
 	}
 }
 
-func showTags(t *testing.T, output io.Writer) func(ti *api.TagInfo, nrow int64) bool {
-	return func(ti *api.TagInfo, nrow int64) bool {
+func showTags(t *testing.T, output io.Writer) func(ti *server_api.TagInfo, nrow int64) bool {
+	return func(ti *server_api.TagInfo, nrow int64) bool {
 		if ti.Err != nil {
 			if ti.Err != io.EOF {
 				t.Fatal(ti.Err)
@@ -710,8 +711,8 @@ func explain(t *testing.T, output io.Writer) func(plan string, err error) {
 	}
 }
 
-func sqlQuery(t *testing.T, output io.Writer) func(q *api.Query, nrow int64) bool {
-	return func(q *api.Query, nrow int64) bool {
+func sqlQuery(t *testing.T, output io.Writer) func(q *server_api.Query, nrow int64) bool {
+	return func(q *server_api.Query, nrow int64) bool {
 		if nrow == 0 {
 			columns := q.Columns()
 			line := []string{}

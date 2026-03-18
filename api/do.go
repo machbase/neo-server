@@ -3,6 +3,8 @@ package api
 import (
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-client/api"
 )
 
 type TableName string
@@ -44,70 +46,67 @@ func (tn TableName) Split() (string, string, string) {
 }
 
 type InfoType interface {
-	Columns() Columns
+	Columns() api.Columns
 	Values() []interface{}
 	Err() error
 }
 
 type TableInfo struct {
-	Database string    `json:"database"`       // M$SYS_TABLES.DATABASE_ID
-	User     string    `json:"user"`           // M$SYS_USERS.NAME
-	Name     string    `json:"name"`           // M$SYS_TABLES.NAME
-	Id       int64     `json:"id"`             // M$SYS_TABLES.ID
-	Type     TableType `json:"type"`           // M$SYS_TABLES.TYPE
-	Flag     TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
-	err      error     `json:"-"`
+	Database string        `json:"database"`       // M$SYS_TABLES.DATABASE_ID
+	User     string        `json:"user"`           // M$SYS_USERS.NAME
+	Name     string        `json:"name"`           // M$SYS_TABLES.NAME
+	Id       int64         `json:"id"`             // M$SYS_TABLES.ID
+	Type     api.TableType `json:"type"`           // M$SYS_TABLES.TYPE
+	Flag     api.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
+	err      error         `json:"-"`
 }
 
 func (ti *TableInfo) Kind() string {
-	return TableTypeDescription(ti.Type, ti.Flag)
+	desc := "undef"
+	switch ti.Type {
+	case api.TableTypeLog:
+		desc = "Log Table"
+	case api.TableTypeFixed:
+		desc = "Fixed Table"
+	case api.TableTypeVolatile:
+		desc = "Volatile Table"
+	case api.TableTypeLookup:
+		desc = "Lookup Table"
+	case api.TableTypeKeyValue:
+		desc = "KeyValue Table"
+	case api.TableTypeTag:
+		desc = "Tag Table"
+	}
+	switch ti.Flag {
+	case api.TableFlagData:
+		desc += " (data)"
+	case api.TableFlagRollup:
+		desc += " (rollup)"
+	case api.TableFlagMeta:
+		desc += " (meta)"
+	case api.TableFlagStat:
+		desc += " (stat)"
+	}
+	return desc
 }
 
 func (ti *TableInfo) Err() error {
 	return ti.err
 }
 
-func (ti *TableInfo) Columns() Columns {
-	return Columns{
-		{Name: "DATABASE", DataType: DataTypeString},
-		{Name: "USER", DataType: DataTypeString},
-		{Name: "NAME", DataType: DataTypeString},
-		{Name: "ID", DataType: DataTypeInt64},
-		{Name: "TYPE", DataType: DataTypeString},
-		{Name: "FLAG", DataType: DataTypeString},
+func (ti *TableInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "FLAG", DataType: api.DataTypeString},
 	}
 }
 
 func (ti *TableInfo) Values() []interface{} {
 	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
-}
-
-// TableDescription is represents data that comes as a result of 'desc <table>'
-type TableDescription struct {
-	Database string              `json:"database"`
-	User     string              `json:"user"`
-	Name     string              `json:"name"`
-	Id       int64               `json:"id"`
-	Type     TableType           `json:"type"`
-	Flag     TableFlag           `json:"flag,omitempty"`
-	Columns  Columns             `json:"columns"`
-	Indexes  []*IndexDescription `json:"indexes"`
-
-	Summarized       bool   `json:"summarized"`
-	SummarizedColumn string `json:"summarizedColum,omitempty"`
-	TagNameColumn    string `json:"tagNameColumn,omitempty"`
-}
-
-// String returns string representation of table type.
-func (td *TableDescription) String() string {
-	return TableTypeDescription(td.Type, td.Flag)
-}
-
-type IndexDescription struct {
-	Id   int64     `json:"id"`
-	Name string    `json:"name"`
-	Type IndexType `json:"type"`
-	Cols []string  `json:"columns"`
 }
 
 type IndexInfo struct {
@@ -126,19 +125,19 @@ type IndexInfo struct {
 	err            error  `json:"-"`
 }
 
-func (ii *IndexInfo) Columns() Columns {
-	return Columns{
-		{Name: "ID", DataType: DataTypeInt64},
-		{Name: "DATABASE", DataType: DataTypeString},
-		{Name: "USER", DataType: DataTypeString},
-		{Name: "TABLE_NAME", DataType: DataTypeString},
-		{Name: "COLUMN_NAME", DataType: DataTypeString},
-		{Name: "INDEX_NAME", DataType: DataTypeString},
-		{Name: "INDEX_TYPE", DataType: DataTypeString},
-		{Name: "KEY_COMPRESS", DataType: DataTypeString},
-		{Name: "MAX_LEVEL", DataType: DataTypeInt64},
-		{Name: "PART_VALUE_COUNT", DataType: DataTypeInt64},
-		{Name: "BITMAP_ENCODE", DataType: DataTypeString},
+func (ii *IndexInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "COLUMN_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_TYPE", DataType: api.DataTypeString},
+		{Name: "KEY_COMPRESS", DataType: api.DataTypeString},
+		{Name: "MAX_LEVEL", DataType: api.DataTypeInt64},
+		{Name: "PART_VALUE_COUNT", DataType: api.DataTypeInt64},
+		{Name: "BITMAP_ENCODE", DataType: api.DataTypeString},
 	}
 }
 
@@ -161,12 +160,12 @@ type LsmIndexInfo struct {
 	err       error  `json:"-"`
 }
 
-func (li *LsmIndexInfo) Columns() Columns {
-	return Columns{
-		{Name: "TABLE_NAME", DataType: DataTypeString},
-		{Name: "INDEX_NAME", DataType: DataTypeString},
-		{Name: "LEVEL", DataType: DataTypeInt64},
-		{Name: "COUNT", DataType: DataTypeInt64},
+func (li *LsmIndexInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "LEVEL", DataType: api.DataTypeInt64},
+		{Name: "COUNT", DataType: api.DataTypeInt64},
 	}
 }
 
@@ -191,16 +190,16 @@ type LicenseInfo struct {
 	LicenseStatus string `json:"licenseStatus,omitempty"`
 }
 
-func (li *LicenseInfo) Columns() Columns {
-	return Columns{
-		{Name: "ID", DataType: DataTypeString},
-		{Name: "TYPE", DataType: DataTypeString},
-		{Name: "CUSTOMER", DataType: DataTypeString},
-		{Name: "PROJECT", DataType: DataTypeString},
-		{Name: "COUNTRY_CODE", DataType: DataTypeString},
-		{Name: "INSTALL_DATE", DataType: DataTypeString},
-		{Name: "ISSUE_DATE", DataType: DataTypeString},
-		{Name: "LICENSE_STATUS", DataType: DataTypeString},
+func (li *LicenseInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "CUSTOMER", DataType: api.DataTypeString},
+		{Name: "PROJECT", DataType: api.DataTypeString},
+		{Name: "COUNTRY_CODE", DataType: api.DataTypeString},
+		{Name: "INSTALL_DATE", DataType: api.DataTypeString},
+		{Name: "ISSUE_DATE", DataType: api.DataTypeString},
+		{Name: "LICENSE_STATUS", DataType: api.DataTypeString},
 	}
 }
 
@@ -228,14 +227,14 @@ type TagInfo struct {
 	Stat       *TagStatInfo `json:"stat,omitempty"`
 }
 
-func (ti *TagInfo) Columns() Columns {
-	return Columns{
-		{Name: "DATABASE", DataType: DataTypeString},
-		{Name: "USER", DataType: DataTypeString},
-		{Name: "TABLE", DataType: DataTypeString},
-		{Name: "NAME", DataType: DataTypeString},
-		{Name: "ID", DataType: DataTypeInt64},
-		{Name: "SUMMARIZED", DataType: DataTypeBoolean},
+func (ti *TagInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "TABLE", DataType: api.DataTypeString},
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "SUMMARIZED", DataType: api.DataTypeBoolean},
 	}
 }
 
@@ -260,20 +259,20 @@ type TagStatInfo struct {
 	RecentRowTime time.Time `json:"recent_row_time"`
 }
 
-func (tsi *TagStatInfo) Columns() Columns {
-	return Columns{
-		{Name: "DATABASE", DataType: DataTypeString},
-		{Name: "USER", DataType: DataTypeString},
-		{Name: "TABLE", DataType: DataTypeString},
-		{Name: "NAME", DataType: DataTypeString},
-		{Name: "ROW_COUNT", DataType: DataTypeInt64},
-		{Name: "MIN_TIME", DataType: DataTypeDatetime},
-		{Name: "MAX_TIME", DataType: DataTypeDatetime},
-		{Name: "MIN_VALUE", DataType: DataTypeFloat64},
-		{Name: "MIN_VALUE_TIME", DataType: DataTypeDatetime},
-		{Name: "MAX_VALUE", DataType: DataTypeFloat64},
-		{Name: "MAX_VALUE_TIME", DataType: DataTypeDatetime},
-		{Name: "RECENT_ROW_TIME", DataType: DataTypeDatetime},
+func (tsi *TagStatInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "TABLE", DataType: api.DataTypeString},
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
+		{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MIN_VALUE", DataType: api.DataTypeFloat64},
+		{Name: "MIN_VALUE_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
+		{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
+		{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
 	}
 }
 
@@ -297,20 +296,20 @@ type IndexGapInfo struct {
 	err        error  `json:"-"`
 }
 
-func (igi *IndexGapInfo) Columns() Columns {
+func (igi *IndexGapInfo) Columns() api.Columns {
 	if igi.IsTagIndex {
-		return Columns{
-			{Name: "ID", DataType: DataTypeInt64},
-			{Name: "STATUS", DataType: DataTypeString},
-			{Name: "DISK_GAP", DataType: DataTypeInt64},
-			{Name: "MEMORY_GAP", DataType: DataTypeInt64},
+		return api.Columns{
+			{Name: "ID", DataType: api.DataTypeInt64},
+			{Name: "STATUS", DataType: api.DataTypeString},
+			{Name: "DISK_GAP", DataType: api.DataTypeInt64},
+			{Name: "MEMORY_GAP", DataType: api.DataTypeInt64},
 		}
 	} else {
-		return Columns{
-			{Name: "ID", DataType: DataTypeInt64},
-			{Name: "TABLE", DataType: DataTypeString},
-			{Name: "INDEX", DataType: DataTypeString},
-			{Name: "GAP", DataType: DataTypeInt64},
+		return api.Columns{
+			{Name: "ID", DataType: api.DataTypeInt64},
+			{Name: "TABLE", DataType: api.DataTypeString},
+			{Name: "INDEX", DataType: api.DataTypeString},
+			{Name: "GAP", DataType: api.DataTypeInt64},
 		}
 	}
 }
@@ -341,14 +340,14 @@ type RollupGapInfo struct {
 	err          error         `json:"-"`
 }
 
-func (rgi *RollupGapInfo) Columns() Columns {
-	return Columns{
-		{Name: "SRC_TABLE", DataType: DataTypeString},
-		{Name: "ROLLUP_TABLE", DataType: DataTypeString},
-		{Name: "SRC_END_RID", DataType: DataTypeInt64},
-		{Name: "ROLLUP_END_RID", DataType: DataTypeInt64},
-		{Name: "GAP", DataType: DataTypeInt64},
-		{Name: "LAST_TIME", DataType: DataTypeInt64},
+func (rgi *RollupGapInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "SRC_TABLE", DataType: api.DataTypeString},
+		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
+		{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
+		{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
+		{Name: "GAP", DataType: api.DataTypeInt64},
+		{Name: "LAST_TIME", DataType: api.DataTypeInt64},
 	}
 }
 
@@ -370,12 +369,12 @@ type StorageInfo struct {
 	err       error  `json:"-"`
 }
 
-func (si *StorageInfo) Columns() Columns {
-	return Columns{
-		{Name: "TABLE_NAME", DataType: DataTypeString},
-		{Name: "DATA_SIZE", DataType: DataTypeInt64},
-		{Name: "INDEX_SIZE", DataType: DataTypeInt64},
-		{Name: "TOTAL_SIZE", DataType: DataTypeInt64},
+func (si *StorageInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
+		{Name: "INDEX_SIZE", DataType: api.DataTypeInt64},
+		{Name: "TOTAL_SIZE", DataType: api.DataTypeInt64},
 	}
 }
 
@@ -395,10 +394,10 @@ type TableUsageInfo struct {
 	err          error  `json:"-"`
 }
 
-func (tui *TableUsageInfo) Columns() Columns {
-	return Columns{
-		{Name: "TABLE_NAME", DataType: DataTypeString},
-		{Name: "STORAGE_USAGE", DataType: DataTypeInt64},
+func (tui *TableUsageInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
 	}
 }
 
@@ -424,16 +423,16 @@ type StatementInfo struct {
 	err                error  `json:"-"`
 }
 
-func (si *StatementInfo) Columns() Columns {
-	return Columns{
-		{Name: "ID", DataType: DataTypeInt64},
-		{Name: "SESSION_ID", DataType: DataTypeInt64},
-		{Name: "STATE", DataType: DataTypeString},
-		{Name: "TYPE", DataType: DataTypeString},
-		{Name: "RECORD_SIZE", DataType: DataTypeInt64},
-		{Name: "APPEND_SUCCESS_CNT", DataType: DataTypeInt64},
-		{Name: "APPEND_FAILURE_CNT", DataType: DataTypeInt64},
-		{Name: "QUERY", DataType: DataTypeString},
+func (si *StatementInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
+		{Name: "STATE", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "RECORD_SIZE", DataType: api.DataTypeInt64},
+		{Name: "APPEND_SUCCESS_CNT", DataType: api.DataTypeInt64},
+		{Name: "APPEND_FAILURE_CNT", DataType: api.DataTypeInt64},
+		{Name: "QUERY", DataType: api.DataTypeString},
 	}
 }
 
@@ -470,15 +469,15 @@ type SessionInfo struct {
 	err       error     `json:"-"`
 }
 
-func (si *SessionInfo) Columns() Columns {
-	return Columns{
-		{Name: "ID", DataType: DataTypeInt64},
-		{Name: "USER_ID", DataType: DataTypeInt64},
-		{Name: "USER_NAME", DataType: DataTypeString},
-		{Name: "TYPE", DataType: DataTypeString},
-		{Name: "LOGIN_TIME", DataType: DataTypeDatetime},
-		{Name: "MAX_QPX_MEM", DataType: DataTypeInt64},
-		{Name: "STMT_COUNT", DataType: DataTypeInt64},
+func (si *SessionInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "USER_ID", DataType: api.DataTypeInt64},
+		{Name: "USER_NAME", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "LOGIN_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MAX_QPX_MEM", DataType: api.DataTypeInt64},
+		{Name: "STMT_COUNT", DataType: api.DataTypeInt64},
 	}
 }
 

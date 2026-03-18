@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
 	_ "github.com/machbase/neo-server/v8/mods/logging"
@@ -173,7 +174,7 @@ func TestMain(m *testing.M) {
 	rows.Close()
 	listNeoSession(db)
 
-	api.StopAppendWorkers()
+	server_api.StopAppendWorkers()
 	// shutdown
 	b.Shutdown()
 	time.Sleep(3 * time.Second)

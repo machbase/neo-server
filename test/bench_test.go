@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/stretchr/testify/require"

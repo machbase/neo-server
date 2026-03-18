@@ -26,7 +26,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
@@ -708,7 +709,7 @@ func TestHttpWrite(t *testing.T) {
 			rsp.Body.Close()
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
-			api.FlushAppendWorkers()
+			server_api.FlushAppendWorkers()
 			conn, _ := httpServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 			conn.Exec(context.Background(), `EXEC table_flush(test_w)`)
 			conn.Close()

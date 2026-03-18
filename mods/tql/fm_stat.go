@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"gonum.org/v1/gonum/stat"

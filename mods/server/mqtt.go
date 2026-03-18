@@ -19,7 +19,7 @@ import (
 
 	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"

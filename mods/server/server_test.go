@@ -14,7 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -93,9 +94,9 @@ func TestMain(m *testing.M) {
 	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", testServer.MachPort())
 
 	// metric
-	api.StartMetrics()
+	server_api.StartMetrics()
 	// append worker
-	api.StartAppendWorkers()
+	server_api.StartAppendWorkers()
 
 	var projRoot = filepath.FromSlash("../../")
 	prefDir := filepath.Join(projRoot, "tmp", "test", "pref")
@@ -197,7 +198,7 @@ func TestMain(m *testing.M) {
 	// cleanup
 	mqttServer.Stop()
 	httpServer.Stop()
-	api.StopMetrics()
+	server_api.StopMetrics()
 	testServer.DropTestTables()
 	testServer.StopServer()
 }

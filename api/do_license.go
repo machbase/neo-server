@@ -7,27 +7,11 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-client/api"
 )
 
-func GetUsers(ctx context.Context, conn Conn) ([]string, error) {
-	rows, err := conn.Query(ctx, "SELeCT NAME FROM M$SYS_USERS")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var users []string
-	for rows.Next() {
-		var user string
-		if err := rows.Scan(&user); err != nil {
-			return nil, err
-		}
-		users = append(users, user)
-	}
-	return users, nil
-}
-
-func GetLicenseInfo(ctx context.Context, conn Conn) (*LicenseInfo, error) {
+func GetLicenseInfo(ctx context.Context, conn api.Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	var violateStatus int
 	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
@@ -40,7 +24,7 @@ func GetLicenseInfo(ctx context.Context, conn Conn) (*LicenseInfo, error) {
 	return ret, nil
 }
 
-func InstallLicenseFile(ctx context.Context, conn Conn, path string) (*LicenseInfo, error) {
+func InstallLicenseFile(ctx context.Context, conn api.Conn, path string) (*LicenseInfo, error) {
 	if strings.ContainsRune(path, ';') {
 		return nil, errors.New("invalid license file path")
 	}
@@ -51,7 +35,7 @@ func InstallLicenseFile(ctx context.Context, conn Conn, path string) (*LicenseIn
 	return GetLicenseInfo(ctx, conn)
 }
 
-func InstallLicenseData(ctx context.Context, conn Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
+func InstallLicenseData(ctx context.Context, conn api.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
 	_, err := os.Stat(licenseFilePath)
 	if err == nil {
 		// backup existing file

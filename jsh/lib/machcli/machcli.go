@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machgo"
+	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
 )
 
 //go:embed machcli.js

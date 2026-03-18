@@ -28,7 +28,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
@@ -374,7 +375,7 @@ func (svr *httpd) Router() *gin.Engine {
 	debugGroup := r.Group("/debug")
 	debugGroup.Use(svr.allowDebug)
 	debugGroup.Any("/pprof/*path", gin.WrapF(httpPprof.Index))
-	debugGroup.GET("/dashboard", gin.WrapF(api.DashboardHandler()))
+	debugGroup.GET("/dashboard", gin.WrapF(server_api.DashboardHandler()))
 	debugGroup.GET("/statz", svr.handleStatz)
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
@@ -876,7 +877,7 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		svr.licenseStatusLastTime = time.Now()
 		svr.licenseStatus = "Unknown"
 		if conn, err := svr.getUserConnection(ctx); err == nil {
-			if nfo, err := api.GetLicenseInfo(ctx, conn); err == nil {
+			if nfo, err := server_api.GetLicenseInfo(ctx, conn); err == nil {
 				svr.licenseStatus = nfo.LicenseStatus
 			}
 			conn.Close()
@@ -957,7 +958,7 @@ func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
 			"reason":  "success",
 			"elapse":  time.Since(tick).String(),
 			"data": map[string]any{
-				"out": api.MetricsDestTable(),
+				"out": server_api.MetricsDestTable(),
 			},
 		})
 	case http.MethodPost:
@@ -976,7 +977,7 @@ func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
 					"elapse":  time.Since(tick).String(),
 				})
 			} else {
-				if err := api.SetMetricsDestTable(out); err != nil {
+				if err := server_api.SetMetricsDestTable(out); err != nil {
 					ctx.JSON(http.StatusInternalServerError, map[string]any{
 						"success": false,
 						"reason":  err.Error(),
@@ -1008,7 +1009,7 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		dur = time.Minute
 	}
 
-	stat := api.QueryStatzRows(dur, 1, func(key string) (bool, int) {
+	stat := server_api.QueryStatzRows(dur, 1, func(key string) (bool, int) {
 		return strings.HasPrefix(key, "machbase:") ||
 			strings.HasPrefix(key, "go:") ||
 			slices.Contains(includes, key), 0
@@ -1106,10 +1107,10 @@ var tmplStatz = `
 {{ end }}`
 
 type LicenseResponse struct {
-	Success bool             `json:"success"`
-	Reason  string           `json:"reason"`
-	Elapse  string           `json:"elapse"`
-	Data    *api.LicenseInfo `json:"data,omitempty"`
+	Success bool                    `json:"success"`
+	Reason  string                  `json:"reason"`
+	Elapse  string                  `json:"elapse"`
+	Data    *server_api.LicenseInfo `json:"data,omitempty"`
 }
 
 func (svr *httpd) handleGetLicense(ctx *gin.Context) {
@@ -1124,7 +1125,7 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := api.GetLicenseInfo(ctx, conn)
+	nfo, err := server_api.GetLicenseInfo(ctx, conn)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -1173,7 +1174,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := api.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
+	nfo, err := server_api.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
 	if err != nil {
 		fmt.Println("ERR", err.Error())
 		rsp.Reason = err.Error()

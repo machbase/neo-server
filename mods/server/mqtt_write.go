@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -378,7 +379,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	}
 	var appenderName = tableUser + "." + wp.Table
 	var appender api.Appender
-	if aw, err := api.GetAppendWorker(context.TODO(), s.db, appenderName); err != nil {
+	if aw, err := server_api.GetAppendWorker(context.TODO(), s.db, appenderName); err != nil {
 		s.log.Warn(cl.Net.Remote, "fail to get append worker,", err.Error())
 		return
 	} else {
@@ -525,7 +526,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 			return
 		}
 
-		result := api.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
+		result := server_api.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
 		if result.Err() != nil {
 			s.log.Warnf(cl.Net.Remote, "lineprotocol fail:", result.Err().Error())
 		}

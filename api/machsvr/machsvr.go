@@ -11,9 +11,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
+	server_api "github.com/machbase/neo-server/v8/api"
+
 	"github.com/machbase/neo-engine/v8/native"
-	"github.com/machbase/neo-server/v8/api"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sony/sonyflake"
 )
@@ -510,7 +512,7 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 	}
 	ret.handle = handle
 	ret.connectTime = time.Now()
-	api.AllocConn(time.Since(waitTime))
+	server_api.AllocConn(time.Since(waitTime))
 
 	if id, err := mach.EngSessionID(ret.handle); err == nil {
 		ret.id = fmt.Sprintf("%d", id)
@@ -556,7 +558,7 @@ func (conn *Conn) CloseSync() (err error) {
 			}
 		}()
 		conn.closed = true
-		api.FreeConn(time.Since(conn.connectTime))
+		server_api.FreeConn(time.Since(conn.connectTime))
 		err = mach.EngDisconnect(conn.handle)
 		if conn.closeCallback != nil {
 			conn.closeCallback()
@@ -611,10 +613,10 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 	if result.err = mach.EngAllocStmt(conn.handle, &stmt); result.err != nil {
 		return result
 	}
-	api.AllocStmt()
+	server_api.AllocStmt()
 	defer func() {
 		mach.EngFreeStmt(stmt)
-		api.FreeStmt()
+		server_api.FreeStmt()
 	}()
 	if len(params) == 0 {
 		if result.err = mach.EngDirectExecute(stmt, sqlText); result.err != nil {
@@ -652,7 +654,7 @@ func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error)
 	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
 		return nil, err
 	}
-	api.AllocStmt()
+	server_api.AllocStmt()
 	if err := mach.EngPrepare(stmt, sqlText); err != nil {
 		mach.EngFreeStmt(stmt)
 		return nil, err
@@ -673,7 +675,7 @@ func (ps *PreparedStmt) Close() error {
 	if err := mach.EngFreeStmt(ps.stmt); err != nil {
 		return err
 	}
-	api.FreeStmt()
+	server_api.FreeStmt()
 	return nil
 }
 
@@ -865,7 +867,7 @@ func (conn *Conn) QuerySync(ctx context.Context, sqlText string, params ...any) 
 	} else {
 		rows.columns = cols
 	}
-	api.AllocStmt()
+	server_api.AllocStmt()
 	return rows, nil
 }
 
@@ -995,9 +997,9 @@ func (conn *Conn) QueryRowSync(ctx context.Context, sqlText string, params ...an
 	if row.err = mach.EngAllocStmt(conn.handle, &stmt); row.err != nil {
 		return row
 	}
-	api.AllocStmt()
+	server_api.AllocStmt()
 	defer func() {
-		api.FreeStmt()
+		server_api.FreeStmt()
 		err := mach.EngFreeStmt(stmt)
 		if err != nil && row.err == nil {
 			row.err = err
@@ -1237,7 +1239,7 @@ func bind(stmt unsafe.Pointer, idx int, c any) error {
 
 func init() {
 	expvar.Publish("machbase:session:raw_conns", expvar.Func(func() any { return rawConns() }))
-	api.RawConns = rawConns
+	server_api.RawConns = rawConns
 }
 
 func rawConns() int {

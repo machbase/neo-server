@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -106,8 +107,8 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	}
 	defer conn.Close()
 
-	query := &api.Query{
-		Begin: func(q *api.Query) {
+	query := &server_api.Query{
+		Begin: func(q *server_api.Query) {
 			if !q.IsFetch() {
 				return
 			}
@@ -116,7 +117,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64) bool {
+		Next: func(q *server_api.Query, nrow int64) bool {
 			values, err := q.Columns().MakeBuffer()
 			if err != nil {
 				s.log.Error("buffer", err.Error())
@@ -133,7 +134,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 			}
 			return true
 		},
-		End: func(q *api.Query) {
+		End: func(q *server_api.Query) {
 			if q.IsFetch() {
 				encoder.Close()
 				rsp.Success, rsp.Reason = true, "success"

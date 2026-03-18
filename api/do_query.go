@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/machbase/neo-client/api"
 )
 
 type Query struct {
@@ -27,11 +29,11 @@ type Query struct {
 	Stat func(m *QueryMeter)
 
 	isFetch     bool
-	columns     Columns
+	columns     api.Columns
 	err         error
 	userMessage string
 	rowNum      int64
-	rows        Rows
+	rows        api.Rows
 	// experimental only
 	lockOSThread bool
 }
@@ -70,11 +72,11 @@ func (qc *Query) Scan(values ...any) error {
 
 // Columns returns the columns of the query result.
 // If the sqlText was not a select query, it returns nil.
-func (qc *Query) Columns() Columns {
+func (qc *Query) Columns() api.Columns {
 	return qc.columns
 }
 
-func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
+func (qc *Query) Execute(ctx context.Context, conn api.Conn, sqlText string, args ...any) error {
 	// It is possible to terminate the native thread to release system stack
 	// for reducing RSS memory usage
 	// by calling 'runtime.LockOSThread()' then NOT to call 'runtime.UnlockOSThread()' at the end.

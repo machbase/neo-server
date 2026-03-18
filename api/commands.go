@@ -9,11 +9,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/spf13/cobra"
 )
 
 type CommandHandler struct {
-	Database      func(context.Context) (Conn, error)
+	Database      func(context.Context) (api.Conn, error)
 	SilenceUsage  bool
 	SilenceErrors bool
 	FallbackVerb  string
@@ -28,7 +29,7 @@ type CommandHandler struct {
 	PreExecute  func(args []string)
 	PostExecute func(args []string, message string, err error)
 
-	DescribeTable   func(*TableDescription)
+	DescribeTable   func(*api.TableDescription)
 	ShowTables      func(*TableInfo, int64) bool
 	ShowIndexes     func(*IndexInfo, int64) bool
 	ShowIndex       func(*IndexInfo) bool
@@ -543,7 +544,7 @@ func (ch *CommandHandler) runShowTableUsage(cmd *cobra.Command, _ []string) erro
 func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		var conn Conn
+		var conn api.Conn
 		if c, err := ch.Database(ctx); err != nil {
 			return err
 		} else {
@@ -551,7 +552,7 @@ func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, a
 		}
 		defer conn.Close()
 
-		desc, err := DescribeTable(ctx, conn, args[0], *showAll)
+		desc, err := api.DescribeTable(ctx, conn, args[0], *showAll)
 		if err != nil {
 			return err
 		}
@@ -562,7 +563,7 @@ func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, a
 
 func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	var conn Conn
+	var conn api.Conn
 	if c, err := ch.Database(ctx); err != nil {
 		return err
 	} else {
@@ -571,11 +572,11 @@ func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 	defer conn.Close()
 
 	tableName := strings.ToUpper(args[0])
-	desc, err := DescribeTable(ctx, conn, tableName, false)
+	desc, err := api.DescribeTable(ctx, conn, tableName, false)
 	if err != nil {
 		return err
 	}
-	if desc.Type != TableTypeTag {
+	if desc.Type != api.TableTypeTag {
 		return fmt.Errorf("table '%s' is not a tag table", tableName)
 	}
 	nrow := int64(0)
@@ -696,7 +697,7 @@ func (ch *CommandHandler) runExplain() func(cmd *cobra.Command, args []string) e
 			return errors.New("handler .Explain not set")
 		}
 		ctx := cmd.Context()
-		var conn Conn
+		var conn api.Conn
 		if c, err := ch.Database(ctx); err != nil {
 			return err
 		} else {
@@ -734,7 +735,7 @@ type SqlCommandOptions struct {
 func (ch *CommandHandler) runSql(opt SqlCommandOptions) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
-		var conn Conn
+		var conn api.Conn
 		if *opt.pBridge == "" {
 			if c, err := ch.Database(ctx); err != nil {
 				return err
@@ -767,7 +768,7 @@ func (ch *CommandHandler) runSql(opt SqlCommandOptions) func(*cobra.Command, []s
 
 func (ch *CommandHandler) runShowLicense(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	var conn Conn
+	var conn api.Conn
 	if c, err := ch.Database(ctx); err != nil {
 		return err
 	} else {
