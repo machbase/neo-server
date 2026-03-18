@@ -24,7 +24,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/booter"
@@ -525,10 +526,10 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 	}()
 
 	if req.ResetStatz {
-		api.ResetQueryStatz()
+		server_api.ResetQueryStatz()
 	}
 	if req.Statz {
-		rsp.Statz = api.StatzSnapshot()
+		rsp.Statz = server_api.StatzSnapshot()
 	}
 	if req.Sessions {
 		sessions := []*mgmt.Session{}

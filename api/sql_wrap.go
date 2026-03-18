@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/machbase/neo-client/api"
 )
 
-func WrapSqlConn(sqlConn *sql.Conn) Conn {
+func WrapSqlConn(sqlConn *sql.Conn) api.Conn {
 	return &WrappedSqlConn{sqlConn: sqlConn}
 }
 
@@ -16,27 +18,27 @@ type WrappedSqlConn struct {
 	sqlConn *sql.Conn
 }
 
-var _ Conn = (*WrappedSqlConn)(nil)
+var _ api.Conn = (*WrappedSqlConn)(nil)
 
 func (c *WrappedSqlConn) Close() error {
 	return c.sqlConn.Close()
 }
 
-func (c *WrappedSqlConn) Exec(ctx context.Context, sqlText string, params ...any) Result {
+func (c *WrappedSqlConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	r, err := c.sqlConn.ExecContext(ctx, sqlText, params...)
-	return &WrappedSqlResult{sqlType: DetectSQLStatementType(sqlText), sqlResult: r, err: err}
+	return &WrappedSqlResult{sqlType: api.DetectSQLStatementType(sqlText), sqlResult: r, err: err}
 }
 
-func (c *WrappedSqlConn) Prepare(ctx context.Context, sqlText string) (Stmt, error) {
+func (c *WrappedSqlConn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
 	panic("not implemented")
 }
 
-func (c *WrappedSqlConn) Query(ctx context.Context, sqlText string, params ...any) (Rows, error) {
+func (c *WrappedSqlConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	r, err := c.sqlConn.QueryContext(ctx, sqlText, params...)
 	return &WrappedSqlRows{sqlRows: r}, err
 }
 
-func (c *WrappedSqlConn) QueryRow(ctx context.Context, sqlText string, params ...any) Row {
+func (c *WrappedSqlConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
 	r, err := c.sqlConn.QueryContext(ctx, sqlText, params...)
 	if err != nil {
 		return &WrappedSqlRow{err: err}
@@ -62,21 +64,21 @@ func (c *WrappedSqlConn) QueryRow(ctx context.Context, sqlText string, params ..
 	return ret
 }
 
-func (c *WrappedSqlConn) Appender(ctx context.Context, tableName string, opts ...AppenderOption) (Appender, error) {
-	return nil, ErrNotImplemented("Appender")
+func (c *WrappedSqlConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	return nil, api.ErrNotImplemented("Appender")
 }
 
 func (c *WrappedSqlConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	return "", ErrNotImplemented("Explain")
+	return "", api.ErrNotImplemented("Explain")
 }
 
 type WrappedSqlResult struct {
-	sqlType   SQLStatementType
+	sqlType   api.SQLStatementType
 	sqlResult sql.Result
 	err       error
 }
 
-var _ Result = (*WrappedSqlResult)(nil)
+var _ api.Result = (*WrappedSqlResult)(nil)
 
 func (r *WrappedSqlResult) Err() error {
 	return r.err
@@ -87,7 +89,7 @@ func (r *WrappedSqlResult) Message() string {
 		return r.err.Error()
 	}
 	switch r.sqlType {
-	case SQLStatementTypeInsert:
+	case api.SQLStatementTypeInsert:
 		rowsCount := r.RowsAffected()
 		switch rowsCount {
 		case 0:
@@ -97,7 +99,7 @@ func (r *WrappedSqlResult) Message() string {
 		default:
 			return fmt.Sprintf("%d rows inserted.", rowsCount)
 		}
-	case SQLStatementTypeUpdate:
+	case api.SQLStatementTypeUpdate:
 		rowsCount := r.RowsAffected()
 		switch rowsCount {
 		case 0:
@@ -107,7 +109,7 @@ func (r *WrappedSqlResult) Message() string {
 		default:
 			return fmt.Sprintf("%d rows updated.", rowsCount)
 		}
-	case SQLStatementTypeDelete:
+	case api.SQLStatementTypeDelete:
 		rowsCount := r.RowsAffected()
 		switch rowsCount {
 		case 0:
@@ -117,13 +119,13 @@ func (r *WrappedSqlResult) Message() string {
 		default:
 			return fmt.Sprintf("%d rows deleted.", rowsCount)
 		}
-	case SQLStatementTypeCreate:
+	case api.SQLStatementTypeCreate:
 		return "Created successfully."
-	case SQLStatementTypeDrop:
+	case api.SQLStatementTypeDrop:
 		return "Dropped successfully."
-	case SQLStatementTypeAlter:
+	case api.SQLStatementTypeAlter:
 		return "Altered successfully."
-	case SQLStatementTypeSelect:
+	case api.SQLStatementTypeSelect:
 		return "Select successfully."
 	default:
 		return "executed."
@@ -139,11 +141,11 @@ func (r *WrappedSqlResult) RowsAffected() int64 {
 type WrappedSqlRow struct {
 	err        error
 	values     []any
-	columns    Columns
+	columns    api.Columns
 	columnsErr error
 }
 
-var _ Row = (*WrappedSqlRow)(nil)
+var _ api.Row = (*WrappedSqlRow)(nil)
 
 func (r *WrappedSqlRow) Err() error {
 	return r.err
@@ -163,17 +165,17 @@ func (r *WrappedSqlRow) Scan(values ...any) error {
 		return r.err
 	}
 	if len(values) > len(r.values) {
-		return ErrDatabaseScanIndex(len(values), len(r.values))
+		return api.ErrDatabaseScanIndex(len(values), len(r.values))
 	}
 	for i := range values {
-		if err := Scan(r.values[i], values[i]); err != nil {
+		if err := api.Scan(r.values[i], values[i]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *WrappedSqlRow) Columns() (Columns, error) {
+func (r *WrappedSqlRow) Columns() (api.Columns, error) {
 	return r.columns, nil
 }
 
@@ -181,7 +183,7 @@ type WrappedSqlRows struct {
 	sqlRows *sql.Rows
 }
 
-var _ Rows = (*WrappedSqlRows)(nil)
+var _ api.Rows = (*WrappedSqlRows)(nil)
 
 func (r *WrappedSqlRows) Next() bool {
 	return r.sqlRows.Next()
@@ -245,11 +247,11 @@ func (r *WrappedSqlRows) Close() error {
 	return r.sqlRows.Close()
 }
 
-func (r *WrappedSqlRows) Columns() (Columns, error) {
+func (r *WrappedSqlRows) Columns() (api.Columns, error) {
 	cols, err := r.sqlRows.ColumnTypes()
-	ret := make([]*Column, len(cols))
+	ret := make([]*api.Column, len(cols))
 	for i, col := range cols {
-		ret[i] = &Column{
+		ret[i] = &api.Column{
 			Name:     col.Name(),
 			DataType: scanTypeToDataType(col),
 		}
@@ -284,44 +286,44 @@ func (r *WrappedSqlRows) Err() error {
 	return r.sqlRows.Err()
 }
 
-func scanTypeToDataType(col *sql.ColumnType) DataType {
+func scanTypeToDataType(col *sql.ColumnType) api.DataType {
 	switch col.DatabaseTypeName() {
 	case "VARCHAR", "TEXT", "NVARCHAR":
-		return DataTypeString
+		return api.DataTypeString
 	}
 	switch col.ScanType().String() {
 	case "bool", "sql.NullBool":
-		return DataTypeBoolean
+		return api.DataTypeBoolean
 	case "int8", "sql.NullByte":
-		return DataTypeInt16
+		return api.DataTypeInt16
 	case "int16", "sql.NullInt16":
-		return DataTypeInt16
+		return api.DataTypeInt16
 	case "int32", "sql.NullInt32":
-		return DataTypeInt32
+		return api.DataTypeInt32
 	case "int64", "sql.NullInt64":
-		return DataTypeInt64
+		return api.DataTypeInt64
 	case "float32":
-		return DataTypeFloat32
+		return api.DataTypeFloat32
 	case "float64", "sql.NullFloat64":
-		return DataTypeFloat64
+		return api.DataTypeFloat64
 	case "string", "sql.NullString":
-		return DataTypeString
+		return api.DataTypeString
 	case "time.Time", "sql.NullTime":
-		return DataTypeDatetime
+		return api.DataTypeDatetime
 	case "[]byte", "sql.RawBytes":
-		return DataTypeBinary
+		return api.DataTypeBinary
 	case "*interface {}":
 		// FIXME: SQLite binds `count(*)` field as `*interface {}`
-		return DataTypeString
+		return api.DataTypeString
 	default:
-		return DataTypeAny
+		return api.DataTypeAny
 	}
 }
 
 type SqlBridgeBase struct {
 }
 
-func (b *SqlBridgeBase) Conn(c *sql.Conn) Conn {
+func (b *SqlBridgeBase) Conn(c *sql.Conn) api.Conn {
 	return &WrappedSqlConn{sqlConn: c}
 }
 

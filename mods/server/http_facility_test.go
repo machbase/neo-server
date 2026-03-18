@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-client/api"
 )
 
 func ifThenElse(cond bool, a, b string) string {
@@ -15,7 +17,7 @@ func ifThenElse(cond bool, a, b string) string {
 }
 
 func ListTablesSql(showAll bool, descriptiveType bool) string {
-	return SqlTidy(
+	return api.SqlTidy(
 		`SELECT
 			j.DB_NAME as DATABASE_NAME,
 			u.NAME as USER_NAME,
@@ -67,7 +69,7 @@ func ListTablesSql(showAll bool, descriptiveType bool) string {
 		`ORDER by j.NAME`)
 }
 
-func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(*TableInfo) bool) {
+func ListTablesWalk(ctx context.Context, conn api.Conn, showAll bool, callback func(*TableInfo) bool) {
 	sqlText := ListTablesSql(showAll, false)
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
@@ -85,7 +87,7 @@ func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(
 	}
 }
 
-func ListTables(ctx context.Context, conn Conn, showAll bool) (ret []*TableInfo, cause error) {
+func ListTables(ctx context.Context, conn api.Conn, showAll bool) (ret []*TableInfo, cause error) {
 	ListTablesWalk(ctx, conn, showAll, func(ti *TableInfo) bool {
 		if ti.err == nil && ti != nil {
 			ret = append(ret, ti)
@@ -96,37 +98,22 @@ func ListTables(ctx context.Context, conn Conn, showAll bool) (ret []*TableInfo,
 	return
 }
 
-func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (TableType, error) {
+func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (api.TableType, error) {
 	_, userName, tableName := TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if r.Err() != nil {
 		return -1, r.Err()
 	}
-	var ret TableType
+	var ret api.TableType
 	if err := r.Scan(&ret); err != nil {
 		return -1, err
 	}
 	return ret, nil
 }
 
-func ExistsTable(ctx context.Context, conn Conn, fullTableName string) (bool, error) {
-	_, userName, tableName := TableName(fullTableName).Split()
-	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
-	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
-	if err := r.Err(); err != nil {
-		fmt.Println("error", err.Error())
-		return false, err
-	}
-	var count = 0
-	if err := r.Scan(&count); err != nil {
-		return false, err
-	}
-	return (count == 1), nil
-}
-
-func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
-	exists, err = ExistsTable(ctx, conn, fullTableName)
+func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
+	exists, err = api.ExistsTable(ctx, conn, fullTableName)
 	if err != nil {
 		return
 	}
@@ -143,7 +130,7 @@ func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, t
 		err = fmt.Errorf("table '%s' doesn't exist, %s", fullTableName, err0.Error())
 		return
 	}
-	if tableType == TableTypeLog {
+	if tableType == api.TableTypeLog {
 		result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
 		if result.Err() != nil {
 			err = result.Err()
@@ -161,211 +148,7 @@ func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, t
 	return
 }
 
-// Describe retrieves the result of 'desc table'.
-//
-// If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
-// such as "_RID" and "_ARRIVAL_TIME".
-func DescribeTable(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
-	_, _, tableName := TableName(name).Split()
-	if strings.HasPrefix(tableName, "V$") {
-		return describe_mv(ctx, conn, TableName(name), includeHiddenColumns)
-	} else if strings.HasPrefix(tableName, "M$") {
-		return describe_mv(ctx, conn, TableName(name), includeHiddenColumns)
-	} else {
-		return describe(ctx, conn, TableName(name), includeHiddenColumns)
-	}
-}
-
-func describe(ctx context.Context, conn Conn, name TableName, includeHiddenColumns bool) (*TableDescription, error) {
-	d := &TableDescription{}
-	var colCount int
-
-	dbName, userName, tableName := name.Split()
-	dbId := -1
-
-	if dbName != "" && dbName != "MACHBASEDB" {
-		row := conn.QueryRow(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", dbName)
-		if row.Err() != nil {
-			return nil, row.Err()
-		}
-		if err := row.Scan(&dbId); err != nil {
-			return nil, err
-		}
-	}
-
-	describeSqlText := SqlTidy(
-		`SELECT
-			j.ID as TABLE_ID,
-			j.TYPE as TABLE_TYPE,
-			j.FLAG as TABLE_FLAG,
-			j.COLCOUNT as TABLE_COLCOUNT
-		from
-			M$SYS_USERS u,
-			M$SYS_TABLES j
-		where
-			u.NAME = ?
-		and j.USER_ID = u.USER_ID
-		and j.DATABASE_ID = ?
-		and j.NAME = ?`)
-
-	r := conn.QueryRow(ctx, describeSqlText, userName, dbId, tableName)
-	if r.Err() != nil {
-		return nil, r.Err()
-	}
-	if err := r.Scan(&d.Id, &d.Type, &d.Flag, &colCount); err != nil {
-		return nil, err
-	}
-	d.Database = dbName
-	d.User = userName
-	d.Name = tableName
-
-	rows, err := conn.Query(ctx, "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id", d.Id, dbId)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if rows != nil {
-			rows.Close()
-		}
-	}()
-
-	for rows.Next() {
-		col := &Column{}
-		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id, &col.Flag)
-		if err != nil {
-			return nil, err
-		}
-		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
-			continue
-		}
-		col.DataType = col.Type.DataType()
-		d.Columns = append(d.Columns, col)
-
-		if col.Flag&ColumnFlagSummarized > 0 {
-			d.Summarized = true
-			d.SummarizedColumn = col.Name
-		}
-		if col.Flag&ColumnFlagTagName > 0 {
-			d.TagNameColumn = col.Name
-		}
-	}
-	rows.Close()
-	rows = nil
-
-	if indexes, err := describe_idx(ctx, conn, d.Id, dbId); err != nil {
-		return nil, err
-	} else {
-		d.Indexes = indexes
-	}
-	return d, nil
-}
-
-func describe_idx(ctx context.Context, conn Conn, tableId int64, dbId int) ([]*IndexDescription, error) {
-	rows, err := conn.Query(ctx, `select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?`, tableId, dbId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	indexes := []*IndexDescription{}
-	for rows.Next() {
-		d := &IndexDescription{}
-		var indexType int
-		if err = rows.Scan(&d.Name, &indexType, &d.Id); err != nil {
-			return nil, err
-		}
-		d.Type = IndexType(indexType)
-		idxCols, err := conn.Query(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, d.Id, dbId)
-		if err != nil {
-			return nil, err
-		}
-		for idxCols.Next() {
-			var col string
-			if err = idxCols.Scan(&col); err != nil {
-				idxCols.Close()
-				return nil, err
-			}
-			d.Cols = append(d.Cols, col)
-		}
-		idxCols.Close()
-		indexes = append(indexes, d)
-	}
-	return indexes, nil
-}
-
-func describe_mv(ctx context.Context, conn Conn, name TableName, includeHiddenColumns bool) (*TableDescription, error) {
-	d := &TableDescription{}
-	var tableType int
-	var colCount int
-
-	d.Database, d.User, d.Name = name.Split()
-	tablesTable := "M$SYS_TABLES"
-	columnsTable := "M$SYS_COLUMNS"
-	if strings.HasPrefix(d.Name, "V$") {
-		tablesTable = "V$TABLES"
-		columnsTable = "V$COLUMNS"
-	} else if strings.HasPrefix(d.Name, "M$") {
-		tablesTable = "M$TABLES"
-		columnsTable = "M$COLUMNS"
-	}
-	r := conn.QueryRow(ctx, fmt.Sprintf("select name, type, flag, id, colcount from %s where name = ?", tablesTable), d.Name)
-	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
-		return nil, err
-	}
-	d.Type = TableType(tableType)
-
-	rows, err := conn.Query(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		col := &Column{}
-		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id)
-		if err != nil {
-			return nil, err
-		}
-		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
-			continue
-		}
-		col.DataType = col.Type.DataType()
-		d.Columns = append(d.Columns, col)
-	}
-	return d, nil
-}
-
-// TableTypeDescription converts the given TableType and flag into string representation.
-func TableTypeDescription(typ TableType, flag TableFlag) string {
-	desc := "undef"
-	switch typ {
-	case TableTypeLog:
-		desc = "Log Table"
-	case TableTypeFixed:
-		desc = "Fixed Table"
-	case TableTypeVolatile:
-		desc = "Volatile Table"
-	case TableTypeLookup:
-		desc = "Lookup Table"
-	case TableTypeKeyValue:
-		desc = "KeyValue Table"
-	case TableTypeTag:
-		desc = "Tag Table"
-	}
-	switch flag {
-	case TableFlagData:
-		desc += " (data)"
-	case TableFlagRollup:
-		desc += " (rollup)"
-	case TableFlagMeta:
-		desc += " (meta)"
-	case TableFlagStat:
-		desc += " (stat)"
-	}
-	return desc
-}
-
-func ListLsmIndexesWalk(ctx context.Context, conn Conn, callback func(*LsmIndexInfo) bool) {
+func ListLsmIndexesWalk(ctx context.Context, conn api.Conn, callback func(*LsmIndexInfo) bool) {
 	sqlText := `select 
 		b.name as TABLE_NAME,
 		c.name as INDEX_NAME,
@@ -393,7 +176,7 @@ func ListLsmIndexesWalk(ctx context.Context, conn Conn, callback func(*LsmIndexI
 	}
 }
 
-func ListRollupGapWalk(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
+func ListRollupGapWalk(ctx context.Context, conn api.Conn, callback func(*RollupGapInfo) bool) {
 	r := conn.QueryRow(ctx, "SELECT count(DATABASE_ID) FROM V$ROLLUP")
 	if err := r.Err(); err != nil && strings.Contains(err.Error(), "DATABASE_ID") {
 		// neo version < 8.0.60 (19 Sep 2025) does not have DATABASE_ID column in V$ROLLUP
@@ -403,8 +186,8 @@ func ListRollupGapWalk(ctx context.Context, conn Conn, callback func(*RollupGapI
 	}
 }
 
-func listRollupGapWalk_pre_8_0_60(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
-	sqlText := SqlTidy(`SELECT
+func listRollupGapWalk_pre_8_0_60(ctx context.Context, conn api.Conn, callback func(*RollupGapInfo) bool) {
+	sqlText := api.SqlTidy(`SELECT
 		C.SOURCE_TABLE AS SRC_TABLE,
 		C.ROLLUP_TABLE,
 		B.TABLE_END_RID AS SRC_END_RID,
@@ -438,8 +221,8 @@ func listRollupGapWalk_pre_8_0_60(ctx context.Context, conn Conn, callback func(
 	}
 }
 
-func listRollupGapWalk_since_8_0_60(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
-	sqlText := SqlTidy(`SELECT
+func listRollupGapWalk_since_8_0_60(ctx context.Context, conn api.Conn, callback func(*RollupGapInfo) bool) {
+	sqlText := api.SqlTidy(`SELECT
 		C.SOURCE_TABLE AS SRC_TABLE,
 		C.ROLLUP_TABLE,
 		B.TABLE_END_RID AS SRC_END_RID,
@@ -475,8 +258,8 @@ func listRollupGapWalk_since_8_0_60(ctx context.Context, conn Conn, callback fun
 	}
 }
 
-func ListStorageWalk(ctx context.Context, conn Conn, callback func(*StorageInfo) bool) {
-	sqlText := SqlTidy(`select
+func ListStorageWalk(ctx context.Context, conn api.Conn, callback func(*StorageInfo) bool) {
+	sqlText := api.SqlTidy(`select
 		a.table_name as TABLE_NAME,
 		a.data_size as DATA_SIZE,
 		case b.index_size 
@@ -524,8 +307,8 @@ func ListStorageWalk(ctx context.Context, conn Conn, callback func(*StorageInfo)
 	}
 }
 
-func ListTableUsageWalk(ctx context.Context, conn Conn, callback func(*TableUsageInfo) bool) {
-	sqlText := SqlTidy(`SELECT
+func ListTableUsageWalk(ctx context.Context, conn api.Conn, callback func(*TableUsageInfo) bool) {
+	sqlText := api.SqlTidy(`SELECT
 		a.NAME as TABLE_NAME,
 		t.STORAGE_USAGE as STORAGE_USAGE
 	FROM
@@ -553,7 +336,7 @@ func ListTableUsageWalk(ctx context.Context, conn Conn, callback func(*TableUsag
 	}
 }
 
-func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*StatementInfo) bool) {
+func ListStatementsWalk(ctx context.Context, conn api.Conn, callback func(*StatementInfo) bool) {
 	stmtRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
 	if err != nil {
 		callback(&StatementInfo{err: err})
@@ -585,7 +368,7 @@ func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*Statement
 	}
 }
 
-func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo) bool) {
+func ListSessionsWalk(ctx context.Context, conn api.Conn, callback func(*SessionInfo) bool) {
 	rows, err := conn.Query(ctx, `SELECT ID, USER_ID, USER_NAME, MAX_QPX_MEM FROM V$SESSION`)
 	if err != nil {
 		callback(&SessionInfo{err: err})

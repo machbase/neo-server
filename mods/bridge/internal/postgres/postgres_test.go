@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal"
 	bridgePostgres "github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
 	"github.com/ory/dockertest/v4"

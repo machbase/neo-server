@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/machbase/neo-client/api"
 )
 
 func ListIndexesSql() string {
-	return SqlTidy(`
+	return api.SqlTidy(`
 		SELECT
 			u.name as USER_NAME,
 			j.DB_NAME as DATABASE_NAME,
@@ -64,7 +66,7 @@ func ListIndexesSql() string {
 	`)
 }
 
-func ListIndexesWalk(ctx context.Context, conn Conn, callback func(*IndexInfo) bool) {
+func ListIndexesWalk(ctx context.Context, conn api.Conn, callback func(*IndexInfo) bool) {
 	sqlText := ListIndexesSql()
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
@@ -85,7 +87,7 @@ func ListIndexesWalk(ctx context.Context, conn Conn, callback func(*IndexInfo) b
 	}
 }
 
-func ListIndexes(ctx context.Context, conn Conn) (ret []*IndexInfo, cause error) {
+func ListIndexes(ctx context.Context, conn api.Conn) (ret []*IndexInfo, cause error) {
 	ListIndexesWalk(ctx, conn, func(ii *IndexInfo) bool {
 		if ii.err == nil && ii != nil {
 			ret = append(ret, ii)
@@ -96,7 +98,7 @@ func ListIndexes(ctx context.Context, conn Conn) (ret []*IndexInfo, cause error)
 	return
 }
 
-func DescribeIndex(ctx context.Context, conn Conn, name string) (*IndexInfo, error) {
+func DescribeIndex(ctx context.Context, conn api.Conn, name string) (*IndexInfo, error) {
 	sqlText := `select 
 		a.name as TABLE_NAME,
 		c.name as COLUMN_NAME,
@@ -140,8 +142,8 @@ func DescribeIndex(ctx context.Context, conn Conn, name string) (*IndexInfo, err
 	return nfo, nfo.err
 }
 
-func ListIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGapInfo) bool) {
-	sqlText := SqlTidy(`select
+func ListIndexGapWalk(ctx context.Context, conn api.Conn, callback func(*IndexGapInfo) bool) {
+	sqlText := api.SqlTidy(`select
 		c.id,
 		b.name as TABLE_NAME, 
 		c.name as INDEX_NAME, 
@@ -170,8 +172,8 @@ func ListIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGapInf
 	}
 }
 
-func ListTagIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGapInfo) bool) {
-	sqlText := SqlTidy(`SELECT
+func ListTagIndexGapWalk(ctx context.Context, conn api.Conn, callback func(*IndexGapInfo) bool) {
+	sqlText := api.SqlTidy(`SELECT
 		ID,
 		INDEX_STATE AS STATUS,
 		TABLE_END_RID - DISK_INDEX_END_RID AS DISK_GAP,

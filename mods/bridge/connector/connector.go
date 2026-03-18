@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
@@ -28,7 +29,7 @@ func (d *BridgedDatabase) Connect(ctx context.Context, options ...api.ConnectOpt
 	if c, err := d.db.Conn(ctx); err != nil {
 		return nil, err
 	} else {
-		return api.WrapSqlConn(c), nil
+		return server_api.WrapSqlConn(c), nil
 	}
 }
 

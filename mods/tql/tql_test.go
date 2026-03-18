@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -34,9 +35,9 @@ func TestMain(m *testing.M) {
 
 	db := testServer.DatabaseSVR()
 	api.SetDefault(db)
-	api.StartAppendWorkers()
+	server_api.StartAppendWorkers()
 
-	api.StartMetrics()
+	server_api.StartMetrics()
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
@@ -472,7 +473,7 @@ func TestDatabaseTql(t *testing.T) {
 				APPEND( table('tag_simple') )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
-				api.FlushAppendWorkers("tag_simple")
+				server_api.FlushAppendWorkers("tag_simple")
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 				// since we are using api.AppendWorker, the success and fail count is always same as the number of records

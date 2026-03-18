@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	mod_dbms "github.com/machbase/neo-server/v8/jsh/lib/db"

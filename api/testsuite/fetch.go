@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machgo"
+	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
 	"github.com/stretchr/testify/require"
 )
 

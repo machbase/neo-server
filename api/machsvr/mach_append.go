@@ -7,8 +7,9 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 )
 
 // Appender creates a new Appender for the given table.
@@ -128,7 +129,7 @@ func (conn *Conn) AppenderSync(ctx context.Context, tableName string, opts ...ap
 		mach.EngFreeStmt(appender.stmt)
 		return nil, err
 	}
-	api.AllocAppender()
+	server_api.AllocAppender()
 
 	colCount, err := mach.EngColumnCount(appender.stmt)
 	if err != nil {
@@ -246,7 +247,7 @@ func (ap *Appender) CloseSync() (int64, int64, error) {
 	}
 	ap.closed = true
 	var err error
-	api.FreeAppender()
+	server_api.FreeAppender()
 	ap.successCount, ap.failCount, err = mach.EngAppendClose(ap.stmt)
 	if err != nil {
 		return ap.successCount, ap.failCount, err

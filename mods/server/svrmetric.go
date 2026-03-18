@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
@@ -14,18 +15,18 @@ import (
 var statzLog = logging.GetLog("server-statz")
 
 func startServerMetrics(s *Server) {
-	api.StartMetrics()
-	api.AddMetricsFunc(collectSysStatz)
-	api.AddMetricsFunc(collectMachSvrStatz)
-	api.AddMetricsFunc(collectMqttStatz(s))
+	server_api.StartMetrics()
+	server_api.AddMetricsFunc(collectSysStatz)
+	server_api.AddMetricsFunc(collectMachSvrStatz)
+	server_api.AddMetricsFunc(collectMqttStatz(s))
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
-	api.SetMetricsDestTable(s.Config.StatzOut)
+	server_api.SetMetricsDestTable(s.Config.StatzOut)
 }
 
 func stopServerMetrics() {
-	api.StopMetrics()
+	server_api.StopMetrics()
 }
 
 func collectSysStatz(g *metric.Gather) error {

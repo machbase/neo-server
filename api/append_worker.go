@@ -9,16 +9,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 type AppendWorker struct {
-	conn      Conn
-	appender  Appender
+	conn      api.Conn
+	appender  api.Appender
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	tableDesc *TableDescription
+	tableDesc *api.TableDescription
 	lastTime  time.Time
 	refCount  int32
 	// append runner
@@ -94,7 +95,7 @@ func FlushAppendWorkers(tables ...string) {
 	}
 }
 
-func GetAppendWorker(ctx context.Context, db Database, tableName string) (*AppendWorker, error) {
+func GetAppendWorker(ctx context.Context, db api.Database, tableName string) (*AppendWorker, error) {
 	appendersLock.Lock()
 	defer appendersLock.Unlock()
 
@@ -104,18 +105,18 @@ func GetAppendWorker(ctx context.Context, db Database, tableName string) (*Appen
 		return aw, nil
 	}
 
-	trustConn, err := db.Connect(ctx, WithTrustUser("sys"))
+	trustConn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		return nil, err
 	}
 	defer trustConn.Close()
 
-	tableDesc, err := DescribeTable(ctx, trustConn, tableName, false)
+	tableDesc, err := api.DescribeTable(ctx, trustConn, tableName, false)
 	if err != nil {
 		return nil, err
 	}
 
-	appendConn, err := db.Connect(ctx, WithTrustUser("sys"))
+	appendConn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +202,7 @@ func (aw *AppendWorker) Stop() {
 	aw.conn.Close()
 }
 
-var _ Appender = (*AppendWorker)(nil)
+var _ api.Appender = (*AppendWorker)(nil)
 
 func (aw *AppendWorker) Append(vals ...any) error {
 	aw.appendC <- vals
@@ -209,7 +210,7 @@ func (aw *AppendWorker) Append(vals ...any) error {
 }
 
 func (aw *AppendWorker) AppendLogTime(ts time.Time, vals ...any) error {
-	if aw.appender.TableType() != TableTypeLog {
+	if aw.appender.TableType() != api.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", aw.appender.TableName())
 	}
 	aw.appendC <- append([]interface{}{ts}, vals...)
@@ -221,11 +222,11 @@ func (aw *AppendWorker) Close() (success, fail int64, err error) {
 	return 0, 0, nil
 }
 
-func (aw *AppendWorker) Columns() (Columns, error) {
+func (aw *AppendWorker) Columns() (api.Columns, error) {
 	return aw.appender.Columns()
 }
 
-func (aw *AppendWorker) TableType() TableType {
+func (aw *AppendWorker) TableType() api.TableType {
 	return aw.appender.TableType()
 }
 
@@ -233,7 +234,7 @@ func (aw *AppendWorker) TableName() string {
 	return aw.appender.TableName()
 }
 
-func (aw *AppendWorker) WithInputColumns(columns ...string) Appender {
+func (aw *AppendWorker) WithInputColumns(columns ...string) api.Appender {
 	ret := &AppenderWithWorker{
 		AppendWorker: aw,
 		inputColumns: make([]AppenderInputColumn, len(columns)),
@@ -256,22 +257,22 @@ func (aw *AppendWorker) WithInputColumns(columns ...string) Appender {
 	return ret
 }
 
-func (aw *AppendWorker) WithInputFormats(formats ...string) Appender {
+func (aw *AppendWorker) WithInputFormats(formats ...string) api.Appender {
 	// noop, handled in Append
 	return aw
 }
 
-func (aw *AppendWorker) WithBatchMaxRows(rows int) Appender {
+func (aw *AppendWorker) WithBatchMaxRows(rows int) api.Appender {
 	// noop, handled in Append
 	return aw
 }
 
-func (aw *AppendWorker) WithBatchMaxBytes(bytes int) Appender {
+func (aw *AppendWorker) WithBatchMaxBytes(bytes int) api.Appender {
 	// noop, handled in Append
 	return aw
 }
 
-func (aw *AppendWorker) WithBatchMaxDelay(duration time.Duration) Appender {
+func (aw *AppendWorker) WithBatchMaxDelay(duration time.Duration) api.Appender {
 	// noop, handled in Append
 	return aw
 }
@@ -281,7 +282,7 @@ type AppenderWithWorker struct {
 	inputColumns []AppenderInputColumn
 }
 
-var _ Appender = (*AppenderWithWorker)(nil)
+var _ api.Appender = (*AppenderWithWorker)(nil)
 
 type AppenderInputColumn struct {
 	Name string
@@ -292,7 +293,7 @@ func (ap *AppenderWithWorker) Append(vals ...any) error {
 	columns, _ := ap.Columns()
 	if len(ap.inputColumns) == 0 {
 		if len(columns) != len(vals) {
-			return ErrDatabaseLengthOfColumns(ap.tableDesc.Name, len(columns), len(vals))
+			return api.ErrDatabaseLengthOfColumns(ap.tableDesc.Name, len(columns), len(vals))
 		}
 		return ap.AppendWorker.Append(vals...)
 	}
@@ -304,7 +305,7 @@ func (ap *AppenderWithWorker) Append(vals ...any) error {
 }
 
 func (aw *AppenderWithWorker) AppendLogTime(ts time.Time, vals ...any) error {
-	if aw.appender.TableType() != TableTypeLog {
+	if aw.appender.TableType() != api.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", aw.appender.TableName())
 	}
 	aw.Append(append([]interface{}{ts}, vals...))

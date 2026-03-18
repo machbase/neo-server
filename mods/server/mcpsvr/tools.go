@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -49,7 +50,7 @@ func toolMachbaseListTablesFunc(ctx context.Context, request mcp.CallToolRequest
 	defer conn.Close()
 
 	showAll := request.GetBool("show_all", false)
-	list, err := api.ListTables(ctx, conn, showAll)
+	list, err := server_api.ListTables(ctx, conn, showAll)
 	if err != nil {
 		return mcp.NewToolResultError("failed to list tables: " + err.Error()), nil
 	}
@@ -89,7 +90,7 @@ func toolMachbaseListTagsFunc(ctx context.Context, request mcp.CallToolRequest) 
 	if desc.Type != api.TableTypeTag {
 		return mcp.NewToolResultError(fmt.Sprintf("table '%s' is not a tag table", table)), nil
 	}
-	tags, err := api.ListTags(ctx, conn, table, desc.TagNameColumn)
+	tags, err := server_api.ListTags(ctx, conn, table, desc.TagNameColumn)
 	if err != nil {
 		return mcp.NewToolResultError("failed to list tags: " + err.Error()), nil
 	}

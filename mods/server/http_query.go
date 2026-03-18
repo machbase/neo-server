@@ -14,7 +14,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -155,8 +156,8 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	query := &api.Query{
-		Begin: func(q *api.Query) {
+	query := &server_api.Query{
+		Begin: func(q *server_api.Query) {
 			if !q.IsFetch() {
 				return
 			}
@@ -168,7 +169,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64) bool {
+		Next: func(q *server_api.Query, nrow int64) bool {
 			values, err := q.Columns().MakeBuffer()
 			if err != nil {
 				svr.log.Error("buffer", err.Error())
@@ -185,7 +186,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			}
 			return true
 		},
-		End: func(q *api.Query) {
+		End: func(q *server_api.Query) {
 			if q.IsFetch() {
 				encoder.Close()
 			} else {
@@ -236,8 +237,8 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 		tz, _ = util.ParseTimeLocation(timezone, time.UTC)
 	}
 
-	watch, err := api.NewWatcher(ctx,
-		api.WatcherConfig{
+	watch, err := server_api.NewWatcher(ctx,
+		server_api.WatcherConfig{
 			ConnProvider: func() (api.Conn, error) { return svr.getTrustConnection(ctx) },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
@@ -280,7 +281,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 			watch.Execute()
 		case data := <-watch.C:
 			switch v := data.(type) {
-			case api.WatchData:
+			case server_api.WatchData:
 				b, _ := json.Marshal(v)
 				ctx.Writer.Write([]byte("data: "))
 				ctx.Writer.Write(b)
@@ -393,7 +394,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 
 	var sqlText string
 	var sqlParams []any
-	if tableType, err := api.QueryTableType(ctx, conn, tableName); err != nil {
+	if tableType, err := server_api.QueryTableType(ctx, conn, tableName); err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
@@ -519,7 +520,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	api.ListTablesWalk(ctx, conn, showAll, func(ti *api.TableInfo) bool {
+	server_api.ListTablesWalk(ctx, conn, showAll, func(ti *server_api.TableInfo) bool {
 		if ti.Err() != nil {
 			rsp.Success, rsp.Reason = false, ti.Err().Error()
 			return false
@@ -609,7 +610,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	api.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *api.TagInfo) bool {
+	server_api.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *server_api.TagInfo) bool {
 		if tag.Err != nil {
 			rsp.Success, rsp.Reason = false, tag.Err.Error()
 			return false
@@ -678,7 +679,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 
-	nfo, err := api.TagStat(ctx, conn, table, tag)
+	nfo, err := server_api.TagStat(ctx, conn, table, tag)
 	if err != nil {
 		rsp.Success, rsp.Reason = false, err.Error()
 		rsp.Elapse = time.Since(tick).String()

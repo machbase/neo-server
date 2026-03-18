@@ -7,13 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type WatchData = map[string]any
 
 type WatcherConfig struct {
-	ConnProvider func() (Conn, error)
+	ConnProvider func() (api.Conn, error)
 	Timeformat   string
 	Timezone     *time.Location
 	Parallelism  int
@@ -33,7 +34,7 @@ type Watcher struct {
 	// table info
 	isTagTable  bool
 	columnNames []string
-	columns     Columns
+	columns     api.Columns
 	timeformat  *util.TimeFormatter
 	// tag table
 	nameColumn      string
@@ -96,10 +97,10 @@ func (w *Watcher) init(ctx context.Context) error {
 	}
 	if tableType, err := QueryTableType(ctx, conn, w.TableName); err != nil {
 		return err
-	} else if tableType != TableTypeTag && tableType != TableTypeLog {
+	} else if tableType != api.TableTypeTag && tableType != api.TableTypeLog {
 		return fmt.Errorf("not supported table type")
 	} else {
-		w.isTagTable = tableType == TableTypeTag
+		w.isTagTable = tableType == api.TableTypeTag
 	}
 
 	if w.isTagTable {
@@ -126,8 +127,8 @@ func (w *Watcher) init(ctx context.Context) error {
 		}
 	}
 
-	var desc *TableDescription
-	if desc0, err := DescribeTable(ctx, conn, w.TableName, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx, conn, w.TableName, false); err != nil {
 		return fmt.Errorf("fail to get table info '%s', %s", w.TableName, err.Error())
 	} else {
 		desc = desc0
@@ -224,13 +225,13 @@ func (w *Watcher) executeTag(tag string) {
 	for i, col := range w.columns {
 		name := col.Name
 		typ := col.Type
-		if typ == ColumnTypeDatetime {
+		if typ == api.ColumnTypeDatetime {
 			if v, ok := values[i].(*time.Time); ok {
 				obj[name] = w.timeformat.FormatEpoch(*v)
 				continue
 			}
 		}
-		obj[name] = Unbox(values[i])
+		obj[name] = api.Unbox(values[i])
 	}
 	w.handleData(obj)
 }
@@ -291,7 +292,7 @@ func (w *Watcher) executeLog() {
 		values = values[1:]
 		obj := WatchData{}
 		for i, n := range w.columnNames {
-			obj[n] = Unbox(values[i])
+			obj[n] = api.Unbox(values[i])
 		}
 		w.handleData(obj)
 		w.lastArrivalTime = *arrivalTime

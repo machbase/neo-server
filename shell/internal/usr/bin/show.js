@@ -874,7 +874,7 @@ function showIndex(config, args) {
         where
             a.id = b.table_id 
         and b.id = c.index_id
-        and b.name = '${indexName}'`);
+        and b.name = '${indexName.toUpperCase()}'`);
 
         let box = pretty.Table(config);
         box.appendHeader(["TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"]);

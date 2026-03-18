@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
@@ -103,7 +104,7 @@ func ResetQueryStatz() {
 
 type QueryStatzResult struct {
 	Err        error
-	Cols       []*Column
+	Cols       []*api.Column
 	Rows       []*QueryStatzRow
 	ValueTypes []string
 }
@@ -174,7 +175,7 @@ func QueryStatzFilter(filters []string) func(key string) (bool, int) {
 type MetricQueryKey struct {
 	key       string
 	field     string
-	column    *Column
+	column    *api.Column
 	valueType string
 	order     int
 }
@@ -193,23 +194,23 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 		key := kv.Key
 		if _, ok := kv.Value.(*expvar.Int); ok {
 			if pass, order := filter(key); pass {
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnInt64(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnInt64(kv.Key), valueType: "i", order: order})
 			}
 		} else if _, ok := kv.Value.(*expvar.String); ok {
 			if pass, order := filter(key); pass {
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "s", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "s", order: order})
 			}
 		} else if _, ok := kv.Value.(*expvar.Float); ok {
 			if pass, order := filter(key); pass {
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnDouble(kv.Key), valueType: "f", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnDouble(kv.Key), valueType: "f", order: order})
 			}
 		} else if _, ok := kv.Value.(expvar.Func); ok {
 			if pass, order := filter(key); pass {
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
 			}
 		} else if _, ok := kv.Value.(metric.MultiTimeSeries); ok {
 			if pass, order := filter(key); pass {
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
 			}
 		}
 	})
@@ -332,7 +333,7 @@ func SetMetricsDestTable(destTable string) error {
 	destTable = strings.ToUpper(strings.TrimSpace(destTable))
 	if destTable != "" {
 		ctx := context.Background()
-		conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+		conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return nil
@@ -479,7 +480,7 @@ func onProduct(pd metric.Product) error {
 			return
 		}
 		ctx := context.Background()
-		conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+		conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return

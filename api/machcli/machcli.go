@@ -13,8 +13,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/api"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )

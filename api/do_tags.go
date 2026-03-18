@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"fmt"
+
+	"github.com/machbase/neo-client/api"
 )
 
 func ListTagsSql(fullTable string, tagNameColumn string) string {
@@ -10,7 +12,7 @@ func ListTagsSql(fullTable string, tagNameColumn string) string {
 	return fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, user, table)
 }
 
-func ListTags(ctx context.Context, conn Conn, fullTable string, tagNameColumn string) ([]*TagInfo, error) {
+func ListTags(ctx context.Context, conn api.Conn, fullTable string, tagNameColumn string) ([]*TagInfo, error) {
 	var tags []*TagInfo
 	database, user, table := TableName(fullTable).Split()
 	rows, err := conn.Query(ctx, ListTagsSql(fullTable, tagNameColumn))
@@ -30,7 +32,7 @@ func ListTags(ctx context.Context, conn Conn, fullTable string, tagNameColumn st
 	return tags, nil
 }
 
-func ListTagsWalk(ctx context.Context, conn Conn, table string, tagNameColumn string, callback func(*TagInfo) bool) {
+func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColumn string, callback func(*TagInfo) bool) {
 	rows, err := conn.Query(ctx, ListTagsSql(table, tagNameColumn))
 	if err != nil {
 		callback(&TagInfo{Err: err})
@@ -50,7 +52,7 @@ func ListTagsWalk(ctx context.Context, conn Conn, table string, tagNameColumn st
 
 func TagStatSql(fullTable string) string {
 	database, user, table := TableName(fullTable).Split()
-	return SqlTidy(`SELECT`,
+	return api.SqlTidy(`SELECT`,
 		`NAME, ROW_COUNT,`,
 		`MIN_TIME, MAX_TIME,`,
 		`MIN_VALUE, MIN_VALUE_TIME, MAX_VALUE, MAX_VALUE_TIME,`,
@@ -60,7 +62,7 @@ func TagStatSql(fullTable string) string {
 		`WHERE NAME = ?`)
 }
 
-func TagStat(ctx context.Context, conn Conn, table string, tag string) (*TagStatInfo, error) {
+func TagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
 	database, user, table := TableName(table).Split()
 	sqlText := TagStatSql(table)
 	nfo := &TagStatInfo{

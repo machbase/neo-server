@@ -1,6 +1,6 @@
 package server
 
-import "github.com/machbase/neo-server/v8/api"
+import "github.com/machbase/neo-client/api"
 
 type QueryRequest struct {
 	SqlText      string `json:"q"`

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 )
 
 func (db *Database) SetWorkerPoolSize(size int) {

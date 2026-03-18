@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
 	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	logging "github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"

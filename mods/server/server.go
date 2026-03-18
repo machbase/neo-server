@@ -29,7 +29,8 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-client/api"
+	server_api "github.com/machbase/neo-server/v8/api"
 	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
@@ -382,9 +383,9 @@ func (s *Server) startMachbaseSvr() error {
 		return fmt.Errorf("startup database, %s", err.Error())
 	}
 	api.SetDefault(db)
-	api.StartAppendWorkers()
+	server_api.StartAppendWorkers()
 	util.AddShutdownHook(func() {
-		api.StopAppendWorkers()
+		server_api.StopAppendWorkers()
 	})
 	return nil
 }
@@ -421,9 +422,9 @@ func (s *Server) startMachbaseCli() error {
 		db.SetTrustUser(user, password)
 	}
 	api.SetDefault(db)
-	api.StartAppendWorkers()
+	server_api.StartAppendWorkers()
 	util.AddShutdownHook(func() {
-		api.StopAppendWorkers()
+		server_api.StopAppendWorkers()
 	})
 	return nil
 }
@@ -686,7 +687,7 @@ func (s *Server) checkAndInstallLicense() error {
 				s.log.Error("ERR", err.Error())
 				return err
 			}
-			if _, err = api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
+			if _, err = server_api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 				s.log.Warn("set license fail,", err.Error())
 			} else {
 				s.log.Info("set license success")

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-client/api"
 )
 
 /* Interpreting Influx line protocol
@@ -17,7 +19,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumns Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) Result {
+func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
 	columns := descColumns.Names()
 	columns = columns[:3]
 
@@ -32,7 +34,7 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 	compareTypes = compareTypes[3:]
 	for idx, val := range compareNames {
 		if _, ok := tags[val]; ok {
-			if compareTypes[idx] == DataTypeString {
+			if compareTypes[idx] == api.DataTypeString {
 				columns = append(columns, val)
 			}
 		}
@@ -111,7 +113,7 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 	return ret
 }
 
-var _ Result = &InsertResult{}
+var _ api.Result = &InsertResult{}
 
 type InsertResult struct {
 	err          error
