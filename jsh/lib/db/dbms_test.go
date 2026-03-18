@@ -150,13 +150,13 @@ func TestDBMS(t *testing.T) {
 }
 
 func skipDockerTestSupport() bool {
+	if os.Getenv("CI") == "true" {
+		return true
+	}
 	if runtime.GOOS == "windows" {
 		return true
 	}
 	if runtime.GOOS == "darwin" {
-		if os.Getenv("CI") == "true" {
-			return true
-		}
 		_, err := os.Stat("/var/run/docker.sock")
 		if err != nil {
 			return true

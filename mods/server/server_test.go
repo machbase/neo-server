@@ -285,6 +285,9 @@ func TestShellShow(t *testing.T) {
 }
 
 func supportDockerTest() bool {
+	if os.Getenv("CI") == "true" {
+		return false
+	}
 	if runtime.GOOS == "linux" {
 		return runtime.GOARCH == "amd64"
 	}
@@ -292,9 +295,6 @@ func supportDockerTest() bool {
 		return false
 	}
 	if runtime.GOOS == "darwin" {
-		if os.Getenv("CI") == "true" {
-			return false
-		}
 		_, err := os.Stat("/var/run/docker.sock")
 		if err != nil {
 			return false
