@@ -87,8 +87,9 @@ type Server struct {
 	genSnowflake          *snowflake.Node
 	snowflakes            []string
 
-	neoShellAddress string
-	neoShellAccount map[string]string
+	neoShellAddress   string
+	neoShellAccountMu sync.RWMutex
+	neoShellAccount   map[string]string
 }
 
 var _ booter.Boot = (*Server)(nil)

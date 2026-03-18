@@ -652,7 +652,9 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
+	svr.authServer.neoShellAccountMu.Lock()
 	svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
+	svr.authServer.neoShellAccountMu.Unlock()
 
 	rsp.Success = true
 	rsp.Reason = "success"
@@ -712,7 +714,9 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 
 	// cache username and password for web-terminal uses
 	if svr.authServer != nil {
+		svr.authServer.neoShellAccountMu.Lock()
 		svr.authServer.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
+		svr.authServer.neoShellAccountMu.Unlock()
 	}
 
 	// store refresh token
@@ -1335,7 +1339,9 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 	termLoginName := claim.Subject
+	svr.authServer.neoShellAccountMu.RLock()
 	termPassword := svr.authServer.neoShellAccount[strings.ToLower(termLoginName)]
+	svr.authServer.neoShellAccountMu.RUnlock()
 	if len(termPassword) == 0 {
 		termPassword = "manager"
 	}

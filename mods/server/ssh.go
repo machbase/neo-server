@@ -258,7 +258,9 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		// pass the password to the ssh session context for later use in shell environment variable.
 		// it is needed for the neo-shell/jsh to work with database connection.
 		ctx.SetValue(sshContextPasswordKey, password)
+		svr.authServer.neoShellAccountMu.Lock()
 		svr.authServer.neoShellAccount[strings.ToLower(user)] = password
+		svr.authServer.neoShellAccountMu.Unlock()
 	}
 	return valid
 }
@@ -282,6 +284,7 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		// How to pass the password to the ssh session context for later use in shell environment variable?
 		// --> ssh client shows password prompt,
 		// because neo-shell/jsh requires password.
+		svr.authServer.neoShellAccountMu.RLock()
 		if pass, ok := svr.authServer.neoShellAccount[strings.ToLower(user)]; ok {
 			ctx.SetValue(sshContextPasswordKey, pass)
 		} else {
@@ -291,6 +294,7 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 			svr.log.Tracef("'%s' login with public key, but password is not found in the auth server", user)
 			valid = false // force to login with password
 		}
+		svr.authServer.neoShellAccountMu.RUnlock()
 	}
 	return valid
 }
@@ -397,7 +401,10 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 
 	if shellId == model.SHELLID_SHELL {
 		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.authServer.neoShellAccount[strings.ToLower(user)]))
+		svr.authServer.neoShellAccountMu.RLock()
+		pass := svr.authServer.neoShellAccount[strings.ToLower(user)]
+		svr.authServer.neoShellAccountMu.RUnlock()
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", pass))
 	}
 
 	cmdArr := []string{shell.Cmd}
