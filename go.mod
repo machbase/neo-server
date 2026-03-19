@@ -30,7 +30,7 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-client v1.2.2-0.20260318033338-ef7d620a23c6
-	github.com/machbase/neo-engine/v8 v8.0.67
+	github.com/machbase/neo-engine/v8 v8.0.68-0.20260319030951-0be3c07722de
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.16.0
 	github.com/mark3labs/mcp-go v0.45.0
