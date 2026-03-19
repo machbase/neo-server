@@ -14,6 +14,130 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/engine"
 )
 
+func asByte(value any) (byte, bool) {
+	switch number := value.(type) {
+	case float64:
+		return byte(number), true
+	case float32:
+		return byte(number), true
+	case int:
+		return byte(number), true
+	case int8:
+		return byte(number), true
+	case int16:
+		return byte(number), true
+	case int32:
+		return byte(number), true
+	case int64:
+		return byte(number), true
+	case uint:
+		return byte(number), true
+	case uint8:
+		return byte(number), true
+	case uint16:
+		return byte(number), true
+	case uint32:
+		return byte(number), true
+	case uint64:
+		return byte(number), true
+	default:
+		return 0, false
+	}
+}
+
+func asUint32(value any) (uint32, bool) {
+	switch number := value.(type) {
+	case float64:
+		return uint32(number), true
+	case float32:
+		return uint32(number), true
+	case int:
+		return uint32(number), true
+	case int8:
+		return uint32(number), true
+	case int16:
+		return uint32(number), true
+	case int32:
+		return uint32(number), true
+	case int64:
+		return uint32(number), true
+	case uint:
+		return uint32(number), true
+	case uint8:
+		return uint32(number), true
+	case uint16:
+		return uint32(number), true
+	case uint32:
+		return number, true
+	case uint64:
+		return uint32(number), true
+	default:
+		return 0, false
+	}
+}
+
+func asUint16(value any) (uint16, bool) {
+	switch number := value.(type) {
+	case float64:
+		return uint16(number), true
+	case float32:
+		return uint16(number), true
+	case int:
+		return uint16(number), true
+	case int8:
+		return uint16(number), true
+	case int16:
+		return uint16(number), true
+	case int32:
+		return uint16(number), true
+	case int64:
+		return uint16(number), true
+	case uint:
+		return uint16(number), true
+	case uint8:
+		return uint16(number), true
+	case uint16:
+		return number, true
+	case uint32:
+		return uint16(number), true
+	case uint64:
+		return uint16(number), true
+	default:
+		return 0, false
+	}
+}
+
+func asInt(value any) (int, bool) {
+	switch number := value.(type) {
+	case float64:
+		return int(number), true
+	case float32:
+		return int(number), true
+	case int:
+		return number, true
+	case int8:
+		return int(number), true
+	case int16:
+		return int(number), true
+	case int32:
+		return int(number), true
+	case int64:
+		return int(number), true
+	case uint:
+		return int(number), true
+	case uint8:
+		return int(number), true
+	case uint16:
+		return int(number), true
+	case uint32:
+		return int(number), true
+	case uint64:
+		return int(number), true
+	default:
+		return 0, false
+	}
+}
+
 //go:embed mqtt.js
 var mqtt_js []byte
 
@@ -156,20 +280,18 @@ func (c *Client) Publish(topic string, data any, options map[string]any) (int, e
 	}
 	pub := &paho.Publish{Topic: topic, Payload: payload, QoS: 0}
 	if options != nil {
-		if qos, ok := options["qos"].(float64); ok {
-			pub.QoS = byte(qos)
+		if qos, ok := asByte(options["qos"]); ok {
+			pub.QoS = qos
 		}
 		if retain, ok := options["retain"].(bool); ok {
 			pub.Retain = retain
 		}
 		if props, ok := options["properties"].(map[string]any); ok {
 			pub.Properties = &paho.PublishProperties{}
-			if pf, ok := props["payloadFormat"].(float64); ok {
-				pf := byte(pf)
+			if pf, ok := asByte(props["payloadFormat"]); ok {
 				pub.Properties.PayloadFormat = &pf
 			}
-			if me, ok := props["messageExpiry"].(float64); ok {
-				me := uint32(me)
+			if me, ok := asUint32(props["messageExpiry"]); ok {
 				pub.Properties.MessageExpiry = &me
 			}
 			if ct, ok := props["contentType"].(string); ok {
@@ -181,12 +303,10 @@ func (c *Client) Publish(topic string, data any, options map[string]any) (int, e
 			if cd, ok := props["correlationData"].(string); ok {
 				pub.Properties.CorrelationData = []byte(cd)
 			}
-			if ta, ok := props["topicAlias"].(float64); ok {
-				ta := uint16(ta)
+			if ta, ok := asUint16(props["topicAlias"]); ok {
 				pub.Properties.TopicAlias = &ta
 			}
-			if si, ok := props["subscriptionIdentifier"].(float64); ok {
-				si := int(si)
+			if si, ok := asInt(props["subscriptionIdentifier"]); ok {
 				pub.Properties.SubscriptionIdentifier = &si
 			}
 			if userProps, ok := props["user"].(map[string]any); ok {

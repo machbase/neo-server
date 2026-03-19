@@ -295,7 +295,18 @@ func supportDockerTest() bool {
 		return false
 	}
 	if runtime.GOOS == "darwin" {
-		_, err := os.Stat("/var/run/docker.sock")
+		home, err := os.UserHomeDir()
+		if err == nil {
+			// new docker path for mac docker desktop
+			path := filepath.Join(home, ".docker", "run", "docker.sock")
+			_, err = os.Stat(path)
+			if err == nil {
+				os.Setenv("DOCKER_HOST", "unix://"+path)
+				return true
+			}
+		}
+		// fallback to old docker path for mac docker desktop
+		_, err = os.Stat("/var/run/docker.sock")
 		if err != nil {
 			return false
 		}
@@ -351,8 +362,9 @@ func TestShellBridge(t *testing.T) {
 		}),
 	)
 	//
-	// find directory neo-server/mods/server/test
+	// start Mosquitto MQTT broker
 	//
+	// find directory neo-server/mods/server/test
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		panic("Failed to get current file path")
@@ -363,6 +375,13 @@ func TestShellBridge(t *testing.T) {
 		dockertest.WithTag("2.0"),
 		dockertest.WithMounts([]string{filepath.Join(testDir, "mosquitto.conf") + ":/mosquitto/config/mosquitto.conf:ro"}),
 	)
+	//
+	// start NATS server
+	//
+	nats := pool.RunT(t, "nats",
+		dockertest.WithTag("2.12"),
+	)
+
 	// wait for mosquitto to be ready
 	var mosquittoHostPort string
 	err := pool.Retry(t.Context(), 60*time.Second, func() error {
@@ -375,6 +394,18 @@ func TestShellBridge(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err, "Mosquitto did not start in time")
+
+	// wait for nats to be ready
+	var natsHostPort string
+	err = pool.Retry(t.Context(), 60*time.Second, func() error {
+		natsHostPort = nats.GetHostPort("4222/tcp")
+		conn, err := net.Dial("tcp", natsHostPort)
+		if err != nil {
+			return err
+		}
+		conn.Close()
+		return nil
+	})
 
 	// wait for postgres to be ready
 	var postgresDSN string
@@ -407,6 +438,7 @@ func TestShellBridge(t *testing.T) {
 		t.Fatalf("could not connect to mssql: %v", err)
 	}
 
+	// wait for mysql to be ready
 	var mysqlDSN string
 	err = pool.Retry(t.Context(), 60*time.Second, func() error {
 		hostPort := mysql.GetHostPort("3306/tcp")
@@ -435,6 +467,10 @@ func TestShellBridge(t *testing.T) {
 	t.Run("shellBridgeMqttTest", func(t *testing.T) {
 		shellBridgeMqttTest(t, mosquittoHostPort)
 	})
+	t.Run("shellBridgeNatsTest", func(t *testing.T) {
+		shellBridgeNatsTest(t, natsHostPort)
+	})
+
 }
 
 func shellBridgeSqliteTest(t *testing.T) {
@@ -947,7 +983,6 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 			},
 		},
-
 		{
 			name: "subscriber_del",
 			args: append(shellArgs, "subscriber", "del", "sub-mqtt"),
@@ -958,6 +993,140 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 		{
 			name: "bridge_del_mqtt",
 			args: append(shellArgs, "bridge", "del", "br-mqtt"),
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
+func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
+	tests := []ShellTestCase{
+		{
+			name: "bridge_list",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_nats",
+			args: append(shellArgs, "bridge", "add", "br-nats", "--type", "nats", fmt.Sprintf("server=%s name=nasts-client", natsHostPort)),
+			expect: []string{
+				"Adding bridge... br-nats type: nats path: " + fmt.Sprintf("server=%s name=nasts-client", natsHostPort),
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			args: append(shellArgs, "bridge", "list"),
+			expect: []string{
+				"┌────────┬─────────┬──────┬──────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME    │ TYPE │ CONNECTION                               │",
+				"├────────┼─────────┼──────┼──────────────────────────────────────────┤",
+				"│      1 │ br-nats │ nats │ server=" + natsHostPort + " name=nasts-client │",
+				"└────────┴─────────┴──────┴──────────────────────────────────────────┘",
+			},
+		},
+		{
+			name: "subscriber_add",
+			args: append(shellArgs, "subscriber", "add", "--autostart", "sub-nats", "br-nats", "iot.sensor", "db/write/example"),
+			expect: []string{
+				"Subscriber 'sub-nats' added successfully.",
+			},
+		},
+		{
+			name:   "wait_for_nats_subscribe", // wait for subscriber to start and subscribe before publishing
+			args:   append(shellArgs, "sleep", "3"),
+			expect: []string{},
+		},
+		{
+			name: "subscriber_list_after_add",
+			args: append(shellArgs, "subscriber", "list"),
+			expect: []string{
+				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+				"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
+				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
+			},
+		},
+		{
+			name: "nats_pub",
+			args: append(shellArgs, "nats_pub",
+				"--broker", natsHostPort,
+				"--topic", "iot.sensor",
+				"--message", `[["nats-test",1773466141000000000,42],["nats-test",1773466142000000000,43]]`),
+			expect: []string{},
+		},
+		{
+			name:   "wait_for_nats_publish",
+			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
+			expect: []string{},
+		},
+		{
+			name: "nats_pub_result",
+			args: append(shellArgs, "sql", "--tz", "GMT", "SELECT * FROM example WHERE name='nats-test' ORDER BY time"),
+			expect: []string{
+				"┌────────┬───────────┬─────────────────────┬───────┐",
+				"│ ROWNUM │ NAME      │ TIME                │ VALUE │",
+				"├────────┼───────────┼─────────────────────┼───────┤",
+				"│      1 │ nats-test │ 2026-03-14 05:29:01 │    42 │",
+				"│      2 │ nats-test │ 2026-03-14 05:29:02 │    43 │",
+				"└────────┴───────────┴─────────────────────┴───────┘",
+				"2 rows selected.",
+			},
+		},
+		{
+			name: "nats_pub_clean",
+			args: append(shellArgs, "sql", "DELETE FROM example WHERE name='nats-test'"),
+			expect: []string{
+				"2 rows deleted.",
+			},
+		},
+		{
+			name: "subscriber_stop",
+			args: append(shellArgs, "subscriber", "stop", "sub-nats"),
+			expect: []string{
+				"Subscriber 'sub-nats' stopped successfully.",
+			},
+		},
+		{
+			name: "subscriber_list_after_stop",
+			args: append(shellArgs, "subscriber", "list"),
+			expect: []string{
+				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+				"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
+				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
+			},
+		},
+		{
+			name: "subscriber_del",
+			args: append(shellArgs, "subscriber", "del", "sub-nats"),
+			expect: []string{
+				"Subscriber 'sub-nats' deleted successfully.",
+			},
+		},
+		{
+			name: "bridge_del_nats",
+			args: append(shellArgs, "bridge", "del", "br-nats"),
 			expect: []string{
 				"Deleted.",
 			},

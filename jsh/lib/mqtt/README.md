@@ -265,11 +265,38 @@ console.println("CONNECT_TIMEOUT:", client.config.connectTimeout);
 client.close();
 ```
 
+## `mqtt_pub` Usage
+
+The shell command `mqtt_pub` publishes one message and exits after the broker acknowledges the publish request.
+
+Supported input modes:
+
+- `--message <text>`: publish an inline text payload
+- `--file <path>`: publish the content of a file
+
+Examples:
+
+```sh
+# Publish an inline message
+mqtt_pub --broker 127.0.0.1:5653 --topic test/topic --message "hello-mqtt"
+```
+
+```sh
+# Publish the content of a file relative to the current working directory
+mqtt_pub --broker 127.0.0.1:5653 --topic test/topic --file payload.txt
+```
+
+```sh
+# Enable debug logs while publishing
+mqtt_pub --debug --broker tcp://127.0.0.1:5653 --topic test/topic --message "hello-mqtt"
+```
+
 ## Notes
 
 - The client automatically attempts to reconnect when the connection is lost.
 - The reconnection interval can be configured with the `connectRetryDelay` option.
 - QoS is currently fixed at 1 for subscriptions and 0 for publishes.
+- `mqtt_pub` accepts `--qos`, but the current native MQTT publish path behaves as QoS 0.
 - The client maintains an internal event loop, so the program will not terminate until the connection is closed.
 
 ## Dependencies

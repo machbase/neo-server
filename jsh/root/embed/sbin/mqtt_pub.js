@@ -51,7 +51,8 @@ function resolvePath(path) {
     if (path.startsWith('/')) {
         return path;
     }
-    return `${pwd}/${path}`;
+    const cwd = process.env.get('PWD') || '/';
+    return `${cwd}/${path}`;
 }
 
 function buildServerUrl(broker) {
@@ -104,7 +105,9 @@ function finish(code) {
     }
     finished = true;
     exitCode = code;
-    process.exit(exitCode);
+    if (exitCode !== 0) {
+        process.exit(exitCode);
+    }
 }
 
 client.on('open', () => {

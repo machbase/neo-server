@@ -16,6 +16,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/simplex"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/spatial"
 	"github.com/machbase/neo-server/v8/jsh/lib/mqtt"
+	"github.com/machbase/neo-server/v8/jsh/lib/nats"
 	"github.com/machbase/neo-server/v8/jsh/lib/net"
 	"github.com/machbase/neo-server/v8/jsh/lib/opcua"
 	"github.com/machbase/neo-server/v8/jsh/lib/os"
@@ -101,6 +102,8 @@ func Enable(n *engine.JSRuntime) {
 	addFiles(simplex.Files())
 	n.RegisterNativeModule("@jsh/mathx/spatial", spatial.Module)
 	addFiles(spatial.Files())
+	n.RegisterNativeModule("@jsh/nats", nats.Module)
+	addFiles(nats.Files())
 	n.RegisterNativeModule("@jsh/mqtt", mqtt.Module)
 	addFiles(mqtt.Files())
 	n.RegisterNativeModule("@jsh/net", net.Module)

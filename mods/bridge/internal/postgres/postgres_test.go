@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -17,24 +18,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func skipDockerTestSupport() bool {
+func supportDockerTest() bool {
 	if os.Getenv("CI") == "true" {
-		return true
+		return false
+	}
+	if runtime.GOOS == "linux" {
+		return runtime.GOARCH == "amd64"
 	}
 	if runtime.GOOS == "windows" {
-		return true
+		return false
 	}
 	if runtime.GOOS == "darwin" {
-		_, err := os.Stat("/var/run/docker.sock")
+		home, err := os.UserHomeDir()
+		if err == nil {
+			// new docker path for mac docker desktop
+			path := filepath.Join(home, ".docker", "run", "docker.sock")
+			_, err = os.Stat(path)
+			if err == nil {
+				os.Setenv("DOCKER_HOST", "unix://"+path)
+				return true
+			}
+		}
+		// fallback to old docker path for mac docker desktop
+		_, err = os.Stat("/var/run/docker.sock")
 		if err != nil {
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func TestPostgres(t *testing.T) {
-	if skipDockerTestSupport() {
+	if !supportDockerTest() {
 		t.Skip("dockertest does not work in this environment")
 	}
 	pool := dockertest.NewPoolT(t, "")
