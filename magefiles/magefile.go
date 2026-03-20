@@ -241,17 +241,8 @@ func runTest(extraArgs ...string) error {
 	}
 	testArgs = append(testArgs, extraArgs...)
 	testArgs = append(testArgs,
-		"-cover", "-coverprofile", "./tmp/cover.out",
-		"./booter/...",
-		"./shell/...",
-		"./jsh/...",
-		"./api/...",
-		"./mods/...",
+		"-cover", "-coverprofile", "./tmp/cover.out", "./...",
 	)
-
-	if runtime.GOOS != "windows" {
-		testArgs = append(testArgs, "./test/...")
-	}
 
 	if err := sh.RunWithV(env, "go", testArgs...); err != nil {
 		return err
