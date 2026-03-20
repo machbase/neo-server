@@ -274,6 +274,14 @@ func (s *backupd) handleArchives(ctx *gin.Context) {
 
 	dirs, err := os.ReadDir(s.baseDir)
 	if err != nil {
+		if os.IsNotExist(err) { // no backup dir exists
+			rsp["success"] = true
+			rsp["reason"] = "success"
+			rsp["data"] = []ArchiveInfo{}
+			rsp["elapse"] = time.Since(tick).String()
+			ctx.JSON(http.StatusOK, rsp)
+			return
+		}
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
