@@ -52,7 +52,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 
 			// Add context with timeout for SSE endpoints
 			if tt.expectSSE {
-				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+				ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 				defer cancel()
 				req = req.WithContext(ctx)
 			}
@@ -98,7 +98,7 @@ func TestHandler_serveWatcher_SingleFile(t *testing.T) {
 	handler := terminal.Handler("/")
 
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -151,7 +151,7 @@ func TestHandler_serveWatcher_MultipleFiles(t *testing.T) {
 
 	// Request with file selection
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream?file=file1&file=file2", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -221,7 +221,7 @@ func TestHandler_serveWatcher_WithFilters(t *testing.T) {
 
 	// Request with filter parameter (OR and AND logic)
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream?filter=ERROR&&critical||WARNING", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -258,7 +258,7 @@ func TestHandler_serveWatcher_ContextCancellation(t *testing.T) {
 
 	handler := terminal.Handler("/")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream", nil)
 	req = req.WithContext(ctx)
 
@@ -327,7 +327,7 @@ func TestHandler_serveWatcher_SSEHeaders(t *testing.T) {
 	handler := terminal.Handler("/")
 
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -505,7 +505,7 @@ func TestHandler_serveWatcher_EmptyFilter(t *testing.T) {
 
 	// Request with empty filter parameter
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream?filter=", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -540,7 +540,7 @@ func TestHandler_serveWatcher_ComplexFilter(t *testing.T) {
 
 	// Complex filter: (ERROR AND critical) OR (WARNING AND high)
 	req := httptest.NewRequest(http.MethodGet, "/watch.stream?filter=ERROR&&critical||WARNING&&high", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
 
@@ -579,7 +579,7 @@ func BenchmarkHandler_serveWatcher_SingleFile(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/watch.stream", nil)
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(b.Context(), 100*time.Millisecond)
 		req = req.WithContext(ctx)
 		rec := httptest.NewRecorder()
 

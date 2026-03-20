@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -55,7 +54,7 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 			if tc.Subscribe != "" {
 				// Subscribing in the OnConnectionUp callback is recommended (ensures the subscription is reestablished if
 				// the connection drops)
-				if _, err := cm.Subscribe(context.Background(), &paho.Subscribe{
+				if _, err := cm.Subscribe(t.Context(), &paho.Subscribe{
 					Subscriptions: []paho.SubscribeOptions{
 						{Topic: tc.Subscribe, QoS: 1},
 					},
@@ -90,15 +89,13 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 		},
 	}
 
-	ctx := context.Background()
-
 	wg.Add(1)
-	c, err := autopaho.NewConnection(ctx, cliCfg)
+	c, err := autopaho.NewConnection(t.Context(), cliCfg)
 	if err != nil {
 		t.Logf("Test %q failed, connect error: %s", tc.Name, err.Error())
 		t.Fail()
 	}
-	defer c.Disconnect(ctx)
+	defer c.Disconnect(t.Context())
 
 	wg.Wait() // wait connect
 
@@ -118,7 +115,7 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 		wg.Add(1)
 	}
 
-	pubAck, err := c.Publish(ctx, pub)
+	pubAck, err := c.Publish(t.Context(), pub)
 	if err != nil {
 		t.Fatalf("Test %q failed, publish error: %s", tc.Name, err.Error())
 	}
@@ -270,8 +267,6 @@ func TestWriteResponse(t *testing.T) {
 	brokerUrl, err := url.Parse("tcp://" + mqttServerAddress)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-
 	cfg := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{brokerUrl},
 		KeepAlive:                     20,
@@ -289,7 +284,7 @@ func TestWriteResponse(t *testing.T) {
 			t.Fail()
 			return
 		}
-		subAck, err := cm.Subscribe(ctx, &paho.Subscribe{
+		subAck, err := cm.Subscribe(t.Context(), &paho.Subscribe{
 			Subscriptions: []paho.SubscribeOptions{
 				{Topic: "db/reply/#", QoS: 1},
 			},
@@ -319,9 +314,9 @@ func TestWriteResponse(t *testing.T) {
 	}
 
 	readyWg.Add(1)
-	c, err := autopaho.NewConnection(ctx, cfg)
+	c, err := autopaho.NewConnection(t.Context(), cfg)
 	require.NoError(t, err)
-	defer c.Disconnect(ctx)
+	defer c.Disconnect(t.Context())
 	readyWg.Wait()
 
 	readyWg.Add(1)
@@ -330,7 +325,7 @@ func TestWriteResponse(t *testing.T) {
 	props.User.Add("method", "insert")
 	props.User.Add("format", "csv")
 	props.User.Add("reply", "db/reply/123")
-	c.Publish(ctx, &paho.Publish{
+	c.Publish(t.Context(), &paho.Publish{
 		Topic:      "db/write/example",
 		Payload:    []byte(`my-car,1705291859000000000,1.2345`),
 		QoS:        2,
@@ -488,11 +483,11 @@ func TestMqttWrite(t *testing.T) {
 				tt.TC.Ver = ver
 				runMqttTest(t, &tt.TC)
 
-				conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
+				conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
 				require.NoError(t, err)
-				conn.QueryRow(context.Background(), "EXEC table_flush(test_mqtt)")
+				conn.QueryRow(t.Context(), "EXEC table_flush(test_mqtt)")
 				var count int
-				conn.QueryRow(context.Background(), tt.ExpectSql).Scan(&count)
+				conn.QueryRow(t.Context(), tt.ExpectSql).Scan(&count)
 				require.Equal(t, tt.ExpectCount*(n+1), count)
 				conn.Close()
 			})
@@ -613,21 +608,21 @@ func TestAppend(t *testing.T) {
 			// - mqtt works asynchronously
 			time.Sleep(1000 * time.Millisecond)
 
-			conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
+			conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
 			if err != nil {
 				t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 			}
 			defer conn.Close()
-			conn.QueryRow(context.Background(), "EXEC table_flush(example)")
+			conn.QueryRow(t.Context(), "EXEC table_flush(example)")
 			var count int
 			var tag = "my-append"
-			conn.QueryRow(context.Background(), "select count(*) from example where name = ?", tag).Scan(&count)
+			conn.QueryRow(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
 			if count != 2 {
 				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 				t.Fail()
 			}
-			conn.QueryRow(context.Background(), "delete from example where name = ?", tag)
-			conn.QueryRow(context.Background(), "EXEC table_flush(example)")
+			conn.QueryRow(t.Context(), "delete from example where name = ?", tag)
+			conn.QueryRow(t.Context(), "EXEC table_flush(example)")
 		})
 	}
 }
@@ -666,21 +661,21 @@ func TestTql(t *testing.T) {
 				// - mqtt works asynchronously
 				time.Sleep(1000 * time.Millisecond)
 
-				conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
+				conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
 				if err != nil {
 					t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 				}
 				defer conn.Close()
-				conn.QueryRow(context.Background(), "EXEC table_flush(example)")
+				conn.QueryRow(t.Context(), "EXEC table_flush(example)")
 				var count int
 				var tag = "my-mqtt-tql"
-				conn.QueryRow(context.Background(), "select count(*) from example where name = ?", tag).Scan(&count)
+				conn.QueryRow(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
 				if count != 2 {
 					t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 					t.Fail()
 				}
-				conn.QueryRow(context.Background(), "delete from example where name = ?", tag)
-				conn.QueryRow(context.Background(), "EXEC table_flush(example)")
+				conn.QueryRow(t.Context(), "delete from example where name = ?", tag)
+				conn.QueryRow(t.Context(), "EXEC table_flush(example)")
 			})
 		}
 	}

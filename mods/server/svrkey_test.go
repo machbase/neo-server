@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -22,16 +21,16 @@ func TestKeyGen(t *testing.T) {
 	require.NotNil(t, pri)
 	require.NotNil(t, pub)
 
-	pripem, err := ec.EncodePrivate(pri)
+	pri_pem, err := ec.EncodePrivate(pri)
 	require.Nil(t, err)
-	require.NotEmpty(t, pripem)
+	require.NotEmpty(t, pri_pem)
 
-	pubpem, err := ec.EncodePublic(pub)
+	pub_pem, err := ec.EncodePublic(pub)
 	require.Nil(t, err)
-	require.NotEmpty(t, pubpem)
+	require.NotEmpty(t, pub_pem)
 
-	fmt.Println(pripem)
-	fmt.Println(pubpem)
+	fmt.Println(pri_pem)
+	fmt.Println(pub_pem)
 }
 
 func TestCert(t *testing.T) {
@@ -100,17 +99,17 @@ func TestCert(t *testing.T) {
 
 	go func() {
 		t.Log("server listening...", listener.Addr().String())
-		incomming, err := listener.Accept()
+		incoming, err := listener.Accept()
 		if err != nil {
 			t.Log(err.Error())
 			t.Error(err)
 			return
 		}
 		t.Log("server accepted")
-		conn, ok := incomming.(*tls.Conn)
+		conn, ok := incoming.(*tls.Conn)
 		require.True(t, ok)
 
-		err = conn.HandshakeContext(context.Background())
+		err = conn.HandshakeContext(t.Context())
 		require.Nil(t, err)
 		t.Log("server-client handshake done")
 
@@ -128,10 +127,10 @@ func TestCert(t *testing.T) {
 		RootCAs:            rootCAs,
 		InsecureSkipVerify: true,
 	}
-	laddr := listener.Addr().(*net.TCPAddr)
-	hostport := fmt.Sprintf("%s:%d", laddr.IP.String(), laddr.Port)
-	t.Log("client dialing...", laddr.Network(), hostport)
-	conn, err := tls.Dial(laddr.Network(), hostport, cliTlsConf)
+	listener_addr := listener.Addr().(*net.TCPAddr)
+	hostPort := fmt.Sprintf("%s:%d", listener_addr.IP.String(), listener_addr.Port)
+	t.Log("client dialing...", listener_addr.Network(), hostPort)
+	conn, err := tls.Dial(listener_addr.Network(), hostPort, cliTlsConf)
 	require.Nil(t, err)
 	require.NotNil(t, conn)
 	conn.Close()

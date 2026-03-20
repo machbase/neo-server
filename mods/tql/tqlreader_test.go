@@ -13,7 +13,7 @@ import (
 func runTestReadLine(t *testing.T, code string, expect []Line) {
 	t.Helper()
 
-	timeCtx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	timeCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	output := &bytes.Buffer{}

@@ -1,7 +1,6 @@
 package testsuite_test
 
 import (
-	"context"
 	_ "embed"
 	"os"
 	"runtime"
@@ -48,7 +47,7 @@ func TestColumns(t *testing.T) {
 	if err := testsuite.CreateTestTables(db); err != nil {
 		t.Fatalf("ERROR: %s", err)
 	}
-	testsuite.ColumnsCases(t, db, context.TODO())
+	testsuite.ColumnsCases(t, db, t.Context())
 	if err := testsuite.DropTestTables(db); err != nil {
 		t.Fatalf("ERROR: %s", err)
 	}

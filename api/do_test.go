@@ -162,7 +162,7 @@ func tcBridge(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 
 			db, err := bridge.GetSqlBridge(tc.Bridge)
 			require.NoError(t, err)
@@ -603,7 +603,7 @@ func tcCommands(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer output.Reset()
-			err := h.Exec(context.TODO(), server_api.ParseCommandLine(tt.input))
+			err := h.Exec(t.Context(), server_api.ParseCommandLine(tt.input))
 			if err != nil {
 				if tt.expectErr != "" {
 					require.Contains(t, err.Error(), tt.expectErr)

@@ -1,7 +1,6 @@
 package bridge_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -31,7 +30,7 @@ func TestSqlite3(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, BRIDGE_NAME, br.Name())
 
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	sqlBr := br.(bridge.SqlBridge)
 	conn, err := sqlBr.Connect(ctx)
@@ -50,7 +49,7 @@ func TestSqlite3(t *testing.T) {
 	_, err = conn.ExecContext(ctx, fmt.Sprintf(`INSERT INTO example VALUES(%d, 'hong-%d', '12', 'address for %d')`, count+1, count+1, count+1))
 	require.Nil(t, err)
 
-	rows, err := conn.QueryContext(context.TODO(), `SELECT * FROM example`)
+	rows, err := conn.QueryContext(t.Context(), `SELECT * FROM example`)
 	require.Nil(t, err)
 	defer rows.Close()
 	colTypes, err := rows.ColumnTypes()

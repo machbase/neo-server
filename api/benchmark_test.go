@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -15,7 +14,7 @@ import (
 func BenchmarkTagDataAppend(b *testing.B) {
 	db := testsuite.Database_machsvr(b)
 
-	ctx := context.TODO()
+	ctx := b.Context()
 	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	require.NoError(b, err, "connect fail")
 	defer conn.Close()
@@ -47,7 +46,7 @@ func BenchmarkTagDataAppend(b *testing.B) {
 func BenchmarkTagSimpleAppend(b *testing.B) {
 	db := testsuite.Database_machsvr(b)
 
-	ctx := context.TODO()
+	ctx := b.Context()
 	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	require.NoError(b, err, "connect fail")
 	defer conn.Close()

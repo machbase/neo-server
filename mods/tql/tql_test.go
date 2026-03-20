@@ -67,12 +67,12 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func flushTable(table string) error {
-	conn, err := testServer.DatabaseSVR().Connect(context.TODO(), api.WithPassword("sys", "manager"))
+func flushTable(ctx context.Context, table string) error {
+	conn, err := testServer.DatabaseSVR().Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		return err
 	}
-	result := conn.Exec(context.TODO(), fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
+	result := conn.Exec(ctx, fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
 	if result.Err() != nil {
 		return result.Err()
 	}
@@ -123,7 +123,7 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	if tc.CtxTimeout > 0 {
 		timeout = tc.CtxTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 
 	output := &bytes.Buffer{}
@@ -282,7 +282,7 @@ func TestDatabaseTql(t *testing.T) {
 				require.True(t, gjson.Get(result, "success").Bool())
 				require.Equal(t, "success", gjson.Get(result, "reason").String())
 				require.Equal(t, `{"message":"2 rows inserted."}`, gjson.Get(result, "data").Raw)
-				require.NoError(t, flushTable("tag_simple"))
+				require.NoError(t, flushTable(t.Context(), "tag_simple"))
 			},
 		},
 		{
@@ -448,7 +448,7 @@ func TestDatabaseTql(t *testing.T) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 				require.Equal(t, `{"message":"3 rows inserted."}`, gjson.Get(result, "data").Raw, result)
-				require.NoError(t, flushTable("tag_simple"))
+				require.NoError(t, flushTable(t.Context(), "tag_simple"))
 			},
 		},
 		{
@@ -478,7 +478,7 @@ func TestDatabaseTql(t *testing.T) {
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 				// since we are using api.AppendWorker, the success and fail count is always same as the number of records
 				require.Equal(t, `{"message":"append 3 rows (success 3, fail 0)"}`, gjson.Get(result, "data").Raw, result)
-				require.NoError(t, flushTable("tag_simple"))
+				require.NoError(t, flushTable(t.Context(), "tag_simple"))
 			},
 		},
 		{

@@ -1,7 +1,6 @@
 package tql
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -47,11 +46,10 @@ func TestPragma2(t *testing.T) {
 			},
 		},
 	}
-	ctx := context.Background()
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			task := NewTaskContext(ctx)
+			task := NewTaskContext(t.Context())
 			task.SetLogWriter(os.Stdout)
 			if err := task.CompileString(tc.Script); err != nil {
 				t.Log("ERROR:", tc.Name, err.Error())

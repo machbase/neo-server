@@ -83,8 +83,7 @@ func disconnectRpc(t *testing.T, ctx context.Context, handle *machrpc.ConnHandle
 }
 
 func tcRpcPing(t *testing.T) {
-	ctx := context.TODO()
-	rsp, err := rpcClient.Ping(ctx, &machrpc.PingRequest{
+	rsp, err := rpcClient.Ping(t.Context(), &machrpc.PingRequest{
 		Token: 1234567890,
 	})
 	require.NoError(t, err)
@@ -94,7 +93,7 @@ func tcRpcPing(t *testing.T) {
 }
 
 func tcRpcUserAuth(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	rsp, err := rpcClient.UserAuth(ctx, &machrpc.UserAuthRequest{
 		LoginName: "sys",
 		Password:  "manager",
@@ -115,7 +114,7 @@ func tcRpcUserAuth(t *testing.T) {
 }
 
 func tcRpcExplain(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	conn := connectRpc(t, ctx)
 	defer disconnectRpc(t, ctx, conn)
 
@@ -131,7 +130,7 @@ func tcRpcExplain(t *testing.T) {
 }
 
 func tcRpcExec(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	conn := connectRpc(t, ctx)
 
 	execRsp, err := rpcClient.Exec(ctx, &machrpc.ExecRequest{

@@ -1,7 +1,6 @@
 package machrpc_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -77,11 +76,11 @@ func tcDriverQuery(t *testing.T) {
 	require.NotNil(t, rows)
 	rows.Close()
 
-	conn, err := db.Conn(context.TODO())
+	conn, err := db.Conn(t.Context())
 	require.Nil(t, err)
 	require.NotNil(t, conn)
 
-	rows, err = conn.QueryContext(context.TODO(), `select * from tag_data where name = ?`, "query1")
+	rows, err = conn.QueryContext(t.Context(), `select * from tag_data where name = ?`, "query1")
 	require.Nil(t, err)
 	require.NotNil(t, rows)
 	rows.Close()

@@ -45,9 +45,6 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var matchFunc func(*testing.T, string)
 	var matchPrefix bool
 	var httpClient *http.Client
-	var ctx context.Context
-	var ctxCancel context.CancelFunc
-	var ctxCancelIgnore bool
 
 	for _, o := range options {
 		switch v := o.(type) {
@@ -74,21 +71,15 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			matchFunc = v
 		case *http.Client:
 			httpClient = v
-		case context.Context:
-			ctx = v
 		}
 	}
 
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
 
-	if ctx == nil {
-		ctx, ctxCancel = context.WithTimeout(context.TODO(), 10*time.Second)
-	} else {
-		ctx, ctxCancel = context.WithCancel(ctx)
-		ctxCancelIgnore = true
-		defer ctxCancel()
-	}
+	ctx, ctxCancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer ctxCancel()
+
 	doneCh := make(chan any)
 
 	logBuf := &bytes.Buffer{}
@@ -132,12 +123,10 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 
 	select {
 	case <-ctx.Done():
-		if !ctxCancelIgnore {
-			t.Logf("CODE:\n%s", code)
-			t.Logf("LOG:\n%s", strings.TrimSpace(logBuf.String()))
-			t.Fatal("ERROR time out!!!")
-			ctxCancel()
-		}
+		t.Logf("CODE:\n%s", code)
+		t.Logf("LOG:\n%s", strings.TrimSpace(logBuf.String()))
+		t.Fatal("ERROR time out!!!")
+		ctxCancel()
 	case <-doneCh:
 		ctxCancel()
 	}
@@ -1459,9 +1448,8 @@ func TestWhen(t *testing.T) {
 	require.Nil(t, err)
 
 	br, _ := bridge.GetSqlBridge("sqlite")
-	ctx := context.TODO()
-	conn, _ := br.Connect(ctx)
-	conn.ExecContext(ctx, `create table if not exists test_when (
+	conn, _ := br.Connect(t.Context())
+	conn.ExecContext(t.Context(), `create table if not exists test_when (
 		id INTEGER NOT NULL PRIMARY KEY,
 		name TEXT,
 		value INTEGER
@@ -3002,7 +2990,7 @@ func TestLoader(t *testing.T) {
 			// for windows
 			expect = strings.ReplaceAll(expect, "\r", "") + "\n"
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 
 		w := &bytes.Buffer{}

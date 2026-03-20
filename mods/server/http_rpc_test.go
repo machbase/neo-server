@@ -279,7 +279,7 @@ func TestBuildRpcCallParams(t *testing.T) {
 		map[string]any{"count": float64(9), "name": "rpc"},
 	}, func(paramType reflect.Type) (reflect.Value, bool) {
 		if paramType == contextType {
-			return reflect.ValueOf(context.Background()), true
+			return reflect.ValueOf(t.Context()), true
 		}
 		return reflect.Value{}, false
 	})

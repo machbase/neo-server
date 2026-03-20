@@ -55,8 +55,7 @@ func TestPool(t *testing.T) {
 		wg.Add(1)
 		go func(run int) {
 			defer wg.Done()
-			ctx := context.TODO()
-			item, _ := p.Get(ctx)
+			item, _ := p.Get(t.Context())
 			if item == nil || item.Name == "" {
 				t.Logf("[%03d] %+v", run, item)
 				t.Fail()
@@ -89,7 +88,7 @@ func TestPoolTimeout(t *testing.T) {
 		OnPut: func(i *Item) {
 		},
 	})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	o1, _ := p.Get(ctx)
 	require.NotNil(t, o1)
 	o2, _ := p.Get(ctx)

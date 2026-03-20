@@ -1,7 +1,6 @@
 package sqlite3_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/api"
@@ -11,7 +10,7 @@ import (
 )
 
 func TestSqlite(t *testing.T) {
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	br := sqlite3.New("test", ":memory:")
 

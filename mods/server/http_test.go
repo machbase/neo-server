@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -710,8 +709,8 @@ func TestHttpWrite(t *testing.T) {
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
 			server_api.FlushAppendWorkers()
-			conn, _ := httpServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
-			conn.Exec(context.Background(), `EXEC table_flush(test_w)`)
+			conn, _ := httpServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
+			conn.Exec(t.Context(), `EXEC table_flush(test_w)`)
 			conn.Close()
 
 			if tc.selectSql != "" {

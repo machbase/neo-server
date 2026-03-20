@@ -1,7 +1,6 @@
 package machcli_test
 
 import (
-	"context"
 	_ "embed"
 	"os"
 	"testing"
@@ -28,7 +27,7 @@ func TestAll(t *testing.T) {
 }
 
 func tcTrustUser(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db := testServer.DatabaseCLI()
 	ok, _, err := db.UserAuth(ctx, "sys", "manager")
 	require.NoError(t, err)
