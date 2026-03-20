@@ -70,7 +70,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Codesign and notarize macos app
         if: matrix.os == 'macos'
-        uses: toitlang/action-macos-sign-notarize@v1.2.0
+        uses: toitlang/action-macos-sign-notarize@v1.3.0
         with:
           certificate: ${{ secrets.CODESIGN_DARWIN_CERTIFICATE }}
           certificate-password: ${{ secrets.CODESIGN_DARWIN_PASS }}
@@ -94,7 +94,7 @@ jobs:
         run: go run mage.go package
       - name: Upload Artifact
         if: startsWith(github.ref, 'refs/tags/v') != true
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: machbase-neo-snapshot-${{ matrix.os }}-${{ matrix.arch }}
           retention-days: 5

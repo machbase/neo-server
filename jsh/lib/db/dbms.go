@@ -9,7 +9,6 @@ import (
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/api/machcli"
-	"github.com/machbase/neo-server/v8/api/machrpc"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 )
@@ -89,8 +88,6 @@ func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
 	}
 
 	switch ret.db.(type) {
-	case *machrpc.Client:
-		ret.supportAppend = true
 	case *machsvr.Database:
 		ret.supportAppend = true
 	case *machcli.Database:
