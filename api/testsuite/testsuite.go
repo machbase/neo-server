@@ -18,12 +18,7 @@ import (
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/api/machcli"
-	"github.com/machbase/neo-server/v8/api/machrpc"
 	"github.com/machbase/neo-server/v8/api/machsvr"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/test/bufconn"
 )
 
 type TestCase func(*testing.T, api.Database, context.Context)
@@ -165,10 +160,6 @@ type Server struct {
 	machsvrPort     int
 	machcliDatabase *machcli.Database
 	machgoDatabase  *machgo.Database
-	grpcServer      *grpc.Server
-	grpcServerWg    sync.WaitGroup
-	grpcListener    *bufconn.Listener
-	grpcClientConn  *grpc.ClientConn
 }
 
 func NewServer(dataPath string) *Server {
@@ -252,37 +243,6 @@ func (s *Server) StartServer() {
 	}
 	conn.Close()
 
-	// grpc server
-	rpcSvr := machsvr.NewRPCServer(s.machsvrDatabase)
-
-	buffer := 101024 * 1024
-	s.grpcListener = bufconn.Listen(buffer)
-
-	s.grpcServer = grpc.NewServer()
-	machrpc.RegisterMachbaseServer(s.grpcServer, rpcSvr)
-
-	grpcSvrStart := make(chan struct{})
-	s.grpcServerWg.Add(1)
-	go func() {
-		close(grpcSvrStart)
-		s.grpcServer.Serve(s.grpcListener)
-		s.grpcServerWg.Done()
-	}()
-	<-grpcSvrStart
-	time.Sleep(time.Millisecond * 1000)
-
-	resolver.SetDefaultScheme("passthrough")
-	rpcConn, err := grpc.NewClient("bufconn",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
-			return s.grpcListener.Dial()
-		}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		panic(err)
-	} else {
-		s.grpcClientConn = rpcConn
-	}
-
 	// machcli database
 	if db, err := machcli.NewDatabase(&machcli.Config{
 		Host:         "127.0.0.1",
@@ -317,14 +277,6 @@ func (s *Server) StopServer() {
 	if err := s.machcliDatabase.Close(); err != nil {
 		panic(err)
 	}
-	if err := s.grpcClientConn.Close(); err != nil {
-		panic(err)
-	}
-	if err := s.grpcListener.Close(); err != nil {
-		panic(err)
-	}
-	s.grpcServer.GracefulStop()
-	s.grpcServerWg.Wait()
 	if err := s.machsvrDatabase.Shutdown(); err != nil {
 		panic(err)
 	}
@@ -348,10 +300,6 @@ func (s *Server) DropTestTables() error {
 	return DropTestTables(s.machsvrDatabase)
 }
 
-func (s *Server) ClientConn() *grpc.ClientConn {
-	return s.grpcClientConn
-}
-
 type TestingT interface {
 	Log(args ...any)
 	Fatal(args ...any)
@@ -372,11 +320,6 @@ func Database_machsvr(t TestingT) api.Database {
 
 func (s *Server) DatabaseSVR() api.Database {
 	return s.machsvrDatabase
-}
-
-func (s *Server) DatabaseRPC() api.Database {
-	rpcClient := machrpc.NewMachbaseClient(s.grpcClientConn)
-	return machrpc.NewClientWithRPCClient(rpcClient)
 }
 
 func (s *Server) DatabaseCLI() api.Database {
