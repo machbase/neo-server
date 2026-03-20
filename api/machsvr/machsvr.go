@@ -1043,37 +1043,38 @@ func (conn *Conn) QueryRowSync(ctx context.Context, sqlText string, params ...an
 		return row
 	}
 
-	// nothing fetched
-	if !fetched {
-		row.err = sql.ErrNoRows
-		return row
-	}
-
 	if cols, err := stmtColumns(stmt); err != nil {
 		row.err = err
 		return row
 	} else {
 		row.columns = cols
-		row.values, row.err = cols.MakeBuffer()
+	}
+
+	if !fetched {
+		row.err = sql.ErrNoRows
+		return row
+	}
+
+	row.values, row.err = row.columns.MakeBuffer()
+	if row.err != nil {
+		return row
+	}
+	for i, col := range row.columns {
+		rawType, err := columnDataTypeToRawType(col.DataType)
+		if err != nil {
+			row.err = err
+			return row
+		}
+		isNull := false
+		row.err = readColumnData(stmt, rawType, i, row.values[i], &isNull)
 		if row.err != nil {
 			return row
 		}
-		for i, col := range cols {
-			rawType, err := columnDataTypeToRawType(col.DataType)
-			if err != nil {
-				row.err = err
-				return row
-			}
-			isNull := false
-			row.err = readColumnData(stmt, rawType, i, row.values[i], &isNull)
-			if row.err != nil {
-				return row
-			}
-			if isNull {
-				row.values[i] = nil
-			}
+		if isNull {
+			row.values[i] = nil
 		}
 	}
+
 	if row.err == nil {
 		row.affectedRows = 1
 		row.ok = true

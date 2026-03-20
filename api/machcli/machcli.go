@@ -436,6 +436,15 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 		ret.stmtType = mach.StmtType(typ)
 	}
 	ret.rowCount = stmt.rowCount
+	ret.columns = make(api.Columns, len(stmt.columnDescs))
+	for i, desc := range stmt.columnDescs {
+		ret.columns[i] = &api.Column{
+			Name:     desc.Name,
+			Length:   desc.Size,
+			Type:     desc.Type.ColumnType(),
+			DataType: desc.Type.DataType(),
+		}
+	}
 	if values, err := stmt.fetch(); err != nil {
 		if err == io.EOF {
 			// it means no row fetched
@@ -446,15 +455,6 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 		return ret
 	} else {
 		ret.values = values
-	}
-	ret.columns = make(api.Columns, len(stmt.columnDescs))
-	for i, desc := range stmt.columnDescs {
-		ret.columns[i] = &api.Column{
-			Name:     desc.Name,
-			Length:   desc.Size,
-			Type:     desc.Type.ColumnType(),
-			DataType: desc.Type.DataType(),
-		}
 	}
 	return ret
 }
@@ -1068,6 +1068,9 @@ func (r *Row) Columns() (api.Columns, error) {
 }
 
 func (r *Row) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
 	if len(dest) > len(r.values) {
 		return api.ErrParamCount(len(r.values), len(dest))
 	}

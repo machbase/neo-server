@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
+	"github.com/machbase/neo-server/v8/api/machrpc"
 	"github.com/stretchr/testify/require"
 )
 
 func QueryRow(t *testing.T, db api.Database, ctx context.Context) {
-	if _, ok := db.(*machgo.Database); !ok {
-		t.Skip("QueryRow test is only for machgo.Database")
+	if _, ok := db.(*machrpc.Client); ok {
+		t.Skip("skip QueryRow test for RPC database, because it does not support QueryRow")
 	}
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
