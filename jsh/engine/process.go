@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/dop251/goja"
@@ -65,6 +69,7 @@ func (jr *JSRuntime) Process(vm *goja.Runtime, module *goja.Object) {
 
 	// Signal handling support
 	exports.Set("kill", doKill(vm))
+	exports.Set("watchSignal", watchSignal(vm, jr.EventLoop(), jr.AddShutdownHook))
 
 	// debug
 	exports.Set("dumpStack", func(depth int) {
@@ -435,6 +440,175 @@ func doHrtime(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	}
 }
 
+func watchSignal(vm *goja.Runtime, loop *eventloop.EventLoop, addShutdownHook func(func())) func(call goja.FunctionCall) goja.Value {
+	dispatch := dispatchEvent(loop)
+	var mu sync.Mutex
+	type signalRegistration struct {
+		ch   chan os.Signal
+		done chan struct{}
+	}
+	registrations := map[string]signalRegistration{}
+
+	return func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 2 {
+			return vm.NewGoError(fmt.Errorf("watchSignal requires a signal name and target object"))
+		}
+
+		signalName := call.Argument(0).String()
+		osSignal, err := signalByName(signalName)
+		if err != nil {
+			return vm.NewGoError(fmt.Errorf("unsupported signal: %s", signalName))
+		}
+
+		target := call.Argument(1)
+		if goja.IsUndefined(target) || goja.IsNull(target) {
+			return vm.NewGoError(fmt.Errorf("watchSignal requires a target object"))
+		}
+
+		targetObject := target.ToObject(vm)
+
+		mu.Lock()
+		defer mu.Unlock()
+		if _, ok := registrations[signalName]; ok {
+			return vm.ToValue(true)
+		}
+
+		registration := signalRegistration{
+			ch:   make(chan os.Signal, 1),
+			done: make(chan struct{}),
+		}
+		signal.Notify(registration.ch, osSignal)
+
+		go func(target *goja.Object, ch <-chan os.Signal, done <-chan struct{}) {
+			for {
+				select {
+				case <-done:
+					return
+				case <-ch:
+					dispatch(target, signalName)
+				}
+			}
+		}(targetObject, registration.ch, registration.done)
+
+		registrations[signalName] = registration
+		addShutdownHook(func() {
+			mu.Lock()
+			registration, ok := registrations[signalName]
+			if !ok {
+				mu.Unlock()
+				return
+			}
+			delete(registrations, signalName)
+			mu.Unlock()
+
+			signal.Stop(registration.ch)
+			close(registration.done)
+		})
+
+		return vm.ToValue(true)
+	}
+}
+
+func signalByName(signalName string) (os.Signal, error) {
+	canonicalName, signalNumber, err := normalizeSignalName(signalName)
+	if err != nil {
+		return nil, err
+	}
+	_ = canonicalName
+	return signalByNumber(signalNumber)
+}
+
+func signalByNumber(signalNumber int) (os.Signal, error) {
+	switch signalNumber {
+	case 0:
+		return syscall.Signal(0), nil
+	case 1:
+		return syscall.Signal(1), nil
+	case 2:
+		return os.Interrupt, nil
+	case 3:
+		return syscall.Signal(3), nil
+	case 6:
+		return syscall.Signal(6), nil
+	case 9:
+		return syscall.Signal(9), nil
+	case 10:
+		return syscall.Signal(10), nil
+	case 11:
+		return syscall.Signal(11), nil
+	case 12:
+		return syscall.Signal(12), nil
+	case 13:
+		return syscall.Signal(13), nil
+	case 14:
+		return syscall.Signal(14), nil
+	case 15:
+		return syscall.Signal(15), nil
+	default:
+		return nil, fmt.Errorf("unsupported signal: %d", signalNumber)
+	}
+}
+
+func normalizeSignalName(signalName string) (string, int, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(signalName))
+	if normalized == "" {
+		return "", 0, fmt.Errorf("unsupported signal: %s", signalName)
+	}
+	if signalNumber, err := strconv.Atoi(normalized); err == nil {
+		return strconv.Itoa(signalNumber), signalNumber, nil
+	}
+	normalized = strings.TrimPrefix(normalized, "SIG")
+
+	switch normalized {
+	case "HUP":
+		return "SIGHUP", 1, nil
+	case "INT":
+		return "SIGINT", 2, nil
+	case "QUIT":
+		return "SIGQUIT", 3, nil
+	case "ABRT":
+		return "SIGABRT", 6, nil
+	case "KILL":
+		return "SIGKILL", 9, nil
+	case "USR1":
+		return "SIGUSR1", 10, nil
+	case "SEGV":
+		return "SIGSEGV", 11, nil
+	case "USR2":
+		return "SIGUSR2", 12, nil
+	case "PIPE":
+		return "SIGPIPE", 13, nil
+	case "ALRM":
+		return "SIGALRM", 14, nil
+	case "TERM":
+		return "SIGTERM", 15, nil
+	default:
+		return "", 0, fmt.Errorf("unsupported signal: %s", signalName)
+	}
+}
+
+func resolveKillSignal(value goja.Value) (string, os.Signal, error) {
+	if goja.IsUndefined(value) {
+		sig, err := signalByName("SIGTERM")
+		return "SIGTERM", sig, err
+	}
+
+	switch value.Export().(type) {
+	case int64, int32, int16, int8, int, float64, float32:
+		signalNumber := int(value.ToInteger())
+		sig, err := signalByNumber(signalNumber)
+		return strconv.Itoa(signalNumber), sig, err
+	default:
+		signalName := value.String()
+		canonicalName, signalNumber, err := normalizeSignalName(signalName)
+		if err != nil {
+			return signalName, nil, err
+		}
+		osSignal, err := signalByNumber(signalNumber)
+		return canonicalName, osSignal, err
+	}
+}
+
 func doKill(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
@@ -442,15 +616,27 @@ func doKill(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 		}
 
 		pid := int(call.Argument(0).ToInteger())
-		signal := "SIGTERM"
-		if len(call.Arguments) > 1 {
-			signal = call.Argument(1).String()
+		if pid <= 0 {
+			return vm.NewGoError(fmt.Errorf("kill requires a positive pid"))
 		}
 
-		// TODO: Implement actual signal sending
-		// For now, just a placeholder
-		_ = pid
-		_ = signal
+		signalArg := goja.Undefined()
+		if len(call.Arguments) > 1 {
+			signalArg = call.Argument(1)
+		}
+
+		signalLabel, osSignal, err := resolveKillSignal(signalArg)
+		if err != nil {
+			return vm.NewGoError(err)
+		}
+
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			return vm.NewGoError(fmt.Errorf("kill %d with %s: %w", pid, signalLabel, err))
+		}
+		if err := proc.Signal(osSignal); err != nil {
+			return vm.NewGoError(fmt.Errorf("kill %d with %s: %w", pid, signalLabel, err))
+		}
 
 		return vm.ToValue(true)
 	}
