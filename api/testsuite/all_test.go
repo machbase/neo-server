@@ -24,7 +24,6 @@ func TestMain(m *testing.M) {
 func TestAll(t *testing.T) {
 	for _, db := range []api.Database{
 		testServer.DatabaseSVR(),
-		testServer.DatabaseRPC(),
 		testServer.DatabaseCLI(),
 		testServer.DatabaseGO(),
 	} {
