@@ -287,22 +287,15 @@ func (rows *Rows) Message() string {
 	} else {
 		return fmt.Sprintf("executed (%d).", stmtType)
 	}
-	if numRows == 0 {
+	switch numRows {
+	case 0:
 		return fmt.Sprintf("no rows %s", verb)
-	} else if numRows == 1 {
+	case 1:
 		return fmt.Sprintf("a row %s", verb)
-	} else {
+	default:
 		p := message.NewPrinter(language.English)
 		return p.Sprintf("%d rows %s", numRows, verb)
 	}
-}
-
-// internal use only from machrpc server
-func (rows *Rows) Fetch() ([]any, bool, error) {
-	if _env.database.enableWorkerPool {
-		return rows.FetchAsync()
-	}
-	return rows.FetchSync()
 }
 
 func (rows *Rows) FetchAsync() ([]any, bool, error) {

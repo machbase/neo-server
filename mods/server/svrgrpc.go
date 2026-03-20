@@ -152,13 +152,6 @@ func (svr *grpcd) Start() error {
 	svr.rpcServer = grpc.NewServer(grpcOptions...)
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
 
-	// rpcServer is serving the db service
-	// machrpc.RegisterMachbaseServer(svr.rpcServer, svr.machImpl)
-	// machrpc.RegisterMachbaseServer(svr.rpcServerInsecure, svr.machImpl)
-
-	// mgmtServer is serving general db service + mgmt service
-	// machrpc.RegisterMachbaseServer(svr.mgmtServer, svr.machImpl)
-	// machrpc.RegisterMachbaseServer(svr.mgmtServerInsecure, svr.machImpl)
 	if svr.mgmtImpl != nil {
 		mgmt.RegisterManagementServer(svr.mgmtServer, svr.mgmtImpl)
 		mgmt.RegisterManagementServer(svr.mgmtServerInsecure, svr.mgmtImpl)
