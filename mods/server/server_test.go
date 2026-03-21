@@ -517,6 +517,31 @@ func shellBridgeSqliteTest(t *testing.T) {
 			},
 		},
 		{
+			name: "bridge_exec_sqlite_create_supported_table",
+			args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS typed_ids(id INTEGER NOT NULL PRIMARY KEY, event_bool BOOLEAN, event_integer INTEGER, event_real REAL, event_text TEXT, event_blob BLOB, event_datetime DATETIME)"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_sqlite_insert_supported_row",
+			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO typed_ids(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES(1, TRUE, 42, 3.25, 'sqlite-text', X'0A0B0C', '2026-03-14 05:29:01')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_sqlite_query_supported_types",
+			args: append(shellArgs, "bridge", "query", "br-sqlite", "SELECT id, event_bool, event_integer, event_real, event_text, HEX(event_blob) AS event_blob_hex, strftime('%Y-%m-%d %H:%M:%S', event_datetime) AS event_datetime FROM typed_ids ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INTEGER │ EVENT_REAL │ EVENT_TEXT  │ EVENT_BLOB_HEX │ EVENT_DATETIME\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ (true|1)\\s+│\\s+42\\s+│\\s+3\\.25\\s+│ sqlite-text │ 0A0B0C\\s+│ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
 			name: "bridge_del_sqlite",
 			args: append(shellArgs, "bridge", "del", "br-sqlite"),
 			expect: []string{
@@ -608,6 +633,53 @@ func shellBridgePostgresTest(t *testing.T, dsn string) {
 				"│      1 │  1 │ pg-1 │",
 				"│      2 │  2 │ pg-2 │",
 				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_create_supported_table",
+			args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS typed_ids(id SERIAL PRIMARY KEY, event_bool BOOLEAN, event_int INTEGER, event_bigint BIGINT, event_real REAL, event_text TEXT, event_uuid UUID, event_date DATE, event_timestamp TIMESTAMP, event_timestamptz TIMESTAMPTZ)"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_insert_supported_row",
+			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO typed_ids(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES(TRUE, 42, 4200000000, 3.25, 'pg-text', '550e8400-e29b-41d4-a716-446655440000', DATE '2026-03-14', TIMESTAMP '2026-03-14 05:29:01', TIMESTAMPTZ '2026-03-14 05:29:01+00')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_supported_types",
+			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, event_bool, event_int, event_bigint, event_real, event_text, event_uuid::text AS event_uuid, TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS') AS event_timestamp, TO_CHAR(event_timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS event_timestamptz FROM typed_ids ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INT │ EVENT_BIGINT │ EVENT_REAL │ EVENT_TEXT │ EVENT_UUID\\s+│ EVENT_DATE │ EVENT_TIMESTAMP\\s+│ EVENT_TIMESTAMPTZ\\s+│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ true\\s+│\\s+42\\s+│\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+3\\.25\\s+│ pg-text\\s+│ 550e8400-e29b-41d4-a716-446655440000 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_timestamp_string",
+			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, memo, TO_CHAR(TIMESTAMP '2026-03-14 05:29:01', 'YYYY-MM-DD HH24:MI:SS') AS ts FROM ids WHERE id = 1 ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ pg-1 │ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_null_timestamp",
+			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, memo, CAST(NULL AS TIMESTAMP) AS ts FROM ids WHERE id = 1 ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ pg-1 │ NULL\\s*│$",
+				"/r/^└.*┘$",
 			},
 		},
 		{
@@ -715,6 +787,42 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 			},
 		},
 		{
+			name: "bridge_exec_mssql_create_supported_table",
+			args: append(shellArgs, "bridge", "exec", "br-ms", "CREATE TABLE typed_ids(id INT NOT NULL PRIMARY KEY, event_smallint SMALLINT NULL, event_decimal DECIMAL(10,2) NULL, event_real REAL NULL, event_varchar VARCHAR(100) NULL, event_text TEXT NULL, event_datetime DATETIME NULL)"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_insert_supported_row",
+			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO typed_ids(id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime) VALUES(1, 7, 123.45, 9.5, 'ms-varchar', 'ms-text', '2026-03-14 05:29:01')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_query_supported_types",
+			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT id, event_smallint, event_decimal, event_real, event_varchar, event_text, CONVERT(VARCHAR(19), event_datetime, 120) AS event_datetime FROM typed_ids ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ EVENT_SMALLINT │ EVENT_DECIMAL │ EVENT_REAL │ EVENT_VARCHAR │ EVENT_TEXT │ EVENT_DATETIME\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │\\s+7\\s+│\\s+123\\.45\\s+│\\s+9\\.5\\s+│ ms-varchar\\s+│ ms-text\\s+│ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_mssql_query_null_datetime",
+			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT id, memo, CAST(NULL AS DATETIME) AS dt FROM ids WHERE id = 1 ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ ms-1 │ NULL\\s*│$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
 			name: "bridge_exec_mssql_query_no_rows",
 			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
 			expect: []string{
@@ -787,45 +895,78 @@ func shellBridgeMySqlTest(t *testing.T, dsn string) {
 		},
 		{
 			name: "bridge_exec_mysql_create_table",
-			args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, memo TEXT)"),
+			args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, memo TEXT, event_date DATE, event_datetime DATETIME, event_timestamp TIMESTAMP NULL)"),
 			expect: []string{
 				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_mysql_insert_1",
-			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo) VALUES('my-1')"),
+			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-1', '2026-03-14', '2026-03-14 05:29:01', '2026-03-14 05:29:01')"),
 			expect: []string{
 				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_mysql_insert_2",
-			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo) VALUES('my-2')"),
+			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-2', '2026-03-15', '2026-03-15 06:30:02', '2026-03-15 06:30:02')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_insert_3_null_timestamp",
+			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-3', '2026-03-16', '2026-03-16 07:31:03', NULL)"),
 			expect: []string{
 				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_mysql_query",
-			args: append(shellArgs, "bridge", "query", "br-my", "SELECT * FROM ids ORDER BY id"),
+			args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, memo, DATE_FORMAT(event_date, '%Y-%m-%d') AS dt, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS dttm, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS ts FROM ids ORDER BY id"),
 			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"│      1 │  1 │ my-1 │",
-				"│      2 │  2 │ my-2 │",
-				"└────────┴────┴──────┘",
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s+│ DTTM\\s+│ TS\\s+│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ my-1 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+				"/r/^│\\s+2 │\\s+2 │ my-2 │ 2026-03-15 │ 2026-03-15 06:30:02 │ 2026-03-15 06:30:02 │$",
+				"/r/^│\\s+3 │\\s+3 │ my-3 │ 2026-03-16 │ 2026-03-16 07:31:03 │ NULL\\s*│$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_create_supported_table",
+			args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS typed_ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, event_bigint BIGINT, event_int INT, event_smallint SMALLINT, event_double DOUBLE, event_varchar VARCHAR(64), event_char CHAR(4), event_text TEXT, event_blob BLOB, event_date DATE, event_datetime DATETIME, event_timestamp TIMESTAMP NULL)"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_insert_supported_row",
+			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO typed_ids(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(4200000000, 123456, 12, 3.5, 'my-varchar', 'ABCD', 'my-text', X'010203', '2026-03-14', '2026-03-14 05:29:01', '2026-03-14 05:29:01')"),
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_mysql_query_supported_types",
+			args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, TO_BASE64(event_blob) AS event_blob_b64, DATE_FORMAT(event_date, '%Y-%m-%d') AS event_date, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS event_datetime, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS event_timestamp FROM typed_ids ORDER BY id"),
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ EVENT_BIGINT │ EVENT_INT │ EVENT_SMALLINT │ EVENT_DOUBLE │ EVENT_VARCHAR │ EVENT_CHAR │ EVENT_TEXT │ EVENT_BLOB_B64 │ EVENT_DATE │ EVENT_DATETIME\\s+│ EVENT_TIMESTAMP\\s+│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+123456\\s+│\\s+12\\s+│\\s+3\\.5\\s+│ my-varchar\\s+│ ABCD\\s+│ my-text\\s+│ QVFJRA==\\s+│ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
 			},
 		},
 		{
 			name: "bridge_exec_mysql_query_no_rows",
-			args: append(shellArgs, "bridge", "query", "br-my", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
+			args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, memo, DATE_FORMAT(event_date, '%Y-%m-%d') AS dt, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS dttm, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS ts FROM ids WHERE id < 0 ORDER BY id"),
 			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"└────────┴────┴──────┘",
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s*│ DTTM\\s*│ TS\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^└.*┘$",
 			},
 		},
 		{

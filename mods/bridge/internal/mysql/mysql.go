@@ -90,6 +90,9 @@ func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
 	case "sql.NullString":
 		return new(sql.NullString)
 	case "sql.NullTime":
+		if databaseTypeName == "DATE" {
+			return new(sql.NullString)
+		}
 		return new(sql.NullTime)
 	}
 	return c.SqlBridgeBase.NewScanType(reflectType, databaseTypeName)
