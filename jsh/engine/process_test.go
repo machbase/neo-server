@@ -535,7 +535,7 @@ func TestProcessEvents(t *testing.T) {
 			Script: `
 				const process = require("process");
 				console.println("SIGINT:", process.on('sigint', () => {}) === process);
-				console.println("SIGTERM:", process.once('term', () => {}) === process);
+				console.println("SIGTERM:", process.once('SIGTERM', () => {}) === process);
 				console.println("SIGQUIT:", process.once('SIGQUIT', () => {}) === process);
 				console.println("watchSignal:", typeof process.watchSignal);
 			`,
@@ -555,19 +555,28 @@ func TestProcessEvents(t *testing.T) {
 					count += 1;
 					console.println('lowercase');
 				});
-				process.once('term', () => {
+				process.once('SIGTERM', () => {
 					count += 1;
-					console.println('alias');
+					console.println('canonical');
 				});
 				process.emit('SIGTERM');
-				process.emit('term');
 				console.println('count:', count);
 			`,
 			Output: []string{
 				"lowercase",
-				"alias",
-				"lowercase",
-				"count: 3",
+				"canonical",
+				"count: 2",
+			},
+		},
+		{
+			Name: "process_custom_term_event_preserved",
+			Script: `
+				const process = require("process");
+				process.once('term', () => console.println('custom term'));
+				process.emit('term');
+			`,
+			Output: []string{
+				"custom term",
 			},
 		},
 	}
@@ -1141,13 +1150,13 @@ func TestProcessKill(t *testing.T) {
 }
 
 func TestProcessKillIntegration(t *testing.T) {
+	signalName := "SIGTERM"
 	if runtime.GOOS == "windows" {
-		t.Skip("process.kill integration relies on Unix-style signal handler delivery")
+		signalName = "SIGINT"
 	}
+	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
 
-	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
-
-	runProcessKillScript(t, cmd.Process.Pid, `"SIGTERM"`)
+	runProcessKillScript(t, cmd.Process.Pid, fmt.Sprintf(`%q`, signalName))
 
 	waitCh := make(chan error, 1)
 	go func() {
@@ -1166,18 +1175,20 @@ func TestProcessKillIntegration(t *testing.T) {
 	}
 
 	finalLines := collectRemainingLines(lines)
-	assertLinePresent(t, finalLines, "ready: SIGTERM")
-	assertLinePresent(t, finalLines, "caught: SIGTERM")
+	assertLinePresent(t, finalLines, "ready: "+signalName)
+	assertLinePresent(t, finalLines, "caught: "+signalName)
 }
 
 func TestProcessKillNumericIntegration(t *testing.T) {
+	signalName := "SIGTERM"
+	signalExpr := `15`
 	if runtime.GOOS == "windows" {
-		t.Skip("process.kill integration relies on Unix-style signal handler delivery")
+		signalName = "SIGINT"
+		signalExpr = `2`
 	}
+	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
 
-	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
-
-	runProcessKillScript(t, cmd.Process.Pid, `15`)
+	runProcessKillScript(t, cmd.Process.Pid, signalExpr)
 
 	waitCh := make(chan error, 1)
 	go func() {
@@ -1196,15 +1207,11 @@ func TestProcessKillNumericIntegration(t *testing.T) {
 	}
 
 	finalLines := collectRemainingLines(lines)
-	assertLinePresent(t, finalLines, "ready: SIGTERM")
-	assertLinePresent(t, finalLines, "caught: SIGTERM")
+	assertLinePresent(t, finalLines, "ready: "+signalName)
+	assertLinePresent(t, finalLines, "caught: "+signalName)
 }
 
 func TestProcessKillAliasIntegration(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("process.kill integration relies on Unix-style signal handler delivery")
-	}
-
 	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
 
 	runProcessKillScript(t, cmd.Process.Pid, `"term"`)
@@ -1227,7 +1234,11 @@ func TestProcessKillAliasIntegration(t *testing.T) {
 
 	finalLines := collectRemainingLines(lines)
 	assertLinePresent(t, finalLines, "ready: SIGTERM")
-	assertLinePresent(t, finalLines, "caught: SIGTERM")
+	if runtime.GOOS == "windows" {
+		assertLineAbsent(t, finalLines, "caught: SIGTERM")
+	} else {
+		assertLinePresent(t, finalLines, "caught: SIGTERM")
+	}
 }
 
 func runProcessKillScript(t *testing.T, pid int, signalExpr string) {

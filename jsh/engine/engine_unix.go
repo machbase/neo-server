@@ -102,3 +102,11 @@ func isatty(fd int) bool {
 		0, 0, 0)
 	return err == 0
 }
+
+func killProcess(pid int, signalLabel string, signalNumber int, osSignal os.Signal) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Signal(osSignal)
+}

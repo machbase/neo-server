@@ -25,7 +25,10 @@ function normalizeSignalEvent(eventName) {
     if (!normalized) {
         return eventName;
     }
-    const rawName = normalized.startsWith('SIG') ? normalized.slice(3) : normalized;
+    if (!normalized.startsWith('SIG')) {
+        return eventName;
+    }
+    const rawName = normalized.slice(3);
     return SUPPORTED_SIGNALS[rawName] || eventName;
 }
 
@@ -110,9 +113,6 @@ class Process extends EventEmitter {
         return super.removeListener(normalizeSignalEvent(eventName), listener);
     }
 
-    emit(eventName, ...args) {
-        return super.emit(normalizeSignalEvent(eventName), ...args);
-    }
 }
 
 const p = new Process();
