@@ -753,25 +753,37 @@ func runProcessSignalHelper(t *testing.T, signalName string, listenForSignal boo
 		t.Fatalf("send %s: %v", signalName, err)
 	}
 
+	drainTimer := time.NewTimer(5 * time.Second)
+	defer drainTimer.Stop()
+	for linesCh != nil {
+		select {
+		case line, ok := <-linesCh:
+			if !ok {
+				linesCh = nil
+				continue
+			}
+			lines = append(lines, line)
+		case <-drainTimer.C:
+			_ = cmd.Process.Kill()
+			t.Fatalf("timeout draining helper output for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
+		}
+	}
+	if err := <-scanErrCh; err != nil {
+		t.Fatalf("scan helper output for %s: %v", signalName, err)
+	}
+
 	waitCh := make(chan error, 1)
-	var waitErr error
 	go func() {
 		waitCh <- cmd.Wait()
 	}()
 
+	var waitErr error
 	select {
 	case err := <-waitCh:
 		waitErr = err
 	case <-time.After(5 * time.Second):
 		_ = cmd.Process.Kill()
 		t.Fatalf("timeout waiting for helper exit for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
-	}
-
-	for line := range linesCh {
-		lines = append(lines, line)
-	}
-	if err := <-scanErrCh; err != nil {
-		t.Fatalf("scan helper output for %s: %v", signalName, err)
 	}
 
 	return lines, waitErr, stderr.String()
