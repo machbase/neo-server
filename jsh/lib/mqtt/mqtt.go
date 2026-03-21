@@ -210,6 +210,147 @@ type Client struct {
 	closed bool
 }
 
+type eventMessage struct {
+	topic   string
+	payload []byte
+	props   *paho.PublishProperties
+}
+
+func (msg eventMessage) EventValue(vm *goja.Runtime) goja.Value {
+	obj := vm.NewObject()
+	obj.Set("topic", msg.topic)
+	obj.Set("payload", vm.NewArrayBuffer(msg.payload))
+	if msg.props != nil {
+		obj.Set("properties", exportPublishProperties(vm, msg.props))
+	}
+	return obj
+}
+
+func exportUserProperties(vm *goja.Runtime, props paho.UserProperties) goja.Value {
+	valuesByKey := map[string][]string{}
+	order := []string{}
+	for _, prop := range props {
+		if _, exists := valuesByKey[prop.Key]; !exists {
+			order = append(order, prop.Key)
+		}
+		valuesByKey[prop.Key] = append(valuesByKey[prop.Key], prop.Value)
+	}
+	obj := vm.NewObject()
+	for _, key := range order {
+		values := valuesByKey[key]
+		if len(values) == 1 {
+			obj.Set(key, values[0])
+		} else {
+			obj.Set(key, values)
+		}
+	}
+	return obj
+}
+
+func exportPublishProperties(vm *goja.Runtime, props *paho.PublishProperties) goja.Value {
+	obj := vm.NewObject()
+	if props.PayloadFormat != nil {
+		obj.Set("payloadFormat", int(*props.PayloadFormat))
+	}
+	if props.MessageExpiry != nil {
+		obj.Set("messageExpiry", int(*props.MessageExpiry))
+	}
+	if props.ContentType != "" {
+		obj.Set("contentType", props.ContentType)
+	}
+	if props.ResponseTopic != "" {
+		obj.Set("responseTopic", props.ResponseTopic)
+	}
+	if len(props.CorrelationData) > 0 {
+		obj.Set("correlationData", vm.NewArrayBuffer(append([]byte(nil), props.CorrelationData...)))
+	}
+	if props.TopicAlias != nil {
+		obj.Set("topicAlias", int(*props.TopicAlias))
+	}
+	if props.SubscriptionIdentifier != nil {
+		obj.Set("subscriptionIdentifier", *props.SubscriptionIdentifier)
+	}
+	if len(props.User) > 0 {
+		obj.Set("user", exportUserProperties(vm, props.User))
+	}
+	return obj
+}
+
+func (c *Client) ensureConnected() error {
+	if c.closed {
+		return fmt.Errorf("mqtt client is closed")
+	}
+	if c.conn == nil {
+		return fmt.Errorf("mqtt client is not connected")
+	}
+	return nil
+}
+
+func applyUserProperties(userProps map[string]any, user *paho.UserProperties) {
+	for k, v := range userProps {
+		user.Add(k, fmt.Sprintf("%v", v))
+	}
+}
+
+func buildSubscribeOptions(topic string, options map[string]any) paho.SubscribeOptions {
+	sub := paho.SubscribeOptions{Topic: topic, QoS: 1}
+	if options == nil {
+		return sub
+	}
+	if qos, ok := asByte(options["qos"]); ok {
+		sub.QoS = qos
+	}
+	if retainHandling, ok := asByte(options["retainHandling"]); ok {
+		sub.RetainHandling = retainHandling
+	}
+	if noLocal, ok := options["noLocal"].(bool); ok {
+		sub.NoLocal = noLocal
+	}
+	if retainAsPublished, ok := options["retainAsPublished"].(bool); ok {
+		sub.RetainAsPublished = retainAsPublished
+	}
+	return sub
+}
+
+func buildSubscribeProperties(options map[string]any) *paho.SubscribeProperties {
+	if options == nil {
+		return nil
+	}
+	props, ok := options["properties"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	ret := &paho.SubscribeProperties{}
+	if si, ok := asInt(props["subscriptionIdentifier"]); ok {
+		ret.SubscriptionIdentifier = &si
+	}
+	if userProps, ok := props["user"].(map[string]any); ok {
+		applyUserProperties(userProps, &ret.User)
+	}
+	if ret.SubscriptionIdentifier == nil && len(ret.User) == 0 {
+		return nil
+	}
+	return ret
+}
+
+func buildUnsubscribeProperties(options map[string]any) *paho.UnsubscribeProperties {
+	if options == nil {
+		return nil
+	}
+	props, ok := options["properties"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	ret := &paho.UnsubscribeProperties{}
+	if userProps, ok := props["user"].(map[string]any); ok {
+		applyUserProperties(userProps, &ret.User)
+	}
+	if len(ret.User) == 0 {
+		return nil
+	}
+	return ret
+}
+
 func (c *Client) Connect(config autopaho.ClientConfig) error {
 	// Establish the connection, it will retry until successful or context is canceled
 	if conn, err := autopaho.NewConnection(c.ctx, config); err != nil {
@@ -234,17 +375,25 @@ func (c *Client) Disconnect() {
 
 // Subscribe to a topic
 // Returns a list of reason codes for the subscription
-func (c *Client) Subscribe(topic string) (any, error) {
+func (c *Client) Subscribe(topic string, options map[string]any) (any, error) {
+	if err := c.ensureConnected(); err != nil {
+		return nil, err
+	}
 	subAck, err := c.conn.Subscribe(c.ctx, &paho.Subscribe{
+		Properties: buildSubscribeProperties(options),
 		Subscriptions: []paho.SubscribeOptions{
-			{Topic: topic, QoS: 1},
+			buildSubscribeOptions(topic, options),
 		},
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	c.conn.AddOnPublishReceived(func(pr autopaho.PublishReceived) (bool, error) {
-		c.emit("message", map[string]any{
-			"topic":   pr.Packet.Topic,
-			"payload": string(pr.Packet.Payload),
+		c.emit("message", eventMessage{
+			topic:   pr.Packet.Topic,
+			payload: append([]byte(nil), pr.Packet.Payload...),
+			props:   pr.Packet.Properties,
 		})
 		return true, nil
 	})
@@ -260,9 +409,38 @@ func (c *Client) Subscribe(topic string) (any, error) {
 	}
 }
 
+// Unsubscribe from a topic
+// Returns a list of reason codes for the unsubscription
+
+func (c *Client) Unsubscribe(topic string, options map[string]any) (any, error) {
+	if err := c.ensureConnected(); err != nil {
+		return nil, err
+	}
+	unsubAck, err := c.conn.Unsubscribe(c.ctx, &paho.Unsubscribe{
+		Topics:     []string{topic},
+		Properties: buildUnsubscribeProperties(options),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	reasons := make([]int, len(unsubAck.Reasons))
+	for i, r := range unsubAck.Reasons {
+		reasons[i] = int(r)
+	}
+	if len(reasons) == 1 {
+		return reasons[0], err
+	} else {
+		return reasons, err
+	}
+}
+
 // Publish a message to a topic
 // Returns the reason code for the publish
 func (c *Client) Publish(topic string, data any, options map[string]any) (int, error) {
+	if err := c.ensureConnected(); err != nil {
+		return 0, err
+	}
 	var payload []byte
 	switch val := data.(type) {
 	case string:
@@ -310,9 +488,7 @@ func (c *Client) Publish(topic string, data any, options map[string]any) (int, e
 				pub.Properties.SubscriptionIdentifier = &si
 			}
 			if userProps, ok := props["user"].(map[string]any); ok {
-				for k, v := range userProps {
-					pub.Properties.User.Add(k, fmt.Sprintf("%v", v))
-				}
+				applyUserProperties(userProps, &pub.Properties.User)
 			}
 		}
 	}
