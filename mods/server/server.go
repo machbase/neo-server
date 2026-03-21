@@ -1223,7 +1223,7 @@ func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
 		case *bridgerpc.Datum_VBool:
 			ret.Values = append(ret.Values, val.VBool)
 		case *bridgerpc.Datum_VTime:
-			t := time.UnixMilli(val.VTime)
+			t := time.Unix(0, val.VTime).In(time.Local).Format("2006-01-02 15:04:05")
 			ret.Values = append(ret.Values, t)
 		case *bridgerpc.Datum_VIp:
 			ret.Values = append(ret.Values, val.VIp)

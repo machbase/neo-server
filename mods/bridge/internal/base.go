@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"math"
-	"time"
 
 	"github.com/machbase/neo-client/api"
 )
@@ -209,7 +208,7 @@ func scanTypeToDataType(sqlType string) api.DataType {
 		return api.DataTypeFloat64
 	case "string", "sql.NullString":
 		return api.DataTypeString
-	case "time.Time", "sql.NullTime":
+	case "time.Time", "sql.NullTime", "*time.Time":
 		return api.DataTypeDatetime
 	case "[]byte", "sql.RawBytes":
 		return api.DataTypeBinary
@@ -245,7 +244,7 @@ func (b *SqlBridgeBase) NewScanType(reflectType string, databaseTypeName string)
 	case "sql.NullString":
 		return new(string)
 	case "sql.NullTime":
-		return new(time.Time)
+		return new(sql.NullTime)
 	case "sql.RawBytes":
 		return new([]byte)
 	case "[]uint8":
@@ -259,7 +258,9 @@ func (b *SqlBridgeBase) NewScanType(reflectType string, databaseTypeName string)
 	case "string":
 		return new(string)
 	case "time.Time":
-		return new(time.Time)
+		return new(sql.NullTime)
+	case "*time.Time":
+		return new(sql.NullTime)
 	}
 	return nil
 }

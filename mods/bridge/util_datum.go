@@ -51,7 +51,11 @@ func ConvertToDatum(arr ...any) ([]*bridgerpc.Datum, error) {
 		case time.Time:
 			ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VTime{VTime: v.UnixNano()}}
 		case *time.Time:
-			ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VTime{VTime: v.UnixNano()}}
+			if v == nil {
+				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VNull{VNull: true}}
+			} else {
+				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VTime{VTime: v.UnixNano()}}
+			}
 		case *sql.NullBool:
 			if v.Valid {
 				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VBool{VBool: v.Bool}}
