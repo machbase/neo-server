@@ -16,6 +16,10 @@ var testExecBuilder engine.ExecBuilderFunc
 var jshBinPath string
 
 func TestMain(m *testing.M) {
+	if os.Getenv("GO_WANT_PROCESS_SIGNAL_HELPER") == "1" {
+		os.Exit(m.Run())
+	}
+
 	tmpDir := os.TempDir()
 	jshBinPath = filepath.Join(tmpDir, "jsh")
 	args := []string{"build", "-o"}

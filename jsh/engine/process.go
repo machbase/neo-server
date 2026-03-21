@@ -587,25 +587,25 @@ func normalizeSignalName(signalName string) (string, int, error) {
 	}
 }
 
-func resolveKillSignal(value goja.Value) (string, os.Signal, error) {
+func resolveKillSignal(value goja.Value) (string, int, os.Signal, error) {
 	if goja.IsUndefined(value) {
 		sig, err := signalByName("SIGTERM")
-		return "SIGTERM", sig, err
+		return "SIGTERM", 15, sig, err
 	}
 
 	switch value.Export().(type) {
 	case int64, int32, int16, int8, int, float64, float32:
 		signalNumber := int(value.ToInteger())
 		sig, err := signalByNumber(signalNumber)
-		return strconv.Itoa(signalNumber), sig, err
+		return strconv.Itoa(signalNumber), signalNumber, sig, err
 	default:
 		signalName := value.String()
 		canonicalName, signalNumber, err := normalizeSignalName(signalName)
 		if err != nil {
-			return signalName, nil, err
+			return signalName, 0, nil, err
 		}
 		osSignal, err := signalByNumber(signalNumber)
-		return canonicalName, osSignal, err
+		return canonicalName, signalNumber, osSignal, err
 	}
 }
 
@@ -625,16 +625,12 @@ func doKill(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
 			signalArg = call.Argument(1)
 		}
 
-		signalLabel, osSignal, err := resolveKillSignal(signalArg)
+		signalLabel, signalNumber, osSignal, err := resolveKillSignal(signalArg)
 		if err != nil {
 			return vm.NewGoError(err)
 		}
 
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			return vm.NewGoError(fmt.Errorf("kill %d with %s: %w", pid, signalLabel, err))
-		}
-		if err := proc.Signal(osSignal); err != nil {
+		if err := killProcess(pid, signalLabel, signalNumber, osSignal); err != nil {
 			return vm.NewGoError(fmt.Errorf("kill %d with %s: %w", pid, signalLabel, err))
 		}
 

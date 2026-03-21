@@ -680,6 +680,7 @@ func runProcessSignalHelper(t *testing.T, signalName string, listenForSignal boo
 	t.Helper()
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestProcessSignalHelper$", "--")
+	prepareSignalHelperCommand(cmd)
 	cmd.Env = append(os.Environ(),
 		"GO_WANT_PROCESS_SIGNAL_HELPER=1",
 		"JSH_TEST_SIGNAL="+signalName,
@@ -730,7 +731,7 @@ func runProcessSignalHelper(t *testing.T, signalName string, listenForSignal boo
 		}
 	}
 
-	if err := cmd.Process.Signal(testSignalByName(signalName)); err != nil {
+	if err := sendTestSignal(cmd, signalName); err != nil {
 		_ = cmd.Process.Kill()
 		t.Fatalf("send %s: %v", signalName, err)
 	}
@@ -1140,6 +1141,10 @@ func TestProcessKill(t *testing.T) {
 }
 
 func TestProcessKillIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process.kill integration relies on Unix-style signal handler delivery")
+	}
+
 	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
 
 	runProcessKillScript(t, cmd.Process.Pid, `"SIGTERM"`)
@@ -1166,6 +1171,10 @@ func TestProcessKillIntegration(t *testing.T) {
 }
 
 func TestProcessKillNumericIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process.kill integration relies on Unix-style signal handler delivery")
+	}
+
 	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
 
 	runProcessKillScript(t, cmd.Process.Pid, `15`)
@@ -1192,6 +1201,10 @@ func TestProcessKillNumericIntegration(t *testing.T) {
 }
 
 func TestProcessKillAliasIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process.kill integration relies on Unix-style signal handler delivery")
+	}
+
 	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
 
 	runProcessKillScript(t, cmd.Process.Pid, `"term"`)
