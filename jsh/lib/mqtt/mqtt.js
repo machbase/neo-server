@@ -4,6 +4,12 @@ const EventEmitter = require('events');
 const process = require('process');
 const _mqtt = require('@jsh/mqtt');
 
+if (typeof Buffer !== 'undefined' && !Buffer.isBuffer) {
+    Buffer.isBuffer = function (obj) {
+        return obj instanceof Uint8Array || (obj && obj.constructor && obj.constructor.name === 'Buffer');
+    };
+}
+
 class Client extends EventEmitter {
     constructor(options) {
         super();
@@ -26,6 +32,26 @@ class Client extends EventEmitter {
         });
     }
 
+    emit(event, ...args) {
+        if (event === 'message' && args.length > 0 && args[0] && typeof args[0] === 'object') {
+            const msg = args[0];
+            if (typeof Buffer !== 'undefined') {
+                if (msg.payload && typeof msg.payload.byteLength === 'number') {
+                    msg.payload = Buffer.from(new Uint8Array(msg.payload));
+                } else if (msg.payload instanceof Uint8Array && !Buffer.isBuffer(msg.payload)) {
+                    msg.payload = Buffer.from(msg.payload);
+                }
+                if (Buffer.isBuffer(msg.payload) && typeof msg.payloadText === 'undefined') {
+                    msg.payloadText = msg.payload.toString();
+                }
+                if (msg.properties && msg.properties.correlationData && typeof msg.properties.correlationData.byteLength === 'number') {
+                    msg.properties.correlationData = Buffer.from(new Uint8Array(msg.properties.correlationData));
+                }
+            }
+        }
+        return super.emit(event, ...args);
+    }
+
     publish(topic, message, options) {
         try {
             let reason = this.raw.publish(topic, message, options);
@@ -39,6 +65,15 @@ class Client extends EventEmitter {
         try {
             let reason = this.raw.subscribe(topic, options);
             this.emit('subscribed', topic, reason);
+        } catch (err) {
+            this.emit('error', err);
+        }
+    }
+
+    unsubscribe(topic, options) {
+        try {
+            let reason = this.raw.unsubscribe(topic, options);
+            this.emit('unsubscribed', topic, reason);
         } catch (err) {
             this.emit('error', err);
         }

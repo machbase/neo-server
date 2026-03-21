@@ -77,19 +77,69 @@ Publishes a message to the specified topic.
 client.publish('test/topic', 'Hello, MQTT!');
 ```
 
-### subscribe(topic)
+### subscribe(topic, options)
 
 Subscribes to the specified topic.
 
 **Parameters:**
 - `topic` (string): Topic to subscribe to
+- `options` (Object, optional): Subscription options
+
+**Options:**
+- `qos` (number): QoS level. Default is `1`
+- `retainHandling` (number): MQTT v5 retain handling mode
+- `noLocal` (boolean): Suppress messages published by the same client
+- `retainAsPublished` (boolean): Preserve the retain flag from the broker
+- `properties` (Object): MQTT v5 subscribe properties
+
+`options.properties` fields:
+
+- `subscriptionIdentifier` (number): Subscription identifier
+- `user` (Object): User properties as `key: value`
 
 **Returns:** void
 
 **Example:**
 
 ```javascript
-client.subscribe('test/topic');
+client.subscribe('test/topic', {
+    qos: 0,
+    properties: {
+        subscriptionIdentifier: 7,
+        user: {
+            source: 'example',
+        },
+    },
+});
+```
+
+### unsubscribe(topic, options)
+
+Unsubscribes from the specified topic.
+
+**Parameters:**
+- `topic` (string): Topic to unsubscribe from
+- `options` (Object, optional): Unsubscribe options
+
+**Options:**
+- `properties` (Object): MQTT v5 unsubscribe properties
+
+`options.properties` fields:
+
+- `user` (Object): User properties as `key: value`
+
+**Returns:** void
+
+**Example:**
+
+```javascript
+client.unsubscribe('test/topic', {
+    properties: {
+        user: {
+            source: 'example',
+        },
+    },
+});
 ```
 
 ### close()
@@ -139,6 +189,8 @@ client.on('error', (err) => {
 });
 ```
 
+Operations like `publish()`, `subscribe()`, and `unsubscribe()` emit `error` if the client is not connected or has already been closed.
+
 ### 'message'
 
 Emitted when a message is received on a subscribed topic.
@@ -146,11 +198,44 @@ Emitted when a message is received on a subscribed topic.
 **Callback Parameters:**
 - `msg` (Object): Message object
   - `topic` (string): Topic the message was received on
-  - `payload` (string): Message content
+    - `payload` (Buffer): Binary-safe payload buffer
+    - `payloadText` (string): UTF-8 decoded payload text convenience field
+    - `properties` (Object): MQTT v5 publish properties when present
+
+`msg.properties` fields:
+
+- `payloadFormat` (number): Payload format indicator
+- `messageExpiry` (number): Expiry interval
+- `contentType` (string): Content type
+- `responseTopic` (string): Response topic
+- `correlationData` (Buffer): Binary-safe correlation data
+- `topicAlias` (number): Topic alias when present
+- `subscriptionIdentifier` (number): Subscription identifier when present
+- `user` (Object): User properties as `key: value` or `key: string[]` for duplicate keys
 
 ```javascript
 client.on('message', (msg) => {
-    console.println("Message received on topic:", msg.topic, "payload:", msg.payload);
+    console.println("Message received on topic:", msg.topic, "payload:", msg.payloadText);
+});
+```
+
+For binary payloads, inspect `msg.payload` directly:
+
+```javascript
+client.on('message', (msg) => {
+    console.println('Payload is buffer:', Buffer.isBuffer(msg.payload));
+    console.println('Payload bytes:', Array.from(msg.payload).join(','));
+});
+```
+
+MQTT v5 publish properties are available as `msg.properties`:
+
+```javascript
+client.on('message', (msg) => {
+    console.println('Content type:', msg.properties.contentType);
+    console.println('Response topic:', msg.properties.responseTopic);
+    console.println('Correlation data:', msg.properties.correlationData.toString());
+    console.println('User source:', msg.properties.user.source);
 });
 ```
 
@@ -170,15 +255,29 @@ client.on('subscribed', (topic, reason) => {
 
 ### 'published'
 
-Emitted when a message has been published.
+Emitted when a publish request completes.
 
 **Callback Parameters:**
 - `topic` (string): Published topic
-- `reason` (number): Publish result code (0: success)
+- `reason` (number): Publish result code returned by the broker client
 
 ```javascript
 client.on('published', (topic, reason) => {
     console.println("Published to:", topic, "Payload:", reason);
+});
+```
+
+### 'unsubscribed'
+
+Emitted when successfully unsubscribed from a topic.
+
+**Callback Parameters:**
+- `topic` (string): Unsubscribed topic
+- `reason` (number): Unsubscribe result code (0: success)
+
+```javascript
+client.on('unsubscribed', (topic, reason) => {
+    console.println("Unsubscribed from:", topic, "reason:", reason);
 });
 ```
 
@@ -202,7 +301,12 @@ const client = new mqtt.Client({
 // On connection success
 client.on('open', () => {
     console.println("Connected");
-    client.subscribe('test/topic');
+    client.subscribe('test/topic', {
+        qos: 0,
+        properties: {
+            subscriptionIdentifier: 7,
+        },
+    });
 });
 
 // Error handling
@@ -217,12 +321,14 @@ client.on('close', () => {
 
 // Message received
 client.on('message', (msg) => {
-    console.println("Message received on topic:", msg.topic, "payload:", msg.payload);
-    
-    // Close connection after receiving message
-    setTimeout(() => {
-        client.close();
-    }, 500);
+    console.println("Message received on topic:", msg.topic, "payload:", msg.payloadText);
+    client.unsubscribe(msg.topic, {
+        properties: {
+            user: {
+                source: 'example',
+            },
+        },
+    });
 });
 
 // On successful subscription
@@ -235,6 +341,27 @@ client.on('subscribed', (topic, reason) => {
 // On successful publish
 client.on('published', (topic, reason) => {
     console.println("Published to:", topic, "Payload:", reason);
+});
+
+// On successful unsubscription
+client.on('unsubscribed', (topic, reason) => {
+    console.println("Unsubscribed from:", topic, "reason:", reason);
+    setTimeout(() => {
+        client.close();
+    }, 500);
+});
+```
+
+### Binary Payload Example
+
+```javascript
+client.on('subscribed', (topic) => {
+    client.publish(topic, new Uint8Array([0, 1, 2, 255]));
+});
+
+client.on('message', (msg) => {
+    console.println('Payload is buffer:', Buffer.isBuffer(msg.payload));
+    console.println('Payload bytes:', Array.from(msg.payload).join(','));
 });
 ```
 
@@ -267,18 +394,29 @@ client.close();
 
 ## `mqtt_pub` Usage
 
-The shell command `mqtt_pub` publishes one message and exits after the broker acknowledges the publish request.
+The shell command `mqtt_pub` publishes one message and exits after the publish request completes.
+
+When `--qos 1` or `--qos 2` is used, `mqtt_pub` waits for the corresponding broker acknowledgment before closing the connection. With `--qos 0`, there is no broker acknowledgment and the command exits after the client publish call returns.
 
 Supported input modes:
 
 - `--message <text>`: publish an inline text payload
 - `--file <path>`: publish the content of a file
 
+Options:
+
+- `--qos <0|1|2>`: MQTT publish QoS level. Default is `0`.
+
 Examples:
 
 ```sh
 # Publish an inline message
 mqtt_pub --broker 127.0.0.1:5653 --topic test/topic --message "hello-mqtt"
+```
+
+```sh
+# Publish and wait for PUBACK before exiting
+mqtt_pub --broker 127.0.0.1:5653 --topic test/topic --qos 1 --message "hello-mqtt"
 ```
 
 ```sh
@@ -295,8 +433,8 @@ mqtt_pub --debug --broker tcp://127.0.0.1:5653 --topic test/topic --message "hel
 
 - The client automatically attempts to reconnect when the connection is lost.
 - The reconnection interval can be configured with the `connectRetryDelay` option.
-- QoS is currently fixed at 1 for subscriptions and 0 for publishes.
-- `mqtt_pub` accepts `--qos`, but the current native MQTT publish path behaves as QoS 0.
+- Subscriptions default to QoS 1 unless a different value is provided in `subscribe()` options.
+- Publishes honor the `qos` option passed to `publish()` or `mqtt_pub --qos`.
 - The client maintains an internal event loop, so the program will not terminate until the connection is closed.
 
 ## Dependencies

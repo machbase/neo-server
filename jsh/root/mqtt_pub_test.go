@@ -93,6 +93,7 @@ func TestMqttPubPublishesMessage(t *testing.T) {
 		"mqtt_pub",
 		"--broker", addr,
 		"--topic", "test/topic",
+		"--qos", "1", // guarantee delivery for test reliability
 		"--message", "hello-mqtt",
 	)
 	if err != nil {
@@ -128,6 +129,7 @@ func TestMqttPubPublishesFilePayload(t *testing.T) {
 		"mqtt_pub",
 		"--broker", addr,
 		"--topic", "test/file",
+		"--qos", "1", // guarantee delivery for test reliability
 		"--file", filepath.Base(payloadPath),
 	)
 	if err != nil {

@@ -146,7 +146,18 @@ func TestMqtt(t *testing.T) {
 				});
 				client.on('open', () => {
 					console.println("Connected");
-					client.subscribe('test/topic');
+					client.subscribe('test/topic', {
+						qos: 0,
+						noLocal: false,
+						retainAsPublished: true,
+						retainHandling: 0,
+						properties: {
+							subscriptionIdentifier: 7,
+							user: {
+								source: 'basic_ops',
+							},
+						},
+					});
 				});
 				client.on('error', (err) => {
 					console.println("Error:", err.message);
@@ -155,14 +166,24 @@ func TestMqtt(t *testing.T) {
 					console.println("Disconnected");
 				});
 				client.on('message', (msg) => {
-					console.println("Message received on topic:", msg.topic, "payload:", msg.payload);
-					setTimeout(() => {
-						client.close();
-					}, 500);
+					console.println("Message received on topic:", msg.topic, "payload:", msg.payloadText);
+					client.unsubscribe(msg.topic, {
+						properties: {
+							user: {
+								source: 'basic_ops',
+							},
+						},
+					});
 				});
 				client.on('subscribed', (topic, reason) => {
 					console.println("Subscribed to:", topic, "reason:", reason);
 					client.publish('test/topic', 'Hello, MQTT!');
+				});
+				client.on('unsubscribed', (topic, reason) => {
+					console.println("Unsubscribed from:", topic, "reason:", reason);
+					setTimeout(() => {
+						client.close();
+					}, 500);
 				});
 				client.on('published', (topic, reason) => {
 					console.println("Published to:", topic, "Payload:", reason);
@@ -170,10 +191,186 @@ func TestMqtt(t *testing.T) {
 			`,
 			Output: []string{
 				"Connected",
-				"Subscribed to: test/topic reason: 1",
+				"Subscribed to: test/topic reason: 0",
 				"Published to: test/topic Payload: 0",
 				"Message received on topic: test/topic payload: Hello, MQTT!",
+				"Unsubscribed from: test/topic reason: 0",
 				"Disconnected",
+			},
+			Vars: map[string]any{
+				"brokerAddr": brokerAddr,
+			},
+		},
+		{
+			Name: "binary_message_payload",
+			Script: `
+				const addr = require("process").env.get('brokerAddr');
+				const mqtt = require("mqtt");
+				const client = new mqtt.Client({
+					servers: [addr],
+					username: "user",
+					password: "pass",
+					keepAlive: 60,
+					cleanStartOnInitialConnection: true,
+					connectRetryDelay: 2000,
+					connectTimeout: 10*1000,
+				});
+				client.on('open', () => {
+					console.println("Connected");
+					client.subscribe('test/binary');
+				});
+				client.on('error', (err) => {
+					console.println("Error:", err.message);
+				});
+				client.on('close', () => {
+					console.println("Disconnected");
+				});
+				client.on('subscribed', (topic, reason) => {
+					console.println("Subscribed to:", topic, "reason:", reason);
+					client.publish(topic, new Uint8Array([0, 1, 2, 255]));
+				});
+				client.on('published', (topic, reason) => {
+					console.println("Published to:", topic, "Payload:", reason);
+				});
+				client.on('message', (msg) => {
+					console.println("Payload is buffer:", Buffer.isBuffer(msg.payload));
+					console.println("Payload bytes:", Array.from(msg.payload).join(','));
+					client.unsubscribe(msg.topic);
+				});
+				client.on('unsubscribed', (topic, reason) => {
+					console.println("Unsubscribed from:", topic, "reason:", reason);
+					client.close();
+				});
+			`,
+			Output: []string{
+				"Connected",
+				"Subscribed to: test/binary reason: 1",
+				"Published to: test/binary Payload: 0",
+				"Payload is buffer: true",
+				"Payload bytes: 0,1,2,255",
+				"Unsubscribed from: test/binary reason: 0",
+				"Disconnected",
+			},
+			Vars: map[string]any{
+				"brokerAddr": brokerAddr,
+			},
+		},
+		{
+			Name: "message_properties",
+			Script: `
+				const addr = require("process").env.get('brokerAddr');
+				const mqtt = require("mqtt");
+				const client = new mqtt.Client({
+					servers: [addr],
+					username: "user",
+					password: "pass",
+					keepAlive: 60,
+					cleanStartOnInitialConnection: true,
+					connectRetryDelay: 2000,
+					connectTimeout: 10*1000,
+				});
+				client.on('open', () => {
+					console.println("Connected");
+					client.subscribe('test/properties', {
+						qos: 1,
+						properties: {
+							subscriptionIdentifier: 9,
+						},
+					});
+				});
+				client.on('error', (err) => {
+					console.println("Error:", err.message);
+				});
+				client.on('close', () => {
+					console.println("Disconnected");
+				});
+				client.on('subscribed', (topic, reason) => {
+					console.println("Subscribed to:", topic, "reason:", reason);
+					client.publish(topic, 'payload-with-properties', {
+						qos: 1,
+						properties: {
+							payloadFormat: 1,
+							messageExpiry: 30,
+							contentType: 'text/plain',
+							responseTopic: 'test/reply',
+							correlationData: 'cid-123',
+							user: {
+								source: 'properties_test',
+								format: 'text',
+							},
+						},
+					});
+				});
+				client.on('published', (topic, reason) => {
+					console.println("Published to:", topic, "Payload:", reason);
+				});
+				client.on('message', (msg) => {
+					console.println("Payload text:", msg.payloadText);
+					console.println("Content type:", msg.properties.contentType);
+					console.println("Response topic:", msg.properties.responseTopic);
+					console.println("Payload format:", msg.properties.payloadFormat);
+					console.println("Message expiry:", msg.properties.messageExpiry);
+					console.println("Correlation data is buffer:", Buffer.isBuffer(msg.properties.correlationData));
+					console.println("Correlation data text:", msg.properties.correlationData.toString());
+					console.println("User source:", msg.properties.user.source);
+					console.println("User format:", msg.properties.user.format);
+					client.unsubscribe(msg.topic);
+				});
+				client.on('unsubscribed', (topic, reason) => {
+					console.println("Unsubscribed from:", topic, "reason:", reason);
+					client.close();
+				});
+			`,
+			Output: []string{
+				"Connected",
+				"Subscribed to: test/properties reason: 1",
+				"Published to: test/properties Payload: 1",
+				"Payload text: payload-with-properties",
+				"Content type: text/plain",
+				"Response topic: test/reply",
+				"Payload format: 1",
+				"Message expiry: 30",
+				"Correlation data is buffer: true",
+				"Correlation data text: cid-123",
+				"User source: properties_test",
+				"User format: text",
+				"Unsubscribed from: test/properties reason: 0",
+				"Disconnected",
+			},
+			Vars: map[string]any{
+				"brokerAddr": brokerAddr,
+			},
+		},
+		{
+			Name: "unsubscribe_closed_client",
+			Script: `
+				const addr = require("process").env.get('brokerAddr');
+				const mqtt = require("mqtt");
+				const client = new mqtt.Client({
+					servers: [addr],
+					username: "user",
+					password: "pass",
+					keepAlive: 60,
+					cleanStartOnInitialConnection: true,
+					connectRetryDelay: 2000,
+					connectTimeout: 10*1000,
+				});
+				client.on('open', () => {
+					console.println("Connected");
+					client.close();
+					client.unsubscribe('test/topic');
+				});
+				client.on('error', (err) => {
+					console.println("Error:", err.message);
+				});
+				client.on('close', () => {
+					console.println("Disconnected");
+				});
+			`,
+			Output: []string{
+				"Connected",
+				"Disconnected",
+				"Error: mqtt client is closed",
 			},
 			Vars: map[string]any{
 				"brokerAddr": brokerAddr,

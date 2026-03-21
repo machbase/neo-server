@@ -12,7 +12,7 @@ const options = {
     broker: { type: 'string', short: 'b', description: "MQTT broker address", default: 'tcp://localhost:5653' },
     message: { type: 'string', short: 'm', description: "Message to publish", default: '' },
     file: { type: 'string', short: 'f', description: "File containing message to publish", default: '' },
-    qos: { type: 'number', short: 'q', description: "QoS level for MQTT message (0, 1, or 2)", default: 0 },
+    qos: { type: 'integer', short: 'q', description: "QoS level for MQTT message (0, 1, or 2)", default: 0 },
 }
 
 let showHelp = true;

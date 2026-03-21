@@ -1,10 +1,20 @@
 package engine_test
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/lib"
+	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
 
@@ -520,10 +530,289 @@ func TestProcessEvents(t *testing.T) {
 				"listener 2",
 			},
 		},
+		{
+			Name: "process_signal_registration",
+			Script: `
+				const process = require("process");
+				console.println("SIGINT:", process.on('sigint', () => {}) === process);
+				console.println("SIGTERM:", process.once('SIGTERM', () => {}) === process);
+				console.println("SIGQUIT:", process.once('SIGQUIT', () => {}) === process);
+				console.println("watchSignal:", typeof process.watchSignal);
+			`,
+			Output: []string{
+				"SIGINT: true",
+				"SIGTERM: true",
+				"SIGQUIT: true",
+				"watchSignal: undefined",
+			},
+		},
+		{
+			Name: "process_signal_event_normalization",
+			Script: `
+				const process = require("process");
+				let count = 0;
+				process.on('sigterm', () => {
+					count += 1;
+					console.println('lowercase');
+				});
+				process.once('SIGTERM', () => {
+					count += 1;
+					console.println('canonical');
+				});
+				process.emit('SIGTERM');
+				console.println('count:', count);
+			`,
+			Output: []string{
+				"lowercase",
+				"canonical",
+				"count: 2",
+			},
+		},
+		{
+			Name: "process_custom_term_event_preserved",
+			Script: `
+				const process = require("process");
+				process.once('term', () => console.println('custom term'));
+				process.emit('term');
+			`,
+			Output: []string{
+				"custom term",
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
+	}
+}
+
+func TestProcessSignalForwarding(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+	}
+
+	signals := []string{"SIGINT"}
+	if runtime.GOOS != "windows" {
+		signals = append(signals, "SIGTERM", "SIGQUIT")
+	}
+
+	for _, signalName := range signals {
+		t.Run(signalName, func(t *testing.T) {
+			lines, waitErr, stderrOutput := runProcessSignalHelper(t, signalName, true)
+			if waitErr != nil {
+				t.Fatalf("helper failed for %s: %v\nstdout:\n%s\nstderr:\n%s", signalName, waitErr, strings.Join(lines, "\n"), stderrOutput)
+			}
+			assertLinePresent(t, lines, "ready: "+signalName)
+			assertLinePresent(t, lines, "caught: "+signalName)
+		})
+	}
+}
+
+func TestProcessSignalDefaultBehavior(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+	}
+
+	lines, waitErr, stderrOutput := runProcessSignalHelper(t, "SIGINT", false)
+	if waitErr == nil {
+		t.Fatalf("expected helper without listener to terminate by signal\nstdout:\n%s\nstderr:\n%s", strings.Join(lines, "\n"), stderrOutput)
+	}
+	assertLinePresent(t, lines, "ready: SIGINT")
+	assertLineAbsent(t, lines, "caught: SIGINT")
+
+	lines, waitErr, stderrOutput = runProcessSignalHelper(t, "SIGINT", true)
+	if waitErr != nil {
+		t.Fatalf("expected helper with listener to exit cleanly: %v\nstdout:\n%s\nstderr:\n%s", waitErr, strings.Join(lines, "\n"), stderrOutput)
+	}
+	assertLinePresent(t, lines, "ready: SIGINT")
+	assertLinePresent(t, lines, "caught: SIGINT")
+}
+
+func TestProcessSignalHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_PROCESS_SIGNAL_HELPER") != "1" {
+		return
+	}
+
+	signalName := os.Getenv("JSH_TEST_SIGNAL")
+	listenForSignal := os.Getenv("JSH_TEST_LISTEN_SIGNAL") == "1"
+	script := `
+		const process = require("process");
+		const signalName = process.env.get("TEST_SIGNAL");
+		const timer = setInterval(() => {}, 1000);
+		setTimeout(() => {
+			console.println("timeout:", signalName);
+			clearInterval(timer);
+		}, 5000);
+		console.println("ready:", signalName);
+	`
+	if listenForSignal {
+		script = `
+			const process = require("process");
+			const signalName = process.env.get("TEST_SIGNAL");
+			const timer = setInterval(() => {}, 1000);
+			const timeout = setTimeout(() => {
+				console.println("timeout:", signalName);
+				clearInterval(timer);
+			}, 5000);
+			process.once(signalName, () => {
+				console.println("caught:", signalName);
+				clearInterval(timer);
+				clearTimeout(timeout);
+			});
+			console.println("ready:", signalName);
+		`
+	}
+	conf := engine.Config{
+		Name: "process_signal_helper",
+		Code: script,
+		Env: map[string]any{
+			"PATH":         "/work:/sbin",
+			"PWD":          "/work",
+			"HOME":         "/work",
+			"LIBRARY_PATH": "./node_modules:/lib",
+			"TEST_SIGNAL":  signalName,
+		},
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+		},
+		Reader: bytes.NewBuffer(nil),
+		Writer: os.Stdout,
+	}
+
+	jr, err := engine.New(conf)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	lib.Enable(jr)
+	if err := jr.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(3)
+	}
+	os.Exit(jr.ExitCode())
+}
+
+func runProcessSignalHelper(t *testing.T, signalName string, listenForSignal bool) ([]string, error, string) {
+	t.Helper()
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestProcessSignalHelper$", "--")
+	prepareSignalHelperCommand(cmd)
+	cmd.Env = append(os.Environ(),
+		"GO_WANT_PROCESS_SIGNAL_HELPER=1",
+		"JSH_TEST_SIGNAL="+signalName,
+		"JSH_TEST_LISTEN_SIGNAL="+boolToEnv(listenForSignal),
+	)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper: %v", err)
+	}
+
+	linesCh := make(chan string, 16)
+	scanErrCh := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			linesCh <- scanner.Text()
+		}
+		scanErrCh <- scanner.Err()
+		close(linesCh)
+	}()
+
+	var lines []string
+	readyLine := "ready: " + signalName
+	readyTimer := time.NewTimer(5 * time.Second)
+	defer readyTimer.Stop()
+
+	ready := false
+	for !ready {
+		select {
+		case line, ok := <-linesCh:
+			if !ok {
+				t.Fatalf("helper exited before readiness for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
+			}
+			lines = append(lines, line)
+			if line == readyLine {
+				ready = true
+			}
+		case <-readyTimer.C:
+			_ = cmd.Process.Kill()
+			t.Fatalf("timeout waiting for readiness for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
+		}
+	}
+
+	if err := sendTestSignal(cmd, signalName); err != nil {
+		_ = cmd.Process.Kill()
+		t.Fatalf("send %s: %v", signalName, err)
+	}
+
+	waitCh := make(chan error, 1)
+	var waitErr error
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		waitErr = err
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("timeout waiting for helper exit for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
+	}
+
+	for line := range linesCh {
+		lines = append(lines, line)
+	}
+	if err := <-scanErrCh; err != nil {
+		t.Fatalf("scan helper output for %s: %v", signalName, err)
+	}
+
+	return lines, waitErr, stderr.String()
+}
+
+func assertLinePresent(t *testing.T, lines []string, want string) {
+	t.Helper()
+	for _, line := range lines {
+		if line == want {
+			return
+		}
+	}
+	t.Fatalf("missing line %q in output:\n%s", want, strings.Join(lines, "\n"))
+}
+
+func assertLineAbsent(t *testing.T, lines []string, want string) {
+	t.Helper()
+	for _, line := range lines {
+		if line == want {
+			t.Fatalf("unexpected line %q in output:\n%s", want, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+func boolToEnv(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
+}
+
+func testSignalByName(signalName string) os.Signal {
+	switch signalName {
+	case "SIGINT":
+		return os.Interrupt
+	case "SIGTERM":
+		return syscall.Signal(15)
+	case "SIGQUIT":
+		return syscall.Signal(3)
+	default:
+		return os.Interrupt
 	}
 }
 
@@ -776,36 +1065,89 @@ func TestProcessKill(t *testing.T) {
 			},
 		},
 		{
-			Name: "kill_with_pid",
+			Name: "kill_invalid_pid",
 			Script: `
 				const process = require("process");
-				const result = process.kill(12345);
-				console.println("kill result:", result);
+				const result = process.kill(-1);
+				if (result instanceof Error) {
+					console.println("error:", result.message.includes("positive pid"));
+				} else {
+					console.println("result:", result);
+				}
 			`,
 			Output: []string{
-				"kill result: true",
+				"error: true",
 			},
 		},
 		{
-			Name: "kill_with_signal",
+			Name: "kill_zero_current_process",
 			Script: `
 				const process = require("process");
-				const result = process.kill(12345, "SIGKILL");
-				console.println("kill with signal:", result);
-			`,
-			Output: []string{
-				"kill with signal: true",
-			},
-		},
-		{
-			Name: "kill_with_sigterm",
-			Script: `
-				const process = require("process");
-				const result = process.kill(99999, "SIGTERM");
+				const result = process.kill(process.pid, 0);
 				console.println("result:", result);
 			`,
 			Output: []string{
 				"result: true",
+			},
+		},
+		{
+			Name: "kill_unsupported_signal",
+			Script: `
+				const process = require("process");
+				const result = process.kill(12345, "SIGWHATEVER");
+				if (result instanceof Error) {
+					console.println("error:", result.message.includes("unsupported signal"));
+				} else {
+					console.println("result:", result);
+				}
+			`,
+			Output: []string{
+				"error: true",
+			},
+		},
+		{
+			Name: "kill_unsupported_numeric_signal",
+			Script: `
+				const process = require("process");
+				const result = process.kill(12345, 999);
+				if (result instanceof Error) {
+					console.println("error:", result.message.includes("unsupported signal: 999"));
+				} else {
+					console.println("result:", result);
+				}
+			`,
+			Output: []string{
+				"error: true",
+			},
+		},
+		{
+			Name: "kill_missing_process_alias_signal",
+			Script: `
+				const process = require("process");
+				const result = process.kill(99999, "term");
+				if (result instanceof Error) {
+					console.println("error:", result.message.includes("kill 99999 with SIGTERM"));
+				} else {
+					console.println("result:", result);
+				}
+			`,
+			Output: []string{
+				"error: true",
+			},
+		},
+		{
+			Name: "kill_missing_process",
+			Script: `
+				const process = require("process");
+				const result = process.kill(99999, "SIGTERM");
+				if (result instanceof Error) {
+					console.println("error:", result.message.includes("kill 99999 with SIGTERM"));
+				} else {
+					console.println("result:", result);
+				}
+			`,
+			Output: []string{
+				"error: true",
 			},
 		},
 	}
@@ -813,6 +1155,215 @@ func TestProcessKill(t *testing.T) {
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
 	}
+}
+
+func TestProcessKillIntegration(t *testing.T) {
+	signalName := "SIGTERM"
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+		signalName = "SIGINT"
+	}
+	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
+
+	runProcessKillScript(t, cmd.Process.Pid, fmt.Sprintf(`%q`, signalName))
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		if err != nil {
+			_ = cmd.Process.Kill()
+			t.Fatalf("helper failed after process.kill: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("timeout waiting for helper after process.kill")
+	}
+
+	finalLines := collectRemainingLines(lines)
+	assertLinePresent(t, finalLines, "ready: "+signalName)
+	assertLinePresent(t, finalLines, "caught: "+signalName)
+}
+
+func TestProcessKillNumericIntegration(t *testing.T) {
+	signalName := "SIGTERM"
+	signalExpr := `15`
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+		signalName = "SIGINT"
+		signalExpr = `2`
+	}
+	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
+
+	runProcessKillScript(t, cmd.Process.Pid, signalExpr)
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		if err != nil {
+			_ = cmd.Process.Kill()
+			t.Fatalf("helper failed after numeric process.kill: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("timeout waiting for helper after numeric process.kill")
+	}
+
+	finalLines := collectRemainingLines(lines)
+	assertLinePresent(t, finalLines, "ready: "+signalName)
+	assertLinePresent(t, finalLines, "caught: "+signalName)
+}
+
+func TestProcessKillAliasIntegration(t *testing.T) {
+	signalName := "SIGTERM"
+	signalExpr := `"term"`
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+		signalName = "SIGINT"
+		signalExpr = `"int"`
+	}
+
+	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
+
+	runProcessKillScript(t, cmd.Process.Pid, signalExpr)
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		if err != nil {
+			_ = cmd.Process.Kill()
+			t.Fatalf("helper failed after alias process.kill: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("timeout waiting for helper after alias process.kill")
+	}
+
+	finalLines := collectRemainingLines(lines)
+	assertLinePresent(t, finalLines, "ready: "+signalName)
+	assertLinePresent(t, finalLines, "caught: "+signalName)
+}
+
+func runProcessKillScript(t *testing.T, pid int, signalExpr string) {
+	t.Helper()
+	writer := &bytes.Buffer{}
+	conf := engine.Config{
+		Name: "process_kill_integration",
+		Code: fmt.Sprintf(`
+			const process = require("process");
+			const result = process.kill(%d, %s);
+			if (result instanceof Error) {
+				throw result;
+			}
+			console.println("kill:", result);
+		`, pid, signalExpr),
+		Env: map[string]any{
+			"PATH":         "/work:/sbin",
+			"PWD":          "/work",
+			"HOME":         "/work",
+			"LIBRARY_PATH": "./node_modules:/lib",
+		},
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+		},
+		Reader: bytes.NewBuffer(nil),
+		Writer: writer,
+	}
+
+	jr, err := engine.New(conf)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+	lib.Enable(jr)
+	if err := jr.Run(); err != nil {
+		t.Fatalf("run process.kill script: %v", err)
+	}
+	if !strings.Contains(writer.String(), "kill: true") {
+		t.Fatalf("unexpected process.kill output: %s", writer.String())
+	}
+}
+
+func startProcessSignalHelper(t *testing.T, signalName string, listenForSignal bool) (<-chan string, *exec.Cmd, *bytes.Buffer) {
+	t.Helper()
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestProcessSignalHelper$", "--")
+	prepareSignalHelperCommand(cmd)
+	cmd.Env = append(os.Environ(),
+		"GO_WANT_PROCESS_SIGNAL_HELPER=1",
+		"JSH_TEST_SIGNAL="+signalName,
+		"JSH_TEST_LISTEN_SIGNAL="+boolToEnv(listenForSignal),
+	)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper: %v", err)
+	}
+
+	linesCh := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			linesCh <- scanner.Text()
+		}
+		close(linesCh)
+	}()
+
+	var lines []string
+	readyLine := "ready: " + signalName
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+	for {
+		select {
+		case line, ok := <-linesCh:
+			if !ok {
+				t.Fatalf("helper exited before readiness for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
+			}
+			lines = append(lines, line)
+			if line == readyLine {
+				buffered := make(chan string, 16)
+				for _, existing := range lines {
+					buffered <- existing
+				}
+				go func() {
+					for line := range linesCh {
+						buffered <- line
+					}
+					close(buffered)
+				}()
+				return buffered, cmd, stderr
+			}
+		case <-timer.C:
+			_ = cmd.Process.Kill()
+			t.Fatalf("timeout waiting for readiness for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
+		}
+	}
+}
+
+func collectRemainingLines(lines <-chan string) []string {
+	var collected []string
+	for line := range lines {
+		collected = append(collected, line)
+	}
+	return collected
 }
 
 func TestProcessNextTick(t *testing.T) {
