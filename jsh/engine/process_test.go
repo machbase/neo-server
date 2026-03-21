@@ -587,6 +587,10 @@ func TestProcessEvents(t *testing.T) {
 }
 
 func TestProcessSignalForwarding(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+	}
+
 	signals := []string{"SIGINT"}
 	if runtime.GOOS != "windows" {
 		signals = append(signals, "SIGTERM", "SIGQUIT")
@@ -605,6 +609,10 @@ func TestProcessSignalForwarding(t *testing.T) {
 }
 
 func TestProcessSignalDefaultBehavior(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+	}
+
 	lines, waitErr, stderrOutput := runProcessSignalHelper(t, "SIGINT", false)
 	if waitErr == nil {
 		t.Fatalf("expected helper without listener to terminate by signal\nstdout:\n%s\nstderr:\n%s", strings.Join(lines, "\n"), stderrOutput)
@@ -1152,6 +1160,7 @@ func TestProcessKill(t *testing.T) {
 func TestProcessKillIntegration(t *testing.T) {
 	signalName := "SIGTERM"
 	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
 		signalName = "SIGINT"
 	}
 	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
@@ -1183,6 +1192,7 @@ func TestProcessKillNumericIntegration(t *testing.T) {
 	signalName := "SIGTERM"
 	signalExpr := `15`
 	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
 		signalName = "SIGINT"
 		signalExpr = `2`
 	}
@@ -1212,9 +1222,17 @@ func TestProcessKillNumericIntegration(t *testing.T) {
 }
 
 func TestProcessKillAliasIntegration(t *testing.T) {
-	lines, cmd, stderr := startProcessSignalHelper(t, "SIGTERM", true)
+	signalName := "SIGTERM"
+	signalExpr := `"term"`
+	if runtime.GOOS == "windows" {
+		requireWindowsSignalIntegration(t)
+		signalName = "SIGINT"
+		signalExpr = `"int"`
+	}
 
-	runProcessKillScript(t, cmd.Process.Pid, `"term"`)
+	lines, cmd, stderr := startProcessSignalHelper(t, signalName, true)
+
+	runProcessKillScript(t, cmd.Process.Pid, signalExpr)
 
 	waitCh := make(chan error, 1)
 	go func() {
@@ -1233,12 +1251,8 @@ func TestProcessKillAliasIntegration(t *testing.T) {
 	}
 
 	finalLines := collectRemainingLines(lines)
-	assertLinePresent(t, finalLines, "ready: SIGTERM")
-	if runtime.GOOS == "windows" {
-		assertLineAbsent(t, finalLines, "caught: SIGTERM")
-	} else {
-		assertLinePresent(t, finalLines, "caught: SIGTERM")
-	}
+	assertLinePresent(t, finalLines, "ready: "+signalName)
+	assertLinePresent(t, finalLines, "caught: "+signalName)
 }
 
 func runProcessKillScript(t *testing.T, pid int, signalExpr string) {
@@ -1285,6 +1299,7 @@ func startProcessSignalHelper(t *testing.T, signalName string, listenForSignal b
 	t.Helper()
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestProcessSignalHelper$", "--")
+	prepareSignalHelperCommand(cmd)
 	cmd.Env = append(os.Environ(),
 		"GO_WANT_PROCESS_SIGNAL_HELPER=1",
 		"JSH_TEST_SIGNAL="+signalName,

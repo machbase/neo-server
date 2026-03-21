@@ -12,6 +12,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+var ensureProcessExistsFn = ensureProcessExists
+var sendInterruptSignalFn = sendInterruptSignal
+
 func (jr *JSRuntime) exec0(vm *goja.Runtime, ex *exec.Cmd) goja.Value {
 	ex.Stdin = jr.Env.Reader()
 	ex.Stdout = jr.Env.Writer()
@@ -39,7 +42,7 @@ func (jr *JSRuntime) exec0(vm *goja.Runtime, ex *exec.Cmd) goja.Value {
 }
 
 func killProcess(pid int, signalLabel string, signalNumber int, osSignal os.Signal) error {
-	if err := ensureProcessExists(pid); err != nil {
+	if err := ensureProcessExistsFn(pid); err != nil {
 		return err
 	}
 
@@ -49,7 +52,7 @@ func killProcess(pid int, signalLabel string, signalNumber int, osSignal os.Sign
 
 	switch signalNumber {
 	case 2:
-		if err := sendInterruptSignal(pid); err != nil {
+		if err := sendInterruptSignalFn(pid); err != nil {
 			return fmt.Errorf("SIGINT delivery on windows requires a console process group and may be unavailable: %w", err)
 		}
 		return nil
