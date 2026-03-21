@@ -199,8 +199,9 @@ func TestMain(m *testing.M) {
 	// cleanup
 	mqttServer.Stop()
 	httpServer.Stop()
-	server_api.StopMetrics()
+	server_api.StopAppendWorkers()
 	testServer.DropTestTables()
+	server_api.StopMetrics()
 	testServer.StopServer()
 }
 
@@ -998,20 +999,20 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 		},
 		{
 			name: "bridge_add_nats",
-			args: append(shellArgs, "bridge", "add", "br-nats", "--type", "nats", fmt.Sprintf("server=%s name=nasts-client", natsHostPort)),
+			args: append(shellArgs, "bridge", "add", "br-nats", "--type", "nats", fmt.Sprintf("server=%s name=nats-client", natsHostPort)),
 			expect: []string{
-				"Adding bridge... br-nats type: nats path: " + fmt.Sprintf("server=%s name=nasts-client", natsHostPort),
+				"Adding bridge... br-nats type: nats path: " + fmt.Sprintf("server=%s name=nats-client", natsHostPort),
 			},
 		},
 		{
 			name: "bridge_list_after_add",
 			args: append(shellArgs, "bridge", "list"),
 			expect: []string{
-				"┌────────┬─────────┬──────┬──────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME    │ TYPE │ CONNECTION                               │",
-				"├────────┼─────────┼──────┼──────────────────────────────────────────┤",
-				"│      1 │ br-nats │ nats │ server=" + natsHostPort + " name=nasts-client │",
-				"└────────┴─────────┴──────┴──────────────────────────────────────────┘",
+				"┌────────┬─────────┬──────┬─────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME    │ TYPE │ CONNECTION                              │",
+				"├────────┼─────────┼──────┼─────────────────────────────────────────┤",
+				"│      1 │ br-nats │ nats │ server=" + natsHostPort + " name=nats-client │",
+				"└────────┴─────────┴──────┴─────────────────────────────────────────┘",
 			},
 		},
 		{
