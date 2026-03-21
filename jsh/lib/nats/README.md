@@ -126,10 +126,10 @@ Examples:
 
 ```javascript
 // Explicit reply subject
-nats_pub --broker 127.0.0.1:4222 --topic request.subject --message ping --reply reply.subject --timeout=3000
+nats_pub --broker 127.0.0.1:4222 --topic request.subject --message ping --reply reply.subject --timeout 3000
 ```
 
 ```javascript
 // Auto-generated inbox subject
-nats_pub --broker 127.0.0.1:4222 --topic request.subject --message ping --request --timeout=3000
+nats_pub --broker 127.0.0.1:4222 --topic request.subject --message ping --request --timeout 3000
 ```

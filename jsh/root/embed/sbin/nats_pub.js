@@ -16,7 +16,7 @@ const options = {
     file: { type: 'string', short: 'f', description: 'File containing message to publish', default: '' },
     reply: { type: 'string', short: 'r', description: 'Reply subject to wait for', default: '' },
     request: { type: 'boolean', description: 'Generate a temporary reply subject and wait for one response', default: false },
-    timeout: { type: 'number', description: 'Timeout in milliseconds for connect and reply wait', default: 10 * 1000 },
+    timeout: { type: 'integer', description: 'Timeout in milliseconds for connect and reply wait', default: 10 * 1000 },
 };
 
 let showHelp = true;

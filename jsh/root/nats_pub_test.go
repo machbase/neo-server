@@ -62,7 +62,7 @@ func TestNatsPubSupportsReply(t *testing.T) {
 		"--topic", "test.subject",
 		"--message", "hello",
 		"--reply", "reply.subject",
-		"--timeout=3000",
+		"--timeout", "3000",
 	)
 	if err != nil {
 		t.Fatalf("nats_pub with reply failed: %v\n%s", err, output)

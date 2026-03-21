@@ -93,6 +93,7 @@ func TestMqttPubPublishesMessage(t *testing.T) {
 		"mqtt_pub",
 		"--broker", addr,
 		"--topic", "test/topic",
+		"--qos", "1", // guarantee delivery for test reliability
 		"--message", "hello-mqtt",
 	)
 	if err != nil {
@@ -110,7 +111,7 @@ func TestMqttPubPublishesMessage(t *testing.T) {
 		if msg.payload != "hello-mqtt" {
 			t.Fatalf("published payload = %q, want %q", msg.payload, "hello-mqtt")
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for published mqtt message")
 	}
 }
@@ -128,6 +129,7 @@ func TestMqttPubPublishesFilePayload(t *testing.T) {
 		"mqtt_pub",
 		"--broker", addr,
 		"--topic", "test/file",
+		"--qos", "1", // guarantee delivery for test reliability
 		"--file", filepath.Base(payloadPath),
 	)
 	if err != nil {
@@ -145,7 +147,7 @@ func TestMqttPubPublishesFilePayload(t *testing.T) {
 		if msg.payload != "file-payload" {
 			t.Fatalf("published payload = %q, want %q", msg.payload, "file-payload")
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for file-based mqtt publish")
 	}
 }

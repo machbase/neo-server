@@ -255,11 +255,11 @@ client.on('subscribed', (topic, reason) => {
 
 ### 'published'
 
-Emitted when a message has been published.
+Emitted when a publish request completes.
 
 **Callback Parameters:**
 - `topic` (string): Published topic
-- `reason` (number): Publish result code (0: success)
+- `reason` (number): Publish result code returned by the broker client
 
 ```javascript
 client.on('published', (topic, reason) => {
@@ -394,18 +394,29 @@ client.close();
 
 ## `mqtt_pub` Usage
 
-The shell command `mqtt_pub` publishes one message and exits after the broker acknowledges the publish request.
+The shell command `mqtt_pub` publishes one message and exits after the publish request completes.
+
+When `--qos 1` or `--qos 2` is used, `mqtt_pub` waits for the corresponding broker acknowledgment before closing the connection. With `--qos 0`, there is no broker acknowledgment and the command exits after the client publish call returns.
 
 Supported input modes:
 
 - `--message <text>`: publish an inline text payload
 - `--file <path>`: publish the content of a file
 
+Options:
+
+- `--qos <0|1|2>`: MQTT publish QoS level. Default is `0`.
+
 Examples:
 
 ```sh
 # Publish an inline message
 mqtt_pub --broker 127.0.0.1:5653 --topic test/topic --message "hello-mqtt"
+```
+
+```sh
+# Publish and wait for PUBACK before exiting
+mqtt_pub --broker 127.0.0.1:5653 --topic test/topic --qos 1 --message "hello-mqtt"
 ```
 
 ```sh
@@ -422,8 +433,8 @@ mqtt_pub --debug --broker tcp://127.0.0.1:5653 --topic test/topic --message "hel
 
 - The client automatically attempts to reconnect when the connection is lost.
 - The reconnection interval can be configured with the `connectRetryDelay` option.
-- QoS is currently fixed at 1 for subscriptions and 0 for publishes.
-- `mqtt_pub` accepts `--qos`, but the current native MQTT publish path behaves as QoS 0.
+- Subscriptions default to QoS 1 unless a different value is provided in `subscribe()` options.
+- Publishes honor the `qos` option passed to `publish()` or `mqtt_pub --qos`.
 - The client maintains an internal event loop, so the program will not terminate until the connection is closed.
 
 ## Dependencies
