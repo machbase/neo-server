@@ -75,7 +75,7 @@ function loop(chat, ws) {
     }
 }
 
-const chat = new Chat({ host: '192.168.1.165', port: 5654 });
+const chat = new Chat({ host: '127.0.0.1', port: 5654 });
 chat.login()
     .then((wsUrl) => {
         const ws = new WebSocket(wsUrl);

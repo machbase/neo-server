@@ -245,7 +245,7 @@ func (b *SqlBridgeBase) NewScanType(reflectType string, databaseTypeName string)
 	case "sql.NullString":
 		return new(string)
 	case "sql.NullTime":
-		return new(time.Time)
+		return new(sql.NullTime)
 	case "sql.RawBytes":
 		return new([]byte)
 	case "[]uint8":

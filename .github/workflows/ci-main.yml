@@ -39,9 +39,7 @@ jobs:
           go-version: '1.26'
       - name: Setup zig
         if: matrix.os == 'linux' && matrix.arch == 'arm32'
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.11.0
+        uses: mlugg/setup-zig@v2
       - name: Install Neo Web
         if: matrix.os != 'linux' || matrix.arch == 'arm32'
         run: go run mage.go InstallNeoWeb
@@ -81,14 +79,48 @@ jobs:
             ./tmp/machbase-neo
       - name: Codesign windows app
         if: matrix.os == 'windows'
-        uses: dlemstra/code-sign-action@v1
-        with:
-          certificate: ${{ secrets.CODESIGN_WIN_CERTIFICATE }}
-          password: ${{ secrets.CODESIGN_WIN_PASS }}
-          folder: './tmp'
-          recursive: false
-          files: |
-            machbase-neo.exe
+        shell: pwsh
+        env:
+          CODESIGN_WIN_CERTIFICATE: ${{ secrets.CODESIGN_WIN_CERTIFICATE }}
+          CODESIGN_WIN_PASS: ${{ secrets.CODESIGN_WIN_PASS }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          try {
+            $certificateBase64 = $env:CODESIGN_WIN_CERTIFICATE `
+              -replace '-----BEGIN CERTIFICATE-----', '' `
+              -replace '-----END CERTIFICATE-----', '' `
+              -replace '\s', ''
+
+            [System.IO.File]::WriteAllBytes(
+              $pfxPath,
+              [System.Convert]::FromBase64String($certificateBase64)
+            )
+
+            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName
+
+            if (-not $signtool) {
+              throw 'signtool.exe not found'
+            }
+
+            & $signtool sign `
+              /f $pfxPath `
+              /p $env:CODESIGN_WIN_PASS `
+              /tr http://timestamp.digicert.com `
+              /td sha256 `
+              /fd sha256 `
+              './tmp/machbase-neo.exe'
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "signtool.exe failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            if (Test-Path $pfxPath) {
+              Remove-Item $pfxPath -Force
+            }
+          }
       - name: Package
         if: matrix.os != 'linux'
         run: go run mage.go package
