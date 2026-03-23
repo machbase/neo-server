@@ -65,3 +65,9 @@ jobs:
       - name: print diff error
         if: failure()
         run: cd ~/work/neo-test/testsuite; cat summary.txt | grep -aE 'DIFF|ERROR';
+      - name: upload testsuite out artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testsuite-out
+          path: ~/work/neo-test/testsuite/**/*.out
