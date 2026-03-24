@@ -131,13 +131,27 @@ func (ctl *Controller) command(sc *Config) *exec.Cmd {
 }
 
 func (ctl *Controller) startService(sc *Config) {
-	sc.StartError = nil
 	svc, exists := ctl.services[sc.Name]
 	if !exists {
 		sc.StartError = fmt.Errorf("service %s not found", sc.Name)
 		return
 	}
+	ctl.startServiceInstance(svc, sc)
+}
+
+func (ctl *Controller) stopService(sc *Config) {
+	svc, exists := ctl.services[sc.Name]
+	if !exists {
+		sc.StopError = fmt.Errorf("service %s not found", sc.Name)
+		return
+	}
+	ctl.stopServiceInstance(svc, sc)
+}
+
+func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
+	sc.StartError = nil
 	svc.Config = *sc
+	svc.Config.StartError = nil
 	svc.Status = ServiceStatusRunning
 	svc.Error = nil
 	svc.ExitCode = 0
@@ -145,7 +159,7 @@ func (ctl *Controller) startService(sc *Config) {
 
 	svc.cmd = ctl.command(sc)
 	if svc.cmd == nil {
-		return // no command to run, likely in unit tests
+		return
 	}
 	stdoutWriter := newServiceOutputWriter(svc)
 	stderrWriter := newServiceOutputWriter(svc)
@@ -153,12 +167,17 @@ func (ctl *Controller) startService(sc *Config) {
 	svc.cmd.Stderr = stderrWriter
 	if err := svc.cmd.Start(); err != nil {
 		sc.StartError = fmt.Errorf("failed to start service: %w", err)
+		svc.Config.StartError = sc.StartError
 		svc.Status = ServiceStatusFailed
 		svc.Error = sc.StartError
 		return
 	}
 
+	svc.startCh = make(chan struct{})
+	svc.stopCh = make(chan struct{})
 	go func() {
+		close(svc.startCh)
+		defer close(svc.stopCh)
 		err := svc.cmd.Wait()
 		stdoutWriter.Flush()
 		stderrWriter.Flush()
@@ -170,29 +189,39 @@ func (ctl *Controller) startService(sc *Config) {
 				exitCode = -1
 			}
 		}
-		ctl.mu.Lock()
-		defer ctl.mu.Unlock()
 		svc.ExitCode = exitCode
 		svc.Status = ServiceStatusStopped
-		svc.appendOutput(fmt.Sprintf("exit(%d)", svc.ExitCode))
 	}()
+	<-svc.startCh
 }
 
-func (ctl *Controller) stopService(sc *Config) {
+func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	sc.StopError = nil
-	svc, exists := ctl.services[sc.Name]
-	if !exists {
-		sc.StopError = fmt.Errorf("service %s not found", sc.Name)
+	svc.Config.StopError = nil
+
+	if svc.Status != ServiceStatusRunning && svc.Status != ServiceStatusStarting {
+		if svc.cmd == nil {
+			svc.Status = ServiceStatusStopped
+		}
 		return
 	}
-	if svc.cmd != nil && svc.Status == ServiceStatusRunning {
-		if err := svc.cmd.Process.Kill(); err != nil {
-			sc.StopError = fmt.Errorf("failed to stop service: %w", err)
-			svc.Status = ServiceStatusFailed
-			svc.Error = sc.StopError
-			svc.appendOutput(sc.StopError.Error())
-		}
+
+	if svc.cmd == nil || svc.cmd.Process == nil {
+		svc.Status = ServiceStatusStopped
+		svc.Error = nil
+		return
 	}
+
+	svc.Status = ServiceStatusStopping
+	if err := svc.cmd.Process.Kill(); err != nil {
+		sc.StopError = fmt.Errorf("failed to stop service: %w", err)
+		svc.Config.StopError = sc.StopError
+		svc.Status = ServiceStatusFailed
+		svc.Error = sc.StopError
+		return
+	}
+	<-svc.stopCh
+	svc.Error = nil
 }
 
 func (ctl *Controller) configPath(name string) string {
@@ -294,33 +323,29 @@ func (ctl *Controller) Read() error {
 }
 
 func (ctl *Controller) StartService(name string) (*Service, error) {
-	ctl.mu.Lock()
-	defer ctl.mu.Unlock()
-
+	ctl.mu.RLock()
 	svc, exists := ctl.services[name]
+	ctl.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}
-	sc := svc.Config
-	ctl.startService(&sc)
-	if sc.StartError != nil {
-		return svc, sc.StartError
+	ctl.startServiceInstance(svc, &svc.Config)
+	if svc.Config.StartError != nil {
+		return svc, svc.Config.StartError
 	}
 	return svc, nil
 }
 
 func (ctl *Controller) StopService(name string) (*Service, error) {
-	ctl.mu.Lock()
-	defer ctl.mu.Unlock()
-
+	ctl.mu.RLock()
 	svc, exists := ctl.services[name]
+	ctl.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}
-	sc := svc.Config
-	ctl.stopService(&sc)
-	if sc.StopError != nil {
-		return svc, sc.StopError
+	ctl.stopServiceInstance(svc, &svc.Config)
+	if svc.Config.StopError != nil {
+		return svc, svc.Config.StopError
 	}
 	return svc, nil
 }

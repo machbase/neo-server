@@ -109,6 +109,65 @@ func TestServiceCtlStopCallsStop(t *testing.T) {
 	}
 }
 
+func TestControllerStopServiceReturnsUpdatedStatus(t *testing.T) {
+	ctl := &Controller{
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{Name: "svc-a", Enable: true, Executable: "echo"},
+				Status: ServiceStatusRunning,
+			},
+		},
+	}
+
+	svc, err := ctl.StopService("svc-a")
+	if err != nil {
+		t.Fatalf("StopService() error: %v", err)
+	}
+	if svc == nil {
+		t.Fatal("StopService() returned nil service")
+	}
+	if svc.Status != ServiceStatusStopped {
+		t.Fatalf("StopService() status=%s, want %s", svc.Status, ServiceStatusStopped)
+	}
+	if ctl.services["svc-a"].Status != ServiceStatusStopped {
+		t.Fatalf("stored service status=%s, want %s", ctl.services["svc-a"].Status, ServiceStatusStopped)
+	}
+	if svc.Config.StopError != nil {
+		t.Fatalf("StopService() unexpected StopError: %v", svc.Config.StopError)
+	}
+}
+
+func TestControllerStartServiceReturnsUpdatedStatus(t *testing.T) {
+	ctl := &Controller{
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{Name: "svc-a", Enable: true, Executable: "echo"},
+				Status: ServiceStatusStopped,
+			},
+		},
+	}
+
+	svc, err := ctl.StartService("svc-a")
+	if err != nil {
+		t.Fatalf("StartService() error: %v", err)
+	}
+	if svc == nil {
+		t.Fatal("StartService() returned nil service")
+	}
+	if svc.Status != ServiceStatusRunning {
+		t.Fatalf("StartService() status=%s, want %s", svc.Status, ServiceStatusRunning)
+	}
+	if ctl.services["svc-a"].Status != ServiceStatusRunning {
+		t.Fatalf("stored service status=%s, want %s", ctl.services["svc-a"].Status, ServiceStatusRunning)
+	}
+	if svc.Config.StartError != nil {
+		t.Fatalf("StartService() unexpected StartError: %v", svc.Config.StartError)
+	}
+	if svc.ExitCode != 0 {
+		t.Fatalf("StartService() exitCode=%d, want 0", svc.ExitCode)
+	}
+}
+
 func TestServiceCtlUpdate(t *testing.T) {
 	ctl := &Controller{
 		services: map[string]*Service{
