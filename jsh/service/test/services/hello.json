@@ -1,0 +1,12 @@
+{
+    "name": "hello",
+    "enable": true,
+    "auto_start": true,
+    "working_dir": "/work",
+    "environment": {
+        "ENV_VAR1": "value1",
+        "ENV_VAR2": "value2"
+    },
+    "executable": "hello.js",
+    "args": ["World"]
+}

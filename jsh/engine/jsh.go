@@ -284,7 +284,6 @@ func (e EnvVars) String() string {
 // Set parses and adds a new Env variable from the given string.
 // The format is name=value where value is a JSON value.
 func (e EnvVars) Set(value string) error {
-	fmt.Println("EnvVars Set:", value)
 	tokens := strings.SplitN(value, "=", 2)
 	if len(tokens) != 2 {
 		return fmt.Errorf("invalid env variable: %s", value)
