@@ -41,7 +41,7 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 }
 
 type Controller struct {
-	sync.RWMutex
+	mu       sync.RWMutex
 	services map[string]*Service
 	fs       *engine.FS
 	confDir  string
@@ -58,7 +58,7 @@ func (ctl *Controller) Start(callback func(sc *Config, action string, err error)
 }
 
 func (ctl *Controller) Stop(callback func(sc *Config, action string, err error)) {
-	ctl.Lock()
+	ctl.mu.Lock()
 	configs := make([]*Config, 0, len(ctl.services))
 	for _, svc := range ctl.services {
 		configs = append(configs, &svc.Config)
@@ -69,12 +69,12 @@ func (ctl *Controller) Stop(callback func(sc *Config, action string, err error))
 			callback(sc, "STOP", sc.StopError)
 		}
 	}
-	ctl.Unlock()
+	ctl.mu.Unlock()
 }
 
 func (ctl *Controller) Status(filter func(*Service) bool) []*Service {
-	ctl.RLock()
-	defer ctl.RUnlock()
+	ctl.mu.RLock()
+	defer ctl.mu.RUnlock()
 	result := make([]*Service, 0, len(ctl.services))
 
 	// get keys first to order the output consistently
@@ -95,8 +95,8 @@ func (ctl *Controller) Status(filter func(*Service) bool) []*Service {
 }
 
 func (ctl *Controller) StatusOf(name string) *Service {
-	ctl.RLock()
-	defer ctl.RUnlock()
+	ctl.mu.RLock()
+	defer ctl.mu.RUnlock()
 	if svc, exists := ctl.services[name]; exists {
 		return svc
 	}
@@ -197,8 +197,8 @@ func (ctl *Controller) configPath(name string) string {
 }
 
 func (ctl *Controller) Install(sc *Config) error {
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 
 	if strings.Contains(sc.Name, "/") {
 		return fmt.Errorf("service name cannot contain '/'")
@@ -225,8 +225,8 @@ func (ctl *Controller) Install(sc *Config) error {
 }
 
 func (ctl *Controller) Uninstall(name string) error {
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	if _, err := ctl.fs.Stat(ctl.configPath(name)); err != nil {
 		return fmt.Errorf("service %s does not exist", name)
 	}
@@ -267,8 +267,8 @@ func (ctl *Controller) Read() error {
 		newList[sc.Name] = sc
 	}
 
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 
 	for name, sc := range newList {
 		if existing, exists := ctl.services[name]; exists {
@@ -290,8 +290,8 @@ func (ctl *Controller) Read() error {
 }
 
 func (ctl *Controller) Update(cb func(*Config, string, error)) {
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	if cb == nil {
 		cb = func(_ *Config, _ string, _ error) {}
 	}
