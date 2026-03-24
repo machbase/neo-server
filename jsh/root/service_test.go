@@ -22,7 +22,7 @@ type serviceRPCRequest struct {
 	ID      json.RawMessage `json:"id,omitempty"`
 }
 
-func TestServiceCommandListFormatting(t *testing.T) {
+func TestServiceCommandStatusListFormatting(t *testing.T) {
 	addr, shutdown := startMockServiceRPCServer(t, func(req serviceRPCRequest) any {
 		if req.Method != "service.list" {
 			t.Fatalf("method=%q, want %q", req.Method, "service.list")
@@ -41,14 +41,14 @@ func TestServiceCommandListFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "list")
+	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "status")
 	if err != nil {
-		t.Fatalf("service list failed: %v\n%s", err, output)
+		t.Fatalf("service status failed: %v\n%s", err, output)
 	}
 
 	lines := nonEmptyLines(output)
 	if len(lines) < 4 {
-		t.Fatalf("service list output too short: %q", output)
+		t.Fatalf("service status output too short: %q", output)
 	}
 	if !strings.Contains(lines[0], "NAME") || !strings.Contains(lines[0], "EXECUTABLE") {
 		t.Fatalf("header=%q, want columns", lines[0])
@@ -58,6 +58,16 @@ func TestServiceCommandListFormatting(t *testing.T) {
 	}
 	if !strings.Contains(lines[3], "beta") || !strings.Contains(lines[3], "stopped") || !strings.Contains(lines[3], "/bin/date") {
 		t.Fatalf("second row=%q, want beta/stopped/date", lines[3])
+	}
+}
+
+func TestServiceCommandListRemoved(t *testing.T) {
+	output, err := runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "list")
+	if err == nil {
+		t.Fatalf("service list unexpectedly succeeded:\n%s", output)
+	}
+	if !strings.Contains(output, "Unknown command 'list'.") {
+		t.Fatalf("output=%q, want unknown command error", output)
 	}
 }
 
@@ -86,7 +96,13 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 			"status":    "running",
 			"exit_code": 0,
 			"pid":       55,
-			"output":    []any{"line-1", "line-2"},
+			"output": []any{
+				"line-1", "line-2", "line-3", "line-4", "line-5",
+				"line-6", "line-7", "line-8", "line-9", "line-10",
+				"line-11", "line-12", "line-13", "line-14", "line-15",
+				"line-16", "line-17", "line-18", "line-19", "line-20",
+				"line-21", "line-22", "line-23", "line-24", "line-25",
+			},
 		}
 	})
 	defer shutdown()
@@ -105,12 +121,20 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 		"cwd: /work",
 		"A=1",
 		"B=2",
-		"line-1",
-		"line-2",
+		"line-6",
+		"line-25",
 	}
 	for _, check := range checks {
 		if !strings.Contains(output, check) {
 			t.Fatalf("output missing %q:\n%s", check, output)
+		}
+	}
+	lines := nonEmptyLines(output)
+	for _, unwanted := range []string{"line-1", "line-2", "line-3", "line-4", "line-5"} {
+		for _, line := range lines {
+			if strings.TrimSpace(line) == unwanted {
+				t.Fatalf("output unexpectedly contains exact line %q:\n%s", unwanted, output)
+			}
 		}
 	}
 }
@@ -412,12 +436,12 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 
 	controllerAddr := "127.0.0.1:" + strconv.Itoa(ctl.Port())
 
-	listOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "list")
+	listOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
 	if err != nil {
-		t.Fatalf("service list failed: %v\n%s", err, listOutput)
+		t.Fatalf("service status failed: %v\n%s", err, listOutput)
 	}
 	if !strings.Contains(listOutput, "alpha") || !strings.Contains(listOutput, "stopped") {
-		t.Fatalf("list output=%q, want alpha/stopped", listOutput)
+		t.Fatalf("status output=%q, want alpha/stopped", listOutput)
 	}
 
 	readOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "read")
@@ -486,12 +510,12 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 		}
 	}
 
-	listAfterUninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "list")
+	listAfterUninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
 	if err != nil {
-		t.Fatalf("service list after uninstall failed: %v\n%s", err, listAfterUninstallOutput)
+		t.Fatalf("service status after uninstall failed: %v\n%s", err, listAfterUninstallOutput)
 	}
 	if !strings.Contains(listAfterUninstallOutput, "No services") {
-		t.Fatalf("list after uninstall output=%q, want no services", listAfterUninstallOutput)
+		t.Fatalf("status after uninstall output=%q, want no services", listAfterUninstallOutput)
 	}
 }
 

@@ -173,13 +173,8 @@ func (ctl *Controller) startService(sc *Config) {
 		ctl.mu.Lock()
 		defer ctl.mu.Unlock()
 		svc.ExitCode = exitCode
-		if err != nil {
-			svc.Status = ServiceStatusFailed
-			svc.Error = fmt.Errorf("service exited with error: %w", err)
-		} else {
-			svc.Status = ServiceStatusStopped
-			svc.Error = nil
-		}
+		svc.Status = ServiceStatusStopped
+		svc.appendOutput(fmt.Sprintf("exit(%d)", svc.ExitCode))
 	}()
 }
 
@@ -195,11 +190,9 @@ func (ctl *Controller) stopService(sc *Config) {
 			sc.StopError = fmt.Errorf("failed to stop service: %w", err)
 			svc.Status = ServiceStatusFailed
 			svc.Error = sc.StopError
-			return
+			svc.appendOutput(sc.StopError.Error())
 		}
 	}
-	svc.Status = ServiceStatusStopped
-	svc.Error = nil
 }
 
 func (ctl *Controller) configPath(name string) string {

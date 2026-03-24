@@ -37,6 +37,8 @@ import (
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -72,6 +74,8 @@ type Server struct {
 	databaseCreated   bool
 
 	pkgMgr *pkgs.PkgManager
+
+	serviceController *service.Controller
 
 	models model.Service
 
@@ -224,6 +228,11 @@ func (s *Server) Start() error {
 	// package manager
 	if err := s.initPackageManager(); err != nil {
 		return fmt.Errorf("package manager: %w", err)
+	}
+
+	// service manager
+	if err := s.initServiceController(); err != nil {
+		return fmt.Errorf("service controller: %w", err)
 	}
 
 	// register JSON-RPC handlers
@@ -959,6 +968,52 @@ func (s *Server) initPackageManager() error {
 		s.pkgMgr = mgr
 	}
 	util.AddShutdownHook(func() { s.pkgMgr.Stop() })
+	return nil
+}
+
+func (s *Server) initServiceController() error {
+	executable, _ := os.Executable()
+	workspacePath := "."
+	for _, path := range s.FileDirs {
+		if strings.HasPrefix(path, "/=") {
+			workspacePath = strings.TrimPrefix(path, "/=")
+			break
+		}
+	}
+	confPath := filepath.Join(workspacePath, "etc", "services")
+	if _, err := os.Stat(confPath); os.IsNotExist(err) {
+		err = os.MkdirAll(confPath, 0755)
+		if err != nil {
+			return fmt.Errorf("mkdir %s, %s", confPath, err.Error())
+		}
+	}
+	ctrl, err := service.NewController(&service.ControllerConfig{
+		Launcher: []string{
+			executable, // how to launch a service command as a child process.
+			"jsh",
+			"-v", "/work=" + workspacePath,
+		},
+		// how to manage service configs by controller
+		ConfigDir: "/work/etc/services",
+		Mounts: engine.FSTabs{
+			{MountPoint: "/work", FS: os.DirFS(workspacePath)},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if err := ctrl.Start(func(sc *service.Config, action string, err error) {
+		s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
+	}); err != nil {
+		return err
+	}
+	s.serviceController = ctrl
+
+	util.AddShutdownHook(func() {
+		s.serviceController.Stop(func(sc *service.Config, action string, err error) {
+			s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
+		})
+	})
 	return nil
 }
 

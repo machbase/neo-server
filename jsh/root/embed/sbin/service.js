@@ -6,6 +6,7 @@
     const path = require('path');
     const net = require('net');
     const parseArgs = require('util/parseArgs');
+    const statusOutputMaxLines = 20;
 
     let serviceControllerEnv = process.env.get("SERVICE_CONTROLLER")
     if (!serviceControllerEnv) {
@@ -83,14 +84,13 @@
             ],
         }));
         console.println('Commands:');
-        console.println('  list');
         console.println('  read');
         console.println('  update');
         console.println('  reload');
         console.println('  install <config.json>');
         console.println('  install --name <name> --executable <path> [--working-dir <dir>] [--enable] [--auto-start] [--arg <arg> ...] [--env KEY=VALUE ...]');
         console.println('  uninstall <service_name>');
-        console.println('  status <service_name>');
+        console.println('  status [service_name]');
         console.println('  start <service_name>');
         console.println('  stop <service_name>');
     }
@@ -119,9 +119,6 @@
 
     function buildRpcCall(cmd, positionalArgs) {
         switch (cmd) {
-            case 'list':
-                expectArgs(cmd, positionalArgs, 0);
-                return { method: 'service.list', params: null };
             case 'read':
                 expectArgs(cmd, positionalArgs, 0);
                 return { method: 'service.read', params: null };
@@ -137,8 +134,14 @@
                 expectArgs(cmd, positionalArgs, 1);
                 return { method: 'service.uninstall', params: { name: positionalArgs[0] } };
             case 'status':
-                expectArgs(cmd, positionalArgs, 1);
-                return { method: 'service.get', params: { name: positionalArgs[0] } };
+                if (positionalArgs.length === 0) {
+                    return { method: 'service.list', params: null };
+                }
+                if (positionalArgs.length === 1) {
+                    return { method: 'service.get', params: { name: positionalArgs[0] } };
+                }
+                fail("Command 'status' accepts zero or one argument.");
+                return null;
             case 'start':
                 expectArgs(cmd, positionalArgs, 1);
                 return { method: 'service.start', params: { name: positionalArgs[0] } };
@@ -309,9 +312,6 @@
 
     function renderResult(cmd, result, params) {
         switch (cmd) {
-            case 'list':
-                renderServiceList(result);
-                return;
             case 'read':
                 renderReadResult(result);
                 return;
@@ -320,6 +320,10 @@
                 renderUpdateResult(result);
                 return;
             case 'status':
+                if (Array.isArray(result)) {
+                    renderServiceList(result);
+                    return;
+                }
                 renderService(result);
                 return;
             case 'start':
@@ -466,7 +470,9 @@
             console.println('    (none)');
             return;
         }
-        for (const line of lines) {
+        const startIdx = lines.length > statusOutputMaxLines ? lines.length - statusOutputMaxLines : 0;
+        for (let i = startIdx; i < lines.length; i++) {
+            const line = lines[i];
             console.println(`    ${line}`);
         }
     }
