@@ -18,6 +18,8 @@ type Service struct {
 	ExitCode int           `json:"exit_code"`
 	Error    error         `json:"error"`
 	cmd      *exec.Cmd
+	startCh  chan struct{}
+	stopCh   chan struct{}
 	outputMu sync.Mutex
 	output   []string
 }

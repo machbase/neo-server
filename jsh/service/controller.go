@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os/exec"
 	"slices"
 	"strings"
@@ -41,16 +42,22 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 }
 
 type Controller struct {
-	sync.RWMutex
+	mu       sync.RWMutex
 	services map[string]*Service
 	fs       *engine.FS
 	confDir  string
 	reread   *ServiceList
 	launcher []string
+	rpcPort  int
+	rpcWG    sync.WaitGroup
+	rpcLn    net.Listener
 }
 
 func (ctl *Controller) Start(callback func(sc *Config, action string, err error)) error {
 	if err := ctl.Read(); err != nil {
+		return err
+	}
+	if err := ctl.startRPC(); err != nil {
 		return err
 	}
 	ctl.Update(callback)
@@ -58,7 +65,8 @@ func (ctl *Controller) Start(callback func(sc *Config, action string, err error)
 }
 
 func (ctl *Controller) Stop(callback func(sc *Config, action string, err error)) {
-	ctl.Lock()
+	ctl.stopRPC()
+	ctl.mu.Lock()
 	configs := make([]*Config, 0, len(ctl.services))
 	for _, svc := range ctl.services {
 		configs = append(configs, &svc.Config)
@@ -69,12 +77,12 @@ func (ctl *Controller) Stop(callback func(sc *Config, action string, err error))
 			callback(sc, "STOP", sc.StopError)
 		}
 	}
-	ctl.Unlock()
+	ctl.mu.Unlock()
 }
 
 func (ctl *Controller) Status(filter func(*Service) bool) []*Service {
-	ctl.RLock()
-	defer ctl.RUnlock()
+	ctl.mu.RLock()
+	defer ctl.mu.RUnlock()
 	result := make([]*Service, 0, len(ctl.services))
 
 	// get keys first to order the output consistently
@@ -95,8 +103,8 @@ func (ctl *Controller) Status(filter func(*Service) bool) []*Service {
 }
 
 func (ctl *Controller) StatusOf(name string) *Service {
-	ctl.RLock()
-	defer ctl.RUnlock()
+	ctl.mu.RLock()
+	defer ctl.mu.RUnlock()
 	if svc, exists := ctl.services[name]; exists {
 		return svc
 	}
@@ -123,13 +131,27 @@ func (ctl *Controller) command(sc *Config) *exec.Cmd {
 }
 
 func (ctl *Controller) startService(sc *Config) {
-	sc.StartError = nil
 	svc, exists := ctl.services[sc.Name]
 	if !exists {
 		sc.StartError = fmt.Errorf("service %s not found", sc.Name)
 		return
 	}
+	ctl.startServiceInstance(svc, sc)
+}
+
+func (ctl *Controller) stopService(sc *Config) {
+	svc, exists := ctl.services[sc.Name]
+	if !exists {
+		sc.StopError = fmt.Errorf("service %s not found", sc.Name)
+		return
+	}
+	ctl.stopServiceInstance(svc, sc)
+}
+
+func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
+	sc.StartError = nil
 	svc.Config = *sc
+	svc.Config.StartError = nil
 	svc.Status = ServiceStatusRunning
 	svc.Error = nil
 	svc.ExitCode = 0
@@ -137,7 +159,7 @@ func (ctl *Controller) startService(sc *Config) {
 
 	svc.cmd = ctl.command(sc)
 	if svc.cmd == nil {
-		return // no command to run, likely in unit tests
+		return
 	}
 	stdoutWriter := newServiceOutputWriter(svc)
 	stderrWriter := newServiceOutputWriter(svc)
@@ -145,12 +167,17 @@ func (ctl *Controller) startService(sc *Config) {
 	svc.cmd.Stderr = stderrWriter
 	if err := svc.cmd.Start(); err != nil {
 		sc.StartError = fmt.Errorf("failed to start service: %w", err)
+		svc.Config.StartError = sc.StartError
 		svc.Status = ServiceStatusFailed
 		svc.Error = sc.StartError
 		return
 	}
 
+	svc.startCh = make(chan struct{})
+	svc.stopCh = make(chan struct{})
 	go func() {
+		close(svc.startCh)
+		defer close(svc.stopCh)
 		err := svc.cmd.Wait()
 		stdoutWriter.Flush()
 		stderrWriter.Flush()
@@ -163,32 +190,37 @@ func (ctl *Controller) startService(sc *Config) {
 			}
 		}
 		svc.ExitCode = exitCode
-		if err != nil {
-			svc.Status = ServiceStatusFailed
-			svc.Error = fmt.Errorf("service exited with error: %w", err)
-		} else {
-			svc.Status = ServiceStatusStopped
-			svc.Error = nil
-		}
+		svc.Status = ServiceStatusStopped
 	}()
+	<-svc.startCh
 }
 
-func (ctl *Controller) stopService(sc *Config) {
+func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	sc.StopError = nil
-	svc, exists := ctl.services[sc.Name]
-	if !exists {
-		sc.StopError = fmt.Errorf("service %s not found", sc.Name)
+	svc.Config.StopError = nil
+
+	if svc.Status != ServiceStatusRunning && svc.Status != ServiceStatusStarting {
+		if svc.cmd == nil {
+			svc.Status = ServiceStatusStopped
+		}
 		return
 	}
-	if svc.cmd != nil && svc.Status == ServiceStatusRunning {
-		if err := svc.cmd.Process.Kill(); err != nil {
-			sc.StopError = fmt.Errorf("failed to stop service: %w", err)
-			svc.Status = ServiceStatusFailed
-			svc.Error = sc.StopError
-			return
-		}
+
+	if svc.cmd == nil || svc.cmd.Process == nil {
+		svc.Status = ServiceStatusStopped
+		svc.Error = nil
+		return
 	}
-	svc.Status = ServiceStatusStopped
+
+	svc.Status = ServiceStatusStopping
+	if err := svc.cmd.Process.Kill(); err != nil {
+		sc.StopError = fmt.Errorf("failed to stop service: %w", err)
+		svc.Config.StopError = sc.StopError
+		svc.Status = ServiceStatusFailed
+		svc.Error = sc.StopError
+		return
+	}
+	<-svc.stopCh
 	svc.Error = nil
 }
 
@@ -197,8 +229,8 @@ func (ctl *Controller) configPath(name string) string {
 }
 
 func (ctl *Controller) Install(sc *Config) error {
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 
 	if strings.Contains(sc.Name, "/") {
 		return fmt.Errorf("service name cannot contain '/'")
@@ -225,8 +257,8 @@ func (ctl *Controller) Install(sc *Config) error {
 }
 
 func (ctl *Controller) Uninstall(name string) error {
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	if _, err := ctl.fs.Stat(ctl.configPath(name)); err != nil {
 		return fmt.Errorf("service %s does not exist", name)
 	}
@@ -241,7 +273,7 @@ func (ctl *Controller) Uninstall(name string) error {
 }
 
 func (ctl *Controller) Read() error {
-	ctl.reread = NewServiceList()
+	reread := NewServiceList()
 	entries, err := ctl.fs.ReadDir(ctl.confDir)
 	if err != nil {
 		return err
@@ -256,42 +288,71 @@ func (ctl *Controller) Read() error {
 		data, err := ctl.fs.ReadFile(ctl.configPath(name))
 		if err != nil {
 			sc.ReadError = err
-			ctl.reread.Errored = append(ctl.reread.Errored, sc)
+			reread.Errored = append(reread.Errored, sc)
 			continue
 		}
 		sc.ReadError = json.Unmarshal(data, &sc)
 		if sc.ReadError != nil {
-			ctl.reread.Errored = append(ctl.reread.Errored, sc)
+			reread.Errored = append(reread.Errored, sc)
 			continue
 		}
 		newList[sc.Name] = sc
 	}
 
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 
 	for name, sc := range newList {
 		if existing, exists := ctl.services[name]; exists {
 			if sc.Equal(existing.Config) {
-				ctl.reread.Unchanged = append(ctl.reread.Unchanged, sc)
+				reread.Unchanged = append(reread.Unchanged, sc)
 			} else {
-				ctl.reread.Updated = append(ctl.reread.Updated, sc)
+				reread.Updated = append(reread.Updated, sc)
 			}
 		} else {
-			ctl.reread.Added = append(ctl.reread.Added, sc)
+			reread.Added = append(reread.Added, sc)
 		}
 	}
 	for name, existing := range ctl.services {
 		if _, exists := newList[name]; !exists {
-			ctl.reread.Removed = append(ctl.reread.Removed, &existing.Config)
+			reread.Removed = append(reread.Removed, &existing.Config)
 		}
 	}
+	ctl.reread = reread
 	return nil
 }
 
+func (ctl *Controller) StartService(name string) (*Service, error) {
+	ctl.mu.RLock()
+	svc, exists := ctl.services[name]
+	ctl.mu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("service %s not found", name)
+	}
+	ctl.startServiceInstance(svc, &svc.Config)
+	if svc.Config.StartError != nil {
+		return svc, svc.Config.StartError
+	}
+	return svc, nil
+}
+
+func (ctl *Controller) StopService(name string) (*Service, error) {
+	ctl.mu.RLock()
+	svc, exists := ctl.services[name]
+	ctl.mu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("service %s not found", name)
+	}
+	ctl.stopServiceInstance(svc, &svc.Config)
+	if svc.Config.StopError != nil {
+		return svc, svc.Config.StopError
+	}
+	return svc, nil
+}
+
 func (ctl *Controller) Update(cb func(*Config, string, error)) {
-	ctl.Lock()
-	defer ctl.Unlock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	if cb == nil {
 		cb = func(_ *Config, _ string, _ error) {}
 	}
