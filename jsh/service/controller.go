@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os/exec"
 	"slices"
 	"strings"
@@ -47,10 +48,16 @@ type Controller struct {
 	confDir  string
 	reread   *ServiceList
 	launcher []string
+	rpcPort  int
+	rpcWG    sync.WaitGroup
+	rpcLn    net.Listener
 }
 
 func (ctl *Controller) Start(callback func(sc *Config, action string, err error)) error {
 	if err := ctl.Read(); err != nil {
+		return err
+	}
+	if err := ctl.startRPC(); err != nil {
 		return err
 	}
 	ctl.Update(callback)
@@ -58,6 +65,7 @@ func (ctl *Controller) Start(callback func(sc *Config, action string, err error)
 }
 
 func (ctl *Controller) Stop(callback func(sc *Config, action string, err error)) {
+	ctl.stopRPC()
 	ctl.mu.Lock()
 	configs := make([]*Config, 0, len(ctl.services))
 	for _, svc := range ctl.services {
@@ -162,6 +170,8 @@ func (ctl *Controller) startService(sc *Config) {
 				exitCode = -1
 			}
 		}
+		ctl.mu.Lock()
+		defer ctl.mu.Unlock()
 		svc.ExitCode = exitCode
 		if err != nil {
 			svc.Status = ServiceStatusFailed
@@ -241,7 +251,7 @@ func (ctl *Controller) Uninstall(name string) error {
 }
 
 func (ctl *Controller) Read() error {
-	ctl.reread = NewServiceList()
+	reread := NewServiceList()
 	entries, err := ctl.fs.ReadDir(ctl.confDir)
 	if err != nil {
 		return err
@@ -256,12 +266,12 @@ func (ctl *Controller) Read() error {
 		data, err := ctl.fs.ReadFile(ctl.configPath(name))
 		if err != nil {
 			sc.ReadError = err
-			ctl.reread.Errored = append(ctl.reread.Errored, sc)
+			reread.Errored = append(reread.Errored, sc)
 			continue
 		}
 		sc.ReadError = json.Unmarshal(data, &sc)
 		if sc.ReadError != nil {
-			ctl.reread.Errored = append(ctl.reread.Errored, sc)
+			reread.Errored = append(reread.Errored, sc)
 			continue
 		}
 		newList[sc.Name] = sc
@@ -273,20 +283,53 @@ func (ctl *Controller) Read() error {
 	for name, sc := range newList {
 		if existing, exists := ctl.services[name]; exists {
 			if sc.Equal(existing.Config) {
-				ctl.reread.Unchanged = append(ctl.reread.Unchanged, sc)
+				reread.Unchanged = append(reread.Unchanged, sc)
 			} else {
-				ctl.reread.Updated = append(ctl.reread.Updated, sc)
+				reread.Updated = append(reread.Updated, sc)
 			}
 		} else {
-			ctl.reread.Added = append(ctl.reread.Added, sc)
+			reread.Added = append(reread.Added, sc)
 		}
 	}
 	for name, existing := range ctl.services {
 		if _, exists := newList[name]; !exists {
-			ctl.reread.Removed = append(ctl.reread.Removed, &existing.Config)
+			reread.Removed = append(reread.Removed, &existing.Config)
 		}
 	}
+	ctl.reread = reread
 	return nil
+}
+
+func (ctl *Controller) StartService(name string) (*Service, error) {
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
+
+	svc, exists := ctl.services[name]
+	if !exists {
+		return nil, fmt.Errorf("service %s not found", name)
+	}
+	sc := svc.Config
+	ctl.startService(&sc)
+	if sc.StartError != nil {
+		return svc, sc.StartError
+	}
+	return svc, nil
+}
+
+func (ctl *Controller) StopService(name string) (*Service, error) {
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
+
+	svc, exists := ctl.services[name]
+	if !exists {
+		return nil, fmt.Errorf("service %s not found", name)
+	}
+	sc := svc.Config
+	ctl.stopService(&sc)
+	if sc.StopError != nil {
+		return svc, sc.StopError
+	}
+	return svc, nil
 }
 
 func (ctl *Controller) Update(cb func(*Config, string, error)) {
