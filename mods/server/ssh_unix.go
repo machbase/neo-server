@@ -72,8 +72,8 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 			}
 
 			if svr.authServer.serviceController != nil {
-				shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=127.0.0.1:%d",
-					svr.authServer.serviceController.Port()))
+				shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",
+					svr.authServer.serviceController.Address()))
 			}
 		}
 	}

@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -434,7 +433,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 	}
 	defer ctl.Stop(nil)
 
-	controllerAddr := "127.0.0.1:" + strconv.Itoa(ctl.Port())
+	controllerAddr := strings.TrimPrefix(ctl.Address(), "tcp://")
 
 	listOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
 	if err != nil {

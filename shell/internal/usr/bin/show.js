@@ -339,7 +339,7 @@ function showPorts(config, args) {
     client.getServicePorts(service)
         .then((data) => {
             let box = pretty.Table(config);
-            box.appendHeader(['SERVICE', 'PORT']);
+            box.appendHeader(['PORT', 'ADDRESS']);
             for (const s of data) {
                 box.append([s.Service, s.Address]);
             }

@@ -38,6 +38,7 @@ type Config struct {
 
 	machHost string
 	machPort int
+	env      map[string]any
 
 	accessToken  string
 	refreshToken string
@@ -118,7 +119,7 @@ func Configure(c Config) error {
 	rpcPayload := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "getServicePorts",
-		"params":  []any{"mach"},
+		"params":  []any{},
 		"id":      1,
 	}
 	b, _ = json.Marshal(rpcPayload)
@@ -145,18 +146,25 @@ func Configure(c Config) error {
 	}
 	candidates := []HostPort{}
 	for _, portInfo := range rpcRspData.Result {
+		svc := portInfo["Service"]
 		addr := portInfo["Address"]
-		if strings.HasPrefix(addr, "tcp://") {
-			addr = strings.TrimPrefix(addr, "tcp://")
-			host, portStr, err := net.SplitHostPort(addr)
-			if err != nil {
-				return err
-			}
-			port, err := strconv.Atoi(portStr)
-			if err != nil {
-				return err
-			}
+		if !strings.HasPrefix(addr, "tcp://") {
+			continue
+		}
+		addr = strings.TrimPrefix(addr, "tcp://")
+		host, portStr, err := net.SplitHostPort(addr)
+		if err != nil {
+			continue
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			continue
+		}
+		switch svc {
+		case "mach":
 			candidates = append(candidates, HostPort{Host: host, Port: port})
+		case "service":
+			c.env["SERVICE_CONTROLLER"] = fmt.Sprintf("tcp://%s:%d", host, port)
 		}
 	}
 

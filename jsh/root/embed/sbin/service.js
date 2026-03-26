@@ -101,6 +101,11 @@
     }
 
     function parseController(value) {
+        // trim 'tcp://' prefix if present
+        if (value.startsWith('tcp://')) {
+            value = value.slice(6);
+        }
+        // split host and port
         const idx = value.lastIndexOf(':');
         if (idx <= 0 || idx === value.length - 1) {
             fail(`Invalid controller address '${value}'. Expected host:port.`);

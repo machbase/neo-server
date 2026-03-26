@@ -87,6 +87,12 @@ func (ctl *Controller) Port() int {
 	return ctl.rpcPort
 }
 
+func (ctl *Controller) Address() string {
+	ctl.mu.RLock()
+	defer ctl.mu.RUnlock()
+	return fmt.Sprintf("tcp://127.0.0.1:%d", ctl.rpcPort)
+}
+
 func (ctl *Controller) startRPC() error {
 	ctl.mu.Lock()
 	defer ctl.mu.Unlock()

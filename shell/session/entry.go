@@ -165,6 +165,11 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 	}
 	// setup ExecBuilder to enable re-execution
 	conf.ExecBuilder = func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
+		for k, v := range defaultSession.env {
+			if _, ok := env[k]; !ok {
+				env[k] = v
+			}
+		}
 		conf := engine.Config{
 			Code:   code,
 			Args:   args,
@@ -195,6 +200,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		Server:   neoHost,
 		User:     neoUser,
 		Password: neoPassword,
+		env:      map[string]any{},
 	}); err != nil {
 		if err == ErrUserOrPasswordIncorrect {
 			fmt.Println("Login failed: user or password is incorrect")

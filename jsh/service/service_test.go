@@ -320,13 +320,13 @@ func TestControllerJSONRPC(t *testing.T) {
 	if err := ctl.Start(nil); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
-	port := ctl.Port()
-	if port == 0 {
-		t.Fatal("Port() = 0, want assigned random port")
+	address := ctl.Address()
+	if address == "" {
+		t.Fatal("Address() = empty, want assigned random address")
 	}
 
 	var list []ServiceSnapshot
-	callControllerRPC(t, port, 1, "service.list", nil, &list)
+	callControllerRPC(t, address, 1, "service.list", nil, &list)
 	if len(list) != 1 {
 		t.Fatalf("service.list len=%d, want 1", len(list))
 	}
@@ -338,7 +338,7 @@ func TestControllerJSONRPC(t *testing.T) {
 	}
 
 	var beta ServiceSnapshot
-	callControllerRPC(t, port, 2, "service.install", Config{Name: "beta", Enable: true, Executable: "echo"}, &beta)
+	callControllerRPC(t, address, 2, "service.install", Config{Name: "beta", Enable: true, Executable: "echo"}, &beta)
 	if beta.Config.Name != "beta" {
 		t.Fatalf("service.install name=%q, want %q", beta.Config.Name, "beta")
 	}
@@ -346,7 +346,7 @@ func TestControllerJSONRPC(t *testing.T) {
 		t.Fatalf("service.install status=%s, want %s", beta.Status, ServiceStatusStopped)
 	}
 
-	callControllerRPC(t, port, 3, "service.start", map[string]any{"name": "beta"}, &beta)
+	callControllerRPC(t, address, 3, "service.start", map[string]any{"name": "beta"}, &beta)
 	if beta.Status != ServiceStatusRunning {
 		t.Fatalf("service.start status=%s, want %s", beta.Status, ServiceStatusRunning)
 	}
@@ -354,7 +354,7 @@ func TestControllerJSONRPC(t *testing.T) {
 	writeConfig(Config{Name: "beta", Enable: false, Executable: "echo", Args: []string{"v2"}})
 
 	var reread ServiceListSnapshot
-	callControllerRPC(t, port, 4, "service.read", nil, &reread)
+	callControllerRPC(t, address, 4, "service.read", nil, &reread)
 	if len(reread.Updated) != 1 {
 		t.Fatalf("service.read updated len=%d, want 1", len(reread.Updated))
 	}
@@ -363,7 +363,7 @@ func TestControllerJSONRPC(t *testing.T) {
 	}
 
 	var updateResult ControllerUpdateResult
-	callControllerRPC(t, port, 5, "service.update", nil, &updateResult)
+	callControllerRPC(t, address, 5, "service.update", nil, &updateResult)
 	if len(updateResult.Actions) != 1 {
 		t.Fatalf("service.update actions len=%d, want 1", len(updateResult.Actions))
 	}
@@ -372,7 +372,7 @@ func TestControllerJSONRPC(t *testing.T) {
 	}
 
 	var betaAfter ServiceSnapshot
-	callControllerRPC(t, port, 6, "service.get", map[string]any{"name": "beta"}, &betaAfter)
+	callControllerRPC(t, address, 6, "service.get", map[string]any{"name": "beta"}, &betaAfter)
 	if betaAfter.Config.Enable {
 		t.Fatal("service.get enable=true, want false")
 	}
@@ -384,27 +384,28 @@ func TestControllerJSONRPC(t *testing.T) {
 	}
 
 	var removed bool
-	callControllerRPC(t, port, 7, "service.uninstall", map[string]any{"name": "beta"}, &removed)
+	callControllerRPC(t, address, 7, "service.uninstall", map[string]any{"name": "beta"}, &removed)
 	if !removed {
 		t.Fatal("service.uninstall result=false, want true")
 	}
 
-	oldPort := port
+	oldAddress := address
 	ctl.Stop(nil)
-	if ctl.Port() != 0 {
-		t.Fatalf("Port() after Stop() = %d, want 0", ctl.Port())
+	if ctl.Address() != "tcp://127.0.0.1:0" {
+		t.Fatalf("Address() after Stop() = %s, want empty", ctl.Address())
 	}
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", oldPort), 100*time.Millisecond)
+	conn, err := net.DialTimeout("tcp", oldAddress, 100*time.Millisecond)
 	if err == nil {
 		conn.Close()
 		t.Fatal("DialTimeout() succeeded after Stop(), want listener closed")
 	}
 }
 
-func callControllerRPC(t *testing.T, port int, id int, method string, params any, out any) {
+func callControllerRPC(t *testing.T, address string, id int, method string, params any, out any) {
 	t.Helper()
 
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+	address = strings.TrimPrefix(address, "tcp://")
+	conn, err := net.DialTimeout("tcp", address, time.Second)
 	if err != nil {
 		t.Fatalf("DialTimeout() error: %v", err)
 	}
