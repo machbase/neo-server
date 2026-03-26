@@ -212,6 +212,16 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	}
 }
 
+func TestDatabaseExplainTql(t *testing.T) {
+	tests := []TqlTestCase{}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestDatabaseTql(t *testing.T) {
 	tests := []TqlTestCase{
 		{
@@ -325,29 +335,32 @@ func TestDatabaseTql(t *testing.T) {
 		// 	},
 		// },
 		{
-			Name: "SQL_explain-select",
+			Name: "SQL_explain-json-select",
 			Script: `
 				SQL("explain select * from tag_simple where name = 'tag1'")
-				CSV(header(true))
-				`,
-			ExpectCSV: []string{
-				"",
-				`" PROJECT"`,
-				`"  TAG READ (RAW)"`,
-				`"   KEYVALUE INDEX SCAN (_TAG_SIMPLE_DATA_0)"`,
-				`"    [KEY RANGE]"`,
-				`"     * IN ()"`,
-				`"   VOLATILE INDEX SCAN (_TAG_SIMPLE_META)"`,
-				`"    [KEY RANGE]"`,
-				`"     * name = 'tag1'"`,
-				"", "", "",
-			},
-			RunCondition: func() bool {
-				// FIXME: This test is not working on macOS
-				//        because of EXPLAIN does not include the name compare part on macOS.
-				// `"    [KEY RANGE]"`,
-				// `"     * name = 'tag1'"`,
-				return runtime.GOOS != "darwin"
+				DROP(0)
+				TAKE(50)
+				JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				elapse := gjson.Get(result, "elapse").String() // just to check elapse field exists
+				require.JSONEq(t, `{
+					"data":{
+						"columns":["PLAN"],
+						"types":["string"],
+						"rows":[
+							[" PROJECT"],
+							["  TAG READ (RAW)"],
+							["   KEYVALUE INDEX SCAN (_TAG_SIMPLE_DATA_0)"],
+							["    [KEY RANGE]"],
+							["     * IN ()"],
+							["   VOLATILE INDEX SCAN (_TAG_SIMPLE_META)"],
+							["    [KEY RANGE]"],
+							["     * "],
+							[""]
+						]
+					},
+					"success":true,"reason":"success","elapse":"`+elapse+`"}`, result)
 			},
 		},
 		{

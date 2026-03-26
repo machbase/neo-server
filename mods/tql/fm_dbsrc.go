@@ -559,10 +559,11 @@ func yieldExplain(node *Node, plan string, err error) {
 		return
 	}
 	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnRownum(),
 		api.MakeColumnString("PLAN"),
 	})
-	for _, line := range strings.Split(plan, "\n") {
-		NewRecord(1, []any{line}).Tell(node.next)
+	for n, line := range strings.Split(plan, "\n") {
+		NewRecord(n, []any{line}).Tell(node.next)
 	}
 }
 
