@@ -1,11 +1,96 @@
 package server
 
+/**
+# CGI handling in http_public.go
+
+`handlePublic()` executes `.../cgi-bin/*.js` through the JSH engine and interprets the script output as a parsed CGI response.
+
+## Supported CGI response forms
+
+The script output must contain headers first, followed by a blank line, then the optional body.
+
+- Header terminator: `\r\n\r\n` or `\n\n`
+- Header syntax: `Name: value`
+- Standard CGI headers: `Content-Type`, `Status`, `Location`
+
+The server supports these parsed CGI response forms from RFC 3875:
+
+1. Document response
+
+   ```text
+   Content-Type: text/plain
+   Status: 200 OK
+
+   hello
+   ```
+
+   `Content-Type` is required.
+   `Status` is optional and defaults to `200`.
+
+2. Local redirect response
+
+   ```text
+   Location: /public/app/index.html
+
+   ```
+
+   No other headers or body are allowed.
+   The server rewrites the request path and re-enters the Gin router internally.
+
+3. Client redirect response
+
+   ```text
+   Location: https://example.com/next
+
+   ```
+
+   No body is allowed.
+   The server sends `302 Found` to the client.
+
+4. Client redirect response with document
+
+   ```text
+   Location: https://example.com/next
+   Status: 302 Found
+   Content-Type: text/html
+
+   <html>...</html>
+   ```
+
+   `Status` must be a `3xx` code.
+   `Content-Type` is required when a body is present.
+
+## Additional behavior
+
+- `HEAD` requests discard the CGI message body but still apply response headers.
+- Duplicate `Status`, `Content-Type`, and `Location` headers are rejected.
+- Malformed CGI output returns HTTP 500 from `handlePublic()`.
+
+## Compatibility extension
+
+For compatibility with existing scripts, the first non-empty response line may also be written as an HTTP-style status line instead of a CGI `Status:` header.
+
+Example:
+
+```text
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{"ok":true}
+```
+
+This is an implementation-defined extension and is not part of standard parsed CGI/1.1 response syntax.
+*/
+
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,7 +136,6 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 			"console.println(JSON.stringify({ error: err.message }, null, 2));",
 			"}",
 		}, "\n")
-		// fmt.Println("Mount "+mountPoint, "->", appRealPath.AbsPath, "\ncode:\n", code)
 		fsTabs := []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
@@ -62,13 +146,14 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		env["HOME"] = "/work"
 		env["PWD"] = mountPoint
 		env["QUERY"] = ctx.Request.URL.Query()
+		cgiWriter := &CgiBinWriter{ctx: ctx, svr: svr}
 		conf := engine.Config{
 			Name:   path,
 			Code:   code,
 			FSTabs: fsTabs,
 			Env:    env,
 			Reader: ctx.Request.Body,
-			Writer: ctx.Writer,
+			Writer: cgiWriter,
 			ExecBuilder: func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
 				self, err := os.Executable()
 				if err != nil {
@@ -96,6 +181,10 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		lib.Enable(jr)
 		if err := jr.Run(); err != nil {
 			handleError(ctx, http.StatusInternalServerError, "engine run error: "+err.Error(), tick)
+			return
+		}
+		if err := cgiWriter.Finalize(); err != nil {
+			handleError(ctx, http.StatusInternalServerError, "invalid cgi response: "+err.Error(), tick)
 		}
 		return
 	} else if ctx.Request.Method == http.MethodGet {
@@ -159,4 +248,332 @@ func contextToCGIEnv(ctx *gin.Context, scriptName string) map[string]any {
 		"SERVER_SOFTWARE":          "machbase-neo",
 	}
 	return m
+}
+
+type CgiBinWriter struct {
+	ctx            *gin.Context
+	svr            *httpd
+	router         *gin.Engine
+	headerBuf      []byte
+	headerParsed   bool
+	headersApplied bool
+	bodySeen       bool
+	sawOutput      bool
+	response       *cgiResponseMeta
+}
+
+func (w *CgiBinWriter) Write(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	w.sawOutput = true
+
+	if w.headerParsed {
+		if err := w.writeBody(p); err != nil {
+			return 0, err
+		}
+		return len(p), nil
+	}
+
+	w.headerBuf = append(w.headerBuf, p...)
+	headerEnd, separatorLen := findCgiHeaderEnd(w.headerBuf)
+	if headerEnd < 0 {
+		return len(p), nil
+	}
+
+	buffered := w.headerBuf
+	bodyStart := headerEnd + separatorLen
+	response, err := parseCgiResponseHeader(buffered[:headerEnd])
+	if err != nil {
+		return 0, err
+	}
+
+	w.headerBuf = nil
+	w.headerParsed = true
+	w.response = response
+
+	if bodyStart == len(buffered) {
+		return len(p), nil
+	}
+	if err := w.writeBody(buffered[bodyStart:]); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func (w *CgiBinWriter) Finalize() error {
+	if !w.sawOutput {
+		return errors.New("empty response")
+	}
+	if !w.headerParsed {
+		return errors.New("missing header separator")
+	}
+	if w.response == nil {
+		return errors.New("missing response headers")
+	}
+	if w.bodySeen {
+		return nil
+	}
+
+	responseType, err := w.response.classify(false)
+	if err != nil {
+		return err
+	}
+	if responseType == cgiResponseLocalRedirect {
+		return w.processLocalRedirect()
+	}
+	if err := w.applyResponseHeaders(responseType); err != nil {
+		return err
+	}
+	w.ctx.Writer.WriteHeaderNow()
+	return nil
+}
+
+func (w *CgiBinWriter) writeBody(p []byte) error {
+	responseType, err := w.response.classify(true)
+	if err != nil {
+		return err
+	}
+	if responseType == cgiResponseLocalRedirect || responseType == cgiResponseClientRedirect {
+		return errors.New("redirect response must not include a message body")
+	}
+	if !w.headersApplied {
+		if err := w.applyResponseHeaders(responseType); err != nil {
+			return err
+		}
+	}
+	w.bodySeen = true
+	if w.ctx.Request.Method == http.MethodHead {
+		return nil
+	}
+	_, err = w.ctx.Writer.Write(p)
+	return err
+}
+
+func findCgiHeaderEnd(p []byte) (int, int) {
+	crlfIndex := bytes.Index(p, []byte("\r\n\r\n"))
+	lfIndex := bytes.Index(p, []byte("\n\n"))
+	if crlfIndex >= 0 && (lfIndex < 0 || crlfIndex < lfIndex) {
+		return crlfIndex, 4
+	}
+	if lfIndex >= 0 {
+		return lfIndex, 2
+	}
+	return -1, 0
+}
+
+func splitCgiHeaderLine(line string) (string, string, bool) {
+	colonIndex := strings.Index(line, ":")
+	if colonIndex < 0 {
+		return "", "", false
+	}
+
+	key := strings.TrimSpace(line[:colonIndex])
+	value := strings.TrimSpace(line[colonIndex+1:])
+	if key == "" {
+		return "", "", false
+	}
+	return key, value, true
+}
+
+type cgiResponseType int
+
+const (
+	cgiResponseDocument cgiResponseType = iota + 1
+	cgiResponseLocalRedirect
+	cgiResponseClientRedirect
+	cgiResponseClientRedirectWithDocument
+)
+
+type cgiResponseMeta struct {
+	statusCode  int
+	hasStatus   bool
+	contentType string
+	location    string
+	headers     http.Header
+}
+
+func parseCgiResponseHeader(headerBlock []byte) (*cgiResponseMeta, error) {
+	meta := &cgiResponseMeta{headers: http.Header{}}
+	normalized := strings.ReplaceAll(string(headerBlock), "\r\n", "\n")
+	firstLine := true
+	for _, rawLine := range strings.Split(normalized, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+		if firstLine {
+			firstLine = false
+			if statusCode, ok := parseCgiStatusLine(line); ok {
+				meta.statusCode = statusCode
+				meta.hasStatus = true
+				continue
+			}
+		}
+
+		key, value, ok := splitCgiHeaderLine(line)
+		if !ok {
+			return nil, fmt.Errorf("malformed header line %q", line)
+		}
+		switch strings.ToLower(key) {
+		case "status":
+			if meta.hasStatus {
+				return nil, errors.New("duplicate Status header")
+			}
+			statusCode, err := parseCgiStatusHeaderValue(value)
+			if err != nil {
+				return nil, err
+			}
+			meta.statusCode = statusCode
+			meta.hasStatus = true
+		case "content-type":
+			if meta.contentType != "" {
+				return nil, errors.New("duplicate Content-Type header")
+			}
+			meta.contentType = value
+		case "location":
+			if meta.location != "" {
+				return nil, errors.New("duplicate Location header")
+			}
+			meta.location = value
+		default:
+			meta.headers.Add(key, value)
+		}
+	}
+	return meta, nil
+}
+
+func (meta *cgiResponseMeta) classify(hasBody bool) (cgiResponseType, error) {
+	if meta.location != "" {
+		if isLocalRedirectTarget(meta.location) {
+			if hasBody {
+				return 0, errors.New("local redirect must not include a message body")
+			}
+			if meta.hasStatus || meta.contentType != "" || len(meta.headers) > 0 {
+				return 0, errors.New("local redirect must not include headers other than Location")
+			}
+			return cgiResponseLocalRedirect, nil
+		}
+		if hasBody {
+			if !meta.hasStatus {
+				return 0, errors.New("client redirect with document requires Status")
+			}
+			if meta.contentType == "" {
+				return 0, errors.New("client redirect with document requires Content-Type")
+			}
+			if meta.statusCode < 300 || meta.statusCode >= 400 {
+				return 0, errors.New("client redirect with document requires a 3xx status")
+			}
+			return cgiResponseClientRedirectWithDocument, nil
+		}
+		if meta.hasStatus {
+			return 0, errors.New("client redirect must not include Status unless a document is returned")
+		}
+		if meta.contentType != "" {
+			return 0, errors.New("client redirect must not include Content-Type without a document")
+		}
+		if !onlyCgiExtensionHeaders(meta.headers) {
+			return 0, errors.New("client redirect must not include protocol headers")
+		}
+		return cgiResponseClientRedirect, nil
+	}
+	if meta.contentType == "" {
+		return 0, errors.New("document response requires Content-Type")
+	}
+	return cgiResponseDocument, nil
+}
+
+func (w *CgiBinWriter) applyResponseHeaders(responseType cgiResponseType) error {
+	if w.headersApplied {
+		return nil
+	}
+	for key, values := range w.response.headers {
+		if strings.HasPrefix(key, "X-Cgi-") && responseType == cgiResponseClientRedirect {
+			continue
+		}
+		for _, value := range values {
+			w.ctx.Writer.Header().Add(key, value)
+		}
+	}
+	switch responseType {
+	case cgiResponseDocument:
+		w.ctx.Header("Content-Type", w.response.contentType)
+		if w.response.hasStatus {
+			w.ctx.Status(w.response.statusCode)
+		}
+	case cgiResponseClientRedirect:
+		w.ctx.Header("Location", w.response.location)
+		w.ctx.Status(http.StatusFound)
+	case cgiResponseClientRedirectWithDocument:
+		w.ctx.Header("Location", w.response.location)
+		w.ctx.Header("Content-Type", w.response.contentType)
+		w.ctx.Status(w.response.statusCode)
+	default:
+		return fmt.Errorf("unsupported response type %d", responseType)
+	}
+	w.headersApplied = true
+	return nil
+}
+
+func (w *CgiBinWriter) processLocalRedirect() error {
+	if w.response == nil {
+		return errors.New("missing response metadata")
+	}
+	redirectURL, err := url.Parse(w.response.location)
+	if err != nil {
+		return err
+	}
+	engine := w.router
+	if engine == nil {
+		if w.svr == nil {
+			return errors.New("router is unavailable for local redirect")
+		}
+		engine = w.svr.Router()
+	}
+	w.ctx.Request.URL.Path = redirectURL.Path
+	w.ctx.Request.URL.RawPath = redirectURL.RawPath
+	w.ctx.Request.URL.RawQuery = redirectURL.RawQuery
+	w.ctx.Request.RequestURI = redirectURL.RequestURI()
+	engine.HandleContext(w.ctx)
+	return nil
+}
+
+func parseCgiStatusHeaderValue(value string) (int, error) {
+	fields := strings.Fields(value)
+	if len(fields) == 0 {
+		return 0, errors.New("empty Status header")
+	}
+	statusCode, err := strconv.Atoi(fields[0])
+	if err != nil {
+		return 0, fmt.Errorf("invalid Status header: %w", err)
+	}
+	return statusCode, nil
+}
+
+func parseCgiStatusLine(line string) (int, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return 0, false
+	}
+	if !strings.HasPrefix(fields[0], "HTTP") {
+		return 0, false
+	}
+	statusCode, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, false
+	}
+	return statusCode, true
+}
+
+func isLocalRedirectTarget(location string) bool {
+	return strings.HasPrefix(location, "/")
+}
+
+func onlyCgiExtensionHeaders(headers http.Header) bool {
+	for key := range headers {
+		if !strings.HasPrefix(key, "X-Cgi-") {
+			return false
+		}
+	}
+	return true
 }

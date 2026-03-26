@@ -165,11 +165,6 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 	}
 	// setup ExecBuilder to enable re-execution
 	conf.ExecBuilder = func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
-		for k, v := range defaultSession.env {
-			if _, ok := env[k]; !ok {
-				env[k] = v
-			}
-		}
 		conf := engine.Config{
 			Code:   code,
 			Args:   args,
@@ -209,7 +204,11 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		}
 		os.Exit(1)
 	}
-
+	for k, v := range defaultSession.env {
+		if o := eng.Env.Get(k); o == nil {
+			eng.Env.Set(k, v)
+		}
+	}
 	os.Exit(eng.Main())
 }
 

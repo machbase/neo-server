@@ -88,7 +88,7 @@
         console.println('  update');
         console.println('  reload');
         console.println('  install <config.json>');
-        console.println('  install --name <name> --executable <path> [--working-dir <dir>] [--enable] [--auto-start] [--arg <arg> ...] [--env KEY=VALUE ...]');
+        console.println('  install --name <name> --executable <path> [--arg <arg> ...] [--working-dir <dir>] [--enable] [--auto-start] [--env KEY=VALUE ...]');
         console.println('  uninstall <service_name>');
         console.println('  status [service_name]');
         console.println('  start <service_name>');
