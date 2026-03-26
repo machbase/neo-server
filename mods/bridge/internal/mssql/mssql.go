@@ -117,11 +117,13 @@ func (c *bridge) ParameterMarker(idx int) string {
 
 func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
 	switch databaseTypeName {
-	case "INT", "SMALLINT":
+	case "INT", "SMALLINT", "TINYINT", "BIGINT":
 		return new(sql.NullInt64)
-	case "DECIMAL", "REAL":
+	case "DECIMAL", "NUMERIC", "MONEY", "SMALLMONEY", "REAL", "FLOAT":
 		return new(sql.NullFloat64)
-	case "VARCHAR", "TEXT":
+	case "BIT":
+		return new(sql.NullBool)
+	case "VARCHAR", "TEXT", "NCHAR", "NVARCHAR":
 		return new(sql.NullString)
 	case "DATETIME":
 		return new(sql.NullTime)

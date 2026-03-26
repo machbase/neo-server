@@ -56,27 +56,37 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	result := conn.Exec(ctx, `CREATE TABLE ids (
 		id INT NOT NULL PRIMARY KEY,
 		event_smallint SMALLINT NULL,
+		event_tinyint TINYINT NULL,
+		event_int INT NULL,
+		event_bigint BIGINT NULL,
 		event_decimal DECIMAL(10,2) NULL,
+		event_numeric NUMERIC(10,2) NULL,
+		event_money MONEY NULL,
+		event_smallmoney SMALLMONEY NULL,
 		event_real REAL NULL,
+		event_float FLOAT NULL,
+		event_bit BIT NULL,
 		event_varchar VARCHAR(100) NULL,
+		event_nchar NCHAR(8) NULL,
+		event_nvarchar NVARCHAR(100) NULL,
 		event_text TEXT NULL,
 		event_datetime DATETIME NULL
 	)`)
 	require.NoError(t, result.Err())
 
-	result = conn.Exec(ctx, `INSERT INTO ids(id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime) VALUES(1, 7, 123.45, 9.5, 'ms-varchar', 'ms-text', '2026-03-14 05:29:01')`)
+	result = conn.Exec(ctx, `INSERT INTO ids(id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime) VALUES(1, 7, 12, 34, 1234567890123, 123.45, 234.56, 345.67, 45.67, 9.5, 10.25, 1, 'ms-varchar', N'ms-nchar', N'ms-nvarchar', 'ms-text', '2026-03-14 05:29:01')`)
 	require.NoError(t, result.Err())
 
-	result = conn.Exec(ctx, `INSERT INTO ids(id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime) VALUES(2, NULL, NULL, NULL, NULL, NULL, NULL)`)
+	result = conn.Exec(ctx, `INSERT INTO ids(id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime) VALUES(2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)`)
 	require.NoError(t, result.Err())
 
-	rows, err := sqlConn.QueryContext(ctx, `SELECT id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime FROM ids WHERE id = 1`)
+	rows, err := sqlConn.QueryContext(ctx, `SELECT id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime FROM ids WHERE id = 1`)
 	require.NoError(t, err)
 	defer rows.Close()
 
 	columns, err := rows.ColumnTypes()
 	require.NoError(t, err)
-	require.Len(t, columns, 7)
+	require.Len(t, columns, 17)
 
 	fields := make([]any, len(columns))
 	for i, column := range columns {
@@ -98,58 +108,126 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.True(t, smallintValue.Valid)
 	require.Equal(t, int64(7), smallintValue.Int64)
 
-	decimalValue, ok := fields[2].(*sql.NullFloat64)
+	tinyintValue, ok := fields[2].(*sql.NullInt64)
+	require.True(t, ok)
+	require.True(t, tinyintValue.Valid)
+	require.Equal(t, int64(12), tinyintValue.Int64)
+
+	intValue, ok := fields[3].(*sql.NullInt64)
+	require.True(t, ok)
+	require.True(t, intValue.Valid)
+	require.Equal(t, int64(34), intValue.Int64)
+
+	bigintValue, ok := fields[4].(*sql.NullInt64)
+	require.True(t, ok)
+	require.True(t, bigintValue.Valid)
+	require.Equal(t, int64(1234567890123), bigintValue.Int64)
+
+	decimalValue, ok := fields[5].(*sql.NullFloat64)
 	require.True(t, ok)
 	require.True(t, decimalValue.Valid)
 	require.InDelta(t, 123.45, decimalValue.Float64, 0.0001)
 
-	realValue, ok := fields[3].(*sql.NullFloat64)
+	numericValue, ok := fields[6].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.True(t, numericValue.Valid)
+	require.InDelta(t, 234.56, numericValue.Float64, 0.0001)
+
+	moneyValue, ok := fields[7].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.True(t, moneyValue.Valid)
+	require.InDelta(t, 345.67, moneyValue.Float64, 0.0001)
+
+	smallmoneyValue, ok := fields[8].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.True(t, smallmoneyValue.Valid)
+	require.InDelta(t, 45.67, smallmoneyValue.Float64, 0.0001)
+
+	realValue, ok := fields[9].(*sql.NullFloat64)
 	require.True(t, ok)
 	require.True(t, realValue.Valid)
 	require.InDelta(t, 9.5, realValue.Float64, 0.0001)
 
-	varcharValue, ok := fields[4].(*sql.NullString)
+	floatValue, ok := fields[10].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.True(t, floatValue.Valid)
+	require.InDelta(t, 10.25, floatValue.Float64, 0.0001)
+
+	bitValue, ok := fields[11].(*sql.NullBool)
+	require.True(t, ok)
+	require.True(t, bitValue.Valid)
+	require.True(t, bitValue.Bool)
+
+	varcharValue, ok := fields[12].(*sql.NullString)
 	require.True(t, ok)
 	require.True(t, varcharValue.Valid)
 	require.Equal(t, "ms-varchar", varcharValue.String)
 
-	textValue, ok := fields[5].(*sql.NullString)
+	ncharValue, ok := fields[13].(*sql.NullString)
+	require.True(t, ok)
+	require.True(t, ncharValue.Valid)
+	require.Equal(t, "ms-nchar", ncharValue.String)
+
+	nvarcharValue, ok := fields[14].(*sql.NullString)
+	require.True(t, ok)
+	require.True(t, nvarcharValue.Valid)
+	require.Equal(t, "ms-nvarchar", nvarcharValue.String)
+
+	textValue, ok := fields[15].(*sql.NullString)
 	require.True(t, ok)
 	require.True(t, textValue.Valid)
 	require.Equal(t, "ms-text", textValue.String)
 
-	datetimeValue, ok := fields[6].(*sql.NullTime)
+	datetimeValue, ok := fields[16].(*sql.NullTime)
 	require.True(t, ok)
 	require.True(t, datetimeValue.Valid)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), datetimeValue.Time.UTC())
 
 	datums, err := bridgepkg.ConvertToDatum(fields...)
 	require.NoError(t, err)
-	require.Len(t, datums, 7)
+	require.Len(t, datums, 17)
 
 	values, err := bridgepkg.ConvertFromDatum(datums...)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), values[0])
 	require.Equal(t, int64(7), values[1])
-	convertedDecimal, ok := values[2].(float64)
+	require.Equal(t, int64(12), values[2])
+	require.Equal(t, int64(34), values[3])
+	require.Equal(t, int64(1234567890123), values[4])
+	convertedDecimal, ok := values[5].(float64)
 	require.True(t, ok)
 	require.InDelta(t, 123.45, convertedDecimal, 0.0001)
-	convertedReal, ok := values[3].(float64)
+	convertedNumeric, ok := values[6].(float64)
+	require.True(t, ok)
+	require.InDelta(t, 234.56, convertedNumeric, 0.0001)
+	convertedMoney, ok := values[7].(float64)
+	require.True(t, ok)
+	require.InDelta(t, 345.67, convertedMoney, 0.0001)
+	convertedSmallmoney, ok := values[8].(float64)
+	require.True(t, ok)
+	require.InDelta(t, 45.67, convertedSmallmoney, 0.0001)
+	convertedReal, ok := values[9].(float64)
 	require.True(t, ok)
 	require.InDelta(t, 9.5, convertedReal, 0.0001)
-	require.Equal(t, "ms-varchar", values[4])
-	require.Equal(t, "ms-text", values[5])
-	convertedDatetime, ok := values[6].(time.Time)
+	convertedFloat, ok := values[10].(float64)
+	require.True(t, ok)
+	require.InDelta(t, 10.25, convertedFloat, 0.0001)
+	require.Equal(t, true, values[11])
+	require.Equal(t, "ms-varchar", values[12])
+	require.Equal(t, "ms-nchar", values[13])
+	require.Equal(t, "ms-nvarchar", values[14])
+	require.Equal(t, "ms-text", values[15])
+	convertedDatetime, ok := values[16].(time.Time)
 	require.True(t, ok)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), convertedDatetime.UTC())
 
-	nullRows, err := sqlConn.QueryContext(ctx, `SELECT id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime FROM ids WHERE id = 2`)
+	nullRows, err := sqlConn.QueryContext(ctx, `SELECT id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime FROM ids WHERE id = 2`)
 	require.NoError(t, err)
 	defer nullRows.Close()
 
 	nullColumns, err := nullRows.ColumnTypes()
 	require.NoError(t, err)
-	require.Len(t, nullColumns, 7)
+	require.Len(t, nullColumns, 17)
 
 	nullFields := make([]any, len(nullColumns))
 	for i, column := range nullColumns {
@@ -170,29 +248,69 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, nullSmallintValue.Valid)
 
-	nullDecimalValue, ok := nullFields[2].(*sql.NullFloat64)
+	nullTinyintValue, ok := nullFields[2].(*sql.NullInt64)
+	require.True(t, ok)
+	require.False(t, nullTinyintValue.Valid)
+
+	nullIntValue, ok := nullFields[3].(*sql.NullInt64)
+	require.True(t, ok)
+	require.False(t, nullIntValue.Valid)
+
+	nullBigintValue, ok := nullFields[4].(*sql.NullInt64)
+	require.True(t, ok)
+	require.False(t, nullBigintValue.Valid)
+
+	nullDecimalValue, ok := nullFields[5].(*sql.NullFloat64)
 	require.True(t, ok)
 	require.False(t, nullDecimalValue.Valid)
 
-	nullRealValue, ok := nullFields[3].(*sql.NullFloat64)
+	nullNumericValue, ok := nullFields[6].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.False(t, nullNumericValue.Valid)
+
+	nullMoneyValue, ok := nullFields[7].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.False(t, nullMoneyValue.Valid)
+
+	nullSmallmoneyValue, ok := nullFields[8].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.False(t, nullSmallmoneyValue.Valid)
+
+	nullRealValue, ok := nullFields[9].(*sql.NullFloat64)
 	require.True(t, ok)
 	require.False(t, nullRealValue.Valid)
 
-	nullVarcharValue, ok := nullFields[4].(*sql.NullString)
+	nullFloatValue, ok := nullFields[10].(*sql.NullFloat64)
+	require.True(t, ok)
+	require.False(t, nullFloatValue.Valid)
+
+	nullBitValue, ok := nullFields[11].(*sql.NullBool)
+	require.True(t, ok)
+	require.False(t, nullBitValue.Valid)
+
+	nullVarcharValue, ok := nullFields[12].(*sql.NullString)
 	require.True(t, ok)
 	require.False(t, nullVarcharValue.Valid)
 
-	nullTextValue, ok := nullFields[5].(*sql.NullString)
+	nullNCharValue, ok := nullFields[13].(*sql.NullString)
+	require.True(t, ok)
+	require.False(t, nullNCharValue.Valid)
+
+	nullNVarcharValue, ok := nullFields[14].(*sql.NullString)
+	require.True(t, ok)
+	require.False(t, nullNVarcharValue.Valid)
+
+	nullTextValue, ok := nullFields[15].(*sql.NullString)
 	require.True(t, ok)
 	require.False(t, nullTextValue.Valid)
 
-	nullDatetimeValue, ok := nullFields[6].(*sql.NullTime)
+	nullDatetimeValue, ok := nullFields[16].(*sql.NullTime)
 	require.True(t, ok)
 	require.False(t, nullDatetimeValue.Valid)
 
 	nullDatums, err := bridgepkg.ConvertToDatum(nullFields...)
 	require.NoError(t, err)
-	require.Len(t, nullDatums, 7)
+	require.Len(t, nullDatums, 17)
 
 	nullValues, err := bridgepkg.ConvertFromDatum(nullDatums...)
 	require.NoError(t, err)
@@ -203,4 +321,14 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.Nil(t, nullValues[4])
 	require.Nil(t, nullValues[5])
 	require.Nil(t, nullValues[6])
+	require.Nil(t, nullValues[7])
+	require.Nil(t, nullValues[8])
+	require.Nil(t, nullValues[9])
+	require.Nil(t, nullValues[10])
+	require.Nil(t, nullValues[11])
+	require.Nil(t, nullValues[12])
+	require.Nil(t, nullValues[13])
+	require.Nil(t, nullValues[14])
+	require.Nil(t, nullValues[15])
+	require.Nil(t, nullValues[16])
 }

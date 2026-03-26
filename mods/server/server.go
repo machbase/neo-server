@@ -1081,6 +1081,20 @@ func (s *Server) deleteShell(id string) error {
 	return s.models.ShellProvider().RemoveShell(id)
 }
 
+func (s *Server) getBridge(name string) (*bridgerpc.Bridge, error) {
+	ctx := context.Background()
+	rsp, err := s.bridgeSvc.GetBridge(ctx, &bridgerpc.GetBridgeRequest{
+		Name: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Bridge, nil
+}
+
 func (s *Server) listBridges() ([]*bridgerpc.Bridge, error) {
 	ctx := context.Background()
 	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {

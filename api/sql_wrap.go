@@ -288,7 +288,7 @@ func (r *WrappedSqlRows) Err() error {
 
 func scanTypeToDataType(col *sql.ColumnType) api.DataType {
 	switch col.DatabaseTypeName() {
-	case "VARCHAR", "TEXT", "NVARCHAR":
+	case "VARCHAR", "TEXT", "NCHAR", "NVARCHAR":
 		return api.DataTypeString
 	}
 	switch col.ScanType().String() {

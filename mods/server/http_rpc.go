@@ -191,6 +191,7 @@ func RegisterJsonRpcHandlers(s *Server) {
 	RegisterJsonRpcHandler("addShell", s.addShell)
 	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
 	RegisterJsonRpcHandler("listBridges", s.listBridges)
+	RegisterJsonRpcHandler("getBridge", s.getBridge)
 	RegisterJsonRpcHandler("addBridge", s.addBridge)
 	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
 	RegisterJsonRpcHandler("testBridge", s.testBridge)
