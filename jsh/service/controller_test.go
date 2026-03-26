@@ -391,7 +391,7 @@ func TestControllerJSONRPC(t *testing.T) {
 
 	oldAddress := address
 	ctl.Stop(nil)
-	if ctl.Address() != "tcp://127.0.0.1:0" {
+	if ctl.Address() != "" {
 		t.Fatalf("Address() after Stop() = %s, want empty", ctl.Address())
 	}
 	conn, err := net.DialTimeout("tcp", oldAddress, 100*time.Millisecond)

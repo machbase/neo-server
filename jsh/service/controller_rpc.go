@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 )
 
 const (
@@ -81,16 +82,10 @@ type serviceNameRequest struct {
 	Name string `json:"name"`
 }
 
-func (ctl *Controller) Port() int {
-	ctl.mu.RLock()
-	defer ctl.mu.RUnlock()
-	return ctl.rpcPort
-}
-
 func (ctl *Controller) Address() string {
 	ctl.mu.RLock()
 	defer ctl.mu.RUnlock()
-	return fmt.Sprintf("tcp://127.0.0.1:%d", ctl.rpcPort)
+	return ctl.rpcListenAddr
 }
 
 func (ctl *Controller) startRPC() error {
@@ -100,13 +95,14 @@ func (ctl *Controller) startRPC() error {
 	if ctl.rpcLn != nil {
 		return nil
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	addr := strings.TrimPrefix(ctl.rpcConfigAddr, "tcp://")
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("start controller rpc listener: %w", err)
 	}
 	ctl.rpcLn = ln
 	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
-		ctl.rpcPort = addr.Port
+		ctl.rpcListenAddr = fmt.Sprintf("tcp://%s", addr.String())
 	}
 	ctl.rpcWG.Add(1)
 	go ctl.serveRPC(ln)
@@ -117,7 +113,7 @@ func (ctl *Controller) stopRPC() {
 	ctl.mu.Lock()
 	ln := ctl.rpcLn
 	ctl.rpcLn = nil
-	ctl.rpcPort = 0
+	ctl.rpcListenAddr = ""
 	ctl.mu.Unlock()
 
 	if ln == nil {

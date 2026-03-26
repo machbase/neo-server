@@ -18,6 +18,7 @@ type ControllerConfig struct {
 	Launcher  []string
 	Mounts    engine.FSTabs
 	ConfigDir string
+	Address   string
 }
 
 func NewController(opt *ControllerConfig) (*Controller, error) {
@@ -33,24 +34,30 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 			return nil, fmt.Errorf("failed to mount %s: %w", tab.MountPoint, err)
 		}
 	}
+	if opt.Address == "" {
+		opt.Address = "tcp://127.0.0.1:0"
+	}
+
 	return &Controller{
-		fs:       fs,
-		confDir:  opt.ConfigDir,
-		services: make(map[string]*Service),
-		launcher: opt.Launcher,
+		fs:            fs,
+		confDir:       opt.ConfigDir,
+		services:      make(map[string]*Service),
+		launcher:      opt.Launcher,
+		rpcConfigAddr: opt.Address,
 	}, nil
 }
 
 type Controller struct {
-	mu       sync.RWMutex
-	services map[string]*Service
-	fs       *engine.FS
-	confDir  string
-	reread   *ServiceList
-	launcher []string
-	rpcPort  int
-	rpcWG    sync.WaitGroup
-	rpcLn    net.Listener
+	mu            sync.RWMutex
+	services      map[string]*Service
+	fs            *engine.FS
+	confDir       string
+	reread        *ServiceList
+	launcher      []string
+	rpcConfigAddr string
+	rpcListenAddr string
+	rpcWG         sync.WaitGroup
+	rpcLn         net.Listener
 }
 
 func (ctl *Controller) Start(callback func(sc *Config, action string, err error)) error {
