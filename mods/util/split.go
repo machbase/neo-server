@@ -31,6 +31,41 @@ type SqlStatement struct {
 	Env       *SqlStatementEnv `json:"env,omitempty"`
 }
 
+var doubleDashAsFlags = [][]string{{"explain"}, {"desc"}, {"show", "tables"}}
+
+func treatDoubleDashAsFlag(statement string) bool {
+	tokens := SplitFields(strings.TrimSpace(statement), true)
+	if len(tokens) == 0 {
+		return false
+	}
+
+	for _, prefix := range doubleDashAsFlags {
+		if len(tokens) < len(prefix) {
+			continue
+		}
+		matched := true
+		for i, token := range prefix {
+			if !strings.EqualFold(tokens[i], token) {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		for _, token := range tokens[len(prefix):] {
+			if !strings.HasPrefix(token, "--") {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
 // SplitSqlStatements splits multiple SQL statements from the reader.
 func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 	var env = &SqlStatementEnv{}
@@ -83,9 +118,16 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 		case "-":
 			if !inString {
 				if inSingleDash {
+					if treatDoubleDashAsFlag(buffer.String()) {
+						buffer.WriteString("--")
+						inSingleDash = false
+						continue
+					}
 					commentBuffer.Reset()
 					inSingleLineComment = true
 					commentBuffer.WriteString("--")
+					inSingleDash = false
+					continue
 				}
 				inSingleDash = !inSingleDash
 				continue

@@ -145,6 +145,45 @@ func TestSplitSqlStatementsSingleLine(t *testing.T) {
 	}
 }
 
+func TestSplitSqlStatementsDoubleDashFlags(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect []*util.SqlStatement
+	}{
+		{
+			name:  "explain long flag",
+			input: "explain --full select * from example;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "explain --full select * from example;", Env: &util.SqlStatementEnv{}},
+			},
+		},
+		{
+			name:  "show tables long flag",
+			input: "show tables --all;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "show tables --all;", Env: &util.SqlStatementEnv{}},
+			},
+		},
+		{
+			name:  "explain keeps later comment",
+			input: "explain --full select * from example -- comment\nwhere id = 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- comment", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 1, EndLine: 2, IsComment: false, Text: "explain --full select * from example where id = 1;", Env: &util.SqlStatementEnv{}},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			statements, err := util.SplitSqlStatements(strings.NewReader(tc.input))
+			require.NoError(t, err)
+			require.EqualValues(t, tc.expect, statements)
+		})
+	}
+}
+
 func TestSplitSqlStatements(t *testing.T) {
 	tests := []struct {
 		inputFile  string
