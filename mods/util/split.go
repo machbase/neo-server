@@ -31,7 +31,7 @@ type SqlStatement struct {
 	Env       *SqlStatementEnv `json:"env,omitempty"`
 }
 
-var doubleDashAsFlags = [][]string{{"explain"}, {"desc"}, {"show", "tables"}}
+var doubleDashAsFlags = [][]string{{"explain"}, {"desc"}, {"show", "tables"}, {"show", "table"}}
 
 func treatDoubleDashAsFlag(statement string) bool {
 	tokens := SplitFields(strings.TrimSpace(statement), true)

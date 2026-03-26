@@ -252,7 +252,7 @@ func (ch *CommandHandler) NewShowCommand() *cobra.Command {
 
 	if ch.ShowTables != nil {
 		showTables := &cobra.Command{
-			Use:  "tables [-a]",
+			Use:  "tables [-a,--all]",
 			Args: cobra.NoArgs,
 		}
 		showTablesAll := showTables.Flags().BoolP("all", "a", false, "show all tables")
@@ -289,7 +289,7 @@ func (ch *CommandHandler) NewShowCommand() *cobra.Command {
 
 	if ch.DescribeTable != nil {
 		showTable := &cobra.Command{
-			Use:  "table [-a] <table_name>",
+			Use:  "table [-a,--all] <table_name>",
 			Args: cobra.ExactArgs(1),
 		}
 		descTableAll := showTable.Flags().BoolP("all", "a", false, "describe all columns")

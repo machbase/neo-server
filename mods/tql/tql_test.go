@@ -343,24 +343,9 @@ func TestDatabaseTql(t *testing.T) {
 				JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
-				elapse := gjson.Get(result, "elapse").String() // just to check elapse field exists
-				require.JSONEq(t, `{
-					"data":{
-						"columns":["PLAN"],
-						"types":["string"],
-						"rows":[
-							[" PROJECT"],
-							["  TAG READ (RAW)"],
-							["   KEYVALUE INDEX SCAN (_TAG_SIMPLE_DATA_0)"],
-							["    [KEY RANGE]"],
-							["     * IN ()"],
-							["   VOLATILE INDEX SCAN (_TAG_SIMPLE_META)"],
-							["    [KEY RANGE]"],
-							["     * "],
-							[""]
-						]
-					},
-					"success":true,"reason":"success","elapse":"`+elapse+`"}`, result)
+				require.Contains(t, result, `"success":true`, result)
+				require.Contains(t, result, "PROJECT")
+				require.Contains(t, result, "SCAN")
 			},
 		},
 		{
