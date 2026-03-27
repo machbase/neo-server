@@ -150,19 +150,36 @@ func TestPkgInitHelpIncludesTargetDirectoryOption(t *testing.T) {
 	}
 }
 
-func TestPkgInstallMachbaseScoped(t *testing.T) {
+func TestPkgInstallGitHubLatestTag(t *testing.T) {
 	workDir := t.TempDir()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/machbase/demo/demo.zip":
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(makeZipPackage(t, "demo", map[string]any{
-				"name":    "@machbase/demo",
-				"version": "1.0.0",
-				"main":    "index.js",
-			}, map[string]string{
-				"index.js": "module.exports = { message: 'machbase-demo' };\n",
-			}))
+		case "/api/repos/acme/demo/tags":
+			writeJSON(w, []map[string]any{
+				{"name": "v1.1.0"},
+				{"name": "v1.0.0"},
+			})
+		case "/api/repos/acme/demo/contents":
+			if got := r.URL.Query().Get("ref"); got != "v1.1.0" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/demo/v1.1.0/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "index.js",
+					"download_url": server.URL + "/download/demo/v1.1.0/index.js",
+				},
+			})
+		case "/download/demo/v1.1.0/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"github.com/acme/demo\",\n  \"version\": \"0.9.0\",\n  \"main\": \"index.js\"\n}\n"))
+		case "/download/demo/v1.1.0/index.js":
+			_, _ = w.Write([]byte("module.exports = { message: 'github-latest' };\n"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -170,25 +187,105 @@ func TestPkgInstallMachbaseScoped(t *testing.T) {
 	defer server.Close()
 
 	env := map[string]any{
-		"PKG_MACHBASE_BASE_URL": server.URL + "/machbase",
+		"PKG_GITHUB_API_URL": server.URL + "/api",
 	}
 
-	output, err := runCommand(workDir, env, "pkg", "install", "@machbase/demo")
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/demo")
 	if err != nil {
 		t.Fatalf("pkg install failed: %v\n%s", err, output)
 	}
 
-	target := filepath.Join(workDir, "node_modules", "@machbase", "demo")
+	target := filepath.Join(workDir, "node_modules", "github.com", "acme", "demo")
 	if _, err := os.Stat(filepath.Join(target, "package.json")); err != nil {
-		t.Fatalf("expected installed Machbase package.json: %v", err)
+		t.Fatalf("expected installed GitHub package.json: %v", err)
 	}
 
-	message, err := runScript(workDir, env, "const pkg = require('@machbase/demo'); console.println(pkg.message);")
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/demo'); console.println(pkg.message);")
 	if err != nil {
-		t.Fatalf("require installed Machbase package failed: %v\n%s", err, message)
+		t.Fatalf("require installed GitHub package failed: %v\n%s", err, message)
 	}
-	if strings.TrimSpace(message) != "machbase-demo" {
-		t.Fatalf("require output = %q, want machbase-demo", strings.TrimSpace(message))
+	if strings.TrimSpace(message) != "github-latest" {
+		t.Fatalf("require output = %q, want github-latest", strings.TrimSpace(message))
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/demo"]; got != "v1.1.0" {
+		t.Fatalf("saved dependency = %v, want v1.1.0", got)
+	}
+	lockJSON := readJSONFile(t, filepath.Join(workDir, "package-lock.json"))
+	packages := lockJSON["packages"].(map[string]any)
+	if got := packages["node_modules/github.com/acme/demo"].(map[string]any)["resolved"]; got != "github.com/acme/demo#tag=v1.1.0" {
+		t.Fatalf("locked resolved source = %v, want github.com/acme/demo#tag=v1.1.0", got)
+	}
+}
+
+func TestPkgInstallGitHubFallsBackToDefaultBranchWhenNoTags(t *testing.T) {
+	workDir := t.TempDir()
+	var repoHits atomic.Int64
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/notags/tags":
+			writeJSON(w, []map[string]any{})
+		case "/api/repos/acme/notags":
+			repoHits.Add(1)
+			writeJSON(w, map[string]any{
+				"default_branch": "main",
+			})
+		case "/api/repos/acme/notags/contents":
+			if got := r.URL.Query().Get("ref"); got != "main" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/notags/main/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "index.js",
+					"download_url": server.URL + "/download/notags/main/index.js",
+				},
+			})
+		case "/download/notags/main/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"github.com/acme/notags\",\n  \"version\": \"0.0.1\",\n  \"main\": \"index.js\"\n}\n"))
+		case "/download/notags/main/index.js":
+			_, _ = w.Write([]byte("module.exports = { message: 'default-branch' };\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/notags")
+	if err != nil {
+		t.Fatalf("pkg install without tags failed: %v\n%s", err, output)
+	}
+
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/notags'); console.println(pkg.message);")
+	if err != nil {
+		t.Fatalf("require installed no-tag GitHub package failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "default-branch" {
+		t.Fatalf("require output = %q, want default-branch", strings.TrimSpace(message))
+	}
+	if repoHits.Load() != 1 {
+		t.Fatalf("default branch metadata lookup count = %d, want 1", repoHits.Load())
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/notags"]; got != "main" {
+		t.Fatalf("saved dependency = %v, want main", got)
+	}
+	lockJSON := readJSONFile(t, filepath.Join(workDir, "package-lock.json"))
+	packages := lockJSON["packages"].(map[string]any)
+	if got := packages["node_modules/github.com/acme/notags"].(map[string]any)["resolved"]; got != "github.com/acme/notags#branch=main" {
+		t.Fatalf("locked resolved source = %v, want github.com/acme/notags#branch=main", got)
 	}
 }
 
@@ -241,19 +338,35 @@ func TestPkgRunUsesTargetDirectoryOption(t *testing.T) {
 	}
 }
 
-func TestPkgInstallMachbaseScopedZipAtArchiveRoot(t *testing.T) {
+func TestPkgInstallGitHubExplicitTag(t *testing.T) {
 	workDir := t.TempDir()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var tagHits atomic.Int64
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/machbase/filestat/filestat.zip":
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(makeZipPackageAtRoot(t, map[string]any{
-				"name":    "@machbase/filestat",
-				"version": "0.1.0",
-				"main":    "index.js",
-			}, map[string]string{
-				"index.js": "module.exports = { value: 'root-zip' };\n",
-			}))
+		case "/api/repos/acme/filestat/tags":
+			tagHits.Add(1)
+			writeJSON(w, []map[string]any{{"name": "v9.9.9"}})
+		case "/api/repos/acme/filestat/contents":
+			if got := r.URL.Query().Get("ref"); got != "v0.1.0" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/filestat/v0.1.0/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "index.js",
+					"download_url": server.URL + "/download/filestat/v0.1.0/index.js",
+				},
+			})
+		case "/download/filestat/v0.1.0/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"github.com/acme/filestat\",\n  \"version\": \"0.1.0\",\n  \"main\": \"index.js\"\n}\n"))
+		case "/download/filestat/v0.1.0/index.js":
+			_, _ = w.Write([]byte("module.exports = { value: 'explicit-tag' };\n"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -261,72 +374,79 @@ func TestPkgInstallMachbaseScopedZipAtArchiveRoot(t *testing.T) {
 	defer server.Close()
 
 	env := map[string]any{
-		"PKG_MACHBASE_BASE_URL": server.URL + "/machbase",
+		"PKG_GITHUB_API_URL": server.URL + "/api",
 	}
 
-	output, err := runCommand(workDir, env, "pkg", "install", "@machbase/filestat")
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/filestat@v0.1.0")
 	if err != nil {
-		t.Fatalf("pkg install root zip failed: %v\n%s", err, output)
+		t.Fatalf("pkg install explicit tag failed: %v\n%s", err, output)
 	}
 
-	message, err := runScript(workDir, env, "const pkg = require('@machbase/filestat'); console.println(pkg.value);")
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/filestat'); console.println(pkg.value);")
 	if err != nil {
-		t.Fatalf("require installed root zip package failed: %v\n%s", err, message)
+		t.Fatalf("require installed explicit tag package failed: %v\n%s", err, message)
 	}
-	if strings.TrimSpace(message) != "root-zip" {
-		t.Fatalf("require output = %q, want root-zip", strings.TrimSpace(message))
+	if strings.TrimSpace(message) != "explicit-tag" {
+		t.Fatalf("require output = %q, want explicit-tag", strings.TrimSpace(message))
+	}
+	if tagHits.Load() != 0 {
+		t.Fatalf("tags API should not be called for explicit tag installs, got %d hits", tagHits.Load())
 	}
 }
 
-func TestPkgInstallMachbaseScopedFallsBackToDirectoryDownload(t *testing.T) {
+func TestPkgInstallGitHubReusesLockedTag(t *testing.T) {
 	workDir := t.TempDir()
-	var zipHits atomic.Int64
+	var tagHits atomic.Int64
 	var directoryAPIHits atomic.Int64
+	var lockMode atomic.Bool
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/machbase/neo-pkg/raw/refs/heads/main/projects/demo/demo.zip":
-			zipHits.Add(1)
-			http.NotFound(w, r)
-		case "/api/repos/machbase/neo-pkg/contents/projects/demo":
+		case "/api/repos/acme/demo/tags":
+			tagHits.Add(1)
+			if lockMode.Load() {
+				http.Error(w, "tags should not be requested while using lock file", http.StatusGone)
+				return
+			}
+			writeJSON(w, []map[string]any{{"name": "v1.0.1"}})
+		case "/api/repos/acme/demo/contents":
 			directoryAPIHits.Add(1)
-			if got := r.URL.Query().Get("ref"); got != "main" {
+			if got := r.URL.Query().Get("ref"); got != "v1.0.1" {
 				t.Fatalf("unexpected ref query: %q", got)
 			}
 			writeJSON(w, []map[string]any{
 				{
 					"type":         "file",
-					"path":         "projects/demo/package.json",
-					"download_url": server.URL + "/download/projects/demo/package.json",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/demo/package.json",
 				},
 				{
 					"type":         "file",
-					"path":         "projects/demo/index.js",
-					"download_url": server.URL + "/download/projects/demo/index.js",
+					"path":         "index.js",
+					"download_url": server.URL + "/download/demo/index.js",
 				},
 				{
 					"type": "dir",
-					"path": "projects/demo/lib",
+					"path": "lib",
 				},
 			})
-		case "/api/repos/machbase/neo-pkg/contents/projects/demo/lib":
+		case "/api/repos/acme/demo/contents/lib":
 			directoryAPIHits.Add(1)
-			if got := r.URL.Query().Get("ref"); got != "main" {
+			if got := r.URL.Query().Get("ref"); got != "v1.0.1" {
 				t.Fatalf("unexpected ref query: %q", got)
 			}
 			writeJSON(w, []map[string]any{
 				{
 					"type":         "file",
-					"path":         "projects/demo/lib/helper.js",
-					"download_url": server.URL + "/download/projects/demo/lib/helper.js",
+					"path":         "lib/helper.js",
+					"download_url": server.URL + "/download/demo/lib/helper.js",
 				},
 			})
-		case "/download/projects/demo/package.json":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("{\n  \"name\": \"@machbase/demo\",\n  \"version\": \"1.0.1\",\n  \"main\": \"index.js\"\n}\n"))
-		case "/download/projects/demo/index.js":
+		case "/download/demo/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"github.com/acme/demo\",\n  \"version\": \"0.0.1\",\n  \"main\": \"index.js\"\n}\n"))
+		case "/download/demo/index.js":
 			_, _ = w.Write([]byte("const helper = require('./lib/helper'); module.exports = { message: helper.message };\n"))
-		case "/download/projects/demo/lib/helper.js":
+		case "/download/demo/lib/helper.js":
 			_, _ = w.Write([]byte("module.exports = { message: 'directory-fallback' };\n"))
 		default:
 			http.NotFound(w, r)
@@ -335,18 +455,17 @@ func TestPkgInstallMachbaseScopedFallsBackToDirectoryDownload(t *testing.T) {
 	defer server.Close()
 
 	env := map[string]any{
-		"PKG_MACHBASE_BASE_URL":       server.URL + "/machbase/neo-pkg/raw/refs/heads/main/projects",
-		"PKG_MACHBASE_GITHUB_API_URL": server.URL + "/api",
+		"PKG_GITHUB_API_URL": server.URL + "/api",
 	}
 
-	output, err := runCommand(workDir, env, "pkg", "install", "@machbase/demo")
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/demo")
 	if err != nil {
-		t.Fatalf("pkg install directory fallback failed: %v\n%s", err, output)
+		t.Fatalf("pkg install github latest failed: %v\n%s", err, output)
 	}
 
-	message, err := runScript(workDir, env, "const pkg = require('@machbase/demo'); console.println(pkg.message);")
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/demo'); console.println(pkg.message);")
 	if err != nil {
-		t.Fatalf("require installed fallback package failed: %v\n%s", err, message)
+		t.Fatalf("require installed github package failed: %v\n%s", err, message)
 	}
 	if strings.TrimSpace(message) != "directory-fallback" {
 		t.Fatalf("require output = %q, want directory-fallback", strings.TrimSpace(message))
@@ -354,22 +473,23 @@ func TestPkgInstallMachbaseScopedFallsBackToDirectoryDownload(t *testing.T) {
 
 	lockJSON := readJSONFile(t, filepath.Join(workDir, "package-lock.json"))
 	packages := lockJSON["packages"].(map[string]any)
-	resolved := packages["node_modules/@machbase/demo"].(map[string]any)["resolved"]
-	wantResolved := server.URL + "/machbase/neo-pkg/raw/refs/heads/main/projects/demo"
+	resolved := packages["node_modules/github.com/acme/demo"].(map[string]any)["resolved"]
+	wantResolved := "github.com/acme/demo#tag=v1.0.1"
 	if resolved != wantResolved {
-		t.Fatalf("fallback resolved source = %v, want %s", resolved, wantResolved)
+		t.Fatalf("locked resolved source = %v, want %s", resolved, wantResolved)
 	}
 
 	if err := os.RemoveAll(filepath.Join(workDir, "node_modules")); err != nil {
 		t.Fatalf("remove node_modules: %v", err)
 	}
+	lockMode.Store(true)
 
 	secondOutput, err := runCommand(workDir, env, "pkg", "install")
 	if err != nil {
-		t.Fatalf("pkg reinstall from directory lock failed: %v\n%s", err, secondOutput)
+		t.Fatalf("pkg reinstall from lock failed: %v\n%s", err, secondOutput)
 	}
-	if zipHits.Load() != 1 {
-		t.Fatalf("expected exactly one zip fetch attempt before lockfile fallback, got %d", zipHits.Load())
+	if tagHits.Load() != 1 {
+		t.Fatalf("expected exactly one tags lookup before lock reuse, got %d", tagHits.Load())
 	}
 	if directoryAPIHits.Load() < 4 {
 		t.Fatalf("expected directory API to be used for both installs, got %d hits", directoryAPIHits.Load())
@@ -1208,13 +1328,30 @@ func makeTgzPackage(t *testing.T, manifest map[string]any, files map[string]stri
 	return compressed.Bytes()
 }
 
-func TestPkgInstallRejectsUnsafeArchiveEntries(t *testing.T) {
+func TestPkgInstallRejectsUnsafeGitHubEntries(t *testing.T) {
 	workDir := t.TempDir()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/machbase/unsafe/unsafe.zip":
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(makeUnsafeZipPackage(t))
+		case "/api/repos/acme/unsafe/tags":
+			writeJSON(w, []map[string]any{{"name": "v1.0.0"}})
+		case "/api/repos/acme/unsafe/contents":
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "../escape.txt",
+					"download_url": server.URL + "/download/unsafe/escape.txt",
+				},
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/unsafe/package.json",
+				},
+			})
+		case "/download/unsafe/escape.txt":
+			_, _ = w.Write([]byte("bad"))
+		case "/download/unsafe/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"github.com/acme/unsafe\",\n  \"version\": \"1.0.0\"\n}\n"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1222,37 +1359,48 @@ func TestPkgInstallRejectsUnsafeArchiveEntries(t *testing.T) {
 	defer server.Close()
 
 	env := map[string]any{
-		"PKG_MACHBASE_BASE_URL": server.URL + "/machbase",
+		"PKG_GITHUB_API_URL": server.URL + "/api",
 	}
 
-	output, err := runCommand(workDir, env, "pkg", "install", "@machbase/unsafe")
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/unsafe")
 	if err == nil {
-		t.Fatalf("expected unsafe archive install to fail, output=%q", output)
+		t.Fatalf("expected unsafe GitHub install to fail, output=%q", output)
 	}
-	if !strings.Contains(err.Error(), "Unsafe archive entry") {
+	if !strings.Contains(err.Error(), "Unsafe GitHub path") {
 		t.Fatalf("unexpected error: %v\n%s", err, output)
 	}
 }
 
-func makeUnsafeZipPackage(t *testing.T) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	writer := zip.NewWriter(&buf)
-	entries := map[string]string{
-		"../escape.txt":       "bad",
-		"unsafe/package.json": fmt.Sprintf("{\n  \"name\": %q,\n  \"version\": %q\n}\n", "@machbase/unsafe", "1.0.0"),
-	}
-	for name, content := range entries {
-		fileWriter, err := writer.Create(name)
-		if err != nil {
-			t.Fatalf("create unsafe zip entry %s: %v", name, err)
+func TestPkgInstallReportsCombinedGitHubRefResolutionFailure(t *testing.T) {
+	workDir := t.TempDir()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/broken/tags":
+			http.Error(w, "tags unavailable", http.StatusBadGateway)
+		case "/api/repos/acme/broken":
+			http.Error(w, "repo unavailable", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
 		}
-		if _, err := fileWriter.Write([]byte(content)); err != nil {
-			t.Fatalf("write unsafe zip entry %s: %v", name, err)
-		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close unsafe zip writer: %v", err)
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/broken")
+	if err == nil {
+		t.Fatalf("expected GitHub ref resolution failure, output=%q", output)
 	}
-	return buf.Bytes()
+	if !strings.Contains(err.Error(), "Unable to resolve GitHub ref for github.com/acme/broken") {
+		t.Fatalf("unexpected error header: %v\n%s", err, output)
+	}
+	if !strings.Contains(err.Error(), "tags lookup failed") {
+		t.Fatalf("missing tags failure detail: %v\n%s", err, output)
+	}
+	if !strings.Contains(err.Error(), "default branch lookup failed") {
+		t.Fatalf("missing default branch failure detail: %v\n%s", err, output)
+	}
 }

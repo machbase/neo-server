@@ -63,8 +63,7 @@
         ],
     };
 
-    const MACHBASE_DEFAULT_BASE_URL = 'https://github.com/machbase/neo-pkg/raw/refs/heads/main/projects';
-    const MACHBASE_DEFAULT_GITHUB_API_URL = 'https://api.github.com';
+    const GITHUB_DEFAULT_API_URL = 'https://api.github.com';
     const NPM_DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org';
 
     let parsed;
@@ -207,8 +206,7 @@
             projectManifest: readOptionalJsonFile(manifestPath),
             lockFile: readOptionalJsonFile(lockPath),
             registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
-            machbaseBaseUrl: normalizeBaseUrl(process.env.get('PKG_MACHBASE_BASE_URL') || MACHBASE_DEFAULT_BASE_URL),
-            machbaseGithubApiUrl: normalizeBaseUrl(process.env.get('PKG_MACHBASE_GITHUB_API_URL') || MACHBASE_DEFAULT_GITHUB_API_URL),
+            githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
             requested: new Set(),
             resolvedPackages: {},
         };
@@ -248,12 +246,12 @@
         const locked = findLockedDependency(state.lockFile, task.name, task.spec);
         let staged = null;
         try {
-            staged = isMachbaseScoped(task.name)
-                ? stageMachbasePackage(task, state, locked)
+            staged = isGitHubRepositoryPackage(task.name)
+                ? stageGitHubPackage(task, state, locked)
                 : stageNpmPackage(task, state, locked);
 
             const installResult = installStagedPackage(staged, state);
-            rememberResolvedPackage(task, installResult.manifest, staged.source, state);
+            rememberResolvedPackage(task, installResult.manifest, staged.source, staged.installVersion, state);
 
             const dependencies = normalizeDependencies(installResult.manifest.dependencies);
             const dependencyNames = Object.keys(dependencies).sort();
@@ -267,85 +265,40 @@
         }
     }
 
-    function stageMachbasePackage(task, state, locked) {
-        const moduleName = task.name.slice('@machbase/'.length);
-        const resolvedSource = locked && typeof locked.resolved === 'string' ? locked.resolved : '';
-        const artifactUrl = resolvedSource && resolvedSource.endsWith('.zip')
-            ? resolvedSource
-            : `${state.machbaseBaseUrl}/${moduleName}/${moduleName}.zip`;
-        const directoryUrl = machbaseDirectorySourceUrl(moduleName, resolvedSource, state);
-
-        if (!resolvedSource || resolvedSource.endsWith('.zip')) {
-            const stagedArchive = tryStageMachbaseArchive(task, state, locked, moduleName, artifactUrl);
-            if (stagedArchive) {
-                return stagedArchive;
-            }
-        }
-
-        return stageMachbaseDirectory(task, state, locked, moduleName, directoryUrl);
-    }
-
-    function tryStageMachbaseArchive(task, state, locked, moduleName, artifactUrl) {
-        const tempRoot = allocateTempRoot(state.cwd, moduleName);
-        const zipPath = path.join(tempRoot, `${moduleName}.zip`);
-        const stageDir = path.join(tempRoot, 'stage');
-        try {
-            const archiveBytes = httpGetBytesOrNull(artifactUrl, [404]);
-            if (archiveBytes === null) {
-                cleanupPath(tempRoot);
-                return null;
-            }
-
-            writeBinaryFile(zipPath, archiveBytes);
-
-            const archive = new zip.Zip(zipPath);
-            const entries = archive.getEntries();
-            validateArchiveEntries(entries, artifactUrl);
-            archive.extractAllTo(stageDir, true);
-
-            return finalizeMachbaseStage(task, locked, artifactUrl, tempRoot, stageDir);
-        } catch (err) {
-            cleanupPath(tempRoot);
-            throw err;
-        }
-    }
-
-    function stageMachbaseDirectory(task, state, locked, moduleName, directoryUrl) {
-        const source = parseGitHubProjectSource(directoryUrl);
-        if (!source) {
-            throw new Error(`Machbase package archive missing and directory fallback is unsupported for ${directoryUrl}`);
-        }
-
-        const tempRoot = allocateTempRoot(state.cwd, moduleName);
+    function stageGitHubPackage(task, state, locked) {
+        const source = resolveGitHubPackageSource(task, state, locked);
+        const tempRoot = allocateTempRoot(state.cwd, task.name.replace(/[\/]/g, '-'));
         const stageDir = path.join(tempRoot, 'stage');
         try {
             downloadGitHubDirectory(source, state, stageDir);
-            return finalizeMachbaseStage(task, locked, directoryUrl, tempRoot, stageDir);
+            return finalizeGitHubStage(task, locked, source, tempRoot, stageDir);
         } catch (err) {
             cleanupPath(tempRoot);
             throw err;
         }
     }
 
-    function finalizeMachbaseStage(task, locked, sourceUrl, tempRoot, stageDir) {
+    function finalizeGitHubStage(task, locked, source, tempRoot, stageDir) {
         const packageRoot = findPackageRoot(stageDir);
         const manifest = readJsonFile(path.join(packageRoot, 'package.json'));
 
         if (manifest.name !== task.name) {
-            throw new Error(`Machbase package name mismatch: expected ${task.name}, got ${manifest.name}`);
+            throw new Error(`GitHub package name mismatch: expected ${task.name}, got ${manifest.name}`);
         }
-        if (locked && locked.version && manifest.version !== locked.version) {
-            throw new Error(`Locked Machbase package version mismatch for ${task.name}: expected ${locked.version}, got ${manifest.version}`);
+        if (locked && locked.version && source.ref !== locked.version) {
+            throw new Error(`Locked GitHub package tag mismatch for ${task.name}: expected ${locked.version}, got ${source.ref}`);
         }
-        if (task.spec && !satisfiesVersion(manifest.version, task.spec)) {
-            throw new Error(`Requested version ${task.spec} does not match Machbase package version ${manifest.version}`);
+        if (task.spec && source.ref !== task.spec) {
+            throw new Error(`Requested tag ${task.spec} does not match resolved GitHub tag ${source.ref}`);
         }
 
         return {
+            packageName: task.name,
             manifest,
             packageRoot,
             tempRoot,
-            source: sourceUrl,
+            source: formatGitHubPackageSource(source),
+            installVersion: source.ref,
         };
     }
 
@@ -395,19 +348,21 @@
         }
 
         return {
+            packageName: task.name,
             manifest,
             packageRoot,
             tempRoot,
             source: tarballUrl,
+            installVersion: resolvedVersion,
         };
     }
 
     function installStagedPackage(staged, state) {
-        const targetDir = packageInstallPath(state.installRoot, staged.manifest.name);
+        const targetDir = packageInstallPath(state.installRoot, staged.packageName);
         const installedManifest = readInstalledManifest(targetDir);
 
-        if (installedManifest && installedManifest.version === staged.manifest.version) {
-            console.println(`Up to date: ${staged.manifest.name}@${staged.manifest.version}`);
+        if (installedManifest && canReuseInstalledPackage(installedManifest, staged)) {
+            console.println(`Up to date: ${staged.packageName}@${staged.installVersion}`);
             return {
                 manifest: installedManifest,
                 targetDir,
@@ -422,7 +377,7 @@
         cleanupPath(targetDir);
         fs.renameSync(tempTarget, targetDir);
 
-        console.println(`Installed ${staged.manifest.name}@${staged.manifest.version}`);
+        console.println(`Installed ${staged.packageName}@${staged.installVersion}`);
 
         return {
             manifest: staged.manifest,
@@ -555,9 +510,9 @@
         return node;
     }
 
-    function rememberResolvedPackage(task, manifest, resolvedUrl, state) {
-        state.resolvedPackages[manifest.name] = {
-            version: manifest.version,
+    function rememberResolvedPackage(task, manifest, resolvedUrl, resolvedVersion, state) {
+        state.resolvedPackages[task.name] = {
+            version: resolvedVersion || manifest.version,
             resolved: resolvedUrl,
             specifier: task.spec || '',
             requires: sortRecord(normalizeDependencies(manifest.dependencies)),
@@ -608,7 +563,7 @@
         if (!entry || typeof entry.version !== 'string' || typeof entry.resolved !== 'string') {
             return null;
         }
-        if (spec && !satisfiesVersion(entry.version, spec)) {
+        if (spec && !matchesRequestedVersion(packageName, entry.version, spec)) {
             return null;
         }
         return {
@@ -622,10 +577,17 @@
         if (task.spec) {
             return task.spec;
         }
-        if (isMachbaseScoped(task.name)) {
+        if (isGitHubRepositoryPackage(task.name)) {
             return resolvedVersion;
         }
         return `^${resolvedVersion}`;
+    }
+
+    function canReuseInstalledPackage(installedManifest, staged) {
+        if (!staged.installVersion || staged.installVersion !== staged.manifest.version) {
+            return false;
+        }
+        return installedManifest.version === staged.installVersion;
     }
 
     function getLockRootPackage(lockFile) {
@@ -667,6 +629,9 @@
         if (typeof name !== 'string' || name.length === 0) {
             throw new Error('Package name is required');
         }
+        if (isGitHubRepositoryPackage(name)) {
+            return;
+        }
         if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/.test(name)) {
             throw new Error(`Invalid package name: ${name}`);
         }
@@ -702,22 +667,142 @@
     }
 
     function requestedSpecifier(task) {
+        if (isGitHubRepositoryPackage(task.name)) {
+            return task.spec || '';
+        }
         return task.spec || 'latest';
     }
 
-    function isMachbaseScoped(name) {
-        return /^@machbase\/[A-Za-z0-9._-]+$/.test(name);
+    function isGitHubRepositoryPackage(name) {
+        return /^github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(name);
     }
 
-    function machbaseDirectorySourceUrl(moduleName, resolvedSource, state) {
-        if (resolvedSource) {
-            const archiveSuffix = `/${moduleName}.zip`;
-            if (resolvedSource.endsWith(archiveSuffix)) {
-                return normalizeBaseUrl(resolvedSource.slice(0, -archiveSuffix.length));
-            }
-            return normalizeBaseUrl(resolvedSource);
+    function parseGitHubRepositoryPackage(name) {
+        if (!isGitHubRepositoryPackage(name)) {
+            return null;
         }
-        return `${state.machbaseBaseUrl}/${moduleName}`;
+        const segments = name.split('/');
+        return {
+            owner: segments[1],
+            repo: segments[2],
+        };
+    }
+
+    function resolveGitHubPackageSource(task, state, locked) {
+        const parsed = parseGitHubRepositoryPackage(task.name);
+        if (!parsed) {
+            throw new Error(`Invalid GitHub repository package: ${task.name}`);
+        }
+
+        let ref = null;
+        if (locked && typeof locked.resolved === 'string') {
+            const lockedSource = parseGitHubPackageSource(locked.resolved);
+            if (lockedSource && lockedSource.owner === parsed.owner && lockedSource.repo === parsed.repo) {
+                ref = {
+                    ref: lockedSource.ref,
+                    refType: lockedSource.refType || 'tag',
+                };
+            }
+        }
+        if (!ref && task.spec) {
+            ref = { ref: task.spec, refType: 'tag' };
+        }
+        if (!ref && locked && typeof locked.version === 'string' && locked.version.length > 0) {
+            ref = { ref: locked.version, refType: 'tag' };
+        }
+        if (!ref) {
+            ref = resolveLatestGitHubRef(parsed, state);
+        }
+
+        return {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            ref: ref.ref,
+            refType: ref.refType,
+            projectPath: '',
+        };
+    }
+
+    function resolveLatestGitHubRef(source, state) {
+        const packageLabel = `github.com/${source.owner}/${source.repo}`;
+        const tagsResult = tryGetGitHubJson(`${state.githubApiUrl}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/tags`);
+        if (!tagsResult.error) {
+            const payload = tagsResult.value;
+            if (Array.isArray(payload) && payload.length > 0) {
+                if (!isRecord(payload[0]) || typeof payload[0].name !== 'string' || payload[0].name.length === 0) {
+                    throw new Error(`Invalid GitHub tag entry for ${packageLabel}`);
+                }
+                return { ref: payload[0].name, refType: 'tag' };
+            }
+        }
+
+        const repoResult = tryGetGitHubJson(`${state.githubApiUrl}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}`);
+        if (!repoResult.error) {
+            const repoPayload = repoResult.value;
+            if (isRecord(repoPayload) && typeof repoPayload.default_branch === 'string' && repoPayload.default_branch.length > 0) {
+                return { ref: repoPayload.default_branch, refType: 'branch' };
+            }
+        }
+
+        const reasons = [];
+        if (tagsResult.error) {
+            reasons.push(`tags lookup failed: ${tagsResult.error.message}`);
+        } else {
+            reasons.push('no tags found');
+        }
+        if (repoResult.error) {
+            reasons.push(`default branch lookup failed: ${repoResult.error.message}`);
+        } else {
+            reasons.push('default branch missing from repository metadata');
+        }
+        throw new Error(`Unable to resolve GitHub ref for ${packageLabel} (${reasons.join('; ')})`);
+    }
+
+    function formatGitHubPackageSource(source) {
+        const refType = source.refType === 'branch' ? 'branch' : 'tag';
+        return `github.com/${source.owner}/${source.repo}#${refType}=${source.ref}`;
+    }
+
+    function parseGitHubPackageSource(sourceValue) {
+        const value = String(sourceValue || '').trim();
+        let match = /^github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#(tag|branch)=(.+)$/.exec(value);
+        if (match) {
+            return {
+                owner: match[1],
+                repo: match[2],
+                refType: match[3],
+                ref: match[4],
+                projectPath: '',
+            };
+        }
+        match = /^github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)@(.+)$/.exec(value);
+        if (!match) {
+            return null;
+        }
+        return {
+            owner: match[1],
+            repo: match[2],
+            refType: 'tag',
+            ref: match[3],
+            projectPath: '',
+        };
+    }
+
+    function tryGetGitHubJson(url) {
+        try {
+            return {
+                value: httpGetJson(url, {
+                    Accept: 'application/vnd.github+json',
+                    'User-Agent': 'neo-pkg',
+                }),
+                error: null,
+            };
+        } catch (err) {
+            return {
+                value: null,
+                error: err,
+            };
+        }
     }
 
     function resolveInstallDirectory(invocationCwd, installDir) {
@@ -862,7 +947,10 @@
     }
 
     function listGitHubDirectoryEntries(source, state, repoPath) {
-        const apiUrl = `${state.machbaseGithubApiUrl}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/contents/${encodePathSegments(repoPath)}?ref=${encodeURIComponent(source.ref)}`;
+        const encodedPath = encodePathSegments(repoPath);
+        const apiUrl = encodedPath.length > 0
+            ? `${state.githubApiUrl}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/contents/${encodedPath}?ref=${encodeURIComponent(source.ref)}`
+            : `${state.githubApiUrl}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/contents?ref=${encodeURIComponent(source.ref)}`;
         const payload = httpGetJson(apiUrl, {
             Accept: 'application/vnd.github+json',
             'User-Agent': 'neo-pkg',
@@ -901,50 +989,10 @@
         writeBinaryFile(filePath, httpGetBytes(entry.download_url));
     }
 
-    function parseGitHubProjectSource(sourceUrl) {
-        let parsedUrl;
-        try {
-            parsedUrl = new URL(sourceUrl);
-        } catch (err) {
-            return null;
-        }
-
-        const segments = parsedUrl.pathname.split('/').filter((segment) => segment.length > 0);
-        if (segments.length < 6) {
-            return null;
-        }
-
-        let refStartIndex = -1;
-        if (segments[2] === 'raw' && segments[3] === 'refs' && segments[4] === 'heads') {
-            refStartIndex = 5;
-        } else if (segments[2] === 'refs' && segments[3] === 'heads') {
-            refStartIndex = 4;
-        } else {
-            return null;
-        }
-
-        const projectsIndex = segments.lastIndexOf('projects');
-        if (projectsIndex === -1 || projectsIndex <= refStartIndex || projectsIndex >= segments.length - 1) {
-            return null;
-        }
-
-        const owner = segments[0];
-        const repo = segments[1];
-        const ref = segments.slice(refStartIndex, projectsIndex).join('/');
-        const projectPath = segments.slice(projectsIndex).join('/');
-        if (!owner || !repo || !ref) {
-            return null;
-        }
-
-        return {
-            owner,
-            repo,
-            ref,
-            projectPath,
-        };
-    }
-
     function relativeProjectPath(entryPath, projectPath) {
+        if (!projectPath) {
+            return entryPath;
+        }
         if (entryPath === projectPath) {
             return '';
         }
@@ -1035,6 +1083,13 @@
             return true;
         }
         return semver.satisfies(version, rawSpec);
+    }
+
+    function matchesRequestedVersion(packageName, version, spec) {
+        if (isGitHubRepositoryPackage(packageName)) {
+            return String(version) === String(spec);
+        }
+        return satisfiesVersion(version, spec);
     }
 
     function normalizeDependencies(value) {
