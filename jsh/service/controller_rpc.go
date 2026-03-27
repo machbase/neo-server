@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -88,6 +89,48 @@ func (ctl *Controller) Address() string {
 	return ctl.rpcListenAddr
 }
 
+func parseRPCAddress(raw string) (string, string, error) {
+	scheme := "tcp"
+	address := raw
+	if head, tail, found := strings.Cut(raw, "://"); found {
+		scheme = strings.ToLower(head)
+		address = tail
+	}
+	if address == "" {
+		return "", "", fmt.Errorf("rpc address is empty")
+	}
+	switch scheme {
+	case "tcp", "unix":
+		return scheme, address, nil
+	default:
+		return "", "", fmt.Errorf("unsupported rpc address scheme %q", scheme)
+	}
+}
+
+func formatRPCAddress(network string, addr net.Addr) string {
+	switch typed := addr.(type) {
+	case *net.TCPAddr:
+		return fmt.Sprintf("tcp://%s", typed.String())
+	case *net.UnixAddr:
+		return fmt.Sprintf("unix://%s", typed.Name)
+	default:
+		if addr == nil {
+			return ""
+		}
+		return fmt.Sprintf("%s://%s", network, addr.String())
+	}
+}
+
+func cleanupRPCAddress(raw string) {
+	network, address, err := parseRPCAddress(raw)
+	if err != nil || network != "unix" || address == "" {
+		return
+	}
+	if err := os.Remove(address); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return
+	}
+}
+
 func (ctl *Controller) startRPC() error {
 	ctl.mu.Lock()
 	defer ctl.mu.Unlock()
@@ -95,15 +138,16 @@ func (ctl *Controller) startRPC() error {
 	if ctl.rpcLn != nil {
 		return nil
 	}
-	addr := strings.TrimPrefix(ctl.rpcConfigAddr, "tcp://")
-	ln, err := net.Listen("tcp", addr)
+	network, address, err := parseRPCAddress(ctl.rpcConfigAddr)
+	if err != nil {
+		return fmt.Errorf("start controller rpc listener: %w", err)
+	}
+	ln, err := net.Listen(network, address)
 	if err != nil {
 		return fmt.Errorf("start controller rpc listener: %w", err)
 	}
 	ctl.rpcLn = ln
-	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
-		ctl.rpcListenAddr = fmt.Sprintf("tcp://%s", addr.String())
-	}
+	ctl.rpcListenAddr = formatRPCAddress(network, ln.Addr())
 	ctl.rpcWG.Add(1)
 	go ctl.serveRPC(ln)
 	return nil
@@ -112,6 +156,7 @@ func (ctl *Controller) startRPC() error {
 func (ctl *Controller) stopRPC() {
 	ctl.mu.Lock()
 	ln := ctl.rpcLn
+	listenAddr := ctl.rpcListenAddr
 	ctl.rpcLn = nil
 	ctl.rpcListenAddr = ""
 	ctl.mu.Unlock()
@@ -121,6 +166,7 @@ func (ctl *Controller) stopRPC() {
 	}
 	_ = ln.Close()
 	ctl.rpcWG.Wait()
+	cleanupRPCAddress(listenAddr)
 }
 
 func (ctl *Controller) serveRPC(ln net.Listener) {

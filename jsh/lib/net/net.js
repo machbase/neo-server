@@ -232,9 +232,9 @@ class Socket extends EventEmitter {
         this._encoding = null; // null means emit Buffer, string means emit string with that encoding
     }
 
-    _attachNativeSocket(nativeSocket) {        
+    _attachNativeSocket(nativeSocket) {
         this._raw = nativeSocket;
-        
+
         // Wrap the emit to transform data to Buffer objects
         const originalEmit = this.emit.bind(this);
         this.emit = function (event, ...args) {
@@ -251,15 +251,15 @@ class Socket extends EventEmitter {
             }
             return originalEmit(event, ...args);
         };
-        
+
         // Set up javascript object reference in native socket
         nativeSocket.setObject(this);
-        
+
         this._setupRaw();
         this.connecting = false;
         this.readable = true;
         this.writable = true;
-        
+
         // Start the read loop now that event handlers are set up
         nativeSocket.startReading();
     }
@@ -288,9 +288,11 @@ class Socket extends EventEmitter {
 
     connect(...args) {
         // connect(port[, host][, connectListener])
+        // connect(path[, connectListener])
         // connect(options[, connectListener])
         let port = 0;
         let host = 'localhost';
+        let path = null;
         let connectListener = null;
 
         if (args.length === 0) {
@@ -300,8 +302,17 @@ class Socket extends EventEmitter {
         // Parse arguments
         if (typeof args[0] === 'object') {
             const options = args[0];
-            port = options.port;
-            host = options.host || 'localhost';
+            if (typeof options.path === 'string' && options.path.length > 0) {
+                path = options.path;
+            } else {
+                port = options.port;
+                host = options.host || 'localhost';
+            }
+            if (typeof args[1] === 'function') {
+                connectListener = args[1];
+            }
+        } else if (typeof args[0] === 'string' && (args.length === 1 || typeof args[1] === 'function')) {
+            path = args[0];
             if (typeof args[1] === 'function') {
                 connectListener = args[1];
             }
@@ -367,7 +378,9 @@ class Socket extends EventEmitter {
         this.on('error', errorHandler);
 
         try {
-            this._raw = _net.Connect(this, port, host, process.dispatchEvent);
+            this._raw = path !== null
+                ? _net.ConnectPath(this, path, process.dispatchEvent)
+                : _net.Connect(this, port, host, process.dispatchEvent);
         } catch (err) {
             this.connecting = false;
             this.emit('error', err);
@@ -403,7 +416,7 @@ class Socket extends EventEmitter {
 
         try {
             let bytes;
-            
+
             // Convert data to byte array
             if (typeof data === 'string') {
                 bytes = stringToBytes(data, encoding || 'utf8');

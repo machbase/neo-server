@@ -3,12 +3,14 @@ package root_test
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	jshservice "github.com/machbase/neo-server/v8/jsh/service"
@@ -22,41 +24,45 @@ type serviceRPCRequest struct {
 }
 
 func TestServiceCommandStatusListFormatting(t *testing.T) {
-	addr, shutdown := startMockServiceRPCServer(t, func(req serviceRPCRequest) any {
-		if req.Method != "service.list" {
-			t.Fatalf("method=%q, want %q", req.Method, "service.list")
-		}
-		return []map[string]any{
-			{
-				"config": map[string]any{"name": "alpha", "enable": true, "executable": "echo"},
-				"status": "running",
-				"pid":    101,
-			},
-			{
-				"config": map[string]any{"name": "beta", "enable": false, "executable": "/bin/date"},
-				"status": "stopped",
-			},
-		}
-	})
-	defer shutdown()
+	for _, network := range []string{"tcp", "unix"} {
+		t.Run(network, func(t *testing.T) {
+			addr, shutdown := startMockServiceRPCServerTransport(t, network, func(req serviceRPCRequest) any {
+				if req.Method != "service.list" {
+					t.Fatalf("method=%q, want %q", req.Method, "service.list")
+				}
+				return []map[string]any{
+					{
+						"config": map[string]any{"name": "alpha", "enable": true, "executable": "echo"},
+						"status": "running",
+						"pid":    101,
+					},
+					{
+						"config": map[string]any{"name": "beta", "enable": false, "executable": "/bin/date"},
+						"status": "stopped",
+					},
+				}
+			})
+			defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "status")
-	if err != nil {
-		t.Fatalf("service status failed: %v\n%s", err, output)
-	}
+			output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "status")
+			if err != nil {
+				t.Fatalf("service status failed: %v\n%s", err, output)
+			}
 
-	lines := nonEmptyLines(output)
-	if len(lines) < 4 {
-		t.Fatalf("service status output too short: %q", output)
-	}
-	if !strings.Contains(lines[0], "NAME") || !strings.Contains(lines[0], "EXECUTABLE") {
-		t.Fatalf("header=%q, want columns", lines[0])
-	}
-	if !strings.Contains(lines[2], "alpha") || !strings.Contains(lines[2], "running") || !strings.Contains(lines[2], "101") {
-		t.Fatalf("first row=%q, want alpha/running/101", lines[2])
-	}
-	if !strings.Contains(lines[3], "beta") || !strings.Contains(lines[3], "stopped") || !strings.Contains(lines[3], "/bin/date") {
-		t.Fatalf("second row=%q, want beta/stopped/date", lines[3])
+			lines := nonEmptyLines(output)
+			if len(lines) < 4 {
+				t.Fatalf("service status output too short: %q", output)
+			}
+			if !strings.Contains(lines[0], "NAME") || !strings.Contains(lines[0], "EXECUTABLE") {
+				t.Fatalf("header=%q, want columns", lines[0])
+			}
+			if !strings.Contains(lines[2], "alpha") || !strings.Contains(lines[2], "running") || !strings.Contains(lines[2], "101") {
+				t.Fatalf("first row=%q, want alpha/running/101", lines[2])
+			}
+			if !strings.Contains(lines[3], "beta") || !strings.Contains(lines[3], "stopped") || !strings.Contains(lines[3], "/bin/date") {
+				t.Fatalf("second row=%q, want beta/stopped/date", lines[3])
+			}
+		})
 	}
 }
 
@@ -405,123 +411,154 @@ func TestServiceCommandReloadFormatting(t *testing.T) {
 }
 
 func TestServiceCommandControllerEndToEnd(t *testing.T) {
-	workDir := t.TempDir()
-	servicesDir := filepath.Join(workDir, "services")
-	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
-		t.Fatalf("mkdir services: %v", err)
-	}
-	writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
-		"name":        "alpha",
-		"enable":      false,
-		"auto_start":  false,
-		"working_dir": "/work",
-		"executable":  "echo",
-		"args":        []any{"hello"},
-	})
-
-	ctl, err := jshservice.NewController(&jshservice.ControllerConfig{
-		ConfigDir: "/work/services",
-		Mounts: []engine.FSTab{
-			{MountPoint: "/work", FS: os.DirFS(workDir)},
+	for _, tc := range []struct {
+		name    string
+		address func(string) string
+	}{
+		{
+			name:    "tcp",
+			address: func(string) string { return "" },
 		},
-	})
-	if err != nil {
-		t.Fatalf("NewController() error: %v", err)
-	}
-	if err := ctl.Start(nil); err != nil {
-		t.Fatalf("Start() error: %v", err)
-	}
-	defer ctl.Stop(nil)
+		{
+			name: "unix",
+			address: func(string) string {
+				return "unix://" + filepath.Join(os.TempDir(), fmt.Sprintf("service-controller-%d.sock", time.Now().UnixNano()))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			servicesDir := filepath.Join(workDir, "services")
+			if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+				t.Fatalf("mkdir services: %v", err)
+			}
+			writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
+				"name":        "alpha",
+				"enable":      false,
+				"auto_start":  false,
+				"working_dir": "/work",
+				"executable":  "echo",
+				"args":        []any{"hello"},
+			})
 
-	controllerAddr := strings.TrimPrefix(ctl.Address(), "tcp://")
+			ctl, err := jshservice.NewController(&jshservice.ControllerConfig{
+				ConfigDir: "/work/services",
+				Mounts: []engine.FSTab{
+					{MountPoint: "/work", FS: os.DirFS(workDir)},
+				},
+				Address: tc.address(workDir),
+			})
+			if err != nil {
+				t.Fatalf("NewController() error: %v", err)
+			}
+			if err := ctl.Start(nil); err != nil {
+				t.Fatalf("Start() error: %v", err)
+			}
+			defer ctl.Stop(nil)
 
-	listOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
-	if err != nil {
-		t.Fatalf("service status failed: %v\n%s", err, listOutput)
-	}
-	if !strings.Contains(listOutput, "alpha") || !strings.Contains(listOutput, "stopped") {
-		t.Fatalf("status output=%q, want alpha/stopped", listOutput)
-	}
+			controllerAddr := ctl.Address()
 
-	readOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "read")
-	if err != nil {
-		t.Fatalf("service read failed: %v\n%s", err, readOutput)
-	}
-	if !strings.Contains(readOutput, "UNCHANGED (1)") || !strings.Contains(readOutput, "- alpha exec=echo") {
-		t.Fatalf("read output=%q, want unchanged alpha", readOutput)
-	}
+			listOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
+			if err != nil {
+				t.Fatalf("service status failed: %v\n%s", err, listOutput)
+			}
+			if !strings.Contains(listOutput, "alpha") || !strings.Contains(listOutput, "stopped") {
+				t.Fatalf("status output=%q, want alpha/stopped", listOutput)
+			}
 
-	writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
-		"name":        "alpha",
-		"enable":      true,
-		"auto_start":  false,
-		"working_dir": "/work",
-		"executable":  "echo",
-		"args":        []any{"hello", "world"},
-	})
+			readOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "read")
+			if err != nil {
+				t.Fatalf("service read failed: %v\n%s", err, readOutput)
+			}
+			if !strings.Contains(readOutput, "UNCHANGED (1)") || !strings.Contains(readOutput, "- alpha exec=echo") {
+				t.Fatalf("read output=%q, want unchanged alpha", readOutput)
+			}
 
-	reloadOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "reload")
-	if err != nil {
-		t.Fatalf("service reload failed: %v\n%s", err, reloadOutput)
-	}
-	if !strings.Contains(reloadOutput, "ACTIONS") || !strings.Contains(reloadOutput, "UPDATE stop") || !strings.Contains(reloadOutput, "UPDATE start") {
-		t.Fatalf("reload output=%q, want update actions", reloadOutput)
-	}
+			writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
+				"name":        "alpha",
+				"enable":      true,
+				"auto_start":  false,
+				"working_dir": "/work",
+				"executable":  "echo",
+				"args":        []any{"hello", "world"},
+			})
 
-	statusOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status", "alpha")
-	if err != nil {
-		t.Fatalf("service status failed: %v\n%s", err, statusOutput)
-	}
-	checks := []string{"[alpha] ENABLED", "status: running", "cwd: /work", "start: echo [ hello, world ]"}
-	for _, check := range checks {
-		if !strings.Contains(statusOutput, check) {
-			t.Fatalf("status output missing %q:\n%s", check, statusOutput)
-		}
-	}
+			reloadOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "reload")
+			if err != nil {
+				t.Fatalf("service reload failed: %v\n%s", err, reloadOutput)
+			}
+			if !strings.Contains(reloadOutput, "ACTIONS") || !strings.Contains(reloadOutput, "UPDATE stop") || !strings.Contains(reloadOutput, "UPDATE start") {
+				t.Fatalf("reload output=%q, want update actions", reloadOutput)
+			}
 
-	stopOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "stop", "alpha")
-	if err != nil {
-		t.Fatalf("service stop failed: %v\n%s", err, stopOutput)
-	}
-	for _, check := range []string{"RESULT", "stop", "alpha", "stopped", "SERVICE", "[alpha] ENABLED"} {
-		if !strings.Contains(stopOutput, check) {
-			t.Fatalf("stop output missing %q:\n%s", check, stopOutput)
-		}
-	}
+			statusOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status", "alpha")
+			if err != nil {
+				t.Fatalf("service status failed: %v\n%s", err, statusOutput)
+			}
+			checks := []string{"[alpha] ENABLED", "status: running", "cwd: /work", "start: echo [ hello, world ]"}
+			for _, check := range checks {
+				if !strings.Contains(statusOutput, check) {
+					t.Fatalf("status output missing %q:\n%s", check, statusOutput)
+				}
+			}
 
-	startOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "start", "alpha")
-	if err != nil {
-		t.Fatalf("service start failed: %v\n%s", err, startOutput)
-	}
-	for _, check := range []string{"RESULT", "start", "alpha", "running", "SERVICE", "[alpha] ENABLED"} {
-		if !strings.Contains(startOutput, check) {
-			t.Fatalf("start output missing %q:\n%s", check, startOutput)
-		}
-	}
+			stopOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "stop", "alpha")
+			if err != nil {
+				t.Fatalf("service stop failed: %v\n%s", err, stopOutput)
+			}
+			for _, check := range []string{"RESULT", "stop", "alpha", "stopped", "SERVICE", "[alpha] ENABLED"} {
+				if !strings.Contains(stopOutput, check) {
+					t.Fatalf("stop output missing %q:\n%s", check, stopOutput)
+				}
+			}
 
-	uninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "uninstall", "alpha")
-	if err != nil {
-		t.Fatalf("service uninstall failed: %v\n%s", err, uninstallOutput)
-	}
-	for _, check := range []string{"RESULT", "uninstall", "alpha", "yes", "removed"} {
-		if !strings.Contains(uninstallOutput, check) {
-			t.Fatalf("uninstall output missing %q:\n%s", check, uninstallOutput)
-		}
-	}
+			startOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "start", "alpha")
+			if err != nil {
+				t.Fatalf("service start failed: %v\n%s", err, startOutput)
+			}
+			for _, check := range []string{"RESULT", "start", "alpha", "running", "SERVICE", "[alpha] ENABLED"} {
+				if !strings.Contains(startOutput, check) {
+					t.Fatalf("start output missing %q:\n%s", check, startOutput)
+				}
+			}
 
-	listAfterUninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
-	if err != nil {
-		t.Fatalf("service status after uninstall failed: %v\n%s", err, listAfterUninstallOutput)
-	}
-	if !strings.Contains(listAfterUninstallOutput, "No services") {
-		t.Fatalf("status after uninstall output=%q, want no services", listAfterUninstallOutput)
+			uninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "uninstall", "alpha")
+			if err != nil {
+				t.Fatalf("service uninstall failed: %v\n%s", err, uninstallOutput)
+			}
+			for _, check := range []string{"RESULT", "uninstall", "alpha", "yes", "removed"} {
+				if !strings.Contains(uninstallOutput, check) {
+					t.Fatalf("uninstall output missing %q:\n%s", check, uninstallOutput)
+				}
+			}
+
+			listAfterUninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
+			if err != nil {
+				t.Fatalf("service status after uninstall failed: %v\n%s", err, listAfterUninstallOutput)
+			}
+			if !strings.Contains(listAfterUninstallOutput, "No services") {
+				t.Fatalf("status after uninstall output=%q, want no services", listAfterUninstallOutput)
+			}
+		})
 	}
 }
 
 func startMockServiceRPCServer(t *testing.T, handler func(serviceRPCRequest) any) (string, func()) {
 	t.Helper()
+	return startMockServiceRPCServerTransport(t, "tcp", handler)
+}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+func startMockServiceRPCServerTransport(t *testing.T, network string, handler func(serviceRPCRequest) any) (string, func()) {
+	t.Helper()
+
+	listenAddr := "127.0.0.1:0"
+	listenURLPrefix := "tcp://"
+	if network == "unix" {
+		listenAddr = filepath.Join(os.TempDir(), fmt.Sprintf("service-rpc-%d.sock", time.Now().UnixNano()))
+		listenURLPrefix = "unix://"
+		_ = os.Remove(listenAddr)
+	}
+	ln, err := net.Listen(network, listenAddr)
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
@@ -576,10 +613,13 @@ func startMockServiceRPCServer(t *testing.T, handler func(serviceRPCRequest) any
 		}
 	}()
 
-	return ln.Addr().String(), func() {
+	return listenURLPrefix + ln.Addr().String(), func() {
 		close(stop)
 		_ = ln.Close()
 		wg.Wait()
+		if network == "unix" {
+			_ = os.Remove(listenAddr)
+		}
 	}
 }
 

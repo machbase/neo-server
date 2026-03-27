@@ -26,6 +26,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	m := module.Get("exports").(*goja.Object)
 	m.Set("CreateServer", CreateServer)
 	m.Set("Connect", Connect)
+	m.Set("ConnectPath", ConnectPath)
 	m.Set("Dial", Dial)
 }
 
@@ -196,6 +197,19 @@ func Connect(obj *goja.Object, port int, host string, dispatch engine.EventDispa
 // Dial is an alias for Connect
 func Dial(obj *goja.Object, port int, host string, dispatch engine.EventDispatchFunc) (*Socket, error) {
 	return Connect(obj, port, host, dispatch)
+}
+
+// ConnectPath creates a new Unix domain socket client connection.
+func ConnectPath(obj *goja.Object, path string, dispatch engine.EventDispatchFunc) (*Socket, error) {
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		return nil, err
+	}
+
+	socket := newSocketFromConn(conn, obj, dispatch)
+	socket.emit("connect", nil)
+
+	return socket, nil
 }
 
 // Socket represents a TCP socket connection

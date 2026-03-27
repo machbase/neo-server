@@ -290,122 +290,144 @@ func TestServiceOutputWriterFlushesTrailingLine(t *testing.T) {
 }
 
 func TestControllerJSONRPC(t *testing.T) {
-	tmpDir := t.TempDir()
-	servicesDir := filepath.Join(tmpDir, "services")
-	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error: %v", err)
-	}
-	writeConfig := func(sc Config) {
-		data, err := json.MarshalIndent(sc, "", "  ")
-		if err != nil {
-			t.Fatalf("MarshalIndent() error: %v", err)
-		}
-		path := filepath.Join(servicesDir, sc.Name+".json")
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			t.Fatalf("WriteFile(%s) error: %v", path, err)
-		}
-	}
-
-	writeConfig(Config{Name: "alpha", Enable: false, Executable: "echo"})
-
-	ctl, err := NewController(&ControllerConfig{
-		ConfigDir: "/work/services",
-		Mounts: []engine.FSTab{
-			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+	tests := []struct {
+		name    string
+		address func(string) string
+	}{
+		{
+			name: "tcp",
+			address: func(string) string {
+				return ""
+			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("NewController() error: %v", err)
-	}
-	if err := ctl.Start(nil); err != nil {
-		t.Fatalf("Start() error: %v", err)
-	}
-	address := ctl.Address()
-	if address == "" {
-		t.Fatal("Address() = empty, want assigned random address")
+		{
+			name: "unix",
+			address: func(tmpDir string) string {
+				return "unix://" + filepath.Join(os.TempDir(), fmt.Sprintf("neo-%d.sock", time.Now().UnixNano()))
+			},
+		},
 	}
 
-	var list []ServiceSnapshot
-	callControllerRPC(t, address, 1, "service.list", nil, &list)
-	if len(list) != 1 {
-		t.Fatalf("service.list len=%d, want 1", len(list))
-	}
-	if list[0].Config.Name != "alpha" {
-		t.Fatalf("service.list name=%q, want %q", list[0].Config.Name, "alpha")
-	}
-	if list[0].Status != ServiceStatusStopped {
-		t.Fatalf("service.list status=%s, want %s", list[0].Status, ServiceStatusStopped)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			servicesDir := filepath.Join(tmpDir, "services")
+			if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll() error: %v", err)
+			}
+			writeConfig := func(sc Config) {
+				data, err := json.MarshalIndent(sc, "", "  ")
+				if err != nil {
+					t.Fatalf("MarshalIndent() error: %v", err)
+				}
+				path := filepath.Join(servicesDir, sc.Name+".json")
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					t.Fatalf("WriteFile(%s) error: %v", path, err)
+				}
+			}
 
-	var beta ServiceSnapshot
-	callControllerRPC(t, address, 2, "service.install", Config{Name: "beta", Enable: true, Executable: "echo"}, &beta)
-	if beta.Config.Name != "beta" {
-		t.Fatalf("service.install name=%q, want %q", beta.Config.Name, "beta")
-	}
-	if beta.Status != ServiceStatusStopped {
-		t.Fatalf("service.install status=%s, want %s", beta.Status, ServiceStatusStopped)
-	}
+			writeConfig(Config{Name: "alpha", Enable: false, Executable: "echo"})
 
-	callControllerRPC(t, address, 3, "service.start", map[string]any{"name": "beta"}, &beta)
-	if beta.Status != ServiceStatusRunning {
-		t.Fatalf("service.start status=%s, want %s", beta.Status, ServiceStatusRunning)
-	}
+			ctl, err := NewController(&ControllerConfig{
+				ConfigDir: "/work/services",
+				Mounts: []engine.FSTab{
+					{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+				},
+				Address: tc.address(tmpDir),
+			})
+			if err != nil {
+				t.Fatalf("NewController() error: %v", err)
+			}
+			if err := ctl.Start(nil); err != nil {
+				t.Fatalf("Start() error: %v", err)
+			}
+			address := ctl.Address()
+			if address == "" {
+				t.Fatal("Address() = empty, want assigned random address")
+			}
 
-	writeConfig(Config{Name: "beta", Enable: false, Executable: "echo", Args: []string{"v2"}})
+			var list []ServiceSnapshot
+			callControllerRPC(t, address, 1, "service.list", nil, &list)
+			if len(list) != 1 {
+				t.Fatalf("service.list len=%d, want 1", len(list))
+			}
+			if list[0].Config.Name != "alpha" {
+				t.Fatalf("service.list name=%q, want %q", list[0].Config.Name, "alpha")
+			}
+			if list[0].Status != ServiceStatusStopped {
+				t.Fatalf("service.list status=%s, want %s", list[0].Status, ServiceStatusStopped)
+			}
 
-	var reread ServiceListSnapshot
-	callControllerRPC(t, address, 4, "service.read", nil, &reread)
-	if len(reread.Updated) != 1 {
-		t.Fatalf("service.read updated len=%d, want 1", len(reread.Updated))
-	}
-	if reread.Updated[0].Name != "beta" {
-		t.Fatalf("service.read updated name=%q, want %q", reread.Updated[0].Name, "beta")
-	}
+			var beta ServiceSnapshot
+			callControllerRPC(t, address, 2, "service.install", Config{Name: "beta", Enable: true, Executable: "echo"}, &beta)
+			if beta.Config.Name != "beta" {
+				t.Fatalf("service.install name=%q, want %q", beta.Config.Name, "beta")
+			}
+			if beta.Status != ServiceStatusStopped {
+				t.Fatalf("service.install status=%s, want %s", beta.Status, ServiceStatusStopped)
+			}
 
-	var updateResult ControllerUpdateResult
-	callControllerRPC(t, address, 5, "service.update", nil, &updateResult)
-	if len(updateResult.Actions) != 1 {
-		t.Fatalf("service.update actions len=%d, want 1", len(updateResult.Actions))
-	}
-	if updateResult.Actions[0].Action != "UPDATE stop" {
-		t.Fatalf("service.update first action=%q, want %q", updateResult.Actions[0].Action, "UPDATE stop")
-	}
+			callControllerRPC(t, address, 3, "service.start", map[string]any{"name": "beta"}, &beta)
+			if beta.Status != ServiceStatusRunning {
+				t.Fatalf("service.start status=%s, want %s", beta.Status, ServiceStatusRunning)
+			}
 
-	var betaAfter ServiceSnapshot
-	callControllerRPC(t, address, 6, "service.get", map[string]any{"name": "beta"}, &betaAfter)
-	if betaAfter.Config.Enable {
-		t.Fatal("service.get enable=true, want false")
-	}
-	if betaAfter.Status != ServiceStatusStopped {
-		t.Fatalf("service.get status=%s, want %s", betaAfter.Status, ServiceStatusStopped)
-	}
-	if len(betaAfter.Config.Args) != 1 || betaAfter.Config.Args[0] != "v2" {
-		t.Fatalf("service.get args=%v, want [v2]", betaAfter.Config.Args)
-	}
+			writeConfig(Config{Name: "beta", Enable: false, Executable: "echo", Args: []string{"v2"}})
 
-	var removed bool
-	callControllerRPC(t, address, 7, "service.uninstall", map[string]any{"name": "beta"}, &removed)
-	if !removed {
-		t.Fatal("service.uninstall result=false, want true")
-	}
+			var reread ServiceListSnapshot
+			callControllerRPC(t, address, 4, "service.read", nil, &reread)
+			if len(reread.Updated) != 1 {
+				t.Fatalf("service.read updated len=%d, want 1", len(reread.Updated))
+			}
+			if reread.Updated[0].Name != "beta" {
+				t.Fatalf("service.read updated name=%q, want %q", reread.Updated[0].Name, "beta")
+			}
 
-	oldAddress := address
-	ctl.Stop(nil)
-	if ctl.Address() != "" {
-		t.Fatalf("Address() after Stop() = %s, want empty", ctl.Address())
-	}
-	conn, err := net.DialTimeout("tcp", oldAddress, 100*time.Millisecond)
-	if err == nil {
-		conn.Close()
-		t.Fatal("DialTimeout() succeeded after Stop(), want listener closed")
+			var updateResult ControllerUpdateResult
+			callControllerRPC(t, address, 5, "service.update", nil, &updateResult)
+			if len(updateResult.Actions) != 1 {
+				t.Fatalf("service.update actions len=%d, want 1", len(updateResult.Actions))
+			}
+			if updateResult.Actions[0].Action != "UPDATE stop" {
+				t.Fatalf("service.update first action=%q, want %q", updateResult.Actions[0].Action, "UPDATE stop")
+			}
+
+			var betaAfter ServiceSnapshot
+			callControllerRPC(t, address, 6, "service.get", map[string]any{"name": "beta"}, &betaAfter)
+			if betaAfter.Config.Enable {
+				t.Fatal("service.get enable=true, want false")
+			}
+			if betaAfter.Status != ServiceStatusStopped {
+				t.Fatalf("service.get status=%s, want %s", betaAfter.Status, ServiceStatusStopped)
+			}
+			if len(betaAfter.Config.Args) != 1 || betaAfter.Config.Args[0] != "v2" {
+				t.Fatalf("service.get args=%v, want [v2]", betaAfter.Config.Args)
+			}
+
+			var removed bool
+			callControllerRPC(t, address, 7, "service.uninstall", map[string]any{"name": "beta"}, &removed)
+			if !removed {
+				t.Fatal("service.uninstall result=false, want true")
+			}
+
+			oldAddress := address
+			ctl.Stop(nil)
+			if ctl.Address() != "" {
+				t.Fatalf("Address() after Stop() = %s, want empty", ctl.Address())
+			}
+			conn, err := dialControllerRPC(oldAddress, 100*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				t.Fatal("DialTimeout() succeeded after Stop(), want listener closed")
+			}
+		})
 	}
 }
 
 func callControllerRPC(t *testing.T, address string, id int, method string, params any, out any) {
 	t.Helper()
 
-	address = strings.TrimPrefix(address, "tcp://")
-	conn, err := net.DialTimeout("tcp", address, time.Second)
+	conn, err := dialControllerRPC(address, time.Second)
 	if err != nil {
 		t.Fatalf("DialTimeout() error: %v", err)
 	}
@@ -446,6 +468,14 @@ func callControllerRPC(t *testing.T, address string, id int, method string, para
 	if err := json.Unmarshal(resp.Result, out); err != nil {
 		t.Fatalf("Unmarshal(result) error: %v (payload=%s)", err, string(resp.Result))
 	}
+}
+
+func dialControllerRPC(address string, timeout time.Duration) (net.Conn, error) {
+	network, target, err := parseRPCAddress(address)
+	if err != nil {
+		return nil, err
+	}
+	return net.DialTimeout(network, target, timeout)
 }
 
 func TestServices(t *testing.T) {

@@ -53,7 +53,7 @@
     const timeout = parsed.values.timeout;
 
     if (!controller) {
-        fail('Option --controller=<host:port> is required.');
+        fail('Option --controller=<host:port|unix://path> is required.');
     }
     if (!command) {
         printHelp();
@@ -76,7 +76,7 @@
 
     function printHelp() {
         console.println(parseArgs.formatHelp({
-            usage: 'Usage: service.js --controller=<host:port> <command> [args...]',
+            usage: 'Usage: service.js --controller=<host:port|tcp://host:port|unix://path> <command> [args...]',
             options,
             positionals: [
                 { name: 'command', description: 'Command to execute' },
@@ -101,10 +101,19 @@
     }
 
     function parseController(value) {
+        if (value.startsWith('unix://')) {
+            const socketPath = value.slice(7);
+            if (!socketPath) {
+                fail(`Invalid controller socket path in '${value}'.`);
+            }
+            return { network: 'unix', path: socketPath };
+        }
+
         // trim 'tcp://' prefix if present
         if (value.startsWith('tcp://')) {
             value = value.slice(6);
         }
+
         // split host and port
         const idx = value.lastIndexOf(':');
         if (idx <= 0 || idx === value.length - 1) {
@@ -119,7 +128,7 @@
         if (!Number.isInteger(port) || port <= 0 || port > 65535) {
             fail(`Invalid controller port '${portText}'.`);
         }
-        return { host, port };
+        return { network: 'tcp', host, port };
     }
 
     function buildRpcCall(cmd, positionalArgs) {
@@ -253,7 +262,9 @@
             request.params = params;
         }
 
-        const socket = net.createConnection({ host: endpoint.host, port: endpoint.port });
+        const socket = endpoint.network === 'unix'
+            ? net.createConnection({ path: endpoint.path })
+            : net.createConnection({ host: endpoint.host, port: endpoint.port });
         let buffer = '';
         let settled = false;
         let timer = null;
