@@ -5,6 +5,7 @@
     const fs = require('fs');
     const path = require('path');
     const parseArgs = require('util/parseArgs');
+    const splitFields = require('util/splitFields');
     const rawHttp = require('@jsh/http');
     const zip = require('archive/zip');
     const tar = require('archive/tar');
@@ -48,13 +49,27 @@
         ],
     };
 
+    const runConfig = {
+        command: 'run',
+        usage: 'pkg run [options] <key> [...args]',
+        description: 'Run a package.json script from the selected project directory',
+        options: {
+            help: optionHelp,
+            dir: optionProjectDir,
+        },
+        positionals: [
+            { name: 'key', description: 'Script name in package.json' },
+            { name: 'args', description: 'Additional arguments to append to the script', optional: true, variadic: true },
+        ],
+    };
+
     const MACHBASE_DEFAULT_BASE_URL = 'https://github.com/machbase/neo-pkg/raw/refs/heads/main/projects';
     const MACHBASE_DEFAULT_GITHUB_API_URL = 'https://api.github.com';
     const NPM_DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org';
 
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), defaultConfig, initConfig, installConfig);
+        parsed = parseArgs(process.argv.slice(2), defaultConfig, initConfig, installConfig, runConfig);
     } catch (err) {
         console.println(err.message);
         printHelp();
@@ -81,6 +96,11 @@
         return;
     }
 
+    if (parsed.command === 'run') {
+        doRun(parsed.namedPositionals.key, parsed.namedPositionals.args || [], parsed.values.dir);
+        return;
+    }
+
     console.println(`Unknown command: ${parsed.command}`);
     printHelp();
     process.exit(1);
@@ -94,7 +114,11 @@
             console.println(parseArgs.formatHelp(installConfig));
             return;
         }
-        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig));
+        if (command === 'run') {
+            console.println(parseArgs.formatHelp(runConfig));
+            return;
+        }
+        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig, runConfig));
     }
 
     function doInit(name, initDir) {
@@ -109,11 +133,47 @@
         const manifest = {
             name: name,
             version: '1.0.0',
+            scripts: {},
             dependencies: {},
         };
 
         writeJsonFile(pkgPath, manifest);
         console.println(`Created ${pkgPath}`);
+    }
+
+    function doRun(key, scriptArgs, runDir) {
+        const cwd = prepareProjectDirectory(process.cwd(), runDir);
+        const manifestPath = path.resolve(cwd, 'package.json');
+        const manifest = readOptionalJsonFile(manifestPath);
+
+        if (!manifest) {
+            throw new Error(`package.json not found: ${manifestPath}`);
+        }
+        if (!isRecord(manifest.scripts)) {
+            throw new Error(`package.json does not contain a valid scripts object: ${manifestPath}`);
+        }
+
+        const scriptLine = manifest.scripts[key];
+        if (typeof scriptLine !== 'string' || scriptLine.trim().length === 0) {
+            throw new Error(`Script not found or empty: ${key}`);
+        }
+
+        const fields = splitFields(scriptLine);
+        if (fields.length === 0) {
+            throw new Error(`Script produced no executable command: ${key}`);
+        }
+
+        process.chdir(cwd);
+
+        const command = fields[0];
+        const args = fields.slice(1);
+        const exitCode = process.exec(command, ...args, ...scriptArgs);
+        if (exitCode instanceof Error) {
+            throw exitCode;
+        }
+        if (exitCode !== 0) {
+            process.exit(exitCode);
+        }
     }
 
     function doInstall(request, installDir) {

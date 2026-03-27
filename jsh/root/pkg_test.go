@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +22,25 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
 )
+
+var pkgTestJshBinPath string
+
+func TestMain(m *testing.M) {
+	tmpDir := os.TempDir()
+	pkgTestJshBinPath = filepath.Join(tmpDir, "jsh-root-pkg-test")
+	args := []string{"build", "-o"}
+	if runtime.GOOS == "windows" {
+		pkgTestJshBinPath += ".exe"
+	}
+	args = append(args, pkgTestJshBinPath, "..")
+	cmd := exec.Command("go", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Println("Failed to build jsh binary for pkg tests:", err)
+		fmt.Print(string(output))
+		os.Exit(2)
+	}
+	os.Exit(m.Run())
+}
 
 func TestPkgInitCommand(t *testing.T) {
 	workDir := t.TempDir()
@@ -47,6 +68,23 @@ func TestPkgInitCommand(t *testing.T) {
 	}
 	if _, ok := manifest["dependencies"].(map[string]any); !ok {
 		t.Fatalf("package.json dependencies missing or invalid: %#v", manifest["dependencies"])
+	}
+}
+
+func TestPkgInitCreatesScriptsObject(t *testing.T) {
+	workDir := t.TempDir()
+
+	output, err := runCommand(workDir, nil, "pkg", "init", "demo-app")
+	if err != nil {
+		t.Fatalf("pkg init failed: %v\n%s", err, output)
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if _, ok := manifest["scripts"].(map[string]any); !ok {
+		t.Fatalf("package.json scripts missing or invalid: %#v", manifest["scripts"])
+	}
+	if got := len(manifest["scripts"].(map[string]any)); got != 0 {
+		t.Fatalf("package.json scripts length = %d, want 0", got)
 	}
 }
 
@@ -151,6 +189,55 @@ func TestPkgInstallMachbaseScoped(t *testing.T) {
 	}
 	if strings.TrimSpace(message) != "machbase-demo" {
 		t.Fatalf("require output = %q, want machbase-demo", strings.TrimSpace(message))
+	}
+}
+
+func TestPkgRunExecutesPackageScript(t *testing.T) {
+	workDir := t.TempDir()
+	copyTestFile(t, filepath.Join("..", "test", "pkg-run-fixture.js"), filepath.Join(workDir, "pkg-run-fixture.js"))
+	writeJSONFile(t, filepath.Join(workDir, "package.json"), map[string]any{
+		"name":    "pkg-run-app",
+		"version": "1.0.0",
+		"scripts": map[string]any{
+			"fixture": "./pkg-run-fixture.js alpha 'beta gamma'",
+		},
+	})
+
+	output, err := runCommand(workDir, nil, "pkg", "run", "fixture", "delta")
+	if err != nil {
+		t.Fatalf("pkg run failed: %v\n%s", err, output)
+	}
+
+	if got := strings.TrimSpace(output); got != "alpha|beta gamma|delta" {
+		t.Fatalf("pkg run output = %q, want alpha|beta gamma|delta", got)
+	}
+}
+
+func TestPkgRunUsesTargetDirectoryOption(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "workspace", "app")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("mkdir target dir: %v", err)
+	}
+	copyTestFile(t, filepath.Join("..", "test", "pkg-run-fixture.js"), filepath.Join(targetDir, "pkg-run-fixture.js"))
+	writeJSONFile(t, filepath.Join(targetDir, "package.json"), map[string]any{
+		"name":    "pkg-run-target-app",
+		"version": "1.0.0",
+		"scripts": map[string]any{
+			"fixture": "./pkg-run-fixture.js nested",
+		},
+	})
+
+	output, err := runCommand(workDir, nil, "pkg", "run", "--dir", "workspace/app", "fixture", "value")
+	if err != nil {
+		t.Fatalf("pkg run --dir failed: %v\n%s", err, output)
+	}
+
+	if got := strings.TrimSpace(output); got != "nested|value" {
+		t.Fatalf("pkg run --dir output = %q, want nested|value", got)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("caller cwd should not receive package.json, err=%v", err)
 	}
 }
 
@@ -931,7 +1018,7 @@ func commandConfig(workDir string, extraEnv map[string]any) engine.Config {
 		env[k] = v
 	}
 
-	return engine.Config{
+	conf := engine.Config{
 		Name: "pkg-test",
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
@@ -943,6 +1030,22 @@ func commandConfig(workDir string, extraEnv map[string]any) engine.Config {
 		Reader: &bytes.Buffer{},
 		Writer: &bytes.Buffer{},
 	}
+	conf.ExecBuilder = func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
+		execConf := engine.Config{
+			Code:   code,
+			Args:   args,
+			FSTabs: conf.FSTabs,
+			Env:    env,
+		}
+		secretBox, err := engine.NewSecretBox(execConf)
+		if err != nil {
+			return nil, err
+		}
+		execArgs := []string{"-S", secretBox.FilePath(), args[0]}
+		return exec.Command(pkgTestJshBinPath, execArgs...), nil
+	}
+
+	return conf
 }
 
 func writeJSON(w http.ResponseWriter, value any) {
@@ -972,6 +1075,17 @@ func readJSONFile(t *testing.T, filePath string) map[string]any {
 		t.Fatalf("parse json file %s: %v", filePath, err)
 	}
 	return parsed
+}
+
+func copyTestFile(t *testing.T, sourcePath string, targetPath string) {
+	t.Helper()
+	content, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read test file %s: %v", sourcePath, err)
+	}
+	if err := os.WriteFile(targetPath, content, 0o644); err != nil {
+		t.Fatalf("write test file %s: %v", targetPath, err)
+	}
 }
 
 func assertPackageVersion(t *testing.T, packageJSON string, expected string) {
