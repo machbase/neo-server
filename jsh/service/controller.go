@@ -257,7 +257,7 @@ func (ctl *Controller) Install(sc *Config) error {
 		delete(ctl.services, sc.Name)
 	}
 	ctl.services[sc.Name] = &Service{Config: *sc, Status: ServiceStatusStopped}
-	if sc.AutoStart {
+	if sc.Enable {
 		ctl.startService(sc)
 	}
 	return nil

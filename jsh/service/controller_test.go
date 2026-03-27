@@ -46,7 +46,6 @@ func TestServiceConfigEqual(t *testing.T) {
 	base := Config{
 		Name:        "svc-a",
 		Enable:      true,
-		AutoStart:   true,
 		WorkingDir:  "/work",
 		Environment: map[string]string{"A": "1", "B": "2"},
 		Executable:  "node",
@@ -56,7 +55,6 @@ func TestServiceConfigEqual(t *testing.T) {
 	same := Config{
 		Name:        "svc-a",
 		Enable:      true,
-		AutoStart:   true,
 		WorkingDir:  "/work",
 		Environment: map[string]string{"B": "2", "A": "1"},
 		Executable:  "node",
@@ -359,7 +357,7 @@ func TestControllerJSONRPC(t *testing.T) {
 			}
 
 			var beta ServiceSnapshot
-			callControllerRPC(t, address, 2, "service.install", Config{Name: "beta", Enable: true, Executable: "echo"}, &beta)
+			callControllerRPC(t, address, 2, "service.install", Config{Name: "beta", Enable: false, Executable: "echo"}, &beta)
 			if beta.Config.Name != "beta" {
 				t.Fatalf("service.install name=%q, want %q", beta.Config.Name, "beta")
 			}

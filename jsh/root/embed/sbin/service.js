@@ -17,7 +17,6 @@
         help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
         name: { type: 'string', short: 'n', description: 'Service name for inline install', default: '' },
         enable: { type: 'boolean', description: 'Enable the service for inline install', default: false },
-        autoStart: { type: 'boolean', description: 'Auto-start the service for inline install', default: false },
         workingDir: { type: 'string', short: 'w', description: 'Working directory for inline install', default: '' },
         executable: { type: 'string', short: 'x', description: 'Executable path for inline install', default: '' },
         arg: { type: 'string', short: 'a', description: 'Executable argument for inline install', multiple: true },
@@ -88,7 +87,7 @@
         console.println('  update');
         console.println('  reload');
         console.println('  install <config.json>');
-        console.println('  install --name <name> --executable <path> [--arg <arg> ...] [--working-dir <dir>] [--enable] [--auto-start] [--env KEY=VALUE ...]');
+        console.println('  install --name <name> --executable <path> [--arg <arg> ...] [--working-dir <dir>] [--enable] [--env KEY=VALUE ...]');
         console.println('  uninstall <service_name>');
         console.println('  status [service_name]');
         console.println('  start <service_name>');
@@ -182,7 +181,7 @@
             fail("Command 'install' accepts either one config path or inline install options.");
         }
         if (positionalArgs.length === 1) {
-            if (parsed.values.name || parsed.values.executable || parsed.values.workingDir || parsed.values.enable || parsed.values.autoStart || parsed.values.arg || parsed.values.env) {
+            if (parsed.values.name || parsed.values.executable || parsed.values.workingDir || parsed.values.enable || parsed.values.arg || parsed.values.env) {
                 fail("Command 'install' cannot mix a config file with inline install options.");
             }
             return readConfigFile(positionalArgs[0]);
@@ -198,7 +197,6 @@
         return {
             name: parsed.values.name,
             enable: parsed.values.enable,
-            auto_start: parsed.values.autoStart,
             working_dir: parsed.values.workingDir,
             environment: parseEnvList(parsed.values.env || []),
             executable: parsed.values.executable,
@@ -452,7 +450,6 @@
         const state = cfg.enable ? 'ENABLED' : 'disabled';
         console.println(`[${cfg.name}] ${state}`);
         console.println(`  status: ${service.status}`);
-        console.println(`  auto_start: ${cfg.auto_start ? 'yes' : 'no'}`);
         console.println(`  exit_code: ${service.exit_code}`);
         if (service.pid) {
             console.println(`  pid: ${service.pid}`);

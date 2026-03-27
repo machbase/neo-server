@@ -92,7 +92,6 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 			"config": map[string]any{
 				"name":        "alpha",
 				"enable":      true,
-				"auto_start":  true,
 				"working_dir": "/work",
 				"environment": map[string]any{"A": "1", "B": "2"},
 				"executable":  "echo",
@@ -120,7 +119,6 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 	checks := []string{
 		"[alpha] ENABLED",
 		"status: running",
-		"auto_start: yes",
 		"exit_code: 0",
 		"pid: 55",
 		"cwd: /work",
@@ -147,7 +145,7 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 func TestServiceCommandInstallFromFile(t *testing.T) {
 	workDir := t.TempDir()
 	configPath := filepath.Join(workDir, "svc.json")
-	if err := os.WriteFile(configPath, []byte("{\n  \"name\": \"svc-file\",\n  \"enable\": true,\n  \"auto_start\": true,\n  \"working_dir\": \"/srv\",\n  \"environment\": {\"A\": \"1\"},\n  \"executable\": \"echo\",\n  \"args\": [\"hello\"]\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("{\n  \"name\": \"svc-file\",\n  \"enable\": true,\n  \"working_dir\": \"/srv\",\n  \"environment\": {\"A\": \"1\"},\n  \"executable\": \"echo\",\n  \"args\": [\"hello\"]\n}\n"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
@@ -206,9 +204,6 @@ func TestServiceCommandInstallInline(t *testing.T) {
 		if params["enable"] != true {
 			t.Fatalf("inline enable=%v, want true", params["enable"])
 		}
-		if params["auto_start"] != true {
-			t.Fatalf("inline auto_start=%v, want true", params["auto_start"])
-		}
 		args, ok := params["args"].([]any)
 		if !ok || len(args) != 3 || args[0] != "app.js" || args[1] != "--port" || args[2] != "8080" {
 			t.Fatalf("inline args=%#v, want [app.js --port 8080]", params["args"])
@@ -233,7 +228,6 @@ func TestServiceCommandInstallInline(t *testing.T) {
 		"--executable", "node",
 		"--working-dir", "/work/app",
 		"--enable",
-		"--auto-start",
 		"--arg", "app.js",
 		"--arg", "--port",
 		"--arg", "8080",
@@ -435,7 +429,6 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
 				"name":        "alpha",
 				"enable":      false,
-				"auto_start":  false,
 				"working_dir": "/work",
 				"executable":  "echo",
 				"args":        []any{"hello"},
@@ -477,7 +470,6 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
 				"name":        "alpha",
 				"enable":      true,
-				"auto_start":  false,
 				"working_dir": "/work",
 				"executable":  "echo",
 				"args":        []any{"hello", "world"},

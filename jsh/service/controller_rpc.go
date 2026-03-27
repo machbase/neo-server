@@ -22,7 +22,6 @@ const (
 type ConfigSnapshot struct {
 	Name        string            `json:"name"`
 	Enable      bool              `json:"enable"`
-	AutoStart   bool              `json:"auto_start"`
 	WorkingDir  string            `json:"working_dir"`
 	Environment map[string]string `json:"environment,omitempty"`
 	Executable  string            `json:"executable"`
@@ -379,7 +378,6 @@ func snapshotConfig(sc *Config) ConfigSnapshot {
 	result := ConfigSnapshot{
 		Name:       sc.Name,
 		Enable:     sc.Enable,
-		AutoStart:  sc.AutoStart,
 		WorkingDir: sc.WorkingDir,
 		Executable: sc.Executable,
 	}
@@ -414,8 +412,10 @@ func snapshotService(svc *Service) ServiceSnapshot {
 	if svc.Error != nil {
 		result.Error = svc.Error.Error()
 	}
-	if svc.cmd != nil && svc.cmd.Process != nil {
-		result.PID = svc.cmd.Process.Pid
+	if svc.Status != ServiceStatusStopped && svc.Status != ServiceStatusFailed {
+		if svc.cmd != nil && svc.cmd.Process != nil {
+			result.PID = svc.cmd.Process.Pid
+		}
 	}
 	return result
 }
