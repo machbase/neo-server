@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"strings"
 )
 
 const (
@@ -20,7 +22,6 @@ const (
 type ConfigSnapshot struct {
 	Name        string            `json:"name"`
 	Enable      bool              `json:"enable"`
-	AutoStart   bool              `json:"auto_start"`
 	WorkingDir  string            `json:"working_dir"`
 	Environment map[string]string `json:"environment,omitempty"`
 	Executable  string            `json:"executable"`
@@ -81,16 +82,52 @@ type serviceNameRequest struct {
 	Name string `json:"name"`
 }
 
-func (ctl *Controller) Port() int {
-	ctl.mu.RLock()
-	defer ctl.mu.RUnlock()
-	return ctl.rpcPort
-}
-
 func (ctl *Controller) Address() string {
 	ctl.mu.RLock()
 	defer ctl.mu.RUnlock()
-	return fmt.Sprintf("tcp://127.0.0.1:%d", ctl.rpcPort)
+	return ctl.rpcListenAddr
+}
+
+func parseRPCAddress(raw string) (string, string, error) {
+	scheme := "tcp"
+	address := raw
+	if head, tail, found := strings.Cut(raw, "://"); found {
+		scheme = strings.ToLower(head)
+		address = tail
+	}
+	if address == "" {
+		return "", "", fmt.Errorf("rpc address is empty")
+	}
+	switch scheme {
+	case "tcp", "unix":
+		return scheme, address, nil
+	default:
+		return "", "", fmt.Errorf("unsupported rpc address scheme %q", scheme)
+	}
+}
+
+func formatRPCAddress(network string, addr net.Addr) string {
+	switch typed := addr.(type) {
+	case *net.TCPAddr:
+		return fmt.Sprintf("tcp://%s", typed.String())
+	case *net.UnixAddr:
+		return fmt.Sprintf("unix://%s", typed.Name)
+	default:
+		if addr == nil {
+			return ""
+		}
+		return fmt.Sprintf("%s://%s", network, addr.String())
+	}
+}
+
+func cleanupRPCAddress(raw string) {
+	network, address, err := parseRPCAddress(raw)
+	if err != nil || network != "unix" || address == "" {
+		return
+	}
+	if err := os.Remove(address); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return
+	}
 }
 
 func (ctl *Controller) startRPC() error {
@@ -100,14 +137,16 @@ func (ctl *Controller) startRPC() error {
 	if ctl.rpcLn != nil {
 		return nil
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	network, address, err := parseRPCAddress(ctl.rpcConfigAddr)
+	if err != nil {
+		return fmt.Errorf("start controller rpc listener: %w", err)
+	}
+	ln, err := net.Listen(network, address)
 	if err != nil {
 		return fmt.Errorf("start controller rpc listener: %w", err)
 	}
 	ctl.rpcLn = ln
-	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
-		ctl.rpcPort = addr.Port
-	}
+	ctl.rpcListenAddr = formatRPCAddress(network, ln.Addr())
 	ctl.rpcWG.Add(1)
 	go ctl.serveRPC(ln)
 	return nil
@@ -116,8 +155,9 @@ func (ctl *Controller) startRPC() error {
 func (ctl *Controller) stopRPC() {
 	ctl.mu.Lock()
 	ln := ctl.rpcLn
+	listenAddr := ctl.rpcListenAddr
 	ctl.rpcLn = nil
-	ctl.rpcPort = 0
+	ctl.rpcListenAddr = ""
 	ctl.mu.Unlock()
 
 	if ln == nil {
@@ -125,6 +165,7 @@ func (ctl *Controller) stopRPC() {
 	}
 	_ = ln.Close()
 	ctl.rpcWG.Wait()
+	cleanupRPCAddress(listenAddr)
 }
 
 func (ctl *Controller) serveRPC(ln net.Listener) {
@@ -337,7 +378,6 @@ func snapshotConfig(sc *Config) ConfigSnapshot {
 	result := ConfigSnapshot{
 		Name:       sc.Name,
 		Enable:     sc.Enable,
-		AutoStart:  sc.AutoStart,
 		WorkingDir: sc.WorkingDir,
 		Executable: sc.Executable,
 	}
@@ -372,8 +412,10 @@ func snapshotService(svc *Service) ServiceSnapshot {
 	if svc.Error != nil {
 		result.Error = svc.Error.Error()
 	}
-	if svc.cmd != nil && svc.cmd.Process != nil {
-		result.PID = svc.cmd.Process.Pid
+	if svc.Status != ServiceStatusStopped && svc.Status != ServiceStatusFailed {
+		if svc.cmd != nil && svc.cmd.Process != nil {
+			result.PID = svc.cmd.Process.Pid
+		}
 	}
 	return result
 }

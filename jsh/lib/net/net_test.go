@@ -1,6 +1,10 @@
 package net_test
 
 import (
+	"fmt"
+	stdnet "net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -103,6 +107,62 @@ func TestClientServerConnection(t *testing.T) {
 	}
 
 	time.Sleep(100 * time.Millisecond)
+}
+
+func TestUnixDomainSocketConnection(t *testing.T) {
+	socketPath := filepath.Join(os.TempDir(), fmt.Sprintf("jsh-net-%d.sock", time.Now().UnixNano()))
+	_ = os.Remove(socketPath)
+	defer os.Remove(socketPath)
+
+	ln, err := stdnet.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("Failed to listen on unix socket: %v", err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			acceptErr <- err
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 128)
+		n, err := conn.Read(buf)
+		if err != nil {
+			acceptErr <- err
+			return
+		}
+		received <- string(buf[:n])
+	}()
+
+	socket, err := net.ConnectPath(nil, socketPath, func(obj *goja.Object, event string, args ...any) bool {
+		t.Logf("Client Event: %s", event)
+		return true
+	})
+	if err != nil {
+		t.Fatalf("Failed to connect to unix socket: %v", err)
+	}
+	defer socket.Close()
+
+	if _, err := socket.WriteString("Hello Unix Socket", "utf8"); err != nil {
+		t.Fatalf("Failed to write to unix socket: %v", err)
+	}
+
+	select {
+	case err := <-acceptErr:
+		t.Fatalf("Unix socket server error: %v", err)
+	case msg := <-received:
+		if msg != "Hello Unix Socket" {
+			t.Fatalf("Received message=%q, want %q", msg, "Hello Unix Socket")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for unix socket message")
+	}
 }
 
 func TestNetModule(t *testing.T) {

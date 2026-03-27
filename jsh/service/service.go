@@ -129,9 +129,6 @@ func (lc Config) Equal(rc Config) bool {
 	if lc.Enable != rc.Enable {
 		return false
 	}
-	if lc.AutoStart != rc.AutoStart {
-		return false
-	}
 	if lc.WorkingDir != rc.WorkingDir {
 		return false
 	}
@@ -160,7 +157,6 @@ func (lc Config) Equal(rc Config) bool {
 type Config struct {
 	Name        string            `json:"name"`           // Unique name of the service
 	Enable      bool              `json:"enable"`         // Whether the service is enabled or not
-	AutoStart   bool              `json:"auto_start"`     // Start the service automatically when the server starts
 	WorkingDir  string            `json:"working_dir"`    // The working directory of the service
 	Environment map[string]string `json:"environment"`    // Environment variables for the service
 	Executable  string            `json:"executable"`     // The executable file for the service
