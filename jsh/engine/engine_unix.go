@@ -9,11 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 	"unsafe"
-
-	"github.com/dop251/goja"
 )
 
-func (jr *JSRuntime) exec0(vm *goja.Runtime, ex *exec.Cmd) goja.Value {
+func (jr *JSRuntime) exec0(ex *exec.Cmd) (int, error) {
 	ex.Stdin = jr.Env.Reader()
 	ex.Stdout = jr.Env.Writer()
 	ex.Stderr = jr.Env.Writer()
@@ -48,7 +46,7 @@ func (jr *JSRuntime) exec0(vm *goja.Runtime, ex *exec.Cmd) goja.Value {
 
 	// child process start
 	if err := ex.Start(); err != nil {
-		return vm.NewGoError(err)
+		return -1, err
 	}
 
 	if isTTY {
@@ -66,15 +64,15 @@ func (jr *JSRuntime) exec0(vm *goja.Runtime, ex *exec.Cmd) goja.Value {
 	}
 
 	// wait for process to finish
-	var result goja.Value
+	var result int
 	if err := ex.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			result = vm.ToValue(exitErr.ExitCode())
+			result = exitErr.ExitCode()
 		} else {
-			result = vm.NewGoError(err)
+			result = -1
 		}
 	} else {
-		result = vm.ToValue(0)
+		result = 0
 	}
 
 	// restore this parent process to foreground
@@ -88,7 +86,7 @@ func (jr *JSRuntime) exec0(vm *goja.Runtime, ex *exec.Cmd) goja.Value {
 			fmt.Printf("failed to restore foreground: %v\n", err)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // isatty checks if fd is a terminal

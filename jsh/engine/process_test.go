@@ -1506,30 +1506,28 @@ func TestProcessExecErrors(t *testing.T) {
 			Name: "exec_no_args",
 			Script: `
 				const process = require("process");
-				const result = process.exec();
-				if (result instanceof Error) {
-					console.println("error:", result.message.includes("no command"));
-				} else {
-					console.println("result:", result);
+				try {
+					const result = process.exec();
+				} catch (e) {
+					console.println("error caught:", e.message);
 				}
 			`,
 			Output: []string{
-				"error: true",
+				"error caught: no command provided",
 			},
 		},
 		{
 			Name: "execString_no_args",
 			Script: `
 				const process = require("process");
-				const result = process.execString();
-				if (result instanceof Error) {
-					console.println("error:", result.message.includes("no source"));
-				} else {
-					console.println("result:", result);
+				try {
+					const result = process.execString();
+				} catch (e) {
+					console.println("error caught:", e.message);
 				}
 			`,
 			Output: []string{
-				"error: true",
+				"error caught: no source provided",
 			},
 		},
 		{

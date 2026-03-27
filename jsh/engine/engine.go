@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -117,15 +118,51 @@ func (jr *JSRuntime) AddShutdownHook(hook func()) {
 	jr.shutdownHooks = append(jr.shutdownHooks, hook)
 }
 
-func (jr *JSRuntime) Exec(vm *goja.Runtime, source string, args []string) goja.Value {
+// doExec executes a command by building an exec.Cmd and running it.
+//
+// syntax) exec(command: string, ...args: string): number
+// return) exit code
+func (jr *JSRuntime) Exec(path string, args ...string) (int, error) {
+	if path == "" && len(args) == 0 {
+		return -1, fmt.Errorf("no command provided")
+	}
+	if strings.HasPrefix(path, "@") {
+		// when path starts with "@",
+		// treat it as calling a native executable with args
+		cmd := exec.Command(path[1:], args...)
+		return jr.exec0(cmd)
+	}
 	eb := jr.Env.ExecBuilder()
 	if eb == nil {
-		return vm.NewGoError(fmt.Errorf("no command builder defined"))
+		return -1, fmt.Errorf("no command builder defined")
 	}
 	env := jr.Env.vars
-	cmd, err := eb(source, args, env)
+	argv := make([]string, 0, len(args)+1)
+	argv = append(argv, path)
+	argv = append(argv, args...)
+	cmd, err := eb("", argv, env)
 	if err != nil {
-		return vm.NewGoError(err)
+		return -1, err
 	}
-	return jr.exec0(vm, cmd)
+	return jr.exec0(cmd)
+}
+
+// doExecString executes a command line string via the exec function.
+//
+// syntax) execString(source: string): number
+// return) exit code
+func (jr *JSRuntime) ExecString(source string) (int, error) {
+	if source == "" {
+		return -1, fmt.Errorf("no source provided")
+	}
+	eb := jr.Env.ExecBuilder()
+	if eb == nil {
+		return -1, fmt.Errorf("no command builder defined")
+	}
+	env := jr.Env.vars
+	cmd, err := eb(source, nil, env)
+	if err != nil {
+		return -1, err
+	}
+	return jr.exec0(cmd)
 }

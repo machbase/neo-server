@@ -53,8 +53,8 @@ func (jr *JSRuntime) Process(vm *goja.Runtime, module *goja.Object) {
 	exports.Set("which", jr.Env.Which)
 	exports.Set("alias", jr.Env.Alias)
 	exports.Set("expand", jr.Env.Expand)
-	exports.Set("exec", doExec(vm, jr.Exec))
-	exports.Set("execString", doExecString(vm, jr.Exec))
+	exports.Set("exec", jr.Exec)
+	exports.Set("execString", jr.ExecString)
 	exports.Set("dispatchEvent", dispatchEvent(jr.EventLoop()))
 	exports.Set("now", jr.Now)
 	exports.Set("chdir", jr.Chdir)
@@ -275,41 +275,7 @@ func (jr *JSRuntime) Chdir(path string) error {
 }
 
 type Exit struct {
-	Code int
-}
-
-// doExecString executes a command line string via the exec function.
-//
-// syntax) execString(source: string, ...args: string): number
-// return) exit code
-func doExecString(vm *goja.Runtime, exec func(vm *goja.Runtime, source string, args []string) goja.Value) func(call goja.FunctionCall) goja.Value {
-	return func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) < 1 {
-			return vm.NewGoError(fmt.Errorf("no source code provided"))
-		}
-		args := make([]string, 0, len(call.Arguments))
-		for _, a := range call.Arguments {
-			args = append(args, a.String())
-		}
-		return exec(vm, args[0], args[1:])
-	}
-}
-
-// doExec executes a command by building an exec.Cmd and running it.
-//
-// syntax) exec(command: string, ...args: string): number
-// return) exit code
-func doExec(vm *goja.Runtime, exec func(vm *goja.Runtime, source string, args []string) goja.Value) func(call goja.FunctionCall) goja.Value {
-	return func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) < 1 {
-			return vm.NewGoError(fmt.Errorf("no command provided"))
-		}
-		args := make([]string, 0, len(call.Arguments))
-		for _, a := range call.Arguments {
-			args = append(args, a.String())
-		}
-		return exec(vm, "", args)
-	}
+	Code int `json:"code"`
 }
 
 func doExit(vm *goja.Runtime) func(call goja.FunctionCall) goja.Value {
