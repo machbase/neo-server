@@ -20,8 +20,9 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	}
 
 	pool := dockertest.NewPoolT(t, "")
-	resource := pool.RunT(t, "mcr.microsoft.com/mssql/server",
-		dockertest.WithTag("2025-latest"),
+	mssqlRepository, mssqlTag := test.MSSQLDockerImage.Resolve()
+	resource := pool.RunT(t, mssqlRepository,
+		dockertest.WithTag(mssqlTag),
 		dockertest.WithEnv([]string{
 			"ACCEPT_EULA=Y",
 			"MSSQL_SA_PASSWORD=Your_password123",

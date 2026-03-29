@@ -39,7 +39,7 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
-      - name: Test
+      - name: Test without Docker
         run: go run mage.go test
       - name: Codecov
         if: matrix.platform == 'ubuntu-22.04'

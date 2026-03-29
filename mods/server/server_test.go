@@ -295,8 +295,9 @@ func TestShellBridge(t *testing.T) {
 	//
 	// start postgreSQL
 	//
-	postgres := pool.RunT(t, "postgres",
-		dockertest.WithTag("16"),
+	postgresRepository, postgresTag := test.PostgresDockerImage.Resolve()
+	postgres := pool.RunT(t, postgresRepository,
+		dockertest.WithTag(postgresTag),
 		dockertest.WithEnv([]string{
 			"POSTGRES_USER=dbuser",
 			"POSTGRES_PASSWORD=secret",
@@ -306,8 +307,7 @@ func TestShellBridge(t *testing.T) {
 	//
 	// start MSSQL
 	//
-	mssqlImage := "mcr.microsoft.com/mssql/server"
-	mssqlTag := "2025-latest"
+	mssqlImage, mssqlTag := test.MSSQLDockerImage.Resolve()
 	// azure-sql-edge was deprecated
 	//
 	// if runtime.GOARCH == "arm64" { // for arm64, use azure-sql-edge which supports arm64
@@ -324,8 +324,9 @@ func TestShellBridge(t *testing.T) {
 	//
 	// start MYSQL
 	//
-	mysql := pool.RunT(t, "mysql",
-		dockertest.WithTag("8.0"),
+	mysqlRepository, mysqlTag := test.MySQLDockerImage.Resolve()
+	mysql := pool.RunT(t, mysqlRepository,
+		dockertest.WithTag(mysqlTag),
 		dockertest.WithEnv([]string{
 			"MYSQL_ROOT_PASSWORD=secret",
 			"MYSQL_DATABASE=db",
@@ -343,15 +344,17 @@ func TestShellBridge(t *testing.T) {
 	}
 	testDir := filepath.Join(filepath.Dir(filename), "test")
 
-	mosquitto := pool.RunT(t, "eclipse-mosquitto",
-		dockertest.WithTag("2.0"),
+	mosquittoRepository, mosquittoTag := test.MosquittoDockerImage.Resolve()
+	mosquitto := pool.RunT(t, mosquittoRepository,
+		dockertest.WithTag(mosquittoTag),
 		dockertest.WithMounts([]string{filepath.Join(testDir, "mosquitto.conf") + ":/mosquitto/config/mosquitto.conf:ro"}),
 	)
 	//
 	// start NATS server
 	//
-	nats := pool.RunT(t, "nats",
-		dockertest.WithTag("2.12"),
+	natsRepository, natsTag := test.NATSDockerImage.Resolve()
+	nats := pool.RunT(t, natsRepository,
+		dockertest.WithTag(natsTag),
 	)
 
 	// wait for mosquitto to be ready

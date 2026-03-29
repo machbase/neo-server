@@ -22,8 +22,9 @@ func TestMySQLDateTypes(t *testing.T) {
 	}
 
 	pool := dockertest.NewPoolT(t, "")
-	resource := pool.RunT(t, "mysql",
-		dockertest.WithTag("8.0"),
+	mysqlRepository, mysqlTag := test.MySQLDockerImage.Resolve()
+	resource := pool.RunT(t, mysqlRepository,
+		dockertest.WithTag(mysqlTag),
 		dockertest.WithEnv([]string{
 			"MYSQL_ROOT_PASSWORD=secret",
 			"MYSQL_DATABASE=db",

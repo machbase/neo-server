@@ -153,8 +153,9 @@ func TestPostgreSql(t *testing.T) {
 		t.Skip("dockertest does not work in this environment")
 	}
 	pool := dockertest.NewPoolT(t, "")
-	postgres := pool.RunT(t, "postgres",
-		dockertest.WithTag("16"),
+	postgresRepository, postgresTag := test.PostgresDockerImage.Resolve()
+	postgres := pool.RunT(t, postgresRepository,
+		dockertest.WithTag(postgresTag),
 		dockertest.WithEnv([]string{
 			"POSTGRES_USER=dbuser",
 			"POSTGRES_PASSWORD=dbpass",
