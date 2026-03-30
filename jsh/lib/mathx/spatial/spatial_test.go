@@ -3,8 +3,139 @@ package spatial_test
 import (
 	"testing"
 
+	"github.com/machbase/neo-server/v8/jsh/lib/mathx/spatial"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
+
+func TestFiles(t *testing.T) {
+	files := spatial.Files()
+	if len(files) != 1 {
+		t.Fatalf("expected 1 embedded file, got %d", len(files))
+	}
+	if len(files["mathx/spatial.js"]) == 0 {
+		t.Fatal("embedded spatial.js must not be empty")
+	}
+	if files["mathx/spatial.js"] == nil {
+		t.Fatal("embedded spatial.js entry must not be nil")
+	}
+}
+
+func TestParseGeoJSONSuccessCases(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-parse-geojson-feature-collection",
+			Script: `
+				m = require("mathx/spatial");
+				value = m.parseGeoJSON({
+					type: "FeatureCollection",
+					features: [{
+						type: "Feature",
+						properties: { name: "A" },
+						geometry: {
+							type: "Point",
+							coordinates: [127.0, 37.0]
+						}
+					}]
+				});
+				console.println('type:', value.type);
+				console.println('features:', value.features.length);
+				console.println('feature0:', value.features[0].type);
+			`,
+			Output: []string{
+				"type: FeatureCollection",
+				"features: 1",
+				"feature0: Feature",
+			},
+		},
+		{
+			Name: "js-parse-geojson-feature",
+			Script: `
+				m = require("mathx/spatial");
+				value = m.parseGeoJSON({
+					type: "Feature",
+					properties: { name: "B" },
+					geometry: {
+						type: "LineString",
+						coordinates: [[127.0, 37.0], [128.0, 38.0]]
+					}
+				});
+				console.println('type:', value.type);
+				console.println('name:', value.properties);
+				console.println('geometry:', value.geometry);
+			`,
+			Output: []string{
+				"type: Feature",
+				"name: {name:B}",
+				"geometry: [[127, 37], [128, 38]]",
+			},
+		},
+		{
+			Name: "js-parse-geojson-geometry",
+			Script: `
+				m = require("mathx/spatial");
+				value = m.parseGeoJSON({
+					type: "Polygon",
+					coordinates: [[
+						[100.0, 0.0],
+						[101.0, 0.0],
+						[101.0, 1.0],
+						[100.0, 1.0],
+						[100.0, 0.0]
+					]]
+				});
+				console.println('type:', value.type);
+				console.println('rings:', value.coordinates.length);
+				console.println('points:', value.coordinates[0].length);
+			`,
+			Output: []string{
+				"type: Polygon",
+				"rings: 1",
+				"points: 5",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		test_engine.RunTest(t, tc)
+	}
+}
+
+func TestParseGeoJSONErrors(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-parse-geojson-errors",
+			Script: `
+				m = require("mathx/spatial");
+				cases = [
+					{ name: 'missing type', value: { coordinates: [127.0, 37.0] } },
+					{ name: 'unsupported type', value: { type: 'Circle', coordinates: [127.0, 37.0] } },
+					{ name: 'invalid feature collection', value: { type: 'FeatureCollection', features: 'not-an-array' } },
+					{ name: 'invalid feature', value: { type: 'Feature', geometry: 'not-an-object' } },
+					{ name: 'invalid geometry', value: { type: 'Point', coordinates: 'not-valid' } },
+				];
+				for (tc of cases) {
+					try {
+						m.parseGeoJSON(tc.value);
+						console.println(tc.name + ': no error');
+					} catch (err) {
+						console.println(tc.name + ':', err.message);
+					}
+				}
+			`,
+			Output: []string{
+				"missing type: GeoJSONError missing a GeoJSON type",
+				"unsupported type: GeoJSONError unsupported GeoJSON type",
+				"invalid feature collection: GeoJSONError json: cannot unmarshal string into Go value of type []*geojson.Feature",
+				"invalid feature: GeoJSONError json: cannot unmarshal string into Go value of type geojson.jsonGeometry",
+				"invalid geometry: GeoJSONError json: cannot unmarshal string into Go value of type orb.Point",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		test_engine.RunTest(t, tc)
+	}
+}
 
 func TestHaversine(t *testing.T) {
 	tests := []test_engine.TestCase{
@@ -104,6 +235,20 @@ func TestHaversine(t *testing.T) {
 
 func TestSimplify(t *testing.T) {
 	tests := []test_engine.TestCase{
+		{
+			Name: "js-simplify-short-input",
+			Script: `
+				m = require("mathx/spatial");
+				coords = [[37.1, 127.1], [37.2, 127.2]];
+				one = [[37.1, 127.1]];
+				console.println(m.simplify(0.5, ...coords));
+				console.println(m.simplify(10, ...one));
+			`,
+			Output: []string{
+				"[[37.1, 127.1], [37.2, 127.2]]",
+				"[[37.1, 127.1]]",
+			},
+		},
 		{
 			Name: "js-simplify",
 			Script: `

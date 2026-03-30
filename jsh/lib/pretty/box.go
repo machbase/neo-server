@@ -3,7 +3,6 @@ package pretty
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 	"unicode"
@@ -212,19 +211,19 @@ func (tw *TableWriter) SetAutoIndex(autoIndex bool) {
 
 func (tw *TableWriter) SetOutput(o any) {
 	var w io.Writer = io.Discard
-	if m := o.(map[string]any); m != nil {
+	switch v := o.(type) {
+	case nil:
+		// keep discard output
+	case map[string]any:
 		// o is javascript object
-		if writer, ok := m["writer"].(io.Writer); ok {
+		if writer, ok := v["writer"].(io.Writer); ok {
 			w = writer
 		} else {
 			panic(fmt.Sprintf("SetOutput: invalid writer in object %+v", o))
 		}
-	} else if writer, ok := o.(io.Writer); ok {
-		// o is io.Writer
-		w = writer
-	} else if file, ok := o.(*os.File); ok {
-		// o is *os.File
-		w = file
+	case io.Writer:
+		// o is io.Writer, including *os.File
+		w = v
 	}
 	tw.output = w // be used for ndjson, and json rendering
 	tw.Writer.SetOutputMirror(w)
