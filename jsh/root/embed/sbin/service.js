@@ -5,6 +5,7 @@
     const fs = require('fs');
     const path = require('path');
     const net = require('net');
+    const pretty = require('pretty');
     const parseArgs = require('util/parseArgs');
     const statusOutputMaxLines = 20;
 
@@ -335,6 +336,7 @@
                 return;
             case 'status':
                 if (Array.isArray(result)) {
+                    console.println(`SERVICES (${result.length})`);
                     renderServiceList(result);
                     return;
                 }
@@ -358,11 +360,20 @@
             console.println('No read result');
             return;
         }
-        renderConfigSection('UNCHANGED', result.unchanged || []);
-        renderConfigSection('ADDED', result.added || []);
-        renderConfigSection('UPDATED', result.updated || []);
-        renderConfigSection('REMOVED', result.removed || []);
-        renderConfigSection('ERRORED', result.errored || []);
+        const sections = [
+            { title: 'UNCHANGED', configs: result.unchanged || [] },
+            { title: 'ADDED', configs: result.added || [] },
+            { title: 'UPDATED', configs: result.updated || [] },
+            { title: 'REMOVED', configs: result.removed || [] },
+            { title: 'ERRORED', configs: result.errored || [] },
+        ];
+
+        for (let i = 0; i < sections.length; i++) {
+            if (i > 0) {
+                console.println('');
+            }
+            renderConfigSection(sections[i].title, sections[i].configs);
+        }
     }
 
     function renderUpdateResult(result) {
@@ -371,66 +382,58 @@
             return;
         }
         const actions = Array.isArray(result.actions) ? result.actions : [];
-        if (actions.length === 0) {
-            console.println('ACTIONS (0)');
-            console.println('  (none)');
-        } else {
-            console.println(`ACTIONS (${actions.length})`);
-            const rows = actions.map((action) => ({
+        console.println(`ACTIONS (${actions.length})`);
+        const rows = actions.length > 0
+            ? actions.map((action) => ({
                 name: action.name || '',
                 action: action.action || '',
                 error: action.error || '',
-            }));
-            renderTable([
-                { key: 'name', title: 'NAME' },
-                { key: 'action', title: 'ACTION' },
-                { key: 'error', title: 'ERROR' },
-            ], rows);
-        }
+            }))
+            : [{ name: '(none)', action: '', error: '' }];
+        renderTable([
+            { key: 'name', title: 'NAME' },
+            { key: 'action', title: 'ACTION' },
+            { key: 'error', title: 'ERROR' },
+        ], rows);
         console.println('');
-        console.println('SERVICES');
-        renderServiceList(result.services || []);
+        const services = result.services || [];
+        console.println(`SERVICES (${Array.isArray(services) ? services.length : 0})`);
+        renderServiceList(services);
     }
 
     function renderConfigSection(title, configs) {
         console.println(`${title} (${configs.length})`);
-        if (!Array.isArray(configs) || configs.length === 0) {
-            console.println('  (none)');
-            return;
-        }
-        for (const cfg of configs) {
-            const parts = [cfg.name || ''];
-            if (cfg.executable) {
-                parts.push(`exec=${cfg.executable}`);
-            }
-            if (cfg.read_error) {
-                parts.push(`read_error=${cfg.read_error}`);
-            }
-            if (cfg.start_error) {
-                parts.push(`start_error=${cfg.start_error}`);
-            }
-            if (cfg.stop_error) {
-                parts.push(`stop_error=${cfg.stop_error}`);
-            }
-            console.println(`  - ${parts.join(' ')}`);
-        }
+        const rows = Array.isArray(configs) && configs.length > 0
+            ? configs.map((cfg) => ({
+                name: cfg.name || '',
+                executable: cfg.executable || '',
+                readError: cfg.read_error || '',
+                startError: cfg.start_error || '',
+                stopError: cfg.stop_error || '',
+            }))
+            : [{ name: '(none)', executable: '', readError: '', startError: '', stopError: '' }];
+        renderTable([
+            { key: 'name', title: 'NAME' },
+            { key: 'executable', title: 'EXECUTABLE' },
+            { key: 'readError', title: 'READ_ERROR' },
+            { key: 'startError', title: 'START_ERROR' },
+            { key: 'stopError', title: 'STOP_ERROR' },
+        ], rows);
     }
 
     function renderServiceList(services) {
-        if (!Array.isArray(services) || services.length === 0) {
-            console.println('No services');
-            return;
-        }
-        const rows = services.map((service) => {
-            const cfg = service.config || {};
-            return {
-                name: cfg.name || '',
-                enabled: cfg.enable ? 'yes' : 'no',
-                status: service.status || '',
-                pid: service.pid ? String(service.pid) : '-',
-                executable: cfg.executable || '',
-            };
-        });
+        const rows = Array.isArray(services) && services.length > 0
+            ? services.map((service) => {
+                const cfg = service.config || {};
+                return {
+                    name: cfg.name || '',
+                    enabled: yesNo(cfg.enable),
+                    status: service.status || '',
+                    pid: service.pid ? String(service.pid) : '-',
+                    executable: cfg.executable || '',
+                };
+            })
+            : [{ name: '(none)', enabled: '', status: '', pid: '', executable: '' }];
         const columns = [
             { key: 'name', title: 'NAME' },
             { key: 'enabled', title: 'ENABLED' },
@@ -447,46 +450,63 @@
             return;
         }
         const cfg = service.config;
-        const state = cfg.enable ? 'ENABLED' : 'disabled';
-        console.println(`[${cfg.name}] ${state}`);
-        console.println(`  status: ${service.status}`);
-        console.println(`  exit_code: ${service.exit_code}`);
-        if (service.pid) {
-            console.println(`  pid: ${service.pid}`);
-        }
-        console.println(`  start: ${cfg.executable} [ ${Array.isArray(cfg.args) ? cfg.args.join(', ') : ''} ]`);
+
+        const detailRows = [
+            { key: 'name', value: cfg.name || '' },
+            { key: 'enabled', value: yesNo(cfg.enable) },
+            { key: 'status', value: service.status || '' },
+            { key: 'exit_code', value: service.exit_code === undefined || service.exit_code === null ? '-' : String(service.exit_code) },
+            { key: 'pid', value: service.pid ? String(service.pid) : '-' },
+            { key: 'start', value: `${cfg.executable || ''} [ ${Array.isArray(cfg.args) ? cfg.args.join(', ') : ''} ]` },
+        ];
+
         if (cfg.working_dir) {
-            console.println(`  cwd: ${cfg.working_dir}`);
-        }
-        if (cfg.environment && Object.keys(cfg.environment).length > 0) {
-            console.println('  environment:');
-            const keys = Object.keys(cfg.environment).sort();
-            for (const key of keys) {
-                console.println(`    ${key}=${cfg.environment[key]}`);
-            }
+            detailRows.push({ key: 'cwd', value: cfg.working_dir });
         }
         if (service.error) {
-            console.println(`  error: ${service.error}`);
+            detailRows.push({ key: 'error', value: service.error });
         }
         if (cfg.read_error) {
-            console.println(`  read_error: ${cfg.read_error}`);
+            detailRows.push({ key: 'read_error', value: cfg.read_error });
         }
         if (cfg.start_error) {
-            console.println(`  start_error: ${cfg.start_error}`);
+            detailRows.push({ key: 'start_error', value: cfg.start_error });
         }
         if (cfg.stop_error) {
-            console.println(`  stop_error: ${cfg.stop_error}`);
+            detailRows.push({ key: 'stop_error', value: cfg.stop_error });
         }
-        console.println('  output:');
+
+        console.println('SERVICE');
+        renderTable([
+            { key: 'key', title: 'KEY' },
+            { key: 'value', title: 'VALUE' },
+        ], detailRows);
+
+        if (cfg.environment && Object.keys(cfg.environment).length > 0) {
+            const envRows = [];
+            const keys = Object.keys(cfg.environment).sort();
+            for (const key of keys) {
+                envRows.push({ key, value: String(cfg.environment[key]) });
+            }
+            console.println('');
+            console.println('ENVIRONMENT');
+            renderTable([
+                { key: 'key', title: 'KEY' },
+                { key: 'value', title: 'VALUE' },
+            ], envRows);
+        }
+
+        console.println('');
+        console.println('OUTPUT');
         const lines = Array.isArray(service.output) ? service.output : [];
         if (lines.length === 0) {
-            console.println('    (none)');
+            console.println('  (none)');
             return;
         }
+
         const startIdx = lines.length > statusOutputMaxLines ? lines.length - statusOutputMaxLines : 0;
         for (let i = startIdx; i < lines.length; i++) {
-            const line = lines[i];
-            console.println(`    ${line}`);
+            console.println(`  ${String(lines[i])}`);
         }
     }
 
@@ -500,8 +520,8 @@
         const rows = [{
             operation: operation,
             name: cfg.name || '',
-            success: error ? 'no' : 'yes',
-            enabled: cfg.enable ? 'yes' : 'no',
+            success: yesNo(!error),
+            enabled: yesNo(cfg.enable),
             status: service.status || '',
             pid: service.pid ? String(service.pid) : '-',
             exitCode: service.exit_code === undefined || service.exit_code === null ? '-' : String(service.exit_code),
@@ -519,7 +539,6 @@
             { key: 'error', title: 'ERROR' },
         ], rows);
         console.println('');
-        console.println('SERVICE');
         renderService(service);
     }
 
@@ -528,7 +547,7 @@
         const rows = [{
             operation: operation,
             name: name,
-            success: result ? 'yes' : 'no',
+            success: yesNo(result),
             enabled: '-',
             status: result ? 'removed' : 'failed',
             pid: '-',
@@ -566,38 +585,22 @@
     }
 
     function renderTable(columns, rows) {
-        const widths = {};
-        for (const column of columns) {
-            widths[column.key] = column.title.length;
-        }
+        const box = pretty.Table({});
+        box.appendHeader(columns.map((column) => column.title));
         for (const row of rows) {
-            for (const column of columns) {
-                const value = String(row[column.key] || '');
-                if (value.length > widths[column.key]) {
-                    widths[column.key] = value.length;
+            box.append(columns.map((column) => {
+                const value = row[column.key];
+                if (value === undefined || value === null) {
+                    return '';
                 }
-            }
+                return String(value);
+            }));
         }
-        console.println(columns.map((column) => padRight(column.title, widths[column.key])).join('  '));
-        console.println(columns.map((column) => padRight(repeatChar('-', widths[column.key]), widths[column.key])).join('  '));
-        for (const row of rows) {
-            console.println(columns.map((column) => padRight(String(row[column.key] || ''), widths[column.key])).join('  '));
-        }
+        console.println(box.render());
     }
 
-    function padRight(value, width) {
-        if (value.length >= width) {
-            return value;
-        }
-        return value + repeatChar(' ', width - value.length);
-    }
-
-    function repeatChar(ch, count) {
-        let result = '';
-        for (let i = 0; i < count; i++) {
-            result += ch;
-        }
-        return result;
+    function yesNo(value) {
+        return value ? 'yes' : 'no';
     }
 
     function printJson(value) {
