@@ -185,7 +185,13 @@
         }
 
         fs.mkdirSync(state.installRoot, { recursive: true });
+        if (rootPlan.requestedTask) {
+            installPackageRequest(rootPlan.requestedTask, state);
+        }
         for (const depName of rootDependencyNames) {
+            if (rootPlan.requestedTask && depName === rootPlan.requestedTask.name) {
+                continue;
+            }
             installPackageRequest({ name: depName, spec: rootPlan.installDependencies[depName] }, state);
         }
 
@@ -218,6 +224,7 @@
         if (request) {
             requestedTask = parseRequestedPackage(request);
             validatePackageName(requestedTask.name);
+            requestedTask.refreshLatest = isGitHubRepositoryPackage(requestedTask.name) && !requestedTask.spec;
             installDependencies[requestedTask.name] = requestedSpecifier(requestedTask);
         }
         return { installDependencies, requestedTask };
@@ -282,10 +289,10 @@
         const packageRoot = findPackageRoot(stageDir);
         const manifest = readJsonFile(path.join(packageRoot, 'package.json'));
 
-        if (manifest.name !== task.name) {
-            throw new Error(`GitHub package name mismatch: expected ${task.name}, got ${manifest.name}`);
+        if (manifest.name !== source.repo) {
+            throw new Error(`GitHub package name mismatch: expected ${source.repo}, got ${manifest.name}`);
         }
-        if (locked && locked.version && source.ref !== locked.version) {
+        if (locked && locked.version && !task.refreshLatest && !task.spec && source.ref !== locked.version) {
             throw new Error(`Locked GitHub package tag mismatch for ${task.name}: expected ${locked.version}, got ${source.ref}`);
         }
         if (task.spec && source.ref !== task.spec) {
@@ -695,7 +702,13 @@
         }
 
         let ref = null;
-        if (locked && typeof locked.resolved === 'string') {
+        if (task.spec) {
+            ref = { ref: task.spec, refType: 'tag' };
+        }
+        if (!ref && task.refreshLatest) {
+            ref = resolveLatestGitHubRef(parsed, state);
+        }
+        if (!ref && locked && typeof locked.resolved === 'string') {
             const lockedSource = parseGitHubPackageSource(locked.resolved);
             if (lockedSource && lockedSource.owner === parsed.owner && lockedSource.repo === parsed.repo) {
                 ref = {
@@ -703,9 +716,6 @@
                     refType: lockedSource.refType || 'tag',
                 };
             }
-        }
-        if (!ref && task.spec) {
-            ref = { ref: task.spec, refType: 'tag' };
         }
         if (!ref && locked && typeof locked.version === 'string' && locked.version.length > 0) {
             ref = { ref: locked.version, refType: 'tag' };
@@ -755,7 +765,16 @@
         } else {
             reasons.push('default branch missing from repository metadata');
         }
-        throw new Error(`Unable to resolve GitHub ref for ${packageLabel} (${reasons.join('; ')})`);
+
+        let hint = '';
+        if (isGitHubNotFoundError(tagsResult.error) || isGitHubNotFoundError(repoResult.error)) {
+            hint = ' Check that the repository name is correct and that the repository is public.';
+        }
+        throw new Error(`Unable to resolve GitHub ref for ${packageLabel} (${reasons.join('; ')})${hint}`);
+    }
+
+    function isGitHubNotFoundError(err) {
+        return !!(err && err.statusCode === 404);
     }
 
     function formatGitHubPackageSource(source) {
