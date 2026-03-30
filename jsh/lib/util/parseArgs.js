@@ -1,7 +1,5 @@
 'use strict';
 
-const process = require('/lib/process');
-
 function parseArgs(args, ...configs) {
     if (!Array.isArray(args)) {
         throw new TypeError('First argument must be an array of arguments');

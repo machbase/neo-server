@@ -164,7 +164,7 @@
 
         process.chdir(cwd);
 
-        const command = fields[0];
+        const command = resolveRunCommand(fields[0], cwd);
         const args = fields.slice(1);
         const exitCode = process.exec(command, ...args, ...scriptArgs);
         if (exitCode instanceof Error) {
@@ -175,8 +175,29 @@
         }
     }
 
+    function resolveRunCommand(command, projectDir) {
+        if (typeof command !== 'string' || command.length === 0) {
+            return command;
+        }
+        if (!command.endsWith('.js') || path.isAbsolute(command)) {
+            return command;
+        }
+        const resolved = path.resolve(projectDir, command);
+        if (!fs.existsSync(resolved)) {
+            return command;
+        }
+        const stats = fs.statSync(resolved);
+        if (!stats.isFile()) {
+            return command;
+        }
+        return resolved;
+    }
+
     function doInstall(request, installDir) {
         const state = createInstallState(installDir);
+        if (request && tryInstallGitHubApplication(request, state)) {
+            return;
+        }
         const rootPlan = buildRootInstallPlan(request, state);
         const rootDependencyNames = Object.keys(rootPlan.installDependencies).sort();
 
@@ -185,7 +206,13 @@
         }
 
         fs.mkdirSync(state.installRoot, { recursive: true });
+        if (rootPlan.requestedTask) {
+            installPackageRequest(rootPlan.requestedTask, state);
+        }
         for (const depName of rootDependencyNames) {
+            if (rootPlan.requestedTask && depName === rootPlan.requestedTask.name) {
+                continue;
+            }
             installPackageRequest({ name: depName, spec: rootPlan.installDependencies[depName] }, state);
         }
 
@@ -201,6 +228,7 @@
             cwd,
             invocationCwd,
             installRoot: path.resolve(cwd, 'node_modules'),
+            tempRootBase: resolveTempRootBase(invocationCwd),
             manifestPath,
             lockPath,
             projectManifest: readOptionalJsonFile(manifestPath),
@@ -208,6 +236,7 @@
             registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
             githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
             requested: new Set(),
+            preStagedPackages: {},
             resolvedPackages: {},
         };
     }
@@ -216,11 +245,17 @@
         const installDependencies = cloneDependencies(getRootDependencies(state));
         let requestedTask = null;
         if (request) {
-            requestedTask = parseRequestedPackage(request);
-            validatePackageName(requestedTask.name);
+            requestedTask = createRequestedTask(request);
             installDependencies[requestedTask.name] = requestedSpecifier(requestedTask);
         }
         return { installDependencies, requestedTask };
+    }
+
+    function createRequestedTask(request) {
+        const requestedTask = parseRequestedPackage(request);
+        validatePackageName(requestedTask.name);
+        requestedTask.refreshLatest = isGitHubRepositoryPackage(requestedTask.name) && !requestedTask.spec;
+        return requestedTask;
     }
 
     function getRootDependencies(state) {
@@ -243,12 +278,14 @@
 
         validatePackageName(task.name);
 
-        const locked = findLockedDependency(state.lockFile, task.name, task.spec);
-        let staged = null;
+        let staged = takePreStagedPackage(task, state);
         try {
-            staged = isGitHubRepositoryPackage(task.name)
-                ? stageGitHubPackage(task, state, locked)
-                : stageNpmPackage(task, state, locked);
+            if (!staged) {
+                const locked = findLockedDependency(state.lockFile, task.name, task.spec);
+                staged = isGitHubRepositoryPackage(task.name)
+                    ? stageGitHubPackage(task, state, locked)
+                    : stageNpmPackage(task, state, locked);
+            }
 
             const installResult = installStagedPackage(staged, state);
             rememberResolvedPackage(task, installResult.manifest, staged.source, staged.installVersion, state);
@@ -261,31 +298,85 @@
         } finally {
             if (staged && staged.tempRoot) {
                 cleanupPath(staged.tempRoot);
+                cleanupTempRootBase(state.tempRootBase);
             }
         }
     }
 
+    function tryInstallGitHubApplication(request, state) {
+        const task = createRequestedTask(request);
+        if (!isGitHubRepositoryPackage(task.name)) {
+            return false;
+        }
+
+        const locked = findLockedDependency(state.lockFile, task.name, task.spec);
+        let staged = null;
+        let keepStaged = false;
+        try {
+            staged = stageGitHubPackage(task, state, locked);
+            if (!isGitHubApplicationManifest(staged.manifest)) {
+                rememberPreStagedPackage(task, staged, state);
+                keepStaged = true;
+                return false;
+            }
+
+            installStagedApplication(staged, state);
+            state.projectManifest = staged.manifest;
+
+            const dependencies = normalizeDependencies(staged.manifest.dependencies);
+            const dependencyNames = Object.keys(dependencies).sort();
+            for (const depName of dependencyNames) {
+                installPackageRequest({ name: depName, spec: dependencies[depName] }, state);
+            }
+
+            const lockFile = buildLockFile(sortRecord(dependencies), state);
+            writeJsonFile(state.lockPath, lockFile);
+            state.lockFile = lockFile;
+            return true;
+        } finally {
+            if (staged && staged.tempRoot && !keepStaged) {
+                cleanupPath(staged.tempRoot);
+                cleanupTempRootBase(state.tempRootBase);
+            }
+        }
+    }
+
+    function rememberPreStagedPackage(task, staged, state) {
+        state.preStagedPackages[`${task.name}@${task.spec || ''}`] = staged;
+    }
+
+    function takePreStagedPackage(task, state) {
+        const key = `${task.name}@${task.spec || ''}`;
+        if (!Object.prototype.hasOwnProperty.call(state.preStagedPackages, key)) {
+            return null;
+        }
+        const staged = state.preStagedPackages[key];
+        delete state.preStagedPackages[key];
+        return staged;
+    }
+
     function stageGitHubPackage(task, state, locked) {
         const source = resolveGitHubPackageSource(task, state, locked);
-        const tempRoot = allocateTempRoot(state.cwd, task.name.replace(/[\/]/g, '-'));
+        const tempRoot = allocateTempRoot(state.tempRootBase, task.name.replace(/[\/]/g, '-'));
         const stageDir = path.join(tempRoot, 'stage');
         try {
             downloadGitHubDirectory(source, state, stageDir);
             return finalizeGitHubStage(task, locked, source, tempRoot, stageDir);
         } catch (err) {
             cleanupPath(tempRoot);
+            cleanupTempRootBase(state.tempRootBase);
             throw err;
         }
     }
 
     function finalizeGitHubStage(task, locked, source, tempRoot, stageDir) {
-        const packageRoot = findPackageRoot(stageDir);
-        const manifest = readJsonFile(path.join(packageRoot, 'package.json'));
+        const packageRoot = stageDir;
+        const manifest = readJsonFile(path.join(stageDir, 'package.json'));
 
-        if (manifest.name !== task.name) {
-            throw new Error(`GitHub package name mismatch: expected ${task.name}, got ${manifest.name}`);
+        if (manifest.name !== source.repo) {
+            throw new Error(`GitHub package name mismatch: expected ${source.repo}, got ${manifest.name}`);
         }
-        if (locked && locked.version && source.ref !== locked.version) {
+        if (locked && locked.version && !task.refreshLatest && !task.spec && source.ref !== locked.version) {
             throw new Error(`Locked GitHub package tag mismatch for ${task.name}: expected ${locked.version}, got ${source.ref}`);
         }
         if (task.spec && source.ref !== task.spec) {
@@ -320,7 +411,7 @@
             tarballUrl = versionMeta.dist.tarball;
         }
 
-        const tempRoot = allocateTempRoot(state.cwd, task.name.replace(/[\/]/g, '-'));
+        const tempRoot = allocateTempRoot(state.tempRootBase, task.name.replace(/[\/]/g, '-'));
         const tgzPath = path.join(tempRoot, 'package.tgz');
         const tarPath = path.join(tempRoot, 'package.tar');
         const stageDir = path.join(tempRoot, 'stage');
@@ -384,6 +475,41 @@
             targetDir,
             changed: true,
         };
+    }
+
+    function installStagedApplication(staged, state) {
+        fs.mkdirSync(state.cwd, { recursive: true });
+        copyDirectoryContents(staged.packageRoot, state.cwd);
+        console.println(`Installed application ${staged.packageName}@${staged.installVersion}`);
+    }
+
+    function copyDirectoryContents(sourceDir, targetDir) {
+        const entries = fs.readdirSync(sourceDir);
+        for (const entry of entries) {
+            if (entry === '.' || entry === '..') {
+                continue;
+            }
+            const sourcePath = path.join(sourceDir, entry);
+            const targetPath = path.join(targetDir, entry);
+            copyApplicationEntry(sourcePath, targetPath);
+        }
+    }
+
+    function copyApplicationEntry(sourcePath, targetPath) {
+        const stats = fs.statSync(sourcePath);
+        if (stats.isDirectory()) {
+            fs.mkdirSync(targetPath, { recursive: true });
+            const entries = fs.readdirSync(sourcePath);
+            for (const entry of entries) {
+                if (entry === '.' || entry === '..') {
+                    continue;
+                }
+                copyApplicationEntry(path.join(sourcePath, entry), path.join(targetPath, entry));
+            }
+            return;
+        }
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        writeBinaryFile(targetPath, fs.readFileSync(sourcePath, 'buffer'));
     }
 
     function persistProjectState(rootPlan, state) {
@@ -590,6 +716,13 @@
         return installedManifest.version === staged.installVersion;
     }
 
+    function isGitHubApplicationManifest(manifest) {
+        return !!(
+            isRecord(manifest.neo)
+            && manifest.neo.installType === 'application'
+        );
+    }
+
     function getLockRootPackage(lockFile) {
         if (!lockFile || !isRecord(lockFile.packages) || !isRecord(lockFile.packages[''])) {
             return null;
@@ -597,9 +730,9 @@
         return lockFile.packages[''];
     }
 
-    function allocateTempRoot(cwd, label) {
+    function allocateTempRoot(baseDir, label) {
         const safeLabel = label.replace(/[^a-zA-Z0-9._-]+/g, '_');
-        const tempRoot = path.join(cwd, '.pkg-tmp', `${safeLabel}-${Date.now()}-${Math.floor(Math.random() * 100000)}`);
+        const tempRoot = path.join(baseDir, `${safeLabel}-${Date.now()}-${Math.floor(Math.random() * 100000)}`);
         fs.mkdirSync(tempRoot, { recursive: true });
         return tempRoot;
     }
@@ -607,6 +740,14 @@
     function cleanupPath(targetPath) {
         if (fs.existsSync(targetPath)) {
             fs.rmSync(targetPath, { recursive: true, force: true });
+        }
+    }
+
+    function cleanupTempRootBase(targetPath) {
+        try {
+            fs.rmdirSync(targetPath);
+        } catch (err) {
+            // Ignore non-empty or missing temp roots.
         }
     }
 
@@ -695,7 +836,13 @@
         }
 
         let ref = null;
-        if (locked && typeof locked.resolved === 'string') {
+        if (task.spec) {
+            ref = { ref: task.spec, refType: 'tag' };
+        }
+        if (!ref && task.refreshLatest) {
+            ref = resolveLatestGitHubRef(parsed, state);
+        }
+        if (!ref && locked && typeof locked.resolved === 'string') {
             const lockedSource = parseGitHubPackageSource(locked.resolved);
             if (lockedSource && lockedSource.owner === parsed.owner && lockedSource.repo === parsed.repo) {
                 ref = {
@@ -703,9 +850,6 @@
                     refType: lockedSource.refType || 'tag',
                 };
             }
-        }
-        if (!ref && task.spec) {
-            ref = { ref: task.spec, refType: 'tag' };
         }
         if (!ref && locked && typeof locked.version === 'string' && locked.version.length > 0) {
             ref = { ref: locked.version, refType: 'tag' };
@@ -755,7 +899,16 @@
         } else {
             reasons.push('default branch missing from repository metadata');
         }
-        throw new Error(`Unable to resolve GitHub ref for ${packageLabel} (${reasons.join('; ')})`);
+
+        let hint = '';
+        if (isGitHubNotFoundError(tagsResult.error) || isGitHubNotFoundError(repoResult.error)) {
+            hint = ' Check that the repository name is correct and that the repository is public.';
+        }
+        throw new Error(`Unable to resolve GitHub ref for ${packageLabel} (${reasons.join('; ')})${hint}`);
+    }
+
+    function isGitHubNotFoundError(err) {
+        return !!(err && err.statusCode === 404);
     }
 
     function formatGitHubPackageSource(source) {
@@ -814,6 +967,20 @@
             throw new Error(`Install target is not a directory: ${resolved}`);
         }
         return resolved;
+    }
+
+    function resolveTempRootBase(invocationCwd) {
+        const configuredTempDir = process.env.get('PKG_TMPDIR') || process.env.get('TMPDIR');
+        if (typeof configuredTempDir === 'string' && configuredTempDir.trim().length > 0) {
+            return path.resolve(configuredTempDir.trim(), '.pkg-tmp');
+        }
+
+        const homeDir = process.env.get('HOME');
+        if (typeof homeDir === 'string' && homeDir.trim().length > 0 && homeDir.trim() !== '/work') {
+            return path.resolve(homeDir.trim(), '.pkg-tmp');
+        }
+
+        return path.resolve(invocationCwd, '.pkg-tmp');
     }
 
     function prepareProjectDirectory(invocationCwd, installDir) {
