@@ -33,6 +33,66 @@ func TestKeyGen(t *testing.T) {
 	fmt.Println(pub_pem)
 }
 
+func TestKeyEncodeDecode(t *testing.T) {
+	ec := NewEllipticCurveP521()
+	pri, pub, err := ec.GenerateKeys()
+	require.Nil(t, err)
+
+	// Encode and decode private key
+	priPem, err := ec.EncodePrivate(pri)
+	require.Nil(t, err)
+	decodedPri, err := ec.DecodePrivate(priPem)
+	require.Nil(t, err)
+	require.True(t, pri.Equal(decodedPri))
+
+	// Encode and decode public key
+	pubPem, err := ec.EncodePublic(pub)
+	require.Nil(t, err)
+	decodedPub, err := ec.DecodePublic(pubPem)
+	require.Nil(t, err)
+	require.True(t, pub.Equal(decodedPub))
+}
+
+func TestKeyVerifySignature(t *testing.T) {
+	ec := NewEllipticCurveP521()
+	pri, pub, err := ec.GenerateKeys()
+	require.Nil(t, err)
+
+	sig, verified, err := ec.VerifySignature(pri, pub)
+	require.Nil(t, err)
+	require.True(t, verified)
+	require.NotEmpty(t, sig)
+}
+
+func TestKeyTest(t *testing.T) {
+	ec := NewEllipticCurveP521()
+	pri, pub, err := ec.GenerateKeys()
+	require.Nil(t, err)
+
+	err = ec.Test(pri, pub)
+	require.Nil(t, err)
+}
+
+func TestHashCertificate(t *testing.T) {
+	ec := NewEllipticCurveP521()
+	pri, pub, err := ec.GenerateKeys()
+	require.Nil(t, err)
+
+	certPEM, err := GenerateServerCertificate(pri, pub)
+	require.Nil(t, err)
+
+	block, _ := pem.Decode(certPEM)
+	require.NotNil(t, block)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.Nil(t, err)
+
+	hash, err := HashCertificate(cert)
+	require.Nil(t, err)
+	require.NotEmpty(t, hash)
+	// SHA3-256 produces 64 hex chars
+	require.Len(t, hash, 64)
+}
+
 func TestCert(t *testing.T) {
 	ec := NewEllipticCurveP521()
 

@@ -146,6 +146,87 @@ func TestImageFiles(t *testing.T) {
 	require.Equal(t, "application/json", contentTypeOfFile("some/dir/file.json"))
 	require.Equal(t, "text/markdown", contentTypeOfFile("some/dir/file.md"))
 	require.Equal(t, "text/markdown", contentTypeOfFile("some/dir/file.markdown"))
+
+	// additional file type coverage
+	require.Equal(t, "text/plain", contentTypeOfFile("query.sql"))
+	require.Equal(t, "text/plain", contentTypeOfFile("flow.tql"))
+	require.Equal(t, "application/json", contentTypeOfFile("analysis.taz"))
+	require.Equal(t, "application/json", contentTypeOfFile("work.wrk"))
+	require.Equal(t, "application/json", contentTypeOfFile("board.dsh"))
+	require.Equal(t, "text/css", contentTypeOfFile("style.css"))
+	require.Equal(t, "text/javascript", contentTypeOfFile("app.js"))
+	require.Equal(t, "text/javascript", contentTypeOfFile("mod.mjs"))
+	require.Equal(t, "text/html", contentTypeOfFile("page.htm"))
+	require.Equal(t, "text/html", contentTypeOfFile("page.html"))
+	require.Equal(t, "text/x-python", contentTypeOfFile("script.py"))
+	require.Equal(t, "text/x-shellscript", contentTypeOfFile("run.sh"))
+	require.Equal(t, "application/x-ipynb+json", contentTypeOfFile("notebook.ipynb"))
+	require.Equal(t, "", contentTypeOfFile("file.unknown"))
+}
+
+func TestIsFsFile(t *testing.T) {
+	require.True(t, isFsFile("test.sql"))
+	require.True(t, isFsFile("test.tql"))
+	require.True(t, isFsFile("test.json"))
+	require.True(t, isFsFile("test.png"))
+	require.False(t, isFsFile("test.xyz"))
+	require.False(t, isFsFile("noext"))
+}
+
+func TestIsErrTokenExpired(t *testing.T) {
+	// expired token
+	claim := &jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+		Subject:   "sys",
+	}
+	token, err := SignTokenWithClaim(claim)
+	require.NoError(t, err)
+
+	_, err = VerifyTokenWithClaim(token, NewClaimEmpty())
+	require.Error(t, err)
+	require.True(t, IsErrTokenExpired(err))
+
+	// not expired
+	require.False(t, IsErrTokenExpired(fmt.Errorf("other error")))
+}
+
+func TestDebugMode(t *testing.T) {
+	debug, latency := httpServer.DebugMode()
+	require.False(t, debug)
+	require.Equal(t, time.Duration(0), latency)
+
+	httpServer.SetDebugMode(true, 100*time.Millisecond)
+	debug, latency = httpServer.DebugMode()
+	require.True(t, debug)
+	require.Equal(t, 100*time.Millisecond, latency)
+
+	// restore
+	httpServer.SetDebugMode(false, 0)
+}
+
+func TestAdvertiseAddress(t *testing.T) {
+	addr := httpServer.AdvertiseAddress()
+	require.NotEmpty(t, addr)
+	require.True(t, strings.HasPrefix(addr, "http://"))
+}
+
+func TestStatzConfig(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	// GET statz config
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/statz/config", nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	body, _ := io.ReadAll(rsp.Body)
+	rsp.Body.Close()
+
+	result := map[string]any{}
+	err = json.Unmarshal(body, &result)
+	require.NoError(t, err)
+	require.Equal(t, true, result["success"])
 }
 
 func TestRefsFiles(t *testing.T) {
