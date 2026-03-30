@@ -164,7 +164,7 @@
 
         process.chdir(cwd);
 
-        const command = fields[0];
+        const command = resolveRunCommand(fields[0], cwd);
         const args = fields.slice(1);
         const exitCode = process.exec(command, ...args, ...scriptArgs);
         if (exitCode instanceof Error) {
@@ -173,6 +173,24 @@
         if (exitCode !== 0) {
             process.exit(exitCode);
         }
+    }
+
+    function resolveRunCommand(command, projectDir) {
+        if (typeof command !== 'string' || command.length === 0) {
+            return command;
+        }
+        if (!command.endsWith('.js') || path.isAbsolute(command)) {
+            return command;
+        }
+        const resolved = path.resolve(projectDir, command);
+        if (!fs.existsSync(resolved)) {
+            return command;
+        }
+        const stats = fs.statSync(resolved);
+        if (!stats.isFile()) {
+            return command;
+        }
+        return resolved;
     }
 
     function doInstall(request, installDir) {
