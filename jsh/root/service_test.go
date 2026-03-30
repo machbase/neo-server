@@ -50,17 +50,20 @@ func TestServiceCommandStatusListFormatting(t *testing.T) {
 			}
 
 			lines := nonEmptyLines(output)
-			if len(lines) < 4 {
+			if len(lines) < 5 {
 				t.Fatalf("service status output too short: %q", output)
 			}
-			if !strings.Contains(lines[0], "NAME") || !strings.Contains(lines[0], "EXECUTABLE") {
-				t.Fatalf("header=%q, want columns", lines[0])
+			if lines[0] != "SERVICES (2)" {
+				t.Fatalf("header=%q, want %q", lines[0], "SERVICES (2)")
 			}
-			if !strings.Contains(lines[2], "alpha") || !strings.Contains(lines[2], "running") || !strings.Contains(lines[2], "101") {
-				t.Fatalf("first row=%q, want alpha/running/101", lines[2])
+			if !strings.Contains(output, "NAME") || !strings.Contains(output, "EXECUTABLE") {
+				t.Fatalf("missing table header columns:\n%s", output)
 			}
-			if !strings.Contains(lines[3], "beta") || !strings.Contains(lines[3], "stopped") || !strings.Contains(lines[3], "/bin/date") {
-				t.Fatalf("second row=%q, want beta/stopped/date", lines[3])
+			if !strings.Contains(output, "alpha") || !strings.Contains(output, "running") || !strings.Contains(output, "101") {
+				t.Fatalf("missing alpha/running/101 row:\n%s", output)
+			}
+			if !strings.Contains(output, "beta") || !strings.Contains(output, "stopped") || !strings.Contains(output, "/bin/date") {
+				t.Fatalf("missing beta/stopped/date row:\n%s", output)
 			}
 		})
 	}
@@ -117,13 +120,27 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 	}
 
 	checks := []string{
-		"[alpha] ENABLED",
-		"status: running",
-		"exit_code: 0",
-		"pid: 55",
-		"cwd: /work",
-		"A=1",
-		"B=2",
+		"SERVICE",
+		"KEY",
+		"VALUE",
+		"name",
+		"alpha",
+		"enabled",
+		"yes",
+		"status",
+		"running",
+		"exit_code",
+		"0",
+		"pid",
+		"55",
+		"cwd",
+		"/work",
+		"ENVIRONMENT",
+		"A",
+		"1",
+		"B",
+		"2",
+		"OUTPUT",
 		"line-6",
 		"line-25",
 	}
@@ -175,7 +192,7 @@ func TestServiceCommandInstallFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service install file failed: %v\n%s", err, output)
 	}
-	checks := []string{"RESULT", "OPERATION", "install", "svc-file", "yes", "running", "SERVICE", "[svc-file] ENABLED"}
+	checks := []string{"RESULT", "OPERATION", "install", "svc-file", "yes", "running", "SERVICE", "KEY", "name", "enabled", "OUTPUT"}
 	for _, check := range checks {
 		if !strings.Contains(output, check) {
 			t.Fatalf("install output missing %q:\n%s", check, output)
@@ -237,7 +254,7 @@ func TestServiceCommandInstallInline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service install inline failed: %v\n%s", err, output)
 	}
-	checks := []string{"RESULT", "install", "svc-inline", "yes", "stopped", "SERVICE", "[svc-inline] ENABLED"}
+	checks := []string{"RESULT", "install", "svc-inline", "yes", "stopped", "SERVICE", "KEY", "name", "enabled", "OUTPUT"}
 	for _, check := range checks {
 		if !strings.Contains(output, check) {
 			t.Fatalf("inline install output missing %q:\n%s", check, output)
@@ -263,7 +280,7 @@ func TestServiceCommandStartFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service start failed: %v\n%s", err, output)
 	}
-	checks := []string{"RESULT", "start", "alpha", "yes", "running", "88", "SERVICE", "[alpha] ENABLED"}
+	checks := []string{"RESULT", "start", "alpha", "yes", "running", "88", "SERVICE", "KEY", "name", "enabled", "OUTPUT"}
 	for _, check := range checks {
 		if !strings.Contains(output, check) {
 			t.Fatalf("start output missing %q:\n%s", check, output)
@@ -289,7 +306,7 @@ func TestServiceCommandStopFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service stop failed: %v\n%s", err, output)
 	}
-	checks := []string{"RESULT", "stop", "alpha", "yes", "stopped", "0", "SERVICE", "[alpha] ENABLED"}
+	checks := []string{"RESULT", "stop", "alpha", "yes", "stopped", "0", "SERVICE", "KEY", "name", "enabled", "OUTPUT"}
 	for _, check := range checks {
 		if !strings.Contains(output, check) {
 			t.Fatalf("stop output missing %q:\n%s", check, output)
@@ -347,15 +364,21 @@ func TestServiceCommandReadFormatting(t *testing.T) {
 
 	checks := []string{
 		"UNCHANGED (1)",
-		"- alpha exec=echo",
+		"NAME",
+		"EXECUTABLE",
+		"alpha",
+		"echo",
 		"ADDED (1)",
-		"- beta exec=node",
+		"beta",
+		"node",
 		"UPDATED (0)",
 		"(none)",
 		"REMOVED (1)",
-		"- old exec=sleep",
+		"old",
+		"sleep",
 		"ERRORED (1)",
-		"- broken read_error=invalid json",
+		"broken",
+		"invalid json",
 	}
 	for _, check := range checks {
 		if !strings.Contains(output, check) {
@@ -463,7 +486,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service read failed: %v\n%s", err, readOutput)
 			}
-			if !strings.Contains(readOutput, "UNCHANGED (1)") || !strings.Contains(readOutput, "- alpha exec=echo") {
+			if !strings.Contains(readOutput, "UNCHANGED (1)") || !strings.Contains(readOutput, "alpha") || !strings.Contains(readOutput, "echo") {
 				t.Fatalf("read output=%q, want unchanged alpha", readOutput)
 			}
 
@@ -487,7 +510,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service status failed: %v\n%s", err, statusOutput)
 			}
-			checks := []string{"[alpha] ENABLED", "status: running", "cwd: /work", "start: echo [ hello, world ]"}
+			checks := []string{"SERVICE", "name", "alpha", "status", "running", "cwd", "/work", "start", "echo [ hello, world ]", "OUTPUT"}
 			for _, check := range checks {
 				if !strings.Contains(statusOutput, check) {
 					t.Fatalf("status output missing %q:\n%s", check, statusOutput)
@@ -498,7 +521,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service stop failed: %v\n%s", err, stopOutput)
 			}
-			for _, check := range []string{"RESULT", "stop", "alpha", "stopped", "SERVICE", "[alpha] ENABLED"} {
+			for _, check := range []string{"RESULT", "stop", "alpha", "stopped", "SERVICE", "name", "enabled", "OUTPUT"} {
 				if !strings.Contains(stopOutput, check) {
 					t.Fatalf("stop output missing %q:\n%s", check, stopOutput)
 				}
@@ -508,7 +531,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service start failed: %v\n%s", err, startOutput)
 			}
-			for _, check := range []string{"RESULT", "start", "alpha", "running", "SERVICE", "[alpha] ENABLED"} {
+			for _, check := range []string{"RESULT", "start", "alpha", "running", "SERVICE", "name", "enabled", "OUTPUT"} {
 				if !strings.Contains(startOutput, check) {
 					t.Fatalf("start output missing %q:\n%s", check, startOutput)
 				}
@@ -528,7 +551,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service status after uninstall failed: %v\n%s", err, listAfterUninstallOutput)
 			}
-			if !strings.Contains(listAfterUninstallOutput, "No services") {
+			if !strings.Contains(listAfterUninstallOutput, "SERVICES (0)") || !strings.Contains(listAfterUninstallOutput, "(none)") {
 				t.Fatalf("status after uninstall output=%q, want no services", listAfterUninstallOutput)
 			}
 		})
