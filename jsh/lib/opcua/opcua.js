@@ -10,15 +10,13 @@ const _opcua = require('@jsh/opcua');
 /**
  * OPC UA client wrapper.
  *
- * Composes the native client returned by `_opcua.Client` and exposes
+ * Wraps the native client returned by `_opcua.newClient(opt)` and exposes
  * a JavaScript class interface.
  *
- * @param {...any} args - Constructor arguments forwarded to the native OPC UA client.
- * The first argument should be an options object.
- * @param {Object} [args[0]] - Client connection options.
- * @param {string} args[0].endpoint - OPC UA endpoint URL.
- * @param {number} [args[0].readRetryInterval=100] - Retry interval in milliseconds for recoverable read errors.
- * @param {number} [args[0].messageSecurityMode=MessageSecurityMode.None] - Security mode to use for the connection.
+ * @param {Object} opt - Client connection options.
+ * @param {string} opt.endpoint - OPC UA endpoint URL.
+ * @param {number} [opt.readRetryInterval=100] - Retry interval in milliseconds for recoverable read errors.
+ * @param {number} [opt.messageSecurityMode=MessageSecurityMode.None] - Security mode to use for the connection.
  */
 class Client {
     constructor(opt) {
@@ -71,20 +69,20 @@ class Client {
      * @param {Object} request - Browse request object.
      * @param {Array<string>} request.nodes - OPC UA node IDs to browse.
      * @param {number} [request.browseDirection] - Browse direction, typically one of {@link BrowseDirection}.
-     * @param {(string|number)} [request.referenceTypeId] - Reference type ID to follow when browsing.
+     * @param {string} [request.referenceTypeId] - Reference type NodeID to follow when browsing, for example "ns=0;i=31".
      * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in results.
      * @param {number} [request.resultMask] - Bitmask of {@link BrowseResultMask} values selecting fields to return.
      * @param {number} [request.requestedMaxReferencesPerNode=0] - Maximum references returned per node before the server paginates with a continuation point.
      * @returns {Array<Object>} Browse results for each requested node.
      */
     browse(request) {
-        if (request && !request.browseDirection) {
+        if (request && request.browseDirection === undefined) {
             request.browseDirection = BrowseDirection.Forward;
         }
         if (request && request.includeSubtypes === undefined) {
             request.includeSubtypes = true;
         }
-        if (request && !request.resultMask) {
+        if (request && request.resultMask === undefined) {
             request.resultMask = BrowseResultMask.All;
         }
         return this._client.browse(request);
@@ -107,10 +105,7 @@ class Client {
      *
      * @param {Object} request - Children request object.
      * @param {string} request.node - OPC UA node ID whose children should be returned.
-     * @param {number} [request.browseDirection] - Browse direction, typically one of {@link BrowseDirection}.
-     * @param {(string|number)} [request.referenceTypeId] - Reference type ID to follow when browsing for children.
      * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in child results.
-     * @param {number} [request.resultMask] - Bitmask of {@link BrowseResultMask} values selecting fields to return.
      * @returns {Array<Object>} Child node descriptions for the requested node.
      */
     children(request) {
