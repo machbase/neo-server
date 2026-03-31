@@ -15,6 +15,7 @@
     const LOCK_FILE_NAME = 'package-lock.json';
     const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
     const optionProjectDir = { type: 'string', short: 'C', description: 'Use this project directory instead of the current working directory' };
+    const optionForce = { type: 'boolean', short: 'f', description: 'Overwrite conflicting generated package commands without uninstalling first', default: false };
 
     const defaultConfig = {
         usage: 'Usage: pkg <command> [options]',
@@ -43,9 +44,23 @@
         options: {
             help: optionHelp,
             dir: optionProjectDir,
+            force: optionForce,
         },
         positionals: [
             { name: 'name', description: 'Optional package name to add or update', optional: true },
+        ],
+    };
+
+    const uninstallConfig = {
+        command: 'uninstall',
+        usage: 'pkg uninstall [options] <name>',
+        description: 'Remove a dependency and its generated package command wrapper from the selected project directory',
+        options: {
+            help: optionHelp,
+            dir: optionProjectDir,
+        },
+        positionals: [
+            { name: 'name', description: 'Package name to remove' },
         ],
     };
 
@@ -68,7 +83,7 @@
 
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), defaultConfig, initConfig, installConfig, runConfig);
+        parsed = parseArgs(process.argv.slice(2), defaultConfig, initConfig, installConfig, uninstallConfig, runConfig);
     } catch (err) {
         console.println(err.message);
         printHelp();
@@ -91,12 +106,17 @@
     }
 
     if (parsed.command === 'install') {
-        doInstall(parsed.namedPositionals.name, parsed.values.dir);
+        doInstall(parsed.namedPositionals.name, parsed.values.dir, parsed.values.force);
         return;
     }
 
     if (parsed.command === 'run') {
         doRun(parsed.namedPositionals.key, parsed.namedPositionals.args || [], parsed.values.dir);
+        return;
+    }
+
+    if (parsed.command === 'uninstall') {
+        doUninstall(parsed.namedPositionals.name, parsed.values.dir);
         return;
     }
 
@@ -113,11 +133,15 @@
             console.println(parseArgs.formatHelp(installConfig));
             return;
         }
+        if (command === 'uninstall') {
+            console.println(parseArgs.formatHelp(uninstallConfig));
+            return;
+        }
         if (command === 'run') {
             console.println(parseArgs.formatHelp(runConfig));
             return;
         }
-        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig, runConfig));
+        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig, uninstallConfig, runConfig));
     }
 
     function doInit(name, initDir) {
@@ -193,12 +217,12 @@
         return resolved;
     }
 
-    function doInstall(request, installDir) {
-        const state = createInstallState(installDir);
-        if (request && tryInstallGitHubApplication(request, state)) {
-            return;
-        }
+    function doInstall(request, installDir, forceInstall) {
+        const state = createInstallState(installDir, forceInstall);
         const rootPlan = buildRootInstallPlan(request, state);
+        if (rootPlan.requestedTask) {
+            state.exposedRequestKey = packageRequestKey(rootPlan.requestedTask);
+        }
         const rootDependencyNames = Object.keys(rootPlan.installDependencies).sort();
 
         if (rootDependencyNames.length === 0) {
@@ -219,7 +243,38 @@
         persistProjectState(rootPlan, state);
     }
 
-    function createInstallState(installDir) {
+    function doUninstall(request, uninstallDir) {
+        const state = createInstallState(uninstallDir);
+        const task = createUninstallTask(request);
+        const dependencies = cloneDependencies(getRootDependencies(state));
+        if (!Object.prototype.hasOwnProperty.call(dependencies, task.name)) {
+            throw new Error(`Dependency not found: ${task.name}`);
+        }
+
+        delete dependencies[task.name];
+
+        const nextManifest = {
+            ...ensureProjectManifest(state),
+            scripts: removeManagedPackageCommand(ensureProjectManifest(state).scripts, task.name, state),
+            dependencies: sortRecord(dependencies),
+        };
+
+        cleanupPath(packageInstallPath(state.installRoot, task.name));
+        removePackageCommandWrapper(task.name, state);
+        cleanupPath(state.lockPath);
+
+        writeJsonFile(state.manifestPath, nextManifest);
+        state.projectManifest = nextManifest;
+        state.lockFile = null;
+
+        console.println(`Removed ${task.name}`);
+
+        if (Object.keys(dependencies).length > 0) {
+            doInstall('', uninstallDir, false);
+        }
+    }
+
+    function createInstallState(installDir, forceInstall) {
         const invocationCwd = process.cwd();
         const cwd = prepareProjectDirectory(invocationCwd, installDir);
         const manifestPath = path.resolve(cwd, 'package.json');
@@ -235,9 +290,11 @@
             lockFile: readOptionalJsonFile(lockPath),
             registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
             githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
+            forceInstall: !!forceInstall,
             requested: new Set(),
-            preStagedPackages: {},
             resolvedPackages: {},
+            exposedRequestKey: '',
+            exposedPackageInstall: null,
         };
     }
 
@@ -258,6 +315,15 @@
         return requestedTask;
     }
 
+    function createUninstallTask(request) {
+        const task = parseRequestedPackage(request);
+        validatePackageName(task.name);
+        if (task.spec) {
+            throw new Error(`pkg uninstall does not accept a version specifier: ${request}`);
+        }
+        return task;
+    }
+
     function getRootDependencies(state) {
         if (state.projectManifest && isRecord(state.projectManifest.dependencies)) {
             return state.projectManifest.dependencies;
@@ -270,7 +336,7 @@
     }
 
     function installPackageRequest(task, state) {
-        const requestKey = `${task.name}@${task.spec || ''}`;
+        const requestKey = packageRequestKey(task);
         if (state.requested.has(requestKey)) {
             return;
         }
@@ -278,17 +344,16 @@
 
         validatePackageName(task.name);
 
-        let staged = takePreStagedPackage(task, state);
+        let staged = null;
         try {
-            if (!staged) {
-                const locked = findLockedDependency(state.lockFile, task.name, task.spec);
-                staged = isGitHubRepositoryPackage(task.name)
-                    ? stageGitHubPackage(task, state, locked)
-                    : stageNpmPackage(task, state, locked);
-            }
+            const locked = findLockedDependency(state.lockFile, task.name, task.spec);
+            staged = isGitHubRepositoryPackage(task.name)
+                ? stageGitHubPackage(task, state, locked)
+                : stageNpmPackage(task, state, locked);
 
             const installResult = installStagedPackage(staged, state);
             rememberResolvedPackage(task, installResult.manifest, staged.source, staged.installVersion, state);
+            rememberExposedPackageInstall(task, installResult, state);
 
             const dependencies = normalizeDependencies(installResult.manifest.dependencies);
             const dependencyNames = Object.keys(dependencies).sort();
@@ -301,58 +366,6 @@
                 cleanupTempRootBase(state.tempRootBase);
             }
         }
-    }
-
-    function tryInstallGitHubApplication(request, state) {
-        const task = createRequestedTask(request);
-        if (!isGitHubRepositoryPackage(task.name)) {
-            return false;
-        }
-
-        const locked = findLockedDependency(state.lockFile, task.name, task.spec);
-        let staged = null;
-        let keepStaged = false;
-        try {
-            staged = stageGitHubPackage(task, state, locked);
-            if (!isGitHubApplicationManifest(staged.manifest)) {
-                rememberPreStagedPackage(task, staged, state);
-                keepStaged = true;
-                return false;
-            }
-
-            installStagedApplication(staged, state);
-            state.projectManifest = staged.manifest;
-
-            const dependencies = normalizeDependencies(staged.manifest.dependencies);
-            const dependencyNames = Object.keys(dependencies).sort();
-            for (const depName of dependencyNames) {
-                installPackageRequest({ name: depName, spec: dependencies[depName] }, state);
-            }
-
-            const lockFile = buildLockFile(sortRecord(dependencies), state);
-            writeJsonFile(state.lockPath, lockFile);
-            state.lockFile = lockFile;
-            return true;
-        } finally {
-            if (staged && staged.tempRoot && !keepStaged) {
-                cleanupPath(staged.tempRoot);
-                cleanupTempRootBase(state.tempRootBase);
-            }
-        }
-    }
-
-    function rememberPreStagedPackage(task, staged, state) {
-        state.preStagedPackages[`${task.name}@${task.spec || ''}`] = staged;
-    }
-
-    function takePreStagedPackage(task, state) {
-        const key = `${task.name}@${task.spec || ''}`;
-        if (!Object.prototype.hasOwnProperty.call(state.preStagedPackages, key)) {
-            return null;
-        }
-        const staged = state.preStagedPackages[key];
-        delete state.preStagedPackages[key];
-        return staged;
     }
 
     function stageGitHubPackage(task, state, locked) {
@@ -372,6 +385,7 @@
     function finalizeGitHubStage(task, locked, source, tempRoot, stageDir) {
         const packageRoot = stageDir;
         const manifest = readJsonFile(path.join(stageDir, 'package.json'));
+        const requestedRef = parseGitHubRequestedSpecifier(task.spec);
 
         if (manifest.name !== source.repo) {
             throw new Error(`GitHub package name mismatch: expected ${source.repo}, got ${manifest.name}`);
@@ -379,8 +393,8 @@
         if (locked && locked.version && !task.refreshLatest && !task.spec && source.ref !== locked.version) {
             throw new Error(`Locked GitHub package tag mismatch for ${task.name}: expected ${locked.version}, got ${source.ref}`);
         }
-        if (task.spec && source.ref !== task.spec) {
-            throw new Error(`Requested tag ${task.spec} does not match resolved GitHub tag ${source.ref}`);
+        if (requestedRef.ref && source.ref !== requestedRef.ref) {
+            throw new Error(`Requested GitHub ${requestedRef.refType} ${requestedRef.ref} does not match resolved ref ${source.ref}`);
         }
 
         return {
@@ -451,9 +465,10 @@
     function installStagedPackage(staged, state) {
         const targetDir = packageInstallPath(state.installRoot, staged.packageName);
         const installedManifest = readInstalledManifest(targetDir);
+        const installLabel = formatInstalledPackageLabel(staged);
 
         if (installedManifest && canReuseInstalledPackage(installedManifest, staged)) {
-            console.println(`Up to date: ${staged.packageName}@${staged.installVersion}`);
+            console.println(`Up to date: ${installLabel}`);
             return {
                 manifest: installedManifest,
                 targetDir,
@@ -468,7 +483,7 @@
         cleanupPath(targetDir);
         fs.renameSync(tempTarget, targetDir);
 
-        console.println(`Installed ${staged.packageName}@${staged.installVersion}`);
+        console.println(`Installed ${installLabel}`);
 
         return {
             manifest: staged.manifest,
@@ -477,49 +492,20 @@
         };
     }
 
-    function installStagedApplication(staged, state) {
-        fs.mkdirSync(state.cwd, { recursive: true });
-        copyDirectoryContents(staged.packageRoot, state.cwd);
-        console.println(`Installed application ${staged.packageName}@${staged.installVersion}`);
-    }
-
-    function copyDirectoryContents(sourceDir, targetDir) {
-        const entries = fs.readdirSync(sourceDir);
-        for (const entry of entries) {
-            if (entry === '.' || entry === '..') {
-                continue;
-            }
-            const sourcePath = path.join(sourceDir, entry);
-            const targetPath = path.join(targetDir, entry);
-            copyApplicationEntry(sourcePath, targetPath);
-        }
-    }
-
-    function copyApplicationEntry(sourcePath, targetPath) {
-        const stats = fs.statSync(sourcePath);
-        if (stats.isDirectory()) {
-            fs.mkdirSync(targetPath, { recursive: true });
-            const entries = fs.readdirSync(sourcePath);
-            for (const entry of entries) {
-                if (entry === '.' || entry === '..') {
-                    continue;
-                }
-                copyApplicationEntry(path.join(sourcePath, entry), path.join(targetPath, entry));
-            }
-            return;
-        }
-        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-        writeBinaryFile(targetPath, fs.readFileSync(sourcePath, 'buffer'));
-    }
-
     function persistProjectState(rootPlan, state) {
         const manifestDependencies = buildManifestDependencies(rootPlan, state);
+        const scriptExposure = buildManifestPackageExposure(rootPlan, state);
         const lockRootDependencies = sortRecord(manifestDependencies || rootPlan.installDependencies);
-        if (manifestDependencies) {
+        if (manifestDependencies || scriptExposure) {
             const nextManifest = {
                 ...ensureProjectManifest(state),
                 dependencies: manifestDependencies,
             };
+            if (scriptExposure) {
+                nextManifest.scripts = scriptExposure.scripts;
+                writeScriptWrapper(scriptExposure.wrapper);
+                console.println(`Exposed package command ${scriptExposure.commandKey} -> pkg run ${scriptExposure.commandKey} <command>`);
+            }
             writeJsonFile(state.manifestPath, nextManifest);
             state.projectManifest = nextManifest;
         }
@@ -540,9 +526,50 @@
             if (!resolved) {
                 throw new Error(`Missing resolved package metadata for ${rootPlan.requestedTask.name}`);
             }
-            dependencies[rootPlan.requestedTask.name] = manifestSpecifier(rootPlan.requestedTask, resolved.version);
+            dependencies[rootPlan.requestedTask.name] = manifestSpecifier(rootPlan.requestedTask, resolved);
         }
         return sortRecord(dependencies);
+    }
+
+    function buildManifestPackageExposure(rootPlan, state) {
+        if (!rootPlan.requestedTask || !state.exposedPackageInstall) {
+            return null;
+        }
+
+        const packageScripts = normalizeScripts(state.exposedPackageInstall.manifest.scripts);
+        if (Object.keys(packageScripts).length === 0) {
+            return null;
+        }
+
+        const scripts = cloneScripts(ensureProjectManifest(state).scripts);
+        const commandKey = buildPackageCommandKey(rootPlan.requestedTask.name);
+        const wrapperRelativePath = `./node_modules/.bin/${commandKey}.js`;
+        const wrapperPath = packageCommandWrapperPath(state.installRoot, rootPlan.requestedTask.name);
+        const wrapperOwner = readPackageCommandWrapperOwner(wrapperPath);
+        const existingScript = scripts[commandKey];
+
+        if (wrapperOwner && wrapperOwner !== rootPlan.requestedTask.name && !state.forceInstall) {
+            throw new Error(`Package command already exists: ${commandKey} (owned by ${wrapperOwner}). Run pkg uninstall ${wrapperOwner} first.`);
+        }
+
+        if (typeof existingScript === 'string' && existingScript !== wrapperRelativePath && !state.forceInstall) {
+            throw new Error(`package.json script already exists: ${commandKey}. Remove it before installing ${rootPlan.requestedTask.name}.`);
+        }
+
+        if (state.forceInstall && (wrapperOwner || (typeof existingScript === 'string' && existingScript !== wrapperRelativePath))) {
+            console.println(`Overwriting package command ${commandKey}`);
+        }
+
+        scripts[commandKey] = wrapperRelativePath;
+
+        return {
+            scripts: sortRecord(scripts),
+            commandKey,
+            wrapper: {
+                filePath: wrapperPath,
+                content: buildPackageCommandWrapperContent(commandKey, rootPlan.requestedTask.name, state.exposedPackageInstall.targetDir),
+            },
+        };
     }
 
     function ensureProjectManifest(state) {
@@ -552,6 +579,7 @@
         state.projectManifest = {
             name: path.basename(state.cwd),
             version: '1.0.0',
+            scripts: {},
             dependencies: {},
         };
         return state.projectManifest;
@@ -645,6 +673,22 @@
         };
     }
 
+    function rememberExposedPackageInstall(task, installResult, state) {
+        if (state.exposedRequestKey !== packageRequestKey(task)) {
+            return;
+        }
+        state.exposedPackageInstall = {
+            packageName: task.name,
+            manifest: installResult.manifest,
+            targetDir: installResult.targetDir,
+        };
+    }
+
+    function writeScriptWrapper(wrapper) {
+        fs.mkdirSync(path.dirname(wrapper.filePath), { recursive: true });
+        fs.writeFileSync(wrapper.filePath, wrapper.content, 'utf8');
+    }
+
     function packageInstallPath(installRoot, packageName) {
         if (packageName.startsWith('@')) {
             const parts = packageName.split('/');
@@ -699,14 +743,22 @@
         };
     }
 
-    function manifestSpecifier(task, resolvedVersion) {
+    function manifestSpecifier(task, resolved) {
+        if (isGitHubRepositoryPackage(task.name)) {
+            const requestedRef = parseGitHubRequestedSpecifier(task.spec);
+            if (requestedRef.ref) {
+                return formatGitHubRequestedSpecifier(requestedRef.refType, requestedRef.ref);
+            }
+            const lockedSource = parseGitHubPackageSource(resolved.resolved);
+            if (lockedSource && lockedSource.refType && lockedSource.ref) {
+                return formatGitHubRequestedSpecifier(lockedSource.refType, lockedSource.ref);
+            }
+            return resolved.version;
+        }
         if (task.spec) {
             return task.spec;
         }
-        if (isGitHubRepositoryPackage(task.name)) {
-            return resolvedVersion;
-        }
-        return `^${resolvedVersion}`;
+        return `^${resolved.version}`;
     }
 
     function canReuseInstalledPackage(installedManifest, staged) {
@@ -714,13 +766,6 @@
             return false;
         }
         return installedManifest.version === staged.installVersion;
-    }
-
-    function isGitHubApplicationManifest(manifest) {
-        return !!(
-            isRecord(manifest.neo)
-            && manifest.neo.installType === 'application'
-        );
     }
 
     function getLockRootPackage(lockFile) {
@@ -782,6 +827,12 @@
         if (typeof value !== 'string' || value.length === 0) {
             throw new Error('Package name is required');
         }
+
+        const explicitGitHubPackage = parseGitHubRequestedPackage(value);
+        if (explicitGitHubPackage) {
+            return explicitGitHubPackage;
+        }
+
         if (value.startsWith('@')) {
             const slashIndex = value.indexOf('/');
             if (slashIndex === -1) {
@@ -836,8 +887,9 @@
         }
 
         let ref = null;
-        if (task.spec) {
-            ref = { ref: task.spec, refType: 'tag' };
+        const requestedRef = parseGitHubRequestedSpecifier(task.spec);
+        if (requestedRef.ref) {
+            ref = { ref: requestedRef.ref, refType: requestedRef.refType };
         }
         if (!ref && task.refreshLatest) {
             ref = resolveLatestGitHubRef(parsed, state);
@@ -916,6 +968,16 @@
         return `github.com/${source.owner}/${source.repo}#${refType}=${source.ref}`;
     }
 
+    function formatInstalledPackageLabel(staged) {
+        if (isGitHubRepositoryPackage(staged.packageName) && staged.source) {
+            const parsed = parseGitHubPackageSource(staged.source);
+            if (parsed && parsed.refType && parsed.ref) {
+                return formatGitHubPackageSource(parsed);
+            }
+        }
+        return `${staged.packageName}@${staged.installVersion}`;
+    }
+
     function parseGitHubPackageSource(sourceValue) {
         const value = String(sourceValue || '').trim();
         let match = /^github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#(tag|branch)=(.+)$/.exec(value);
@@ -939,6 +1001,40 @@
             ref: match[3],
             projectPath: '',
         };
+    }
+
+    function parseGitHubRequestedPackage(value) {
+        const match = /^(github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)(?:(?:#(tag|branch)=(.+))|(?:@(.+)))?$/.exec(String(value || '').trim());
+        if (!match) {
+            return null;
+        }
+        return {
+            name: match[1],
+            spec: match[2] ? `#${match[2]}=${match[3]}` : (match[4] ? `#tag=${match[4]}` : ''),
+        };
+    }
+
+    function parseGitHubRequestedSpecifier(spec) {
+        const rawSpec = String(spec || '').trim();
+        if (!rawSpec) {
+            return { ref: '', refType: '' };
+        }
+        const match = /^#(tag|branch)=(.+)$/.exec(rawSpec);
+        if (match) {
+            return {
+                refType: match[1],
+                ref: match[2],
+            };
+        }
+        return {
+            refType: 'tag',
+            ref: rawSpec,
+        };
+    }
+
+    function formatGitHubRequestedSpecifier(refType, ref) {
+        const normalizedType = refType === 'branch' ? 'branch' : 'tag';
+        return `#${normalizedType}=${ref}`;
     }
 
     function tryGetGitHubJson(url) {
@@ -1254,7 +1350,7 @@
 
     function matchesRequestedVersion(packageName, version, spec) {
         if (isGitHubRepositoryPackage(packageName)) {
-            return String(version) === String(spec);
+            return String(version) === String(parseGitHubRequestedSpecifier(spec).ref);
         }
         return satisfiesVersion(version, spec);
     }
@@ -1272,8 +1368,31 @@
         return normalized;
     }
 
+    function normalizeScripts(value) {
+        if (!isRecord(value)) {
+            return {};
+        }
+        const normalized = {};
+        for (const key of Object.keys(value)) {
+            const scriptLine = value[key];
+            if (typeof scriptLine !== 'string') {
+                continue;
+            }
+            const trimmed = scriptLine.trim();
+            if (trimmed.length === 0) {
+                continue;
+            }
+            normalized[key] = trimmed;
+        }
+        return normalized;
+    }
+
     function cloneDependencies(value) {
         return { ...normalizeDependencies(value) };
+    }
+
+    function cloneScripts(value) {
+        return { ...normalizeScripts(value) };
     }
 
     function sortRecord(value) {
@@ -1286,5 +1405,116 @@
 
     function isRecord(value) {
         return value && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    function packageRequestKey(task) {
+        return `${task.name}@${task.spec || ''}`;
+    }
+
+    function buildPackageCommandKey(packageName) {
+        if (isGitHubRepositoryPackage(packageName)) {
+            const parsed = parseGitHubRepositoryPackage(packageName);
+            return parsed.repo;
+        }
+        if (packageName.startsWith('@')) {
+            return packageName.split('/')[1];
+        }
+        const slashIndex = packageName.lastIndexOf('/');
+        if (slashIndex >= 0) {
+            return packageName.slice(slashIndex + 1);
+        }
+        return packageName;
+    }
+
+    function packageCommandWrapperPath(installRoot, packageName) {
+        return path.join(installRoot, '.bin', `${buildPackageCommandKey(packageName)}.js`);
+    }
+
+    function readPackageCommandWrapperOwner(filePath) {
+        if (!fs.existsSync(filePath)) {
+            return '';
+        }
+        const content = fs.readFileSync(filePath, 'utf8');
+        const firstLine = String(content).split('\n')[0] || '';
+        const prefix = '// neo-pkg-wrapper-owner:';
+        if (!firstLine.startsWith(prefix)) {
+            return '';
+        }
+        return firstLine.slice(prefix.length).trim();
+    }
+
+    function removeManagedPackageCommand(scriptsValue, packageName, state) {
+        const scripts = cloneScripts(scriptsValue);
+        const commandKey = buildPackageCommandKey(packageName);
+        const wrapperRelativePath = `./node_modules/.bin/${commandKey}.js`;
+        const wrapperPath = packageCommandWrapperPath(state.installRoot, packageName);
+        if (scripts[commandKey] === wrapperRelativePath && readPackageCommandWrapperOwner(wrapperPath) === packageName) {
+            delete scripts[commandKey];
+        }
+        return sortRecord(scripts);
+    }
+
+    function removePackageCommandWrapper(packageName, state) {
+        const wrapperPath = packageCommandWrapperPath(state.installRoot, packageName);
+        if (readPackageCommandWrapperOwner(wrapperPath) === packageName) {
+            cleanupPath(wrapperPath);
+        }
+    }
+
+    function buildPackageCommandWrapperContent(commandKey, packageName, packageDir) {
+        return [
+            `// neo-pkg-wrapper-owner:${packageName}`,
+            '(() => {',
+            "    'use strict';",
+            '',
+            "    const process = require('process');",
+            "    const fs = require('fs');",
+            "    const path = require('path');",
+            "    const splitFields = require('util/splitFields');",
+            '',
+            `    const packageDir = ${JSON.stringify(packageDir)};`,
+            `    const packageName = ${JSON.stringify(packageName)};`,
+            `    const packageCommand = ${JSON.stringify(commandKey)};`,
+            "    const args = process.argv.slice(2);",
+            "    const manifestPath = path.join(packageDir, 'package.json');",
+            '    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));',
+            '    if (!manifest || typeof manifest !== "object" || !manifest.scripts || typeof manifest.scripts !== "object") {',
+            '        throw new Error(`package.json does not contain a valid scripts object: ${manifestPath}`);',
+            '    }',
+            '    const availableCommands = Object.keys(manifest.scripts).filter((name) => typeof manifest.scripts[name] === "string" && manifest.scripts[name].trim().length > 0).sort();',
+            "    if (args.length === 0 || typeof args[0] !== 'string' || args[0].trim().length === 0) {",
+            '        console.println(`Usage: pkg run ${packageCommand} <command> [...args]`);',
+            '        if (availableCommands.length === 0) {',
+            '            console.println(`Available commands: (none)`);',
+            '        } else {',
+            '            console.println(`Available commands: ${availableCommands.join(", ")}`);',
+            '        }',
+            '        return;',
+            '    }',
+            '    const scriptName = args[0];',
+            '    const scriptLine = manifest.scripts[scriptName];',
+            '    if (typeof scriptLine !== "string" || scriptLine.trim().length === 0) {',
+            '        throw new Error(`Script not found or empty: ${packageName}:${scriptName}`);',
+            '    }',
+            '    const fields = splitFields(scriptLine);',
+            '    if (fields.length === 0) {',
+            '        throw new Error(`Script produced no executable command: ${packageName}:${scriptName}`);',
+            '    }',
+            '',
+            '    process.chdir(packageDir);',
+            '    let command = fields[0];',
+            '    if (typeof command === "string" && command.endsWith(".js") && !path.isAbsolute(command)) {',
+            '        command = path.resolve(packageDir, command);',
+            '    }',
+            '    const exitCode = process.exec(command, ...fields.slice(1), ...args.slice(1));',
+            '    if (exitCode instanceof Error) {',
+            '        throw exitCode;',
+            '    }',
+            '    if (exitCode !== 0) {',
+            '        process.exit(exitCode);',
+            '    }',
+            '})();',
+            '',
+        ].join('\n');
     }
 })();
