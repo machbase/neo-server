@@ -378,14 +378,30 @@ func toBrowseResults(results []*ua.BrowseResult) []BrowseResult {
 	for _, result := range results {
 		refs := make([]BrowseReference, 0, len(result.References))
 		for _, ref := range result.References {
+			var nodeIDStr string
+			if ref.NodeID != nil && ref.NodeID.NodeID != nil {
+				nodeIDStr = ref.NodeID.NodeID.String()
+			}
+			var browseName string
+			if ref.BrowseName != nil {
+				browseName = ref.BrowseName.Name
+			}
+			var displayName string
+			if ref.DisplayName != nil {
+				displayName = ref.DisplayName.Text
+			}
+			var typeDefStr string
+			if ref.TypeDefinition != nil && ref.TypeDefinition.NodeID != nil {
+				typeDefStr = ref.TypeDefinition.NodeID.String()
+			}
 			refs = append(refs, BrowseReference{
 				ReferenceTypeId: ref.ReferenceTypeID.String(),
 				IsForward:       ref.IsForward,
-				NodeId:          ref.NodeID.NodeID.String(),
-				BrowseName:      ref.BrowseName.Name,
-				DisplayName:     ref.DisplayName.Text,
+				NodeId:          nodeIDStr,
+				BrowseName:      browseName,
+				DisplayName:     displayName,
 				NodeClass:       uint32(ref.NodeClass),
-				TypeDefinition:  ref.TypeDefinition.NodeID.String(),
+				TypeDefinition:  typeDefStr,
 			})
 		}
 		ret = append(ret, BrowseResult{
@@ -433,14 +449,30 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 
 	ret := make([]ChildrenResult, 0, len(refs))
 	for _, ref := range refs {
+		var nodeIDStr string
+		if ref.NodeID != nil && ref.NodeID.NodeID != nil {
+			nodeIDStr = ref.NodeID.NodeID.String()
+		}
+		var browseName string
+		if ref.BrowseName != nil {
+			browseName = ref.BrowseName.Name
+		}
+		var displayName string
+		if ref.DisplayName != nil {
+			displayName = ref.DisplayName.Text
+		}
+		var typeDefStr string
+		if ref.TypeDefinition != nil && ref.TypeDefinition.NodeID != nil {
+			typeDefStr = ref.TypeDefinition.NodeID.String()
+		}
 		ret = append(ret, ChildrenResult{
 			ReferenceTypeId: ref.ReferenceTypeID.String(),
 			IsForward:       ref.IsForward,
-			NodeId:          ref.NodeID.NodeID.String(),
-			BrowseName:      ref.BrowseName.Name,
-			DisplayName:     ref.DisplayName.Text,
+			NodeId:          nodeIDStr,
+			BrowseName:      browseName,
+			DisplayName:     displayName,
 			NodeClass:       uint32(ref.NodeClass),
-			TypeDefinition:  ref.TypeDefinition.NodeID.String(),
+			TypeDefinition:  typeDefStr,
 		})
 	}
 	return ret, nil
