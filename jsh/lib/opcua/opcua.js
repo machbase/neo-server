@@ -10,19 +10,23 @@ const _opcua = require('@jsh/opcua');
 /**
  * OPC UA client wrapper.
  *
- * Composes the native client returned by `_opcua.Client` and exposes
+ * Wraps the native client returned by `_opcua.newClient(opt)` and exposes
  * a JavaScript class interface.
  *
- * @param {...any} args - Constructor arguments forwarded to the native OPC UA client.
- * The first argument should be an options object.
- * @param {Object} [args[0]] - Client connection options.
- * @param {string} args[0].endpoint - OPC UA endpoint URL.
- * @param {number} [args[0].readRetryInterval=100] - Retry interval in milliseconds for recoverable read errors.
- * @param {number} [args[0].messageSecurityMode=MessageSecurityMode.None] - Security mode to use for the connection.
+ * @param {Object} opt - Client connection options.
+ * @param {string} opt.endpoint - OPC UA endpoint URL.
+ * @param {number} [opt.readRetryInterval=100] - Retry interval in milliseconds for recoverable read errors.
+ * @param {number} [opt.messageSecurityMode=MessageSecurityMode.None] - Security mode to use for the connection.
  */
 class Client {
-    constructor(...args) {
-        this._client = Reflect.construct(_opcua.Client, args);
+    constructor(opt) {
+        if (!opt) {
+            throw new Error("missing client options");
+        }
+        if (opt.messageSecurityMode === undefined) {
+            opt.messageSecurityMode = MessageSecurityMode.None;
+        }
+        this._client = _opcua.newClient(opt);
     }
 
     /**
@@ -42,6 +46,9 @@ class Client {
      * @returns {Array<Object>} Read results for each node.
      */
     read(request) {
+        if (request && !request.timestampsToReturn) {
+            request.timestampsToReturn = TimestampsToReturn.Neither;
+        }
         return this._client.read(request);
     }
 
@@ -55,6 +62,55 @@ class Client {
     write(...writes) {
         return this._client.write(...writes);
     }
+
+    /**
+     * Browses references for one or more OPC UA nodes.
+     *
+     * @param {Object} request - Browse request object.
+     * @param {Array<string>} request.nodes - OPC UA node IDs to browse.
+     * @param {number} [request.browseDirection] - Browse direction, typically one of {@link BrowseDirection}.
+     * @param {string} [request.referenceTypeId] - Reference type NodeID to follow when browsing, for example "ns=0;i=31".
+     * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in results.
+     * @param {number} [request.resultMask] - Bitmask of {@link BrowseResultMask} values selecting fields to return.
+     * @param {number} [request.requestedMaxReferencesPerNode=0] - Maximum references returned per node before the server paginates with a continuation point.
+     * @returns {Array<Object>} Browse results for each requested node.
+     */
+    browse(request) {
+        if (request && request.browseDirection === undefined) {
+            request.browseDirection = BrowseDirection.Forward;
+        }
+        if (request && request.includeSubtypes === undefined) {
+            request.includeSubtypes = true;
+        }
+        if (request && request.resultMask === undefined) {
+            request.resultMask = BrowseResultMask.All;
+        }
+        return this._client.browse(request);
+    }
+
+    /**
+     * Continues a paginated browse request using one or more continuation points.
+     *
+     * @param {Object} request - BrowseNext request object.
+     * @param {Array<string>} request.continuationPoints - Base64-encoded continuation points returned by {@link browse} or {@link browseNext}.
+     * @param {boolean} [request.releaseContinuationPoints=false] - Whether the server should release the continuation points instead of returning more references.
+     * @returns {Array<Object>} Browse results for each continuation point.
+     */
+    browseNext(request) {
+        return this._client.browseNext(request);
+    }
+
+    /**
+     * Returns the direct children of a given OPC UA node.
+     *
+     * @param {Object} request - Children request object.
+     * @param {string} request.node - OPC UA node ID whose children should be returned.
+     * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in child results.
+     * @returns {Array<Object>} Child node descriptions for the requested node.
+     */
+    children(request) {
+        return this._client.children(request);
+    }
 }
 
 /**
@@ -67,8 +123,26 @@ const MessageSecurityMode = _opcua.MessageSecurityMode;
  */
 const TimestampsToReturn = _opcua.TimestampsToReturn;
 
+/**
+ * OPC UA browse direction constants.
+ */
+const BrowseDirection = _opcua.BrowseDirection;
+
+/**
+ * OPC UA node class constants.
+ */
+const NodeClass = _opcua.NodeClass;
+
+/**
+ * OPC UA browse result mask constants.
+ */
+const BrowseResultMask = _opcua.BrowseResultMask;
+
 module.exports = {
     Client,
     MessageSecurityMode,
     TimestampsToReturn,
+    BrowseDirection,
+    NodeClass,
+    BrowseResultMask,
 };

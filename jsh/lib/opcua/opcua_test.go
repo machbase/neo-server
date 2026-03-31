@@ -24,11 +24,11 @@ func TestScriptOPCUA(t *testing.T) {
 				try {
 					client = new ua.Client();
 				} catch(e) {
-					console.println("Error:", e); 
+					console.println("Error:", e.message); 
 				}
 			`,
 			Output: []string{
-				"Error: missing arguments",
+				"Error: missing client options",
 			},
 		},
 		{
@@ -102,6 +102,270 @@ func TestScriptOPCUA(t *testing.T) {
 				"read response: true 5",
 				"write response error: null , results: [0, 0]",
 				"read response: false 1234",
+			},
+		},
+		{
+			Name: "opcua-close-idempotent",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					console.println("first close:", typeof client.close() === "undefined");
+					console.println("second close:", typeof client.close() === "undefined");
+				} catch (e) {
+					console.println("Error:", e);
+				}
+			`,
+			Output: []string{
+				"first close: true",
+				"second close: true",
+			},
+		},
+		{
+			Name: "opcua-read-errors",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840", readRetryInterval: 1 });
+					failed = false;
+					try {
+						client.read({});
+					} catch (e) {
+						failed = true;
+					}
+					console.println("read missing nodes:", failed);
+					failed = false;
+					try {
+						client.read({ nodes: ["ns=x;i=1"] });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("read invalid node:", failed);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"read missing nodes: true",
+				"read invalid node: true",
+			},
+		},
+		{
+			Name: "opcua-write-errors",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					failed = false;
+					try {
+						client.write();
+					} catch (e) {
+						failed = true;
+					}
+					console.println("write missing argument:", failed);
+					failed = false;
+					try {
+						client.write({ node: "ns=x;i=1", value: 1 });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("write invalid node:", failed);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"write missing argument: true",
+				"write invalid node: true",
+			},
+		},
+		{
+			Name: "opcua-children-variables",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					refs = client.children({
+						node: "ns=1;i=85",
+						nodeClassMask: ua.NodeClass.Variable,
+					});
+					refs.sort((a,b) => a.browseName < b.browseName ? -1 : 1)
+						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass));
+				} catch(e) {
+					console.println("Error:", e);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"NoAccessVariable ns=1;s=NoAccessVariable 2",
+				"NoPermVariable ns=1;s=NoPermVariable 2",
+				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2",
+				"ReadWriteVariable ns=1;s=ReadWriteVariable 2",
+				"ro_bool ns=1;s=ro_bool 2",
+				"ro_int32 ns=1;s=ro_int32 2",
+				"rw_bool ns=1;s=rw_bool 2",
+				"rw_int32 ns=1;s=rw_int32 2",
+			},
+		},
+		{
+			Name: "opcua-browse-variables",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					results = client.browse({
+						nodes: ["ns=1;i=85"],
+						nodeClassMask: ua.NodeClass.Variable,
+					});
+					results[0].references
+						.sort((a,b) => a.browseName < b.browseName ? -1 : 1)
+						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass));
+				} catch(e) {
+					console.println("Error:", e);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"NoAccessVariable ns=1;s=NoAccessVariable 2",
+				"NoPermVariable ns=1;s=NoPermVariable 2",
+				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2",
+				"ReadWriteVariable ns=1;s=ReadWriteVariable 2",
+				"ro_bool ns=1;s=ro_bool 2",
+				"ro_int32 ns=1;s=ro_int32 2",
+				"rw_bool ns=1;s=rw_bool 2",
+				"rw_int32 ns=1;s=rw_int32 2",
+			},
+		},
+		{
+			Name: "opcua-browse-errors",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					failed = false;
+					try {
+						client.browse({});
+					} catch (e) {
+						failed = true;
+					}
+					console.println("browse missing nodes:", failed);
+					failed = false;
+					try {
+						client.browse({ nodes: ["ns=x;i=1"] });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("browse invalid node:", failed);
+					results = client.browse({
+						nodes: ["ns=1;i=85"],
+						referenceTypeId: "ns=0;i=31",
+						includeSubtypes: true,
+						resultMask: ua.BrowseResultMask.All,
+					});
+					console.println("browse custom status:", results[0].statusText);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"browse missing nodes: true",
+				"browse invalid node: true",
+				"browse custom status: The operation succeeded. StatusGood (0x0)",
+			},
+		},
+		{
+			Name: "opcua-browse-next-variables",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					results = client.browse({
+						nodes: ["ns=1;i=85"],
+						nodeClassMask: ua.NodeClass.Variable,
+						requestedMaxReferencesPerNode: 2,
+					});
+					console.println("continuation type:", typeof results[0].continuationPoint);
+					console.println("browseNext type:", typeof client.browseNext);
+					results[0].references
+						.sort((a,b) => a.browseName < b.browseName ? -1 : 1)
+						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass));
+				} catch(e) {
+					console.println("Error:", e);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"continuation type: string",
+				"browseNext type: function",
+				"NoAccessVariable ns=1;s=NoAccessVariable 2",
+				"NoPermVariable ns=1;s=NoPermVariable 2",
+				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2",
+				"ReadWriteVariable ns=1;s=ReadWriteVariable 2",
+				"ro_bool ns=1;s=ro_bool 2",
+				"ro_int32 ns=1;s=ro_int32 2",
+				"rw_bool ns=1;s=rw_bool 2",
+				"rw_int32 ns=1;s=rw_int32 2",
+			},
+		},
+		{
+			Name: "opcua-browse-next-errors",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					failed = false;
+					try {
+						client.browseNext({ continuationPoints: [] });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("browseNext missing continuationPoints:", failed);
+					failed = false;
+					try {
+						client.browseNext({ continuationPoints: ["not-base64"] });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("browseNext invalid continuationPoint:", failed);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"browseNext missing continuationPoints: true",
+				"browseNext invalid continuationPoint: true",
+			},
+		},
+		{
+			Name: "opcua-children-errors",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					failed = false;
+					try {
+						client.children({});
+					} catch (e) {
+						failed = true;
+					}
+					console.println("children missing node:", failed);
+					failed = false;
+					try {
+						client.children({ node: "ns=x;i=1" });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("children invalid node:", failed);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"children missing node: true",
+				"children invalid node: true",
 			},
 		},
 	}
