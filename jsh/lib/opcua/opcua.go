@@ -241,13 +241,15 @@ func (c *Client) Browse(call goja.FunctionCall) goja.Value {
 		panic(c.rt.ToValue("missing nodes"))
 	}
 
-	refTypeID := ua.NewNumericNodeID(0, id.HierarchicalReferences)
+	var refTypeID *ua.NodeID
 	if arg.ReferenceTypeID != "" {
 		parsed, err := ua.ParseNodeID(arg.ReferenceTypeID)
 		if err != nil {
 			panic(c.rt.NewGoError(err))
 		}
 		refTypeID = parsed
+	} else {
+		refTypeID = ua.NewNumericNodeID(0, id.References)
 	}
 
 	descs := make([]*ua.BrowseDescription, 0, len(arg.Nodes))
