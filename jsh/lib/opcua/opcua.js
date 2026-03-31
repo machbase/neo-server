@@ -56,10 +56,32 @@ class Client {
         return this._client.write(...writes);
     }
 
+    /**
+     * Browses references for one or more OPC UA nodes.
+     *
+     * @param {Object} request - Browse request object.
+     * @param {Array<string>} request.nodes - OPC UA node IDs to browse.
+     * @param {number} [request.browseDirection] - Browse direction, typically one of {@link BrowseDirection}.
+     * @param {(string|number)} [request.referenceTypeId] - Reference type ID to follow when browsing.
+     * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in results.
+     * @param {number} [request.resultMask] - Bitmask of {@link BrowseResultMask} values selecting fields to return.
+     * @returns {Array<Object>} Browse results for each requested node.
+     */
     browse(request) {
         return this._client.browse(request);
     }
 
+    /**
+     * Returns the direct children of a given OPC UA node.
+     *
+     * @param {Object} request - Children request object.
+     * @param {string} request.node - OPC UA node ID whose children should be returned.
+     * @param {number} [request.browseDirection] - Browse direction, typically one of {@link BrowseDirection}.
+     * @param {(string|number)} [request.referenceTypeId] - Reference type ID to follow when browsing for children.
+     * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in child results.
+     * @param {number} [request.resultMask] - Bitmask of {@link BrowseResultMask} values selecting fields to return.
+     * @returns {Array<Object>} Child node descriptions for the requested node.
+     */
     children(request) {
         return this._client.children(request);
     }
