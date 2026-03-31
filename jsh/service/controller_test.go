@@ -17,6 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type stubAddr struct {
+	network string
+	addr    string
+}
+
+func (a stubAddr) Network() string { return a.network }
+
+func (a stubAddr) String() string { return a.addr }
+
 func TestServiceString(t *testing.T) {
 	svc := &Service{
 		Config: Config{
@@ -625,4 +634,493 @@ func TestServices(t *testing.T) {
 			time.Sleep(1 * time.Millisecond)
 		}
 	}
+}
+
+func TestServiceStringIncludesPidAndOutput(t *testing.T) {
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 4242}}
+	svc := &Service{
+		Config: Config{
+			Name:       "svc-b",
+			Enable:     false,
+			Executable: "runner",
+			Args:       []string{"--flag"},
+		},
+		Status: ServiceStatusRunning,
+		cmd:    cmd,
+		output: []string{"line-1", "line-2"},
+	}
+
+	out := svc.String()
+	checks := []string{
+		"[svc-b] disabled",
+		"pid: 4242",
+		"output:\n    line-1\n    line-2\n",
+	}
+	for _, chk := range checks {
+		if !strings.Contains(out, chk) {
+			t.Fatalf("String() output missing %q, got %q", chk, out)
+		}
+	}
+}
+
+func TestConfigEqualRejectsEnvironmentDifferences(t *testing.T) {
+	base := Config{
+		Name:        "svc-a",
+		Enable:      true,
+		WorkingDir:  "/work",
+		Environment: map[string]string{"A": "1", "B": "2"},
+		Executable:  "node",
+		Args:        []string{"app.js"},
+	}
+
+	tests := []struct {
+		name  string
+		right Config
+	}{
+		{
+			name: "different name",
+			right: Config{
+				Name:        "svc-b",
+				Enable:      true,
+				WorkingDir:  "/work",
+				Environment: map[string]string{"A": "1", "B": "2"},
+				Executable:  "node",
+				Args:        []string{"app.js"},
+			},
+		},
+		{
+			name: "different environment value",
+			right: Config{
+				Name:        "svc-a",
+				Enable:      true,
+				WorkingDir:  "/work",
+				Environment: map[string]string{"A": "9", "B": "2"},
+				Executable:  "node",
+				Args:        []string{"app.js"},
+			},
+		},
+		{
+			name: "missing environment key",
+			right: Config{
+				Name:        "svc-a",
+				Enable:      true,
+				WorkingDir:  "/work",
+				Environment: map[string]string{"A": "1"},
+				Executable:  "node",
+				Args:        []string{"app.js"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if base.Equal(tc.right) {
+				t.Fatalf("Equal() = true, want false for %s", tc.name)
+			}
+		})
+	}
+}
+
+func TestServiceOutputWriterFlushIgnoresEmptyPending(t *testing.T) {
+	svc := &Service{}
+	writer := newServiceOutputWriter(svc)
+	writer.Flush()
+	if got := svc.outputSnapshot(); len(got) != 0 {
+		t.Fatalf("output len=%d, want 0", len(got))
+	}
+}
+
+func TestSnapshotServiceCopiesRuntimeFields(t *testing.T) {
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 3001}}
+	svc := &Service{
+		Config: Config{
+			Name:        "svc-a",
+			Enable:      true,
+			WorkingDir:  "/tmp/work",
+			Environment: map[string]string{"A": "1"},
+			Executable:  "node",
+			Args:        []string{"app.js"},
+			ReadError:   errors.New("read failed"),
+			StartError:  errors.New("start failed"),
+			StopError:   errors.New("stop failed"),
+		},
+		Status:   ServiceStatusRunning,
+		ExitCode: 23,
+		Error:    errors.New("runtime failed"),
+		cmd:      cmd,
+		output:   []string{"stdout"},
+	}
+
+	snap := snapshotService(svc)
+	if snap.Config.Name != svc.Config.Name || snap.Config.WorkingDir != svc.Config.WorkingDir {
+		t.Fatalf("snapshot config mismatch: %+v", snap.Config)
+	}
+	if snap.Config.Environment["A"] != "1" {
+		t.Fatalf("snapshot environment=%v, want map with A=1", snap.Config.Environment)
+	}
+	if len(snap.Config.Args) != 1 || snap.Config.Args[0] != "app.js" {
+		t.Fatalf("snapshot args=%v, want [app.js]", snap.Config.Args)
+	}
+	if snap.Config.ReadError != "read failed" || snap.Config.StartError != "start failed" || snap.Config.StopError != "stop failed" {
+		t.Fatalf("snapshot errors=%+v", snap.Config)
+	}
+	if snap.Error != "runtime failed" {
+		t.Fatalf("snapshot error=%q, want runtime failed", snap.Error)
+	}
+	if snap.PID != 3001 {
+		t.Fatalf("snapshot pid=%d, want 3001", snap.PID)
+	}
+	if len(snap.Output) != 1 || snap.Output[0] != "stdout" {
+		t.Fatalf("snapshot output=%v, want [stdout]", snap.Output)
+	}
+
+	snap.Config.Environment["A"] = "9"
+	snap.Config.Args[0] = "mutated"
+	snap.Output[0] = "mutated"
+	if svc.Config.Environment["A"] != "1" {
+		t.Fatal("snapshot mutated original environment")
+	}
+	if svc.Config.Args[0] != "app.js" {
+		t.Fatal("snapshot mutated original args")
+	}
+	if svc.output[0] != "stdout" {
+		t.Fatal("snapshot mutated original output")
+	}
+}
+
+func TestSnapshotServiceOmitsPidWhenStopped(t *testing.T) {
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 77}}
+	svc := &Service{Status: ServiceStatusStopped, cmd: cmd}
+	if snap := snapshotService(svc); snap.PID != 0 {
+		t.Fatalf("snapshot pid=%d, want 0", snap.PID)
+	}
+}
+
+func TestControllerStartReturnsReadAndRPCErrors(t *testing.T) {
+	t.Run("read error", func(t *testing.T) {
+		ctl, err := NewController(&ControllerConfig{ConfigDir: "/work/missing", Mounts: []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(t.TempDir())}}})
+		if err != nil {
+			t.Fatalf("NewController() error: %v", err)
+		}
+		if err := ctl.Start(nil); err == nil || !strings.Contains(err.Error(), "missing") {
+			t.Fatalf("Start() error=%v, want missing dir error", err)
+		}
+	})
+
+	t.Run("rpc error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		servicesDir := filepath.Join(tmpDir, "services")
+		if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		ctl, err := NewController(&ControllerConfig{
+			ConfigDir: "/work/services",
+			Mounts:    []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+			Address:   "bad://127.0.0.1:0",
+		})
+		if err != nil {
+			t.Fatalf("NewController() error: %v", err)
+		}
+		if err := ctl.Start(nil); err == nil || !strings.Contains(err.Error(), "unsupported rpc address scheme") {
+			t.Fatalf("Start() error=%v, want unsupported scheme error", err)
+		}
+	})
+}
+
+func TestControllerInstallAndUninstallErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts:    []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+
+	if err := ctl.Install(&Config{Name: "bad/name"}); err == nil || !strings.Contains(err.Error(), "cannot contain '/'") {
+		t.Fatalf("Install() error=%v, want invalid name error", err)
+	}
+
+	sc := &Config{Name: "svc-a", Enable: false, Executable: "echo"}
+	if err := ctl.Install(sc); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+	if err := ctl.Install(sc); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("Install() duplicate error=%v, want already exists", err)
+	}
+	if err := ctl.Uninstall("missing"); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("Uninstall() error=%v, want does not exist", err)
+	}
+}
+
+func TestControllerReadClassifiesConfigsAndErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	if err := os.MkdirAll(filepath.Join(servicesDir, "nested"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	writeFile := func(name string, body string) {
+		path := filepath.Join(servicesDir, name)
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error: %v", path, err)
+		}
+	}
+	marshalConfig := func(sc Config) string {
+		data, err := json.Marshal(sc)
+		if err != nil {
+			t.Fatalf("Marshal() error: %v", err)
+		}
+		return string(data)
+	}
+
+	writeFile("keep.json", marshalConfig(Config{Name: "keep", Enable: true, Executable: "echo"}))
+	writeFile("update.json", marshalConfig(Config{Name: "update", Enable: true, Executable: "echo", Args: []string{"v2"}}))
+	writeFile("add.json", marshalConfig(Config{Name: "add", Enable: false, Executable: "echo"}))
+	writeFile("broken.json", "{")
+	writeFile("note.txt", "ignored")
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts:    []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	ctl.services = map[string]*Service{
+		"keep":   {Config: Config{Name: "keep", Enable: true, Executable: "echo"}},
+		"update": {Config: Config{Name: "update", Enable: true, Executable: "echo", Args: []string{"v1"}}},
+		"gone":   {Config: Config{Name: "gone", Enable: false, Executable: "echo"}},
+	}
+
+	if err := ctl.Read(); err != nil {
+		t.Fatalf("Read() error: %v", err)
+	}
+	if ctl.reread == nil {
+		t.Fatal("Read() left reread=nil")
+	}
+	if len(ctl.reread.Unchanged) != 1 || ctl.reread.Unchanged[0].Name != "keep" {
+		t.Fatalf("Unchanged=%v, want [keep]", snapshotConfigs(ctl.reread.Unchanged))
+	}
+	if len(ctl.reread.Updated) != 1 || ctl.reread.Updated[0].Name != "update" {
+		t.Fatalf("Updated=%v, want [update]", snapshotConfigs(ctl.reread.Updated))
+	}
+	if len(ctl.reread.Added) != 1 || ctl.reread.Added[0].Name != "add" {
+		t.Fatalf("Added=%v, want [add]", snapshotConfigs(ctl.reread.Added))
+	}
+	if len(ctl.reread.Removed) != 1 || ctl.reread.Removed[0].Name != "gone" {
+		t.Fatalf("Removed=%v, want [gone]", snapshotConfigs(ctl.reread.Removed))
+	}
+	if len(ctl.reread.Errored) != 1 || ctl.reread.Errored[0].Name != "broken" || ctl.reread.Errored[0].ReadError == nil {
+		t.Fatalf("Errored=%v, want [broken with error]", snapshotConfigs(ctl.reread.Errored))
+	}
+}
+
+func TestControllerStartAndStopServiceEdgeStates(t *testing.T) {
+	t.Run("start failure marks service failed", func(t *testing.T) {
+		ctl := &Controller{
+			launcher: []string{"/path/that/does/not/exist"},
+			services: map[string]*Service{
+				"svc-a": {Config: Config{Name: "svc-a", Executable: "echo"}, Status: ServiceStatusStopped},
+			},
+		}
+
+		svc, err := ctl.StartService("svc-a")
+		if err == nil {
+			t.Fatal("StartService() error=nil, want failure")
+		}
+		if svc.Status != ServiceStatusFailed {
+			t.Fatalf("status=%s, want %s", svc.Status, ServiceStatusFailed)
+		}
+		if svc.Config.StartError == nil {
+			t.Fatal("StartError=nil, want failure")
+		}
+	})
+
+	t.Run("non running nil command becomes stopped", func(t *testing.T) {
+		svc := &Service{Status: ServiceStatusFailed}
+		sc := &Config{Name: "svc-a"}
+		(&Controller{}).stopServiceInstance(svc, sc)
+		if svc.Status != ServiceStatusStopped {
+			t.Fatalf("status=%s, want %s", svc.Status, ServiceStatusStopped)
+		}
+		if sc.StopError != nil {
+			t.Fatalf("StopError=%v, want nil", sc.StopError)
+		}
+	})
+
+	t.Run("running nil process becomes stopped", func(t *testing.T) {
+		svc := &Service{Status: ServiceStatusRunning, cmd: &exec.Cmd{}}
+		sc := &Config{Name: "svc-a"}
+		(&Controller{}).stopServiceInstance(svc, sc)
+		if svc.Status != ServiceStatusStopped {
+			t.Fatalf("status=%s, want %s", svc.Status, ServiceStatusStopped)
+		}
+		if svc.Error != nil || sc.StopError != nil {
+			t.Fatalf("errors svc=%v config=%v, want nil", svc.Error, sc.StopError)
+		}
+	})
+}
+
+func TestRPCUtilityFunctionsAndDispatchErrors(t *testing.T) {
+	t.Run("parse and format address", func(t *testing.T) {
+		network, address, err := parseRPCAddress("unix:///tmp/neo.sock")
+		if err != nil || network != "unix" || address != "/tmp/neo.sock" {
+			t.Fatalf("parseRPCAddress() = %q %q %v", network, address, err)
+		}
+		if _, _, err := parseRPCAddress(""); err == nil {
+			t.Fatal("parseRPCAddress(empty) error=nil, want error")
+		}
+		if _, _, err := parseRPCAddress("udp://127.0.0.1:1"); err == nil {
+			t.Fatal("parseRPCAddress(udp) error=nil, want error")
+		}
+		if got := formatRPCAddress("unix", &net.UnixAddr{Name: "/tmp/neo.sock", Net: "unix"}); got != "unix:///tmp/neo.sock" {
+			t.Fatalf("formatRPCAddress(unix)=%q", got)
+		}
+		if got := formatRPCAddress("tcp", nil); got != "" {
+			t.Fatalf("formatRPCAddress(nil)=%q, want empty", got)
+		}
+		if got := formatRPCAddress("pipe", stubAddr{network: "pipe", addr: "controller"}); got != "pipe://controller" {
+			t.Fatalf("formatRPCAddress(stub)=%q, want pipe://controller", got)
+		}
+	})
+
+	t.Run("cleanup and decode params", func(t *testing.T) {
+		sock := filepath.Join(t.TempDir(), "neo.sock")
+		if err := os.WriteFile(sock, []byte("x"), 0o644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+		cleanupRPCAddress("unix://" + sock)
+		if _, err := os.Stat(sock); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("cleanupRPCAddress() stat err=%v, want not exist", err)
+		}
+		var req serviceNameRequest
+		if err := decodeRPCParams(nil, &req); err != nil {
+			t.Fatalf("decodeRPCParams(nil) error: %v", err)
+		}
+		if err := decodeRPCParams(json.RawMessage("null"), &req); err != nil {
+			t.Fatalf("decodeRPCParams(null) error: %v", err)
+		}
+		if err := decodeRPCParams(json.RawMessage("{"), &req); err == nil {
+			t.Fatal("decodeRPCParams(invalid) error=nil, want error")
+		}
+	})
+
+	t.Run("request and response helpers", func(t *testing.T) {
+		ctl := &Controller{}
+		empty := ctl.rereadSnapshot()
+		if len(empty.Added) != 0 || len(empty.Updated) != 0 || len(empty.Removed) != 0 || len(empty.Unchanged) != 0 || len(empty.Errored) != 0 {
+			t.Fatalf("rereadSnapshot()=%+v, want empty slices", empty)
+		}
+
+		req := controllerRPCRequest{}
+		if req.hasResponse() {
+			t.Fatal("hasResponse()=true, want false")
+		}
+		if string(req.responseID()) != "null" {
+			t.Fatalf("responseID()=%s, want null", string(req.responseID()))
+		}
+		req.ID = json.RawMessage("1")
+		if !req.hasResponse() {
+			t.Fatal("hasResponse()=false, want true")
+		}
+		if invalidParamsError(errors.New("bad")).Code != jsonRPCInvalidParam {
+			t.Fatal("invalidParamsError() returned wrong code")
+		}
+		if internalRPCError(errors.New("bad")).Code != jsonRPCInternal {
+			t.Fatal("internalRPCError() returned wrong code")
+		}
+	})
+
+	t.Run("handle rpc validation and dispatch errors", func(t *testing.T) {
+		ctl := &Controller{services: map[string]*Service{}}
+		resp := ctl.handleRPC(controllerRPCRequest{Version: "1.0", ID: json.RawMessage("1"), Method: "service.list"})
+		if resp.Error == nil || resp.Error.Code != jsonRPCInvalidReq {
+			t.Fatalf("invalid version response=%+v", resp)
+		}
+		resp = ctl.handleRPC(controllerRPCRequest{Version: jsonRPCVersion, ID: json.RawMessage("1")})
+		if resp.Error == nil || resp.Error.Message != "method is required" {
+			t.Fatalf("missing method response=%+v", resp)
+		}
+		if _, rpcErr := ctl.dispatchRPC("service.get", json.RawMessage("{")); rpcErr == nil || rpcErr.Code != jsonRPCInvalidParam {
+			t.Fatalf("dispatchRPC invalid params=%+v", rpcErr)
+		}
+		if _, rpcErr := ctl.dispatchRPC("service.get", json.RawMessage(`{"name":"missing"}`)); rpcErr == nil || rpcErr.Code != jsonRPCNotFound {
+			t.Fatalf("dispatchRPC not found=%+v", rpcErr)
+		}
+		if _, rpcErr := ctl.dispatchRPC("missing.method", nil); rpcErr == nil || rpcErr.Code != jsonRPCMethodMiss {
+			t.Fatalf("dispatchRPC missing method=%+v", rpcErr)
+		}
+	})
+
+	t.Run("dispatch rpc lifecycle success", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		servicesDir := filepath.Join(tmpDir, "services")
+		if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		ctl, err := NewController(&ControllerConfig{
+			ConfigDir: "/work/services",
+			Mounts:    []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+		})
+		if err != nil {
+			t.Fatalf("NewController() error: %v", err)
+		}
+
+		installParams, _ := json.Marshal(Config{Name: "svc-a", Enable: false, Executable: "echo"})
+		result, rpcErr := ctl.dispatchRPC("service.install", installParams)
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(install) error=%+v", rpcErr)
+		}
+		if result.(ServiceSnapshot).Config.Name != "svc-a" {
+			t.Fatalf("install result=%+v, want svc-a", result)
+		}
+
+		nameParams := json.RawMessage(`{"name":"svc-a"}`)
+		result, rpcErr = ctl.dispatchRPC("service.start", nameParams)
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(start) error=%+v", rpcErr)
+		}
+		if result.(ServiceSnapshot).Status != ServiceStatusRunning {
+			t.Fatalf("start result=%+v, want running", result)
+		}
+
+		result, rpcErr = ctl.dispatchRPC("service.stop", nameParams)
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(stop) error=%+v", rpcErr)
+		}
+		if result.(ServiceSnapshot).Status != ServiceStatusStopped {
+			t.Fatalf("stop result=%+v, want stopped", result)
+		}
+
+		result, rpcErr = ctl.dispatchRPC("service.uninstall", nameParams)
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(uninstall) error=%+v", rpcErr)
+		}
+		if removed, ok := result.(bool); !ok || !removed {
+			t.Fatalf("uninstall result=%v, want true", result)
+		}
+	})
+
+	t.Run("reload snapshot returns actions and services", func(t *testing.T) {
+		ctl := &Controller{services: map[string]*Service{
+			"keep": {Config: Config{Name: "keep", Enable: true, Executable: "echo"}, Status: ServiceStatusRunning},
+		}}
+		ctl.reread = &ServiceList{
+			Unchanged: []*Config{{Name: "keep", Enable: true, Executable: "echo"}},
+			Added:     []*Config{{Name: "add", Enable: false, Executable: "echo"}},
+			Errored:   []*Config{{Name: "broken", ReadError: errors.New("broken config")}},
+		}
+
+		result := ctl.reloadSnapshot()
+		if len(result.Actions) != 3 {
+			t.Fatalf("reloadSnapshot actions=%v, want 3 actions", result.Actions)
+		}
+		if len(result.Services) != 2 {
+			t.Fatalf("reloadSnapshot services=%v, want 2 services", result.Services)
+		}
+	})
 }
