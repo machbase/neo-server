@@ -3,6 +3,7 @@ package opcua
 import (
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"io"
 	"strings"
@@ -100,18 +101,25 @@ type ReadResult struct {
 }
 
 type BrowseRequest struct {
-	Nodes           []string            `json:"nodes"`
-	BrowseDirection ua.BrowseDirection  `json:"browseDirection"`
-	ReferenceTypeID string              `json:"referenceTypeId"`
-	IncludeSubtypes bool                `json:"includeSubtypes"`
-	NodeClassMask   uint32              `json:"nodeClassMask"`
-	ResultMask      ua.BrowseResultMask `json:"resultMask"`
+	Nodes            []string            `json:"nodes"`
+	BrowseDirection  ua.BrowseDirection  `json:"browseDirection"`
+	ReferenceTypeID  string              `json:"referenceTypeId"`
+	IncludeSubtypes  bool                `json:"includeSubtypes"`
+	NodeClassMask    uint32              `json:"nodeClassMask"`
+	ResultMask       ua.BrowseResultMask `json:"resultMask"`
+	RequestedMaxRefs uint32              `json:"requestedMaxReferencesPerNode"`
+}
+
+type BrowseNextRequest struct {
+	ReleaseContinuationPoints bool     `json:"releaseContinuationPoints"`
+	ContinuationPoints        []string `json:"continuationPoints"`
 }
 
 type BrowseResult struct {
-	Status     uint32            `json:"status"`
-	StatusText string            `json:"statusText"`
-	References []BrowseReference `json:"references"`
+	Status            uint32            `json:"status"`
+	StatusText        string            `json:"statusText"`
+	ContinuationPoint string            `json:"continuationPoint"`
+	References        []BrowseReference `json:"references"`
 }
 
 type BrowseReference struct {
@@ -312,13 +320,13 @@ func (c *Client) Browse(request BrowseRequest) ([]BrowseResult, error) {
 		refTypeID = ua.NewNumericNodeID(0, id.References)
 	}
 
-	descs := make([]*ua.BrowseDescription, 0, len(request.Nodes))
+	nodes := make([]*ua.BrowseDescription, 0, len(request.Nodes))
 	for _, nodeStr := range request.Nodes {
 		nodeID, err := ua.ParseNodeID(nodeStr)
 		if err != nil {
 			return nil, err
 		}
-		descs = append(descs, &ua.BrowseDescription{
+		nodes = append(nodes, &ua.BrowseDescription{
 			NodeID:          nodeID,
 			BrowseDirection: request.BrowseDirection,
 			ReferenceTypeID: refTypeID,
@@ -329,15 +337,45 @@ func (c *Client) Browse(request BrowseRequest) ([]BrowseResult, error) {
 	}
 
 	req := &ua.BrowseRequest{
-		NodesToBrowse: descs,
+		RequestedMaxReferencesPerNode: request.RequestedMaxRefs,
+		NodesToBrowse:                 nodes,
 	}
 	rsp, err := c.client.Browse(c.ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	ret := make([]BrowseResult, 0, len(rsp.Results))
-	for _, result := range rsp.Results {
+	return toBrowseResults(rsp.Results), nil
+}
+
+func (c *Client) BrowseNext(request BrowseNextRequest) ([]BrowseResult, error) {
+	if len(request.ContinuationPoints) == 0 {
+		return nil, errors.New("missing continuation points")
+	}
+
+	continuationPoints := make([][]byte, 0, len(request.ContinuationPoints))
+	for _, point := range request.ContinuationPoints {
+		decoded, err := decodeContinuationPoint(point)
+		if err != nil {
+			return nil, err
+		}
+		continuationPoints = append(continuationPoints, decoded)
+	}
+
+	rsp, err := c.client.BrowseNext(c.ctx, &ua.BrowseNextRequest{
+		ReleaseContinuationPoints: request.ReleaseContinuationPoints,
+		ContinuationPoints:        continuationPoints,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return toBrowseResults(rsp.Results), nil
+}
+
+func toBrowseResults(results []*ua.BrowseResult) []BrowseResult {
+	ret := make([]BrowseResult, 0, len(results))
+	for _, result := range results {
 		refs := make([]BrowseReference, 0, len(result.References))
 		for _, ref := range result.References {
 			refs = append(refs, BrowseReference{
@@ -351,12 +389,31 @@ func (c *Client) Browse(request BrowseRequest) ([]BrowseResult, error) {
 			})
 		}
 		ret = append(ret, BrowseResult{
-			Status:     uint32(result.StatusCode),
-			StatusText: result.StatusCode.Error(),
-			References: refs,
+			Status:            uint32(result.StatusCode),
+			StatusText:        result.StatusCode.Error(),
+			ContinuationPoint: encodeContinuationPoint(result.ContinuationPoint),
+			References:        refs,
 		})
 	}
-	return ret, nil
+	return ret
+}
+
+func encodeContinuationPoint(point []byte) string {
+	if len(point) == 0 {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(point)
+}
+
+func decodeContinuationPoint(point string) ([]byte, error) {
+	if point == "" {
+		return nil, errors.New("missing continuation point")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(point)
+	if err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }
 
 func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {

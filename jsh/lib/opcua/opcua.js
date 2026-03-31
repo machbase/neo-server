@@ -74,6 +74,7 @@ class Client {
      * @param {(string|number)} [request.referenceTypeId] - Reference type ID to follow when browsing.
      * @param {number} [request.nodeClassMask] - Bitmask of {@link NodeClass} values to include in results.
      * @param {number} [request.resultMask] - Bitmask of {@link BrowseResultMask} values selecting fields to return.
+     * @param {number} [request.requestedMaxReferencesPerNode=0] - Maximum references returned per node before the server paginates with a continuation point.
      * @returns {Array<Object>} Browse results for each requested node.
      */
     browse(request) {
@@ -87,6 +88,18 @@ class Client {
             request.resultMask = BrowseResultMask.All;
         }
         return this._client.browse(request);
+    }
+
+    /**
+     * Continues a paginated browse request using one or more continuation points.
+     *
+     * @param {Object} request - BrowseNext request object.
+     * @param {Array<string>} request.continuationPoints - Base64-encoded continuation points returned by {@link browse} or {@link browseNext}.
+     * @param {boolean} [request.releaseContinuationPoints=false] - Whether the server should release the continuation points instead of returning more references.
+     * @returns {Array<Object>} Browse results for each continuation point.
+     */
+    browseNext(request) {
+        return this._client.browseNext(request);
     }
 
     /**
