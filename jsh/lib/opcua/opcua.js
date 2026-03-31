@@ -55,6 +55,10 @@ class Client {
     write(...writes) {
         return this._client.write(...writes);
     }
+
+    browse(request) {
+        return this._client.browse(request);
+    }
 }
 
 /**
@@ -67,8 +71,26 @@ const MessageSecurityMode = _opcua.MessageSecurityMode;
  */
 const TimestampsToReturn = _opcua.TimestampsToReturn;
 
+/**
+ * OPC UA browse direction constants.
+ */
+const BrowseDirection = _opcua.BrowseDirection;
+
+/**
+ * OPC UA node class constants.
+ */
+const NodeClass = _opcua.NodeClass;
+
+/**
+ * OPC UA browse result mask constants.
+ */
+const BrowseResultMask = _opcua.BrowseResultMask;
+
 module.exports = {
     Client,
     MessageSecurityMode,
     TimestampsToReturn,
+    BrowseDirection,
+    NodeClass,
+    BrowseResultMask,
 };

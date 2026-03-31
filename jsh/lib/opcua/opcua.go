@@ -10,6 +10,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/gopcua/opcua"
+	"github.com/gopcua/opcua/id"
 	"github.com/gopcua/opcua/ua"
 )
 
@@ -27,6 +28,38 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 
 	o.Set("Client", new_client(rt))
+	// BrowseDirection
+	o.Set("BrowseDirection", rt.ToValue(map[string]any{
+		"Forward": ua.BrowseDirectionForward,
+		"Inverse": ua.BrowseDirectionInverse,
+		"Both":    ua.BrowseDirectionBoth,
+		"Invalid": ua.BrowseDirectionInvalid,
+	}))
+	// NodeClass
+	o.Set("NodeClass", rt.ToValue(map[string]any{
+		"Unspecified":   ua.NodeClassUnspecified,
+		"Object":        ua.NodeClassObject,
+		"Variable":      ua.NodeClassVariable,
+		"Method":        ua.NodeClassMethod,
+		"ObjectType":    ua.NodeClassObjectType,
+		"VariableType":  ua.NodeClassVariableType,
+		"ReferenceType": ua.NodeClassReferenceType,
+		"DataType":      ua.NodeClassDataType,
+		"View":          ua.NodeClassView,
+	}))
+	// BrowseResultMask
+	o.Set("BrowseResultMask", rt.ToValue(map[string]any{
+		"None":              ua.BrowseResultMaskNone,
+		"ReferenceTypeId":   ua.BrowseResultMaskReferenceTypeID,
+		"IsForward":         ua.BrowseResultMaskIsForward,
+		"NodeClass":         ua.BrowseResultMaskNodeClass,
+		"BrowseName":        ua.BrowseResultMaskBrowseName,
+		"DisplayName":       ua.BrowseResultMaskDisplayName,
+		"TypeDefinition":    ua.BrowseResultMaskTypeDefinition,
+		"All":               ua.BrowseResultMaskAll,
+		"ReferenceTypeInfo": ua.BrowseResultMaskReferenceTypeInfo,
+		"TargetInfo":        ua.BrowseResultMaskTargetInfo,
+	}))
 	// MessageSecurityMode
 	o.Set("MessageSecurityMode", rt.ToValue(map[string]any{
 		"None":           ua.MessageSecurityModeNone,
@@ -84,6 +117,7 @@ func new_client(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
 		ret.Set("close", c.Close)
 		ret.Set("read", c.Read)
 		ret.Set("write", c.Write)
+		ret.Set("browse", c.Browse)
 		return ret
 	}
 }
@@ -177,6 +211,86 @@ func (c *Client) Read(call goja.FunctionCall) goja.Value {
 			"type":            typ,
 			"sourceTimestamp": data.SourceTimestamp.UnixMilli(),
 			"serverTimestamp": data.ServerTimestamp.UnixMilli(),
+		}
+		ret = append(ret, c.rt.ToValue(ent))
+	}
+	return c.rt.ToValue(ret)
+}
+
+func (c *Client) Browse(call goja.FunctionCall) goja.Value {
+	if len(call.Arguments) == 0 {
+		panic(c.rt.ToValue("missing arguments"))
+	}
+	arg := struct {
+		Nodes           []string            `json:"nodes"`
+		BrowseDirection ua.BrowseDirection  `json:"browseDirection"`
+		ReferenceTypeID string              `json:"referenceTypeId"`
+		IncludeSubtypes bool                `json:"includeSubtypes"`
+		NodeClassMask   uint32              `json:"nodeClassMask"`
+		ResultMask      ua.BrowseResultMask `json:"resultMask"`
+	}{
+		BrowseDirection: ua.BrowseDirectionForward,
+		IncludeSubtypes: true,
+		ResultMask:      ua.BrowseResultMaskAll,
+	}
+	if err := c.rt.ExportTo(call.Arguments[0], &arg); err != nil {
+		panic(c.rt.NewGoError(err))
+	}
+	if len(arg.Nodes) == 0 {
+		panic(c.rt.ToValue("missing nodes"))
+	}
+
+	refTypeID := ua.NewNumericNodeID(0, id.HierarchicalReferences)
+	if arg.ReferenceTypeID != "" {
+		parsed, err := ua.ParseNodeID(arg.ReferenceTypeID)
+		if err != nil {
+			panic(c.rt.NewGoError(err))
+		}
+		refTypeID = parsed
+	}
+
+	descs := make([]*ua.BrowseDescription, 0, len(arg.Nodes))
+	for _, nodeStr := range arg.Nodes {
+		nodeID, err := ua.ParseNodeID(nodeStr)
+		if err != nil {
+			panic(c.rt.NewGoError(err))
+		}
+		descs = append(descs, &ua.BrowseDescription{
+			NodeID:          nodeID,
+			BrowseDirection: arg.BrowseDirection,
+			ReferenceTypeID: refTypeID,
+			IncludeSubtypes: arg.IncludeSubtypes,
+			NodeClassMask:   arg.NodeClassMask,
+			ResultMask:      uint32(arg.ResultMask),
+		})
+	}
+
+	req := &ua.BrowseRequest{
+		NodesToBrowse: descs,
+	}
+	rsp, err := c.client.Browse(c.ctx, req)
+	if err != nil {
+		panic(c.rt.NewGoError(err))
+	}
+
+	ret := make([]goja.Value, 0, len(rsp.Results))
+	for _, result := range rsp.Results {
+		refs := make([]any, 0, len(result.References))
+		for _, ref := range result.References {
+			refs = append(refs, map[string]any{
+				"referenceTypeId": ref.ReferenceTypeID.String(),
+				"isForward":       ref.IsForward,
+				"nodeId":          ref.NodeID.NodeID.String(),
+				"browseName":      ref.BrowseName.Name,
+				"displayName":     ref.DisplayName.Text,
+				"nodeClass":       uint32(ref.NodeClass),
+				"typeDefinition":  ref.TypeDefinition.NodeID.String(),
+			})
+		}
+		ent := map[string]any{
+			"status":     uint32(result.StatusCode),
+			"statusText": result.StatusCode.Error(),
+			"references": refs,
 		}
 		ret = append(ret, c.rt.ToValue(ent))
 	}
