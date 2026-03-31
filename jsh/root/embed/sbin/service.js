@@ -368,12 +368,29 @@
             { title: 'ERRORED', configs: result.errored || [] },
         ];
 
-        for (let i = 0; i < sections.length; i++) {
-            if (i > 0) {
-                console.println('');
+        const rows = [];
+        for (const section of sections) {
+            const configs = Array.isArray(section.configs) ? section.configs : [];
+            for (const cfg of configs) {
+                rows.push({
+                    status: section.title,
+                    name: cfg.name || '',
+                    executable: cfg.executable || '',
+                    readError: cfg.read_error || '',
+                    startError: cfg.start_error || '',
+                    stopError: cfg.stop_error || '',
+                });
             }
-            renderConfigSection(sections[i].title, sections[i].configs);
         }
+
+        renderTable([
+            { key: 'name', title: 'NAME' },
+            { key: 'status', title: 'STATUS' },
+            { key: 'executable', title: 'EXECUTABLE' },
+            { key: 'readError', title: 'READ_ERROR' },
+            { key: 'startError', title: 'START_ERROR' },
+            { key: 'stopError', title: 'STOP_ERROR' },
+        ], rows.length > 0 ? rows : [{ status: '(none)', name: '', executable: '', readError: '', startError: '', stopError: '' }]);
     }
 
     function renderUpdateResult(result) {
@@ -399,26 +416,6 @@
         const services = result.services || [];
         console.println(`SERVICES (${Array.isArray(services) ? services.length : 0})`);
         renderServiceList(services);
-    }
-
-    function renderConfigSection(title, configs) {
-        console.println(`${title} (${configs.length})`);
-        const rows = Array.isArray(configs) && configs.length > 0
-            ? configs.map((cfg) => ({
-                name: cfg.name || '',
-                executable: cfg.executable || '',
-                readError: cfg.read_error || '',
-                startError: cfg.start_error || '',
-                stopError: cfg.stop_error || '',
-            }))
-            : [{ name: '(none)', executable: '', readError: '', startError: '', stopError: '' }];
-        renderTable([
-            { key: 'name', title: 'NAME' },
-            { key: 'executable', title: 'EXECUTABLE' },
-            { key: 'readError', title: 'READ_ERROR' },
-            { key: 'startError', title: 'START_ERROR' },
-            { key: 'stopError', title: 'STOP_ERROR' },
-        ], rows);
     }
 
     function renderServiceList(services) {
@@ -585,7 +582,7 @@
     }
 
     function renderTable(columns, rows) {
-        const box = pretty.Table({});
+        const box = pretty.Table({ rownum: false });
         box.appendHeader(columns.map((column) => column.title));
         for (const row of rows) {
             box.append(columns.map((column) => {

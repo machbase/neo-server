@@ -248,6 +248,96 @@ func TestServiceCtlUpdate(t *testing.T) {
 	}
 }
 
+func TestServiceCtlReload(t *testing.T) {
+	ctl := &Controller{
+		services: map[string]*Service{
+			"keep": {
+				Config: Config{Name: "keep", Enable: true, Executable: "echo"},
+				Status: ServiceStatusRunning,
+			},
+			"disable": {
+				Config: Config{Name: "disable", Enable: false, Executable: "echo"},
+				Status: ServiceStatusRunning,
+			},
+			"update": {
+				Config: Config{Name: "update", Enable: true, Executable: "echo", Args: []string{"v1"}},
+				Status: ServiceStatusRunning,
+			},
+			"remove": {
+				Config: Config{Name: "remove", Enable: true, Executable: "echo"},
+				Status: ServiceStatusRunning,
+			},
+		},
+	}
+
+	confErr := errors.New("invalid json")
+	ctl.reread = &ServiceList{
+		Unchanged: []*Config{{Name: "keep", Enable: true, Executable: "echo"}},
+		Updated:   []*Config{{Name: "update", Enable: true, Executable: "echo", Args: []string{"v2"}}},
+		Added:     []*Config{{Name: "add", Enable: true, Executable: "node"}},
+		Removed:   []*Config{{Name: "remove", Enable: true, Executable: "echo"}},
+		Errored:   []*Config{{Name: "broken", ReadError: confErr}},
+	}
+
+	actions := make([]string, 0)
+	errMap := make(map[string]error)
+	ctl.Reload(func(sc *Config, action string, err error) {
+		actions = append(actions, sc.Name+":"+action)
+		errMap[sc.Name+":"+action] = err
+	})
+
+	wantActions := []string{
+		"disable:RELOAD stop",
+		"keep:RELOAD stop",
+		"remove:RELOAD stop",
+		"update:RELOAD stop",
+		"broken:CONF",
+		"add:RELOAD start",
+		"keep:RELOAD start",
+		"update:RELOAD start",
+	}
+	if len(actions) != len(wantActions) {
+		t.Fatalf("Reload() callback count=%d, want %d (%v)", len(actions), len(wantActions), actions)
+	}
+	for i, want := range wantActions {
+		if actions[i] != want {
+			t.Fatalf("Reload() action[%d]=%q, want %q", i, actions[i], want)
+		}
+	}
+	for _, action := range wantActions[:4] {
+		if errMap[action] != nil {
+			t.Fatalf("%s error=%v, want nil", action, errMap[action])
+		}
+	}
+	if !errors.Is(errMap["broken:CONF"], confErr) {
+		t.Fatalf("CONF error=%v, want %v", errMap["broken:CONF"], confErr)
+	}
+	for _, action := range wantActions[5:] {
+		if errMap[action] != nil {
+			t.Fatalf("%s error=%v, want nil", action, errMap[action])
+		}
+	}
+
+	if _, exists := ctl.services["remove"]; exists {
+		t.Fatal("Reload() expected removed service to be deleted from map")
+	}
+	if ctl.services["disable"].Status != ServiceStatusStopped {
+		t.Fatalf("disabled service status=%s, want %s", ctl.services["disable"].Status, ServiceStatusStopped)
+	}
+	if ctl.services["keep"].Status != ServiceStatusRunning {
+		t.Fatalf("unchanged enabled service status=%s, want %s", ctl.services["keep"].Status, ServiceStatusRunning)
+	}
+	if ctl.services["update"].Status != ServiceStatusRunning {
+		t.Fatalf("updated enabled service status=%s, want %s", ctl.services["update"].Status, ServiceStatusRunning)
+	}
+	if len(ctl.services["update"].Config.Args) != 1 || ctl.services["update"].Config.Args[0] != "v2" {
+		t.Fatalf("updated service args=%v, want [v2]", ctl.services["update"].Config.Args)
+	}
+	if ctl.services["add"].Status != ServiceStatusRunning {
+		t.Fatalf("added enabled service status=%s, want %s", ctl.services["add"].Status, ServiceStatusRunning)
+	}
+}
+
 func TestServiceAppendOutputKeepsLastLines(t *testing.T) {
 	svc := &Service{}
 	for i := 0; i < serviceOutputMaxLines+5; i++ {

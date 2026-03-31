@@ -264,7 +264,7 @@ func (ctl *Controller) dispatchRPC(method string, params json.RawMessage) (any, 
 		if err := ctl.Read(); err != nil {
 			return nil, internalRPCError(err)
 		}
-		return ctl.updateSnapshot(), nil
+		return ctl.reloadSnapshot(), nil
 	case "service.install":
 		var sc Config
 		if err := decodeRPCParams(params, &sc); err != nil {
@@ -337,6 +337,19 @@ func (ctl *Controller) rereadSnapshot() ServiceListSnapshot {
 func (ctl *Controller) updateSnapshot() ControllerUpdateResult {
 	result := ControllerUpdateResult{Actions: []ControllerAction{}}
 	ctl.Update(func(sc *Config, action string, err error) {
+		item := ControllerAction{Name: sc.Name, Action: action}
+		if err != nil {
+			item.Error = err.Error()
+		}
+		result.Actions = append(result.Actions, item)
+	})
+	result.Services = ctl.statusSnapshots()
+	return result
+}
+
+func (ctl *Controller) reloadSnapshot() ControllerUpdateResult {
+	result := ControllerUpdateResult{Actions: []ControllerAction{}}
+	ctl.Reload(func(sc *Config, action string, err error) {
 		item := ControllerAction{Name: sc.Name, Action: action}
 		if err != nil {
 			item.Error = err.Error()
