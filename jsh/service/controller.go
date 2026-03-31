@@ -400,3 +400,66 @@ func (ctl *Controller) Update(cb func(*Config, string, error)) {
 		cb(sc, "CONF", sc.ReadError)
 	}
 }
+
+func (ctl *Controller) Reload(cb func(*Config, string, error)) {
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
+	if cb == nil {
+		cb = func(_ *Config, _ string, _ error) {}
+	}
+	if ctl.reread == nil {
+		return
+	}
+	defer func() { ctl.reread = nil }()
+
+	stoppedNames := map[string]error{}
+	keys := make([]string, 0, len(ctl.services))
+	for name := range ctl.services {
+		keys = append(keys, name)
+	}
+	slices.Sort(keys)
+	for _, name := range keys {
+		svc := ctl.services[name]
+		if svc.Status != ServiceStatusRunning && svc.Status != ServiceStatusStarting {
+			continue
+		}
+		ctl.stopService(&svc.Config)
+		stoppedNames[name] = svc.Config.StopError
+		cb(&svc.Config, "RELOAD stop", svc.Config.StopError)
+	}
+
+	for _, sc := range ctl.reread.Removed {
+		delete(ctl.services, sc.Name)
+	}
+	for _, sc := range ctl.reread.Updated {
+		if svc, exists := ctl.services[sc.Name]; exists {
+			svc.Config = *sc
+			svc.Status = ServiceStatusStopped
+			svc.Error = nil
+			svc.ExitCode = 0
+		}
+	}
+	for _, sc := range ctl.reread.Added {
+		ctl.services[sc.Name] = &Service{Config: *sc, Status: ServiceStatusStopped}
+	}
+	for _, sc := range ctl.reread.Errored {
+		cb(sc, "CONF", sc.ReadError)
+	}
+
+	keys = keys[:0]
+	for name := range ctl.services {
+		keys = append(keys, name)
+	}
+	slices.Sort(keys)
+	for _, name := range keys {
+		svc := ctl.services[name]
+		if !svc.Config.Enable {
+			continue
+		}
+		if stopErr, exists := stoppedNames[name]; exists && stopErr != nil {
+			continue
+		}
+		ctl.startService(&svc.Config)
+		cb(&svc.Config, "RELOAD start", svc.Config.StartError)
+	}
+}

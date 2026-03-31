@@ -363,20 +363,19 @@ func TestServiceCommandReadFormatting(t *testing.T) {
 	}
 
 	checks := []string{
-		"UNCHANGED (1)",
+		"STATUS",
 		"NAME",
 		"EXECUTABLE",
+		"UNCHANGED",
 		"alpha",
 		"echo",
-		"ADDED (1)",
+		"ADDED",
 		"beta",
 		"node",
-		"UPDATED (0)",
-		"(none)",
-		"REMOVED (1)",
+		"REMOVED",
 		"old",
 		"sleep",
-		"ERRORED (1)",
+		"ERRORED",
 		"broken",
 		"invalid json",
 	}
@@ -384,6 +383,12 @@ func TestServiceCommandReadFormatting(t *testing.T) {
 		if !strings.Contains(output, check) {
 			t.Fatalf("output missing %q:\n%s", check, output)
 		}
+	}
+	if !strings.Contains(output, "┌") || !strings.Contains(output, "└") {
+		t.Fatalf("output missing pretty box borders:\n%s", output)
+	}
+	if !strings.Contains(output, "NAME") || !strings.Contains(output, "STATUS") || strings.Index(output, "NAME") > strings.Index(output, "STATUS") {
+		t.Fatalf("output header order mismatch, want NAME before STATUS:\n%s", output)
 	}
 }
 
@@ -394,8 +399,8 @@ func TestServiceCommandReloadFormatting(t *testing.T) {
 		}
 		return map[string]any{
 			"actions": []any{
-				map[string]any{"name": "alpha", "action": "UPDATE stop"},
-				map[string]any{"name": "alpha", "action": "UPDATE start"},
+				map[string]any{"name": "alpha", "action": "RELOAD stop"},
+				map[string]any{"name": "alpha", "action": "RELOAD start"},
 			},
 			"services": []any{
 				map[string]any{"config": map[string]any{"name": "alpha", "enable": true, "executable": "echo"}, "status": "running", "pid": 91},
@@ -414,8 +419,8 @@ func TestServiceCommandReloadFormatting(t *testing.T) {
 		"NAME",
 		"ACTION",
 		"alpha",
-		"UPDATE stop",
-		"UPDATE start",
+		"RELOAD stop",
+		"RELOAD start",
 		"SERVICES",
 		"EXECUTABLE",
 		"running",
@@ -486,8 +491,8 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service read failed: %v\n%s", err, readOutput)
 			}
-			if !strings.Contains(readOutput, "UNCHANGED (1)") || !strings.Contains(readOutput, "alpha") || !strings.Contains(readOutput, "echo") {
-				t.Fatalf("read output=%q, want unchanged alpha", readOutput)
+			if !strings.Contains(readOutput, "UNCHANGED") || !strings.Contains(readOutput, "alpha") || !strings.Contains(readOutput, "echo") {
+				t.Fatalf("read output=%q, want unified unchanged alpha", readOutput)
 			}
 
 			writeServiceJSON(t, filepath.Join(servicesDir, "alpha.json"), map[string]any{
@@ -502,8 +507,8 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatalf("service reload failed: %v\n%s", err, reloadOutput)
 			}
-			if !strings.Contains(reloadOutput, "ACTIONS") || !strings.Contains(reloadOutput, "UPDATE stop") || !strings.Contains(reloadOutput, "UPDATE start") {
-				t.Fatalf("reload output=%q, want update actions", reloadOutput)
+			if !strings.Contains(reloadOutput, "ACTIONS") || !strings.Contains(reloadOutput, "RELOAD start") {
+				t.Fatalf("reload output=%q, want reload start action", reloadOutput)
 			}
 
 			statusOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status", "alpha")

@@ -194,6 +194,9 @@ func TestPkgInstallGitHubLatestTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pkg install failed: %v\n%s", err, output)
 	}
+	if !strings.Contains(output, "Installed github.com/acme/demo#tag=v1.1.0") {
+		t.Fatalf("install output = %q, want canonical tag ref", output)
+	}
 
 	target := filepath.Join(workDir, "node_modules", "github.com", "acme", "demo")
 	if _, err := os.Stat(filepath.Join(target, "package.json")); err != nil {
@@ -209,8 +212,8 @@ func TestPkgInstallGitHubLatestTag(t *testing.T) {
 	}
 
 	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
-	if got := manifest["dependencies"].(map[string]any)["github.com/acme/demo"]; got != "v1.1.0" {
-		t.Fatalf("saved dependency = %v, want v1.1.0", got)
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/demo"]; got != "#tag=v1.1.0" {
+		t.Fatalf("saved dependency = %v, want #tag=v1.1.0", got)
 	}
 	lockJSON := readJSONFile(t, filepath.Join(workDir, "package-lock.json"))
 	packages := lockJSON["packages"].(map[string]any)
@@ -266,6 +269,9 @@ func TestPkgInstallGitHubFallsBackToDefaultBranchWhenNoTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pkg install without tags failed: %v\n%s", err, output)
 	}
+	if !strings.Contains(output, "Installed github.com/acme/notags#branch=main") {
+		t.Fatalf("install output = %q, want canonical branch ref", output)
+	}
 
 	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/notags'); console.println(pkg.message);")
 	if err != nil {
@@ -279,8 +285,8 @@ func TestPkgInstallGitHubFallsBackToDefaultBranchWhenNoTags(t *testing.T) {
 	}
 
 	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
-	if got := manifest["dependencies"].(map[string]any)["github.com/acme/notags"]; got != "main" {
-		t.Fatalf("saved dependency = %v, want main", got)
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/notags"]; got != "#branch=main" {
+		t.Fatalf("saved dependency = %v, want #branch=main", got)
 	}
 	lockJSON := readJSONFile(t, filepath.Join(workDir, "package-lock.json"))
 	packages := lockJSON["packages"].(map[string]any)
@@ -377,7 +383,7 @@ func TestPkgInstallGitHubExplicitTag(t *testing.T) {
 		"PKG_GITHUB_API_URL": server.URL + "/api",
 	}
 
-	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/filestat@v0.1.0")
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/filestat#tag=v0.1.0")
 	if err != nil {
 		t.Fatalf("pkg install explicit tag failed: %v\n%s", err, output)
 	}
@@ -391,6 +397,142 @@ func TestPkgInstallGitHubExplicitTag(t *testing.T) {
 	}
 	if tagHits.Load() != 0 {
 		t.Fatalf("tags API should not be called for explicit tag installs, got %d hits", tagHits.Load())
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/filestat"]; got != "#tag=v0.1.0" {
+		t.Fatalf("saved dependency = %v, want #tag=v0.1.0", got)
+	}
+}
+
+func TestPkgInstallGitHubExplicitBranchSkipsTagDiscovery(t *testing.T) {
+	workDir := t.TempDir()
+	var tagHits atomic.Int64
+	var repoHits atomic.Int64
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/filestat/tags":
+			tagHits.Add(1)
+			writeJSON(w, []map[string]any{{"name": "v9.9.9"}})
+		case "/api/repos/acme/filestat":
+			repoHits.Add(1)
+			writeJSON(w, map[string]any{
+				"default_branch": "main",
+			})
+		case "/api/repos/acme/filestat/contents":
+			if got := r.URL.Query().Get("ref"); got != "develop" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/filestat/develop/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "index.js",
+					"download_url": server.URL + "/download/filestat/develop/index.js",
+				},
+			})
+		case "/download/filestat/develop/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"filestat\",\n  \"version\": \"0.1.0\"\n}\n"))
+		case "/download/filestat/develop/index.js":
+			_, _ = w.Write([]byte("module.exports = { value: 'explicit-branch' };\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/filestat#branch=develop")
+	if err != nil {
+		t.Fatalf("pkg install explicit branch failed: %v\n%s", err, output)
+	}
+
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/filestat'); console.println(pkg.value);")
+	if err != nil {
+		t.Fatalf("require installed explicit branch package failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "explicit-branch" {
+		t.Fatalf("require output = %q, want explicit-branch", strings.TrimSpace(message))
+	}
+	if tagHits.Load() != 0 {
+		t.Fatalf("tags API should not be called for explicit branch installs, got %d hits", tagHits.Load())
+	}
+	if repoHits.Load() != 0 {
+		t.Fatalf("repo metadata API should not be called for explicit branch installs, got %d hits", repoHits.Load())
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/filestat"]; got != "#branch=develop" {
+		t.Fatalf("saved dependency = %v, want #branch=develop", got)
+	}
+}
+
+func TestPkgInstallGitHubAtRefAliasesToExplicitTag(t *testing.T) {
+	workDir := t.TempDir()
+	var tagHits atomic.Int64
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/filestat/tags":
+			tagHits.Add(1)
+			writeJSON(w, []map[string]any{{"name": "v9.9.9"}})
+		case "/api/repos/acme/filestat/contents":
+			if got := r.URL.Query().Get("ref"); got != "v0.1.0" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/filestat/v0.1.0/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "index.js",
+					"download_url": server.URL + "/download/filestat/v0.1.0/index.js",
+				},
+			})
+		case "/download/filestat/v0.1.0/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"filestat\",\n  \"version\": \"0.1.0\"\n}\n"))
+		case "/download/filestat/v0.1.0/index.js":
+			_, _ = w.Write([]byte("module.exports = { value: 'explicit-tag-alias' };\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/filestat@v0.1.0")
+	if err != nil {
+		t.Fatalf("pkg install github @ref alias failed: %v\n%s", err, output)
+	}
+
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/filestat'); console.println(pkg.value);")
+	if err != nil {
+		t.Fatalf("require installed @ref alias package failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "explicit-tag-alias" {
+		t.Fatalf("require output = %q, want explicit-tag-alias", strings.TrimSpace(message))
+	}
+	if tagHits.Load() != 0 {
+		t.Fatalf("tags API should not be called for github @ref alias installs, got %d hits", tagHits.Load())
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/filestat"]; got != "#tag=v0.1.0" {
+		t.Fatalf("saved dependency = %v, want #tag=v0.1.0", got)
 	}
 }
 
@@ -557,8 +699,8 @@ func TestPkgInstallGitHubExplicitRequestRefreshesLatestTagDespiteLock(t *testing
 	}
 
 	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
-	if got := manifest["dependencies"].(map[string]any)["github.com/acme/demo"]; got != "v1.1.0" {
-		t.Fatalf("saved dependency = %v, want v1.1.0", got)
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/demo"]; got != "#tag=v1.1.0" {
+		t.Fatalf("saved dependency = %v, want #tag=v1.1.0", got)
 	}
 	lockJSON := readJSONFile(t, filepath.Join(workDir, "package-lock.json"))
 	packages := lockJSON["packages"].(map[string]any)
@@ -567,7 +709,7 @@ func TestPkgInstallGitHubExplicitRequestRefreshesLatestTagDespiteLock(t *testing
 	}
 }
 
-func TestPkgInstallGitHubApplicationCreatesTargetProject(t *testing.T) {
+func TestPkgInstallGitHubExposesPackageCommandInTargetProject(t *testing.T) {
 	workDir := t.TempDir()
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -595,9 +737,9 @@ func TestPkgInstallGitHubApplicationCreatesTargetProject(t *testing.T) {
 				},
 			})
 		case "/download/helloapp/main/package.json":
-			_, _ = w.Write([]byte("{\n  \"name\": \"helloapp\",\n  \"version\": \"1.0.0\",\n  \"main\": \"hello.js\",\n  \"neo\": {\n    \"installType\": \"application\"\n  },\n  \"dependencies\": {}\n}\n"))
+			_, _ = w.Write([]byte("{\n  \"name\": \"helloapp\",\n  \"version\": \"1.0.0\",\n  \"bin\": {\n    \"helloapp\": \"./hello.js\"\n  },\n  \"dependencies\": {}\n}\n"))
 		case "/download/helloapp/main/hello.js":
-			_, _ = w.Write([]byte("module.exports = { message: 'hello-app' };\n"))
+			_, _ = w.Write([]byte("(() => { const process = require('process'); console.println(process.argv.slice(2).join('|')); })()\n"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -610,60 +752,234 @@ func TestPkgInstallGitHubApplicationCreatesTargetProject(t *testing.T) {
 
 	output, err := runCommand(workDir, env, "pkg", "install", "--dir", "public/hello", "github.com/acme/helloapp")
 	if err != nil {
-		t.Fatalf("pkg install github application failed: %v\n%s", err, output)
+		t.Fatalf("pkg install github package failed: %v\n%s", err, output)
 	}
 
 	targetDir := filepath.Join(workDir, "public", "hello")
-	publicDir := filepath.Join(workDir, "public")
 	manifest := readJSONFile(t, filepath.Join(targetDir, "package.json"))
-	if got := manifest["name"]; got != "helloapp" {
-		t.Fatalf("target package.json name = %v, want helloapp", got)
+	if got := manifest["name"]; got != "hello" {
+		t.Fatalf("target package.json name = %v, want hello", got)
 	}
-	if got := manifest["main"]; got != "hello.js" {
-		t.Fatalf("target package.json main = %v, want hello.js", got)
+	if got := manifest["dependencies"].(map[string]any)["github.com/acme/helloapp"]; got != "#branch=main" {
+		t.Fatalf("target dependency = %v, want #branch=main", got)
 	}
-	neoMeta, ok := manifest["neo"].(map[string]any)
-	if !ok {
-		t.Fatalf("target package.json neo metadata missing or invalid: %#v", manifest["neo"])
+	if _, ok := manifest["pkg"]; ok {
+		t.Fatalf("legacy pkg metadata should not be written: %#v", manifest["pkg"])
 	}
-	if got := neoMeta["installType"]; got != "application" {
-		t.Fatalf("target package.json neo.installType = %v, want application", got)
+	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", ".bin", "helloapp.js")); err != nil {
+		t.Fatalf("expected generated wrapper: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(targetDir, "hello.js")); err != nil {
-		t.Fatalf("expected application file hello.js: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", "github.com", "acme", "helloapp")); !os.IsNotExist(err) {
-		t.Fatalf("application package should not be installed under node_modules, err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(targetDir, ".pkg-tmp")); !os.IsNotExist(err) {
-		t.Fatalf("application install should not leave .pkg-tmp in the target directory, err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(targetDir, "stage")); !os.IsNotExist(err) {
-		t.Fatalf("application install should not leave stage in the target directory, err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(publicDir, ".pkg-tmp")); !os.IsNotExist(err) {
-		t.Fatalf("application install should not leave .pkg-tmp in the target parent directory, err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(publicDir, "stage")); !os.IsNotExist(err) {
-		t.Fatalf("application install should not leave stage in the target parent directory, err=%v, public=%v, work=%v", err, mustReadDirNames(t, publicDir), mustReadDirNames(t, workDir))
+	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", "github.com", "acme", "helloapp", "hello.js")); err != nil {
+		t.Fatalf("expected installed package hello.js: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(workDir, ".pkg-tmp")); !os.IsNotExist(err) {
-		t.Fatalf("application install should clean temporary staging root, err=%v", err)
+		t.Fatalf("install should clean temporary staging root, err=%v", err)
 	}
 
-	message, err := runScript(workDir, env, "const app = require('/work/public/hello'); console.println(app.message);")
+	message, err := runScript(targetDir, env, "const process = require('process'); const exitCode = process.exec('./node_modules/.bin/helloapp.js', 'delta'); if (exitCode instanceof Error) throw exitCode; if (exitCode !== 0) process.exit(exitCode);")
 	if err != nil {
-		t.Fatalf("require installed github application failed: %v\n%s", err, message)
+		t.Fatalf("executing generated wrapper failed: %v\n%s", err, message)
 	}
-	if strings.TrimSpace(message) != "hello-app" {
-		t.Fatalf("require output = %q, want hello-app", strings.TrimSpace(message))
+	if strings.TrimSpace(message) != "delta" {
+		t.Fatalf("wrapper output = %q, want delta", strings.TrimSpace(message))
 	}
 
 	lockJSON := readJSONFile(t, filepath.Join(targetDir, "package-lock.json"))
 	packages := lockJSON["packages"].(map[string]any)
 	rootPackage := packages[""].(map[string]any)
-	if got := rootPackage["name"]; got != "helloapp" {
-		t.Fatalf("lock root name = %v, want helloapp", got)
+	if got := rootPackage["name"]; got != "hello" {
+		t.Fatalf("lock root name = %v, want hello", got)
+	}
+	if _, ok := rootPackage["pkg"]; ok {
+		t.Fatalf("lock root should not contain legacy pkg metadata: %#v", rootPackage["pkg"])
+	}
+	if got := packages["node_modules/github.com/acme/helloapp"].(map[string]any)["resolved"]; got != "github.com/acme/helloapp#branch=main" {
+		t.Fatalf("locked resolved source = %v, want github.com/acme/helloapp#branch=main", got)
+	}
+
+	if err := os.RemoveAll(filepath.Join(targetDir, "node_modules")); err != nil {
+		t.Fatalf("remove node_modules: %v", err)
+	}
+	reinstallOutput, err := runCommand(workDir, env, "pkg", "install", "--dir", "public/hello")
+	if err != nil {
+		t.Fatalf("pkg reinstall failed: %v\n%s", err, reinstallOutput)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "node_modules", ".bin", "helloapp.js")); err != nil {
+		t.Fatalf("expected recreated wrapper: %v", err)
+	}
+}
+
+func TestPkgInstallSupportsPackageBinAlias(t *testing.T) {
+	workDir := t.TempDir()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/helloapp/tags":
+			writeJSON(w, []map[string]any{})
+		case "/api/repos/acme/helloapp":
+			writeJSON(w, map[string]any{"default_branch": "main"})
+		case "/api/repos/acme/helloapp/contents":
+			writeJSON(w, []map[string]any{
+				{"type": "file", "path": "package.json", "download_url": server.URL + "/download/helloapp/main/package.json"},
+				{"type": "file", "path": "hello.js", "download_url": server.URL + "/download/helloapp/main/hello.js"},
+			})
+		case "/download/helloapp/main/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"helloapp\",\n  \"version\": \"1.0.0\",\n  \"bin\": {\n    \"hello\": \"./hello.js\"\n  },\n  \"dependencies\": {}\n}\n"))
+		case "/download/helloapp/main/hello.js":
+			_, _ = w.Write([]byte("(() => { const process = require('process'); console.println(process.argv.slice(2).join('|')); })()\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{"PKG_GITHUB_API_URL": server.URL + "/api"}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/helloapp")
+	if err != nil {
+		t.Fatalf("pkg install failed: %v\n%s", err, output)
+	}
+
+	if _, err := os.Stat(filepath.Join(workDir, "node_modules", ".bin", "hello.js")); err != nil {
+		t.Fatalf("expected alias wrapper: %v", err)
+	}
+
+	runOutput, err := runScript(workDir, env, "const process = require('process'); const exitCode = process.exec('./node_modules/.bin/hello.js', 'delta'); if (exitCode instanceof Error) throw exitCode; if (exitCode !== 0) process.exit(exitCode);")
+	if err != nil {
+		t.Fatalf("package bin alias execution failed: %v\n%s", err, runOutput)
+	}
+	if strings.TrimSpace(runOutput) != "delta" {
+		t.Fatalf("package bin alias output = %q, want delta", strings.TrimSpace(runOutput))
+	}
+}
+
+func TestPkgInstallWarnsAndSkipsConflictingBinAlias(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "public", "hello")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("mkdir target dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(targetDir, "node_modules", ".bin"), 0o755); err != nil {
+		t.Fatalf("mkdir wrapper dir: %v", err)
+	}
+	writeJSONFile(t, filepath.Join(targetDir, "package.json"), map[string]any{"name": "hello", "version": "1.0.0", "scripts": map[string]any{}, "dependencies": map[string]any{}})
+	if err := os.WriteFile(filepath.Join(targetDir, "node_modules", ".bin", "helloapp.js"), []byte("// neo-pkg-wrapper-owner:github.com/acme/otherapp\n"), 0o644); err != nil {
+		t.Fatalf("write existing wrapper: %v", err)
+	}
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/helloapp/tags":
+			writeJSON(w, []map[string]any{})
+		case "/api/repos/acme/helloapp":
+			writeJSON(w, map[string]any{
+				"default_branch": "main",
+			})
+		case "/api/repos/acme/helloapp/contents":
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/helloapp/main/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "hello.js",
+					"download_url": server.URL + "/download/helloapp/main/hello.js",
+				},
+			})
+		case "/download/helloapp/main/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"helloapp\",\n  \"version\": \"1.0.0\",\n  \"bin\": {\n    \"helloapp\": \"./hello.js\"\n  },\n  \"dependencies\": {}\n}\n"))
+		case "/download/helloapp/main/hello.js":
+			_, _ = w.Write([]byte("(() => { const process = require('process'); console.println(process.argv.slice(2).join('|')); })()\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "--dir", "public/hello", "github.com/acme/helloapp")
+	if err != nil {
+		t.Fatalf("pkg install with conflicting bin alias failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Warning: package bin alias helloapp from github.com/acme/helloapp conflicts with github.com/acme/otherapp") {
+		t.Fatalf("missing bin conflict warning: %q", output)
+	}
+	wrapperBytes, err := os.ReadFile(filepath.Join(targetDir, "node_modules", ".bin", "helloapp.js"))
+	if err != nil {
+		t.Fatalf("read existing wrapper: %v", err)
+	}
+	if !strings.Contains(string(wrapperBytes), "github.com/acme/otherapp") {
+		t.Fatalf("existing wrapper should be preserved: %q", string(wrapperBytes))
+	}
+}
+
+func TestPkgInstallWarnsAndSkipsUnmanagedBinAlias(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "public", "hello")
+	if err := os.MkdirAll(filepath.Join(targetDir, "node_modules", ".bin"), 0o755); err != nil {
+		t.Fatalf("mkdir wrapper dir: %v", err)
+	}
+	writeJSONFile(t, filepath.Join(targetDir, "package.json"), map[string]any{"name": "hello", "version": "1.0.0", "scripts": map[string]any{}, "dependencies": map[string]any{}})
+	if err := os.WriteFile(filepath.Join(targetDir, "node_modules", ".bin", "helloapp.js"), []byte("(() => { console.println('old'); })()\n"), 0o644); err != nil {
+		t.Fatalf("write existing wrapper: %v", err)
+	}
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/helloapp/tags":
+			writeJSON(w, []map[string]any{})
+		case "/api/repos/acme/helloapp":
+			writeJSON(w, map[string]any{
+				"default_branch": "main",
+			})
+		case "/api/repos/acme/helloapp/contents":
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/helloapp/main/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "hello.js",
+					"download_url": server.URL + "/download/helloapp/main/hello.js",
+				},
+			})
+		case "/download/helloapp/main/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"helloapp\",\n  \"version\": \"1.0.0\",\n  \"bin\": {\n    \"helloapp\": \"./hello.js\"\n  },\n  \"dependencies\": {}\n}\n"))
+		case "/download/helloapp/main/hello.js":
+			_, _ = w.Write([]byte("(() => { const process = require('process'); console.println(process.argv.slice(2).join('|')); })()\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "--dir", "public/hello", "github.com/acme/helloapp")
+	if err != nil {
+		t.Fatalf("pkg install with unmanaged conflicting bin alias failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Warning: package bin alias helloapp from github.com/acme/helloapp conflicts with existing wrapper") {
+		t.Fatalf("missing unmanaged conflict warning: %q", output)
+	}
+
+	wrapperBytes, err := os.ReadFile(filepath.Join(targetDir, "node_modules", ".bin", "helloapp.js"))
+	if err != nil {
+		t.Fatalf("read existing unmanaged wrapper: %v", err)
+	}
+	if strings.TrimSpace(string(wrapperBytes)) != "(() => { console.println('old'); })()" {
+		t.Fatalf("existing unmanaged wrapper should be preserved: %q", string(wrapperBytes))
 	}
 }
 
@@ -873,6 +1189,73 @@ func TestPkgInstallSupportsShortTargetDirectoryOption(t *testing.T) {
 	assertPackageVersion(t, filepath.Join(workDir, "pkg-root", "node_modules", "generic-pkg", "package.json"), "1.0.0")
 }
 
+func TestPkgInstallGlobalIgnoresTargetDirectoryOption(t *testing.T) {
+	workDir := t.TempDir()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/npm/generic-pkg":
+			writeJSON(w, map[string]any{
+				"name":      "generic-pkg",
+				"dist-tags": map[string]any{"latest": "1.3.0"},
+				"versions": map[string]any{
+					"1.3.0": map[string]any{
+						"name":    "generic-pkg",
+						"version": "1.3.0",
+						"dist":    map[string]any{"tarball": server.URL + "/tarballs/generic-pkg-1.3.0.tgz"},
+					},
+				},
+			})
+		case "/tarballs/generic-pkg-1.3.0.tgz":
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(makeTgzPackage(t, map[string]any{
+				"name":    "generic-pkg",
+				"version": "1.3.0",
+				"main":    "index.js",
+			}, map[string]string{
+				"index.js": "module.exports = { message: 'global-install' };\n",
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_NPM_REGISTRY_URL": server.URL + "/npm",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "-g", "--dir", "app", "generic-pkg")
+	if err != nil {
+		t.Fatalf("pkg install -g failed: %v\n%s", err, output)
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "node_modules", ".pkg", "manifest.json"))
+	if got := manifest["name"]; got != "global" {
+		t.Fatalf("global manifest name = %v, want global", got)
+	}
+	if got := manifest["dependencies"].(map[string]any)["generic-pkg"]; got != "^1.3.0" {
+		t.Fatalf("global dependency = %v, want ^1.3.0", got)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "node_modules", ".pkg", "lock.json")); err != nil {
+		t.Fatalf("global lock metadata should exist: %v", err)
+	}
+
+	assertPackageVersion(t, filepath.Join(workDir, "node_modules", "generic-pkg", "package.json"), "1.3.0")
+	if _, err := os.Stat(filepath.Join(workDir, "app", "node_modules", "generic-pkg", "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("package should not be installed in --dir target during global install, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("global install should not create /work/package.json, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("global install should not create /work/package-lock.json, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "app", "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("global install should ignore --dir manifest location, err=%v", err)
+	}
+}
+
 func TestPkgInstallRejectsFileTargetPath(t *testing.T) {
 	workDir := t.TempDir()
 	targetFile := filepath.Join(workDir, "target-file")
@@ -899,8 +1282,179 @@ func TestPkgInstallHelpIncludesTargetDirectoryOption(t *testing.T) {
 	if !strings.Contains(output, "-C, --dir") {
 		t.Fatalf("help output missing short/long dir option: %q", output)
 	}
+	if !strings.Contains(output, "-g, --[no-]global") {
+		t.Fatalf("help output missing short/long global option: %q", output)
+	}
+	if strings.Contains(output, "--as") {
+		t.Fatalf("help output should not mention alias option: %q", output)
+	}
+	if strings.Contains(output, "--[no-]force") || strings.Contains(output, "--force") {
+		t.Fatalf("help output should not mention force option: %q", output)
+	}
+	if !strings.Contains(output, "ignore --dir") {
+		t.Fatalf("help output missing global option description: %q", output)
+	}
 	if !strings.Contains(output, "Use this project directory") {
 		t.Fatalf("help output missing dir description: %q", output)
+	}
+}
+
+func TestPkgUninstallHelpIncludesTargetDirectoryOption(t *testing.T) {
+	workDir := t.TempDir()
+
+	output, err := runCommand(workDir, nil, "pkg", "uninstall", "--help")
+	if err != nil && !strings.Contains(output, "pkg uninstall [options] <name>") {
+		t.Fatalf("pkg uninstall --help failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "-C, --dir") {
+		t.Fatalf("help output missing short/long dir option: %q", output)
+	}
+	if !strings.Contains(output, "-g, --[no-]global") {
+		t.Fatalf("help output missing short/long global option: %q", output)
+	}
+	if !strings.Contains(output, "ignore --dir") {
+		t.Fatalf("help output missing global option description: %q", output)
+	}
+	if !strings.Contains(output, "Use this project directory") {
+		t.Fatalf("help output missing dir description: %q", output)
+	}
+}
+
+func TestPkgUninstallRemovesPackageCommandAndDependency(t *testing.T) {
+	workDir := t.TempDir()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/helloapp/tags":
+			writeJSON(w, []map[string]any{})
+		case "/api/repos/acme/helloapp":
+			writeJSON(w, map[string]any{
+				"default_branch": "main",
+			})
+		case "/api/repos/acme/helloapp/contents":
+			writeJSON(w, []map[string]any{
+				{
+					"type":         "file",
+					"path":         "package.json",
+					"download_url": server.URL + "/download/helloapp/main/package.json",
+				},
+				{
+					"type":         "file",
+					"path":         "hello.js",
+					"download_url": server.URL + "/download/helloapp/main/hello.js",
+				},
+			})
+		case "/download/helloapp/main/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"helloapp\",\n  \"version\": \"1.0.0\",\n  \"bin\": {\n    \"helloapp\": \"./hello.js\"\n  },\n  \"dependencies\": {}\n}\n"))
+		case "/download/helloapp/main/hello.js":
+			_, _ = w.Write([]byte("(() => { const process = require('process'); console.println(process.argv.slice(2).join('|')); })()\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	_, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/helloapp")
+	if err != nil {
+		t.Fatalf("pkg install before uninstall failed: %v", err)
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "uninstall", "github.com/acme/helloapp")
+	if err != nil {
+		t.Fatalf("pkg uninstall failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Removed github.com/acme/helloapp") {
+		t.Fatalf("unexpected uninstall output: %q", output)
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	if _, ok := manifest["dependencies"].(map[string]any)["github.com/acme/helloapp"]; ok {
+		t.Fatalf("dependency should be removed: %#v", manifest["dependencies"])
+	}
+	if _, ok := manifest["pkg"]; ok {
+		t.Fatalf("legacy pkg metadata should not remain: %#v", manifest["pkg"])
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "node_modules", ".bin", "helloapp.js")); !os.IsNotExist(err) {
+		t.Fatalf("wrapper should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "node_modules", "github.com", "acme", "helloapp")); !os.IsNotExist(err) {
+		t.Fatalf("package directory should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("lockfile should be removed when no dependencies remain, err=%v", err)
+	}
+}
+
+func TestPkgUninstallGlobalIgnoresTargetDirectoryOption(t *testing.T) {
+	workDir := t.TempDir()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/npm/generic-pkg":
+			writeJSON(w, map[string]any{
+				"name":      "generic-pkg",
+				"dist-tags": map[string]any{"latest": "1.3.0"},
+				"versions": map[string]any{
+					"1.3.0": map[string]any{
+						"name":    "generic-pkg",
+						"version": "1.3.0",
+						"dist":    map[string]any{"tarball": server.URL + "/tarballs/generic-pkg-1.3.0.tgz"},
+					},
+				},
+			})
+		case "/tarballs/generic-pkg-1.3.0.tgz":
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(makeTgzPackage(t, map[string]any{
+				"name":    "generic-pkg",
+				"version": "1.3.0",
+				"main":    "index.js",
+			}, map[string]string{
+				"index.js": "module.exports = { message: 'global-install' };\n",
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_NPM_REGISTRY_URL": server.URL + "/npm",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "-g", "generic-pkg")
+	if err != nil {
+		t.Fatalf("pkg install -g before uninstall failed: %v\n%s", err, output)
+	}
+
+	output, err = runCommand(workDir, env, "pkg", "uninstall", "-g", "--dir", "app", "generic-pkg")
+	if err != nil {
+		t.Fatalf("pkg uninstall -g failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Removed generic-pkg") {
+		t.Fatalf("unexpected uninstall output: %q", output)
+	}
+
+	manifest := readJSONFile(t, filepath.Join(workDir, "node_modules", ".pkg", "manifest.json"))
+	if deps, ok := manifest["dependencies"].(map[string]any); ok {
+		if _, exists := deps["generic-pkg"]; exists {
+			t.Fatalf("global dependency should be removed: %#v", deps)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "node_modules", "generic-pkg", "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("global package should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("global uninstall should not create /work/package.json, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("global uninstall should not create /work/package-lock.json, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "app", "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("pkg uninstall -g should ignore --dir manifest location, err=%v", err)
 	}
 }
 
@@ -1497,19 +2051,6 @@ func makeTgzPackage(t *testing.T, manifest map[string]any, files map[string]stri
 		t.Fatalf("close gzip writer: %v", err)
 	}
 	return compressed.Bytes()
-}
-
-func mustReadDirNames(t *testing.T, dir string) []string {
-	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return []string{fmt.Sprintf("read-error:%v", err)}
-	}
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		names = append(names, entry.Name())
-	}
-	return names
 }
 
 func TestPkgInstallRejectsUnsafeGitHubEntries(t *testing.T) {
