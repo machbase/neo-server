@@ -14,16 +14,22 @@ func TestWhich(t *testing.T) {
 	// Create a mounted filesystem with proper absolute paths
 	mfs := NewFS()
 	testFS := fstest.MapFS{
-		"shell.js":        &fstest.MapFile{Data: []byte("content")},
-		"test.js":         &fstest.MapFile{Data: []byte("content")},
-		"subdir/shell.js": &fstest.MapFile{Data: []byte("content")},
+		"shell.js":                    &fstest.MapFile{Data: []byte("content")},
+		"test.js":                     &fstest.MapFile{Data: []byte("content")},
+		"subdir/shell.js":             &fstest.MapFile{Data: []byte("content")},
+		"node_modules/.bin/eslint.js": &fstest.MapFile{Data: []byte("content")},
 	}
 	sbin := fstest.MapFS{
 		"util.js": &fstest.MapFile{Data: []byte("content")},
 	}
+	nodeModules := fstest.MapFS{
+		"eslint.js": &fstest.MapFile{Data: []byte("content")},
+		"tsc.js":    &fstest.MapFile{Data: []byte("content")},
+	}
 	mfs.Mount("/bin", testFS)
 	mfs.Mount("/lib", sbin)
 	mfs.Mount("/work", testFS)
+	mfs.Mount("/node_modules/.bin", nodeModules)
 
 	tests := []struct {
 		name    string
@@ -38,6 +44,8 @@ func TestWhich(t *testing.T) {
 		{"relative path", "/bin", "./shell", "/work/subdir/shell.js"},
 		{"home path", "/bin", "~/shell", "/work/shell.js"},
 		{"variable in path", "/bin", "$HOME/shell", "/work/shell.js"},
+		{"find in work node_modules bin", "/work/node_modules/.bin", "eslint", "/work/node_modules/.bin/eslint.js"},
+		{"find in relative node_modules bin", "./node_modules/.bin", "tsc", "node_modules/.bin/tsc.js"},
 		{"empty path", "", "shell", ""},
 	}
 
@@ -554,6 +562,76 @@ func TestDefaultEnv_DefaultValues(t *testing.T) {
 	execBuilder := env.ExecBuilder()
 	if execBuilder != nil {
 		t.Error("Default ExecBuilder() should be nil")
+	}
+}
+
+func TestAppendMissingPathElements(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  any
+		required []string
+		want     string
+	}{
+		{"nil current", nil, []string{".", "/sbin"}, ".:/sbin"},
+		{"empty string", "", []string{".", "/sbin"}, ".:/sbin"},
+		{"append missing only", "/custom/bin:./node_modules/.bin", []string{".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin"}, "/custom/bin:./node_modules/.bin:.:/sbin:/work/node_modules/.bin"},
+		{"deduplicate existing", "/custom/bin:/sbin:/custom/bin", []string{"/sbin", "/lib"}, "/custom/bin:/sbin:/lib"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := appendMissingPathElements(tt.current, tt.required...)
+			if got != tt.want {
+				t.Errorf("appendMissingPathElements() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNew_AppendsRequiredPathElements(t *testing.T) {
+	jr, err := New(Config{
+		Name: "test",
+		Code: "// test",
+		Env: map[string]any{
+			"PATH":         "/custom/bin:./node_modules/.bin",
+			"LIBRARY_PATH": "/custom/lib:/work/node_modules",
+			"HOME":         "/custom/home",
+			"PWD":          "/custom/pwd",
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if got, want := jr.Env.Get("PATH"), "/custom/bin:./node_modules/.bin:.:/sbin:/work/node_modules/.bin"; got != want {
+		t.Errorf("PATH = %v, want %v", got, want)
+	}
+	if got, want := jr.Env.Get("LIBRARY_PATH"), "/custom/lib:/work/node_modules:./node_modules:/lib"; got != want {
+		t.Errorf("LIBRARY_PATH = %v, want %v", got, want)
+	}
+	if got := jr.Env.Get("HOME"); got != "/custom/home" {
+		t.Errorf("HOME = %v, want /custom/home", got)
+	}
+	if got := jr.Env.Get("PWD"); got != "/custom/pwd" {
+		t.Errorf("PWD = %v, want /custom/pwd", got)
+	}
+
+	jrDefault, err := New(Config{Name: "test", Code: "// test"})
+	if err != nil {
+		t.Fatalf("New() with default env error = %v", err)
+	}
+
+	if got, want := jrDefault.Env.Get("PATH"), ".:/sbin:/work/node_modules/.bin:./node_modules/.bin"; got != want {
+		t.Errorf("default PATH = %v, want %v", got, want)
+	}
+	if got, want := jrDefault.Env.Get("LIBRARY_PATH"), "./node_modules:/work/node_modules:/lib"; got != want {
+		t.Errorf("default LIBRARY_PATH = %v, want %v", got, want)
+	}
+	if got, want := jrDefault.Env.Get("HOME"), "/"; got != want {
+		t.Errorf("default HOME = %v, want %v", got, want)
+	}
+	if got, want := jrDefault.Env.Get("PWD"), "/"; got != want {
+		t.Errorf("default PWD = %v, want %v", got, want)
 	}
 }
 

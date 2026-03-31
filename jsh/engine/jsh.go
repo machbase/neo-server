@@ -51,12 +51,8 @@ func New(conf Config) (*JSRuntime, error) {
 		env.Set(k, v)
 	}
 	// Default environment variables
-	if env.Get("PATH") == nil {
-		env.Set("PATH", "/sbin:.")
-	}
-	if env.Get("LIBRARY_PATH") == nil {
-		env.Set("LIBRARY_PATH", "./node_modules:/lib")
-	}
+	env.Set("PATH", appendMissingPathElements(env.Get("PATH"), ".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin"))
+	env.Set("LIBRARY_PATH", appendMissingPathElements(env.Get("LIBRARY_PATH"), "./node_modules", "/work/node_modules", "/lib"))
 	if env.Get("HOME") == nil {
 		env.Set("HOME", "/")
 	}
@@ -133,6 +129,31 @@ func New(conf Config) (*JSRuntime, error) {
 		eventloop.WithRegistry(jr.registry),
 	)
 	return jr, nil
+}
+
+func appendMissingPathElements(current any, required ...string) string {
+	seen := map[string]bool{}
+	elements := []string{}
+
+	if currentStr, ok := current.(string); ok {
+		for _, element := range strings.Split(currentStr, ":") {
+			if element == "" || seen[element] {
+				continue
+			}
+			seen[element] = true
+			elements = append(elements, element)
+		}
+	}
+
+	for _, element := range required {
+		if element == "" || seen[element] {
+			continue
+		}
+		seen[element] = true
+		elements = append(elements, element)
+	}
+
+	return strings.Join(elements, ":")
 }
 
 func (jr *JSRuntime) Main() int {
