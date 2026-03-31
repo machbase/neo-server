@@ -1230,17 +1230,26 @@ func TestPkgInstallGlobalIgnoresTargetDirectoryOption(t *testing.T) {
 		t.Fatalf("pkg install -g failed: %v\n%s", err, output)
 	}
 
-	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
-	if got := manifest["name"]; got != "work" {
-		t.Fatalf("global package.json name = %v, want work", got)
+	manifest := readJSONFile(t, filepath.Join(workDir, "node_modules", ".pkg", "manifest.json"))
+	if got := manifest["name"]; got != "global" {
+		t.Fatalf("global manifest name = %v, want global", got)
 	}
 	if got := manifest["dependencies"].(map[string]any)["generic-pkg"]; got != "^1.3.0" {
 		t.Fatalf("global dependency = %v, want ^1.3.0", got)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "node_modules", ".pkg", "lock.json")); err != nil {
+		t.Fatalf("global lock metadata should exist: %v", err)
 	}
 
 	assertPackageVersion(t, filepath.Join(workDir, "node_modules", "generic-pkg", "package.json"), "1.3.0")
 	if _, err := os.Stat(filepath.Join(workDir, "app", "node_modules", "generic-pkg", "package.json")); !os.IsNotExist(err) {
 		t.Fatalf("package should not be installed in --dir target during global install, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("global install should not create /work/package.json, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("global install should not create /work/package-lock.json, err=%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(workDir, "app", "package.json")); !os.IsNotExist(err) {
 		t.Fatalf("global install should ignore --dir manifest location, err=%v", err)
@@ -1429,7 +1438,7 @@ func TestPkgUninstallGlobalIgnoresTargetDirectoryOption(t *testing.T) {
 		t.Fatalf("unexpected uninstall output: %q", output)
 	}
 
-	manifest := readJSONFile(t, filepath.Join(workDir, "package.json"))
+	manifest := readJSONFile(t, filepath.Join(workDir, "node_modules", ".pkg", "manifest.json"))
 	if deps, ok := manifest["dependencies"].(map[string]any); ok {
 		if _, exists := deps["generic-pkg"]; exists {
 			t.Fatalf("global dependency should be removed: %#v", deps)
@@ -1437,6 +1446,12 @@ func TestPkgUninstallGlobalIgnoresTargetDirectoryOption(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workDir, "node_modules", "generic-pkg", "package.json")); !os.IsNotExist(err) {
 		t.Fatalf("global package should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package.json")); !os.IsNotExist(err) {
+		t.Fatalf("global uninstall should not create /work/package.json, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, "package-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("global uninstall should not create /work/package-lock.json, err=%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(workDir, "app", "package.json")); !os.IsNotExist(err) {
 		t.Fatalf("pkg uninstall -g should ignore --dir manifest location, err=%v", err)

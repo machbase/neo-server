@@ -14,6 +14,9 @@
 
     const LOCK_FILE_NAME = 'package-lock.json';
     const GLOBAL_PROJECT_DIR = '/work';
+    const GLOBAL_STATE_DIR = '.pkg';
+    const GLOBAL_MANIFEST_FILE = 'manifest.json';
+    const GLOBAL_LOCK_FILE = 'lock.json';
     const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
     const optionProjectDir = { type: 'string', short: 'C', description: 'Use this project directory instead of the current working directory' };
     const optionGlobal = { type: 'boolean', short: 'g', description: 'Install into the global package directory /work and ignore --dir', default: false };
@@ -274,12 +277,14 @@
     function createInstallState(installDir, globalInstall) {
         const invocationCwd = process.cwd();
         const cwd = prepareProjectDirectory(invocationCwd, installDir, globalInstall);
-        const manifestPath = path.resolve(cwd, 'package.json');
-        const lockPath = path.resolve(cwd, LOCK_FILE_NAME);
+        const statePaths = resolveStatePaths(cwd, globalInstall);
+        const manifestPath = statePaths.manifestPath;
+        const lockPath = statePaths.lockPath;
         return {
             cwd,
             invocationCwd,
             globalInstall: !!globalInstall,
+            stateRoot: statePaths.stateRoot,
             installRoot: path.resolve(cwd, 'node_modules'),
             tempRootBase: resolveTempRootBase(invocationCwd),
             manifestPath,
@@ -529,7 +534,7 @@
             return state.projectManifest;
         }
         state.projectManifest = {
-            name: path.basename(state.cwd),
+            name: defaultManifestName(state),
             version: '1.0.0',
             scripts: {},
             dependencies: {},
@@ -540,7 +545,7 @@
     function buildLockFile(rootDependencies, state) {
         const rootName = state.projectManifest && typeof state.projectManifest.name === 'string'
             ? state.projectManifest.name
-            : path.basename(state.cwd);
+            : defaultManifestName(state);
         const rootVersion = state.projectManifest && typeof state.projectManifest.version === 'string'
             ? state.projectManifest.version
             : '0.0.0';
@@ -757,7 +762,15 @@
     }
 
     function writeJsonFile(filePath, value) {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    }
+
+    function defaultManifestName(state) {
+        if (state && state.globalInstall) {
+            return 'global';
+        }
+        return path.basename(state.cwd);
     }
 
     function validatePackageName(name) {
@@ -1029,6 +1042,22 @@
         }
 
         return path.resolve(invocationCwd, '.pkg-tmp');
+    }
+
+    function resolveStatePaths(cwd, globalInstall) {
+        if (globalInstall) {
+            const stateRoot = path.resolve(cwd, 'node_modules', GLOBAL_STATE_DIR);
+            return {
+                stateRoot,
+                manifestPath: path.join(stateRoot, GLOBAL_MANIFEST_FILE),
+                lockPath: path.join(stateRoot, GLOBAL_LOCK_FILE),
+            };
+        }
+        return {
+            stateRoot: cwd,
+            manifestPath: path.resolve(cwd, 'package.json'),
+            lockPath: path.resolve(cwd, LOCK_FILE_NAME),
+        };
     }
 
     function prepareProjectDirectory(invocationCwd, installDir, globalInstall) {
