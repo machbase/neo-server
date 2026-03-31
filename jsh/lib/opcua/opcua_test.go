@@ -105,6 +105,35 @@ func TestScriptOPCUA(t *testing.T) {
 			},
 		},
 		{
+			Name: "opcua-children-variables",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					refs = client.children({
+						node: "ns=1;i=85",
+						nodeClassMask: ua.NodeClass.Variable,
+					});
+					refs.sort((a,b) => a.browseName < b.browseName ? -1 : 1)
+						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass));
+				} catch(e) {
+					console.println("Error:", e);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"NoAccessVariable ns=1;s=NoAccessVariable 2",
+				"NoPermVariable ns=1;s=NoPermVariable 2",
+				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2",
+				"ReadWriteVariable ns=1;s=ReadWriteVariable 2",
+				"ro_bool ns=1;s=ro_bool 2",
+				"ro_int32 ns=1;s=ro_int32 2",
+				"rw_bool ns=1;s=rw_bool 2",
+				"rw_int32 ns=1;s=rw_int32 2",
+			},
+		},
+		{
 			Name: "opcua-browse-variables",
 			Script: `
 				ua = require("opcua");

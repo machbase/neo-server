@@ -59,6 +59,10 @@ class Client {
     browse(request) {
         return this._client.browse(request);
     }
+
+    children(request) {
+        return this._client.children(request);
+    }
 }
 
 /**

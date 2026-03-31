@@ -118,6 +118,7 @@ func new_client(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
 		ret.Set("read", c.Read)
 		ret.Set("write", c.Write)
 		ret.Set("browse", c.Browse)
+		ret.Set("children", c.Children)
 		return ret
 	}
 }
@@ -293,6 +294,46 @@ func (c *Client) Browse(call goja.FunctionCall) goja.Value {
 			"references": refs,
 		}
 		ret = append(ret, c.rt.ToValue(ent))
+	}
+	return c.rt.ToValue(ret)
+}
+
+func (c *Client) Children(call goja.FunctionCall) goja.Value {
+	if len(call.Arguments) == 0 {
+		panic(c.rt.ToValue("missing arguments"))
+	}
+	arg := struct {
+		Node          string       `json:"node"`
+		NodeClassMask ua.NodeClass `json:"nodeClassMask"`
+	}{}
+	if err := c.rt.ExportTo(call.Arguments[0], &arg); err != nil {
+		panic(c.rt.NewGoError(err))
+	}
+	if arg.Node == "" {
+		panic(c.rt.ToValue("missing node"))
+	}
+
+	nodeID, err := ua.ParseNodeID(arg.Node)
+	if err != nil {
+		panic(c.rt.NewGoError(err))
+	}
+
+	refs, err := c.client.Node(nodeID).References(c.ctx, id.HierarchicalReferences, ua.BrowseDirectionForward, arg.NodeClassMask, true)
+	if err != nil {
+		panic(c.rt.NewGoError(err))
+	}
+
+	ret := make([]any, 0, len(refs))
+	for _, ref := range refs {
+		ret = append(ret, map[string]any{
+			"referenceTypeId": ref.ReferenceTypeID.String(),
+			"isForward":       ref.IsForward,
+			"nodeId":          ref.NodeID.NodeID.String(),
+			"browseName":      ref.BrowseName.Name,
+			"displayName":     ref.DisplayName.Text,
+			"nodeClass":       uint32(ref.NodeClass),
+			"typeDefinition":  ref.TypeDefinition.NodeID.String(),
+		})
 	}
 	return c.rt.ToValue(ret)
 }
