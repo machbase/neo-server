@@ -24,11 +24,11 @@ func TestScriptOPCUA(t *testing.T) {
 				try {
 					client = new ua.Client();
 				} catch(e) {
-					console.println("Error:", e); 
+					console.println("Error:", e.message); 
 				}
 			`,
 			Output: []string{
-				"Error: missing arguments",
+				"Error: missing client options",
 			},
 		},
 		{

@@ -21,8 +21,14 @@ const _opcua = require('@jsh/opcua');
  * @param {number} [args[0].messageSecurityMode=MessageSecurityMode.None] - Security mode to use for the connection.
  */
 class Client {
-    constructor(...args) {
-        this._client = Reflect.construct(_opcua.Client, args);
+    constructor(opt) {
+        if (!opt) {
+            throw new Error("missing client options");
+        }
+        if (opt.messageSecurityMode === undefined) {
+            opt.messageSecurityMode = MessageSecurityMode.None;
+        }
+        this._client = _opcua.newClient(opt);
     }
 
     /**
@@ -42,6 +48,9 @@ class Client {
      * @returns {Array<Object>} Read results for each node.
      */
     read(request) {
+        if (request && !request.timestampsToReturn) {
+            request.timestampsToReturn = TimestampsToReturn.Neither;
+        }
         return this._client.read(request);
     }
 
@@ -68,6 +77,15 @@ class Client {
      * @returns {Array<Object>} Browse results for each requested node.
      */
     browse(request) {
+        if (request && !request.browseDirection) {
+            request.browseDirection = BrowseDirection.Forward;
+        }
+        if (request && request.includeSubtypes === undefined) {
+            request.includeSubtypes = true;
+        }
+        if (request && !request.resultMask) {
+            request.resultMask = BrowseResultMask.All;
+        }
         return this._client.browse(request);
     }
 

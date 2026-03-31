@@ -27,7 +27,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/opcua")
 	o := module.Get("exports").(*goja.Object)
 
-	o.Set("Client", new_client(rt))
+	o.Set("newClient", NewClient)
 	// BrowseDirection
 	o.Set("BrowseDirection", rt.ToValue(map[string]any{
 		"Forward": ua.BrowseDirectionForward,
@@ -77,102 +77,136 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	}))
 }
 
-func new_client(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
-	ctx := context.Background()
-	return func(call goja.ConstructorCall) *goja.Object {
-		if len(call.Arguments) == 0 {
-			panic(rt.ToValue("missing arguments"))
-		}
-		opts := struct {
-			Endpoint            string                 `json:"endpoint"`
-			ReadRetryInterval   time.Duration          `json:"readRetryInterval"`
-			MessageSecurityMode ua.MessageSecurityMode `json:"messageSecurityMode"`
-		}{
-			MessageSecurityMode: ua.MessageSecurityModeNone,
-		}
-		if err := rt.ExportTo(call.Arguments[0], &opts); err != nil {
-			panic(rt.NewGoError(err))
-		}
-		if opts.ReadRetryInterval < 100*time.Millisecond {
-			opts.ReadRetryInterval = 100 * time.Millisecond
-		}
+type ClientOptions struct {
+	Endpoint            string                 `json:"endpoint"`
+	ReadRetryInterval   time.Duration          `json:"readRetryInterval"`
+	MessageSecurityMode ua.MessageSecurityMode `json:"messageSecurityMode"`
+}
 
-		client, err := opcua.NewClient(opts.Endpoint, opcua.SecurityMode(opts.MessageSecurityMode))
-		if err != nil {
-			panic(rt.NewGoError(err))
-		}
+type ReadRequest struct {
+	MaxAge             float64               `json:"maxAge"`
+	Nodes              []string              `json:"nodes"`
+	TimestampsToReturn ua.TimestampsToReturn `json:"timestampsToReturn"`
+}
 
-		if err := client.Connect(ctx); err != nil {
-			panic(rt.NewGoError(err))
-		}
+type ReadResult struct {
+	Status          uint32 `json:"status"`
+	StatusText      string `json:"statusText"`
+	StatusCode      string `json:"statusCode"`
+	Value           any    `json:"value"`
+	Type            string `json:"type"`
+	SourceTimestamp int64  `json:"sourceTimestamp"`
+	ServerTimestamp int64  `json:"serverTimestamp"`
+}
 
-		c := &Client{
-			ctx:           ctx,
-			rt:            rt,
-			client:        client,
-			retryInterval: opts.ReadRetryInterval,
-			securityMode:  opts.MessageSecurityMode,
-		}
-		ret := rt.NewObject()
-		ret.Set("close", c.Close)
-		ret.Set("read", c.Read)
-		ret.Set("write", c.Write)
-		ret.Set("browse", c.Browse)
-		ret.Set("children", c.Children)
-		return ret
+type BrowseRequest struct {
+	Nodes           []string            `json:"nodes"`
+	BrowseDirection ua.BrowseDirection  `json:"browseDirection"`
+	ReferenceTypeID string              `json:"referenceTypeId"`
+	IncludeSubtypes bool                `json:"includeSubtypes"`
+	NodeClassMask   uint32              `json:"nodeClassMask"`
+	ResultMask      ua.BrowseResultMask `json:"resultMask"`
+}
+
+type BrowseResult struct {
+	Status     uint32            `json:"status"`
+	StatusText string            `json:"statusText"`
+	References []BrowseReference `json:"references"`
+}
+
+type BrowseReference struct {
+	ReferenceTypeId string `json:"referenceTypeId"`
+	IsForward       bool   `json:"isForward"`
+	NodeId          string `json:"nodeId"`
+	BrowseName      string `json:"browseName"`
+	DisplayName     string `json:"displayName"`
+	NodeClass       uint32 `json:"nodeClass"`
+	TypeDefinition  string `json:"typeDefinition"`
+}
+
+type ChildrenRequest struct {
+	Node          string       `json:"node"`
+	NodeClassMask ua.NodeClass `json:"nodeClassMask"`
+}
+
+type ChildrenResult struct {
+	ReferenceTypeId string `json:"referenceTypeId"`
+	IsForward       bool   `json:"isForward"`
+	NodeId          string `json:"nodeId"`
+	BrowseName      string `json:"browseName"`
+	DisplayName     string `json:"displayName"`
+	NodeClass       uint32 `json:"nodeClass"`
+	TypeDefinition  string `json:"typeDefinition"`
+}
+
+type WriteValue struct {
+	Node  string `json:"node"`
+	Value any    `json:"value"`
+}
+
+type WriteResult struct {
+	Timestamp     int64    `json:"timestamp"`
+	RequestHandle uint32   `json:"requestHandle"`
+	ServiceResult uint32   `json:"serviceResult"`
+	StringTable   []string `json:"stringTable"`
+	Results       []uint32 `json:"results"`
+	Error         error    `json:"error"`
+}
+
+func NewClient(opts ClientOptions) (*Client, error) {
+	if opts.ReadRetryInterval < 100*time.Millisecond {
+		opts.ReadRetryInterval = 100 * time.Millisecond
 	}
+
+	ctx := context.Background()
+	client, err := opcua.NewClient(opts.Endpoint, opcua.SecurityMode(opts.MessageSecurityMode))
+	if err != nil {
+		return nil, err
+	}
+	if err := client.Connect(ctx); err != nil {
+		return nil, err
+	}
+
+	return &Client{
+		ctx:           ctx,
+		client:        client,
+		retryInterval: opts.ReadRetryInterval,
+	}, nil
 }
 
 type Client struct {
 	ctx    context.Context
-	rt     *goja.Runtime
 	client *opcua.Client
 
 	retryInterval time.Duration
-	securityMode  ua.MessageSecurityMode
-
-	cancelCleaner func()
 }
 
-func (c *Client) Close(call goja.FunctionCall) goja.Value {
+func (c *Client) Close() error {
 	if c.client != nil {
 		if err := c.client.Close(context.Background()); err != nil {
-			return c.rt.NewGoError(err)
+			return err
 		}
 		c.client = nil
 	}
-	return goja.Undefined()
+	return nil
 }
 
-func (c *Client) Read(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) != 1 {
-		panic(c.rt.ToValue("missing argument"))
-	}
-	arg := struct {
-		MaxAge             float64               `json:"maxAge"`
-		Nodes              []string              `json:"nodes"`
-		TimestampsToReturn ua.TimestampsToReturn `json:"timestampsToReturn"`
-	}{
-		TimestampsToReturn: ua.TimestampsToReturnNeither,
-	}
-	if err := c.rt.ExportTo(call.Arguments[0], &arg); err != nil {
-		panic(c.rt.NewGoError(err))
-	}
-	if len(arg.Nodes) == 0 {
-		panic(c.rt.ToValue("missing nodes"))
+func (c *Client) Read(request ReadRequest) ([]ReadResult, error) {
+	if len(request.Nodes) == 0 {
+		return nil, errors.New("missing nodes")
 	}
 
 	var err error
 	var rsp *ua.ReadResponse
 	var req = &ua.ReadRequest{
-		MaxAge:             arg.MaxAge,
-		TimestampsToReturn: arg.TimestampsToReturn,
+		MaxAge:             request.MaxAge,
+		TimestampsToReturn: request.TimestampsToReturn,
 	}
 
-	for _, n := range arg.Nodes {
+	for _, n := range request.Nodes {
 		id, err := ua.ParseNodeID(n)
 		if err != nil {
-			panic(c.rt.NewGoError(err))
+			return nil, err
 		}
 		req.NodesToRead = append(req.NodesToRead, &ua.ReadValueID{NodeID: id})
 	}
@@ -193,10 +227,10 @@ func (c *Client) Read(call goja.FunctionCall) goja.Value {
 			time.Sleep(c.retryInterval)
 			continue
 		default:
-			panic(c.rt.NewGoError(err))
+			return nil, err
 		}
 	}
-	ret := []goja.Value{}
+	ret := make([]ReadResult, 0, len(rsp.Results))
 	for _, data := range rsp.Results {
 		code := ""
 		if c, ok := ua.StatusCodes[data.Status]; ok {
@@ -204,160 +238,32 @@ func (c *Client) Read(call goja.FunctionCall) goja.Value {
 		}
 		val := data.Value.Value()
 		typ := strings.TrimPrefix(data.Value.Type().String(), "TypeID")
-		ent := map[string]any{
-			"status":          uint32(data.Status),
-			"statusText":      data.Status.Error(),
-			"statusCode":      code,
-			"value":           val,
-			"type":            typ,
-			"sourceTimestamp": data.SourceTimestamp.UnixMilli(),
-			"serverTimestamp": data.ServerTimestamp.UnixMilli(),
-		}
-		ret = append(ret, c.rt.ToValue(ent))
-	}
-	return c.rt.ToValue(ret)
-}
-
-func (c *Client) Browse(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) == 0 {
-		panic(c.rt.ToValue("missing arguments"))
-	}
-	arg := struct {
-		Nodes           []string            `json:"nodes"`
-		BrowseDirection ua.BrowseDirection  `json:"browseDirection"`
-		ReferenceTypeID string              `json:"referenceTypeId"`
-		IncludeSubtypes bool                `json:"includeSubtypes"`
-		NodeClassMask   uint32              `json:"nodeClassMask"`
-		ResultMask      ua.BrowseResultMask `json:"resultMask"`
-	}{
-		BrowseDirection: ua.BrowseDirectionForward,
-		IncludeSubtypes: true,
-		ResultMask:      ua.BrowseResultMaskAll,
-	}
-	if err := c.rt.ExportTo(call.Arguments[0], &arg); err != nil {
-		panic(c.rt.NewGoError(err))
-	}
-	if len(arg.Nodes) == 0 {
-		panic(c.rt.ToValue("missing nodes"))
-	}
-
-	refTypeID := ua.NewNumericNodeID(0, id.HierarchicalReferences)
-	if arg.ReferenceTypeID != "" {
-		parsed, err := ua.ParseNodeID(arg.ReferenceTypeID)
-		if err != nil {
-			panic(c.rt.NewGoError(err))
-		}
-		refTypeID = parsed
-	}
-
-	descs := make([]*ua.BrowseDescription, 0, len(arg.Nodes))
-	for _, nodeStr := range arg.Nodes {
-		nodeID, err := ua.ParseNodeID(nodeStr)
-		if err != nil {
-			panic(c.rt.NewGoError(err))
-		}
-		descs = append(descs, &ua.BrowseDescription{
-			NodeID:          nodeID,
-			BrowseDirection: arg.BrowseDirection,
-			ReferenceTypeID: refTypeID,
-			IncludeSubtypes: arg.IncludeSubtypes,
-			NodeClassMask:   arg.NodeClassMask,
-			ResultMask:      uint32(arg.ResultMask),
+		ret = append(ret, ReadResult{
+			Status:          uint32(data.Status),
+			StatusText:      data.Status.Error(),
+			StatusCode:      code,
+			Value:           val,
+			Type:            typ,
+			SourceTimestamp: data.SourceTimestamp.UnixMilli(),
+			ServerTimestamp: data.ServerTimestamp.UnixMilli(),
 		})
 	}
-
-	req := &ua.BrowseRequest{
-		NodesToBrowse: descs,
-	}
-	rsp, err := c.client.Browse(c.ctx, req)
-	if err != nil {
-		panic(c.rt.NewGoError(err))
-	}
-
-	ret := make([]goja.Value, 0, len(rsp.Results))
-	for _, result := range rsp.Results {
-		refs := make([]any, 0, len(result.References))
-		for _, ref := range result.References {
-			refs = append(refs, map[string]any{
-				"referenceTypeId": ref.ReferenceTypeID.String(),
-				"isForward":       ref.IsForward,
-				"nodeId":          ref.NodeID.NodeID.String(),
-				"browseName":      ref.BrowseName.Name,
-				"displayName":     ref.DisplayName.Text,
-				"nodeClass":       uint32(ref.NodeClass),
-				"typeDefinition":  ref.TypeDefinition.NodeID.String(),
-			})
-		}
-		ent := map[string]any{
-			"status":     uint32(result.StatusCode),
-			"statusText": result.StatusCode.Error(),
-			"references": refs,
-		}
-		ret = append(ret, c.rt.ToValue(ent))
-	}
-	return c.rt.ToValue(ret)
+	return ret, nil
 }
 
-func (c *Client) Children(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) == 0 {
-		panic(c.rt.ToValue("missing arguments"))
-	}
-	arg := struct {
-		Node          string       `json:"node"`
-		NodeClassMask ua.NodeClass `json:"nodeClassMask"`
-	}{}
-	if err := c.rt.ExportTo(call.Arguments[0], &arg); err != nil {
-		panic(c.rt.NewGoError(err))
-	}
-	if arg.Node == "" {
-		panic(c.rt.ToValue("missing node"))
-	}
-
-	nodeID, err := ua.ParseNodeID(arg.Node)
-	if err != nil {
-		panic(c.rt.NewGoError(err))
-	}
-
-	refs, err := c.client.Node(nodeID).References(c.ctx, id.HierarchicalReferences, ua.BrowseDirectionForward, arg.NodeClassMask, true)
-	if err != nil {
-		panic(c.rt.NewGoError(err))
-	}
-
-	ret := make([]any, 0, len(refs))
-	for _, ref := range refs {
-		ret = append(ret, map[string]any{
-			"referenceTypeId": ref.ReferenceTypeID.String(),
-			"isForward":       ref.IsForward,
-			"nodeId":          ref.NodeID.NodeID.String(),
-			"browseName":      ref.BrowseName.Name,
-			"displayName":     ref.DisplayName.Text,
-			"nodeClass":       uint32(ref.NodeClass),
-			"typeDefinition":  ref.TypeDefinition.NodeID.String(),
-		})
-	}
-	return c.rt.ToValue(ret)
-}
-
-func (c *Client) Write(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) == 0 {
-		panic(c.rt.ToValue("missing argument"))
+func (c *Client) Write(writes ...WriteValue) (*WriteResult, error) {
+	if len(writes) == 0 {
+		return nil, errors.New("missing argument")
 	}
 	var req = &ua.WriteRequest{}
-	for _, arg := range call.Arguments {
-		lst := struct {
-			Node  string `json:"node"`
-			Value any    `json:"value"`
-		}{}
-		if err := c.rt.ExportTo(arg, &lst); err != nil {
-			panic(c.rt.ToValue(err.Error()))
-		}
-		nodeID, err := ua.ParseNodeID(lst.Node)
+	for _, write := range writes {
+		nodeID, err := ua.ParseNodeID(write.Node)
 		if err != nil {
-			panic(c.rt.ToValue(err.Error()))
+			return nil, err
 		}
-		value, err := ua.NewVariant(lst.Value)
+		value, err := ua.NewVariant(write.Value)
 		if err != nil {
-			panic(c.rt.ToValue(err.Error()))
+			return nil, err
 		}
 		nodeToWrite := &ua.WriteValue{
 			NodeID:      nodeID,
@@ -371,17 +277,114 @@ func (c *Client) Write(call goja.FunctionCall) goja.Value {
 	}
 
 	rsp, err := c.client.Write(c.ctx, req)
-
-	ret := c.rt.NewObject()
-	ret.Set("error", err)
-	ret.Set("timestamp", rsp.ResponseHeader.Timestamp.UnixMilli())
-	ret.Set("requestHandle", rsp.ResponseHeader.RequestHandle)
-	ret.Set("serviceResult", uint32(rsp.ResponseHeader.ServiceResult))
-	ret.Set("stringTable", rsp.ResponseHeader.StringTable)
-	results := make([]any, len(rsp.Results))
-	for i, data := range rsp.Results {
-		results[i] = uint32(data)
+	ret := &WriteResult{
+		Error:   err,
+		Results: []uint32{},
 	}
-	ret.Set("results", c.rt.NewArray(results...))
-	return ret
+	if rsp == nil {
+		return ret, nil
+	}
+
+	ret.Timestamp = rsp.ResponseHeader.Timestamp.UnixMilli()
+	ret.RequestHandle = rsp.ResponseHeader.RequestHandle
+	ret.ServiceResult = uint32(rsp.ResponseHeader.ServiceResult)
+	ret.StringTable = rsp.ResponseHeader.StringTable
+	ret.Results = make([]uint32, len(rsp.Results))
+	for i, data := range rsp.Results {
+		ret.Results[i] = uint32(data)
+	}
+	return ret, nil
+}
+
+func (c *Client) Browse(request BrowseRequest) ([]BrowseResult, error) {
+	if len(request.Nodes) == 0 {
+		return nil, errors.New("missing nodes")
+	}
+
+	var refTypeID *ua.NodeID
+	if request.ReferenceTypeID != "" {
+		parsed, err := ua.ParseNodeID(request.ReferenceTypeID)
+		if err != nil {
+			return nil, err
+		}
+		refTypeID = parsed
+	} else {
+		refTypeID = ua.NewNumericNodeID(0, id.References)
+	}
+
+	descs := make([]*ua.BrowseDescription, 0, len(request.Nodes))
+	for _, nodeStr := range request.Nodes {
+		nodeID, err := ua.ParseNodeID(nodeStr)
+		if err != nil {
+			return nil, err
+		}
+		descs = append(descs, &ua.BrowseDescription{
+			NodeID:          nodeID,
+			BrowseDirection: request.BrowseDirection,
+			ReferenceTypeID: refTypeID,
+			IncludeSubtypes: request.IncludeSubtypes,
+			NodeClassMask:   request.NodeClassMask,
+			ResultMask:      uint32(request.ResultMask),
+		})
+	}
+
+	req := &ua.BrowseRequest{
+		NodesToBrowse: descs,
+	}
+	rsp, err := c.client.Browse(c.ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]BrowseResult, 0, len(rsp.Results))
+	for _, result := range rsp.Results {
+		refs := make([]BrowseReference, 0, len(result.References))
+		for _, ref := range result.References {
+			refs = append(refs, BrowseReference{
+				ReferenceTypeId: ref.ReferenceTypeID.String(),
+				IsForward:       ref.IsForward,
+				NodeId:          ref.NodeID.NodeID.String(),
+				BrowseName:      ref.BrowseName.Name,
+				DisplayName:     ref.DisplayName.Text,
+				NodeClass:       uint32(ref.NodeClass),
+				TypeDefinition:  ref.TypeDefinition.NodeID.String(),
+			})
+		}
+		ret = append(ret, BrowseResult{
+			Status:     uint32(result.StatusCode),
+			StatusText: result.StatusCode.Error(),
+			References: refs,
+		})
+	}
+	return ret, nil
+}
+
+func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
+	if request.Node == "" {
+		return nil, errors.New("missing node")
+	}
+
+	nodeID, err := ua.ParseNodeID(request.Node)
+	if err != nil {
+		return nil, err
+	}
+
+	refs, err := c.client.Node(nodeID).References(c.ctx, id.HierarchicalReferences, ua.BrowseDirectionForward, request.NodeClassMask, true)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]ChildrenResult, 0, len(refs))
+	for _, ref := range refs {
+		ret = append(ret, ChildrenResult{
+			ReferenceTypeId: ref.ReferenceTypeID.String(),
+			IsForward:       ref.IsForward,
+			NodeId:          ref.NodeID.NodeID.String(),
+			BrowseName:      ref.BrowseName.Name,
+			DisplayName:     ref.DisplayName.Text,
+			NodeClass:       uint32(ref.NodeClass),
+			TypeDefinition:  ref.TypeDefinition.NodeID.String(),
+		})
+	}
+	return ret, nil
 }
