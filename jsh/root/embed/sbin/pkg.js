@@ -13,9 +13,10 @@
     const semver = require('semver');
 
     const LOCK_FILE_NAME = 'package-lock.json';
+    const GLOBAL_PROJECT_DIR = '/work';
     const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
     const optionProjectDir = { type: 'string', short: 'C', description: 'Use this project directory instead of the current working directory' };
-    const optionForce = { type: 'boolean', short: 'f', description: 'Overwrite conflicting generated package commands without uninstalling first', default: false };
+    const optionGlobal = { type: 'boolean', short: 'g', description: 'Install into the global package directory /work and ignore --dir', default: false };
 
     const defaultConfig = {
         usage: 'Usage: pkg <command> [options]',
@@ -44,7 +45,7 @@
         options: {
             help: optionHelp,
             dir: optionProjectDir,
-            force: optionForce,
+            global: optionGlobal,
         },
         positionals: [
             { name: 'name', description: 'Optional package name to add or update', optional: true },
@@ -58,6 +59,7 @@
         options: {
             help: optionHelp,
             dir: optionProjectDir,
+            global: optionGlobal,
         },
         positionals: [
             { name: 'name', description: 'Package name to remove' },
@@ -106,7 +108,7 @@
     }
 
     if (parsed.command === 'install') {
-        doInstall(parsed.namedPositionals.name, parsed.values.dir, parsed.values.force);
+        doInstall(parsed.namedPositionals.name, parsed.values.dir, parsed.values.global);
         return;
     }
 
@@ -116,7 +118,7 @@
     }
 
     if (parsed.command === 'uninstall') {
-        doUninstall(parsed.namedPositionals.name, parsed.values.dir);
+        doUninstall(parsed.namedPositionals.name, parsed.values.dir, parsed.values.global);
         return;
     }
 
@@ -176,7 +178,9 @@
             throw new Error(`package.json does not contain a valid scripts object: ${manifestPath}`);
         }
 
-        const scriptLine = manifest.scripts[key];
+        process.chdir(cwd);
+
+        const scriptLine = normalizeScripts(manifest.scripts)[key];
         if (typeof scriptLine !== 'string' || scriptLine.trim().length === 0) {
             throw new Error(`Script not found or empty: ${key}`);
         }
@@ -186,11 +190,7 @@
             throw new Error(`Script produced no executable command: ${key}`);
         }
 
-        process.chdir(cwd);
-
-        const command = resolveRunCommand(fields[0], cwd);
-        const args = fields.slice(1);
-        const exitCode = process.exec(command, ...args, ...scriptArgs);
+        const exitCode = process.exec(resolveRunCommand(fields[0], cwd), ...fields.slice(1), ...scriptArgs);
         if (exitCode instanceof Error) {
             throw exitCode;
         }
@@ -217,12 +217,9 @@
         return resolved;
     }
 
-    function doInstall(request, installDir, forceInstall) {
-        const state = createInstallState(installDir, forceInstall);
+    function doInstall(request, installDir, globalInstall) {
+        const state = createInstallState(installDir, globalInstall);
         const rootPlan = buildRootInstallPlan(request, state);
-        if (rootPlan.requestedTask) {
-            state.exposedRequestKey = packageRequestKey(rootPlan.requestedTask);
-        }
         const rootDependencyNames = Object.keys(rootPlan.installDependencies).sort();
 
         if (rootDependencyNames.length === 0) {
@@ -243,8 +240,8 @@
         persistProjectState(rootPlan, state);
     }
 
-    function doUninstall(request, uninstallDir) {
-        const state = createInstallState(uninstallDir);
+    function doUninstall(request, uninstallDir, globalInstall) {
+        const state = createInstallState(uninstallDir, globalInstall);
         const task = createUninstallTask(request);
         const dependencies = cloneDependencies(getRootDependencies(state));
         if (!Object.prototype.hasOwnProperty.call(dependencies, task.name)) {
@@ -253,14 +250,14 @@
 
         delete dependencies[task.name];
 
-        const nextManifest = {
+        const nextManifest = stripLegacyPackageCommandMetadata({
             ...ensureProjectManifest(state),
-            scripts: removeManagedPackageCommand(ensureProjectManifest(state).scripts, task.name, state),
+            scripts: stripManagedPackageCommandScripts(ensureProjectManifest(state).scripts, state.installRoot),
             dependencies: sortRecord(dependencies),
-        };
+        });
 
         cleanupPath(packageInstallPath(state.installRoot, task.name));
-        removePackageCommandWrapper(task.name, state);
+        removePackageCommandWrappersByOwner(task.name, state);
         cleanupPath(state.lockPath);
 
         writeJsonFile(state.manifestPath, nextManifest);
@@ -270,18 +267,19 @@
         console.println(`Removed ${task.name}`);
 
         if (Object.keys(dependencies).length > 0) {
-            doInstall('', uninstallDir, false);
+            doInstall('', uninstallDir, globalInstall);
         }
     }
 
-    function createInstallState(installDir, forceInstall) {
+    function createInstallState(installDir, globalInstall) {
         const invocationCwd = process.cwd();
-        const cwd = prepareProjectDirectory(invocationCwd, installDir);
+        const cwd = prepareProjectDirectory(invocationCwd, installDir, globalInstall);
         const manifestPath = path.resolve(cwd, 'package.json');
         const lockPath = path.resolve(cwd, LOCK_FILE_NAME);
         return {
             cwd,
             invocationCwd,
+            globalInstall: !!globalInstall,
             installRoot: path.resolve(cwd, 'node_modules'),
             tempRootBase: resolveTempRootBase(invocationCwd),
             manifestPath,
@@ -290,11 +288,9 @@
             lockFile: readOptionalJsonFile(lockPath),
             registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
             githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
-            forceInstall: !!forceInstall,
             requested: new Set(),
             resolvedPackages: {},
-            exposedRequestKey: '',
-            exposedPackageInstall: null,
+            installedPackages: {},
         };
     }
 
@@ -353,7 +349,7 @@
 
             const installResult = installStagedPackage(staged, state);
             rememberResolvedPackage(task, installResult.manifest, staged.source, staged.installVersion, state);
-            rememberExposedPackageInstall(task, installResult, state);
+            rememberInstalledPackage(task, installResult, state);
 
             const dependencies = normalizeDependencies(installResult.manifest.dependencies);
             const dependencyNames = Object.keys(dependencies).sort();
@@ -494,21 +490,18 @@
 
     function persistProjectState(rootPlan, state) {
         const manifestDependencies = buildManifestDependencies(rootPlan, state);
-        const scriptExposure = buildManifestPackageExposure(rootPlan, state);
         const lockRootDependencies = sortRecord(manifestDependencies || rootPlan.installDependencies);
-        if (manifestDependencies || scriptExposure) {
-            const nextManifest = {
+        if (manifestDependencies) {
+            const nextManifest = stripLegacyPackageCommandMetadata({
                 ...ensureProjectManifest(state),
+                scripts: stripManagedPackageCommandScripts(ensureProjectManifest(state).scripts, state.installRoot),
                 dependencies: manifestDependencies,
-            };
-            if (scriptExposure) {
-                nextManifest.scripts = scriptExposure.scripts;
-                writeScriptWrapper(scriptExposure.wrapper);
-                console.println(`Exposed package command ${scriptExposure.commandKey} -> pkg run ${scriptExposure.commandKey} <command>`);
-            }
+            });
             writeJsonFile(state.manifestPath, nextManifest);
             state.projectManifest = nextManifest;
         }
+
+        syncInstalledPackageBinWrappers(state);
 
         const lockFile = buildLockFile(lockRootDependencies, state);
         writeJsonFile(state.lockPath, lockFile);
@@ -529,47 +522,6 @@
             dependencies[rootPlan.requestedTask.name] = manifestSpecifier(rootPlan.requestedTask, resolved);
         }
         return sortRecord(dependencies);
-    }
-
-    function buildManifestPackageExposure(rootPlan, state) {
-        if (!rootPlan.requestedTask || !state.exposedPackageInstall) {
-            return null;
-        }
-
-        const packageScripts = normalizeScripts(state.exposedPackageInstall.manifest.scripts);
-        if (Object.keys(packageScripts).length === 0) {
-            return null;
-        }
-
-        const scripts = cloneScripts(ensureProjectManifest(state).scripts);
-        const commandKey = buildPackageCommandKey(rootPlan.requestedTask.name);
-        const wrapperRelativePath = `./node_modules/.bin/${commandKey}.js`;
-        const wrapperPath = packageCommandWrapperPath(state.installRoot, rootPlan.requestedTask.name);
-        const wrapperOwner = readPackageCommandWrapperOwner(wrapperPath);
-        const existingScript = scripts[commandKey];
-
-        if (wrapperOwner && wrapperOwner !== rootPlan.requestedTask.name && !state.forceInstall) {
-            throw new Error(`Package command already exists: ${commandKey} (owned by ${wrapperOwner}). Run pkg uninstall ${wrapperOwner} first.`);
-        }
-
-        if (typeof existingScript === 'string' && existingScript !== wrapperRelativePath && !state.forceInstall) {
-            throw new Error(`package.json script already exists: ${commandKey}. Remove it before installing ${rootPlan.requestedTask.name}.`);
-        }
-
-        if (state.forceInstall && (wrapperOwner || (typeof existingScript === 'string' && existingScript !== wrapperRelativePath))) {
-            console.println(`Overwriting package command ${commandKey}`);
-        }
-
-        scripts[commandKey] = wrapperRelativePath;
-
-        return {
-            scripts: sortRecord(scripts),
-            commandKey,
-            wrapper: {
-                filePath: wrapperPath,
-                content: buildPackageCommandWrapperContent(commandKey, rootPlan.requestedTask.name, state.exposedPackageInstall.targetDir),
-            },
-        };
     }
 
     function ensureProjectManifest(state) {
@@ -673,11 +625,8 @@
         };
     }
 
-    function rememberExposedPackageInstall(task, installResult, state) {
-        if (state.exposedRequestKey !== packageRequestKey(task)) {
-            return;
-        }
-        state.exposedPackageInstall = {
+    function rememberInstalledPackage(task, installResult, state) {
+        state.installedPackages[task.name] = {
             packageName: task.name,
             manifest: installResult.manifest,
             targetDir: installResult.targetDir,
@@ -1054,7 +1003,10 @@
         }
     }
 
-    function resolveInstallDirectory(invocationCwd, installDir) {
+    function resolveInstallDirectory(invocationCwd, installDir, globalInstall) {
+        if (globalInstall) {
+            return GLOBAL_PROJECT_DIR;
+        }
         if (typeof installDir !== 'string' || installDir.trim().length === 0) {
             return invocationCwd;
         }
@@ -1079,8 +1031,8 @@
         return path.resolve(invocationCwd, '.pkg-tmp');
     }
 
-    function prepareProjectDirectory(invocationCwd, installDir) {
-        const cwd = resolveInstallDirectory(invocationCwd, installDir);
+    function prepareProjectDirectory(invocationCwd, installDir, globalInstall) {
+        const cwd = resolveInstallDirectory(invocationCwd, installDir, globalInstall);
         fs.mkdirSync(cwd, { recursive: true });
         return cwd;
     }
@@ -1387,6 +1339,30 @@
         return normalized;
     }
 
+    function normalizeBinCommands(manifest) {
+        if (!isRecord(manifest)) {
+            return {};
+        }
+        if (typeof manifest.bin === 'string' && manifest.bin.trim().length > 0) {
+            if (typeof manifest.name !== 'string' || manifest.name.trim().length === 0) {
+                return {};
+            }
+            return { [buildPackageCommandKey(manifest.name)]: manifest.bin.trim() };
+        }
+        if (!isRecord(manifest.bin)) {
+            return {};
+        }
+        const normalized = {};
+        for (const alias of Object.keys(manifest.bin)) {
+            const target = manifest.bin[alias];
+            if (!isValidPackageCommandKey(alias) || typeof target !== 'string' || target.trim().length === 0) {
+                continue;
+            }
+            normalized[alias] = target.trim();
+        }
+        return sortRecord(normalized);
+    }
+
     function cloneDependencies(value) {
         return { ...normalizeDependencies(value) };
     }
@@ -1411,6 +1387,63 @@
         return `${task.name}@${task.spec || ''}`;
     }
 
+    function stripManagedPackageCommandScripts(scriptsValue, installRoot) {
+        const scripts = cloneScripts(scriptsValue);
+        for (const commandKey of Object.keys(scripts)) {
+            if (isManagedPackageCommandScript(commandKey, scripts[commandKey], installRoot)) {
+                delete scripts[commandKey];
+            }
+        }
+        return sortRecord(scripts);
+    }
+
+    function isManagedPackageCommandScript(commandKey, scriptLine, installRoot) {
+        return scriptLine === `./node_modules/.bin/${commandKey}.js`
+            && readPackageCommandWrapperOwner(packageCommandWrapperPath(installRoot, commandKey)).length > 0;
+    }
+
+    function syncInstalledPackageBinWrappers(state) {
+        for (const packageName of Object.keys(state.installedPackages).sort()) {
+            const installedPackage = state.installedPackages[packageName];
+            removePackageCommandWrappersByOwner(packageName, state);
+            const binCommands = normalizeBinCommands(installedPackage.manifest);
+            for (const alias of Object.keys(binCommands)) {
+                const wrapperPath = packageCommandWrapperPath(state.installRoot, alias);
+                const wrapperOwner = readPackageCommandWrapperOwner(wrapperPath);
+                if (wrapperOwner && wrapperOwner !== packageName) {
+                    console.println(`Warning: package bin alias ${alias} from ${packageName} conflicts with ${wrapperOwner}; skipped ${path.relative(state.cwd, wrapperPath)}`);
+                    continue;
+                }
+                if (!wrapperOwner && fs.existsSync(wrapperPath)) {
+                    console.println(`Warning: package bin alias ${alias} from ${packageName} conflicts with existing wrapper; skipped ${path.relative(state.cwd, wrapperPath)}`);
+                    continue;
+                }
+                writeScriptWrapper({
+                    filePath: wrapperPath,
+                    content: buildPackageBinWrapperContent(alias, packageName, wrapperPath, installedPackage.targetDir, binCommands[alias]),
+                });
+            }
+        }
+    }
+
+    function stripLegacyPackageCommandMetadata(manifest) {
+        const nextManifest = { ...manifest };
+        if (isRecord(nextManifest.pkg)) {
+            const nextPkg = { ...nextManifest.pkg };
+            delete nextPkg.commands;
+            if (Object.keys(nextPkg).length > 0) {
+                nextManifest.pkg = nextPkg;
+            } else {
+                delete nextManifest.pkg;
+            }
+        }
+        return nextManifest;
+    }
+
+    function isValidPackageCommandKey(value) {
+        return /^[A-Za-z0-9._-]+$/.test(String(value || '').trim());
+    }
+
     function buildPackageCommandKey(packageName) {
         if (isGitHubRepositoryPackage(packageName)) {
             const parsed = parseGitHubRepositoryPackage(packageName);
@@ -1426,12 +1459,19 @@
         return packageName;
     }
 
-    function packageCommandWrapperPath(installRoot, packageName) {
-        return path.join(installRoot, '.bin', `${buildPackageCommandKey(packageName)}.js`);
+    function packageCommandWrapperPath(installRoot, commandKey) {
+        return path.join(installRoot, '.bin', `${commandKey}.js`);
     }
 
     function readPackageCommandWrapperOwner(filePath) {
         if (!fs.existsSync(filePath)) {
+            return '';
+        }
+        try {
+            if (!fs.statSync(filePath).isFile()) {
+                return '';
+            }
+        } catch (err) {
             return '';
         }
         const content = fs.readFileSync(filePath, 'utf8');
@@ -1443,70 +1483,43 @@
         return firstLine.slice(prefix.length).trim();
     }
 
-    function removeManagedPackageCommand(scriptsValue, packageName, state) {
-        const scripts = cloneScripts(scriptsValue);
-        const commandKey = buildPackageCommandKey(packageName);
-        const wrapperRelativePath = `./node_modules/.bin/${commandKey}.js`;
-        const wrapperPath = packageCommandWrapperPath(state.installRoot, packageName);
-        if (scripts[commandKey] === wrapperRelativePath && readPackageCommandWrapperOwner(wrapperPath) === packageName) {
-            delete scripts[commandKey];
-        }
-        return sortRecord(scripts);
-    }
-
-    function removePackageCommandWrapper(packageName, state) {
-        const wrapperPath = packageCommandWrapperPath(state.installRoot, packageName);
-        if (readPackageCommandWrapperOwner(wrapperPath) === packageName) {
+    function removePackageCommandWrapper(commandKey, state) {
+        const wrapperPath = packageCommandWrapperPath(state.installRoot, commandKey);
+        if (readPackageCommandWrapperOwner(wrapperPath)) {
             cleanupPath(wrapperPath);
         }
     }
 
-    function buildPackageCommandWrapperContent(commandKey, packageName, packageDir) {
+    function removePackageCommandWrappersByOwner(packageName, state) {
+        const binDir = path.join(state.installRoot, '.bin');
+        if (!fs.existsSync(binDir) || !fs.statSync(binDir).isDirectory()) {
+            return;
+        }
+        for (const entry of fs.readdirSync(binDir)) {
+            const filePath = path.join(binDir, entry);
+            if (readPackageCommandWrapperOwner(filePath) === packageName) {
+                cleanupPath(filePath);
+            }
+        }
+    }
+
+    function buildPackageBinWrapperContent(commandKey, packageName, wrapperPath, packageDir, targetPath) {
+        const relativePackageDir = path.relative(path.dirname(wrapperPath), packageDir) || '.';
         return [
             `// neo-pkg-wrapper-owner:${packageName}`,
             '(() => {',
             "    'use strict';",
             '',
             "    const process = require('process');",
-            "    const fs = require('fs');",
             "    const path = require('path');",
-            "    const splitFields = require('util/splitFields');",
             '',
-            `    const packageDir = ${JSON.stringify(packageDir)};`,
-            `    const packageName = ${JSON.stringify(packageName)};`,
+            `    const packageDir = path.join(path.dirname(process.argv[1]), ${JSON.stringify(relativePackageDir)});`,
             `    const packageCommand = ${JSON.stringify(commandKey)};`,
+            `    const targetPath = ${JSON.stringify(targetPath)};`,
             "    const args = process.argv.slice(2);",
-            "    const manifestPath = path.join(packageDir, 'package.json');",
-            '    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));',
-            '    if (!manifest || typeof manifest !== "object" || !manifest.scripts || typeof manifest.scripts !== "object") {',
-            '        throw new Error(`package.json does not contain a valid scripts object: ${manifestPath}`);',
-            '    }',
-            '    const availableCommands = Object.keys(manifest.scripts).filter((name) => typeof manifest.scripts[name] === "string" && manifest.scripts[name].trim().length > 0).sort();',
-            "    if (args.length === 0 || typeof args[0] !== 'string' || args[0].trim().length === 0) {",
-            '        console.println(`Usage: pkg run ${packageCommand} <command> [...args]`);',
-            '        if (availableCommands.length === 0) {',
-            '            console.println(`Available commands: (none)`);',
-            '        } else {',
-            '            console.println(`Available commands: ${availableCommands.join(", ")}`);',
-            '        }',
-            '        return;',
-            '    }',
-            '    const scriptName = args[0];',
-            '    const scriptLine = manifest.scripts[scriptName];',
-            '    if (typeof scriptLine !== "string" || scriptLine.trim().length === 0) {',
-            '        throw new Error(`Script not found or empty: ${packageName}:${scriptName}`);',
-            '    }',
-            '    const fields = splitFields(scriptLine);',
-            '    if (fields.length === 0) {',
-            '        throw new Error(`Script produced no executable command: ${packageName}:${scriptName}`);',
-            '    }',
-            '',
             '    process.chdir(packageDir);',
-            '    let command = fields[0];',
-            '    if (typeof command === "string" && command.endsWith(".js") && !path.isAbsolute(command)) {',
-            '        command = path.resolve(packageDir, command);',
-            '    }',
-            '    const exitCode = process.exec(command, ...fields.slice(1), ...args.slice(1));',
+            '    const command = path.isAbsolute(targetPath) ? targetPath : path.join(packageDir, targetPath);',
+            '    const exitCode = process.exec(command, ...args);',
             '    if (exitCode instanceof Error) {',
             '        throw exitCode;',
             '    }',
