@@ -4,17 +4,13 @@
     const process = require('process');
     const fs = require('fs');
     const path = require('path');
-    const net = require('net');
     const pretty = require('pretty');
+    const serviceModule = require('service');
     const parseArgs = require('util/parseArgs');
     const statusOutputMaxLines = 20;
 
-    let serviceControllerEnv = process.env.get("SERVICE_CONTROLLER")
-    if (!serviceControllerEnv) {
-        serviceControllerEnv = '';
-    }
     const options = {
-        controller: { type: 'string', short: 'c', description: 'Controller address in host:port format', default: serviceControllerEnv },
+        controller: { type: 'string', short: 'c', description: 'Controller address in host:port format', default: serviceModule.resolveController() },
         help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
         name: { type: 'string', short: 'n', description: 'Service name for inline install', default: '' },
         enable: { type: 'boolean', description: 'Enable the service for inline install', default: false },
@@ -51,7 +47,7 @@
 
     const command = parsed.namedPositionals.command || '';
     const args = parsed.namedPositionals.args || [];
-    const controller = parsed.values.controller;
+    const controller = serviceModule.resolveController(parsed.values.controller);
     const timeout = parsed.values.timeout;
 
     if (!controller) {
@@ -65,10 +61,15 @@
         fail(`Invalid timeout '${timeout}'. Use a positive integer.`);
     }
 
-    const endpoint = parseController(controller);
+    try {
+        serviceModule.parseController(controller);
+    } catch (err) {
+        fail(err.message || String(err));
+    }
     const commandSpec = buildCommandSpec(command, args);
+    const client = serviceModule.createClient({ controller, timeout });
 
-    executeCommand(endpoint, commandSpec, timeout, (err, result) => {
+    executeCommand(commandSpec, client, (err, result) => {
         if (err) {
             fail(err.message || String(err));
             return;
@@ -78,7 +79,7 @@
 
     function printHelp() {
         console.println(parseArgs.formatHelp({
-            usage: 'Usage: service.js --controller=<host:port|tcp://host:port|unix://path> <command> [args...]',
+            usage: 'Usage: servicectl.js --controller=<host:port|tcp://host:port|unix://path> <command> [args...]',
             options,
             positionals: [
                 { name: 'command', description: 'Command to execute' },
@@ -99,10 +100,10 @@
         console.println('  details set <service_name> <key> <value> [--detail-type <string|number|boolean|bool|object|json>]');
         console.println('  details delete <service_name> <key>');
         console.println('Examples:');
-        console.println('  service --controller=127.0.0.1:1234 details get alpha --format json');
-        console.println('  service --controller=127.0.0.1:1234 details set alpha retries 3 --detail-type number');
-        console.println('  service --controller=127.0.0.1:1234 details set alpha enabled true --detail-type boolean');
-        console.println("  service --controller=127.0.0.1:1234 details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
+        console.println('  servicectl --controller=127.0.0.1:1234 details get alpha --format json');
+        console.println('  servicectl --controller=127.0.0.1:1234 details set alpha retries 3 --detail-type number');
+        console.println('  servicectl --controller=127.0.0.1:1234 details set alpha enabled true --detail-type boolean');
+        console.println("  servicectl --controller=127.0.0.1:1234 details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
     }
 
     function fail(message) {
@@ -110,68 +111,37 @@
         process.exit(1);
     }
 
-    function parseController(value) {
-        if (value.startsWith('unix://')) {
-            const socketPath = value.slice(7);
-            if (!socketPath) {
-                fail(`Invalid controller socket path in '${value}'.`);
-            }
-            return { network: 'unix', path: socketPath };
-        }
-
-        // trim 'tcp://' prefix if present
-        if (value.startsWith('tcp://')) {
-            value = value.slice(6);
-        }
-
-        // split host and port
-        const idx = value.lastIndexOf(':');
-        if (idx <= 0 || idx === value.length - 1) {
-            fail(`Invalid controller address '${value}'. Expected host:port.`);
-        }
-        const host = value.slice(0, idx);
-        const portText = value.slice(idx + 1);
-        const port = parseInt(portText, 10);
-        if (!host) {
-            fail(`Invalid controller host in '${value}'.`);
-        }
-        if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-            fail(`Invalid controller port '${portText}'.`);
-        }
-        return { network: 'tcp', host, port };
-    }
-
     function buildCommandSpec(cmd, positionalArgs) {
         switch (cmd) {
             case 'read':
                 expectArgs(cmd, positionalArgs, 0);
-                return rpcCommandSpec(cmd, 'service.read', null);
+                return clientCommandSpec(cmd, (client, callback) => client.read(callback));
             case 'update':
                 expectArgs(cmd, positionalArgs, 0);
-                return rpcCommandSpec(cmd, 'service.update', null);
+                return clientCommandSpec(cmd, (client, callback) => client.update(callback));
             case 'reload':
                 expectArgs(cmd, positionalArgs, 0);
-                return rpcCommandSpec(cmd, 'service.reload', null);
+                return clientCommandSpec(cmd, (client, callback) => client.reload(callback));
             case 'install':
-                return rpcCommandSpec(cmd, 'service.install', buildInstallConfig(positionalArgs));
+                return clientCommandSpec(cmd, (client, callback) => client.install(buildInstallConfig(positionalArgs), callback));
             case 'uninstall':
                 expectArgs(cmd, positionalArgs, 1);
-                return rpcCommandSpec(cmd, 'service.uninstall', { name: positionalArgs[0] });
+                return clientCommandSpec(cmd, (client, callback) => client.uninstall(positionalArgs[0], callback), { name: positionalArgs[0] });
             case 'status':
                 if (positionalArgs.length === 0) {
-                    return rpcCommandSpec(cmd, 'service.list', null);
+                    return clientCommandSpec(cmd, (client, callback) => client.list(callback));
                 }
                 if (positionalArgs.length === 1) {
-                    return rpcCommandSpec(cmd, 'service.get', { name: positionalArgs[0] });
+                    return clientCommandSpec(cmd, (client, callback) => client.get(positionalArgs[0], callback));
                 }
                 fail("Command 'status' accepts zero or one argument.");
                 return null;
             case 'start':
                 expectArgs(cmd, positionalArgs, 1);
-                return rpcCommandSpec(cmd, 'service.start', { name: positionalArgs[0] });
+                return clientCommandSpec(cmd, (client, callback) => client.start(positionalArgs[0], callback));
             case 'stop':
                 expectArgs(cmd, positionalArgs, 1);
-                return rpcCommandSpec(cmd, 'service.stop', { name: positionalArgs[0] });
+                return clientCommandSpec(cmd, (client, callback) => client.stop(positionalArgs[0], callback));
             case 'details':
                 return buildDetailsCommandSpec(positionalArgs);
             default:
@@ -180,8 +150,8 @@
         }
     }
 
-    function rpcCommandSpec(commandName, method, params) {
-        return { kind: 'rpc', command: commandName, method, params };
+    function clientCommandSpec(commandName, execute, params) {
+        return { kind: 'client', command: commandName, execute, params: params || null };
     }
 
     function buildDetailsCommandSpec(positionalArgs) {
@@ -195,12 +165,13 @@
                     fail("Command 'details get' requires <service_name> and optional [key].");
                 }
                 return {
-                    kind: 'details-get',
+                    kind: 'client',
                     command: 'details',
                     action,
                     serviceName: positionalArgs[1],
                     key: positionalArgs[2] || '',
                     format: normalizedFormat(parsed.values.format || 'box'),
+                    execute: (client, callback) => client.details.get(positionalArgs[1], positionalArgs[2] || '', callback),
                 };
             case 'set':
                 if (positionalArgs.length !== 4) {
@@ -210,13 +181,14 @@
                     fail("Option --format is only supported with 'details get'.");
                 }
                 return {
-                    kind: 'details-set',
+                    kind: 'client',
                     command: 'details',
                     action,
                     serviceName: positionalArgs[1],
                     key: positionalArgs[2],
                     value: parseDetailValue(positionalArgs[3], parsed.values.detailType || ''),
                     detailType: normalizedDetailType(parsed.values.detailType || ''),
+                    execute: (client, callback) => client.details.set(positionalArgs[1], positionalArgs[2], parseDetailValue(positionalArgs[3], parsed.values.detailType || ''), callback),
                 };
             case 'delete':
                 if (positionalArgs.length !== 3) {
@@ -226,11 +198,12 @@
                     fail("Option --format is only supported with 'details get'.");
                 }
                 return {
-                    kind: 'details-delete',
+                    kind: 'client',
                     command: 'details',
                     action,
                     serviceName: positionalArgs[1],
                     key: positionalArgs[2],
+                    execute: (client, callback) => client.details.delete(positionalArgs[1], positionalArgs[2], callback),
                 };
             default:
                 fail(`Unknown details command '${action}'.`);
@@ -389,124 +362,12 @@
         return path.resolve(process.cwd(), filePath);
     }
 
-    function sendRpcRequest(endpoint, method, params, timeoutMsec, callback) {
-        const request = {
-            jsonrpc: '2.0',
-            id: 1,
-            method: method,
-        };
-        if (params !== null && params !== undefined) {
-            request.params = params;
-        }
-
-        const socket = endpoint.network === 'unix'
-            ? net.createConnection({ path: endpoint.path })
-            : net.createConnection({ host: endpoint.host, port: endpoint.port });
-        let buffer = '';
-        let settled = false;
-        let timer = null;
-
-        function settle(err, result) {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            if (timer) {
-                clearTimeout(timer);
-            }
-            callback(err, result);
-            try {
-                socket.end();
-            } catch (destroyErr) {
-                try {
-                    socket.destroy();
-                } catch (ignoreErr) {
-                }
-            }
-        }
-
-        timer = setTimeout(() => {
-            settle(new Error(`RPC timeout after ${timeoutMsec}ms`));
-        }, timeoutMsec);
-
-        socket.on('connect', () => {
-            socket.write(JSON.stringify(request) + '\n');
-        });
-
-        socket.on('data', (chunk) => {
-            buffer += chunk.toString();
-            let response;
-            try {
-                response = JSON.parse(buffer);
-            } catch (err) {
-                return;
-            }
-            if (response.error) {
-                settle(new Error(response.error.message || JSON.stringify(response.error)));
-                return;
-            }
-            settle(null, response.result);
-        });
-
-        socket.on('timeout', () => {
-            settle(new Error(`RPC timeout after ${timeoutMsec}ms`));
-        });
-
-        socket.on('error', (err) => {
-            settle(err);
-        });
-
-        socket.on('end', () => {
-            if (!settled) {
-                settle(new Error('Controller closed the connection before sending a complete response.'));
-            }
-        });
-    }
-
-    function executeCommand(endpoint, commandSpec, timeoutMsec, callback) {
-        if (commandSpec.kind === 'rpc') {
-            sendRpcRequest(endpoint, commandSpec.method, commandSpec.params, timeoutMsec, callback);
+    function executeCommand(commandSpec, client, callback) {
+        if (commandSpec && typeof commandSpec.execute === 'function') {
+            commandSpec.execute(client, callback);
             return;
         }
-
-        if (commandSpec.kind === 'details-get') {
-            sendRpcRequest(endpoint, 'service.runtime.get', { name: commandSpec.serviceName }, timeoutMsec, (err, runtime) => {
-                if (err) {
-                    callback(err);
-                    return;
-                }
-                if (commandSpec.key && !hasDetailKey(runtime, commandSpec.key)) {
-                    callback(new Error(`Detail '${commandSpec.key}' not found for service '${commandSpec.serviceName}'.`));
-                    return;
-                }
-                callback(null, runtime);
-            });
-            return;
-        }
-
-        if (commandSpec.kind === 'details-set') {
-            sendRpcRequest(endpoint, 'service.runtime.detail.set', {
-                name: commandSpec.serviceName,
-                key: commandSpec.key,
-                value: commandSpec.value,
-            }, timeoutMsec, callback);
-            return;
-        }
-
-        if (commandSpec.kind === 'details-delete') {
-            sendRpcRequest(endpoint, 'service.runtime.detail.delete', {
-                name: commandSpec.serviceName,
-                key: commandSpec.key,
-            }, timeoutMsec, callback);
-            return;
-        }
-
-        callback(new Error(`Unsupported command kind '${commandSpec.kind}'.`));
-    }
-
-    function hasDetailKey(runtime, key) {
-        const details = runtime && runtime.details && typeof runtime.details === 'object' ? runtime.details : null;
-        return !!details && Object.prototype.hasOwnProperty.call(details, key);
+        callback(new Error(`Unsupported command kind '${commandSpec ? commandSpec.kind : ''}'.`));
     }
 
     function renderResult(commandSpec, result) {

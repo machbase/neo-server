@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	jshservice "github.com/machbase/neo-server/v8/jsh/service"
+	"github.com/machbase/neo-server/v8/jsh/service"
 )
 
 type serviceRPCRequest struct {
@@ -44,7 +44,7 @@ func TestServiceCommandStatusListFormatting(t *testing.T) {
 			})
 			defer shutdown()
 
-			output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "status")
+			output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "status")
 			if err != nil {
 				t.Fatalf("service status failed: %v\n%s", err, output)
 			}
@@ -70,7 +70,7 @@ func TestServiceCommandStatusListFormatting(t *testing.T) {
 }
 
 func TestServiceCommandListRemoved(t *testing.T) {
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "list")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller=127.0.0.1:1", "list")
 	if err == nil {
 		t.Fatalf("service list unexpectedly succeeded:\n%s", output)
 	}
@@ -114,7 +114,7 @@ func TestServiceCommandStatusFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "status", "alpha")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "status", "alpha")
 	if err != nil {
 		t.Fatalf("service status failed: %v\n%s", err, output)
 	}
@@ -188,7 +188,7 @@ func TestServiceCommandInstallFromFile(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(workDir, nil, "service", "--controller="+addr, "install", "svc.json")
+	output, err := runCommand(workDir, nil, "servicectl", "--controller="+addr, "install", "svc.json")
 	if err != nil {
 		t.Fatalf("service install file failed: %v\n%s", err, output)
 	}
@@ -238,7 +238,7 @@ func TestServiceCommandInstallInline(t *testing.T) {
 	defer shutdown()
 
 	output, err := runCommand(t.TempDir(), nil,
-		"service",
+		"servicectl",
 		"--controller="+addr,
 		"install",
 		"--name", "svc-inline",
@@ -276,7 +276,7 @@ func TestServiceCommandStartFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "start", "alpha")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "start", "alpha")
 	if err != nil {
 		t.Fatalf("service start failed: %v\n%s", err, output)
 	}
@@ -302,7 +302,7 @@ func TestServiceCommandStopFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "stop", "alpha")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "stop", "alpha")
 	if err != nil {
 		t.Fatalf("service stop failed: %v\n%s", err, output)
 	}
@@ -330,7 +330,7 @@ func TestServiceCommandUninstallFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "uninstall", "alpha")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "uninstall", "alpha")
 	if err != nil {
 		t.Fatalf("service uninstall failed: %v\n%s", err, output)
 	}
@@ -357,7 +357,7 @@ func TestServiceCommandReadFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "read")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "read")
 	if err != nil {
 		t.Fatalf("service read failed: %v\n%s", err, output)
 	}
@@ -409,7 +409,7 @@ func TestServiceCommandReloadFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "reload")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "reload")
 	if err != nil {
 		t.Fatalf("service reload failed: %v\n%s", err, output)
 	}
@@ -455,7 +455,7 @@ func TestServiceCommandDetailsGetFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "get", "alpha")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "details", "get", "alpha")
 	if err != nil {
 		t.Fatalf("service details get failed: %v\n%s", err, output)
 	}
@@ -466,7 +466,7 @@ func TestServiceCommandDetailsGetFormatting(t *testing.T) {
 		}
 	}
 
-	output, err = runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "get", "alpha", "labels")
+	output, err = runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "details", "get", "alpha", "labels")
 	if err != nil {
 		t.Fatalf("service details get key failed: %v\n%s", err, output)
 	}
@@ -477,7 +477,7 @@ func TestServiceCommandDetailsGetFormatting(t *testing.T) {
 		t.Fatalf("details get key output missing labels object:\n%s", output)
 	}
 
-	output, err = runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "get", "alpha", "labels", "--format", "json")
+	output, err = runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "details", "get", "alpha", "labels", "--format", "json")
 	if err != nil {
 		t.Fatalf("service details get json failed: %v\n%s", err, output)
 	}
@@ -522,7 +522,7 @@ func TestServiceCommandDetailsSetTypedValues(t *testing.T) {
 			})
 			defer shutdown()
 
-			args := append([]string{"service", "--controller=" + addr}, tc.args...)
+			args := append([]string{"servicectl", "--controller=" + addr}, tc.args...)
 			output, err := runCommand(t.TempDir(), nil, args...)
 			if err != nil {
 				t.Fatalf("service details set failed: %v\n%s", err, output)
@@ -553,7 +553,7 @@ func TestServiceCommandDetailsDeleteFormatting(t *testing.T) {
 	})
 	defer shutdown()
 
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "delete", "alpha", "labels")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "details", "delete", "alpha", "labels")
 	if err != nil {
 		t.Fatalf("service details delete failed: %v\n%s", err, output)
 	}
@@ -566,7 +566,7 @@ func TestServiceCommandDetailsDeleteFormatting(t *testing.T) {
 }
 
 func TestServiceCommandDetailsSetRejectsInvalidTypeInput(t *testing.T) {
-	output, err := runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "details", "set", "alpha", "retries", "abc", "--detail-type", "number")
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller=127.0.0.1:1", "details", "set", "alpha", "retries", "abc", "--detail-type", "number")
 	if err == nil {
 		t.Fatalf("service details set unexpectedly succeeded:\n%s", output)
 	}
@@ -574,7 +574,7 @@ func TestServiceCommandDetailsSetRejectsInvalidTypeInput(t *testing.T) {
 		t.Fatalf("output=%q, want number parse error", output)
 	}
 
-	output, err = runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "details", "set", "alpha", "labels", "[]", "--detail-type", "object")
+	output, err = runCommand(t.TempDir(), nil, "servicectl", "--controller=127.0.0.1:1", "details", "set", "alpha", "labels", "[]", "--detail-type", "object")
 	if err == nil {
 		t.Fatalf("service details set object unexpectedly succeeded:\n%s", output)
 	}
@@ -582,7 +582,7 @@ func TestServiceCommandDetailsSetRejectsInvalidTypeInput(t *testing.T) {
 		t.Fatalf("output=%q, want object validation error", output)
 	}
 
-	output, err = runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "details", "get", "alpha", "--format", "yaml")
+	output, err = runCommand(t.TempDir(), nil, "servicectl", "--controller=127.0.0.1:1", "details", "get", "alpha", "--format", "yaml")
 	if err == nil {
 		t.Fatalf("service details get with invalid format unexpectedly succeeded:\n%s", output)
 	}
@@ -621,7 +621,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				"args":        []any{"hello"},
 			})
 
-			ctl, err := jshservice.NewController(&jshservice.ControllerConfig{
+			ctl, err := service.NewController(&service.ControllerConfig{
 				ConfigDir: "/work/services",
 				Mounts: []engine.FSTab{
 					{MountPoint: "/work", FS: os.DirFS(workDir)},
@@ -638,7 +638,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 
 			controllerAddr := ctl.Address()
 
-			listOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
+			listOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "status")
 			if err != nil {
 				t.Fatalf("service status failed: %v\n%s", err, listOutput)
 			}
@@ -646,7 +646,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				t.Fatalf("status output=%q, want alpha/stopped", listOutput)
 			}
 
-			readOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "read")
+			readOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "read")
 			if err != nil {
 				t.Fatalf("service read failed: %v\n%s", err, readOutput)
 			}
@@ -662,7 +662,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				"args":        []any{"hello", "world"},
 			})
 
-			reloadOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "reload")
+			reloadOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "reload")
 			if err != nil {
 				t.Fatalf("service reload failed: %v\n%s", err, reloadOutput)
 			}
@@ -670,7 +670,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				t.Fatalf("reload output=%q, want reload start action", reloadOutput)
 			}
 
-			statusOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status", "alpha")
+			statusOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "status", "alpha")
 			if err != nil {
 				t.Fatalf("service status failed: %v\n%s", err, statusOutput)
 			}
@@ -681,7 +681,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				}
 			}
 
-			stopOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "stop", "alpha")
+			stopOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "stop", "alpha")
 			if err != nil {
 				t.Fatalf("service stop failed: %v\n%s", err, stopOutput)
 			}
@@ -691,7 +691,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				}
 			}
 
-			startOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "start", "alpha")
+			startOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "start", "alpha")
 			if err != nil {
 				t.Fatalf("service start failed: %v\n%s", err, startOutput)
 			}
@@ -701,7 +701,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				}
 			}
 
-			uninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "uninstall", "alpha")
+			uninstallOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "uninstall", "alpha")
 			if err != nil {
 				t.Fatalf("service uninstall failed: %v\n%s", err, uninstallOutput)
 			}
@@ -711,7 +711,7 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				}
 			}
 
-			listAfterUninstallOutput, err := runCommand(workDir, nil, "service", "--controller="+controllerAddr, "status")
+			listAfterUninstallOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "status")
 			if err != nil {
 				t.Fatalf("service status after uninstall failed: %v\n%s", err, listAfterUninstallOutput)
 			}

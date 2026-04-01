@@ -62,12 +62,16 @@ var path_js []byte
 //go:embed process.js
 var process_js []byte
 
+//go:embed service.js
+var service_js []byte
+
 func libFiles() map[string][]byte {
 	return map[string][]byte{
 		"events.js":  events_js,
 		"fs.js":      fs_js,
 		"path.js":    path_js,
 		"process.js": process_js,
+		"service.js": service_js,
 	}
 }
 
