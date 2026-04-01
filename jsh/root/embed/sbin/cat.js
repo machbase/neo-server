@@ -1,8 +1,8 @@
 (() => {
     const process = require('process');
+    const fs = require('fs');
     const { parseArgs } = require('util');
     const pwd = process.env.get("PWD");
-    const fs = process.env.filesystem();
 
     // Parse command line arguments
     const { values, positionals } = parseArgs(process.argv.slice(2), {
@@ -418,65 +418,140 @@
         }
     }
 
-    // Process a single file
-    function catFile(filepath, lineNumber, highlighter) {
-        let fullPath = filepath;
-        if (!fullPath.startsWith("/")) {
-            fullPath = pwd + "/" + filepath;
+    function isTransformEnabled() {
+        return values.number || values.showEnds || values.showTabs || values.squeeze || values.color;
+    }
+
+    function openSource(filepath, encoding) {
+        const fullPath = filepath === '-' ? '-' : (filepath.startsWith('/') ? filepath : pwd + '/' + filepath);
+        return fs.createReadStream(fullPath, { encoding });
+    }
+
+    function renderLine(line, hasNewline, state, highlighter) {
+        const isEmpty = line.trim() === '';
+        if (values.squeeze) {
+            if (isEmpty && state.prevEmpty) {
+                return;
+            }
+            state.prevEmpty = isEmpty;
+        } else {
+            state.prevEmpty = false;
         }
 
+        let output = line;
+
+        if (highlighter) {
+            output = highlighter(output);
+        }
+        if (values.showTabs) {
+            output = output.replace(/\t/g, '^I');
+        }
+        if (values.showEnds) {
+            output += '$';
+        }
+        if (values.number) {
+            output = String(state.lineNumber).padStart(6, ' ') + '  ' + output;
+            state.lineNumber += 1;
+        }
+        if (hasNewline) {
+            output += '\n';
+        }
+        process.stdout.write(output);
+    }
+
+    function reportError(filepath, err) {
+        const message = err && err.message ? err.message : String(err);
+        console.println(colors.error + `cat: ${filepath}: ${message}` + colors.reset);
+    }
+
+    function processRawSource(filepath, state, next) {
+        let stream;
         try {
-            const lines = fs.readLines(fullPath);
-            let prevEmpty = false;
-
-            lines.forEach((line, idx) => {
-                // Squeeze blank lines if -s flag
-                if (values.squeeze) {
-                    const isEmpty = line.trim() === '';
-                    if (isEmpty && prevEmpty) {
-                        return;
-                    }
-                    prevEmpty = isEmpty;
-                }
-
-                let output = line;
-
-                // Apply syntax highlighting
-                if (highlighter) {
-                    output = highlighter(output);
-                }
-
-                // Show tabs as ^I if -T flag
-                if (values.showTabs) {
-                    output = output.replace(/\t/g, '^I');
-                }
-
-                // Show line endings as $ if -E flag
-                if (values.showEnds) {
-                    output += '$';
-                }
-
-                // Add line numbers if -n flag
-                if (lineNumber) {
-                    console.printf('%6d  %s\n', idx + 1, output);
-                } else {
-                    console.println(output);
-                }
-            });
-        } catch (e) {
-            console.println(colors.error + `cat: ${filepath}: ${e}` + colors.reset);
-            process.exit(1);
+            stream = openSource(filepath, 'utf8');
+        } catch (err) {
+            reportError(filepath, err);
+            state.exitCode = 1;
+            next();
+            return;
         }
+
+        stream.on('data', (chunk) => {
+            process.stdout.write(chunk);
+        });
+        stream.on('error', (err) => {
+            reportError(filepath, err);
+            state.exitCode = 1;
+            next();
+        });
+        stream.on('end', () => {
+            next();
+        });
     }
 
-    // Main execution
-    if (positionals.length === 0) {
-        console.println(colors.error + "cat: missing file operand" + colors.reset);
-        process.exit(1);
+    function processFormattedSource(filepath, state, highlighter, next) {
+        let stream;
+        try {
+            stream = openSource(filepath, 'utf8');
+        } catch (err) {
+            reportError(filepath, err);
+            state.exitCode = 1;
+            next();
+            return;
+        }
+
+        let pending = '';
+        stream.on('data', (chunk) => {
+            pending += chunk;
+            while (true) {
+                const newlineIndex = pending.indexOf('\n');
+                if (newlineIndex < 0) {
+                    break;
+                }
+                let line = pending.slice(0, newlineIndex);
+                if (line.endsWith('\r')) {
+                    line = line.slice(0, -1);
+                }
+                renderLine(line, true, state, highlighter);
+                pending = pending.slice(newlineIndex + 1);
+            }
+        });
+        stream.on('error', (err) => {
+            reportError(filepath, err);
+            state.exitCode = 1;
+            next();
+        });
+        stream.on('end', () => {
+            if (pending.length > 0) {
+                let line = pending;
+                if (line.endsWith('\r')) {
+                    line = line.slice(0, -1);
+                }
+                renderLine(line, false, state, highlighter);
+            }
+            next();
+        });
     }
 
-    positionals.forEach((file) => {
-        const highlighter = values.color ? getHighlighter(file) : null;
-        catFile(file, values.number, highlighter);
+    function processSources(sources, index, state) {
+        if (index >= sources.length) {
+            process.exit(state.exitCode);
+            return;
+        }
+
+        const filepath = sources[index];
+        const next = () => processSources(sources, index + 1, state);
+        const highlighter = values.color && filepath !== '-' ? getHighlighter(filepath) : null;
+        if (isTransformEnabled()) {
+            processFormattedSource(filepath, state, highlighter, next);
+            return;
+        }
+        processRawSource(filepath, state, next);
+    }
+
+    const sources = positionals.length === 0 ? ['-'] : positionals;
+    processSources(sources, 0, {
+        exitCode: 0,
+        lineNumber: 1,
+        prevEmpty: false,
     });
 })()

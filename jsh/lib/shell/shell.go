@@ -11,7 +11,6 @@ import (
 	"github.com/hymkor/go-multiline-ny/completion"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	jshrl "github.com/machbase/neo-server/v8/jsh/lib/readline"
-	"github.com/machbase/neo-server/v8/jsh/lib/shell/internal"
 	"github.com/machbase/neo-server/v8/jsh/log"
 	"github.com/mattn/go-colorable"
 	"github.com/nyaosorg/go-readline-ny"
@@ -41,6 +40,7 @@ func shell(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {
 
 type Shell struct {
 	rt      *goja.Runtime
+	env     *engine.Env
 	history *jshrl.History
 }
 
@@ -59,6 +59,7 @@ var betaWarn = "" +
 	"    Enter 'exit' to quit the shell.\n"
 
 func (sh *Shell) Run(env *engine.Env) int {
+	sh.env = env
 	var ed multiline.Editor
 	ed.SetTty(NewTty()) // See TtyWrap comment
 	ed.SetPrompt(sh.prompt(env))
@@ -181,43 +182,23 @@ func (sh *Shell) getCompletionCandidates(fields []string) (forCompletion []strin
 func (sh *Shell) process(line string) (int, bool) {
 	// Parse the command
 	cmd := parseCommand(line)
+	lastExitCode := 0
 
 	for _, stmt := range cmd.Statements {
 		var stopOnError bool
 		if stmt.Operator == "&&" {
 			stopOnError = true
 		}
-		for _, pipe := range stmt.Pipelines {
-			if pipe.Command == "exit" || pipe.Command == "quit" {
-				return 0, false
-			}
-
-			// internal commands that execute in the SAME runtime instance
-			// others are executed via exec function on the separate runtime process.
-			var returnValue goja.Value
-			if v, ok := internal.Run(sh.rt, pipe.Command, pipe.Args...); ok {
-				returnValue = v
-			} else {
-				returnValue = sh.exec(pipe.Command, pipe.Args)
-			}
-
-			exitCode := -1
-			if returnValue != nil {
-				switch v := returnValue.Export().(type) {
-				default:
-					returnStr := returnValue.String()
-					returnStr = strings.TrimPrefix(returnStr, "Error: ")
-					log.Println(returnStr)
-				case int64:
-					exitCode = int(v)
-				}
-			}
-			if exitCode != 0 && stopOnError {
-				return exitCode, true
-			}
+		exitCode, alive := sh.runStatement(stmt)
+		lastExitCode = exitCode
+		if !alive {
+			return exitCode, false
+		}
+		if exitCode != 0 && stopOnError {
+			return exitCode, true
 		}
 	}
-	return 0, true
+	return lastExitCode, true
 }
 
 func (sh *Shell) exec(command string, args []string) goja.Value {

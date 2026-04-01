@@ -261,6 +261,69 @@ func TestParseCommand_Redirections(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "stderr redirection",
+			input: "echo hello 2> error.txt",
+			expected: &Command{
+				Raw: "echo hello 2> error.txt",
+				Statements: []*Statement{
+					{
+						Pipelines: []*Pipeline{
+							{
+								Command: "echo",
+								Args:    []string{"hello"},
+								Stderr: &Redirect{
+									Type:   "2>",
+									Target: "error.txt",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "stderr append redirection",
+			input: "echo hello 2>> error.txt",
+			expected: &Command{
+				Raw: "echo hello 2>> error.txt",
+				Statements: []*Statement{
+					{
+						Pipelines: []*Pipeline{
+							{
+								Command: "echo",
+								Args:    []string{"hello"},
+								Stderr: &Redirect{
+									Type:   "2>>",
+									Target: "error.txt",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "stderr merge redirection",
+			input: "echo hello 2>&1",
+			expected: &Command{
+				Raw: "echo hello 2>&1",
+				Statements: []*Statement{
+					{
+						Pipelines: []*Pipeline{
+							{
+								Command: "echo",
+								Args:    []string{"hello"},
+								Stderr: &Redirect{
+									Type:   "2>&1",
+									Target: "1",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -607,6 +670,21 @@ func TestTokenize(t *testing.T) {
 			input:    `echo "test 'value'" > file.txt`,
 			expected: []string{"echo", "test 'value'", ">", "file.txt"},
 		},
+		{
+			name:     "stderr redirection",
+			input:    "echo test 2> file.txt",
+			expected: []string{"echo", "test", "2>", "file.txt"},
+		},
+		{
+			name:     "stderr append redirection",
+			input:    "echo test 2>> file.txt",
+			expected: []string{"echo", "test", "2>>", "file.txt"},
+		},
+		{
+			name:     "stderr merge redirection",
+			input:    "echo test 2>&1",
+			expected: []string{"echo", "test", "2>&1"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -674,6 +752,42 @@ func TestParsePipeline(t *testing.T) {
 				Stdout: &Redirect{
 					Type:   ">>",
 					Target: "log.txt",
+				},
+			},
+		},
+		{
+			name:  "with stderr redirection",
+			input: "echo test 2> log.txt",
+			expected: &Pipeline{
+				Command: "echo",
+				Args:    []string{"test"},
+				Stderr: &Redirect{
+					Type:   "2>",
+					Target: "log.txt",
+				},
+			},
+		},
+		{
+			name:  "with stderr append redirection",
+			input: "echo test 2>> log.txt",
+			expected: &Pipeline{
+				Command: "echo",
+				Args:    []string{"test"},
+				Stderr: &Redirect{
+					Type:   "2>>",
+					Target: "log.txt",
+				},
+			},
+		},
+		{
+			name:  "with stderr merge redirection",
+			input: "echo test 2>&1",
+			expected: &Pipeline{
+				Command: "echo",
+				Args:    []string{"test"},
+				Stderr: &Redirect{
+					Type:   "2>&1",
+					Target: "1",
 				},
 			},
 		},

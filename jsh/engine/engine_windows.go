@@ -14,10 +14,10 @@ import (
 var ensureProcessExistsFn = ensureProcessExists
 var sendInterruptSignalFn = sendInterruptSignal
 
-func (jr *JSRuntime) exec0(ex *exec.Cmd) (int, error) {
-	ex.Stdin = jr.Env.Reader()
-	ex.Stdout = jr.Env.Writer()
-	ex.Stderr = jr.Env.Writer()
+func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
+	ex.Stdin = resolveExecReader(jr.Env.Reader(), opts.Stdin)
+	ex.Stdout = resolveExecWriter(jr.Env.Writer(), opts.Stdout)
+	ex.Stderr = resolveExecWriter(jr.Env.Writer(), opts.Stderr)
 
 	// Windows doesn't support process groups like Unix
 	// Just run the process directly
