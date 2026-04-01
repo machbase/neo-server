@@ -230,18 +230,30 @@
             throw new Error('No dependencies to install. Add dependencies to package.json or provide a package name.');
         }
 
-        fs.mkdirSync(state.installRoot, { recursive: true });
-        if (rootPlan.requestedTask) {
-            installPackageRequest(rootPlan.requestedTask, state);
-        }
-        for (const depName of rootDependencyNames) {
-            if (rootPlan.requestedTask && depName === rootPlan.requestedTask.name) {
-                continue;
+        reportInstallStep(state, `Preparing install plan in ${state.cwd}`);
+        try {
+            fs.mkdirSync(state.installRoot, { recursive: true });
+            if (rootPlan.requestedTask) {
+                installPackageRequest(rootPlan.requestedTask, state);
             }
-            installPackageRequest({ name: depName, spec: rootPlan.installDependencies[depName] }, state);
-        }
+            for (const depName of rootDependencyNames) {
+                if (rootPlan.requestedTask && depName === rootPlan.requestedTask.name) {
+                    continue;
+                }
+                installPackageRequest({ name: depName, spec: rootPlan.installDependencies[depName] }, state);
+            }
 
-        persistProjectState(rootPlan, state);
+            persistProjectState(rootPlan, state);
+        } catch (err) {
+            if (state.reporter) {
+                state.reporter.fail(`Install failed: ${err.message}`);
+            }
+            throw err;
+        } finally {
+            if (state.reporter) {
+                state.reporter.finish();
+            }
+        }
     }
 
     function doUninstall(request, uninstallDir, globalInstall) {
@@ -297,6 +309,7 @@
             requested: new Set(),
             resolvedPackages: {},
             installedPackages: {},
+            reporter: createInstallReporter(),
         };
     }
 
@@ -345,6 +358,7 @@
         state.requested.add(requestKey);
 
         validatePackageName(task.name);
+        reportInstallStep(state, `Resolving ${formatPackageTaskLabel(task)}`);
 
         let staged = null;
         try {
@@ -371,10 +385,12 @@
     }
 
     function stageGitHubPackage(task, state, locked) {
+        reportInstallStep(state, `Resolving GitHub source for ${formatPackageTaskLabel(task)}`);
         const source = resolveGitHubPackageSource(task, state, locked);
         const tempRoot = allocateTempRoot(state.tempRootBase, task.name.replace(/[\/]/g, '-'));
         const stageDir = path.join(tempRoot, 'stage');
         try {
+            reportInstallStep(state, `Downloading ${formatGitHubPackageSource(source)}`);
             downloadGitHubDirectory(source, state, stageDir);
             return finalizeGitHubStage(task, locked, source, tempRoot, stageDir);
         } catch (err) {
@@ -414,6 +430,7 @@
             resolvedVersion = locked.version;
             tarballUrl = locked.resolved;
         } else {
+            reportInstallStep(state, `Resolving npm metadata for ${formatPackageTaskLabel(task)}`);
             const metadataUrl = `${state.registryUrl}/${encodeURIComponent(task.name)}`;
             const metadata = httpGetJson(metadataUrl);
             resolvedVersion = resolveNpmVersion(metadata, task.spec);
@@ -429,7 +446,9 @@
         const tarPath = path.join(tempRoot, 'package.tar');
         const stageDir = path.join(tempRoot, 'stage');
 
+        reportInstallStep(state, `Downloading ${task.name}@${resolvedVersion}`);
         writeBinaryFile(tgzPath, httpGetBytes(tarballUrl));
+        reportInstallStep(state, `Extracting ${task.name}@${resolvedVersion}`);
         const tarBytes = zlib.gunzipSync(fs.readFileSync(tgzPath, 'buffer'));
         writeBinaryFile(tarPath, tarBytes);
 
@@ -465,9 +484,10 @@
         const targetDir = packageInstallPath(state.installRoot, staged.packageName);
         const installedManifest = readInstalledManifest(targetDir);
         const installLabel = formatInstalledPackageLabel(staged);
+        reportInstallStep(state, `Installing ${installLabel}`);
 
         if (installedManifest && canReuseInstalledPackage(installedManifest, staged)) {
-            console.println(`Up to date: ${installLabel}`);
+            printInstallLog(state, `Up to date: ${installLabel}`);
             return {
                 manifest: installedManifest,
                 targetDir,
@@ -482,7 +502,7 @@
         cleanupPath(targetDir);
         fs.renameSync(tempTarget, targetDir);
 
-        console.println(`Installed ${installLabel}`);
+        printInstallLog(state, `Installed ${installLabel}`);
 
         return {
             manifest: staged.manifest,
@@ -495,6 +515,7 @@
         const manifestDependencies = buildManifestDependencies(rootPlan, state);
         const lockRootDependencies = sortRecord(manifestDependencies || rootPlan.installDependencies);
         if (manifestDependencies) {
+            reportInstallStep(state, `Updating ${path.basename(state.manifestPath)}`);
             const nextManifest = stripLegacyPackageCommandMetadata({
                 ...ensureProjectManifest(state),
                 scripts: stripManagedPackageCommandScripts(ensureProjectManifest(state).scripts, state.installRoot),
@@ -504,8 +525,10 @@
             state.projectManifest = nextManifest;
         }
 
+        reportInstallStep(state, 'Syncing package commands');
         syncInstalledPackageBinWrappers(state);
 
+        reportInstallStep(state, `Writing ${path.basename(state.lockPath)}`);
         const lockFile = buildLockFile(lockRootDependencies, state);
         writeJsonFile(state.lockPath, lockFile);
         state.lockFile = lockFile;
@@ -634,6 +657,97 @@
             manifest: installResult.manifest,
             targetDir: installResult.targetDir,
         };
+    }
+
+    function createInstallReporter() {
+        const interactive = isInteractiveStdout();
+        let lastStatus = '';
+        let renderedWidth = 0;
+        let lineActive = false;
+
+        return {
+            update(message) {
+                const nextStatus = formatInstallStatus(message);
+                if (!nextStatus || nextStatus === lastStatus) {
+                    return;
+                }
+                if (interactive) {
+                    const padding = renderedWidth > nextStatus.length ? ' '.repeat(renderedWidth - nextStatus.length) : '';
+                    process.stdout.write(`\r${nextStatus}${padding}`);
+                    renderedWidth = nextStatus.length;
+                    lineActive = true;
+                } else {
+                    console.println(nextStatus);
+                }
+                lastStatus = nextStatus;
+            },
+            println(message) {
+                if (interactive && lineActive) {
+                    process.stdout.write(`\r${' '.repeat(renderedWidth)}\r`);
+                    renderedWidth = 0;
+                    lineActive = false;
+                }
+                console.println(message);
+                lastStatus = '';
+            },
+            fail(message) {
+                if (!message) {
+                    return;
+                }
+                this.println(formatInstallStatus(message));
+            },
+            finish() {
+                if (!interactive || !lineActive) {
+                    return;
+                }
+                process.stdout.write('\n');
+                renderedWidth = 0;
+                lineActive = false;
+                lastStatus = '';
+            },
+        };
+    }
+
+    function reportInstallStep(state, message) {
+        if (state && state.reporter) {
+            state.reporter.update(message);
+        }
+    }
+
+    function printInstallLog(state, message) {
+        if (state && state.reporter) {
+            state.reporter.println(message);
+            return;
+        }
+        console.println(message);
+    }
+
+    function formatInstallStatus(message) {
+        const text = String(message || '').trim();
+        if (!text) {
+            return '';
+        }
+        return `[pkg] ${text}`;
+    }
+
+    function isInteractiveStdout() {
+        return !!(process.stdout
+            && typeof process.stdout.write === 'function'
+            && typeof process.stdout.isTTY === 'function'
+            && process.stdout.isTTY());
+    }
+
+    function formatPackageTaskLabel(task) {
+        if (!task || typeof task.name !== 'string') {
+            return '';
+        }
+        if (task.spec) {
+            if (isGitHubRepositoryPackage(task.name)) {
+                return `${task.name}${task.spec}`;
+            }
+            return `${task.name}@${task.spec}`;
+        }
+        return task.name;
     }
 
     function writeScriptWrapper(wrapper) {
@@ -1448,11 +1562,11 @@
                 const wrapperPath = packageCommandWrapperPath(state.installRoot, alias);
                 const wrapperOwner = readPackageCommandWrapperOwner(wrapperPath);
                 if (wrapperOwner && wrapperOwner !== packageName) {
-                    console.println(`Warning: package bin alias ${alias} from ${packageName} conflicts with ${wrapperOwner}; skipped ${path.relative(state.cwd, wrapperPath)}`);
+                    printInstallLog(state, `Warning: package bin alias ${alias} from ${packageName} conflicts with ${wrapperOwner}; skipped ${path.relative(state.cwd, wrapperPath)}`);
                     continue;
                 }
                 if (!wrapperOwner && fs.existsSync(wrapperPath)) {
-                    console.println(`Warning: package bin alias ${alias} from ${packageName} conflicts with existing wrapper; skipped ${path.relative(state.cwd, wrapperPath)}`);
+                    printInstallLog(state, `Warning: package bin alias ${alias} from ${packageName} conflicts with existing wrapper; skipped ${path.relative(state.cwd, wrapperPath)}`);
                     continue;
                 }
                 writeScriptWrapper({
