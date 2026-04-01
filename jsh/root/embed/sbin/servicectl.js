@@ -67,9 +67,9 @@
         fail(err.message || String(err));
     }
     const commandSpec = buildCommandSpec(command, args);
-    const client = serviceModule.createClient({ controller, timeout });
+    const rpcOptions = { controller, timeout };
 
-    executeCommand(commandSpec, client, (err, result) => {
+    executeCommand(commandSpec, (err, result) => {
         if (err) {
             fail(err.message || String(err));
             return;
@@ -115,33 +115,33 @@
         switch (cmd) {
             case 'read':
                 expectArgs(cmd, positionalArgs, 0);
-                return clientCommandSpec(cmd, (client, callback) => client.read(callback));
+                return clientCommandSpec(cmd, (callback) => serviceModule.read(rpcOptions, callback));
             case 'update':
                 expectArgs(cmd, positionalArgs, 0);
-                return clientCommandSpec(cmd, (client, callback) => client.update(callback));
+                return clientCommandSpec(cmd, (callback) => serviceModule.update(rpcOptions, callback));
             case 'reload':
                 expectArgs(cmd, positionalArgs, 0);
-                return clientCommandSpec(cmd, (client, callback) => client.reload(callback));
+                return clientCommandSpec(cmd, (callback) => serviceModule.reload(rpcOptions, callback));
             case 'install':
-                return clientCommandSpec(cmd, (client, callback) => client.install(buildInstallConfig(positionalArgs), callback));
+                return clientCommandSpec(cmd, (callback) => serviceModule.install(buildInstallConfig(positionalArgs), rpcOptions, callback));
             case 'uninstall':
                 expectArgs(cmd, positionalArgs, 1);
-                return clientCommandSpec(cmd, (client, callback) => client.uninstall(positionalArgs[0], callback), { name: positionalArgs[0] });
+                return clientCommandSpec(cmd, (callback) => serviceModule.uninstall(positionalArgs[0], rpcOptions, callback), { name: positionalArgs[0] });
             case 'status':
                 if (positionalArgs.length === 0) {
-                    return clientCommandSpec(cmd, (client, callback) => client.list(callback));
+                    return clientCommandSpec(cmd, (callback) => serviceModule.status(rpcOptions, callback));
                 }
                 if (positionalArgs.length === 1) {
-                    return clientCommandSpec(cmd, (client, callback) => client.get(positionalArgs[0], callback));
+                    return clientCommandSpec(cmd, (callback) => serviceModule.status(positionalArgs[0], rpcOptions, callback));
                 }
                 fail("Command 'status' accepts zero or one argument.");
                 return null;
             case 'start':
                 expectArgs(cmd, positionalArgs, 1);
-                return clientCommandSpec(cmd, (client, callback) => client.start(positionalArgs[0], callback));
+                return clientCommandSpec(cmd, (callback) => serviceModule.start(positionalArgs[0], rpcOptions, callback));
             case 'stop':
                 expectArgs(cmd, positionalArgs, 1);
-                return clientCommandSpec(cmd, (client, callback) => client.stop(positionalArgs[0], callback));
+                return clientCommandSpec(cmd, (callback) => serviceModule.stop(positionalArgs[0], rpcOptions, callback));
             case 'details':
                 return buildDetailsCommandSpec(positionalArgs);
             default:
@@ -171,7 +171,13 @@
                     serviceName: positionalArgs[1],
                     key: positionalArgs[2] || '',
                     format: normalizedFormat(parsed.values.format || 'box'),
-                    execute: (client, callback) => client.details.get(positionalArgs[1], positionalArgs[2] || '', callback),
+                    execute: (callback) => {
+                        if (positionalArgs[2]) {
+                            serviceModule.details.get(positionalArgs[1], positionalArgs[2], rpcOptions, callback);
+                            return;
+                        }
+                        serviceModule.details.get(positionalArgs[1], rpcOptions, callback);
+                    },
                 };
             case 'set':
                 if (positionalArgs.length !== 4) {
@@ -188,7 +194,7 @@
                     key: positionalArgs[2],
                     value: parseDetailValue(positionalArgs[3], parsed.values.detailType || ''),
                     detailType: normalizedDetailType(parsed.values.detailType || ''),
-                    execute: (client, callback) => client.details.set(positionalArgs[1], positionalArgs[2], parseDetailValue(positionalArgs[3], parsed.values.detailType || ''), callback),
+                    execute: (callback) => serviceModule.details.set(positionalArgs[1], positionalArgs[2], parseDetailValue(positionalArgs[3], parsed.values.detailType || ''), rpcOptions, callback),
                 };
             case 'delete':
                 if (positionalArgs.length !== 3) {
@@ -203,7 +209,7 @@
                     action,
                     serviceName: positionalArgs[1],
                     key: positionalArgs[2],
-                    execute: (client, callback) => client.details.delete(positionalArgs[1], positionalArgs[2], callback),
+                    execute: (callback) => serviceModule.details.delete(positionalArgs[1], positionalArgs[2], rpcOptions, callback),
                 };
             default:
                 fail(`Unknown details command '${action}'.`);
@@ -362,9 +368,9 @@
         return path.resolve(process.cwd(), filePath);
     }
 
-    function executeCommand(commandSpec, client, callback) {
+    function executeCommand(commandSpec, callback) {
         if (commandSpec && typeof commandSpec.execute === 'function') {
-            commandSpec.execute(client, callback);
+            commandSpec.execute(callback);
             return;
         }
         callback(new Error(`Unsupported command kind '${commandSpec ? commandSpec.kind : ''}'.`));

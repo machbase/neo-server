@@ -22,6 +22,16 @@ class Client {
             set: (name, key, value, callback) => this.detailWrite('service.runtime.detail.set', name, key, value, callback),
             delete: (name, key, callback) => this.detailsDelete(name, key, callback),
         };
+        this.commands = {
+            status: (name, callback) => this.status(name, callback),
+            read: (callback) => this.read(callback),
+            update: (callback) => this.update(callback),
+            reload: (callback) => this.reload(callback),
+            install: (config, callback) => this.install(config, callback),
+            uninstall: (name, callback) => this.uninstall(name, callback),
+            start: (name, callback) => this.start(name, callback),
+            stop: (name, callback) => this.stop(name, callback),
+        };
     }
 
     call(method, params, callback) {
@@ -51,6 +61,17 @@ class Client {
 
     get(name, callback) {
         return this.call('service.get', { name: requireName(name) }, callback);
+    }
+
+    status(name, callback) {
+        if (typeof name === 'function') {
+            callback = name;
+            name = '';
+        }
+        if (name === undefined || name === null || name === '') {
+            return this.list(callback);
+        }
+        return this.get(name, callback);
     }
 
     read(callback) {
@@ -125,16 +146,100 @@ class Client {
     }
 }
 
-function createClient(options) {
-    return new Client(options);
-}
-
 function call(method, params, options, callback) {
     if (typeof options === 'function') {
         callback = options;
         options = undefined;
     }
-    return createClient(options).call(method, params, callback);
+    return new Client(options).call(method, params, callback);
+}
+
+function list(options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).list(callback);
+}
+
+function get(name, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).get(name, callback);
+}
+
+function status(name, options, callback) {
+    if (typeof name === 'function') {
+        callback = name;
+        name = '';
+        options = undefined;
+    } else if (typeof name === 'object' && name !== null) {
+        callback = options;
+        options = name;
+        name = '';
+    } else if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).status(name, callback);
+}
+
+function read(options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).read(callback);
+}
+
+function update(options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).update(callback);
+}
+
+function reload(options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).reload(callback);
+}
+
+function install(config, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).install(config, callback);
+}
+
+function uninstall(name, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).uninstall(name, callback);
+}
+
+function start(name, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).start(name, callback);
+}
+
+function stop(name, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).stop(name, callback);
 }
 
 function runtimeGet(name, options, callback) {
@@ -142,7 +247,7 @@ function runtimeGet(name, options, callback) {
         callback = options;
         options = undefined;
     }
-    return createClient(options).runtime.get(name, callback);
+    return new Client(options).runtime.get(name, callback);
 }
 
 function detailsGet(name, key, options, callback) {
@@ -150,11 +255,15 @@ function detailsGet(name, key, options, callback) {
         callback = key;
         key = '';
         options = undefined;
+    } else if (typeof key === 'object' && key !== null) {
+        callback = options;
+        options = key;
+        key = '';
     } else if (typeof options === 'function') {
         callback = options;
         options = undefined;
     }
-    return createClient(options).details.get(name, key, callback);
+    return new Client(options).details.get(name, key, callback);
 }
 
 function detailsWrite(method, name, key, value, options, callback) {
@@ -162,7 +271,7 @@ function detailsWrite(method, name, key, value, options, callback) {
         callback = options;
         options = undefined;
     }
-    return createClient(options).call(method, {
+    return new Client(options).call(method, {
         name: requireName(name),
         key: normalizeDetailKey(key, true),
         value,
@@ -174,7 +283,7 @@ function detailsDelete(name, key, options, callback) {
         callback = options;
         options = undefined;
     }
-    return createClient(options).details.delete(name, key, callback);
+    return new Client(options).details.delete(name, key, callback);
 }
 
 function normalizeClientOptions(options) {
@@ -335,10 +444,29 @@ function normalizeDetailKey(key, required) {
 
 module.exports = {
     Client,
-    createClient,
     resolveController,
     parseController,
     call,
+    list,
+    get,
+    status,
+    read,
+    update,
+    reload,
+    install,
+    uninstall,
+    start,
+    stop,
+    commands: {
+        status,
+        read,
+        update,
+        reload,
+        install,
+        uninstall,
+        start,
+        stop,
+    },
     runtime: {
         get: runtimeGet,
     },
