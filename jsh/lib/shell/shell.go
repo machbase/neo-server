@@ -67,6 +67,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 	ed.SetHistory(sh.history)
 	ed.SetHistoryCycling(true)
 	ed.SetPredictColor([...]string{"\x1B[3;22;30m", "\x1B[23;39m"}) // dark gray, italic
+	ed.LineEditor.Predictor = sh.predictHistory
 	ed.ResetColor = "\x1B[0m"
 	ed.DefaultColor = "\x1B[37;49;1m"
 
@@ -77,6 +78,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 		Postfix:    " ",
 		Candidates: sh.getCompletionCandidates,
 	})
+	sh.bindPredictionKeys(&ed)
 	ctx := context.Background()
 	log.Println(banner)
 	log.Println(betaWarn)
@@ -126,6 +128,49 @@ func (sh *Shell) prompt(env *engine.Env) func(w io.Writer, lineNo int) (int, err
 
 func (sh *Shell) submitOnEnterWhen(lines []string, _ int) bool {
 	return !strings.HasSuffix(lines[len(lines)-1], `\`)
+}
+
+func (sh *Shell) predictHistory(buf *readline.Buffer) string {
+	return predictShellHistory(buf.String(), buf.History)
+}
+
+func (sh *Shell) bindPredictionKeys(ed *multiline.Editor) {
+	acceptOrForward := &readline.GoCommand{
+		Name: "SHELL_ACCEPT_PREDICT_OR_FORWARD",
+		Func: func(ctx context.Context, buf *readline.Buffer) readline.Result {
+			if shouldAcceptPrediction(buf.Cursor, len(buf.Buffer), ed.CursorLine(), len(ed.Lines())) {
+				return readline.CmdAcceptPredict.Call(ctx, buf)
+			}
+			return ed.CmdForwardChar(ctx, buf)
+		},
+	}
+	ed.BindKey(keys.Right, acceptOrForward)
+	ed.BindKey(keys.CtrlF, acceptOrForward)
+}
+
+func predictShellHistory(current string, history readline.IHistory) string {
+	if history == nil || strings.TrimSpace(current) == "" || strings.HasSuffix(current, `\`) {
+		return ""
+	}
+	for i := history.Len() - 1; i >= 0; i-- {
+		for _, line := range strings.Split(history.At(i), "\n") {
+			candidate := strings.TrimSuffix(line, `\`)
+			if strings.HasPrefix(candidate, current) {
+				return current + candidate[len(current):]
+			}
+		}
+	}
+	return ""
+}
+
+func shouldAcceptPrediction(cursor int, bufferLen int, cursorLine int, lineCount int) bool {
+	if cursor < bufferLen {
+		return false
+	}
+	if lineCount <= 0 {
+		return true
+	}
+	return cursorLine >= lineCount-1
 }
 
 func (sh *Shell) getCompletionCandidates(fields []string) (forCompletion []string, forListing []string) {
