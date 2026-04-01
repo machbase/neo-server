@@ -162,7 +162,7 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 	svc.Status = ServiceStatusRunning
 	svc.Error = nil
 	svc.ExitCode = 0
-	svc.resetOutput()
+	svc.resetRuntime()
 
 	svc.cmd = ctl.command(sc)
 	if svc.cmd == nil {

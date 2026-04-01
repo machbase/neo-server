@@ -469,6 +469,35 @@ func TestControllerJSONRPC(t *testing.T) {
 				t.Fatalf("service.start status=%s, want %s", beta.Status, ServiceStatusRunning)
 			}
 
+			var betaRuntime ServiceRuntimeSnapshot
+			callControllerRPC(t, address, 31, "service.runtime.get", map[string]any{"name": "beta"}, &betaRuntime)
+			if len(betaRuntime.Output) != 0 {
+				t.Fatalf("service.runtime.get output=%v, want empty", betaRuntime.Output)
+			}
+			if betaRuntime.Details != nil {
+				t.Fatalf("service.runtime.get details=%v, want nil", betaRuntime.Details)
+			}
+
+			callControllerRPC(t, address, 32, "service.runtime.detail.add", map[string]any{"name": "beta", "key": "health", "value": "ok"}, &betaRuntime)
+			if betaRuntime.Details["health"] != "ok" {
+				t.Fatalf("service.runtime.detail.add details=%v, want health=ok", betaRuntime.Details)
+			}
+
+			callControllerRPC(t, address, 321, "service.runtime.detail.set", map[string]any{"name": "beta", "key": "health", "value": "good"}, &betaRuntime)
+			if betaRuntime.Details["health"] != "good" {
+				t.Fatalf("service.runtime.detail.set details=%v, want health=good", betaRuntime.Details)
+			}
+
+			callControllerRPC(t, address, 33, "service.runtime.detail.update", map[string]any{"name": "beta", "key": "health", "value": "warn"}, &betaRuntime)
+			if betaRuntime.Details["health"] != "warn" {
+				t.Fatalf("service.runtime.detail.update details=%v, want health=warn", betaRuntime.Details)
+			}
+
+			callControllerRPC(t, address, 34, "service.runtime.detail.delete", map[string]any{"name": "beta", "key": "health"}, &betaRuntime)
+			if betaRuntime.Details != nil {
+				t.Fatalf("service.runtime.detail.delete details=%v, want nil", betaRuntime.Details)
+			}
+
 			writeConfig(Config{Name: "beta", Enable: false, Executable: "echo", Args: []string{"v2"}})
 
 			var reread ServiceListSnapshot
@@ -647,7 +676,9 @@ func TestServiceStringIncludesPidAndOutput(t *testing.T) {
 		},
 		Status: ServiceStatusRunning,
 		cmd:    cmd,
-		output: []string{"line-1", "line-2"},
+		Runtime: ServiceRuntime{
+			output: []string{"line-1", "line-2"},
+		},
 	}
 
 	out := svc.String()
@@ -748,7 +779,10 @@ func TestSnapshotServiceCopiesRuntimeFields(t *testing.T) {
 		ExitCode: 23,
 		Error:    errors.New("runtime failed"),
 		cmd:      cmd,
-		output:   []string{"stdout"},
+		Runtime: ServiceRuntime{
+			output:  []string{"stdout"},
+			details: map[string]any{"mode": "test"},
+		},
 	}
 
 	snap := snapshotService(svc)
@@ -773,18 +807,26 @@ func TestSnapshotServiceCopiesRuntimeFields(t *testing.T) {
 	if len(snap.Output) != 1 || snap.Output[0] != "stdout" {
 		t.Fatalf("snapshot output=%v, want [stdout]", snap.Output)
 	}
+	if runtimeSnap := snapshotServiceRuntime(svc); runtimeSnap.Details["mode"] != "test" {
+		t.Fatalf("runtime snapshot details=%v, want mode=test", runtimeSnap.Details)
+	}
 
 	snap.Config.Environment["A"] = "9"
 	snap.Config.Args[0] = "mutated"
 	snap.Output[0] = "mutated"
+	runtimeSnap := snapshotServiceRuntime(svc)
+	runtimeSnap.Details["mode"] = "mutated"
 	if svc.Config.Environment["A"] != "1" {
 		t.Fatal("snapshot mutated original environment")
 	}
 	if svc.Config.Args[0] != "app.js" {
 		t.Fatal("snapshot mutated original args")
 	}
-	if svc.output[0] != "stdout" {
+	if svc.Runtime.output[0] != "stdout" {
 		t.Fatal("snapshot mutated original output")
+	}
+	if svc.Runtime.details["mode"] != "test" {
+		t.Fatal("snapshot mutated original details")
 	}
 }
 
@@ -1051,6 +1093,12 @@ func TestRPCUtilityFunctionsAndDispatchErrors(t *testing.T) {
 		if _, rpcErr := ctl.dispatchRPC("service.get", json.RawMessage(`{"name":"missing"}`)); rpcErr == nil || rpcErr.Code != jsonRPCNotFound {
 			t.Fatalf("dispatchRPC not found=%+v", rpcErr)
 		}
+		if _, rpcErr := ctl.dispatchRPC("service.runtime.detail.add", json.RawMessage(`{"name":"missing","key":"k","value":1}`)); rpcErr == nil || rpcErr.Code != jsonRPCNotFound {
+			t.Fatalf("dispatchRPC runtime add not found=%+v", rpcErr)
+		}
+		if _, rpcErr := ctl.dispatchRPC("service.runtime.detail.set", json.RawMessage(`{"name":"missing","key":"k","value":1}`)); rpcErr == nil || rpcErr.Code != jsonRPCNotFound {
+			t.Fatalf("dispatchRPC runtime set not found=%+v", rpcErr)
+		}
 		if _, rpcErr := ctl.dispatchRPC("missing.method", nil); rpcErr == nil || rpcErr.Code != jsonRPCMethodMiss {
 			t.Fatalf("dispatchRPC missing method=%+v", rpcErr)
 		}
@@ -1086,6 +1134,38 @@ func TestRPCUtilityFunctionsAndDispatchErrors(t *testing.T) {
 		}
 		if result.(ServiceSnapshot).Status != ServiceStatusRunning {
 			t.Fatalf("start result=%+v, want running", result)
+		}
+
+		result, rpcErr = ctl.dispatchRPC("service.runtime.detail.add", json.RawMessage(`{"name":"svc-a","key":"health","value":"ok"}`))
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(runtime.detail.add) error=%+v", rpcErr)
+		}
+		if result.(ServiceRuntimeSnapshot).Details["health"] != "ok" {
+			t.Fatalf("runtime.detail.add result=%+v, want health=ok", result)
+		}
+
+		result, rpcErr = ctl.dispatchRPC("service.runtime.detail.set", json.RawMessage(`{"name":"svc-a","key":"health","value":"good"}`))
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(runtime.detail.set) error=%+v", rpcErr)
+		}
+		if result.(ServiceRuntimeSnapshot).Details["health"] != "good" {
+			t.Fatalf("runtime.detail.set result=%+v, want health=good", result)
+		}
+
+		result, rpcErr = ctl.dispatchRPC("service.runtime.detail.update", json.RawMessage(`{"name":"svc-a","key":"health","value":"warn"}`))
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(runtime.detail.update) error=%+v", rpcErr)
+		}
+		if result.(ServiceRuntimeSnapshot).Details["health"] != "warn" {
+			t.Fatalf("runtime.detail.update result=%+v, want health=warn", result)
+		}
+
+		result, rpcErr = ctl.dispatchRPC("service.runtime.detail.delete", json.RawMessage(`{"name":"svc-a","key":"health"}`))
+		if rpcErr != nil {
+			t.Fatalf("dispatchRPC(runtime.detail.delete) error=%+v", rpcErr)
+		}
+		if result.(ServiceRuntimeSnapshot).Details != nil {
+			t.Fatalf("runtime.detail.delete result=%+v, want nil details", result)
 		}
 
 		result, rpcErr = ctl.dispatchRPC("service.stop", nameParams)

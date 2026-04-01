@@ -13,43 +13,130 @@ const serviceOutputMaxLines = 100
 // Service represents a process that running a Engine session.
 // A http server javascript process can be an example of this.
 type Service struct {
-	Config   Config        `json:"config"`
-	Status   ServiceStatus `json:"status"`
-	ExitCode int           `json:"exit_code"`
-	Error    error         `json:"error"`
+	Config   Config         `json:"config"`
+	Status   ServiceStatus  `json:"status"`
+	ExitCode int            `json:"exit_code"`
+	Error    error          `json:"error"`
+	Runtime  ServiceRuntime `json:"runtime"`
 	cmd      *exec.Cmd
 	startCh  chan struct{}
 	stopCh   chan struct{}
-	outputMu sync.Mutex
-	output   []string
+}
+
+type ServiceRuntime struct {
+	mu      sync.Mutex
+	output  []string
+	details map[string]any
+}
+
+func (s *Service) resetRuntime() {
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	s.Runtime.output = s.Runtime.output[:0]
+	s.Runtime.details = nil
 }
 
 func (s *Service) resetOutput() {
-	s.outputMu.Lock()
-	defer s.outputMu.Unlock()
-	s.output = s.output[:0]
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	s.Runtime.output = s.Runtime.output[:0]
 }
 
 func (s *Service) appendOutput(line string) {
-	s.outputMu.Lock()
-	defer s.outputMu.Unlock()
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
 
-	s.output = append(s.output, line)
-	if len(s.output) <= serviceOutputMaxLines {
+	s.Runtime.output = append(s.Runtime.output, line)
+	if len(s.Runtime.output) <= serviceOutputMaxLines {
 		return
 	}
-	overflow := len(s.output) - serviceOutputMaxLines
-	copy(s.output, s.output[overflow:])
-	s.output = s.output[:serviceOutputMaxLines]
+	overflow := len(s.Runtime.output) - serviceOutputMaxLines
+	copy(s.Runtime.output, s.Runtime.output[overflow:])
+	s.Runtime.output = s.Runtime.output[:serviceOutputMaxLines]
 }
 
 func (s *Service) outputSnapshot() []string {
-	s.outputMu.Lock()
-	defer s.outputMu.Unlock()
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
 
-	out := make([]string, len(s.output))
-	copy(out, s.output)
+	out := make([]string, len(s.Runtime.output))
+	copy(out, s.Runtime.output)
 	return out
+}
+
+func (s *Service) detailsSnapshot() map[string]any {
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	return cloneDetails(s.Runtime.details)
+}
+
+func (s *Service) addDetail(key string, value any) error {
+	if key == "" {
+		return fmt.Errorf("service runtime detail key is required")
+	}
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	if s.Runtime.details == nil {
+		s.Runtime.details = map[string]any{}
+	}
+	if _, exists := s.Runtime.details[key]; exists {
+		return fmt.Errorf("service runtime detail %q already exists", key)
+	}
+	s.Runtime.details[key] = value
+	return nil
+}
+
+func (s *Service) updateDetail(key string, value any) error {
+	if key == "" {
+		return fmt.Errorf("service runtime detail key is required")
+	}
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	if _, exists := s.Runtime.details[key]; !exists {
+		return fmt.Errorf("service runtime detail %q not found", key)
+	}
+	s.Runtime.details[key] = value
+	return nil
+}
+
+func (s *Service) setDetail(key string, value any) error {
+	if key == "" {
+		return fmt.Errorf("service runtime detail key is required")
+	}
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	if s.Runtime.details == nil {
+		s.Runtime.details = map[string]any{}
+	}
+	s.Runtime.details[key] = value
+	return nil
+}
+
+func (s *Service) deleteDetail(key string) error {
+	if key == "" {
+		return fmt.Errorf("service runtime detail key is required")
+	}
+	s.Runtime.mu.Lock()
+	defer s.Runtime.mu.Unlock()
+	if _, exists := s.Runtime.details[key]; !exists {
+		return fmt.Errorf("service runtime detail %q not found", key)
+	}
+	delete(s.Runtime.details, key)
+	if len(s.Runtime.details) == 0 {
+		s.Runtime.details = nil
+	}
+	return nil
+}
+
+func cloneDetails(details map[string]any) map[string]any {
+	if len(details) == 0 {
+		return nil
+	}
+	clone := make(map[string]any, len(details))
+	for key, value := range details {
+		clone[key] = value
+	}
+	return clone
 }
 
 type serviceOutputWriter struct {

@@ -432,6 +432,165 @@ func TestServiceCommandReloadFormatting(t *testing.T) {
 	}
 }
 
+func TestServiceCommandDetailsGetFormatting(t *testing.T) {
+	addr, shutdown := startMockServiceRPCServer(t, func(req serviceRPCRequest) any {
+		if req.Method != "service.runtime.get" {
+			t.Fatalf("method=%q, want %q", req.Method, "service.runtime.get")
+		}
+		var params map[string]any
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Fatalf("unmarshal params: %v", err)
+		}
+		if params["name"] != "alpha" {
+			t.Fatalf("details get name=%v, want alpha", params["name"])
+		}
+		return map[string]any{
+			"output": []any{},
+			"details": map[string]any{
+				"enabled": true,
+				"labels":  map[string]any{"tier": "gold"},
+				"retries": 3,
+			},
+		}
+	})
+	defer shutdown()
+
+	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "get", "alpha")
+	if err != nil {
+		t.Fatalf("service details get failed: %v\n%s", err, output)
+	}
+	checks := []string{"DETAILS (3)", "KEY", "TYPE", "VALUE", "enabled", "boolean", "true", "labels", "object", "{\"tier\":\"gold\"}", "retries", "number", "3"}
+	for _, check := range checks {
+		if !strings.Contains(output, check) {
+			t.Fatalf("details get output missing %q:\n%s", check, output)
+		}
+	}
+
+	output, err = runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "get", "alpha", "labels")
+	if err != nil {
+		t.Fatalf("service details get key failed: %v\n%s", err, output)
+	}
+	if strings.Contains(output, "retries") || strings.Contains(output, "enabled") {
+		t.Fatalf("details get key output should only contain selected key:\n%s", output)
+	}
+	if !strings.Contains(output, "labels") || !strings.Contains(output, "tier") || !strings.Contains(output, "gold") {
+		t.Fatalf("details get key output missing labels object:\n%s", output)
+	}
+
+	output, err = runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "get", "alpha", "labels", "--format", "json")
+	if err != nil {
+		t.Fatalf("service details get json failed: %v\n%s", err, output)
+	}
+	if strings.TrimSpace(output) != "{\n  \"labels\": {\n    \"tier\": \"gold\"\n  }\n}" {
+		t.Fatalf("details get json output=%q, want wrapped object json", output)
+	}
+}
+
+func TestServiceCommandDetailsSetTypedValues(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		expected   any
+		typeName   string
+		resultText string
+	}{
+		{name: "string default", args: []string{"details", "set", "alpha", "mode", "warm"}, expected: "warm", typeName: "string", resultText: "warm"},
+		{name: "string explicit", args: []string{"details", "set", "alpha", "mode", "warm", "--detail-type", "string"}, expected: "warm", typeName: "string", resultText: "warm"},
+		{name: "number", args: []string{"details", "set", "alpha", "retries", "3.5", "--detail-type", "number"}, expected: 3.5, typeName: "number", resultText: "3.5"},
+		{name: "boolean alias", args: []string{"details", "set", "alpha", "enabled", "true", "--detail-type", "bool"}, expected: true, typeName: "boolean", resultText: "true"},
+		{name: "object alias", args: []string{"details", "set", "alpha", "labels", "{\"tier\":\"gold\"}", "--detail-type", "json"}, expected: map[string]any{"tier": "gold"}, typeName: "object", resultText: "{\"tier\":\"gold\"}"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addr, shutdown := startMockServiceRPCServer(t, func(req serviceRPCRequest) any {
+				if req.Method != "service.runtime.detail.set" {
+					t.Fatalf("method=%q, want %q", req.Method, "service.runtime.detail.set")
+				}
+				var params map[string]any
+				if err := json.Unmarshal(req.Params, &params); err != nil {
+					t.Fatalf("unmarshal params: %v", err)
+				}
+				if params["name"] != "alpha" {
+					t.Fatalf("set name=%v, want alpha", params["name"])
+				}
+				if gotKey := params["key"]; gotKey != tc.args[3] {
+					t.Fatalf("set key=%v, want %s", gotKey, tc.args[3])
+				}
+				assertDetailValue(t, params["value"], tc.expected)
+				return map[string]any{"output": []any{}, "details": map[string]any{tc.args[3]: tc.expected}}
+			})
+			defer shutdown()
+
+			args := append([]string{"service", "--controller=" + addr}, tc.args...)
+			output, err := runCommand(t.TempDir(), nil, args...)
+			if err != nil {
+				t.Fatalf("service details set failed: %v\n%s", err, output)
+			}
+			checks := []string{"RESULT", "details set", "alpha", tc.args[3], tc.typeName, tc.resultText, "yes", "DETAILS (1)"}
+			for _, check := range checks {
+				if !strings.Contains(output, check) {
+					t.Fatalf("details set output missing %q:\n%s", check, output)
+				}
+			}
+		})
+	}
+}
+
+func TestServiceCommandDetailsDeleteFormatting(t *testing.T) {
+	addr, shutdown := startMockServiceRPCServer(t, func(req serviceRPCRequest) any {
+		if req.Method != "service.runtime.detail.delete" {
+			t.Fatalf("method=%q, want %q", req.Method, "service.runtime.detail.delete")
+		}
+		var params map[string]any
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Fatalf("unmarshal params: %v", err)
+		}
+		if params["name"] != "alpha" || params["key"] != "labels" {
+			t.Fatalf("delete params=%v, want alpha/labels", params)
+		}
+		return map[string]any{"output": []any{}, "details": map[string]any{}}
+	})
+	defer shutdown()
+
+	output, err := runCommand(t.TempDir(), nil, "service", "--controller="+addr, "details", "delete", "alpha", "labels")
+	if err != nil {
+		t.Fatalf("service details delete failed: %v\n%s", err, output)
+	}
+	checks := []string{"RESULT", "details delete", "alpha", "labels", "yes", "DETAILS (0)", "(none)"}
+	for _, check := range checks {
+		if !strings.Contains(output, check) {
+			t.Fatalf("details delete output missing %q:\n%s", check, output)
+		}
+	}
+}
+
+func TestServiceCommandDetailsSetRejectsInvalidTypeInput(t *testing.T) {
+	output, err := runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "details", "set", "alpha", "retries", "abc", "--detail-type", "number")
+	if err == nil {
+		t.Fatalf("service details set unexpectedly succeeded:\n%s", output)
+	}
+	if !strings.Contains(output, "Failed to parse number detail value 'abc'") {
+		t.Fatalf("output=%q, want number parse error", output)
+	}
+
+	output, err = runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "details", "set", "alpha", "labels", "[]", "--detail-type", "object")
+	if err == nil {
+		t.Fatalf("service details set object unexpectedly succeeded:\n%s", output)
+	}
+	if !strings.Contains(output, "is not a valid JSON object") {
+		t.Fatalf("output=%q, want object validation error", output)
+	}
+
+	output, err = runCommand(t.TempDir(), nil, "service", "--controller=127.0.0.1:1", "details", "get", "alpha", "--format", "yaml")
+	if err == nil {
+		t.Fatalf("service details get with invalid format unexpectedly succeeded:\n%s", output)
+	}
+	if !strings.Contains(output, "Invalid --format 'yaml'. Use box or json.") {
+		t.Fatalf("output=%q, want invalid format error", output)
+	}
+}
+
 func TestServiceCommandControllerEndToEnd(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -654,6 +813,43 @@ func nonEmptyLines(output string) []string {
 		lines = append(lines, trimmed)
 	}
 	return lines
+}
+
+func assertDetailValue(t *testing.T, got any, want any) {
+	t.Helper()
+	switch wantValue := want.(type) {
+	case string:
+		if got != wantValue {
+			t.Fatalf("detail value=%#v, want %#v", got, wantValue)
+		}
+	case bool:
+		if got != wantValue {
+			t.Fatalf("detail value=%#v, want %#v", got, wantValue)
+		}
+	case float64:
+		gotNumber, ok := got.(float64)
+		if !ok || gotNumber != wantValue {
+			t.Fatalf("detail value=%#v, want %#v", got, wantValue)
+		}
+	case map[string]any:
+		gotMap, ok := got.(map[string]any)
+		if !ok {
+			t.Fatalf("detail value=%#v, want object", got)
+		}
+		gotBytes, err := json.Marshal(gotMap)
+		if err != nil {
+			t.Fatalf("marshal got map: %v", err)
+		}
+		wantBytes, err := json.Marshal(wantValue)
+		if err != nil {
+			t.Fatalf("marshal want map: %v", err)
+		}
+		if string(gotBytes) != string(wantBytes) {
+			t.Fatalf("detail value=%s, want %s", gotBytes, wantBytes)
+		}
+	default:
+		t.Fatalf("unsupported expected detail type %T", want)
+	}
 }
 
 func writeServiceJSON(t *testing.T, filePath string, value any) {

@@ -40,6 +40,11 @@ type ServiceSnapshot struct {
 	Output   []string       `json:"output,omitempty"`
 }
 
+type ServiceRuntimeSnapshot struct {
+	Output  []string       `json:"output"`
+	Details map[string]any `json:"details"`
+}
+
 type ServiceListSnapshot struct {
 	Unchanged []ConfigSnapshot `json:"unchanged"`
 	Added     []ConfigSnapshot `json:"added"`
@@ -80,6 +85,12 @@ type controllerRPCError struct {
 
 type serviceNameRequest struct {
 	Name string `json:"name"`
+}
+
+type serviceRuntimeDetailRequest struct {
+	Name  string `json:"name"`
+	Key   string `json:"key"`
+	Value any    `json:"value"`
 }
 
 func (ctl *Controller) Address() string {
@@ -253,6 +264,68 @@ func (ctl *Controller) dispatchRPC(method string, params json.RawMessage) (any, 
 			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", req.Name)}
 		}
 		return snapshotService(svc), nil
+	case "service.runtime.get":
+		var req serviceNameRequest
+		if err := decodeRPCParams(params, &req); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		svc := ctl.StatusOf(req.Name)
+		if svc == nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", req.Name)}
+		}
+		return snapshotServiceRuntime(svc), nil
+	case "service.runtime.detail.add":
+		var req serviceRuntimeDetailRequest
+		if err := decodeRPCParams(params, &req); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		svc := ctl.StatusOf(req.Name)
+		if svc == nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", req.Name)}
+		}
+		if err := svc.addDetail(req.Key, req.Value); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		return snapshotServiceRuntime(svc), nil
+	case "service.runtime.detail.update":
+		var req serviceRuntimeDetailRequest
+		if err := decodeRPCParams(params, &req); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		svc := ctl.StatusOf(req.Name)
+		if svc == nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", req.Name)}
+		}
+		if err := svc.updateDetail(req.Key, req.Value); err != nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: err.Error()}
+		}
+		return snapshotServiceRuntime(svc), nil
+	case "service.runtime.detail.set":
+		var req serviceRuntimeDetailRequest
+		if err := decodeRPCParams(params, &req); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		svc := ctl.StatusOf(req.Name)
+		if svc == nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", req.Name)}
+		}
+		if err := svc.setDetail(req.Key, req.Value); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		return snapshotServiceRuntime(svc), nil
+	case "service.runtime.detail.delete":
+		var req serviceRuntimeDetailRequest
+		if err := decodeRPCParams(params, &req); err != nil {
+			return nil, invalidParamsError(err)
+		}
+		svc := ctl.StatusOf(req.Name)
+		if svc == nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", req.Name)}
+		}
+		if err := svc.deleteDetail(req.Key); err != nil {
+			return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: err.Error()}
+		}
+		return snapshotServiceRuntime(svc), nil
 	case "service.read":
 		if err := ctl.Read(); err != nil {
 			return nil, internalRPCError(err)
@@ -431,6 +504,13 @@ func snapshotService(svc *Service) ServiceSnapshot {
 		}
 	}
 	return result
+}
+
+func snapshotServiceRuntime(svc *Service) ServiceRuntimeSnapshot {
+	return ServiceRuntimeSnapshot{
+		Output:  svc.outputSnapshot(),
+		Details: svc.detailsSnapshot(),
+	}
 }
 
 func decodeRPCParams(raw json.RawMessage, out any) error {

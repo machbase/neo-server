@@ -22,6 +22,8 @@
         executable: { type: 'string', short: 'x', description: 'Executable path for inline install', default: '' },
         arg: { type: 'string', short: 'a', description: 'Executable argument for inline install', multiple: true },
         env: { type: 'string', short: 'e', description: 'Environment variable KEY=VALUE for inline install', multiple: true },
+        detailType: { type: 'string', description: 'Detail value type for details set: string, number, boolean/bool, object/json', default: '' },
+        format: { type: 'string', description: 'Output format for details get: box or json', default: 'box' },
         timeout: { type: 'integer', short: 't', description: 'RPC timeout in milliseconds', default: 5000 },
     };
 
@@ -64,14 +66,14 @@
     }
 
     const endpoint = parseController(controller);
-    const rpcCall = buildRpcCall(command, args);
+    const commandSpec = buildCommandSpec(command, args);
 
-    sendRpcRequest(endpoint, rpcCall.method, rpcCall.params, timeout, (err, result) => {
+    executeCommand(endpoint, commandSpec, timeout, (err, result) => {
         if (err) {
             fail(err.message || String(err));
             return;
         }
-        renderResult(command, result, rpcCall.params);
+        renderResult(commandSpec, result);
     });
 
     function printHelp() {
@@ -93,6 +95,14 @@
         console.println('  status [service_name]');
         console.println('  start <service_name>');
         console.println('  stop <service_name>');
+        console.println('  details get <service_name> [key]');
+        console.println('  details set <service_name> <key> <value> [--detail-type <string|number|boolean|bool|object|json>]');
+        console.println('  details delete <service_name> <key>');
+        console.println('Examples:');
+        console.println('  service --controller=127.0.0.1:1234 details get alpha --format json');
+        console.println('  service --controller=127.0.0.1:1234 details set alpha retries 3 --detail-type number');
+        console.println('  service --controller=127.0.0.1:1234 details set alpha enabled true --detail-type boolean');
+        console.println("  service --controller=127.0.0.1:1234 details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
     }
 
     function fail(message) {
@@ -131,39 +141,99 @@
         return { network: 'tcp', host, port };
     }
 
-    function buildRpcCall(cmd, positionalArgs) {
+    function buildCommandSpec(cmd, positionalArgs) {
         switch (cmd) {
             case 'read':
                 expectArgs(cmd, positionalArgs, 0);
-                return { method: 'service.read', params: null };
+                return rpcCommandSpec(cmd, 'service.read', null);
             case 'update':
                 expectArgs(cmd, positionalArgs, 0);
-                return { method: 'service.update', params: null };
+                return rpcCommandSpec(cmd, 'service.update', null);
             case 'reload':
                 expectArgs(cmd, positionalArgs, 0);
-                return { method: 'service.reload', params: null };
+                return rpcCommandSpec(cmd, 'service.reload', null);
             case 'install':
-                return { method: 'service.install', params: buildInstallConfig(positionalArgs) };
+                return rpcCommandSpec(cmd, 'service.install', buildInstallConfig(positionalArgs));
             case 'uninstall':
                 expectArgs(cmd, positionalArgs, 1);
-                return { method: 'service.uninstall', params: { name: positionalArgs[0] } };
+                return rpcCommandSpec(cmd, 'service.uninstall', { name: positionalArgs[0] });
             case 'status':
                 if (positionalArgs.length === 0) {
-                    return { method: 'service.list', params: null };
+                    return rpcCommandSpec(cmd, 'service.list', null);
                 }
                 if (positionalArgs.length === 1) {
-                    return { method: 'service.get', params: { name: positionalArgs[0] } };
+                    return rpcCommandSpec(cmd, 'service.get', { name: positionalArgs[0] });
                 }
                 fail("Command 'status' accepts zero or one argument.");
                 return null;
             case 'start':
                 expectArgs(cmd, positionalArgs, 1);
-                return { method: 'service.start', params: { name: positionalArgs[0] } };
+                return rpcCommandSpec(cmd, 'service.start', { name: positionalArgs[0] });
             case 'stop':
                 expectArgs(cmd, positionalArgs, 1);
-                return { method: 'service.stop', params: { name: positionalArgs[0] } };
+                return rpcCommandSpec(cmd, 'service.stop', { name: positionalArgs[0] });
+            case 'details':
+                return buildDetailsCommandSpec(positionalArgs);
             default:
                 fail(`Unknown command '${cmd}'.`);
+                return null;
+        }
+    }
+
+    function rpcCommandSpec(commandName, method, params) {
+        return { kind: 'rpc', command: commandName, method, params };
+    }
+
+    function buildDetailsCommandSpec(positionalArgs) {
+        if (positionalArgs.length === 0) {
+            fail("Command 'details' requires a subcommand: get, set, delete.");
+        }
+        const action = positionalArgs[0];
+        switch (action) {
+            case 'get':
+                if (positionalArgs.length !== 2 && positionalArgs.length !== 3) {
+                    fail("Command 'details get' requires <service_name> and optional [key].");
+                }
+                return {
+                    kind: 'details-get',
+                    command: 'details',
+                    action,
+                    serviceName: positionalArgs[1],
+                    key: positionalArgs[2] || '',
+                    format: normalizedFormat(parsed.values.format || 'box'),
+                };
+            case 'set':
+                if (positionalArgs.length !== 4) {
+                    fail("Command 'details set' requires <service_name> <key> <value>.");
+                }
+                if (parsed.values.format && parsed.values.format !== 'box') {
+                    fail("Option --format is only supported with 'details get'.");
+                }
+                return {
+                    kind: 'details-set',
+                    command: 'details',
+                    action,
+                    serviceName: positionalArgs[1],
+                    key: positionalArgs[2],
+                    value: parseDetailValue(positionalArgs[3], parsed.values.detailType || ''),
+                    detailType: normalizedDetailType(parsed.values.detailType || ''),
+                };
+            case 'delete':
+                if (positionalArgs.length !== 3) {
+                    fail("Command 'details delete' requires <service_name> <key>.");
+                }
+                if (parsed.values.format && parsed.values.format !== 'box') {
+                    fail("Option --format is only supported with 'details get'.");
+                }
+                return {
+                    kind: 'details-delete',
+                    command: 'details',
+                    action,
+                    serviceName: positionalArgs[1],
+                    key: positionalArgs[2],
+                };
+            default:
+                fail(`Unknown details command '${action}'.`);
                 return null;
         }
     }
@@ -174,6 +244,74 @@
                 fail(`Command '${cmd}' does not accept positional arguments.`);
             }
             fail(`Command '${cmd}' requires ${expectedCount} argument(s).`);
+        }
+    }
+
+    function normalizedDetailType(value) {
+        const lowered = String(value || '').toLowerCase();
+        if (lowered === '') {
+            return 'string';
+        }
+        if (lowered === 'bool') {
+            return 'boolean';
+        }
+        if (lowered === 'json') {
+            return 'object';
+        }
+        if (lowered === 'string' || lowered === 'number' || lowered === 'boolean' || lowered === 'object') {
+            return lowered;
+        }
+        fail(`Invalid --detail-type '${value}'. Use string, number, boolean, bool, object, or json.`);
+        return '';
+    }
+
+    function normalizedFormat(value) {
+        const lowered = String(value || 'box').toLowerCase();
+        if (lowered === 'box' || lowered === 'json') {
+            return lowered;
+        }
+        fail(`Invalid --format '${value}'. Use box or json.`);
+        return 'box';
+    }
+
+    function parseDetailValue(rawValue, detailType) {
+        const normalizedType = normalizedDetailType(detailType);
+        switch (normalizedType) {
+            case 'string':
+                return rawValue;
+            case 'number': {
+                const value = parseJSONValue(rawValue, 'number');
+                if (typeof value !== 'number' || !Number.isFinite(value)) {
+                    fail(`Detail value '${rawValue}' is not a valid JSON number.`);
+                }
+                return value;
+            }
+            case 'boolean': {
+                const value = parseJSONValue(rawValue, 'boolean');
+                if (typeof value !== 'boolean') {
+                    fail(`Detail value '${rawValue}' is not a valid JSON boolean.`);
+                }
+                return value;
+            }
+            case 'object': {
+                const value = parseJSONValue(rawValue, 'object');
+                if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                    fail(`Detail value '${rawValue}' is not a valid JSON object.`);
+                }
+                return value;
+            }
+            default:
+                fail(`Invalid --detail-type '${detailType}'. Use string, number, boolean, bool, object, or json.`);
+                return null;
+        }
+    }
+
+    function parseJSONValue(rawValue, expectedType) {
+        try {
+            return JSON.parse(rawValue);
+        } catch (err) {
+            fail(`Failed to parse ${expectedType} detail value '${rawValue}': ${err.message}`);
+            return null;
         }
     }
 
@@ -325,8 +463,54 @@
         });
     }
 
-    function renderResult(cmd, result, params) {
-        switch (cmd) {
+    function executeCommand(endpoint, commandSpec, timeoutMsec, callback) {
+        if (commandSpec.kind === 'rpc') {
+            sendRpcRequest(endpoint, commandSpec.method, commandSpec.params, timeoutMsec, callback);
+            return;
+        }
+
+        if (commandSpec.kind === 'details-get') {
+            sendRpcRequest(endpoint, 'service.runtime.get', { name: commandSpec.serviceName }, timeoutMsec, (err, runtime) => {
+                if (err) {
+                    callback(err);
+                    return;
+                }
+                if (commandSpec.key && !hasDetailKey(runtime, commandSpec.key)) {
+                    callback(new Error(`Detail '${commandSpec.key}' not found for service '${commandSpec.serviceName}'.`));
+                    return;
+                }
+                callback(null, runtime);
+            });
+            return;
+        }
+
+        if (commandSpec.kind === 'details-set') {
+            sendRpcRequest(endpoint, 'service.runtime.detail.set', {
+                name: commandSpec.serviceName,
+                key: commandSpec.key,
+                value: commandSpec.value,
+            }, timeoutMsec, callback);
+            return;
+        }
+
+        if (commandSpec.kind === 'details-delete') {
+            sendRpcRequest(endpoint, 'service.runtime.detail.delete', {
+                name: commandSpec.serviceName,
+                key: commandSpec.key,
+            }, timeoutMsec, callback);
+            return;
+        }
+
+        callback(new Error(`Unsupported command kind '${commandSpec.kind}'.`));
+    }
+
+    function hasDetailKey(runtime, key) {
+        const details = runtime && runtime.details && typeof runtime.details === 'object' ? runtime.details : null;
+        return !!details && Object.prototype.hasOwnProperty.call(details, key);
+    }
+
+    function renderResult(commandSpec, result) {
+        switch (commandSpec.command) {
             case 'read':
                 renderReadResult(result);
                 return;
@@ -345,14 +529,118 @@
             case 'start':
             case 'stop':
             case 'install':
-                renderOperationResult(cmd, result);
+                renderOperationResult(commandSpec.command, result);
                 return;
             case 'uninstall':
-                renderBooleanOperationResult(cmd, params, result);
+                renderBooleanOperationResult(commandSpec.command, commandSpec.params, result);
+                return;
+            case 'details':
+                renderDetailsResult(commandSpec, result);
                 return;
             default:
                 printJson(result);
         }
+    }
+
+    function renderDetailsResult(commandSpec, runtime) {
+        if (!runtime || typeof runtime !== 'object') {
+            printJson(runtime);
+            return;
+        }
+
+        if (commandSpec.action === 'get' && commandSpec.format === 'json') {
+            if (commandSpec.key) {
+                printJson({ [commandSpec.key]: (runtime.details || {})[commandSpec.key] });
+                return;
+            }
+            printJson(runtime.details || {});
+            return;
+        }
+
+        const rows = detailRows(runtime.details, commandSpec.key);
+        if (commandSpec.action === 'get') {
+            console.println(`DETAILS (${rows.length})`);
+            renderDetailTable(rows);
+            return;
+        }
+
+        const currentValue = commandSpec.action === 'delete'
+            ? '-'
+            : formatDetailValue((runtime.details || {})[commandSpec.key]);
+        const currentType = commandSpec.action === 'delete'
+            ? '-'
+            : detailValueType((runtime.details || {})[commandSpec.key]);
+        console.println('RESULT');
+        renderTable([
+            { key: 'operation', title: 'OPERATION' },
+            { key: 'name', title: 'NAME' },
+            { key: 'key', title: 'KEY' },
+            { key: 'type', title: 'TYPE' },
+            { key: 'value', title: 'VALUE' },
+            { key: 'success', title: 'SUCCESS' },
+        ], [{
+            operation: `details ${commandSpec.action}`,
+            name: commandSpec.serviceName,
+            key: commandSpec.key,
+            type: currentType,
+            value: currentValue,
+            success: 'yes',
+        }]);
+        console.println('');
+        console.println(`DETAILS (${rows.length})`);
+        renderDetailTable(rows);
+    }
+
+    function detailRows(details, onlyKey) {
+        const source = details && typeof details === 'object' ? details : {};
+        const keys = Object.keys(source).sort();
+        const rows = [];
+        for (const key of keys) {
+            if (onlyKey && key !== onlyKey) {
+                continue;
+            }
+            rows.push({
+                key,
+                type: detailValueType(source[key]),
+                value: formatDetailValue(source[key]),
+            });
+        }
+        return rows;
+    }
+
+    function renderDetailTable(rows) {
+        if (!rows || rows.length === 0) {
+            console.println('  (none)');
+            return;
+        }
+        renderTable([
+            { key: 'key', title: 'KEY' },
+            { key: 'type', title: 'TYPE' },
+            { key: 'value', title: 'VALUE' },
+        ], rows);
+    }
+
+    function detailValueType(value) {
+        if (value === null) {
+            return 'null';
+        }
+        if (Array.isArray(value)) {
+            return 'array';
+        }
+        return typeof value;
+    }
+
+    function formatDetailValue(value) {
+        if (value === undefined) {
+            return '-';
+        }
+        if (typeof value === 'string') {
+            return value;
+        }
+        if (typeof value === 'number' || typeof value === 'boolean') {
+            return String(value);
+        }
+        return JSON.stringify(value);
     }
 
     function renderReadResult(result) {
