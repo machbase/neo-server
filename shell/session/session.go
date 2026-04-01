@@ -163,7 +163,7 @@ func Configure(c Config) error {
 		switch svc {
 		case "mach":
 			candidates = append(candidates, HostPort{Host: host, Port: port})
-		case "service":
+		case "servicectl":
 			c.env["SERVICE_CONTROLLER"] = fmt.Sprintf("tcp://%s:%d", host, port)
 		}
 	}

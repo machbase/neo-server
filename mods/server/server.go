@@ -1008,7 +1008,7 @@ func (s *Server) initServiceController() error {
 		return err
 	}
 	s.serviceController = ctrl
-	s.AddServicePort("service", ctrl.Address())
+	s.AddServicePort("servicectl", ctrl.Address())
 
 	util.AddShutdownHook(func() {
 		s.serviceController.Stop(func(sc *service.Config, action string, err error) {
