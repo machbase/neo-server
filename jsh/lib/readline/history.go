@@ -26,12 +26,22 @@ func PrefDir() string {
 	return dir
 }
 
+func sanitizeHistoryFilename(filename string) string {
+	name := strings.TrimSpace(filename)
+	name = strings.NewReplacer("/", "_", "\\", "_").Replace(name)
+	name = strings.ReplaceAll(name, "..", "")
+	if name == "" || name == "." {
+		return "readline"
+	}
+	return name
+}
+
 func NewHistory(filename string, limit int) *History {
 	ret := &History{
 		limit:  limit,
 		buffer: make([]string, 0, limit),
 	}
-	ret.filepath = filepath.Join(PrefDir(), filename)
+	ret.filepath = filepath.Join(PrefDir(), sanitizeHistoryFilename(filename))
 	bytes, err := os.ReadFile(ret.filepath)
 	if err != nil {
 		return ret
