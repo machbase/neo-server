@@ -17,9 +17,10 @@
     const GLOBAL_STATE_DIR = '.pkg';
     const GLOBAL_MANIFEST_FILE = 'manifest.json';
     const GLOBAL_LOCK_FILE = 'lock.json';
+    const GLOBAL_PROJECT_POLICY_MESSAGE = `${GLOBAL_PROJECT_DIR} is reserved for pkg --global operations and must not be used as a normal project root. Use a subdirectory for project installs, or use -g.`;
     const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
     const optionProjectDir = { type: 'string', short: 'C', description: 'Use this project directory instead of the current working directory' };
-    const optionGlobal = { type: 'boolean', short: 'g', description: 'Install into the global package directory /work and ignore --dir', default: false };
+    const optionGlobal = { type: 'boolean', short: 'g', description: `Install into the reserved global package directory ${GLOBAL_PROJECT_DIR} and ignore --dir`, default: false };
 
     const defaultConfig = {
         usage: 'Usage: pkg <command> [options]',
@@ -388,9 +389,6 @@
         const manifest = readJsonFile(path.join(stageDir, 'package.json'));
         const requestedRef = parseGitHubRequestedSpecifier(task.spec);
 
-        if (manifest.name !== source.repo) {
-            throw new Error(`GitHub package name mismatch: expected ${source.repo}, got ${manifest.name}`);
-        }
         if (locked && locked.version && !task.refreshLatest && !task.spec && source.ref !== locked.version) {
             throw new Error(`Locked GitHub package tag mismatch for ${task.name}: expected ${locked.version}, got ${source.ref}`);
         }
@@ -1027,6 +1025,9 @@
         if (fs.existsSync(resolved) && !fs.statSync(resolved).isDirectory()) {
             throw new Error(`Install target is not a directory: ${resolved}`);
         }
+        if (isGlobalProjectDirectory(resolved)) {
+            throw new Error(GLOBAL_PROJECT_POLICY_MESSAGE);
+        }
         return resolved;
     }
 
@@ -1037,7 +1038,7 @@
         }
 
         const homeDir = process.env.get('HOME');
-        if (typeof homeDir === 'string' && homeDir.trim().length > 0 && homeDir.trim() !== '/work') {
+        if (typeof homeDir === 'string' && homeDir.trim().length > 0 && !isGlobalProjectDirectory(homeDir.trim())) {
             return path.resolve(homeDir.trim(), '.pkg-tmp');
         }
 
@@ -1064,6 +1065,10 @@
         const cwd = resolveInstallDirectory(invocationCwd, installDir, globalInstall);
         fs.mkdirSync(cwd, { recursive: true });
         return cwd;
+    }
+
+    function isGlobalProjectDirectory(targetPath) {
+        return path.resolve(String(targetPath || '')) === path.resolve(GLOBAL_PROJECT_DIR);
     }
 
     function normalizeBaseUrl(url) {
@@ -1368,15 +1373,18 @@
         return normalized;
     }
 
-    function normalizeBinCommands(manifest) {
+    function normalizeBinCommands(manifest, packageName) {
         if (!isRecord(manifest)) {
             return {};
         }
         if (typeof manifest.bin === 'string' && manifest.bin.trim().length > 0) {
-            if (typeof manifest.name !== 'string' || manifest.name.trim().length === 0) {
+            const commandKeySource = typeof packageName === 'string' && packageName.trim().length > 0
+                ? packageName
+                : manifest.name;
+            if (typeof commandKeySource !== 'string' || commandKeySource.trim().length === 0) {
                 return {};
             }
-            return { [buildPackageCommandKey(manifest.name)]: manifest.bin.trim() };
+            return { [buildPackageCommandKey(commandKeySource)]: manifest.bin.trim() };
         }
         if (!isRecord(manifest.bin)) {
             return {};
@@ -1435,7 +1443,7 @@
         for (const packageName of Object.keys(state.installedPackages).sort()) {
             const installedPackage = state.installedPackages[packageName];
             removePackageCommandWrappersByOwner(packageName, state);
-            const binCommands = normalizeBinCommands(installedPackage.manifest);
+            const binCommands = normalizeBinCommands(installedPackage.manifest, packageName);
             for (const alias of Object.keys(binCommands)) {
                 const wrapperPath = packageCommandWrapperPath(state.installRoot, alias);
                 const wrapperOwner = readPackageCommandWrapperOwner(wrapperPath);
