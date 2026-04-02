@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -345,6 +346,45 @@ func TestProcessShutdownHook(t *testing.T) {
 				"first hook",
 			},
 		},
+		{
+			Name: "shutdown_hook_process_exit",
+			Script: `
+				const process = require("process");
+				process.addShutdownHook(() => {
+					console.println("cleanup");
+				});
+				console.println("main");
+				process.exit(3);
+			`,
+			Err: "exit status 3",
+			Output: []string{
+				"main",
+				"cleanup",
+			},
+		},
+		{
+			Name: "shutdown_hook_panic_isolated",
+			Script: `
+				const process = require("process");
+				process.addShutdownHook(() => {
+					console.println("third hook");
+				});
+				process.addShutdownHook(() => {
+					console.println("second hook");
+					throw new Error("hook failed");
+				});
+				process.addShutdownHook(() => {
+					console.println("first hook");
+				});
+				console.println("main");
+			`,
+			Output: []string{
+				"main",
+				"first hook",
+				"second hook",
+				"third hook",
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -628,6 +668,48 @@ func TestProcessSignalDefaultBehavior(t *testing.T) {
 	assertLinePresent(t, lines, "caught: SIGINT")
 }
 
+func TestProcessExecSignalCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process.exec signal cleanup integration is only covered on unix-like platforms")
+	}
+
+	const signalName = "SIGTERM"
+	lines, cmd, childPID, stderr := startProcessExecSignalHelper(t, signalName)
+
+	proc, err := os.FindProcess(childPID)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		t.Fatalf("find child process %d: %v", childPID, err)
+	}
+	if err := proc.Signal(testSignalByName(signalName)); err != nil {
+		_ = cmd.Process.Kill()
+		t.Fatalf("send %s to child %d: %v", signalName, childPID, err)
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		if err != nil {
+			_ = cmd.Process.Kill()
+			t.Fatalf("exec helper failed after child signal: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("timeout waiting for exec helper after child signal")
+	}
+
+	finalLines := collectRemainingLines(lines)
+	assertLinePresent(t, finalLines, fmt.Sprintf("child-ready: %d", childPID))
+	assertLinePresent(t, finalLines, "caught: "+signalName)
+	assertLinePresent(t, finalLines, fmt.Sprintf("cleanup: %d", childPID))
+	assertLinePresent(t, finalLines, fmt.Sprintf("shutdown: %d", childPID))
+	assertLinePresent(t, finalLines, "parent exit code: 0")
+}
+
 func TestProcessSignalHelper(t *testing.T) {
 	if os.Getenv("GO_WANT_PROCESS_SIGNAL_HELPER") != "1" {
 		return
@@ -678,6 +760,57 @@ func TestProcessSignalHelper(t *testing.T) {
 		},
 		Reader: bytes.NewBuffer(nil),
 		Writer: os.Stdout,
+	}
+
+	jr, err := engine.New(conf)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	lib.Enable(jr)
+	if err := jr.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(3)
+	}
+	os.Exit(jr.ExitCode())
+}
+
+func TestProcessExecSignalHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_PROCESS_EXEC_SIGNAL_HELPER") != "1" {
+		return
+	}
+
+	signalName := os.Getenv("JSH_TEST_SIGNAL")
+	execPath := os.Getenv("JSH_TEST_EXEC_BIN")
+	if signalName == "" || execPath == "" {
+		fmt.Fprintln(os.Stderr, "missing JSH_TEST_SIGNAL or JSH_TEST_EXEC_BIN")
+		os.Exit(2)
+	}
+
+	conf := engine.Config{
+		Name: "process_exec_signal_helper",
+		Code: `
+			const process = require("process");
+			const exitCode = process.exec("/work/process-exec-signal-cleanup.js");
+			if (exitCode instanceof Error) {
+				throw exitCode;
+			}
+			console.println("parent exit code:", exitCode);
+		`,
+		Env: map[string]any{
+			"PATH":         "/work:/sbin",
+			"PWD":          "/work",
+			"HOME":         "/work",
+			"LIBRARY_PATH": "./node_modules:/lib",
+			"TEST_SIGNAL":  signalName,
+		},
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+		},
+		ExecBuilder: helperExecBuilder(execPath),
+		Reader:      bytes.NewBuffer(nil),
+		Writer:      os.Stdout,
 	}
 
 	jr, err := engine.New(conf)
@@ -787,6 +920,95 @@ func runProcessSignalHelper(t *testing.T, signalName string, listenForSignal boo
 	}
 
 	return lines, waitErr, stderr.String()
+}
+
+func startProcessExecSignalHelper(t *testing.T, signalName string) (<-chan string, *exec.Cmd, int, *bytes.Buffer) {
+	t.Helper()
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestProcessExecSignalHelper$", "--")
+	prepareSignalHelperCommand(cmd)
+	cmd.Env = append(os.Environ(),
+		"GO_WANT_PROCESS_EXEC_SIGNAL_HELPER=1",
+		"JSH_TEST_SIGNAL="+signalName,
+		"JSH_TEST_EXEC_BIN="+jshBinPath,
+	)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start exec helper: %v", err)
+	}
+
+	linesCh := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			linesCh <- scanner.Text()
+		}
+		close(linesCh)
+	}()
+
+	var lines []string
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+	for {
+		select {
+		case line, ok := <-linesCh:
+			if !ok {
+				t.Fatalf("exec helper exited before child readiness\nstdout:\n%s\nstderr:\n%s", strings.Join(lines, "\n"), stderr.String())
+			}
+			lines = append(lines, line)
+			if strings.HasPrefix(line, "child-ready: ") {
+				childPID, err := strconv.Atoi(strings.TrimPrefix(line, "child-ready: "))
+				if err != nil {
+					_ = cmd.Process.Kill()
+					t.Fatalf("parse child pid from %q: %v", line, err)
+				}
+
+				buffered := make(chan string, 16)
+				for _, existing := range lines {
+					buffered <- existing
+				}
+				go func() {
+					for line := range linesCh {
+						buffered <- line
+					}
+					close(buffered)
+				}()
+				return buffered, cmd, childPID, stderr
+			}
+		case <-timer.C:
+			_ = cmd.Process.Kill()
+			t.Fatalf("timeout waiting for exec child readiness\nstdout:\n%s\nstderr:\n%s", strings.Join(lines, "\n"), stderr.String())
+		}
+	}
+}
+
+func helperExecBuilder(execPath string) engine.ExecBuilderFunc {
+	return func(source string, args []string, env map[string]any) (*exec.Cmd, error) {
+		if source != "" {
+			args = append([]string{
+				"-v", "/work=../test/",
+				"-C", source,
+			}, args...)
+		} else {
+			args = append([]string{
+				"-v", "/work=../test/",
+			}, args...)
+		}
+		cmd := exec.Command(execPath, args...)
+		cmd.Env = os.Environ()
+		for key, value := range env {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%v", key, value))
+		}
+		return cmd, nil
+	}
 }
 
 func assertLinePresent(t *testing.T, lines []string, want string) {

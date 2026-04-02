@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -31,6 +32,7 @@ type JSRuntime struct {
 	filesystem    *FS
 	exitCode      int
 	shutdownHooks []func()
+	shutdownOnce  sync.Once
 	nowFunc       func() time.Time
 }
 
@@ -65,10 +67,7 @@ func (jr *JSRuntime) Run() error {
 
 	// guarantee shutdown hooks run at the end
 	defer func() {
-		slices.Reverse(jr.shutdownHooks)
-		for _, hook := range jr.shutdownHooks {
-			hook()
-		}
+		jr.runShutdownHooks()
 	}()
 
 	program, err := goja.Compile(jr.Name, jr.Source, jr.Strict)
@@ -95,10 +94,12 @@ func (jr *JSRuntime) Run() error {
 			retErr = err
 			if ie, ok := err.(*goja.InterruptedError); ok {
 				if ec, ok := ie.Value().(Exit); ok {
-					// process.exit(exit_code) called from javascript
-					// it indicates normal termination
-					// do not treat as error
 					jr.exitCode = ec.Code
+					if ec.Code == 0 {
+						retErr = nil
+					} else {
+						retErr = fmt.Errorf("exit status %d", ec.Code)
+					}
 					return
 				}
 				fmt.Fprintf(jr.Env.Writer(), "Interrupted: %s\n", ie.String())
@@ -123,6 +124,26 @@ func (jr *JSRuntime) ExitCode() int {
 
 func (jr *JSRuntime) AddShutdownHook(hook func()) {
 	jr.shutdownHooks = append(jr.shutdownHooks, hook)
+}
+
+func (jr *JSRuntime) runShutdownHooks() {
+	jr.shutdownOnce.Do(func() {
+		hooks := append([]func(){}, jr.shutdownHooks...)
+		slices.Reverse(hooks)
+		for _, hook := range hooks {
+			if hook == nil {
+				continue
+			}
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Fprintf(os.Stderr, "shutdown hook panic: %v\n%v\n", r, string(debug.Stack()))
+					}
+				}()
+				hook()
+			}()
+		}
+	})
 }
 
 // doExec executes a command by building an exec.Cmd and running it.

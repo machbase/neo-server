@@ -85,7 +85,11 @@ func RunTest(t *testing.T, tc TestCase) {
 			if tc.Err == "" || !strings.Contains(err.Error(), tc.Err) {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			return
+			if len(tc.Output) == 0 && tc.ExpectFunc == nil {
+				return
+			}
+		} else if tc.Err != "" {
+			t.Fatalf("Expected error containing %q, but got no error", tc.Err)
 		}
 
 		gotOutput := conf.Writer.(*bytes.Buffer).String()

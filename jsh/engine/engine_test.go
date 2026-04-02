@@ -18,7 +18,7 @@ var testExecBuilder engine.ExecBuilderFunc
 var jshBinPath string
 
 func TestMain(m *testing.M) {
-	if os.Getenv("GO_WANT_PROCESS_SIGNAL_HELPER") == "1" {
+	if os.Getenv("GO_WANT_PROCESS_SIGNAL_HELPER") == "1" || os.Getenv("GO_WANT_PROCESS_EXEC_SIGNAL_HELPER") == "1" {
 		os.Exit(m.Run())
 	}
 
