@@ -2,10 +2,14 @@ package http
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"reflect"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
@@ -195,8 +199,8 @@ func (ctx *RouterContext) Json(status int, data any, opt any) error {
 func (ctx *RouterContext) Html(status int, template string, data any) error {
 	return ctx.renderType("html", status, template, data)
 }
-func (ctx *RouterContext) Xml(status int, data any) error {
-	return ctx.renderType("xml", status, data)
+func (ctx *RouterContext) Xml(status int, data any, opt any) error {
+	return ctx.renderType("xml", status, data, opt)
 }
 func (ctx *RouterContext) Yaml(status int, data any) error {
 	return ctx.renderType("yaml", status, data)
@@ -209,7 +213,9 @@ func (ctx *RouterContext) renderType(typ string, code int, args ...any) error {
 	var data any
 	var opts = struct {
 		// JSON
-		Indent bool `json:"indent"`
+		Space string `json:"space"`
+		// XML
+		Root string `json:"root"`
 	}{}
 	// HTML
 	var htmlTemplate string
@@ -242,9 +248,11 @@ func (ctx *RouterContext) renderType(typ string, code int, args ...any) error {
 			if m, ok := args[1].(map[string]any); ok {
 				for k, v := range m {
 					switch k {
-					case "indent":
-						if indent, ok := v.(bool); ok {
-							opts.Indent = indent
+					case "space":
+						opts.Space = jsonIndentFromSpace(v)
+					case "root":
+						if root, ok := v.(string); ok {
+							opts.Root = root
 						}
 					}
 				}
@@ -255,14 +263,20 @@ func (ctx *RouterContext) renderType(typ string, code int, args ...any) error {
 	if m, ok := data.(map[string]any); ok {
 		data = gin.H(m)
 	}
+	if typ == "xml" {
+		data = normalizeXMLData(data)
+		if opts.Root != "" {
+			data = xmlRootElement{Name: opts.Root, Data: data}
+		}
+	}
 	// decide render type
 	var r render.Render
 	switch typ {
 	case "text":
 		r = render.String{Format: textFormat, Data: textArgs}
 	case "json":
-		if opts.Indent {
-			r = render.IndentedJSON{Data: data}
+		if opts.Space != "" {
+			r = jsonRender{Data: data, Indent: opts.Space}
 		} else {
 			r = render.JSON{Data: data}
 		}
@@ -283,4 +297,197 @@ func (ctx *RouterContext) renderType(typ string, code int, args ...any) error {
 	}
 	ctx.Render(code, r)
 	return nil
+}
+
+func normalizeXMLData(value any) any {
+	if value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case xmlMap:
+		result := make(xmlMap, len(typed))
+		for key, child := range typed {
+			result[key] = normalizeXMLData(child)
+		}
+		return result
+	case gin.H:
+		result := make(xmlMap, len(typed))
+		for key, child := range typed {
+			result[key] = normalizeXMLData(child)
+		}
+		return result
+	case map[string]any:
+		result := make(xmlMap, len(typed))
+		for key, child := range typed {
+			result[key] = normalizeXMLData(child)
+		}
+		return result
+	case []any:
+		result := make([]any, len(typed))
+		for idx, child := range typed {
+			result[idx] = normalizeXMLData(child)
+		}
+		return result
+	case []byte:
+		return typed
+	}
+
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return nil
+	}
+	switch rv.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if rv.IsNil() {
+			return nil
+		}
+		return normalizeXMLData(rv.Elem().Interface())
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String {
+			return value
+		}
+		result := make(xmlMap, rv.Len())
+		iter := rv.MapRange()
+		for iter.Next() {
+			result[iter.Key().String()] = normalizeXMLData(iter.Value().Interface())
+		}
+		return result
+	case reflect.Slice, reflect.Array:
+		result := make([]any, rv.Len())
+		for idx := 0; idx < rv.Len(); idx++ {
+			result[idx] = normalizeXMLData(rv.Index(idx).Interface())
+		}
+		return result
+	default:
+		return value
+	}
+}
+
+func jsonIndentFromSpace(value any) string {
+	if value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return truncateJSONSpaceString(typed)
+	case int:
+		return strings.Repeat(" ", clampJSONSpace(typed))
+	case int8:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case int16:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case int32:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case int64:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case uint:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case uint8:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case uint16:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case uint32:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case uint64:
+		return strings.Repeat(" ", clampJSONSpace(int(typed)))
+	case float32:
+		return strings.Repeat(" ", clampJSONSpace(int(math.Floor(float64(typed)))))
+	case float64:
+		return strings.Repeat(" ", clampJSONSpace(int(math.Floor(typed))))
+	}
+
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return ""
+	}
+	switch rv.Kind() {
+	case reflect.String:
+		return truncateJSONSpaceString(rv.String())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strings.Repeat(" ", clampJSONSpace(int(rv.Int())))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return strings.Repeat(" ", clampJSONSpace(int(rv.Uint())))
+	case reflect.Float32, reflect.Float64:
+		return strings.Repeat(" ", clampJSONSpace(int(math.Floor(rv.Float()))))
+	default:
+		return ""
+	}
+}
+
+func truncateJSONSpaceString(space string) string {
+	runes := []rune(space)
+	if len(runes) > 10 {
+		runes = runes[:10]
+	}
+	return string(runes)
+}
+
+func clampJSONSpace(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 10 {
+		return 10
+	}
+	return value
+}
+
+type jsonRender struct {
+	Data   any
+	Indent string
+}
+
+func (r jsonRender) Render(w http.ResponseWriter) error {
+	r.WriteContentType(w)
+	var (
+		data []byte
+		err  error
+	)
+	if r.Indent == "" {
+		data, err = json.Marshal(r.Data)
+	} else {
+		data, err = json.MarshalIndent(r.Data, "", r.Indent)
+	}
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
+}
+
+func (r jsonRender) WriteContentType(w http.ResponseWriter) {
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	}
+}
+
+type xmlMap map[string]any
+
+type xmlRootElement struct {
+	Name string
+	Data any
+}
+
+func (e xmlRootElement) MarshalXML(enc *xml.Encoder, start xml.StartElement) error {
+	if e.Name == "" {
+		return enc.EncodeElement(e.Data, start)
+	}
+	start.Name.Local = e.Name
+	return enc.EncodeElement(e.Data, start)
+}
+
+func (m xmlMap) MarshalXML(enc *xml.Encoder, start xml.StartElement) error {
+	if start.Name.Local == "" || start.Name.Local == "xmlMap" {
+		start.Name.Local = "map"
+	}
+	if err := enc.EncodeToken(start); err != nil {
+		return err
+	}
+	for key, value := range m {
+		elem := xml.StartElement{Name: xml.Name{Local: key}}
+		if err := enc.EncodeElement(value, elem); err != nil {
+			return err
+		}
+	}
+	return enc.EncodeToken(xml.EndElement{Name: start.Name})
 }

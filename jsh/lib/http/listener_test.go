@@ -16,6 +16,14 @@ import (
 )
 
 func TestServer(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve test file path")
+	}
+	baseDir := filepath.Dir(filename)
+	workSource := filepath.Join(baseDir, "..", "..", "test")
+	docsSource := filepath.Join(baseDir, "test")
+
 	testNets := []struct {
 		network string
 		address string
@@ -65,8 +73,11 @@ func TestServer(t *testing.T) {
 		svr.get("/formats/json", ctx => {
 			ctx.json(http.status.OK, {str:"Hello World", num: 123, bool: true})
 		})
-		svr.get("/formats/json-indent", ctx => {
-			ctx.json(http.status.OK, {str:"Hello World", num: 123, bool: true}, {indent: true})
+		svr.get("/formats/json-space-number", ctx => {
+			ctx.json(http.status.OK, {str:"Hello World", num: 123, bool: true}, {space: 2})
+		})
+		svr.get("/formats/json-space-string", ctx => {
+			ctx.json(http.status.OK, {str:"Hello World", num: 123, bool: true}, {space: "\t"})
 		})
 		svr.get("/formats/json-array", ctx => {
 			ctx.json(http.status.OK, ["Hello", "World"])
@@ -79,6 +90,22 @@ func TestServer(t *testing.T) {
 		})
 		svr.get("/formats/xml", ctx => {
 			ctx.xml(http.status.OK, {str:"Hello World", num: 123, bool: true})
+		})
+		svr.get("/formats/xml-nested", ctx => {
+			ctx.xml(http.status.OK, {
+				title: "root",
+				outer: {
+					name: "neo",
+					count: 2,
+					enabled: true,
+				},
+			})
+		})
+		svr.get("/formats/xml-root", ctx => {
+			ctx.xml(http.status.OK, {
+				name: "neo",
+				count: 2,
+			}, {root: "user"})
 		})
 		
 		svr.loadHTMLGlob("/docs/template/*.html")
@@ -97,8 +124,8 @@ func TestServer(t *testing.T) {
 			Code: script,
 			FSTabs: []engine.FSTab{
 				root.RootFSTab(),
-				{MountPoint: "/work", Source: "../../test/"},
-				{MountPoint: "/docs", Source: "./test"},
+				{MountPoint: "/work", Source: workSource},
+				{MountPoint: "/docs", Source: docsSource},
 				{MountPoint: "/lib", FS: lib.LibFS()},
 			},
 			Env:    map[string]any{},
@@ -244,7 +271,7 @@ func TestServer(t *testing.T) {
 				},
 			},
 			{
-				Name: "response_formats_json_indent",
+				Name: "response_formats_json_space_number",
 				Script: `
 				const http = require('http');
 				const {env} = require('process');
@@ -253,19 +280,19 @@ func TestServer(t *testing.T) {
 				});
 			`,
 				Vars: map[string]any{
-					"testURL": "http://" + serverAddress + "/formats/json-indent",
+					"testURL": "http://" + serverAddress + "/formats/json-space-number",
 				},
 				ExpectFunc: func(t *testing.T, result string) {
 					if !strings.HasPrefix(result, "{\n") {
 						t.Errorf("Expected JSON output to start with '{\\n', got: %s", result)
 					}
-					if !strings.Contains(result, `    "str": "Hello World"`) {
+					if !strings.Contains(result, `  "str": "Hello World"`) {
 						t.Errorf("Expected JSON output to contain indented 'str' field, got: %s", result)
 					}
-					if !strings.Contains(result, `    "num": 123`) {
+					if !strings.Contains(result, `  "num": 123`) {
 						t.Errorf("Expected JSON output to contain indented 'num' field, got: %s", result)
 					}
-					if !strings.Contains(result, `    "bool": true`) {
+					if !strings.Contains(result, `  "bool": true`) {
 						t.Errorf("Expected JSON output to contain indented 'bool' field, got: %s", result)
 					}
 					if !strings.HasSuffix(result, "\n}") {
@@ -273,6 +300,39 @@ func TestServer(t *testing.T) {
 					}
 					if l := len(strings.Split(result, "\n")); l != 5 {
 						t.Errorf("Expected indented JSON output to have multiple lines(%d), got: %s", l, result)
+					}
+				},
+			},
+			{
+				Name: "response_formats_json_space_string",
+				Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get("testURL"), (r) => {
+					console.print(r.readBody());
+				});
+			`,
+				Vars: map[string]any{
+					"testURL": "http://" + serverAddress + "/formats/json-space-string",
+				},
+				ExpectFunc: func(t *testing.T, result string) {
+					if !strings.HasPrefix(result, "{\n") {
+						t.Errorf("Expected JSON output to start with '{\\n', got: %s", result)
+					}
+					if !strings.Contains(result, "\t\"str\": \"Hello World\"") {
+						t.Errorf("Expected JSON output to contain tab-indented 'str' field, got: %s", result)
+					}
+					if !strings.Contains(result, "\t\"num\": 123") {
+						t.Errorf("Expected JSON output to contain tab-indented 'num' field, got: %s", result)
+					}
+					if !strings.Contains(result, "\t\"bool\": true") {
+						t.Errorf("Expected JSON output to contain tab-indented 'bool' field, got: %s", result)
+					}
+					if !strings.HasSuffix(result, "\n}") {
+						t.Errorf("Expected JSON output to end with '\\n}\\n', got: %s", result)
+					}
+					if l := len(strings.Split(result, "\n")); l != 5 {
+						t.Errorf("Expected tab-indented JSON output to have multiple lines(%d), got: %s", l, result)
 					}
 				},
 			},
@@ -363,6 +423,68 @@ func TestServer(t *testing.T) {
 					}
 					if !strings.Contains(result, `<bool>true</bool>`) {
 						t.Errorf("Expected XML output to contain '<bool>true</bool>', got: %s", result)
+					}
+				},
+			},
+			{
+				Name: "response_formats_xml_nested",
+				Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get("testURL"), (r) => {
+					console.println(r.headers["Content-Type"]);
+					console.println(r.readBody());
+				});
+			`,
+				Vars: map[string]any{
+					"testURL": "http://" + serverAddress + "/formats/xml-nested",
+				},
+				ExpectFunc: func(t *testing.T, result string) {
+					if !strings.HasPrefix(result, "application/xml; charset=utf-8\n<map>") {
+						t.Errorf("Expected XML output to start with '<map>', got: %s", result)
+					}
+					if !strings.Contains(result, `<title>root</title>`) {
+						t.Errorf("Expected XML output to contain '<title>root</title>', got: %s", result)
+					}
+					if !strings.Contains(result, `<outer>`) || !strings.Contains(result, `</outer>`) {
+						t.Errorf("Expected XML output to contain nested outer object, got: %s", result)
+					}
+					if !strings.Contains(result, `<name>neo</name>`) {
+						t.Errorf("Expected XML output to contain nested '<name>neo</name>', got: %s", result)
+					}
+					if !strings.Contains(result, `<count>2</count>`) {
+						t.Errorf("Expected XML output to contain nested '<count>2</count>', got: %s", result)
+					}
+					if !strings.Contains(result, `<enabled>true</enabled>`) {
+						t.Errorf("Expected XML output to contain nested '<enabled>true</enabled>', got: %s", result)
+					}
+				},
+			},
+			{
+				Name: "response_formats_xml_root",
+				Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get("testURL"), (r) => {
+					console.println(r.headers["Content-Type"]);
+					console.println(r.readBody());
+				});
+			`,
+				Vars: map[string]any{
+					"testURL": "http://" + serverAddress + "/formats/xml-root",
+				},
+				ExpectFunc: func(t *testing.T, result string) {
+					if !strings.HasPrefix(result, "application/xml; charset=utf-8\n<user>") {
+						t.Errorf("Expected XML output to start with '<user>', got: %s", result)
+					}
+					if !strings.HasSuffix(result, "</user>\n") {
+						t.Errorf("Expected XML output to end with '</user>', got: %s", result)
+					}
+					if !strings.Contains(result, `<name>neo</name>`) {
+						t.Errorf("Expected XML output to contain '<name>neo</name>', got: %s", result)
+					}
+					if !strings.Contains(result, `<count>2</count>`) {
+						t.Errorf("Expected XML output to contain '<count>2</count>', got: %s", result)
 					}
 				},
 			},
