@@ -115,6 +115,18 @@
     }
 
     function countSource(spec, columns, callback) {
+        if (spec.path === '-') {
+            const chunk = process.stdin.read();
+            if (chunk instanceof Error) {
+                callback(chunk);
+                return;
+            }
+            const counts = createCounts();
+            updateCounts(counts, chunk || '');
+            callback(null, counts);
+            return;
+        }
+
         let stream;
         try {
             stream = fs.createReadStream(spec.path, { encoding: 'utf8' });
