@@ -685,6 +685,46 @@ func TestTokenize(t *testing.T) {
 			input:    "echo test 2>&1",
 			expected: []string{"echo", "test", "2>&1"},
 		},
+		{
+			name:     "tab separators",
+			input:    "echo\thello\tworld",
+			expected: []string{"echo", "hello", "world"},
+		},
+		{
+			name:     "no space output redirection",
+			input:    "echo hello>file.txt",
+			expected: []string{"echo", "hello", ">", "file.txt"},
+		},
+		{
+			name:     "no space input redirection",
+			input:    "cat<input.txt",
+			expected: []string{"cat", "<", "input.txt"},
+		},
+		{
+			name:     "no space stderr append redirection",
+			input:    "echo test2>>error.log",
+			expected: []string{"echo", "test", "2>>", "error.log"},
+		},
+		{
+			name:     "standalone stderr merge token",
+			input:    "2>&1",
+			expected: []string{"2>&1"},
+		},
+		{
+			name:     "standalone stderr append token",
+			input:    "2>> error.log",
+			expected: []string{"2>>", "error.log"},
+		},
+		{
+			name:     "standalone output redirection token",
+			input:    "> output.txt",
+			expected: []string{">", "output.txt"},
+		},
+		{
+			name:     "escaped quote inside double quotes",
+			input:    `echo "escaped \"quote\" text"`,
+			expected: []string{"echo", `escaped \"quote\" text`},
+		},
 	}
 
 	for _, tt := range tests {
@@ -704,6 +744,13 @@ func TestParsePipeline(t *testing.T) {
 		expected *Pipeline
 	}{
 		{
+			name:  "empty pipeline",
+			input: "   ",
+			expected: &Pipeline{
+				Args: []string{},
+			},
+		},
+		{
 			name:  "simple command",
 			input: "ls",
 			expected: &Pipeline{
@@ -717,6 +764,30 @@ func TestParsePipeline(t *testing.T) {
 			expected: &Pipeline{
 				Command: "ls",
 				Args:    []string{"-la", "/tmp"},
+			},
+		},
+		{
+			name:  "no space output redirection",
+			input: "echo hello>file.txt",
+			expected: &Pipeline{
+				Command: "echo",
+				Args:    []string{"hello"},
+				Stdout: &Redirect{
+					Type:   ">",
+					Target: "file.txt",
+				},
+			},
+		},
+		{
+			name:  "no space stderr append redirection",
+			input: "echo test2>>log.txt",
+			expected: &Pipeline{
+				Command: "echo",
+				Args:    []string{"test"},
+				Stderr: &Redirect{
+					Type:   "2>>",
+					Target: "log.txt",
+				},
 			},
 		},
 		{
@@ -789,6 +860,14 @@ func TestParsePipeline(t *testing.T) {
 					Type:   "2>&1",
 					Target: "1",
 				},
+			},
+		},
+		{
+			name:  "redirect without target is treated as arg",
+			input: "echo >",
+			expected: &Pipeline{
+				Command: "echo",
+				Args:    []string{">"},
 			},
 		},
 	}
