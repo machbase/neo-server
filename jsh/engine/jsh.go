@@ -415,8 +415,8 @@ func NewSecretBox(secret any) (*SecretBox, error) {
 
 	secretFile := filepath.Join(os.TempDir(), filename)
 
-	// 0600 owner read/write
-	fd, err := os.OpenFile(secretFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	// 0600 owner read/write, O_EXCL prevents symlink attacks
+	fd, err := os.OpenFile(secretFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
