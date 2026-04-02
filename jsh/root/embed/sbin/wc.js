@@ -109,9 +109,17 @@
         return parts.join(' ');
     }
 
+    function writeStdoutLine(text) {
+        process.stdout.write(String(text) + '\n');
+    }
+
+    function writeStderrLine(text) {
+        process.stderr.write(String(text) + '\n');
+    }
+
     function reportError(filepath, err) {
         const message = err && err.message ? err.message : String(err);
-        console.println(`wc: ${filepath}: ${message}`);
+        writeStderrLine(`wc: ${filepath}: ${message}`);
     }
 
     function countSource(spec, columns, callback) {
@@ -157,7 +165,7 @@
     function processSources(sources, index, columns, total, exitState) {
         if (index >= sources.length) {
             if (sources.length > 1) {
-                console.println(formatCounts(total, 'total', columns));
+                writeStdoutLine(formatCounts(total, 'total', columns));
             }
             process.exit(exitState.code);
             return;
@@ -174,7 +182,7 @@
 
             addCounts(total, counts);
             const label = spec.implicit && sources.length === 1 ? '' : spec.label;
-            console.println(formatCounts(counts, label, columns));
+            writeStdoutLine(formatCounts(counts, label, columns));
             processSources(sources, index + 1, columns, total, exitState);
         });
     }
