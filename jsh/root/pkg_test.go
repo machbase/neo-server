@@ -1771,6 +1771,12 @@ func TestPkgInstallNpmWithRecursiveDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pkg install generic-pkg failed: %v\n%s", err, output)
 	}
+	if !strings.Contains(output, "[pkg] Resolving generic-pkg") {
+		t.Fatalf("expected non-tty status log for resolving package, got %q", output)
+	}
+	if !strings.Contains(output, "[pkg] Writing package-lock.json") {
+		t.Fatalf("expected non-tty status log for lock file write, got %q", output)
+	}
 
 	paths := []string{
 		filepath.Join(workDir, "node_modules", "generic-pkg", "package.json"),

@@ -11,7 +11,6 @@ import (
 	"github.com/hymkor/go-multiline-ny/completion"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	jshrl "github.com/machbase/neo-server/v8/jsh/lib/readline"
-	"github.com/machbase/neo-server/v8/jsh/lib/shell/internal"
 	"github.com/machbase/neo-server/v8/jsh/log"
 	"github.com/mattn/go-colorable"
 	"github.com/nyaosorg/go-readline-ny"
@@ -41,6 +40,7 @@ func shell(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {
 
 type Shell struct {
 	rt      *goja.Runtime
+	env     *engine.Env
 	history *jshrl.History
 }
 
@@ -59,6 +59,7 @@ var betaWarn = "" +
 	"    Enter 'exit' to quit the shell.\n"
 
 func (sh *Shell) Run(env *engine.Env) int {
+	sh.env = env
 	var ed multiline.Editor
 	ed.SetTty(NewTty()) // See TtyWrap comment
 	ed.SetPrompt(sh.prompt(env))
@@ -67,6 +68,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 	ed.SetHistory(sh.history)
 	ed.SetHistoryCycling(true)
 	ed.SetPredictColor([...]string{"\x1B[3;22;30m", "\x1B[23;39m"}) // dark gray, italic
+	ed.LineEditor.Predictor = sh.predictHistory
 	ed.ResetColor = "\x1B[0m"
 	ed.DefaultColor = "\x1B[37;49;1m"
 
@@ -77,6 +79,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 		Postfix:    " ",
 		Candidates: sh.getCompletionCandidates,
 	})
+	sh.bindPredictionKeys(&ed)
 	ctx := context.Background()
 	log.Println(banner)
 	log.Println(betaWarn)
@@ -128,6 +131,49 @@ func (sh *Shell) submitOnEnterWhen(lines []string, _ int) bool {
 	return !strings.HasSuffix(lines[len(lines)-1], `\`)
 }
 
+func (sh *Shell) predictHistory(buf *readline.Buffer) string {
+	return predictShellHistory(buf.String(), buf.History)
+}
+
+func (sh *Shell) bindPredictionKeys(ed *multiline.Editor) {
+	acceptOrForward := &readline.GoCommand{
+		Name: "SHELL_ACCEPT_PREDICT_OR_FORWARD",
+		Func: func(ctx context.Context, buf *readline.Buffer) readline.Result {
+			if shouldAcceptPrediction(buf.Cursor, len(buf.Buffer), ed.CursorLine(), len(ed.Lines())) {
+				return readline.CmdAcceptPredict.Call(ctx, buf)
+			}
+			return ed.CmdForwardChar(ctx, buf)
+		},
+	}
+	ed.BindKey(keys.Right, acceptOrForward)
+	ed.BindKey(keys.CtrlF, acceptOrForward)
+}
+
+func predictShellHistory(current string, history readline.IHistory) string {
+	if history == nil || strings.TrimSpace(current) == "" || strings.HasSuffix(current, `\`) {
+		return ""
+	}
+	for i := history.Len() - 1; i >= 0; i-- {
+		for _, line := range strings.Split(history.At(i), "\n") {
+			candidate := strings.TrimSuffix(line, `\`)
+			if strings.HasPrefix(candidate, current) {
+				return current + candidate[len(current):]
+			}
+		}
+	}
+	return ""
+}
+
+func shouldAcceptPrediction(cursor int, bufferLen int, cursorLine int, lineCount int) bool {
+	if cursor < bufferLen {
+		return false
+	}
+	if lineCount <= 0 {
+		return true
+	}
+	return cursorLine >= lineCount-1
+}
+
 func (sh *Shell) getCompletionCandidates(fields []string) (forCompletion []string, forListing []string) {
 	return
 }
@@ -136,43 +182,23 @@ func (sh *Shell) getCompletionCandidates(fields []string) (forCompletion []strin
 func (sh *Shell) process(line string) (int, bool) {
 	// Parse the command
 	cmd := parseCommand(line)
+	lastExitCode := 0
 
 	for _, stmt := range cmd.Statements {
 		var stopOnError bool
 		if stmt.Operator == "&&" {
 			stopOnError = true
 		}
-		for _, pipe := range stmt.Pipelines {
-			if pipe.Command == "exit" || pipe.Command == "quit" {
-				return 0, false
-			}
-
-			// internal commands that execute in the SAME runtime instance
-			// others are executed via exec function on the separate runtime process.
-			var returnValue goja.Value
-			if v, ok := internal.Run(sh.rt, pipe.Command, pipe.Args...); ok {
-				returnValue = v
-			} else {
-				returnValue = sh.exec(pipe.Command, pipe.Args)
-			}
-
-			exitCode := -1
-			if returnValue != nil {
-				switch v := returnValue.Export().(type) {
-				default:
-					returnStr := returnValue.String()
-					returnStr = strings.TrimPrefix(returnStr, "Error: ")
-					log.Println(returnStr)
-				case int64:
-					exitCode = int(v)
-				}
-			}
-			if exitCode != 0 && stopOnError {
-				return exitCode, true
-			}
+		exitCode, alive := sh.runStatement(stmt)
+		lastExitCode = exitCode
+		if !alive {
+			return exitCode, false
+		}
+		if exitCode != 0 && stopOnError {
+			return exitCode, true
 		}
 	}
-	return 0, true
+	return lastExitCode, true
 }
 
 func (sh *Shell) exec(command string, args []string) goja.Value {

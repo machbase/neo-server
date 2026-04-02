@@ -1467,6 +1467,43 @@ func TestFSStream(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_create_read_stream_regular_file_regression",
+			Script: `
+				const fs = require('fs');
+
+				// Regression coverage: regular-file streams must expose the bytes
+				// written by native fs.read(), not a zero-filled JS buffer copy.
+				const expected = 'alpha\nbeta\n';
+				fs.writeFileSync('/work/stream_regression.txt', expected, 'utf8');
+
+				const readStream = fs.createReadStream('/work/stream_regression.txt', { encoding: 'utf8', bufferSize: 5 });
+
+				const chunks = [];
+				readStream.on('data', chunk => {
+					chunks.push(chunk);
+					console.println('Chunk:', JSON.stringify(chunk));
+				});
+
+				readStream.on('end', () => {
+					const actual = chunks.join('');
+					console.println('Matches expected:', actual === expected);
+					console.println('Contains NUL:', actual.indexOf('\u0000') >= 0);
+					fs.unlinkSync('/work/stream_regression.txt');
+				});
+
+				readStream.on('error', err => {
+					console.println('Read stream error:', err.message);
+				});
+			`,
+			Output: []string{
+				"Chunk: \"alpha\"",
+				"Chunk: \"\\nbeta\"",
+				"Chunk: \"\\n\"",
+				"Matches expected: true",
+				"Contains NUL: false",
+			},
+		},
+		{
 			Name: "fs_create_read_stream_from_stdin",
 			Script: `
 				const fs = require('fs');

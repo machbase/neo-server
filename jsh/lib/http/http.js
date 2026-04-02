@@ -13,6 +13,26 @@ class Agent {
     }
 }
 
+function wrapServerHandler(callback) {
+    if (typeof callback !== 'function') {
+        return callback;
+    }
+    return (ctx) => {
+        const wrappedCtx = Object.create(ctx);
+        const hasQuery = typeof ctx.hasQuery === 'function' ? ctx.hasQuery.bind(ctx) : null;
+        if (hasQuery) {
+            wrappedCtx.query = (name) => {
+                const result = hasQuery(name);
+                if (!result || result[1] !== true) {
+                    return undefined;
+                }
+                return result[0];
+            };
+        }
+        return callback(wrappedCtx);
+    };
+}
+
 // http.request(options[, callback])
 // http.request(url[, options][, callback])
 //  - url: string | URL
@@ -339,19 +359,19 @@ class Server {
         return this;
     }
     get(path, callback) {
-        this.raw.get(path, callback);
+        this.raw.get(path, wrapServerHandler(callback));
         return this;
     }
     post(path, callback) {
-        this.raw.post(path, callback);
+        this.raw.post(path, wrapServerHandler(callback));
         return this;
     }
     put(path, callback) {
-        this.raw.put(path, callback);
+        this.raw.put(path, wrapServerHandler(callback));
         return this;
     }
     delete(path, callback) {
-        this.raw.delete(path, callback);
+        this.raw.delete(path, wrapServerHandler(callback));
         return this;
     }
     static(path, root) {

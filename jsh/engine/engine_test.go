@@ -1,11 +1,13 @@
 package engine_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -92,6 +94,55 @@ func TestEngine(t *testing.T) {
 
 	for _, tc := range ts {
 		test_engine.RunTest(t, tc)
+	}
+}
+
+func TestExecWithOptions(t *testing.T) {
+	jr, err := engine.New(engine.Config{ExecBuilder: testExecBuilder})
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	exitCode, err := jr.ExecWithOptions("/sbin/echo.js", engine.ExecOptions{
+		Stdout: &stdout,
+		Stderr: &stdout,
+	}, "hello from options")
+	if err != nil {
+		t.Fatalf("ExecWithOptions() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("ExecWithOptions() exitCode = %d, want 0", exitCode)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "hello from options" {
+		t.Fatalf("ExecWithOptions() stdout = %q, want %q", got, "hello from options")
+	}
+}
+
+func TestExecStringWithOptions(t *testing.T) {
+	jr, err := engine.New(engine.Config{ExecBuilder: testExecBuilder})
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	exitCode, err := jr.ExecStringWithOptions(`
+		const process = require("process");
+		const text = process.stdin.read();
+		console.println(text.trim());
+	`, engine.ExecOptions{
+		Stdin:  strings.NewReader("hello from stdin\n"),
+		Stdout: &stdout,
+		Stderr: &stdout,
+	})
+	if err != nil {
+		t.Fatalf("ExecStringWithOptions() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("ExecStringWithOptions() exitCode = %d, want 0", exitCode)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "hello from stdin" {
+		t.Fatalf("ExecStringWithOptions() stdout = %q, want %q", got, "hello from stdin")
 	}
 }
 

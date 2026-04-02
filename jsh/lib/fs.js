@@ -184,6 +184,7 @@ class ReadStream extends EventEmitter {
         return bytesRead;
     }
     _read() {
+        let bytesRead = 0;
         try {
             if (this.isStdin) {
                 return this._readFromStdin();
@@ -191,10 +192,9 @@ class ReadStream extends EventEmitter {
 
             // Allocate buffer once and reuse it
             if (!this._buffer) {
-                // Use Array for compatibility with _fs.read()
-                this._buffer = Buffer.alloc(this.bufferSize);
+                this._buffer = new Uint8Array(this.bufferSize);
             }
-            const bytesRead = _fs.read(this.fd, this._buffer, 0, this.bufferSize);
+            bytesRead = _fs.read(this.fd, this._buffer, 0, this.bufferSize);
             if (bytesRead <= 0) {
                 this.eof = true;
                 _fs.close(this.fd);

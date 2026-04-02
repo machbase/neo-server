@@ -3,6 +3,7 @@ package engine
 import (
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime/debug"
@@ -31,6 +32,12 @@ type JSRuntime struct {
 	exitCode      int
 	shutdownHooks []func()
 	nowFunc       func() time.Time
+}
+
+type ExecOptions struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 func (jr *JSRuntime) RegisterNativeModule(name string, loader require.ModuleLoader) {
@@ -123,6 +130,10 @@ func (jr *JSRuntime) AddShutdownHook(hook func()) {
 // syntax) exec(command: string, ...args: string): number
 // return) exit code
 func (jr *JSRuntime) Exec(path string, args ...string) (int, error) {
+	return jr.ExecWithOptions(path, ExecOptions{}, args...)
+}
+
+func (jr *JSRuntime) ExecWithOptions(path string, opts ExecOptions, args ...string) (int, error) {
 	if path == "" && len(args) == 0 {
 		return -1, fmt.Errorf("no command provided")
 	}
@@ -130,7 +141,7 @@ func (jr *JSRuntime) Exec(path string, args ...string) (int, error) {
 		// when path starts with "@",
 		// treat it as calling a native executable with args
 		cmd := exec.Command(path[1:], args...)
-		return jr.exec0(cmd)
+		return jr.exec0(cmd, opts)
 	}
 	eb := jr.Env.ExecBuilder()
 	if eb == nil {
@@ -144,7 +155,7 @@ func (jr *JSRuntime) Exec(path string, args ...string) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	return jr.exec0(cmd)
+	return jr.exec0(cmd, opts)
 }
 
 // doExecString executes a command line string via the exec function.
@@ -152,6 +163,10 @@ func (jr *JSRuntime) Exec(path string, args ...string) (int, error) {
 // syntax) execString(source: string): number
 // return) exit code
 func (jr *JSRuntime) ExecString(source string) (int, error) {
+	return jr.ExecStringWithOptions(source, ExecOptions{})
+}
+
+func (jr *JSRuntime) ExecStringWithOptions(source string, opts ExecOptions) (int, error) {
 	if source == "" {
 		return -1, fmt.Errorf("no source provided")
 	}
@@ -164,5 +179,19 @@ func (jr *JSRuntime) ExecString(source string) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	return jr.exec0(cmd)
+	return jr.exec0(cmd, opts)
+}
+
+func resolveExecReader(defaultReader io.Reader, override io.Reader) io.Reader {
+	if override != nil {
+		return override
+	}
+	return defaultReader
+}
+
+func resolveExecWriter(defaultWriter io.Writer, override io.Writer) io.Writer {
+	if override != nil {
+		return override
+	}
+	return defaultWriter
 }

@@ -251,7 +251,7 @@ func splitPipes(input string) []string {
 // parsePipeline parses a single pipeline command string, extracting the command name,
 // arguments, and any I/O redirection operators.
 //
-// The parser identifies redirection operators (<, >, >>) and their target files,
+// The parser identifies redirection operators (<, >, >>, 2>, 2>>) and their target files,
 // separating them from the command and its arguments. The first non-redirection token
 // is treated as the command, and subsequent tokens as arguments.
 //
@@ -279,8 +279,13 @@ func parsePipeline(input string) *Pipeline {
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
 
+		if token == "2>&1" {
+			pipeline.Stderr = &Redirect{Type: token, Target: "1"}
+			continue
+		}
+
 		// Check for redirection operators and extract their targets
-		if token == "<" || token == ">" || token == ">>" {
+		if token == "<" || token == ">" || token == ">>" || token == "2>" || token == "2>>" {
 			if i+1 < len(tokens) {
 				redirect := &Redirect{
 					Type:   token,
@@ -292,6 +297,8 @@ func parsePipeline(input string) *Pipeline {
 					pipeline.Stdin = redirect
 				case ">", ">>":
 					pipeline.Stdout = redirect
+				case "2>", "2>>":
+					pipeline.Stderr = redirect
 				}
 
 				i++ // Skip the target token (already consumed)
@@ -321,7 +328,7 @@ func parsePipeline(input string) *Pipeline {
 //   - Whitespace (space, tab) separates tokens, unless within quotes
 //   - Quoted strings (single or double quotes) are treated as single tokens
 //     with the quote characters removed from the output
-//   - Redirection operators (<, >, >>) are extracted as separate tokens
+//   - Redirection operators (<, >, >>, 2>, 2>>, 2>&1) are extracted as separate tokens
 //   - Multiple consecutive whitespace characters are treated as a single separator
 //
 // Examples:
@@ -375,6 +382,33 @@ func tokenize(input string) []string {
 
 		// Extract redirection operators as separate tokens when outside quotes
 		if !inQuote {
+			if ch == '2' && i+3 < len(runes) && runes[i+1] == '>' && runes[i+2] == '&' && runes[i+3] == '1' {
+				if current.Len() > 0 {
+					tokens = append(tokens, current.String())
+					current.Reset()
+				}
+				tokens = append(tokens, "2>&1")
+				i += 3
+				prevCh = '1'
+				continue
+			}
+
+			if ch == '2' && i+1 < len(runes) && runes[i+1] == '>' {
+				if current.Len() > 0 {
+					tokens = append(tokens, current.String())
+					current.Reset()
+				}
+				if i+2 < len(runes) && runes[i+2] == '>' {
+					tokens = append(tokens, "2>>")
+					i += 2
+				} else {
+					tokens = append(tokens, "2>")
+					i++
+				}
+				prevCh = '>'
+				continue
+			}
+
 			// Check for append redirection operator (>>)
 			if ch == '>' && i+1 < len(runes) && runes[i+1] == '>' {
 				if current.Len() > 0 {
