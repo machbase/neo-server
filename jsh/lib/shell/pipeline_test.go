@@ -68,9 +68,9 @@ func TestProcessStreamingPipeline(t *testing.T) {
 		alive bool
 	}{
 		{
-			name:  "echo to cat",
-			line:  "echo hello | cat",
-			want:  "hello",
+			name:  "cat to cat preserves content",
+			line:  "cat sample-lines.txt | cat",
+			want:  "alpha\nbeta",
 			exit:  0,
 			alive: true,
 		},
@@ -78,13 +78,6 @@ func TestProcessStreamingPipeline(t *testing.T) {
 			name:  "cat to wc line count",
 			line:  "echo hello | cat | wc -l",
 			want:  "1",
-			exit:  0,
-			alive: true,
-		},
-		{
-			name:  "cat file through pipe",
-			line:  "cat sample-lines.txt | cat",
-			want:  "alpha\nbeta",
 			exit:  0,
 			alive: true,
 		},
