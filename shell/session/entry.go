@@ -128,7 +128,16 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 			}
 		}
 		// otherwise, use command args to build ExecPass
-		conf.Code = *src
+		if strings.HasPrefix(*src, "@") {
+			codeBytes, err := os.ReadFile((*src)[1:])
+			if err != nil {
+				fmt.Println("Error reading script file:", err.Error())
+				os.Exit(1)
+			}
+			conf.Code = string(codeBytes)
+		} else {
+			conf.Code = *src
+		}
 		conf.FSTabs = fsTabs
 		conf.Args = flags.Args()
 		conf.Default = "/usr/bin/neo-shell.js" // default script to run if no args
