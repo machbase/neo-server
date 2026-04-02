@@ -177,6 +177,11 @@ func (ctx *RouterContext) SetHeader(name string, value string) {
 func (ctx *RouterContext) Param(name string) string {
 	return ctx.Context.Param(name)
 }
+
+func (ctx *RouterContext) HasQuery(name string) (string, bool) {
+	return ctx.Context.GetQuery(name)
+}
+
 func (ctx *RouterContext) Query(name string) string {
 	return ctx.Context.Query(name)
 }

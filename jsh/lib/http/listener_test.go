@@ -48,6 +48,10 @@ func TestServer(t *testing.T) {
 				"name": name,
 			})
 		})
+		svr.get("/query-check", (ctx) => {
+			const value = ctx.query("abc")
+			ctx.text(http.status.OK, String(value !== undefined) + "|" + (value === undefined ? "undefined" : JSON.stringify(value)))
+		})
 		svr.get("/hello/:name/:greeting", (ctx) => {
 			name = ctx.param("name")
 			greeting = ctx.param("greeting")
@@ -152,6 +156,38 @@ func TestServer(t *testing.T) {
 				},
 				Output: []string{
 					"json: Hi World",
+				},
+			},
+			{
+				Name: "response_missing_query_is_undefined",
+				Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get("testURL"), (r) => {
+					console.println("text:", r.text());
+				});
+			`,
+				Vars: map[string]any{
+					"testURL": "http://" + serverAddress + "/query-check",
+				},
+				Output: []string{
+					"text: false|undefined",
+				},
+			},
+			{
+				Name: "response_empty_query_is_empty_string",
+				Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get("testURL"), (r) => {
+					console.println("text:", r.text());
+				});
+			`,
+				Vars: map[string]any{
+					"testURL": "http://" + serverAddress + "/query-check?abc=",
+				},
+				Output: []string{
+					"text: true|\"\"",
 				},
 			},
 			{
