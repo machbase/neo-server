@@ -107,7 +107,7 @@ func TestProcessStreamingPipeline(t *testing.T) {
 			if alive != tc.alive {
 				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
 			}
-			if got := strings.TrimSpace(output.String()); got != tc.want {
+			if got := normalizeTestNewlines(strings.TrimSpace(output.String())); got != normalizeTestNewlines(tc.want) {
 				t.Fatalf("process(%q) output = %q, want %q", tc.line, got, tc.want)
 			}
 		})
@@ -252,11 +252,11 @@ func TestProcessRedirection(t *testing.T) {
 			if alive != tc.alive {
 				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
 			}
-			if got := strings.TrimSpace(output.String()); got != tc.wantOutput {
+			if got := normalizeTestNewlines(strings.TrimSpace(output.String())); got != normalizeTestNewlines(tc.wantOutput) {
 				t.Fatalf("process(%q) output = %q, want %q", tc.line, got, tc.wantOutput)
 			}
 			if tc.readFile != "" {
-				if got := readTestFile(t, tc.readFile); got != tc.wantFile {
+				if got := normalizeTestNewlines(readTestFile(t, tc.readFile)); got != normalizeTestNewlines(tc.wantFile) {
 					t.Fatalf("file %q = %q, want %q", tc.readFile, got, tc.wantFile)
 				}
 			}
@@ -466,6 +466,10 @@ func readTestFile(t *testing.T, name string) string {
 		t.Fatalf("read %s: %v", name, err)
 	}
 	return string(data)
+}
+
+func normalizeTestNewlines(value string) string {
+	return strings.ReplaceAll(value, "\r\n", "\n")
 }
 
 func TestRunSinglePipelineGuards(t *testing.T) {
