@@ -451,6 +451,9 @@ func cleanupTestFile(t *testing.T, name string) {
 
 func writeTestFile(t *testing.T, name string, content string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(testFilePath(name)), 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(name), err)
+	}
 	if err := os.WriteFile(testFilePath(name), []byte(content), 0644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
@@ -463,4 +466,142 @@ func readTestFile(t *testing.T, name string) string {
 		t.Fatalf("read %s: %v", name, err)
 	}
 	return string(data)
+}
+
+func TestRunSinglePipelineGuards(t *testing.T) {
+	t.Run("exit stops shell", func(t *testing.T) {
+		sh, _ := newTestShell(t)
+		exitCode, alive := sh.runSinglePipeline(&Pipeline{Command: "exit"})
+		if exitCode != 0 || alive {
+			t.Fatalf("runSinglePipeline(exit) = (%d, %v), want (0, false)", exitCode, alive)
+		}
+	})
+
+	t.Run("internal redirection rejected", func(t *testing.T) {
+		sh, _ := newTestShell(t)
+		exitCode, alive := sh.runSinglePipeline(&Pipeline{
+			Command: "setenv",
+			Args:    []string{"GREETING", "hello"},
+			Stdout:  &Redirect{Type: ">", Target: "ignored.txt"},
+		})
+		if exitCode != 1 || !alive {
+			t.Fatalf("runSinglePipeline(internal redirect) = (%d, %v), want (1, true)", exitCode, alive)
+		}
+	})
+}
+
+func TestRunStreamingPipelineGuards(t *testing.T) {
+	t.Run("nil env", func(t *testing.T) {
+		sh := &Shell{}
+		if got := sh.runStreamingPipeline([]*Pipeline{{Command: "cat"}}); got != 1 {
+			t.Fatalf("runStreamingPipeline(nil env) = %d, want 1", got)
+		}
+	})
+
+	for _, tc := range []struct {
+		name      string
+		pipelines []*Pipeline
+	}{
+		{
+			name:      "exit in pipeline",
+			pipelines: []*Pipeline{{Command: "exit"}, {Command: "cat"}},
+		},
+		{
+			name:      "internal command in pipeline",
+			pipelines: []*Pipeline{{Command: "setenv", Args: []string{"A", "B"}}, {Command: "cat"}},
+		},
+		{
+			name: "stdin redirect only first stage",
+			pipelines: []*Pipeline{{Command: "cat"}, {
+				Command: "cat",
+				Stdin:   &Redirect{Type: "<", Target: "sample-lines.txt"},
+			}},
+		},
+		{
+			name: "stdout redirect only last stage",
+			pipelines: []*Pipeline{{
+				Command: "cat",
+				Stdout:  &Redirect{Type: ">", Target: "redir-mid.txt"},
+			}, {Command: "cat"}},
+		},
+		{
+			name: "unsupported stderr redirect",
+			pipelines: []*Pipeline{{
+				Command: "cat",
+				Stderr:  &Redirect{Type: "2<", Target: "redir-mid.txt"},
+			}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, _ := newTestShell(t)
+			if got := sh.runStreamingPipeline(tc.pipelines); got != 1 {
+				t.Fatalf("runStreamingPipeline(%s) = %d, want 1", tc.name, got)
+			}
+		})
+	}
+}
+
+func TestPipelineHelpers(t *testing.T) {
+	t.Run("build external command requires env", func(t *testing.T) {
+		sh := &Shell{}
+		if _, err := sh.buildExternalExecCmd("cat", nil); err == nil || !strings.Contains(err.Error(), "shell environment is not initialized") {
+			t.Fatalf("buildExternalExecCmd() err = %v, want shell environment error", err)
+		}
+	})
+
+	t.Run("resolve external command uses alias and index fallback", func(t *testing.T) {
+		sh, _ := newTestShell(t)
+		sh.env.SetAlias("alias-tool", []string{"tool", "--flag"})
+		writeTestFile(t, "tool/index.js", "module.exports = {}\n")
+		defer cleanupTestFile(t, "tool/index.js")
+
+		path, args, err := sh.resolveExternalCommand("alias-tool", []string{"value"})
+		if err != nil {
+			t.Fatalf("resolveExternalCommand(alias-tool): %v", err)
+		}
+		if path != "/work/tool/index.js" {
+			t.Fatalf("resolveExternalCommand path = %q, want %q", path, "/work/tool/index.js")
+		}
+		if got, want := strings.Join(args, " "), "--flag value"; got != want {
+			t.Fatalf("resolveExternalCommand args = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("redirect helpers reject unsupported configuration", func(t *testing.T) {
+		sh, _ := newTestShell(t)
+		if _, _, err := openInputRedirect(sh.env, &Redirect{Type: ">", Target: "x"}); err == nil {
+			t.Fatal("openInputRedirect unsupported type: err = nil, want error")
+		}
+		if _, _, err := openOutputRedirect(sh.env, &Redirect{Type: "<", Target: "x"}); err == nil {
+			t.Fatal("openOutputRedirect unsupported type: err = nil, want error")
+		}
+		if _, _, err := openErrorRedirect(sh.env, &Redirect{Type: "2>&1"}, nil); err == nil {
+			t.Fatal("openErrorRedirect missing stdout: err = nil, want error")
+		}
+		badEnv := engine.NewEnv(engine.WithFilesystem(os.DirFS(shellTestDir)))
+		if _, err := shellFilesystem(badEnv); err == nil {
+			t.Fatal("shellFilesystem(non-engine fs) err = nil, want error")
+		}
+	})
+
+	t.Run("wait and process helpers", func(t *testing.T) {
+		cmd := exec.Command("sleep", "5")
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("start sleep: %v", err)
+		}
+		killStarted([]*exec.Cmd{cmd})
+		waitStarted([]*exec.Cmd{cmd})
+
+		fail := exec.Command("sh", "-c", "exit 7")
+		if err := fail.Start(); err != nil {
+			t.Fatalf("start failing shell: %v", err)
+		}
+		exitCode, err := waitCommand(fail)
+		if err != nil {
+			t.Fatalf("waitCommand(fail): %v", err)
+		}
+		if exitCode != 7 {
+			t.Fatalf("waitCommand(fail) exitCode = %d, want 7", exitCode)
+		}
+	})
 }
