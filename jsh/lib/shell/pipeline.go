@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib/shell/internal"
 	"github.com/machbase/neo-server/v8/jsh/log"
@@ -27,32 +26,17 @@ func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {
 	if pipe.Command == "exit" || pipe.Command == "quit" {
 		return 0, false
 	}
-	if isInternalCommand(pipe.Command) {
+	if internal.IsCommand(pipe.Command) {
 		if pipe.Stdin != nil || pipe.Stdout != nil || pipe.Stderr != nil {
 			log.Printf("redirection is not implemented for internal command: %s\n", pipe.Command)
 			return 1, true
 		}
-
-		var returnValue goja.Value
-		if v, ok := internal.Run(sh.rt, pipe.Command, pipe.Args...); ok {
-			returnValue = v
+		if exitCode, ok := internal.Run(sh.env, sh.env.Writer(), pipe.Command, pipe.Args...); ok {
+			return exitCode, true
 		} else {
 			log.Printf("command not found: %s\n", pipe.Command)
 			return 1, true
 		}
-
-		exitCode := -1
-		if returnValue != nil {
-			switch v := returnValue.Export().(type) {
-			default:
-				returnStr := returnValue.String()
-				returnStr = strings.TrimPrefix(returnStr, "Error: ")
-				log.Println(returnStr)
-			case int64:
-				exitCode = int(v)
-			}
-		}
-		return exitCode, true
 	}
 
 	return sh.runExternalPipelineStage(pipe), true
@@ -68,7 +52,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 			log.Printf("command cannot be used in pipeline: %s\n", pipe.Command)
 			return 1
 		}
-		if isInternalCommand(pipe.Command) {
+		if internal.IsCommand(pipe.Command) {
 			log.Printf("command cannot be used in pipeline: %s\n", pipe.Command)
 			return 1
 		}
@@ -404,14 +388,5 @@ func closeFiles(files []*os.File) {
 func closeResources(closers []func()) {
 	for _, closer := range closers {
 		closer()
-	}
-}
-
-func isInternalCommand(command string) bool {
-	switch command {
-	case "cd", "which":
-		return true
-	default:
-		return false
 	}
 }

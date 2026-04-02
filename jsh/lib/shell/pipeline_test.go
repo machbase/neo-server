@@ -2,10 +2,12 @@ package shell
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -39,6 +41,14 @@ func TestMain(m *testing.M) {
 
 	shellTestExecBuilder = func(source string, args []string, env map[string]any) (*exec.Cmd, error) {
 		argv := []string{"-v", "/work=" + shellTestDir}
+		keys := make([]string, 0, len(env))
+		for key := range env {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			argv = append(argv, "-e", fmt.Sprintf("%s=%v", key, env[key]))
+		}
 		if source != "" {
 			argv = append(argv, "-C", source)
 		}
@@ -249,6 +259,151 @@ func TestProcessRedirection(t *testing.T) {
 				if got := readTestFile(t, tc.readFile); got != tc.wantFile {
 					t.Fatalf("file %q = %q, want %q", tc.readFile, got, tc.wantFile)
 				}
+			}
+		})
+	}
+}
+
+func TestProcessSetenvAndEnv(t *testing.T) {
+	tests := []struct {
+		name      string
+		line      string
+		wantLines []string
+		exit      int
+		alive     bool
+		checkEnv  func(t *testing.T, sh *Shell)
+	}{
+		{
+			name: "setenv with separate name and value",
+			line: "setenv GREETING hello && env",
+			wantLines: []string{
+				"GREETING=hello",
+			},
+			exit:  0,
+			alive: true,
+			checkEnv: func(t *testing.T, sh *Shell) {
+				t.Helper()
+				if got := sh.env.Get("GREETING"); got != "hello" {
+					t.Fatalf("GREETING = %v, want hello", got)
+				}
+			},
+		},
+		{
+			name: "setenv with equals form and quoted spaces",
+			line: "setenv MESSAGE='hello world' && env",
+			wantLines: []string{
+				"MESSAGE=hello world",
+			},
+			exit:  0,
+			alive: true,
+			checkEnv: func(t *testing.T, sh *Shell) {
+				t.Helper()
+				if got := sh.env.Get("MESSAGE"); got != "hello world" {
+					t.Fatalf("MESSAGE = %v, want hello world", got)
+				}
+			},
+		},
+		{
+			name: "env prints only requested variables",
+			line: "setenv GREETING hello && setenv TARGET world && env TARGET GREETING",
+			wantLines: []string{
+				"TARGET=world",
+				"GREETING=hello",
+			},
+			exit:  0,
+			alive: true,
+		},
+		{
+			name: "env skips missing requested variables",
+			line: "setenv GREETING hello && env MISSING GREETING",
+			wantLines: []string{
+				"GREETING=hello",
+			},
+			exit:  0,
+			alive: true,
+		},
+		{
+			name: "setenv rejects invalid variable name",
+			line: "setenv 1BAD value",
+			wantLines: []string{
+				"setenv: invalid variable name: 1BAD",
+			},
+			exit:  1,
+			alive: true,
+			checkEnv: func(t *testing.T, sh *Shell) {
+				t.Helper()
+				if got := sh.env.Get("1BAD"); got != nil {
+					t.Fatalf("1BAD = %v, want nil", got)
+				}
+			},
+		},
+		{
+			name: "unsetenv removes existing variable",
+			line: "setenv GREETING hello && unsetenv GREETING && env",
+			wantLines: []string{
+				"HOME=/work",
+			},
+			exit:  0,
+			alive: true,
+			checkEnv: func(t *testing.T, sh *Shell) {
+				t.Helper()
+				if got := sh.env.Get("GREETING"); got != nil {
+					t.Fatalf("GREETING = %v, want nil", got)
+				}
+				if got := strings.TrimSpace(sh.env.Expand("$GREETING")); got != "" {
+					t.Fatalf("expanded GREETING = %q, want empty", got)
+				}
+			},
+		},
+		{
+			name: "unsetenv rejects invalid variable name",
+			line: "unsetenv 1BAD",
+			wantLines: []string{
+				"unsetenv: invalid variable name: 1BAD",
+			},
+			exit:  1,
+			alive: true,
+		},
+		{
+			name: "unsetenv requires exactly one argument",
+			line: "unsetenv",
+			wantLines: []string{
+				"usage: unsetenv NAME",
+			},
+			exit:  1,
+			alive: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, output := newTestShell(t)
+			exitCode, alive := sh.process(tc.line)
+			if exitCode != tc.exit {
+				t.Fatalf("process(%q) exitCode = %d, want %d", tc.line, exitCode, tc.exit)
+			}
+			if alive != tc.alive {
+				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
+			}
+			gotOutput := strings.TrimSpace(output.String())
+			for _, wantLine := range tc.wantLines {
+				if !strings.Contains(gotOutput, wantLine) {
+					t.Fatalf("process(%q) output = %q, want line %q", tc.line, gotOutput, wantLine)
+				}
+			}
+			if strings.Contains(tc.line, "unsetenv GREETING") && strings.Contains(gotOutput, "GREETING=hello") {
+				t.Fatalf("process(%q) output = %q, did not expect removed variable", tc.line, gotOutput)
+			}
+			if strings.Contains(tc.line, "env TARGET GREETING") {
+				if strings.Contains(gotOutput, "HOME=/work") || strings.Contains(gotOutput, "PATH=/work:/sbin") {
+					t.Fatalf("process(%q) output = %q, expected only selected variables", tc.line, gotOutput)
+				}
+			}
+			if strings.Contains(tc.line, "env MISSING GREETING") && strings.Contains(gotOutput, "MISSING=") {
+				t.Fatalf("process(%q) output = %q, did not expect missing variable output", tc.line, gotOutput)
+			}
+			if tc.checkEnv != nil {
+				tc.checkEnv(t, sh)
 			}
 		})
 	}
