@@ -1,0 +1,413 @@
+'use strict';
+
+const _advn = require('@jsh/mathx/advn');
+
+const RepresentationKind = {
+    rawPoint: 'raw-point',
+    timeBucketValue: 'time-bucket-value',
+    timeBucketBand: 'time-bucket-band',
+    distributionHistogram: 'distribution-histogram',
+    distributionBoxplot: 'distribution-boxplot',
+    eventPoint: 'event-point',
+    eventRange: 'event-range',
+};
+
+const AnnotationKind = {
+    point: 'point',
+    line: 'line',
+    range: 'range',
+};
+
+const TimeFormat = {
+    rfc3339: 'rfc3339',
+    epoch: 'epoch',
+};
+
+const TimeUnit = {
+    s: 's',
+    ms: 'ms',
+    us: 'us',
+    ns: 'ns',
+};
+
+function isObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function ensureObjectInput(name, value) {
+    if (!isObject(value)) {
+        throw new Error(`${name}: value must be an object`);
+    }
+}
+
+function ensureNonEmptyString(name, value) {
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(`${name}: value must be a non-empty string`);
+    }
+}
+
+function cloneObject(value) {
+    return { ...value };
+}
+
+function representation(kind, init = {}) {
+    ensureNonEmptyString('advn.representation', kind);
+    ensureObjectInput('advn.representation', init);
+    const ret = cloneObject(init);
+    ret.kind = kind;
+    return ret;
+}
+
+function domain(init = {}) {
+    ensureObjectInput('advn.domain', init);
+    return cloneObject(init);
+}
+
+function axis(init = {}) {
+    ensureObjectInput('advn.axis', init);
+    return cloneObject(init);
+}
+
+function series(init = {}) {
+    ensureObjectInput('advn.series', init);
+    const ret = cloneObject(init);
+    if (isObject(ret.representation)) {
+        ret.representation = cloneObject(ret.representation);
+    }
+    if (isObject(ret.source)) {
+        ret.source = cloneObject(ret.source);
+    }
+    if (isObject(ret.quality)) {
+        ret.quality = cloneObject(ret.quality);
+    }
+    if (isObject(ret.style)) {
+        ret.style = cloneObject(ret.style);
+    }
+    if (isObject(ret.extra)) {
+        ret.extra = cloneObject(ret.extra);
+    }
+    return ret;
+}
+
+function annotation(init = {}) {
+    ensureObjectInput('advn.annotation', init);
+    const ret = cloneObject(init);
+    if (isObject(ret.style)) {
+        ret.style = cloneObject(ret.style);
+    }
+    return ret;
+}
+
+function view(init = {}) {
+    ensureObjectInput('advn.view', init);
+    return cloneObject(init);
+}
+
+function meta(init = {}) {
+    ensureObjectInput('advn.meta', init);
+    return cloneObject(init);
+}
+
+function seriesWithKind(kind, init = {}) {
+    const ret = series(init);
+    const representationInit = isObject(ret.representation) ? ret.representation : {};
+    ret.representation = representation(kind, representationInit);
+    if (!Array.isArray(ret.representation.fields) || ret.representation.fields.length === 0) {
+        ret.representation.fields = defaultFieldsForKind(kind);
+    }
+    if (kind === RepresentationKind.distributionBoxplot) {
+        if (!Array.isArray(ret.representation.outlierFields) || ret.representation.outlierFields.length === 0) {
+            ret.representation.outlierFields = ['category', 'value'];
+        }
+    }
+    return ret;
+}
+
+function defaultFieldsForKind(kind) {
+    switch (kind) {
+        case RepresentationKind.rawPoint:
+            return ['x', 'y'];
+        case RepresentationKind.timeBucketValue:
+            return ['time', 'value'];
+        case RepresentationKind.timeBucketBand:
+            return ['time', 'min', 'max', 'avg'];
+        case RepresentationKind.distributionHistogram:
+            return ['binStart', 'binEnd', 'count'];
+        case RepresentationKind.distributionBoxplot:
+            return ['category', 'low', 'q1', 'median', 'q3', 'high'];
+        case RepresentationKind.eventPoint:
+            return ['time', 'value', 'label', 'severity'];
+        case RepresentationKind.eventRange:
+            return ['from', 'to', 'label'];
+        default:
+            return [];
+    }
+}
+
+function annotationWithKind(kind, init = {}) {
+    const ret = annotation(init);
+    ret.kind = kind;
+    return ret;
+}
+
+function parse(text) {
+    if (typeof text !== 'string') {
+        throw new Error('advn.parse: text must be a string');
+    }
+    return _advn.parse(text);
+}
+
+function stringify(spec) {
+    ensureObjectInput('advn.stringify', spec);
+    return _advn.stringify(spec);
+}
+
+function toEChartsOption(spec) {
+    ensureObjectInput('advn.toEChartsOption', spec);
+    return _advn.toEChartsOption(spec);
+}
+
+function toTUIBlocks(spec, options = undefined) {
+    ensureObjectInput('advn.toTUIBlocks', spec);
+    if (options !== undefined) {
+        ensureObjectInput('advn.toTUIBlocks', options);
+        return _advn.toTUIBlocks(spec, cloneObject(options));
+    }
+    return _advn.toTUIBlocks(spec);
+}
+
+function toSVG(spec, options = undefined) {
+    ensureObjectInput('advn.toSVG', spec);
+    if (options !== undefined) {
+        ensureObjectInput('advn.toSVG', options);
+        return _advn.toSVG(spec, cloneObject(options));
+    }
+    return _advn.toSVG(spec);
+}
+
+function validate(spec) {
+    ensureObjectInput('advn.validate', spec);
+    return _advn.validate(spec);
+}
+
+function normalize(spec = {}) {
+    ensureObjectInput('advn.normalize', spec);
+    return _advn.normalize(spec);
+}
+
+function createSpec(init = {}) {
+    ensureObjectInput('advn.createSpec', init);
+    return _advn.createSpec(init);
+}
+
+function rawPointSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.rawPoint, init);
+}
+
+function timeBucketValueSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.timeBucketValue, init);
+}
+
+function timeBucketBandSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.timeBucketBand, init);
+}
+
+function distributionHistogramSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.distributionHistogram, init);
+}
+
+function distributionBoxplotSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.distributionBoxplot, init);
+}
+
+function eventPointSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.eventPoint, init);
+}
+
+function eventRangeSeries(init = {}) {
+    return seriesWithKind(RepresentationKind.eventRange, init);
+}
+
+function pointAnnotation(init = {}) {
+    return annotationWithKind(AnnotationKind.point, init);
+}
+
+function lineAnnotation(init = {}) {
+    return annotationWithKind(AnnotationKind.line, init);
+}
+
+function rangeAnnotation(init = {}) {
+    return annotationWithKind(AnnotationKind.range, init);
+}
+
+class Builder {
+    constructor(init = {}) {
+        ensureObjectInput('advn.Builder', init);
+        this._spec = createSpec(init);
+    }
+
+    domain(definition = {}) {
+        this._spec.domain = {
+            ...(this._spec.domain || {}),
+            ...domain(definition),
+        };
+        return this;
+    }
+
+    setDomain(definition = {}) {
+        return this.domain(definition);
+    }
+
+    xAxis(definition = {}) {
+        this._spec.axes = this._spec.axes || {};
+        this._spec.axes.x = {
+            ...(this._spec.axes.x || {}),
+            ...axis(definition),
+        };
+        return this;
+    }
+
+    setXAxis(definition = {}) {
+        return this.xAxis(definition);
+    }
+
+    addYAxis(definition = {}) {
+        this._spec.axes = this._spec.axes || {};
+        this._spec.axes.y = this._spec.axes.y || [];
+        this._spec.axes.y.push(axis(definition));
+        return this;
+    }
+
+    addAxis(definition = {}) {
+        return this.addYAxis(definition);
+    }
+
+    addSeries(definition = {}) {
+        this._spec.series = this._spec.series || [];
+        this._spec.series.push(series(definition));
+        return this;
+    }
+
+    addRawPointSeries(definition = {}) {
+        return this.addSeries(rawPointSeries(definition));
+    }
+
+    addTimeBucketValueSeries(definition = {}) {
+        return this.addSeries(timeBucketValueSeries(definition));
+    }
+
+    addTimeBucketBandSeries(definition = {}) {
+        return this.addSeries(timeBucketBandSeries(definition));
+    }
+
+    addDistributionHistogramSeries(definition = {}) {
+        return this.addSeries(distributionHistogramSeries(definition));
+    }
+
+    addDistributionBoxplotSeries(definition = {}) {
+        return this.addSeries(distributionBoxplotSeries(definition));
+    }
+
+    addEventPointSeries(definition = {}) {
+        return this.addSeries(eventPointSeries(definition));
+    }
+
+    addEventRangeSeries(definition = {}) {
+        return this.addSeries(eventRangeSeries(definition));
+    }
+
+    addAnnotation(definition = {}) {
+        this._spec.annotations = this._spec.annotations || [];
+        this._spec.annotations.push(annotation(definition));
+        return this;
+    }
+
+    addPointAnnotation(definition = {}) {
+        return this.addAnnotation(pointAnnotation(definition));
+    }
+
+    addLineAnnotation(definition = {}) {
+        return this.addAnnotation(lineAnnotation(definition));
+    }
+
+    addRangeAnnotation(definition = {}) {
+        return this.addAnnotation(rangeAnnotation(definition));
+    }
+
+    view(definition = {}) {
+        this._spec.view = {
+            ...(this._spec.view || {}),
+            ...view(definition),
+        };
+        return this;
+    }
+
+    setView(definition = {}) {
+        return this.view(definition);
+    }
+
+    meta(definition = {}) {
+        this._spec.meta = {
+            ...(this._spec.meta || {}),
+            ...meta(definition),
+        };
+        return this;
+    }
+
+    setMeta(definition = {}) {
+        return this.meta(definition);
+    }
+
+    build() {
+        return normalize(this._spec);
+    }
+
+    stringify() {
+        return stringify(this.build());
+    }
+
+    toEChartsOption() {
+        return toEChartsOption(this.build());
+    }
+
+    toTUIBlocks(options = undefined) {
+        return toTUIBlocks(this.build(), options);
+    }
+
+    toSVG(options = undefined) {
+        return toSVG(this.build(), options);
+    }
+}
+
+module.exports = {
+    AnnotationKind,
+    Builder,
+    RepresentationKind,
+    TimeFormat,
+    TimeUnit,
+    annotation,
+    axis,
+    createSpec,
+    distributionBoxplotSeries,
+    distributionHistogramSeries,
+    domain,
+    eventPointSeries,
+    eventRangeSeries,
+    lineAnnotation,
+    meta,
+    normalize,
+    parse,
+    pointAnnotation,
+    rangeAnnotation,
+    rawPointSeries,
+    representation,
+    series,
+    stringify,
+    timeBucketBandSeries,
+    timeBucketValueSeries,
+    toEChartsOption,
+    toSVG,
+    toTUIBlocks,
+    validate,
+    view,
+};

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "domain": {
+    "kind": "time",
+    "from": "2026-04-03T00:00:00Z",
+    "to": "2026-04-03T01:00:00Z"
+  },
+  "series": [
+    {
+      "id": "sensor-1",
+      "name": "sensor-1",
+      "representation": {
+        "kind": "time-bucket-band",
+        "fields": ["time", "min", "max", "avg"]
+      },
+      "data": [
+        ["2026-04-03T00:00:00Z", 1, 5, 3],
+        ["2026-04-03T00:10:00Z", 2, 6, 4],
+        ["2026-04-03T00:20:00Z", 1, 4, 2]
+      ],
+      "quality": {
+        "coverage": 1,
+        "rowCount": 3
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "kind": "line",
+      "axis": "x",
+      "value": "2026-04-03T00:30:00Z",
+      "label": "checkpoint"
+    }
+  ],
+  "meta": {
+    "producer": "advn-test"
+  }
+}
