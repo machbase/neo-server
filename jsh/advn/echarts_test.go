@@ -3,6 +3,7 @@ package advn
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestToEChartsOption(t *testing.T) {
@@ -259,12 +260,17 @@ func TestToEChartsOptionRejectsUnsupportedRepresentation(t *testing.T) {
 }
 
 func TestToEChartsOptionEpochNanoseconds(t *testing.T) {
+	oldLocal := time.Local
+	time.Local = time.FixedZone("KST", 9*60*60)
+	t.Cleanup(func() {
+		time.Local = oldLocal
+	})
+
 	spec := (&Spec{
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatEpoch,
-			TimeUnit:   TimeUnitNanosecond,
+			TimeFormat: TimeFormatNano,
 			From:       json.Number("1775174400000000000"),
 			To:         json.Number("1775217600000000000"),
 		},
@@ -285,14 +291,58 @@ func TestToEChartsOptionEpochNanoseconds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToEChartsOption() returned unexpected error: %v", err)
 	}
+	xAxis := option["xAxis"].(map[string]any)
+	if xAxis["type"] != "time" {
+		t.Fatalf("expected default output xAxis type %q, got %v", "time", xAxis["type"])
+	}
 	seriesList := option["series"].([]map[string]any)
 	markArea := seriesList[0]["markArea"].(map[string]any)
 	areas := markArea["data"].([]any)
 	points := areas[0].([]map[string]any)
-	if points[0]["xAxis"] != "2026-04-03T10:00:00Z" {
-		t.Fatalf("expected normalized from time, got %v", points[0]["xAxis"])
+	if points[0]["xAxis"] != "2026-04-03T19:00:00+09:00" {
+		t.Fatalf("expected local RFC3339 from time, got %v", points[0]["xAxis"])
 	}
-	if points[1]["xAxis"] != "2026-04-03T11:00:00Z" {
-		t.Fatalf("expected normalized to time, got %v", points[1]["xAxis"])
+	if points[1]["xAxis"] != "2026-04-03T20:00:00+09:00" {
+		t.Fatalf("expected local RFC3339 to time, got %v", points[1]["xAxis"])
+	}
+}
+
+func TestToEChartsOptionWithTimeOverrides(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Domain: Domain{
+			Kind:       DomainKindTime,
+			TimeFormat: TimeFormatNano,
+		},
+		Series: []Series{{
+			ID:   "event-range-1",
+			Name: "maintenance",
+			Representation: Representation{
+				Kind:   RepresentationEventRange,
+				Fields: []string{"from", "to", "label"},
+			},
+			Data: []any{
+				[]any{"1775210400000000000", "1775214000000000000", "maintenance"},
+			},
+		}},
+	}).Normalize()
+
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	if err != nil {
+		t.Fatalf("ToEChartsOptionWithOptions() returned unexpected error: %v", err)
+	}
+	xAxis := option["xAxis"].(map[string]any)
+	if xAxis["type"] != "time" {
+		t.Fatalf("expected overridden xAxis type %q, got %v", "time", xAxis["type"])
+	}
+	seriesList := option["series"].([]map[string]any)
+	markArea := seriesList[0]["markArea"].(map[string]any)
+	areas := markArea["data"].([]any)
+	points := areas[0].([]map[string]any)
+	if points[0]["xAxis"] != "2026-04-03T19:00:00+09:00" {
+		t.Fatalf("expected Asia/Seoul from time, got %v", points[0]["xAxis"])
+	}
+	if points[1]["xAxis"] != "2026-04-03T20:00:00+09:00" {
+		t.Fatalf("expected Asia/Seoul to time, got %v", points[1]["xAxis"])
 	}
 }

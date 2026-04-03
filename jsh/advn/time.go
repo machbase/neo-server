@@ -8,11 +8,36 @@ import (
 	"time"
 )
 
-func effectiveTimeFormat(domain Domain, value any) string {
-	if domain.TimeFormat != "" {
-		return domain.TimeFormat
+func canonicalTimeFormat(timeFormat string, timeUnit string) string {
+	switch timeFormat {
+	case "":
+		if isEpochUnit(timeUnit) {
+			return timeUnit
+		}
+		return ""
+	case TimeFormatRFC3339:
+		return TimeFormatRFC3339
+	case TimeFormatEpoch:
+		if isEpochUnit(timeUnit) {
+			return timeUnit
+		}
+		return TimeFormatEpoch
+	case TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano:
+		return timeFormat
+	default:
+		return timeFormat
 	}
-	if domain.TimeUnit != "" {
+}
+
+func isEpochUnit(value string) bool {
+	return contains(value, TimeUnitSecond, TimeUnitMillisecond, TimeUnitMicrosecond, TimeUnitNanosecond)
+}
+
+func effectiveTimeFormat(domain Domain, value any) string {
+	switch canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit) {
+	case TimeFormatRFC3339:
+		return TimeFormatRFC3339
+	case TimeFormatEpoch, TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano:
 		return TimeFormatEpoch
 	}
 	switch typed := value.(type) {
@@ -38,8 +63,11 @@ func effectiveTimeFormat(domain Domain, value any) string {
 }
 
 func effectiveTimeUnit(domain Domain, value any) string {
-	if domain.TimeUnit != "" {
-		return domain.TimeUnit
+	switch canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit) {
+	case TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano:
+		return canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit)
+	case TimeFormatEpoch:
+		return inferEpochTimeUnit(value)
 	}
 	if effectiveTimeFormat(domain, value) != TimeFormatEpoch {
 		return ""

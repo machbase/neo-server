@@ -20,6 +20,10 @@ const AnnotationKind = {
 
 const TimeFormat = {
     rfc3339: 'rfc3339',
+    s: 's',
+    ms: 'ms',
+    us: 'us',
+    ns: 'ns',
     epoch: 'epoch',
 };
 
@@ -162,8 +166,12 @@ function stringify(spec) {
     return _vizspec.stringify(spec);
 }
 
-function toEChartsOption(spec) {
+function toEChartsOption(spec, options = undefined) {
     ensureObjectInput('vizspec.toEChartsOption', spec);
+    if (options !== undefined) {
+        ensureObjectInput('vizspec.toEChartsOption', options);
+        return _vizspec.toEChartsOption(spec, cloneObject(options));
+    }
     return _vizspec.toEChartsOption(spec);
 }
 
@@ -174,6 +182,15 @@ function toTUIBlocks(spec, options = undefined) {
         return _vizspec.toTUIBlocks(spec, cloneObject(options));
     }
     return _vizspec.toTUIBlocks(spec);
+}
+
+function toSparkline(spec, options = undefined) {
+    ensureObjectInput('vizspec.toSparkline', spec);
+    if (options !== undefined) {
+        ensureObjectInput('vizspec.toSparkline', options);
+        return _vizspec.toSparkline(spec, cloneObject(options));
+    }
+    return _vizspec.toSparkline(spec);
 }
 
 function toSVG(spec, options = undefined) {
@@ -366,12 +383,16 @@ class Builder {
         return stringify(this.build());
     }
 
-    toEChartsOption() {
-        return toEChartsOption(this.build());
+    toEChartsOption(options = undefined) {
+        return toEChartsOption(this.build(), options);
     }
 
     toTUIBlocks(options = undefined) {
         return toTUIBlocks(this.build(), options);
+    }
+
+    toSparkline(options = undefined) {
+        return toSparkline(this.build(), options);
     }
 
     toSVG(options = undefined) {
@@ -406,6 +427,7 @@ module.exports = {
     timeBucketBandSeries,
     timeBucketValueSeries,
     toEChartsOption,
+    toSparkline,
     toSVG,
     toTUIBlocks,
     validate,

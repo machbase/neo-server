@@ -2,8 +2,7 @@
   "version": 1,
   "domain": {
     "kind": "time",
-    "timeFormat": "epoch",
-    "timeUnit": "ns",
+    "timeformat": "ns",
     "from": 1775174400000000000,
     "to": 1775217600000000000
   },

@@ -93,7 +93,7 @@ func TestValidateFailures(t *testing.T) {
 		{
 			name: "invalid time format",
 			spec: (&Spec{Version: Version1, Domain: Domain{Kind: DomainKindTime, TimeFormat: "broken"}}).Normalize(),
-			want: "invalid timeFormat",
+			want: "invalid timeformat",
 		},
 		{
 			name: "invalid time unit",
@@ -103,7 +103,7 @@ func TestValidateFailures(t *testing.T) {
 		{
 			name: "time unit requires epoch",
 			spec: (&Spec{Version: Version1, Domain: Domain{Kind: DomainKindTime, TimeFormat: TimeFormatRFC3339, TimeUnit: TimeUnitNanosecond}}).Normalize(),
-			want: "timeUnit is only valid for epoch timeFormat",
+			want: "timeUnit is only valid for legacy epoch timeformat",
 		},
 		{
 			name: "missing y axis id",
@@ -421,8 +421,7 @@ func TestParseEpochTimeNumbersPreserved(t *testing.T) {
 		"version": 1,
 		"domain": {
 			"kind": "time",
-			"timeFormat": "epoch",
-			"timeUnit": "ns",
+			"timeformat": "ns",
 			"from": 1775174400000000000,
 			"to": 1775217600000000000
 		},
@@ -454,6 +453,16 @@ func TestParseEpochTimeNumbersPreserved(t *testing.T) {
 	NormalizeSpecTimeValues(spec)
 	if got, ok := spec.Domain.From.(string); !ok || got != "1775174400000000000" {
 		t.Fatalf("expected normalized domain.from string, got %#v", spec.Domain.From)
+	}
+	buf, err := Marshal(spec)
+	if err != nil {
+		t.Fatalf("Marshal() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(string(buf), `"timeformat":"ns"`) {
+		t.Fatalf("expected marshaled JSON to use timeformat, got %s", string(buf))
+	}
+	if strings.Contains(string(buf), `"timeUnit"`) || strings.Contains(string(buf), `"timeFormat"`) {
+		t.Fatalf("expected marshaled JSON to omit legacy time fields, got %s", string(buf))
 	}
 }
 

@@ -65,8 +65,7 @@ Recommended fields:
 - `kind`
 - `from`
 - `to`
-- `timeFormat`
-- `timeUnit`
+- `timeformat`
 - `tz`
 - `categories`
 
@@ -80,12 +79,12 @@ Supported domain kinds:
 
 For time domains, ADVN V1 supports explicit time encoding metadata.
 
-- `timeFormat`: `rfc3339` or `epoch`
-- `timeUnit`: `s`, `ms`, `us`, `ns`
+- `timeformat`: `rfc3339`, `s`, `ms`, `us`, `ns`
 
 Rules:
 
-- `timeUnit` is valid only when `timeFormat=epoch`
+- `timeformat=rfc3339` means time values are RFC3339 strings
+- `timeformat=s|ms|us|ns` means time values are epoch values in that unit
 - `from`, `to`, and time-related payload fields are interpreted according to these settings
 - when omitted, adapters may use best-effort inference
 
@@ -95,8 +94,7 @@ For Machbase Neo, the recommended default is:
 {
   "domain": {
     "kind": "time",
-    "timeFormat": "epoch",
-    "timeUnit": "ns"
+    "timeformat": "ns"
   }
 }
 ```
@@ -190,7 +188,7 @@ Required fields:
 Time field rule:
 
 - `time` may be an RFC3339 string or an epoch value
-- epoch values follow `domain.timeFormat` and `domain.timeUnit`
+- epoch values follow `domain.timeformat`
 
 ### 8.3 time-bucket-band
 
@@ -212,7 +210,7 @@ Required rules:
 Time field rule:
 
 - `time` may be RFC3339 or epoch
-- epoch values follow `domain.timeFormat` and `domain.timeUnit`
+- epoch values follow `domain.timeformat`
 
 Recommended ECharts mapping:
 
@@ -347,12 +345,22 @@ Time normalization is also an adapter responsibility.
 
 - the model preserves time-domain meaning and encoding metadata
 - adapters may normalize epoch inputs into renderer-safe time values
-- the current Go ECharts adapter may normalize time-axis values to RFC3339 strings
-- the current Go TUI adapter may normalize time values to readable RFC3339 strings in summary, timeline, event, and annotation output
+- output adapters should accept independent `timeformat` and `tz` options for output-side time representation
+- when omitted, output adapters default to `rfc3339` and local timezone
+- the current Go ECharts adapter may emit RFC3339 or epoch-unit values depending on output options
+- the current Go TUI adapter may render summary, timeline, event, annotation, and table time values using adapter options
 
 ## 13. TUI Adapter V1
 
 The TUI adapter returns block sequences rather than terminal escape sequences.
+
+Recommended options:
+
+- `width`
+- `rows`
+- `compact`
+- `timeformat`
+- `tz`
 
 Recommended block types:
 
@@ -377,8 +385,8 @@ Current default TUI strategy:
 
 Time-domain behavior:
 
-- `summary`, `event-list`, `timeline`, and `annotations` may render time values as normalized RFC3339 strings
-- `event-range` timeline strip calculation uses `domain.from`, `domain.to`, `timeFormat`, and `timeUnit`
+- `summary`, `event-list`, `timeline`, `annotations`, and table rows may render time values using adapter `timeformat` and `tz`
+- `event-range` timeline strip calculation uses `domain.from`, `domain.to`, and `timeformat`
 
 ## 14. SVG Adapter V1
 
@@ -419,6 +427,8 @@ type SVGOptions struct {
   FontSize   int    `json:"fontSize,omitempty"`
   ShowLegend *bool  `json:"showLegend,omitempty"`
   Title      string `json:"title,omitempty"`
+  Timeformat string `json:"timeformat,omitempty"`
+  TZ         string `json:"tz,omitempty"`
 }
 ```
 
@@ -432,6 +442,8 @@ Field semantics:
 - `fontSize`: base font size in CSS pixels
 - `showLegend`: enables or suppresses legend rendering when set explicitly
 - `title`: optional document title rendered above the plot region
+- `timeformat`: output-side time representation for axis labels and time text
+- `tz`: output-side timezone used when `timeformat=rfc3339`
 
 Validation and normalization rules:
 
@@ -523,7 +535,7 @@ For time axes, the SVG adapter should use the same time coercion rules as other 
 - epoch inputs may be normalized internally before coordinate mapping
 - axis labels may render as readable RFC3339 text or another stable human-readable time label format
 
-For Machbase Neo default usage, `timeFormat=epoch` and `timeUnit=ns` should be treated as a first-class path.
+For Machbase Neo default usage, `timeformat=ns` should be treated as a first-class path.
 
 ### 14.7 Testing Strategy
 
@@ -584,8 +596,7 @@ This keeps semantic rendering deterministic and avoids duplicating layout logic 
   "version": 1,
   "domain": {
     "kind": "time",
-    "timeFormat": "epoch",
-    "timeUnit": "ns",
+    "timeformat": "ns",
     "from": 1775174400000000000,
     "to": 1775217600000000000,
     "tz": "UTC"

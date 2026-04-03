@@ -15,8 +15,7 @@ func TestToSVGTimeBandAndAnnotations(t *testing.T) {
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatEpoch,
-			TimeUnit:   TimeUnitNanosecond,
+			TimeFormat: TimeFormatNano,
 			From:       "1712102400000000000",
 			To:         "1712102520000000000",
 		},
@@ -58,7 +57,7 @@ func TestToSVGTimeBandAndAnnotations(t *testing.T) {
 		Annotations: []Annotation{{Kind: AnnotationKindLine, Axis: "value", Value: 13.5, Style: map[string]any{"color": "#cf222e"}}},
 	}).Normalize()
 
-	output, err := ToSVG(spec, &SVGOptions{Title: "ADVN SVG", ShowLegend: boolPtr(true), Width: 800, Height: 360})
+	output, err := ToSVG(spec, &SVGOptions{Title: "ADVN SVG", ShowLegend: boolPtr(true), Width: 800, Height: 360, Timeformat: TimeFormatRFC3339, TZ: "UTC"})
 	if err != nil {
 		t.Fatalf("ToSVG() returned unexpected error: %v", err)
 	}
@@ -220,6 +219,12 @@ func TestToSVGMultipleYAxesAndLegendWrap(t *testing.T) {
 }
 
 func TestToSVGTimeTickFormatting(t *testing.T) {
+	oldLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() {
+		time.Local = oldLocal
+	})
+
 	spec := (&Spec{
 		Version: Version1,
 		Domain:  Domain{Kind: DomainKindTime},
@@ -284,6 +289,40 @@ func TestToSVGWithGoTimeDomainValues(t *testing.T) {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected SVG output to contain %q, got %q", expected, text)
 		}
+	}
+}
+
+func TestToSVGWithTimeOverrides(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Domain: Domain{
+			Kind:       DomainKindTime,
+			TimeFormat: TimeFormatNano,
+			From:       "1712102400000000000",
+			To:         "1712102520000000000",
+		},
+		Axes: Axes{
+			X: Axis{ID: "time", Type: AxisTypeTime, Label: "Time"},
+			Y: []Axis{{ID: "value", Type: AxisTypeLinear, Label: "Value"}},
+		},
+		Series: []Series{{
+			ID:             "series-1",
+			Axis:           "value",
+			Representation: Representation{Kind: RepresentationTimeBucketValue, Fields: []string{"time", "value"}},
+			Data: []any{
+				[]any{"1712102400000000000", 10},
+				[]any{"1712102460000000000", 12},
+			},
+		}},
+	}).Normalize()
+
+	output, err := ToSVG(spec, &SVGOptions{Width: 640, Height: 280, ShowLegend: boolPtr(false), Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	if err != nil {
+		t.Fatalf("ToSVG() returned unexpected error: %v", err)
+	}
+	text := string(output)
+	if !strings.Contains(text, ">09:00<") && !strings.Contains(text, ">09:01<") {
+		t.Fatalf("expected timezone-adjusted SVG tick labels, got %q", text)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -143,13 +144,63 @@ func TestToTUIBlocksWithOptions(t *testing.T) {
 	}
 }
 
+func TestToSparkline(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Domain:  Domain{Kind: DomainKindTime, From: "2026-04-03T00:00:00Z", To: "2026-04-03T00:04:00Z"},
+		Series: []Series{{
+			ID:             "value-1",
+			Representation: Representation{Kind: RepresentationTimeBucketValue, Fields: []string{"time", "value"}},
+			Data: []any{
+				[]any{"2026-04-03T00:00:00Z", 1},
+				[]any{"2026-04-03T00:02:00Z", 4},
+				[]any{"2026-04-03T00:04:00Z", 2},
+			},
+		}},
+	}).Normalize()
+
+	lines, err := ToSparklineWithOptions(spec, &TUIOptions{Width: 12})
+	if err != nil {
+		t.Fatalf("ToSparklineWithOptions() returned unexpected error: %v", err)
+	}
+	if len(lines) != 4 {
+		t.Fatalf("expected sparkline with axis and 3 chart rows, got %#v", lines)
+	}
+	if !strings.Contains(lines[1], "┤") {
+		t.Fatalf("expected sparkline y-axis marker, got %#v", lines)
+	}
+	if !strings.Contains(lines[0], ":") {
+		t.Fatalf("expected sparkline x-axis label, got %#v", lines)
+	}
+}
+
+func TestToSparklineRejectsUnsupportedSeries(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Series: []Series{{
+			ID:             "hist-1",
+			Representation: Representation{Kind: RepresentationDistributionHistogram, Fields: []string{"binStart", "binEnd", "count"}},
+			Data:           []any{[]any{0, 10, 3}},
+		}},
+	}).Normalize()
+
+	if _, err := ToSparkline(spec); err == nil {
+		t.Fatal("expected unsupported sparkline series error")
+	}
+}
+
 func TestToTUIBlocksEpochNanoseconds(t *testing.T) {
+	oldLocal := time.Local
+	time.Local = time.FixedZone("KST", 9*60*60)
+	t.Cleanup(func() {
+		time.Local = oldLocal
+	})
+
 	spec := (&Spec{
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatEpoch,
-			TimeUnit:   TimeUnitNanosecond,
+			TimeFormat: TimeFormatNano,
 			From:       json.Number("1775174400000000000"),
 			To:         json.Number("1775217600000000000"),
 		},
@@ -167,13 +218,48 @@ func TestToTUIBlocksEpochNanoseconds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ToTUIBlocks() returned unexpected error: %v", err)
 	}
-	if !strings.Contains(blocks[0].Lines[0], "2026-04-03T00:00:00Z") {
-		t.Fatalf("expected summary line to contain normalized time, got %q", blocks[0].Lines[0])
+	if !strings.Contains(blocks[0].Lines[0], "2026-04-03T09:00:00+09:00") {
+		t.Fatalf("expected summary line to contain local RFC3339 time, got %q", blocks[0].Lines[0])
 	}
-	if !strings.Contains(blocks[2].Lines[1], "2026-04-03T10:00:00Z") {
-		t.Fatalf("expected timeline detail to contain normalized from time, got %q", blocks[2].Lines[1])
+	if strings.Contains(blocks[0].Lines[0], "1775174400000000000") {
+		t.Fatalf("expected summary line to avoid raw epoch ns time, got %q", blocks[0].Lines[0])
 	}
-	if !strings.Contains(blocks[2].Lines[1], "2026-04-03T11:00:00Z") {
-		t.Fatalf("expected timeline detail to contain normalized to time, got %q", blocks[2].Lines[1])
+	if !strings.Contains(blocks[2].Lines[1], "2026-04-03T19:00:00+09:00") {
+		t.Fatalf("expected timeline detail to contain local RFC3339 from time, got %q", blocks[2].Lines[1])
+	}
+	if !strings.Contains(blocks[2].Lines[1], "2026-04-03T20:00:00+09:00") {
+		t.Fatalf("expected timeline detail to contain local RFC3339 to time, got %q", blocks[2].Lines[1])
+	}
+
+	overrideBlocks, err := ToTUIBlocksWithOptions(spec, &TUIOptions{Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	if err != nil {
+		t.Fatalf("ToTUIBlocksWithOptions() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(overrideBlocks[0].Lines[0], "+09:00") {
+		t.Fatalf("expected summary line to contain timezone-adjusted RFC3339, got %q", overrideBlocks[0].Lines[0])
+	}
+}
+
+func TestToTUIBlocksTableTimeOverrides(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Domain:  Domain{Kind: DomainKindTime, TimeFormat: TimeFormatNano},
+		Series: []Series{{
+			ID:             "value-1",
+			Name:           "value-1",
+			Representation: Representation{Kind: RepresentationTimeBucketValue, Fields: []string{"time", "value"}},
+			Data: []any{
+				[]any{"1775174400000000000", 1},
+			},
+		}},
+	}).Normalize()
+
+	blocks, err := ToTUIBlocksWithOptions(spec, &TUIOptions{Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	if err != nil {
+		t.Fatalf("ToTUIBlocksWithOptions() returned unexpected error: %v", err)
+	}
+	row := blocks[3].Rows[0].([]any)
+	if row[0] != "2026-04-03T09:00:00+09:00" {
+		t.Fatalf("expected table row time override, got %#v", row[0])
 	}
 }

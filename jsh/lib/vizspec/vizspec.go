@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/dop251/goja"
-	model "github.com/machbase/neo-server/v8/jsh/advn"
+	"github.com/machbase/neo-server/v8/jsh/advn"
 )
 
 //go:embed vizspec.js
@@ -21,11 +21,11 @@ func Files() map[string][]byte {
 func Module(rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 	o.Set("parse", func(text string) goja.Value {
-		spec, err := model.ParseString(text)
+		spec, err := advn.ParseString(text)
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
-		model.NormalizeSpecTimeValues(spec)
+		advn.NormalizeSpecTimeValues(spec)
 		return mustToValue(rt, spec)
 	})
 	o.Set("stringify", func(call goja.FunctionCall) goja.Value {
@@ -36,7 +36,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
-		buf, err := model.Marshal(spec)
+		buf, err := advn.Marshal(spec)
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
@@ -57,7 +57,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 	o.Set("normalize", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 || goja.IsUndefined(call.Arguments[0]) || goja.IsNull(call.Arguments[0]) {
-			return mustToValue(rt, (&model.Spec{}).Normalize())
+			return mustToValue(rt, (&advn.Spec{}).Normalize())
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -67,12 +67,12 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		if err := spec.Validate(); err != nil {
 			panic(rt.NewGoError(err))
 		}
-		model.NormalizeSpecTimeValues(spec)
+		advn.NormalizeSpecTimeValues(spec)
 		return mustToValue(rt, spec)
 	})
 	o.Set("createSpec", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 || goja.IsUndefined(call.Arguments[0]) || goja.IsNull(call.Arguments[0]) {
-			return mustToValue(rt, (&model.Spec{}).Normalize())
+			return mustToValue(rt, (&advn.Spec{}).Normalize())
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -82,7 +82,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		if err := spec.Validate(); err != nil {
 			panic(rt.NewGoError(err))
 		}
-		model.NormalizeSpecTimeValues(spec)
+		advn.NormalizeSpecTimeValues(spec)
 		return mustToValue(rt, spec)
 	})
 	o.Set("toEChartsOption", func(call goja.FunctionCall) goja.Value {
@@ -93,7 +93,11 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
-		option, err := model.ToEChartsOption(spec)
+		options, err := decodeEChartsOptions(rt, call.Arguments, 1)
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		option, err := advn.ToEChartsOptionWithOptions(spec, options)
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
@@ -111,11 +115,29 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
-		blocks, err := model.ToTUIBlocksWithOptions(spec, options)
+		blocks, err := advn.ToTUIBlocksWithOptions(spec, options)
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
 		return mustValueToJS(rt, blocks)
+	})
+	o.Set("toSparkline", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 {
+			panic(rt.NewTypeError("vizspec.toSparkline: spec is required"))
+		}
+		spec, err := decodeSpec(rt, call.Arguments[0])
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		options, err := decodeTUIOptions(rt, call.Arguments, 1)
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		lines, err := advn.ToSparklineWithOptions(spec, options)
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		return mustValueToJS(rt, lines)
 	})
 	o.Set("toSVG", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
@@ -129,7 +151,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
-		svg, err := model.ToSVG(spec, options)
+		svg, err := advn.ToSVG(spec, options)
 		if err != nil {
 			panic(rt.NewGoError(err))
 		}
@@ -137,7 +159,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 }
 
-func decodeTUIOptions(rt *goja.Runtime, args []goja.Value, index int) (*model.TUIOptions, error) {
+func decodeEChartsOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.EChartsOptions, error) {
 	if len(args) <= index || goja.IsUndefined(args[index]) || goja.IsNull(args[index]) {
 		return nil, nil
 	}
@@ -149,14 +171,14 @@ func decodeTUIOptions(rt *goja.Runtime, args []goja.Value, index int) (*model.TU
 	if err != nil {
 		return nil, err
 	}
-	ret := &model.TUIOptions{}
+	ret := &advn.EChartsOptions{}
 	if err := json.Unmarshal(buf, ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 }
 
-func decodeSVGOptions(rt *goja.Runtime, args []goja.Value, index int) (*model.SVGOptions, error) {
+func decodeTUIOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.TUIOptions, error) {
 	if len(args) <= index || goja.IsUndefined(args[index]) || goja.IsNull(args[index]) {
 		return nil, nil
 	}
@@ -168,14 +190,33 @@ func decodeSVGOptions(rt *goja.Runtime, args []goja.Value, index int) (*model.SV
 	if err != nil {
 		return nil, err
 	}
-	ret := &model.SVGOptions{}
+	ret := &advn.TUIOptions{}
 	if err := json.Unmarshal(buf, ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 }
 
-func decodeSpec(rt *goja.Runtime, value goja.Value) (*model.Spec, error) {
+func decodeSVGOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.SVGOptions, error) {
+	if len(args) <= index || goja.IsUndefined(args[index]) || goja.IsNull(args[index]) {
+		return nil, nil
+	}
+	var input any
+	if err := rt.ExportTo(args[index], &input); err != nil {
+		return nil, err
+	}
+	buf, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	ret := &advn.SVGOptions{}
+	if err := json.Unmarshal(buf, ret); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func decodeSpec(rt *goja.Runtime, value goja.Value) (*advn.Spec, error) {
 	var input any
 	if err := rt.ExportTo(value, &input); err != nil {
 		return nil, err
@@ -184,7 +225,7 @@ func decodeSpec(rt *goja.Runtime, value goja.Value) (*model.Spec, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := &model.Spec{}
+	ret := &advn.Spec{}
 	decoder := json.NewDecoder(bytes.NewReader(buf))
 	decoder.UseNumber()
 	if err := decoder.Decode(ret); err != nil {
@@ -194,7 +235,7 @@ func decodeSpec(rt *goja.Runtime, value goja.Value) (*model.Spec, error) {
 	return ret, nil
 }
 
-func mustToValue(rt *goja.Runtime, spec *model.Spec) goja.Value {
+func mustToValue(rt *goja.Runtime, spec *advn.Spec) goja.Value {
 	return mustValueToJS(rt, spec)
 }
 

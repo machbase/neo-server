@@ -6,7 +6,16 @@ import (
 	"strconv"
 )
 
+type EChartsOptions struct {
+	Timeformat string `json:"timeformat,omitempty"`
+	TZ         string `json:"tz,omitempty"`
+}
+
 func ToEChartsOption(spec *Spec) (map[string]any, error) {
+	return ToEChartsOptionWithOptions(spec, nil)
+}
+
+func ToEChartsOptionWithOptions(spec *Spec, options *EChartsOptions) (map[string]any, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("advn: spec is nil")
 	}
@@ -14,14 +23,21 @@ func ToEChartsOption(spec *Spec) (map[string]any, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
+	timeOptions, err := resolveOutputTimeOptions(spec.Domain, OutputTimeOptions{})
+	if options != nil {
+		timeOptions, err = resolveOutputTimeOptions(spec.Domain, OutputTimeOptions{Timeformat: options.Timeformat, TZ: options.TZ})
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	yAxes, yAxisIndex := buildEChartsYAxes(spec)
 	seriesList := []map[string]any{}
 	legendData := []string{}
-	xAxis := buildEChartsXAxis(spec)
+	xAxis := buildEChartsXAxis(spec, timeOptions)
 
 	for _, item := range spec.Series {
-		built, err := buildEChartsSeries(item, yAxisIndex, spec.Domain)
+		built, err := buildEChartsSeries(item, yAxisIndex, spec.Domain, timeOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +56,7 @@ func ToEChartsOption(spec *Spec) (map[string]any, error) {
 		return nil, fmt.Errorf("advn: no supported series")
 	}
 
-	applyEChartsAnnotations(spec, preferredAnnotationTarget(seriesList))
+	applyEChartsAnnotations(spec, preferredAnnotationTarget(seriesList), timeOptions)
 
 	option := map[string]any{
 		"tooltip": map[string]any{"trigger": "axis"},
@@ -65,10 +81,13 @@ func ToEChartsOption(spec *Spec) (map[string]any, error) {
 	return option, nil
 }
 
-func buildEChartsXAxis(spec *Spec) map[string]any {
+func buildEChartsXAxis(spec *Spec, timeOptions resolvedOutputTimeOptions) map[string]any {
 	axisType := detectDefaultXAxisType(spec)
 	if spec.Axes.X.Type != "" {
 		axisType = echartsAxisType(spec.Axes.X.Type)
+	}
+	if axisType == "time" {
+		axisType = echartsTimeAxisType(timeOptions)
 	}
 	ret := map[string]any{
 		"type": axisType,
@@ -80,15 +99,15 @@ func buildEChartsXAxis(spec *Spec) map[string]any {
 	}
 	if spec.Axes.X.Extent != nil {
 		if spec.Axes.X.Extent.Min != nil {
-			if axisType == "time" {
-				ret["min"] = normalizeTimeValueForECharts(spec.Axes.X.Extent.Min, spec.Domain)
+			if spec.Domain.Kind == DomainKindTime {
+				ret["min"] = normalizeTimeValueForEChartsWithOptions(spec.Axes.X.Extent.Min, spec.Domain, timeOptions)
 			} else {
 				ret["min"] = spec.Axes.X.Extent.Min
 			}
 		}
 		if spec.Axes.X.Extent.Max != nil {
-			if axisType == "time" {
-				ret["max"] = normalizeTimeValueForECharts(spec.Axes.X.Extent.Max, spec.Domain)
+			if spec.Domain.Kind == DomainKindTime {
+				ret["max"] = normalizeTimeValueForEChartsWithOptions(spec.Axes.X.Extent.Max, spec.Domain, timeOptions)
 			} else {
 				ret["max"] = spec.Axes.X.Extent.Max
 			}
@@ -156,7 +175,7 @@ func buildEChartsYAxes(spec *Spec) ([]map[string]any, map[string]int) {
 	return ret, indexByID
 }
 
-func buildEChartsSeries(item Series, yAxisIndex map[string]int, domain Domain) ([]map[string]any, error) {
+func buildEChartsSeries(item Series, yAxisIndex map[string]int, domain Domain, timeOptions resolvedOutputTimeOptions) ([]map[string]any, error) {
 	axisID := item.Axis
 	if axisID == "" {
 		axisID = "y"
@@ -175,9 +194,9 @@ func buildEChartsSeries(item Series, yAxisIndex map[string]int, domain Domain) (
 		lineStyle := mergeStyle(map[string]any{}, styleLineOptions(item.Style))
 		data := item.Data
 		if item.Representation.Kind == RepresentationRawPoint {
-			data = selectPairs(item.Data, rawPointXIndex(item, domain), rawPointYIndex(item), domain)
+			data = selectPairs(item.Data, rawPointXIndex(item, domain), rawPointYIndex(item), domain, timeOptions)
 		} else {
-			data = selectPairs(item.Data, timeDomainXIndex(item, domain), 1, domain)
+			data = selectPairs(item.Data, timeDomainXIndex(item, domain), 1, domain, timeOptions)
 		}
 		seriesItem := map[string]any{
 			"type":       "line",
@@ -191,21 +210,21 @@ func buildEChartsSeries(item Series, yAxisIndex map[string]int, domain Domain) (
 		}
 		return []map[string]any{seriesItem}, nil
 	case RepresentationTimeBucketBand:
-		return buildTimeBucketBandSeries(item, idx, name, domain)
+		return buildTimeBucketBandSeries(item, idx, name, domain, timeOptions)
 	case RepresentationDistributionHistogram:
 		return buildHistogramSeries(item, idx, name)
 	case RepresentationDistributionBoxplot:
 		return buildBoxplotSeries(item, idx, name)
 	case RepresentationEventPoint:
-		return buildEventPointSeries(item, idx, name, domain)
+		return buildEventPointSeries(item, idx, name, domain, timeOptions)
 	case RepresentationEventRange:
-		return buildEventRangeSeries(item, idx, name, domain)
+		return buildEventRangeSeries(item, idx, name, domain, timeOptions)
 	default:
 		return nil, fmt.Errorf("advn: unsupported echarts representation %q", item.Representation.Kind)
 	}
 }
 
-func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain Domain) ([]map[string]any, error) {
+func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain Domain, timeOptions resolvedOutputTimeOptions) ([]map[string]any, error) {
 	timeIndex := fieldIndex(item.Representation.Fields, "time")
 	if timeIndex < 0 {
 		timeIndex = 0
@@ -240,7 +259,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 			"silent":     true,
 			"lineStyle":  map[string]any{"opacity": 0, "width": 0},
 			"areaStyle":  map[string]any{"opacity": 0},
-			"data":       selectPairs(item.Data, timeIndex, minIndex, domain),
+			"data":       selectPairs(item.Data, timeIndex, minIndex, domain, timeOptions),
 		})
 		areaStyle := map[string]any{"opacity": bandOpacity}
 		if bandColor != "" {
@@ -255,7 +274,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 			"silent":     true,
 			"lineStyle":  map[string]any{"opacity": 0, "width": 0},
 			"areaStyle":  areaStyle,
-			"data":       selectBandPairs(item.Data, timeIndex, minIndex, maxIndex, domain),
+			"data":       selectBandPairs(item.Data, timeIndex, minIndex, maxIndex, domain, timeOptions),
 		})
 	} else {
 		if minIndex >= 0 {
@@ -272,7 +291,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 				"showSymbol": false,
 				"yAxisIndex": yAxisIndex,
 				"lineStyle":  lineStyle,
-				"data":       selectPairs(item.Data, timeIndex, minIndex, domain),
+				"data":       selectPairs(item.Data, timeIndex, minIndex, domain, timeOptions),
 			})
 		}
 		if maxIndex >= 0 {
@@ -289,7 +308,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 				"showSymbol": false,
 				"yAxisIndex": yAxisIndex,
 				"lineStyle":  lineStyle,
-				"data":       selectPairs(item.Data, timeIndex, maxIndex, domain),
+				"data":       selectPairs(item.Data, timeIndex, maxIndex, domain, timeOptions),
 			})
 		}
 	}
@@ -307,7 +326,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 			"name":       name,
 			"showSymbol": false,
 			"yAxisIndex": yAxisIndex,
-			"data":       selectPairs(item.Data, timeIndex, avgIndex, domain),
+			"data":       selectPairs(item.Data, timeIndex, avgIndex, domain, timeOptions),
 		}
 		if len(lineStyle) > 0 {
 			avgSeries["lineStyle"] = lineStyle
@@ -327,7 +346,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 			"showSymbol": false,
 			"yAxisIndex": yAxisIndex,
 			"lineStyle":  lineStyle,
-			"data":       selectPairs(item.Data, timeIndex, maxIndex, domain),
+			"data":       selectPairs(item.Data, timeIndex, maxIndex, domain, timeOptions),
 		})
 	} else if maxIndex < 0 && minIndex >= 0 {
 		lineStyle := map[string]any{"opacity": 0.65}
@@ -343,7 +362,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 			"showSymbol": false,
 			"yAxisIndex": yAxisIndex,
 			"lineStyle":  lineStyle,
-			"data":       selectPairs(item.Data, timeIndex, minIndex, domain),
+			"data":       selectPairs(item.Data, timeIndex, minIndex, domain, timeOptions),
 		})
 	}
 	return seriesList, nil
@@ -437,7 +456,7 @@ func buildBoxplotSeries(item Series, yAxisIndex int, name string) ([]map[string]
 	return seriesList, nil
 }
 
-func buildEventPointSeries(item Series, yAxisIndex int, name string, domain Domain) ([]map[string]any, error) {
+func buildEventPointSeries(item Series, yAxisIndex int, name string, domain Domain, timeOptions resolvedOutputTimeOptions) ([]map[string]any, error) {
 	timeIndex := fieldIndex(item.Representation.Fields, "time")
 	valueIndex := fieldIndex(item.Representation.Fields, "value")
 	labelIndex := fieldIndex(item.Representation.Fields, "label")
@@ -454,7 +473,7 @@ func buildEventPointSeries(item Series, yAxisIndex int, name string, domain Doma
 			continue
 		}
 		point := map[string]any{
-			"value": []any{normalizeTimeValueForECharts(values[timeIndex], domain), values[valueIndex]},
+			"value": []any{normalizeTimeValueForEChartsWithOptions(values[timeIndex], domain, timeOptions), values[valueIndex]},
 		}
 		if labelIndex >= 0 && labelIndex < len(values) {
 			if label, ok := values[labelIndex].(string); ok && label != "" {
@@ -478,7 +497,7 @@ func buildEventPointSeries(item Series, yAxisIndex int, name string, domain Doma
 	return []map[string]any{seriesItem}, nil
 }
 
-func buildEventRangeSeries(item Series, yAxisIndex int, name string, domain Domain) ([]map[string]any, error) {
+func buildEventRangeSeries(item Series, yAxisIndex int, name string, domain Domain, timeOptions resolvedOutputTimeOptions) ([]map[string]any, error) {
 	fromIndex := fieldIndex(item.Representation.Fields, "from")
 	toIndex := fieldIndex(item.Representation.Fields, "to")
 	labelIndex := fieldIndex(item.Representation.Fields, "label")
@@ -494,8 +513,8 @@ func buildEventRangeSeries(item Series, yAxisIndex int, name string, domain Doma
 		if !ok || fromIndex >= len(values) || toIndex >= len(values) {
 			continue
 		}
-		from := map[string]any{"xAxis": normalizeTimeValueForECharts(values[fromIndex], domain)}
-		to := map[string]any{"xAxis": normalizeTimeValueForECharts(values[toIndex], domain)}
+		from := map[string]any{"xAxis": normalizeTimeValueForEChartsWithOptions(values[fromIndex], domain, timeOptions)}
+		to := map[string]any{"xAxis": normalizeTimeValueForEChartsWithOptions(values[toIndex], domain, timeOptions)}
 		if labelIndex >= 0 && labelIndex < len(values) {
 			if label, ok := values[labelIndex].(string); ok && label != "" {
 				from["name"] = label
@@ -544,7 +563,7 @@ func detectDefaultXAxisType(spec *Spec) string {
 	return "value"
 }
 
-func applyEChartsAnnotations(spec *Spec, target map[string]any) {
+func applyEChartsAnnotations(spec *Spec, target map[string]any, timeOptions resolvedOutputTimeOptions) {
 	markLine := []map[string]any{}
 	markArea := []any{}
 	markPoint := []map[string]any{}
@@ -554,7 +573,7 @@ func applyEChartsAnnotations(spec *Spec, target map[string]any) {
 		case AnnotationKindLine:
 			item := map[string]any{}
 			if isXAxis(spec, annotation.Axis) {
-				item["xAxis"] = normalizeTimeValueForECharts(annotation.Value, spec.Domain)
+				item["xAxis"] = normalizeTimeValueForEChartsWithOptions(annotation.Value, spec.Domain, timeOptions)
 			} else {
 				item["yAxis"] = annotation.Value
 			}
@@ -565,8 +584,8 @@ func applyEChartsAnnotations(spec *Spec, target map[string]any) {
 			markLine = append(markLine, item)
 		case AnnotationKindRange:
 			if isXAxis(spec, annotation.Axis) {
-				from := map[string]any{"xAxis": normalizeTimeValueForECharts(annotation.From, spec.Domain)}
-				to := map[string]any{"xAxis": normalizeTimeValueForECharts(annotation.To, spec.Domain)}
+				from := map[string]any{"xAxis": normalizeTimeValueForEChartsWithOptions(annotation.From, spec.Domain, timeOptions)}
+				to := map[string]any{"xAxis": normalizeTimeValueForEChartsWithOptions(annotation.To, spec.Domain, timeOptions)}
 				if annotation.Label != "" {
 					from["name"] = annotation.Label
 				}
@@ -579,7 +598,7 @@ func applyEChartsAnnotations(spec *Spec, target map[string]any) {
 			item := map[string]any{}
 			if annotation.At != nil && annotation.Value != nil {
 				if isXAxis(spec, annotation.Axis) {
-					item["coord"] = []any{normalizeTimeValueForECharts(annotation.At, spec.Domain), annotation.Value}
+					item["coord"] = []any{normalizeTimeValueForEChartsWithOptions(annotation.At, spec.Domain, timeOptions), annotation.Value}
 				} else {
 					item["coord"] = []any{annotation.At, annotation.Value}
 				}
@@ -633,7 +652,7 @@ func fieldIndex(fields []string, name string) int {
 	return -1
 }
 
-func selectPairs(rows []any, xIndex, yIndex int, domain Domain) []any {
+func selectPairs(rows []any, xIndex, yIndex int, domain Domain, timeOptions resolvedOutputTimeOptions) []any {
 	ret := make([]any, 0, len(rows))
 	for _, row := range rows {
 		values, ok := row.([]any)
@@ -645,14 +664,14 @@ func selectPairs(rows []any, xIndex, yIndex int, domain Domain) []any {
 		}
 		xValue := values[xIndex]
 		if domain.Kind == DomainKindTime {
-			xValue = normalizeTimeValueForECharts(values[xIndex], domain)
+			xValue = normalizeTimeValueForEChartsWithOptions(values[xIndex], domain, timeOptions)
 		}
 		ret = append(ret, []any{xValue, values[yIndex]})
 	}
 	return ret
 }
 
-func selectBandPairs(rows []any, xIndex, minIndex, maxIndex int, domain Domain) []any {
+func selectBandPairs(rows []any, xIndex, minIndex, maxIndex int, domain Domain, timeOptions resolvedOutputTimeOptions) []any {
 	ret := make([]any, 0, len(rows))
 	for _, row := range rows {
 		values, ok := row.([]any)
@@ -669,7 +688,7 @@ func selectBandPairs(rows []any, xIndex, minIndex, maxIndex int, domain Domain) 
 		}
 		xValue := values[xIndex]
 		if domain.Kind == DomainKindTime {
-			xValue = normalizeTimeValueForECharts(values[xIndex], domain)
+			xValue = normalizeTimeValueForEChartsWithOptions(values[xIndex], domain, timeOptions)
 		}
 		ret = append(ret, []any{xValue, maxValue - minValue})
 	}

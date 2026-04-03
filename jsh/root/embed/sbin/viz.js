@@ -25,7 +25,7 @@
             compact: { type: 'boolean', description: 'Hide series summary and raw data tables', default: false },
             rows: { type: 'integer', description: 'Limit detail rows per block', default: 8 },
             verboseMeta: { type: 'boolean', description: 'Show block metadata', default: false },
-            width: { type: 'integer', description: 'Width for sparklines, bars, and timelines', default: 40 },
+            width: { type: 'integer', description: 'Width for sparkline, bars, and timelines', default: 40 },
             ...pretty.TableArgOptions,
         },
         positionals: [
@@ -61,6 +61,8 @@
             fontFamily: { type: 'string', description: 'SVG font family', default: '' },
             fontSize: { type: 'integer', description: 'SVG base font size', default: 0 },
             hideLegend: { type: 'boolean', description: 'Suppress legend rendering', default: false },
+            timeformat: { type: 'string', short: 't', description: 'Output time format [rfc3339|ns|us|ms|s]', default: 'rfc3339' },
+            tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
         },
         positionals: [
             { name: 'filename', description: 'ADVN JSON file path', optional: true },
@@ -129,6 +131,8 @@
                 compact: config.compact,
                 rows: config.rows,
                 width: config.width,
+                timeformat: resolveOutputTimeformat(config),
+                tz: resolveOutputTimezone(config),
             });
             renderBlocks(blocks, config);
         } catch (err) {
@@ -323,7 +327,26 @@
         if (config.hideLegend) {
             ret.showLegend = false;
         }
+        ret.timeformat = resolveOutputTimeformat(config);
+        const tz = resolveOutputTimezone(config);
+        if (tz) {
+            ret.tz = tz;
+        }
         return ret;
+    }
+
+    function resolveOutputTimeformat(config) {
+        if (config.timeformat && config.timeformat !== 'default') {
+            return config.timeformat;
+        }
+        return 'rfc3339';
+    }
+
+    function resolveOutputTimezone(config) {
+        if (config.tz && config.tz !== 'local') {
+            return config.tz;
+        }
+        return '';
     }
 
     function tableConfig(config) {

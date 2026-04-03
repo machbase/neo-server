@@ -5,6 +5,17 @@ import (
 	"encoding/json"
 )
 
+type encodedDomain struct {
+	Kind             string   `json:"kind,omitempty"`
+	From             any      `json:"from,omitempty"`
+	To               any      `json:"to,omitempty"`
+	TimeFormat       string   `json:"timeformat,omitempty"`
+	LegacyTimeFormat string   `json:"timeFormat,omitempty"`
+	TimeUnit         string   `json:"timeUnit,omitempty"`
+	TZ               string   `json:"tz,omitempty"`
+	Categories       []string `json:"categories,omitempty"`
+}
+
 func (spec Spec) MarshalJSON() ([]byte, error) {
 	type encodedSpec struct {
 		Version     int          `json:"version"`
@@ -63,6 +74,44 @@ func (series Series) MarshalJSON() ([]byte, error) {
 		ret.Quality = &series.Quality
 	}
 	return json.Marshal(ret)
+}
+
+func (domain Domain) MarshalJSON() ([]byte, error) {
+	ret := encodedDomain{
+		Kind:       domain.Kind,
+		From:       domain.From,
+		To:         domain.To,
+		TimeFormat: canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit),
+		TZ:         domain.TZ,
+		Categories: domain.Categories,
+	}
+	if ret.TimeFormat == "" {
+		ret.TimeFormat = domain.TimeFormat
+	}
+	return json.Marshal(ret)
+}
+
+func (domain *Domain) UnmarshalJSON(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var input encodedDomain
+	if err := decoder.Decode(&input); err != nil {
+		return err
+	}
+	timeFormat := input.TimeFormat
+	if timeFormat == "" {
+		timeFormat = input.LegacyTimeFormat
+	}
+	*domain = Domain{
+		Kind:       input.Kind,
+		From:       input.From,
+		To:         input.To,
+		TimeFormat: timeFormat,
+		TimeUnit:   input.TimeUnit,
+		TZ:         input.TZ,
+		Categories: input.Categories,
+	}
+	return nil
 }
 
 func (domain Domain) IsZero() bool {

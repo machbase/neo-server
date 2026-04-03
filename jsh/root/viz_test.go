@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func readTestInput(t *testing.T, sourcePath string) string {
@@ -125,6 +126,12 @@ func TestVizValidateHistogramAndEventCommand(t *testing.T) {
 }
 
 func TestVizViewHistogramAndEventCommand(t *testing.T) {
+	oldLocal := time.Local
+	time.Local = time.FixedZone("KST", 9*60*60)
+	t.Cleanup(func() {
+		time.Local = oldLocal
+	})
+
 	workDir := t.TempDir()
 	copyTestFile(t, filepath.Join("..", "test", "advn-hist-event-sample.json"), filepath.Join(workDir, "advn-hist-event-sample.json"))
 
@@ -140,8 +147,8 @@ func TestVizViewHistogramAndEventCommand(t *testing.T) {
 		"maintenance-window",
 		"event-range",
 		"maintenance",
-		"2026-04-03T10:00:00Z",
-		"2026-04-03T11:00:00Z",
+		"2026-04-03T19:00:00+09:00",
+		"2026-04-03T20:00:00+09:00",
 		"========",
 	} {
 		if !strings.Contains(output, want) {

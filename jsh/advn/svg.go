@@ -27,6 +27,8 @@ type SVGOptions struct {
 	FontSize   int    `json:"fontSize,omitempty"`
 	ShowLegend *bool  `json:"showLegend,omitempty"`
 	Title      string `json:"title,omitempty"`
+	Timeformat string `json:"timeformat,omitempty"`
+	TZ         string `json:"tz,omitempty"`
 }
 
 type svgResolvedOptions struct {
@@ -38,6 +40,7 @@ type svgResolvedOptions struct {
 	FontSize   int
 	ShowLegend bool
 	Title      string
+	Time       resolvedOutputTimeOptions
 }
 
 type svgRect struct {
@@ -111,10 +114,19 @@ func ToSVG(spec *Spec, options *SVGOptions) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	outputTime := OutputTimeOptions{}
+	if options != nil {
+		outputTime = OutputTimeOptions{Timeformat: options.Timeformat, TZ: options.TZ}
+	}
 	spec = spec.Normalize()
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
+	timeOptions, err := resolveOutputTimeOptions(spec.Domain, outputTime)
+	if err != nil {
+		return nil, err
+	}
+	resolved.Time = timeOptions
 	layout, err := buildSVGLayout(spec, resolved)
 	if err != nil {
 		return nil, err
@@ -135,6 +147,7 @@ func normalizeSVGOptions(options *SVGOptions) (svgResolvedOptions, error) {
 		FontFamily: svgDefaultFontFamily,
 		FontSize:   svgDefaultFontSize,
 		ShowLegend: true,
+		Time:       resolvedOutputTimeOptions{Timeformat: TimeFormatRFC3339, Location: time.UTC},
 	}
 	if options == nil {
 		return resolved, nil
@@ -362,7 +375,7 @@ func writeSVGXAxis(builder *strings.Builder, spec *Spec, layout svgLayout) {
 			builder.WriteString("</text>")
 		}
 	} else {
-		for _, tick := range svgContinuousTicks(layout.XAxis) {
+		for _, tick := range svgContinuousTicks(layout.XAxis, layout.Options.Time) {
 			builder.WriteString("<line x1=\"")
 			builder.WriteString(svgNumber(tick.X))
 			builder.WriteString("\" y1=\"")
@@ -1467,9 +1480,9 @@ func svgClosedBandPath(minPoints []svgPoint, maxPoints []svgPoint) string {
 	return strings.Join(parts, " ")
 }
 
-func svgContinuousTicks(scale svgXScale) []svgTick {
+func svgContinuousTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgTick {
 	if scale.Kind == AxisTypeTime {
-		return svgTimeTicks(scale)
+		return svgTimeTicks(scale, timeOptions)
 	}
 	return svgNumericTicks(scale)
 }
@@ -1480,17 +1493,17 @@ func svgNumericTicks(scale svgXScale) []svgTick {
 	for index := 0; index < count; index++ {
 		ratio := float64(index) / float64(count-1)
 		value := scale.Min + (scale.Max-scale.Min)*ratio
-		label := svgFormatContinuousLabel(value, scale)
+		label := formatFloat(value)
 		ticks = append(ticks, svgTick{X: scale.Rect.X + scale.Rect.Width*ratio, Label: label})
 	}
 	return ticks
 }
 
-func svgTimeTicks(scale svgXScale) []svgTick {
+func svgTimeTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgTick {
 	minValue := int64(math.Round(scale.Min))
 	maxValue := int64(math.Round(scale.Max))
 	if maxValue <= minValue {
-		return []svgTick{{X: scale.Rect.X, Label: svgFormatTimeTick(minValue, 0)}}
+		return []svgTick{{X: scale.Rect.X, Label: formatUnixNanoWithOptions(minValue, 0, timeOptions)}}
 	}
 	span := maxValue - minValue
 	step := svgNiceTimeStep(span, 6)
@@ -1501,7 +1514,7 @@ func svgTimeTicks(scale svgXScale) []svgTick {
 	ticks := []svgTick{}
 	for value := start; value <= maxValue; value += step {
 		x := svgProject(float64(value), scale.Min, scale.Max, scale.Rect.X, scale.Rect.X+scale.Rect.Width)
-		ticks = append(ticks, svgTick{X: x, Label: svgFormatTimeTick(value, span)})
+		ticks = append(ticks, svgTick{X: x, Label: formatUnixNanoWithOptions(value, span, timeOptions)})
 		if len(ticks) > 8 {
 			break
 		}
@@ -1511,7 +1524,7 @@ func svgTimeTicks(scale svgXScale) []svgTick {
 		for index := 0; index < count; index++ {
 			ratio := float64(index) / float64(count-1)
 			value := minValue + int64(math.Round(float64(span)*ratio))
-			ticks = append(ticks, svgTick{X: scale.Rect.X + scale.Rect.Width*ratio, Label: svgFormatTimeTick(value, span)})
+			ticks = append(ticks, svgTick{X: scale.Rect.X + scale.Rect.Width*ratio, Label: formatUnixNanoWithOptions(value, span, timeOptions)})
 		}
 	}
 	return ticks
@@ -1556,13 +1569,6 @@ func svgYTicks(scale svgYScale) []svgTick {
 	return ticks
 }
 
-func svgFormatContinuousLabel(value float64, scale svgXScale) string {
-	if scale.Kind == AxisTypeTime {
-		return svgFormatTimeTick(int64(math.Round(value)), int64(math.Round(scale.Max-scale.Min)))
-	}
-	return formatFloat(value)
-}
-
 func svgNiceTimeStep(span int64, targetCount int) int64 {
 	if targetCount <= 1 || span <= 0 {
 		return int64(time.Second)
@@ -1594,25 +1600,6 @@ func svgNiceTimeStep(span int64, targetCount int) int64 {
 	}
 	return candidates[len(candidates)-1]
 }
-
-func svgFormatTimeTick(unixNano int64, span int64) string {
-	timeValue := time.Unix(0, unixNano).UTC()
-	switch {
-	case span <= int64(time.Minute):
-		return timeValue.Format("15:04:05")
-	case span <= int64(6*time.Hour):
-		return timeValue.Format("15:04")
-	case span <= int64(48*time.Hour):
-		return timeValue.Format("01-02 15:04")
-	case span <= int64(180*24*time.Hour):
-		return timeValue.Format("2006-01-02")
-	case span <= int64(2*365*24*time.Hour):
-		return timeValue.Format("2006-01")
-	default:
-		return timeValue.Format("2006")
-	}
-}
-
 func svgCategoryStep(scale svgXScale) float64 {
 	count := len(scale.Categories)
 	if count <= 1 {

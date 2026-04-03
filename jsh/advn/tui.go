@@ -13,9 +13,11 @@ const tuiDefaultTableRows = 8
 const tuiSparklineHeight = 3
 
 type TUIOptions struct {
-	Width   int  `json:"width,omitempty"`
-	Rows    int  `json:"rows,omitempty"`
-	Compact bool `json:"compact,omitempty"`
+	Width      int    `json:"width,omitempty"`
+	Rows       int    `json:"rows,omitempty"`
+	Compact    bool   `json:"compact,omitempty"`
+	Timeformat string `json:"timeformat,omitempty"`
+	TZ         string `json:"tz,omitempty"`
 }
 
 type TUIBlock struct {
@@ -37,6 +39,38 @@ func ToTUIBlocks(spec *Spec) ([]TUIBlock, error) {
 	return ToTUIBlocksWithOptions(spec, nil)
 }
 
+func ToSparkline(spec *Spec) ([]string, error) {
+	return ToSparklineWithOptions(spec, nil)
+}
+
+func ToSparklineWithOptions(spec *Spec, options *TUIOptions) ([]string, error) {
+	if spec == nil {
+		return nil, fmt.Errorf("advn: spec is nil")
+	}
+	resolved := normalizeTUIOptions(options)
+	spec = spec.Normalize()
+	if err := spec.Validate(); err != nil {
+		return nil, err
+	}
+	timeOptions, err := resolveOutputTimeOptions(spec.Domain, OutputTimeOptions{Timeformat: resolved.Timeformat, TZ: resolved.TZ})
+	if err != nil {
+		return nil, err
+	}
+	for _, series := range spec.Series {
+		if !isSparklineRepresentation(series.Representation.Kind) {
+			continue
+		}
+		block, err := buildTUIVisualizationBlock(spec, series, seriesDisplayName(series), resolved, timeOptions)
+		if err != nil {
+			return nil, err
+		}
+		if len(block.Lines) > 0 {
+			return block.Lines, nil
+		}
+	}
+	return nil, fmt.Errorf("advn: no sparkline-compatible series")
+}
+
 func ToTUIBlocksWithOptions(spec *Spec, options *TUIOptions) ([]TUIBlock, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("advn: spec is nil")
@@ -46,16 +80,20 @@ func ToTUIBlocksWithOptions(spec *Spec, options *TUIOptions) ([]TUIBlock, error)
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
-	blocks := []TUIBlock{buildTUISummaryBlock(spec)}
+	timeOptions, err := resolveOutputTimeOptions(spec.Domain, OutputTimeOptions{Timeformat: resolved.Timeformat, TZ: resolved.TZ})
+	if err != nil {
+		return nil, err
+	}
+	blocks := []TUIBlock{buildTUISummaryBlock(spec, timeOptions)}
 	for _, series := range spec.Series {
-		seriesBlocks, err := buildTUISeriesBlocks(spec, series, resolved)
+		seriesBlocks, err := buildTUISeriesBlocks(spec, series, resolved, timeOptions)
 		if err != nil {
 			return nil, err
 		}
 		blocks = append(blocks, seriesBlocks...)
 	}
 	if len(spec.Annotations) > 0 {
-		blocks = append(blocks, buildTUIAnnotationBlock(spec, spec.Annotations))
+		blocks = append(blocks, buildTUIAnnotationBlock(spec, spec.Annotations, timeOptions))
 	}
 	return blocks, nil
 }
@@ -74,7 +112,7 @@ func normalizeTUIOptions(options *TUIOptions) TUIOptions {
 	return resolved
 }
 
-func buildTUISummaryBlock(spec *Spec) TUIBlock {
+func buildTUISummaryBlock(spec *Spec, timeOptions resolvedOutputTimeOptions) TUIBlock {
 	stats := []TUIStat{{Label: "series", Value: strconv.Itoa(len(spec.Series))}, {Label: "annotations", Value: strconv.Itoa(len(spec.Annotations))}}
 	if spec.Domain.Kind != "" {
 		stats = append(stats, TUIStat{Label: "domain", Value: spec.Domain.Kind})
@@ -84,16 +122,13 @@ func buildTUISummaryBlock(spec *Spec) TUIBlock {
 	}
 	lines := []string{}
 	if spec.Domain.From != nil || spec.Domain.To != nil {
-		lines = append(lines, fmt.Sprintf("range: %s -> %s", formatTimeValue(spec.Domain.From, spec.Domain), formatTimeValue(spec.Domain.To, spec.Domain)))
+		lines = append(lines, fmt.Sprintf("range: %s -> %s", formatTimeValueWithOptions(spec.Domain.From, spec.Domain, timeOptions), formatTimeValueWithOptions(spec.Domain.To, spec.Domain, timeOptions)))
 	}
 	return TUIBlock{Type: "summary", Title: "ADVN", Stats: stats, Lines: lines}
 }
 
-func buildTUISeriesBlocks(spec *Spec, series Series, options TUIOptions) ([]TUIBlock, error) {
-	name := series.Name
-	if name == "" {
-		name = series.ID
-	}
+func buildTUISeriesBlocks(spec *Spec, series Series, options TUIOptions, timeOptions resolvedOutputTimeOptions) ([]TUIBlock, error) {
+	name := seriesDisplayName(series)
 	blocks := []TUIBlock{}
 	if !options.Compact {
 		blocks = append(blocks, TUIBlock{
@@ -106,7 +141,7 @@ func buildTUISeriesBlocks(spec *Spec, series Series, options TUIOptions) ([]TUIB
 			},
 		})
 	}
-	vizBlock, err := buildTUIVisualizationBlock(spec, series, name, options)
+	vizBlock, err := buildTUIVisualizationBlock(spec, series, name, options, timeOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +149,28 @@ func buildTUISeriesBlocks(spec *Spec, series Series, options TUIOptions) ([]TUIB
 		blocks = append(blocks, vizBlock)
 	}
 	if !options.Compact {
-		tableBlock := buildTUITableBlock(series, name, options.Rows)
+		tableBlock := buildTUITableBlock(spec, series, name, options.Rows, timeOptions)
 		if len(tableBlock.Rows) > 0 {
 			blocks = append(blocks, tableBlock)
 		}
 	}
 	return blocks, nil
+}
+
+func seriesDisplayName(series Series) string {
+	if series.Name != "" {
+		return series.Name
+	}
+	return series.ID
+}
+
+func isSparklineRepresentation(kind string) bool {
+	switch kind {
+	case RepresentationRawPoint, RepresentationTimeBucketValue, RepresentationTimeBucketBand:
+		return true
+	default:
+		return false
+	}
 }
 
 func buildTUISeriesStats(series Series) []TUIStat {
@@ -162,11 +213,11 @@ func buildTUISeriesStats(series Series) []TUIStat {
 	return stats
 }
 
-func buildTUIVisualizationBlock(spec *Spec, series Series, name string, options TUIOptions) (TUIBlock, error) {
+func buildTUIVisualizationBlock(spec *Spec, series Series, name string, options TUIOptions, timeOptions resolvedOutputTimeOptions) (TUIBlock, error) {
 	switch series.Representation.Kind {
 	case RepresentationRawPoint, RepresentationTimeBucketValue:
 		values := collectNumericField(series, "value", 1)
-		return TUIBlock{Type: "sparkline", Title: name, Lines: buildSparklineLines(spec, series, values, options.Width)}, nil
+		return TUIBlock{Type: "sparkline", Title: name, Lines: buildSparklineLines(spec, series, values, options.Width, timeOptions)}, nil
 	case RepresentationTimeBucketBand:
 		minValues := collectNumericField(series, "min", -1)
 		avgValues := collectNumericField(series, "avg", -1)
@@ -187,23 +238,23 @@ func buildTUIVisualizationBlock(spec *Spec, series Series, name string, options 
 	case RepresentationDistributionBoxplot:
 		return TUIBlock{Type: "box-summary", Title: name, Lines: buildBoxplotLines(series, options.Rows)}, nil
 	case RepresentationEventPoint:
-		return TUIBlock{Type: "event-list", Title: name, Lines: buildEventPointLines(series, spec.Domain, options.Rows)}, nil
+		return TUIBlock{Type: "event-list", Title: name, Lines: buildEventPointLines(series, spec.Domain, options.Rows, timeOptions)}, nil
 	case RepresentationEventRange:
-		lines := buildEventRangeLines(spec, series, options.Width, options.Rows)
+		lines := buildEventRangeLines(spec, series, options.Width, options.Rows, timeOptions)
 		return TUIBlock{Type: "timeline", Title: name, Lines: lines}, nil
 	default:
 		return TUIBlock{}, fmt.Errorf("advn: unsupported tui representation %q", series.Representation.Kind)
 	}
 }
 
-func buildTUITableBlock(series Series, name string, limit int) TUIBlock {
+func buildTUITableBlock(spec *Spec, series Series, name string, limit int, timeOptions resolvedOutputTimeOptions) TUIBlock {
 	rows := []any{}
 	rowLimit := len(series.Data)
 	if rowLimit > limit {
 		rowLimit = limit
 	}
 	for index := 0; index < rowLimit; index++ {
-		rows = append(rows, series.Data[index])
+		rows = append(rows, formatTUITableRow(series.Data[index], series, spec.Domain, timeOptions))
 	}
 	meta := map[string]any{"totalRows": len(series.Data)}
 	if len(series.Data) > rowLimit {
@@ -218,28 +269,28 @@ func buildTUITableBlock(series Series, name string, limit int) TUIBlock {
 	}
 }
 
-func buildTUIAnnotationBlock(spec *Spec, annotations []Annotation) TUIBlock {
+func buildTUIAnnotationBlock(spec *Spec, annotations []Annotation, timeOptions resolvedOutputTimeOptions) TUIBlock {
 	lines := make([]string, 0, len(annotations))
 	for _, annotation := range annotations {
 		switch annotation.Kind {
 		case AnnotationKindLine:
 			value := formatAny(annotation.Value)
 			if isXAxis(spec, annotation.Axis) {
-				value = formatTimeValue(annotation.Value, spec.Domain)
+				value = formatTimeValueWithOptions(annotation.Value, spec.Domain, timeOptions)
 			}
 			lines = append(lines, fmt.Sprintf("line %s=%s %s", annotation.Axis, value, annotation.Label))
 		case AnnotationKindRange:
 			from := formatAny(annotation.From)
 			to := formatAny(annotation.To)
 			if isXAxis(spec, annotation.Axis) {
-				from = formatTimeValue(annotation.From, spec.Domain)
-				to = formatTimeValue(annotation.To, spec.Domain)
+				from = formatTimeValueWithOptions(annotation.From, spec.Domain, timeOptions)
+				to = formatTimeValueWithOptions(annotation.To, spec.Domain, timeOptions)
 			}
 			lines = append(lines, fmt.Sprintf("range %s %s -> %s %s", annotation.Axis, from, to, annotation.Label))
 		case AnnotationKindPoint:
 			at := formatAny(annotation.At)
 			if isXAxis(spec, annotation.Axis) {
-				at = formatTimeValue(annotation.At, spec.Domain)
+				at = formatTimeValueWithOptions(annotation.At, spec.Domain, timeOptions)
 			}
 			lines = append(lines, fmt.Sprintf("point %s at %s value=%s %s", annotation.Axis, at, formatAny(annotation.Value), annotation.Label))
 		}
@@ -397,7 +448,7 @@ func buildBoxplotLines(series Series, limit int) []string {
 	return lines
 }
 
-func buildEventPointLines(series Series, domain Domain, limit int) []string {
+func buildEventPointLines(series Series, domain Domain, limit int, timeOptions resolvedOutputTimeOptions) []string {
 	timeIndex := fieldIndex(series.Representation.Fields, "time")
 	valueIndex := fieldIndex(series.Representation.Fields, "value")
 	labelIndex := fieldIndex(series.Representation.Fields, "label")
@@ -418,7 +469,7 @@ func buildEventPointLines(series Series, domain Domain, limit int) []string {
 		if !ok || valueIndex >= len(values) {
 			continue
 		}
-		parts := []string{formatTimeValue(values[timeIndex], domain), formatAny(values[valueIndex])}
+		parts := []string{formatTimeValueWithOptions(values[timeIndex], domain, timeOptions), formatAny(values[valueIndex])}
 		if labelIndex >= 0 && labelIndex < len(values) {
 			parts = append(parts, formatAny(values[labelIndex]))
 		}
@@ -430,7 +481,7 @@ func buildEventPointLines(series Series, domain Domain, limit int) []string {
 	return lines
 }
 
-func buildEventRangeLines(spec *Spec, series Series, width int, limit int) []string {
+func buildEventRangeLines(spec *Spec, series Series, width int, limit int, timeOptions resolvedOutputTimeOptions) []string {
 	fromIndex := fieldIndex(series.Representation.Fields, "from")
 	toIndex := fieldIndex(series.Representation.Fields, "to")
 	labelIndex := fieldIndex(series.Representation.Fields, "label")
@@ -473,9 +524,9 @@ func buildEventRangeLines(spec *Spec, series Series, width int, limit int) []str
 				continue
 			}
 			if labelIndex >= 0 && labelIndex < len(values) {
-				lines = append(lines, fmt.Sprintf("%s -> %s | %s", formatTimeValue(values[fromIndex], spec.Domain), formatTimeValue(values[toIndex], spec.Domain), formatAny(values[labelIndex])))
+				lines = append(lines, fmt.Sprintf("%s -> %s | %s", formatTimeValueWithOptions(values[fromIndex], spec.Domain, timeOptions), formatTimeValueWithOptions(values[toIndex], spec.Domain, timeOptions), formatAny(values[labelIndex])))
 			} else {
-				lines = append(lines, fmt.Sprintf("%s -> %s", formatTimeValue(values[fromIndex], spec.Domain), formatTimeValue(values[toIndex], spec.Domain)))
+				lines = append(lines, fmt.Sprintf("%s -> %s", formatTimeValueWithOptions(values[fromIndex], spec.Domain, timeOptions), formatTimeValueWithOptions(values[toIndex], spec.Domain, timeOptions)))
 			}
 		}
 		if hidden > 0 {
@@ -495,9 +546,9 @@ func buildEventRangeLines(spec *Spec, series Series, width int, limit int) []str
 			continue
 		}
 		if labelIndex >= 0 && labelIndex < len(values) {
-			lines = append(lines, fmt.Sprintf("%s -> %s | %s", formatTimeValue(values[fromIndex], spec.Domain), formatTimeValue(values[toIndex], spec.Domain), formatAny(values[labelIndex])))
+			lines = append(lines, fmt.Sprintf("%s -> %s | %s", formatTimeValueWithOptions(values[fromIndex], spec.Domain, timeOptions), formatTimeValueWithOptions(values[toIndex], spec.Domain, timeOptions), formatAny(values[labelIndex])))
 		} else {
-			lines = append(lines, fmt.Sprintf("%s -> %s", formatTimeValue(values[fromIndex], spec.Domain), formatTimeValue(values[toIndex], spec.Domain)))
+			lines = append(lines, fmt.Sprintf("%s -> %s", formatTimeValueWithOptions(values[fromIndex], spec.Domain, timeOptions), formatTimeValueWithOptions(values[toIndex], spec.Domain, timeOptions)))
 		}
 	}
 	if hidden > 0 {
@@ -525,7 +576,7 @@ func collectNumericField(series Series, field string, fallback int) []float64 {
 	return ret
 }
 
-func buildSparklineLines(spec *Spec, series Series, values []float64, width int) []string {
+func buildSparklineLines(spec *Spec, series Series, values []float64, width int, timeOptions resolvedOutputTimeOptions) []string {
 	sampled, minValue, maxValue, ok := prepareSparklineValues(values, width)
 	if !ok {
 		return nil
@@ -539,7 +590,7 @@ func buildSparklineLines(spec *Spec, series Series, values []float64, width int)
 	}
 	chart := renderSparklineChart(sampled, minValue, maxValue)
 	lines := make([]string, 0, len(chart)+1)
-	if xAxis := buildSparklineXAxis(spec, series, len(sampled)); xAxis != "" {
+	if xAxis := buildSparklineXAxis(spec, series, len(sampled), timeOptions); xAxis != "" {
 		lines = append(lines, strings.Repeat(" ", labelWidth+3)+xAxis)
 	}
 	for index, row := range chart {
@@ -643,19 +694,19 @@ func buildSparklineYLabels(minValue float64, maxValue float64) []string {
 	return []string{formatFloat(maxValue), formatFloat(baseline), formatFloat(minValue)}
 }
 
-func buildSparklineXAxis(spec *Spec, series Series, width int) string {
-	leftLabel, rightLabel, ok := sparklineXAxisLabels(spec, series)
+func buildSparklineXAxis(spec *Spec, series Series, width int, timeOptions resolvedOutputTimeOptions) string {
+	leftLabel, rightLabel, ok := sparklineXAxisLabels(spec, series, timeOptions)
 	if !ok {
 		return ""
 	}
 	return fitSparklineAxisLabels(leftLabel, rightLabel, width)
 }
 
-func sparklineXAxisLabels(spec *Spec, series Series) (string, string, bool) {
+func sparklineXAxisLabels(spec *Spec, series Series, timeOptions resolvedOutputTimeOptions) (string, string, bool) {
 	if spec != nil && spec.Domain.Kind == DomainKindTime {
 		if start, end, ok := timeRange(spec.Domain.From, spec.Domain.To, spec.Domain); ok {
 			span := end.Sub(start)
-			return formatSparklineTimeTick(start, span), formatSparklineTimeTick(end, span), true
+			return formatTimeTickWithOptions(start, span, timeOptions), formatTimeTickWithOptions(end, span, timeOptions), true
 		}
 	}
 	if len(series.Data) == 0 {
@@ -681,7 +732,7 @@ func sparklineXAxisLabels(spec *Spec, series Series) (string, string, bool) {
 			if span < 0 {
 				span = -span
 			}
-			return formatSparklineTimeTick(firstTime, span), formatSparklineTimeTick(lastTime, span), true
+			return formatTimeTickWithOptions(firstTime, span, timeOptions), formatTimeTickWithOptions(lastTime, span, timeOptions), true
 		}
 	}
 	return formatAny(first), formatAny(last), true
@@ -718,21 +769,19 @@ func fitSparklineAxisLabels(left string, right string, width int) string {
 	return left + strings.Repeat(" ", width-len(left)-len(right)) + right
 }
 
-func formatSparklineTimeTick(value time.Time, span time.Duration) string {
-	switch {
-	case span <= time.Minute:
-		return value.UTC().Format("15:04:05")
-	case span <= 6*time.Hour:
-		return value.UTC().Format("15:04")
-	case span <= 48*time.Hour:
-		return value.UTC().Format("01-02 15:04")
-	case span <= 180*24*time.Hour:
-		return value.UTC().Format("2006-01-02")
-	case span <= 2*365*24*time.Hour:
-		return value.UTC().Format("2006-01")
-	default:
-		return value.UTC().Format("2006")
+func formatTUITableRow(row any, series Series, domain Domain, timeOptions resolvedOutputTimeOptions) any {
+	values, ok := row.([]any)
+	if !ok || domain.Kind != DomainKindTime {
+		return row
 	}
+	ret := make([]any, len(values))
+	copy(ret, values)
+	for _, index := range timeFieldIndexes(series, domain) {
+		if index >= 0 && index < len(ret) {
+			ret[index] = formatTimeValueWithOptions(ret[index], domain, timeOptions)
+		}
+	}
+	return ret
 }
 
 func sampleFloats(values []float64, width int) []float64 {
