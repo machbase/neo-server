@@ -63,7 +63,7 @@ func (spec *Spec) validateAxisReferences() error {
 
 func (domain Domain) Validate() error {
 	if domain.Kind == "" {
-		if domain.TimeFormat != "" || domain.TimeUnit != "" {
+		if domain.Timeformat != "" {
 			return fmt.Errorf("timeformat requires domain kind %q", DomainKindTime)
 		}
 		return nil
@@ -72,19 +72,13 @@ func (domain Domain) Validate() error {
 		return fmt.Errorf("invalid domain kind %q", domain.Kind)
 	}
 	if domain.Kind != DomainKindTime {
-		if domain.TimeFormat != "" || domain.TimeUnit != "" {
+		if domain.Timeformat != "" {
 			return fmt.Errorf("timeformat requires domain kind %q", DomainKindTime)
 		}
 		return nil
 	}
-	if domain.TimeFormat != "" && !contains(domain.TimeFormat, TimeFormatRFC3339, TimeFormatEpoch, TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano) {
-		return fmt.Errorf("invalid timeformat %q", domain.TimeFormat)
-	}
-	if domain.TimeUnit != "" && !contains(domain.TimeUnit, TimeUnitSecond, TimeUnitMillisecond, TimeUnitMicrosecond, TimeUnitNanosecond) {
-		return fmt.Errorf("invalid timeUnit %q", domain.TimeUnit)
-	}
-	if domain.TimeFormat == TimeFormatRFC3339 && domain.TimeUnit != "" {
-		return fmt.Errorf("timeUnit is only valid for legacy epoch timeformat")
+	if domain.Timeformat != "" && !contains(domain.Timeformat, TimeformatRFC3339, TimeformatSecond, TimeformatMilli, TimeformatMicro, TimeformatNano) {
+		return fmt.Errorf("invalid timeformat %q", domain.Timeformat)
 	}
 	return nil
 }

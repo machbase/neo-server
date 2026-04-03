@@ -92,18 +92,8 @@ func TestValidateFailures(t *testing.T) {
 		},
 		{
 			name: "invalid time format",
-			spec: (&Spec{Version: Version1, Domain: Domain{Kind: DomainKindTime, TimeFormat: "broken"}}).Normalize(),
+			spec: (&Spec{Version: Version1, Domain: Domain{Kind: DomainKindTime, Timeformat: "broken"}}).Normalize(),
 			want: "invalid timeformat",
-		},
-		{
-			name: "invalid time unit",
-			spec: (&Spec{Version: Version1, Domain: Domain{Kind: DomainKindTime, TimeFormat: TimeFormatEpoch, TimeUnit: "broken"}}).Normalize(),
-			want: "invalid timeUnit",
-		},
-		{
-			name: "time unit requires epoch",
-			spec: (&Spec{Version: Version1, Domain: Domain{Kind: DomainKindTime, TimeFormat: TimeFormatRFC3339, TimeUnit: TimeUnitNanosecond}}).Normalize(),
-			want: "timeUnit is only valid for legacy epoch timeformat",
 		},
 		{
 			name: "missing y axis id",
@@ -461,7 +451,8 @@ func TestParseEpochTimeNumbersPreserved(t *testing.T) {
 	if !strings.Contains(string(buf), `"timeformat":"ns"`) {
 		t.Fatalf("expected marshaled JSON to use timeformat, got %s", string(buf))
 	}
-	if strings.Contains(string(buf), `"timeUnit"`) || strings.Contains(string(buf), `"timeFormat"`) {
+	legacyTimeformatKey := `"time` + `Format"`
+	if strings.Contains(string(buf), `"timeUnit"`) || strings.Contains(string(buf), legacyTimeformatKey) {
 		t.Fatalf("expected marshaled JSON to omit legacy time fields, got %s", string(buf))
 	}
 }

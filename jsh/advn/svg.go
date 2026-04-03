@@ -147,7 +147,7 @@ func normalizeSVGOptions(options *SVGOptions) (svgResolvedOptions, error) {
 		FontFamily: svgDefaultFontFamily,
 		FontSize:   svgDefaultFontSize,
 		ShowLegend: true,
-		Time:       resolvedOutputTimeOptions{Timeformat: TimeFormatRFC3339, Location: time.UTC},
+		Time:       resolvedOutputTimeOptions{Timeformat: TimeformatRFC3339, Location: time.UTC},
 	}
 	if options == nil {
 		return resolved, nil

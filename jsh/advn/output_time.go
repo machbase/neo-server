@@ -23,7 +23,7 @@ func resolveOutputTimeOptions(domain Domain, options OutputTimeOptions) (resolve
 		options.Timeformat = ""
 	}
 	if options.Timeformat == "" {
-		options.Timeformat = TimeFormatRFC3339
+		options.Timeformat = TimeformatRFC3339
 	}
 	if options.TZ == "" {
 		options.TZ = "Local"
@@ -31,17 +31,11 @@ func resolveOutputTimeOptions(domain Domain, options OutputTimeOptions) (resolve
 	if options.TZ == "local" {
 		options.TZ = "Local"
 	}
-	timeformat := canonicalTimeFormat(options.Timeformat, "")
-	if timeformat == TimeFormatEpoch {
-		timeformat = canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit)
-		if !isEpochUnit(timeformat) {
-			timeformat = TimeFormatMilli
-		}
-	}
+	timeformat := canonicalTimeformat(options.Timeformat, "")
 	if timeformat == "" {
-		timeformat = TimeFormatRFC3339
+		timeformat = TimeformatRFC3339
 	}
-	if !contains(timeformat, TimeFormatRFC3339, TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano) {
+	if !contains(timeformat, TimeformatRFC3339, TimeformatSecond, TimeformatMilli, TimeformatMicro, TimeformatNano) {
 		return resolvedOutputTimeOptions{}, fmt.Errorf("advn: invalid output timeformat %q", timeformat)
 	}
 	tz := options.TZ
@@ -77,13 +71,13 @@ func normalizeTimeValueForEChartsWithOptions(value any, domain Domain, options r
 
 func formatResolvedTime(timeValue time.Time, options resolvedOutputTimeOptions) string {
 	switch options.Timeformat {
-	case TimeFormatSecond:
+	case TimeformatSecond:
 		return strconv.FormatInt(timeValue.Unix(), 10)
-	case TimeFormatMilli:
+	case TimeformatMilli:
 		return strconv.FormatInt(timeValue.UnixMilli(), 10)
-	case TimeFormatMicro:
+	case TimeformatMicro:
 		return strconv.FormatInt(timeValue.UnixMicro(), 10)
-	case TimeFormatNano:
+	case TimeformatNano:
 		return strconv.FormatInt(timeValue.UnixNano(), 10)
 	default:
 		return timeValue.In(options.Location).Format(time.RFC3339Nano)
@@ -92,13 +86,13 @@ func formatResolvedTime(timeValue time.Time, options resolvedOutputTimeOptions) 
 
 func encodeResolvedTime(timeValue time.Time, options resolvedOutputTimeOptions) any {
 	switch options.Timeformat {
-	case TimeFormatSecond:
+	case TimeformatSecond:
 		return timeValue.Unix()
-	case TimeFormatMilli:
+	case TimeformatMilli:
 		return timeValue.UnixMilli()
-	case TimeFormatMicro:
+	case TimeformatMicro:
 		return timeValue.UnixMicro()
-	case TimeFormatNano:
+	case TimeformatNano:
 		return strconv.FormatInt(timeValue.UnixNano(), 10)
 	default:
 		return timeValue.In(options.Location).Format(time.RFC3339Nano)
@@ -107,7 +101,7 @@ func encodeResolvedTime(timeValue time.Time, options resolvedOutputTimeOptions) 
 
 func formatUnixNanoWithOptions(unixNano int64, span int64, options resolvedOutputTimeOptions) string {
 	timeValue := time.Unix(0, unixNano)
-	if options.Timeformat != TimeFormatRFC3339 {
+	if options.Timeformat != TimeformatRFC3339 {
 		return formatResolvedTime(timeValue, options)
 	}
 	timeValue = timeValue.In(options.Location)
@@ -128,7 +122,7 @@ func formatUnixNanoWithOptions(unixNano int64, span int64, options resolvedOutpu
 }
 
 func formatTimeTickWithOptions(value time.Time, span time.Duration, options resolvedOutputTimeOptions) string {
-	if options.Timeformat != TimeFormatRFC3339 {
+	if options.Timeformat != TimeformatRFC3339 {
 		return formatResolvedTime(value, options)
 	}
 	value = value.In(options.Location)
@@ -149,7 +143,7 @@ func formatTimeTickWithOptions(value time.Time, span time.Duration, options reso
 }
 
 func echartsTimeAxisType(output resolvedOutputTimeOptions) string {
-	if output.Timeformat == TimeFormatRFC3339 || output.Timeformat == TimeFormatMilli {
+	if output.Timeformat == TimeformatRFC3339 || output.Timeformat == TimeformatMilli {
 		return "time"
 	}
 	return "value"

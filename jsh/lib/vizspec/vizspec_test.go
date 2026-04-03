@@ -88,35 +88,11 @@ func TestParseAndValidate(t *testing.T) {
 						representation: { kind: 'event-range', fields: ['from', 'to', 'label'] },
 						data: [['1775210400000000000', '1775214000000000000', 'maintenance']]
 					}]
-				}), { timeformat: advn.TimeFormat.rfc3339, tz: 'Asia/Seoul' });
+				}), { timeformat: advn.Timeformat.rfc3339, tz: 'Asia/Seoul' });
 				console.println(option.xAxis.type);
 				console.println(option.series[0].markArea.data[0][0].xAxis);
 			`,
 			Output: []string{"time", "2026-04-03T19:00:00+09:00"},
-		},
-		{
-			Name: "advn-parse-legacy-timeformat-fields",
-			Script: `
-				const advn = require('vizspec');
-				const spec = advn.parse(JSON.stringify({
-					version: 1,
-					domain: {
-						kind: 'time',
-						timeFormat: 'epoch',
-						timeUnit: 'ns',
-						from: 1775174400000000000,
-						to: 1775217600000000000
-					},
-					series: [{
-						id: 'maintenance-window',
-						representation: { kind: 'event-range', fields: ['from', 'to', 'label'] },
-						data: [[1775210400000000000, 1775214000000000000, 'maintenance']]
-					}]
-				}));
-				console.println(spec.domain.timeformat);
-				console.println(spec.domain.timeUnit === undefined);
-			`,
-			Output: []string{"ns", "true"},
 		},
 	}
 
@@ -456,7 +432,7 @@ func TestRenderers(t *testing.T) {
 				const svg = new advn.Builder()
 					.setDomain({
 						kind: 'time',
-						timeformat: advn.TimeFormat.ns,
+						timeformat: advn.Timeformat.ns,
 						from: '1712102400000000000',
 						to: '1712102520000000000'
 					})
@@ -474,7 +450,7 @@ func TestRenderers(t *testing.T) {
 						]
 					})
 					.addLineAnnotation({ axis: 'value', value: 13.5, label: 'threshold' })
-					.toSVG({ title: 'ADVN SVG', showLegend: true, width: 640, height: 320, timeformat: advn.TimeFormat.rfc3339, tz: 'UTC' });
+					.toSVG({ title: 'ADVN SVG', showLegend: true, width: 640, height: 320, timeformat: advn.Timeformat.rfc3339, tz: 'UTC' });
 				console.println(svg.indexOf('<svg ') >= 0);
 				console.println(svg.indexOf('data-advn-role="series"') >= 0);
 				console.println(svg.indexOf('ADVN SVG') >= 0);
@@ -494,7 +470,7 @@ func TestRenderers(t *testing.T) {
 						representation: { kind: 'time-bucket-value', fields: ['time', 'value'] },
 						data: [['1775174400000000000', 1]]
 					}]
-				}), { timeformat: advn.TimeFormat.rfc3339, tz: 'Asia/Seoul' });
+				}), { timeformat: advn.Timeformat.rfc3339, tz: 'Asia/Seoul' });
 				console.println(blocks[0].lines[0].indexOf('+09:00') >= 0);
 				console.println(blocks[3].rows[0][0]);
 			`,

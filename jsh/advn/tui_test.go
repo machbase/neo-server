@@ -200,7 +200,7 @@ func TestToTUIBlocksEpochNanoseconds(t *testing.T) {
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatNano,
+			Timeformat: TimeformatNano,
 			From:       json.Number("1775174400000000000"),
 			To:         json.Number("1775217600000000000"),
 		},
@@ -231,7 +231,7 @@ func TestToTUIBlocksEpochNanoseconds(t *testing.T) {
 		t.Fatalf("expected timeline detail to contain local RFC3339 to time, got %q", blocks[2].Lines[1])
 	}
 
-	overrideBlocks, err := ToTUIBlocksWithOptions(spec, &TUIOptions{Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	overrideBlocks, err := ToTUIBlocksWithOptions(spec, &TUIOptions{Timeformat: TimeformatRFC3339, TZ: "Asia/Seoul"})
 	if err != nil {
 		t.Fatalf("ToTUIBlocksWithOptions() returned unexpected error: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestToTUIBlocksEpochNanoseconds(t *testing.T) {
 func TestToTUIBlocksTableTimeOverrides(t *testing.T) {
 	spec := (&Spec{
 		Version: Version1,
-		Domain:  Domain{Kind: DomainKindTime, TimeFormat: TimeFormatNano},
+		Domain:  Domain{Kind: DomainKindTime, Timeformat: TimeformatNano},
 		Series: []Series{{
 			ID:             "value-1",
 			Name:           "value-1",
@@ -254,7 +254,7 @@ func TestToTUIBlocksTableTimeOverrides(t *testing.T) {
 		}},
 	}).Normalize()
 
-	blocks, err := ToTUIBlocksWithOptions(spec, &TUIOptions{Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	blocks, err := ToTUIBlocksWithOptions(spec, &TUIOptions{Timeformat: TimeformatRFC3339, TZ: "Asia/Seoul"})
 	if err != nil {
 		t.Fatalf("ToTUIBlocksWithOptions() returned unexpected error: %v", err)
 	}

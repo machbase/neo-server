@@ -270,7 +270,7 @@ func TestToEChartsOptionEpochNanoseconds(t *testing.T) {
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatNano,
+			Timeformat: TimeformatNano,
 			From:       json.Number("1775174400000000000"),
 			To:         json.Number("1775217600000000000"),
 		},
@@ -312,7 +312,7 @@ func TestToEChartsOptionWithTimeOverrides(t *testing.T) {
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatNano,
+			Timeformat: TimeformatNano,
 		},
 		Series: []Series{{
 			ID:   "event-range-1",
@@ -327,7 +327,7 @@ func TestToEChartsOptionWithTimeOverrides(t *testing.T) {
 		}},
 	}).Normalize()
 
-	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{Timeformat: TimeformatRFC3339, TZ: "Asia/Seoul"})
 	if err != nil {
 		t.Fatalf("ToEChartsOptionWithOptions() returned unexpected error: %v", err)
 	}

@@ -15,7 +15,7 @@ func TestToSVGTimeBandAndAnnotations(t *testing.T) {
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatNano,
+			Timeformat: TimeformatNano,
 			From:       "1712102400000000000",
 			To:         "1712102520000000000",
 		},
@@ -57,7 +57,7 @@ func TestToSVGTimeBandAndAnnotations(t *testing.T) {
 		Annotations: []Annotation{{Kind: AnnotationKindLine, Axis: "value", Value: 13.5, Style: map[string]any{"color": "#cf222e"}}},
 	}).Normalize()
 
-	output, err := ToSVG(spec, &SVGOptions{Title: "ADVN SVG", ShowLegend: boolPtr(true), Width: 800, Height: 360, Timeformat: TimeFormatRFC3339, TZ: "UTC"})
+	output, err := ToSVG(spec, &SVGOptions{Title: "ADVN SVG", ShowLegend: boolPtr(true), Width: 800, Height: 360, Timeformat: TimeformatRFC3339, TZ: "UTC"})
 	if err != nil {
 		t.Fatalf("ToSVG() returned unexpected error: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestToSVGWithTimeOverrides(t *testing.T) {
 		Version: Version1,
 		Domain: Domain{
 			Kind:       DomainKindTime,
-			TimeFormat: TimeFormatNano,
+			Timeformat: TimeformatNano,
 			From:       "1712102400000000000",
 			To:         "1712102520000000000",
 		},
@@ -316,7 +316,7 @@ func TestToSVGWithTimeOverrides(t *testing.T) {
 		}},
 	}).Normalize()
 
-	output, err := ToSVG(spec, &SVGOptions{Width: 640, Height: 280, ShowLegend: boolPtr(false), Timeformat: TimeFormatRFC3339, TZ: "Asia/Seoul"})
+	output, err := ToSVG(spec, &SVGOptions{Width: 640, Height: 280, ShowLegend: boolPtr(false), Timeformat: TimeformatRFC3339, TZ: "Asia/Seoul"})
 	if err != nil {
 		t.Fatalf("ToSVG() returned unexpected error: %v", err)
 	}

@@ -6,14 +6,12 @@ import (
 )
 
 type encodedDomain struct {
-	Kind             string   `json:"kind,omitempty"`
-	From             any      `json:"from,omitempty"`
-	To               any      `json:"to,omitempty"`
-	TimeFormat       string   `json:"timeformat,omitempty"`
-	LegacyTimeFormat string   `json:"timeFormat,omitempty"`
-	TimeUnit         string   `json:"timeUnit,omitempty"`
-	TZ               string   `json:"tz,omitempty"`
-	Categories       []string `json:"categories,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	From       any      `json:"from,omitempty"`
+	To         any      `json:"to,omitempty"`
+	Timeformat string   `json:"timeformat,omitempty"`
+	TZ         string   `json:"tz,omitempty"`
+	Categories []string `json:"categories,omitempty"`
 }
 
 func (spec Spec) MarshalJSON() ([]byte, error) {
@@ -81,12 +79,12 @@ func (domain Domain) MarshalJSON() ([]byte, error) {
 		Kind:       domain.Kind,
 		From:       domain.From,
 		To:         domain.To,
-		TimeFormat: canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit),
+		Timeformat: canonicalTimeformat(domain.Timeformat, ""),
 		TZ:         domain.TZ,
 		Categories: domain.Categories,
 	}
-	if ret.TimeFormat == "" {
-		ret.TimeFormat = domain.TimeFormat
+	if ret.Timeformat == "" {
+		ret.Timeformat = domain.Timeformat
 	}
 	return json.Marshal(ret)
 }
@@ -98,16 +96,11 @@ func (domain *Domain) UnmarshalJSON(data []byte) error {
 	if err := decoder.Decode(&input); err != nil {
 		return err
 	}
-	timeFormat := input.TimeFormat
-	if timeFormat == "" {
-		timeFormat = input.LegacyTimeFormat
-	}
 	*domain = Domain{
 		Kind:       input.Kind,
 		From:       input.From,
 		To:         input.To,
-		TimeFormat: timeFormat,
-		TimeUnit:   input.TimeUnit,
+		Timeformat: input.Timeformat,
 		TZ:         input.TZ,
 		Categories: input.Categories,
 	}
@@ -115,7 +108,7 @@ func (domain *Domain) UnmarshalJSON(data []byte) error {
 }
 
 func (domain Domain) IsZero() bool {
-	return domain.Kind == "" && domain.From == nil && domain.To == nil && domain.TimeFormat == "" && domain.TimeUnit == "" && domain.TZ == "" && len(domain.Categories) == 0
+	return domain.Kind == "" && domain.From == nil && domain.To == nil && domain.Timeformat == "" && domain.TZ == "" && len(domain.Categories) == 0
 }
 
 func (axes Axes) IsZero() bool {

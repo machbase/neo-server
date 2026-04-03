@@ -9,19 +9,11 @@ const (
 )
 
 const (
-	TimeFormatRFC3339 = "rfc3339"
-	TimeFormatEpoch   = "epoch"
-	TimeFormatSecond  = "s"
-	TimeFormatMilli   = "ms"
-	TimeFormatMicro   = "us"
-	TimeFormatNano    = "ns"
-)
-
-const (
-	TimeUnitSecond      = TimeFormatSecond
-	TimeUnitMillisecond = TimeFormatMilli
-	TimeUnitMicrosecond = TimeFormatMicro
-	TimeUnitNanosecond  = TimeFormatNano
+	TimeformatRFC3339 = "rfc3339"
+	TimeformatSecond  = "s"
+	TimeformatMilli   = "ms"
+	TimeformatMicro   = "us"
+	TimeformatNano    = "ns"
 )
 
 const (
@@ -68,8 +60,7 @@ type Domain struct {
 	Kind       string   `json:"kind,omitempty"`
 	From       any      `json:"from,omitempty"`
 	To         any      `json:"to,omitempty"`
-	TimeFormat string   `json:"timeformat,omitempty"`
-	TimeUnit   string   `json:"-"`
+	Timeformat string   `json:"timeformat,omitempty"`
 	TZ         string   `json:"tz,omitempty"`
 	Categories []string `json:"categories,omitempty"`
 }

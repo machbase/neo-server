@@ -8,68 +8,51 @@ import (
 	"time"
 )
 
-func canonicalTimeFormat(timeFormat string, timeUnit string) string {
-	switch timeFormat {
-	case "":
-		if isEpochUnit(timeUnit) {
-			return timeUnit
-		}
-		return ""
-	case TimeFormatRFC3339:
-		return TimeFormatRFC3339
-	case TimeFormatEpoch:
-		if isEpochUnit(timeUnit) {
-			return timeUnit
-		}
-		return TimeFormatEpoch
-	case TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano:
-		return timeFormat
-	default:
-		return timeFormat
-	}
+func canonicalTimeformat(timeformat string, _ string) string {
+	return timeformat
 }
+
+const timeValueKindEpoch = "epoch"
 
 func isEpochUnit(value string) bool {
-	return contains(value, TimeUnitSecond, TimeUnitMillisecond, TimeUnitMicrosecond, TimeUnitNanosecond)
+	return contains(value, TimeformatSecond, TimeformatMilli, TimeformatMicro, TimeformatNano)
 }
 
-func effectiveTimeFormat(domain Domain, value any) string {
-	switch canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit) {
-	case TimeFormatRFC3339:
-		return TimeFormatRFC3339
-	case TimeFormatEpoch, TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano:
-		return TimeFormatEpoch
+func effectiveTimeformat(domain Domain, value any) string {
+	switch canonicalTimeformat(domain.Timeformat, "") {
+	case TimeformatRFC3339:
+		return TimeformatRFC3339
+	case TimeformatSecond, TimeformatMilli, TimeformatMicro, TimeformatNano:
+		return timeValueKindEpoch
 	}
 	switch typed := value.(type) {
 	case time.Time:
-		return TimeFormatRFC3339
+		return TimeformatRFC3339
 	case *time.Time:
 		if typed != nil {
-			return TimeFormatRFC3339
+			return TimeformatRFC3339
 		}
 	case string:
 		if _, err := time.Parse(time.RFC3339Nano, typed); err == nil {
-			return TimeFormatRFC3339
+			return TimeformatRFC3339
 		}
 		if _, ok := numericText(typed); ok {
-			return TimeFormatEpoch
+			return timeValueKindEpoch
 		}
 	case json.Number:
-		return TimeFormatEpoch
+		return timeValueKindEpoch
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return TimeFormatEpoch
+		return timeValueKindEpoch
 	}
 	return ""
 }
 
 func effectiveTimeUnit(domain Domain, value any) string {
-	switch canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit) {
-	case TimeFormatSecond, TimeFormatMilli, TimeFormatMicro, TimeFormatNano:
-		return canonicalTimeFormat(domain.TimeFormat, domain.TimeUnit)
-	case TimeFormatEpoch:
-		return inferEpochTimeUnit(value)
+	switch canonicalTimeformat(domain.Timeformat, "") {
+	case TimeformatSecond, TimeformatMilli, TimeformatMicro, TimeformatNano:
+		return canonicalTimeformat(domain.Timeformat, "")
 	}
-	if effectiveTimeFormat(domain, value) != TimeFormatEpoch {
+	if effectiveTimeformat(domain, value) != timeValueKindEpoch {
 		return ""
 	}
 	return inferEpochTimeUnit(value)
@@ -78,7 +61,7 @@ func effectiveTimeUnit(domain Domain, value any) string {
 func inferEpochTimeUnit(value any) string {
 	text, ok := numericText(value)
 	if !ok {
-		return TimeUnitNanosecond
+		return TimeformatNano
 	}
 	whole := text
 	if idx := strings.IndexByte(whole, '.'); idx >= 0 {
@@ -86,15 +69,15 @@ func inferEpochTimeUnit(value any) string {
 	}
 	whole = strings.TrimLeft(whole, "-")
 	if len(whole) >= 18 {
-		return TimeUnitNanosecond
+		return TimeformatNano
 	}
 	if len(whole) >= 15 {
-		return TimeUnitMicrosecond
+		return TimeformatMicro
 	}
 	if len(whole) >= 12 {
-		return TimeUnitMillisecond
+		return TimeformatMilli
 	}
-	return TimeUnitSecond
+	return TimeformatSecond
 }
 
 func parseTimeValueWithDomain(value any, domain Domain) (time.Time, bool) {
@@ -106,8 +89,8 @@ func parseTimeValueWithDomain(value any, domain Domain) (time.Time, bool) {
 			return typed.UTC(), true
 		}
 	}
-	switch effectiveTimeFormat(domain, value) {
-	case TimeFormatRFC3339:
+	switch effectiveTimeformat(domain, value) {
+	case TimeformatRFC3339:
 		text, ok := value.(string)
 		if !ok || strings.TrimSpace(text) == "" {
 			return time.Time{}, false
@@ -117,7 +100,7 @@ func parseTimeValueWithDomain(value any, domain Domain) (time.Time, bool) {
 			return time.Time{}, false
 		}
 		return ret.UTC(), true
-	case TimeFormatEpoch:
+	case timeValueKindEpoch:
 		unixNano, ok := timeValueToUnixNano(value, effectiveTimeUnit(domain, value))
 		if !ok {
 			return time.Time{}, false
@@ -156,7 +139,7 @@ func timeValueToUnixNano(value any, unit string) (int64, bool) {
 }
 
 func normalizeTimeValueForJS(value any, domain Domain) any {
-	if effectiveTimeFormat(domain, value) != TimeFormatEpoch {
+	if effectiveTimeformat(domain, value) != timeValueKindEpoch {
 		return value
 	}
 	if text, ok := numericText(value); ok {
@@ -223,11 +206,11 @@ func numericText(value any) (string, bool) {
 
 func scaleUnixNano(base int64, unit string) int64 {
 	switch unit {
-	case TimeUnitMillisecond:
+	case TimeformatMilli:
 		return base * int64(time.Millisecond)
-	case TimeUnitMicrosecond:
+	case TimeformatMicro:
 		return base * int64(time.Microsecond)
-	case TimeUnitNanosecond:
+	case TimeformatNano:
 		return base
 	default:
 		return base * int64(time.Second)
@@ -236,11 +219,11 @@ func scaleUnixNano(base int64, unit string) int64 {
 
 func timeUnitMultiplier(unit string) float64 {
 	switch unit {
-	case TimeUnitMillisecond:
+	case TimeformatMilli:
 		return float64(time.Millisecond)
-	case TimeUnitMicrosecond:
+	case TimeformatMicro:
 		return float64(time.Microsecond)
-	case TimeUnitNanosecond:
+	case TimeformatNano:
 		return 1
 	default:
 		return float64(time.Second)

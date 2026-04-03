@@ -18,16 +18,8 @@ const AnnotationKind = {
     range: 'range',
 };
 
-const TimeFormat = {
+const Timeformat = {
     rfc3339: 'rfc3339',
-    s: 's',
-    ms: 'ms',
-    us: 'us',
-    ns: 'ns',
-    epoch: 'epoch',
-};
-
-const TimeUnit = {
     s: 's',
     ms: 'ms',
     us: 'us',
@@ -404,8 +396,7 @@ module.exports = {
     AnnotationKind,
     Builder,
     RepresentationKind,
-    TimeFormat,
-    TimeUnit,
+    Timeformat,
     annotation,
     axis,
     createSpec,
