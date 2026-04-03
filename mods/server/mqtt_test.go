@@ -176,6 +176,31 @@ func TestMqttQuery(t *testing.T) {
 			},
 		},
 		{
+			Name:      "query_bind_params",
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example where name = ?", "p":["temp"] }`),
+			Subscribe: "db/reply",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "success", gjson.Get(strPayload, "reason").String(), strPayload)
+				require.Equal(t, `temp`, gjson.Get(strPayload, "data.rows.0.0").String(), strPayload)
+				require.Equal(t, testTimeTick.UnixNano(), gjson.Get(strPayload, "data.rows.0.1").Int(), strPayload)
+				require.Equal(t, 3.14, gjson.Get(strPayload, "data.rows.0.2").Float(), strPayload)
+			},
+		},
+		{
+			Name:      "query_bind_params_invalid_nested",
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example where name = ?", "p":[["temp"]] }`),
+			Subscribe: "db/reply",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), "bind parameter must be scalar", strPayload)
+			},
+		},
+		{
 			Name:      "query_json_timeformat_rowsFlatten",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "tz":"UTC", "timeformat": "DEFAULT", "rowsFlatten": true }`),

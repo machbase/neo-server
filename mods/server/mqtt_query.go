@@ -57,7 +57,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 		}
 	}()
 
-	err := json.Unmarshal(pk.Payload, req)
+	err := decodeQueryRequestJSON(bytes.NewReader(pk.Payload), req)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return
@@ -146,7 +146,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 		},
 	}
 
-	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
+	if err := query.Execute(ctx, conn, req.SqlText, req.Params...); err != nil {
 		s.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

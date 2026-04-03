@@ -29,6 +29,7 @@ import (
 // @Summary     Execute query
 // @Description execute query
 // @Param       q           query   string true "sql query text" default(select * from example limit 3)
+// @Param       p           query   string false "sql bind parameters as JSON array"
 // @Success     200  {object}  msg.QueryResponse
 // @Failure     400  {object}  msg.QueryResponse
 // @Failure     500  {object}  msg.QueryResponse
@@ -50,7 +51,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Rownum = false
 			req.Heading = true
 			req.Precision = -1
-			if err = ctx.Bind(req); err != nil {
+			if err = decodeQueryRequestJSON(ctx.Request.Body, req); err != nil {
 				rsp.Reason = err.Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusBadRequest, rsp)
@@ -61,6 +62,12 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			}
 		case "application/x-www-form-urlencoded":
 			req.SqlText = ctx.PostForm("q")
+			if req.Params, err = parseQueryParams(ctx.PostForm("p")); err != nil {
+				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusBadRequest, rsp)
+				return
+			}
 			req.Timeformat = strString(ctx.PostForm("timeformat"), "ns")
 			req.TimeLocation = strString(ctx.PostForm("tz"), "UTC")
 			req.Format = strString(ctx.PostForm("format"), "json")
@@ -82,6 +89,12 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		}
 	case http.MethodGet:
 		req.SqlText = ctx.Query("q")
+		if req.Params, err = parseQueryParams(ctx.Query("p")); err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
 		req.Timeformat = strString(ctx.Query("timeformat"), "ns")
 		req.TimeLocation = strString(ctx.Query("tz"), "UTC")
 		req.Format = strString(ctx.Query("format"), "json")
@@ -197,14 +210,13 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		},
 	}
 
-	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
+	if err := query.Execute(ctx, conn, req.SqlText, req.Params...); err != nil {
 		svr.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }
-
 func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 	tick := time.Now()
 	defer func() {

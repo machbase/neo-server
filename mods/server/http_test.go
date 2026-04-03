@@ -1116,6 +1116,24 @@ func TestHttpQuery(t *testing.T) {
 			},
 		},
 		{
+			name:    "select_v$example_bind_params",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`,
+			params: url.Values{
+				"p": []string{"[\"temp\"]"},
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
 			name:    "select_v$example_transpose",
 			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
 			params: url.Values{
@@ -1237,6 +1255,11 @@ func TestHttpQuery(t *testing.T) {
 			params := map[string]any{"q": tc.sqlText}
 			for k, v := range tc.params {
 				switch k {
+				case "p":
+					var bindParams []any
+					err := json.Unmarshal([]byte(v[0]), &bindParams)
+					require.NoError(t, err)
+					params[k] = bindParams
 				case "transpose", "rowsFlatten", "rowsArray":
 					params[k] = v[0] == "true"
 				default:
@@ -1262,6 +1285,76 @@ func TestHttpQuery(t *testing.T) {
 		})
 
 	}
+
+	t.Run("POST_FORM_select_v$example_bind_params", func(t *testing.T) {
+		payload := url.Values{}
+		payload.Set("q", `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`)
+		payload.Set("p", `["temp"]`)
+
+		req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", strings.NewReader(payload.Encode()))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		result, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(result))
+		require.Equal(t, "application/json", rsp.Header.Get("Content-Type"))
+
+		resultObj := map[string]any{}
+		err = json.Unmarshal(result, &resultObj)
+		require.NoError(t, err)
+		delete(resultObj, "elapse")
+		require.EqualValues(t, map[string]any{
+			"success": true, "reason": "success",
+			"data": map[string]any{
+				"columns": []any{"(min(min_time))", "(max(max_time))"},
+				"types":   []any{"datetime", "datetime"},
+				"rows": []any{
+					[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+				},
+			},
+		}, resultObj)
+	})
+
+	t.Run("GET_select_v$example_invalid_bind_array", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("q", `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`)
+		params.Set("p", `[["temp"]]`)
+
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		result, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(result))
+
+		resultObj := map[string]any{}
+		err = json.Unmarshal(result, &resultObj)
+		require.NoError(t, err)
+		require.Equal(t, false, resultObj["success"])
+		require.Contains(t, resultObj["reason"], "bind parameter must be scalar")
+	})
+
+	t.Run("POST_select_v$example_invalid_bind_object", func(t *testing.T) {
+		payload := []byte(`{"q":"select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?","p":[{"name":"temp"}]}`)
+
+		req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewBuffer(payload))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		req.Header.Set("Content-Type", "application/json")
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		result, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(result))
+
+		resultObj := map[string]any{}
+		err = json.Unmarshal(result, &resultObj)
+		require.NoError(t, err)
+		require.Equal(t, false, resultObj["success"])
+		require.Contains(t, resultObj["reason"], "bind parameter must be scalar")
+	})
 }
 
 func TestHttpTables(t *testing.T) {
