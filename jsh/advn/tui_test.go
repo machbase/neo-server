@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestToTUIBlocksBand(t *testing.T) {
@@ -117,7 +118,13 @@ func TestToTUIBlocksWithOptions(t *testing.T) {
 	if blocks[2].Type != "sparkline" {
 		t.Fatalf("expected visualization block type %q, got %q", "sparkline", blocks[2].Type)
 	}
-	if len(blocks[2].Lines) != 1 || len(blocks[2].Lines[0]) != 5 {
+	if len(blocks[2].Lines) != 4 {
+		t.Fatalf("expected sparkline with axis and 3 chart rows, got %#v", blocks[2].Lines)
+	}
+	if !strings.Contains(blocks[2].Lines[1], "┤") {
+		t.Fatalf("expected sparkline y-axis marker, got %#v", blocks[2].Lines)
+	}
+	if utf8.RuneCountInString(blocks[2].Lines[0]) < 5 {
 		t.Fatalf("expected sparkline width 5, got %#v", blocks[2].Lines)
 	}
 	if len(blocks[3].Rows) != 3 {

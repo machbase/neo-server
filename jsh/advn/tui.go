@@ -10,6 +10,7 @@ import (
 
 const tuiDefaultWidth = 40
 const tuiDefaultTableRows = 8
+const tuiSparklineHeight = 3
 
 type TUIOptions struct {
 	Width   int  `json:"width,omitempty"`
@@ -165,7 +166,7 @@ func buildTUIVisualizationBlock(spec *Spec, series Series, name string, options 
 	switch series.Representation.Kind {
 	case RepresentationRawPoint, RepresentationTimeBucketValue:
 		values := collectNumericField(series, "value", 1)
-		return TUIBlock{Type: "sparkline", Title: name, Lines: []string{renderSparkline(values, options.Width)}}, nil
+		return TUIBlock{Type: "sparkline", Title: name, Lines: buildSparklineLines(spec, series, values, options.Width)}, nil
 	case RepresentationTimeBucketBand:
 		minValues := collectNumericField(series, "min", -1)
 		avgValues := collectNumericField(series, "avg", -1)
@@ -524,17 +525,48 @@ func collectNumericField(series Series, field string, fallback int) []float64 {
 	return ret
 }
 
-func renderSparkline(values []float64, width int) string {
+func buildSparklineLines(spec *Spec, series Series, values []float64, width int) []string {
+	sampled, minValue, maxValue, ok := prepareSparklineValues(values, width)
+	if !ok {
+		return nil
+	}
+	labels := buildSparklineYLabels(minValue, maxValue)
+	labelWidth := 0
+	for _, label := range labels {
+		if len(label) > labelWidth {
+			labelWidth = len(label)
+		}
+	}
+	chart := renderSparklineChart(sampled, minValue, maxValue)
+	lines := make([]string, 0, len(chart)+1)
+	if xAxis := buildSparklineXAxis(spec, series, len(sampled)); xAxis != "" {
+		lines = append(lines, strings.Repeat(" ", labelWidth+3)+xAxis)
+	}
+	for index, row := range chart {
+		lines = append(lines, fmt.Sprintf("%*s ┤ %s", labelWidth, labels[index], row))
+	}
+	return lines
+}
+
+func prepareSparklineValues(values []float64, width int) ([]float64, float64, float64, bool) {
 	if len(values) == 0 {
-		return ""
+		return nil, 0, 0, false
 	}
 	sampled := sampleFloats(values, width)
 	minValue, maxValue, _, _ := summarizeFloats(sampled)
-	levels := []byte("._:-=+*#%@")
-	if maxValue == minValue {
-		return strings.Repeat("=", len(sampled))
+	return sampled, minValue, maxValue, true
+}
+
+func renderSparkline(values []float64, width int) string {
+	sampled, minValue, maxValue, ok := prepareSparklineValues(values, width)
+	if !ok {
+		return ""
 	}
-	buf := make([]byte, len(sampled))
+	if maxValue == minValue {
+		return strings.Repeat("█", len(sampled))
+	}
+	levels := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	buf := make([]rune, len(sampled))
 	for index, value := range sampled {
 		ratio := (value - minValue) / (maxValue - minValue)
 		level := int(math.Round(ratio * float64(len(levels)-1)))
@@ -547,6 +579,160 @@ func renderSparkline(values []float64, width int) string {
 		buf[index] = levels[level]
 	}
 	return string(buf)
+}
+
+func renderSparklineChart(values []float64, minValue float64, maxValue float64) []string {
+	rows := make([][]rune, tuiSparklineHeight)
+	for row := range rows {
+		rows[row] = make([]rune, len(values))
+		fill := ' '
+		if row == 1 {
+			fill = '─'
+		}
+		for col := range rows[row] {
+			rows[row][col] = fill
+		}
+	}
+	if maxValue == minValue {
+		for col := range rows[1] {
+			rows[1][col] = '█'
+		}
+		return sparklineRowsToStrings(rows)
+	}
+	levels := []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	totalLevels := tuiSparklineHeight * (len(levels) - 1)
+	for col, value := range values {
+		filled := int(math.Round((value-minValue)/(maxValue-minValue)*float64(totalLevels-1))) + 1
+		if filled < 1 {
+			filled = 1
+		}
+		if filled > totalLevels {
+			filled = totalLevels
+		}
+		remaining := filled
+		for row := tuiSparklineHeight - 1; row >= 0; row-- {
+			level := remaining
+			if level > len(levels)-1 {
+				level = len(levels) - 1
+			}
+			if level > 0 {
+				rows[row][col] = levels[level]
+			}
+			remaining -= len(levels) - 1
+			if remaining <= 0 {
+				break
+			}
+		}
+	}
+	return sparklineRowsToStrings(rows)
+}
+
+func sparklineRowsToStrings(rows [][]rune) []string {
+	ret := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ret = append(ret, string(row))
+	}
+	return ret
+}
+
+func buildSparklineYLabels(minValue float64, maxValue float64) []string {
+	baseline := 0.0
+	if minValue > 0 || maxValue < 0 {
+		baseline = (minValue + maxValue) / 2
+	}
+	return []string{formatFloat(maxValue), formatFloat(baseline), formatFloat(minValue)}
+}
+
+func buildSparklineXAxis(spec *Spec, series Series, width int) string {
+	leftLabel, rightLabel, ok := sparklineXAxisLabels(spec, series)
+	if !ok {
+		return ""
+	}
+	return fitSparklineAxisLabels(leftLabel, rightLabel, width)
+}
+
+func sparklineXAxisLabels(spec *Spec, series Series) (string, string, bool) {
+	if spec != nil && spec.Domain.Kind == DomainKindTime {
+		if start, end, ok := timeRange(spec.Domain.From, spec.Domain.To, spec.Domain); ok {
+			span := end.Sub(start)
+			return formatSparklineTimeTick(start, span), formatSparklineTimeTick(end, span), true
+		}
+	}
+	if len(series.Data) == 0 {
+		return "", "", false
+	}
+	xIndex := 0
+	switch series.Representation.Kind {
+	case RepresentationTimeBucketValue:
+		xIndex = timeDomainXIndex(series, spec.Domain)
+	case RepresentationRawPoint:
+		xIndex = rawPointXIndex(series, spec.Domain)
+	}
+	first, okFirst := sparklineRowValue(series.Data[0], xIndex)
+	last, okLast := sparklineRowValue(series.Data[len(series.Data)-1], xIndex)
+	if !okFirst || !okLast {
+		return "", "", false
+	}
+	if spec != nil && spec.Domain.Kind == DomainKindTime {
+		firstTime, okFirstTime := parseTimeValueWithDomain(first, spec.Domain)
+		lastTime, okLastTime := parseTimeValueWithDomain(last, spec.Domain)
+		if okFirstTime && okLastTime {
+			span := lastTime.Sub(firstTime)
+			if span < 0 {
+				span = -span
+			}
+			return formatSparklineTimeTick(firstTime, span), formatSparklineTimeTick(lastTime, span), true
+		}
+	}
+	return formatAny(first), formatAny(last), true
+}
+
+func sparklineRowValue(row any, index int) (any, bool) {
+	values, ok := row.([]any)
+	if !ok || index < 0 || index >= len(values) {
+		return nil, false
+	}
+	return values[index], true
+}
+
+func fitSparklineAxisLabels(left string, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if left == "" && right == "" {
+		return ""
+	}
+	if left == "" {
+		return fmt.Sprintf("%*s", width, truncate(right, width))
+	}
+	if right == "" {
+		return truncate(left, width)
+	}
+	if len(left)+len(right) >= width {
+		leftWidth := width - len(right) - 1
+		if leftWidth <= 0 {
+			return truncate(left, width)
+		}
+		return truncate(left, leftWidth) + " " + right
+	}
+	return left + strings.Repeat(" ", width-len(left)-len(right)) + right
+}
+
+func formatSparklineTimeTick(value time.Time, span time.Duration) string {
+	switch {
+	case span <= time.Minute:
+		return value.UTC().Format("15:04:05")
+	case span <= 6*time.Hour:
+		return value.UTC().Format("15:04")
+	case span <= 48*time.Hour:
+		return value.UTC().Format("01-02 15:04")
+	case span <= 180*24*time.Hour:
+		return value.UTC().Format("2006-01-02")
+	case span <= 2*365*24*time.Hour:
+		return value.UTC().Format("2006-01")
+	default:
+		return value.UTC().Format("2006")
+	}
 }
 
 func sampleFloats(values []float64, width int) []float64 {

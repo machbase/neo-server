@@ -640,11 +640,11 @@ This keeps semantic rendering deterministic and avoids duplicating layout logic 
 
 Common Go model:
 
-- `neo-server/mods/model/advn`
+- `neo-server/jsh/advn`
 
 JSH binding:
 
-- `neo-server/jsh/lib/mathx/advn`
+- `neo-server/jsh/lib/vizspec`
 
 Recommended files:
 
@@ -652,16 +652,16 @@ Recommended files:
 - `validate.go`
 - `json.go`
 - `svg.go`
-- `advn.go`
-- `advn.js`
-- `advn_test.go`
+- `vizspec.go`
+- `vizspec.js`
+- `vizspec_test.go`
 
 ## 18. Public JSH Exposure
 
 Native module:
 
-- `@jsh/mathx/advn`
+- `@jsh/vizspec`
 
 User-facing require path:
 
-- `require('mathx/advn')`
+- `require('vizspec')`

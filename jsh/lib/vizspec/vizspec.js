@@ -1,6 +1,6 @@
 'use strict';
 
-const _advn = require('@jsh/mathx/advn');
+const _vizspec = require('@jsh/vizspec');
 
 const RepresentationKind = {
     rawPoint: 'raw-point',
@@ -51,25 +51,25 @@ function cloneObject(value) {
 }
 
 function representation(kind, init = {}) {
-    ensureNonEmptyString('advn.representation', kind);
-    ensureObjectInput('advn.representation', init);
+    ensureNonEmptyString('vizspec.representation', kind);
+    ensureObjectInput('vizspec.representation', init);
     const ret = cloneObject(init);
     ret.kind = kind;
     return ret;
 }
 
 function domain(init = {}) {
-    ensureObjectInput('advn.domain', init);
+    ensureObjectInput('vizspec.domain', init);
     return cloneObject(init);
 }
 
 function axis(init = {}) {
-    ensureObjectInput('advn.axis', init);
+    ensureObjectInput('vizspec.axis', init);
     return cloneObject(init);
 }
 
 function series(init = {}) {
-    ensureObjectInput('advn.series', init);
+    ensureObjectInput('vizspec.series', init);
     const ret = cloneObject(init);
     if (isObject(ret.representation)) {
         ret.representation = cloneObject(ret.representation);
@@ -90,7 +90,7 @@ function series(init = {}) {
 }
 
 function annotation(init = {}) {
-    ensureObjectInput('advn.annotation', init);
+    ensureObjectInput('vizspec.annotation', init);
     const ret = cloneObject(init);
     if (isObject(ret.style)) {
         ret.style = cloneObject(ret.style);
@@ -99,12 +99,12 @@ function annotation(init = {}) {
 }
 
 function view(init = {}) {
-    ensureObjectInput('advn.view', init);
+    ensureObjectInput('vizspec.view', init);
     return cloneObject(init);
 }
 
 function meta(init = {}) {
-    ensureObjectInput('advn.meta', init);
+    ensureObjectInput('vizspec.meta', init);
     return cloneObject(init);
 }
 
@@ -152,52 +152,52 @@ function annotationWithKind(kind, init = {}) {
 
 function parse(text) {
     if (typeof text !== 'string') {
-        throw new Error('advn.parse: text must be a string');
+        throw new Error('vizspec.parse: text must be a string');
     }
-    return _advn.parse(text);
+    return _vizspec.parse(text);
 }
 
 function stringify(spec) {
-    ensureObjectInput('advn.stringify', spec);
-    return _advn.stringify(spec);
+    ensureObjectInput('vizspec.stringify', spec);
+    return _vizspec.stringify(spec);
 }
 
 function toEChartsOption(spec) {
-    ensureObjectInput('advn.toEChartsOption', spec);
-    return _advn.toEChartsOption(spec);
+    ensureObjectInput('vizspec.toEChartsOption', spec);
+    return _vizspec.toEChartsOption(spec);
 }
 
 function toTUIBlocks(spec, options = undefined) {
-    ensureObjectInput('advn.toTUIBlocks', spec);
+    ensureObjectInput('vizspec.toTUIBlocks', spec);
     if (options !== undefined) {
-        ensureObjectInput('advn.toTUIBlocks', options);
-        return _advn.toTUIBlocks(spec, cloneObject(options));
+        ensureObjectInput('vizspec.toTUIBlocks', options);
+        return _vizspec.toTUIBlocks(spec, cloneObject(options));
     }
-    return _advn.toTUIBlocks(spec);
+    return _vizspec.toTUIBlocks(spec);
 }
 
 function toSVG(spec, options = undefined) {
-    ensureObjectInput('advn.toSVG', spec);
+    ensureObjectInput('vizspec.toSVG', spec);
     if (options !== undefined) {
-        ensureObjectInput('advn.toSVG', options);
-        return _advn.toSVG(spec, cloneObject(options));
+        ensureObjectInput('vizspec.toSVG', options);
+        return _vizspec.toSVG(spec, cloneObject(options));
     }
-    return _advn.toSVG(spec);
+    return _vizspec.toSVG(spec);
 }
 
 function validate(spec) {
-    ensureObjectInput('advn.validate', spec);
-    return _advn.validate(spec);
+    ensureObjectInput('vizspec.validate', spec);
+    return _vizspec.validate(spec);
 }
 
 function normalize(spec = {}) {
-    ensureObjectInput('advn.normalize', spec);
-    return _advn.normalize(spec);
+    ensureObjectInput('vizspec.normalize', spec);
+    return _vizspec.normalize(spec);
 }
 
 function createSpec(init = {}) {
-    ensureObjectInput('advn.createSpec', init);
-    return _advn.createSpec(init);
+    ensureObjectInput('vizspec.createSpec', init);
+    return _vizspec.createSpec(init);
 }
 
 function rawPointSeries(init = {}) {
@@ -242,7 +242,7 @@ function rangeAnnotation(init = {}) {
 
 class Builder {
     constructor(init = {}) {
-        ensureObjectInput('advn.Builder', init);
+        ensureObjectInput('vizspec.Builder', init);
         this._spec = createSpec(init);
     }
 

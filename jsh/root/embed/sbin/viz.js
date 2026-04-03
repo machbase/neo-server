@@ -5,7 +5,7 @@
     const process = require('process');
     const pretty = require('pretty');
     const parseArgs = require('util/parseArgs');
-    const advn = require('mathx/advn');
+    const vizspec = require('vizspec');
 
     const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
 
@@ -125,7 +125,7 @@
         try {
             validateViewOptions(config);
             const spec = readSpec(filename);
-            const blocks = advn.toTUIBlocks(spec, {
+            const blocks = vizspec.toTUIBlocks(spec, {
                 compact: config.compact,
                 rows: config.rows,
                 width: config.width,
@@ -140,7 +140,7 @@
     function doValidate(filename) {
         try {
             const spec = readSpec(filename);
-            advn.validate(spec);
+            vizspec.validate(spec);
             console.println(`VALID version=${spec.version} series=${arrayLength(spec.series)} annotations=${arrayLength(spec.annotations)}`);
         } catch (err) {
             console.println(`INVALID ${err.message}`);
@@ -152,7 +152,7 @@
         try {
             validateExportOptions(config);
             const spec = readSpec(filename);
-            const svg = advn.toSVG(spec, buildSVGOptions(config));
+            const svg = vizspec.toSVG(spec, buildSVGOptions(config));
             if (config.output) {
                 const outputPath = resolvePath(config.output);
                 fs.writeFileSync(outputPath, `${svg}\n`, 'utf8');
@@ -176,7 +176,7 @@
     function readSpecFile(filename) {
         const resolved = resolvePath(filename);
         const content = fs.readFile(resolved, { encoding: 'utf8' });
-        return advn.parse(content);
+        return vizspec.parse(content);
     }
 
     function readSpecStdin() {
@@ -187,7 +187,7 @@
         if (!content || !String(content).trim()) {
             throw new Error('stdin is empty');
         }
-        return advn.parse(String(content));
+        return vizspec.parse(String(content));
     }
 
     function resolvePath(filePath) {

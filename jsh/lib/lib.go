@@ -10,7 +10,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/http"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx"
-	"github.com/machbase/neo-server/v8/jsh/lib/mathx/advn"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/filter"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/interp"
 	"github.com/machbase/neo-server/v8/jsh/lib/mathx/mat"
@@ -31,6 +30,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/system"
 	"github.com/machbase/neo-server/v8/jsh/lib/util"
 	"github.com/machbase/neo-server/v8/jsh/lib/uuid"
+	"github.com/machbase/neo-server/v8/jsh/lib/vizspec"
 	"github.com/machbase/neo-server/v8/jsh/lib/ws"
 	"github.com/machbase/neo-server/v8/jsh/lib/zlib"
 )
@@ -97,8 +97,6 @@ func Enable(n *engine.JSRuntime) {
 	addFiles(machcli.Files())
 	n.RegisterNativeModule("@jsh/mathx", mathx.Module)
 	addFiles(mathx.Files())
-	n.RegisterNativeModule("@jsh/mathx/advn", advn.Module)
-	addFiles(advn.Files())
 	n.RegisterNativeModule("@jsh/mathx/filter", filter.Module)
 	addFiles(filter.Files())
 	n.RegisterNativeModule("@jsh/mathx/interp", interp.Module)
@@ -134,6 +132,8 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/system", system.Module)
 	n.RegisterNativeModule("@jsh/util", util.Module)
 	addFiles(util.Files())
+	n.RegisterNativeModule("@jsh/vizspec", vizspec.Module)
+	addFiles(vizspec.Files())
 	n.RegisterNativeModule("@jsh/ws", ws.Module)
 	addFiles(ws.Files())
 	n.RegisterNativeModule("@jsh/uuid", uuid.Module)

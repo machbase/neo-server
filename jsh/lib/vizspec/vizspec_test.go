@@ -1,4 +1,4 @@
-package advn_test
+package vizspec_test
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ func TestParseAndValidate(t *testing.T) {
 		{
 			Name: "advn-parse-and-validate",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const spec = advn.parse(JSON.stringify({
 					version: 1,
 					series: [{
@@ -26,16 +26,12 @@ func TestParseAndValidate(t *testing.T) {
 				console.println(spec.series[0].representation.kind);
 				console.println(advn.validate(spec));
 			`,
-			Output: []string{
-				"1",
-				"time-bucket-band",
-				"true",
-			},
+			Output: []string{"1", "time-bucket-band", "true"},
 		},
 		{
 			Name: "advn-validate-invalid-style",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				try {
 					advn.validate({
 						version: 1,
@@ -49,14 +45,12 @@ func TestParseAndValidate(t *testing.T) {
 					console.println(String(err).indexOf('opacity must be between 0 and 1') >= 0);
 				}
 			`,
-			Output: []string{
-				"true",
-			},
+			Output: []string{"true"},
 		},
 		{
 			Name: "advn-parse-epoch-nanoseconds",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const spec = advn.parse(JSON.stringify({
 					version: 1,
 					domain: {
@@ -78,12 +72,7 @@ func TestParseAndValidate(t *testing.T) {
 				console.println(spec.series[0].data[0][0]);
 				console.println(option.series[0].markArea.data[0][0].xAxis);
 			`,
-			Output: []string{
-				"string",
-				"1775174400000000000",
-				"1775210400000000000",
-				"2026-04-03T10:00:00Z",
-			},
+			Output: []string{"string", "1775174400000000000", "1775210400000000000", "2026-04-03T10:00:00Z"},
 		},
 	}
 
@@ -99,7 +88,7 @@ func TestNormalizeAndStringify(t *testing.T) {
 		{
 			Name: "advn-normalize-and-stringify",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const spec = advn.createSpec({
 					series: [{
 						id: 'sensor-1',
@@ -130,7 +119,7 @@ func TestBuilderAPI(t *testing.T) {
 		{
 			Name: "advn-builder-api",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const spec = new advn.Builder()
 					.domain({ kind: 'time', tz: 'UTC' })
 					.xAxis({ type: 'time' })
@@ -157,19 +146,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(spec.annotations[0].kind);
 				console.println(advn.validate(spec));
 			`,
-			Output: []string{
-				"1",
-				"time",
-				"value",
-				"time-bucket-band",
-				"range",
-				"true",
-			},
+			Output: []string{"1", "time", "value", "time-bucket-band", "range", "true"},
 		},
 		{
 			Name: "advn-helper-builders",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const raw = advn.rawPointSeries({
 					id: 'raw-1',
 					representation: { fields: ['time', 'value'] }
@@ -184,19 +166,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(ann.kind);
 				console.println(ann.label);
 			`,
-			Output: []string{
-				"raw-point",
-				"value",
-				"count",
-				"value",
-				"line",
-				"threshold",
-			},
+			Output: []string{"raw-point", "value", "count", "value", "line", "threshold"},
 		},
 		{
 			Name: "advn-builder-alias-and-echarts",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const option = new advn.Builder()
 					.setDomain({ kind: 'time', tz: 'UTC' })
 					.setXAxis({ id: 'time', type: 'time' })
@@ -222,18 +197,23 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(option.series[0].markArea.data.length);
 				console.println(option.dataZoom[0].type);
 			`,
-			Output: []string{
-				"time",
-				"1",
-				"warning",
-				"1",
-				"slider",
-			},
+			Output: []string{"time", "1", "warning", "1", "slider"},
 		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
+func TestRenderers(t *testing.T) {
+	tests := []test_engine.TestCase{
 		{
 			Name: "advn-echarts-histogram-and-boxplot",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const histOption = advn.toEChartsOption(advn.createSpec({
 					series: [advn.distributionHistogramSeries({
 						id: 'hist-1',
@@ -263,19 +243,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(boxOption.series[0].type);
 				console.println(boxOption.series[1].type);
 			`,
-			Output: []string{
-				"category",
-				"bar",
-				"#ff8800",
-				"category",
-				"boxplot",
-				"scatter",
-			},
+			Output: []string{"category", "bar", "#ff8800", "category", "boxplot", "scatter"},
 		},
 		{
 			Name: "advn-echarts-event-series",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const option = advn.toEChartsOption(advn.createSpec({
 					domain: { kind: 'time' },
 					series: [
@@ -298,17 +271,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(option.series[1].type);
 				console.println(option.series[1].markArea.data.length);
 			`,
-			Output: []string{
-				"scatter",
-				"#ff3300",
-				"line",
-				"1",
-			},
+			Output: []string{"scatter", "#ff3300", "line", "1"},
 		},
 		{
 			Name: "advn-band-style-echarts",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const option = advn.toEChartsOption(advn.createSpec({
 					series: [advn.timeBucketBandSeries({
 						id: 'band-1',
@@ -327,18 +295,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(option.series[2].lineStyle.color);
 				console.println(option.series[2].lineStyle.width);
 			`,
-			Output: []string{
-				"3",
-				"#99bbff",
-				"0.25",
-				"#3366cc",
-				"2",
-			},
+			Output: []string{"3", "#99bbff", "0.25", "#3366cc", "2"},
 		},
 		{
 			Name: "advn-tui-blocks",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const blocks = new advn.Builder()
 					.setDomain({ kind: 'time', from: '2026-04-03T00:00:00Z', to: '2026-04-03T01:00:00Z' })
 					.addTimeBucketBandSeries({
@@ -359,19 +321,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(blocks[3].type);
 				console.println(blocks[4].type);
 			`,
-			Output: []string{
-				"summary",
-				"series-summary",
-				"bandline",
-				"3",
-				"table",
-				"annotations",
-			},
+			Output: []string{"summary", "series-summary", "bandline", "3", "table", "annotations"},
 		},
 		{
 			Name: "advn-tui-histogram-and-event-range",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const blocks = advn.toTUIBlocks(advn.createSpec({
 					domain: { kind: 'time', from: '2026-04-03T00:00:00Z', to: '2026-04-03T12:00:00Z' },
 					series: [
@@ -390,17 +345,12 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(blocks[5].type);
 				console.println(blocks[5].lines[0].indexOf('=') >= 0);
 			`,
-			Output: []string{
-				"bars",
-				"true",
-				"timeline",
-				"true",
-			},
+			Output: []string{"bars", "true", "timeline", "true"},
 		},
 		{
 			Name: "advn-tui-options",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const data = [];
 				for (let i = 0; i < 12; i++) {
 					data.push([i, i]);
@@ -415,21 +365,17 @@ func TestBuilderAPI(t *testing.T) {
 				const blocks = advn.toTUIBlocks(spec, { width: 5, rows: 2 });
 				const compactBlocks = advn.toTUIBlocks(spec, { width: 5, rows: 2, compact: true });
 				console.println(blocks[2].type);
-				console.println(blocks[2].lines[0].length);
+				console.println(blocks[2].lines.length);
+				console.println(blocks[2].lines[1].indexOf('┤') >= 0);
 				console.println(blocks[3].rows.length);
 				console.println(compactBlocks.length);
 			`,
-			Output: []string{
-				"sparkline",
-				"5",
-				"2",
-				"2",
-			},
+			Output: []string{"sparkline", "4", "true", "2", "2"},
 		},
 		{
 			Name: "advn-svg-output",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				const svg = new advn.Builder()
 					.setDomain({
 						kind: 'time',
@@ -459,32 +405,24 @@ func TestBuilderAPI(t *testing.T) {
 				console.println(svg.indexOf('00:00') >= 0 || svg.indexOf('00:01') >= 0);
 				console.println(svg.indexOf('1712102400000000000') < 0);
 			`,
-			Output: []string{
-				"true",
-				"true",
-				"true",
-				"true",
-				"true",
-			},
+			Output: []string{"true", "true", "true", "true", "true"},
 		},
 		{
 			Name: "advn-svg-options-validation",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				try {
 					advn.toSVG(advn.createSpec({ version: 1 }), { width: -1 });
 				} catch (err) {
 					console.println(String(err).indexOf('width must be greater than 0') >= 0);
 				}
 			`,
-			Output: []string{
-				"true",
-			},
+			Output: []string{"true"},
 		},
 		{
 			Name: "advn-invalid-representation-fields",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				try {
 					advn.validate({
 						version: 1,
@@ -497,14 +435,12 @@ func TestBuilderAPI(t *testing.T) {
 					console.println(String(err).indexOf('requires field "binEnd"') >= 0);
 				}
 			`,
-			Output: []string{
-				"true",
-			},
+			Output: []string{"true"},
 		},
 		{
 			Name: "advn-invalid-axis-reference",
 			Script: `
-				const advn = require('mathx/advn');
+				const advn = require('vizspec');
 				try {
 					advn.validate({
 						version: 1,
@@ -519,9 +455,7 @@ func TestBuilderAPI(t *testing.T) {
 					console.println(String(err).indexOf('axis "missing" is not defined') >= 0);
 				}
 			`,
-			Output: []string{
-				"true",
-			},
+			Output: []string{"true"},
 		},
 	}
 

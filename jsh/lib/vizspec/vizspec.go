@@ -1,4 +1,4 @@
-package advn
+package vizspec
 
 import (
 	"bytes"
@@ -6,15 +6,15 @@ import (
 	"encoding/json"
 
 	"github.com/dop251/goja"
-	model "github.com/machbase/neo-server/v8/mods/model/advn"
+	model "github.com/machbase/neo-server/v8/jsh/advn"
 )
 
-//go:embed advn.js
-var advnJS []byte
+//go:embed vizspec.js
+var vizspecJS []byte
 
 func Files() map[string][]byte {
 	return map[string][]byte{
-		"mathx/advn.js": advnJS,
+		"vizspec.js": vizspecJS,
 	}
 }
 
@@ -30,7 +30,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 	o.Set("stringify", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
-			panic(rt.NewTypeError("advn.stringify: spec is required"))
+			panic(rt.NewTypeError("vizspec.stringify: spec is required"))
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -44,7 +44,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 	o.Set("validate", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
-			panic(rt.NewTypeError("advn.validate: spec is required"))
+			panic(rt.NewTypeError("vizspec.validate: spec is required"))
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -87,7 +87,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 	o.Set("toEChartsOption", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
-			panic(rt.NewTypeError("advn.toEChartsOption: spec is required"))
+			panic(rt.NewTypeError("vizspec.toEChartsOption: spec is required"))
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -101,7 +101,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 	o.Set("toTUIBlocks", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
-			panic(rt.NewTypeError("advn.toTUIBlocks: spec is required"))
+			panic(rt.NewTypeError("vizspec.toTUIBlocks: spec is required"))
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -119,7 +119,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	})
 	o.Set("toSVG", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
-			panic(rt.NewTypeError("advn.toSVG: spec is required"))
+			panic(rt.NewTypeError("vizspec.toSVG: spec is required"))
 		}
 		spec, err := decodeSpec(rt, call.Arguments[0])
 		if err != nil {
@@ -206,7 +206,7 @@ func mustValueToJS(rt *goja.Runtime, value any) goja.Value {
 	jsonObject := rt.Get("JSON").ToObject(rt)
 	parseFn, ok := goja.AssertFunction(jsonObject.Get("parse"))
 	if !ok {
-		panic(rt.NewTypeError("advn: JSON.parse is not available"))
+		panic(rt.NewTypeError("vizspec: JSON.parse is not available"))
 	}
 	ret, err := parseFn(goja.Undefined(), rt.ToValue(string(buf)))
 	if err != nil {
