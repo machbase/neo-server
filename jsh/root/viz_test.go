@@ -1,6 +1,7 @@
 package root_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -296,15 +297,50 @@ func TestVizExportSVGToFileCommand(t *testing.T) {
 	}
 }
 
-func TestVizExportSVGInvalidFormatCommand(t *testing.T) {
+func TestVizExportPNGToFileCommand(t *testing.T) {
+	workDir := t.TempDir()
+	copyTestFile(t, filepath.Join("..", "test", "advn-sample.json"), filepath.Join(workDir, "advn-sample.json"))
+
+	outputPath := filepath.Join(workDir, "out.png")
+	output, err := runCommand(workDir, nil, "viz", "export", "--format", "png", "--output", "out.png", "--title", "ADVN PNG", "advn-sample.json")
+	if err != nil {
+		t.Fatalf("viz export png to file failed: %v\n%s", err, output)
+	}
+	trimmed := strings.TrimSpace(output)
+	if !strings.Contains(trimmed, "WROTE /work/out.png") {
+		t.Fatalf("unexpected png export status output: %q", trimmed)
+	}
+	data, readErr := os.ReadFile(outputPath)
+	if readErr != nil {
+		t.Fatalf("failed to read exported png: %v", readErr)
+	}
+	if len(data) < 8 || !bytes.Equal(data[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		t.Fatalf("expected PNG signature, got %v", data)
+	}
+}
+
+func TestVizExportPNGRequiresOutputCommand(t *testing.T) {
 	workDir := t.TempDir()
 	copyTestFile(t, filepath.Join("..", "test", "advn-sample.json"), filepath.Join(workDir, "advn-sample.json"))
 
 	output, err := runCommand(workDir, nil, "viz", "export", "--format", "png", "advn-sample.json")
 	if err == nil {
+		t.Fatalf("expected viz export png without output to fail, got output:\n%s", output)
+	}
+	if !strings.Contains(output, "png export requires --output because stdout is text-only") {
+		t.Fatalf("expected png stdout restriction error, got:\n%s", output)
+	}
+}
+
+func TestVizExportInvalidFormatCommand(t *testing.T) {
+	workDir := t.TempDir()
+	copyTestFile(t, filepath.Join("..", "test", "advn-sample.json"), filepath.Join(workDir, "advn-sample.json"))
+
+	output, err := runCommand(workDir, nil, "viz", "export", "--format", "jpeg", "advn-sample.json")
+	if err == nil {
 		t.Fatalf("expected viz export invalid format to fail, got output:\n%s", output)
 	}
-	if !strings.Contains(output, "unsupported export format: png") {
+	if !strings.Contains(output, "unsupported export format: jpeg") {
 		t.Fatalf("expected invalid format error, got:\n%s", output)
 	}
 }

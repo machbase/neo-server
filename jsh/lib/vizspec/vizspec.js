@@ -194,6 +194,23 @@ function toSVG(spec, options = undefined) {
     return _vizspec.toSVG(spec);
 }
 
+function toPNG(spec, svgOptions = undefined, pngOptions = undefined) {
+    ensureObjectInput('vizspec.toPNG', spec);
+    if (svgOptions !== undefined) {
+        ensureObjectInput('vizspec.toPNG', svgOptions);
+    }
+    if (pngOptions !== undefined) {
+        ensureObjectInput('vizspec.toPNG', pngOptions);
+    }
+    if (svgOptions !== undefined && pngOptions !== undefined) {
+        return _vizspec.toPNG(spec, cloneObject(svgOptions), cloneObject(pngOptions));
+    }
+    if (svgOptions !== undefined) {
+        return _vizspec.toPNG(spec, cloneObject(svgOptions));
+    }
+    return _vizspec.toPNG(spec);
+}
+
 function validate(spec) {
     ensureObjectInput('vizspec.validate', spec);
     return _vizspec.validate(spec);
@@ -390,6 +407,10 @@ class Builder {
     toSVG(options = undefined) {
         return toSVG(this.build(), options);
     }
+
+    toPNG(svgOptions = undefined, pngOptions = undefined) {
+        return toPNG(this.build(), svgOptions, pngOptions);
+    }
 }
 
 module.exports = {
@@ -418,6 +439,7 @@ module.exports = {
     timeBucketBandSeries,
     timeBucketValueSeries,
     toEChartsOption,
+    toPNG,
     toSparkline,
     toSVG,
     toTUIBlocks,

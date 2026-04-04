@@ -460,6 +460,31 @@ func TestRenderers(t *testing.T) {
 			Output: []string{"true", "true", "true", "true", "true"},
 		},
 		{
+			Name: "advn-png-output",
+			Script: `
+				const advn = require('vizspec');
+				const png = new advn.Builder()
+					.setDomain({ kind: 'time', tz: 'UTC' })
+					.setXAxis({ id: 'time', type: 'time', label: 'Time' })
+					.addYAxis({ id: 'value', type: 'linear', label: 'Value' })
+					.addTimeBucketValueSeries({
+						id: 'series-1',
+						name: 'series-1',
+						axis: 'value',
+						data: [
+							['2026-04-03T00:00:00Z', 10],
+							['2026-04-03T00:01:00Z', 12]
+						]
+					})
+					.toPNG({ title: 'ADVN PNG', showLegend: true, width: 480, height: 220 });
+				const view = new Uint8Array(png);
+				const header = Array.prototype.map.call(view.slice(0, 8), value => value.toString(16).padStart(2, '0')).join('');
+				console.println(header);
+				console.println(png.byteLength > 64);
+			`,
+			Output: []string{"89504e470d0a1a0a", "true"},
+		},
+		{
 			Name: "advn-tui-output-time-options",
 			Script: `
 				const advn = require('vizspec');

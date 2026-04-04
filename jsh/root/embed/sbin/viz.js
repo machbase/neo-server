@@ -48,18 +48,18 @@
     const exportConfig = {
         command: 'export',
         usage: 'viz export [options] [filename]',
-        description: 'Export an ADVN spec file or stdin to SVG',
+        description: 'Export an ADVN spec file or stdin to SVG or PNG',
         options: {
             help: optionHelp,
             format: { type: 'string', description: 'Export format', default: 'svg' },
             output: { type: 'string', short: 'o', description: 'Output file path', default: '' },
-            width: { type: 'integer', description: 'SVG width in pixels', default: 0 },
-            height: { type: 'integer', description: 'SVG height in pixels', default: 0 },
-            padding: { type: 'integer', description: 'SVG padding in pixels', default: 0 },
-            title: { type: 'string', description: 'Optional SVG title', default: '' },
-            background: { type: 'string', description: 'SVG background color', default: '' },
+            width: { type: 'integer', description: 'Export width in pixels', default: 0 },
+            height: { type: 'integer', description: 'Export height in pixels', default: 0 },
+            padding: { type: 'integer', description: 'Export padding in pixels', default: 0 },
+            title: { type: 'string', description: 'Optional export title', default: '' },
+            background: { type: 'string', description: 'Export background color', default: '' },
             fontFamily: { type: 'string', description: 'SVG font family', default: '' },
-            fontSize: { type: 'integer', description: 'SVG base font size', default: 0 },
+            fontSize: { type: 'integer', description: 'Export base font size', default: 0 },
             hideLegend: { type: 'boolean', description: 'Suppress legend rendering', default: false },
             timeformat: { type: 'string', short: 't', description: 'Output time format [rfc3339|ns|us|ms|s]', default: 'rfc3339' },
             tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
@@ -156,14 +156,23 @@
         try {
             validateExportOptions(config);
             const spec = readSpec(filename);
-            const svg = vizspec.toSVG(spec, buildSVGOptions(config));
-            if (config.output) {
-                const outputPath = resolvePath(config.output);
-                fs.writeFileSync(outputPath, `${svg}\n`, 'utf8');
-                console.println(`WROTE ${outputPath}`);
+            const outputPath = config.output ? resolvePath(config.output) : '';
+            if (config.format === 'svg') {
+                const svg = vizspec.toSVG(spec, buildSVGOptions(config));
+                if (outputPath) {
+                    fs.writeFileSync(outputPath, `${svg}\n`, 'utf8');
+                    console.println(`WROTE ${outputPath}`);
+                    return;
+                }
+                console.println(svg);
                 return;
             }
-            console.println(svg);
+            const png = vizspec.toPNG(spec, buildSVGOptions(config));
+            if (!outputPath) {
+                throw new Error('png export requires --output because stdout is text-only');
+            }
+            writeBinaryFile(outputPath, png);
+            console.println(`WROTE ${outputPath}`);
         } catch (err) {
             console.println(`Error: ${err.message}`);
             process.exit(1);
@@ -284,7 +293,7 @@
     }
 
     function validateExportOptions(config) {
-        if (config.format !== 'svg') {
+        if (config.format !== 'svg' && config.format !== 'png') {
             throw new Error(`unsupported export format: ${config.format}`);
         }
         if (config.width < 0) {
@@ -299,6 +308,23 @@
         if (config.fontSize < 0) {
             throw new Error('font-size must be 0 or greater');
         }
+    }
+
+    function writeBinaryFile(filePath, data) {
+        fs.writeFileSync(filePath, toByteArray(data), 'buffer');
+    }
+
+    function toByteArray(data) {
+        if (data instanceof Uint8Array) {
+            return Array.from(data);
+        }
+        if (data instanceof ArrayBuffer) {
+            return Array.from(new Uint8Array(data));
+        }
+        if (Array.isArray(data)) {
+            return data;
+        }
+        throw new Error('binary export produced unsupported data type');
     }
 
     function buildSVGOptions(config) {

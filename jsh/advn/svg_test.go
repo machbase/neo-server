@@ -1,6 +1,7 @@
 package advn
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -361,5 +362,62 @@ func TestBuildSVGLayoutAddsTopInset(t *testing.T) {
 	expectedBottom := float64(options.Height) - float64(options.Padding) - (float64(options.FontSize)*2 + 16)
 	if bottom != expectedBottom {
 		t.Fatalf("expected bottom edge to remain at %v, got %v", expectedBottom, bottom)
+	}
+}
+
+func TestToPNGMRTGTimeSeries(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Domain: Domain{
+			Kind: DomainKindTime,
+			From: "2026-04-03T00:00:00Z",
+			To:   "2026-04-03T00:02:00Z",
+		},
+		Axes: Axes{
+			X: Axis{ID: "time", Type: AxisTypeTime, Label: "Time"},
+			Y: []Axis{{ID: "value", Type: AxisTypeLinear, Label: "Traffic"}},
+		},
+		Series: []Series{
+			{
+				ID:             "inbound",
+				Name:           "inbound",
+				Axis:           "value",
+				Representation: Representation{Kind: RepresentationTimeBucketValue, Fields: []string{"time", "value"}},
+				Data: []any{
+					[]any{"2026-04-03T00:00:00Z", 10},
+					[]any{"2026-04-03T00:01:00Z", 14},
+					[]any{"2026-04-03T00:02:00Z", 12},
+				},
+			},
+			{
+				ID:             "outbound",
+				Name:           "outbound",
+				Axis:           "value",
+				Representation: Representation{Kind: RepresentationTimeBucketValue, Fields: []string{"time", "value"}},
+				Data: []any{
+					[]any{"2026-04-03T00:00:00Z", 7},
+					[]any{"2026-04-03T00:01:00Z", 9},
+					[]any{"2026-04-03T00:02:00Z", 11},
+				},
+			},
+		},
+	}).Normalize()
+
+	output, err := ToPNG(spec, &SVGOptions{
+		Title:      "Traffic",
+		Width:      640,
+		Height:     240,
+		ShowLegend: boolPtr(true),
+		Timeformat: TimeformatRFC3339,
+		TZ:         "UTC",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ToPNG() returned unexpected error: %v", err)
+	}
+	if len(output) < 8 {
+		t.Fatalf("expected PNG output, got %d bytes", len(output))
+	}
+	if !bytes.Equal(output[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}) {
+		t.Fatalf("expected PNG signature, got %v", output[:8])
 	}
 }

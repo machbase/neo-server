@@ -157,6 +157,28 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		}
 		return rt.ToValue(string(svg))
 	})
+	o.Set("toPNG", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 {
+			panic(rt.NewTypeError("vizspec.toPNG: spec is required"))
+		}
+		spec, err := decodeSpec(rt, call.Arguments[0])
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		svgOptions, err := decodeSVGOptions(rt, call.Arguments, 1)
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		pngOptions, err := decodePNGOptions(rt, call.Arguments, 2)
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		data, err := advn.ToPNG(spec, svgOptions, pngOptions)
+		if err != nil {
+			panic(rt.NewGoError(err))
+		}
+		return rt.ToValue(rt.NewArrayBuffer(data))
+	})
 }
 
 func decodeEChartsOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.EChartsOptions, error) {
@@ -210,6 +232,25 @@ func decodeSVGOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.SVG
 		return nil, err
 	}
 	ret := &advn.SVGOptions{}
+	if err := json.Unmarshal(buf, ret); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func decodePNGOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.PNGOptions, error) {
+	if len(args) <= index || goja.IsUndefined(args[index]) || goja.IsNull(args[index]) {
+		return nil, nil
+	}
+	var input any
+	if err := rt.ExportTo(args[index], &input); err != nil {
+		return nil, err
+	}
+	buf, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	ret := &advn.PNGOptions{}
 	if err := json.Unmarshal(buf, ret); err != nil {
 		return nil, err
 	}
