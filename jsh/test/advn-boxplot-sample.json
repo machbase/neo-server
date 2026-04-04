@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "series": [
+    {
+      "id": "latency-box",
+      "name": "latency-box",
+      "representation": {
+        "kind": "distribution-boxplot",
+        "fields": ["category", "low", "q1", "median", "q3", "high"],
+        "outlierFields": ["category", "value"]
+      },
+      "data": [
+        ["group-a", 12, 18, 21, 27, 33],
+        ["group-b", 10, 15, 19, 24, 30]
+      ],
+      "extra": {
+        "outliers": [
+          ["group-a", 40]
+        ]
+      },
+      "quality": {
+        "rowCount": 2
+      }
+    }
+  ],
+  "meta": {
+    "producer": "advn-test"
+  }
+}

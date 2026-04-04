@@ -2052,6 +2052,19 @@ func runCommand(workDir string, extraEnv map[string]any, args ...string) (string
 	return conf.Writer.(*bytes.Buffer).String(), err
 }
 
+func runCommandWithInput(workDir string, extraEnv map[string]any, input string, args ...string) (string, error) {
+	conf := commandConfig(workDir, extraEnv)
+	conf.Args = args
+	conf.Reader = bytes.NewBufferString(input)
+	jr, err := engine.New(conf)
+	if err != nil {
+		return "", err
+	}
+	lib.Enable(jr)
+	err = jr.Run()
+	return conf.Writer.(*bytes.Buffer).String(), err
+}
+
 func runScript(workDir string, extraEnv map[string]any, code string) (string, error) {
 	conf := commandConfig(workDir, extraEnv)
 	conf.Name = "pkg-script"

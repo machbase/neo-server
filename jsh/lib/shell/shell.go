@@ -101,8 +101,6 @@ func (sh *Shell) Run(env *engine.Env) int {
 			line = strings.Join(input, "")
 		}
 
-		// expand environment variables in the line
-		line = env.Expand(line)
 		if _, alive := sh.process(line); !alive {
 			return 0
 		}
@@ -202,6 +200,7 @@ func (sh *Shell) process(line string) (int, bool) {
 }
 
 func (sh *Shell) exec(command string, args []string) goja.Value {
+	command, args = sh.expandCommandAlias(command, args)
 	parts := []string{}
 	for _, arg := range args {
 		parts = append(parts, fmt.Sprintf("%q", arg))
@@ -209,14 +208,9 @@ func (sh *Shell) exec(command string, args []string) goja.Value {
 	str := strings.Join(parts, ", ")
 
 	val, err := sh.rt.RunString(fmt.Sprintf(`(()=>{
-		const {exec, which, alias} = require("process");
+		const {exec, which} = require("process");
 		let command = %q;
 		let args = [%s];
-		const aliased = alias(command);
-		if (aliased && aliased.length > 0) {
-			command = aliased[0];
-			args.unshift(...aliased.slice(1));
-		}
 		let path = which(command);
 		if (!path || path === "") {
 			// try command as directory contains index.js

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "domain": {
+    "kind": "time",
+    "timeformat": "ns",
+    "from": 1775174400000000000,
+    "to": 1775217600000000000
+  },
+  "series": [
+    {
+      "id": "latency-hist",
+      "name": "latency-hist",
+      "representation": {
+        "kind": "distribution-histogram",
+        "fields": ["binStart", "binEnd", "count"]
+      },
+      "data": [
+        [0, 10, 3],
+        [10, 20, 8],
+        [20, 30, 5]
+      ],
+      "quality": {
+        "rowCount": 3
+      }
+    },
+    {
+      "id": "maintenance-window",
+      "name": "maintenance-window",
+      "representation": {
+        "kind": "event-range",
+        "fields": ["from", "to", "label"]
+      },
+      "data": [
+        [1775210400000000000, 1775214000000000000, "maintenance"]
+      ]
+    }
+  ],
+  "meta": {
+    "producer": "advn-test"
+  }
+}
