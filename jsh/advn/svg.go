@@ -16,6 +16,11 @@ const (
 	svgDefaultFontSize   = 12
 	svgDefaultFontFamily = "sans-serif"
 	svgDefaultBackground = "white"
+	svgThemeOuterFrame   = "#8b8b8b"
+	svgThemeOuterHi      = "#d4d4d4"
+	svgThemePlotBorder   = "#000000"
+	svgThemeGrid         = "#000000"
+	svgThemeText         = "#000000"
 )
 
 type SVGOptions struct {
@@ -190,6 +195,9 @@ func normalizeSVGOptions(options *SVGOptions) (svgResolvedOptions, error) {
 }
 
 func buildSVGLayout(spec *Spec, options svgResolvedOptions) (svgLayout, error) {
+	if isMRTGTimeSeriesSpec(spec) {
+		return buildMRTGSVGLayout(spec, options)
+	}
 	canvas := svgRect{Width: float64(options.Width), Height: float64(options.Height)}
 	axisOrder := orderedSVGYAxisIDs(spec)
 	leftAxisCount, rightAxisCount := svgAxisSideCounts(axisOrder)
@@ -260,6 +268,103 @@ func buildSVGLayout(spec *Spec, options svgResolvedOptions) (svgLayout, error) {
 	}, nil
 }
 
+func buildMRTGSVGLayout(spec *Spec, options svgResolvedOptions) (svgLayout, error) {
+	canvas := svgRect{Width: float64(options.Width), Height: float64(options.Height)}
+	axisOrder := orderedSVGYAxisIDs(spec)
+	leftAxisCount, rightAxisCount := svgAxisSideCounts(axisOrder)
+	titleHeight := 0.0
+	if options.Title != "" {
+		titleHeight = float64(options.FontSize) + 8
+	}
+	leftMargin := math.Max(88, float64(maxInt(options.Padding-10, 28))+float64(maxInt(leftAxisCount-1, 0))*34)
+	rightMargin := math.Max(14, float64(maxInt(options.Padding/5, 6))+float64(rightAxisCount)*30)
+	plotWidth := float64(options.Width) - leftMargin - rightMargin
+	if plotWidth <= 0 {
+		return svgLayout{}, fmt.Errorf("advn: svg plot area is too small")
+	}
+	legendItems := buildSVGLegendItems(spec, options.ShowLegend)
+	legendEntries, legendHeight := layoutSVGLegendEntries(legendItems, leftMargin, plotWidth, float64(options.FontSize))
+	legendGap := 0.0
+	if legendHeight > 0 {
+		legendGap = 2
+	}
+	xLabelHeight := float64(options.FontSize) + 20
+	plotTop := math.Max(8, float64(options.Padding)/4) + titleHeight + legendHeight + legendGap
+	plot := svgRect{
+		X:      leftMargin,
+		Y:      plotTop,
+		Width:  plotWidth,
+		Height: float64(options.Height) - plotTop - math.Max(12, float64(options.Padding)/4) - xLabelHeight,
+	}
+	if plot.Width <= 0 || plot.Height <= 0 {
+		return svgLayout{}, fmt.Errorf("advn: svg plot area is too small")
+	}
+	xScale, err := buildSVGXScale(spec, plot)
+	if err != nil {
+		return svgLayout{}, err
+	}
+	yAxes := buildSVGYScales(spec, plot)
+	primaryYAxisID := "y"
+	if len(spec.Axes.Y) > 0 && spec.Axes.Y[0].ID != "" {
+		primaryYAxisID = spec.Axes.Y[0].ID
+	}
+	if _, ok := yAxes[primaryYAxisID]; !ok {
+		for axisID := range yAxes {
+			primaryYAxisID = axisID
+			break
+		}
+	}
+	if _, ok := yAxes[primaryYAxisID]; !ok {
+		yAxes[primaryYAxisID] = svgYScale{AxisID: primaryYAxisID, Min: 0, Max: 1, Rect: plot}
+	}
+	axisPlacements := svgBuildAxisPlacements(axisOrder, plot)
+	applyMRTGSVGAxisPlacements(axisPlacements, plot)
+	legendRect := svgRect{}
+	if legendHeight > 0 {
+		legendRect = svgRect{
+			X:      plot.X,
+			Y:      math.Max(6, float64(options.Padding)/4) + titleHeight,
+			Width:  plot.Width,
+			Height: legendHeight,
+		}
+	}
+	return svgLayout{
+		Options:        options,
+		Canvas:         canvas,
+		Plot:           plot,
+		XAxis:          xScale,
+		YAxes:          yAxes,
+		AxisOrder:      axisOrder,
+		AxisPlacements: axisPlacements,
+		PrimaryYAxisID: primaryYAxisID,
+		LegendItems:    legendItems,
+		LegendEntries:  legendEntries,
+		TitleY:         float64(options.Padding) + float64(options.FontSize),
+		LegendRect:     legendRect,
+	}, nil
+}
+
+func applyMRTGSVGAxisPlacements(placements map[string]svgAxisPlacement, plot svgRect) {
+	for axisID, placement := range placements {
+		if placement.Side == "left" {
+			placement.LineX = plot.X
+			placement.TickLabelX = placement.LineX - 10
+			placement.LabelX = placement.LineX - 46
+			placement.TickDir = -1
+			placement.TickAnchor = "end"
+			placement.LabelAnchor = "middle"
+		} else {
+			placement.LineX = plot.X + plot.Width
+			placement.TickLabelX = placement.LineX + 12
+			placement.LabelX = placement.LineX + 44
+			placement.TickDir = 1
+			placement.TickAnchor = "start"
+			placement.LabelAnchor = "middle"
+		}
+		placements[axisID] = placement
+	}
+}
+
 func renderSVGDocument(spec *Spec, layout svgLayout) (string, error) {
 	var body strings.Builder
 	writeSVGBackground(&body, layout)
@@ -310,6 +415,20 @@ func writeSVGBackground(builder *strings.Builder, layout svgLayout) {
 	builder.WriteString(strconv.Itoa(layout.Options.Height))
 	builder.WriteString("\" fill=\"")
 	builder.WriteString(escapeSVG(layout.Options.Background))
+	builder.WriteString("\" />")
+	builder.WriteString("<rect x=\"4\" y=\"6\" width=\"")
+	builder.WriteString(strconv.Itoa(layout.Options.Width - 8))
+	builder.WriteString("\" height=\"")
+	builder.WriteString(strconv.Itoa(layout.Options.Height - 12))
+	builder.WriteString("\" fill=\"none\" stroke=\"")
+	builder.WriteString(svgThemeOuterFrame)
+	builder.WriteString("\" />")
+	builder.WriteString("<rect x=\"5\" y=\"7\" width=\"")
+	builder.WriteString(strconv.Itoa(layout.Options.Width - 10))
+	builder.WriteString("\" height=\"")
+	builder.WriteString(strconv.Itoa(layout.Options.Height - 14))
+	builder.WriteString("\" fill=\"none\" stroke=\"")
+	builder.WriteString(svgThemeOuterHi)
 	builder.WriteString("\" /></g>")
 }
 
@@ -324,8 +443,11 @@ func writeSVGTitle(builder *strings.Builder, layout svgLayout) {
 	builder.WriteString("\" font-size=\"")
 	builder.WriteString(strconv.Itoa(layout.Options.FontSize + 2))
 	builder.WriteString("\" font-weight=\"600\">")
+	builder.WriteString("<tspan fill=\"")
+	builder.WriteString(svgThemeText)
+	builder.WriteString("\">")
 	builder.WriteString(escapeSVG(layout.Options.Title))
-	builder.WriteString("</text></g>")
+	builder.WriteString("</tspan></text></g>")
 }
 
 func writeSVGAxes(builder *strings.Builder, spec *Spec, layout svgLayout) {
@@ -338,7 +460,20 @@ func writeSVGAxes(builder *strings.Builder, spec *Spec, layout svgLayout) {
 	builder.WriteString(svgNumber(layout.Plot.Width))
 	builder.WriteString("\" height=\"")
 	builder.WriteString(svgNumber(layout.Plot.Height))
-	builder.WriteString("\" fill=\"none\" stroke=\"#d0d7de\" />")
+	builder.WriteString("\" fill=\"#ffffff\" stroke=\"")
+	builder.WriteString(svgThemePlotBorder)
+	builder.WriteString("\" />")
+	builder.WriteString("<rect x=\"")
+	builder.WriteString(svgNumber(layout.Plot.X + 1))
+	builder.WriteString("\" y=\"")
+	builder.WriteString(svgNumber(layout.Plot.Y + 1))
+	builder.WriteString("\" width=\"")
+	builder.WriteString(svgNumber(layout.Plot.Width - 2))
+	builder.WriteString("\" height=\"")
+	builder.WriteString(svgNumber(layout.Plot.Height - 2))
+	builder.WriteString("\" fill=\"none\" stroke=\"")
+	builder.WriteString(svgThemeOuterHi)
+	builder.WriteString("\" />")
 	writeSVGXAxis(builder, spec, layout)
 	writeSVGYAxes(builder, spec, layout)
 	builder.WriteString("</g>")
@@ -354,7 +489,9 @@ func writeSVGXAxis(builder *strings.Builder, spec *Spec, layout svgLayout) {
 	builder.WriteString(svgNumber(layout.Plot.X + layout.Plot.Width))
 	builder.WriteString("\" y2=\"")
 	builder.WriteString(svgNumber(y))
-	builder.WriteString("\" stroke=\"#6e7781\" />")
+	builder.WriteString("\" stroke=\"")
+	builder.WriteString(svgThemePlotBorder)
+	builder.WriteString("\" />")
 	if layout.XAxis.Kind == AxisTypeCategory {
 		for _, tick := range svgCategoryTicks(layout.XAxis) {
 			builder.WriteString("<line x1=\"")
@@ -365,12 +502,16 @@ func writeSVGXAxis(builder *strings.Builder, spec *Spec, layout svgLayout) {
 			builder.WriteString(svgNumber(tick.X))
 			builder.WriteString("\" y2=\"")
 			builder.WriteString(svgNumber(y + 5))
-			builder.WriteString("\" stroke=\"#6e7781\" />")
+			builder.WriteString("\" stroke=\"")
+			builder.WriteString(svgThemePlotBorder)
+			builder.WriteString("\" />")
 			builder.WriteString("<text x=\"")
 			builder.WriteString(svgNumber(tick.X))
 			builder.WriteString("\" y=\"")
 			builder.WriteString(svgNumber(y + float64(layout.Options.FontSize) + 8))
-			builder.WriteString("\" text-anchor=\"middle\" fill=\"#24292f\">")
+			builder.WriteString("\" text-anchor=\"middle\" fill=\"")
+			builder.WriteString(svgThemeText)
+			builder.WriteString("\">")
 			builder.WriteString(escapeSVG(tick.Label))
 			builder.WriteString("</text>")
 		}
@@ -384,12 +525,16 @@ func writeSVGXAxis(builder *strings.Builder, spec *Spec, layout svgLayout) {
 			builder.WriteString(svgNumber(tick.X))
 			builder.WriteString("\" y2=\"")
 			builder.WriteString(svgNumber(y))
-			builder.WriteString("\" stroke=\"#eaeef2\" />")
+			builder.WriteString("\" stroke=\"")
+			builder.WriteString(svgThemeGrid)
+			builder.WriteString("\" stroke-dasharray=\"1 3\" />")
 			builder.WriteString("<text x=\"")
 			builder.WriteString(svgNumber(tick.X))
 			builder.WriteString("\" y=\"")
 			builder.WriteString(svgNumber(y + float64(layout.Options.FontSize) + 8))
-			builder.WriteString("\" text-anchor=\"middle\" fill=\"#57606a\">")
+			builder.WriteString("\" text-anchor=\"middle\" fill=\"")
+			builder.WriteString(svgThemeText)
+			builder.WriteString("\">")
 			builder.WriteString(escapeSVG(tick.Label))
 			builder.WriteString("</text>")
 		}
@@ -403,7 +548,9 @@ func writeSVGXAxis(builder *strings.Builder, spec *Spec, layout svgLayout) {
 		builder.WriteString(svgNumber(layout.Plot.X + layout.Plot.Width/2))
 		builder.WriteString("\" y=\"")
 		builder.WriteString(svgNumber(y + float64(layout.Options.FontSize)*2 + 12))
-		builder.WriteString("\" text-anchor=\"middle\" fill=\"#24292f\">")
+		builder.WriteString("\" text-anchor=\"middle\" fill=\"")
+		builder.WriteString(svgThemeText)
+		builder.WriteString("\">")
 		builder.WriteString(escapeSVG(label))
 		builder.WriteString("</text>")
 	}
@@ -420,6 +567,13 @@ func writeSVGYAxes(builder *strings.Builder, spec *Spec, layout svgLayout) {
 		}
 		placement := layout.AxisPlacements[axisID]
 		isPrimary := axisID == layout.PrimaryYAxisID
+		tickFontSize := layout.Options.FontSize
+		tickYOffset := float64(layout.Options.FontSize) / 3
+		labelX := placement.LabelX
+		if isMRTGTimeSeriesSpec(spec) {
+			tickFontSize = maxInt(10, layout.Options.FontSize-1)
+			tickYOffset = float64(tickFontSize) / 3
+		}
 		builder.WriteString("<g data-advn-axis=\"")
 		builder.WriteString(escapeSVG(axisID))
 		builder.WriteString("\" data-advn-side=\"")
@@ -433,8 +587,10 @@ func writeSVGYAxes(builder *strings.Builder, spec *Spec, layout svgLayout) {
 		builder.WriteString(svgNumber(placement.LineX))
 		builder.WriteString("\" y2=\"")
 		builder.WriteString(svgNumber(layout.Plot.Y + layout.Plot.Height))
-		builder.WriteString("\" stroke=\"#6e7781\" />")
-		for _, tick := range svgYTicks(scale) {
+		builder.WriteString("\" stroke=\"")
+		builder.WriteString(svgThemePlotBorder)
+		builder.WriteString("\" />")
+		for _, tick := range svgYTicksWithSpec(spec, scale) {
 			if isPrimary {
 				builder.WriteString("<line x1=\"")
 				builder.WriteString(svgNumber(layout.Plot.X))
@@ -444,7 +600,9 @@ func writeSVGYAxes(builder *strings.Builder, spec *Spec, layout svgLayout) {
 				builder.WriteString(svgNumber(layout.Plot.X + layout.Plot.Width))
 				builder.WriteString("\" y2=\"")
 				builder.WriteString(svgNumber(tick.Y))
-				builder.WriteString("\" stroke=\"#eaeef2\" />")
+				builder.WriteString("\" stroke=\"")
+				builder.WriteString(svgThemeGrid)
+				builder.WriteString("\" stroke-dasharray=\"1 3\" />")
 			}
 			builder.WriteString("<line x1=\"")
 			builder.WriteString(svgNumber(placement.LineX))
@@ -454,30 +612,38 @@ func writeSVGYAxes(builder *strings.Builder, spec *Spec, layout svgLayout) {
 			builder.WriteString(svgNumber(placement.LineX + placement.TickDir*5))
 			builder.WriteString("\" y2=\"")
 			builder.WriteString(svgNumber(tick.Y))
-			builder.WriteString("\" stroke=\"#6e7781\" />")
+			builder.WriteString("\" stroke=\"")
+			builder.WriteString(svgThemePlotBorder)
+			builder.WriteString("\" />")
 			builder.WriteString("<text x=\"")
 			builder.WriteString(svgNumber(placement.TickLabelX))
 			builder.WriteString("\" y=\"")
-			builder.WriteString(svgNumber(tick.Y + float64(layout.Options.FontSize)/3))
+			builder.WriteString(svgNumber(tick.Y + tickYOffset))
 			builder.WriteString("\" text-anchor=\"")
 			builder.WriteString(placement.TickAnchor)
-			builder.WriteString("\" fill=\"#57606a\">")
+			builder.WriteString("\" font-size=\"")
+			builder.WriteString(strconv.Itoa(tickFontSize))
+			builder.WriteString("\" fill=\"")
+			builder.WriteString(svgThemeText)
+			builder.WriteString("\">")
 			builder.WriteString(escapeSVG(tick.Label))
 			builder.WriteString("</text>")
 		}
 		label := svgAxisLabel(spec, axisID)
 		if label != "" {
 			builder.WriteString("<text x=\"")
-			builder.WriteString(svgNumber(placement.LabelX))
+			builder.WriteString(svgNumber(labelX))
 			builder.WriteString("\" y=\"")
 			builder.WriteString(svgNumber(layout.Plot.Y + layout.Plot.Height/2))
 			builder.WriteString("\" transform=\"rotate(-90 ")
-			builder.WriteString(svgNumber(placement.LabelX))
+			builder.WriteString(svgNumber(labelX))
 			builder.WriteString(" ")
 			builder.WriteString(svgNumber(layout.Plot.Y + layout.Plot.Height/2))
 			builder.WriteString(")\" text-anchor=\"")
 			builder.WriteString(placement.LabelAnchor)
-			builder.WriteString("\" fill=\"#24292f\">")
+			builder.WriteString("\" fill=\"")
+			builder.WriteString(svgThemeText)
+			builder.WriteString("\">")
 			builder.WriteString(escapeSVG(label))
 			builder.WriteString("</text>")
 		}
@@ -490,7 +656,7 @@ func writeSVGSeries(builder *strings.Builder, spec *Spec, layout svgLayout, seri
 	lineColor := styleString(series.Style, "lineColor", color)
 	bandColor := styleString(series.Style, "bandColor", color)
 	opacity := styleFloat(series.Style, "opacity", 0.2)
-	lineWidth := styleFloat(series.Style, "lineWidth", 2)
+	lineWidth := styleFloat(series.Style, "lineWidth", 1.2)
 	builder.WriteString("<g data-advn-series=\"")
 	builder.WriteString(escapeSVG(series.ID))
 	builder.WriteString("\">")
@@ -692,34 +858,53 @@ func writeSVGLegend(builder *strings.Builder, layout svgLayout) {
 	}
 	builder.WriteString("<g data-advn-role=\"legend\">")
 	currentRow := -1
-	for _, entry := range layout.LegendEntries {
-		if entry.Row != currentRow {
-			if currentRow >= 0 {
-				builder.WriteString("</g>")
-			}
-			currentRow = entry.Row
-			builder.WriteString("<g data-advn-legend-row=\"")
-			builder.WriteString(strconv.Itoa(currentRow))
-			builder.WriteString("\">")
+	rowEntries := []svgLegendEntry{}
+	flushRow := func() {
+		if len(rowEntries) == 0 {
+			return
 		}
-		builder.WriteString("<rect x=\"")
-		builder.WriteString(svgNumber(entry.BoxX))
-		builder.WriteString("\" y=\"")
-		builder.WriteString(svgNumber(entry.Y))
-		builder.WriteString("\" width=\"10\" height=\"10\" fill=\"")
-		builder.WriteString(escapeSVG(entry.Item.Color))
-		builder.WriteString("\" />")
-		builder.WriteString("<text x=\"")
-		builder.WriteString(svgNumber(entry.TextX))
-		builder.WriteString("\" y=\"")
-		builder.WriteString(svgNumber(entry.Y + 9))
-		builder.WriteString("\" fill=\"#24292f\">")
-		builder.WriteString(escapeSVG(entry.Item.Label))
-		builder.WriteString("</text>")
-	}
-	if currentRow >= 0 {
+		rowWidth := svgLegendRowWidth(rowEntries, float64(layout.Options.FontSize))
+		offset := (layout.LegendRect.Width - rowWidth) / 2
+		if offset < 0 {
+			offset = 0
+		}
+		builder.WriteString("<g data-advn-legend-row=\"")
+		builder.WriteString(strconv.Itoa(currentRow))
+		builder.WriteString("\">")
+		for _, entry := range rowEntries {
+			boxX := entry.BoxX + offset
+			textX := entry.TextX + offset
+			y := entry.Y + layout.LegendRect.Y
+			builder.WriteString("<rect x=\"")
+			builder.WriteString(svgNumber(boxX))
+			builder.WriteString("\" y=\"")
+			builder.WriteString(svgNumber(y))
+			builder.WriteString("\" width=\"10\" height=\"10\" fill=\"")
+			builder.WriteString(escapeSVG(entry.Item.Color))
+			builder.WriteString("\" stroke=\"")
+			builder.WriteString(svgThemePlotBorder)
+			builder.WriteString("\" />")
+			builder.WriteString("<text x=\"")
+			builder.WriteString(svgNumber(textX))
+			builder.WriteString("\" y=\"")
+			builder.WriteString(svgNumber(y + 9))
+			builder.WriteString("\" fill=\"")
+			builder.WriteString(svgThemeText)
+			builder.WriteString("\">")
+			builder.WriteString(escapeSVG(entry.Item.Label))
+			builder.WriteString("</text>")
+		}
 		builder.WriteString("</g>")
 	}
+	for _, entry := range layout.LegendEntries {
+		if entry.Row != currentRow {
+			flushRow()
+			currentRow = entry.Row
+			rowEntries = rowEntries[:0]
+		}
+		rowEntries = append(rowEntries, entry)
+	}
+	flushRow()
 	builder.WriteString("</g>")
 }
 
@@ -1505,8 +1690,9 @@ func svgTimeTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgT
 	if maxValue <= minValue {
 		return []svgTick{{X: scale.Rect.X, Label: formatUnixNanoWithOptions(minValue, 0, timeOptions)}}
 	}
-	span := maxValue - minValue
-	step := svgNiceTimeStep(span, 6)
+	span := time.Duration(maxValue - minValue)
+	spec := chooseSVGTimeTickSpec(span, int(math.Round(scale.Rect.Width)))
+	step := int64(spec.Step)
 	start := (minValue / step) * step
 	if start < minValue {
 		start += step
@@ -1514,7 +1700,8 @@ func svgTimeTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgT
 	ticks := []svgTick{}
 	for value := start; value <= maxValue; value += step {
 		x := svgProject(float64(value), scale.Min, scale.Max, scale.Rect.X, scale.Rect.X+scale.Rect.Width)
-		ticks = append(ticks, svgTick{X: x, Label: formatUnixNanoWithOptions(value, span, timeOptions)})
+		label := formatMRTGTimeTick(time.Unix(0, value).In(timeOptions.Location), spec.Format)
+		ticks = append(ticks, svgTick{X: x, Label: label})
 		if len(ticks) > 8 {
 			break
 		}
@@ -1523,11 +1710,68 @@ func svgTimeTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgT
 		count := 5
 		for index := 0; index < count; index++ {
 			ratio := float64(index) / float64(count-1)
-			value := minValue + int64(math.Round(float64(span)*ratio))
-			ticks = append(ticks, svgTick{X: scale.Rect.X + scale.Rect.Width*ratio, Label: formatUnixNanoWithOptions(value, span, timeOptions)})
+			value := minValue + int64(math.Round(float64(maxValue-minValue)*ratio))
+			label := formatMRTGTimeTick(time.Unix(0, value).In(timeOptions.Location), spec.Format)
+			ticks = append(ticks, svgTick{X: scale.Rect.X + scale.Rect.Width*ratio, Label: label})
 		}
 	}
 	return ticks
+}
+
+func chooseSVGTimeTickSpec(span time.Duration, plotWidth int) pngTimeTickSpec {
+	candidates := mrtgTickCandidates(span)
+	if len(candidates) == 0 {
+		return pngTimeTickSpec{Step: time.Hour, Format: "15:04"}
+	}
+	normalized := make([]pngTimeTickSpec, 0, len(candidates))
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		normalizedCandidate := normalizeSVGTimeTickSpec(span, candidate)
+		key := fmt.Sprintf("%d|%s", normalizedCandidate.Step, normalizedCandidate.Format)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, normalizedCandidate)
+	}
+	if len(normalized) == 0 {
+		return pngTimeTickSpec{Step: time.Hour, Format: "15:04"}
+	}
+	minSpacing := 18
+	for _, candidate := range normalized {
+		labelWidth := int(math.Ceil(estimateSVGTextWidth(sampleMRTGTimeTickLabel(candidate, span), svgDefaultFontSize))) + 8
+		requiredSpacing := maxInt(minSpacing, labelWidth/2+6)
+		tickCount := int(math.Ceil(span.Seconds()/candidate.Step.Seconds())) + 1
+		if tickCount <= 1 {
+			return candidate
+		}
+		spacing := plotWidth / maxInt(1, tickCount-1)
+		if spacing >= requiredSpacing {
+			return candidate
+		}
+	}
+	return normalized[len(normalized)-1]
+}
+
+func normalizeSVGTimeTickSpec(span time.Duration, candidate pngTimeTickSpec) pngTimeTickSpec {
+	switch {
+	case span <= 15*time.Minute:
+		if candidate.Step < time.Minute {
+			candidate.Step = time.Minute
+		}
+		candidate.Format = "15:04"
+	case span <= 24*time.Hour:
+		candidate.Format = "15:04"
+	case span <= 72*time.Hour:
+		if candidate.Step < 12*time.Hour {
+			candidate.Format = "15:04"
+		} else if candidate.Step < 24*time.Hour {
+			candidate.Format = "01-02 15h"
+		} else {
+			candidate.Format = "01-02"
+		}
+	}
+	return candidate
 }
 
 func svgCategoryTicks(scale svgXScale) []svgTick {
@@ -1557,49 +1801,22 @@ func svgCategoryTicks(scale svgXScale) []svgTick {
 	return ret
 }
 
-func svgYTicks(scale svgYScale) []svgTick {
+func svgYTicksWithSpec(spec *Spec, scale svgYScale) []svgTick {
 	count := 5
 	ticks := make([]svgTick, 0, count)
 	for index := 0; index < count; index++ {
 		ratio := float64(index) / float64(count-1)
 		value := scale.Max - (scale.Max-scale.Min)*ratio
 		y := scale.Rect.Y + scale.Rect.Height*ratio
-		ticks = append(ticks, svgTick{Y: y, Label: formatFloat(value)})
+		label := formatFloat(value)
+		if isMRTGTimeSeriesSpec(spec) {
+			label = formatMRTGNumber(value)
+		}
+		ticks = append(ticks, svgTick{Y: y, Label: label})
 	}
 	return ticks
 }
 
-func svgNiceTimeStep(span int64, targetCount int) int64 {
-	if targetCount <= 1 || span <= 0 {
-		return int64(time.Second)
-	}
-	target := span / int64(targetCount-1)
-	candidates := []int64{
-		int64(time.Second),
-		int64(5 * time.Second),
-		int64(15 * time.Second),
-		int64(30 * time.Second),
-		int64(time.Minute),
-		int64(5 * time.Minute),
-		int64(15 * time.Minute),
-		int64(30 * time.Minute),
-		int64(time.Hour),
-		int64(3 * time.Hour),
-		int64(6 * time.Hour),
-		int64(12 * time.Hour),
-		int64(24 * time.Hour),
-		int64(7 * 24 * time.Hour),
-		int64(30 * 24 * time.Hour),
-		int64(90 * 24 * time.Hour),
-		int64(365 * 24 * time.Hour),
-	}
-	for _, candidate := range candidates {
-		if candidate >= target {
-			return candidate
-		}
-	}
-	return candidates[len(candidates)-1]
-}
 func svgCategoryStep(scale svgXScale) float64 {
 	count := len(scale.Categories)
 	if count <= 1 {
@@ -1612,8 +1829,17 @@ func svgSeriesColor(series Series, index int) string {
 	if color := styleString(series.Style, "color", ""); color != "" {
 		return color
 	}
-	palette := []string{"#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"}
+	palette := []string{"#00a000", "#0000ff", "#ff8000", "#ff0000", "#008080", "#800080"}
 	return palette[index%len(palette)]
+}
+
+func svgLegendRowWidth(entries []svgLegendEntry, fontSize float64) float64 {
+	if len(entries) == 0 {
+		return 0
+	}
+	first := entries[0]
+	last := entries[len(entries)-1]
+	return (last.TextX + estimateSVGTextWidth(last.Item.Label, int(fontSize))) - first.BoxX
 }
 
 func estimateSVGTextWidth(value string, fontSize int) float64 {

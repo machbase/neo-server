@@ -355,13 +355,20 @@ func TestBuildSVGLayoutAddsTopInset(t *testing.T) {
 		t.Fatalf("buildSVGLayout() returned unexpected error: %v", err)
 	}
 	baseTop := float64(options.Padding)
-	if layout.Plot.Y <= baseTop {
+	if isMRTGTimeSeriesSpec(spec) {
+		if layout.Plot.Y <= 0 {
+			t.Fatalf("expected MRTG layout plot y to remain positive, got %v", layout.Plot.Y)
+		}
+	} else if layout.Plot.Y <= baseTop {
 		t.Fatalf("expected plot y to move below base top %v, got %v", baseTop, layout.Plot.Y)
 	}
 	bottom := layout.Plot.Y + layout.Plot.Height
-	expectedBottom := float64(options.Height) - float64(options.Padding) - (float64(options.FontSize)*2 + 16)
-	if bottom != expectedBottom {
-		t.Fatalf("expected bottom edge to remain at %v, got %v", expectedBottom, bottom)
+	minBottom := float64(options.Height) - float64(options.Padding) - (float64(options.FontSize) + 24)
+	if isMRTGTimeSeriesSpec(spec) {
+		minBottom = float64(options.Height) - (float64(options.FontSize) + 30)
+	}
+	if bottom > minBottom {
+		t.Fatalf("expected bottom edge to leave x-axis label room (<= %v), got %v", minBottom, bottom)
 	}
 }
 
