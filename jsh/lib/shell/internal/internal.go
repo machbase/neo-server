@@ -5,6 +5,7 @@ import (
 	"io"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -14,7 +15,7 @@ var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func IsCommand(cmd string) bool {
 	switch cmd {
-	case "cd", "setenv", "unsetenv", "which":
+	case "alias", "cd", "setenv", "unsetenv", "which":
 		return true
 	default:
 		return false
@@ -25,6 +26,8 @@ func IsCommand(cmd string) bool {
 // It returns the exit code and a boolean indicating whether the command was found.
 func Run(env *engine.Env, writer io.Writer, cmd string, args ...string) (int, bool) {
 	switch cmd {
+	case "alias":
+		return runAlias(env, writer, args...), true
 	case "cd":
 		return runCD(env, writer, args...), true
 	case "setenv":
@@ -36,6 +39,31 @@ func Run(env *engine.Env, writer io.Writer, cmd string, args ...string) (int, bo
 	default:
 		return 0, false
 	}
+}
+
+func runAlias(env *engine.Env, writer io.Writer, args ...string) int {
+	if env == nil {
+		fprintf(writer, "alias: shell environment is not initialized\n")
+		return 1
+	}
+	if len(args) == 0 {
+		return printAliases(env, writer)
+	}
+	if len(args) == 1 {
+		alias, ok := env.LookupAlias(args[0])
+		if !ok {
+			fprintf(writer, "alias: not found: %s\n", args[0])
+			return 1
+		}
+		fprintf(writer, "%s\n", formatAlias(args[0], alias))
+		return 0
+	}
+	if strings.TrimSpace(args[0]) == "" {
+		fprintf(writer, "alias: invalid name\n")
+		return 1
+	}
+	env.SetAlias(args[0], args[1:])
+	return 0
 }
 
 func runCD(env *engine.Env, writer io.Writer, args ...string) int {
@@ -155,6 +183,41 @@ func runWhich(env *engine.Env, writer io.Writer, args ...string) int {
 	}
 	fprintf(writer, "%s\n", where)
 	return 0
+}
+
+func printAliases(env *engine.Env, writer io.Writer) int {
+	aliases := env.Aliases()
+	if len(aliases) == 0 {
+		return 0
+	}
+	names := make([]string, 0, len(aliases))
+	for name := range aliases {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fprintf(writer, "%s\n", formatAlias(name, aliases[name]))
+	}
+	return 0
+}
+
+func formatAlias(name string, alias []string) string {
+	parts := make([]string, 0, len(alias)+2)
+	parts = append(parts, "alias", quoteAliasToken(name))
+	for _, token := range alias {
+		parts = append(parts, quoteAliasToken(token))
+	}
+	return strings.Join(parts, " ")
+}
+
+func quoteAliasToken(token string) string {
+	if token == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(token, " \t\r\n'\"\\") {
+		return token
+	}
+	return "'" + strings.ReplaceAll(token, "'", "'\\''") + "'"
 }
 
 func displayPathArg(args []string) string {

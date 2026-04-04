@@ -16,6 +16,7 @@ func TestIsCommand(t *testing.T) {
 		cmd  string
 		want bool
 	}{
+		{name: "alias", cmd: "alias", want: true},
 		{name: "cd", cmd: "cd", want: true},
 		{name: "setenv", cmd: "setenv", want: true},
 		{name: "unsetenv", cmd: "unsetenv", want: true},
@@ -45,8 +46,101 @@ func TestRunDispatch(t *testing.T) {
 		t.Fatalf("GREETING = %v, want hello", got)
 	}
 
+	exitCode, ok = Run(env, &out, "alias", "ll", "tool", "--long")
+	if !ok {
+		t.Fatal("Run(alias) ok = false, want true")
+	}
+	if exitCode != 0 {
+		t.Fatalf("Run(alias) exitCode = %d, want 0", exitCode)
+	}
+	if got, ok := env.LookupAlias("ll"); !ok || strings.Join(got, " ") != "tool --long" {
+		t.Fatalf("LookupAlias(ll) = (%v, %v), want (tool --long, true)", got, ok)
+	}
+
 	if exitCode, ok = Run(env, &out, "missing"); ok || exitCode != 0 {
 		t.Fatalf("Run(missing) = (%d, %v), want (0, false)", exitCode, ok)
+	}
+}
+
+func TestRunAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		env        *engine.Env
+		args       []string
+		prepare    func(*engine.Env)
+		wantExit   int
+		wantOutput string
+		check      func(t *testing.T, env *engine.Env)
+	}{
+		{
+			name:       "nil env",
+			env:        nil,
+			wantExit:   1,
+			wantOutput: "alias: shell environment is not initialized",
+		},
+		{
+			name:     "set alias",
+			env:      newInternalTestEnv(t),
+			args:     []string{"ll", "tool", "--long"},
+			wantExit: 0,
+			check: func(t *testing.T, env *engine.Env) {
+				t.Helper()
+				if got, ok := env.LookupAlias("ll"); !ok || strings.Join(got, " ") != "tool --long" {
+					t.Fatalf("LookupAlias(ll) = (%v, %v), want (tool --long, true)", got, ok)
+				}
+			},
+		},
+		{
+			name:     "show one alias",
+			env:      newInternalTestEnv(t),
+			args:     []string{"ll"},
+			wantExit: 0,
+			prepare: func(env *engine.Env) {
+				env.SetAlias("ll", []string{"tool", "--long"})
+			},
+			wantOutput: "alias ll tool --long",
+		},
+		{
+			name:     "list aliases sorted",
+			env:      newInternalTestEnv(t),
+			wantExit: 0,
+			prepare: func(env *engine.Env) {
+				env.SetAlias("zz", []string{"tool"})
+				env.SetAlias("aa", []string{"tool", "hello world"})
+			},
+			wantOutput: "alias aa tool 'hello world'\nalias zz tool",
+		},
+		{
+			name:       "missing alias",
+			env:        newInternalTestEnv(t),
+			args:       []string{"missing"},
+			wantExit:   1,
+			wantOutput: "alias: not found: missing",
+		},
+		{
+			name:       "invalid empty name",
+			env:        newInternalTestEnv(t),
+			args:       []string{"", "tool"},
+			wantExit:   1,
+			wantOutput: "alias: invalid name",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.prepare != nil {
+				tc.prepare(tc.env)
+			}
+			var out bytes.Buffer
+			exitCode := runAlias(tc.env, &out, tc.args...)
+			if exitCode != tc.wantExit {
+				t.Fatalf("runAlias(%v) exitCode = %d, want %d", tc.args, exitCode, tc.wantExit)
+			}
+			if got := strings.TrimSpace(out.String()); got != tc.wantOutput {
+				t.Fatalf("runAlias(%v) output = %q, want %q", tc.args, got, tc.wantOutput)
+			}
+			if tc.check != nil {
+				tc.check(t, tc.env)
+			}
+		})
 	}
 }
 

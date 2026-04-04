@@ -586,6 +586,54 @@ func TestProcessAliasExpansion(t *testing.T) {
 	}
 }
 
+func TestProcessAliasCommand(t *testing.T) {
+	tests := []struct {
+		name       string
+		line       string
+		wantOutput string
+		exit       int
+		alive      bool
+	}{
+		{
+			name:       "alias command defines alias in current shell",
+			line:       "alias say echo hello && say world",
+			wantOutput: "hello world",
+			exit:       0,
+			alive:      true,
+		},
+		{
+			name:       "alias command lists aliases",
+			line:       "alias say echo hello && alias",
+			wantOutput: "alias say echo hello",
+			exit:       0,
+			alive:      true,
+		},
+		{
+			name:       "alias command shows one alias",
+			line:       "alias say echo hello && alias say",
+			wantOutput: "alias say echo hello",
+			exit:       0,
+			alive:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, output := newTestShell(t)
+			exitCode, alive := sh.process(tc.line)
+			if exitCode != tc.exit {
+				t.Fatalf("process(%q) exitCode = %d, want %d", tc.line, exitCode, tc.exit)
+			}
+			if alive != tc.alive {
+				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
+			}
+			if got := strings.TrimSpace(output.String()); got != tc.wantOutput {
+				t.Fatalf("process(%q) output = %q, want %q", tc.line, got, tc.wantOutput)
+			}
+		})
+	}
+}
+
 func newTestShell(t *testing.T) (*Shell, *bytes.Buffer) {
 	t.Helper()
 	fileSystem := engine.NewFS()

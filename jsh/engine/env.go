@@ -95,15 +95,38 @@ func (env *Env) SetAlias(command string, alias []string) {
 	env.aliases[key] = alias
 }
 
-func (env *Env) Alias(command string) []string {
+// LookupAlias looks up the alias for the given command.
+// It returns the alias and true if found, otherwise nil and false.
+func (env *Env) LookupAlias(command string) ([]string, bool) {
 	key := command
 	if !env.aliasCaseSensitive {
 		key = strings.ToLower(command)
 	}
 	if alias, ok := env.aliases[key]; ok {
+		return append([]string{}, alias...), true
+	}
+	return nil, false
+}
+
+// Alias returns the alias for the given command if it exists,
+// otherwise returns the command itself as a single-element slice.
+func (env *Env) Alias(command string) []string {
+	if alias, ok := env.LookupAlias(command); ok {
 		return alias
 	}
 	return []string{command}
+}
+
+// Aliases returns a copy of the alias map to prevent external modification.
+func (env *Env) Aliases() map[string][]string {
+	if len(env.aliases) == 0 {
+		return map[string][]string{}
+	}
+	aliases := make(map[string][]string, len(env.aliases))
+	for key, value := range env.aliases {
+		aliases[key] = append([]string{}, value...)
+	}
+	return aliases
 }
 
 type SecureString string
