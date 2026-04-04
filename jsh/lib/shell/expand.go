@@ -29,12 +29,13 @@ func (sh *Shell) expandPipeline(pipe *Pipeline) (*Pipeline, error) {
 	if err != nil {
 		return nil, err
 	}
-	expanded.Command = command
 
 	args, err := sh.expandWords(pipe.ArgWords)
 	if err != nil {
 		return nil, err
 	}
+	command, args = sh.expandCommandAlias(command, args)
+	expanded.Command = command
 	expanded.Args = args
 
 	if expanded.Stdin != nil {
@@ -60,6 +61,31 @@ func (sh *Shell) expandPipeline(pipe *Pipeline) (*Pipeline, error) {
 	}
 
 	return expanded, nil
+}
+
+func (sh *Shell) expandCommandAlias(command string, args []string) (string, []string) {
+	resolvedArgs := append([]string{}, args...)
+	if sh.env == nil || command == "" {
+		return command, resolvedArgs
+	}
+
+	alias := sh.env.Alias(command)
+	if !hasAliasExpansion(command, alias) {
+		return command, resolvedArgs
+	}
+
+	resolvedCommand := alias[0]
+	if len(alias) > 1 {
+		resolvedArgs = append(append([]string{}, alias[1:]...), resolvedArgs...)
+	}
+	return resolvedCommand, resolvedArgs
+}
+
+func hasAliasExpansion(command string, alias []string) bool {
+	if len(alias) == 0 {
+		return false
+	}
+	return len(alias) != 1 || alias[0] != command
 }
 
 func (sh *Shell) expandCommandWord(word *Word) (string, error) {

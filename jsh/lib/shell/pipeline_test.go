@@ -514,6 +514,78 @@ func TestProcessWordExpansion(t *testing.T) {
 	}
 }
 
+func TestProcessAliasExpansion(t *testing.T) {
+	tests := []struct {
+		name       string
+		aliases    map[string][]string
+		line       string
+		wantOutput string
+		exit       int
+		alive      bool
+	}{
+		{
+			name: "alias to internal command",
+			aliases: map[string][]string{
+				"where": {"which"},
+			},
+			line:       "where cat",
+			wantOutput: "/sbin/cat.js",
+			exit:       0,
+			alive:      true,
+		},
+		{
+			name: "alias prepends default args",
+			aliases: map[string][]string{
+				"say": {"echo", "hello"},
+			},
+			line:       "say world",
+			wantOutput: "hello world",
+			exit:       0,
+			alive:      true,
+		},
+		{
+			name: "alias works inside pipeline stage",
+			aliases: map[string][]string{
+				"show": {"cat"},
+			},
+			line:       "echo hello | show | wc -l",
+			wantOutput: "1",
+			exit:       0,
+			alive:      true,
+		},
+		{
+			name: "alias expands command with flags",
+			aliases: map[string][]string{
+				"lc": {"wc", "-l"},
+			},
+			line:       "echo hello | lc",
+			wantOutput: "1",
+			exit:       0,
+			alive:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, output := newTestShell(t)
+			for name, alias := range tc.aliases {
+				sh.env.SetAlias(name, alias)
+			}
+
+			exitCode, alive := sh.process(tc.line)
+			if exitCode != tc.exit {
+				t.Fatalf("process(%q) exitCode = %d, want %d", tc.line, exitCode, tc.exit)
+			}
+			if alive != tc.alive {
+				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
+			}
+			if got := strings.TrimSpace(output.String()); got != tc.wantOutput {
+				t.Fatalf("process(%q) output = %q, want %q", tc.line, got, tc.wantOutput)
+			}
+		})
+	}
+}
+
 func newTestShell(t *testing.T) (*Shell, *bytes.Buffer) {
 	t.Helper()
 	fileSystem := engine.NewFS()
@@ -658,21 +730,41 @@ func TestPipelineHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("resolve external command uses alias and index fallback", func(t *testing.T) {
+	t.Run("resolve external command uses index fallback", func(t *testing.T) {
 		sh, _ := newTestShell(t)
-		sh.env.SetAlias("alias-tool", []string{"tool", "--flag"})
 		writeTestFile(t, "tool/index.js", "module.exports = {}\n")
 		defer cleanupTestFile(t, "tool/index.js")
 
-		path, args, err := sh.resolveExternalCommand("alias-tool", []string{"value"})
+		path, args, err := sh.resolveExternalCommand("tool", []string{"value"})
 		if err != nil {
-			t.Fatalf("resolveExternalCommand(alias-tool): %v", err)
+			t.Fatalf("resolveExternalCommand(tool): %v", err)
 		}
 		if path != "/work/tool/index.js" {
 			t.Fatalf("resolveExternalCommand path = %q, want %q", path, "/work/tool/index.js")
 		}
-		if got, want := strings.Join(args, " "), "--flag value"; got != want {
+		if got, want := strings.Join(args, " "), "value"; got != want {
 			t.Fatalf("resolveExternalCommand args = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("expand pipeline applies alias before execution", func(t *testing.T) {
+		sh, _ := newTestShell(t)
+		sh.env.SetAlias("where", []string{"which", "cat"})
+
+		expanded, err := sh.expandPipeline(&Pipeline{
+			CommandWord: &Word{Fragments: []WordFragment{{Text: "where", QuoteKind: QuoteNone}}},
+			ArgWords: []Word{
+				{Fragments: []WordFragment{{Text: "wc", QuoteKind: QuoteNone}}},
+			},
+		})
+		if err != nil {
+			t.Fatalf("expandPipeline(alias): %v", err)
+		}
+		if expanded.Command != "which" {
+			t.Fatalf("expanded command = %q, want %q", expanded.Command, "which")
+		}
+		if got, want := strings.Join(expanded.Args, " "), "cat wc"; got != want {
+			t.Fatalf("expanded args = %q, want %q", got, want)
 		}
 	})
 

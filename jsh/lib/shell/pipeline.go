@@ -262,22 +262,14 @@ func (sh *Shell) resolveExternalCommand(command string, args []string) (string, 
 	if sh.env == nil {
 		return "", nil, fmt.Errorf("shell environment is not initialized")
 	}
-	resolvedCommand := command
-	resolvedArgs := append([]string{}, args...)
-	if aliased := sh.env.Alias(command); len(aliased) > 0 {
-		resolvedCommand = aliased[0]
-		if len(aliased) > 1 {
-			resolvedArgs = append(append([]string{}, aliased[1:]...), resolvedArgs...)
-		}
-	}
-	resolvedPath := sh.env.Which(resolvedCommand)
-	if resolvedPath == "" && !strings.HasSuffix(resolvedCommand, ".js") {
-		resolvedPath = sh.env.Which(resolvedCommand + "/index.js")
+	resolvedPath := sh.env.Which(command)
+	if resolvedPath == "" && !strings.HasSuffix(command, ".js") {
+		resolvedPath = sh.env.Which(command + "/index.js")
 	}
 	if resolvedPath == "" {
-		return "", nil, fmt.Errorf("command not found: %s", resolvedCommand)
+		return "", nil, fmt.Errorf("command not found: %s", command)
 	}
-	return resolvedPath, resolvedArgs, nil
+	return resolvedPath, append([]string{}, args...), nil
 }
 
 func snapshotEnv(env *engine.Env) map[string]any {
