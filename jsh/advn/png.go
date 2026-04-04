@@ -44,6 +44,7 @@ type pngTheme struct {
 	PlotBorder      color.RGBA
 	Grid            color.RGBA
 	Text            color.RGBA
+	StatsText       color.RGBA
 	SeriesFill      []color.RGBA
 	SeriesLine      []color.RGBA
 	Annotation      color.RGBA
@@ -62,6 +63,7 @@ type pngLayout struct {
 	Frame        pngRect
 	Plot         pngRect
 	Stats        pngRect
+	Legend       pngLegendPlan
 	TitleBaseY   int
 	XTickBaseY   int
 	YLabelX      int
@@ -75,6 +77,21 @@ type pngSeriesStats struct {
 	Average float64
 	Current float64
 	HasData bool
+}
+
+type pngStatTextItem struct {
+	Text  string
+	Color color.RGBA
+}
+
+type pngLegendItem struct {
+	Parts []pngStatTextItem
+	Width int
+}
+
+type pngLegendPlan struct {
+	Rows       [][]pngLegendItem
+	LabelsOnly bool
 }
 
 type pngSeriesData struct {
@@ -172,9 +189,6 @@ func renderMRTGPNG(spec *Spec, options svgResolvedOptions, pngOptions pngResolve
 	if pngOptions.Background.A != 0 {
 		theme.Background = pngOptions.Background
 	}
-	layout := buildMRTGPNGLayout(options)
-	img := image.NewRGBA(image.Rect(0, 0, layout.Canvas.Width, layout.Canvas.Height))
-	renderer := newPNGRenderer(img, layout, theme)
 
 	start, end, err := resolveMRTGTimeRange(spec)
 	if err != nil {
@@ -190,7 +204,12 @@ func renderMRTGPNG(spec *Spec, options svgResolvedOptions, pngOptions pngResolve
 	if primaryLabel == "" {
 		primaryLabel = "Value"
 	}
-	seriesData := buildMRTGSeriesData(spec, start, end, layout, theme)
+	seriesData := buildMRTGSeriesData(spec, theme)
+	legendPlan := buildMRTGLegendPlan(seriesData, options.Width-12, theme.StatsText)
+	layout := buildMRTGPNGLayout(options, legendPlan)
+	projectMRTGSeriesPoints(seriesData, start, end, layout.Plot)
+	img := image.NewRGBA(image.Rect(0, 0, layout.Canvas.Width, layout.Canvas.Height))
+	renderer := newPNGRenderer(img, layout, theme)
 	yMin, yMax := resolveMRTGYRange(spec, seriesData)
 	yTicks := buildMRTGYTicks(yMin, yMax, layout.Plot)
 	xTicks := buildMRTGXTimeTicks(start, end, layout.Plot, options.Time, rendererMeasureTickLabelWidth)
@@ -199,13 +218,13 @@ func renderMRTGPNG(spec *Spec, options svgResolvedOptions, pngOptions pngResolve
 	renderer.strokeRect(rectToImage(layout.Frame), theme.OuterFrame)
 	renderer.strokeRectInset(rectToImage(layout.Frame), 1, theme.OuterHighlight)
 	renderer.fillRect(rectToImage(layout.Plot), theme.PlotBackground)
-	renderer.strokeRect(rectToImage(layout.Plot), theme.PlotBorder)
-	renderer.strokeRectInset(rectToImage(layout.Plot), 1, theme.OuterHighlight)
 	if options.Title != "" {
 		renderer.drawText(layout.Frame.X+layout.Frame.Width/2, layout.TitleBaseY, options.Title, theme.Text, "center")
 	}
 	renderer.drawMRTGTimeSeries(spec, seriesData, yMin, yMax, start, end)
 	renderer.drawMRTGGrid(xTicks, yTicks)
+	renderer.strokeRect(rectToImage(layout.Plot), theme.PlotBorder)
+	renderer.strokeRectInset(rectToImage(layout.Plot), 1, theme.OuterHighlight)
 	renderer.drawMRTGAxes(xTicks, yTicks)
 	renderer.drawRotatedTextCCW(layout.YLabelX, layout.YLabelCenter, primaryLabel, theme.Text)
 	renderer.drawMRTGStats(seriesData, layout.Stats)
@@ -273,6 +292,7 @@ func mrtgPNGTheme() pngTheme {
 		PlotBorder:      mustParseColor("#000000"),
 		Grid:            mustParseColor("#000000"),
 		Text:            mustParseColor("#000000"),
+		StatsText:       mustParseColor("#4a4a4a"),
 		SeriesFill:      []color.RGBA{mustParseColor("#00d000"), mustParseColor("#0000ff"), mustParseColor("#ff8000")},
 		SeriesLine:      []color.RGBA{mustParseColor("#00a000"), mustParseColor("#0000ff"), mustParseColor("#ff0000")},
 		Annotation:      mustParseColor("#ff0000"),
@@ -280,7 +300,17 @@ func mrtgPNGTheme() pngTheme {
 	}
 }
 
-func buildMRTGPNGLayout(options svgResolvedOptions) pngLayout {
+func mrtgStatsHeight(options svgResolvedOptions, legendPlan pngLegendPlan) int {
+	lineCount := len(legendPlan.Rows)
+	if lineCount == 0 {
+		lineCount = 1
+	}
+	lineHeight := options.FontSize + 2
+	padding := 6
+	return lineCount*lineHeight + padding
+}
+
+func buildMRTGPNGLayout(options svgResolvedOptions, legendPlan pngLegendPlan) pngLayout {
 	width := options.Width
 	height := options.Height
 	canvas := pngRect{Width: width, Height: height}
@@ -289,12 +319,20 @@ func buildMRTGPNGLayout(options svgResolvedOptions) pngLayout {
 	if options.Title != "" {
 		titleHeight = options.FontSize + 8
 	}
-	statsHeight := options.FontSize*3 + 16
-	xTickHeight := options.FontSize + 10
+	statsHeight := mrtgStatsHeight(options, legendPlan)
+	xTickHeight := options.FontSize + 8
+	xTickOffset := options.FontSize + 4
 	leftMargin := maxInt(66, options.FontSize*5+6)
 	rightMargin := maxInt(18, options.FontSize+8)
 	topMargin := frame.Y + 12 + titleHeight
-	plotHeight := height - topMargin - statsHeight - xTickHeight - 18
+	statsGap := 6
+	statsBottomInset := 4
+	if legendPlan.LabelsOnly && len(legendPlan.Rows) > 1 {
+		statsGap = 8
+		statsBottomInset = 6
+	}
+	frameBottom := frame.Y + frame.Height
+	plotHeight := frameBottom - topMargin - statsHeight - xTickHeight - statsGap - statsBottomInset
 	if plotHeight < 80 {
 		plotHeight = 80
 	}
@@ -306,7 +344,7 @@ func buildMRTGPNGLayout(options svgResolvedOptions) pngLayout {
 	}
 	stats := pngRect{
 		X:      frame.X + 2,
-		Y:      plot.Y + plot.Height + xTickHeight + 10,
+		Y:      frameBottom - statsBottomInset - statsHeight,
 		Width:  frame.Width - 4,
 		Height: statsHeight,
 	}
@@ -315,8 +353,9 @@ func buildMRTGPNGLayout(options svgResolvedOptions) pngLayout {
 		Frame:        frame,
 		Plot:         plot,
 		Stats:        stats,
+		Legend:       legendPlan,
 		TitleBaseY:   frame.Y + options.FontSize + 3,
-		XTickBaseY:   plot.Y + plot.Height + options.FontSize + 5,
+		XTickBaseY:   plot.Y + plot.Height + xTickOffset,
 		YLabelX:      frame.X + 12,
 		YLabelCenter: plot.Y + plot.Height/2,
 	}
@@ -399,7 +438,7 @@ func resolveMRTGTimeRange(spec *Spec) (int64, int64, error) {
 	return start, end, nil
 }
 
-func buildMRTGSeriesData(spec *Spec, start int64, end int64, layout pngLayout, theme pngTheme) []pngSeriesData {
+func buildMRTGSeriesData(spec *Spec, theme pngTheme) []pngSeriesData {
 	ret := make([]pngSeriesData, 0, len(spec.Series))
 	seriesIndex := 0
 	for _, series := range spec.Series {
@@ -463,13 +502,132 @@ func buildMRTGSeriesData(spec *Spec, start int64, end int64, layout pngLayout, t
 		}
 		data.Stats.Label = data.Label
 		data.Stats.Color = data.LineColor
-		for i := range data.Points {
-			data.Points[i].X = projectTimeToX(data.Points[i].Time, start, end, layout.Plot)
-		}
 		ret = append(ret, data)
 		seriesIndex++
 	}
 	return ret
+}
+
+func projectMRTGSeriesPoints(seriesData []pngSeriesData, start int64, end int64, plot pngRect) {
+	for idx := range seriesData {
+		for i := range seriesData[idx].Points {
+			seriesData[idx].Points[i].X = projectTimeToX(seriesData[idx].Points[i].Time, start, end, plot)
+		}
+	}
+}
+
+func buildMRTGLegendPlan(seriesData []pngSeriesData, availableWidth int, statsTextColor color.RGBA) pngLegendPlan {
+	if availableWidth <= 0 {
+		availableWidth = svgDefaultWidth
+	}
+	fullItems := buildMRTGLegendItems(seriesData, false, statsTextColor)
+	if plan, ok := fitMRTGLegendPlan(fullItems, availableWidth, false); ok {
+		return plan
+	}
+	labelItems := buildMRTGLegendItems(seriesData, true, statsTextColor)
+	if plan, ok := fitMRTGLegendPlan(labelItems, availableWidth, true); ok {
+		return plan
+	}
+	return forceMRTGLegendPlan(labelItems, true)
+}
+
+func buildMRTGLegendItems(seriesData []pngSeriesData, labelsOnly bool, statsTextColor color.RGBA) []pngLegendItem {
+	items := make([]pngLegendItem, 0, len(seriesData))
+	for index, series := range seriesData {
+		if !series.Stats.HasData {
+			continue
+		}
+		label := series.Stats.Label
+		if label == "" {
+			label = fmt.Sprintf("Series%d", index+1)
+		}
+		parts := []pngStatTextItem{{Text: label, Color: series.Stats.Color}}
+		if !labelsOnly {
+			parts = append(parts, pngStatTextItem{
+				Text:  fmt.Sprintf(" Max: %s, Avg: %s, Cur: %s", formatMRTGStat(series.Stats.Max), formatMRTGStat(series.Stats.Average), formatMRTGStat(series.Stats.Current)),
+				Color: statsTextColor,
+			})
+		}
+		width := 0
+		for _, part := range parts {
+			width += measurePNGTextWidth(part.Text)
+		}
+		items = append(items, pngLegendItem{Parts: parts, Width: width})
+	}
+	return items
+}
+
+func fitMRTGLegendPlan(items []pngLegendItem, availableWidth int, labelsOnly bool) (pngLegendPlan, bool) {
+	if len(items) == 0 {
+		return pngLegendPlan{LabelsOnly: labelsOnly}, true
+	}
+	for rows := 1; rows <= minInt(2, len(items)); rows++ {
+		if plan, ok := arrangeMRTGLegendRows(items, availableWidth, rows, labelsOnly); ok {
+			return plan, true
+		}
+	}
+	return pngLegendPlan{}, false
+}
+
+func arrangeMRTGLegendRows(items []pngLegendItem, availableWidth int, rows int, labelsOnly bool) (pngLegendPlan, bool) {
+	if rows <= 0 || len(items) == 0 {
+		return pngLegendPlan{LabelsOnly: labelsOnly}, true
+	}
+	if rows == 1 {
+		width := mrtgLegendRowWidth(items)
+		if width > availableWidth {
+			return pngLegendPlan{}, false
+		}
+		return pngLegendPlan{Rows: [][]pngLegendItem{items}, LabelsOnly: labelsOnly}, true
+	}
+	bestSplit := -1
+	bestWidth := math.MaxInt
+	for split := 1; split < len(items); split++ {
+		row1 := items[:split]
+		row2 := items[split:]
+		width1 := mrtgLegendRowWidth(row1)
+		width2 := mrtgLegendRowWidth(row2)
+		if width1 > availableWidth || width2 > availableWidth {
+			continue
+		}
+		maxWidth := maxInt(width1, width2)
+		if maxWidth < bestWidth {
+			bestWidth = maxWidth
+			bestSplit = split
+		}
+	}
+	if bestSplit < 0 {
+		return pngLegendPlan{}, false
+	}
+	return pngLegendPlan{
+		Rows:       [][]pngLegendItem{items[:bestSplit], items[bestSplit:]},
+		LabelsOnly: labelsOnly,
+	}, true
+}
+
+func forceMRTGLegendPlan(items []pngLegendItem, labelsOnly bool) pngLegendPlan {
+	if len(items) <= 1 {
+		return pngLegendPlan{Rows: [][]pngLegendItem{items}, LabelsOnly: labelsOnly}
+	}
+	split := (len(items) + 1) / 2
+	return pngLegendPlan{
+		Rows:       [][]pngLegendItem{items[:split], items[split:]},
+		LabelsOnly: labelsOnly,
+	}
+}
+
+func mrtgLegendRowWidth(items []pngLegendItem) int {
+	if len(items) == 0 {
+		return 0
+	}
+	width := 0
+	for index, item := range items {
+		width += item.Width
+		if index > 0 {
+			width += measurePNGTextWidth("   ")
+		}
+	}
+	return width
 }
 
 func resolveMRTGYRange(spec *Spec, seriesData []pngSeriesData) (float64, float64) {
@@ -783,59 +941,25 @@ func (r *pngRenderer) drawMRTGStats(seriesData []pngSeriesData, rect pngRect) {
 		return
 	}
 	r.fillRect(rectToImage(rect), r.theme.StatsBackground)
-	lineY := rect.Y + r.lineHeight
-	for row := 0; row < 2 && row < len(seriesData); row++ {
-		stats := seriesData[row].Stats
-		if !stats.HasData {
-			continue
-		}
-		label := stats.Label
-		if label == "" {
-			label = fmt.Sprintf("Series%d", row+1)
-		}
-		items := r.buildMRTGStatLineItems(label, stats)
-		totalWidth := 0
-		for _, item := range items {
-			totalWidth += r.measureTextWidth(item.Text)
-		}
-		x := rect.X + maxInt(0, (rect.Width-totalWidth)/2)
-		for _, item := range items {
-			r.drawText(x, lineY, item.Text, item.Color, "left")
-			x += r.measureTextWidth(item.Text)
+	rows := r.layout.Legend.Rows
+	if len(rows) == 0 {
+		return
+	}
+	totalHeight := len(rows)*r.lineHeight + maxInt(0, len(rows)-1)
+	lineY := rect.Y + maxInt(r.lineHeight, (rect.Height-totalHeight)/2+r.ascent)
+	for _, row := range rows {
+		x := rect.X + maxInt(0, (rect.Width-mrtgLegendRowWidth(row))/2)
+		for index, item := range row {
+			for _, part := range item.Parts {
+				r.drawText(x, lineY, part.Text, part.Color, "left")
+				x += r.measureTextWidth(part.Text)
+			}
+			if index < len(row)-1 {
+				x += r.measureTextWidth("   ")
+			}
 		}
 		lineY += r.lineHeight + 1
 	}
-}
-
-func (r *pngRenderer) buildMRTGStatLineItems(label string, stats pngSeriesStats) []struct {
-	Text  string
-	Color color.RGBA
-} {
-	spacers := []string{"    ", "  ", " ", ""}
-	for _, spacer := range spacers {
-		items := []struct {
-			Text  string
-			Color color.RGBA
-		}{
-			{Text: "Max. ", Color: r.theme.Text},
-			{Text: label + ": ", Color: stats.Color},
-			{Text: formatMRTGStat(stats.Max) + spacer, Color: r.theme.Text},
-			{Text: "Avg. ", Color: r.theme.Text},
-			{Text: label + ": ", Color: stats.Color},
-			{Text: formatMRTGStat(stats.Average) + spacer, Color: r.theme.Text},
-			{Text: "Cur. ", Color: r.theme.Text},
-			{Text: label + ": ", Color: stats.Color},
-			{Text: formatMRTGStat(stats.Current), Color: r.theme.Text},
-		}
-		totalWidth := 0
-		for _, item := range items {
-			totalWidth += r.measureTextWidth(item.Text)
-		}
-		if totalWidth <= r.layout.Plot.Width || spacer == "" {
-			return items
-		}
-	}
-	return nil
 }
 
 func (r *pngRenderer) fillArea(points []pngPoint, baselineY int, fill color.RGBA) {
@@ -910,6 +1034,14 @@ func rendererMeasureTickLabelWidth(text string) int {
 		return 8
 	}
 	return len(text)*7 + 8
+}
+
+func measurePNGTextWidth(text string) int {
+	if text == "" {
+		return 0
+	}
+	d := &font.Drawer{Face: basicfont.Face7x13}
+	return d.MeasureString(text).Ceil()
 }
 
 func niceCeil(value float64) float64 {
