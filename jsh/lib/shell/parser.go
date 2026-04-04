@@ -11,8 +11,46 @@ const (
 )
 
 type Word struct {
+	Fragments []WordFragment
+	Explicit  bool
+}
+
+type WordFragment struct {
 	Text      string
 	QuoteKind QuoteKind
+}
+
+func (w Word) IsEmpty() bool {
+	return w.String() == ""
+}
+
+func (w Word) String() string {
+	if len(w.Fragments) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	for _, fragment := range w.Fragments {
+		builder.WriteString(fragment.Text)
+	}
+	return builder.String()
+}
+
+func (w Word) HasQuotedFragment() bool {
+	for _, fragment := range w.Fragments {
+		if fragment.QuoteKind != QuoteNone {
+			return true
+		}
+	}
+	return false
+}
+
+func (w Word) HasUnquotedFragment() bool {
+	for _, fragment := range w.Fragments {
+		if fragment.QuoteKind == QuoteNone {
+			return true
+		}
+	}
+	return false
 }
 
 // Command represents a complete parsed shell command line that may contain
@@ -296,22 +334,22 @@ func parsePipeline(input string) *Pipeline {
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
 
-		if isRedirectOperator(token) && token.Text == "2>&1" {
-			pipeline.Stderr = &Redirect{Type: token.Text, Target: "1"}
+		if isRedirectOperator(token) && token.String() == "2>&1" {
+			pipeline.Stderr = &Redirect{Type: token.String(), Target: "1"}
 			continue
 		}
 
 		// Check for redirection operators and extract their targets
-		if isRedirectOperator(token) && (token.Text == "<" || token.Text == ">" || token.Text == ">>" || token.Text == "2>" || token.Text == "2>>") {
+		if isRedirectOperator(token) && (token.String() == "<" || token.String() == ">" || token.String() == ">>" || token.String() == "2>" || token.String() == "2>>") {
 			if i+1 < len(tokens) {
 				target := tokens[i+1]
 				redirect := &Redirect{
-					Type:       token.Text,
-					Target:     target.Text,
+					Type:       token.String(),
+					Target:     target.String(),
 					TargetWord: cloneWordPtr(target),
 				}
 
-				switch token.Text {
+				switch token.String() {
 				case "<":
 					pipeline.Stdin = redirect
 				case ">", ">>":
@@ -332,7 +370,7 @@ func parsePipeline(input string) *Pipeline {
 	// First token is the command name, remaining tokens are arguments
 	if len(cmdTokens) > 0 {
 		pipeline.CommandWord = cloneWordPtr(cmdTokens[0])
-		pipeline.Command = cmdTokens[0].Text
+		pipeline.Command = cmdTokens[0].String()
 		if len(cmdTokens) > 1 {
 			pipeline.ArgWords = cloneWords(cmdTokens[1:])
 			pipeline.Args = wordsText(cmdTokens[1:])
@@ -362,22 +400,37 @@ func parsePipeline(input string) *Pipeline {
 // Returns a slice of token strings. Quote characters are not included in the tokens.
 func tokenize(input string) []Word {
 	var tokens []Word
-	var current strings.Builder
+	var currentFragment strings.Builder
+	var currentFragments []WordFragment
 	inQuote := false
 	quoteChar := rune(0)
 	currentQuote := QuoteNone
+	inToken := false
 	var prevCh rune
 
-	flushCurrent := func() {
-		if current.Len() == 0 {
+	flushFragment := func(force bool) {
+		if currentFragment.Len() == 0 && !force {
 			return
 		}
-		tokens = append(tokens, Word{
-			Text:      current.String(),
+		currentFragments = append(currentFragments, WordFragment{
+			Text:      currentFragment.String(),
 			QuoteKind: currentQuote,
 		})
-		current.Reset()
+		currentFragment.Reset()
+	}
+
+	flushToken := func() {
+		if !inToken {
+			return
+		}
+		flushFragment(false)
+		tokens = append(tokens, Word{
+			Fragments: cloneFragments(currentFragments),
+			Explicit:  true,
+		})
+		currentFragments = nil
 		currentQuote = QuoteNone
+		inToken = false
 	}
 
 	runes := []rune(input)
@@ -390,21 +443,23 @@ func tokenize(input string) []Word {
 		if (ch == '"' || ch == '\'') && prevCh != '\\' {
 			if !inQuote {
 				// Starting a quote - exclude this character
+				flushFragment(false)
 				inQuote = true
 				quoteChar = ch
-				if current.Len() == 0 {
-					if ch == '\'' {
-						currentQuote = QuoteSingle
-					} else {
-						currentQuote = QuoteDouble
-					}
+				inToken = true
+				if ch == '\'' {
+					currentQuote = QuoteSingle
+				} else {
+					currentQuote = QuoteDouble
 				}
 				prevCh = ch
 				continue
 			} else if ch == quoteChar {
 				// Ending the matching quote - exclude this character
+				flushFragment(true)
 				inQuote = false
 				quoteChar = 0
+				currentQuote = QuoteNone
 				prevCh = ch
 				continue
 			}
@@ -413,7 +468,7 @@ func tokenize(input string) []Word {
 
 		// Whitespace acts as token separator only outside quoted strings
 		if !inQuote && (ch == ' ' || ch == '\t') {
-			flushCurrent()
+			flushToken()
 			prevCh = ch
 			continue
 		}
@@ -421,20 +476,20 @@ func tokenize(input string) []Word {
 		// Extract redirection operators as separate tokens when outside quotes
 		if !inQuote {
 			if ch == '2' && i+3 < len(runes) && runes[i+1] == '>' && runes[i+2] == '&' && runes[i+3] == '1' {
-				flushCurrent()
-				tokens = append(tokens, Word{Text: "2>&1"})
+				flushToken()
+				tokens = append(tokens, newWord("2>&1"))
 				i += 3
 				prevCh = '1'
 				continue
 			}
 
 			if ch == '2' && i+1 < len(runes) && runes[i+1] == '>' {
-				flushCurrent()
+				flushToken()
 				if i+2 < len(runes) && runes[i+2] == '>' {
-					tokens = append(tokens, Word{Text: "2>>"})
+					tokens = append(tokens, newWord("2>>"))
 					i += 2
 				} else {
-					tokens = append(tokens, Word{Text: "2>"})
+					tokens = append(tokens, newWord("2>"))
 					i++
 				}
 				prevCh = '>'
@@ -443,8 +498,8 @@ func tokenize(input string) []Word {
 
 			// Check for append redirection operator (>>)
 			if ch == '>' && i+1 < len(runes) && runes[i+1] == '>' {
-				flushCurrent()
-				tokens = append(tokens, Word{Text: ">>"})
+				flushToken()
+				tokens = append(tokens, newWord(">>"))
 				i++ // Skip the next > character
 				prevCh = ch
 				continue
@@ -452,19 +507,20 @@ func tokenize(input string) []Word {
 
 			// Check for single-character redirection operators: < or >
 			if ch == '<' || ch == '>' {
-				flushCurrent()
-				tokens = append(tokens, Word{Text: string(ch)})
+				flushToken()
+				tokens = append(tokens, newWord(string(ch)))
 				prevCh = ch
 				continue
 			}
 		}
 
-		current.WriteRune(ch)
+		inToken = true
+		currentFragment.WriteRune(ch)
 		prevCh = ch
 	}
 
 	// Append any remaining content as the last token
-	flushCurrent()
+	flushToken()
 
 	return tokens
 }
@@ -472,7 +528,7 @@ func tokenize(input string) []Word {
 func wordsText(words []Word) []string {
 	result := make([]string, len(words))
 	for i, word := range words {
-		result[i] = word.Text
+		result[i] = word.String()
 	}
 	return result
 }
@@ -482,23 +538,50 @@ func cloneWords(words []Word) []Word {
 		return nil
 	}
 	result := make([]Word, len(words))
-	copy(result, words)
+	for i, word := range words {
+		result[i] = cloneWord(word)
+	}
 	return result
 }
 
 func cloneWordPtr(word Word) *Word {
-	copyWord := word
+	copyWord := cloneWord(word)
 	return &copyWord
 }
 
 func isRedirectOperator(word Word) bool {
-	if word.QuoteKind != QuoteNone {
+	if word.HasQuotedFragment() {
 		return false
 	}
-	switch word.Text {
+	switch word.String() {
 	case "<", ">", ">>", "2>", "2>>", "2>&1":
 		return true
 	default:
 		return false
+	}
+}
+
+func cloneWord(word Word) Word {
+	return Word{
+		Fragments: cloneFragments(word.Fragments),
+		Explicit:  word.Explicit,
+	}
+}
+
+func cloneFragments(fragments []WordFragment) []WordFragment {
+	if len(fragments) == 0 {
+		return nil
+	}
+	result := make([]WordFragment, len(fragments))
+	copy(result, fragments)
+	return result
+}
+
+func newWord(text string) Word {
+	return Word{
+		Fragments: []WordFragment{
+			{Text: text, QuoteKind: QuoteNone},
+		},
+		Explicit: true,
 	}
 }

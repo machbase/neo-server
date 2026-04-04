@@ -725,6 +725,32 @@ func TestTokenize(t *testing.T) {
 			input:    `echo "escaped \"quote\" text"`,
 			expected: []Word{word("echo"), doubleQuoted(`escaped \"quote\" text`)},
 		},
+		{
+			name:  "mixed fragments in one word",
+			input: `echo ab"$HOME"cd`,
+			expected: []Word{
+				word("echo"),
+				fragmentedWord(
+					fragment("ab", QuoteNone),
+					fragment("$HOME", QuoteDouble),
+					fragment("cd", QuoteNone),
+				),
+			},
+		},
+		{
+			name:  "empty quoted token is preserved",
+			input: `echo "" '' a""b`,
+			expected: []Word{
+				word("echo"),
+				fragmentedWord(fragment("", QuoteDouble)),
+				fragmentedWord(fragment("", QuoteSingle)),
+				fragmentedWord(
+					fragment("a", QuoteNone),
+					fragment("", QuoteDouble),
+					fragment("b", QuoteNone),
+				),
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -904,6 +930,35 @@ func TestParsePipeline_PreservesWordMetadata(t *testing.T) {
 	}
 }
 
+func TestParsePipeline_PreservesMixedFragments(t *testing.T) {
+	result := parsePipeline(`echo ab"$HOME"cd x' y 'z > ""`)
+	expected := &Pipeline{
+		Command:     "echo",
+		CommandWord: cloneWordPtr(word("echo")),
+		Args:        []string{`ab$HOMEcd`, "x y z"},
+		ArgWords: []Word{
+			fragmentedWord(
+				fragment("ab", QuoteNone),
+				fragment("$HOME", QuoteDouble),
+				fragment("cd", QuoteNone),
+			),
+			fragmentedWord(
+				fragment("x", QuoteNone),
+				fragment(" y ", QuoteSingle),
+				fragment("z", QuoteNone),
+			),
+		},
+		Stdout: &Redirect{
+			Type:       ">",
+			Target:     "",
+			TargetWord: cloneWordPtr(fragmentedWord(fragment("", QuoteDouble))),
+		},
+	}
+	if !pipelineEqual(result, expected) {
+		t.Fatalf("parsePipeline mixed fragments = %+v, want %+v", result, expected)
+	}
+}
+
 // Helper functions for comparing structures
 
 func commandEqual(a, b *Command) bool {
@@ -978,15 +1033,29 @@ func redirectEqual(a, b *Redirect) bool {
 }
 
 func word(text string) Word {
-	return Word{Text: text, QuoteKind: QuoteNone}
+	return fragmentedWord(fragment(text, QuoteNone))
 }
 
 func singleQuoted(text string) Word {
-	return Word{Text: text, QuoteKind: QuoteSingle}
+	return fragmentedWord(fragment(text, QuoteSingle))
 }
 
 func doubleQuoted(text string) Word {
-	return Word{Text: text, QuoteKind: QuoteDouble}
+	return fragmentedWord(fragment(text, QuoteDouble))
+}
+
+func fragmentedWord(fragments ...WordFragment) Word {
+	return Word{
+		Fragments: cloneFragments(fragments),
+		Explicit:  true,
+	}
+}
+
+func fragment(text string, quote QuoteKind) WordFragment {
+	return WordFragment{
+		Text:      text,
+		QuoteKind: quote,
+	}
 }
 
 // TestParseCommand_Unicode tests parsing of Unicode characters including Korean

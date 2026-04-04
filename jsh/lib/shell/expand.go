@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+type expandedPart struct {
+	Text          string
+	GlobProtected bool
+}
+
 func (sh *Shell) expandPipeline(pipe *Pipeline) (*Pipeline, error) {
 	if sh.env == nil {
 		return nil, fmt.Errorf("shell environment is not initialized")
@@ -95,21 +100,31 @@ func (sh *Shell) expandRedirectTarget(redir *Redirect) (string, error) {
 		return "", err
 	}
 	if len(expanded) != 1 {
-		return "", fmt.Errorf("ambiguous redirect target: %s", redir.TargetWord.Text)
+		return "", fmt.Errorf("ambiguous redirect target: %s", redir.TargetWord.String())
 	}
 	return expanded[0], nil
 }
 
 func (sh *Shell) expandWord(word Word) ([]string, error) {
-	switch word.QuoteKind {
-	case QuoteSingle:
-		return []string{word.Text}, nil
-	case QuoteDouble:
-		return []string{sh.env.Expand(word.Text)}, nil
-	default:
-		expanded := sh.env.Expand(word.Text)
-		return sh.expandGlob(expanded)
+	parts := make([]expandedPart, 0, len(word.Fragments))
+	for _, fragment := range word.Fragments {
+		part := expandedPart{
+			Text:          fragment.Text,
+			GlobProtected: fragment.QuoteKind != QuoteNone,
+		}
+		switch fragment.QuoteKind {
+		case QuoteSingle:
+		case QuoteDouble, QuoteNone:
+			part.Text = sh.env.Expand(fragment.Text)
+		}
+		parts = append(parts, part)
 	}
+
+	assembled := joinExpandedParts(parts)
+	if !hasUnprotectedWildcard(parts) {
+		return []string{assembled}, nil
+	}
+	return sh.expandGlob(assembled)
 }
 
 func (sh *Shell) expandGlob(pattern string) ([]string, error) {
@@ -186,7 +201,7 @@ func clonePipelineWord(word *Word) *Word {
 	if word == nil {
 		return nil
 	}
-	copyWord := *word
+	copyWord := cloneWord(*word)
 	return &copyWord
 }
 
@@ -197,4 +212,27 @@ func cloneRedirect(redir *Redirect) *Redirect {
 	copyRedirect := *redir
 	copyRedirect.TargetWord = clonePipelineWord(redir.TargetWord)
 	return &copyRedirect
+}
+
+func joinExpandedParts(parts []expandedPart) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	for _, part := range parts {
+		builder.WriteString(part.Text)
+	}
+	return builder.String()
+}
+
+func hasUnprotectedWildcard(parts []expandedPart) bool {
+	for _, part := range parts {
+		if part.GlobProtected {
+			continue
+		}
+		if hasWildcard(part.Text) {
+			return true
+		}
+	}
+	return false
 }
