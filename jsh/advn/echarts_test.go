@@ -40,7 +40,7 @@ func TestToEChartsOption(t *testing.T) {
 		View: View{DefaultZoom: []float64{0, 100}},
 	}).Normalize()
 
-	option, err := ToEChartsOption(spec)
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{Timeformat: TimeformatRFC3339, TZ: "UTC"})
 	if err != nil {
 		t.Fatalf("ToEChartsOption() returned unexpected error: %v", err)
 	}
@@ -122,9 +122,9 @@ func TestToEChartsOptionHistogram(t *testing.T) {
 		}},
 	}).Normalize()
 
-	option, err := ToEChartsOption(spec)
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{Timeformat: TimeformatRFC3339, TZ: "UTC"})
 	if err != nil {
-		t.Fatalf("ToEChartsOption() returned unexpected error: %v", err)
+		t.Fatalf("ToEChartsOptionWithOptions() returned unexpected error: %v", err)
 	}
 	xAxis := option["xAxis"].(map[string]any)
 	if xAxis["type"] != "category" {
@@ -165,9 +165,9 @@ func TestToEChartsOptionBoxplot(t *testing.T) {
 		}},
 	}).Normalize()
 
-	option, err := ToEChartsOption(spec)
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{Timeformat: TimeformatRFC3339, TZ: "UTC"})
 	if err != nil {
-		t.Fatalf("ToEChartsOption() returned unexpected error: %v", err)
+		t.Fatalf("ToEChartsOptionWithOptions() returned unexpected error: %v", err)
 	}
 	xAxis := option["xAxis"].(map[string]any)
 	if xAxis["type"] != "category" {
@@ -223,9 +223,12 @@ func TestToEChartsOptionEventSeries(t *testing.T) {
 		},
 	}).Normalize()
 
-	option, err := ToEChartsOption(spec)
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{
+		Timeformat: TimeformatRFC3339,
+		TZ:         "UTC",
+	})
 	if err != nil {
-		t.Fatalf("ToEChartsOption() returned unexpected error: %v", err)
+		t.Fatalf("ToEChartsOptionWithOptions() returned unexpected error: %v", err)
 	}
 	seriesList := option["series"].([]map[string]any)
 	if len(seriesList) != 2 {
@@ -242,6 +245,45 @@ func TestToEChartsOptionEventSeries(t *testing.T) {
 	}
 	if seriesList[1]["markArea"] == nil {
 		t.Fatal("expected markArea on event-range series")
+	}
+}
+
+func TestToEChartsOptionTimeBucketValueUsesNamedValueField(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Domain:  Domain{Kind: DomainKindTime},
+		Series: []Series{{
+			ID:   "series-1",
+			Name: "series-1",
+			Representation: Representation{
+				Kind:   RepresentationTimeBucketValue,
+				Fields: []string{"value", "time"},
+			},
+			Data: []any{
+				[]any{42, "2026-04-03T00:00:00Z"},
+				[]any{43, "2026-04-03T00:01:00Z"},
+			},
+		}},
+	}).Normalize()
+
+	option, err := ToEChartsOptionWithOptions(spec, &EChartsOptions{
+		Timeformat: TimeformatRFC3339,
+		TZ:         "UTC",
+	})
+	if err != nil {
+		t.Fatalf("ToEChartsOptionWithOptions() returned unexpected error: %v", err)
+	}
+
+	seriesList := option["series"].([]map[string]any)
+	data := seriesList[0]["data"].([]any)
+	first := data[0].([]any)
+	second := data[1].([]any)
+
+	if first[0] != "2026-04-03T00:00:00Z" || first[1] != 42 {
+		t.Fatalf("expected first point to use named time/value fields, got %v", first)
+	}
+	if second[0] != "2026-04-03T00:01:00Z" || second[1] != 43 {
+		t.Fatalf("expected second point to use named time/value fields, got %v", second)
 	}
 }
 

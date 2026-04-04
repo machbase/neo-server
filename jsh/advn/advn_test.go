@@ -461,7 +461,28 @@ func TestParseRejectsInvalidJSONAndInvalidSpec(t *testing.T) {
 	if _, err := ParseString("not-json"); err == nil {
 		t.Fatal("expected invalid JSON error")
 	}
+	if _, err := ParseString(`{"version":1,"series":[]} trailing`); err == nil {
+		t.Fatal("expected trailing garbage error")
+	}
 	if _, err := ParseString(`{"version":1,"series":[{"id":"series-1"}]}`); err == nil {
 		t.Fatal("expected invalid spec error")
+	}
+}
+
+func TestMarshalNilSpecUsesNormalizedDefaults(t *testing.T) {
+	buf, err := Marshal(nil)
+	if err != nil {
+		t.Fatalf("Marshal(nil) returned unexpected error: %v", err)
+	}
+	if string(buf) != `{"version":1}` {
+		t.Fatalf("expected normalized default JSON, got %s", string(buf))
+	}
+
+	buf, err = MarshalIndent(nil, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(nil) returned unexpected error: %v", err)
+	}
+	if !strings.Contains(string(buf), "\"version\": 1") {
+		t.Fatalf("expected indented normalized JSON, got %s", string(buf))
 	}
 }

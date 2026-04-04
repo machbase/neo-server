@@ -23,17 +23,18 @@ func ToEChartsOptionWithOptions(spec *Spec, options *EChartsOptions) (map[string
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
-	timeOptions, err := resolveOutputTimeOptions(spec.Domain, OutputTimeOptions{})
+	outputTime := OutputTimeOptions{}
 	if options != nil {
-		timeOptions, err = resolveOutputTimeOptions(spec.Domain, OutputTimeOptions{Timeformat: options.Timeformat, TZ: options.TZ})
+		outputTime = OutputTimeOptions{Timeformat: options.Timeformat, TZ: options.TZ}
 	}
+	timeOptions, err := resolveOutputTimeOptions(spec.Domain, outputTime)
 	if err != nil {
 		return nil, err
 	}
 
 	yAxes, yAxisIndex := buildEChartsYAxes(spec)
-	seriesList := []map[string]any{}
-	legendData := []string{}
+	seriesList := make([]map[string]any, 0, len(spec.Series))
+	legendData := make([]string, 0, len(spec.Series))
 	xAxis := buildEChartsXAxis(spec, timeOptions)
 
 	for _, item := range spec.Series {
@@ -117,8 +118,8 @@ func buildEChartsXAxis(spec *Spec, timeOptions resolvedOutputTimeOptions) map[st
 }
 
 func buildEChartsYAxes(spec *Spec) ([]map[string]any, map[string]int) {
-	ordered := []Axis{}
-	indexByID := map[string]int{}
+	ordered := make([]Axis, 0, len(spec.Axes.Y)+len(spec.Series))
+	indexByID := make(map[string]int, len(spec.Axes.Y)+len(spec.Series))
 
 	addAxis := func(axis Axis) {
 		axisID := axis.ID
@@ -196,7 +197,7 @@ func buildEChartsSeries(item Series, yAxisIndex map[string]int, domain Domain, t
 		if item.Representation.Kind == RepresentationRawPoint {
 			data = selectPairs(item.Data, rawPointXIndex(item, domain), rawPointYIndex(item), domain, timeOptions)
 		} else {
-			data = selectPairs(item.Data, timeDomainXIndex(item, domain), 1, domain, timeOptions)
+			data = selectPairs(item.Data, timeDomainXIndex(item, domain), rawPointYIndex(item), domain, timeOptions)
 		}
 		seriesItem := map[string]any{
 			"type":       "line",
@@ -237,7 +238,7 @@ func buildTimeBucketBandSeries(item Series, yAxisIndex int, name string, domain 
 		return nil, fmt.Errorf("advn: time-bucket-band requires at least one of min, avg, max fields")
 	}
 
-	seriesList := []map[string]any{}
+	seriesList := make([]map[string]any, 0, 3)
 	stackName := "band:" + item.ID
 	if stackName == "band:" {
 		stackName = "band:" + name
@@ -381,8 +382,8 @@ func buildHistogramSeries(item Series, yAxisIndex int, name string) ([]map[strin
 	if countIndex < 0 {
 		countIndex = 2
 	}
-	labels := []any{}
-	counts := []any{}
+	labels := make([]any, 0, len(item.Data))
+	counts := make([]any, 0, len(item.Data))
 	for _, row := range item.Data {
 		values, ok := row.([]any)
 		if !ok || startIndex >= len(values) || endIndex >= len(values) || countIndex >= len(values) {
@@ -421,8 +422,8 @@ func buildBoxplotSeries(item Series, yAxisIndex int, name string) ([]map[string]
 	if lowIndex < 0 || q1Index < 0 || medianIndex < 0 || q3Index < 0 || highIndex < 0 {
 		return nil, fmt.Errorf("advn: boxplot requires category, low, q1, median, q3, high fields")
 	}
-	categories := []any{}
-	boxData := []any{}
+	categories := make([]any, 0, len(item.Data))
+	boxData := make([]any, 0, len(item.Data))
 	for _, row := range item.Data {
 		values, ok := row.([]any)
 		if !ok || highIndex >= len(values) {
@@ -466,7 +467,7 @@ func buildEventPointSeries(item Series, yAxisIndex int, name string, domain Doma
 	if valueIndex < 0 {
 		valueIndex = 1
 	}
-	points := []any{}
+	points := make([]any, 0, len(item.Data))
 	for _, row := range item.Data {
 		values, ok := row.([]any)
 		if !ok || timeIndex >= len(values) || valueIndex >= len(values) {
@@ -507,7 +508,7 @@ func buildEventRangeSeries(item Series, yAxisIndex int, name string, domain Doma
 	if toIndex < 0 {
 		toIndex = 1
 	}
-	areas := []any{}
+	areas := make([]any, 0, len(item.Data))
 	for _, row := range item.Data {
 		values, ok := row.([]any)
 		if !ok || fromIndex >= len(values) || toIndex >= len(values) {

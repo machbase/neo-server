@@ -23,6 +23,24 @@ const (
 	pngDefaultTheme = "mrtg"
 )
 
+var (
+	pngBasicFace        = basicfont.Face7x13
+	mrtgDefaultPNGTheme = pngTheme{
+		Background:      mustParseColor("#ffffff"),
+		OuterFrame:      mustParseColor("#8b8b8b"),
+		OuterHighlight:  mustParseColor("#d4d4d4"),
+		PlotBackground:  mustParseColor("#ffffff"),
+		PlotBorder:      mustParseColor("#000000"),
+		Grid:            mustParseColor("#000000"),
+		Text:            mustParseColor("#000000"),
+		StatsText:       mustParseColor("#4a4a4a"),
+		SeriesFill:      []color.RGBA{mustParseColor("#00d000"), mustParseColor("#0000ff"), mustParseColor("#ff8000")},
+		SeriesLine:      []color.RGBA{mustParseColor("#00a000"), mustParseColor("#0000ff"), mustParseColor("#ff0000")},
+		Annotation:      mustParseColor("#ff0000"),
+		StatsBackground: mustParseColor("#ffffff"),
+	}
+)
+
 type PNGOptions struct {
 	Scale      float64 `json:"scale,omitempty"`
 	DPI        int     `json:"dpi,omitempty"`
@@ -130,6 +148,7 @@ type pngRenderer struct {
 	face       font.Face
 	ascent     int
 	lineHeight int
+	textWidths map[string]int
 }
 
 func ToPNG(spec *Spec, svgOptions *SVGOptions, options *PNGOptions) ([]byte, error) {
@@ -284,20 +303,7 @@ func scaleSVGOptionsForPNG(options svgResolvedOptions, scale float64) svgResolve
 }
 
 func mrtgPNGTheme() pngTheme {
-	return pngTheme{
-		Background:      mustParseColor("#ffffff"),
-		OuterFrame:      mustParseColor("#8b8b8b"),
-		OuterHighlight:  mustParseColor("#d4d4d4"),
-		PlotBackground:  mustParseColor("#ffffff"),
-		PlotBorder:      mustParseColor("#000000"),
-		Grid:            mustParseColor("#000000"),
-		Text:            mustParseColor("#000000"),
-		StatsText:       mustParseColor("#4a4a4a"),
-		SeriesFill:      []color.RGBA{mustParseColor("#00d000"), mustParseColor("#0000ff"), mustParseColor("#ff8000")},
-		SeriesLine:      []color.RGBA{mustParseColor("#00a000"), mustParseColor("#0000ff"), mustParseColor("#ff0000")},
-		Annotation:      mustParseColor("#ff0000"),
-		StatsBackground: mustParseColor("#ffffff"),
-	}
+	return mrtgDefaultPNGTheme
 }
 
 func mrtgStatsHeight(options svgResolvedOptions, legendPlan pngLegendPlan) int {
@@ -362,7 +368,7 @@ func buildMRTGPNGLayout(options svgResolvedOptions, legendPlan pngLegendPlan) pn
 }
 
 func newPNGRenderer(img *image.RGBA, layout pngLayout, theme pngTheme) *pngRenderer {
-	face := basicfont.Face7x13
+	face := pngBasicFace
 	metrics := face.Metrics()
 	return &pngRenderer{
 		img:        img,
@@ -371,15 +377,30 @@ func newPNGRenderer(img *image.RGBA, layout pngLayout, theme pngTheme) *pngRende
 		face:       face,
 		ascent:     metrics.Ascent.Ceil(),
 		lineHeight: (metrics.Ascent + metrics.Descent).Ceil(),
+		textWidths: map[string]int{},
 	}
 }
 
 func resolveMRTGTimeRange(spec *Spec) (int64, int64, error) {
-	values := []int64{}
+	var start int64
+	var end int64
+	found := false
 	add := func(value any) {
 		ts, ok := parseTimeValueWithDomain(value, spec.Domain)
 		if ok {
-			values = append(values, ts.UnixNano())
+			unixNano := ts.UnixNano()
+			if !found {
+				start = unixNano
+				end = unixNano
+				found = true
+				return
+			}
+			if unixNano < start {
+				start = unixNano
+			}
+			if unixNano > end {
+				end = unixNano
+			}
 		}
 	}
 	add(spec.Domain.From)
@@ -420,17 +441,8 @@ func resolveMRTGTimeRange(spec *Spec) (int64, int64, error) {
 			add(valuesRow[xIndex])
 		}
 	}
-	if len(values) == 0 {
+	if !found {
 		return 0, 0, fmt.Errorf("advn: unable to resolve png time domain")
-	}
-	start, end := values[0], values[0]
-	for _, value := range values[1:] {
-		if value < start {
-			start = value
-		}
-		if value > end {
-			end = value
-		}
 	}
 	if start == end {
 		end = start + int64(time.Minute)
@@ -450,6 +462,7 @@ func buildMRTGSeriesData(spec *Spec, theme pngTheme) []pngSeriesData {
 			Label:        pngSeriesLabel(series),
 			FillColor:    theme.SeriesFill[minInt(seriesIndex, len(theme.SeriesFill)-1)],
 			LineColor:    theme.SeriesLine[minInt(seriesIndex, len(theme.SeriesLine)-1)],
+			Points:       make([]pngPoint, 0, len(series.Data)),
 			IsPrimary:    seriesIndex == 0,
 			IsAreaFilled: seriesIndex == 0,
 		}
@@ -621,10 +634,11 @@ func mrtgLegendRowWidth(items []pngLegendItem) int {
 		return 0
 	}
 	width := 0
+	gapWidth := measurePNGTextWidth("   ")
 	for index, item := range items {
 		width += item.Width
 		if index > 0 {
-			width += measurePNGTextWidth("   ")
+			width += gapWidth
 		}
 	}
 	return width
@@ -720,7 +734,8 @@ func buildMRTGXTimeTicks(start int64, end int64, plot pngRect, timeOptions resol
 	if first.Before(startTime) {
 		first = first.Add(step)
 	}
-	ret := []pngTick{}
+	estimatedCount := int(math.Ceil(span.Seconds()/step.Seconds())) + 1
+	ret := make([]pngTick, 0, minInt(17, maxInt(estimatedCount, 4)))
 	for current := first; !current.After(endTime); current = current.Add(step) {
 		ret = append(ret, pngTick{
 			Pos:   projectTimeToX(current.UnixNano(), start, end, plot),
@@ -1040,7 +1055,7 @@ func measurePNGTextWidth(text string) int {
 	if text == "" {
 		return 0
 	}
-	d := &font.Drawer{Face: basicfont.Face7x13}
+	d := &font.Drawer{Face: pngBasicFace}
 	return d.MeasureString(text).Ceil()
 }
 
@@ -1105,7 +1120,7 @@ func (r *pngRenderer) drawText(x int, y int, text string, fill color.RGBA, align
 		return
 	}
 	d := &font.Drawer{Dst: r.img, Src: image.NewUniform(fill), Face: r.face}
-	width := d.MeasureString(text).Ceil()
+	width := r.measureTextWidth(text)
 	switch align {
 	case "center":
 		x -= width / 2
@@ -1229,8 +1244,12 @@ func (r *pngRenderer) measureTextWidth(text string) int {
 	if text == "" {
 		return 0
 	}
-	d := &font.Drawer{Face: r.face}
-	return d.MeasureString(text).Ceil()
+	if width, ok := r.textWidths[text]; ok {
+		return width
+	}
+	width := measurePNGTextWidth(text)
+	r.textWidths[text] = width
+	return width
 }
 
 func (r *pngRenderer) measureTickLabelWidth(text string) int {

@@ -162,7 +162,7 @@ function toEChartsOption(spec, options = undefined) {
     ensureObjectInput('vizspec.toEChartsOption', spec);
     if (options !== undefined) {
         ensureObjectInput('vizspec.toEChartsOption', options);
-        return _vizspec.toEChartsOption(spec, cloneObject(options));
+        return _vizspec.toEChartsOption(spec, options);
     }
     return _vizspec.toEChartsOption(spec);
 }
@@ -171,7 +171,7 @@ function toTUIBlocks(spec, options = undefined) {
     ensureObjectInput('vizspec.toTUIBlocks', spec);
     if (options !== undefined) {
         ensureObjectInput('vizspec.toTUIBlocks', options);
-        return _vizspec.toTUIBlocks(spec, cloneObject(options));
+        return _vizspec.toTUIBlocks(spec, options);
     }
     return _vizspec.toTUIBlocks(spec);
 }
@@ -180,7 +180,7 @@ function toSparkline(spec, options = undefined) {
     ensureObjectInput('vizspec.toSparkline', spec);
     if (options !== undefined) {
         ensureObjectInput('vizspec.toSparkline', options);
-        return _vizspec.toSparkline(spec, cloneObject(options));
+        return _vizspec.toSparkline(spec, options);
     }
     return _vizspec.toSparkline(spec);
 }
@@ -189,7 +189,7 @@ function toSVG(spec, options = undefined) {
     ensureObjectInput('vizspec.toSVG', spec);
     if (options !== undefined) {
         ensureObjectInput('vizspec.toSVG', options);
-        return _vizspec.toSVG(spec, cloneObject(options));
+        return _vizspec.toSVG(spec, options);
     }
     return _vizspec.toSVG(spec);
 }
@@ -203,10 +203,10 @@ function toPNG(spec, svgOptions = undefined, pngOptions = undefined) {
         ensureObjectInput('vizspec.toPNG', pngOptions);
     }
     if (svgOptions !== undefined && pngOptions !== undefined) {
-        return _vizspec.toPNG(spec, cloneObject(svgOptions), cloneObject(pngOptions));
+        return _vizspec.toPNG(spec, svgOptions, pngOptions);
     }
     if (svgOptions !== undefined) {
-        return _vizspec.toPNG(spec, cloneObject(svgOptions));
+        return _vizspec.toPNG(spec, svgOptions);
     }
     return _vizspec.toPNG(spec);
 }
@@ -270,6 +270,19 @@ class Builder {
     constructor(init = {}) {
         ensureObjectInput('vizspec.Builder', init);
         this._spec = createSpec(init);
+        this._built = undefined;
+    }
+
+    _markDirty() {
+        this._built = undefined;
+        return this;
+    }
+
+    _getBuiltSpec() {
+        if (this._built === undefined) {
+            this._built = normalize(this._spec);
+        }
+        return this._built;
     }
 
     domain(definition = {}) {
@@ -277,7 +290,7 @@ class Builder {
             ...(this._spec.domain || {}),
             ...domain(definition),
         };
-        return this;
+        return this._markDirty();
     }
 
     setDomain(definition = {}) {
@@ -290,7 +303,7 @@ class Builder {
             ...(this._spec.axes.x || {}),
             ...axis(definition),
         };
-        return this;
+        return this._markDirty();
     }
 
     setXAxis(definition = {}) {
@@ -301,7 +314,7 @@ class Builder {
         this._spec.axes = this._spec.axes || {};
         this._spec.axes.y = this._spec.axes.y || [];
         this._spec.axes.y.push(axis(definition));
-        return this;
+        return this._markDirty();
     }
 
     addAxis(definition = {}) {
@@ -311,7 +324,7 @@ class Builder {
     addSeries(definition = {}) {
         this._spec.series = this._spec.series || [];
         this._spec.series.push(series(definition));
-        return this;
+        return this._markDirty();
     }
 
     addRawPointSeries(definition = {}) {
@@ -345,7 +358,7 @@ class Builder {
     addAnnotation(definition = {}) {
         this._spec.annotations = this._spec.annotations || [];
         this._spec.annotations.push(annotation(definition));
-        return this;
+        return this._markDirty();
     }
 
     addPointAnnotation(definition = {}) {
@@ -365,7 +378,7 @@ class Builder {
             ...(this._spec.view || {}),
             ...view(definition),
         };
-        return this;
+        return this._markDirty();
     }
 
     setView(definition = {}) {
@@ -377,7 +390,7 @@ class Builder {
             ...(this._spec.meta || {}),
             ...meta(definition),
         };
-        return this;
+        return this._markDirty();
     }
 
     setMeta(definition = {}) {
@@ -389,27 +402,27 @@ class Builder {
     }
 
     stringify() {
-        return stringify(this.build());
+        return stringify(this._getBuiltSpec());
     }
 
     toEChartsOption(options = undefined) {
-        return toEChartsOption(this.build(), options);
+        return toEChartsOption(this._getBuiltSpec(), options);
     }
 
     toTUIBlocks(options = undefined) {
-        return toTUIBlocks(this.build(), options);
+        return toTUIBlocks(this._getBuiltSpec(), options);
     }
 
     toSparkline(options = undefined) {
-        return toSparkline(this.build(), options);
+        return toSparkline(this._getBuiltSpec(), options);
     }
 
     toSVG(options = undefined) {
-        return toSVG(this.build(), options);
+        return toSVG(this._getBuiltSpec(), options);
     }
 
     toPNG(svgOptions = undefined, pngOptions = undefined) {
-        return toPNG(this.build(), svgOptions, pngOptions);
+        return toPNG(this._getBuiltSpec(), svgOptions, pngOptions);
     }
 }
 

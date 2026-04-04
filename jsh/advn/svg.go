@@ -23,6 +23,8 @@ const (
 	svgThemeText         = "#000000"
 )
 
+var svgSeriesPalette = []string{"#00a000", "#0000ff", "#ff8000", "#ff0000", "#008080", "#800080"}
+
 type SVGOptions struct {
 	Width      int    `json:"width,omitempty"`
 	Height     int    `json:"height,omitempty"`
@@ -936,7 +938,7 @@ func buildSVGXScale(spec *Spec, plot svgRect) (svgXScale, error) {
 			categories = []string{"value"}
 		}
 		scale.Categories = categories
-		scale.CategoryIx = map[string]int{}
+		scale.CategoryIx = make(map[string]int, len(categories))
 		for index, category := range categories {
 			scale.CategoryIx[category] = index
 		}
@@ -1123,8 +1125,8 @@ func svgXAxisKind(spec *Spec) string {
 }
 
 func svgCollectCategories(spec *Spec) []string {
-	values := []string{}
-	seen := map[string]struct{}{}
+	values := make([]string, 0, len(spec.Domain.Categories)+len(spec.Series))
+	seen := make(map[string]struct{}, len(spec.Domain.Categories)+len(spec.Series))
 	add := func(value string) {
 		if value == "" {
 			return
@@ -1155,10 +1157,23 @@ func svgCollectCategories(spec *Spec) []string {
 }
 
 func svgCollectXContinuousDomain(spec *Spec, isTime bool) (float64, float64, bool) {
-	values := []float64{}
+	minValue := 0.0
+	maxValue := 0.0
+	hasValue := false
 	add := func(value any) {
 		if converted, ok := svgContinuousValue(value, spec.Domain, isTime); ok {
-			values = append(values, converted)
+			if !hasValue {
+				minValue = converted
+				maxValue = converted
+				hasValue = true
+				return
+			}
+			if converted < minValue {
+				minValue = converted
+			}
+			if converted > maxValue {
+				maxValue = converted
+			}
 		}
 	}
 	if spec.Axes.X.Extent != nil {
@@ -1235,17 +1250,8 @@ func svgCollectXContinuousDomain(spec *Spec, isTime bool) (float64, float64, boo
 			}
 		}
 	}
-	if len(values) == 0 {
+	if !hasValue {
 		return 0, 0, false
-	}
-	minValue, maxValue := values[0], values[0]
-	for _, value := range values[1:] {
-		if value < minValue {
-			minValue = value
-		}
-		if value > maxValue {
-			maxValue = value
-		}
 	}
 	if minValue == maxValue {
 		if minValue == 0 {
@@ -1259,10 +1265,23 @@ func svgCollectXContinuousDomain(spec *Spec, isTime bool) (float64, float64, boo
 }
 
 func svgCollectYDomain(spec *Spec, axisID string) (float64, float64, bool) {
-	values := []float64{}
+	minValue := 0.0
+	maxValue := 0.0
+	hasValue := false
 	add := func(value any) {
 		if converted, ok := toFloat64(value); ok {
-			values = append(values, converted)
+			if !hasValue {
+				minValue = converted
+				maxValue = converted
+				hasValue = true
+				return
+			}
+			if converted < minValue {
+				minValue = converted
+			}
+			if converted > maxValue {
+				maxValue = converted
+			}
 		}
 	}
 	for _, axis := range spec.Axes.Y {
@@ -1346,17 +1365,8 @@ func svgCollectYDomain(spec *Spec, axisID string) (float64, float64, bool) {
 			add(annotation.Value)
 		}
 	}
-	if len(values) == 0 {
+	if !hasValue {
 		return 0, 0, false
-	}
-	minValue, maxValue := values[0], values[0]
-	for _, value := range values[1:] {
-		if value < minValue {
-			minValue = value
-		}
-		if value > maxValue {
-			maxValue = value
-		}
 	}
 	if minValue > 0 {
 		minValue = 0
@@ -1409,7 +1419,7 @@ type svgTick struct {
 }
 
 func svgLinePoints(series Series, domain Domain, xScale svgXScale, yScale svgYScale) []svgPoint {
-	points := []svgPoint{}
+	points := make([]svgPoint, 0, len(series.Data))
 	xIndex := rawPointXIndex(series, domain)
 	if series.Representation.Kind == RepresentationTimeBucketValue {
 		xIndex = timeDomainXIndex(series, domain)
@@ -1430,9 +1440,9 @@ func svgLinePoints(series Series, domain Domain, xScale svgXScale, yScale svgYSc
 }
 
 func svgBandPoints(series Series, domain Domain, xScale svgXScale, yScale svgYScale) ([]svgPoint, []svgPoint, []svgPoint) {
-	minPoints := []svgPoint{}
-	maxPoints := []svgPoint{}
-	avgPoints := []svgPoint{}
+	minPoints := make([]svgPoint, 0, len(series.Data))
+	maxPoints := make([]svgPoint, 0, len(series.Data))
+	avgPoints := make([]svgPoint, 0, len(series.Data))
 	timeIndex := fieldIndex(series.Representation.Fields, "time")
 	if timeIndex < 0 {
 		timeIndex = 0
@@ -1469,7 +1479,7 @@ func svgBandPoints(series Series, domain Domain, xScale svgXScale, yScale svgYSc
 }
 
 func svgHistogramBars(series Series, xScale svgXScale, yScale svgYScale) []svgRect {
-	ret := []svgRect{}
+	ret := make([]svgRect, 0, len(series.Data))
 	startIndex := fieldIndex(series.Representation.Fields, "binStart")
 	endIndex := fieldIndex(series.Representation.Fields, "binEnd")
 	countIndex := fieldIndex(series.Representation.Fields, "count")
@@ -1490,7 +1500,7 @@ func svgHistogramBars(series Series, xScale svgXScale, yScale svgYScale) []svgRe
 }
 
 func svgBoxplotShapes(series Series, xScale svgXScale, yScale svgYScale, fillColor string, strokeColor string) []string {
-	shapes := []string{}
+	shapes := make([]string, 0, len(series.Data)*5)
 	categoryIndex := fieldIndex(series.Representation.Fields, "category")
 	lowIndex := fieldIndex(series.Representation.Fields, "low")
 	q1Index := fieldIndex(series.Representation.Fields, "q1")
@@ -1547,7 +1557,7 @@ func svgBoxplotShapes(series Series, xScale svgXScale, yScale svgYScale, fillCol
 }
 
 func svgEventPoints(series Series, domain Domain, xScale svgXScale, yScale svgYScale) []svgPoint {
-	ret := []svgPoint{}
+	ret := make([]svgPoint, 0, len(series.Data))
 	timeIndex := fieldIndex(series.Representation.Fields, "time")
 	valueIndex := fieldIndex(series.Representation.Fields, "value")
 	if timeIndex < 0 {
@@ -1571,7 +1581,7 @@ func svgEventPoints(series Series, domain Domain, xScale svgXScale, yScale svgYS
 }
 
 func svgEventRangeRects(series Series, domain Domain, xScale svgXScale, plot svgRect) []svgRect {
-	ret := []svgRect{}
+	ret := make([]svgRect, 0, len(series.Data))
 	fromIndex := fieldIndex(series.Representation.Fields, "from")
 	toIndex := fieldIndex(series.Representation.Fields, "to")
 	if fromIndex < 0 {
@@ -1637,32 +1647,47 @@ func svgProject(value, minValue, maxValue, start, end float64) float64 {
 }
 
 func svgPath(points []svgPoint) string {
-	parts := make([]string, 0, len(points)*3)
-	for index, point := range points {
-		cmd := "L"
-		if index == 0 {
-			cmd = "M"
-		}
-		parts = append(parts, cmd, svgNumber(point.X), svgNumber(point.Y))
+	if len(points) == 0 {
+		return ""
 	}
-	return strings.Join(parts, " ")
+	var builder strings.Builder
+	for index, point := range points {
+		if index == 0 {
+			builder.WriteString("M ")
+		} else {
+			builder.WriteString(" L ")
+		}
+		builder.WriteString(svgNumber(point.X))
+		builder.WriteByte(' ')
+		builder.WriteString(svgNumber(point.Y))
+	}
+	return builder.String()
 }
 
 func svgClosedBandPath(minPoints []svgPoint, maxPoints []svgPoint) string {
-	parts := make([]string, 0, (len(minPoints)+len(maxPoints))*3+1)
+	if len(maxPoints) == 0 {
+		return ""
+	}
+	var builder strings.Builder
 	for index, point := range maxPoints {
-		cmd := "L"
 		if index == 0 {
-			cmd = "M"
+			builder.WriteString("M ")
+		} else {
+			builder.WriteString(" L ")
 		}
-		parts = append(parts, cmd, svgNumber(point.X), svgNumber(point.Y))
+		builder.WriteString(svgNumber(point.X))
+		builder.WriteByte(' ')
+		builder.WriteString(svgNumber(point.Y))
 	}
 	for index := len(minPoints) - 1; index >= 0; index-- {
 		point := minPoints[index]
-		parts = append(parts, "L", svgNumber(point.X), svgNumber(point.Y))
+		builder.WriteString(" L ")
+		builder.WriteString(svgNumber(point.X))
+		builder.WriteByte(' ')
+		builder.WriteString(svgNumber(point.Y))
 	}
-	parts = append(parts, "Z")
-	return strings.Join(parts, " ")
+	builder.WriteString(" Z")
+	return builder.String()
 }
 
 func svgContinuousTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgTick {
@@ -1697,7 +1722,7 @@ func svgTimeTicks(scale svgXScale, timeOptions resolvedOutputTimeOptions) []svgT
 	if start < minValue {
 		start += step
 	}
-	ticks := []svgTick{}
+	ticks := make([]svgTick, 0, 8)
 	for value := start; value <= maxValue; value += step {
 		x := svgProject(float64(value), scale.Min, scale.Max, scale.Rect.X, scale.Rect.X+scale.Rect.Width)
 		label := formatMRTGTimeTick(time.Unix(0, value).In(timeOptions.Location), spec.Format)
@@ -1787,7 +1812,7 @@ func svgCategoryTicks(scale svgXScale) []svgTick {
 	if stepIndex < 1 {
 		stepIndex = 1
 	}
-	ret := []svgTick{}
+	ret := make([]svgTick, 0, limit+1)
 	for index, label := range scale.Categories {
 		if index%stepIndex != 0 && index != count-1 {
 			continue
@@ -1829,8 +1854,7 @@ func svgSeriesColor(series Series, index int) string {
 	if color := styleString(series.Style, "color", ""); color != "" {
 		return color
 	}
-	palette := []string{"#00a000", "#0000ff", "#ff8000", "#ff0000", "#008080", "#800080"}
-	return palette[index%len(palette)]
+	return svgSeriesPalette[index%len(svgSeriesPalette)]
 }
 
 func svgLegendRowWidth(entries []svgLegendEntry, fontSize float64) float64 {

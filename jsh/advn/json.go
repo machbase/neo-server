@@ -3,6 +3,7 @@ package advn
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 )
 
 type encodedDomain struct {
@@ -146,6 +147,12 @@ func Parse(data []byte) (*Spec, error) {
 	if err := decoder.Decode(ret); err != nil {
 		return nil, err
 	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, io.ErrUnexpectedEOF
+		}
+		return nil, err
+	}
 	ret.Normalize()
 	if err := ret.Validate(); err != nil {
 		return nil, err
@@ -161,7 +168,7 @@ func Marshal(spec *Spec) ([]byte, error) {
 	if spec == nil {
 		spec = (&Spec{}).Normalize()
 	} else {
-		spec.Normalize()
+		spec = spec.Normalize()
 	}
 	if err := spec.Validate(); err != nil {
 		return nil, err
@@ -173,7 +180,7 @@ func MarshalIndent(spec *Spec, prefix, indent string) ([]byte, error) {
 	if spec == nil {
 		spec = (&Spec{}).Normalize()
 	} else {
-		spec.Normalize()
+		spec = spec.Normalize()
 	}
 	if err := spec.Validate(); err != nil {
 		return nil, err

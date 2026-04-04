@@ -87,6 +87,9 @@ Rules:
 - `timeformat=s|ms|us|ns` means time values are epoch values in that unit
 - `from`, `to`, and time-related payload fields are interpreted according to these settings
 - when omitted, adapters may use best-effort inference
+- `domain.timeformat` and `domain.tz` describe how time values are encoded in the ADVN payload
+- renderer output time formatting is an independent adapter concern and may use different options
+- adapters should preserve the instant in time while allowing output representation to change
 
 For Machbase Neo, the recommended default is:
 
