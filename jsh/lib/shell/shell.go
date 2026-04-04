@@ -101,8 +101,6 @@ func (sh *Shell) Run(env *engine.Env) int {
 			line = strings.Join(input, "")
 		}
 
-		// expand environment variables in the line
-		line = env.Expand(line)
 		if _, alive := sh.process(line); !alive {
 			return 0
 		}

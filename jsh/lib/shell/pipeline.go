@@ -16,10 +16,21 @@ func (sh *Shell) runStatement(stmt *Statement) (int, bool) {
 	if len(stmt.Pipelines) == 0 {
 		return 0, true
 	}
-	if len(stmt.Pipelines) == 1 {
-		return sh.runSinglePipeline(stmt.Pipelines[0])
+
+	expandedPipelines := make([]*Pipeline, 0, len(stmt.Pipelines))
+	for _, pipe := range stmt.Pipelines {
+		expanded, err := sh.expandPipeline(pipe)
+		if err != nil {
+			log.Println(strings.TrimPrefix(err.Error(), "Error: "))
+			return 1, true
+		}
+		expandedPipelines = append(expandedPipelines, expanded)
 	}
-	return sh.runStreamingPipeline(stmt.Pipelines), true
+
+	if len(expandedPipelines) == 1 {
+		return sh.runSinglePipeline(expandedPipelines[0])
+	}
+	return sh.runStreamingPipeline(expandedPipelines), true
 }
 
 func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {

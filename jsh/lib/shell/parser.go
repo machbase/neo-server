@@ -2,6 +2,19 @@ package shell
 
 import "strings"
 
+type QuoteKind int
+
+const (
+	QuoteNone QuoteKind = iota
+	QuoteSingle
+	QuoteDouble
+)
+
+type Word struct {
+	Text      string
+	QuoteKind QuoteKind
+}
+
 // Command represents a complete parsed shell command line that may contain
 // multiple statements connected by operators like ; or &&.
 //
@@ -33,11 +46,13 @@ type Statement struct {
 //   - Stdin: redirection from "input.txt"
 //   - Stdout: redirection to "output.txt"
 type Pipeline struct {
-	Command string    // The command name/path to execute
-	Args    []string  // Command-line arguments
-	Stdin   *Redirect // Input redirection (<), nil if not specified
-	Stdout  *Redirect // Output redirection (> or >>), nil if not specified
-	Stderr  *Redirect // Error output redirection (currently unused, reserved for future use)
+	CommandWord *Word     // Parsed command word before expansion
+	ArgWords    []Word    // Parsed argument words before expansion
+	Command     string    // The command name/path to execute
+	Args        []string  // Command-line arguments
+	Stdin       *Redirect // Input redirection (<), nil if not specified
+	Stdout      *Redirect // Output redirection (> or >>), nil if not specified
+	Stderr      *Redirect // Error output redirection (currently unused, reserved for future use)
 }
 
 // Redirect represents an I/O redirection operation, specifying the type
@@ -48,8 +63,9 @@ type Pipeline struct {
 //   - ">"  : Output redirection (write to file, overwrite)
 //   - ">>" : Output redirection (append to file)
 type Redirect struct {
-	Type   string // Redirection operator: "<", ">", or ">>"
-	Target string // Target file path or descriptor
+	Type       string // Redirection operator: "<", ">", or ">>"
+	Target     string // Target file path or descriptor
+	TargetWord *Word  // Parsed redirect target before expansion
 }
 
 // parseCommand parses a complete command string into a structured Command object.
@@ -264,7 +280,8 @@ func splitPipes(input string) []string {
 // Returns a Pipeline structure. If input is empty, returns a Pipeline with empty command.
 func parsePipeline(input string) *Pipeline {
 	pipeline := &Pipeline{
-		Args: []string{},
+		ArgWords: []Word{},
+		Args:     []string{},
 	}
 
 	input = strings.TrimSpace(input)
@@ -275,24 +292,26 @@ func parsePipeline(input string) *Pipeline {
 	// Tokenize the input, which separates operators and handles quoted strings
 	tokens := tokenize(input)
 
-	var cmdTokens []string
+	var cmdTokens []Word
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
 
-		if token == "2>&1" {
-			pipeline.Stderr = &Redirect{Type: token, Target: "1"}
+		if isRedirectOperator(token) && token.Text == "2>&1" {
+			pipeline.Stderr = &Redirect{Type: token.Text, Target: "1"}
 			continue
 		}
 
 		// Check for redirection operators and extract their targets
-		if token == "<" || token == ">" || token == ">>" || token == "2>" || token == "2>>" {
+		if isRedirectOperator(token) && (token.Text == "<" || token.Text == ">" || token.Text == ">>" || token.Text == "2>" || token.Text == "2>>") {
 			if i+1 < len(tokens) {
+				target := tokens[i+1]
 				redirect := &Redirect{
-					Type:   token,
-					Target: tokens[i+1],
+					Type:       token.Text,
+					Target:     target.Text,
+					TargetWord: cloneWordPtr(target),
 				}
 
-				switch token {
+				switch token.Text {
 				case "<":
 					pipeline.Stdin = redirect
 				case ">", ">>":
@@ -312,9 +331,11 @@ func parsePipeline(input string) *Pipeline {
 
 	// First token is the command name, remaining tokens are arguments
 	if len(cmdTokens) > 0 {
-		pipeline.Command = cmdTokens[0]
+		pipeline.CommandWord = cloneWordPtr(cmdTokens[0])
+		pipeline.Command = cmdTokens[0].Text
 		if len(cmdTokens) > 1 {
-			pipeline.Args = cmdTokens[1:]
+			pipeline.ArgWords = cloneWords(cmdTokens[1:])
+			pipeline.Args = wordsText(cmdTokens[1:])
 		}
 	}
 
@@ -339,12 +360,25 @@ func parsePipeline(input string) *Pipeline {
 //   - "cmd   arg1    arg2" → ["cmd", "arg1", "arg2"]
 //
 // Returns a slice of token strings. Quote characters are not included in the tokens.
-func tokenize(input string) []string {
-	var tokens []string
+func tokenize(input string) []Word {
+	var tokens []Word
 	var current strings.Builder
 	inQuote := false
 	quoteChar := rune(0)
+	currentQuote := QuoteNone
 	var prevCh rune
+
+	flushCurrent := func() {
+		if current.Len() == 0 {
+			return
+		}
+		tokens = append(tokens, Word{
+			Text:      current.String(),
+			QuoteKind: currentQuote,
+		})
+		current.Reset()
+		currentQuote = QuoteNone
+	}
 
 	runes := []rune(input)
 	for i := 0; i < len(runes); i++ {
@@ -358,6 +392,13 @@ func tokenize(input string) []string {
 				// Starting a quote - exclude this character
 				inQuote = true
 				quoteChar = ch
+				if current.Len() == 0 {
+					if ch == '\'' {
+						currentQuote = QuoteSingle
+					} else {
+						currentQuote = QuoteDouble
+					}
+				}
 				prevCh = ch
 				continue
 			} else if ch == quoteChar {
@@ -372,10 +413,7 @@ func tokenize(input string) []string {
 
 		// Whitespace acts as token separator only outside quoted strings
 		if !inQuote && (ch == ' ' || ch == '\t') {
-			if current.Len() > 0 {
-				tokens = append(tokens, current.String())
-				current.Reset()
-			}
+			flushCurrent()
 			prevCh = ch
 			continue
 		}
@@ -383,26 +421,20 @@ func tokenize(input string) []string {
 		// Extract redirection operators as separate tokens when outside quotes
 		if !inQuote {
 			if ch == '2' && i+3 < len(runes) && runes[i+1] == '>' && runes[i+2] == '&' && runes[i+3] == '1' {
-				if current.Len() > 0 {
-					tokens = append(tokens, current.String())
-					current.Reset()
-				}
-				tokens = append(tokens, "2>&1")
+				flushCurrent()
+				tokens = append(tokens, Word{Text: "2>&1"})
 				i += 3
 				prevCh = '1'
 				continue
 			}
 
 			if ch == '2' && i+1 < len(runes) && runes[i+1] == '>' {
-				if current.Len() > 0 {
-					tokens = append(tokens, current.String())
-					current.Reset()
-				}
+				flushCurrent()
 				if i+2 < len(runes) && runes[i+2] == '>' {
-					tokens = append(tokens, "2>>")
+					tokens = append(tokens, Word{Text: "2>>"})
 					i += 2
 				} else {
-					tokens = append(tokens, "2>")
+					tokens = append(tokens, Word{Text: "2>"})
 					i++
 				}
 				prevCh = '>'
@@ -411,11 +443,8 @@ func tokenize(input string) []string {
 
 			// Check for append redirection operator (>>)
 			if ch == '>' && i+1 < len(runes) && runes[i+1] == '>' {
-				if current.Len() > 0 {
-					tokens = append(tokens, current.String())
-					current.Reset()
-				}
-				tokens = append(tokens, ">>")
+				flushCurrent()
+				tokens = append(tokens, Word{Text: ">>"})
 				i++ // Skip the next > character
 				prevCh = ch
 				continue
@@ -423,11 +452,8 @@ func tokenize(input string) []string {
 
 			// Check for single-character redirection operators: < or >
 			if ch == '<' || ch == '>' {
-				if current.Len() > 0 {
-					tokens = append(tokens, current.String())
-					current.Reset()
-				}
-				tokens = append(tokens, string(ch))
+				flushCurrent()
+				tokens = append(tokens, Word{Text: string(ch)})
 				prevCh = ch
 				continue
 			}
@@ -438,9 +464,41 @@ func tokenize(input string) []string {
 	}
 
 	// Append any remaining content as the last token
-	if current.Len() > 0 {
-		tokens = append(tokens, current.String())
-	}
+	flushCurrent()
 
 	return tokens
+}
+
+func wordsText(words []Word) []string {
+	result := make([]string, len(words))
+	for i, word := range words {
+		result[i] = word.Text
+	}
+	return result
+}
+
+func cloneWords(words []Word) []Word {
+	if len(words) == 0 {
+		return nil
+	}
+	result := make([]Word, len(words))
+	copy(result, words)
+	return result
+}
+
+func cloneWordPtr(word Word) *Word {
+	copyWord := word
+	return &copyWord
+}
+
+func isRedirectOperator(word Word) bool {
+	if word.QuoteKind != QuoteNone {
+		return false
+	}
+	switch word.Text {
+	case "<", ">", ">>", "2>", "2>>", "2>&1":
+		return true
+	default:
+		return false
+	}
 }

@@ -608,122 +608,122 @@ func TestTokenize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []string
+		expected []Word
 	}{
 		{
 			name:     "simple tokens",
 			input:    "echo hello world",
-			expected: []string{"echo", "hello", "world"},
+			expected: []Word{word("echo"), word("hello"), word("world")},
 		},
 		{
 			name:     "quoted string",
 			input:    `echo "hello world"`,
-			expected: []string{"echo", "hello world"},
+			expected: []Word{word("echo"), doubleQuoted("hello world")},
 		},
 		{
 			name:     "single quoted",
 			input:    `echo 'hello world'`,
-			expected: []string{"echo", "hello world"},
+			expected: []Word{word("echo"), singleQuoted("hello world")},
 		},
 		{
 			name:     "output redirection",
 			input:    "echo test > file.txt",
-			expected: []string{"echo", "test", ">", "file.txt"},
+			expected: []Word{word("echo"), word("test"), word(">"), word("file.txt")},
 		},
 		{
 			name:     "append redirection",
 			input:    "echo test >> file.txt",
-			expected: []string{"echo", "test", ">>", "file.txt"},
+			expected: []Word{word("echo"), word("test"), word(">>"), word("file.txt")},
 		},
 		{
 			name:     "input redirection",
 			input:    "cat < file.txt",
-			expected: []string{"cat", "<", "file.txt"},
+			expected: []Word{word("cat"), word("<"), word("file.txt")},
 		},
 		{
 			name:     "mixed quotes and operators",
 			input:    `sort "data file.txt" > output.txt`,
-			expected: []string{"sort", "data file.txt", ">", "output.txt"},
+			expected: []Word{word("sort"), doubleQuoted("data file.txt"), word(">"), word("output.txt")},
 		},
 		{
 			name:     "multiple spaces",
 			input:    "echo    hello     world",
-			expected: []string{"echo", "hello", "world"},
+			expected: []Word{word("echo"), word("hello"), word("world")},
 		},
 		{
 			name:     "nested single quote in double quotes",
 			input:    `cmd "hello 'hi'"`,
-			expected: []string{"cmd", "hello 'hi'"},
+			expected: []Word{word("cmd"), doubleQuoted("hello 'hi'")},
 		},
 		{
 			name:     "nested double quote in single quotes",
 			input:    `cmd 'hello "hi"'`,
-			expected: []string{"cmd", `hello "hi"`},
+			expected: []Word{word("cmd"), singleQuoted(`hello "hi"`)},
 		},
 		{
 			name:     "multiple nested quotes",
 			input:    `echo "say 'hello' and 'world'"`,
-			expected: []string{"echo", "say 'hello' and 'world'"},
+			expected: []Word{word("echo"), doubleQuoted("say 'hello' and 'world'")},
 		},
 		{
 			name:     "nested quotes with redirection",
 			input:    `echo "test 'value'" > file.txt`,
-			expected: []string{"echo", "test 'value'", ">", "file.txt"},
+			expected: []Word{word("echo"), doubleQuoted("test 'value'"), word(">"), word("file.txt")},
 		},
 		{
 			name:     "stderr redirection",
 			input:    "echo test 2> file.txt",
-			expected: []string{"echo", "test", "2>", "file.txt"},
+			expected: []Word{word("echo"), word("test"), word("2>"), word("file.txt")},
 		},
 		{
 			name:     "stderr append redirection",
 			input:    "echo test 2>> file.txt",
-			expected: []string{"echo", "test", "2>>", "file.txt"},
+			expected: []Word{word("echo"), word("test"), word("2>>"), word("file.txt")},
 		},
 		{
 			name:     "stderr merge redirection",
 			input:    "echo test 2>&1",
-			expected: []string{"echo", "test", "2>&1"},
+			expected: []Word{word("echo"), word("test"), word("2>&1")},
 		},
 		{
 			name:     "tab separators",
 			input:    "echo\thello\tworld",
-			expected: []string{"echo", "hello", "world"},
+			expected: []Word{word("echo"), word("hello"), word("world")},
 		},
 		{
 			name:     "no space output redirection",
 			input:    "echo hello>file.txt",
-			expected: []string{"echo", "hello", ">", "file.txt"},
+			expected: []Word{word("echo"), word("hello"), word(">"), word("file.txt")},
 		},
 		{
 			name:     "no space input redirection",
 			input:    "cat<input.txt",
-			expected: []string{"cat", "<", "input.txt"},
+			expected: []Word{word("cat"), word("<"), word("input.txt")},
 		},
 		{
 			name:     "no space stderr append redirection",
 			input:    "echo test2>>error.log",
-			expected: []string{"echo", "test", "2>>", "error.log"},
+			expected: []Word{word("echo"), word("test"), word("2>>"), word("error.log")},
 		},
 		{
 			name:     "standalone stderr merge token",
 			input:    "2>&1",
-			expected: []string{"2>&1"},
+			expected: []Word{word("2>&1")},
 		},
 		{
 			name:     "standalone stderr append token",
 			input:    "2>> error.log",
-			expected: []string{"2>>", "error.log"},
+			expected: []Word{word("2>>"), word("error.log")},
 		},
 		{
 			name:     "standalone output redirection token",
 			input:    "> output.txt",
-			expected: []string{">", "output.txt"},
+			expected: []Word{word(">"), word("output.txt")},
 		},
 		{
 			name:     "escaped quote inside double quotes",
 			input:    `echo "escaped \"quote\" text"`,
-			expected: []string{"echo", `escaped \"quote\" text`},
+			expected: []Word{word("echo"), doubleQuoted(`escaped \"quote\" text`)},
 		},
 	}
 
@@ -882,6 +882,28 @@ func TestParsePipeline(t *testing.T) {
 	}
 }
 
+func TestParsePipeline_PreservesWordMetadata(t *testing.T) {
+	result := parsePipeline(`echo "$HOME" '$USER' plain*.txt > "out file.txt"`)
+	expected := &Pipeline{
+		Command:     "echo",
+		CommandWord: cloneWordPtr(word("echo")),
+		Args:        []string{"$HOME", "$USER", "plain*.txt"},
+		ArgWords: []Word{
+			doubleQuoted("$HOME"),
+			singleQuoted("$USER"),
+			word("plain*.txt"),
+		},
+		Stdout: &Redirect{
+			Type:       ">",
+			Target:     "out file.txt",
+			TargetWord: cloneWordPtr(doubleQuoted("out file.txt")),
+		},
+	}
+	if !pipelineEqual(result, expected) {
+		t.Fatalf("parsePipeline metadata = %+v, want %+v", result, expected)
+	}
+}
+
 // Helper functions for comparing structures
 
 func commandEqual(a, b *Command) bool {
@@ -930,6 +952,12 @@ func pipelineEqual(a, b *Pipeline) bool {
 	if !redirectEqual(a.Stderr, b.Stderr) {
 		return false
 	}
+	if b.CommandWord != nil && !reflect.DeepEqual(a.CommandWord, b.CommandWord) {
+		return false
+	}
+	if len(b.ArgWords) > 0 && !reflect.DeepEqual(a.ArgWords, b.ArgWords) {
+		return false
+	}
 	return true
 }
 
@@ -940,7 +968,25 @@ func redirectEqual(a, b *Redirect) bool {
 	if a == nil || b == nil {
 		return false
 	}
-	return a.Type == b.Type && a.Target == b.Target
+	if a.Type != b.Type || a.Target != b.Target {
+		return false
+	}
+	if b.TargetWord != nil && !reflect.DeepEqual(a.TargetWord, b.TargetWord) {
+		return false
+	}
+	return true
+}
+
+func word(text string) Word {
+	return Word{Text: text, QuoteKind: QuoteNone}
+}
+
+func singleQuoted(text string) Word {
+	return Word{Text: text, QuoteKind: QuoteSingle}
+}
+
+func doubleQuoted(text string) Word {
+	return Word{Text: text, QuoteKind: QuoteDouble}
 }
 
 // TestParseCommand_Unicode tests parsing of Unicode characters including Korean

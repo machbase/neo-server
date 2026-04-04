@@ -402,6 +402,90 @@ func TestProcessSetenvAndEnv(t *testing.T) {
 	}
 }
 
+func TestProcessWordExpansion(t *testing.T) {
+	tests := []struct {
+		name  string
+		line  string
+		want  string
+		exit  int
+		alive bool
+	}{
+		{
+			name:  "unquoted env expands",
+			line:  "echo $HOME",
+			want:  "/work",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "single quoted env stays literal",
+			line:  "echo '$HOME'",
+			want:  "$HOME",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "double quoted env expands",
+			line:  "echo \"$HOME\"",
+			want:  "/work",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "unquoted glob expands",
+			line:  "echo *.txt",
+			want:  "sample-lines.txt",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "single quoted glob stays literal",
+			line:  "echo '*.txt'",
+			want:  "*.txt",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "double quoted glob stays literal",
+			line:  "echo \"*.txt\"",
+			want:  "*.txt",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "env expansion can feed glob",
+			line:  "setenv PATTERN *.txt && echo $PATTERN",
+			want:  "sample-lines.txt",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "unmatched glob stays literal",
+			line:  "echo missing*.txt",
+			want:  "missing*.txt",
+			exit:  0,
+			alive: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, output := newTestShell(t)
+			exitCode, alive := sh.process(tc.line)
+			if exitCode != tc.exit {
+				t.Fatalf("process(%q) exitCode = %d, want %d", tc.line, exitCode, tc.exit)
+			}
+			if alive != tc.alive {
+				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
+			}
+			got := strings.TrimSpace(output.String())
+			if got != tc.want {
+				t.Fatalf("process(%q) output = %q, want %q", tc.line, got, tc.want)
+			}
+		})
+	}
+}
+
 func newTestShell(t *testing.T) (*Shell, *bytes.Buffer) {
 	t.Helper()
 	fileSystem := engine.NewFS()
