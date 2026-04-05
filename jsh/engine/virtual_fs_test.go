@@ -115,6 +115,67 @@ func TestVirtualFS_RemoveFileAndTree(t *testing.T) {
 	}
 }
 
+func TestVirtualFS_WriteAppendMkdirAndRename(t *testing.T) {
+	vfs := NewVirtualFS()
+	must := func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	must(vfs.Mkdir("workspace/cache"))
+	if _, err := fs.Stat(vfs, "workspace/cache"); err != nil {
+		t.Fatalf("mkdir should create explicit directory: %v", err)
+	}
+
+	must(vfs.WriteFile("workspace/cache/data.txt", []byte("neo")))
+	must(vfs.AppendFile("workspace/cache/data.txt", []byte("-server")))
+
+	data, err := fs.ReadFile(vfs, "workspace/cache/data.txt")
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if string(data) != "neo-server" {
+		t.Fatalf("unexpected content: %q", string(data))
+	}
+
+	must(vfs.Mkdir("workspace/archive"))
+	must(vfs.Rename("workspace/cache", "workspace/archive/cache"))
+
+	if _, err := fs.Stat(vfs, "workspace/cache/data.txt"); err == nil {
+		t.Fatalf("old path should not exist after rename")
+	}
+	renamed, err := fs.ReadFile(vfs, "workspace/archive/cache/data.txt")
+	if err != nil {
+		t.Fatalf("renamed file should exist: %v", err)
+	}
+	if string(renamed) != "neo-server" {
+		t.Fatalf("unexpected renamed content: %q", string(renamed))
+	}
+
+	entries, err := fs.ReadDir(vfs, "workspace/archive")
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "cache" || !entries[0].IsDir() {
+		t.Fatalf("unexpected archive entries: %#v", entries)
+	}
+}
+
+func TestVirtualFS_EmptyDirPersists(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.Mkdir("empty/child"); err != nil {
+		t.Fatalf("Mkdir failed: %v", err)
+	}
+	entries, err := fs.ReadDir(vfs, "empty")
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "child" || !entries[0].IsDir() {
+		t.Fatalf("unexpected entries for explicit empty directory: %#v", entries)
+	}
+}
+
 func TestVirtualFS_InvalidCreate(t *testing.T) {
 	vfs := NewVirtualFS()
 

@@ -1,9 +1,11 @@
 package service
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -550,6 +552,316 @@ func TestControllerJSONRPC(t *testing.T) {
 	}
 }
 
+func TestControllerSharedFSJSONRPC(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	seedDir := filepath.Join(backendDir, "seed")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(seedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(seed) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(seedDir, "hello.txt"), []byte("persisted"), 0o644); err != nil {
+		t.Fatalf("WriteFile(seed) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	var seeded SharedReadFileResult
+	callControllerRPC(t, ctl.Address(), 100, "fs.readFile", map[string]any{"path": "/seed/hello.txt"}, &seeded)
+	seededBytes, err := base64.StdEncoding.DecodeString(seeded.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(seed) error: %v", err)
+	}
+	if string(seededBytes) != "persisted" {
+		t.Fatalf("seeded content=%q, want %q", string(seededBytes), "persisted")
+	}
+
+	var dirInfo SharedFileInfoSnapshot
+	callControllerRPC(t, ctl.Address(), 101, "fs.mkdir", map[string]any{"path": "/cache"}, &dirInfo)
+	if !dirInfo.IsDir || dirInfo.Path != "/cache" {
+		t.Fatalf("fs.mkdir result=%+v", dirInfo)
+	}
+
+	payload := base64.StdEncoding.EncodeToString([]byte("alpha-beta"))
+	var fileInfo SharedFileInfoSnapshot
+	callControllerRPC(t, ctl.Address(), 102, "fs.writeFile", map[string]any{"path": "/cache/data.txt", "data": payload}, &fileInfo)
+	if fileInfo.IsDir || fileInfo.Path != "/cache/data.txt" {
+		t.Fatalf("fs.writeFile result=%+v", fileInfo)
+	}
+
+	var entries []SharedFileInfoSnapshot
+	callControllerRPC(t, ctl.Address(), 103, "fs.readDir", map[string]any{"path": "/cache"}, &entries)
+	if len(entries) != 1 || entries[0].Name != "data.txt" {
+		t.Fatalf("fs.readDir entries=%+v, want data.txt", entries)
+	}
+
+	callControllerRPC(t, ctl.Address(), 104, "fs.rename", map[string]any{"old_path": "/cache", "new_path": "/archive"}, &dirInfo)
+	if dirInfo.Path != "/archive" || !dirInfo.IsDir {
+		t.Fatalf("fs.rename result=%+v", dirInfo)
+	}
+
+	var renamed SharedReadFileResult
+	callControllerRPC(t, ctl.Address(), 105, "fs.readFile", map[string]any{"path": "/archive/data.txt"}, &renamed)
+	renamedBytes, err := base64.StdEncoding.DecodeString(renamed.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(renamed) error: %v", err)
+	}
+	if string(renamedBytes) != "alpha-beta" {
+		t.Fatalf("renamed content=%q, want %q", string(renamedBytes), "alpha-beta")
+	}
+
+	var removed bool
+	callControllerRPC(t, ctl.Address(), 106, "fs.remove", map[string]any{"path": "/archive/data.txt"}, &removed)
+	if !removed {
+		t.Fatal("fs.remove result=false, want true")
+	}
+	if _, err := os.Stat(filepath.Join(backendDir, "archive", "data.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("backend archive/data.txt err=%v, want not exist", err)
+	}
+}
+
+func TestControllerSharedFSBackendHydratesAfterRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+
+	newController := func() *Controller {
+		ctl, err := NewController(&ControllerConfig{
+			ConfigDir: "/work/services",
+			SharedFS: ControllerSharedFSConfig{
+				BackendDir: "/work/shared-backend",
+			},
+			Mounts: []engine.FSTab{
+				{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewController() error: %v", err)
+		}
+		if err := ctl.Start(nil); err != nil {
+			t.Fatalf("Start() error: %v", err)
+		}
+		return ctl
+	}
+
+	ctl := newController()
+	payload := base64.StdEncoding.EncodeToString([]byte("restart-ok"))
+	var fileInfo SharedFileInfoSnapshot
+	callControllerRPC(t, ctl.Address(), 201, "fs.writeFile", map[string]any{"path": "/notes/todo.txt", "data": payload}, &fileInfo)
+	ctl.Stop(nil)
+
+	ctl = newController()
+	defer ctl.Stop(nil)
+
+	var fileResult SharedReadFileResult
+	callControllerRPC(t, ctl.Address(), 202, "fs.readFile", map[string]any{"path": "/notes/todo.txt"}, &fileResult)
+	decoded, err := base64.StdEncoding.DecodeString(fileResult.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(restart) error: %v", err)
+	}
+	if string(decoded) != "restart-ok" {
+		t.Fatalf("restart content=%q, want %q", string(decoded), "restart-ok")
+	}
+}
+
+func TestControllerSharedFDWriteConflict(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.sharedWriteFile("/conflict.txt", []byte("seed")); err != nil {
+		t.Fatalf("sharedWriteFile(seed) error: %v", err)
+	}
+
+	fd1, err := ctl.sharedOpenFD("/conflict.txt", os.O_RDWR, 0, "")
+	if err != nil {
+		t.Fatalf("sharedOpenFD(fd1) error: %v", err)
+	}
+	fd2, err := ctl.sharedOpenFD("/conflict.txt", os.O_RDWR, 0, "")
+	if err != nil {
+		t.Fatalf("sharedOpenFD(fd2) error: %v", err)
+	}
+
+	if _, err := ctl.sharedWriteFD(fd1.FD, []byte("lock")); err != nil {
+		t.Fatalf("sharedWriteFD(fd1) error: %v", err)
+	}
+	if err := ctl.sharedFsyncFD(fd1.FD); err != nil {
+		t.Fatalf("sharedFsyncFD(fd1) error: %v", err)
+	}
+
+	if _, err := ctl.sharedWriteFD(fd2.FD, []byte("race")); err != nil {
+		t.Fatalf("sharedWriteFD(fd2) error: %v", err)
+	}
+	if err := ctl.sharedFsyncFD(fd2.FD); err == nil || !strings.Contains(err.Error(), "changed while descriptor was open") {
+		t.Fatalf("sharedFsyncFD(fd2) error=%v, want write conflict", err)
+	}
+
+	result, err := ctl.sharedReadFile("/conflict.txt")
+	if err != nil {
+		t.Fatalf("sharedReadFile(conflict) error: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(result.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(conflict) error: %v", err)
+	}
+	if string(decoded) != "lock" {
+		t.Fatalf("conflict content=%q, want %q", string(decoded), "lock")
+	}
+	if _, rpcErr := ctl.dispatchRPC("fs.fsync", json.RawMessage(fmt.Sprintf(`{"fd":%d}`, fd2.FD))); rpcErr == nil || rpcErr.Code != jsonRPCConflict {
+		t.Fatalf("dispatchRPC(fs.fsync) rpcErr=%+v, want conflict code", rpcErr)
+	}
+}
+
+func TestControllerSharedFDAppendNoConflict(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.sharedWriteFile("/append.txt", []byte("seed")); err != nil {
+		t.Fatalf("sharedWriteFile(seed) error: %v", err)
+	}
+
+	fd1, err := ctl.sharedOpenFD("/append.txt", os.O_WRONLY|os.O_APPEND, 0, "")
+	if err != nil {
+		t.Fatalf("sharedOpenFD(fd1) error: %v", err)
+	}
+	fd2, err := ctl.sharedOpenFD("/append.txt", os.O_WRONLY|os.O_APPEND, 0, "")
+	if err != nil {
+		t.Fatalf("sharedOpenFD(fd2) error: %v", err)
+	}
+
+	if _, err := ctl.sharedWriteFD(fd1.FD, []byte("-one")); err != nil {
+		t.Fatalf("sharedWriteFD(fd1) error: %v", err)
+	}
+	if err := ctl.sharedFsyncFD(fd1.FD); err != nil {
+		t.Fatalf("sharedFsyncFD(fd1) error: %v", err)
+	}
+
+	if _, err := ctl.sharedWriteFD(fd2.FD, []byte("-two")); err != nil {
+		t.Fatalf("sharedWriteFD(fd2) error: %v", err)
+	}
+	if err := ctl.sharedFsyncFD(fd2.FD); err != nil {
+		t.Fatalf("sharedFsyncFD(fd2) error: %v", err)
+	}
+
+	result, err := ctl.sharedReadFile("/append.txt")
+	if err != nil {
+		t.Fatalf("sharedReadFile(append) error: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(result.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(append) error: %v", err)
+	}
+	if string(decoded) != "seed-one-two" {
+		t.Fatalf("append content=%q, want %q", string(decoded), "seed-one-two")
+	}
+	if _, rpcErr := ctl.dispatchRPC("fs.fsync", json.RawMessage(fmt.Sprintf(`{"fd":%d}`, fd2.FD))); rpcErr != nil {
+		t.Fatalf("dispatchRPC(fs.fsync) rpcErr=%+v, want nil", rpcErr)
+	}
+}
+
+func TestControllerSharedFDCleanupByOwner(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.sharedWriteFile("/cleanup.txt", []byte("seed")); err != nil {
+		t.Fatalf("sharedWriteFile(seed) error: %v", err)
+	}
+
+	ownedFD, err := ctl.sharedOpenFD("/cleanup.txt", os.O_RDWR, 0, "svc-a")
+	if err != nil {
+		t.Fatalf("sharedOpenFD(owned) error: %v", err)
+	}
+	otherFD, err := ctl.sharedOpenFD("/cleanup.txt", os.O_RDWR, 0, "svc-b")
+	if err != nil {
+		t.Fatalf("sharedOpenFD(other) error: %v", err)
+	}
+	if _, err := ctl.sharedWriteFD(ownedFD.FD, []byte("dirty")); err != nil {
+		t.Fatalf("sharedWriteFD(owned) error: %v", err)
+	}
+
+	ctl.cleanupSharedFDsByOwner("svc-a")
+
+	if _, err := ctl.lookupSharedFDRLocked(ownedFD.FD); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("lookupSharedFDRLocked(owned) error=%v, want fs.ErrInvalid", err)
+	}
+	if _, err := ctl.lookupSharedFDRLocked(otherFD.FD); err != nil {
+		t.Fatalf("lookupSharedFDRLocked(other) error: %v", err)
+	}
+
+	result, err := ctl.sharedReadFile("/cleanup.txt")
+	if err != nil {
+		t.Fatalf("sharedReadFile(cleanup) error: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(result.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(cleanup) error: %v", err)
+	}
+	if string(decoded) != "seed" {
+		t.Fatalf("cleanup content=%q, want %q", string(decoded), "seed")
+	}
+	if err := ctl.sharedCloseFD(otherFD.FD); err != nil {
+		t.Fatalf("sharedCloseFD(other) error: %v", err)
+	}
+	if len(ctl.sharedFDs) != 0 {
+		t.Fatalf("sharedFDs len=%d, want 0", len(ctl.sharedFDs))
+	}
+}
+
 func callControllerRPC(t *testing.T, address string, id int, method string, params any, out any) {
 	t.Helper()
 
@@ -662,6 +974,388 @@ func TestServices(t *testing.T) {
 		} else {
 			time.Sleep(1 * time.Millisecond)
 		}
+	}
+}
+
+func TestControllerLaunchedServiceAutoMountsSharedFS(t *testing.T) {
+	var jshBinPath string
+	tmpBinDir := os.TempDir()
+	jshBinPath = filepath.Join(tmpBinDir, "jsh-shared")
+	args := []string{"build", "-o"}
+	if runtime.GOOS == "windows" {
+		jshBinPath += ".exe"
+	}
+	args = append(args, jshBinPath, "..")
+	cmd := exec.Command("go", args...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build jsh binary for shared fs test: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(backend) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backendDir, "seed.txt"), []byte("seed-from-parent"), 0o644); err != nil {
+		t.Fatalf("WriteFile(seed) error: %v", err)
+	}
+	scriptPath := filepath.Join(tmpDir, "shared-check.js")
+	script := "const fs = require('fs');\n" +
+		"const readFD = fs.openSync('/mnt/shared/seed.txt', 'r');\n" +
+		"const readBuf = new Uint8Array(64);\n" +
+		"const readN = fs.readSync(readFD, readBuf, 0, readBuf.length);\n" +
+		"fs.closeSync(readFD);\n" +
+		"let seed = '';\n" +
+		"for (let i = 0; i < readN; i++) { seed += String.fromCharCode(readBuf[i]); }\n" +
+		"console.println('shared.seed', seed);\n" +
+		"const writeFD = fs.openSync('/mnt/shared/from-child.txt', 'w');\n" +
+		"fs.writeSync(writeFD, 'child-wrote-this');\n" +
+		"fs.fchmodSync(writeFD, 0o600);\n" +
+		"fs.fchownSync(writeFD, 1000, 1000);\n" +
+		"fs.closeSync(writeFD);\n" +
+		"fs.chmodSync('/mnt/shared/from-child.txt', 0o640);\n" +
+		"fs.chownSync('/mnt/shared/from-child.txt', 1000, 1000);\n" +
+		"console.println('shared.done', fs.readFileSync('/mnt/shared/from-child.txt'));\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		t.Fatalf("WriteFile(script) error: %v", err)
+	}
+	config := Config{Name: "shared-check", Enable: true, Executable: "/work/shared-check.js"}
+	configBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(config) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(servicesDir, "shared-check.json"), configBytes, 0o644); err != nil {
+		t.Fatalf("WriteFile(config) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{jshBinPath, "-v", fmt.Sprintf("/work=%s", tmpDir)},
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+			MountPoint: "/mnt/shared",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		svc := ctl.StatusOf("shared-check")
+		if svc != nil && svc.Status == ServiceStatusStopped {
+			lines := svc.outputSnapshot()
+			if len(lines) != 2 {
+				t.Fatalf("output lines=%v, want 2 lines", lines)
+			}
+			if lines[0] != "shared.seed seed-from-parent" {
+				t.Fatalf("first output=%q, want %q", lines[0], "shared.seed seed-from-parent")
+			}
+			if lines[1] != "shared.done child-wrote-this" {
+				t.Fatalf("second output=%q, want %q", lines[1], "shared.done child-wrote-this")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for child service to stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	var childFile SharedReadFileResult
+	callControllerRPC(t, ctl.Address(), 301, "fs.readFile", map[string]any{"path": "/from-child.txt"}, &childFile)
+	decoded, err := base64.StdEncoding.DecodeString(childFile.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(child file) error: %v", err)
+	}
+	if string(decoded) != "child-wrote-this" {
+		t.Fatalf("shared file content=%q, want %q", string(decoded), "child-wrote-this")
+	}
+	var childStat SharedFileInfoSnapshot
+	callControllerRPC(t, ctl.Address(), 302, "fs.stat", map[string]any{"path": "/from-child.txt"}, &childStat)
+	if fs.FileMode(childStat.Mode).Perm() != 0o640 {
+		t.Fatalf("shared file mode=%v, want 0640", fs.FileMode(childStat.Mode))
+	}
+}
+
+func TestControllerLaunchedServiceSharedFSConflictCode(t *testing.T) {
+	var jshBinPath string
+	tmpBinDir := os.TempDir()
+	jshBinPath = filepath.Join(tmpBinDir, "jsh-shared-conflict")
+	args := []string{"build", "-o"}
+	if runtime.GOOS == "windows" {
+		jshBinPath += ".exe"
+	}
+	args = append(args, jshBinPath, "..")
+	cmd := exec.Command("go", args...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build jsh binary for shared fs conflict test: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(backend) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backendDir, "conflict.txt"), []byte("seed"), 0o644); err != nil {
+		t.Fatalf("WriteFile(seed) error: %v", err)
+	}
+	scriptPath := filepath.Join(tmpDir, "shared-conflict.js")
+	script := "const fs = require('fs');\n" +
+		"const fd1 = fs.openSync('/mnt/shared/conflict.txt', 'r+');\n" +
+		"const fd2 = fs.openSync('/mnt/shared/conflict.txt', 'r+');\n" +
+		"fs.writeSync(fd1, 'lock');\n" +
+		"fs.fsyncSync(fd1);\n" +
+		"fs.writeSync(fd2, 'race');\n" +
+		"try {\n" +
+		"  fs.fsyncSync(fd2);\n" +
+		"  console.println('shared.conflict unexpected');\n" +
+		"} catch (e) {\n" +
+		"  console.println('shared.conflict', e.code);\n" +
+		"}\n" +
+		"fs.closeSync(fd1);\n" +
+		"try { fs.closeSync(fd2); } catch (e) {}\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		t.Fatalf("WriteFile(script) error: %v", err)
+	}
+	config := Config{Name: "shared-conflict", Enable: true, Executable: "/work/shared-conflict.js"}
+	configBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(config) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(servicesDir, "shared-conflict.json"), configBytes, 0o644); err != nil {
+		t.Fatalf("WriteFile(config) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{jshBinPath, "-v", fmt.Sprintf("/work=%s", tmpDir)},
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+			MountPoint: "/mnt/shared",
+		},
+		Mounts: []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		svc := ctl.StatusOf("shared-conflict")
+		if svc != nil && svc.Status == ServiceStatusStopped {
+			lines := svc.outputSnapshot()
+			if len(lines) != 1 {
+				t.Fatalf("output lines=%v, want 1 line", lines)
+			}
+			if lines[0] != "shared.conflict ECONFLICT" {
+				t.Fatalf("first output=%q, want %q", lines[0], "shared.conflict ECONFLICT")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for child service to stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestControllerLaunchedServiceSharedFSAppendNoConflict(t *testing.T) {
+	var jshBinPath string
+	tmpBinDir := os.TempDir()
+	jshBinPath = filepath.Join(tmpBinDir, "jsh-shared-append")
+	args := []string{"build", "-o"}
+	if runtime.GOOS == "windows" {
+		jshBinPath += ".exe"
+	}
+	args = append(args, jshBinPath, "..")
+	cmd := exec.Command("go", args...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build jsh binary for shared fs append test: %v", err)
+	}
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(backend) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backendDir, "append.txt"), []byte("seed"), 0o644); err != nil {
+		t.Fatalf("WriteFile(seed) error: %v", err)
+	}
+	scriptPath := filepath.Join(tmpDir, "shared-append.js")
+	script := "const fs = require('fs');\n" +
+		"const fd1 = fs.openSync('/mnt/shared/append.txt', 'a');\n" +
+		"const fd2 = fs.openSync('/mnt/shared/append.txt', 'a');\n" +
+		"fs.writeSync(fd1, '-one');\n" +
+		"fs.fsyncSync(fd1);\n" +
+		"fs.writeSync(fd2, '-two');\n" +
+		"fs.fsyncSync(fd2);\n" +
+		"fs.closeSync(fd1);\n" +
+		"fs.closeSync(fd2);\n" +
+		"console.println('shared.append', fs.readFileSync('/mnt/shared/append.txt'));\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		t.Fatalf("WriteFile(script) error: %v", err)
+	}
+	config := Config{Name: "shared-append", Enable: true, Executable: "/work/shared-append.js"}
+	configBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(config) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(servicesDir, "shared-append.json"), configBytes, 0o644); err != nil {
+		t.Fatalf("WriteFile(config) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{jshBinPath, "-v", fmt.Sprintf("/work=%s", tmpDir)},
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+			MountPoint: "/mnt/shared",
+		},
+		Mounts: []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		svc := ctl.StatusOf("shared-append")
+		if svc != nil && svc.Status == ServiceStatusStopped {
+			lines := svc.outputSnapshot()
+			if len(lines) != 1 {
+				t.Fatalf("output lines=%v, want 1 line", lines)
+			}
+			if lines[0] != "shared.append seed-one-two" {
+				t.Fatalf("first output=%q, want %q", lines[0], "shared.append seed-one-two")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for child service to stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestControllerLaunchedServiceCleansAbandonedSharedFDs(t *testing.T) {
+	var jshBinPath string
+	tmpBinDir := os.TempDir()
+	jshBinPath = filepath.Join(tmpBinDir, "jsh-shared-cleanup")
+	args := []string{"build", "-o"}
+	if runtime.GOOS == "windows" {
+		jshBinPath += ".exe"
+	}
+	args = append(args, jshBinPath, "..")
+	cmd := exec.Command("go", args...)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to build jsh binary for shared fs cleanup test: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(backend) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backendDir, "leak.txt"), []byte("seed"), 0o644); err != nil {
+		t.Fatalf("WriteFile(seed) error: %v", err)
+	}
+	scriptPath := filepath.Join(tmpDir, "shared-cleanup.js")
+	script := "const fs = require('fs');\n" +
+		"const fd = fs.openSync('/mnt/shared/leak.txt', 'r+');\n" +
+		"fs.writeSync(fd, 'dirty');\n" +
+		"console.println('shared.cleanup open');\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		t.Fatalf("WriteFile(script) error: %v", err)
+	}
+	config := Config{Name: "shared-cleanup", Enable: true, Executable: "/work/shared-cleanup.js"}
+	configBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(config) error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(servicesDir, "shared-cleanup.json"), configBytes, 0o644); err != nil {
+		t.Fatalf("WriteFile(config) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{jshBinPath, "-v", fmt.Sprintf("/work=%s", tmpDir)},
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+			MountPoint: "/mnt/shared",
+		},
+		Mounts: []engine.FSTab{{MountPoint: "/work", FS: os.DirFS(tmpDir)}},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		svc := ctl.StatusOf("shared-cleanup")
+		if svc != nil && svc.Status == ServiceStatusStopped {
+			lines := svc.outputSnapshot()
+			if len(lines) != 1 {
+				t.Fatalf("output lines=%v, want 1 line", lines)
+			}
+			if lines[0] != "shared.cleanup open" {
+				t.Fatalf("first output=%q, want %q", lines[0], "shared.cleanup open")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for child service to stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if len(ctl.sharedFDs) != 0 {
+		t.Fatalf("sharedFDs len=%d, want 0", len(ctl.sharedFDs))
+	}
+	result, err := ctl.sharedReadFile("/leak.txt")
+	if err != nil {
+		t.Fatalf("sharedReadFile(leak) error: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(result.Data)
+	if err != nil {
+		t.Fatalf("DecodeString(leak) error: %v", err)
+	}
+	if string(decoded) != "seed" {
+		t.Fatalf("cleanup content=%q, want %q", string(decoded), "seed")
 	}
 }
 

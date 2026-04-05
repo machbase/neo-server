@@ -17,10 +17,92 @@ import (
 	"github.com/dop251/goja"
 )
 
+type writeFileFS interface {
+	WriteFile(name string, data []byte) error
+}
+
+type appendFileFS interface {
+	AppendFile(name string, data []byte) error
+}
+
+type mkdirFS interface {
+	Mkdir(name string) error
+}
+
+type removeFS interface {
+	Remove(name string) error
+}
+
+type renameFS interface {
+	Rename(oldName, newName string) error
+}
+
+type chmodFS interface {
+	Chmod(name string, mode uint32) error
+}
+
+type chownFS interface {
+	Chown(name string, uid, gid int) error
+}
+
+type symlinkFS interface {
+	Symlink(oldName, newName string) error
+}
+
+type readlinkFS interface {
+	Readlink(name string) (string, error)
+}
+
+type fdHandle interface {
+	io.Reader
+	io.Writer
+	io.Closer
+	Stat() (fs.FileInfo, error)
+	Sync() error
+	Chmod(mode fs.FileMode) error
+	Chown(uid, gid int) error
+}
+
+type openFDFileSystem interface {
+	OpenFD(name string, flags int, mode uint32) (fdHandle, error)
+}
+
+type localFDHandle struct {
+	file *os.File
+}
+
+func (h *localFDHandle) Read(p []byte) (int, error) {
+	return h.file.Read(p)
+}
+
+func (h *localFDHandle) Write(p []byte) (int, error) {
+	return h.file.Write(p)
+}
+
+func (h *localFDHandle) Close() error {
+	return h.file.Close()
+}
+
+func (h *localFDHandle) Stat() (fs.FileInfo, error) {
+	return h.file.Stat()
+}
+
+func (h *localFDHandle) Sync() error {
+	return h.file.Sync()
+}
+
+func (h *localFDHandle) Chmod(mode fs.FileMode) error {
+	return h.file.Chmod(mode)
+}
+
+func (h *localFDHandle) Chown(uid, gid int) error {
+	return h.file.Chown(uid, gid)
+}
+
 // FS allows mounting multiple fs.FS at different paths
 type FS struct {
 	mounts map[string]fs.FS
-	fds    map[int]*os.File
+	fds    map[int]fdHandle
 	nextFD int
 	fdMu   sync.Mutex
 }
@@ -33,7 +115,7 @@ var _ fs.ReadFileFS = (*FS)(nil)
 func NewFS() *FS {
 	return &FS{
 		mounts: make(map[string]fs.FS),
-		fds:    make(map[int]*os.File),
+		fds:    make(map[int]fdHandle),
 		nextFD: 3, // Start from 3 (0, 1, 2 are stdin, stdout, stderr)
 	}
 }
@@ -154,6 +236,15 @@ func (m *FS) performOSOperation(name string, operation func(string) error) error
 	return nil
 }
 
+func (m *FS) resolveMount(name string) (fs.FS, string, error) {
+	name = CleanPath(name)
+	bestFS, bestMatch := m.bestMatch(name)
+	if bestFS == nil {
+		return nil, "", fs.ErrNotExist
+	}
+	return bestFS, getRelativePath(name, bestMatch), nil
+}
+
 // Open implements fs.FS
 func (m *FS) Open(name string) (fs.File, error) {
 	name = CleanPath(name)
@@ -254,6 +345,13 @@ func (m *FS) ReadLines(name string) ([]string, error) {
 
 // Mkdir creates a directory at the specified path
 func (m *FS) Mkdir(name string) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if dirFS, ok := bestFS.(mkdirFS); ok {
+		return dirFS.Mkdir(relPath)
+	}
 	return m.performOSOperation(name, func(target string) error {
 		return os.MkdirAll(target, 0755)
 	})
@@ -266,6 +364,13 @@ func (m *FS) Rmdir(name string) error {
 
 // Remove removes a file at the specified path
 func (m *FS) Remove(name string) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if mutableFS, ok := bestFS.(removeFS); ok {
+		return mutableFS.Remove(relPath)
+	}
 	return m.performOSOperation(name, os.Remove)
 }
 
@@ -293,6 +398,9 @@ func (m *FS) Rename(oldName, newName string) error {
 
 	oldRelPath := getRelativePath(oldName, oldMatch)
 	newRelPath := getRelativePath(newName, newMatch)
+	if mutableFS, ok := oldFS.(renameFS); ok {
+		return mutableFS.Rename(oldRelPath, newRelPath)
+	}
 
 	oldTarget, err := getOSPath(oldFS, oldRelPath)
 	if err != nil {
@@ -322,6 +430,13 @@ func (m *FS) OSPath(path string) (string, error) {
 
 // WriteFile writes data to a file at the specified path
 func (m *FS) WriteFile(name string, data []byte) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if writableFS, ok := bestFS.(writeFileFS); ok {
+		return writableFS.WriteFile(relPath, data)
+	}
 	return m.performOSOperation(name, func(target string) error {
 		return os.WriteFile(target, data, 0644)
 	})
@@ -330,6 +445,13 @@ func (m *FS) WriteFile(name string, data []byte) error {
 // AppendFile appends data to a file at the specified path
 // Creates the file if it does not exist
 func (m *FS) AppendFile(name string, data []byte) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if writableFS, ok := bestFS.(appendFileFS); ok {
+		return writableFS.AppendFile(relPath, data)
+	}
 	return m.performOSOperation(name, func(target string) error {
 		f, err := os.OpenFile(target, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -343,6 +465,13 @@ func (m *FS) AppendFile(name string, data []byte) error {
 
 // Chmod changes the permission mode of a file or directory at the specified path
 func (m *FS) Chmod(name string, mode uint32) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if mutableFS, ok := bestFS.(chmodFS); ok {
+		return mutableFS.Chmod(relPath, mode)
+	}
 	return m.performOSOperation(name, func(target string) error {
 		if runtime.GOOS == "windows" {
 			return nil // Chmod is not supported on Windows
@@ -353,6 +482,13 @@ func (m *FS) Chmod(name string, mode uint32) error {
 
 // Chown changes the uid and gid of a file or directory at the specified path
 func (m *FS) Chown(name string, uid, gid int) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if mutableFS, ok := bestFS.(chownFS); ok {
+		return mutableFS.Chown(relPath, uid, gid)
+	}
 	return m.performOSOperation(name, func(target string) error {
 		if runtime.GOOS == "windows" {
 			return nil // Chown is not supported on Windows
@@ -368,6 +504,9 @@ func (m *FS) Symlink(oldName, newName string) error {
 	newFS, newMatch := m.bestMatch(newName)
 	if newFS == nil {
 		return fs.ErrNotExist
+	}
+	if mutableFS, ok := newFS.(symlinkFS); ok {
+		return mutableFS.Symlink(oldName, getRelativePath(newName, newMatch))
 	}
 
 	relPath := getRelativePath(newName, newMatch)
@@ -385,6 +524,9 @@ func (m *FS) Readlink(name string) (string, error) {
 	bestFS, bestMatch := m.bestMatch(name)
 	if bestFS == nil {
 		return "", fs.ErrNotExist
+	}
+	if readerFS, ok := bestFS.(readlinkFS); ok {
+		return readerFS.Readlink(getRelativePath(name, bestMatch))
 	}
 
 	relPath := getRelativePath(name, bestMatch)
@@ -407,6 +549,19 @@ func (m *FS) OpenFD(name string, flags int, mode uint32) (int, error) {
 	if bestFS == nil {
 		return -1, fs.ErrNotExist
 	}
+	if fdFS, ok := bestFS.(openFDFileSystem); ok {
+		handle, err := fdFS.OpenFD(getRelativePath(name, bestMatch), flags, mode)
+		if err != nil {
+			return -1, err
+		}
+		m.fdMu.Lock()
+		defer m.fdMu.Unlock()
+
+		fd := m.nextFD
+		m.nextFD++
+		m.fds[fd] = handle
+		return fd, nil
+	}
 
 	relPath := getRelativePath(name, bestMatch)
 	target, err := getOSPath(bestFS, relPath)
@@ -424,7 +579,7 @@ func (m *FS) OpenFD(name string, flags int, mode uint32) (int, error) {
 
 	fd := m.nextFD
 	m.nextFD++
-	m.fds[fd] = file
+	m.fds[fd] = &localFDHandle{file: file}
 
 	return fd, nil
 }

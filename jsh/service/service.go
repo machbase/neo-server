@@ -13,14 +13,15 @@ const serviceOutputMaxLines = 100
 // Service represents a process that running a Engine session.
 // A http server javascript process can be an example of this.
 type Service struct {
-	Config   Config         `json:"config"`
-	Status   ServiceStatus  `json:"status"`
-	ExitCode int            `json:"exit_code"`
-	Error    error          `json:"error"`
-	Runtime  ServiceRuntime `json:"runtime"`
-	cmd      *exec.Cmd
-	startCh  chan struct{}
-	stopCh   chan struct{}
+	Config         Config         `json:"config"`
+	Status         ServiceStatus  `json:"status"`
+	ExitCode       int            `json:"exit_code"`
+	Error          error          `json:"error"`
+	Runtime        ServiceRuntime `json:"runtime"`
+	sharedClientID string
+	cmd            *exec.Cmd
+	startCh        chan struct{}
+	stopCh         chan struct{}
 }
 
 type ServiceRuntime struct {

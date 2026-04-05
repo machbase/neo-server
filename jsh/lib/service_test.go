@@ -259,6 +259,104 @@ func TestServiceModuleCommandHelpers(t *testing.T) {
 	})
 }
 
+func TestServiceModuleFilesystemHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(backend) error: %v", err)
+	}
+
+	ctl, err := service.NewController(&service.ControllerConfig{
+		ConfigDir: "/work/services",
+		SharedFS: service.ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	test_engine.RunTest(t, test_engine.TestCase{
+		Name: "service_module_filesystem",
+		Vars: map[string]any{
+			"SERVICE_CONTROLLER": ctl.Address(),
+		},
+		Script: `
+			const service = require('service');
+
+			const client = new service.Client({ timeout: 1000 });
+			const options = { timeout: 1000 };
+
+			client.filesystem.mkdir('/cache', (err, dirInfo) => {
+				if (err) {
+					console.println('ERR mkdir', err.message);
+					return;
+				}
+				console.println('mkdir.path', dirInfo.path, dirInfo.is_dir);
+
+				service.filesystem.writeFile('/cache/hello.txt', 'neo', options, (err, fileInfo) => {
+					if (err) {
+						console.println('ERR write', err.message);
+						return;
+					}
+					console.println('write.path', fileInfo.path, fileInfo.is_dir);
+
+					client.filesystem.readFile('/cache/hello.txt', (err, file) => {
+						if (err) {
+							console.println('ERR read', err.message);
+							return;
+						}
+						console.println('read.data', file.data.toString());
+
+						service.filesystem.rename('/cache/hello.txt', '/cache/renamed.txt', options, (err, renamed) => {
+							if (err) {
+								console.println('ERR rename', err.message);
+								return;
+							}
+							console.println('rename.path', renamed.path);
+
+							client.filesystem.readDir('/cache', (err, entries) => {
+								if (err) {
+									console.println('ERR readdir', err.message);
+									return;
+								}
+								console.println('readdir.name', entries[0].name);
+
+								service.filesystem.remove('/cache/renamed.txt', options, (err, removed) => {
+									if (err) {
+										console.println('ERR remove', err.message);
+										return;
+									}
+									console.println('remove.ok', removed);
+								});
+							});
+						});
+					});
+				});
+			});
+		`,
+		Output: []string{
+			"mkdir.path /cache true",
+			"write.path /cache/hello.txt false",
+			"read.data neo",
+			"rename.path /cache/renamed.txt",
+			"readdir.name renamed.txt",
+			"remove.ok true",
+		},
+	})
+}
+
 type serviceModuleRPCRequest struct {
 	Version string          `json:"jsonrpc"`
 	Method  string          `json:"method"`

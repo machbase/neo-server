@@ -22,6 +22,15 @@ class Client {
             set: (name, key, value, callback) => this.detailWrite('service.runtime.detail.set', name, key, value, callback),
             delete: (name, key, callback) => this.detailsDelete(name, key, callback),
         };
+        this.filesystem = {
+            stat: (filePath, callback) => this.fsStat(filePath, callback),
+            readDir: (filePath, callback) => this.fsReadDir(filePath, callback),
+            readFile: (filePath, callback) => this.fsReadFile(filePath, callback),
+            writeFile: (filePath, data, callback) => this.fsWriteFile(filePath, data, callback),
+            mkdir: (filePath, callback) => this.fsMkdir(filePath, callback),
+            remove: (filePath, callback) => this.fsRemove(filePath, callback),
+            rename: (oldPath, newPath, callback) => this.fsRename(oldPath, newPath, callback),
+        };
         this.commands = {
             status: (name, callback) => this.status(name, callback),
             read: (callback) => this.read(callback),
@@ -142,6 +151,46 @@ class Client {
         return this.call('service.runtime.detail.delete', {
             name: requireName(name),
             key: normalizeDetailKey(key, true),
+        }, callback);
+    }
+
+    fsStat(filePath, callback) {
+        return this.call('fs.stat', { path: requirePath(filePath) }, callback);
+    }
+
+    fsReadDir(filePath, callback) {
+        return this.call('fs.readDir', { path: requirePath(filePath) }, callback);
+    }
+
+    fsReadFile(filePath, callback) {
+        return this.call('fs.readFile', { path: requirePath(filePath) }, (err, result) => {
+            if (err) {
+                callback(err);
+                return;
+            }
+            callback(null, decodeReadFileResult(result));
+        });
+    }
+
+    fsWriteFile(filePath, data, callback) {
+        return this.call('fs.writeFile', {
+            path: requirePath(filePath),
+            data: encodeWriteFileData(data),
+        }, callback);
+    }
+
+    fsMkdir(filePath, callback) {
+        return this.call('fs.mkdir', { path: requirePath(filePath) }, callback);
+    }
+
+    fsRemove(filePath, callback) {
+        return this.call('fs.remove', { path: requirePath(filePath) }, callback);
+    }
+
+    fsRename(oldPath, newPath, callback) {
+        return this.call('fs.rename', {
+            old_path: requirePath(oldPath),
+            new_path: requirePath(newPath),
         }, callback);
     }
 }
@@ -286,6 +335,62 @@ function detailsDelete(name, key, options, callback) {
     return new Client(options).details.delete(name, key, callback);
 }
 
+function fsStat(filePath, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.stat(filePath, callback);
+}
+
+function fsReadDir(filePath, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.readDir(filePath, callback);
+}
+
+function fsReadFile(filePath, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.readFile(filePath, callback);
+}
+
+function fsWriteFile(filePath, data, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.writeFile(filePath, data, callback);
+}
+
+function fsMkdir(filePath, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.mkdir(filePath, callback);
+}
+
+function fsRemove(filePath, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.remove(filePath, callback);
+}
+
+function fsRename(oldPath, newPath, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).filesystem.rename(oldPath, newPath, callback);
+}
+
 function normalizeClientOptions(options) {
     if (typeof options === 'string') {
         options = { controller: options };
@@ -386,7 +491,12 @@ function sendRPCRequest(endpoint, request, timeoutMsec, callback) {
             return;
         }
         if (response.error) {
-            settle(new Error(response.error.message || JSON.stringify(response.error)));
+            const err = new Error(response.error.message || JSON.stringify(response.error));
+            err.rpcCode = response.error.code;
+            if (response.error.code === -32009) {
+                err.code = 'ECONFLICT';
+            }
+            settle(err);
             return;
         }
         settle(null, response.result);
@@ -442,6 +552,38 @@ function normalizeDetailKey(key, required) {
     return String(key);
 }
 
+function requirePath(filePath) {
+    if (typeof filePath !== 'string' || filePath === '') {
+        throw new Error('filesystem path is required');
+    }
+    return filePath;
+}
+
+function encodeWriteFileData(data) {
+    if (data === undefined || data === null) {
+        throw new Error('filesystem write data is required');
+    }
+    if (typeof data === 'string') {
+        return Buffer.from(data).toString('base64');
+    }
+    if (Buffer.isBuffer && Buffer.isBuffer(data)) {
+        return data.toString('base64');
+    }
+    return Buffer.from(data).toString('base64');
+}
+
+function decodeReadFileResult(result) {
+    if (!result || typeof result !== 'object') {
+        return result;
+    }
+    const data = typeof result.data === 'string' ? Buffer.from(result.data, 'base64') : Buffer.from([]);
+    return {
+        path: result.path || '',
+        data,
+        encoding: result.encoding || 'base64',
+    };
+}
+
 module.exports = {
     Client,
     resolveController,
@@ -476,5 +618,14 @@ module.exports = {
         update: (name, key, value, options, callback) => detailsWrite('service.runtime.detail.update', name, key, value, options, callback),
         set: (name, key, value, options, callback) => detailsWrite('service.runtime.detail.set', name, key, value, options, callback),
         delete: detailsDelete,
+    },
+    filesystem: {
+        stat: fsStat,
+        readDir: fsReadDir,
+        readFile: fsReadFile,
+        writeFile: fsWriteFile,
+        mkdir: fsMkdir,
+        remove: fsRemove,
+        rename: fsRename,
     },
 };
