@@ -30,6 +30,23 @@ func New(conf Config) (*JSRuntime, error) {
 			filesystem.Mount(tab.MountPoint, tab.FS)
 		}
 	}
+	controllerAddr := envStringValue(conf.Env, ControllerAddressEnv)
+	if controllerAddr != "" {
+		sharedMount := CleanPath(envStringValue(conf.Env, ControllerSharedMountEnv))
+		clientID := envStringValue(conf.Env, ControllerClientIDEnv)
+		if sharedMount == "/" {
+			sharedMount = DefaultControllerSharedMount
+		}
+		if !conf.FSTabs.HasMountPoint(sharedMount) {
+			controllerFS, err := NewControllerFSWithClientID(controllerAddr, clientID)
+			if err != nil {
+				return nil, fmt.Errorf("error creating controller filesystem: %w", err)
+			}
+			if err := filesystem.Mount(sharedMount, controllerFS); err != nil {
+				return nil, fmt.Errorf("error mounting controller filesystem at %s: %w", sharedMount, err)
+			}
+		}
+	}
 
 	var reader io.Reader = os.Stdin
 	if conf.Reader != nil {
@@ -129,6 +146,17 @@ func New(conf Config) (*JSRuntime, error) {
 		eventloop.WithRegistry(jr.registry),
 	)
 	return jr, nil
+}
+
+func envStringValue(values map[string]any, key string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
 }
 
 func appendMissingPathElements(current any, required ...string) string {

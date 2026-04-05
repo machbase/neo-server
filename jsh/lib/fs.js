@@ -947,6 +947,13 @@ function closeSync(fd) {
     try {
         _fs.close(fd);
     } catch (e) {
+        if (isSharedWriteConflictError(e)) {
+            const error = new Error(`ECONFLICT: concurrent shared file update, close`);
+            error.code = 'ECONFLICT';
+            error.errno = -32009;
+            error.syscall = 'close';
+            throw error;
+        }
         const error = new Error(`EBADF: bad file descriptor, close`);
         error.code = 'EBADF';
         error.errno = -9;
@@ -1093,6 +1100,13 @@ function fsyncSync(fd) {
     try {
         _fs.fsync(fd);
     } catch (e) {
+        if (isSharedWriteConflictError(e)) {
+            const error = new Error(`ECONFLICT: concurrent shared file update, fsync`);
+            error.code = 'ECONFLICT';
+            error.errno = -32009;
+            error.syscall = 'fsync';
+            throw error;
+        }
         const error = new Error(`EBADF: bad file descriptor, fsync`);
         error.code = 'EBADF';
         error.errno = -9;
@@ -1109,6 +1123,11 @@ function fdatasyncSync(fd) {
     // Go's file.Sync() doesn't distinguish between fsync and fdatasync
     // So we just call fsync
     fsyncSync(fd);
+}
+
+function isSharedWriteConflictError(error) {
+    const message = error && error.message ? String(error.message) : String(error || '');
+    return message.indexOf('ECONFLICT') >= 0 || message.indexOf('shared file changed while descriptor was open') >= 0;
 }
 
 // Constants

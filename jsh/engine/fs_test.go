@@ -270,6 +270,42 @@ func TestFS_Open_LongestMatch(t *testing.T) {
 	}
 }
 
+func TestFS_DelegatesMutableOperationsToMountedFS(t *testing.T) {
+	mfs := NewFS()
+	shared := NewVirtualFS()
+	if err := mfs.Mount("/shared", shared); err != nil {
+		t.Fatalf("Mount failed: %v", err)
+	}
+
+	if err := mfs.Mkdir("/shared/cache"); err != nil {
+		t.Fatalf("Mkdir failed: %v", err)
+	}
+	if err := mfs.WriteFile("/shared/cache/data.txt", []byte("alpha")); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if err := mfs.AppendFile("/shared/cache/data.txt", []byte("-beta")); err != nil {
+		t.Fatalf("AppendFile failed: %v", err)
+	}
+	if err := mfs.Rename("/shared/cache", "/shared/archive"); err != nil {
+		t.Fatalf("Rename failed: %v", err)
+	}
+
+	data, err := fs.ReadFile(mfs, "/shared/archive/data.txt")
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if string(data) != "alpha-beta" {
+		t.Fatalf("unexpected content: %q", string(data))
+	}
+
+	if err := mfs.Remove("/shared/archive/data.txt"); err != nil {
+		t.Fatalf("Remove failed: %v", err)
+	}
+	if _, err := fs.Stat(mfs, "/shared/archive/data.txt"); err == nil {
+		t.Fatalf("removed file should not exist")
+	}
+}
+
 func TestFS_ReadDir(t *testing.T) {
 	testFS := fstest.MapFS{
 		"dir/file1.txt":        &fstest.MapFile{Data: []byte("content1")},

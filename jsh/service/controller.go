@@ -1,13 +1,19 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os/exec"
+	"path"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
@@ -19,6 +25,12 @@ type ControllerConfig struct {
 	Mounts    engine.FSTabs
 	ConfigDir string
 	Address   string
+	SharedFS  ControllerSharedFSConfig
+}
+
+type ControllerSharedFSConfig struct {
+	BackendDir string
+	MountPoint string
 }
 
 func NewController(opt *ControllerConfig) (*Controller, error) {
@@ -37,27 +49,177 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 	if opt.Address == "" {
 		opt.Address = "tcp://127.0.0.1:0"
 	}
+	ctl := &Controller{
+		fs:               fs,
+		confDir:          opt.ConfigDir,
+		services:         make(map[string]*Service),
+		launcher:         opt.Launcher,
+		rpcConfigAddr:    opt.Address,
+		backendDir:       engine.CleanPath(opt.SharedFS.BackendDir),
+		sharedMountPoint: engine.CleanPath(opt.SharedFS.MountPoint),
+		sharedFS:         engine.NewVirtualFS(),
+		sharedFDs:        map[int]*sharedFileHandle{},
+		sharedNextFD:     3,
+	}
+	if ctl.backendDir == "/" {
+		ctl.backendDir = ""
+	}
+	if ctl.sharedMountPoint == "/" {
+		ctl.sharedMountPoint = engine.DefaultControllerSharedMount
+	}
+	if err := ctl.loadSharedFS(); err != nil {
+		return nil, err
+	}
 
-	return &Controller{
-		fs:            fs,
-		confDir:       opt.ConfigDir,
-		services:      make(map[string]*Service),
-		launcher:      opt.Launcher,
-		rpcConfigAddr: opt.Address,
-	}, nil
+	return ctl, nil
 }
 
 type Controller struct {
-	mu            sync.RWMutex
-	services      map[string]*Service
-	fs            *engine.FS
-	confDir       string
-	reread        *ServiceList
-	launcher      []string
-	rpcConfigAddr string
-	rpcListenAddr string
-	rpcWG         sync.WaitGroup
-	rpcLn         net.Listener
+	mu               sync.RWMutex
+	sharedMu         sync.RWMutex
+	services         map[string]*Service
+	fs               *engine.FS
+	confDir          string
+	reread           *ServiceList
+	launcher         []string
+	backendDir       string
+	sharedMountPoint string
+	sharedFS         *engine.VirtualFS
+	sharedFDs        map[int]*sharedFileHandle
+	sharedNextFD     int
+	rpcConfigAddr    string
+	rpcListenAddr    string
+	rpcWG            sync.WaitGroup
+	rpcLn            net.Listener
+}
+
+func (ctl *Controller) loadSharedFS() error {
+	if ctl.sharedFS == nil {
+		ctl.sharedFS = engine.NewVirtualFS()
+	}
+	if ctl.backendDir == "" {
+		return nil
+	}
+	info, err := ctl.fs.Stat(ctl.backendDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("load shared filesystem: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("load shared filesystem: backend %s is not a directory", ctl.backendDir)
+	}
+	return ctl.loadSharedDir("/", ctl.backendDir)
+}
+
+func (ctl *Controller) loadSharedDir(dstPath string, srcPath string) error {
+	if dstPath != "/" {
+		if err := ctl.sharedFS.Mkdir(dstPath); err != nil {
+			return err
+		}
+	}
+	entries, err := ctl.fs.ReadDir(srcPath)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+		nextDst := engine.CleanPath(path.Join(dstPath, name))
+		nextSrc := engine.CleanPath(path.Join(srcPath, name))
+		if entry.IsDir() {
+			if err := ctl.loadSharedDir(nextDst, nextSrc); err != nil {
+				return err
+			}
+			continue
+		}
+		data, err := ctl.fs.ReadFile(nextSrc)
+		if err != nil {
+			return err
+		}
+		if err := ctl.sharedFS.WriteFile(nextDst, data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ctl *Controller) sharedBackendPath(name string) string {
+	if ctl.backendDir == "" {
+		return ""
+	}
+	name = engine.CleanPath(name)
+	if name == "/" {
+		return ctl.backendDir
+	}
+	return engine.CleanPath(path.Join(ctl.backendDir, strings.TrimPrefix(name, "/")))
+}
+
+func (ctl *Controller) persistSharedMkdir(name string) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	return ctl.fs.Mkdir(ctl.sharedBackendPath(name))
+}
+
+func (ctl *Controller) persistSharedWriteFile(name string, data []byte) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	parent := path.Dir(ctl.sharedBackendPath(name))
+	if parent != "/" {
+		if err := ctl.fs.Mkdir(parent); err != nil {
+			return err
+		}
+	}
+	return ctl.fs.WriteFile(ctl.sharedBackendPath(name), data)
+}
+
+func (ctl *Controller) persistSharedAppendFile(name string, data []byte) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	parent := path.Dir(ctl.sharedBackendPath(name))
+	if parent != "/" {
+		if err := ctl.fs.Mkdir(parent); err != nil {
+			return err
+		}
+	}
+	return ctl.fs.AppendFile(ctl.sharedBackendPath(name), data)
+}
+
+func (ctl *Controller) persistSharedRemove(name string) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	target := ctl.sharedBackendPath(name)
+	info, err := ctl.fs.Stat(target)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if info.IsDir() {
+		return ctl.fs.Rmdir(target)
+	}
+	return ctl.fs.Remove(target)
+}
+
+func (ctl *Controller) persistSharedRename(oldName string, newName string) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	parent := path.Dir(ctl.sharedBackendPath(newName))
+	if parent != "/" {
+		if err := ctl.fs.Mkdir(parent); err != nil {
+			return err
+		}
+	}
+	return ctl.fs.Rename(ctl.sharedBackendPath(oldName), ctl.sharedBackendPath(newName))
 }
 
 func (ctl *Controller) Start(callback func(sc *Config, action string, err error)) error {
@@ -131,6 +293,15 @@ func (ctl *Controller) command(sc *Config) *exec.Cmd {
 	for k, v := range sc.Environment {
 		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
 	}
+	if ctl.rpcListenAddr != "" {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", engine.ControllerAddressEnv, ctl.rpcListenAddr))
+		args = append(args, "-e", fmt.Sprintf("%s=%s", engine.ControllerSharedMountEnv, ctl.sharedMountPoint))
+		if sc.Name != "" {
+			if svc, exists := ctl.services[sc.Name]; exists && svc.sharedClientID != "" {
+				args = append(args, "-e", fmt.Sprintf("%s=%s", engine.ControllerClientIDEnv, svc.sharedClientID))
+			}
+		}
+	}
 	args = append(args, sc.Executable)
 	args = append(args, sc.Args...)
 	cmd := exec.Command(name, args...)
@@ -159,6 +330,7 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 	sc.StartError = nil
 	svc.Config = *sc
 	svc.Config.StartError = nil
+	svc.sharedClientID = newSharedClientID(sc.Name)
 	svc.Status = ServiceStatusRunning
 	svc.Error = nil
 	svc.ExitCode = 0
@@ -177,11 +349,13 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 		svc.Config.StartError = sc.StartError
 		svc.Status = ServiceStatusFailed
 		svc.Error = sc.StartError
+		svc.sharedClientID = ""
 		return
 	}
 
 	svc.startCh = make(chan struct{})
 	svc.stopCh = make(chan struct{})
+	clientID := svc.sharedClientID
 	go func() {
 		close(svc.startCh)
 		defer close(svc.stopCh)
@@ -198,6 +372,8 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 		}
 		svc.ExitCode = exitCode
 		svc.Status = ServiceStatusStopped
+		ctl.cleanupSharedFDsByOwner(clientID)
+		svc.sharedClientID = ""
 	}()
 	<-svc.startCh
 }
@@ -209,6 +385,8 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	if svc.Status != ServiceStatusRunning && svc.Status != ServiceStatusStarting {
 		if svc.cmd == nil {
 			svc.Status = ServiceStatusStopped
+			ctl.cleanupSharedFDsByOwner(svc.sharedClientID)
+			svc.sharedClientID = ""
 		}
 		return
 	}
@@ -216,6 +394,8 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	if svc.cmd == nil || svc.cmd.Process == nil {
 		svc.Status = ServiceStatusStopped
 		svc.Error = nil
+		ctl.cleanupSharedFDsByOwner(svc.sharedClientID)
+		svc.sharedClientID = ""
 		return
 	}
 
@@ -229,6 +409,17 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	}
 	<-svc.stopCh
 	svc.Error = nil
+}
+
+func newSharedClientID(serviceName string) string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%s-%d", serviceName, time.Now().UnixNano())
+	}
+	if serviceName == "" {
+		return hex.EncodeToString(buf)
+	}
+	return fmt.Sprintf("%s-%s", serviceName, hex.EncodeToString(buf))
 }
 
 func (ctl *Controller) configPath(name string) string {
