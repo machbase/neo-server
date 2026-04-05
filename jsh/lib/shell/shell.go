@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"strings"
@@ -15,6 +16,23 @@ import (
 	"github.com/nyaosorg/go-readline-ny"
 	"github.com/nyaosorg/go-readline-ny/keys"
 )
+
+//go:embed user.js
+var userJS []byte
+
+//go:embed agent.js
+var agentJS []byte
+
+// Files returns JavaScript library files embedded in this package.
+// They are mounted under /lib inside the virtual file system:
+//   - require('repl/profiles/user')  — human operator helpers
+//   - require('repl/profiles/agent') — agent/machine-readable helpers
+func Files() map[string][]byte {
+	return map[string][]byte{
+		"repl/profiles/user.js":  userJS,
+		"repl/profiles/agent.js": agentJS,
+	}
+}
 
 func Module(rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)

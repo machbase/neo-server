@@ -13,11 +13,12 @@ type RuntimeMetadata struct {
 // RuntimeProfile describes prompt/banner/runtime identity metadata for a
 // session without mixing Shell semantics with Repl semantics.
 type RuntimeProfile struct {
-	Name        string
-	Description string
-	Banner      func() string
-	Startup     func(rt *goja.Runtime) error
-	Metadata    map[string]any
+	Name         string
+	Description  string
+	Banner       func() string
+	Startup      func(rt *goja.Runtime) error
+	Metadata     map[string]any
+	KnownModules []string // modules available in this profile (for \modules command)
 }
 
 func (p RuntimeProfile) ResolveBanner() string {
