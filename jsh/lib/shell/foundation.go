@@ -53,6 +53,7 @@ type SessionConfig struct {
 	History              HistoryConfig
 	Profile              RuntimeProfile
 	Renderer             Renderer
+	MetadataProvider     MetadataProvider
 	Hooks                SessionHooks
 }
 
@@ -62,19 +63,6 @@ type HistoryConfig struct {
 	Name    string
 	Size    int
 	Enabled bool
-}
-
-// RuntimeProfile describes prompt/banner/runtime identity metadata for a
-// session without mixing Shell semantics with Repl semantics.
-//
-// TODO(S3): Banner will become func() string to support dynamic content.
-// It is kept as string here to stay minimal during S1.
-// Startup func(rt *goja.Runtime) error will be added in S3.
-// Metadata map[string]any will be added in S3.
-type RuntimeProfile struct {
-	Name        string
-	Description string
-	Banner      string
 }
 
 // Renderer is the shared render hook candidate.

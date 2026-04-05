@@ -27,8 +27,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 func shell(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {
 	return func(call goja.ConstructorCall) *goja.Object {
 		shell := &Shell{
-			rt:      rt,
-			history: NewHistory(HistoryConfig{Name: "history", Size: 100, Enabled: true}),
+			rt: rt,
 		}
 
 		obj := rt.NewObject()
@@ -81,6 +80,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 			Size:    100,
 			Enabled: true,
 		},
+		Profile: defaultShellProfile(),
 		Hooks: SessionHooks{
 			Prompt:            sh.prompt(env),
 			SubmitOnEnterWhen: sh.submitOnEnterWhen,
@@ -89,9 +89,20 @@ func (sh *Shell) Run(env *engine.Env) int {
 	})
 	ed := ses.Editor
 	sh.history = ses.History
+	if err := ses.Start(sh.rt); err != nil {
+		log.Printf("Error starting session: %v\n", err)
+		return 1
+	}
+	var loopErr error
+	defer func() {
+		if err := ses.Stop(loopErr); err != nil {
+			log.Printf("Error stopping session: %v\n", err)
+		}
+	}()
 	ctx := context.Background()
-	log.Println(banner)
-	log.Println(betaWarn)
+	if msg := ses.Banner(); msg != "" {
+		log.Print(msg)
+	}
 	for {
 		var line string
 		var forHistory string
@@ -100,6 +111,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 				log.Println(err.Error())
 				continue
 			}
+			loopErr = err
 			log.Printf("Error input: %v\n", err)
 			return 1
 		} else {
@@ -116,6 +128,20 @@ func (sh *Shell) Run(env *engine.Env) int {
 		}
 		// this makes to prevent adding 'exit' command to history
 		sh.history.Add(forHistory)
+	}
+}
+
+func defaultShellProfile() RuntimeProfile {
+	return RuntimeProfile{
+		Name:        "shell",
+		Description: "JSH command interpreter",
+		Banner: func() string {
+			return banner + betaWarn
+		},
+		Metadata: map[string]any{
+			"product": "shell",
+			"mode":    "command",
+		},
 	}
 }
 
