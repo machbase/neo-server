@@ -176,13 +176,36 @@ function toTUIBlocks(spec, options = undefined) {
     return _vizspec.toTUIBlocks(spec);
 }
 
-function toSparkline(spec, options = undefined) {
-    ensureObjectInput('vizspec.toSparkline', spec);
+function toTUILines(spec, options = undefined) {
+    ensureObjectInput('vizspec.toTUILines', spec);
     if (options !== undefined) {
-        ensureObjectInput('vizspec.toSparkline', options);
-        return _vizspec.toSparkline(spec, options);
+        ensureObjectInput('vizspec.toTUILines', options);
+        return _vizspec.toTUILines(spec, options);
     }
-    return _vizspec.toSparkline(spec);
+    return _vizspec.toTUILines(spec);
+}
+
+function listSeries(spec) {
+    ensureObjectInput('vizspec.listSeries', spec);
+    const normalized = normalize(spec);
+    const items = Array.isArray(normalized.series) ? normalized.series : [];
+    return items.map((item, index) => ({
+        index,
+        id: typeof item.id === 'string' ? item.id : '',
+        name: typeof item.name === 'string' ? item.name : '',
+        title: typeof item.name === 'string' && item.name.length > 0 ? item.name : (typeof item.id === 'string' ? item.id : ''),
+        kind: isObject(item.representation) && typeof item.representation.kind === 'string' ? item.representation.kind : '',
+        tuiLinesCompatible: isTUILinesCompatibleSeries(item),
+    }));
+}
+
+function isTUILinesCompatibleSeries(item) {
+    if (!isObject(item) || !isObject(item.representation)) {
+        return false;
+    }
+    return item.representation.kind === RepresentationKind.rawPoint
+        || item.representation.kind === RepresentationKind.timeBucketValue
+        || item.representation.kind === RepresentationKind.timeBucketBand;
 }
 
 function toSVG(spec, options = undefined) {
@@ -194,21 +217,49 @@ function toSVG(spec, options = undefined) {
     return _vizspec.toSVG(spec);
 }
 
-function toPNG(spec, svgOptions = undefined, pngOptions = undefined) {
+function toPNG(spec, options = undefined, legacyPngOptions = undefined) {
     ensureObjectInput('vizspec.toPNG', spec);
-    if (svgOptions !== undefined) {
-        ensureObjectInput('vizspec.toPNG', svgOptions);
+    if (options !== undefined) {
+        ensureObjectInput('vizspec.toPNG', options);
     }
-    if (pngOptions !== undefined) {
-        ensureObjectInput('vizspec.toPNG', pngOptions);
+    if (legacyPngOptions !== undefined) {
+        ensureObjectInput('vizspec.toPNG', legacyPngOptions);
     }
-    if (svgOptions !== undefined && pngOptions !== undefined) {
-        return _vizspec.toPNG(spec, svgOptions, pngOptions);
+
+    if (legacyPngOptions !== undefined) {
+        return _vizspec.toPNG(spec, options, legacyPngOptions);
     }
-    if (svgOptions !== undefined) {
+
+    if (options !== undefined) {
+        const svgOptions = pickPNGSVGOptions(options);
+        const pngOptions = pickPNGRasterOptions(options);
+        if (pngOptions !== undefined) {
+            return _vizspec.toPNG(spec, svgOptions, pngOptions);
+        }
         return _vizspec.toPNG(spec, svgOptions);
     }
+
     return _vizspec.toPNG(spec);
+}
+
+function pickPNGSVGOptions(options) {
+    const ret = {};
+    copyDefined(options, ret, ['width', 'height', 'padding', 'background', 'fontFamily', 'fontSize', 'showLegend', 'title', 'timeformat', 'tz']);
+    return Object.keys(ret).length > 0 ? ret : undefined;
+}
+
+function pickPNGRasterOptions(options) {
+    const ret = {};
+    copyDefined(options, ret, ['scale', 'dpi', 'background', 'theme']);
+    return Object.keys(ret).length > 0 ? ret : undefined;
+}
+
+function copyDefined(source, target, keys) {
+    for (const key of keys) {
+        if (source[key] !== undefined) {
+            target[key] = source[key];
+        }
+    }
 }
 
 function validate(spec) {
@@ -405,6 +456,10 @@ class Builder {
         return stringify(this._getBuiltSpec());
     }
 
+    listSeries() {
+        return listSeries(this._getBuiltSpec());
+    }
+
     toEChartsOption(options = undefined) {
         return toEChartsOption(this._getBuiltSpec(), options);
     }
@@ -413,16 +468,16 @@ class Builder {
         return toTUIBlocks(this._getBuiltSpec(), options);
     }
 
-    toSparkline(options = undefined) {
-        return toSparkline(this._getBuiltSpec(), options);
+    toTUILines(options = undefined) {
+        return toTUILines(this._getBuiltSpec(), options);
     }
 
     toSVG(options = undefined) {
         return toSVG(this._getBuiltSpec(), options);
     }
 
-    toPNG(svgOptions = undefined, pngOptions = undefined) {
-        return toPNG(this._getBuiltSpec(), svgOptions, pngOptions);
+    toPNG(options = undefined, legacyPngOptions = undefined) {
+        return toPNG(this._getBuiltSpec(), options, legacyPngOptions);
     }
 }
 
@@ -439,6 +494,7 @@ module.exports = {
     domain,
     eventPointSeries,
     eventRangeSeries,
+    listSeries,
     lineAnnotation,
     meta,
     normalize,
@@ -453,7 +509,7 @@ module.exports = {
     timeBucketValueSeries,
     toEChartsOption,
     toPNG,
-    toSparkline,
+    toTUILines,
     toSVG,
     toTUIBlocks,
     validate,

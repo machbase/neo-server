@@ -224,6 +224,119 @@ func TestVizViewCompactRowsCommand(t *testing.T) {
 	}
 }
 
+func TestVizLinesCommand(t *testing.T) {
+	workDir := t.TempDir()
+	copyTestFile(t, filepath.Join("..", "test", "advn-sample.json"), filepath.Join(workDir, "advn-sample.json"))
+
+	output, err := runCommand(workDir, nil, "viz", "lines", "advn-sample.json")
+	if err != nil {
+		t.Fatalf("viz lines failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"max ", "avg ", "min "} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected lines output to contain %q, got:\n%s", want, output)
+		}
+	}
+	tallOutput, err := runCommand(workDir, nil, "viz", "lines", "--height", "5", "advn-sample.json")
+	if err != nil {
+		t.Fatalf("viz lines --height failed: %v\n%s", err, tallOutput)
+	}
+	lineCount := 0
+	for _, line := range strings.Split(strings.TrimSpace(tallOutput), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lineCount++
+		}
+	}
+	if lineCount != 3 {
+		t.Fatalf("expected band output to remain 3 lines regardless of height, got %d\n%s", lineCount, tallOutput)
+	}
+}
+
+func TestVizLinesCommandSeriesSelection(t *testing.T) {
+	workDir := t.TempDir()
+	input := `{
+		"version": 1,
+		"domain": {"kind": "time", "from": "2026-04-03T00:00:00Z", "to": "2026-04-03T00:04:00Z"},
+		"series": [
+			{
+				"id": "value-1",
+				"representation": {"kind": "time-bucket-value", "fields": ["time", "value"]},
+				"data": [["2026-04-03T00:00:00Z", 1], ["2026-04-03T00:02:00Z", 4], ["2026-04-03T00:04:00Z", 2]]
+			},
+			{
+				"id": "value-2",
+				"representation": {"kind": "time-bucket-value", "fields": ["time", "value"]},
+				"data": [["2026-04-03T00:00:00Z", 8], ["2026-04-03T00:02:00Z", 2], ["2026-04-03T00:04:00Z", 7]]
+			}
+		]
+	}`
+
+	defaultOutput, err := runCommandWithInput(workDir, nil, input, "viz", "lines")
+	if err != nil {
+		t.Fatalf("viz lines from stdin failed: %v\n%s", err, defaultOutput)
+	}
+	selectedOutput, err := runCommandWithInput(workDir, nil, input, "viz", "lines", "--series", "value-2")
+	if err != nil {
+		t.Fatalf("viz lines --series failed: %v\n%s", err, selectedOutput)
+	}
+	if defaultOutput == selectedOutput {
+		t.Fatalf("expected --series to change lines output, got:\n%s", selectedOutput)
+	}
+	if !strings.Contains(selectedOutput, "┤") {
+		t.Fatalf("expected selected lines output to contain axis marker, got:\n%s", selectedOutput)
+	}
+	tallOutput, err := runCommandWithInput(workDir, nil, input, "viz", "lines", "--height", "5")
+	if err != nil {
+		t.Fatalf("viz lines --height from stdin failed: %v\n%s", err, tallOutput)
+	}
+	lineCount := 0
+	for _, line := range strings.Split(strings.TrimSpace(tallOutput), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lineCount++
+		}
+	}
+	if lineCount != 6 {
+		t.Fatalf("expected value-series lines output with axis and 5 chart rows, got %d\n%s", lineCount, tallOutput)
+	}
+}
+
+func TestVizLinesCommandSeriesSelectionErrorHint(t *testing.T) {
+	workDir := t.TempDir()
+	input := `{
+		"version": 1,
+		"series": [
+			{
+				"id": "value-1",
+				"representation": {"kind": "time-bucket-value", "fields": ["time", "value"]},
+				"data": [[0, 1], [1, 4], [2, 2]]
+			},
+			{
+				"id": "band-1",
+				"representation": {"kind": "time-bucket-band", "fields": ["time", "min", "max", "avg"]},
+				"data": [[0, 1, 5, 3]]
+			},
+			{
+				"id": "hist-1",
+				"representation": {"kind": "distribution-histogram", "fields": ["binStart", "binEnd", "count"]},
+				"data": [[0, 10, 3]]
+			}
+		]
+	}`
+
+	output, err := runCommandWithInput(workDir, nil, input, "viz", "lines", "--series", "missing")
+	if err == nil {
+		t.Fatalf("expected viz lines --series missing to fail, got:\n%s", output)
+	}
+	for _, want := range []string{"series \"missing\" not found", "Selectable line series:", "value-1", "band-1"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected error output to contain %q, got:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "hist-1") {
+		t.Fatalf("expected error hint to omit incompatible series, got:\n%s", output)
+	}
+}
+
 func TestVizExportSVGCommand(t *testing.T) {
 	workDir := t.TempDir()
 	copyTestFile(t, filepath.Join("..", "test", "advn-sample.json"), filepath.Join(workDir, "advn-sample.json"))

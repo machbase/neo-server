@@ -231,6 +231,30 @@ func TestBuilderAPI(t *testing.T) {
 func TestRenderers(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
+			Name: "advn-list-series",
+			Script: `
+				const advn = require('vizspec');
+				const spec = advn.createSpec({
+					series: [
+						advn.timeBucketBandSeries({ id: 'band-1', name: 'Band One' }),
+						advn.distributionHistogramSeries({ id: 'hist-1' })
+					]
+				});
+				const listed = advn.listSeries(spec);
+				const builderListed = new advn.Builder()
+					.addTimeBucketBandSeries({ id: 'band-1', name: 'Band One' })
+					.addDistributionHistogramSeries({ id: 'hist-1' })
+					.listSeries();
+				console.println(listed.length);
+				console.println(listed[0].id);
+				console.println(listed[0].title);
+				console.println(listed[0].tuiLinesCompatible);
+				console.println(listed[1].tuiLinesCompatible);
+				console.println(builderListed[0].kind);
+			`,
+			Output: []string{"2", "band-1", "Band One", "true", "false", "time-bucket-band"},
+		},
+		{
 			Name: "advn-echarts-histogram-and-boxplot",
 			Script: `
 				const advn = require('vizspec');
@@ -386,27 +410,40 @@ func TestRenderers(t *testing.T) {
 				const compactBlocks = advn.toTUIBlocks(spec, { width: 5, rows: 2, compact: true });
 				console.println(blocks[2].type);
 				console.println(blocks[2].lines.length);
-				console.println(blocks[2].lines[1].indexOf('┤') >= 0);
+				console.println(blocks[2].lines[0].indexOf('┤') >= 0);
 				console.println(blocks[3].rows.length);
 				console.println(compactBlocks.length);
 			`,
-			Output: []string{"sparkline", "4", "true", "2", "2"},
+			Output: []string{"sparkline", "1", "false", "2", "2"},
 		},
 		{
-			Name: "advn-sparkline-output",
+			Name: "advn-tui-lines-output",
 			Script: `
 				const advn = require('vizspec');
-				const lines = advn.toSparkline(advn.createSpec({
+				const spec = advn.createSpec({
 					domain: { kind: 'time', from: '2026-04-03T00:00:00Z', to: '2026-04-03T00:04:00Z' },
-					series: [advn.timeBucketValueSeries({
-						id: 'value-1',
-						data: [
-							['2026-04-03T00:00:00Z', 1],
-							['2026-04-03T00:02:00Z', 4],
-							['2026-04-03T00:04:00Z', 2]
-						]
-					})]
-				}), { width: 12 });
+					series: [
+						advn.timeBucketValueSeries({
+							id: 'value-1',
+							data: [
+								['2026-04-03T00:00:00Z', 1],
+								['2026-04-03T00:02:00Z', 4],
+								['2026-04-03T00:04:00Z', 2]
+							]
+						}),
+						advn.timeBucketValueSeries({
+							id: 'value-2',
+							data: [
+								['2026-04-03T00:00:00Z', 8],
+								['2026-04-03T00:02:00Z', 2],
+								['2026-04-03T00:04:00Z', 7]
+							]
+						})
+					]
+				});
+				const lines = advn.toTUILines(spec, { width: 12 });
+				const tallLines = advn.toTUILines(spec, { width: 12, height: 5 });
+				const selectedLines = advn.toTUILines(spec, { width: 12, seriesId: 'value-2' });
 				const builderLines = new advn.Builder()
 					.setDomain({ kind: 'time', from: '2026-04-03T00:00:00Z', to: '2026-04-03T00:04:00Z' })
 					.addTimeBucketValueSeries({
@@ -417,13 +454,24 @@ func TestRenderers(t *testing.T) {
 							['2026-04-03T00:04:00Z', 2]
 						]
 					})
-					.toSparkline({ width: 12 });
+					.addTimeBucketValueSeries({
+						id: 'value-2',
+						data: [
+							['2026-04-03T00:00:00Z', 8],
+							['2026-04-03T00:02:00Z', 2],
+							['2026-04-03T00:04:00Z', 7]
+						]
+					})
+					.toTUILines({ width: 12, seriesId: 'value-2' });
 				console.println(lines.length);
 				console.println(lines[1].indexOf('┤') >= 0);
 				console.println(lines[0].indexOf(':') >= 0);
+				console.println(tallLines.length);
+				console.println(lines.join('\n') !== selectedLines.join('\n'));
+				console.println(selectedLines.join('\n') === builderLines.join('\n'));
 				console.println(builderLines.length);
 			`,
-			Output: []string{"4", "true", "true", "4"},
+			Output: []string{"4", "true", "true", "6", "true", "true", "4"},
 		},
 		{
 			Name: "advn-svg-output",
@@ -483,6 +531,43 @@ func TestRenderers(t *testing.T) {
 				console.println(png.byteLength > 64);
 			`,
 			Output: []string{"89504e470d0a1a0a", "true"},
+		},
+		{
+			Name: "advn-png-combined-options-and-legacy",
+			Script: `
+				const advn = require('vizspec');
+				const spec = new advn.Builder()
+					.setDomain({ kind: 'time', tz: 'UTC' })
+					.setXAxis({ id: 'time', type: 'time', label: 'Time' })
+					.addYAxis({ id: 'value', type: 'linear', label: 'Value' })
+					.addTimeBucketValueSeries({
+						id: 'series-1',
+						name: 'series-1',
+						axis: 'value',
+						data: [
+							['2026-04-03T00:00:00Z', 10],
+							['2026-04-03T00:01:00Z', 12]
+						]
+					})
+					.build();
+				const combined = advn.toPNG(spec, {
+					title: 'ADVN PNG',
+					width: 480,
+					height: 220,
+					background: '#ffffff',
+					scale: 2,
+					theme: 'mrtg'
+				});
+				const legacy = advn.toPNG(spec,
+					{ title: 'ADVN PNG', width: 480, height: 220, background: '#ffffff' },
+					{ scale: 2, theme: 'mrtg', background: '#ffffff' }
+				);
+				console.println(new Uint8Array(combined)[0].toString(16).padStart(2, '0'));
+				console.println(combined.byteLength > 64);
+				console.println(new Uint8Array(legacy)[0].toString(16).padStart(2, '0'));
+				console.println(legacy.byteLength > 64);
+			`,
+			Output: []string{"89", "true", "89", "true"},
 		},
 		{
 			Name: "advn-tui-output-time-options",

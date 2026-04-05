@@ -119,11 +119,11 @@ func TestToTUIBlocksWithOptions(t *testing.T) {
 	if blocks[2].Type != "sparkline" {
 		t.Fatalf("expected visualization block type %q, got %q", "sparkline", blocks[2].Type)
 	}
-	if len(blocks[2].Lines) != 4 {
-		t.Fatalf("expected sparkline with axis and 3 chart rows, got %#v", blocks[2].Lines)
+	if len(blocks[2].Lines) != 1 {
+		t.Fatalf("expected single sparkline line, got %#v", blocks[2].Lines)
 	}
-	if !strings.Contains(blocks[2].Lines[1], "┤") {
-		t.Fatalf("expected sparkline y-axis marker, got %#v", blocks[2].Lines)
+	if strings.Contains(blocks[2].Lines[0], "┤") {
+		t.Fatalf("expected original compact sparkline without axis marker, got %#v", blocks[2].Lines)
 	}
 	if utf8.RuneCountInString(blocks[2].Lines[0]) < 5 {
 		t.Fatalf("expected sparkline width 5, got %#v", blocks[2].Lines)
@@ -171,6 +171,54 @@ func TestToSparkline(t *testing.T) {
 	}
 	if !strings.Contains(lines[0], ":") {
 		t.Fatalf("expected sparkline x-axis label, got %#v", lines)
+	}
+	tallerLines, err := ToSparklineWithOptions(spec, &TUIOptions{Width: 12, Height: 5})
+	if err != nil {
+		t.Fatalf("ToSparklineWithOptions(height) returned unexpected error: %v", err)
+	}
+	if len(tallerLines) != 6 {
+		t.Fatalf("expected sparkline with axis and 5 chart rows, got %#v", tallerLines)
+	}
+}
+
+func TestToSparklineWithSeriesID(t *testing.T) {
+	spec := (&Spec{
+		Version: Version1,
+		Series: []Series{
+			{
+				ID:             "first",
+				Representation: Representation{Kind: RepresentationRawPoint, Fields: []string{"x", "y"}},
+				Data: []any{
+					[]any{0, 1},
+					[]any{1, 1},
+					[]any{2, 1},
+				},
+			},
+			{
+				ID:             "second",
+				Representation: Representation{Kind: RepresentationRawPoint, Fields: []string{"x", "y"}},
+				Data: []any{
+					[]any{0, 1},
+					[]any{1, 3},
+					[]any{2, 6},
+				},
+			},
+		},
+	}).Normalize()
+
+	defaultLines, err := ToSparklineWithOptions(spec, &TUIOptions{Width: 6})
+	if err != nil {
+		t.Fatalf("ToSparklineWithOptions(default) returned unexpected error: %v", err)
+	}
+	selectedLines, err := ToSparklineWithOptions(spec, &TUIOptions{Width: 6, SeriesID: "second"})
+	if err != nil {
+		t.Fatalf("ToSparklineWithOptions(seriesId) returned unexpected error: %v", err)
+	}
+	if strings.Join(defaultLines, "\n") == strings.Join(selectedLines, "\n") {
+		t.Fatalf("expected seriesId selection to change sparkline output, got %#v", selectedLines)
+	}
+	if _, err := ToSparklineWithOptions(spec, &TUIOptions{SeriesID: "missing"}); err == nil {
+		t.Fatal("expected missing seriesId error")
 	}
 }
 

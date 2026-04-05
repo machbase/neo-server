@@ -13,9 +13,11 @@ const tuiDefaultTableRows = 8
 const tuiSparklineHeight = 3
 
 type TUIOptions struct {
+	Height     int    `json:"height,omitempty"`
 	Width      int    `json:"width,omitempty"`
 	Rows       int    `json:"rows,omitempty"`
 	Compact    bool   `json:"compact,omitempty"`
+	SeriesID   string `json:"seriesId,omitempty"`
 	Timeformat string `json:"timeformat,omitempty"`
 	TZ         string `json:"tz,omitempty"`
 }
@@ -56,17 +58,13 @@ func ToSparklineWithOptions(spec *Spec, options *TUIOptions) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, series := range spec.Series {
-		if !isSparklineRepresentation(series.Representation.Kind) {
-			continue
-		}
-		block, err := buildTUIVisualizationBlock(spec, series, seriesDisplayName(series), resolved, timeOptions)
-		if err != nil {
-			return nil, err
-		}
-		if len(block.Lines) > 0 {
-			return block.Lines, nil
-		}
+	series, err := selectSparklineSeries(spec, resolved)
+	if err != nil {
+		return nil, err
+	}
+	lines := buildTUILinesForSeries(spec, series, resolved, timeOptions)
+	if len(lines) > 0 {
+		return lines, nil
 	}
 	return nil, fmt.Errorf("advn: no sparkline-compatible series")
 }
@@ -105,6 +103,9 @@ func normalizeTUIOptions(options *TUIOptions) TUIOptions {
 	}
 	if resolved.Width <= 0 {
 		resolved.Width = tuiDefaultWidth
+	}
+	if resolved.Height <= 0 {
+		resolved.Height = tuiSparklineHeight
 	}
 	if resolved.Rows <= 0 {
 		resolved.Rows = tuiDefaultTableRows
@@ -213,11 +214,83 @@ func buildTUISeriesStats(series Series) []TUIStat {
 	return stats
 }
 
+func sparklineValuesForSeries(series Series) []float64 {
+	switch series.Representation.Kind {
+	case RepresentationRawPoint, RepresentationTimeBucketValue:
+		return collectNumericField(series, "value", 1)
+	default:
+		return nil
+	}
+}
+
+func hasTUILinesForSeries(series Series) bool {
+	switch series.Representation.Kind {
+	case RepresentationRawPoint, RepresentationTimeBucketValue:
+		return len(sparklineValuesForSeries(series)) > 0
+	case RepresentationTimeBucketBand:
+		return len(collectNumericField(series, "min", -1)) > 0 || len(collectNumericField(series, "avg", -1)) > 0 || len(collectNumericField(series, "max", -1)) > 0
+	default:
+		return false
+	}
+}
+
+func buildTUILinesForSeries(spec *Spec, series Series, options TUIOptions, timeOptions resolvedOutputTimeOptions) []string {
+	switch series.Representation.Kind {
+	case RepresentationRawPoint, RepresentationTimeBucketValue:
+		return buildSparklineLines(spec, series, sparklineValuesForSeries(series), options.Width, options.Height, timeOptions)
+	case RepresentationTimeBucketBand:
+		minValues := collectNumericField(series, "min", -1)
+		avgValues := collectNumericField(series, "avg", -1)
+		maxValues := collectNumericField(series, "max", -1)
+		lines := []string{}
+		if len(maxValues) > 0 {
+			lines = append(lines, "max "+renderSparkline(maxValues, options.Width))
+		}
+		if len(avgValues) > 0 {
+			lines = append(lines, "avg "+renderSparkline(avgValues, options.Width))
+		}
+		if len(minValues) > 0 {
+			lines = append(lines, "min "+renderSparkline(minValues, options.Width))
+		}
+		return lines
+	default:
+		return nil
+	}
+}
+
+func selectSparklineSeries(spec *Spec, options TUIOptions) (Series, error) {
+	if options.SeriesID != "" {
+		for _, series := range spec.Series {
+			if series.ID != options.SeriesID {
+				continue
+			}
+			if !isSparklineRepresentation(series.Representation.Kind) {
+				return Series{}, fmt.Errorf("advn: series %q is not sparkline-compatible", options.SeriesID)
+			}
+			if !hasTUILinesForSeries(series) {
+				return Series{}, fmt.Errorf("advn: series %q has no sparkline values", options.SeriesID)
+			}
+			return series, nil
+		}
+		return Series{}, fmt.Errorf("advn: series %q not found", options.SeriesID)
+	}
+	for _, series := range spec.Series {
+		if !isSparklineRepresentation(series.Representation.Kind) {
+			continue
+		}
+		if !hasTUILinesForSeries(series) {
+			continue
+		}
+		return series, nil
+	}
+	return Series{}, fmt.Errorf("advn: no sparkline-compatible series")
+}
+
 func buildTUIVisualizationBlock(spec *Spec, series Series, name string, options TUIOptions, timeOptions resolvedOutputTimeOptions) (TUIBlock, error) {
 	switch series.Representation.Kind {
 	case RepresentationRawPoint, RepresentationTimeBucketValue:
-		values := collectNumericField(series, "value", 1)
-		return TUIBlock{Type: "sparkline", Title: name, Lines: buildSparklineLines(spec, series, values, options.Width, timeOptions)}, nil
+		values := sparklineValuesForSeries(series)
+		return TUIBlock{Type: "sparkline", Title: name, Lines: buildSparklineBlockLines(values, options.Width)}, nil
 	case RepresentationTimeBucketBand:
 		minValues := collectNumericField(series, "min", -1)
 		avgValues := collectNumericField(series, "avg", -1)
@@ -576,19 +649,19 @@ func collectNumericField(series Series, field string, fallback int) []float64 {
 	return ret
 }
 
-func buildSparklineLines(spec *Spec, series Series, values []float64, width int, timeOptions resolvedOutputTimeOptions) []string {
+func buildSparklineLines(spec *Spec, series Series, values []float64, width int, height int, timeOptions resolvedOutputTimeOptions) []string {
 	sampled, minValue, maxValue, ok := prepareSparklineValues(values, width)
 	if !ok {
 		return nil
 	}
-	labels := buildSparklineYLabels(minValue, maxValue)
+	labels := buildSparklineYLabels(minValue, maxValue, height)
 	labelWidth := 0
 	for _, label := range labels {
 		if len(label) > labelWidth {
 			labelWidth = len(label)
 		}
 	}
-	chart := renderSparklineChart(sampled, minValue, maxValue)
+	chart := renderSparklineChart(sampled, minValue, maxValue, height)
 	lines := make([]string, 0, len(chart)+1)
 	if xAxis := buildSparklineXAxis(spec, series, len(sampled), timeOptions); xAxis != "" {
 		lines = append(lines, strings.Repeat(" ", labelWidth+3)+xAxis)
@@ -597,6 +670,14 @@ func buildSparklineLines(spec *Spec, series Series, values []float64, width int,
 		lines = append(lines, fmt.Sprintf("%*s ┤ %s", labelWidth, labels[index], row))
 	}
 	return lines
+}
+
+func buildSparklineBlockLines(values []float64, width int) []string {
+	line := renderSparkline(values, width)
+	if line == "" {
+		return nil
+	}
+	return []string{line}
 }
 
 func prepareSparklineValues(values []float64, width int) ([]float64, float64, float64, bool) {
@@ -632,12 +713,16 @@ func renderSparkline(values []float64, width int) string {
 	return string(buf)
 }
 
-func renderSparklineChart(values []float64, minValue float64, maxValue float64) []string {
-	rows := make([][]rune, tuiSparklineHeight)
+func renderSparklineChart(values []float64, minValue float64, maxValue float64, height int) []string {
+	if height <= 0 {
+		height = tuiSparklineHeight
+	}
+	rows := make([][]rune, height)
+	baselineRow := height / 2
 	for row := range rows {
 		rows[row] = make([]rune, len(values))
 		fill := ' '
-		if row == 1 {
+		if row == baselineRow {
 			fill = '─'
 		}
 		for col := range rows[row] {
@@ -645,13 +730,13 @@ func renderSparklineChart(values []float64, minValue float64, maxValue float64) 
 		}
 	}
 	if maxValue == minValue {
-		for col := range rows[1] {
-			rows[1][col] = '█'
+		for col := range rows[baselineRow] {
+			rows[baselineRow][col] = '█'
 		}
 		return sparklineRowsToStrings(rows)
 	}
 	levels := []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
-	totalLevels := tuiSparklineHeight * (len(levels) - 1)
+	totalLevels := height * (len(levels) - 1)
 	for col, value := range values {
 		filled := int(math.Round((value-minValue)/(maxValue-minValue)*float64(totalLevels-1))) + 1
 		if filled < 1 {
@@ -661,7 +746,7 @@ func renderSparklineChart(values []float64, minValue float64, maxValue float64) 
 			filled = totalLevels
 		}
 		remaining := filled
-		for row := tuiSparklineHeight - 1; row >= 0; row-- {
+		for row := height - 1; row >= 0; row-- {
 			level := remaining
 			if level > len(levels)-1 {
 				level = len(levels) - 1
@@ -686,12 +771,19 @@ func sparklineRowsToStrings(rows [][]rune) []string {
 	return ret
 }
 
-func buildSparklineYLabels(minValue float64, maxValue float64) []string {
-	baseline := 0.0
-	if minValue > 0 || maxValue < 0 {
-		baseline = (minValue + maxValue) / 2
+func buildSparklineYLabels(minValue float64, maxValue float64, height int) []string {
+	if height <= 0 {
+		height = tuiSparklineHeight
 	}
-	return []string{formatFloat(maxValue), formatFloat(baseline), formatFloat(minValue)}
+	if height == 1 {
+		return []string{formatFloat(maxValue)}
+	}
+	ret := make([]string, 0, height)
+	for row := 0; row < height; row++ {
+		ratio := float64(height-1-row) / float64(height-1)
+		ret = append(ret, formatFloat(minValue+(maxValue-minValue)*ratio))
+	}
+	return ret
 }
 
 func buildSparklineXAxis(spec *Spec, series Series, width int, timeOptions resolvedOutputTimeOptions) string {
