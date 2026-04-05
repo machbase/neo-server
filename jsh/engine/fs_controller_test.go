@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -135,8 +136,10 @@ func TestControllerFS_RemoteDescriptorOperations(t *testing.T) {
 	if info.Size() != int64(len("remote-fd")) {
 		t.Fatalf("FstatFD size=%d, want %d", info.Size(), len("remote-fd"))
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("FstatFD mode=%v, want 0600", info.Mode())
+	if runtime.GOOS != "windows" {
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("FstatFD mode=%v, want 0600", info.Mode())
+		}
 	}
 	reader, err := mfs.HostReaderFD(fd)
 	if err != nil {
