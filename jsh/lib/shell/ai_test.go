@@ -35,6 +35,19 @@ func TestDefaultLLMConfig(t *testing.T) {
 	if claudeCfg.MaxTokens != 8192 {
 		t.Errorf("claude maxTokens = %d, want 8192", claudeCfg.MaxTokens)
 	}
+	ollamaCfg, ok := cfg.Providers["ollama"]
+	if !ok {
+		t.Fatal("providers map missing 'ollama' entry")
+	}
+	if ollamaCfg.BaseURL != "http://127.0.0.1:11434" {
+		t.Errorf("ollama baseUrl = %q, want %q", ollamaCfg.BaseURL, "http://127.0.0.1:11434")
+	}
+	if ollamaCfg.Model != "llama3.1" {
+		t.Errorf("ollama model = %q, want %q", ollamaCfg.Model, "llama3.1")
+	}
+	if ollamaCfg.MaxTokens != 8192 {
+		t.Errorf("ollama maxTokens = %d, want 8192", ollamaCfg.MaxTokens)
+	}
 	if cfg.Exec.MaxRows != 1000 {
 		t.Errorf("exec.maxRows = %d, want 1000", cfg.Exec.MaxRows)
 	}
@@ -269,6 +282,9 @@ func TestNewOpenAIProvider_Defaults(t *testing.T) {
 	if p.model() != "gpt-4o" {
 		t.Errorf("model() = %q, want %q", p.model(), "gpt-4o")
 	}
+	if p.baseURL != "https://api.openai.com/v1" {
+		t.Errorf("baseURL = %q, want %q", p.baseURL, "https://api.openai.com/v1")
+	}
 	if p.maxTokens != 8192 {
 		t.Errorf("maxTokens = %d, want 8192", p.maxTokens)
 	}
@@ -282,15 +298,52 @@ func TestNewOpenAIProvider_EnvAPIKey(t *testing.T) {
 	}
 }
 
-func TestOpenAIProvider_NotImplemented(t *testing.T) {
-	p := newOpenAIProvider(&llmProviderConf{})
-	_, err := p.send(context.Background(), llmRequest{})
-	if err == nil {
-		t.Error("send() should return not-implemented error")
+func TestNewOllamaProvider_Defaults(t *testing.T) {
+	p := newOllamaProvider(&llmProviderConf{})
+	if p.name() != "ollama" {
+		t.Errorf("name() = %q, want %q", p.name(), "ollama")
 	}
-	_, err = p.stream(context.Background(), llmRequest{}, func(string) {})
-	if err == nil {
-		t.Error("stream() should return not-implemented error")
+	if p.model() != "llama3.1" {
+		t.Errorf("model() = %q, want %q", p.model(), "llama3.1")
+	}
+	if p.baseURL != "http://127.0.0.1:11434" {
+		t.Errorf("baseURL = %q, want %q", p.baseURL, "http://127.0.0.1:11434")
+	}
+	if p.maxTokens != 8192 {
+		t.Errorf("maxTokens = %d, want 8192", p.maxTokens)
+	}
+}
+
+func TestNewOllamaProvider_FromConf(t *testing.T) {
+	p := newOllamaProvider(&llmProviderConf{
+		BaseURL:   "ollama.internal:11434/",
+		Model:     "qwen3:8b",
+		MaxTokens: 2048,
+	})
+	if p.baseURL != "http://ollama.internal:11434" {
+		t.Errorf("baseURL = %q, want %q", p.baseURL, "http://ollama.internal:11434")
+	}
+	if p.model() != "qwen3:8b" {
+		t.Errorf("model() = %q, want %q", p.model(), "qwen3:8b")
+	}
+	if p.maxTokens != 2048 {
+		t.Errorf("maxTokens = %d, want 2048", p.maxTokens)
+	}
+}
+
+func TestNewOllamaProvider_EnvBaseURL(t *testing.T) {
+	t.Setenv("OLLAMA_HOST", "ollama.env:11434")
+	p := newOllamaProvider(&llmProviderConf{})
+	if p.baseURL != "http://ollama.env:11434" {
+		t.Errorf("baseURL from env = %q, want %q", p.baseURL, "http://ollama.env:11434")
+	}
+}
+
+func TestNewOpenAIProvider_EnvBaseURL(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "https://openai.internal/v1/")
+	p := newOpenAIProvider(&llmProviderConf{})
+	if p.baseURL != "https://openai.internal/v1" {
+		t.Errorf("baseURL from env = %q, want %q", p.baseURL, "https://openai.internal/v1")
 	}
 }
 
@@ -357,6 +410,113 @@ func TestClaudeProvider_BuildBody_ModelOverride(t *testing.T) {
 	}
 }
 
+func TestOllamaProvider_BuildBody(t *testing.T) {
+	p := newOllamaProvider(&llmProviderConf{
+		BaseURL:   "http://127.0.0.1:11434",
+		Model:     "llama3.1",
+		MaxTokens: 4096,
+	})
+	req := llmRequest{
+		Messages: []llmMessage{
+			{Role: "user", Content: "hello"},
+		},
+		SystemPrompt: "You are helpful.",
+	}
+
+	body, err := p.buildBody(req, true)
+	if err != nil {
+		t.Fatalf("buildBody() error: %v", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("body is not valid JSON: %v", err)
+	}
+	if m["model"] != "llama3.1" {
+		t.Errorf("model = %v, want %q", m["model"], "llama3.1")
+	}
+	if m["stream"] != true {
+		t.Errorf("stream = %v, want true", m["stream"])
+	}
+	options, ok := m["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("options missing or wrong type: %T", m["options"])
+	}
+	if options["num_predict"] != float64(4096) {
+		t.Errorf("options.num_predict = %v, want 4096", options["num_predict"])
+	}
+	messages, ok := m["messages"].([]any)
+	if !ok {
+		t.Fatalf("messages missing or wrong type: %T", m["messages"])
+	}
+	if len(messages) != 2 {
+		t.Fatalf("messages length = %d, want 2", len(messages))
+	}
+	first, _ := messages[0].(map[string]any)
+	second, _ := messages[1].(map[string]any)
+	if first["role"] != "system" || first["content"] != "You are helpful." {
+		t.Errorf("first message = %#v, want system prompt", first)
+	}
+	if second["role"] != "user" || second["content"] != "hello" {
+		t.Errorf("second message = %#v, want user content", second)
+	}
+}
+
+func TestOpenAIProvider_BuildBody(t *testing.T) {
+	p := newOpenAIProvider(&llmProviderConf{
+		BaseURL:   "https://api.openai.com/v1",
+		Model:     "gpt-4o",
+		MaxTokens: 4096,
+	})
+	req := llmRequest{
+		Messages: []llmMessage{
+			{Role: "user", Content: "hello"},
+		},
+		SystemPrompt: "You are helpful.",
+	}
+
+	body, err := p.buildBody(req, true)
+	if err != nil {
+		t.Fatalf("buildBody() error: %v", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("body is not valid JSON: %v", err)
+	}
+	if m["model"] != "gpt-4o" {
+		t.Errorf("model = %v, want %q", m["model"], "gpt-4o")
+	}
+	if m["stream"] != true {
+		t.Errorf("stream = %v, want true", m["stream"])
+	}
+	if m["max_tokens"] != float64(4096) {
+		t.Errorf("max_tokens = %v, want 4096", m["max_tokens"])
+	}
+	streamOptions, ok := m["stream_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("stream_options missing or wrong type: %T", m["stream_options"])
+	}
+	if streamOptions["include_usage"] != true {
+		t.Errorf("stream_options.include_usage = %v, want true", streamOptions["include_usage"])
+	}
+	messages, ok := m["messages"].([]any)
+	if !ok {
+		t.Fatalf("messages missing or wrong type: %T", m["messages"])
+	}
+	if len(messages) != 2 {
+		t.Fatalf("messages length = %d, want 2", len(messages))
+	}
+	first, _ := messages[0].(map[string]any)
+	second, _ := messages[1].(map[string]any)
+	if first["role"] != "system" || first["content"] != "You are helpful." {
+		t.Errorf("first message = %#v, want system prompt", first)
+	}
+	if second["role"] != "user" || second["content"] != "hello" {
+		t.Errorf("second message = %#v, want user content", second)
+	}
+}
+
 // ─── claudeProvider HTTP Tests (mock server) ─────────────────────────────────
 
 func newMockClaudeServer(handler http.HandlerFunc) (*httptest.Server, *claudeProvider) {
@@ -364,6 +524,27 @@ func newMockClaudeServer(handler http.HandlerFunc) (*httptest.Server, *claudePro
 	p := newClaudeProvider(&llmProviderConf{APIKey: "test-key", Model: "claude-test", MaxTokens: 100})
 	// Override the HTTP client to point at the mock server by temporarily
 	// replacing the URL inside doRequest via a thin wrapper test provider.
+	return srv, p
+}
+
+func newMockOllamaServer(handler http.HandlerFunc) (*httptest.Server, *ollamaProvider) {
+	srv := httptest.NewServer(handler)
+	p := newOllamaProvider(&llmProviderConf{
+		BaseURL:   srv.URL,
+		Model:     "llama3.1",
+		MaxTokens: 100,
+	})
+	return srv, p
+}
+
+func newMockOpenAIServer(handler http.HandlerFunc) (*httptest.Server, *openaiProvider) {
+	srv := httptest.NewServer(handler)
+	p := newOpenAIProvider(&llmProviderConf{
+		BaseURL:   srv.URL,
+		APIKey:    "test-key",
+		Model:     "gpt-4o",
+		MaxTokens: 100,
+	})
 	return srv, p
 }
 
@@ -674,6 +855,276 @@ func TestClaudeProvider_Stream_APIError(t *testing.T) {
 	}
 }
 
+func TestOpenAIProvider_Send_Success(t *testing.T) {
+	srv, p := newMockOpenAIServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Fatalf("URL path = %q, want %q", r.URL.Path, "/chat/completions")
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %q, want POST", r.Method)
+		}
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Fatalf("Authorization = %q, want %q", r.Header.Get("Authorization"), "Bearer test-key")
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) error: %v", err)
+		}
+		defer r.Body.Close()
+
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("json.Unmarshal(request) error: %v", err)
+		}
+		if req["model"] != "gpt-4o" {
+			t.Errorf("request model = %v, want %q", req["model"], "gpt-4o")
+		}
+		if req["stream"] != false {
+			t.Errorf("request stream = %v, want false", req["stream"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"model":"gpt-4o","choices":[{"message":{"role":"assistant","content":"hello from openai"}}],"usage":{"prompt_tokens":11,"completion_tokens":6}}`)
+	})
+	defer srv.Close()
+
+	resp, err := p.send(context.Background(), llmRequest{
+		SystemPrompt: "You are helpful.",
+		Messages:     []llmMessage{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("send() error: %v", err)
+	}
+	if resp.Content != "hello from openai" {
+		t.Errorf("Content = %q, want %q", resp.Content, "hello from openai")
+	}
+	if resp.InputTokens != 11 {
+		t.Errorf("InputTokens = %d, want 11", resp.InputTokens)
+	}
+	if resp.OutputTokens != 6 {
+		t.Errorf("OutputTokens = %d, want 6", resp.OutputTokens)
+	}
+	if resp.Provider != "openai" {
+		t.Errorf("Provider = %q, want %q", resp.Provider, "openai")
+	}
+	if resp.Model != "gpt-4o" {
+		t.Errorf("Model = %q, want %q", resp.Model, "gpt-4o")
+	}
+}
+
+func TestOpenAIProvider_Send_APIError(t *testing.T) {
+	srv, p := newMockOpenAIServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"invalid api key"}`)
+	})
+	defer srv.Close()
+
+	_, err := p.send(context.Background(), llmRequest{
+		Messages: []llmMessage{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Error("send() should return error for non-200 status")
+	}
+	if !strings.Contains(err.Error(), "openai API error 401") {
+		t.Errorf("error should mention status 401, got: %v", err)
+	}
+}
+
+func TestOpenAIProvider_Stream_Success(t *testing.T) {
+	streamBody := strings.Join([]string{
+		`data: {"model":"gpt-4o","choices":[{"delta":{"content":"hello "}}]}`,
+		`data: {"model":"gpt-4o","choices":[{"delta":{"content":"world"}}]}`,
+		`data: {"model":"gpt-4o","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":8}}`,
+		`data: [DONE]`,
+	}, "\n") + "\n"
+
+	srv, p := newMockOpenAIServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, streamBody)
+	})
+	defer srv.Close()
+
+	var tokens []string
+	resp, err := p.stream(context.Background(), llmRequest{
+		Messages: []llmMessage{{Role: "user", Content: "hi"}},
+	}, func(token string) {
+		tokens = append(tokens, token)
+	})
+	if err != nil {
+		t.Fatalf("stream() error: %v", err)
+	}
+	if strings.Join(tokens, "") != "hello world" {
+		t.Errorf("joined tokens = %q, want %q", strings.Join(tokens, ""), "hello world")
+	}
+	if resp.Content != "hello world" {
+		t.Errorf("Content = %q, want %q", resp.Content, "hello world")
+	}
+	if resp.InputTokens != 13 {
+		t.Errorf("InputTokens = %d, want 13", resp.InputTokens)
+	}
+	if resp.OutputTokens != 8 {
+		t.Errorf("OutputTokens = %d, want 8", resp.OutputTokens)
+	}
+	if resp.Provider != "openai" {
+		t.Errorf("Provider = %q, want %q", resp.Provider, "openai")
+	}
+	if resp.Model != "gpt-4o" {
+		t.Errorf("Model = %q, want %q", resp.Model, "gpt-4o")
+	}
+}
+
+func TestOpenAIProvider_Stream_APIError(t *testing.T) {
+	srv, p := newMockOpenAIServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":"temporarily unavailable"}`)
+	})
+	defer srv.Close()
+
+	_, err := p.stream(context.Background(), llmRequest{
+		Messages: []llmMessage{{Role: "user", Content: "hi"}},
+	}, func(string) {})
+	if err == nil {
+		t.Error("stream() should return error for non-200 status")
+	}
+	if !strings.Contains(err.Error(), "openai API error 503") {
+		t.Errorf("error should mention status 503, got: %v", err)
+	}
+}
+
+func TestOllamaProvider_Send_Success(t *testing.T) {
+	srv, p := newMockOllamaServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Fatalf("URL path = %q, want %q", r.URL.Path, "/api/chat")
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %q, want POST", r.Method)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) error: %v", err)
+		}
+		defer r.Body.Close()
+
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("json.Unmarshal(request) error: %v", err)
+		}
+		if req["model"] != "llama3.1" {
+			t.Errorf("request model = %v, want %q", req["model"], "llama3.1")
+		}
+		if req["stream"] != false {
+			t.Errorf("request stream = %v, want false", req["stream"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"model":"llama3.1","message":{"role":"assistant","content":"hello from ollama"},"prompt_eval_count":12,"eval_count":7,"done":true}`)
+	})
+	defer srv.Close()
+
+	resp, err := p.send(context.Background(), llmRequest{
+		SystemPrompt: "You are helpful.",
+		Messages:     []llmMessage{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("send() error: %v", err)
+	}
+	if resp.Content != "hello from ollama" {
+		t.Errorf("Content = %q, want %q", resp.Content, "hello from ollama")
+	}
+	if resp.InputTokens != 12 {
+		t.Errorf("InputTokens = %d, want 12", resp.InputTokens)
+	}
+	if resp.OutputTokens != 7 {
+		t.Errorf("OutputTokens = %d, want 7", resp.OutputTokens)
+	}
+	if resp.Provider != "ollama" {
+		t.Errorf("Provider = %q, want %q", resp.Provider, "ollama")
+	}
+	if resp.Model != "llama3.1" {
+		t.Errorf("Model = %q, want %q", resp.Model, "llama3.1")
+	}
+}
+
+func TestOllamaProvider_Send_APIError(t *testing.T) {
+	srv, p := newMockOllamaServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, `{"error":"upstream unavailable"}`)
+	})
+	defer srv.Close()
+
+	_, err := p.send(context.Background(), llmRequest{
+		Messages: []llmMessage{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Error("send() should return error for non-200 status")
+	}
+	if !strings.Contains(err.Error(), "ollama API error 502") {
+		t.Errorf("error should mention status 502, got: %v", err)
+	}
+}
+
+func TestOllamaProvider_Stream_Success(t *testing.T) {
+	streamBody := strings.Join([]string{
+		`{"model":"llama3.1","message":{"role":"assistant","content":"hello "},"done":false}`,
+		`{"model":"llama3.1","message":{"role":"assistant","content":"world"},"done":false}`,
+		`{"model":"llama3.1","message":{"role":"assistant","content":""},"prompt_eval_count":14,"eval_count":9,"done":true}`,
+	}, "\n") + "\n"
+
+	srv, p := newMockOllamaServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprint(w, streamBody)
+	})
+	defer srv.Close()
+
+	var tokens []string
+	resp, err := p.stream(context.Background(), llmRequest{
+		Messages: []llmMessage{{Role: "user", Content: "hi"}},
+	}, func(token string) {
+		tokens = append(tokens, token)
+	})
+	if err != nil {
+		t.Fatalf("stream() error: %v", err)
+	}
+	if strings.Join(tokens, "") != "hello world" {
+		t.Errorf("joined tokens = %q, want %q", strings.Join(tokens, ""), "hello world")
+	}
+	if resp.Content != "hello world" {
+		t.Errorf("Content = %q, want %q", resp.Content, "hello world")
+	}
+	if resp.InputTokens != 14 {
+		t.Errorf("InputTokens = %d, want 14", resp.InputTokens)
+	}
+	if resp.OutputTokens != 9 {
+		t.Errorf("OutputTokens = %d, want 9", resp.OutputTokens)
+	}
+	if resp.Provider != "ollama" {
+		t.Errorf("Provider = %q, want %q", resp.Provider, "ollama")
+	}
+	if resp.Model != "llama3.1" {
+		t.Errorf("Model = %q, want %q", resp.Model, "llama3.1")
+	}
+}
+
+func TestOllamaProvider_Stream_APIError(t *testing.T) {
+	srv, p := newMockOllamaServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":"ollama unavailable"}`)
+	})
+	defer srv.Close()
+
+	_, err := p.stream(context.Background(), llmRequest{
+		Messages: []llmMessage{{Role: "user", Content: "hi"}},
+	}, func(string) {})
+	if err == nil {
+		t.Error("stream() should return error for non-200 status")
+	}
+	if !strings.Contains(err.Error(), "ollama API error 503") {
+		t.Errorf("error should mention status 503, got: %v", err)
+	}
+}
+
 // ─── parseMessagesArgs Tests ─────────────────────────────────────────────────
 
 func TestParseMessagesArgs(t *testing.T) {
@@ -846,6 +1297,13 @@ func TestAIModule_BuildProvider(t *testing.T) {
 		}
 	})
 
+	t.Run("ollama provider", func(t *testing.T) {
+		p := m.buildProvider("ollama")
+		if p.name() != "ollama" {
+			t.Errorf("provider name = %q, want %q", p.name(), "ollama")
+		}
+	})
+
 	t.Run("unknown defaults to claude", func(t *testing.T) {
 		p := m.buildProvider("unknown-provider")
 		if p.name() != "claude" {
@@ -984,6 +1442,73 @@ func TestAIModule_JSProviderInfo(t *testing.T) {
 	}
 	if info["model"] != "claude-opus-4-5" {
 		t.Errorf("info.model = %v, want %q", info["model"], "claude-opus-4-5")
+	}
+	if info["hasApiKey"] != false {
+		t.Errorf("info.hasApiKey = %v, want false", info["hasApiKey"])
+	}
+}
+
+func TestAIModule_JSProviderInfo_ClaudeEnvAPIKey(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "env-api-key")
+
+	rt := goja.New()
+	cfg := defaultLLMConfig()
+	m := &aiModule{rt: rt, cfg: cfg}
+	m.provider = m.buildProvider("claude")
+
+	info, ok := m.jsProviderInfo(goja.FunctionCall{}).Export().(map[string]any)
+	if !ok {
+		t.Fatal("jsProviderInfo() did not return object")
+	}
+	if info["hasApiKey"] != true {
+		t.Errorf("info.hasApiKey = %v, want true", info["hasApiKey"])
+	}
+}
+
+func TestAIModule_JSProviderInfo_Ollama(t *testing.T) {
+	rt := goja.New()
+	cfg := defaultLLMConfig()
+	m := &aiModule{rt: rt, cfg: cfg}
+	m.provider = m.buildProvider("ollama")
+
+	info, ok := m.jsProviderInfo(goja.FunctionCall{}).Export().(map[string]any)
+	if !ok {
+		t.Fatal("jsProviderInfo() did not return object")
+	}
+	if info["name"] != "ollama" {
+		t.Errorf("info.name = %v, want %q", info["name"], "ollama")
+	}
+	if info["baseUrl"] != "http://127.0.0.1:11434" {
+		t.Errorf("info.baseUrl = %v, want %q", info["baseUrl"], "http://127.0.0.1:11434")
+	}
+	if info["hasBaseUrl"] != true {
+		t.Errorf("info.hasBaseUrl = %v, want true", info["hasBaseUrl"])
+	}
+}
+
+func TestAIModule_JSProviderInfo_OpenAI(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "env-openai-key")
+
+	rt := goja.New()
+	cfg := defaultLLMConfig()
+	m := &aiModule{rt: rt, cfg: cfg}
+	m.provider = m.buildProvider("openai")
+
+	info, ok := m.jsProviderInfo(goja.FunctionCall{}).Export().(map[string]any)
+	if !ok {
+		t.Fatal("jsProviderInfo() did not return object")
+	}
+	if info["name"] != "openai" {
+		t.Errorf("info.name = %v, want %q", info["name"], "openai")
+	}
+	if info["model"] != "gpt-4o" {
+		t.Errorf("info.model = %v, want %q", info["model"], "gpt-4o")
+	}
+	if info["hasApiKey"] != true {
+		t.Errorf("info.hasApiKey = %v, want true", info["hasApiKey"])
+	}
+	if info["baseUrl"] != "https://api.openai.com/v1" {
+		t.Errorf("info.baseUrl = %v, want %q", info["baseUrl"], "https://api.openai.com/v1")
 	}
 }
 

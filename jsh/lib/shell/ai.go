@@ -33,6 +33,7 @@ type llmConfig struct {
 
 type llmProviderConf struct {
 	APIKey    string `json:"apiKey"`
+	BaseURL   string `json:"baseUrl"`
 	Model     string `json:"model"`
 	MaxTokens int    `json:"maxTokens"`
 }
@@ -54,6 +55,16 @@ func defaultLLMConfig() *llmConfig {
 		Providers: map[string]*llmProviderConf{
 			"claude": {
 				Model:     "claude-opus-4-5",
+				MaxTokens: 8192,
+			},
+			"openai": {
+				BaseURL:   "https://api.openai.com/v1",
+				Model:     "gpt-4o",
+				MaxTokens: 8192,
+			},
+			"ollama": {
+				BaseURL:   "http://127.0.0.1:11434",
+				Model:     "llama3.1",
 				MaxTokens: 8192,
 			},
 		},
@@ -372,12 +383,22 @@ func (p *claudeProvider) stream(ctx context.Context, req llmRequest, onToken fun
 // ─── OpenAI provider (stub) ──────────────────────────────────────────────────
 
 type openaiProvider struct {
+	baseURL   string
 	apiKey    string
 	modelName string
 	maxTokens int
 }
 
 func newOpenAIProvider(conf *llmProviderConf) *openaiProvider {
+	baseURL := conf.BaseURL
+	if baseURL == "" {
+		baseURL = os.Getenv("OPENAI_BASE_URL")
+	}
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+
 	apiKey := conf.APIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
@@ -390,18 +411,360 @@ func newOpenAIProvider(conf *llmProviderConf) *openaiProvider {
 	if maxTokens == 0 {
 		maxTokens = 8192
 	}
-	return &openaiProvider{apiKey: apiKey, modelName: model, maxTokens: maxTokens}
+	return &openaiProvider{baseURL: baseURL, apiKey: apiKey, modelName: model, maxTokens: maxTokens}
 }
 
 func (p *openaiProvider) name() string  { return "openai" }
 func (p *openaiProvider) model() string { return p.modelName }
 
-func (p *openaiProvider) send(_ context.Context, _ llmRequest) (*llmResponse, error) {
-	return nil, fmt.Errorf("openai provider not yet implemented")
+func (p *openaiProvider) buildBody(req llmRequest, stream bool) ([]byte, error) {
+	model := req.Model
+	if model == "" {
+		model = p.modelName
+	}
+	maxTokens := req.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = p.maxTokens
+	}
+
+	messages := make([]map[string]string, 0, len(req.Messages)+1)
+	if req.SystemPrompt != "" {
+		messages = append(messages, map[string]string{
+			"role":    "system",
+			"content": req.SystemPrompt,
+		})
+	}
+	for _, m := range req.Messages {
+		messages = append(messages, map[string]string{
+			"role":    m.Role,
+			"content": m.Content,
+		})
+	}
+
+	body := map[string]any{
+		"model":      model,
+		"messages":   messages,
+		"max_tokens": maxTokens,
+		"stream":     stream,
+	}
+	if stream {
+		body["stream_options"] = map[string]any{
+			"include_usage": true,
+		}
+	}
+	return json.Marshal(body)
 }
 
-func (p *openaiProvider) stream(_ context.Context, _ llmRequest, _ func(string)) (*llmResponse, error) {
-	return nil, fmt.Errorf("openai provider not yet implemented")
+func (p *openaiProvider) doRequest(ctx context.Context, bodyBytes []byte) (*http.Response, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		p.baseURL+"/chat/completions", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	return http.DefaultClient.Do(httpReq)
+}
+
+func (p *openaiProvider) send(ctx context.Context, req llmRequest) (*llmResponse, error) {
+	body, err := p.buildBody(req, false)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := p.doRequest(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("openai API error %d: %s", resp.StatusCode, string(data))
+	}
+
+	var result struct {
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+
+	content := ""
+	if len(result.Choices) > 0 {
+		content = result.Choices[0].Message.Content
+	}
+	return &llmResponse{
+		Content:      content,
+		InputTokens:  result.Usage.PromptTokens,
+		OutputTokens: result.Usage.CompletionTokens,
+		Provider:     "openai",
+		Model:        result.Model,
+	}, nil
+}
+
+func (p *openaiProvider) stream(ctx context.Context, req llmRequest, onToken func(string)) (*llmResponse, error) {
+	body, err := p.buildBody(req, true)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := p.doRequest(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("openai API error %d: %s", resp.StatusCode, string(data))
+	}
+
+	var totalIn, totalOut int
+	var finalModel string
+	var sb strings.Builder
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "[DONE]" {
+			break
+		}
+
+		var event struct {
+			Model   string `json:"model"`
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			continue
+		}
+
+		if event.Model != "" {
+			finalModel = event.Model
+		}
+		if len(event.Choices) > 0 {
+			token := event.Choices[0].Delta.Content
+			if token != "" {
+				onToken(token)
+				sb.WriteString(token)
+			}
+		}
+		if event.Usage != nil {
+			totalIn = event.Usage.PromptTokens
+			totalOut = event.Usage.CompletionTokens
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return &llmResponse{
+		Content:      sb.String(),
+		InputTokens:  totalIn,
+		OutputTokens: totalOut,
+		Provider:     "openai",
+		Model:        finalModel,
+	}, nil
+}
+
+// ─── Ollama provider ─────────────────────────────────────────────────────────
+
+type ollamaProvider struct {
+	baseURL   string
+	modelName string
+	maxTokens int
+}
+
+func newOllamaProvider(conf *llmProviderConf) *ollamaProvider {
+	baseURL := conf.BaseURL
+	if baseURL == "" {
+		baseURL = os.Getenv("OLLAMA_HOST")
+	}
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:11434"
+	}
+	if !strings.Contains(baseURL, "://") {
+		baseURL = "http://" + baseURL
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	model := conf.Model
+	if model == "" {
+		model = "llama3.1"
+	}
+	maxTokens := conf.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = 8192
+	}
+	return &ollamaProvider{baseURL: baseURL, modelName: model, maxTokens: maxTokens}
+}
+
+func (p *ollamaProvider) name() string  { return "ollama" }
+func (p *ollamaProvider) model() string { return p.modelName }
+
+func (p *ollamaProvider) buildBody(req llmRequest, stream bool) ([]byte, error) {
+	model := req.Model
+	if model == "" {
+		model = p.modelName
+	}
+	maxTokens := req.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = p.maxTokens
+	}
+
+	messages := make([]map[string]string, 0, len(req.Messages)+1)
+	if req.SystemPrompt != "" {
+		messages = append(messages, map[string]string{
+			"role":    "system",
+			"content": req.SystemPrompt,
+		})
+	}
+	for _, m := range req.Messages {
+		messages = append(messages, map[string]string{
+			"role":    m.Role,
+			"content": m.Content,
+		})
+	}
+
+	body := map[string]any{
+		"model":    model,
+		"messages": messages,
+		"stream":   stream,
+		"options": map[string]any{
+			"num_predict": maxTokens,
+		},
+	}
+	return json.Marshal(body)
+}
+
+func (p *ollamaProvider) doRequest(ctx context.Context, bodyBytes []byte) (*http.Response, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		p.baseURL+"/api/chat", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	return http.DefaultClient.Do(httpReq)
+}
+
+func (p *ollamaProvider) send(ctx context.Context, req llmRequest) (*llmResponse, error) {
+	body, err := p.buildBody(req, false)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := p.doRequest(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama API error %d: %s", resp.StatusCode, string(data))
+	}
+
+	var result struct {
+		Model   string `json:"model"`
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+		PromptEvalCount int `json:"prompt_eval_count"`
+		EvalCount       int `json:"eval_count"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &llmResponse{
+		Content:      result.Message.Content,
+		InputTokens:  result.PromptEvalCount,
+		OutputTokens: result.EvalCount,
+		Provider:     "ollama",
+		Model:        result.Model,
+	}, nil
+}
+
+func (p *ollamaProvider) stream(ctx context.Context, req llmRequest, onToken func(string)) (*llmResponse, error) {
+	body, err := p.buildBody(req, true)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := p.doRequest(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama API error %d: %s", resp.StatusCode, string(data))
+	}
+
+	var totalIn, totalOut int
+	var finalModel string
+	var sb strings.Builder
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var event struct {
+			Model   string `json:"model"`
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Done            bool `json:"done"`
+			PromptEvalCount int  `json:"prompt_eval_count"`
+			EvalCount       int  `json:"eval_count"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if event.Model != "" {
+			finalModel = event.Model
+		}
+		if event.Message.Content != "" {
+			onToken(event.Message.Content)
+			sb.WriteString(event.Message.Content)
+		}
+		if event.Done {
+			totalIn = event.PromptEvalCount
+			totalOut = event.EvalCount
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return &llmResponse{
+		Content:      sb.String(),
+		InputTokens:  totalIn,
+		OutputTokens: totalOut,
+		Provider:     "ollama",
+		Model:        finalModel,
+	}, nil
 }
 
 // ─── aiModule — state held per JS runtime ───────────────────────────────────
@@ -431,6 +794,8 @@ func (m *aiModule) buildProvider(name string) llmProvider {
 	switch name {
 	case "openai":
 		return newOpenAIProvider(conf)
+	case "ollama":
+		return newOllamaProvider(conf)
 	default: // "claude" and fallback
 		return newClaudeProvider(conf)
 	}
@@ -589,13 +954,61 @@ func (m *aiModule) jsSetProvider(call goja.FunctionCall) goja.Value {
 
 func (m *aiModule) jsProviderInfo(call goja.FunctionCall) goja.Value {
 	conf := m.cfg.Providers[m.provider.name()]
-	hasKey := conf != nil && conf.APIKey != ""
-	return m.rt.ToValue(map[string]any{
+	maxTokens := 0
+	if conf != nil {
+		maxTokens = conf.MaxTokens
+	}
+	info := map[string]any{
 		"name":      m.provider.name(),
 		"model":     m.provider.model(),
-		"maxTokens": m.cfg.Providers[m.provider.name()].MaxTokens,
-		"hasApiKey": hasKey,
-	})
+		"maxTokens": maxTokens,
+	}
+
+	switch m.provider.name() {
+	case "claude":
+		hasKey := conf != nil && conf.APIKey != ""
+		if !hasKey {
+			hasKey = os.Getenv("ANTHROPIC_API_KEY") != ""
+		}
+		info["hasApiKey"] = hasKey
+	case "openai":
+		hasKey := conf != nil && conf.APIKey != ""
+		if !hasKey {
+			hasKey = os.Getenv("OPENAI_API_KEY") != ""
+		}
+		info["hasApiKey"] = hasKey
+		baseURL := ""
+		if conf != nil {
+			baseURL = conf.BaseURL
+		}
+		if baseURL == "" {
+			baseURL = os.Getenv("OPENAI_BASE_URL")
+		}
+		if baseURL == "" {
+			baseURL = "https://api.openai.com/v1"
+		}
+		baseURL = strings.TrimRight(baseURL, "/")
+		info["baseUrl"] = baseURL
+	case "ollama":
+		baseURL := ""
+		if conf != nil {
+			baseURL = conf.BaseURL
+		}
+		if baseURL == "" {
+			baseURL = os.Getenv("OLLAMA_HOST")
+		}
+		if baseURL == "" {
+			baseURL = "http://127.0.0.1:11434"
+		}
+		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+			baseURL = "http://" + baseURL
+		}
+		baseURL = strings.TrimRight(baseURL, "/")
+		info["baseUrl"] = baseURL
+		info["hasBaseUrl"] = baseURL != ""
+	}
+
+	return m.rt.ToValue(info)
 }
 
 // ─── JS API: ai.listSegments / ai.loadSegment ────────────────────────────────
