@@ -50,11 +50,14 @@ function _loadConfig(path) {
 }
 
 // _rowToObject converts a machcli Row instance to a plain serializable object.
-// Row iteration yields { key, value, done } entries.
+// Row sets column values directly as properties (row[name] = value),
+// so we copy them via row.names rather than iterating Symbol.iterator
+// (which yields raw values, not {key,value} pairs).
 function _rowToObject(row) {
     const obj = {};
-    for (const entry of row) {
-        obj[entry.key] = entry.value;
+    const names = row.names;
+    for (let i = 0; i < names.length; i++) {
+        obj[names[i]] = row[names[i]];
     }
     return obj;
 }
@@ -152,11 +155,12 @@ class AgentSchemaHelper {
 
     // tables([pattern]) — list tables, optionally filtered by LIKE pattern.
     // Returns array of plain row objects with NAME, TYPE, FLAG fields.
+    // Only returns tables in the local database (DATABASE_ID = -1).
     tables(pattern) {
-        let sql = 'SELECT NAME, TYPE, FLAG FROM M$SYS_TABLES';
+        let sql = 'SELECT NAME, TYPE, FLAG FROM M$SYS_TABLES WHERE DATABASE_ID = -1';
         const params = [];
         if (pattern !== undefined) {
-            sql += ' WHERE NAME LIKE ?';
+            sql += ' AND NAME LIKE ?';
             params.push(String(pattern).toUpperCase());
         }
         sql += ' ORDER BY NAME';
@@ -173,14 +177,71 @@ class AgentSchemaHelper {
     }
 
     // describe(tableName) — return column metadata for a table.
-    // Returns array of plain row objects with COLUMN_NAME, DATA_TYPE, LENGTH, IS_NULLABLE.
+    // Returns array of plain row objects: { NAME, TYPE, LENGTH, FLAG }.
+    // TYPE and FLAG are integer codes from M$SYS_COLUMNS.
+    // Handles V$/M$ virtual/meta tables using V$TABLES/V$COLUMNS or M$TABLES/M$COLUMNS.
+    // Follows the same dispatch pattern as show.js:showTable().
     describe(tableName) {
-        const dbRows = this._db._ensureConn().query(
-            'SELECT COLUMN_NAME, DATA_TYPE, LENGTH, IS_NULLABLE' +
-            '  FROM M$SYS_COLUMNS c' +
-            '  JOIN M$SYS_TABLES t ON c.TABLE_ID = t.ID' +
-            ' WHERE t.NAME = ?',
-            String(tableName).toUpperCase()
+        const conn = this._db._ensureConn();
+        const name = String(tableName).toUpperCase();
+
+        if (name.startsWith('V$') || name.startsWith('M$')) {
+            return this._describeMVTable(conn, name);
+        }
+        return this._describeTable(conn, name);
+    }
+
+    // _describeTable handles regular user tables via M$SYS_TABLES + M$SYS_COLUMNS.
+    _describeTable(conn, name) {
+        // Step 1: resolve TABLE_ID from M$SYS_TABLES (DATABASE_ID = -1 = local DB).
+        const tblRow = conn.queryRow(
+            'SELECT ID FROM M$SYS_TABLES WHERE NAME = ? AND DATABASE_ID = -1',
+            name
+        );
+        if (!tblRow || !tblRow.ID) {
+            throw new Error('Table not found: ' + name);
+        }
+        const tableId = tblRow.ID;
+
+        // Step 2: fetch columns by TABLE_ID, exclude internal hidden columns (_xxx).
+        const dbRows = conn.query(
+            'SELECT NAME, TYPE, LENGTH, FLAG FROM M$SYS_COLUMNS' +
+            ' WHERE TABLE_ID = ? AND DATABASE_ID = -1 AND SUBSTR(NAME, 1, 1) <> \'_\'' +
+            ' ORDER BY ID',
+            tableId
+        );
+        const result = [];
+        try {
+            for (const row of dbRows) {
+                result.push(_rowToObject(row));
+            }
+        } finally {
+            dbRows.close();
+        }
+        return result;
+    }
+
+    // _describeMVTable handles V$/M$ virtual and meta tables.
+    // V$ tables use V$TABLES + V$COLUMNS; M$ tables use M$TABLES + M$COLUMNS.
+    // These catalog views do not expose a FLAG column.
+    _describeMVTable(conn, name) {
+        const tablesView = name.startsWith('M$') ? 'M$TABLES' : 'V$TABLES';
+        const columnsView = name.startsWith('M$') ? 'M$COLUMNS' : 'V$COLUMNS';
+
+        const tblRow = conn.queryRow(
+            'SELECT ID FROM ' + tablesView + ' WHERE NAME = ?',
+            name
+        );
+        if (!tblRow || !tblRow.ID) {
+            throw new Error('Table not found: ' + name);
+        }
+        const tableId = tblRow.ID;
+
+        const dbRows = conn.query(
+            'SELECT NAME, TYPE, LENGTH FROM ' + columnsView +
+            ' WHERE TABLE_ID = ? AND SUBSTR(NAME, 1, 1) <> \'_\'' +
+            ' ORDER BY ID',
+            tableId
         );
         const result = [];
         try {
@@ -210,7 +271,10 @@ const _helpText = {
         '  agent.db.disconnect()              Close connection',
         '',
         '  agent.schema.tables([pattern])    List tables → [{ NAME, TYPE, FLAG }]',
-        '  agent.schema.describe(tableName)  Column info → [{ COLUMN_NAME, ... }]',
+        '  agent.schema.describe(tableName)  Column info → [{ NAME, TYPE, LENGTH, FLAG }]',
+        '',
+        'NOTE: All field names in query results and schema objects are UPPERCASE.',
+        'Use t.NAME, t.TYPE, row.COLUMN_NAME, etc.',
         '',
         '  agent.runtime.capabilities()      List allowed operation categories',
         '  agent.runtime.limits()            Current resource limits (maxRows, maxOutputBytes, readOnly)',

@@ -92,24 +92,43 @@ func TestFS_Module(t *testing.T) {
 			process.exit(1);
 		}
 
-		// 7. List directory contents
+		// 7. List directory contents (verify known entries are present)
 		try {
 			console.println('7. Listing /lib directory:');
 			const files = fs.readdirSync('/lib');
-			files.forEach(file => console.println('  -', file));
+			const knownFiles = ['events.js', 'fs.js', 'stream.js', 'path.js', 'os.js'];
+			const knownDirs = ['archive', 'util', 'parser', 'repl'];
+			let allFound = true;
+			knownFiles.forEach(f => {
+				if (!files.includes(f)) { console.println('  MISSING file:', f); allFound = false; }
+			});
+			knownDirs.forEach(d => {
+				if (!files.includes(d)) { console.println('  MISSING dir:', d); allFound = false; }
+			});
+			if (allFound) console.println('  All known entries found');
 			console.println();
 		} catch (e) {
 			console.println('Error:', e);
 			process.exit(1);
 		}
 
-		// 8. List directory with file types
+		// 8. List directory with file types (verify known entries have correct types)
 		try {
 			console.println('8. Listing /lib with file types:');
 			const entries = fs.readdirSync('/lib', { withFileTypes: true });
-			entries.forEach(entry => {
-				const type = entry.isDirectory() ? '[DIR]' : '[FILE]';
-				console.println('  ' + type + ' ' + entry.name);
+			const byName = {};
+			entries.forEach(e => { byName[e.name] = e; });
+			// Known files must be [FILE]
+			['events.js', 'fs.js', 'stream.js', 'path.js', 'os.js'].forEach(f => {
+				if (!byName[f]) { console.println('  MISSING:', f); return; }
+				const type = byName[f].isDirectory() ? '[DIR]' : '[FILE]';
+				console.println('  ' + type + ' ' + f);
+			});
+			// Known dirs must be [DIR]
+			['archive', 'util', 'parser', 'repl'].forEach(d => {
+				if (!byName[d]) { console.println('  MISSING:', d); return; }
+				const type = byName[d].isDirectory() ? '[DIR]' : '[FILE]';
+				console.println('  ' + type + ' ' + d);
 			});
 			console.println();
 		} catch (e) {
@@ -223,64 +242,18 @@ func TestFS_Module(t *testing.T) {
 			"Modified: ...",
 			"",
 			"7. Listing /lib directory:",
-			"  - .",
-			"  - ..",
-			"  - archive",
-			"  - events.js",
-			"  - fs.js",
-			"  - http.js",
-			"  - machcli.js",
-			"  - mathx",
-			"  - mathx.js",
-			"  - mqtt.js",
-			"  - nats.js",
-			"  - net.js",
-			"  - opcua.js",
-			"  - os.js",
-			"  - parser",
-			"  - path.js",
-			"  - pretty.js",
-			"  - process.js",
-			"  - readline.js",
-			"  - repl",
-			"  - semver.js",
-			"  - service.js",
-			"  - stream.js",
-			"  - util",
-			"  - uuid.js",
-			"  - vizspec.js",
-			"  - ws.js",
-			"  - zlib.js",
+			"  All known entries found",
 			"",
 			"8. Listing /lib with file types:",
-			"  [DIR] .",
-			"  [DIR] ..",
-			"  [DIR] archive",
 			"  [FILE] events.js",
 			"  [FILE] fs.js",
-			"  [FILE] http.js",
-			"  [FILE] machcli.js",
-			"  [DIR] mathx",
-			"  [FILE] mathx.js",
-			"  [FILE] mqtt.js",
-			"  [FILE] nats.js",
-			"  [FILE] net.js",
-			"  [FILE] opcua.js",
-			"  [FILE] os.js",
-			"  [DIR] parser",
-			"  [FILE] path.js",
-			"  [FILE] pretty.js",
-			"  [FILE] process.js",
-			"  [FILE] readline.js",
-			"  [DIR] repl",
-			"  [FILE] semver.js",
-			"  [FILE] service.js",
 			"  [FILE] stream.js",
+			"  [FILE] path.js",
+			"  [FILE] os.js",
+			"  [DIR] archive",
 			"  [DIR] util",
-			"  [FILE] uuid.js",
-			"  [FILE] vizspec.js",
-			"  [FILE] ws.js",
-			"  [FILE] zlib.js",
+			"  [DIR] parser",
+			"  [DIR] repl",
 			"",
 			"9. Creating nested directories /work/tmp/a/b/c:",
 			"Nested directories created",

@@ -214,7 +214,13 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	}
 
 	// Eval-and-exit mode: run code without entering interactive loop.
+	// Profile.Startup must run first so profile-injected globals (e.g. globalThis.agent)
+	// are available to the evaluated code.
 	if cfg.Eval != "" {
+		if err := cfg.Profile.RunStartup(repl.rt); err != nil {
+			renderer.RenderError(writer, err) //nolint:errcheck
+			return repl.rt.ToValue(1)
+		}
 		return repl.runEval(cfg.Eval, cfg.PrintEval, writer, renderer, cfg.TimeoutMs)
 	}
 

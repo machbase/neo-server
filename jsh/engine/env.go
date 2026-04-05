@@ -31,7 +31,15 @@ type Env struct {
 type ExecBuilderFunc func(code string, args []string, env map[string]any) (*exec.Cmd, error)
 
 // Which looks for the command in the PATH environment variable and returns the full path to the command.
+// If command starts with '@', it looks for the command in the host OS PATH instead of the virtual filesystem.
 func (env *Env) Which(command string) string {
+	if strings.HasPrefix(command, "@") {
+		hostCmd := strings.TrimPrefix(command, "@")
+		if p, err := exec.LookPath(hostCmd); err == nil {
+			return p
+		}
+		return ""
+	}
 	if !strings.HasSuffix(command, ".js") {
 		command += ".js"
 	}

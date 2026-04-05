@@ -23,14 +23,24 @@ var userJS []byte
 //go:embed agent.js
 var agentJS []byte
 
+//go:embed ai_prompt.js
+var aiPromptJS []byte
+
+//go:embed ai_executor.js
+var aiExecutorJS []byte
+
 // Files returns JavaScript library files embedded in this package.
 // They are mounted under /lib inside the virtual file system:
 //   - require('repl/profiles/user')  — human operator helpers
 //   - require('repl/profiles/agent') — agent/machine-readable helpers
+//   - require('ai/prompt')           — LLM system prompt assembler
+//   - require('ai/executor')         — jsh code block extractor and executor
 func Files() map[string][]byte {
 	return map[string][]byte{
 		"repl/profiles/user.js":  userJS,
 		"repl/profiles/agent.js": agentJS,
+		"ai/prompt.js":           aiPromptJS,
+		"ai/executor.js":         aiExecutorJS,
 	}
 }
 
@@ -40,6 +50,7 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	// shell = new Shell()
 	o.Set("Shell", shell(rt))
 	o.Set("Repl", repl(rt))
+	registerAIModule(rt, o)
 }
 
 func shell(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {

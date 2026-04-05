@@ -93,35 +93,77 @@ class DbHelper {
     }
 
     // describe(tableName) — return column metadata for a table.
+    // Handles V$/M$ virtual/meta tables using V$TABLES/V$COLUMNS or M$TABLES/M$COLUMNS.
+    // Follows the same dispatch pattern as show.js:showTable().
     describe(tableName) {
         const conn = this._ensureConn();
+        const name = tableName.toUpperCase();
+        if (name.startsWith('V$') || name.startsWith('M$')) {
+            return this._describeMVTable(conn, name);
+        }
+        return this._describeTable(conn, name);
+    }
+
+    _describeTable(conn, name) {
+        // Step 1: resolve TABLE_ID.
+        const tblRow = conn.queryRow(
+            'SELECT ID FROM M$SYS_TABLES WHERE NAME = ? AND DATABASE_ID = -1',
+            name
+        );
+        if (!tblRow || !tblRow.ID) {
+            throw new Error('Table not found: ' + name);
+        }
+        const tableId = tblRow.ID;
+
+        // Step 2: fetch columns, exclude internal hidden columns (_xxx).
         const rows = conn.query(
-            'SELECT COLUMN_NAME, DATA_TYPE, LENGTH, IS_NULLABLE' +
-            '  FROM M$SYS_COLUMNS c' +
-            '  JOIN M$SYS_TABLES t ON c.TABLE_ID = t.ID' +
-            ' WHERE t.NAME = ?',
-            tableName.toUpperCase()
+            'SELECT NAME, TYPE, LENGTH, FLAG FROM M$SYS_COLUMNS' +
+            ' WHERE TABLE_ID = ? AND DATABASE_ID = -1 AND SUBSTR(NAME, 1, 1) <> \'_\'' +
+            ' ORDER BY ID',
+            tableId
         );
         const result = [];
         for (const row of rows) {
-            result.push({
-                name: row.COLUMN_NAME,
-                type: row.DATA_TYPE,
-                length: row.LENGTH,
-                nullable: row.IS_NULLABLE === 1,
-            });
+            result.push({ name: row.NAME, type: row.TYPE, length: row.LENGTH, flag: row.FLAG });
+        }
+        rows.close();
+        return result;
+    }
+
+    _describeMVTable(conn, name) {
+        const tablesView = name.startsWith('M$') ? 'M$TABLES' : 'V$TABLES';
+        const columnsView = name.startsWith('M$') ? 'M$COLUMNS' : 'V$COLUMNS';
+
+        const tblRow = conn.queryRow(
+            'SELECT ID FROM ' + tablesView + ' WHERE NAME = ?', name
+        );
+        if (!tblRow || !tblRow.ID) {
+            throw new Error('Table not found: ' + name);
+        }
+        const tableId = tblRow.ID;
+
+        const rows = conn.query(
+            'SELECT NAME, TYPE, LENGTH FROM ' + columnsView +
+            ' WHERE TABLE_ID = ? AND SUBSTR(NAME, 1, 1) <> \'_\'' +
+            ' ORDER BY ID',
+            tableId
+        );
+        const result = [];
+        for (const row of rows) {
+            result.push({ name: row.NAME, type: row.TYPE, length: row.LENGTH });
         }
         rows.close();
         return result;
     }
 
     // tables(pattern?) — list tables, optionally filtered by LIKE pattern.
+    // Only returns tables in the local database (DATABASE_ID = -1).
     tables(pattern) {
         const conn = this._ensureConn();
-        let sql = 'SELECT NAME, TYPE, FLAG FROM M$SYS_TABLES';
+        let sql = 'SELECT NAME, TYPE, FLAG FROM M$SYS_TABLES WHERE DATABASE_ID = -1';
         const params = [];
         if (pattern !== undefined) {
-            sql += ' WHERE NAME LIKE ?';
+            sql += ' AND NAME LIKE ?';
             params.push(pattern.toUpperCase());
         }
         sql += ' ORDER BY NAME';
