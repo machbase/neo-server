@@ -147,11 +147,13 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	m := module.Get("exports").(*goja.Object)
 	m.Set("parseConfig", ParseConfig)
-	m.Set("NewClient", NewClient)
+	m.Set("NewClient", func(obj *goja.Object, dispatch engine.EventDispatchFunc) (*Client, error) {
+		return NewClient(ctx, obj, dispatch)
+	})
 }
 
 type Config struct {
@@ -193,9 +195,9 @@ func ParseConfig(data string) (*autopaho.ClientConfig, error) {
 	return ret, nil
 }
 
-func NewClient(obj *goja.Object, dispatch engine.EventDispatchFunc) (*Client, error) {
+func NewClient(ctx context.Context, obj *goja.Object, dispatch engine.EventDispatchFunc) (*Client, error) {
 	ret := &Client{}
-	ret.ctx, ret.cancel = context.WithCancel(context.Background())
+	ret.ctx, ret.cancel = context.WithCancel(ctx)
 	ret.emit = func(event string, data any) {
 		dispatch(obj, event, data)
 	}

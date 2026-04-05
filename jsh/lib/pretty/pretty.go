@@ -1,6 +1,7 @@
 package pretty
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"os"
@@ -23,7 +24,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	exports := module.Get("exports").(*goja.Object)
 	exports.Set("Table", Table)

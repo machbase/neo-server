@@ -1,13 +1,14 @@
 package publisher
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 )
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/publisher")
 	o := module.Get("exports").(*goja.Object)
 	// m.publisher({bridge: "name"})

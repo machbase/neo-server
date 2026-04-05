@@ -24,11 +24,13 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/opcua")
 	o := module.Get("exports").(*goja.Object)
 
-	o.Set("newClient", NewClient)
+	o.Set("newClient", func(opts ClientOptions) (*Client, error) {
+		return newClient(ctx, opts)
+	})
 	// BrowseDirection
 	o.Set("BrowseDirection", rt.ToValue(map[string]any{
 		"Forward": ua.BrowseDirectionForward,
@@ -162,11 +164,14 @@ type WriteResult struct {
 }
 
 func NewClient(opts ClientOptions) (*Client, error) {
+	return newClient(context.Background(), opts)
+}
+
+func newClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 	if opts.ReadRetryInterval < 100*time.Millisecond {
 		opts.ReadRetryInterval = 100 * time.Millisecond
 	}
 
-	ctx := context.Background()
 	client, err := opcua.NewClient(opts.Endpoint, opcua.SecurityMode(opts.MessageSecurityMode))
 	if err != nil {
 		return nil, err

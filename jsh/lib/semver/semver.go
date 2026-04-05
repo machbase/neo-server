@@ -1,6 +1,7 @@
 package semver
 
 import (
+	"context"
 	_ "embed"
 	"strings"
 
@@ -17,7 +18,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 	o.Set("satisfies", func(version string, constraint string) bool {
 		ok, err := satisfies(version, constraint)

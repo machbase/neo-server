@@ -17,7 +17,7 @@ import (
 	"github.com/dop251/goja"
 )
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports := module.Get("exports").(*goja.Object)
 	exports.Set("getHttpConfig", GetHttpConfig)
 	exports.Set("setHttpToken", SetHttpToken)

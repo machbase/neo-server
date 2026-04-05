@@ -13,7 +13,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 )
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/db")
 	o := module.Get("exports").(*goja.Object)
 

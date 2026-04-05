@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	m := module.Get("exports").(*goja.Object)
 

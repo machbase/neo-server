@@ -3,6 +3,7 @@ package zlib_test
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"testing"
 
 	"github.com/dop251/goja"
@@ -33,7 +34,7 @@ func TestZlibModule(t *testing.T) {
 	module.Set("exports", exports)
 
 	// Initialize zlib module
-	zlib.Module(rt, module)
+	zlib.Module(context.Background(), rt, module)
 
 	// Test that all expected functions are exported
 	exportsObj := module.Get("exports").(*goja.Object)

@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"context"
 	_ "embed"
 	"errors"
 	"math"
@@ -21,7 +22,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/mathx/filter")
 	o := module.Get("exports").(*goja.Object)
 

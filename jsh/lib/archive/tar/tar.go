@@ -3,6 +3,7 @@ package tar
 import (
 	stdtar "archive/tar"
 	"bytes"
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	m := module.Get("exports").(*goja.Object)
 
 	m.Set("createTar", func() goja.Value {

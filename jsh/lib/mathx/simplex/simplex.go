@@ -1,6 +1,7 @@
 package simplex
 
 import (
+	"context"
 	_ "embed"
 
 	"github.com/dop251/goja"
@@ -16,7 +17,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 	o.Set("seed", Seed)
 }

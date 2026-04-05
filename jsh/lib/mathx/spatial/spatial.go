@@ -1,6 +1,7 @@
 package spatial
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -21,7 +22,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(r *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, r *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 	// m.haversine(lat1, lon1, lat2, lon2)
 	// m.haversine([lat1, lon1], [lat2, lon2])

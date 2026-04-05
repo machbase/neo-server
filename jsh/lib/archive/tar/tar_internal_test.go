@@ -3,6 +3,7 @@ package tar
 import (
 	stdtar "archive/tar"
 	"bytes"
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -358,7 +359,7 @@ func TestTarModuleExportsAndAsyncValidation(t *testing.T) {
 	module := rt.NewObject()
 	exports := rt.NewObject()
 	module.Set("exports", exports)
-	Module(rt, module)
+	Module(context.Background(), rt, module)
 	exports = module.Get("exports").(*goja.Object)
 
 	createTarFn := mustTarJSFunction(t, exports.Get("createTar"))

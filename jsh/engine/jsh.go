@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -135,6 +136,11 @@ func New(conf Config) (*JSRuntime, error) {
 		Env:        env,
 		filesystem: filesystem,
 	}
+	if conf.Context != nil {
+		jr.ctx = conf.Context
+	} else {
+		jr.ctx = context.Background()
+	}
 
 	jr.registry = require.NewRegistry(
 		require.WithLoader(jr.Env.LoadSource),
@@ -232,6 +238,7 @@ type Config struct {
 	FSTabs  FSTabs            `json:"fstabs,omitempty"`
 
 	Default     string          `json:"default,omitempty"`
+	Context     context.Context `json:"-"`
 	Writer      io.Writer       `json:"-"`
 	Reader      io.Reader       `json:"-"`
 	ExecBuilder ExecBuilderFunc `json:"-"`
