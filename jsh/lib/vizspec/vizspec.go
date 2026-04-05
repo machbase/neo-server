@@ -122,9 +122,9 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 		}
 		return mustValueToJS(rt, jsonParse, blocks)
 	})
-	o.Set("toSparkline", func(call goja.FunctionCall) goja.Value {
+	o.Set("toTUILines", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) == 0 {
-			panic(rt.NewTypeError("vizspec.toSparkline: spec is required"))
+			panic(rt.NewTypeError("vizspec.toTUILines: spec is required"))
 		}
 		spec, err := decodeSpec(rt, jsonStringify, call.Arguments[0])
 		if err != nil {
@@ -199,9 +199,11 @@ func decodeTUIOptions(rt *goja.Runtime, args []goja.Value, index int) (*advn.TUI
 	}
 	obj := args[index].ToObject(rt)
 	return &advn.TUIOptions{
+		Height:     optionalInt(obj, "height"),
 		Width:      optionalInt(obj, "width"),
 		Rows:       optionalInt(obj, "rows"),
 		Compact:    optionalBool(obj, "compact"),
+		SeriesID:   optionalString(obj, "seriesId"),
 		Timeformat: optionalString(obj, "timeformat"),
 		TZ:         optionalString(obj, "tz"),
 	}, nil

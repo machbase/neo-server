@@ -24,6 +24,14 @@ type PrintKind interface {
 	Printf(format string, args ...any)
 }
 
+// SetDefaultWriter atomically swaps the console default output writer and returns
+// the previous one. Use this to temporarily redirect console output during eval.
+func SetDefaultWriter(w io.Writer) io.Writer {
+	old := defaultWriter
+	defaultWriter = w
+	return old
+}
+
 func SetConsole(vm *goja.Runtime, w io.Writer) *goja.Object {
 	defaultWriter = w
 

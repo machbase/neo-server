@@ -127,6 +127,7 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/semver", semver.Module)
 	addFiles(semver.Files())
 	n.RegisterNativeModule("@jsh/shell", shell.Module)
+	addFiles(shell.Files())
 	n.RegisterNativeModule("@jsh/stream", stream.Module)
 	addFiles(stream.Files())
 	n.RegisterNativeModule("@jsh/system", system.Module)

@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"strings"
@@ -10,12 +11,38 @@ import (
 	"github.com/hymkor/go-multiline-ny"
 	"github.com/hymkor/go-multiline-ny/completion"
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	jshrl "github.com/machbase/neo-server/v8/jsh/lib/readline"
 	"github.com/machbase/neo-server/v8/jsh/log"
 	"github.com/mattn/go-colorable"
 	"github.com/nyaosorg/go-readline-ny"
 	"github.com/nyaosorg/go-readline-ny/keys"
 )
+
+//go:embed user.js
+var userJS []byte
+
+//go:embed agent.js
+var agentJS []byte
+
+//go:embed ai_prompt.js
+var aiPromptJS []byte
+
+//go:embed ai_executor.js
+var aiExecutorJS []byte
+
+// Files returns JavaScript library files embedded in this package.
+// They are mounted under /lib inside the virtual file system:
+//   - require('repl/profiles/user')  — human operator helpers
+//   - require('repl/profiles/agent') — agent/machine-readable helpers
+//   - require('ai/prompt')           — LLM system prompt assembler
+//   - require('ai/executor')         — jsh code block extractor and executor
+func Files() map[string][]byte {
+	return map[string][]byte{
+		"repl/profiles/user.js":  userJS,
+		"repl/profiles/agent.js": agentJS,
+		"ai/prompt.js":           aiPromptJS,
+		"ai/executor.js":         aiExecutorJS,
+	}
+}
 
 func Module(rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
@@ -23,13 +50,13 @@ func Module(rt *goja.Runtime, module *goja.Object) {
 	// shell = new Shell()
 	o.Set("Shell", shell(rt))
 	o.Set("Repl", repl(rt))
+	registerAIModule(rt, o)
 }
 
 func shell(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {
 	return func(call goja.ConstructorCall) *goja.Object {
 		shell := &Shell{
-			rt:      rt,
-			history: jshrl.NewHistory("history", 100),
+			rt: rt,
 		}
 
 		obj := rt.NewObject()
@@ -41,8 +68,22 @@ func shell(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {
 type Shell struct {
 	rt      *goja.Runtime
 	env     *engine.Env
-	history *jshrl.History
+	history SessionHistory
 }
+
+// Shell is the command interpreter product of this package.
+//
+// Shell-specific responsibilities stay here even when editor/session plumbing
+// is extracted into shared foundation files:
+//   - command parsing
+//   - statement and operator handling
+//   - alias expansion
+//   - process execution
+//   - shell command completion
+//
+// Shared editor/history/profile/render/bootstrap hooks may move out in later
+// phases, but Shell.process(), Shell.exec(), and the statement model remain
+// intentionally separate from the JavaScript REPL product.
 
 var banner = "\n" +
 	"\x1B[93m     ██╗ ███████╗ ██╗  ██╗" + "\n" +
@@ -60,13 +101,80 @@ var betaWarn = "" +
 
 func (sh *Shell) Run(env *engine.Env) int {
 	sh.env = env
-	var ed multiline.Editor
-	ed.SetTty(NewTty()) // See TtyWrap comment
-	ed.SetPrompt(sh.prompt(env))
-	ed.SubmitOnEnterWhen(sh.submitOnEnterWhen)
-	ed.SetWriter(colorable.NewColorableStdout())
-	ed.SetHistory(sh.history)
-	ed.SetHistoryCycling(true)
+	ses := NewEditorSession(SessionConfig{
+		Writer:               colorable.NewColorableStdout(),
+		EnableHistoryCycling: true,
+		History: HistoryConfig{
+			Name:    "history",
+			Size:    100,
+			Enabled: true,
+		},
+		Profile: defaultShellProfile(),
+		Hooks: SessionHooks{
+			Prompt:            sh.prompt(env),
+			SubmitOnEnterWhen: sh.submitOnEnterWhen,
+			ConfigureEditor:   sh.configureEditorSession,
+		},
+	})
+	ed := ses.Editor
+	sh.history = ses.History
+	if err := ses.Start(sh.rt); err != nil {
+		log.Printf("Error starting session: %v\n", err)
+		return 1
+	}
+	var loopErr error
+	defer func() {
+		if err := ses.Stop(loopErr); err != nil {
+			log.Printf("Error stopping session: %v\n", err)
+		}
+	}()
+	ctx := context.Background()
+	if msg := ses.Banner(); msg != "" {
+		log.Print(msg)
+	}
+	for {
+		var line string
+		var forHistory string
+		if input, err := ed.Read(ctx); err != nil {
+			if err == readline.CtrlC || err == io.EOF {
+				log.Println(err.Error())
+				continue
+			}
+			loopErr = err
+			log.Printf("Error input: %v\n", err)
+			return 1
+		} else {
+			forHistory = strings.Join(input, "\n")
+			for i, ln := range input {
+				input[i] = strings.TrimSuffix(ln, `\`)
+			}
+			line = strings.Join(input, "")
+		}
+
+		// Command parsing and execution are Shell-only responsibilities.
+		if _, alive := sh.process(line); !alive {
+			return 0
+		}
+		// this makes to prevent adding 'exit' command to history
+		sh.history.Add(forHistory)
+	}
+}
+
+func defaultShellProfile() RuntimeProfile {
+	return RuntimeProfile{
+		Name:        "shell",
+		Description: "JSH command interpreter",
+		Banner: func() string {
+			return banner + betaWarn
+		},
+		Metadata: map[string]any{
+			"product": "shell",
+			"mode":    "command",
+		},
+	}
+}
+
+func (sh *Shell) configureEditorSession(ed *multiline.Editor) {
 	ed.SetPredictColor([...]string{"\x1B[3;22;30m", "\x1B[23;39m"}) // dark gray, italic
 	ed.LineEditor.Predictor = sh.predictHistory
 	ed.ResetColor = "\x1B[0m"
@@ -79,34 +187,7 @@ func (sh *Shell) Run(env *engine.Env) int {
 		Postfix:    " ",
 		Candidates: sh.getCompletionCandidates,
 	})
-	sh.bindPredictionKeys(&ed)
-	ctx := context.Background()
-	log.Println(banner)
-	log.Println(betaWarn)
-	for {
-		var line string
-		var forHistory string
-		if input, err := ed.Read(ctx); err != nil {
-			if err == readline.CtrlC || err == io.EOF {
-				log.Println(err.Error())
-				continue
-			}
-			log.Printf("Error input: %v\n", err)
-			return 1
-		} else {
-			forHistory = strings.Join(input, "\n")
-			for i, ln := range input {
-				input[i] = strings.TrimSuffix(ln, `\`)
-			}
-			line = strings.Join(input, "")
-		}
-
-		if _, alive := sh.process(line); !alive {
-			return 0
-		}
-		// this makes to prevent adding 'exit' command to history
-		sh.history.Add(forHistory)
-	}
+	sh.bindPredictionKeys(ed)
 }
 
 func (sh *Shell) prompt(env *engine.Env) func(w io.Writer, lineNo int) (int, error) {
@@ -176,7 +257,9 @@ func (sh *Shell) getCompletionCandidates(fields []string) (forCompletion []strin
 	return
 }
 
-// if return false, exit shell
+// process evaluates shell statements and operators.
+// This stays Shell-only and is intentionally excluded from shared foundation
+// extraction with Repl.
 func (sh *Shell) process(line string) (int, bool) {
 	// Parse the command
 	cmd := parseCommand(line)
@@ -199,6 +282,9 @@ func (sh *Shell) process(line string) (int, bool) {
 	return lastExitCode, true
 }
 
+// exec resolves and executes shell commands in the runtime.
+// This is intentionally not shared with Repl because it belongs to the command
+// interpreter execution path.
 func (sh *Shell) exec(command string, args []string) goja.Value {
 	command, args = sh.expandCommandAlias(command, args)
 	parts := []string{}

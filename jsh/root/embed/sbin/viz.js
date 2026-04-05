@@ -33,6 +33,23 @@
         ],
     };
 
+    const linesConfig = {
+        command: 'lines',
+        usage: 'viz lines [options] [filename]',
+        description: 'Render an ADVN spec file or stdin as TUI chart lines',
+        options: {
+            help: optionHelp,
+            height: { type: 'integer', description: 'Chart height for sparkline-style lines', default: 3 },
+            width: { type: 'integer', description: 'Width for sparkline and band lines', default: 40 },
+            series: { type: 'string', description: 'Series id to render. Defaults to the first compatible series.', default: '' },
+            timeformat: { type: 'string', short: 't', description: 'Output time format [rfc3339|ns|us|ms|s]', default: 'rfc3339' },
+            tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
+        },
+        positionals: [
+            { name: 'filename', description: 'ADVN JSON file path', optional: true },
+        ],
+    };
+
     const validateConfig = {
         command: 'validate',
         usage: 'viz validate [filename]',
@@ -71,7 +88,7 @@
 
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), defaultConfig, viewConfig, validateConfig, exportConfig);
+        parsed = parseArgs(process.argv.slice(2), defaultConfig, viewConfig, linesConfig, validateConfig, exportConfig);
     } catch (err) {
         console.println(err.message);
         printHelp();
@@ -98,6 +115,11 @@
         return;
     }
 
+    if (parsed.command === 'lines') {
+        doLines(parsed.values, parsed.namedPositionals.filename);
+        return;
+    }
+
     if (parsed.command === 'export') {
         doExport(parsed.values, parsed.namedPositionals.filename);
         return;
@@ -116,11 +138,15 @@
             console.println(parseArgs.formatHelp(validateConfig));
             return;
         }
+        if (command === 'lines') {
+            console.println(parseArgs.formatHelp(linesConfig));
+            return;
+        }
         if (command === 'export') {
             console.println(parseArgs.formatHelp(exportConfig));
             return;
         }
-        console.println(parseArgs.formatHelp(defaultConfig, viewConfig, validateConfig, exportConfig));
+        console.println(parseArgs.formatHelp(defaultConfig, viewConfig, linesConfig, validateConfig, exportConfig));
     }
 
     function doView(config, filename) {
@@ -137,6 +163,31 @@
             renderBlocks(blocks, config);
         } catch (err) {
             console.println(`Error: ${err.message}`);
+            process.exit(1);
+        }
+    }
+
+    function doLines(config, filename) {
+        let spec;
+        try {
+            validateLinesOptions(config);
+            spec = readSpec(filename);
+            const lines = vizspec.toTUILines(spec, {
+                height: config.height,
+                width: config.width,
+                seriesId: config.series,
+                timeformat: resolveOutputTimeformat(config),
+                tz: resolveOutputTimezone(config),
+            });
+            for (const line of lines) {
+                console.println(line);
+            }
+        } catch (err) {
+            console.println(`Error: ${err.message}`);
+            const hint = spec ? buildLinesSeriesHint(spec) : '';
+            if (hint) {
+                console.println(hint);
+            }
             process.exit(1);
         }
     }
@@ -290,6 +341,23 @@
         if (config.width <= 0) {
             throw new Error('width must be greater than 0');
         }
+    }
+
+    function validateLinesOptions(config) {
+        if (config.height <= 0) {
+            throw new Error('height must be greater than 0');
+        }
+        if (config.width <= 0) {
+            throw new Error('width must be greater than 0');
+        }
+    }
+
+    function buildLinesSeriesHint(spec) {
+        const listed = vizspec.listSeries(spec).filter(item => item.tuiLinesCompatible);
+        if (listed.length === 0) {
+            return 'Selectable line series: none';
+        }
+        return `Selectable line series: ${listed.map(item => item.id || `(index:${item.index})`).join(', ')}`;
     }
 
     function validateExportOptions(config) {
