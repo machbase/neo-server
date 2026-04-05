@@ -79,6 +79,7 @@ func TestLoadLLMConfig_NonExistent(t *testing.T) {
 	// Redirect home to a temp dir with no config file
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows uses USERPROFILE, not HOME
 
 	cfg, err := loadLLMConfig()
 	if err != nil {
@@ -93,6 +94,7 @@ func TestLoadLLMConfig_NonExistent(t *testing.T) {
 func TestLoadAndSaveLLMConfig(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows uses USERPROFILE, not HOME
 
 	original := defaultLLMConfig()
 	original.DefaultProvider = "openai"
@@ -125,6 +127,7 @@ func TestLoadAndSaveLLMConfig(t *testing.T) {
 func TestLoadLLMConfig_InvalidJSON(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows uses USERPROFILE, not HOME
 
 	path, _ := llmConfigPath()
 	if err := os.MkdirAll(strings.TrimSuffix(path, "config.json"), 0700); err != nil {
@@ -798,6 +801,7 @@ func TestAIModule_LoadSegment(t *testing.T) {
 func TestAIModule_LoadSegment_CustomOverride(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows uses USERPROFILE, not HOME
 
 	// Create custom prompt dir and segment
 	customDir, _ := llmCustomPromptDir()
@@ -986,6 +990,7 @@ func TestAIModule_JSProviderInfo(t *testing.T) {
 func TestAIModule_ConfigObject(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // Windows uses USERPROFILE, not HOME
 
 	rt := goja.New()
 	m := newAIModule(rt, makeTestPromptFS())

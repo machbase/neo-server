@@ -414,7 +414,10 @@ type aiModule struct {
 }
 
 func newAIModule(rt *goja.Runtime, promptFS fs.ReadFileFS) *aiModule {
-	cfg, _ := loadLLMConfig()
+	cfg, err := loadLLMConfig()
+	if err != nil || cfg == nil {
+		cfg = defaultLLMConfig()
+	}
 	m := &aiModule{rt: rt, cfg: cfg, promptFS: promptFS}
 	m.provider = m.buildProvider(cfg.DefaultProvider)
 	return m
