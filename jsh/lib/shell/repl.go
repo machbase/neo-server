@@ -8,21 +8,33 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
-	"github.com/hymkor/go-multiline-ny"
-	jshrl "github.com/machbase/neo-server/v8/jsh/lib/readline"
 	"github.com/mattn/go-colorable"
 )
 
 type Repl struct {
 	rt      *goja.Runtime
-	history *jshrl.History
+	history SessionHistory
 }
+
+// Repl is the JavaScript runtime console product of this package.
+//
+// Repl-specific responsibilities stay here even when editor/session plumbing
+// is extracted into shared foundation files:
+//   - JavaScript source accumulation
+//   - completeness checks for submitted source
+//   - evaluation via goja runtime
+//   - expression result rendering
+//   - slash command semantics
+//
+// Shared editor/history/profile/render/bootstrap hooks may move out in later
+// phases, but Repl.Loop() evaluation semantics remain intentionally separate
+// from Shell command execution.
 
 func repl(rt *goja.Runtime) func(goja.ConstructorCall) *goja.Object {
 	return func(call goja.ConstructorCall) *goja.Object {
 		repl := &Repl{
 			rt:      rt,
-			history: jshrl.NewHistory("repl_history", 100),
+			history: NewHistory(HistoryConfig{Name: "repl_history", Size: 100, Enabled: true}),
 		}
 		obj := rt.NewObject()
 		obj.Set("loop", repl.Loop)
@@ -37,13 +49,21 @@ const replBanner = "\033[1;36m╔═══════════════�
 	"  \033[32m\\quit\033[0m, \033[32m\\q\033[0m  - Exit REPL\n"
 
 func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
-	var ed multiline.Editor
-	ed.SetTty(NewTty()) // See TtyWrap comment
-	ed.SetPrompt(repl.prompt)
-	ed.SetWriter(colorable.NewColorableStdout())
-	ed.SubmitOnEnterWhen(repl.submitOnEnterWhen)
-	ed.SetHistory(repl.history)
-	ed.SetHistoryCycling(true)
+	ses := NewEditorSession(SessionConfig{
+		Writer:               colorable.NewColorableStdout(),
+		EnableHistoryCycling: true,
+		History: HistoryConfig{
+			Name:    "repl_history",
+			Size:    100,
+			Enabled: true,
+		},
+		Hooks: SessionHooks{
+			Prompt:            repl.prompt,
+			SubmitOnEnterWhen: repl.submitOnEnterWhen,
+		},
+	})
+	ed := ses.Editor
+	repl.history = ses.History
 	ctx := context.Background()
 	repl.println(repl.rt.ToValue(replBanner))
 	for {
@@ -64,6 +84,9 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 				}
 			}
 		}
+
+		// JavaScript evaluation is Repl-only and is intentionally excluded from
+		// shared foundation extraction with Shell.
 		val, err := repl.rt.RunString(input)
 		if err != nil {
 			repl.println(repl.rt.NewGoError(err))
