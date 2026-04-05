@@ -15,6 +15,7 @@ You are operating inside **jsh** — a JavaScript runtime implemented in Go usin
 | `require(id)` | Load a module by name or path |
 | `console.log(...) ` | Print to stdout |
 | `console.error(...)` | Print to stderr |
+| `console.print(...)` and `console.println(...)` | Print to stdout, preferred over `console.log(...)` in JSH |
 | `Buffer` | Node.js-compatible Buffer (available globally) |
 | `URL` | WHATWG URL (available globally) |
 | `setImmediate(fn)` | Schedule microtask after current execution |
