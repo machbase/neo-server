@@ -13,6 +13,14 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/log"
 )
 
+func (sh *Shell) printShellError(format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	if sh != nil && sh.env != nil && sh.env.Writer() != nil {
+		_, _ = fmt.Fprintln(sh.env.Writer(), message)
+	}
+	log.Println(message)
+}
+
 func (sh *Shell) runStatement(stmt *Statement) (int, bool) {
 	if len(stmt.Pipelines) == 0 {
 		return 0, true
@@ -22,7 +30,7 @@ func (sh *Shell) runStatement(stmt *Statement) (int, bool) {
 	for _, pipe := range stmt.Pipelines {
 		expanded, err := sh.expandPipeline(pipe)
 		if err != nil {
-			log.Println(strings.TrimPrefix(err.Error(), "Error: "))
+			sh.printShellError("%s", strings.TrimPrefix(err.Error(), "Error: "))
 			return 1, true
 		}
 		expandedPipelines = append(expandedPipelines, expanded)
@@ -38,7 +46,18 @@ func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {
 	if pipe.Command == "exit" || pipe.Command == "quit" {
 		return 0, false
 	}
+
+	// Reject assignment-only statements (no command)
+	if pipe.Command == "" && len(pipe.Assignments) > 0 {
+		sh.printShellError("assignment without command is not supported")
+		return 1, true
+	}
+
 	if internal.IsCommand(pipe.Command) {
+		if len(pipe.Assignments) > 0 {
+			sh.printShellError("temporary environment for internal commands is not supported")
+			return 1, true
+		}
 		if pipe.Stdin != nil || pipe.Stdout != nil || pipe.Stderr != nil {
 			log.Printf("redirection is not implemented for internal command: %s\n", pipe.Command)
 			return 1, true
@@ -88,7 +107,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	pipeWriters := make([]*os.File, 0, len(pipelines)-1)
 	redirectClosers := []func(){}
 	for _, pipe := range pipelines {
-		cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args)
+		cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args, pipe.Assignments)
 		if err != nil {
 			log.Println(strings.TrimPrefix(err.Error(), "Error: "))
 			return 1
@@ -203,7 +222,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 		log.Println("command execution requires shell environment")
 		return 1
 	}
-	cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args)
+	cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args, pipe.Assignments)
 	if err != nil {
 		log.Println(strings.TrimPrefix(err.Error(), "Error: "))
 		return 1
@@ -259,7 +278,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 	return exitCode
 }
 
-func (sh *Shell) buildExternalExecCmd(command string, args []string) (*exec.Cmd, error) {
+func (sh *Shell) buildExternalExecCmd(command string, args []string, assignments []Assignment) (*exec.Cmd, error) {
 	if sh.env == nil {
 		return nil, fmt.Errorf("shell environment is not initialized")
 	}
@@ -277,7 +296,8 @@ func (sh *Shell) buildExternalExecCmd(command string, args []string) (*exec.Cmd,
 	argv := make([]string, 0, len(resolvedArgs)+1)
 	argv = append(argv, resolvedPath)
 	argv = append(argv, resolvedArgs...)
-	return builder("", argv, snapshotEnv(sh.env))
+	envMap := overlayEnv(sh.env, assignments)
+	return builder("", argv, envMap)
 }
 
 func (sh *Shell) resolveExternalCommand(command string, args []string) (string, []string, error) {
@@ -299,6 +319,17 @@ func snapshotEnv(env *engine.Env) map[string]any {
 	env.ForEach(func(key string, value any) {
 		vars[key] = value
 	})
+	return vars
+}
+
+// overlayEnv creates a snapshot of the shell environment and overlays the given
+// assignment values on top. The assignments are applied in order so that later
+// assignments with the same name win. The original shell environment is not modified.
+func overlayEnv(env *engine.Env, assignments []Assignment) map[string]any {
+	vars := snapshotEnv(env)
+	for _, a := range assignments {
+		vars[a.Name] = a.Value
+	}
 	return vars
 }
 

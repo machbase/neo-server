@@ -460,6 +460,13 @@ func TestFSModule(t *testing.T) {
 					fs.symlinkSync('/work/original.txt', '/work/link.txt');
 					console.println('Symlink created');
 
+					const linkedContent = fs.readFileSync('/work/link.txt', 'utf8');
+					console.println('Link content:', linkedContent);
+
+					fs.writeFileSync('/work/link.txt', 'Updated through link');
+					const updatedContent = fs.readFileSync('/work/original.txt', 'utf8');
+					console.println('Updated original content:', updatedContent);
+
 					// Read the symbolic link target
 					const target = fs.readlinkSync('/work/link.txt');
 					console.println('Link target:', target);
@@ -482,6 +489,8 @@ func TestFSModule(t *testing.T) {
 			Output: []string{
 				"Original file created",
 				"Symlink created",
+				"Link content: Original content",
+				"Updated original content: Updated through link",
 				"Link target: /work/original.txt",
 			},
 		},

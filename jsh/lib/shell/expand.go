@@ -18,11 +18,25 @@ func (sh *Shell) expandPipeline(pipe *Pipeline) (*Pipeline, error) {
 	}
 
 	expanded := &Pipeline{
+		Assignments: cloneAssignments(pipe.Assignments),
+		ParseError:  pipe.ParseError,
 		CommandWord: clonePipelineWord(pipe.CommandWord),
 		ArgWords:    cloneWords(pipe.ArgWords),
 		Stdin:       cloneRedirect(pipe.Stdin),
 		Stdout:      cloneRedirect(pipe.Stdout),
 		Stderr:      cloneRedirect(pipe.Stderr),
+	}
+
+	// Validate and expand assignment prefix values
+	if expanded.ParseError != "" {
+		return nil, fmt.Errorf("%s", expanded.ParseError)
+	}
+	for i, a := range expanded.Assignments {
+		val, err := sh.expandAssignmentValue(a.ValueWord)
+		if err != nil {
+			return nil, fmt.Errorf("assignment %s: %w", a.Name, err)
+		}
+		expanded.Assignments[i].Value = val
 	}
 
 	command, err := sh.expandCommandWord(pipe.CommandWord)
@@ -261,4 +275,35 @@ func hasUnprotectedWildcard(parts []expandedPart) bool {
 		}
 	}
 	return false
+}
+
+// cloneAssignments creates a deep copy of an Assignment slice.
+func cloneAssignments(assignments []Assignment) []Assignment {
+	if len(assignments) == 0 {
+		return []Assignment{}
+	}
+	result := make([]Assignment, len(assignments))
+	for i, a := range assignments {
+		result[i] = Assignment{
+			Name:      a.Name,
+			ValueWord: cloneWord(a.ValueWord),
+			Value:     a.Value,
+		}
+	}
+	return result
+}
+
+// expandAssignmentValue expands a ValueWord using the same rules as word expansion
+// but always returns a single string (no glob splitting for assignment values).
+func (sh *Shell) expandAssignmentValue(word Word) (string, error) {
+	var builder strings.Builder
+	for _, fragment := range word.Fragments {
+		text := fragment.Text
+		if fragment.QuoteKind == QuoteDouble || fragment.QuoteKind == QuoteNone {
+			text = sh.env.Expand(text)
+		}
+		// QuoteSingle fragments are kept as-is (literal)
+		builder.WriteString(text)
+	}
+	return builder.String(), nil
 }

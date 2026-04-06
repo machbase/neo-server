@@ -1013,6 +1013,26 @@ func pipelineEqual(a, b *Pipeline) bool {
 	if len(b.ArgWords) > 0 && !reflect.DeepEqual(a.ArgWords, b.ArgWords) {
 		return false
 	}
+	if b.ParseError != "" && a.ParseError != b.ParseError {
+		return false
+	}
+	// Compare Assignments when the expected value specifies them
+	if b.Assignments != nil {
+		if len(a.Assignments) != len(b.Assignments) {
+			return false
+		}
+		for i := range a.Assignments {
+			if a.Assignments[i].Name != b.Assignments[i].Name {
+				return false
+			}
+			// Compare ValueWord when expected specifies it
+			if len(b.Assignments[i].ValueWord.Fragments) > 0 {
+				if !reflect.DeepEqual(a.Assignments[i].ValueWord, b.Assignments[i].ValueWord) {
+					return false
+				}
+			}
+		}
+	}
 	return true
 }
 
@@ -1252,6 +1272,116 @@ func TestParseCommand_Unicode(t *testing.T) {
 						t.Errorf("  Want Args[0]: %q (bytes: %v)", expPipeline.Args[0], []byte(expPipeline.Args[0]))
 					}
 				}
+			}
+		})
+	}
+}
+
+// TestParsePipeline_AssignmentPrefix tests that parsePipeline correctly identifies
+// NAME=VALUE prefix tokens before the command.
+func TestParsePipeline_AssignmentPrefix(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantAssigns []Assignment
+		wantCommand string
+		wantArgs    []string
+		wantErrName string
+	}{
+		{
+			name:  "single assignment",
+			input: "FOO=bar env FOO",
+			wantAssigns: []Assignment{
+				{Name: "FOO", ValueWord: word("bar")},
+			},
+			wantCommand: "env",
+			wantArgs:    []string{"FOO"},
+		},
+		{
+			name:  "two assignments",
+			input: "FOO=bar BAR=baz cmd arg",
+			wantAssigns: []Assignment{
+				{Name: "FOO", ValueWord: word("bar")},
+				{Name: "BAR", ValueWord: word("baz")},
+			},
+			wantCommand: "cmd",
+			wantArgs:    []string{"arg"},
+		},
+		{
+			name:        "no assignment - arg looks like assignment",
+			input:       "echo FOO=bar",
+			wantAssigns: []Assignment{},
+			wantCommand: "echo",
+			wantArgs:    []string{"FOO=bar"},
+		},
+		{
+			name:  "empty value assignment",
+			input: "FOO= cmd",
+			wantAssigns: []Assignment{
+				{Name: "FOO"}, // ValueWord has no fragments when value is empty
+			},
+			wantCommand: "cmd",
+			wantArgs:    []string{},
+		},
+		{
+			name:  "single-quoted value",
+			input: "NAME='hello world' env NAME",
+			wantAssigns: []Assignment{
+				{Name: "NAME", ValueWord: fragmentedWord(fragment("hello world", QuoteSingle))},
+			},
+			wantCommand: "env",
+			wantArgs:    []string{"NAME"},
+		},
+		{
+			name:  "double-quoted value",
+			input: `NAME="$HOME" env NAME`,
+			wantAssigns: []Assignment{
+				{Name: "NAME", ValueWord: fragmentedWord(fragment("$HOME", QuoteDouble))},
+			},
+			wantCommand: "env",
+			wantArgs:    []string{"NAME"},
+		},
+		{
+			name:        "invalid name - starts with digit",
+			input:       "1BAD=x cmd",
+			wantErrName: "invalid variable name: 1BAD",
+		},
+		{
+			name:        "invalid name - quoted prefix",
+			input:       "'FOO'=x cmd",
+			wantErrName: "invalid variable name: FOO",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parsePipeline(tt.input)
+
+			if tt.wantErrName != "" {
+				if result.ParseError != tt.wantErrName {
+					t.Errorf("ParseError = %q, want %q", result.ParseError, tt.wantErrName)
+				}
+				return
+			}
+
+			if len(result.Assignments) != len(tt.wantAssigns) {
+				t.Errorf("Assignments len = %d, want %d", len(result.Assignments), len(tt.wantAssigns))
+				return
+			}
+			for i, a := range result.Assignments {
+				want := tt.wantAssigns[i]
+				if a.Name != want.Name {
+					t.Errorf("Assignments[%d].Name = %q, want %q", i, a.Name, want.Name)
+				}
+				if len(want.ValueWord.Fragments) > 0 && !reflect.DeepEqual(a.ValueWord, want.ValueWord) {
+					t.Errorf("Assignments[%d].ValueWord = %+v, want %+v", i, a.ValueWord, want.ValueWord)
+				}
+			}
+			if result.Command != tt.wantCommand {
+				t.Errorf("Command = %q, want %q", result.Command, tt.wantCommand)
+			}
+			if !reflect.DeepEqual(result.Args, tt.wantArgs) {
+				t.Errorf("Args = %v, want %v", result.Args, tt.wantArgs)
 			}
 		})
 	}

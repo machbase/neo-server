@@ -1,6 +1,10 @@
 package shell
 
-import "strings"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 type QuoteKind int
 
@@ -75,6 +79,14 @@ type Statement struct {
 	Operator  string      // Operator connecting to next statement: ";" or "&&", empty for last statement
 }
 
+// Assignment represents a NAME=VALUE prefix before a command.
+// The ValueWord preserves the parsed fragments for proper expansion later.
+type Assignment struct {
+	Name      string
+	ValueWord Word
+	Value     string // populated after expansion
+}
+
 // Pipeline represents a single command in a pipeline chain with its arguments
 // and optional I/O redirections.
 //
@@ -84,13 +96,15 @@ type Statement struct {
 //   - Stdin: redirection from "input.txt"
 //   - Stdout: redirection to "output.txt"
 type Pipeline struct {
-	CommandWord *Word     // Parsed command word before expansion
-	ArgWords    []Word    // Parsed argument words before expansion
-	Command     string    // The command name/path to execute
-	Args        []string  // Command-line arguments
-	Stdin       *Redirect // Input redirection (<), nil if not specified
-	Stdout      *Redirect // Output redirection (> or >>), nil if not specified
-	Stderr      *Redirect // Error output redirection (currently unused, reserved for future use)
+	Assignments []Assignment // NAME=VALUE prefixes before the command
+	ParseError  string       // parser-detected shell error for this pipeline
+	CommandWord *Word        // Parsed command word before expansion
+	ArgWords    []Word       // Parsed argument words before expansion
+	Command     string       // The command name/path to execute
+	Args        []string     // Command-line arguments
+	Stdin       *Redirect    // Input redirection (<), nil if not specified
+	Stdout      *Redirect    // Output redirection (> or >>), nil if not specified
+	Stderr      *Redirect    // Error output redirection (currently unused, reserved for future use)
 }
 
 // Redirect represents an I/O redirection operation, specifying the type
@@ -302,6 +316,72 @@ func splitPipes(input string) []string {
 	return result
 }
 
+// validAssignmentName matches valid shell variable names: ^[A-Za-z_][A-Za-z0-9_]*$
+var validAssignmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// parseAssignmentWord attempts to parse a Word as a NAME=VALUE assignment.
+// It looks for the first unquoted '=' in the word fragments to split name and value.
+// Returns (assignment, true, nil) if valid, (zero, false, nil) if not an assignment,
+// or (zero, false, error) if it looks like an assignment but has an invalid name.
+func parseAssignmentWord(word Word) (Assignment, bool, error) {
+	// Find the position within fragments where an unquoted '=' occurs.
+	// We scan fragment by fragment; only QuoteNone fragments can contain the delimiter.
+	var nameParts []string
+	foundEq := false
+	eqFragIdx := -1
+	eqByteIdx := -1
+
+	for fi, frag := range word.Fragments {
+		if frag.QuoteKind != QuoteNone {
+			// A quoted fragment before the first unquoted '=' means the token is in
+			// assignment position but the variable name is not a valid bare name.
+			// Example: 'FOO'=x
+			if !foundEq {
+				var nameBuilder strings.Builder
+				for _, prefixFrag := range word.Fragments[:fi+1] {
+					nameBuilder.WriteString(prefixFrag.Text)
+				}
+				return Assignment{}, false, fmt.Errorf("invalid variable name: %s", nameBuilder.String())
+			}
+			break
+		}
+		// Unquoted fragment: look for '='
+		idx := strings.IndexByte(frag.Text, '=')
+		if idx >= 0 {
+			nameParts = append(nameParts, frag.Text[:idx])
+			eqFragIdx = fi
+			eqByteIdx = idx
+			foundEq = true
+			break
+		}
+		nameParts = append(nameParts, frag.Text)
+	}
+
+	if !foundEq {
+		return Assignment{}, false, nil
+	}
+
+	// Reconstruct name and validate
+	name := strings.Join(nameParts, "")
+	if !validAssignmentName.MatchString(name) {
+		return Assignment{}, false, fmt.Errorf("invalid variable name: %s", name)
+	}
+
+	// Build ValueWord from the rest: the part after '=' in eqFragIdx, plus subsequent fragments.
+	var valueFragments []WordFragment
+	// Tail of the fragment where '=' was found (after the '=')
+	tailText := word.Fragments[eqFragIdx].Text[eqByteIdx+1:]
+	if tailText != "" {
+		valueFragments = append(valueFragments, WordFragment{Text: tailText, QuoteKind: QuoteNone})
+	}
+	for _, frag := range word.Fragments[eqFragIdx+1:] {
+		valueFragments = append(valueFragments, frag)
+	}
+
+	valueWord := Word{Fragments: valueFragments, Explicit: true}
+	return Assignment{Name: name, ValueWord: valueWord}, true, nil
+}
+
 // parsePipeline parses a single pipeline command string, extracting the command name,
 // arguments, and any I/O redirection operators.
 //
@@ -318,8 +398,9 @@ func splitPipes(input string) []string {
 // Returns a Pipeline structure. If input is empty, returns a Pipeline with empty command.
 func parsePipeline(input string) *Pipeline {
 	pipeline := &Pipeline{
-		ArgWords: []Word{},
-		Args:     []string{},
+		Assignments: []Assignment{},
+		ArgWords:    []Word{},
+		Args:        []string{},
 	}
 
 	input = strings.TrimSpace(input)
@@ -367,13 +448,33 @@ func parsePipeline(input string) *Pipeline {
 		cmdTokens = append(cmdTokens, token)
 	}
 
-	// First token is the command name, remaining tokens are arguments
-	if len(cmdTokens) > 0 {
-		pipeline.CommandWord = cloneWordPtr(cmdTokens[0])
-		pipeline.Command = cmdTokens[0].String()
-		if len(cmdTokens) > 1 {
-			pipeline.ArgWords = cloneWords(cmdTokens[1:])
-			pipeline.Args = wordsText(cmdTokens[1:])
+	// Extract assignment prefix tokens from cmdTokens.
+	// Leading tokens that look like NAME=VALUE are collected as Assignments.
+	// Scanning stops at the first non-assignment token (which becomes Command).
+	nonAssignIdx := 0
+	for nonAssignIdx < len(cmdTokens) {
+		token := cmdTokens[nonAssignIdx]
+		assignment, isAssignment, err := parseAssignmentWord(token)
+		if err != nil {
+			pipeline.ParseError = err.Error()
+			return pipeline
+		}
+		if !isAssignment {
+			break
+		}
+		pipeline.Assignments = append(pipeline.Assignments, assignment)
+		nonAssignIdx++
+	}
+
+	remainingTokens := cmdTokens[nonAssignIdx:]
+
+	// First remaining token is the command name, remaining tokens are arguments
+	if len(remainingTokens) > 0 {
+		pipeline.CommandWord = cloneWordPtr(remainingTokens[0])
+		pipeline.Command = remainingTokens[0].String()
+		if len(remainingTokens) > 1 {
+			pipeline.ArgWords = cloneWords(remainingTokens[1:])
+			pipeline.Args = wordsText(remainingTokens[1:])
 		}
 	}
 

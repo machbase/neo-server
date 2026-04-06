@@ -36,7 +36,7 @@ func (env *Env) Which(command string) string {
 	if strings.HasPrefix(command, "@") {
 		hostCmd := strings.TrimPrefix(command, "@")
 		if p, err := exec.LookPath(hostCmd); err == nil {
-			return p
+			return "@" + p
 		}
 		return ""
 	}
@@ -529,6 +529,17 @@ func (e *Env) Set(key string, value any) {
 	}
 	if str, ok := value.(string); ok {
 		value = e.Expand(str)
+	}
+	e.vars[key] = value
+}
+
+func (e *Env) SetRaw(key string, value any) {
+	if e.vars == nil {
+		e.vars = make(map[string]any)
+	}
+	if value == nil {
+		delete(e.vars, key)
+		return
 	}
 	e.vars[key] = value
 }
