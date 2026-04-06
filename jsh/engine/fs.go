@@ -246,6 +246,78 @@ func (m *FS) resolveMount(name string) (fs.FS, string, error) {
 	return bestFS, getRelativePath(name, bestMatch), nil
 }
 
+func (m *FS) resolveHostPath(name string) (filesystem fs.FS, mountPoint string, relPath string, hostPath string, err error) {
+	name = CleanPath(name)
+	filesystem, mountPoint = m.bestMatch(name)
+	if filesystem == nil {
+		err = fs.ErrNotExist
+		return
+	}
+	relPath = getRelativePath(name, mountPoint)
+	hostPath, err = getOSPath(filesystem, relPath)
+	if err != nil {
+		return
+	}
+	hostPath, err = filepath.Abs(hostPath)
+	if err != nil {
+		return
+	}
+	hostPath = filepath.Clean(hostPath)
+	return
+}
+
+func (m *FS) mapHostPathToVirtual(hostPath string) (string, error) {
+	hostPath, err := filepath.Abs(hostPath)
+	if err != nil {
+		return "", err
+	}
+	hostPath = filepath.Clean(hostPath)
+
+	type hostMount struct {
+		mountPoint string
+		hostRoot   string
+	}
+
+	candidates := make([]hostMount, 0, len(m.mounts))
+	for mountPoint, filesystem := range m.mounts {
+		hostRoot, err := getOSPath(filesystem, ".")
+		if err != nil {
+			continue
+		}
+		hostRoot, err = filepath.Abs(hostRoot)
+		if err != nil {
+			continue
+		}
+		candidates = append(candidates, hostMount{
+			mountPoint: mountPoint,
+			hostRoot:   filepath.Clean(hostRoot),
+		})
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if len(candidates[i].hostRoot) == len(candidates[j].hostRoot) {
+			return len(candidates[i].mountPoint) > len(candidates[j].mountPoint)
+		}
+		return len(candidates[i].hostRoot) > len(candidates[j].hostRoot)
+	})
+
+	for _, candidate := range candidates {
+		relPath, err := filepath.Rel(candidate.hostRoot, hostPath)
+		if err != nil {
+			continue
+		}
+		if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if relPath == "." {
+			return candidate.mountPoint, nil
+		}
+		return CleanPath(candidate.mountPoint + "/" + filepath.ToSlash(relPath)), nil
+	}
+
+	return "", fs.ErrNotExist
+}
+
 // Open implements fs.FS
 func (m *FS) Open(name string) (fs.File, error) {
 	name = CleanPath(name)
@@ -500,47 +572,35 @@ func (m *FS) Chown(name string, uid, gid int) error {
 
 // Symlink creates a symbolic link from newName to oldName
 func (m *FS) Symlink(oldName, newName string) error {
-	newName = CleanPath(newName)
-
-	newFS, newMatch := m.bestMatch(newName)
-	if newFS == nil {
-		return fs.ErrNotExist
-	}
-	if mutableFS, ok := newFS.(symlinkFS); ok {
-		return mutableFS.Symlink(oldName, getRelativePath(newName, newMatch))
-	}
-
-	relPath := getRelativePath(newName, newMatch)
-	target, err := getOSPath(newFS, relPath)
+	_, _, _, hostTarget, err := m.resolveHostPath(oldName)
 	if err != nil {
 		return err
 	}
-
-	return os.Symlink(oldName, target)
+	_, _, _, hostLink, err := m.resolveHostPath(newName)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(hostTarget, hostLink)
 }
 
 // Readlink reads the target of a symbolic link
 func (m *FS) Readlink(name string) (string, error) {
-	name = CleanPath(name)
-	bestFS, bestMatch := m.bestMatch(name)
-	if bestFS == nil {
-		return "", fs.ErrNotExist
-	}
-	if readerFS, ok := bestFS.(readlinkFS); ok {
-		return readerFS.Readlink(getRelativePath(name, bestMatch))
-	}
-
-	relPath := getRelativePath(name, bestMatch)
-	target, err := getOSPath(bestFS, relPath)
+	_, _, _, hostLink, err := m.resolveHostPath(name)
 	if err != nil {
 		return "", err
 	}
-
-	result, err := os.Readlink(target)
+	result, err := os.Readlink(hostLink)
 	if err != nil {
 		return "", err
 	}
-	return filepath.ToSlash(result), nil
+	if !filepath.IsAbs(result) {
+		result = filepath.Join(filepath.Dir(hostLink), result)
+	}
+	virtualPath, err := m.mapHostPathToVirtual(result)
+	if err != nil {
+		return "", err
+	}
+	return virtualPath, nil
 }
 
 // OpenFD opens a file and returns a file descriptor

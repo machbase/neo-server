@@ -934,12 +934,27 @@ func TestFS_OSOperationErrorsAndSymlink(t *testing.T) {
 	if err := mfs.Symlink("/work/target.txt", "/work/link.txt"); err != nil {
 		t.Fatalf("Symlink failed: %v", err)
 	}
+	hostLink := filepath.Join(tempDir, "link.txt")
+	hostTarget, err := os.Readlink(hostLink)
+	if err != nil {
+		t.Fatalf("os.Readlink failed: %v", err)
+	}
+	if !filepath.IsAbs(hostTarget) || hostTarget != filepath.Join(tempDir, "target.txt") {
+		t.Fatalf("os.Readlink() = %q", hostTarget)
+	}
 	link, err := mfs.Readlink("/work/link.txt")
 	if err != nil {
 		t.Fatalf("Readlink failed: %v", err)
 	}
 	if link != "/work/target.txt" {
 		t.Fatalf("Readlink() = %q", link)
+	}
+	data, err := mfs.ReadFile("/work/link.txt")
+	if err != nil {
+		t.Fatalf("ReadFile link failed: %v", err)
+	}
+	if string(data) != "payload" {
+		t.Fatalf("ReadFile(link) = %q", string(data))
 	}
 
 	if runtime.GOOS != "windows" {
@@ -968,6 +983,77 @@ func TestFS_OSOperationErrorsAndSymlink(t *testing.T) {
 	}
 	if _, err := memFS.OSPath("/mem/file.txt"); err != fs.ErrPermission {
 		t.Fatalf("OSPath on non-OS fs error = %v", err)
+	}
+}
+
+func TestFS_SymlinkCrossMountAndRejections(t *testing.T) {
+	workDir := t.TempDir()
+	tmpDir := t.TempDir()
+
+	mfs := NewFS()
+	if err := mfs.Mount("/work", os.DirFS(workDir)); err != nil {
+		t.Fatalf("Mount /work failed: %v", err)
+	}
+	if err := mfs.Mount("/tmp", os.DirFS(tmpDir)); err != nil {
+		t.Fatalf("Mount /tmp failed: %v", err)
+	}
+
+	if err := mfs.WriteFile("/tmp/target.txt", []byte("cross-mount")); err != nil {
+		t.Fatalf("WriteFile target failed: %v", err)
+	}
+	if err := mfs.Symlink("/tmp/target.txt", "/work/link.txt"); err != nil {
+		t.Fatalf("Symlink cross-mount failed: %v", err)
+	}
+
+	hostTarget, err := os.Readlink(filepath.Join(workDir, "link.txt"))
+	if err != nil {
+		t.Fatalf("os.Readlink cross-mount failed: %v", err)
+	}
+	if hostTarget != filepath.Join(tmpDir, "target.txt") {
+		t.Fatalf("cross-mount host target = %q", hostTarget)
+	}
+
+	link, err := mfs.Readlink("/work/link.txt")
+	if err != nil {
+		t.Fatalf("Readlink cross-mount failed: %v", err)
+	}
+	if link != "/tmp/target.txt" {
+		t.Fatalf("Readlink cross-mount = %q", link)
+	}
+
+	data, err := mfs.ReadFile("/work/link.txt")
+	if err != nil {
+		t.Fatalf("ReadFile cross-mount link failed: %v", err)
+	}
+	if string(data) != "cross-mount" {
+		t.Fatalf("ReadFile cross-mount link = %q", string(data))
+	}
+
+	memFS := NewFS()
+	if err := memFS.Mount("/work", os.DirFS(workDir)); err != nil {
+		t.Fatalf("Mount memFS /work failed: %v", err)
+	}
+	if err := memFS.Mount("/mem", fstest.MapFS{
+		"target.txt": &fstest.MapFile{Data: []byte("memory")},
+	}); err != nil {
+		t.Fatalf("Mount memFS /mem failed: %v", err)
+	}
+	if err := memFS.Symlink("/mem/target.txt", "/work/link.txt"); err != fs.ErrPermission {
+		t.Fatalf("Symlink non-host target error = %v", err)
+	}
+	if err := memFS.Symlink("/work/target.txt", "/mem/link.txt"); err != fs.ErrPermission {
+		t.Fatalf("Symlink non-host link error = %v", err)
+	}
+
+	outsideFile := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0o644); err != nil {
+		t.Fatalf("WriteFile outside target failed: %v", err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(workDir, "external.txt")); err != nil {
+		t.Fatalf("os.Symlink external failed: %v", err)
+	}
+	if _, err := mfs.Readlink("/work/external.txt"); err != fs.ErrNotExist {
+		t.Fatalf("Readlink external error = %v", err)
 	}
 }
 
