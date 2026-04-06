@@ -1,8 +1,45 @@
 # JSH Built-in Modules Reference
 
+## Online Full Manuals (Markdown)
+
+- Index: https://docs.machbase.com/neo/jsh/modules/index.md
+- In agent profile, use `agent.modules.list()`, `agent.modules.fetch(name, options)`, and `agent.modules.fetchAll(options)` to load latest online markdown manuals.
+- Use `maxBytes` to limit markdown payload size and `omitMarkdown: true` when only metadata is needed.
+
+### Module Catalog
+
+- `archive`: Archive module group for TAR and ZIP handling in JSH applications. https://docs.machbase.com/neo/jsh/modules/archive.md
+- `archive/tar`: Create and extract TAR archives with memory, stream, and file APIs. https://docs.machbase.com/neo/jsh/modules/archive/tar.md
+- `archive/zip`: Create and extract ZIP archives with memory, stream, and file APIs. https://docs.machbase.com/neo/jsh/modules/archive/zip.md
+- `events`: EventEmitter utilities for event-driven JSH code. https://docs.machbase.com/neo/jsh/modules/events.md
+- `fs`: Filesystem APIs for file and directory operations. https://docs.machbase.com/neo/jsh/modules/fs.md
+- `http`: HTTP client and server APIs. https://docs.machbase.com/neo/jsh/modules/http.md
+- `machcli`: Machbase database client APIs. https://docs.machbase.com/neo/jsh/modules/machcli.md
+- `mathx/index`: General numeric and statistical helpers. https://docs.machbase.com/neo/jsh/modules/mathx/index.md
+- `mathx/filter`: Stateful filters for sampled numeric data. https://docs.machbase.com/neo/jsh/modules/mathx/filter.md
+- `mathx/interp`: Interpolation models for sample points. https://docs.machbase.com/neo/jsh/modules/mathx/interp.md
+- `mathx/mat`: Matrix and vector APIs for linear algebra. https://docs.machbase.com/neo/jsh/modules/mathx/mat.md
+- `mathx/simplex`: Seeded Simplex noise generator APIs. https://docs.machbase.com/neo/jsh/modules/mathx/simplex.md
+- `mathx/spatial`: Spatial helpers such as haversine distance. https://docs.machbase.com/neo/jsh/modules/mathx/spatial.md
+- `mqtt`: Event-driven MQTT client APIs. https://docs.machbase.com/neo/jsh/modules/mqtt.md
+- `nats`: Event-driven NATS client APIs. https://docs.machbase.com/neo/jsh/modules/nats.md
+- `net`: TCP client and server APIs. https://docs.machbase.com/neo/jsh/modules/net.md
+- `opcua`: OPC UA client APIs. https://docs.machbase.com/neo/jsh/modules/opcua.md
+- `os`: Operating system information APIs. https://docs.machbase.com/neo/jsh/modules/os.md
+- `parser`: Streaming CSV and NDJSON parser APIs. https://docs.machbase.com/neo/jsh/modules/parser.md
+- `path`: Path manipulation helper APIs. https://docs.machbase.com/neo/jsh/modules/path.md
+- `pretty`: Terminal output formatting helpers. https://docs.machbase.com/neo/jsh/modules/pretty.md
+- `process`: Process, runtime, and lifecycle APIs. https://docs.machbase.com/neo/jsh/modules/process.md
+- `readline`: Interactive line input APIs. https://docs.machbase.com/neo/jsh/modules/readline.md
+- `semver`: Semantic version comparison helpers. https://docs.machbase.com/neo/jsh/modules/semver.md
+- `service`: Machbase Neo service controller client APIs. https://docs.machbase.com/neo/jsh/modules/service.md
+- `util`: Utility helpers including parseArgs and splitFields. https://docs.machbase.com/neo/jsh/modules/util.md
+- `ws`: WebSocket client APIs. https://docs.machbase.com/neo/jsh/modules/ws.md
+- `zlib`: Compression and decompression APIs. https://docs.machbase.com/neo/jsh/modules/zlib.md
+
 ## `fs` — Virtual Filesystem
 
-```javascript
+```jsh
 const fs = require('fs');
 
 fs.readFileSync(path, encoding?)   // Read file. encoding='utf8' returns string.
@@ -15,7 +52,7 @@ fs.statSync(path)                  // Returns {size, mtime, isFile(), isDirector
 
 ## `path` — Path utilities
 
-```javascript
+```jsh
 const path = require('path');
 
 path.join(...parts)     // Join path segments.
@@ -27,7 +64,7 @@ path.resolve(...parts)  // Absolute path resolved from cwd.
 
 ## `http` — HTTP Client
 
-```javascript
+```jsh
 const http = require('http');
 
 // Simple GET
@@ -48,7 +85,7 @@ req.end(function(res) {
 
 ## `process` — Process info
 
-```javascript
+```jsh
 const process = require('process');   // or require('@jsh/process')
 
 process.argv         // string[] — command-line arguments
@@ -60,7 +97,7 @@ process.chdir(path)  // change working directory
 
 ## `os` — OS utilities
 
-```javascript
+```jsh
 const os = require('os');
 
 os.hostname()     // string
@@ -71,14 +108,14 @@ os.homedir()      // user home directory path
 
 ## `stream` — Base stream classes
 
-```javascript
+```jsh
 const { Readable, Writable, Transform } = require('stream');
 // Node.js-compatible stream base classes for building pipelines.
 ```
 
 ## `util/parseArgs` — CLI argument parser
 
-```javascript
+```jsh
 const parseArgs = require('util/parseArgs');
 
 const options = {
@@ -95,7 +132,7 @@ const help = parseArgs.formatHelp({ usage: 'Usage: cmd [options]', description: 
 
 ## `machcli` — Machbase database client
 
-```javascript
+```jsh
 const { Client } = require('machcli');
 
 const client = new Client({ host: '127.0.0.1', port: 5656, user: 'sys', password: 'manager' });
@@ -120,7 +157,7 @@ client.close();
 
 ## `@jsh/shell` — Shell/REPL native module
 
-```javascript
+```jsh
 const { Shell, Repl, ai } = require('@jsh/shell');
 
 // ai sub-module (LLM integration)

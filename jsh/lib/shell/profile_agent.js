@@ -19,6 +19,7 @@
 
 const { Client } = require('machcli');
 const fs = require('fs');
+const _http = require('@jsh/http');
 
 const DEFAULT_CONFIG_PATH = '/share/database/machcli.json';
 const DEFAULT_CONFIG = {
@@ -30,6 +31,71 @@ const DEFAULT_CONFIG = {
 
 // Default resource limits enforced by agent helpers.
 const DEFAULT_MAX_ROWS = 1000;
+const MODULE_DOCS_HOST = 'https://docs.machbase.com';
+const MODULE_DOCS_BASE_PATH = '/neo/jsh/modules/';
+const MODULE_DOCS_INDEX_URL = MODULE_DOCS_HOST + MODULE_DOCS_BASE_PATH + 'index.md';
+const SQL_REFERENCE_HOST = 'https://docs.machbase.com';
+const SQL_REFERENCE_BASE_PATH = '/dbms/sql-reference/';
+const SQL_REFERENCE_INDEX_URL = SQL_REFERENCE_HOST + SQL_REFERENCE_BASE_PATH + 'index.md';
+
+const KNOWN_MODULE_DOCS = {
+    'archive': { summary: 'Archive module group for TAR and ZIP handling in JSH applications.' },
+    'archive/tar': { summary: 'Create and extract TAR archives with memory, stream, and file APIs.' },
+    'archive/zip': { summary: 'Create and extract ZIP archives with memory, stream, and file APIs.' },
+    'events': { summary: 'EventEmitter utilities for event-driven JSH code.' },
+    'fs': { summary: 'Filesystem APIs for file and directory operations.' },
+    'http': { summary: 'HTTP client and server APIs.' },
+    'machcli': { summary: 'Machbase database client APIs.' },
+    'mathx/index': { summary: 'General numeric and statistical helpers.' },
+    'mathx/filter': { summary: 'Stateful filters for sampled numeric data.' },
+    'mathx/interp': { summary: 'Interpolation models for sample points.' },
+    'mathx/mat': { summary: 'Matrix and vector APIs for linear algebra.' },
+    'mathx/simplex': { summary: 'Seeded Simplex noise generator APIs.' },
+    'mathx/spatial': { summary: 'Spatial helpers such as haversine distance.' },
+    'mqtt': { summary: 'Event-driven MQTT client APIs.' },
+    'nats': { summary: 'Event-driven NATS client APIs.' },
+    'net': { summary: 'TCP client and server APIs.' },
+    'opcua': { summary: 'OPC UA client APIs.' },
+    'os': { summary: 'Operating system information APIs.' },
+    'parser': { summary: 'Streaming CSV and NDJSON parser APIs.' },
+    'path': { summary: 'Path manipulation helper APIs.' },
+    'pretty': { summary: 'Terminal output formatting helpers.' },
+    'process': { summary: 'Process, runtime, and lifecycle APIs.' },
+    'readline': { summary: 'Interactive line input APIs.' },
+    'semver': { summary: 'Semantic version comparison helpers.' },
+    'service': { summary: 'Machbase Neo service controller client APIs.' },
+    'util': { summary: 'Utility helpers including parseArgs and splitFields.' },
+    'ws': { summary: 'WebSocket client APIs.' },
+    'zlib': { summary: 'Compression and decompression APIs.' },
+};
+
+const KNOWN_SQL_REFERENCE_DOCS = {
+    'datatypes': {
+        title: 'Datatypes',
+        summary: 'Machbase SQL datatype reference.',
+        path: 'index.md',
+    },
+    'ddl': {
+        title: 'DDL',
+        summary: 'Machbase SQL DDL reference.',
+        path: 'ddl.md',
+    },
+    'dml': {
+        title: 'DML',
+        summary: 'Machbase SQL DML reference.',
+        path: 'ddl.md',
+    },
+    'math-functions': {
+        title: 'Math Functions',
+        summary: 'Machbase SQL math function reference.',
+        path: 'ddl.md',
+    },
+    'functions': {
+        title: 'Functions',
+        summary: 'Machbase SQL function reference.',
+        path: 'functions.md',
+    },
+};
 
 // Phase C: read limits and capability config injected by Go at profile startup.
 // Go sets globalThis.__agentConfig before require('repl/profiles/agent') is called.
@@ -255,8 +321,459 @@ class AgentSchemaHelper {
     }
 }
 
+function _nowISOString() {
+    return (new Date()).toISOString();
+}
+
+function _moduleNameToDocURL(name) {
+    const mod = String(name);
+    if (mod === 'index' || mod === '') {
+        return MODULE_DOCS_INDEX_URL;
+    }
+    return MODULE_DOCS_HOST + MODULE_DOCS_BASE_PATH + mod + '.md';
+}
+
+function _sqlReferenceNameToDocURL(name) {
+    const ref = _normalizeSQLReferenceName(name);
+    if (ref === '' || ref === 'index' || ref === 'datatypes') {
+        return SQL_REFERENCE_INDEX_URL;
+    }
+    const known = KNOWN_SQL_REFERENCE_DOCS[ref];
+    if (known && known.path) {
+        return SQL_REFERENCE_HOST + SQL_REFERENCE_BASE_PATH + known.path;
+    }
+    return SQL_REFERENCE_HOST + SQL_REFERENCE_BASE_PATH + ref + '.md';
+}
+
+function _normalizeModuleName(input) {
+    if (input === undefined || input === null) {
+        return '';
+    }
+    let name = String(input).trim();
+    if (name.length === 0) {
+        return '';
+    }
+    const idx = name.indexOf(MODULE_DOCS_BASE_PATH);
+    if (idx >= 0) {
+        name = name.slice(idx + MODULE_DOCS_BASE_PATH.length);
+    }
+    if (name.startsWith('/')) {
+        name = name.slice(1);
+    }
+    if (name.endsWith('.md')) {
+        name = name.slice(0, -3);
+    }
+    if (name === '' || name === 'index') {
+        return 'index';
+    }
+    if (name === 'mathx') {
+        return 'mathx/index';
+    }
+    return name;
+}
+
+function _normalizeSQLReferenceName(input) {
+    if (input === undefined || input === null) {
+        return '';
+    }
+    let name = String(input).trim().toLowerCase();
+    if (name.length === 0) {
+        return '';
+    }
+    const idx = name.indexOf(SQL_REFERENCE_BASE_PATH);
+    if (idx >= 0) {
+        name = name.slice(idx + SQL_REFERENCE_BASE_PATH.length);
+    }
+    if (name.startsWith('/')) {
+        name = name.slice(1);
+    }
+    if (name.endsWith('.md')) {
+        name = name.slice(0, -3);
+    }
+    if (name === '' || name === 'index') {
+        return 'datatypes';
+    }
+    if (name === 'math function' || name === 'math functions' || name === 'math-function') {
+        return 'math-functions';
+    }
+    return name;
+}
+
+function _httpGetText(url) {
+    const client = _http.NewClient();
+    const req = _http.NewRequest('GET', url);
+    req.header.set('Accept', 'text/markdown, text/plain;q=0.9, */*;q=0.8');
+    let resp = null;
+    try {
+        resp = client.do(req);
+        const statusCode = resp.statusCode || 0;
+        const ok = !!resp.ok;
+        const markdown = resp.string();
+        return {
+            ok: ok,
+            statusCode: statusCode,
+            markdown: String(markdown || ''),
+            url: url,
+            fetchedAt: _nowISOString(),
+        };
+    } finally {
+        if (resp && resp.close) {
+            try { resp.close(); } catch (_) { }
+        }
+        if (client && client.close) {
+            try { client.close(); } catch (_) { }
+        }
+    }
+}
+
+function _toPositiveIntOrNull(value) {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    const n = Number(value);
+    if (!isFinite(n)) {
+        return null;
+    }
+    const i = Math.floor(n);
+    if (i <= 0) {
+        return null;
+    }
+    return i;
+}
+
+function _applyMarkdownOutputOptions(markdown, options) {
+    const opts = options || {};
+    const full = String(markdown || '');
+    const maxBytes = _toPositiveIntOrNull(opts.maxBytes);
+    const omitMarkdown = opts.omitMarkdown === true;
+
+    let out = full;
+    let truncated = false;
+    if (maxBytes !== null && out.length > maxBytes) {
+        out = out.slice(0, maxBytes);
+        truncated = true;
+    }
+
+    const result = {
+        bytes: out.length,
+        originalBytes: full.length,
+        truncated: truncated,
+        omitMarkdown: omitMarkdown,
+    };
+    if (!omitMarkdown) {
+        result.markdown = out;
+    }
+    return result;
+}
+
+function _parseModuleNamesFromIndex(markdown) {
+    const text = String(markdown || '');
+    const names = {};
+    const re = /\[[^\]]+\]\(([^)]+)\)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        let href = m[1] || '';
+        const hashPos = href.indexOf('#');
+        if (hashPos >= 0) {
+            href = href.slice(0, hashPos);
+        }
+        const qPos = href.indexOf('?');
+        if (qPos >= 0) {
+            href = href.slice(0, qPos);
+        }
+        if (href.startsWith(MODULE_DOCS_HOST + MODULE_DOCS_BASE_PATH)) {
+            href = href.slice((MODULE_DOCS_HOST + MODULE_DOCS_BASE_PATH).length);
+        } else if (href.startsWith(MODULE_DOCS_BASE_PATH)) {
+            href = href.slice(MODULE_DOCS_BASE_PATH.length);
+        } else {
+            continue;
+        }
+        if (!href.endsWith('.md')) {
+            continue;
+        }
+        const name = _normalizeModuleName(href);
+        if (name.length > 0 && name !== 'index') {
+            names[name] = true;
+        }
+    }
+    return Object.keys(names).sort();
+}
+
+// AgentModuleDocsHelper provides online JSH module manual lookup.
+// It fetches markdown pages from docs.machbase.com and can merge local
+// known module metadata with links parsed from the latest index.md.
+class AgentModuleDocsHelper {
+    constructor() {
+        this._indexCache = null;
+    }
+
+    _buildKnownList() {
+        return Object.keys(KNOWN_MODULE_DOCS).sort().map(function (name) {
+            return {
+                name: name,
+                summary: KNOWN_MODULE_DOCS[name].summary,
+                url: _moduleNameToDocURL(name),
+                source: 'builtin',
+            };
+        });
+    }
+
+    list(options) {
+        const opts = options || {};
+        const online = opts.online !== false;
+        const force = !!opts.force;
+        const map = {};
+        this._buildKnownList().forEach(function (item) {
+            map[item.name] = item;
+        });
+
+        let onlineError = null;
+        let indexURL = MODULE_DOCS_INDEX_URL;
+        if (online) {
+            try {
+                const idx = this.index(force);
+                indexURL = idx.url;
+                for (let i = 0; i < idx.modules.length; i++) {
+                    const name = idx.modules[i];
+                    if (!map[name]) {
+                        map[name] = {
+                            name: name,
+                            summary: '',
+                            url: _moduleNameToDocURL(name),
+                            source: 'index',
+                        };
+                    }
+                }
+            } catch (err) {
+                onlineError = String(err && err.message ? err.message : err);
+            }
+        }
+
+        const modules = Object.keys(map).sort().map(function (name) { return map[name]; });
+        return {
+            modules: modules,
+            count: modules.length,
+            indexURL: indexURL,
+            online: online,
+            onlineError: onlineError,
+            fetchedAt: _nowISOString(),
+        };
+    }
+
+    index(forceOrOptions) {
+        let forceRefresh = false;
+        let outputOptions = {};
+        if (typeof forceOrOptions === 'boolean') {
+            forceRefresh = forceOrOptions;
+        } else if (forceOrOptions && typeof forceOrOptions === 'object') {
+            forceRefresh = !!forceOrOptions.force;
+            outputOptions = forceOrOptions;
+        }
+
+        if (!forceRefresh && this._indexCache) {
+            return this._indexCache;
+        }
+        const res = _httpGetText(MODULE_DOCS_INDEX_URL);
+        if (!res.ok || res.statusCode < 200 || res.statusCode >= 300) {
+            throw new Error('Failed to load module index: HTTP ' + res.statusCode);
+        }
+        const modules = _parseModuleNamesFromIndex(res.markdown);
+        const output = _applyMarkdownOutputOptions(res.markdown, outputOptions);
+        const payload = {
+            url: res.url,
+            statusCode: res.statusCode,
+            fetchedAt: res.fetchedAt,
+            modules: modules,
+            count: modules.length,
+            bytes: output.bytes,
+            originalBytes: output.originalBytes,
+            truncated: output.truncated,
+            omitMarkdown: output.omitMarkdown,
+        };
+        if (output.markdown !== undefined) {
+            payload.markdown = output.markdown;
+        }
+        this._indexCache = payload;
+        return payload;
+    }
+
+    resolve(name) {
+        const moduleName = _normalizeModuleName(name);
+        const isIndex = (moduleName === '' || moduleName === 'index');
+        const normalized = isIndex ? 'index' : moduleName;
+        const url = _moduleNameToDocURL(normalized);
+        const known = KNOWN_MODULE_DOCS[normalized];
+        return {
+            name: normalized,
+            url: url,
+            summary: known ? known.summary : '',
+        };
+    }
+
+    fetch(name, options) {
+        const ref = this.resolve(name);
+        const res = _httpGetText(ref.url);
+        if (!res.ok || res.statusCode < 200 || res.statusCode >= 300) {
+            throw new Error('Failed to load module manual: ' + ref.name + ' (HTTP ' + res.statusCode + ')');
+        }
+        const output = _applyMarkdownOutputOptions(res.markdown, options);
+        const doc = {
+            name: ref.name,
+            summary: ref.summary,
+            url: ref.url,
+            statusCode: res.statusCode,
+            fetchedAt: res.fetchedAt,
+            bytes: output.bytes,
+            originalBytes: output.originalBytes,
+            truncated: output.truncated,
+            omitMarkdown: output.omitMarkdown,
+        };
+        if (output.markdown !== undefined) {
+            doc.markdown = output.markdown;
+        }
+        return doc;
+    }
+
+    fetchAll(options) {
+        const opts = options || {};
+        let names = [];
+        if (opts.modules && opts.modules.length) {
+            names = opts.modules.map(_normalizeModuleName).filter(function (name) {
+                return name.length > 0 && name !== 'index';
+            });
+        } else {
+            const listing = this.list({
+                online: opts.online !== false,
+                force: !!opts.force,
+            });
+            names = listing.modules.map(function (m) { return m.name; });
+        }
+
+        const result = [];
+        for (let i = 0; i < names.length; i++) {
+            result.push(this.fetch(names[i], {
+                maxBytes: opts.maxBytes,
+                omitMarkdown: opts.omitMarkdown,
+            }));
+        }
+        return {
+            count: result.length,
+            docs: result,
+            fetchedAt: _nowISOString(),
+        };
+    }
+}
+
+class AgentSQLReferenceDocsHelper {
+    list() {
+        const docs = Object.keys(KNOWN_SQL_REFERENCE_DOCS).sort().map(function (name) {
+            const item = KNOWN_SQL_REFERENCE_DOCS[name];
+            return {
+                name: name,
+                title: item.title,
+                summary: item.summary,
+                url: _sqlReferenceNameToDocURL(name),
+                source: 'builtin',
+            };
+        });
+        return {
+            docs: docs,
+            count: docs.length,
+            indexURL: SQL_REFERENCE_INDEX_URL,
+            fetchedAt: _nowISOString(),
+        };
+    }
+
+    index(options) {
+        const res = _httpGetText(SQL_REFERENCE_INDEX_URL);
+        if (!res.ok || res.statusCode < 200 || res.statusCode >= 300) {
+            throw new Error('Failed to load SQL reference index: HTTP ' + res.statusCode);
+        }
+        const output = _applyMarkdownOutputOptions(res.markdown, options);
+        const payload = {
+            name: 'datatypes',
+            title: KNOWN_SQL_REFERENCE_DOCS.datatypes.title,
+            summary: KNOWN_SQL_REFERENCE_DOCS.datatypes.summary,
+            url: res.url,
+            statusCode: res.statusCode,
+            fetchedAt: res.fetchedAt,
+            bytes: output.bytes,
+            originalBytes: output.originalBytes,
+            truncated: output.truncated,
+            omitMarkdown: output.omitMarkdown,
+        };
+        if (output.markdown !== undefined) {
+            payload.markdown = output.markdown;
+        }
+        return payload;
+    }
+
+    resolve(name) {
+        const refName = _normalizeSQLReferenceName(name);
+        const known = KNOWN_SQL_REFERENCE_DOCS[refName];
+        return {
+            name: refName,
+            title: known ? known.title : '',
+            summary: known ? known.summary : '',
+            url: _sqlReferenceNameToDocURL(refName),
+        };
+    }
+
+    fetch(name, options) {
+        const ref = this.resolve(name);
+        const res = _httpGetText(ref.url);
+        if (!res.ok || res.statusCode < 200 || res.statusCode >= 300) {
+            throw new Error('Failed to load SQL reference: ' + ref.name + ' (HTTP ' + res.statusCode + ')');
+        }
+        const output = _applyMarkdownOutputOptions(res.markdown, options);
+        const doc = {
+            name: ref.name,
+            title: ref.title,
+            summary: ref.summary,
+            url: ref.url,
+            statusCode: res.statusCode,
+            fetchedAt: res.fetchedAt,
+            bytes: output.bytes,
+            originalBytes: output.originalBytes,
+            truncated: output.truncated,
+            omitMarkdown: output.omitMarkdown,
+        };
+        if (output.markdown !== undefined) {
+            doc.markdown = output.markdown;
+        }
+        return doc;
+    }
+
+    fetchAll(options) {
+        const opts = options || {};
+        let names = [];
+        if (opts.docs && opts.docs.length) {
+            names = opts.docs.map(_normalizeSQLReferenceName).filter(function (name) {
+                return name.length > 0;
+            });
+        } else {
+            names = this.list().docs.map(function (doc) { return doc.name; });
+        }
+
+        const result = [];
+        for (let i = 0; i < names.length; i++) {
+            result.push(this.fetch(names[i], {
+                maxBytes: opts.maxBytes,
+                omitMarkdown: opts.omitMarkdown,
+            }));
+        }
+        return {
+            count: result.length,
+            docs: result,
+            fetchedAt: _nowISOString(),
+        };
+    }
+}
+
 const _db = new AgentDbHelper();
 const _schema = new AgentSchemaHelper(_db);
+const _modules = new AgentModuleDocsHelper();
+const _sqlref = new AgentSQLReferenceDocsHelper();
 
 // _helpText for agent.help().
 const _helpText = {
@@ -279,6 +796,18 @@ const _helpText = {
         '  agent.runtime.capabilities()      List allowed operation categories',
         '  agent.runtime.limits()            Current resource limits (maxRows, maxOutputBytes, readOnly)',
         '',
+        '  agent.modules.list([options])     List module manuals with URLs (online + builtin)',
+        '  agent.modules.index([force|options]) Fetch index.md and parsed module names',
+        '  agent.modules.resolve(name)       Resolve module name/url/summary',
+        '  agent.modules.fetch(name[, options]) Fetch module markdown reference from docs site',
+        '  agent.modules.fetchAll([options]) Fetch all module markdown references',
+        '',
+        '  agent.sqlref.list()               List Machbase SQL reference docs and URLs',
+        '  agent.sqlref.index([options])     Fetch SQL reference index markdown',
+        '  agent.sqlref.resolve(name)        Resolve SQL reference name/url/summary',
+        '  agent.sqlref.fetch(name[, options]) Fetch one SQL reference markdown page',
+        '  agent.sqlref.fetchAll([options])  Fetch all configured SQL reference markdown pages',
+        '',
         '  agent.help([topic])               Show this help',
         '',
         'Connection config: /share/database/machcli.json  (or override with connect())',
@@ -298,6 +827,8 @@ const _helpText = {
 const agent = {
     db: _db,
     schema: _schema,
+    modules: _modules,
+    sqlref: _sqlref,
 
     runtime: {
         // capabilities() — list allowed operation categories for this profile.
