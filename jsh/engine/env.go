@@ -36,7 +36,7 @@ func (env *Env) Which(command string) string {
 	if strings.HasPrefix(command, "@") {
 		hostCmd := strings.TrimPrefix(command, "@")
 		if p, err := exec.LookPath(hostCmd); err == nil {
-			return p
+			return "@" + p
 		}
 		return ""
 	}

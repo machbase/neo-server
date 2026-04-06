@@ -64,6 +64,20 @@ func TestWhich(t *testing.T) {
 	}
 }
 
+func TestWhich_HostPathPreservesPrefix(t *testing.T) {
+	hostPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("host command not available: %v", err)
+	}
+
+	env := NewEnv()
+	got := env.Which("@sh")
+	want := "@" + hostPath
+	if got != want {
+		t.Fatalf("Which(@sh) = %v, want %v", got, want)
+	}
+}
+
 func TestExpand(t *testing.T) {
 	tests := []struct {
 		name  string
