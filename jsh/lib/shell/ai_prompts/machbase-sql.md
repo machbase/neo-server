@@ -1,5 +1,19 @@
 # Machbase SQL Reference
 
+## Online Full Manuals (Markdown)
+
+- In agent profile, use `agent.sqlref.list()`, `agent.sqlref.fetch(name, options)`, and `agent.sqlref.fetchAll(options)` to load current online markdown manuals.
+- Use `agent.sqlref.index(options)` to fetch `index.md` directly.
+- Use `maxBytes` to limit markdown payload size and `omitMarkdown: true` when only metadata is needed.
+
+### SQL Reference Catalog
+
+- `datatypes`: Machbase SQL datatype reference. https://docs.machbase.com/dbms/sql-reference/index.md
+- `ddl`: Machbase SQL DDL reference. https://docs.machbase.com/dbms/sql-reference/ddl.md
+- `dml`: Machbase SQL DML reference. https://docs.machbase.com/dbms/sql-reference/ddl.md
+- `math-functions`: Machbase SQL math function reference. https://docs.machbase.com/dbms/sql-reference/ddl.md
+- `functions`: Machbase SQL function reference. https://docs.machbase.com/dbms/sql-reference/functions.md
+
 ## Table Types
 
 | Type | Description |
@@ -111,12 +125,6 @@ TO_NUMBER(str)               -- parse string as number
 ## Useful Patterns
 
 ```sql
--- Show table schema (columns)
-DESC table_name;
-
--- Show all tables
-SHOW TABLES;
-
 -- Show all tables (equivalent with `show tables`)
 SELECT NAME, TYPE, FLAG 
     FROM M$SYS_TABLES 
