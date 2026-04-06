@@ -1559,3 +1559,106 @@ func TestFSStream(t *testing.T) {
 		test_engine.RunTest(t, tc)
 	}
 }
+
+func TestFSUTF8Regression(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "fs_write_and_read_file_utf8",
+			Script: `
+				const fs = require('fs');
+				const expected = '한글과 English 123';
+
+				fs.writeFileSync('/work/fs_utf8.txt', expected, 'utf8');
+				const actual = fs.readFileSync('/work/fs_utf8.txt', 'utf8');
+
+				console.println('Matches expected:', actual === expected);
+				console.println('Roundtrip:', actual);
+
+				fs.unlinkSync('/work/fs_utf8.txt');
+			`,
+			Output: []string{
+				"Matches expected: true",
+				"Roundtrip: 한글과 English 123",
+			},
+		},
+		{
+			Name: "fs_append_file_utf8",
+			Script: `
+				const fs = require('fs');
+				const first = '안녕하세요';
+				const second = ', Machbase';
+
+				fs.writeFileSync('/work/fs_utf8_append.txt', first, 'utf8');
+				fs.appendFileSync('/work/fs_utf8_append.txt', second, 'utf8');
+				const actual = fs.readFileSync('/work/fs_utf8_append.txt', 'utf8');
+
+				console.println('Appended:', actual);
+				console.println('Matches expected:', actual === first + second);
+
+				fs.unlinkSync('/work/fs_utf8_append.txt');
+			`,
+			Output: []string{
+				"Appended: 안녕하세요, Machbase",
+				"Matches expected: true",
+			},
+		},
+		{
+			Name: "fs_create_read_stream_utf8_multibyte_boundary",
+			Script: `
+				const fs = require('fs');
+				const expected = '한글과 English 123';
+
+				fs.writeFileSync('/work/fs_utf8_stream.txt', expected, 'utf8');
+
+				const readStream = fs.createReadStream('/work/fs_utf8_stream.txt', { encoding: 'utf8', bufferSize: 1 });
+				const chunks = [];
+
+				readStream.on('data', chunk => {
+					chunks.push(chunk);
+				});
+
+				readStream.on('end', () => {
+					const actual = chunks.join('');
+					console.println('Chunk count:', chunks.length);
+					console.println('Matches expected:', actual === expected);
+					console.println('Stream data:', actual);
+					fs.unlinkSync('/work/fs_utf8_stream.txt');
+				});
+			`,
+			Output: []string{
+				"Chunk count: 15",
+				"Matches expected: true",
+				"Stream data: 한글과 English 123",
+			},
+		},
+		{
+			Name: "fs_create_write_stream_utf8",
+			Script: `
+				const fs = require('fs');
+				const expected = '한글\nEnglish\n123';
+				const writeStream = fs.createWriteStream('/work/fs_utf8_write_stream.txt', { encoding: 'utf8' });
+
+				writeStream.on('finish', () => {
+					const actual = fs.readFileSync('/work/fs_utf8_write_stream.txt', 'utf8');
+					console.println('Matches expected:', actual === expected);
+					console.println('Written:', actual);
+					fs.unlinkSync('/work/fs_utf8_write_stream.txt');
+				});
+
+				writeStream.write('한글\n');
+				writeStream.write('English\n');
+				writeStream.end('123');
+			`,
+			Output: []string{
+				"Matches expected: true",
+				"Written: 한글",
+				"English",
+				"123",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		test_engine.RunTest(t, tc)
+	}
+}

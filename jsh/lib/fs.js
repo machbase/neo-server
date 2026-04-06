@@ -27,18 +27,107 @@ if (!Buffer.isBuffer) {
     };
 }
 
+function isByteLike(data) {
+    return Array.isArray(data)
+        || data instanceof Uint8Array
+        || data instanceof ArrayBuffer
+        || Buffer.isBuffer(data);
+}
+
+function normalizeByteSource(data) {
+    if (data === null || data === undefined) {
+        return new Uint8Array(0);
+    }
+    if (data instanceof ArrayBuffer) {
+        return new Uint8Array(data);
+    }
+    if (data instanceof Uint8Array) {
+        return data;
+    }
+    if (Buffer.isBuffer(data)) {
+        return new Uint8Array(data);
+    }
+    if (Array.isArray(data)) {
+        return Uint8Array.from(data);
+    }
+    return Uint8Array.from(Buffer.from(String(data), 'utf8'));
+}
+
 // Convert byte array to string
 function bytesToString(bytes) {
-    return String.fromCharCode(...bytes);
+    return Buffer.from(normalizeByteSource(bytes)).toString('utf8');
 }
 
 // Convert string to byte array
 function stringToBytes(str) {
-    const bytes = [];
-    for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i));
+    return Uint8Array.from(Buffer.from(String(str), 'utf8'));
+}
+
+function concatByteArrays(first, second) {
+    const left = normalizeByteSource(first);
+    const right = normalizeByteSource(second);
+    if (left.length === 0) {
+        return right;
     }
-    return bytes;
+    if (right.length === 0) {
+        return left;
+    }
+    const merged = new Uint8Array(left.length + right.length);
+    merged.set(left, 0);
+    merged.set(right, left.length);
+    return merged;
+}
+
+function splitIncompleteUtf8Tail(bytes) {
+    const input = normalizeByteSource(bytes);
+    if (input.length === 0) {
+        return { complete: input, carry: new Uint8Array(0) };
+    }
+
+    let continuationCount = 0;
+    let index = input.length - 1;
+    while (index >= 0 && (input[index] & 0xC0) === 0x80) {
+        continuationCount++;
+        index--;
+    }
+    if (index < 0) {
+        return { complete: input, carry: new Uint8Array(0) };
+    }
+
+    const lead = input[index];
+    let expectedLength = 0;
+    if ((lead & 0x80) === 0) {
+        expectedLength = 1;
+    } else if ((lead & 0xE0) === 0xC0) {
+        expectedLength = 2;
+    } else if ((lead & 0xF0) === 0xE0) {
+        expectedLength = 3;
+    } else if ((lead & 0xF8) === 0xF0) {
+        expectedLength = 4;
+    } else {
+        return { complete: input, carry: new Uint8Array(0) };
+    }
+
+    const actualLength = input.length - index;
+    if (expectedLength > 1 && actualLength < expectedLength) {
+        return {
+            complete: input.slice(0, index),
+            carry: input.slice(index),
+        };
+    }
+
+    return { complete: input, carry: new Uint8Array(0) };
+}
+
+function decodeUtf8Chunk(chunk, state, flush) {
+    const input = normalizeByteSource(chunk);
+    const carry = state && state.carry ? state.carry : new Uint8Array(0);
+    const merged = concatByteArrays(carry, input);
+    const parts = flush ? { complete: merged, carry: new Uint8Array(0) } : splitIncompleteUtf8Tail(merged);
+    if (state) {
+        state.carry = parts.carry;
+    }
+    return bytesToString(parts.complete);
 }
 
 function chunkLength(chunk) {
@@ -52,19 +141,7 @@ function chunkLength(chunk) {
 }
 
 function toBufferChunk(chunk) {
-    if (chunk instanceof ArrayBuffer) {
-        return new Uint8Array(chunk);
-    }
-    if (chunk instanceof Uint8Array) {
-        return chunk;
-    }
-    if (Buffer.isBuffer(chunk)) {
-        return new Uint8Array(chunk);
-    }
-    if (Array.isArray(chunk)) {
-        return Uint8Array.from(chunk);
-    }
-    return Uint8Array.from(stringToBytes(String(chunk)));
+    return normalizeByteSource(chunk);
 }
 
 function toStringChunk(chunk) {
@@ -117,7 +194,7 @@ function writeFileSync(path, data, options) {
     const fullPath = _fs.resolvePath(path);
     try {
         const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        const bytes = (encoding === null || encoding === 'buffer' || Array.isArray(data))
+        const bytes = (encoding === null || encoding === 'buffer' || isByteLike(data))
             ? data
             : stringToBytes(data);
         _fs.writeFile(fullPath, bytes);
@@ -142,6 +219,7 @@ class ReadStream extends EventEmitter {
         // Use highWaterMark for Node.js compatibility, fallback to bufferSize for backward compatibility
         this.bufferSize = options?.highWaterMark || options?.bufferSize || 64 * 1024; // 64KB (Node.js default)
         this.eof = false;
+        this._decoderState = { carry: new Uint8Array(0) };
         if (this.isStdin) {
             this.reader = getProcessModule().stdin;
             return;
@@ -165,8 +243,24 @@ class ReadStream extends EventEmitter {
             return data;
         }
 
-        const data = toStringChunk(chunk);
-        this.emit('data', data);
+        const data = isByteLike(chunk) ? decodeUtf8Chunk(chunk, this._decoderState, false) : toStringChunk(chunk);
+        if (data.length > 0) {
+            this.emit('data', data);
+        }
+        return data;
+    }
+    _flushStringData() {
+        if (this.encoding === null || this.encoding === 'buffer') {
+            return '';
+        }
+        const carry = this._decoderState && this._decoderState.carry ? this._decoderState.carry : new Uint8Array(0);
+        if (carry.length === 0) {
+            return '';
+        }
+        const data = decodeUtf8Chunk(new Uint8Array(0), this._decoderState, true);
+        if (data.length > 0) {
+            this.emit('data', data);
+        }
         return data;
     }
     _readFromStdin() {
@@ -176,6 +270,7 @@ class ReadStream extends EventEmitter {
         const bytesRead = chunkLength(chunk);
         if (bytesRead <= 0) {
             this.eof = true;
+            this._flushStringData();
             this.emit('end');
             return bytesRead;
         }
@@ -198,6 +293,7 @@ class ReadStream extends EventEmitter {
             if (bytesRead <= 0) {
                 this.eof = true;
                 _fs.close(this.fd);
+                this._flushStringData();
                 this.emit('end');
                 return bytesRead;
             }
@@ -212,19 +308,15 @@ class ReadStream extends EventEmitter {
                 return uint8Data;
             }
 
-            // For string mode, convert only the bytes read
-            let str = '';
-            for (let i = 0; i < bytesRead; i++) {
-                str += String.fromCharCode(this._buffer[i]);
-            }
-            this.emit('data', str);
-            return str;
+            const data = this._buffer.slice(0, bytesRead);
+            return this._emitChunk(data);
         } catch (e) {
             if (!this.isStdin && this.fd !== undefined) {
                 _fs.close(this.fd);
             }
             if (e.message === 'EOF') {
                 this.eof = true;
+                this._flushStringData();
                 this.emit('end');
             } else {
                 this.emit('error', e);
@@ -298,7 +390,7 @@ class WriteStream extends EventEmitter {
     }
     write(data) {
         try {
-            const bytes = (this.encoding === null || this.encoding === 'buffer' || Array.isArray(data))
+            const bytes = (this.encoding === null || this.encoding === 'buffer' || isByteLike(data))
                 ? data
                 : stringToBytes(data);
             let n = _fs.write(this.fd, bytes);
@@ -339,7 +431,7 @@ function appendFileSync(path, data, options) {
     const fullPath = _fs.resolvePath(path);
     try {
         const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        const newBytes = (encoding === null || encoding === 'buffer' || Array.isArray(data))
+        const newBytes = (encoding === null || encoding === 'buffer' || isByteLike(data))
             ? data
             : stringToBytes(data);
         _fs.appendFile(fullPath, newBytes);
