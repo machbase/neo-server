@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -901,7 +902,7 @@ func (d *dotFileInfo) Sys() interface{} {
 	return nil
 }
 
-func (jr *JSRuntime) Filesystem(vm *goja.Runtime, module *goja.Object) {
+func (jr *JSRuntime) Filesystem(_ context.Context, vm *goja.Runtime, module *goja.Object) {
 	exports := module.Get("exports").(*goja.Object)
 
 	exports.Set("resolvePath", func(path string) string { return jr.Env.ResolvePath(path) })

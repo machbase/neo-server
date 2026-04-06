@@ -2,6 +2,7 @@ package shell
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/dop251/goja"
@@ -129,7 +130,7 @@ func TestModuleAndConstructor(t *testing.T) {
 		t.Fatalf("set exports: %v", err)
 	}
 
-	Module(rt, module)
+	Module(context.Background(), rt, module)
 	if goja.IsUndefined(exports.Get("Shell")) {
 		t.Fatal("exports.Shell is undefined")
 	}

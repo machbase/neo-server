@@ -1,6 +1,7 @@
 package zip_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dop251/goja"
@@ -13,7 +14,7 @@ func TestZipModule(t *testing.T) {
 	module := rt.NewObject()
 	exports := rt.NewObject()
 	module.Set("exports", exports)
-	ziplib.Module(rt, module)
+	ziplib.Module(context.Background(), rt, module)
 	exportsObj := module.Get("exports").(*goja.Object)
 	for _, name := range []string{"createZip", "createUnzip", "zip", "unzip", "zipSync", "unzipSync"} {
 		if exportsObj.Get(name) == nil || goja.IsUndefined(exportsObj.Get(name)) {

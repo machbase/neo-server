@@ -1,6 +1,7 @@
 package tar_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dop251/goja"
@@ -13,7 +14,7 @@ func TestTarModule(t *testing.T) {
 	module := rt.NewObject()
 	exports := rt.NewObject()
 	module.Set("exports", exports)
-	tarlib.Module(rt, module)
+	tarlib.Module(context.Background(), rt, module)
 	exportsObj := module.Get("exports").(*goja.Object)
 	for _, name := range []string{"createTar", "createUntar", "tar", "untar", "tarSync", "untarSync"} {
 		if exportsObj.Get(name) == nil || goja.IsUndefined(exportsObj.Get(name)) {

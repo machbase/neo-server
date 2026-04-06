@@ -149,7 +149,7 @@ function printError(text) {
     console.println(RED + 'Error: ' + text + RESET);
 }
 
-// ─── Auth error recovery ──────────────────────────────────────────────────────
+// ─── Provider setup recovery ──────────────────────────────────────────────────
 
 function isAuthError(errMsg) {
     return errMsg.indexOf('401') >= 0 ||
@@ -159,53 +159,72 @@ function isAuthError(errMsg) {
         errMsg.indexOf('API key') >= 0;
 }
 
-// Prompt the user to enter an API key interactively.
-// Returns true if a key was entered/saved (caller should retry), false to cancel.
-function promptForAPIKey(reason) {
+// Prompt the user to enter provider-specific configuration interactively.
+// Returns true if a value was entered/saved (caller should retry), false to cancel.
+function promptForProviderSetup(reason) {
     var info = ai.providerInfo();
     var providerName = info.name;
+    var configKey = 'apiKey';
+    var valueLabel = 'API key';
+    var promptLabel = 'API Key';
+    var currentValue = '';
 
     var envVarHint = '';
     if (providerName === 'claude') {
         envVarHint = 'ANTHROPIC_API_KEY';
     } else if (providerName === 'openai') {
         envVarHint = 'OPENAI_API_KEY';
+    } else if (providerName === 'ollama') {
+        envVarHint = 'OLLAMA_HOST';
+        configKey = 'baseUrl';
+        valueLabel = 'base URL';
+        promptLabel = 'Base URL';
+        currentValue = info.baseUrl || 'http://127.0.0.1:11434';
     }
 
     console.println('');
     if (reason === 'missing') {
-        console.println(YELLOW + 'No API key configured for provider: ' + BOLD + providerName + RESET);
+        console.println(YELLOW + 'No ' + valueLabel + ' configured for provider: ' + BOLD + providerName + RESET);
     } else {
-        console.println(YELLOW + 'Authentication failed for provider: ' + BOLD + providerName + RESET);
+        console.println(YELLOW + 'Provider setup failed for provider: ' + BOLD + providerName + RESET);
     }
-    console.println(DIM + '  Enter your API key, "." to open config editor, or press Enter to cancel.' + RESET);
+    if (providerName === 'ollama') {
+        console.println(DIM + '  Enter the Ollama base URL, "." to open config editor, or press Enter to use the default.' + RESET);
+        console.println(DIM + '  Default: ' + currentValue + RESET);
+    } else {
+        console.println(DIM + '  Enter your API key, "." to open config editor, or press Enter to cancel.' + RESET);
+    }
     if (envVarHint) {
         console.println(DIM + '  Tip: you can also set the ' + envVarHint + ' environment variable.' + RESET);
     }
     console.println('');
 
     var keyRL = new ReadLine({ historyName: '' });
-    var apiKey;
+    var value;
     try {
-        apiKey = keyRL.readLine({ prompt: function () { return YELLOW + 'API Key> ' + RESET; } });
+        value = keyRL.readLine({ prompt: function () { return YELLOW + promptLabel + '> ' + RESET; } });
     } catch (e) {
         return false;
     } finally {
         keyRL.close();
     }
 
-    if (apiKey === null || apiKey === undefined) {
+    if (value === null || value === undefined) {
         return false;
     }
-    apiKey = apiKey.trim();
+    value = value.trim();
 
-    if (!apiKey) {
-        // Empty Enter → cancel
-        printInfo('Cancelled.');
-        return false;
+    if (!value) {
+        if (providerName === 'ollama') {
+            value = currentValue;
+        } else {
+            // Empty Enter → cancel
+            printInfo('Cancelled.');
+            return false;
+        }
     }
 
-    if (apiKey === '.') {
+    if (value === '.') {
         // "." → open editor
         var result = ai.editConfig();
         if (result === 'saved') {
@@ -214,7 +233,11 @@ function promptForAPIKey(reason) {
             printInfo('Config saved and reloaded.');
             return true;
         } else if (result === 'no-editor') {
-            printInfo('No host editor found. Use \\config set providers.' + providerName + '.apiKey <key>');
+            if (providerName === 'ollama') {
+                printInfo('No host editor found. Use \\config set providers.' + providerName + '.baseUrl <url>');
+            } else {
+                printInfo('No host editor found. Use \\config set providers.' + providerName + '.apiKey <key>');
+            }
         } else if (result === 'invalid-json') {
             printInfo('Invalid JSON in config — changes discarded.');
         } else {
@@ -223,24 +246,31 @@ function promptForAPIKey(reason) {
         return false;
     }
 
-    // Save the entered key into config
+    // Save the entered value into config
     try {
-        ai.config.set('providers.' + providerName + '.apiKey', apiKey);
+        ai.config.set('providers.' + providerName + '.' + configKey, value);
         cfg = ai.config.load();
         ai.setProvider(providerName);
-        printInfo('API key saved. Retrying...');
+        if (providerName === 'ollama') {
+            printInfo('Base URL saved. Retrying...');
+        } else {
+            printInfo('API key saved. Retrying...');
+        }
         return true;
     } catch (e) {
-        printError('Failed to save API key: ' + (e.message || String(e)));
+        printError('Failed to save ' + valueLabel + ': ' + (e.message || String(e)));
         return false;
     }
 }
 
-// Check API key before sending — returns true if ready, false if user cancelled.
-function ensureApiKey() {
+// Check provider configuration before sending — returns true if ready, false if user cancelled.
+function ensureProviderReady() {
     var info = ai.providerInfo();
-    if (!info.hasApiKey) {
-        return promptForAPIKey('missing');
+    if ((info.name === 'claude' || info.name === 'openai') && !info.hasApiKey) {
+        return promptForProviderSetup('missing');
+    }
+    if (info.name === 'ollama' && !info.hasBaseUrl) {
+        return promptForProviderSetup('missing');
     }
     return true;
 }
@@ -623,8 +653,8 @@ while (true) {
         continue;
     }
 
-    // Check API key before sending
-    if (!ensureApiKey()) {
+    // Check provider configuration before sending
+    if (!ensureProviderReady()) {
         continue;
     }
 
@@ -659,7 +689,7 @@ while (true) {
         console.println('');
         history.pop();
         if (isAuthError(String(streamErr))) {
-            if (promptForAPIKey('auth')) {
+            if (promptForProviderSetup('auth')) {
                 // Re-push user message and retry once
                 history.push({ role: 'user', content: line });
                 var info2 = ai.providerInfo();

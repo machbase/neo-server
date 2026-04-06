@@ -20,10 +20,12 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	exports := module.Get("exports").(*goja.Object)
-	exports.Set("NewDatabase", NewDatabase)
+	exports.Set("NewDatabase", func(data string) (*Database, error) {
+		return newDatabase(ctx, data)
+	})
 	exports.Set("Unbox", api.Unbox)
 	exports.Set("RowsScan", RowsScan)
 }
@@ -46,6 +48,10 @@ type Database struct {
 }
 
 func NewDatabase(data string) (*Database, error) {
+	return newDatabase(context.Background(), data)
+}
+
+func newDatabase(ctx context.Context, data string) (*Database, error) {
 	obj := Config{
 		Host:     "127.0.0.1",
 		Port:     5656,
@@ -71,9 +77,9 @@ func NewDatabase(data string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	derivedCtx, cancel := context.WithCancel(ctx)
 	return &Database{
-		Ctx:      ctx,
+		Ctx:      derivedCtx,
 		Cancel:   cancel,
 		cli:      db,
 		user:     strings.ToUpper(obj.User),
@@ -90,7 +96,7 @@ func (db *Database) User() string {
 }
 
 func (db *Database) Connect() (*machgo.Conn, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(db.Ctx)
 	defer cancel()
 	conn, err := db.cli.Connect(ctx, api.WithPassword(db.user, db.password))
 	if err != nil {

@@ -3,6 +3,7 @@ package zip
 import (
 	stdzip "archive/zip"
 	"bytes"
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -301,7 +302,7 @@ func TestZipModuleExportsAndAsyncValidation(t *testing.T) {
 	module := rt.NewObject()
 	exports := rt.NewObject()
 	module.Set("exports", exports)
-	Module(rt, module)
+	Module(context.Background(), rt, module)
 	exports = module.Get("exports").(*goja.Object)
 
 	createZipFn := mustZipJSFunction(t, exports.Get("createZip"))

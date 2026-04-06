@@ -126,7 +126,7 @@ const { Shell, Repl, ai } = require('@jsh/shell');
 // ai sub-module (LLM integration)
 ai.send(messages, systemPrompt)       // → {content, inputTokens, outputTokens, provider, model}
 ai.stream(messages, systemPrompt)     // → EventEmitter {data(token), end(response), error(err)}
-ai.setProvider(name)                  // Switch provider: 'claude' | 'openai'
+ai.setProvider(name)                  // Switch provider: 'claude' | 'openai' | 'ollama'
 ai.providerInfo()                     // → {name, model, maxTokens}
 ai.listSegments()                     // → string[] of available prompt segment names
 ai.loadSegment(name)                  // → string (markdown content of named segment)

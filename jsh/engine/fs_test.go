@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"io/fs"
 	"os"
@@ -1027,7 +1028,7 @@ func TestFS_FilesystemBindings(t *testing.T) {
 		t.Fatalf("rt.Set(module) failed: %v", err)
 	}
 
-	jr.Filesystem(rt, module)
+	jr.Filesystem(context.Background(), rt, module)
 	exportsObj := module.Get("exports").(*goja.Object)
 
 	for _, key := range []string{"readFile", "writeFile", "appendFile", "readDir", "countLines", "hostWriter", "hostReader", "platform", "arch", "O_RDONLY", "O_APPEND"} {

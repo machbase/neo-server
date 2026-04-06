@@ -17,10 +17,10 @@ import (
 	"github.com/nyaosorg/go-readline-ny/keys"
 )
 
-//go:embed user.js
+//go:embed profile_user.js
 var userJS []byte
 
-//go:embed agent.js
+//go:embed profile_agent.js
 var agentJS []byte
 
 //go:embed ai_prompt.js
@@ -44,7 +44,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 
 	// shell = new Shell()

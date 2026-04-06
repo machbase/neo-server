@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ type JSRuntime struct {
 	Args   []string
 	Strict bool
 	Env    *Env
+	ctx    context.Context
 
 	registry      *require.Registry
 	eventLoop     *eventloop.EventLoop
@@ -42,8 +44,12 @@ type ExecOptions struct {
 	Stderr io.Writer
 }
 
-func (jr *JSRuntime) RegisterNativeModule(name string, loader require.ModuleLoader) {
-	jr.registry.RegisterNativeModule(name, loader)
+type NativeModuleLoader func(ctx context.Context, rt *goja.Runtime, module *goja.Object)
+
+func (jr *JSRuntime) RegisterNativeModule(name string, loader NativeModuleLoader) {
+	jr.registry.RegisterNativeModule(name, func(rt *goja.Runtime, module *goja.Object) {
+		loader(jr.ctx, rt, module)
+	})
 }
 
 func (jr *JSRuntime) EventLoop() *eventloop.EventLoop {

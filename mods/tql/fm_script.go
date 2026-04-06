@@ -128,8 +128,9 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		mainCode = strings.Repeat("\n", initCodeLine+node.tqlLine.line-1) + mainCode
 	}
 	conf := engine.Config{
-		Name: "SCRIPT",
-		Code: `(()=>{})()`,
+		Name:    "SCRIPT",
+		Code:    `(()=>{})()`,
+		Context: node.task.ctx,
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),

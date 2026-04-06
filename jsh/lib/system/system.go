@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -13,7 +14,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
-func Module(rt *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/system")
 	o := module.Get("exports").(*goja.Object)
 	// l = new m.Log("name")

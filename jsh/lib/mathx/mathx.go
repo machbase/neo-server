@@ -1,6 +1,7 @@
 package mathx
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"slices"
@@ -21,7 +22,7 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(_ *goja.Runtime, module *goja.Object) {
+func Module(_ context.Context, _ *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 	// arr = m.sort(arr)
 	o.Set("sort", func(arr []float64) []float64 {

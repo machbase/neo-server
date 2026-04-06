@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bufio"
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -19,7 +20,7 @@ import (
 	"github.com/dop251/goja_nodejs/eventloop"
 )
 
-func (jr *JSRuntime) Process(vm *goja.Runtime, module *goja.Object) {
+func (jr *JSRuntime) Process(_ context.Context, vm *goja.Runtime, module *goja.Object) {
 	executable, _ := os.Executable()
 	exports := module.Get("exports").(*goja.Object)
 

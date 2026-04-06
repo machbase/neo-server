@@ -82,7 +82,8 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	}
 
 	cmds := make([]*exec.Cmd, 0, len(pipelines))
-	pipeFiles := make([]*os.File, 0, len(pipelines)*2)
+	pipeReaders := make([]*os.File, 0, len(pipelines)-1)
+	pipeWriters := make([]*os.File, 0, len(pipelines)-1)
 	redirectClosers := []func(){}
 	for _, pipe := range pipelines {
 		cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args)
@@ -104,19 +105,22 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 		reader, writer, err := os.Pipe()
 		if err != nil {
 			log.Printf("pipeline pipe error: %v\n", err)
-			closeFiles(pipeFiles)
+			closeFiles(pipeReaders)
+			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
 			return 1
 		}
 		cmds[i].Stdout = writer
 		cmds[i+1].Stdin = reader
-		pipeFiles = append(pipeFiles, reader, writer)
+		pipeReaders = append(pipeReaders, reader)
+		pipeWriters = append(pipeWriters, writer)
 	}
 
 	if pipelines[0].Stdin != nil {
 		reader, closeFn, err := openInputRedirect(sh.env, pipelines[0].Stdin)
 		if err != nil {
-			closeFiles(pipeFiles)
+			closeFiles(pipeReaders)
+			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
 			log.Printf("pipeline input redirection error: %v\n", err)
 			return 1
@@ -127,7 +131,8 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	if pipelines[last].Stdout != nil {
 		writer, closeFn, err := openOutputRedirect(sh.env, pipelines[last].Stdout)
 		if err != nil {
-			closeFiles(pipeFiles)
+			closeFiles(pipeReaders)
+			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
 			log.Printf("pipeline output redirection error: %v\n", err)
 			return 1
@@ -139,7 +144,8 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 		if pipe.Stderr != nil {
 			writer, closeFn, err := openErrorRedirect(sh.env, pipe.Stderr, cmds[i].Stdout)
 			if err != nil {
-				closeFiles(pipeFiles)
+				closeFiles(pipeReaders)
+				closeFiles(pipeWriters)
 				closeResources(redirectClosers)
 				log.Printf("pipeline stderr redirection error: %v\n", err)
 				return 1
@@ -150,9 +156,10 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	}
 
 	started := make([]*exec.Cmd, 0, len(cmds))
-	for _, cmd := range cmds {
+	for i, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
-			closeFiles(pipeFiles)
+			closeFiles(pipeReaders)
+			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
 			killStarted(started)
 			waitStarted(started)
@@ -160,8 +167,17 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 			return 1
 		}
 		started = append(started, cmd)
+		if i > 0 {
+			_ = pipeReaders[i-1].Close()
+			pipeReaders[i-1] = nil
+		}
+		if i < len(pipeWriters) {
+			_ = pipeWriters[i].Close()
+			pipeWriters[i] = nil
+		}
 	}
-	closeFiles(pipeFiles)
+	closeFiles(pipeReaders)
+	closeFiles(pipeWriters)
 
 	lastExitCode := 0
 	for i, cmd := range started {
