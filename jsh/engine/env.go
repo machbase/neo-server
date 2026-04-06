@@ -533,6 +533,17 @@ func (e *Env) Set(key string, value any) {
 	e.vars[key] = value
 }
 
+func (e *Env) SetRaw(key string, value any) {
+	if e.vars == nil {
+		e.vars = make(map[string]any)
+	}
+	if value == nil {
+		delete(e.vars, key)
+		return
+	}
+	e.vars[key] = value
+}
+
 func (e *Env) Get(key string) any {
 	if e.vars == nil {
 		return nil

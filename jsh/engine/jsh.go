@@ -66,7 +66,7 @@ func New(conf Config) (*JSRuntime, error) {
 	}
 	env := NewEnv(opts...)
 	for k, v := range conf.Env {
-		env.Set(k, v)
+		env.SetRaw(k, v)
 	}
 	// Default environment variables
 	env.Set("PATH", appendMissingPathElements(env.Get("PATH"), ".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin"))

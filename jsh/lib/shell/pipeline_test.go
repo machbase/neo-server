@@ -773,7 +773,7 @@ func TestRunStreamingPipelineGuards(t *testing.T) {
 func TestPipelineHelpers(t *testing.T) {
 	t.Run("build external command requires env", func(t *testing.T) {
 		sh := &Shell{}
-		if _, err := sh.buildExternalExecCmd("cat", nil); err == nil || !strings.Contains(err.Error(), "shell environment is not initialized") {
+		if _, err := sh.buildExternalExecCmd("cat", nil, nil); err == nil || !strings.Contains(err.Error(), "shell environment is not initialized") {
 			t.Fatalf("buildExternalExecCmd() err = %v, want shell environment error", err)
 		}
 	})
@@ -853,4 +853,112 @@ func TestPipelineHelpers(t *testing.T) {
 			t.Fatalf("waitCommand(fail) exitCode = %d, want 7", exitCode)
 		}
 	})
+}
+
+// TestProcessAssignmentPrefix tests assignment-prefix syntax: NAME=VALUE cmd arg
+func TestProcessAssignmentPrefix(t *testing.T) {
+	tests := []struct {
+		name        string
+		line        string
+		want        string
+		exit        int
+		alive       bool
+		wantContain string // partial match for multi-line output
+	}{
+		{
+			name:  "single assignment passed to external command",
+			line:  "FOO=bar env FOO",
+			want:  "FOO=bar",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "two assignments passed to external command",
+			line:  "FOO=bar BAR=baz env FOO BAR",
+			want:  "FOO=bar\nBAR=baz",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "assignment with spaces in single-quoted value",
+			line:  "NAME='hello world' env NAME",
+			want:  "NAME=hello world",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "assignment with single-quoted dollar stays literal",
+			line:  "NAME='$HOME' env NAME",
+			want:  "NAME=$HOME",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "assignment with double-quoted dollar expands",
+			line:  `NAME="$HOME" env NAME`,
+			want:  "NAME=/work",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "last assignment wins for duplicate name",
+			line:  "FOO=1 FOO=2 env FOO",
+			want:  "FOO=2",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "assignment does not persist after command",
+			line:  "FOO=bar env FOO && env FOO",
+			want:  "FOO=bar",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "assignment in first pipeline stage",
+			line:  "FOO=bar env FOO | cat",
+			want:  "FOO=bar",
+			exit:  0,
+			alive: true,
+		},
+		{
+			name:  "assignment-only statement is an error",
+			line:  "FOO=bar",
+			want:  "assignment without command is not supported",
+			exit:  1,
+			alive: true,
+		},
+		{
+			name:  "assignment with internal command rejected",
+			line:  "FOO=bar setenv X y",
+			want:  "temporary environment for internal commands is not supported",
+			exit:  1,
+			alive: true,
+		},
+		{
+			name:  "invalid assignment name starting with digit",
+			line:  "1BAD=x env FOO",
+			want:  "invalid variable name: 1BAD",
+			exit:  1,
+			alive: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, output := newTestShell(t)
+			exitCode, alive := sh.process(tc.line)
+			if exitCode != tc.exit {
+				t.Fatalf("process(%q) exitCode = %d, want %d\noutput: %s", tc.line, exitCode, tc.exit, output.String())
+			}
+			if alive != tc.alive {
+				t.Fatalf("process(%q) alive = %v, want %v", tc.line, alive, tc.alive)
+			}
+			got := normalizeTestNewlines(strings.TrimSpace(output.String()))
+			want := normalizeTestNewlines(tc.want)
+			if !strings.Contains(got, want) {
+				t.Fatalf("process(%q) output = %q, want to contain %q", tc.line, got, want)
+			}
+		})
+	}
 }
