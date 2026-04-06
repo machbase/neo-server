@@ -12,6 +12,7 @@ const { ReadLine } = require('readline');
 const { ai } = require('@jsh/shell');
 const { buildSystemPrompt, listSegments } = require('ai/prompt');
 const { extractCodeBlocks, executeJsh, formatResults } = require('ai/executor');
+const { saveTranscript } = require('ai/transcript');
 
 // ─── CLI options ──────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ if (parseError || values.help) {
     console.println('  \\config edit           Edit config file in host editor');
     console.println('  \\config path           Print config file path');
     console.println('  \\clear                 Clear conversation history');
+    console.println('  \\save <file_path>      Save the current session as Markdown (.md recommended)');
     console.println('  \\help                  Show this help');
     console.println('  \\bye \\exit \\quit       Exit');
     process.exit(parseError ? 1 : 0);
@@ -460,6 +462,8 @@ function handleSlash(line) {
         console.println(BOLD + CYAN + '  Conversation' + RESET);
         console.println('    ' + BOLD + '\\clear' + RESET);
         console.println('        Clear conversation history (start fresh context).');
+        console.println('    ' + BOLD + '\\save <file_path>' + RESET);
+        console.println('        Save the current session as a Markdown transcript (.md recommended).');
         console.println('');
         console.println(BOLD + CYAN + '  Provider & Model' + RESET);
         console.println('    ' + BOLD + '\\provider' + RESET);
@@ -511,6 +515,26 @@ function handleSlash(line) {
     } else if (cmd === '\\clear') {
         history = [];
         printInfo('Conversation history cleared.');
+
+    } else if (cmd === '\\save') {
+        var saveArg = line.trim().slice(cmd.length).trim();
+        if (!saveArg) {
+            printInfo('Usage: \\save <file_path>');
+            return;
+        }
+        try {
+            var provider = ai.providerInfo();
+            var saved = saveTranscript(saveArg, {
+                cwd: process.cwd(),
+                history: history,
+                provider: provider.name || 'unknown',
+                model: provider.model || 'unknown',
+                promptSegments: activeSegments,
+            });
+            printInfo('Saved ' + saved.turns + ' turn(s) to ' + saved.path);
+        } catch (e) {
+            printError(e.message || String(e));
+        }
 
     } else if (cmd === '\\provider') {
         if (parts.length > 1) {
