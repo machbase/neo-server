@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib/shell/internal"
@@ -58,6 +59,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 		log.Println("pipeline execution requires shell environment")
 		return 1
 	}
+	sharedOutput := newSynchronizedWriter(sh.env.Writer())
 	for i, pipe := range pipelines {
 		if pipe.Command == "exit" || pipe.Command == "quit" {
 			log.Printf("command cannot be used in pipeline: %s\n", pipe.Command)
@@ -96,9 +98,9 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 
 	cmds[0].Stdin = sh.env.Reader()
 	last := len(cmds) - 1
-	cmds[last].Stdout = sh.env.Writer()
+	cmds[last].Stdout = sharedOutput
 	for _, cmd := range cmds {
-		cmd.Stderr = sh.env.Writer()
+		cmd.Stderr = sharedOutput
 	}
 
 	for i := 0; i < len(cmds)-1; i++ {
@@ -185,6 +187,9 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 		if err != nil {
 			log.Printf("pipeline wait error: %v\n", err)
 		}
+		// TODO:
+		// Consider a pipefail-style result so failures in non-final stages
+		// are not masked by a successful last stage.
 		if i == len(started)-1 {
 			lastExitCode = exitCode
 		}
@@ -205,9 +210,10 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 	}
 
 	redirectClosers := []func(){}
+	sharedOutput := newSynchronizedWriter(sh.env.Writer())
 	cmd.Stdin = sh.env.Reader()
-	cmd.Stdout = sh.env.Writer()
-	cmd.Stderr = sh.env.Writer()
+	cmd.Stdout = sharedOutput
+	cmd.Stderr = sharedOutput
 
 	if pipe.Stdin != nil {
 		reader, closeFn, err := openInputRedirect(sh.env, pipe.Stdin)
@@ -396,6 +402,31 @@ func waitStarted(cmds []*exec.Cmd) {
 			_, _ = waitCommand(cmd)
 		}
 	}
+}
+
+// synchronizedWriter serializes writes to a shared destination used by external
+// commands in a pipeline.
+//
+// Multiple pipeline stages can write to the same stdout/stderr target at the
+// same time. If that target is a non-thread-safe writer, such as bytes.Buffer
+// in tests or a custom shell writer, concurrent writes can cause races,
+// interleaved output, or flaky empty results that depend on timing.
+type synchronizedWriter struct {
+	mu     sync.Mutex
+	writer io.Writer
+}
+
+func newSynchronizedWriter(writer io.Writer) io.Writer {
+	if writer == nil {
+		return nil
+	}
+	return &synchronizedWriter{writer: writer}
+}
+
+func (w *synchronizedWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.writer.Write(data)
 }
 
 func closeFiles(files []*os.File) {
