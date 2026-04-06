@@ -1867,3 +1867,168 @@ func TestFindHostEditor_EnvNotInPath(t *testing.T) {
 	// Result depends on whether vi/nano exist in the test environment.
 	_ = ed
 }
+
+func TestAIExecutorExtractCodeBlocks_OnlyJshRun(t *testing.T) {
+	rt := goja.New()
+	module := rt.NewObject()
+	exports := rt.NewObject()
+	if err := module.Set("exports", exports); err != nil {
+		t.Fatalf("module.exports setup failed: %v", err)
+	}
+	if err := rt.Set("module", module); err != nil {
+		t.Fatalf("module setup failed: %v", err)
+	}
+	if err := rt.Set("exports", exports); err != nil {
+		t.Fatalf("exports setup failed: %v", err)
+	}
+	if err := rt.Set("require", func(call goja.FunctionCall) goja.Value {
+		name := call.Argument(0).String()
+		if name != "@jsh/shell" {
+			panic(rt.NewTypeError("unexpected module: %s", name))
+		}
+		obj := rt.NewObject()
+		aiObj := rt.NewObject()
+		aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+		obj.Set("ai", aiObj)
+		return obj
+	}); err != nil {
+		t.Fatalf("require setup failed: %v", err)
+	}
+
+	if _, err := rt.RunString(string(aiExecutorJS)); err != nil {
+		t.Fatalf("loading ai_executor.js failed: %v", err)
+	}
+
+	exportsObj := module.Get("exports").ToObject(rt)
+	extractVal := exportsObj.Get("extractCodeBlocks")
+	extractFn, ok := goja.AssertFunction(extractVal)
+	if !ok {
+		t.Fatal("extractCodeBlocks export is not a function")
+	}
+
+	text := strings.Join([]string{
+		"Example only:",
+		"```jsh",
+		"console.log('example');",
+		"```",
+		"",
+		"Runnable:",
+		"```jsh-run",
+		"console.log('run');",
+		"```",
+		"",
+		"Legacy JS fence:",
+		"```javascript",
+		"console.log('legacy');",
+		"```",
+	}, "\n")
+
+	result, err := extractFn(goja.Undefined(), rt.ToValue(text))
+	if err != nil {
+		t.Fatalf("extractCodeBlocks() failed: %v", err)
+	}
+
+	blocks, ok := result.Export().([]any)
+	if !ok {
+		t.Fatalf("unexpected extractCodeBlocks() result type: %T", result.Export())
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("extractCodeBlocks() returned %d blocks, want 1", len(blocks))
+	}
+
+	block, ok := blocks[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected block type: %T", blocks[0])
+	}
+	if got := block["lang"]; got != "jsh-run" {
+		t.Fatalf("block lang = %v, want jsh-run", got)
+	}
+	code, ok := block["code"].(string)
+	if !ok {
+		t.Fatalf("block code type = %T, want string", block["code"])
+	}
+	if !strings.Contains(code, "console.log('run');") {
+		t.Fatalf("block code = %q, want runnable jsh-run content", code)
+	}
+}
+
+func TestAIExecutorExtractCodeBlocks_MultipleRunnableBlocks(t *testing.T) {
+	rt := goja.New()
+	module := rt.NewObject()
+	exports := rt.NewObject()
+	if err := module.Set("exports", exports); err != nil {
+		t.Fatalf("module.exports setup failed: %v", err)
+	}
+	if err := rt.Set("module", module); err != nil {
+		t.Fatalf("module setup failed: %v", err)
+	}
+	if err := rt.Set("exports", exports); err != nil {
+		t.Fatalf("exports setup failed: %v", err)
+	}
+	if err := rt.Set("require", func(call goja.FunctionCall) goja.Value {
+		name := call.Argument(0).String()
+		if name != "@jsh/shell" {
+			panic(rt.NewTypeError("unexpected module: %s", name))
+		}
+		obj := rt.NewObject()
+		aiObj := rt.NewObject()
+		aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+		obj.Set("ai", aiObj)
+		return obj
+	}); err != nil {
+		t.Fatalf("require setup failed: %v", err)
+	}
+
+	if _, err := rt.RunString(string(aiExecutorJS)); err != nil {
+		t.Fatalf("loading ai_executor.js failed: %v", err)
+	}
+
+	exportsObj := module.Get("exports").ToObject(rt)
+	extractVal := exportsObj.Get("extractCodeBlocks")
+	extractFn, ok := goja.AssertFunction(extractVal)
+	if !ok {
+		t.Fatal("extractCodeBlocks export is not a function")
+	}
+
+	text := strings.Join([]string{
+		"```jsh-run",
+		"console.log('first');",
+		"```",
+		"",
+		"```jsh",
+		"console.log('example');",
+		"```",
+		"",
+		"```jsh-run",
+		"console.log('second');",
+		"```",
+	}, "\n")
+
+	result, err := extractFn(goja.Undefined(), rt.ToValue(text))
+	if err != nil {
+		t.Fatalf("extractCodeBlocks() failed: %v", err)
+	}
+
+	blocks, ok := result.Export().([]any)
+	if !ok {
+		t.Fatalf("unexpected extractCodeBlocks() result type: %T", result.Export())
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("extractCodeBlocks() returned %d blocks, want 2", len(blocks))
+	}
+
+	first, ok := blocks[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected first block type: %T", blocks[0])
+	}
+	second, ok := blocks[1].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected second block type: %T", blocks[1])
+	}
+	if !strings.Contains(first["code"].(string), "first") {
+		t.Fatalf("first block code = %q, want first runnable block", first["code"])
+	}
+	if !strings.Contains(second["code"].(string), "second") {
+		t.Fatalf("second block code = %q, want second runnable block", second["code"])
+	}
+}

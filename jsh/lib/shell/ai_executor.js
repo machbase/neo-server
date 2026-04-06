@@ -1,8 +1,8 @@
 'use strict';
 
-// ai/executor.js — Phase 2: jsh code block extractor and agent REPL runner.
+// ai/executor.js — executable jsh-run block extractor and agent REPL runner.
 //
-// Extracts ```jsh ... ``` code blocks from LLM responses and executes them
+// Extracts ```jsh-run ... ``` code blocks from LLM responses and executes them
 // via ai.exec(), which runs the code in the agent REPL profile and returns
 // structured JSON results from AgentRenderer.
 //
@@ -18,9 +18,9 @@
 var { ai } = require('@jsh/shell');
 
 /**
- * Extract fenced code blocks tagged as jsh/javascript/js from an LLM response.
- * Plain fences without a language tag are ignored so non-executable examples
- * (shell commands, SQL, etc.) are not accidentally run.
+ * Extract fenced code blocks tagged as jsh-run from an LLM response.
+ * Plain fences and explanatory jsh examples are ignored so only explicit
+ * execution candidates are considered runnable.
  *
  * Returns an array of { lang, code } objects in document order.
  *
@@ -29,9 +29,9 @@ var { ai } = require('@jsh/shell');
  */
 function extractCodeBlocks(text) {
     var blocks = [];
-    // Match ```<lang>\n<body>``` where lang is jsh, javascript, or js.
-    // The closing ``` may be followed by nothing or a newline.
-    var re = /```(jsh|javascript|js)\n([\s\S]*?)```/g;
+    // Match ```jsh-run\n<body>```. The closing ``` may be followed by nothing
+    // or a newline.
+    var re = /```(jsh-run)\n([\s\S]*?)```/g;
     var m;
     while ((m = re.exec(text)) !== null) {
         var code = m[2];

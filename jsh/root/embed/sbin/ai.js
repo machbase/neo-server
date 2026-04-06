@@ -4,7 +4,7 @@
 //
 // Provides an interactive chat loop with an LLM (Claude / OpenAI).
 // Phase 1: text-only chat, no jsh code execution.
-// Phase 2: jsh code block detection and execution (planned).
+// Supports explicit jsh-run execution candidates returned by the LLM.
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
@@ -37,7 +37,7 @@ const options = {
     },
     noExec: {
         type: 'boolean',
-        description: 'Disable automatic jsh code execution (safe mode)',
+        description: 'Disable jsh-run code execution prompts (safe mode)',
         default: false,
     },
     timeout: {
@@ -292,7 +292,7 @@ var CODE_BOLD = '\x1B[1m';
 var CODE_BG = '\x1B[48;5;236m';  // dark grey background
 var CODE_RESET2 = '\x1B[0m';
 
-// Whether to print console.log output from executed jsh code to the terminal.
+// Whether to print console.log output from executed jsh-run code to the terminal.
 // Off by default — output is always sent to the LLM regardless of this flag.
 // Toggle with \verbose.
 var verboseExec = false;
@@ -307,13 +307,13 @@ function printCodeBlock(code, lang) {
     console.println(DIM + '└────────────────────────────────────────────────' + RESET);
 }
 
-// Ask the user whether to execute a code block.
+// Ask the user whether to execute a jsh-run block.
 // Returns 'yes', 'no', or 'all' (execute this and all following blocks).
 function promptExec(confirmRL) {
     var answer;
     try {
         answer = confirmRL.readLine({
-            prompt: function () { return YELLOW + 'Execute this code? [y/N/a(ll)] ' + RESET; }
+            prompt: function () { return YELLOW + 'Execute this jsh-run block? [y/N/a(ll)] ' + RESET; }
         });
     } catch (e) {
         return 'no';
@@ -325,7 +325,7 @@ function promptExec(confirmRL) {
     return 'no';
 }
 
-// Run all confirmed code blocks from an LLM response.
+// Run all confirmed jsh-run blocks from an LLM response.
 // Returns a summary string of results to append to conversation history,
 // or null if no blocks were executed.
 //
@@ -339,7 +339,7 @@ function handleCodeBlocks(responseText) {
 
     if (values.noExec) {
         console.println('');
-        printInfo('[--no-exec] ' + blocks.length + ' code block(s) detected (not executed)');
+        printInfo('[--no-exec] ' + blocks.length + ' runnable jsh-run block(s) detected (not executed)');
         for (var i = 0; i < blocks.length; i++) {
             printCodeBlock(blocks[i].code, blocks[i].lang);
         }
@@ -357,7 +357,7 @@ function handleCodeBlocks(responseText) {
             // The LLM response already streamed the code to the screen.
             // Showing it again in a box would be redundant — show a compact summary instead.
             console.println('');
-            printInfo('[Code block ' + (i + 1) + '/' + blocks.length + '] ' + block.lang + ' · ' + lineCount + ' lines');
+            printInfo('[Runnable block ' + (i + 1) + '/' + blocks.length + '] ' + block.lang + ' · ' + lineCount + ' lines');
 
             var decision = execAll ? 'yes' : promptExec(confirmRL);
             if (decision === 'all') {
@@ -729,7 +729,7 @@ while (true) {
         history.push({ role: 'assistant', content: responseContent });
     }
 
-    // Phase 2: detect jsh code blocks, ask user, execute confirmed ones.
+    // Detect jsh-run blocks, ask the user, and execute confirmed ones.
     // Loop: if the analysis response itself contains more code blocks, handle them too.
     var currentContent = responseContent;
     while (true) {
