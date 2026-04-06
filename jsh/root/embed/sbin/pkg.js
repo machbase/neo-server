@@ -21,6 +21,7 @@
     const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
     const optionProjectDir = { type: 'string', short: 'C', description: 'Use this project directory instead of the current working directory' };
     const optionGlobal = { type: 'boolean', short: 'g', description: `Install into the reserved global package directory ${GLOBAL_PROJECT_DIR} and ignore --dir`, default: false };
+    const optionForce = { type: 'boolean', short: 'f', description: 'Proceed even if the destination directory is not empty', default: false };
 
     const defaultConfig = {
         usage: 'Usage: pkg <command> [options]',
@@ -70,6 +71,20 @@
         ],
     };
 
+    const copyConfig = {
+        command: 'copy',
+        usage: 'pkg copy [options] <source> <dest>',
+        description: 'Copy a GitHub package source into the selected destination and install project dependencies in place',
+        options: {
+            help: optionHelp,
+            force: optionForce,
+        },
+        positionals: [
+            { name: 'source', description: 'GitHub repository package source to copy' },
+            { name: 'dest', description: 'Destination directory path resolved from the current working directory' },
+        ],
+    };
+
     const runConfig = {
         command: 'run',
         usage: 'pkg run [options] <key> [...args]',
@@ -89,7 +104,7 @@
 
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), defaultConfig, initConfig, installConfig, uninstallConfig, runConfig);
+        parsed = parseArgs(process.argv.slice(2), defaultConfig, initConfig, installConfig, uninstallConfig, copyConfig, runConfig);
     } catch (err) {
         console.println(err.message);
         printHelp();
@@ -113,6 +128,11 @@
 
     if (parsed.command === 'install') {
         doInstall(parsed.namedPositionals.name, parsed.values.dir, parsed.values.global);
+        return;
+    }
+
+    if (parsed.command === 'copy') {
+        doCopy(parsed.namedPositionals.source, parsed.namedPositionals.dest, parsed.values.force);
         return;
     }
 
@@ -143,11 +163,15 @@
             console.println(parseArgs.formatHelp(uninstallConfig));
             return;
         }
+        if (command === 'copy') {
+            console.println(parseArgs.formatHelp(copyConfig));
+            return;
+        }
         if (command === 'run') {
             console.println(parseArgs.formatHelp(runConfig));
             return;
         }
-        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig, uninstallConfig, runConfig));
+        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig, uninstallConfig, copyConfig, runConfig));
     }
 
     function doInit(name, initDir) {
@@ -224,34 +248,44 @@
     function doInstall(request, installDir, globalInstall) {
         const state = createInstallState(installDir, globalInstall);
         const rootPlan = buildRootInstallPlan(request, state);
-        const rootDependencyNames = Object.keys(rootPlan.installDependencies).sort();
+        executeInstallPlan(rootPlan, state);
+    }
 
-        if (rootDependencyNames.length === 0) {
-            throw new Error('No dependencies to install. Add dependencies to package.json or provide a package name.');
+    function doCopy(request, destination, force) {
+        const task = createRequestedTask(request);
+        if (!isGitHubRepositoryPackage(task.name)) {
+            throw new Error(`pkg copy only supports GitHub repository packages: ${task.name}`);
         }
 
-        reportInstallStep(state, `Preparing install plan in ${state.cwd}`);
+        const invocationCwd = process.cwd();
+        const dest = resolveCopyDestination(invocationCwd, destination);
+        ensureCopyDestinationReady(dest, !!force);
+
+        const state = createTransferState(invocationCwd);
+        let staged = null;
         try {
-            fs.mkdirSync(state.installRoot, { recursive: true });
-            if (rootPlan.requestedTask) {
-                installPackageRequest(rootPlan.requestedTask, state);
-            }
-            for (const depName of rootDependencyNames) {
-                if (rootPlan.requestedTask && depName === rootPlan.requestedTask.name) {
+            reportInstallStep(state, `Resolving GitHub source for ${formatPackageTaskLabel(task)}`);
+            staged = stageGitHubPackage(task, state, null);
+            printInstallLog(state, `Copying ${formatInstalledPackageLabel(staged)} to ${dest}`);
+            copyDirectoryContents(staged.packageRoot, dest);
+
+            const installTargets = findCopyInstallTargets(dest);
+            for (const targetDir of installTargets) {
+                const targetState = createInstallState(targetDir, false);
+                const rootPlan = buildRootInstallPlan('', targetState);
+                if (!hasInstallWork(rootPlan)) {
                     continue;
                 }
-                installPackageRequest({ name: depName, spec: rootPlan.installDependencies[depName] }, state);
+                printInstallLog(state, `Installing dependencies in ${targetDir}`);
+                executeInstallPlan(rootPlan, targetState);
             }
-
-            persistProjectState(rootPlan, state);
-        } catch (err) {
-            if (state.reporter) {
-                state.reporter.fail(`Install failed: ${err.message}`);
-            }
-            throw err;
         } finally {
             if (state.reporter) {
                 state.reporter.finish();
+            }
+            if (staged && staged.tempRoot) {
+                cleanupPath(staged.tempRoot);
+                cleanupTempRootBase(state.tempRootBase);
             }
         }
     }
@@ -290,6 +324,23 @@
     function createInstallState(installDir, globalInstall) {
         const invocationCwd = process.cwd();
         const cwd = prepareProjectDirectory(invocationCwd, installDir, globalInstall);
+        return createProjectState(cwd, invocationCwd, globalInstall);
+    }
+
+    function createTransferState(invocationCwd) {
+        return {
+            invocationCwd,
+            tempRootBase: resolveTempRootBase(invocationCwd),
+            githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
+            registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
+            requested: new Set(),
+            resolvedPackages: {},
+            installedPackages: {},
+            reporter: createInstallReporter(),
+        };
+    }
+
+    function createProjectState(cwd, invocationCwd, globalInstall) {
         const statePaths = resolveStatePaths(cwd, globalInstall);
         const manifestPath = statePaths.manifestPath;
         const lockPath = statePaths.lockPath;
@@ -321,6 +372,46 @@
             installDependencies[requestedTask.name] = requestedSpecifier(requestedTask);
         }
         return { installDependencies, requestedTask };
+    }
+
+    function executeInstallPlan(rootPlan, state) {
+        const rootDependencyNames = listInstallDependencyNames(rootPlan);
+        if (rootDependencyNames.length === 0) {
+            throw new Error('No dependencies to install. Add dependencies to package.json or provide a package name.');
+        }
+
+        reportInstallStep(state, `Preparing install plan in ${state.cwd}`);
+        try {
+            fs.mkdirSync(state.installRoot, { recursive: true });
+            if (rootPlan.requestedTask) {
+                installPackageRequest(rootPlan.requestedTask, state);
+            }
+            for (const depName of rootDependencyNames) {
+                if (rootPlan.requestedTask && depName === rootPlan.requestedTask.name) {
+                    continue;
+                }
+                installPackageRequest({ name: depName, spec: rootPlan.installDependencies[depName] }, state);
+            }
+
+            persistProjectState(rootPlan, state);
+        } catch (err) {
+            if (state.reporter) {
+                state.reporter.fail(`Install failed: ${err.message}`);
+            }
+            throw err;
+        } finally {
+            if (state.reporter) {
+                state.reporter.finish();
+            }
+        }
+    }
+
+    function listInstallDependencyNames(rootPlan) {
+        return Object.keys(rootPlan.installDependencies).sort();
+    }
+
+    function hasInstallWork(rootPlan) {
+        return listInstallDependencyNames(rootPlan).length > 0;
     }
 
     function createRequestedTask(request) {
@@ -1104,6 +1195,58 @@
             refType: 'tag',
             ref: rawSpec,
         };
+    }
+
+    function resolveCopyDestination(invocationCwd, destination) {
+        if (typeof destination !== 'string' || destination.trim().length === 0) {
+            throw new Error('Copy destination is required');
+        }
+        const resolved = path.resolve(invocationCwd, destination.trim());
+        if (fs.existsSync(resolved) && !fs.statSync(resolved).isDirectory()) {
+            throw new Error(`Copy destination is not a directory: ${resolved}`);
+        }
+        return resolved;
+    }
+
+    function ensureCopyDestinationReady(dest, force) {
+        if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+            return;
+        }
+        if (force) {
+            return;
+        }
+        const entries = fs.readdirSync(dest);
+        if (entries.length > 0) {
+            throw new Error(`Copy destination is not empty: ${dest}`);
+        }
+    }
+
+    function copyDirectoryContents(sourceDir, destDir) {
+        fs.mkdirSync(destDir, { recursive: true });
+        const entries = fs.readdirSync(sourceDir);
+        for (const entry of entries) {
+            const sourcePath = path.join(sourceDir, entry);
+            const destPath = path.join(destDir, entry);
+            const stats = fs.statSync(sourcePath);
+            if (stats.isDirectory()) {
+                fs.cpSync(sourcePath, destPath, { recursive: true, force: true });
+                continue;
+            }
+            fs.copyFileSync(sourcePath, destPath);
+        }
+    }
+
+    function findCopyInstallTargets(dest) {
+        const targets = [];
+        if (fs.existsSync(path.join(dest, 'package.json'))) {
+            targets.push(dest);
+        }
+        const cgiBinDir = path.join(dest, 'cgi-bin');
+        if (fs.existsSync(path.join(cgiBinDir, 'package.json'))) {
+            targets.push(cgiBinDir);
+        }
+        return targets;
     }
 
     function formatGitHubRequestedSpecifier(refType, ref) {

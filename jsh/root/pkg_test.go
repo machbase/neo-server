@@ -2040,6 +2040,228 @@ func TestPkgInstallSupportsSemverRangesAndLockFile(t *testing.T) {
 	assertPackageVersion(t, filepath.Join(workDir, "node_modules", "transitive-pkg", "package.json"), "1.1.4")
 }
 
+func TestPkgCopyGitHubProjectAndInstallDependencies(t *testing.T) {
+	workDir := t.TempDir()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/copyapp/tags":
+			writeJSON(w, []map[string]any{})
+		case "/api/repos/acme/copyapp":
+			writeJSON(w, map[string]any{"default_branch": "main"})
+		case "/api/repos/acme/copyapp/contents":
+			if got := r.URL.Query().Get("ref"); got != "main" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{"type": "file", "path": "package.json", "download_url": server.URL + "/download/copyapp/main/package.json"},
+				{"type": "file", "path": "index.js", "download_url": server.URL + "/download/copyapp/main/index.js"},
+				{"type": "dir", "path": "cgi-bin"},
+				{"type": "dir", "path": "public"},
+			})
+		case "/api/repos/acme/copyapp/contents/cgi-bin":
+			if got := r.URL.Query().Get("ref"); got != "main" {
+				t.Fatalf("unexpected cgi-bin ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{"type": "file", "path": "cgi-bin/package.json", "download_url": server.URL + "/download/copyapp/main/cgi-bin/package.json"},
+				{"type": "file", "path": "cgi-bin/handler.js", "download_url": server.URL + "/download/copyapp/main/cgi-bin/handler.js"},
+			})
+		case "/api/repos/acme/copyapp/contents/public":
+			if got := r.URL.Query().Get("ref"); got != "main" {
+				t.Fatalf("unexpected public ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{"type": "file", "path": "public/readme.txt", "download_url": server.URL + "/download/copyapp/main/public/readme.txt"},
+			})
+		case "/download/copyapp/main/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"copyapp\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": {\n    \"root-dep\": \"^1.0.0\"\n  }\n}\n"))
+		case "/download/copyapp/main/index.js":
+			_, _ = w.Write([]byte("module.exports = { message: 'copy-root' };\n"))
+		case "/download/copyapp/main/cgi-bin/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"copyapp-cgi\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": {\n    \"cgi-dep\": \"^2.0.0\"\n  }\n}\n"))
+		case "/download/copyapp/main/cgi-bin/handler.js":
+			_, _ = w.Write([]byte("module.exports = { handler: 'cgi-handler' };\n"))
+		case "/download/copyapp/main/public/readme.txt":
+			_, _ = w.Write([]byte("copied asset\n"))
+		case "/npm/root-dep":
+			writeJSON(w, map[string]any{
+				"name":      "root-dep",
+				"dist-tags": map[string]any{"latest": "1.1.0"},
+				"versions": map[string]any{
+					"1.1.0": map[string]any{
+						"name":    "root-dep",
+						"version": "1.1.0",
+						"main":    "index.js",
+						"dist":    map[string]any{"tarball": server.URL + "/tarballs/root-dep-1.1.0.tgz"},
+					},
+				},
+			})
+		case "/npm/cgi-dep":
+			writeJSON(w, map[string]any{
+				"name":      "cgi-dep",
+				"dist-tags": map[string]any{"latest": "2.0.1"},
+				"versions": map[string]any{
+					"2.0.1": map[string]any{
+						"name":    "cgi-dep",
+						"version": "2.0.1",
+						"main":    "index.js",
+						"dist":    map[string]any{"tarball": server.URL + "/tarballs/cgi-dep-2.0.1.tgz"},
+					},
+				},
+			})
+		case "/tarballs/root-dep-1.1.0.tgz":
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(makeTgzPackage(t, map[string]any{
+				"name":    "root-dep",
+				"version": "1.1.0",
+				"main":    "index.js",
+			}, map[string]string{
+				"index.js": "module.exports = { value: 'root-dep-1.1.0' };\n",
+			}))
+		case "/tarballs/cgi-dep-2.0.1.tgz":
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(makeTgzPackage(t, map[string]any{
+				"name":    "cgi-dep",
+				"version": "2.0.1",
+				"main":    "index.js",
+			}, map[string]string{
+				"index.js": "module.exports = { value: 'cgi-dep-2.0.1' };\n",
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL":  server.URL + "/api",
+		"PKG_NPM_REGISTRY_URL": server.URL + "/npm",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "copy", "github.com/acme/copyapp", "public/copied-app")
+	if err != nil {
+		t.Fatalf("pkg copy failed: %v\n%s", err, output)
+	}
+
+	destDir := filepath.Join(workDir, "public", "copied-app")
+	if !strings.Contains(output, "Copying github.com/acme/copyapp#branch=main to /work/public/copied-app") {
+		t.Fatalf("copy output missing copy log: %q", output)
+	}
+	if !strings.Contains(output, "Installing dependencies in /work/public/copied-app") {
+		t.Fatalf("copy output missing root install log: %q", output)
+	}
+	if !strings.Contains(output, "Installing dependencies in /work/public/copied-app/cgi-bin") {
+		t.Fatalf("copy output missing cgi-bin install log: %q", output)
+	}
+
+	assertPackageVersion(t, filepath.Join(destDir, "node_modules", "root-dep", "package.json"), "1.1.0")
+	assertPackageVersion(t, filepath.Join(destDir, "cgi-bin", "node_modules", "cgi-dep", "package.json"), "2.0.1")
+
+	rootLock := readJSONFile(t, filepath.Join(destDir, "package-lock.json"))
+	if got := rootLock["packages"].(map[string]any)["node_modules/root-dep"].(map[string]any)["version"]; got != "1.1.0" {
+		t.Fatalf("root lock version mismatch: %v", got)
+	}
+	cgiLock := readJSONFile(t, filepath.Join(destDir, "cgi-bin", "package-lock.json"))
+	if got := cgiLock["packages"].(map[string]any)["node_modules/cgi-dep"].(map[string]any)["version"]; got != "2.0.1" {
+		t.Fatalf("cgi lock version mismatch: %v", got)
+	}
+
+	message, err := runScript(destDir, env, strings.Join([]string{
+		"const rootDep = require('root-dep');",
+		"const cgiDep = require('./cgi-bin/node_modules/cgi-dep');",
+		"console.println(rootDep.value);",
+		"console.println(cgiDep.value);",
+	}, "\n"))
+	if err != nil {
+		t.Fatalf("require copied dependencies failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "root-dep-1.1.0\ncgi-dep-2.0.1" {
+		t.Fatalf("unexpected dependency output: %q", message)
+	}
+
+	copiedAsset, err := os.ReadFile(filepath.Join(destDir, "public", "readme.txt"))
+	if err != nil {
+		t.Fatalf("read copied asset: %v", err)
+	}
+	if strings.TrimSpace(string(copiedAsset)) != "copied asset" {
+		t.Fatalf("copied asset mismatch: %q", copiedAsset)
+	}
+}
+
+func TestPkgCopyRejectsNonEmptyDestinationWithoutForce(t *testing.T) {
+	workDir := t.TempDir()
+	destDir := filepath.Join(workDir, "public", "copied-app")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatalf("mkdir dest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "existing.txt"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	output, err := runCommand(workDir, nil, "pkg", "copy", "github.com/acme/copyapp", "public/copied-app")
+	if err == nil {
+		t.Fatalf("expected non-empty destination to fail, output=%q", output)
+	}
+	if !strings.Contains(err.Error(), "Copy destination is not empty") {
+		t.Fatalf("unexpected error: %v\n%s", err, output)
+	}
+}
+
+func TestPkgCopyForceAllowsExistingDestination(t *testing.T) {
+	workDir := t.TempDir()
+	destDir := filepath.Join(workDir, "public", "copied-app")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatalf("mkdir dest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "existing.txt"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/copyforce/tags":
+			writeJSON(w, []map[string]any{{"name": "v1.0.0"}})
+		case "/api/repos/acme/copyforce/contents":
+			if got := r.URL.Query().Get("ref"); got != "v1.0.0" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{"type": "file", "path": "package.json", "download_url": server.URL + "/download/copyforce/v1.0.0/package.json"},
+				{"type": "file", "path": "index.js", "download_url": server.URL + "/download/copyforce/v1.0.0/index.js"},
+			})
+		case "/download/copyforce/v1.0.0/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"copyforce\",\n  \"version\": \"1.0.0\"\n}\n"))
+		case "/download/copyforce/v1.0.0/index.js":
+			_, _ = w.Write([]byte("module.exports = { value: 'forced-copy' };\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_API_URL": server.URL + "/api",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "copy", "--force", "github.com/acme/copyforce", "public/copied-app")
+	if err != nil {
+		t.Fatalf("pkg copy --force failed: %v\n%s", err, output)
+	}
+
+	message, err := runScript(destDir, env, "const pkg = require('./index.js'); console.println(pkg.value);")
+	if err != nil {
+		t.Fatalf("require copied file failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "forced-copy" {
+		t.Fatalf("require output = %q, want forced-copy", strings.TrimSpace(message))
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "existing.txt")); err != nil {
+		t.Fatalf("existing file should remain when using --force: %v", err)
+	}
+}
+
 func runCommand(workDir string, extraEnv map[string]any, args ...string) (string, error) {
 	conf := commandConfig(workDir, extraEnv)
 	conf.Args = args
