@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -601,7 +602,7 @@ func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
 		t.Fatalf("timed out waiting for current proc entry signal output=%q", conf.Writer.(*bytes.Buffer).String())
 	}
 
-	procDir := filepath.Join("process", strconv.Itoa(os.Getpid()))
+	procDir := pathpkg.Join("process", strconv.Itoa(os.Getpid()))
 	var meta struct {
 		Pid                       int      `json:"pid"`
 		Ppid                      int      `json:"ppid"`
@@ -620,8 +621,8 @@ func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
 		StartedAt string `json:"started_at"`
 	}
 
-	metaBytes, metaErr := fs.ReadFile(procFS, filepath.Join(procDir, "meta.json"))
-	statusBytes, statusErr := fs.ReadFile(procFS, filepath.Join(procDir, "status.json"))
+	metaBytes, metaErr := fs.ReadFile(procFS, pathpkg.Join(procDir, "meta.json"))
+	statusBytes, statusErr := fs.ReadFile(procFS, pathpkg.Join(procDir, "status.json"))
 	if metaErr != nil || statusErr != nil {
 		t.Fatalf("proc entry files missing metaErr=%v statusErr=%v", metaErr, statusErr)
 	}
@@ -666,8 +667,8 @@ func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
 
 	removeDeadline := time.Now().Add(15 * time.Second)
 	for {
-		_, metaErr := fs.Stat(procFS, filepath.Join(procDir, "meta.json"))
-		_, statusErr := fs.Stat(procFS, filepath.Join(procDir, "status.json"))
+		_, metaErr := fs.Stat(procFS, pathpkg.Join(procDir, "meta.json"))
+		_, statusErr := fs.Stat(procFS, pathpkg.Join(procDir, "status.json"))
 		if os.IsNotExist(metaErr) && os.IsNotExist(statusErr) {
 			break
 		}
