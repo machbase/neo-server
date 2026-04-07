@@ -780,8 +780,8 @@ func startMockServiceRPCServerTransport(t *testing.T, network string, handler fu
 				resp := map[string]any{
 					"jsonrpc": "2.0",
 					"id":      json.RawMessage("1"),
-					"result":  handler(req),
 				}
+				resp["result"] = handler(req)
 				if len(req.ID) > 0 {
 					resp["id"] = req.ID
 				}

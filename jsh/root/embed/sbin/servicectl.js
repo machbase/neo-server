@@ -71,7 +71,7 @@
 
     executeCommand(commandSpec, (err, result) => {
         if (err) {
-            fail(err.message || String(err));
+            fail(commandErrorMessage(commandSpec, err));
             return;
         }
         renderResult(commandSpec, result);
@@ -374,6 +374,24 @@
             return;
         }
         callback(new Error(`Unsupported command kind '${commandSpec ? commandSpec.kind : ''}'.`));
+    }
+
+    function commandErrorMessage(commandSpec, err) {
+        if (isMissingStatusService(commandSpec, err)) {
+            return `Service '${commandSpec.params.name}' does not exist.`;
+        }
+        return err && err.message ? err.message : String(err);
+    }
+
+    function isMissingStatusService(commandSpec, err) {
+        return Boolean(
+            commandSpec &&
+            commandSpec.command === 'status' &&
+            commandSpec.params &&
+            commandSpec.params.name &&
+            err &&
+            err.rpcCode === -32004
+        );
     }
 
     function renderResult(commandSpec, result) {
