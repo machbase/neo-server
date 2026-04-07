@@ -949,6 +949,16 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 
 	path := ctx.Param("path")
 	if !strings.HasSuffix(path, ".tql") {
+		// if path starts with /public/ (which means the request is '/db/tql/:path'),
+		// redirect to /public/... and try to serve static file,
+		// this is for supporting direct access to static files and cgi-bin with .js files
+		// in the public directory without specifying .tql suffix
+		if strings.HasPrefix(path, "/public/") {
+			path = strings.TrimPrefix(path, "/public/")
+			ctx.Request.URL.Path = "/public/" + path
+			ctx.Redirect(http.StatusFound, "/public/"+path)
+			return
+		}
 		contentType := contentTypeOfFile(path)
 		if contentType != "" && ctx.Request.Method == http.MethodGet {
 			if ent, err := svr.serverFs.Get(path); err == nil && !ent.IsDir {

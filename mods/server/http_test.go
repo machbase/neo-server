@@ -1644,6 +1644,21 @@ func TestTQL_Payload(t *testing.T) {
 	}
 }
 
+func TestTQL_PublicRedirect(t *testing.T) {
+	noRedirectClient := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/tql/public/redirect-policy.txt", nil)
+	rsp, err := noRedirectClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusFound, rsp.StatusCode)
+	require.Equal(t, "/public/redirect-policy.txt", rsp.Header.Get("Location"))
+	rsp.Body.Close()
+}
+
 func TestTQL_SyntaxErrors(t *testing.T) {
 	tests := []struct {
 		name      string

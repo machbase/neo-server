@@ -701,6 +701,16 @@ func TestServiceCommandControllerEndToEnd(t *testing.T) {
 				}
 			}
 
+			stopBeforeUninstallOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "stop", "alpha")
+			if err != nil {
+				t.Fatalf("service stop before uninstall failed: %v\n%s", err, stopBeforeUninstallOutput)
+			}
+			for _, check := range []string{"RESULT", "stop", "alpha", "stopped"} {
+				if !strings.Contains(stopBeforeUninstallOutput, check) {
+					t.Fatalf("stop before uninstall output missing %q:\n%s", check, stopBeforeUninstallOutput)
+				}
+			}
+
 			uninstallOutput, err := runCommand(workDir, nil, "servicectl", "--controller="+controllerAddr, "uninstall", "alpha")
 			if err != nil {
 				t.Fatalf("service uninstall failed: %v\n%s", err, uninstallOutput)
