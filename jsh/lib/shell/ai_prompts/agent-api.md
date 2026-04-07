@@ -6,10 +6,10 @@ The agent profile exposes a global `agent` object with safe, limit-enforced data
 ## `agent.db` — Database helper
 
 ```jsh
-// Lazy-connects on first use. Reads connection config from /share/database/machcli.json
+// Lazy-connects on first use. Reads connection config from /proc/share/db.json
 // or falls back to 127.0.0.1:5656 sys/manager.
 
-agent.db.connect(path?)     // (Re-)connect, optionally path to config JSON.
+agent.db.connect(pathOrConfig?) // (Re-)connect, optionally path to config JSON or override object.
 agent.db.disconnect()       // Close connection and client.
 
 // query — always returns a plain serializable object, never a cursor.

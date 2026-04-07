@@ -15,7 +15,7 @@ func TestAIHelpIncludesSaveCommand(t *testing.T) {
 		t.Fatalf("ai --help failed: %v\n%s", err, output)
 	}
 
-	if !strings.Contains(output, `\save <file_path>`) {
+	if !strings.Contains(output, `/save <file_path>`) {
 		t.Fatalf("help output missing save command:\n%s", output)
 	}
 }

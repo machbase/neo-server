@@ -11,7 +11,7 @@
 //
 // Connection config resolution (same order as user.*):
 //   1. agent.db.connect(path) — explicit path
-//   2. /share/database/machcli.json — default shared location
+//   2. /proc/share/db.json — default shared location
 //   3. Built-in defaults { host:'127.0.0.1', port:5656, user:'sys', password:'manager' }
 //
 // Shared DB layer decision (Phase A): machcli.js Client/Connection is reused
@@ -21,7 +21,7 @@ const { Client } = require('machcli');
 const fs = require('fs');
 const _http = require('@jsh/http');
 
-const DEFAULT_CONFIG_PATH = '/share/database/machcli.json';
+const DEFAULT_CONFIG_PATH = '/proc/share/db.json';
 const DEFAULT_CONFIG = {
     host: '127.0.0.1',
     port: 5656,
@@ -115,6 +115,20 @@ function _loadConfig(path) {
     }
 }
 
+function _isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function _resolveConfig(configPath, pathOrConfig) {
+    if (_isPlainObject(pathOrConfig)) {
+        return Object.assign({}, _loadConfig(configPath), pathOrConfig);
+    }
+    if (pathOrConfig !== undefined) {
+        return _loadConfig(String(pathOrConfig));
+    }
+    return _loadConfig(configPath);
+}
+
 // _rowToObject converts a machcli Row instance to a plain serializable object.
 // Row sets column values directly as properties (row[name] = value),
 // so we copy them via row.names rather than iterating Symbol.iterator
@@ -137,13 +151,13 @@ class AgentDbHelper {
         this._maxRows = (maxRows !== undefined) ? maxRows : _maxRows;
     }
 
-    // connect(path?) — (re-)connect, optionally overriding config file path.
-    connect(path) {
+    // connect(pathOrConfig?) — (re-)connect using a config path or override object.
+    connect(pathOrConfig) {
         this.disconnect();
-        if (path !== undefined) {
-            this._configPath = path;
+        if (typeof pathOrConfig === 'string') {
+            this._configPath = pathOrConfig;
         }
-        const cfg = _loadConfig(this._configPath);
+        const cfg = _resolveConfig(this._configPath, pathOrConfig);
         this._client = new Client(cfg);
         this._conn = this._client.connect();
         return this;
@@ -784,7 +798,8 @@ const _helpText = {
         '  agent.db.queryRow(sql, ...params)  SELECT → first row object, or null',
         '  agent.db.exec(sql, ...params)      DDL/DML → { rowsAffected, message }',
         '                                     (denied when read-only mode is active)',
-        '  agent.db.connect([configPath])     (Re-)connect, override config file',
+        '  agent.db.connect([configPathOrConfig])',
+        '                                     (Re-)connect, override config file or fields',
         '  agent.db.disconnect()              Close connection',
         '',
         '  agent.schema.tables([pattern])    List tables → [{ NAME, TYPE, FLAG }]',
@@ -810,7 +825,7 @@ const _helpText = {
         '',
         '  agent.help([topic])               Show this help',
         '',
-        'Connection config: /share/database/machcli.json  (or override with connect())',
+        'Connection config: /proc/share/db.json  (or override path/fields with connect())',
         'All query results are plain objects, safe to serialize.',
         'query() enforces maxRows limit to prevent unbounded result sets.',
         '',

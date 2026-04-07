@@ -9,13 +9,13 @@
 //
 // Connection config search order:
 //   1. Path passed to user.db.connect(path)
-//   2. /share/database/machcli.json  (default shared location)
+//   2. /proc/share/db.json  (default shared location)
 //   3. Built-in defaults { host:'127.0.0.1', port:5656, user:'sys', password:'manager' }
 
 const { Client } = require('machcli');
 const fs = require('fs');
 
-const DEFAULT_CONFIG_PATH = '/share/database/machcli.json';
+const DEFAULT_CONFIG_PATH = '/proc/share/db.json';
 const DEFAULT_CONFIG = {
     host: '127.0.0.1',
     port: 5656,
@@ -33,6 +33,20 @@ function _loadConfig(path) {
     }
 }
 
+function _isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function _resolveConfig(configPath, pathOrConfig) {
+    if (_isPlainObject(pathOrConfig)) {
+        return Object.assign({}, _loadConfig(configPath), pathOrConfig);
+    }
+    if (pathOrConfig !== undefined) {
+        return _loadConfig(String(pathOrConfig));
+    }
+    return _loadConfig(configPath);
+}
+
 // DbHelper manages a lazy machcli Client + Connection pair.
 class DbHelper {
     constructor() {
@@ -41,14 +55,14 @@ class DbHelper {
         this._conn = null;
     }
 
-    // connect(path?) — (re-)connect using config at path, or the default location.
+    // connect(pathOrConfig?) — (re-)connect using config at path or merged override fields.
     // Safe to call multiple times: closes any existing connection first.
-    connect(path) {
+    connect(pathOrConfig) {
         this.disconnect();
-        if (path !== undefined) {
-            this._configPath = path;
+        if (typeof pathOrConfig === 'string') {
+            this._configPath = pathOrConfig;
         }
-        const cfg = _loadConfig(this._configPath);
+        const cfg = _resolveConfig(this._configPath, pathOrConfig);
         this._client = new Client(cfg);
         this._conn = this._client.connect();
         return this; // chainable
@@ -187,13 +201,14 @@ const _helpText = {
         '  user.db.exec(sql, ...params)        Execute DDL/DML',
         '  user.db.describe(tableName)         List columns of a table',
         '  user.db.tables([pattern])           List tables (optional LIKE pattern)',
-        '  user.db.connect([configPath])       (Re-)connect, override config file',
+        '  user.db.connect([configPathOrConfig])',
+        '                                     (Re-)connect, override config file or fields',
         '  user.db.disconnect()                Close connection',
         '',
         '  user.help()                         Show this help',
         '  user.help("db")                     Show db sub-command help',
         '',
-        'Connection config: /share/database/machcli.json  (or override with connect())',
+        'Connection config: /proc/share/db.json  (or override path/fields with connect())',
     ].join('\n'),
     'db': [
         'user.db — database helper',
@@ -203,7 +218,8 @@ const _helpText = {
         '  exec(sql, ...params)     → { rowsAffected, message }',
         '  describe(tableName)      → [{ name, type, length, nullable }, ...]',
         '  tables([pattern])        → [{ name, type, flag }, ...]',
-        '  connect([configPath])    → reconnect; reads JSON config file',
+        '  connect([configPathOrConfig])',
+        '                         → reconnect; reads JSON config file and merges override fields',
         '  disconnect()             → close connection and client',
         '',
         'Example:',

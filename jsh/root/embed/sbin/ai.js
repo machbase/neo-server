@@ -84,22 +84,22 @@ if (parseError || values.help) {
         options: options,
     }));
     console.println('');
-    console.println('Slash commands (during interactive session):');
-    console.println('  \\provider [name]       Show or switch active LLM provider');
-    console.println('  \\model <name>          Change model for current provider');
-    console.println('  \\prompt                List active system prompt segments');
-    console.println('  \\prompt show           Print assembled system prompt');
-    console.println('  \\prompt add <segment>  Add a prompt segment');
-    console.println('  \\prompt rm <segment>   Remove a prompt segment');
-    console.println('  \\prompt list           List all available segments');
-    console.println('  \\config show           Print config file contents');
-    console.println('  \\config set <k> <v>    Set a config value (dot-notation)');
-    console.println('  \\config edit           Edit config file in host editor');
-    console.println('  \\config path           Print config file path');
-    console.println('  \\clear                 Clear conversation history');
-    console.println('  \\save <file_path>      Save the current session as Markdown (.md recommended)');
-    console.println('  \\help                  Show this help');
-    console.println('  \\bye \\exit \\quit       Exit');
+    console.println('Slash commands (during interactive session, prefix with "\\" or "/"):');
+    console.println('  /provider [name]       Show or switch active LLM provider');
+    console.println('  /model <name>          Change model for current provider');
+    console.println('  /prompt                List active system prompt segments');
+    console.println('  /prompt show           Print assembled system prompt');
+    console.println('  /prompt add <segment>  Add a prompt segment');
+    console.println('  /prompt rm <segment>   Remove a prompt segment');
+    console.println('  /prompt list           List all available segments');
+    console.println('  /config show           Print config file contents');
+    console.println('  /config set <k> <v>    Set a config value (dot-notation)');
+    console.println('  /config edit           Edit config file in host editor');
+    console.println('  /config path           Print config file path');
+    console.println('  /clear                 Clear conversation history');
+    console.println('  /save <file_path>      Save the current session as Markdown (.md recommended)');
+    console.println('  /help                  Show this help');
+    console.println('  /bye /exit /quit       Exit');
     process.exit(parseError ? 1 : 0);
 }
 
@@ -149,6 +149,16 @@ function printInfo(text) {
 
 function printError(text) {
     console.println(RED + 'Error: ' + text + RESET);
+}
+
+function normalizeSlashCommand(line) {
+    if (!line) {
+        return line;
+    }
+    if (line.charAt(0) === '/') {
+        return '\\' + line.slice(1);
+    }
+    return line;
 }
 
 // ─── Provider setup recovery ──────────────────────────────────────────────────
@@ -448,6 +458,7 @@ if (values.eval !== undefined) {
 // ─── Slash command handler ────────────────────────────────────────────────────
 
 function handleSlash(line) {
+    line = normalizeSlashCommand(line);
     var parts = line.trim().split(/\s+/);
     var cmd = parts[0].toLowerCase();
 
@@ -460,52 +471,52 @@ function handleSlash(line) {
         console.println(BOLD + 'Slash Commands' + RESET);
         console.println('');
         console.println(BOLD + CYAN + '  Conversation' + RESET);
-        console.println('    ' + BOLD + '\\clear' + RESET);
+        console.println('    ' + BOLD + '/clear' + RESET);
         console.println('        Clear conversation history (start fresh context).');
-        console.println('    ' + BOLD + '\\save <file_path>' + RESET);
+        console.println('    ' + BOLD + '/save <file_path>' + RESET);
         console.println('        Save the current session as a Markdown transcript (.md recommended).');
         console.println('');
         console.println(BOLD + CYAN + '  Provider & Model' + RESET);
-        console.println('    ' + BOLD + '\\provider' + RESET);
+        console.println('    ' + BOLD + '/provider' + RESET);
         console.println('        Show current active LLM provider and model.');
-        console.println('    ' + BOLD + '\\provider <name>' + RESET);
+        console.println('    ' + BOLD + '/provider <name>' + RESET);
         console.println('        Switch provider (e.g. claude, openai). Conversation history is kept.');
-        console.println('    ' + BOLD + '\\model <name>' + RESET);
+        console.println('    ' + BOLD + '/model <name>' + RESET);
         console.println('        Change model for the current provider (e.g. claude-opus-4-5).');
         console.println('');
         console.println(BOLD + CYAN + '  System Prompt' + RESET);
-        console.println('    ' + BOLD + '\\prompt' + RESET);
+        console.println('    ' + BOLD + '/prompt' + RESET);
         console.println('        List currently active system prompt segments.');
-        console.println('    ' + BOLD + '\\prompt show' + RESET);
+        console.println('    ' + BOLD + '/prompt show' + RESET);
         console.println('        Print the full assembled system prompt text.');
-        console.println('    ' + BOLD + '\\prompt list' + RESET);
+        console.println('    ' + BOLD + '/prompt list' + RESET);
         console.println('        List all available segments (builtin + custom overrides).');
-        console.println('    ' + BOLD + '\\prompt add <segment>' + RESET);
+        console.println('    ' + BOLD + '/prompt add <segment>' + RESET);
         console.println('        Add a segment to the active list for this session.');
-        console.println('    ' + BOLD + '\\prompt rm <segment>' + RESET);
+        console.println('    ' + BOLD + '/prompt rm <segment>' + RESET);
         console.println('        Remove a segment from the active list for this session.');
         console.println('');
         console.println(BOLD + CYAN + '  Configuration' + RESET);
-        console.println('    ' + BOLD + '\\config show' + RESET);
+        console.println('    ' + BOLD + '/config show' + RESET);
         console.println('        Print the current config file contents.');
         console.println('        Path: ' + DIM + '$HOME/.config/machbase/llm/config.json' + RESET);
-        console.println('    ' + BOLD + '\\config path' + RESET);
+        console.println('    ' + BOLD + '/config path' + RESET);
         console.println('        Print the absolute path to the config file.');
-        console.println('    ' + BOLD + '\\config set <key> <value>' + RESET);
+        console.println('    ' + BOLD + '/config set <key> <value>' + RESET);
         console.println('        Update a single config value using dot-notation key.');
         console.println('        Examples:');
-        console.println('          ' + DIM + '\\config set defaultProvider openai' + RESET);
-        console.println('          ' + DIM + '\\config set providers.claude.model claude-opus-4-5' + RESET);
-        console.println('          ' + DIM + '\\config set exec.maxRows 500' + RESET);
-        console.println('    ' + BOLD + '\\config edit' + RESET);
+        console.println('          ' + DIM + '/config set defaultProvider openai' + RESET);
+        console.println('          ' + DIM + '/config set providers.claude.model claude-opus-4-5' + RESET);
+        console.println('          ' + DIM + '/config set exec.maxRows 500' + RESET);
+        console.println('    ' + BOLD + '/config edit' + RESET);
         console.println('        Open the config file in $EDITOR / vi / nano.');
         console.println('');
         console.println(BOLD + CYAN + '  Exit' + RESET);
-        console.println('    ' + BOLD + '\\bye' + RESET + '  ' + BOLD + '\\exit' + RESET + '  ' + BOLD + '\\quit' + RESET);
+        console.println('    ' + BOLD + '/bye' + RESET + '  ' + BOLD + '/exit' + RESET + '  ' + BOLD + '/quit' + RESET);
         console.println('        Exit the AI assistant.');
         console.println('');
         console.println(BOLD + CYAN + '  Execution output' + RESET);
-        console.println('    ' + BOLD + '\\verbose' + RESET);
+        console.println('    ' + BOLD + '/verbose' + RESET);
         console.println('        Toggle verbose mode for jsh code execution.');
         console.println('        When ON, console.log output from executed code is printed to the terminal.');
         console.println('        Output is always sent to the LLM regardless of this setting.');
@@ -644,7 +655,7 @@ function handleSlash(line) {
 var providerInfo = ai.providerInfo();
 console.println(BOLD + '  machbase-neo AI assistant' + RESET);
 console.println(DIM + '  provider: ' + providerInfo.name + '  model: ' + providerInfo.model + RESET);
-console.println(DIM + '  type \\help for commands, \\bye to exit' + RESET);
+console.println(DIM + '  type /help for commands, /bye to exit' + RESET);
 console.println('');
 
 var rl = new ReadLine({ historyName: 'ai_history', prompt: function () { return 'ai> '; } });
@@ -672,7 +683,7 @@ while (true) {
     rl.addHistory(line);
 
     // Slash commands
-    if (line.charAt(0) === '\\') {
+    if (line.charAt(0) === '\\' || line.charAt(0) === '/') {
         handleSlash(line);
         continue;
     }
