@@ -25,6 +25,11 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
+	procEntry, err := jr.createProcessEntry(ex)
+	if err != nil {
+		return -1, err
+	}
+
 	// wait for process to finish
 	var result int
 	if err := ex.Wait(); err != nil {
@@ -35,6 +40,10 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		}
 	} else {
 		result = 0
+	}
+
+	if procEntry != nil {
+		procEntry.finish(result)
 	}
 
 	return result, nil

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"os"
 	"os/exec"
 	"path"
 	"slices"
@@ -204,7 +205,11 @@ func (ctl *Controller) persistSharedRemove(name string) error {
 		return err
 	}
 	if info.IsDir() {
-		return ctl.fs.Rmdir(target)
+		hostPath, pathErr := ctl.fs.OSPath(target)
+		if pathErr == nil {
+			return os.RemoveAll(hostPath)
+		}
+		return ctl.fs.Remove(target)
 	}
 	return ctl.fs.Remove(target)
 }

@@ -29,13 +29,17 @@ type JSRuntime struct {
 	Env    *Env
 	ctx    context.Context
 
-	registry      *require.Registry
-	eventLoop     *eventloop.EventLoop
-	filesystem    *FS
-	exitCode      int
-	shutdownHooks []func()
-	shutdownOnce  sync.Once
-	nowFunc       func() time.Time
+	registry        *require.Registry
+	eventLoop       *eventloop.EventLoop
+	filesystem      *FS
+	exitCode        int
+	shutdownHooks   []func()
+	shutdownOnce    sync.Once
+	procCleanupOnce sync.Once
+	procRecord      bool
+	procCommand     string
+	procArgs        []string
+	nowFunc         func() time.Time
 }
 
 type ExecOptions struct {
@@ -61,6 +65,20 @@ func (jr *JSRuntime) Run() error {
 		jr.Env = &Env{}
 	}
 
+	var currentProcEntry *procProcessEntry
+	if jr.procRecord {
+		var err error
+		currentProcEntry, err = jr.createCurrentProcessEntry(jr.procCommand, jr.procArgs)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if currentProcEntry != nil {
+				currentProcEntry.finish(jr.exitCode)
+			}
+		}()
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			if ie, ok := r.(*goja.InterruptedError); ok {
@@ -78,6 +96,7 @@ func (jr *JSRuntime) Run() error {
 
 	program, err := goja.Compile(jr.Name, jr.Source, jr.Strict)
 	if err != nil {
+		jr.exitCode = -1
 		return err
 	}
 	var retErr error = nil

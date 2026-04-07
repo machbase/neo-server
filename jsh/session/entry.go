@@ -96,6 +96,11 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 		execCmd := exec.Command(executable[0], execArgs...)
 		return execCmd, nil
 	}
+	conf.ProcRecord = true
+	if len(executable) > 0 {
+		conf.ProcCommand = executable[0]
+	}
+	conf.ProcArgs = append([]string{"jsh"}, args...)
 
 	engine, err := engine.New(conf)
 	if err != nil {
