@@ -130,11 +130,14 @@ func New(conf Config) (*JSRuntime, error) {
 	}
 
 	jr := &JSRuntime{
-		Name:       scriptName,
-		Source:     script,
-		Args:       scriptArgs,
-		Env:        env,
-		filesystem: filesystem,
+		Name:        scriptName,
+		Source:      script,
+		Args:        scriptArgs,
+		Env:         env,
+		filesystem:  filesystem,
+		procRecord:  conf.ProcRecord,
+		procCommand: conf.ProcCommand,
+		procArgs:    append([]string{}, conf.ProcArgs...),
 	}
 	if conf.Context != nil {
 		jr.ctx = conf.Context
@@ -242,6 +245,9 @@ type Config struct {
 	Writer      io.Writer       `json:"-"`
 	Reader      io.Reader       `json:"-"`
 	ExecBuilder ExecBuilderFunc `json:"-"`
+	ProcRecord  bool            `json:"-"`
+	ProcCommand string          `json:"-"`
+	ProcArgs    []string        `json:"-"`
 }
 
 // UnmarshalJSON implements custom unmarshaling for Config to handle SecureString types in Env

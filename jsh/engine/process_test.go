@@ -3,12 +3,17 @@ package engine_test
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	pathpkg "path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -16,8 +21,41 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
+
+type watchedProcFS struct {
+	*engine.VirtualFS
+	created chan struct{}
+	once    sync.Once
+}
+
+func newWatchedProcFS() *watchedProcFS {
+	return &watchedProcFS{
+		VirtualFS: engine.NewVirtualFS(),
+		created:   make(chan struct{}),
+	}
+}
+
+func (w *watchedProcFS) WriteFile(name string, data []byte) error {
+	if err := w.VirtualFS.WriteFile(name, data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *watchedProcFS) Rename(oldName, newName string) error {
+	if err := w.VirtualFS.Rename(oldName, newName); err != nil {
+		return err
+	}
+	if strings.HasSuffix(filepath.ToSlash(newName), "status.json") {
+		w.once.Do(func() {
+			close(w.created)
+		})
+	}
+	return nil
+}
 
 func TestProcess(t *testing.T) {
 	tests := []test_engine.TestCase{
@@ -309,6 +347,340 @@ func TestProcessExec(t *testing.T) {
 
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
+	}
+}
+
+func TestProcessExecRegistersProcEntry(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("mkdir services: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir shared: %v", err)
+	}
+
+	ctl, err := service.NewController(&service.ControllerConfig{
+		ConfigDir: "/work/services",
+		SharedFS: service.ControllerSharedFSConfig{
+			BackendDir: "/work/shared",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error = %v", err)
+	}
+	if err := ctl.Start(nil); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	conf := engine.Config{
+		Name: "process_proc_entry",
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+		},
+		Env: map[string]any{
+			"PATH":               "/work:/sbin",
+			"PWD":                "/work",
+			"HOME":               "/work",
+			"LIBRARY_PATH":       "./node_modules:/lib",
+			"SERVICE_CONTROLLER": ctl.Address(),
+		},
+		ExecBuilder: helperExecBuilder(jshBinPath),
+		Reader:      &bytes.Buffer{},
+		Writer:      &bytes.Buffer{},
+	}
+	jr, err := engine.New(conf)
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+	lib.Enable(jr)
+
+	resultCh := make(chan struct {
+		exitCode int
+		err      error
+	}, 1)
+	go func() {
+		exitCode, execErr := jr.Exec("/sbin/sleep.js", "1")
+		resultCh <- struct {
+			exitCode int
+			err      error
+		}{exitCode: exitCode, err: execErr}
+	}()
+
+	processRoot := filepath.Join(backendDir, "process")
+	var procDir string
+	var meta struct {
+		Pid                       int      `json:"pid"`
+		Ppid                      int      `json:"ppid"`
+		Pgid                      int      `json:"pgid"`
+		Command                   string   `json:"command"`
+		Args                      []string `json:"args"`
+		Cwd                       string   `json:"cwd"`
+		StartedAt                 string   `json:"started_at"`
+		ServiceControllerClientID string   `json:"service_controller_client_id"`
+		ExecPath                  string   `json:"exec_path"`
+	}
+	var status struct {
+		Pid       int    `json:"pid"`
+		State     string `json:"state"`
+		UpdatedAt string `json:"updated_at"`
+		StartedAt string `json:"started_at"`
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case result := <-resultCh:
+			t.Fatalf("jr.Exec() finished before proc entry appeared: exitCode=%d err=%v output=%q", result.exitCode, result.err, conf.Writer.(*bytes.Buffer).String())
+		default:
+		}
+
+		entries, readErr := os.ReadDir(processRoot)
+		if readErr == nil && len(entries) > 0 {
+			procDir = filepath.Join(processRoot, entries[0].Name())
+			metaBytes, metaErr := os.ReadFile(filepath.Join(procDir, "meta.json"))
+			statusBytes, statusErr := os.ReadFile(filepath.Join(procDir, "status.json"))
+			if metaErr == nil && statusErr == nil {
+				if err := json.Unmarshal(metaBytes, &meta); err != nil {
+					t.Fatalf("unmarshal meta.json: %v", err)
+				}
+				if err := json.Unmarshal(statusBytes, &status); err != nil {
+					t.Fatalf("unmarshal status.json: %v", err)
+				}
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for proc entry under %s output=%q", processRoot, conf.Writer.(*bytes.Buffer).String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if meta.Pid <= 0 {
+		t.Fatalf("meta pid = %d, want > 0", meta.Pid)
+	}
+	if meta.Ppid != os.Getpid() {
+		t.Fatalf("meta ppid = %d, want %d", meta.Ppid, os.Getpid())
+	}
+	if meta.Pgid <= 0 {
+		t.Fatalf("meta pgid = %d, want > 0", meta.Pgid)
+	}
+	if meta.Cwd != "/work" {
+		t.Fatalf("meta cwd = %q, want /work", meta.Cwd)
+	}
+	if meta.Command == "" {
+		t.Fatal("meta command is empty")
+	}
+	if !strings.Contains(strings.Join(meta.Args, " "), "/sbin/sleep.js") {
+		t.Fatalf("meta args = %v, want sleep script path", meta.Args)
+	}
+	if status.Pid != meta.Pid {
+		t.Fatalf("status pid = %d, want %d", status.Pid, meta.Pid)
+	}
+	if status.State != "running" {
+		t.Fatalf("status state = %q, want running", status.State)
+	}
+	if status.StartedAt != meta.StartedAt {
+		t.Fatalf("status started_at = %q, want %q", status.StartedAt, meta.StartedAt)
+	}
+
+	result := <-resultCh
+	if result.err != nil {
+		t.Fatalf("jr.Exec() error = %v", result.err)
+	}
+	if result.exitCode != 0 {
+		t.Fatalf("jr.Exec() exitCode = %d, want 0", result.exitCode)
+	}
+
+	removeDeadline := time.Now().Add(15 * time.Second)
+	for {
+		_, metaErr := os.Stat(filepath.Join(procDir, "meta.json"))
+		_, statusErr := os.Stat(filepath.Join(procDir, "status.json"))
+		if os.IsNotExist(metaErr) && os.IsNotExist(statusErr) {
+			break
+		}
+		if time.Now().After(removeDeadline) {
+			entries, _ := os.ReadDir(procDir)
+			names := make([]string, 0, len(entries))
+			for _, entry := range entries {
+				names = append(names, entry.Name())
+			}
+			t.Fatalf("proc entry files still exist: %s entries=%v", procDir, names)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestProcessExecDoesNotWriteProcEntryWithoutController(t *testing.T) {
+	procDir := t.TempDir()
+	conf := engine.Config{
+		Name: "process_proc_disabled",
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+			{MountPoint: "/proc", Source: procDir},
+		},
+		Env: map[string]any{
+			"PATH":         "/work:/sbin",
+			"PWD":          "/work",
+			"HOME":         "/work",
+			"LIBRARY_PATH": "./node_modules:/lib",
+		},
+		ExecBuilder: helperExecBuilder(jshBinPath),
+		Reader:      &bytes.Buffer{},
+		Writer:      &bytes.Buffer{},
+	}
+	jr, err := engine.New(conf)
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+	lib.Enable(jr)
+
+	exitCode, err := jr.Exec("/sbin/echo.js", "hello")
+	if err != nil {
+		t.Fatalf("jr.Exec() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("jr.Exec() exitCode = %d, want 0", exitCode)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(procDir, "process")); !os.IsNotExist(statErr) {
+		t.Fatalf("/proc/process should not exist without controller, err=%v", statErr)
+	}
+}
+
+func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
+	procFS := newWatchedProcFS()
+
+	conf := engine.Config{
+		Name: "current_process_proc_entry",
+		Code: `
+			const end = Date.now() + 500;
+			while (Date.now() < end) {
+			}
+		`,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+			{MountPoint: "/proc", FS: procFS},
+		},
+		Env: map[string]any{
+			"PATH":               "/work:/sbin",
+			"PWD":                "/work",
+			"HOME":               "/work",
+			"LIBRARY_PATH":       "./node_modules:/lib",
+			"SERVICE_CONTROLLER": "stub://controller",
+		},
+		ProcRecord:  true,
+		ProcCommand: jshBinPath,
+		ProcArgs:    []string{"shell.js", "arg1"},
+		Reader:      &bytes.Buffer{},
+		Writer:      &bytes.Buffer{},
+	}
+	jr, err := engine.New(conf)
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+	lib.Enable(jr)
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- jr.Run()
+	}()
+
+	select {
+	case <-procFS.created:
+	case runErr := <-resultCh:
+		t.Fatalf("jr.Run() finished before current proc entry appeared: err=%v output=%q", runErr, conf.Writer.(*bytes.Buffer).String())
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for current proc entry signal output=%q", conf.Writer.(*bytes.Buffer).String())
+	}
+
+	procDir := pathpkg.Join("process", strconv.Itoa(os.Getpid()))
+	var meta struct {
+		Pid                       int      `json:"pid"`
+		Ppid                      int      `json:"ppid"`
+		Pgid                      int      `json:"pgid"`
+		Command                   string   `json:"command"`
+		Args                      []string `json:"args"`
+		Cwd                       string   `json:"cwd"`
+		StartedAt                 string   `json:"started_at"`
+		ServiceControllerClientID string   `json:"service_controller_client_id"`
+		ExecPath                  string   `json:"exec_path"`
+	}
+	var status struct {
+		Pid       int    `json:"pid"`
+		State     string `json:"state"`
+		UpdatedAt string `json:"updated_at"`
+		StartedAt string `json:"started_at"`
+	}
+
+	metaBytes, metaErr := fs.ReadFile(procFS, pathpkg.Join(procDir, "meta.json"))
+	statusBytes, statusErr := fs.ReadFile(procFS, pathpkg.Join(procDir, "status.json"))
+	if metaErr != nil || statusErr != nil {
+		t.Fatalf("proc entry files missing metaErr=%v statusErr=%v", metaErr, statusErr)
+	}
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		t.Fatalf("unmarshal meta.json: %v", err)
+	}
+	if err := json.Unmarshal(statusBytes, &status); err != nil {
+		t.Fatalf("unmarshal status.json: %v", err)
+	}
+
+	if meta.Pid != os.Getpid() {
+		t.Fatalf("meta pid = %d, want %d", meta.Pid, os.Getpid())
+	}
+	if meta.Ppid != os.Getppid() {
+		t.Fatalf("meta ppid = %d, want %d", meta.Ppid, os.Getppid())
+	}
+	if meta.Command != jshBinPath {
+		t.Fatalf("meta command = %q, want %q", meta.Command, jshBinPath)
+	}
+	if strings.Join(meta.Args, " ") != "shell.js arg1" {
+		t.Fatalf("meta args = %v", meta.Args)
+	}
+	if meta.Cwd != "/work" {
+		t.Fatalf("meta cwd = %q, want /work", meta.Cwd)
+	}
+	if meta.ExecPath != jshBinPath {
+		t.Fatalf("meta exec_path = %q, want %q", meta.ExecPath, jshBinPath)
+	}
+	if status.Pid != meta.Pid {
+		t.Fatalf("status pid = %d, want %d", status.Pid, meta.Pid)
+	}
+	if status.State != "running" {
+		t.Fatalf("status state = %q, want running", status.State)
+	}
+	if status.StartedAt != meta.StartedAt {
+		t.Fatalf("status started_at = %q, want %q", status.StartedAt, meta.StartedAt)
+	}
+
+	if runErr := <-resultCh; runErr != nil {
+		t.Fatalf("jr.Run() error = %v", runErr)
+	}
+
+	removeDeadline := time.Now().Add(15 * time.Second)
+	for {
+		_, metaErr := fs.Stat(procFS, pathpkg.Join(procDir, "meta.json"))
+		_, statusErr := fs.Stat(procFS, pathpkg.Join(procDir, "status.json"))
+		if os.IsNotExist(metaErr) && os.IsNotExist(statusErr) {
+			break
+		}
+		if time.Now().After(removeDeadline) {
+			entries, _ := fs.ReadDir(procFS, procDir)
+			names := make([]string, 0, len(entries))
+			for _, entry := range entries {
+				names = append(names, entry.Name())
+			}
+			t.Fatalf("proc entry files still exist: /%s entries=%v", procDir, names)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

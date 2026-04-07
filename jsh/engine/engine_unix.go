@@ -49,6 +49,11 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
+	procEntry, err := jr.createProcessEntry(ex)
+	if err != nil {
+		return -1, err
+	}
+
 	if isTTY {
 
 		childPgid := ex.Process.Pid
@@ -73,6 +78,10 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		}
 	} else {
 		result = 0
+	}
+
+	if procEntry != nil {
+		procEntry.finish(result)
 	}
 
 	// restore this parent process to foreground
