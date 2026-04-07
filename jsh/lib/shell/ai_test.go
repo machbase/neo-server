@@ -29,8 +29,8 @@ func TestDefaultLLMConfig(t *testing.T) {
 	if !ok {
 		t.Fatal("providers map missing 'claude' entry")
 	}
-	if claudeCfg.Model != "claude-opus-4-5" {
-		t.Errorf("claude model = %q, want %q", claudeCfg.Model, "claude-opus-4-5")
+	if claudeCfg.Model != "" {
+		t.Errorf("claude model = %q, want empty string", claudeCfg.Model)
 	}
 	if claudeCfg.MaxTokens != 8192 {
 		t.Errorf("claude maxTokens = %d, want 8192", claudeCfg.MaxTokens)
@@ -42,8 +42,8 @@ func TestDefaultLLMConfig(t *testing.T) {
 	if ollamaCfg.BaseURL != "http://127.0.0.1:11434" {
 		t.Errorf("ollama baseUrl = %q, want %q", ollamaCfg.BaseURL, "http://127.0.0.1:11434")
 	}
-	if ollamaCfg.Model != "llama3.1" {
-		t.Errorf("ollama model = %q, want %q", ollamaCfg.Model, "llama3.1")
+	if ollamaCfg.Model != "" {
+		t.Errorf("ollama model = %q, want empty string", ollamaCfg.Model)
 	}
 	if ollamaCfg.MaxTokens != 8192 {
 		t.Errorf("ollama maxTokens = %d, want 8192", ollamaCfg.MaxTokens)
@@ -132,8 +132,8 @@ func TestLoadAndSaveLLMConfig(t *testing.T) {
 	if !ok {
 		t.Fatal("loaded config missing 'openai' provider")
 	}
-	if openaiCfg.Model != "gpt-4o" {
-		t.Errorf("openai model = %q, want %q", openaiCfg.Model, "gpt-4o")
+	if openaiCfg.Model != "" {
+		t.Errorf("openai model = %q, want empty string", openaiCfg.Model)
 	}
 }
 
@@ -177,14 +177,10 @@ func TestSetDotKey(t *testing.T) {
 			},
 		},
 		{
-			name:  "set nested provider model",
-			key:   "providers.claude.model",
-			value: "claude-haiku-3-5",
-			verify: func(t *testing.T, cfg *llmConfig) {
-				if cfg.Providers["claude"].Model != "claude-haiku-3-5" {
-					t.Errorf("claude model = %q, want %q", cfg.Providers["claude"].Model, "claude-haiku-3-5")
-				}
-			},
+			name:    "reject nested provider model",
+			key:     "providers.claude.model",
+			value:   "claude-haiku-3-5",
+			wantErr: true,
 		},
 		{
 			name:  "set numeric value",
