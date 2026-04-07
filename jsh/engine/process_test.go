@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -22,6 +23,38 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
+
+type watchedProcFS struct {
+	*engine.VirtualFS
+	created chan struct{}
+	once    sync.Once
+}
+
+func newWatchedProcFS() *watchedProcFS {
+	return &watchedProcFS{
+		VirtualFS: engine.NewVirtualFS(),
+		created:   make(chan struct{}),
+	}
+}
+
+func (w *watchedProcFS) WriteFile(name string, data []byte) error {
+	if err := w.VirtualFS.WriteFile(name, data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *watchedProcFS) Rename(oldName, newName string) error {
+	if err := w.VirtualFS.Rename(oldName, newName); err != nil {
+		return err
+	}
+	if strings.HasSuffix(filepath.ToSlash(newName), "status.json") {
+		w.once.Do(func() {
+			close(w.created)
+		})
+	}
+	return nil
+}
 
 func TestProcess(t *testing.T) {
 	tests := []test_engine.TestCase{
@@ -522,7 +555,7 @@ func TestProcessExecDoesNotWriteProcEntryWithoutController(t *testing.T) {
 }
 
 func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
-	procFS := engine.NewVirtualFS()
+	procFS := newWatchedProcFS()
 
 	conf := engine.Config{
 		Name: "current_process_proc_entry",
@@ -560,6 +593,14 @@ func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
 		resultCh <- jr.Run()
 	}()
 
+	select {
+	case <-procFS.created:
+	case runErr := <-resultCh:
+		t.Fatalf("jr.Run() finished before current proc entry appeared: err=%v output=%q", runErr, conf.Writer.(*bytes.Buffer).String())
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for current proc entry signal output=%q", conf.Writer.(*bytes.Buffer).String())
+	}
+
 	procDir := filepath.Join("process", strconv.Itoa(os.Getpid()))
 	var meta struct {
 		Pid                       int      `json:"pid"`
@@ -579,30 +620,16 @@ func TestCurrentProcessWritesProcEntryWhenEnabled(t *testing.T) {
 		StartedAt string `json:"started_at"`
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		select {
-		case runErr := <-resultCh:
-			t.Fatalf("jr.Run() finished before current proc entry appeared: err=%v output=%q", runErr, conf.Writer.(*bytes.Buffer).String())
-		default:
-		}
-
-		metaBytes, metaErr := fs.ReadFile(procFS, filepath.Join(procDir, "meta.json"))
-		statusBytes, statusErr := fs.ReadFile(procFS, filepath.Join(procDir, "status.json"))
-		if metaErr == nil && statusErr == nil {
-			if err := json.Unmarshal(metaBytes, &meta); err != nil {
-				t.Fatalf("unmarshal meta.json: %v", err)
-			}
-			if err := json.Unmarshal(statusBytes, &status); err != nil {
-				t.Fatalf("unmarshal status.json: %v", err)
-			}
-			break
-		}
-
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for current proc entry under /%s output=%q", procDir, conf.Writer.(*bytes.Buffer).String())
-		}
-		time.Sleep(20 * time.Millisecond)
+	metaBytes, metaErr := fs.ReadFile(procFS, filepath.Join(procDir, "meta.json"))
+	statusBytes, statusErr := fs.ReadFile(procFS, filepath.Join(procDir, "status.json"))
+	if metaErr != nil || statusErr != nil {
+		t.Fatalf("proc entry files missing metaErr=%v statusErr=%v", metaErr, statusErr)
+	}
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		t.Fatalf("unmarshal meta.json: %v", err)
+	}
+	if err := json.Unmarshal(statusBytes, &status); err != nil {
+		t.Fatalf("unmarshal status.json: %v", err)
 	}
 
 	if meta.Pid != os.Getpid() {
