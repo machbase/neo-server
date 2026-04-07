@@ -16,7 +16,7 @@ const (
 	ControllerAddressEnv         = "SERVICE_CONTROLLER"
 	ControllerSharedMountEnv     = "SERVICE_SHARED_MOUNT"
 	ControllerClientIDEnv        = "SERVICE_CONTROLLER_CLIENT_ID"
-	DefaultControllerSharedMount = "/shared"
+	DefaultControllerSharedMount = "/proc"
 	controllerFSRPCVersion       = "2.0"
 	controllerFSRPCTimeout       = 5 * time.Second
 )

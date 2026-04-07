@@ -18,6 +18,7 @@ import (
 	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/test"
@@ -213,6 +214,46 @@ func TestRepresentativePort(t *testing.T) {
 	} else {
 		require.Equal(t, "  > Unix:    /var/run/neo-server.sock", representativePort("unix:///var/run/neo-server.sock"))
 	}
+}
+
+func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{
+			"mach": {
+				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
+				{Service: "mach", Address: "tcp://192.168.0.10:5656"},
+			},
+		},
+	}
+
+	host, port, err := svr.getBestMachPort()
+	require.NoError(t, err)
+	require.Equal(t, "192.168.0.10", host)
+	require.Equal(t, 5656, port)
+}
+
+func TestGetBestMachPortFallsBackToLoopback(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{
+			"mach": {
+				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
+			},
+		},
+	}
+
+	host, port, err := svr.getBestMachPort()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", host)
+	require.Equal(t, 5656, port)
+}
+
+func TestGetBestMachPortReturnsErrorWhenUnavailable(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{},
+	}
+
+	_, _, err := svr.getBestMachPort()
+	require.Error(t, err)
 }
 
 type ShellTestCase struct {

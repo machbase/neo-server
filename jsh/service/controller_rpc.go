@@ -464,7 +464,7 @@ func (ctl *Controller) dispatchRPC(method string, params json.RawMessage) (any, 
 		if err := decodeRPCParams(params, &req); err != nil {
 			return nil, invalidParamsError(err)
 		}
-		result, err := ctl.sharedReadFile(req.Path)
+		result, err := ctl.sharedReadFileRPC(req.Path)
 		if err != nil {
 			return nil, mapSharedFSError(err)
 		}
@@ -474,15 +474,12 @@ func (ctl *Controller) dispatchRPC(method string, params json.RawMessage) (any, 
 		if err := decodeRPCParams(params, &req); err != nil {
 			return nil, invalidParamsError(err)
 		}
-		data, err := base64.StdEncoding.DecodeString(req.Data)
+		info, err := ctl.sharedWriteFileRPC(req.Path, req.Data)
 		if err != nil {
-			return nil, invalidParamsError(err)
-		}
-		if err := ctl.sharedWriteFile(req.Path, data); err != nil {
-			return nil, mapSharedFSError(err)
-		}
-		info, err := ctl.sharedStat(req.Path)
-		if err != nil {
+			var base64Err base64.CorruptInputError
+			if errors.As(err, &base64Err) {
+				return nil, invalidParamsError(err)
+			}
 			return nil, mapSharedFSError(err)
 		}
 		return info, nil
@@ -876,11 +873,24 @@ func (ctl *Controller) sharedReadDir(name string) ([]SharedFileInfoSnapshot, err
 	return snapshotSharedDirEntries(path, entries)
 }
 
-func (ctl *Controller) sharedReadFile(name string) (SharedReadFileResult, error) {
+func (ctl *Controller) sharedReadFile(name string) ([]byte, error) {
+	path := engine.CleanPath(name)
+	return ctl.sharedReadFilePath(path)
+}
+
+func (ctl *Controller) sharedReadFilePath(path string) ([]byte, error) {
 	ctl.sharedMu.RLock()
 	defer ctl.sharedMu.RUnlock()
-	path := engine.CleanPath(name)
 	data, err := ctl.sharedFS.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (ctl *Controller) sharedReadFileRPC(name string) (SharedReadFileResult, error) {
+	path := engine.CleanPath(name)
+	data, err := ctl.sharedReadFilePath(path)
 	if err != nil {
 		return SharedReadFileResult{}, err
 	}
@@ -903,6 +913,36 @@ func (ctl *Controller) mutateSharedFS(apply func(*engine.VirtualFS) error, persi
 		return err
 	}
 	return nil
+}
+
+func (ctl *Controller) SharedMountPoint() string {
+	return ctl.sharedMountPoint
+}
+
+func (ctl *Controller) WriteSharedFileString(name string, str string) error {
+	return ctl.sharedWriteFile(name, []byte(str))
+}
+
+func (ctl *Controller) WriteSharedFileJSON(name string, v any) error {
+	b := &bytes.Buffer{}
+	enc := json.NewEncoder(b)
+	enc.SetIndent("", "  ")
+	err := enc.Encode(v)
+	if err != nil {
+		return err
+	}
+	return ctl.sharedWriteFile(name, b.Bytes())
+}
+
+func (ctl *Controller) sharedWriteFileRPC(name string, encoded string) (SharedFileInfoSnapshot, error) {
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return SharedFileInfoSnapshot{}, err
+	}
+	if err := ctl.sharedWriteFile(name, data); err != nil {
+		return SharedFileInfoSnapshot{}, err
+	}
+	return ctl.sharedStat(name)
 }
 
 func (ctl *Controller) sharedWriteFile(name string, data []byte) error {

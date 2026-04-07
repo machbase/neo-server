@@ -49,6 +49,9 @@ var ErrUserOrPasswordIncorrect = errors.New("user or password is incorrect")
 var defaultSession Config
 
 func Configure(c Config) error {
+	if c.env == nil {
+		c.env = map[string]any{}
+	}
 	httpClient := http.DefaultClient
 	if strings.HasPrefix(c.Server, "unix://") {
 		if socketPath, err := resolveUnixSocketPath(c.Server); err != nil {
@@ -145,27 +148,36 @@ func Configure(c Config) error {
 		return err
 	}
 	candidates := []HostPort{}
+	serviceControllerAddr := ""
 	for _, portInfo := range rpcRspData.Result {
 		svc := portInfo["Service"]
 		addr := portInfo["Address"]
-		if !strings.HasPrefix(addr, "tcp://") {
-			continue
-		}
-		addr = strings.TrimPrefix(addr, "tcp://")
-		host, portStr, err := net.SplitHostPort(addr)
-		if err != nil {
-			continue
-		}
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			continue
-		}
 		switch svc {
 		case "mach":
+			if !strings.HasPrefix(addr, "tcp://") {
+				continue
+			}
+			addr = strings.TrimPrefix(addr, "tcp://")
+			host, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				continue
+			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil {
+				continue
+			}
 			candidates = append(candidates, HostPort{Host: host, Port: port})
 		case "servicectl":
-			c.env["SERVICE_CONTROLLER"] = fmt.Sprintf("tcp://%s:%d", host, port)
+			if strings.HasPrefix(addr, "unix://") || serviceControllerAddr == "" {
+				serviceControllerAddr = addr
+			}
 		}
+	}
+	if serviceControllerAddr != "" {
+		c.env["SERVICE_CONTROLLER"] = serviceControllerAddr
+	}
+	if len(candidates) == 0 {
+		return errors.New("getServicePorts did not return any tcp:// address for mach service")
 	}
 
 	slices.SortFunc(candidates, func(a, b HostPort) int {

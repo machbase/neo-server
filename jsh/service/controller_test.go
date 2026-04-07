@@ -684,6 +684,86 @@ func TestControllerSharedFSBackendHydratesAfterRestart(t *testing.T) {
 	}
 }
 
+func TestControllerWriteSharedFileHelpers(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	backendDir := filepath.Join(tmpDir, "shared-backend")
+	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(services) error: %v", err)
+	}
+	if err := os.MkdirAll(backendDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(backend) error: %v", err)
+	}
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+
+	if err := ctl.WriteSharedFileString("/docs/message.txt", "hello-shared"); err != nil {
+		t.Fatalf("WriteSharedFileString() error: %v", err)
+	}
+
+	stringResult, err := ctl.sharedReadFile("/docs/message.txt")
+	if err != nil {
+		t.Fatalf("sharedReadFile(string) error: %v", err)
+	}
+	if string(stringResult) != "hello-shared" {
+		t.Fatalf("string content=%q, want %q", string(stringResult), "hello-shared")
+	}
+
+	stringPersisted, err := os.ReadFile(filepath.Join(backendDir, "docs", "message.txt"))
+	if err != nil {
+		t.Fatalf("ReadFile(persisted string) error: %v", err)
+	}
+	if string(stringPersisted) != "hello-shared" {
+		t.Fatalf("persisted string content=%q, want %q", string(stringPersisted), "hello-shared")
+	}
+
+	jsonValue := map[string]any{
+		"name":  "neo",
+		"count": 2,
+		"flags": []string{"alpha", "beta"},
+	}
+	expectedJSON := map[string]any{
+		"name":  "neo",
+		"count": float64(2),
+		"flags": []any{"alpha", "beta"},
+	}
+	if err := ctl.WriteSharedFileJSON("/docs/config.json", jsonValue); err != nil {
+		t.Fatalf("WriteSharedFileJSON() error: %v", err)
+	}
+
+	jsonResult, err := ctl.sharedReadFile("/docs/config.json")
+	if err != nil {
+		t.Fatalf("sharedReadFile(json) error: %v", err)
+	}
+
+	var actual map[string]any
+	if err := json.Unmarshal(jsonResult, &actual); err != nil {
+		t.Fatalf("Unmarshal(shared json) error: %v", err)
+	}
+	require.Equal(t, expectedJSON, actual)
+
+	jsonPersisted, err := os.ReadFile(filepath.Join(backendDir, "docs", "config.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(persisted json) error: %v", err)
+	}
+	var persisted map[string]any
+	if err := json.Unmarshal(jsonPersisted, &persisted); err != nil {
+		t.Fatalf("Unmarshal(persisted json) error: %v", err)
+	}
+	require.Equal(t, expectedJSON, persisted)
+}
+
 func TestControllerSharedFDWriteConflict(t *testing.T) {
 	tmpDir := t.TempDir()
 	servicesDir := filepath.Join(tmpDir, "services")
@@ -731,12 +811,8 @@ func TestControllerSharedFDWriteConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sharedReadFile(conflict) error: %v", err)
 	}
-	decoded, err := base64.StdEncoding.DecodeString(result.Data)
-	if err != nil {
-		t.Fatalf("DecodeString(conflict) error: %v", err)
-	}
-	if string(decoded) != "lock" {
-		t.Fatalf("conflict content=%q, want %q", string(decoded), "lock")
+	if string(result) != "lock" {
+		t.Fatalf("conflict content=%q, want %q", string(result), "lock")
 	}
 	if _, rpcErr := ctl.dispatchRPC("fs.fsync", json.RawMessage(fmt.Sprintf(`{"fd":%d}`, fd2.FD))); rpcErr == nil || rpcErr.Code != jsonRPCConflict {
 		t.Fatalf("dispatchRPC(fs.fsync) rpcErr=%+v, want conflict code", rpcErr)
@@ -790,12 +866,8 @@ func TestControllerSharedFDAppendNoConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sharedReadFile(append) error: %v", err)
 	}
-	decoded, err := base64.StdEncoding.DecodeString(result.Data)
-	if err != nil {
-		t.Fatalf("DecodeString(append) error: %v", err)
-	}
-	if string(decoded) != "seed-one-two" {
-		t.Fatalf("append content=%q, want %q", string(decoded), "seed-one-two")
+	if string(result) != "seed-one-two" {
+		t.Fatalf("append content=%q, want %q", string(result), "seed-one-two")
 	}
 	if _, rpcErr := ctl.dispatchRPC("fs.fsync", json.RawMessage(fmt.Sprintf(`{"fd":%d}`, fd2.FD))); rpcErr != nil {
 		t.Fatalf("dispatchRPC(fs.fsync) rpcErr=%+v, want nil", rpcErr)
@@ -847,12 +919,8 @@ func TestControllerSharedFDCleanupByOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sharedReadFile(cleanup) error: %v", err)
 	}
-	decoded, err := base64.StdEncoding.DecodeString(result.Data)
-	if err != nil {
-		t.Fatalf("DecodeString(cleanup) error: %v", err)
-	}
-	if string(decoded) != "seed" {
-		t.Fatalf("cleanup content=%q, want %q", string(decoded), "seed")
+	if string(result) != "seed" {
+		t.Fatalf("cleanup content=%q, want %q", string(result), "seed")
 	}
 	if err := ctl.sharedCloseFD(otherFD.FD); err != nil {
 		t.Fatalf("sharedCloseFD(other) error: %v", err)
@@ -1350,12 +1418,8 @@ func TestControllerLaunchedServiceCleansAbandonedSharedFDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sharedReadFile(leak) error: %v", err)
 	}
-	decoded, err := base64.StdEncoding.DecodeString(result.Data)
-	if err != nil {
-		t.Fatalf("DecodeString(leak) error: %v", err)
-	}
-	if string(decoded) != "seed" {
-		t.Fatalf("cleanup content=%q, want %q", string(decoded), "seed")
+	if string(result) != "seed" {
+		t.Fatalf("cleanup content=%q, want %q", string(result), "seed")
 	}
 }
 

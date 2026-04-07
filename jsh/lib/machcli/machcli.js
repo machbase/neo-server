@@ -1,10 +1,26 @@
 'use strict';
 
+const fs = require('fs');
 const _machcli = require('@jsh/machcli');
+
+const DEFAULT_CONFIG_PATH = '/proc/share/db.json';
+
+function loadDefaultConfig() {
+    try {
+        const raw = fs.readFileSync(DEFAULT_CONFIG_PATH, 'utf8');
+        return JSON.parse(raw);
+    } catch (_) {
+        return {};
+    }
+}
 
 class Client {
     constructor(conf) {
-        this.db = _machcli.NewDatabase(JSON.stringify({ ...conf }));
+        const mergedConf = {
+            ...loadDefaultConfig(),
+            ...(conf || {}),
+        };
+        this.db = _machcli.NewDatabase(JSON.stringify(mergedConf));
         this.ctx = this.db.ctx;
     }
     close() {

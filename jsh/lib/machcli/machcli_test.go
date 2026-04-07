@@ -1,16 +1,21 @@
 package machcli_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/lib"
 	machclilib "github.com/machbase/neo-server/v8/jsh/lib/machcli"
+	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/stretchr/testify/require"
 )
@@ -209,6 +214,47 @@ func TestNewDatabaseCoverage(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, conn)
 	})
+}
+
+func TestClientLoadsSharedConfigAndMergesCallerConfig(t *testing.T) {
+	sharedDir := t.TempDir()
+	sharedConfig := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"demo","password":"demo"}`,
+		machcliTestServer.MachPort(),
+	)
+	require.NoError(t, os.WriteFile(filepath.Join(sharedDir, "db.json"), []byte(sharedConfig), 0o644))
+
+	writer := &bytes.Buffer{}
+	jr, err := engine.New(engine.Config{
+		Name: "machcli_shared_config",
+		Code: `
+			const { Client } = require('machcli');
+
+			const dbFromShared = new Client();
+			console.println("shared-user:", dbFromShared.user());
+			dbFromShared.close();
+
+			const dbFromMerged = new Client({ user: "sys", password: "manager" });
+			console.println("merged-user:", dbFromMerged.user());
+			const conn = dbFromMerged.connect();
+			console.println("connected:", typeof conn.close === "function");
+			conn.close();
+			dbFromMerged.close();
+		`,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			{MountPoint: "/proc/share", Source: sharedDir},
+			{MountPoint: "/lib", FS: lib.LibFS()},
+		},
+		Env: map[string]any{
+			"LIBRARY_PATH": "/lib",
+		},
+		Writer: writer,
+	})
+	require.NoError(t, err)
+	lib.Enable(jr)
+	require.NoError(t, jr.Run())
+
+	require.Equal(t, "shared-user: DEMO\nmerged-user: SYS\nconnected: true\n", writer.String())
 }
 
 func TestNormalizeTableNameCoverage(t *testing.T) {
