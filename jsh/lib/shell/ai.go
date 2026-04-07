@@ -6,6 +6,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,6 +16,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/dop251/goja"
 	jshlog "github.com/machbase/neo-server/v8/jsh/log"
@@ -38,6 +41,11 @@ type llmProviderConf struct {
 	MaxTokens int    `json:"maxTokens"`
 }
 
+type llmLastConfig struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
 type llmExecConf struct {
 	MaxRows   int  `json:"maxRows"`
 	TimeoutMs int  `json:"timeoutMs"`
@@ -54,17 +62,14 @@ func defaultLLMConfig() *llmConfig {
 		DefaultProvider: "claude",
 		Providers: map[string]*llmProviderConf{
 			"claude": {
-				Model:     "claude-opus-4-5",
 				MaxTokens: 8192,
 			},
 			"openai": {
 				BaseURL:   "https://api.openai.com/v1",
-				Model:     "gpt-4o",
 				MaxTokens: 8192,
 			},
 			"ollama": {
 				BaseURL:   "http://127.0.0.1:11434",
-				Model:     "llama3.1",
 				MaxTokens: 8192,
 			},
 		},
@@ -79,12 +84,24 @@ func defaultLLMConfig() *llmConfig {
 	}
 }
 
+func defaultLastConfig() *llmLastConfig {
+	return &llmLastConfig{}
+}
+
 func llmConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, ".config", "machbase", "llm", "config.json"), nil
+}
+
+func llmLastConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "machbase", "llm", "last.config"), nil
 }
 
 func llmCustomPromptDir() (string, error) {
@@ -111,10 +128,12 @@ func loadLLMConfig() (*llmConfig, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("config parse error: %w", err)
 	}
+	sanitizeLLMConfig(cfg)
 	return cfg, nil
 }
 
 func saveLLMConfig(cfg *llmConfig) error {
+	sanitizeLLMConfig(cfg)
 	path, err := llmConfigPath()
 	if err != nil {
 		return err
@@ -129,8 +148,81 @@ func saveLLMConfig(cfg *llmConfig) error {
 	return os.WriteFile(path, data, 0600)
 }
 
+func loadLastConfig() (*llmLastConfig, error) {
+	path, err := llmLastConfigPath()
+	if err != nil {
+		return defaultLastConfig(), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return defaultLastConfig(), nil
+		}
+		return nil, err
+	}
+	cfg := defaultLastConfig()
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("last config parse error: %w", err)
+	}
+	return cfg, nil
+}
+
+func saveLastConfig(cfg *llmLastConfig) error {
+	path, err := llmLastConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
+}
+
+func sanitizeLLMConfig(cfg *llmConfig) {
+	if cfg == nil {
+		return
+	}
+	if cfg.Providers == nil {
+		cfg.Providers = map[string]*llmProviderConf{}
+	}
+	for _, name := range supportedProviderNames() {
+		if cfg.Providers[name] == nil {
+			cfg.Providers[name] = &llmProviderConf{}
+		}
+		cfg.Providers[name].Model = ""
+		if cfg.Providers[name].MaxTokens == 0 {
+			cfg.Providers[name].MaxTokens = 8192
+		}
+	}
+	if cfg.Providers["openai"].BaseURL == "" {
+		cfg.Providers["openai"].BaseURL = "https://api.openai.com/v1"
+	}
+	if cfg.Providers["ollama"].BaseURL == "" {
+		cfg.Providers["ollama"].BaseURL = "http://127.0.0.1:11434"
+	}
+	if _, err := normalizeProviderName(cfg.DefaultProvider); err != nil {
+		cfg.DefaultProvider = "claude"
+	}
+	if cfg.Exec.MaxRows == 0 {
+		cfg.Exec.MaxRows = 1000
+	}
+	if cfg.Exec.TimeoutMs == 0 {
+		cfg.Exec.TimeoutMs = 30000
+	}
+	if len(cfg.Prompt.Segments) == 0 {
+		cfg.Prompt.Segments = []string{"jsh-runtime", "jsh-modules", "agent-api", "machbase-sql"}
+	}
+}
+
 // setDotKey sets a value in cfg using dot-notation key (e.g. "providers.claude.model").
 func setDotKey(cfg *llmConfig, key string, value string) error {
+	if isProviderModelKey(key) {
+		return fmt.Errorf("provider model is stored in last.config; use \\model instead")
+	}
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -167,7 +259,40 @@ func setDotKey(cfg *llmConfig, key string, value string) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(merged, cfg)
+	if err := json.Unmarshal(merged, cfg); err != nil {
+		return err
+	}
+	sanitizeLLMConfig(cfg)
+	return nil
+}
+
+func isProviderModelKey(key string) bool {
+	parts := strings.Split(key, ".")
+	return len(parts) == 3 && parts[0] == "providers" && parts[2] == "model"
+}
+
+func supportedProviderNames() []string {
+	return []string{"claude", "openai", "ollama"}
+}
+
+func defaultModelForProvider(name string) string {
+	switch name {
+	case "openai":
+		return "gpt-4o"
+	case "ollama":
+		return "llama3.1"
+	default:
+		return "claude-opus-4-5"
+	}
+}
+
+func normalizeProviderName(name string) (string, error) {
+	switch name {
+	case "claude", "openai", "ollama":
+		return name, nil
+	default:
+		return "", fmt.Errorf("unsupported provider: %s", name)
+	}
 }
 
 // ─── LLM Provider interface ──────────────────────────────────────────────────
@@ -770,10 +895,15 @@ func (p *ollamaProvider) stream(ctx context.Context, req llmRequest, onToken fun
 // ─── aiModule — state held per JS runtime ───────────────────────────────────
 
 type aiModule struct {
-	rt       *goja.Runtime
-	cfg      *llmConfig
-	provider llmProvider
-	promptFS fs.ReadFileFS // builtin ai_prompts embedded FS
+	rt           *goja.Runtime
+	cfg          *llmConfig
+	last         *llmLastConfig
+	provider     llmProvider
+	activeName   string
+	activeModel  string
+	activeCancel context.CancelFunc
+	cancelMu     sync.Mutex
+	promptFS     fs.ReadFileFS // builtin ai_prompts embedded FS
 }
 
 func newAIModule(rt *goja.Runtime, promptFS fs.ReadFileFS) *aiModule {
@@ -781,8 +911,13 @@ func newAIModule(rt *goja.Runtime, promptFS fs.ReadFileFS) *aiModule {
 	if err != nil || cfg == nil {
 		cfg = defaultLLMConfig()
 	}
-	m := &aiModule{rt: rt, cfg: cfg, promptFS: promptFS}
-	m.provider = m.buildProvider(cfg.DefaultProvider)
+	last, err := loadLastConfig()
+	if err != nil || last == nil {
+		last = defaultLastConfig()
+	}
+	m := &aiModule{rt: rt, cfg: cfg, last: last, promptFS: promptFS}
+	provider, model := m.resolveSelection()
+	m.applySelection(provider, model)
 	return m
 }
 
@@ -801,14 +936,88 @@ func (m *aiModule) buildProvider(name string) llmProvider {
 	}
 }
 
+func (m *aiModule) resolveSelection() (string, string) {
+	provider := m.cfg.DefaultProvider
+	if _, err := normalizeProviderName(provider); err != nil {
+		provider = "claude"
+	}
+	if m.last != nil && m.last.Provider != "" {
+		if name, err := normalizeProviderName(m.last.Provider); err == nil {
+			provider = name
+		}
+	}
+	model := defaultModelForProvider(provider)
+	if m.last != nil && m.last.Provider == provider && m.last.Model != "" {
+		model = m.last.Model
+	}
+	return provider, model
+}
+
+func (m *aiModule) applySelection(provider string, model string) {
+	m.activeName = provider
+	m.activeModel = model
+	m.provider = m.buildProvider(provider)
+}
+
+func (m *aiModule) rebuildActiveProvider() {
+	provider := m.activeName
+	if _, err := normalizeProviderName(provider); err != nil {
+		provider = m.cfg.DefaultProvider
+	}
+	model := m.activeModel
+	if model == "" {
+		model = defaultModelForProvider(provider)
+	}
+	m.applySelection(provider, model)
+}
+
+func (m *aiModule) ensureActiveSelection() {
+	if m.activeName != "" && m.activeModel != "" && m.provider != nil {
+		return
+	}
+	if m.provider != nil {
+		name := m.provider.name()
+		model := m.activeModel
+		if model == "" {
+			if providerModel := m.provider.model(); providerModel != "" {
+				model = providerModel
+			} else {
+				model = defaultModelForProvider(name)
+			}
+		}
+		if _, err := normalizeProviderName(name); err == nil {
+			m.applySelection(name, model)
+		} else {
+			m.activeName = name
+			m.activeModel = model
+		}
+		return
+	}
+	provider, model := m.resolveSelection()
+	m.applySelection(provider, model)
+}
+
+func (m *aiModule) setActiveCancel(cancel context.CancelFunc) {
+	m.cancelMu.Lock()
+	defer m.cancelMu.Unlock()
+	m.activeCancel = cancel
+}
+
+func (m *aiModule) clearActiveCancel(cancel context.CancelFunc) {
+	m.cancelMu.Lock()
+	defer m.cancelMu.Unlock()
+	m.activeCancel = nil
+}
+
 // ─── JS API: ai.send / ai.stream ─────────────────────────────────────────────
 
 func (m *aiModule) jsSend(call goja.FunctionCall) goja.Value {
+	m.ensureActiveSelection()
 	messages, systemPrompt, err := parseMessagesArgs(m.rt, call)
 	if err != nil {
 		panic(m.rt.NewGoError(err))
 	}
-	req := llmRequest{Messages: messages, SystemPrompt: systemPrompt}
+	req := llmRequest{Messages: messages, SystemPrompt: systemPrompt, Model: m.activeModel}
 	resp, err := m.provider.send(context.Background(), req)
 	if err != nil {
 		panic(m.rt.NewGoError(err))
@@ -828,6 +1037,7 @@ func (m *aiModule) jsSend(call goja.FunctionCall) goja.Value {
 // Because goja is single-threaded, streaming runs on the calling goroutine;
 // goroutines must never call back into the goja runtime.
 func (m *aiModule) jsStream(call goja.FunctionCall) goja.Value {
+	m.ensureActiveSelection()
 	messages, systemPrompt, err := parseMessagesArgs(m.rt, call)
 	if err != nil {
 		panic(m.rt.NewGoError(err))
@@ -843,16 +1053,46 @@ func (m *aiModule) jsStream(call goja.FunctionCall) goja.Value {
 		}
 	}
 
+	waitLabel := ""
+	waitIntervalMs := int64(200)
+	if opts := call.Argument(3); opts != nil && !goja.IsUndefined(opts) && !goja.IsNull(opts) {
+		if obj := opts.ToObject(m.rt); obj != nil {
+			if label := obj.Get("waitLabel"); !goja.IsUndefined(label) && !goja.IsNull(label) {
+				waitLabel = label.String()
+			}
+			if raw := obj.Get("waitIntervalMs"); !goja.IsUndefined(raw) && !goja.IsNull(raw) {
+				if n := toInt64(raw.Export()); n > 0 {
+					waitIntervalMs = n
+				}
+			}
+		}
+	}
+
 	// Run synchronously on the current goroutine — safe for goja.
-	req := llmRequest{Messages: messages, SystemPrompt: systemPrompt}
-	resp, err := m.provider.stream(context.Background(), req, func(token string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.setActiveCancel(cancel)
+	defer m.clearActiveCancel(cancel)
+
+	stopWait := startWaitingIndicator(waitLabel, time.Duration(waitIntervalMs)*time.Millisecond)
+	firstToken := true
+	req := llmRequest{Messages: messages, SystemPrompt: systemPrompt, Model: m.activeModel}
+	resp, err := m.provider.stream(ctx, req, func(token string) {
+		if firstToken {
+			firstToken = false
+			stopWait()
+		}
 		if onData != nil {
 			_, _ = onData(goja.Undefined(), m.rt.ToValue(token))
 		}
 	})
+	stopWait()
 	if err != nil {
 		if onError != nil {
-			_, _ = onError(goja.Undefined(), m.rt.ToValue(err.Error()))
+			msg := err.Error()
+			if errors.Is(err, context.Canceled) {
+				msg = "cancelled"
+			}
+			_, _ = onError(goja.Undefined(), m.rt.ToValue(msg))
 		}
 		return goja.Undefined()
 	}
@@ -866,6 +1106,50 @@ func (m *aiModule) jsStream(call goja.FunctionCall) goja.Value {
 		}))
 	}
 	return goja.Undefined()
+}
+
+func startWaitingIndicator(label string, interval time.Duration) func() {
+	if label == "" {
+		return func() {}
+	}
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		frames := []string{"thinking", "thinking.", "thinking..", "thinking..."}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		writeWaitingFrame(label, frames[0])
+		frameIdx := 0
+		for {
+			select {
+			case <-stopCh:
+				clearWaitingFrame(label)
+				return
+			case <-ticker.C:
+				frameIdx = (frameIdx + 1) % len(frames)
+				writeWaitingFrame(label, frames[frameIdx])
+			}
+		}
+	}()
+	return func() {
+		select {
+		case <-stopCh:
+		default:
+			close(stopCh)
+		}
+		<-doneCh
+	}
+}
+
+func writeWaitingFrame(label string, frame string) {
+	_, _ = fmt.Fprintf(os.Stdout, "\r%s%s", label, frame)
+}
+
+func clearWaitingFrame(label string) {
+	clearWidth := len(label) + len("thinking...")
+	_, _ = fmt.Fprintf(os.Stdout, "\r%s\r", strings.Repeat(" ", clearWidth))
 }
 
 func parseMessagesArgs(rt *goja.Runtime, call goja.FunctionCall) ([]llmMessage, string, error) {
@@ -900,6 +1184,7 @@ func (m *aiModule) makeConfigObject() *goja.Object {
 			panic(m.rt.NewGoError(err))
 		}
 		m.cfg = cfg
+		m.rebuildActiveProvider()
 		data, _ := json.Marshal(cfg)
 		var result any
 		json.Unmarshal(data, &result)
@@ -918,6 +1203,7 @@ func (m *aiModule) makeConfigObject() *goja.Object {
 		if err := saveLLMConfig(m.cfg); err != nil {
 			panic(m.rt.NewGoError(err))
 		}
+		m.rebuildActiveProvider()
 		return goja.Undefined()
 	})
 
@@ -930,6 +1216,7 @@ func (m *aiModule) makeConfigObject() *goja.Object {
 		if err := saveLLMConfig(m.cfg); err != nil {
 			panic(m.rt.NewGoError(err))
 		}
+		m.rebuildActiveProvider()
 		return goja.Undefined()
 	})
 
@@ -944,27 +1231,105 @@ func (m *aiModule) makeConfigObject() *goja.Object {
 	return obj
 }
 
+func (m *aiModule) makeLastConfigObject() *goja.Object {
+	obj := m.rt.NewObject()
+
+	obj.Set("load", func(call goja.FunctionCall) goja.Value {
+		cfg, err := loadLastConfig()
+		if err != nil {
+			panic(m.rt.NewGoError(err))
+		}
+		m.last = cfg
+		return m.rt.ToValue(map[string]any{
+			"provider": cfg.Provider,
+			"model":    cfg.Model,
+		})
+	})
+
+	obj.Set("save", func(call goja.FunctionCall) goja.Value {
+		exported, _ := call.Argument(0).Export().(map[string]any)
+		next := defaultLastConfig()
+		if provider, ok := exported["provider"].(string); ok {
+			if provider != "" {
+				name, err := normalizeProviderName(provider)
+				if err != nil {
+					panic(m.rt.NewGoError(err))
+				}
+				next.Provider = name
+			}
+		}
+		if model, ok := exported["model"].(string); ok {
+			next.Model = strings.TrimSpace(model)
+		}
+		if next.Provider != "" && next.Model == "" {
+			next.Model = defaultModelForProvider(next.Provider)
+		}
+		if err := saveLastConfig(next); err != nil {
+			panic(m.rt.NewGoError(err))
+		}
+		m.last = next
+		return goja.Undefined()
+	})
+
+	obj.Set("path", func(call goja.FunctionCall) goja.Value {
+		path, err := llmLastConfigPath()
+		if err != nil {
+			panic(m.rt.NewGoError(err))
+		}
+		return m.rt.ToValue(path)
+	})
+
+	return obj
+}
+
 // ─── JS API: ai.setProvider / ai.providerInfo ────────────────────────────────
 
 func (m *aiModule) jsSetProvider(call goja.FunctionCall) goja.Value {
-	name := call.Argument(0).String()
-	m.provider = m.buildProvider(name)
+	name, err := normalizeProviderName(call.Argument(0).String())
+	if err != nil {
+		panic(m.rt.NewGoError(err))
+	}
+	model := defaultModelForProvider(name)
+	if m.last != nil && m.last.Provider == name && m.last.Model != "" {
+		model = m.last.Model
+	}
+	m.applySelection(name, model)
+	return goja.Undefined()
+}
+
+func (m *aiModule) jsSetModel(call goja.FunctionCall) goja.Value {
+	model := strings.TrimSpace(call.Argument(0).String())
+	if model == "" {
+		panic(m.rt.NewGoError(fmt.Errorf("model name cannot be empty")))
+	}
+	m.activeModel = model
+	return goja.Undefined()
+}
+
+func (m *aiModule) jsCancel(call goja.FunctionCall) goja.Value {
+	m.cancelMu.Lock()
+	cancel := m.activeCancel
+	m.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	return goja.Undefined()
 }
 
 func (m *aiModule) jsProviderInfo(call goja.FunctionCall) goja.Value {
-	conf := m.cfg.Providers[m.provider.name()]
+	m.ensureActiveSelection()
+	conf := m.cfg.Providers[m.activeName]
 	maxTokens := 0
 	if conf != nil {
 		maxTokens = conf.MaxTokens
 	}
 	info := map[string]any{
-		"name":      m.provider.name(),
-		"model":     m.provider.model(),
+		"name":      m.activeName,
+		"model":     m.activeModel,
 		"maxTokens": maxTokens,
 	}
 
-	switch m.provider.name() {
+	switch m.activeName {
 	case "claude":
 		hasKey := conf != nil && conf.APIKey != ""
 		if !hasKey {
@@ -1137,8 +1502,9 @@ func (m *aiModule) jsEditConfig(call goja.FunctionCall) goja.Value {
 	if err := json.Unmarshal(data, newCfg); err != nil {
 		return m.rt.ToValue("invalid-json")
 	}
+	sanitizeLLMConfig(newCfg)
 	m.cfg = newCfg
-	m.provider = m.buildProvider(m.cfg.DefaultProvider)
+	m.rebuildActiveProvider()
 	return m.rt.ToValue("saved")
 }
 
@@ -1313,10 +1679,13 @@ func registerAIModule(rt *goja.Runtime, o *goja.Object) {
 	obj.Set("stream", m.jsStream)
 	obj.Set("exec", m.jsExecJsh)
 	obj.Set("setProvider", m.jsSetProvider)
+	obj.Set("setModel", m.jsSetModel)
+	obj.Set("cancel", m.jsCancel)
 	obj.Set("providerInfo", m.jsProviderInfo)
 	obj.Set("listSegments", m.jsListSegments)
 	obj.Set("loadSegment", m.jsLoadSegment)
 	obj.Set("editConfig", m.jsEditConfig)
 	obj.Set("config", m.makeConfigObject())
+	obj.Set("lastConfig", m.makeLastConfigObject())
 	o.Set("ai", obj)
 }

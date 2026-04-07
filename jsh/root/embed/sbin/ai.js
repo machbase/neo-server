@@ -109,8 +109,11 @@ if (values.provider) {
     ai.setProvider(values.provider);
 }
 if (values.model) {
-    ai.config.set('providers.' + ai.providerInfo().name + '.model', values.model);
-    ai.setProvider(ai.providerInfo().name); // reload with new model
+    ai.setModel(values.model);
+}
+if (values.provider || values.model) {
+    var cliInfo = ai.providerInfo();
+    ai.lastConfig.save({ provider: cliInfo.name, model: cliInfo.model });
 }
 
 // ─── Conversation state ───────────────────────────────────────────────────────
@@ -134,6 +137,11 @@ var YELLOW = '\x1B[33m';
 var GREEN = '\x1B[32m';
 var RED = '\x1B[31m';
 var RESET = '\x1B[0m';
+var PROVIDER_MODELS = {
+    claude: ['claude-opus-4-5', 'claude-sonnet-4', 'claude-haiku-3-5'],
+    openai: ['gpt-4o', 'gpt-4.1', 'gpt-4o-mini'],
+    ollama: ['llama3.1', 'qwen2.5', 'mistral'],
+};
 
 function printUser(text) {
     console.println(BOLD + CYAN + 'You> ' + RESET + text);
@@ -149,6 +157,89 @@ function printInfo(text) {
 
 function printError(text) {
     console.println(RED + 'Error: ' + text + RESET);
+}
+
+function saveLastSelection() {
+    var info = ai.providerInfo();
+    ai.lastConfig.save({ provider: info.name, model: info.model });
+}
+
+function modelExamples(providerName) {
+    return PROVIDER_MODELS[providerName] || [];
+}
+
+function printProviderExamples() {
+    var names = Object.keys(PROVIDER_MODELS);
+    for (var i = 0; i < names.length; i++) {
+        var name = names[i];
+        console.println('  ' + name + '  ' + DIM + '(' + modelExamples(name).join(', ') + ')' + RESET);
+    }
+}
+
+function printModelExamples(providerName) {
+    var examples = modelExamples(providerName);
+    if (examples.length === 0) {
+        printInfo('No model examples available for provider: ' + providerName);
+        return;
+    }
+    printInfo('Model examples for ' + providerName + ': ' + examples.join(', '));
+}
+
+function formatWaitDuration(elapsedMs) {
+    if (elapsedMs < 1000) {
+        return elapsedMs + 'ms';
+    }
+    return (elapsedMs / 1000).toFixed(1) + 's';
+}
+
+function streamAssistantReply(options) {
+    var startedAt = Date.now();
+    var firstTokenSeen = false;
+    var responseContent = '';
+    var streamErr = null;
+    var finalResp = null;
+    var info = ai.providerInfo();
+
+    try {
+        ai.stream(history, systemPrompt(), {
+            data: function (token) {
+                if (!firstTokenSeen) {
+                    firstTokenSeen = true;
+                    process.stdout.write(BOLD + GREEN + info.name + '> ' + RESET);
+                    process.stdout.write(DIM + '[waited ' + formatWaitDuration(Date.now() - startedAt) + '] ' + RESET);
+                }
+                process.stdout.write(token);
+                responseContent += token;
+            },
+            end: function (resp) {
+                finalResp = resp;
+                if (!firstTokenSeen) {
+                    process.stdout.write(BOLD + GREEN + info.name + '> ' + RESET);
+                    process.stdout.write(DIM + '[waited ' + formatWaitDuration(Date.now() - startedAt) + '] ' + RESET);
+                }
+                console.println('');
+                console.println(DIM + '[tokens: ' + (resp.inputTokens || 0) + ' in / ' + (resp.outputTokens || 0) + ' out]' + RESET);
+            },
+            error: function (err) {
+                streamErr = err;
+            }
+        }, {
+            waitLabel: BOLD + GREEN + info.name + '> ' + RESET,
+            waitIntervalMs: 250,
+        });
+    } catch (e) {
+        streamErr = e.message || String(e);
+    }
+
+    if (streamErr && !firstTokenSeen) {
+        console.println('');
+    }
+
+    return {
+        content: responseContent,
+        error: streamErr,
+        response: finalResp,
+    };
 }
 
 // ─── Provider setup recovery ──────────────────────────────────────────────────
@@ -467,11 +558,11 @@ function handleSlash(line) {
         console.println('');
         console.println(BOLD + CYAN + '  Provider & Model' + RESET);
         console.println('    ' + BOLD + '\\provider' + RESET);
-        console.println('        Show current active LLM provider and model.');
+        console.println('        Show current active LLM provider and model, plus supported provider examples.');
         console.println('    ' + BOLD + '\\provider <name>' + RESET);
         console.println('        Switch provider (e.g. claude, openai). Conversation history is kept.');
         console.println('    ' + BOLD + '\\model <name>' + RESET);
-        console.println('        Change model for the current provider (e.g. claude-opus-4-5).');
+        console.println('        Change model for the current provider and save it as the last selection.');
         console.println('');
         console.println(BOLD + CYAN + '  System Prompt' + RESET);
         console.println('    ' + BOLD + '\\prompt' + RESET);
@@ -491,11 +582,13 @@ function handleSlash(line) {
         console.println('        Path: ' + DIM + '$HOME/.config/machbase/llm/config.json' + RESET);
         console.println('    ' + BOLD + '\\config path' + RESET);
         console.println('        Print the absolute path to the config file.');
+        console.println('    ' + BOLD + '\\config lastpath' + RESET);
+        console.println('        Print the absolute path to the last-selection file.');
         console.println('    ' + BOLD + '\\config set <key> <value>' + RESET);
         console.println('        Update a single config value using dot-notation key.');
         console.println('        Examples:');
         console.println('          ' + DIM + '\\config set defaultProvider openai' + RESET);
-        console.println('          ' + DIM + '\\config set providers.claude.model claude-opus-4-5' + RESET);
+        console.println('          ' + DIM + '\\config set providers.openai.baseUrl https://api.openai.com/v1' + RESET);
         console.println('          ' + DIM + '\\config set exec.maxRows 500' + RESET);
         console.println('    ' + BOLD + '\\config edit' + RESET);
         console.println('        Open the config file in $EDITOR / vi / nano.');
@@ -540,26 +633,31 @@ function handleSlash(line) {
         if (parts.length > 1) {
             try {
                 ai.setProvider(parts[1]);
+                saveLastSelection();
                 var info = ai.providerInfo();
                 printInfo('Switched to provider: ' + info.name + ' / ' + info.model);
             } catch (e) {
                 printError(e.message || String(e));
+                printInfo('Supported providers:');
+                printProviderExamples();
             }
         } else {
             var info = ai.providerInfo();
             printInfo('Provider: ' + info.name + '  Model: ' + info.model);
+            printProviderExamples();
         }
 
     } else if (cmd === '\\model') {
         if (parts.length < 2) {
             printInfo('Usage: \\model <name>');
+            printModelExamples(ai.providerInfo().name);
             return;
         }
         try {
-            var pname = ai.providerInfo().name;
-            ai.config.set('providers.' + pname + '.model', parts[1]);
-            ai.setProvider(pname);
+            ai.setModel(parts[1]);
+            saveLastSelection();
             printInfo('Model set to: ' + parts[1]);
+            printModelExamples(ai.providerInfo().name);
         } catch (e) {
             printError(e.message || String(e));
         }
@@ -626,6 +724,8 @@ function handleSlash(line) {
             } else if (result === 'cancelled') {
                 printInfo('Edit cancelled.');
             }
+        } else if (sub === 'lastpath') {
+            console.println(ai.lastConfig.path());
         } else {
             printInfo('Unknown \\config sub-command: ' + sub);
         }
@@ -685,60 +785,20 @@ while (true) {
     // User message — add to history and stream response
     history.push({ role: 'user', content: line });
 
-    var info = ai.providerInfo();
-    printAI(info.name);
-
-    var responseContent = '';
-    var streamErr = null;
-
-    try {
-        ai.stream(history, systemPrompt(), {
-            data: function (token) {
-                process.stdout.write(token);
-                responseContent += token;
-            },
-            end: function (resp) {
-                console.println('');
-                console.println(DIM + '[tokens: ' + (resp.inputTokens || 0) + ' in / ' + (resp.outputTokens || 0) + ' out]' + RESET);
-            },
-            error: function (err) {
-                streamErr = err;
-            }
-        });
-    } catch (e) {
-        streamErr = e.message || String(e);
-    }
+    var streamResult = streamAssistantReply();
+    var responseContent = streamResult.content;
+    var streamErr = streamResult.error;
 
     if (streamErr) {
-        console.println('');
         history.pop();
         if (isAuthError(String(streamErr))) {
             if (promptForProviderSetup('auth')) {
                 // Re-push user message and retry once
                 history.push({ role: 'user', content: line });
-                var info2 = ai.providerInfo();
-                printAI(info2.name);
-                responseContent = '';
-                streamErr = null;
-                try {
-                    ai.stream(history, systemPrompt(), {
-                        data: function (token) {
-                            process.stdout.write(token);
-                            responseContent += token;
-                        },
-                        end: function (resp) {
-                            console.println('');
-                            console.println(DIM + '[tokens: ' + (resp.inputTokens || 0) + ' in / ' + (resp.outputTokens || 0) + ' out]' + RESET);
-                        },
-                        error: function (err) {
-                            streamErr = err;
-                        }
-                    });
-                } catch (e) {
-                    streamErr = e.message || String(e);
-                }
+                streamResult = streamAssistantReply();
+                responseContent = streamResult.content;
+                streamErr = streamResult.error;
                 if (streamErr) {
-                    console.println('');
                     printError(String(streamErr));
                     history.pop();
                 }
@@ -765,29 +825,11 @@ while (true) {
 
         // Ask LLM to interpret the results.
         printInfo('Sending execution results for analysis...');
-        var info3 = ai.providerInfo();
-        printAI(info3.name);
-        var analysisContent = '';
-        var analysisErr = null;
-
-        try {
-            ai.stream(history, systemPrompt(), {
-                data: function (token) {
-                    process.stdout.write(token);
-                    analysisContent += token;
-                },
-                end: function (resp) {
-                    console.println('');
-                    console.println(DIM + '[tokens: ' + (resp.inputTokens || 0) + ' in / ' + (resp.outputTokens || 0) + ' out]' + RESET);
-                },
-                error: function (err) { analysisErr = err; }
-            });
-        } catch (e) {
-            analysisErr = e.message || String(e);
-        }
+        var analysisResult = streamAssistantReply();
+        var analysisContent = analysisResult.content;
+        var analysisErr = analysisResult.error;
 
         if (analysisErr) {
-            console.println('');
             printError(String(analysisErr));
             break;
         }
