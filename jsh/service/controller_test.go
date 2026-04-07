@@ -764,6 +764,30 @@ func TestControllerWriteSharedFileHelpers(t *testing.T) {
 	require.Equal(t, expectedJSON, persisted)
 }
 
+func TestControllerSharedWriteFileRPCRejectsInvalidBase64(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "services"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "shared-backend"), 0o755))
+
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		SharedFS: ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = ctl.sharedWriteFileRPC("/docs/invalid.txt", "%%%")
+	require.Error(t, err)
+
+	var base64Err base64.CorruptInputError
+	require.ErrorAs(t, err, &base64Err)
+	require.Equal(t, "/proc", ctl.SharedMountPoint())
+}
+
 func TestControllerSharedFDWriteConflict(t *testing.T) {
 	tmpDir := t.TempDir()
 	servicesDir := filepath.Join(tmpDir, "services")
