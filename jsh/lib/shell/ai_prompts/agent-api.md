@@ -118,7 +118,7 @@ When the user asks you to query data, write jsh code that:
 5. Avoids creating top-level `const`/`let`/`class` declarations unless persistent global state is explicitly required.
 
 Example:
-```jsh
+```jsh-run
 (function () {
     'use strict';
 
@@ -132,17 +132,20 @@ Example:
 
 ## Code block convention
 
-When generating executable jsh code, wrap it in a fenced code block with the `jsh` language tag:
+When generating executable jsh code, wrap it in a fenced code block with the `jsh-run` language tag:
 
-```jsh
+```jsh-run
 (function () {
     'use strict';
     // ... your code here
 }());
 ```
 
+Use the `js` language tag only for explanatory examples that must not be executed automatically.
+Do not use `javascript` or `jsh` or `js` fences for executable content.
+
 The `ai` command may execute multiple generated scripts in the same runtime.
 Prefer function-local variables inside the IIFE instead of top-level declarations.
 Only write to `globalThis` when the user explicitly asks for persistent state across executions.
 
-The `ai` command detects ` ```jsh ` blocks and offers to execute them automatically.
+The `ai` command detects ` ```jsh-run ` blocks and offers to execute them automatically.

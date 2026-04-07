@@ -90,6 +90,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -139,12 +140,17 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		fsTabs := []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
+			// Mount the app directory to /work in the script's virtual filesystem
 			{MountPoint: mountPoint, Source: appRealPath.AbsPath},
 		}
 
-		env := contextToCGIEnv(ctx, path) // custom env
+		env := contextToCGIEnv(ctx, path)
+		// ServiceController
+		env[engine.ControllerSharedMountEnv] = svr.authServer.serviceController.SharedMountPoint()
+		env[engine.ControllerAddressEnv] = svr.authServer.serviceController.Address()
+		// Common env
 		env["HOME"] = "/work"
-		env["PWD"] = mountPoint
+		env["PWD"] = mountPoint + filepath.Dir(cgiPath)
 		env["QUERY"] = ctx.Request.URL.Query()
 		cgiWriter := &CgiBinWriter{ctx: ctx, svr: svr}
 		conf := engine.Config{

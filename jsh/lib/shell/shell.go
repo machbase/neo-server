@@ -29,18 +29,23 @@ var aiPromptJS []byte
 //go:embed ai_executor.js
 var aiExecutorJS []byte
 
+//go:embed ai_transcript.js
+var aiTranscriptJS []byte
+
 // Files returns JavaScript library files embedded in this package.
 // They are mounted under /lib inside the virtual file system:
 //   - require('repl/profiles/user')  — human operator helpers
 //   - require('repl/profiles/agent') — agent/machine-readable helpers
 //   - require('ai/prompt')           — LLM system prompt assembler
 //   - require('ai/executor')         — jsh code block extractor and executor
+//   - require('ai/transcript')       — AI session transcript renderer/saver
 func Files() map[string][]byte {
 	return map[string][]byte{
 		"repl/profiles/user.js":  userJS,
 		"repl/profiles/agent.js": agentJS,
 		"ai/prompt.js":           aiPromptJS,
 		"ai/executor.js":         aiExecutorJS,
+		"ai/transcript.js":       aiTranscriptJS,
 	}
 }
 

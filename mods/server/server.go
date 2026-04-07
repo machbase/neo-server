@@ -253,6 +253,28 @@ func (s *Server) Start() error {
 		return fmt.Errorf("ssh server: %w", err)
 	}
 
+	sharedPorts := map[string][]string{}
+	for svc, ports := range s.servicePorts {
+		for _, p := range ports {
+			sharedPorts[svc] = append(sharedPorts[svc], p.Address)
+		}
+	}
+	// This code for the shared info is temporary.
+	// We need to consider more about what information
+	// should be shared and how to share it in the future.
+	s.writeSharedInfo("/share/ports.json", sharedPorts)
+	// TODO: remove the default credential info from shared info
+	// This can not work well. Becuase the password can be changed by users.
+	machHost, machPort, err := s.getBestMachPort()
+	if err != nil {
+		return fmt.Errorf("best MACH port, %s", err.Error())
+	}
+	s.writeSharedInfo("/share/db.json", map[string]any{
+		"host":     machHost,
+		"port":     machPort,
+		"user":     "sys",
+		"password": "manager",
+	})
 	// ready message
 	svcPorts, err := s.getServicePorts("http")
 	if err != nil {
@@ -281,6 +303,17 @@ func (s *Server) Start() error {
 	}
 
 	return nil
+}
+
+// write virtual files on shared dir, for example, for cli configuration
+func (s *Server) writeSharedInfo(filename string, data any) error {
+	filename = "/" + strings.TrimPrefix(filename, "/")
+	switch val := data.(type) {
+	case string:
+		return s.serviceController.WriteSharedFileString(filename, val)
+	default:
+		return s.serviceController.WriteSharedFileJSON(filename, val)
+	}
 }
 
 func (s *Server) StartHeadless() error {
@@ -1016,6 +1049,114 @@ func (s *Server) initServiceController() error {
 		})
 	})
 	return nil
+}
+
+// find most feasible MACH port from s.servicePorts and return it.
+func (s *Server) getBestMachPort() (string, int, error) {
+	ports, err := s.getServicePorts("mach")
+	if err != nil {
+		return "", 0, err
+	}
+	if len(ports) == 0 {
+		return "", 0, fmt.Errorf("mach service port not found")
+	}
+
+	ifAddrs := util.GetAllAddresses()
+	sort.SliceStable(ports, func(i, j int) bool {
+		ihost, iport, iscore, iok := scoreMachServiceAddress(ports[i].Address, ifAddrs)
+		jhost, jport, jscore, jok := scoreMachServiceAddress(ports[j].Address, ifAddrs)
+
+		if iok != jok {
+			return iok
+		}
+		if iscore != jscore {
+			return iscore < jscore
+		}
+		if ihost != jhost {
+			return ihost < jhost
+		}
+		return iport < jport
+	})
+
+	for _, svc := range ports {
+		host, port, _, ok := scoreMachServiceAddress(svc.Address, ifAddrs)
+		if ok {
+			return host, port, nil
+		}
+	}
+	return "", 0, fmt.Errorf("mach service port invalid")
+}
+
+func scoreMachServiceAddress(addr string, ifAddrs []*util.InterfaceAddr) (string, int, int, bool) {
+	u, err := url.Parse(addr)
+	if err != nil {
+		return "", 0, 0, false
+	}
+	if u.Host == "" {
+		return "", 0, 0, false
+	}
+
+	host, portStr, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return "", 0, 0, false
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, 0, false
+	}
+
+	return host, port, scoreMachHost(host, ifAddrs), true
+}
+
+func scoreMachHost(host string, ifAddrs []*util.InterfaceAddr) int {
+	if host == "" {
+		return 100
+	}
+	name := strings.ToLower(host)
+	if name == "localhost" {
+		return 90
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return 30
+	}
+	if ip.IsLoopback() {
+		return 90
+	}
+	if ip.IsUnspecified() {
+		return 95
+	}
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return 70
+	}
+	if !ip.IsGlobalUnicast() {
+		return 80
+	}
+
+	score := 10
+	if ip.To4() != nil {
+		score = 0
+	}
+	if ip.IsPrivate() {
+		score += 5
+	}
+	for _, ifAddr := range ifAddrs {
+		if !ifAddr.IP.Equal(ip) {
+			continue
+		}
+		if ifAddr.Flags&net.FlagUp == 0 {
+			score += 20
+		}
+		if ifAddr.Flags&net.FlagLoopback != 0 {
+			score += 80
+		}
+		if ifAddr.Flags&net.FlagPointToPoint != 0 {
+			score += 10
+		}
+		break
+	}
+	return score
 }
 
 func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {

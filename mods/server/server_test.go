@@ -17,7 +17,11 @@ import (
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/test"
@@ -213,6 +217,126 @@ func TestRepresentativePort(t *testing.T) {
 	} else {
 		require.Equal(t, "  > Unix:    /var/run/neo-server.sock", representativePort("unix:///var/run/neo-server.sock"))
 	}
+}
+
+func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{
+			"mach": {
+				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
+				{Service: "mach", Address: "tcp://192.168.0.10:5656"},
+			},
+		},
+	}
+
+	host, port, err := svr.getBestMachPort()
+	require.NoError(t, err)
+	require.Equal(t, "192.168.0.10", host)
+	require.Equal(t, 5656, port)
+}
+
+func TestGetBestMachPortFallsBackToLoopback(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{
+			"mach": {
+				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
+			},
+		},
+	}
+
+	host, port, err := svr.getBestMachPort()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", host)
+	require.Equal(t, 5656, port)
+}
+
+func TestGetBestMachPortReturnsErrorWhenUnavailable(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{},
+	}
+
+	_, _, err := svr.getBestMachPort()
+	require.Error(t, err)
+}
+
+func TestGetBestMachPortSkipsInvalidEntries(t *testing.T) {
+	svr := &Server{
+		servicePorts: map[string][]*model.ServicePort{
+			"mach": {
+				{Service: "mach", Address: "tcp://bad-host"},
+				{Service: "mach", Address: "unix:///tmp/mach.sock"},
+				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
+			},
+		},
+	}
+
+	host, port, err := svr.getBestMachPort()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", host)
+	require.Equal(t, 5656, port)
+}
+
+func TestScoreMachServiceAddressAndHost(t *testing.T) {
+	ifAddrs := []*util.InterfaceAddr{
+		{IP: net.ParseIP("10.0.0.7"), Flags: net.FlagUp},
+		{IP: net.ParseIP("2001:db8::5"), Flags: net.FlagUp},
+		{IP: net.ParseIP("169.254.1.2"), Flags: net.FlagUp},
+	}
+
+	host, port, score, ok := scoreMachServiceAddress("tcp://10.0.0.7:5656", ifAddrs)
+	require.True(t, ok)
+	require.Equal(t, "10.0.0.7", host)
+	require.Equal(t, 5656, port)
+	require.Equal(t, 5, score)
+
+	_, _, _, ok = scoreMachServiceAddress("tcp://bad-host", ifAddrs)
+	require.False(t, ok)
+
+	_, _, _, ok = scoreMachServiceAddress("unix:///tmp/mach.sock", ifAddrs)
+	require.False(t, ok)
+
+	require.Equal(t, 100, scoreMachHost("", ifAddrs))
+	require.Equal(t, 90, scoreMachHost("localhost", ifAddrs))
+	require.Equal(t, 30, scoreMachHost("db.internal", ifAddrs))
+	require.Equal(t, 90, scoreMachHost("127.0.0.1", ifAddrs))
+	require.Equal(t, 95, scoreMachHost("0.0.0.0", ifAddrs))
+	require.Equal(t, 70, scoreMachHost("169.254.9.9", ifAddrs))
+	require.Equal(t, 5, scoreMachHost("10.0.0.7", ifAddrs))
+	require.Equal(t, 10, scoreMachHost("2001:db8::5", ifAddrs))
+}
+
+func TestWriteSharedInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "services"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "shared-backend"), 0o755))
+
+	ctl, err := service.NewController(&service.ControllerConfig{
+		ConfigDir: "/work/services",
+		SharedFS: service.ControllerSharedFSConfig{
+			BackendDir: "/work/shared-backend",
+		},
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	require.NoError(t, err)
+
+	svr := &Server{serviceController: ctl}
+
+	require.NoError(t, svr.writeSharedInfo("/share/message.txt", "hello"))
+	require.NoError(t, svr.writeSharedInfo("/share/config.json", map[string]any{
+		"user": "sys",
+		"port": 5656,
+	}))
+
+	message, err := os.ReadFile(filepath.Join(tmpDir, "shared-backend", "share", "message.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(message))
+
+	configBody, err := os.ReadFile(filepath.Join(tmpDir, "shared-backend", "share", "config.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(configBody), "\"user\": \"sys\"")
+	require.Contains(t, string(configBody), "\"port\": 5656")
 }
 
 type ShellTestCase struct {
