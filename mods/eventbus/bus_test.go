@@ -1,6 +1,7 @@
 package eventbus
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -187,4 +188,39 @@ func TestSubscribeAsync(t *testing.T) {
 	//if numResults != 2 {
 	//	t.Fail()
 	//}
+}
+
+func TestRemoveHandlerIgnoresMissingTopicAndInvalidIndex(t *testing.T) {
+	bus := New().(*EventBus)
+	handler := func() {}
+	if err := bus.Subscribe("topic", handler); err != nil {
+		t.Fatal(err)
+	}
+
+	bus.removeHandler("missing", 0)
+	if !bus.HasCallback("topic") {
+		t.Fatal("expected handler to remain for unrelated topic removal")
+	}
+
+	bus.removeHandler("topic", -1)
+	bus.removeHandler("topic", 3)
+	if !bus.HasCallback("topic") {
+		t.Fatal("expected handler to remain for invalid index removal")
+	}
+}
+
+func TestFindHandlerIdxNotFound(t *testing.T) {
+	bus := New().(*EventBus)
+	handler := func() {}
+	other := func() {}
+	if err := bus.Subscribe("topic", handler); err != nil {
+		t.Fatal(err)
+	}
+
+	if idx := bus.findHandlerIdx("topic", reflect.ValueOf(other)); idx != -1 {
+		t.Fatalf("expected missing handler index to be -1, got %d", idx)
+	}
+	if idx := bus.findHandlerIdx("missing", reflect.ValueOf(other)); idx != -1 {
+		t.Fatalf("expected missing topic index to be -1, got %d", idx)
+	}
 }

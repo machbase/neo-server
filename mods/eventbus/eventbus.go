@@ -16,7 +16,6 @@ const (
 	EVT_OPEN_FILE = "open_file" // S -> C
 	EVT_RPC_REQ   = "rpc_req"   // C -> S
 	EVT_RPC_RSP   = "rpc_rsp"   // S -> C
-	EVT_MSG       = "msg"       // S -> C, C -> S
 )
 
 type Event struct {
@@ -102,16 +101,8 @@ func PublishOpenFile(topic string, file string) {
 }
 
 type RPC struct {
-	Ver    string        `json:"jsonrpc"` // "2.0"
-	ID     int64         `json:"id"`
-	Method string        `json:"method"` // method name
-	Params []interface{} `json:"params,omitempty"`
-}
-
-func PublishMessage(topic string, session string, msg *Message) {
-	Default.Publish(topic, &Event{
-		Type:    EVT_MSG,
-		Session: session,
-		Message: msg,
-	})
+	Ver    string        `json:"jsonrpc"`          // "2.0"
+	ID     int64         `json:"id"`               //
+	Method string        `json:"method"`           // method name
+	Params []interface{} `json:"params,omitempty"` //
 }

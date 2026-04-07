@@ -68,4 +68,12 @@ func TestEventBus(t *testing.T) {
 	eventbus.PublishLogTask("test:event", "INFO", "task#1", "hello world")
 	wg.Wait()
 
+	wg.Add(1)
+	expect = func(in *eventbus.Event) {
+		require.Equal(t, eventbus.EVT_OPEN_FILE, in.Type)
+		require.Equal(t, "/tmp/sample.sql", in.OpenFile.Path)
+	}
+	eventbus.PublishOpenFile("test:event", "/tmp/sample.sql")
+	wg.Wait()
+
 }

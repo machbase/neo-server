@@ -12,8 +12,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
-	"github.com/machbase/neo-server/v8/mods/server/chat"
-	"github.com/machbase/neo-server/v8/mods/server/cmd"
 )
 
 type WebConsoleProcessor interface {
@@ -103,27 +101,8 @@ func (cons *WebConsole) readerLoop() {
 			if evt.Rpc != nil {
 				go cons.handleRpc(ctx, evt.Session, evt.Rpc)
 			}
-		case eventbus.EVT_MSG:
-			if evt.Message != nil {
-				go cons.handleMessage(ctx, evt.Session, evt.Message)
-			}
 		}
 	}
-}
-
-var wsRpcHandlers = map[string]any{}
-var wsRpcHandlersMutex sync.RWMutex
-
-func RegisterJsonRpcHandler(method string, handler any) {
-	wsRpcHandlersMutex.Lock()
-	defer wsRpcHandlersMutex.Unlock()
-	wsRpcHandlers[method] = handler
-}
-
-func UnregisterJsonRpcHandler(method string) {
-	wsRpcHandlersMutex.Lock()
-	defer wsRpcHandlersMutex.Unlock()
-	delete(wsRpcHandlers, method)
 }
 
 func (cons *WebConsole) flushLoop() {
@@ -189,9 +168,7 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 }
 
 func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
-	wsRpcHandlersMutex.RLock()
-	handler, ok := wsRpcHandlers[evt.Method]
-	wsRpcHandlersMutex.RUnlock()
+	handler, ok := FindJsonRpcHandler(evt.Method)
 	rsp := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      evt.ID,
@@ -255,74 +232,4 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 		"rpc":     rsp,
 	})
 	cons.connMutex.Unlock()
-}
-
-func init() {
-	chat.Init()
-	RegisterJsonRpcHandler("llmGetProviders", chat.RpcLLMGetProviders)
-	RegisterJsonRpcHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
-	RegisterJsonRpcHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
-	RegisterJsonRpcHandler("llmGetModels", chat.RpcLLMGetModels)
-	RegisterJsonRpcHandler("llmAddModels", chat.RpcLLMAddModels)
-	RegisterJsonRpcHandler("llmRemoveModels", chat.RpcLLMRemoveModels)
-	RegisterJsonRpcHandler("llmListModels", chat.RpcLLMListModels)
-}
-
-func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *eventbus.Message) {
-	if msg.Ver != "1.0" {
-		eventbus.PublishLog(cons.topic, "ERROR",
-			fmt.Sprintf("unsupported msg.ver: %q", msg.Ver))
-		return
-	}
-	switch msg.Type {
-	case eventbus.BodyTypeInput:
-		if cons.processor != nil {
-			if msg.Body == nil || msg.Body.OfInput == nil {
-				eventbus.PublishLog(cons.topic, "ERROR",
-					"missing input body")
-				return
-			}
-			input := msg.Body.OfInput
-			if input.Text != "" {
-				cons.processor.Input(input.Text)
-			}
-			if input.Control != "" {
-				cons.processor.Control(input.Control)
-			}
-		}
-	case eventbus.BodyTypeCommand:
-		if msg.Body == nil || msg.Body.OfCommand == nil {
-			eventbus.PublishLog(cons.topic, "ERROR",
-				"missing command body")
-			return
-		}
-		pc := cmd.Config{
-			Topic:   cons.topic,
-			MsgID:   msg.ID,
-			Session: session,
-		}
-		p := pc.NewProcessor()
-		cons.processor = p
-		p.Process(ctx, msg.Body.OfCommand.Line)
-	case eventbus.BodyTypeQuestion:
-		if msg.Body == nil || msg.Body.OfQuestion == nil {
-			eventbus.PublishLog(cons.topic, "ERROR",
-				"missing question body")
-			return
-		}
-		question := msg.Body.OfQuestion
-		dc := chat.DialogConfig{
-			Topic:    cons.topic,
-			Provider: question.Provider,
-			Model:    question.Model,
-			MsgID:    msg.ID,
-			Session:  session,
-		}
-		d := dc.NewDialog()
-		cons.processor = d
-		d.Process(ctx, question.Text)
-	default:
-		eventbus.PublishLog(cons.topic, "ERROR",
-			fmt.Sprintf("invalid message type %s", msg.Type))
-	}
 }

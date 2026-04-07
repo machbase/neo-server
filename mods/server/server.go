@@ -1048,6 +1048,8 @@ func (s *Server) initServiceController() error {
 			s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
 		})
 	})
+
+	tql.SetServiceControllerAddress(ctrl.Address())
 	return nil
 }
 

@@ -47,6 +47,12 @@ func SetHttpAddresses(addrs []string) {
 	}
 }
 
+var _serviceControllerAddr string
+
+func SetServiceControllerAddress(addr string) {
+	_serviceControllerAddr = addr
+}
+
 func (node *Node) fmShell(cmd0 string, args0 ...string) {
 	stripQuote := false
 	subCmdList := []string{}
@@ -144,6 +150,10 @@ var ShellExecutable = func(serverAddr string, scriptPath string) ([]string, erro
 	}
 	serverAddr = strings.TrimPrefix(serverAddr, "tcp://")
 	return []string{
-		ex, "shell", "--server", serverAddr, "-v", "/tmp=" + filepath.Dir(scriptPath), "run", "/tmp/" + filepath.Base(scriptPath),
+		ex, "shell", "--server", serverAddr,
+		"-v", "/tmp=" + filepath.Dir(scriptPath),
+		"-e", "SERVICE_CONTROLLER=" + _serviceControllerAddr,
+		"run",
+		"/tmp/" + filepath.Base(scriptPath),
 	}, nil
 }
