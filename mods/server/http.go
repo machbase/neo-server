@@ -38,7 +38,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
-	"github.com/machbase/neo-server/v8/mods/server/mcpsvr"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
@@ -362,8 +361,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/tql/*path", svr.handleTqlFile)
 			group.GET("/tql", svr.handleTqlQuery)
 			group.POST("/tql", svr.handleTqlQuery)
-			// machbase-neo MCP SSE endpoint /db/mcp/sse
-			group.Any("/mcp/*path", gin.WrapF(mcpsvr.NewMCPServer(mcpsvr.WithVersion(mods.VersionString())).HandlerFunc()))
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}

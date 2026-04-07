@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
@@ -20,6 +21,28 @@ var (
 )
 
 type rpcImplicitParamResolver func(paramType reflect.Type) (reflect.Value, bool)
+
+var jsonRpcHandlers = map[string]any{}
+var jsonRpcHandlersMutex sync.RWMutex
+
+func RegisterJsonRpcHandler(method string, handler any) {
+	jsonRpcHandlersMutex.Lock()
+	defer jsonRpcHandlersMutex.Unlock()
+	jsonRpcHandlers[method] = handler
+}
+
+func UnregisterJsonRpcHandler(method string) {
+	jsonRpcHandlersMutex.Lock()
+	defer jsonRpcHandlersMutex.Unlock()
+	delete(jsonRpcHandlers, method)
+}
+
+func FindJsonRpcHandler(method string) (any, bool) {
+	jsonRpcHandlersMutex.RLock()
+	defer jsonRpcHandlersMutex.RUnlock()
+	handler, ok := jsonRpcHandlers[method]
+	return handler, ok
+}
 
 func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplicitParamResolver) ([]reflect.Value, error) {
 	handlerType := reflect.TypeOf(handler)
@@ -110,9 +133,7 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 	}
 
 	// Lookup handler
-	wsRpcHandlersMutex.RLock()
-	handler, ok := wsRpcHandlers[req.Method]
-	wsRpcHandlersMutex.RUnlock()
+	handler, ok := FindJsonRpcHandler(req.Method)
 
 	rsp := map[string]any{
 		"jsonrpc": "2.0",

@@ -49,29 +49,13 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 type BodyType string
 
 const (
-	BodyTypeCommand            BodyType = "command"
-	BodyTypeQuestion           BodyType = "question"
-	BodyTypeInput              BodyType = "input"
-	BodyTypeAnswerStart        BodyType = "answer-start"
-	BodyTypeAnswerStop         BodyType = "answer-stop"
-	BodyTypeStreamMessageStart BodyType = "stream-message-start"
-	BodyTypeStreamMessageDelta BodyType = "stream-message-delta"
-	BodyTypeStreamMessageStop  BodyType = "stream-message-stop"
-	BodyTypeStreamBlockStart   BodyType = "stream-block-start"
-	BodyTypeStreamBlockDelta   BodyType = "stream-block-delta"
-	BodyTypeStreamBlockStop    BodyType = "stream-block-stop"
+	BodyTypeCommand BodyType = "command"
+	BodyTypeInput   BodyType = "input"
 )
 
 type BodyUnion struct {
-	OfCommand            *Command
-	OfQuestion           *Question
-	OfInput              *Input
-	OfStreamMessageStart *StreamMessageStart
-	OfStreamMessageDelta *StreamMessageDelta
-	OfStreamMessageStop  *StreamMessageStop
-	OfStreamBlockStart   *StreamBlockStart
-	OfStreamBlockDelta   *StreamBlockDelta
-	OfStreamBlockStop    *StreamBlockStop
+	OfCommand *Command
+	OfInput   *Input
 }
 
 func (bu *BodyUnion) asAny(typ BodyType) any {
@@ -83,20 +67,6 @@ func (bu *BodyUnion) asAny(typ BodyType) any {
 		return bu.OfInput
 	case BodyTypeCommand:
 		return bu.OfCommand
-	case BodyTypeQuestion:
-		return bu.OfQuestion
-	case BodyTypeStreamMessageStart:
-		return bu.OfStreamMessageStart
-	case BodyTypeStreamMessageDelta:
-		return bu.OfStreamMessageDelta
-	case BodyTypeStreamMessageStop:
-		return bu.OfStreamMessageStop
-	case BodyTypeStreamBlockStart:
-		return bu.OfStreamBlockStart
-	case BodyTypeStreamBlockDelta:
-		return bu.OfStreamBlockDelta
-	case BodyTypeStreamBlockStop:
-		return bu.OfStreamBlockStop
 	}
 	return nil
 }
@@ -113,41 +83,6 @@ func (bu *BodyUnion) unmarshal(typ BodyType, data []byte) error {
 		if err := json.Unmarshal(data, bu.OfCommand); err != nil {
 			return err
 		}
-	case BodyTypeQuestion:
-		bu.OfQuestion = &Question{}
-		if err := json.Unmarshal(data, bu.OfQuestion); err != nil {
-			return err
-		}
-	case BodyTypeStreamMessageStart:
-		bu.OfStreamMessageStart = &StreamMessageStart{}
-		if err := json.Unmarshal(data, bu.OfStreamMessageStart); err != nil {
-			return err
-		}
-	case BodyTypeStreamMessageDelta:
-		bu.OfStreamMessageDelta = &StreamMessageDelta{}
-		if err := json.Unmarshal(data, bu.OfStreamMessageDelta); err != nil {
-			return err
-		}
-	case BodyTypeStreamMessageStop:
-		bu.OfStreamMessageStop = &StreamMessageStop{}
-		if err := json.Unmarshal(data, bu.OfStreamMessageStop); err != nil {
-			return err
-		}
-	case BodyTypeStreamBlockStart:
-		bu.OfStreamBlockStart = &StreamBlockStart{}
-		if err := json.Unmarshal(data, bu.OfStreamBlockStart); err != nil {
-			return err
-		}
-	case BodyTypeStreamBlockDelta:
-		bu.OfStreamBlockDelta = &StreamBlockDelta{}
-		if err := json.Unmarshal(data, bu.OfStreamBlockDelta); err != nil {
-			return err
-		}
-	case BodyTypeStreamBlockStop:
-		bu.OfStreamBlockStop = &StreamBlockStop{}
-		if err := json.Unmarshal(data, bu.OfStreamBlockStop); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -156,37 +91,7 @@ type Command struct {
 	Line string `json:"line"`
 }
 
-type Question struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	Text     string `json:"text"`
-}
-
 type Input struct {
 	Text    string `json:"text,omitempty"`
 	Control string `json:"control,omitempty"`
-}
-
-type StreamMessageStart struct {
-	Text string `json:"text"`
-}
-
-type StreamMessageDelta struct {
-	Text string `json:"text"`
-}
-
-type StreamMessageStop struct {
-}
-
-type StreamBlockStart struct {
-	Type string `json:"type"`
-}
-
-type StreamBlockDelta struct {
-	ContentType string `json:"contentType"`
-	Text        string `json:"data"`
-	Thinking    string `json:"thinking,omitempty"`
-}
-
-type StreamBlockStop struct {
 }
