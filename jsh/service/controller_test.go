@@ -1676,6 +1676,17 @@ func TestControllerInstallAndUninstallErrors(t *testing.T) {
 	if err := ctl.Install(sc); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("Install() duplicate error=%v, want already exists", err)
 	}
+	ctl.services["svc-a"].Status = ServiceStatusRunning
+	if err := ctl.Uninstall("svc-a"); err == nil || !strings.Contains(err.Error(), "stop it before uninstall") {
+		t.Fatalf("Uninstall() running error=%v, want stop-before-uninstall error", err)
+	}
+	if _, err := ctl.fs.Stat(ctl.configPath("svc-a")); err != nil {
+		t.Fatalf("config removed while service running: %v", err)
+	}
+	ctl.services["svc-a"].Status = ServiceStatusStopped
+	if err := ctl.Uninstall("svc-a"); err != nil {
+		t.Fatalf("Uninstall() stopped error=%v", err)
+	}
 	if err := ctl.Uninstall("missing"); err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("Uninstall() error=%v, want does not exist", err)
 	}
@@ -1964,6 +1975,37 @@ func TestRPCUtilityFunctionsAndDispatchErrors(t *testing.T) {
 		}
 		if removed, ok := result.(bool); !ok || !removed {
 			t.Fatalf("uninstall result=%v, want true", result)
+		}
+	})
+
+	t.Run("uninstall running service returns conflict", func(t *testing.T) {
+		ctl := &Controller{services: map[string]*Service{
+			"svc-a": {Config: Config{Name: "svc-a", Enable: true, Executable: "echo"}, Status: ServiceStatusRunning},
+		}}
+		tmpDir := t.TempDir()
+		servicesDir := filepath.Join(tmpDir, "services")
+		if err := os.MkdirAll(servicesDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(servicesDir, "svc-a.json"), []byte(`{"name":"svc-a","enable":true,"executable":"echo"}`), 0o644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+		ctl.confDir = "/work/services"
+		ctl.fs = engine.NewFS()
+		ctl.fs.Mount("/work", os.DirFS(tmpDir))
+
+		result, rpcErr := ctl.dispatchRPC("service.uninstall", json.RawMessage(`{"name":"svc-a"}`))
+		if rpcErr == nil || rpcErr.Code != jsonRPCConflict {
+			t.Fatalf("dispatchRPC(uninstall running) rpcErr=%+v, want conflict code", rpcErr)
+		}
+		if !strings.Contains(rpcErr.Message, "stop it before uninstall") {
+			t.Fatalf("dispatchRPC(uninstall running) message=%q, want stop-before-uninstall", rpcErr.Message)
+		}
+		if result != nil {
+			t.Fatalf("dispatchRPC(uninstall running) result=%v, want nil", result)
+		}
+		if _, err := ctl.fs.Stat("/work/services/svc-a.json"); err != nil {
+			t.Fatalf("config removed by running uninstall: %v", err)
 		}
 	})
 

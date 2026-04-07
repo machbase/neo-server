@@ -815,6 +815,9 @@ func invalidParamsError(err error) *controllerRPCError {
 }
 
 func internalRPCError(err error) *controllerRPCError {
+	if errors.Is(err, errServiceMustBeStopped) {
+		return &controllerRPCError{Code: jsonRPCConflict, Message: err.Error()}
+	}
 	return &controllerRPCError{Code: jsonRPCInternal, Message: err.Error()}
 }
 

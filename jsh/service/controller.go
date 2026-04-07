@@ -34,6 +34,8 @@ type ControllerSharedFSConfig struct {
 	MountPoint string
 }
 
+var errServiceMustBeStopped = errors.New("service must be stopped before uninstall")
+
 func NewController(opt *ControllerConfig) (*Controller, error) {
 	fs := engine.NewFS()
 	if !opt.Mounts.HasMountPoint("/") {
@@ -464,6 +466,11 @@ func (ctl *Controller) Uninstall(name string) error {
 	defer ctl.mu.Unlock()
 	if _, err := ctl.fs.Stat(ctl.configPath(name)); err != nil {
 		return fmt.Errorf("service %s does not exist", name)
+	}
+	if svc, exists := ctl.services[name]; exists {
+		if svc.Status == ServiceStatusRunning || svc.Status == ServiceStatusStarting || svc.Status == ServiceStatusStopping {
+			return fmt.Errorf("service %s is running; stop it before uninstall: %w", name, errServiceMustBeStopped)
+		}
 	}
 	if err := ctl.fs.Remove(ctl.configPath(name)); err != nil {
 		return fmt.Errorf("failed to remove service config: %w", err)
