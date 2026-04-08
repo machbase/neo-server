@@ -21,8 +21,8 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
@@ -118,7 +118,8 @@ func TestMain(m *testing.M) {
 	server.startModelService()
 	server.startBridgeAndSchedulerService()
 	server.AddServicePort("mach", machServerAddress)
-	RegisterJsonRpcHandlers(server)
+	server.rpcController = &service.Controller{}
+	server.registerJsonRpcHandlers()
 
 	// tql
 	fileDirs := []string{"/=./test"}
@@ -130,6 +131,7 @@ func TestMain(m *testing.M) {
 	// http server
 	httpOpts := []HttpOption{
 		WithHttpListenAddress("tcp://127.0.0.1:0"),
+		WithHttpAuthServer(server, false),
 		WithHttpTqlLoader(tql.NewLoader()),
 		WithHttpEulaFilePath("./testsuite_tmp/eula.txt"),
 		WithHttpPathMap("data", dataPath),
@@ -217,6 +219,21 @@ func TestRepresentativePort(t *testing.T) {
 	} else {
 		require.Equal(t, "  > Unix:    /var/run/neo-server.sock", representativePort("unix:///var/run/neo-server.sock"))
 	}
+}
+
+func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
+	authSvc := &Server{
+		rpcController: &service.Controller{},
+	}
+	authSvc.registerJsonRpcHandlers()
+
+	httpSvc, err := NewHttp(nil, WithHttpAuthServer(authSvc, false))
+	require.NoError(t, err)
+	require.Same(t, authSvc.rpcController, httpSvc.rpcController)
+
+	result, rpcErr := httpSvc.rpcController.CallJsonRpc("markdownRender", []any{"# Hello", false}, nil)
+	require.Nil(t, rpcErr)
+	require.Contains(t, result.(string), "Hello")
 }
 
 func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -1894,6 +1896,284 @@ func TestRPCUtilityFunctionsAndDispatchErrors(t *testing.T) {
 		}
 		if _, rpcErr := ctl.dispatchRPC("missing.method", nil); rpcErr == nil || rpcErr.Code != jsonRPCMethodMiss {
 			t.Fatalf("dispatchRPC missing method=%+v", rpcErr)
+		}
+	})
+
+	t.Run("call json rpc builtin custom and unregister", func(t *testing.T) {
+		ctl := &Controller{services: map[string]*Service{}}
+		contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
+
+		result, rpcErr := ctl.CallJsonRpc("service.list", nil, nil)
+		if rpcErr != nil {
+			t.Fatalf("CallJsonRpc(service.list) error=%+v", rpcErr)
+		}
+		if snapshots, ok := result.([]ServiceSnapshot); !ok || len(snapshots) != 0 {
+			t.Fatalf("CallJsonRpc(service.list) result=%#v, want empty service snapshots", result)
+		}
+
+		type customPayload struct {
+			Name string `json:"name"`
+		}
+		customMethod := "test.custom"
+		ctl.RegisterJsonRpcHandler(customMethod, func(ctx context.Context, payload customPayload) (map[string]any, error) {
+			return map[string]any{
+				"name":    payload.Name,
+				"has_ctx": ctx != nil,
+			}, nil
+		})
+
+		result, rpcErr = ctl.CallJsonRpc(customMethod, []any{map[string]any{"name": "neo"}}, func(paramType reflect.Type) (reflect.Value, bool) {
+			if paramType == contextType {
+				return reflect.ValueOf(t.Context()), true
+			}
+			return reflect.Value{}, false
+		})
+		if rpcErr != nil {
+			t.Fatalf("CallJsonRpc(custom) error=%+v", rpcErr)
+		}
+		if got := result.(map[string]any)["name"]; got != "neo" {
+			t.Fatalf("CallJsonRpc(custom) name=%v, want neo", got)
+		}
+		if got := result.(map[string]any)["has_ctx"]; got != true {
+			t.Fatalf("CallJsonRpc(custom) has_ctx=%v, want true", got)
+		}
+
+		ctl.UnregisterJsonRpcHandler(customMethod)
+		if _, rpcErr = ctl.CallJsonRpc(customMethod, nil, nil); rpcErr == nil || rpcErr.Code != jsonRPCMethodMiss {
+			t.Fatalf("CallJsonRpc(unregistered) rpcErr=%+v, want method missing", rpcErr)
+		}
+	})
+
+	t.Run("build rpc call params exported helper", func(t *testing.T) {
+		contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
+
+		type rpcPayload struct {
+			Count int    `json:"count"`
+			Name  string `json:"name"`
+		}
+
+		handler := func(ctx context.Context, count int, payload *rpcPayload) error {
+			if ctx == nil {
+				t.Fatal("ctx=nil, want injected context")
+			}
+			if count != 5 {
+				t.Fatalf("count=%d, want 5", count)
+			}
+			if payload == nil || payload.Name != "neo" {
+				t.Fatalf("payload=%+v, want neo", payload)
+			}
+			return nil
+		}
+
+		params, err := BuildRpcCallParams(handler, []any{
+			float64(5),
+			map[string]any{"count": float64(1), "name": "neo"},
+		}, func(paramType reflect.Type) (reflect.Value, bool) {
+			if paramType == contextType {
+				return reflect.ValueOf(t.Context()), true
+			}
+			return reflect.Value{}, false
+		})
+		if err != nil {
+			t.Fatalf("BuildRpcCallParams() error=%v", err)
+		}
+		if len(params) != 3 {
+			t.Fatalf("BuildRpcCallParams() len=%d, want 3", len(params))
+		}
+	})
+
+	t.Run("build rpc call params matrix", func(t *testing.T) {
+		contextType := reflect.TypeOf((*context.Context)(nil)).Elem()
+
+		type payload struct {
+			Name string `json:"name"`
+			Age  int    `json:"age"`
+		}
+		type aliasString string
+
+		tests := []struct {
+			name    string
+			handler any
+			raw     []any
+			verify  func(t *testing.T, params []reflect.Value)
+		}{
+			{
+				name:    "scalar types",
+				handler: func(str string, flag bool, num int, ratio float64) {},
+				raw:     []any{"neo", true, float64(7), 1.25},
+				verify: func(t *testing.T, params []reflect.Value) {
+					if got := params[0].Interface().(string); got != "neo" {
+						t.Fatalf("string=%q, want neo", got)
+					}
+					if got := params[1].Interface().(bool); !got {
+						t.Fatalf("bool=%v, want true", got)
+					}
+					if got := params[2].Interface().(int); got != 7 {
+						t.Fatalf("int=%d, want 7", got)
+					}
+					if got := params[3].Interface().(float64); got != 1.25 {
+						t.Fatalf("float=%v, want 1.25", got)
+					}
+				},
+			},
+			{
+				name:    "struct and pointer",
+				handler: func(p payload, ptr *payload) {},
+				raw: []any{
+					map[string]any{"name": "neo", "age": float64(3)},
+					map[string]any{"name": "codex", "age": float64(5)},
+				},
+				verify: func(t *testing.T, params []reflect.Value) {
+					if got := params[0].Interface().(payload); got != (payload{Name: "neo", Age: 3}) {
+						t.Fatalf("struct=%+v", got)
+					}
+					if got := params[1].Interface().(*payload); got == nil || *got != (payload{Name: "codex", Age: 5}) {
+						t.Fatalf("ptr=%+v", got)
+					}
+				},
+			},
+			{
+				name:    "slice and map",
+				handler: func(items []payload, labels []string, meta map[string]string, mixed map[string]any) {},
+				raw: []any{
+					[]any{map[string]any{"name": "a", "age": float64(1)}, map[string]any{"name": "b", "age": float64(2)}},
+					[]any{"x", "y"},
+					map[string]any{"k1": "v1", "k2": "v2"},
+					map[string]any{"flag": true, "count": float64(2)},
+				},
+				verify: func(t *testing.T, params []reflect.Value) {
+					items := params[0].Interface().([]payload)
+					if len(items) != 2 || items[0].Name != "a" || items[1].Age != 2 {
+						t.Fatalf("items=%+v", items)
+					}
+					labels := params[1].Interface().([]string)
+					if len(labels) != 2 || labels[0] != "x" || labels[1] != "y" {
+						t.Fatalf("labels=%+v", labels)
+					}
+					meta := params[2].Interface().(map[string]string)
+					if meta["k1"] != "v1" || meta["k2"] != "v2" {
+						t.Fatalf("meta=%+v", meta)
+					}
+					mixed := params[3].Interface().(map[string]any)
+					if mixed["flag"] != true {
+						t.Fatalf("mixed=%+v", mixed)
+					}
+				},
+			},
+			{
+				name:    "alias type and nil pointer",
+				handler: func(name aliasString, ptr *payload) {},
+				raw:     []any{"neo", nil},
+				verify: func(t *testing.T, params []reflect.Value) {
+					if got := params[0].Interface().(aliasString); got != aliasString("neo") {
+						t.Fatalf("alias=%q", got)
+					}
+					if !params[1].IsNil() {
+						t.Fatalf("ptr=%v, want nil", params[1].Interface())
+					}
+				},
+			},
+			{
+				name:    "implicit context and missing params",
+				handler: func(ctx context.Context, str string, count int, ptr *payload) {},
+				raw:     []any{"neo"},
+				verify: func(t *testing.T, params []reflect.Value) {
+					if params[0].Interface().(context.Context) == nil {
+						t.Fatal("ctx=nil, want injected context")
+					}
+					if got := params[1].Interface().(string); got != "neo" {
+						t.Fatalf("str=%q, want neo", got)
+					}
+					if got := params[2].Interface().(int); got != 0 {
+						t.Fatalf("count=%d, want 0", got)
+					}
+					if !params[3].IsNil() {
+						t.Fatalf("ptr=%v, want nil", params[3].Interface())
+					}
+				},
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				params, err := BuildRpcCallParams(tc.handler, tc.raw, func(paramType reflect.Type) (reflect.Value, bool) {
+					if paramType == contextType {
+						return reflect.ValueOf(t.Context()), true
+					}
+					return reflect.Value{}, false
+				})
+				if err != nil {
+					t.Fatalf("BuildRpcCallParams() error=%v", err)
+				}
+				tc.verify(t, params)
+			})
+		}
+	})
+
+	t.Run("register json rpc handler validates signature", func(t *testing.T) {
+		ctl := &Controller{}
+
+		assertPanics := func(name string, handler any, want string) {
+			t.Helper()
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("%s: panic=nil, want panic", name)
+				}
+				if !strings.Contains(fmt.Sprint(r), want) {
+					t.Fatalf("%s: panic=%v, want substring %q", name, r, want)
+				}
+			}()
+			ctl.RegisterJsonRpcHandler(name, handler)
+		}
+
+		assertPanics("not-func", 10, "handler must be a function")
+		assertPanics("variadic", func(v ...string) {}, "variadic handler is not supported")
+		assertPanics("too-many-returns", func() (int, error, error) { return 0, nil, nil }, "at most 2 values")
+		assertPanics("bad-second-return", func() (int, string) { return 0, "" }, "second return value must implement error")
+	})
+
+	t.Run("call json rpc return matrix", func(t *testing.T) {
+		ctl := &Controller{}
+
+		ctl.RegisterJsonRpcHandler("returns.none", func() {})
+		ctl.RegisterJsonRpcHandler("returns.value", func(name string) string { return "hello " + name })
+		ctl.RegisterJsonRpcHandler("returns.error-only", func() error { return fmt.Errorf("boom") })
+		ctl.RegisterJsonRpcHandler("returns.value-error", func(flag bool) (map[string]any, error) {
+			if !flag {
+				return nil, fmt.Errorf("flag off")
+			}
+			return map[string]any{"ok": true}, nil
+		})
+		ctl.RegisterJsonRpcHandler("returns.rpc-error", func() error {
+			return &controllerRPCError{Code: jsonRPCConflict, Message: "conflict"}
+		})
+
+		result, rpcErr := ctl.CallJsonRpc("returns.none", nil, nil)
+		if rpcErr != nil || result != nil {
+			t.Fatalf("returns.none result=%v err=%+v, want nil nil", result, rpcErr)
+		}
+
+		result, rpcErr = ctl.CallJsonRpc("returns.value", []any{"neo"}, nil)
+		if rpcErr != nil || result.(string) != "hello neo" {
+			t.Fatalf("returns.value result=%v err=%+v", result, rpcErr)
+		}
+
+		if _, rpcErr = ctl.CallJsonRpc("returns.error-only", nil, nil); rpcErr == nil || rpcErr.Code != jsonRPCInternal || rpcErr.Message != "boom" {
+			t.Fatalf("returns.error-only rpcErr=%+v", rpcErr)
+		}
+
+		result, rpcErr = ctl.CallJsonRpc("returns.value-error", []any{true}, nil)
+		if rpcErr != nil || result.(map[string]any)["ok"] != true {
+			t.Fatalf("returns.value-error success result=%v err=%+v", result, rpcErr)
+		}
+
+		if _, rpcErr = ctl.CallJsonRpc("returns.value-error", []any{false}, nil); rpcErr == nil || rpcErr.Code != jsonRPCInternal || rpcErr.Message != "flag off" {
+			t.Fatalf("returns.value-error failure rpcErr=%+v", rpcErr)
+		}
+
+		if _, rpcErr = ctl.CallJsonRpc("returns.rpc-error", nil, nil); rpcErr == nil || rpcErr.Code != jsonRPCConflict || rpcErr.Message != "conflict" {
+			t.Fatalf("returns.rpc-error rpcErr=%+v", rpcErr)
 		}
 	})
 

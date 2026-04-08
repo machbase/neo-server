@@ -2,14 +2,12 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
@@ -22,86 +20,10 @@ var (
 
 type rpcImplicitParamResolver func(paramType reflect.Type) (reflect.Value, bool)
 
-var jsonRpcHandlers = map[string]any{}
-var jsonRpcHandlersMutex sync.RWMutex
-
-func RegisterJsonRpcHandler(method string, handler any) {
-	jsonRpcHandlersMutex.Lock()
-	defer jsonRpcHandlersMutex.Unlock()
-	jsonRpcHandlers[method] = handler
-}
-
-func UnregisterJsonRpcHandler(method string) {
-	jsonRpcHandlersMutex.Lock()
-	defer jsonRpcHandlersMutex.Unlock()
-	delete(jsonRpcHandlers, method)
-}
-
-func FindJsonRpcHandler(method string) (any, bool) {
-	jsonRpcHandlersMutex.RLock()
-	defer jsonRpcHandlersMutex.RUnlock()
-	handler, ok := jsonRpcHandlers[method]
-	return handler, ok
-}
+var defaultJsonRpcController = &service.Controller{}
 
 func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplicitParamResolver) ([]reflect.Value, error) {
-	handlerType := reflect.TypeOf(handler)
-	params := make([]reflect.Value, 0, handlerType.NumIn())
-	explicitIndex := 0
-
-	for i := 0; i < handlerType.NumIn(); i++ {
-		paramType := handlerType.In(i)
-		if resolveImplicit != nil {
-			if implicitValue, ok := resolveImplicit(paramType); ok {
-				params = append(params, implicitValue)
-				continue
-			}
-		}
-
-		if explicitIndex >= len(rawParams) {
-			params = append(params, reflect.Zero(paramType))
-			continue
-		}
-
-		paramValue, err := convertRpcParam(rawParams[explicitIndex], paramType)
-		if err != nil {
-			return nil, fmt.Errorf("param %d: %w", explicitIndex, err)
-		}
-		params = append(params, paramValue)
-		explicitIndex++
-	}
-
-	return params, nil
-}
-
-func convertRpcParam(raw any, targetType reflect.Type) (reflect.Value, error) {
-	if raw == nil {
-		return reflect.Zero(targetType), nil
-	}
-
-	rawValue := reflect.ValueOf(raw)
-	if rawValue.IsValid() && rawValue.Type().AssignableTo(targetType) {
-		return rawValue, nil
-	}
-
-	encoded, err := json.Marshal(raw)
-	if err != nil {
-		return reflect.Value{}, fmt.Errorf("marshal param: %w", err)
-	}
-
-	if targetType.Kind() == reflect.Pointer {
-		targetValue := reflect.New(targetType.Elem())
-		if err := json.Unmarshal(encoded, targetValue.Interface()); err != nil {
-			return reflect.Value{}, fmt.Errorf("unmarshal to %s: %w", targetType, err)
-		}
-		return targetValue, nil
-	}
-
-	targetValue := reflect.New(targetType)
-	if err := json.Unmarshal(encoded, targetValue.Interface()); err != nil {
-		return reflect.Value{}, fmt.Errorf("unmarshal to %s: %w", targetType, err)
-	}
-	return targetValue.Elem(), nil
+	return service.BuildRpcCallParams(handler, rawParams, service.JsonRpcImplicitParamResolver(resolveImplicit))
 }
 
 func rpcMarkdownRender(markdown string, darkMode bool) (string, error) {
@@ -132,114 +54,43 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 		return
 	}
 
-	// Lookup handler
-	handler, ok := FindJsonRpcHandler(req.Method)
-
 	rsp := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      req.ID,
 	}
 
-	if ok {
-		params, bindErr := buildRpcCallParams(handler, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
-			switch {
-			case paramType == ginContextType:
-				return reflect.ValueOf(ctx), true
-			case paramType == contextType:
-				// Pass gin.Context as context.Context to preserve requester information.
-				return reflect.ValueOf(ctx), true
-			default:
-				return reflect.Value{}, false
-			}
-		})
-		if bindErr != nil {
-			rsp["error"] = map[string]any{
-				"code":    -32602,
-				"message": bindErr.Error(),
-			}
-			ctx.JSON(http.StatusOK, rsp)
-			return
+	ctl := svr.rpcController
+	if ctl == nil {
+		ctl = defaultJsonRpcController
+	}
+	result, rpcErr := ctl.CallJsonRpc(req.Method, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+		switch {
+		case paramType == ginContextType:
+			return reflect.ValueOf(ctx), true
+		case paramType == contextType:
+			// Pass gin.Context as context.Context to preserve requester information.
+			return reflect.ValueOf(ctx), true
+		default:
+			return reflect.Value{}, false
 		}
-
-		// Call the handler
-		resultValues := reflect.ValueOf(handler).Call(params)
-		var result interface{}
-		var err error
-
-		if len(resultValues) > 0 {
-			result = resultValues[0].Interface()
-		}
-		if len(resultValues) == 1 && result != nil {
-			if errVal, ok := result.(error); ok {
-				result = nil
-				err = errVal
-			}
-		}
-		if len(resultValues) > 1 {
-			if !resultValues[1].IsNil() {
-				err = resultValues[1].Interface().(error)
-			}
-		}
-
-		// Send response
-		if err == nil {
-			rsp["result"] = result
-		} else {
-			rsp["error"] = map[string]any{
-				"code":    -32000,
-				"message": err.Error(),
-			}
-		}
+	})
+	if rpcErr == nil {
+		rsp["result"] = result
 	} else {
+		code := rpcErr.Code
+		message := rpcErr.Message
+		if code == -32603 {
+			code = -32000
+		}
+		if rpcErr.Code == -32601 {
+			message = "Method not found"
+		}
 		rsp["error"] = map[string]any{
-			"code":    -32601,
-			"message": "Method not found",
+			"code":    code,
+			"message": message,
 		}
 	}
 
 	// Always return HTTP 200 as per JSON-RPC 2.0 specification
 	ctx.JSON(http.StatusOK, rsp)
-}
-
-func RegisterJsonRpcHandlers(s *Server) {
-	RegisterJsonRpcHandler("markdownRender", rpcMarkdownRender)
-	if s == nil {
-		return
-	}
-	RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
-	RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
-	RegisterJsonRpcHandler("listShells", s.listShells)
-	RegisterJsonRpcHandler("addShell", s.addShell)
-	RegisterJsonRpcHandler("deleteShell", s.deleteShell)
-	RegisterJsonRpcHandler("listBridges", s.listBridges)
-	RegisterJsonRpcHandler("getBridge", s.getBridge)
-	RegisterJsonRpcHandler("addBridge", s.addBridge)
-	RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
-	RegisterJsonRpcHandler("testBridge", s.testBridge)
-	RegisterJsonRpcHandler("statsBridge", s.statsBridge)
-	RegisterJsonRpcHandler("execBridge", s.execBridge)
-	RegisterJsonRpcHandler("queryBridge", s.queryBridge)
-	RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
-	RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
-	RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
-	RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
-	RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
-	RegisterJsonRpcHandler("listKeys", s.listKeys)
-	RegisterJsonRpcHandler("genKey", s.genKey)
-	RegisterJsonRpcHandler("deleteKey", s.deleteKey)
-	RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
-	RegisterJsonRpcHandler("listSchedules", s.listSchedules)
-	RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
-	RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
-	RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
-	RegisterJsonRpcHandler("startSchedule", s.startSchedule)
-	RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
-	RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
-	RegisterJsonRpcHandler("setHttpDebug", s.setHttpDebug)
-	RegisterJsonRpcHandler("listSessions", s.listSessions)
-	RegisterJsonRpcHandler("killSession", s.killSession)
-	RegisterJsonRpcHandler("statSession", s.statSession)
-	RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
-	RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
-	RegisterJsonRpcHandler("splitSqlStatements", s.splitSqlStatements)
 }
