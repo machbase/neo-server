@@ -1061,6 +1061,8 @@ func (s *Server) registerJsonRpcHandlers() {
 		return
 	}
 	ctl.RegisterJsonRpcHandler("markdown.render", rpcMarkdownRender)
+	ctl.RegisterJsonRpcHandler("vizspec.render", rpcVizspecRender)
+	ctl.RegisterJsonRpcHandler("vizspec.export", rpcVizspecExport)
 	ctl.RegisterJsonRpcHandler("server.info.get", s.getServerInfo)
 	ctl.RegisterJsonRpcHandler("service.port.list", s.getServicePorts)
 	ctl.RegisterJsonRpcHandler("shell.list", s.listShells)

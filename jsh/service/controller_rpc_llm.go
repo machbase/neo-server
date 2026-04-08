@@ -755,8 +755,19 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				continue
 			}
 			summary := formatAgentExecSummary(rows)
+			renderBlocks := collectRenderEnvelopeBlocks(rows)
+			if len(renderBlocks) > 0 {
+				blocks = append(blocks, renderBlocks...)
+			}
 			blocks = append(blocks, map[string]any{"type": "text", "text": "Code execution results:\n" + summary})
 			summaries = append(summaries, summary)
+			execPayload := map[string]any{
+				"index": idx,
+				"ok":    true,
+			}
+			if len(renderBlocks) > 0 {
+				execPayload["renders"] = renderBlocks
+			}
 			emitJsonRpcNotification(ctx, "llm.event", map[string]any{
 				"sessionId": sessionID,
 				"turnId":    turnID,
@@ -764,10 +775,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				"seq":       ctl.nextLLMSeq(sessionID),
 				"event":     "turn.exec.completed",
 				"ts":        time.Now().UnixMilli(),
-				"payload": map[string]any{
-					"index": idx,
-					"ok":    true,
-				},
+				"payload":   execPayload,
 			})
 		}
 
@@ -893,6 +901,46 @@ func formatAgentExecSummary(rows []shelllib.Result) string {
 		return "(no output)"
 	}
 	return strings.Join(lines, "\n")
+}
+
+func collectRenderEnvelopeBlocks(rows []shelllib.Result) []map[string]any {
+	blocks := []map[string]any{}
+	for _, row := range rows {
+		okVal, _ := row["ok"].(bool)
+		if !okVal {
+			continue
+		}
+		value, exists := row["value"]
+		if !exists || value == nil {
+			continue
+		}
+		if !isAgentRenderEnvelope(value) {
+			continue
+		}
+		blocks = append(blocks, map[string]any{
+			"type": "vizspec",
+			"spec": value,
+		})
+	}
+	return blocks
+}
+
+func isAgentRenderEnvelope(value any) bool {
+	m, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	renderFlag, _ := m["__agentRender"].(bool)
+	schema, _ := m["schema"].(string)
+	renderer, _ := m["renderer"].(string)
+	mode, _ := m["mode"].(string)
+	if !renderFlag {
+		return false
+	}
+	if schema != "agent-render/v1" || renderer != "advn.tui" {
+		return false
+	}
+	return mode == "blocks" || mode == "lines"
 }
 
 func (ctl *Controller) nextLLMSeq(sessionID string) int64 {
