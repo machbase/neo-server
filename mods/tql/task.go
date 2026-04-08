@@ -498,19 +498,33 @@ func (x *Task) Cancel() {
 }
 
 func (x *Task) AddShouldStopListener(fn func()) {
+	if fn == nil {
+		return
+	}
+
 	x._stateLock.Lock()
-	x._shouldStopListeners = append(x._shouldStopListeners, fn)
+	alreadyStopped := x._shouldStop
+	if !alreadyStopped {
+		x._shouldStopListeners = append(x._shouldStopListeners, fn)
+	}
 	x._stateLock.Unlock()
+
+	if alreadyStopped {
+		fn()
+	}
 }
 
 func (x *Task) fireCircuitBreak(_ *Node) {
+	x._stateLock.Lock()
 	if x._shouldStop {
+		x._stateLock.Unlock()
 		return
 	}
-	x._stateLock.Lock()
 	x._shouldStop = true
+	listeners := append([]func(){}, x._shouldStopListeners...)
 	x._stateLock.Unlock()
-	for _, fn := range x._shouldStopListeners {
+
+	for _, fn := range listeners {
 		fn()
 	}
 }
