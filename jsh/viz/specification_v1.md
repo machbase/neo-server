@@ -1,16 +1,16 @@
-# ADVN Specification V1
+# VIZ Specification V1
 
 ## 1. Purpose
 
-ADVN (Analysis Data Visualization Notation) is an intermediate representation for analysis results produced in jsh and Machbase Neo workflows.
+VIZ (Abstract data visualization notation) is an intermediate representation for analysis results produced in jsh and Machbase Neo workflows.
 
-The purpose of ADVN is to separate:
+The purpose of VIZ is to separate:
 
 - analytical meaning
 - density control for large datasets
 - renderer-specific output generation
 
-ADVN is designed primarily for large-scale time-series analysis and is intended to be adaptable to:
+VIZ is designed primarily for large-scale time-series analysis and is intended to be adaptable to:
 
 - ECharts JSON
 - TUI block sequences
@@ -20,7 +20,7 @@ ADVN is designed primarily for large-scale time-series analysis and is intended 
 
 ## 2. Design Goals
 
-ADVN V1 has the following goals:
+VIZ V1 has the following goals:
 
 1. Renderer independence
 2. Large time-series suitability
@@ -77,7 +77,7 @@ Supported domain kinds:
 
 ### 4.1 Time Encoding
 
-For time domains, ADVN V1 supports explicit time encoding metadata.
+For time domains, VIZ V1 supports explicit time encoding metadata.
 
 - `timeformat`: `rfc3339`, `s`, `ms`, `us`, `ns`
 
@@ -87,7 +87,7 @@ Rules:
 - `timeformat=s|ms|us|ns` means time values are epoch values in that unit
 - `from`, `to`, and time-related payload fields are interpreted according to these settings
 - when omitted, adapters may use best-effort inference
-- `domain.timeformat` and `domain.tz` describe how time values are encoded in the ADVN payload
+- `domain.timeformat` and `domain.tz` describe how time values are encoded in the VIZ payload
 - renderer output time formatting is an independent adapter concern and may use different options
 - adapters should preserve the instant in time while allowing output representation to change
 
@@ -334,9 +334,9 @@ Recommended LOD pattern:
 
 ## 12. Renderer Boundary Principles
 
-ADVN must not embed renderer-specific option trees directly.
+VIZ must not embed renderer-specific option trees directly.
 
-Adapters are responsible for converting ADVN into:
+Adapters are responsible for converting VIZ into:
 
 - ECharts JSON
 - TUI block sequences
@@ -492,13 +492,15 @@ Recommended layer structure:
   <defs>
     <clipPath id="plot-clip">...</clipPath>
   </defs>
-  <g data-advn-role="background">...</g>
-  <g data-advn-role="axes">...</g>
-  <g data-advn-role="series">...</g>
-  <g data-advn-role="annotations">...</g>
-  <g data-advn-role="legend">...</g>
+  <g data-viz-role="background">...</g>
+  <g data-viz-role="axes">...</g>
+  <g data-viz-role="series">...</g>
+  <g data-viz-role="annotations">...</g>
+  <g data-viz-role="legend">...</g>
 </svg>
 ```
+
+Legacy implementations may still use the `data-advn-role` prefix for backward compatibility.
 
 The exact element tree does not need to be fixed rigidly, but the output should remain deterministic for testing.
 
@@ -565,13 +567,13 @@ Recommended staged path:
 
 - Stage 1: `ToSVG()` is the canonical static renderer in the model layer
 - Stage 2: a PNG export path consumes the SVG output and rasterizes it
-- Stage 3: command-level UX may expose `advn export --format png` once a stable rasterizer is chosen
+- Stage 3: command-level UX may expose `viz export --format png` once a stable rasterizer is chosen
 
 Recommended boundary:
 
-- ADVN model remains responsible for semantic-to-SVG conversion
+- VIZ model remains responsible for semantic-to-SVG conversion
 - rasterization remains a separate concern from chart layout and semantic mapping
-- PNG export must not introduce a second, divergent visual mapping path for the same ADVN spec
+- PNG export must not introduce a second, divergent visual mapping path for the same VIZ spec
 
 Recommended API direction:
 
@@ -581,8 +583,8 @@ Recommended API direction:
 
 Recommended command strategy:
 
-- near term: `advn export --format svg`
-- next step: `advn export --format png` implemented as `spec -> SVG -> PNG`
+- near term: `viz export --format svg`
+- next step: `viz export --format png` implemented as `spec -> SVG -> PNG`
 
 Recommended V1.1 raster options:
 
@@ -654,7 +656,7 @@ This keeps semantic rendering deterministic and avoids duplicating layout logic 
 
 Common Go model:
 
-- `neo-server/jsh/advn`
+- `neo-server/jsh/viz`
 
 JSH binding:
 
