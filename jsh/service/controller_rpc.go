@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -137,6 +138,17 @@ type controllerRPCError struct {
 	Message string `json:"message"`
 }
 
+type JsonRpcError = controllerRPCError
+
+type JsonRpcImplicitParamResolver func(paramType reflect.Type) (reflect.Value, bool)
+
+func (e *controllerRPCError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
 type serviceNameRequest struct {
 	Name string `json:"name"`
 }
@@ -205,6 +217,45 @@ type sharedFchownFDRequest struct {
 }
 
 var errSharedWriteConflict = errors.New("shared file changed while descriptor was open")
+
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+var jsonRawMessageType = reflect.TypeOf(json.RawMessage(nil))
+
+type rpcImplicitParamResolver func(paramType reflect.Type) (reflect.Value, bool)
+
+var controllerBuiltinRPCMethods = []string{
+	"service.list",
+	"service.get",
+	"service.runtime.get",
+	"service.runtime.detail.add",
+	"service.runtime.detail.update",
+	"service.runtime.detail.set",
+	"service.runtime.detail.delete",
+	"fs.stat",
+	"fs.readDir",
+	"fs.readFile",
+	"fs.writeFile",
+	"fs.chmod",
+	"fs.chown",
+	"fs.mkdir",
+	"fs.remove",
+	"fs.rename",
+	"fs.open",
+	"fs.read",
+	"fs.write",
+	"fs.close",
+	"fs.fstat",
+	"fs.fsync",
+	"fs.fchmod",
+	"fs.fchown",
+	"service.read",
+	"service.update",
+	"service.reload",
+	"service.install",
+	"service.uninstall",
+	"service.start",
+	"service.stop",
+}
 
 func (ctl *Controller) Address() string {
 	ctl.mu.RLock()
@@ -363,7 +414,78 @@ func (ctl *Controller) handleRPC(req controllerRPCRequest) controllerRPCResponse
 	return resp
 }
 
+func (ctl *Controller) ensureRPCHandlers() {
+	ctl.jsonRpcInit.Do(func() {
+		ctl.jsonRpcMu.Lock()
+		if ctl.jsonRpcHandlers == nil {
+			ctl.jsonRpcHandlers = map[string]any{}
+		}
+		ctl.jsonRpcMu.Unlock()
+		for _, method := range controllerBuiltinRPCMethods {
+			builtinMethod := method
+			ctl.registerJsonRpcHandler(builtinMethod, func(raw json.RawMessage) (any, *controllerRPCError) {
+				return ctl.dispatchRPCBuiltin(builtinMethod, raw)
+			})
+		}
+	})
+}
+
+func (ctl *Controller) RegisterJsonRpcHandler(method string, handler any) {
+	ctl.ensureRPCHandlers()
+	ctl.registerJsonRpcHandler(method, handler)
+}
+
+func (ctl *Controller) registerJsonRpcHandler(method string, handler any) {
+	if err := validateJsonRpcHandler(handler); err != nil {
+		panic(fmt.Sprintf("register json-rpc handler %q: %v", method, err))
+	}
+	ctl.jsonRpcMu.Lock()
+	defer ctl.jsonRpcMu.Unlock()
+	ctl.jsonRpcHandlers[method] = handler
+}
+
+func (ctl *Controller) UnregisterJsonRpcHandler(method string) {
+	ctl.ensureRPCHandlers()
+	ctl.jsonRpcMu.Lock()
+	defer ctl.jsonRpcMu.Unlock()
+	delete(ctl.jsonRpcHandlers, method)
+}
+
+func (ctl *Controller) FindJsonRpcHandler(method string) (any, bool) {
+	ctl.ensureRPCHandlers()
+	ctl.jsonRpcMu.RLock()
+	defer ctl.jsonRpcMu.RUnlock()
+	handler, ok := ctl.jsonRpcHandlers[method]
+	return handler, ok
+}
+
+func (ctl *Controller) CallJsonRpc(method string, rawParams []any, resolveImplicit JsonRpcImplicitParamResolver) (any, *JsonRpcError) {
+	handler, ok := ctl.FindJsonRpcHandler(method)
+	if !ok {
+		return nil, &controllerRPCError{Code: jsonRPCMethodMiss, Message: fmt.Sprintf("method %s not found", method)}
+	}
+	values, callErr := buildRpcCallParams(handler, rawParams, rpcImplicitParamResolver(resolveImplicit))
+	if callErr != nil {
+		return nil, invalidParamsError(callErr)
+	}
+	results := reflect.ValueOf(handler).Call(values)
+	return parseRpcCallResult(results)
+}
+
 func (ctl *Controller) dispatchRPC(method string, params json.RawMessage) (any, *controllerRPCError) {
+	callParams, bindErr := parseRpcCallParams(params)
+	if bindErr != nil {
+		return nil, invalidParamsError(bindErr)
+	}
+	return ctl.CallJsonRpc(method, callParams, func(paramType reflect.Type) (reflect.Value, bool) {
+		if paramType == jsonRawMessageType {
+			return reflect.ValueOf(params), true
+		}
+		return reflect.Value{}, false
+	})
+}
+
+func (ctl *Controller) dispatchRPCBuiltin(method string, params json.RawMessage) (any, *controllerRPCError) {
 	switch method {
 	case "service.list":
 		return ctl.statusSnapshots(), nil
@@ -801,6 +923,136 @@ func snapshotServiceRuntime(svc *Service) ServiceRuntimeSnapshot {
 		Output:  svc.outputSnapshot(),
 		Details: svc.detailsSnapshot(),
 	}
+}
+
+func parseRpcCallParams(raw json.RawMessage) ([]any, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return []any{}, nil
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, err
+	}
+	if values, ok := decoded.([]any); ok {
+		return values, nil
+	}
+	return []any{decoded}, nil
+}
+
+// BuildRpcCallParams is the exported version of buildRpcCallParams for use by other packages.
+func BuildRpcCallParams(handler any, rawParams []any, resolveImplicit JsonRpcImplicitParamResolver) ([]reflect.Value, error) {
+	return buildRpcCallParams(handler, rawParams, rpcImplicitParamResolver(resolveImplicit))
+}
+
+func validateJsonRpcHandler(handler any) error {
+	handlerType := reflect.TypeOf(handler)
+	if handlerType == nil || handlerType.Kind() != reflect.Func {
+		return fmt.Errorf("handler must be a function")
+	}
+	if handlerType.IsVariadic() {
+		return fmt.Errorf("variadic handler is not supported")
+	}
+	if handlerType.NumOut() > 2 {
+		return fmt.Errorf("handler must return at most 2 values")
+	}
+	if handlerType.NumOut() == 2 && !handlerType.Out(1).Implements(errorType) {
+		return fmt.Errorf("handler second return value must implement error")
+	}
+	return nil
+}
+
+func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplicitParamResolver) ([]reflect.Value, error) {
+	handlerType := reflect.TypeOf(handler)
+	if err := validateJsonRpcHandler(handler); err != nil {
+		return nil, err
+	}
+	params := make([]reflect.Value, 0, handlerType.NumIn())
+	explicitIndex := 0
+
+	for i := 0; i < handlerType.NumIn(); i++ {
+		paramType := handlerType.In(i)
+		if resolveImplicit != nil {
+			if implicitValue, ok := resolveImplicit(paramType); ok {
+				params = append(params, implicitValue)
+				continue
+			}
+		}
+
+		if explicitIndex >= len(rawParams) {
+			params = append(params, reflect.Zero(paramType))
+			continue
+		}
+
+		paramValue, err := convertRpcParam(rawParams[explicitIndex], paramType)
+		if err != nil {
+			return nil, fmt.Errorf("param %d: %w", explicitIndex, err)
+		}
+		params = append(params, paramValue)
+		explicitIndex++
+	}
+
+	return params, nil
+}
+
+func convertRpcParam(raw any, targetType reflect.Type) (reflect.Value, error) {
+	if raw == nil {
+		return reflect.Zero(targetType), nil
+	}
+	rawValue := reflect.ValueOf(raw)
+	if rawValue.IsValid() && rawValue.Type().AssignableTo(targetType) {
+		return rawValue, nil
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return reflect.Value{}, fmt.Errorf("marshal param: %w", err)
+	}
+	if targetType.Kind() == reflect.Pointer {
+		targetValue := reflect.New(targetType.Elem())
+		if err := json.Unmarshal(encoded, targetValue.Interface()); err != nil {
+			return reflect.Value{}, fmt.Errorf("unmarshal to %s: %w", targetType, err)
+		}
+		return targetValue, nil
+	}
+	targetValue := reflect.New(targetType)
+	if err := json.Unmarshal(encoded, targetValue.Interface()); err != nil {
+		return reflect.Value{}, fmt.Errorf("unmarshal to %s: %w", targetType, err)
+	}
+	return targetValue.Elem(), nil
+}
+
+func parseRpcCallResult(resultValues []reflect.Value) (any, *controllerRPCError) {
+	var result any
+	var err error
+
+	if len(resultValues) > 0 {
+		result = resultValues[0].Interface()
+	}
+	if len(resultValues) == 1 && result != nil {
+		if errVal, ok := result.(error); ok {
+			result = nil
+			err = errVal
+		}
+	}
+	if len(resultValues) > 1 {
+		second := resultValues[1]
+		if second.Kind() == reflect.Interface && second.IsNil() {
+			// no-op
+		} else if second.Kind() == reflect.Pointer && second.IsNil() {
+			// no-op
+		} else if errVal, ok := second.Interface().(error); ok {
+			err = errVal
+		} else {
+			err = fmt.Errorf("rpc handler second return value must be error")
+		}
+	}
+	if err == nil {
+		return result, nil
+	}
+	var rpcErr *controllerRPCError
+	if errors.As(err, &rpcErr) {
+		return nil, rpcErr
+	}
+	return nil, internalRPCError(err)
 }
 
 func decodeRPCParams(raw json.RawMessage, out any) error {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -127,6 +128,71 @@ func TestWebConsole(t *testing.T) {
 		require.Equal(t, strings.Join([]string{"1,0.00", "2,0.25", "3,0.50", "4,0.75", "5,1.00", "\n"}, "\n"), string(result))
 	}()
 	wg.Wait()
+}
+
+func TestWebConsoleRpc(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	consoleID := "rpc-1234"
+	u := "ws" + strings.TrimPrefix(httpServerAddress, "http") + "/web/api/console/" + consoleID + "/data?token=" + at
+	ws, _, err := websocket.DefaultDialer.Dial(u, nil)
+	require.NoError(t, err)
+	defer ws.Close()
+
+	methodOK := "test.ws.rpc.ok"
+	methodErr := "test.ws.rpc.err"
+	httpServer.rpcController.RegisterJsonRpcHandler(methodOK, func(ctx context.Context, cons *WebConsole, name string) (map[string]any, error) {
+		return map[string]any{
+			"user":      cons.username,
+			"console":   cons.consoleId,
+			"has_ctx":   ctx != nil,
+			"echo_name": name,
+		}, nil
+	})
+	httpServer.rpcController.RegisterJsonRpcHandler(methodErr, func() error {
+		return fmt.Errorf("boom")
+	})
+	defer httpServer.rpcController.UnregisterJsonRpcHandler(methodOK)
+	defer httpServer.rpcController.UnregisterJsonRpcHandler(methodErr)
+
+	sendRPC := func(session string, method string, params []any) gjson.Result {
+		t.Helper()
+		req := eventbus.Event{
+			Type:    eventbus.EVT_RPC_REQ,
+			Session: session,
+			Rpc: &eventbus.RPC{
+				Ver:    "2.0",
+				ID:     7,
+				Method: method,
+				Params: params,
+			},
+		}
+		require.NoError(t, ws.WriteJSON(req))
+
+		_, body, err := ws.ReadMessage()
+		require.NoError(t, err)
+		result := gjson.ParseBytes(body)
+		require.Equal(t, eventbus.EVT_RPC_RSP, result.Get("type").String(), result.String())
+		require.Equal(t, session, result.Get("session").String(), result.String())
+		require.Equal(t, int64(7), result.Get("rpc.id").Int(), result.String())
+		require.Equal(t, "2.0", result.Get("rpc.jsonrpc").String(), result.String())
+		return result
+	}
+
+	rsp := sendRPC("ok", methodOK, []any{"neo"})
+	require.Equal(t, "sys", rsp.Get("rpc.result.user").String(), rsp.String())
+	require.Equal(t, consoleID, rsp.Get("rpc.result.console").String(), rsp.String())
+	require.True(t, rsp.Get("rpc.result.has_ctx").Bool(), rsp.String())
+	require.Equal(t, "neo", rsp.Get("rpc.result.echo_name").String(), rsp.String())
+
+	rsp = sendRPC("missing", "missing.method", []any{})
+	require.Equal(t, int64(-32601), rsp.Get("rpc.error.code").Int(), rsp.String())
+	require.Equal(t, "Method not found", rsp.Get("rpc.error.message").String(), rsp.String())
+
+	rsp = sendRPC("internal", methodErr, []any{})
+	require.Equal(t, int64(-32000), rsp.Get("rpc.error.code").Int(), rsp.String())
+	require.Equal(t, "boom", rsp.Get("rpc.error.message").String(), rsp.String())
 }
 
 func TestImageFiles(t *testing.T) {

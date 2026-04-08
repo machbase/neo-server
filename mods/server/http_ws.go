@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
@@ -34,9 +35,13 @@ type WebConsole struct {
 	lastFlushTime time.Time
 	flushPeriod   time.Duration
 	processor     WebConsoleProcessor
+	rpcController *service.Controller
 }
 
-func NewWebConsole(username string, consoleId string, conn *websocket.Conn) *WebConsole {
+func NewWebConsole(username string, consoleId string, conn *websocket.Conn, rpcController *service.Controller) *WebConsole {
+	if rpcController == nil {
+		rpcController = defaultJsonRpcController
+	}
 	ret := &WebConsole{
 		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
 		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
@@ -45,6 +50,7 @@ func NewWebConsole(username string, consoleId string, conn *websocket.Conn) *Web
 		conn:          conn,
 		lastFlushTime: time.Now(),
 		flushPeriod:   300 * time.Millisecond,
+		rpcController: rpcController,
 	}
 	eventbus.Default.SubscribeAsync(ret.topic, ret.Send, true)
 	return ret
@@ -168,61 +174,34 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 }
 
 func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
-	handler, ok := FindJsonRpcHandler(evt.Method)
 	rsp := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      evt.ID,
 	}
-	if ok {
-		params, bindErr := buildRpcCallParams(handler, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
-			switch {
-			case paramType == webConsoleType:
-				return reflect.ValueOf(cons), true
-			case paramType == contextType:
-				return reflect.ValueOf(ctx), true
-			default:
-				return reflect.Value{}, false
-			}
-		})
-		if bindErr != nil {
-			rsp["error"] = map[string]any{
-				"code":    -32602,
-				"message": bindErr.Error(),
-			}
-			cons.connMutex.Lock()
-			cons.conn.WriteJSON(map[string]any{
-				"type":    eventbus.EVT_RPC_RSP,
-				"session": session,
-				"rpc":     rsp,
-			})
-			cons.connMutex.Unlock()
-			return
+	result, rpcErr := cons.rpcController.CallJsonRpc(evt.Method, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+		switch {
+		case paramType == webConsoleType:
+			return reflect.ValueOf(cons), true
+		case paramType == contextType:
+			return reflect.ValueOf(ctx), true
+		default:
+			return reflect.Value{}, false
 		}
-		// call the handler
-		resultValues := reflect.ValueOf(handler).Call(params)
-		var result interface{}
-		var err error
-		if len(resultValues) > 0 {
-			result = resultValues[0].Interface()
-		}
-		if len(resultValues) > 1 {
-			if !resultValues[1].IsNil() {
-				err = resultValues[1].Interface().(error)
-			}
-		}
-		// send response
-		if err == nil {
-			rsp["result"] = result
-		} else {
-			rsp["error"] = map[string]any{
-				"code":    -32000,
-				"message": err.Error(),
-			}
-		}
+	})
+	if rpcErr == nil {
+		rsp["result"] = result
 	} else {
+		code := rpcErr.Code
+		message := rpcErr.Message
+		if code == -32603 {
+			code = -32000
+		}
+		if rpcErr.Code == -32601 {
+			message = "Method not found"
+		}
 		rsp["error"] = map[string]any{
-			"code":    -32601,
-			"message": "Method not found",
+			"code":    code,
+			"message": message,
 		}
 	}
 	cons.connMutex.Lock()

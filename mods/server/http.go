@@ -33,6 +33,7 @@ import (
 	"github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -89,9 +90,10 @@ type httpd struct {
 	bridgeRuntimeImpl bridge.RuntimeServer
 	pkgMgr            *pkgs.PkgManager
 
-	authServer *Server
-	tqlLoader  tql.Loader
-	serverFs   *ssfs.SSFS
+	authServer    *Server
+	rpcController *service.Controller
+	tqlLoader     tql.Loader
+	serverFs      *ssfs.SSFS
 
 	eulaPassed             bool
 	eulaFilePath           string
@@ -1316,7 +1318,7 @@ func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 		return
 	}
 
-	cons := NewWebConsole(claim.Subject, consoleId, conn)
+	cons := NewWebConsole(claim.Subject, consoleId, conn, svr.rpcController)
 	cons.Run()
 }
 

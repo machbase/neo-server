@@ -76,6 +76,7 @@ type Server struct {
 	pkgMgr *pkgs.PkgManager
 
 	serviceController *service.Controller
+	rpcController     *service.Controller
 
 	models model.Service
 
@@ -111,6 +112,7 @@ func NewServer(conf *Config) (*Server, error) {
 		Config:          *conf,
 		servicePorts:    make(map[string][]*model.ServicePort),
 		neoShellAccount: make(map[string]string),
+		rpcController:   &service.Controller{},
 	}, nil
 }
 
@@ -234,9 +236,6 @@ func (s *Server) Start() error {
 	if err := s.initServiceController(); err != nil {
 		return fmt.Errorf("service controller: %w", err)
 	}
-
-	// register JSON-RPC handlers
-	RegisterJsonRpcHandlers(s)
 
 	// http server
 	if err := s.startHttpServer(); err != nil {
@@ -1041,6 +1040,7 @@ func (s *Server) initServiceController() error {
 		return err
 	}
 	s.serviceController = ctrl
+	s.rpcController = ctrl
 	s.AddServicePort("servicectl", ctrl.Address())
 
 	util.AddShutdownHook(func() {
@@ -1050,7 +1050,53 @@ func (s *Server) initServiceController() error {
 	})
 
 	tql.SetServiceControllerAddress(ctrl.Address())
+
+	s.registerJsonRpcHandlers()
 	return nil
+}
+
+func (s *Server) registerJsonRpcHandlers() {
+	ctl := s.rpcController
+	if ctl == nil {
+		return
+	}
+	ctl.RegisterJsonRpcHandler("markdownRender", rpcMarkdownRender)
+	ctl.RegisterJsonRpcHandler("getServerInfo", s.getServerInfo)
+	ctl.RegisterJsonRpcHandler("getServicePorts", s.getServicePorts)
+	ctl.RegisterJsonRpcHandler("listShells", s.listShells)
+	ctl.RegisterJsonRpcHandler("addShell", s.addShell)
+	ctl.RegisterJsonRpcHandler("deleteShell", s.deleteShell)
+	ctl.RegisterJsonRpcHandler("listBridges", s.listBridges)
+	ctl.RegisterJsonRpcHandler("getBridge", s.getBridge)
+	ctl.RegisterJsonRpcHandler("addBridge", s.addBridge)
+	ctl.RegisterJsonRpcHandler("deleteBridge", s.deleteBridge)
+	ctl.RegisterJsonRpcHandler("testBridge", s.testBridge)
+	ctl.RegisterJsonRpcHandler("statsBridge", s.statsBridge)
+	ctl.RegisterJsonRpcHandler("execBridge", s.execBridge)
+	ctl.RegisterJsonRpcHandler("queryBridge", s.queryBridge)
+	ctl.RegisterJsonRpcHandler("fetchResultBridge", s.fetchResultBridge)
+	ctl.RegisterJsonRpcHandler("closeResultBridge", s.closeResultBridge)
+	ctl.RegisterJsonRpcHandler("listSSHKeys", s.listSSHKeys)
+	ctl.RegisterJsonRpcHandler("addSSHKey", s.addSSHKey)
+	ctl.RegisterJsonRpcHandler("deleteSSHKey", s.deleteSSHKey)
+	ctl.RegisterJsonRpcHandler("listKeys", s.listKeys)
+	ctl.RegisterJsonRpcHandler("genKey", s.genKey)
+	ctl.RegisterJsonRpcHandler("deleteKey", s.deleteKey)
+	ctl.RegisterJsonRpcHandler("getServerCertificate", s.getServerCertificate)
+	ctl.RegisterJsonRpcHandler("listSchedules", s.listSchedules)
+	ctl.RegisterJsonRpcHandler("addTimerSchedule", s.addTimerSchedule)
+	ctl.RegisterJsonRpcHandler("addSubscriberSchedule", s.addSubscriberSchedule)
+	ctl.RegisterJsonRpcHandler("deleteSchedule", s.deleteSchedule)
+	ctl.RegisterJsonRpcHandler("startSchedule", s.startSchedule)
+	ctl.RegisterJsonRpcHandler("stopSchedule", s.stopSchedule)
+	ctl.RegisterJsonRpcHandler("shutdownServer", s.Shutdown)
+	ctl.RegisterJsonRpcHandler("setHttpDebug", s.setHttpDebug)
+	ctl.RegisterJsonRpcHandler("listSessions", s.listSessions)
+	ctl.RegisterJsonRpcHandler("killSession", s.killSession)
+	ctl.RegisterJsonRpcHandler("statSession", s.statSession)
+	ctl.RegisterJsonRpcHandler("getSessionLimit", s.getSessionLimit)
+	ctl.RegisterJsonRpcHandler("setSessionLimit", s.setSessionLimit)
+	ctl.RegisterJsonRpcHandler("splitSqlStatements", s.splitSqlStatements)
 }
 
 // find most feasible MACH port from s.servicePorts and return it.
