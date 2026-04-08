@@ -64,6 +64,7 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 		sharedFDs:        map[int]*sharedFileHandle{},
 		sharedNextFD:     3,
 		jsonRpcHandlers:  map[string]any{},
+		llmSessions:      map[string]*llmSession{},
 	}
 	if ctl.backendDir == "/" {
 		ctl.backendDir = ""
@@ -81,6 +82,7 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 type Controller struct {
 	mu               sync.RWMutex
 	sharedMu         sync.RWMutex
+	llmMu            sync.RWMutex
 	jsonRpcMu        sync.RWMutex
 	jsonRpcInit      sync.Once
 	services         map[string]*Service
@@ -98,6 +100,7 @@ type Controller struct {
 	rpcWG            sync.WaitGroup
 	rpcLn            net.Listener
 	jsonRpcHandlers  map[string]any
+	llmSessions      map[string]*llmSession
 }
 
 func (ctl *Controller) loadSharedFS() error {

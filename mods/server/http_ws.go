@@ -38,6 +38,23 @@ type WebConsole struct {
 	rpcController *service.Controller
 }
 
+type webConsoleRpcNotifier struct {
+	cons *WebConsole
+}
+
+func (n *webConsoleRpcNotifier) NotifyJsonRpc(session string, payload map[string]any) error {
+	if n == nil || n.cons == nil {
+		return nil
+	}
+	n.cons.connMutex.Lock()
+	defer n.cons.connMutex.Unlock()
+	return n.cons.conn.WriteJSON(map[string]any{
+		"type":    eventbus.EVT_RPC_RSP,
+		"session": session,
+		"rpc":     payload,
+	})
+}
+
 func NewWebConsole(username string, consoleId string, conn *websocket.Conn, rpcController *service.Controller) *WebConsole {
 	if rpcController == nil {
 		rpcController = defaultJsonRpcController
@@ -174,6 +191,9 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 }
 
 func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
+	rpcCtx := service.WithJsonRpcNotificationWriter(ctx, &webConsoleRpcNotifier{cons: cons})
+	rpcCtx = service.WithJsonRpcSession(rpcCtx, session)
+
 	rsp := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      evt.ID,
@@ -183,7 +203,7 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 		case paramType == webConsoleType:
 			return reflect.ValueOf(cons), true
 		case paramType == contextType:
-			return reflect.ValueOf(ctx), true
+			return reflect.ValueOf(rpcCtx), true
 		default:
 			return reflect.Value{}, false
 		}

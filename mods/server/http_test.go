@@ -28,6 +28,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
+	shelllib "github.com/machbase/neo-server/v8/jsh/lib/shell"
+	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
@@ -193,6 +195,135 @@ func TestWebConsoleRpc(t *testing.T) {
 	rsp = sendRPC("internal", methodErr, []any{})
 	require.Equal(t, int64(-32000), rsp.Get("rpc.error.code").Int(), rsp.String())
 	require.Equal(t, "boom", rsp.Get("rpc.error.message").String(), rsp.String())
+}
+
+func TestWebConsoleRpcLLMEventSequence(t *testing.T) {
+	restoreLLM := service.SetLLMStreamFuncForTest(func(_ context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		tokens := []string{"sequence", " ", "ok"}
+		for _, tok := range tokens {
+			onToken(tok)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      "sequence ok",
+			InputTokens:  2,
+			OutputTokens: 2,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	})
+	t.Cleanup(restoreLLM)
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	consoleID := "rpc-llm-seq"
+	u := "ws" + strings.TrimPrefix(httpServerAddress, "http") + "/web/api/console/" + consoleID + "/data?token=" + at
+	ws, _, err := websocket.DefaultDialer.Dial(u, nil)
+	require.NoError(t, err)
+	defer ws.Close()
+
+	writeReq := func(session string, id int64, method string, params []any) {
+		t.Helper()
+		req := eventbus.Event{
+			Type:    eventbus.EVT_RPC_REQ,
+			Session: session,
+			Rpc: &eventbus.RPC{
+				Ver:    "2.0",
+				ID:     id,
+				Method: method,
+				Params: params,
+			},
+		}
+		require.NoError(t, ws.WriteJSON(req))
+	}
+
+	readUntilRsp := func(session string, id int64) gjson.Result {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			require.NoError(t, ws.SetReadDeadline(time.Now().Add(1*time.Second)))
+			_, body, err := ws.ReadMessage()
+			require.NoError(t, err)
+			msg := gjson.ParseBytes(body)
+			if msg.Get("type").String() != eventbus.EVT_RPC_RSP {
+				continue
+			}
+			if msg.Get("session").String() != session {
+				continue
+			}
+			if msg.Get("rpc.id").Int() == id {
+				return msg
+			}
+		}
+		t.Fatalf("response timeout for session=%s id=%d", session, id)
+		return gjson.Result{}
+	}
+
+	openSession := "llm-open"
+	writeReq(openSession, 1, "llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}})
+	openRsp := readUntilRsp(openSession, 1)
+	require.Equal(t, "2.0", openRsp.Get("rpc.jsonrpc").String(), openRsp.String())
+	sessionID := openRsp.Get("rpc.result.sessionId").String()
+	require.NotEmpty(t, sessionID, openRsp.String())
+
+	askSession := "llm-ask"
+	turnID := "turn-seq-1"
+	traceID := "trace-seq-1"
+	writeReq(askSession, 2, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    turnID,
+		"traceId":   traceID,
+		"payload": map[string]any{
+			"text": "sequence check",
+		},
+	}})
+
+	var askRsp gjson.Result
+	var eventSeq []int64
+	var eventNames []string
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		require.NoError(t, ws.SetReadDeadline(time.Now().Add(1*time.Second)))
+		_, body, readErr := ws.ReadMessage()
+		require.NoError(t, readErr)
+
+		msg := gjson.ParseBytes(body)
+		if msg.Get("type").String() != eventbus.EVT_RPC_RSP {
+			continue
+		}
+		if msg.Get("session").String() != askSession {
+			continue
+		}
+
+		if msg.Get("rpc.id").Int() == 2 {
+			askRsp = msg
+		}
+
+		if msg.Get("rpc.method").String() == "llm.event" {
+			if msg.Get("rpc.params.turnId").String() != turnID {
+				continue
+			}
+			eventSeq = append(eventSeq, msg.Get("rpc.params.seq").Int())
+			eventNames = append(eventNames, msg.Get("rpc.params.event").String())
+			if msg.Get("rpc.params.event").String() == "turn.completed" {
+				break
+			}
+		}
+	}
+
+	require.NotEmpty(t, askRsp.Raw)
+	require.True(t, askRsp.Get("rpc.result.accepted").Bool(), askRsp.String())
+	require.Equal(t, "streaming", askRsp.Get("rpc.result.status").String(), askRsp.String())
+
+	require.GreaterOrEqual(t, len(eventNames), 5, "events=%v", eventNames)
+	require.Equal(t, "turn.started", eventNames[0], "events=%v", eventNames)
+	require.Equal(t, "turn.block.started", eventNames[1], "events=%v", eventNames)
+	require.Equal(t, "turn.block.completed", eventNames[len(eventNames)-2], "events=%v", eventNames)
+	require.Equal(t, "turn.completed", eventNames[len(eventNames)-1], "events=%v", eventNames)
+
+	for i := 1; i < len(eventSeq); i++ {
+		require.Equal(t, eventSeq[i-1]+1, eventSeq[i], "seq=%v events=%v", eventSeq, eventNames)
+	}
 }
 
 func TestImageFiles(t *testing.T) {
