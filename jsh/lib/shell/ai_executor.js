@@ -78,7 +78,7 @@ function isRenderEnvelope(value) {
         typeof value === 'object' &&
         value.__agentRender === true &&
         value.schema === 'agent-render/v1' &&
-        value.renderer === 'advn.tui' &&
+        (value.renderer === 'viz.tui' || value.renderer === 'advn.tui') &&
         (value.mode === 'blocks' || value.mode === 'lines');
 }
 
@@ -115,15 +115,16 @@ function formatResults(results) {
             lines.push('Error: ' + r.error);
         } else if (isRenderEnvelope(r.value)) {
             var env = r.value;
+            var rendererName = String(env.renderer || 'viz.tui');
             if (env.mode === 'blocks') {
                 var count = Array.isArray(env.blocks) ? env.blocks.length : 0;
-                lines.push('[rendered advn.tui blocks: ' + count + ']');
+                lines.push('[rendered ' + rendererName + ' blocks: ' + count + ']');
             } else {
                 var lineCount = Array.isArray(env.lines) ? env.lines.length : 0;
-                lines.push('[rendered advn.tui lines: ' + lineCount + ']');
+                lines.push('[rendered ' + rendererName + ' lines: ' + lineCount + ']');
             }
         } else if (r.truncated && typeof r.value === 'string' && r.value.indexOf('[truncated:') === 0) {
-            lines.push('[render payload truncated: increase maxOutputBytes to render ADVN output]');
+            lines.push('[render payload truncated: increase maxOutputBytes to render viz output]');
             lines.push(r.value + '  [truncated]');
         } else if (r.type === 'print') {
             // console.log/println output captured during jsh execution.

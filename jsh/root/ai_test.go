@@ -113,7 +113,7 @@ const { isRenderEnvelope } = require('ai/executor');
 const good = {
   __agentRender: true,
   schema: 'agent-render/v1',
-  renderer: 'advn.tui',
+	renderer: 'viz.tui',
   mode: 'blocks',
   blocks: []
 };
@@ -159,7 +159,7 @@ const summary = formatResults([
     value: {
       __agentRender: true,
       schema: 'agent-render/v1',
-      renderer: 'advn.tui',
+	renderer: 'viz.tui',
       mode: 'lines',
       lines: ['line-a', 'line-b', 'line-c']
     }
@@ -175,7 +175,7 @@ console.println(summary);
 		t.Fatalf("ai/executor formatResults script failed: %v\n%s", err, output)
 	}
 
-	if !strings.Contains(output, "[rendered advn.tui lines: 3]") {
+	if !strings.Contains(output, "[rendered viz.tui lines: 3]") {
 		t.Fatalf("format summary missing ADVN render hint:\n%s", output)
 	}
 	if !strings.Contains(output, "done") {
@@ -195,7 +195,7 @@ const results = [
     value: {
       __agentRender: true,
       schema: 'agent-render/v1',
-      renderer: 'advn.tui',
+	renderer: 'viz.tui',
       mode: 'blocks',
       blocks: [{ type: 'summary', title: 'ADVN' }]
     }
@@ -206,7 +206,7 @@ const results = [
     value: {
       __agentRender: true,
       schema: 'agent-render/v1',
-      renderer: 'advn.tui',
+	renderer: 'viz.tui',
       mode: 'lines',
       lines: ['a', 'b']
     }
@@ -329,8 +329,8 @@ if (envs.length > 0) {
 	if lines[0] != "1" {
 		t.Fatalf("envelope count = %q, want 1", lines[0])
 	}
-	if lines[1] != "advn.tui" {
-		t.Fatalf("renderer = %q, want advn.tui", lines[1])
+	if lines[1] != "viz.tui" {
+		t.Fatalf("renderer = %q, want viz.tui", lines[1])
 	}
 	if lines[2] != "lines" {
 		t.Fatalf("mode = %q, want lines", lines[2])
@@ -365,7 +365,7 @@ const summary = formatResults(results);
 
 console.println(String(envs.length));
 console.println(summary.indexOf('render-start') >= 0 ? 'print-ok' : 'print-missing');
-console.println(summary.indexOf('[rendered advn.tui blocks:') >= 0 ? 'render-ok' : 'render-missing');
+console.println(summary.indexOf('[rendered viz.tui blocks:') >= 0 ? 'render-ok' : 'render-missing');
 `
 
 	output, err := runScript(workDir, nil, script)

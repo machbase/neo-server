@@ -198,7 +198,6 @@ func TestLLMRPCTurnAskValidationAndNotifications(t *testing.T) {
 		"payload":   map[string]any{"text": "hello neo"},
 	}}, ctx)
 	require.Nil(t, rpcErr)
-
 	require.Eventually(t, func() bool {
 		names := notifier.eventNames()
 		for _, n := range names {
@@ -477,7 +476,7 @@ func TestLLMRPCTurnAskErrorsAndStreamFailurePath(t *testing.T) {
 		Provider: "claude",
 		Model:    llmDefaultModelForClaude,
 		Messages: []shelllib.LLMChatMessage{{Role: "user", Content: " "}},
-	})
+	}, nil)
 
 	ctl.llmMu.RLock()
 	status := ctl.llmSessions[sessionID].TurnStatus["turn-fail"]
@@ -532,7 +531,7 @@ func TestStreamLLMSkeletonFailBranches(t *testing.T) {
 				Provider: "claude",
 				Model:    llmDefaultModelForClaude,
 				Messages: []shelllib.LLMChatMessage{{Role: "user", Content: "hello neo"}},
-			})
+			}, nil)
 
 			ctl.llmMu.RLock()
 			status := ctl.llmSessions[sessionID].TurnStatus["turn-fail"]
@@ -611,6 +610,66 @@ func TestLLMRPCTurnAskHistoryAndSystemPrompt(t *testing.T) {
 	require.Len(t, history, 4)
 	require.Equal(t, "second question", strings.TrimSpace(history[2].Content))
 	require.Equal(t, "second answer", history[3].Content)
+}
+
+func TestLLMRPCTurnAskClientContextAppendedToSystemPrompt(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	var capturedReq shelllib.LLMStreamRequest
+	prev := llmStreamFunc
+	llmStreamFunc = func(_ context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		capturedReq = req
+		if onToken != nil {
+			onToken("ok")
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      "ok",
+			InputTokens:  1,
+			OutputTokens: 1,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-client-context")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-client-context-1",
+		"traceId":   "trace-client-context-1",
+		"payload": map[string]any{
+			"text": "draw the result",
+			"clientContext": map[string]any{
+				"surface":       "web-remote",
+				"transport":     "websocket",
+				"renderTargets": []any{"markdown", "agent-render/v1", "vizspec/v1"},
+				"filePolicy":    "explicit-only",
+			},
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	require.Contains(t, capturedReq.SystemPrompt, "client.surface: web-remote")
+	require.Contains(t, capturedReq.SystemPrompt, "client.transport: websocket")
+	require.Contains(t, capturedReq.SystemPrompt, "client.renderTargets: markdown, agent-render/v1, vizspec/v1")
+	require.Contains(t, capturedReq.SystemPrompt, "Only save files when the user explicitly asks to save or export a file.")
 }
 
 func TestLLMTurnFailedPayloadNormalization(t *testing.T) {

@@ -15,6 +15,7 @@ type Options struct {
 	MaxRows        int
 	TimeoutMs      int64
 	MaxOutputBytes int
+	ClientContext  map[string]any
 }
 
 type Result map[string]any
@@ -39,6 +40,9 @@ func ExecuteWithFSTabs(ctx context.Context, tabs engine.FSTabs, code string, opt
 		"maxRows":        opts.MaxRows,
 		"timeoutMs":      opts.TimeoutMs,
 		"maxOutputBytes": opts.MaxOutputBytes,
+	}
+	if len(opts.ClientContext) > 0 {
+		optMap["clientContext"] = opts.ClientContext
 	}
 	codeJSON, _ := json.Marshal(code)
 	optJSON, _ := json.Marshal(optMap)

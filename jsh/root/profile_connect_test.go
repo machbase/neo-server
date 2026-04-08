@@ -114,8 +114,8 @@ func TestAgentProfileVizLinesReturnsRenderEnvelope(t *testing.T) {
 	if env["schema"] != "agent-render/v1" {
 		t.Fatalf("schema = %v, want agent-render/v1", env["schema"])
 	}
-	if env["renderer"] != "advn.tui" {
-		t.Fatalf("renderer = %v, want advn.tui", env["renderer"])
+	if env["renderer"] != "viz.tui" {
+		t.Fatalf("renderer = %v, want viz.tui", env["renderer"])
 	}
 	if env["mode"] != "lines" {
 		t.Fatalf("mode = %v, want lines", env["mode"])

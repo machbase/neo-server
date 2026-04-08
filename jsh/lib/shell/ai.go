@@ -1175,7 +1175,7 @@ func findHostEditor() string {
 // structured JSON result objects emitted by AgentRenderer.
 //
 // Signature: ai.exec(code [, options]) → [{ok, type, value, elapsedMs, ...}]
-// options: { readOnly, maxRows, timeoutMs, maxOutputBytes }
+// options: { readOnly, maxRows, timeoutMs, maxOutputBytes, clientContext }
 //
 // Profile.Startup runs before eval so globalThis.agent (db, schema, runtime)
 // is available. Because this uses the same goja runtime as the caller, the
@@ -1209,6 +1209,9 @@ func (m *aiModule) jsExecJsh(call goja.FunctionCall) goja.Value {
 				opts.MaxOutputBytes = int(n)
 			}
 		}
+		if v, ok := rawOpts["clientContext"].(map[string]any); ok {
+			opts.ClientContext = v
+		}
 	}
 
 	results, err := ExecAgentCode(m.rt, code, opts)
@@ -1232,6 +1235,7 @@ type AgentExecOptions struct {
 	MaxRows        int
 	TimeoutMs      int64
 	MaxOutputBytes int
+	ClientContext  map[string]any
 }
 
 func normalizeAgentExecOptions(opts AgentExecOptions) AgentExecOptions {
@@ -1259,6 +1263,7 @@ func ExecAgentCode(rt *goja.Runtime, code string, opts AgentExecOptions) ([]map[
 		ReadOnly:       opts.ReadOnly,
 		MaxRows:        opts.MaxRows,
 		MaxOutputBytes: opts.MaxOutputBytes,
+		ClientContext:  opts.ClientContext,
 	}
 	cfg := defaultReplConfig()
 	cfg.Profile = agentReplProfileWith(agentCfg)

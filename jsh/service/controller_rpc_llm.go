@@ -118,18 +118,113 @@ type llmSessionResetResponse struct {
 }
 
 type llmTurnAskPayload struct {
-	Text               string  `json:"text"`
-	Provider           string  `json:"provider,omitempty"`
-	Model              string  `json:"model,omitempty"`
-	SystemPrompt       string  `json:"systemPrompt,omitempty"`
-	MaxTokens          int     `json:"maxTokens,omitempty"`
-	Temperature        float64 `json:"temperature,omitempty"`
-	AutoExecute        *bool   `json:"autoExecute,omitempty"`
-	ExecReadOnly       *bool   `json:"execReadOnly,omitempty"`
-	ExecMaxRows        int     `json:"execMaxRows,omitempty"`
-	ExecTimeoutMs      int64   `json:"execTimeoutMs,omitempty"`
-	ExecMaxOutputBytes int     `json:"execMaxOutputBytes,omitempty"`
-	ExecMaxRounds      int     `json:"execMaxRounds,omitempty"`
+	Text               string            `json:"text"`
+	Provider           string            `json:"provider,omitempty"`
+	Model              string            `json:"model,omitempty"`
+	SystemPrompt       string            `json:"systemPrompt,omitempty"`
+	ClientContext      *llmClientContext `json:"clientContext,omitempty"`
+	MaxTokens          int               `json:"maxTokens,omitempty"`
+	Temperature        float64           `json:"temperature,omitempty"`
+	AutoExecute        *bool             `json:"autoExecute,omitempty"`
+	ExecReadOnly       *bool             `json:"execReadOnly,omitempty"`
+	ExecMaxRows        int               `json:"execMaxRows,omitempty"`
+	ExecTimeoutMs      int64             `json:"execTimeoutMs,omitempty"`
+	ExecMaxOutputBytes int               `json:"execMaxOutputBytes,omitempty"`
+	ExecMaxRounds      int               `json:"execMaxRounds,omitempty"`
+}
+
+type llmClientContext struct {
+	Surface       string   `json:"surface,omitempty"`
+	Transport     string   `json:"transport,omitempty"`
+	RenderTargets []string `json:"renderTargets,omitempty"`
+	FilePolicy    string   `json:"filePolicy,omitempty"`
+	BinaryInline  *bool    `json:"binaryInline,omitempty"`
+}
+
+func (ctx *llmClientContext) isEmpty() bool {
+	if ctx == nil {
+		return true
+	}
+	return strings.TrimSpace(ctx.Surface) == "" &&
+		strings.TrimSpace(ctx.Transport) == "" &&
+		len(ctx.RenderTargets) == 0 &&
+		strings.TrimSpace(ctx.FilePolicy) == "" &&
+		ctx.BinaryInline == nil
+}
+
+func (ctx *llmClientContext) toMap() map[string]any {
+	if ctx == nil || ctx.isEmpty() {
+		return nil
+	}
+	out := map[string]any{}
+	if s := strings.TrimSpace(ctx.Surface); s != "" {
+		out["surface"] = s
+	}
+	if s := strings.TrimSpace(ctx.Transport); s != "" {
+		out["transport"] = s
+	}
+	if len(ctx.RenderTargets) > 0 {
+		targets := make([]string, 0, len(ctx.RenderTargets))
+		for _, one := range ctx.RenderTargets {
+			trimmed := strings.TrimSpace(one)
+			if trimmed == "" {
+				continue
+			}
+			targets = append(targets, trimmed)
+		}
+		if len(targets) > 0 {
+			out["renderTargets"] = targets
+		}
+	}
+	if s := strings.TrimSpace(ctx.FilePolicy); s != "" {
+		out["filePolicy"] = s
+	}
+	if ctx.BinaryInline != nil {
+		out["binaryInline"] = *ctx.BinaryInline
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildLLMClientContextPromptExtra(ctx *llmClientContext) string {
+	if ctx == nil || ctx.isEmpty() {
+		return ""
+	}
+	lines := []string{"Current client context for generated answers and jsh code:"}
+	if s := strings.TrimSpace(ctx.Surface); s != "" {
+		lines = append(lines, "- client.surface: "+s)
+	}
+	if s := strings.TrimSpace(ctx.Transport); s != "" {
+		lines = append(lines, "- client.transport: "+s)
+	}
+	if len(ctx.RenderTargets) > 0 {
+		targets := make([]string, 0, len(ctx.RenderTargets))
+		for _, one := range ctx.RenderTargets {
+			trimmed := strings.TrimSpace(one)
+			if trimmed == "" {
+				continue
+			}
+			targets = append(targets, trimmed)
+		}
+		if len(targets) > 0 {
+			lines = append(lines, "- client.renderTargets: "+strings.Join(targets, ", "))
+		}
+	}
+	if s := strings.TrimSpace(ctx.FilePolicy); s != "" {
+		lines = append(lines, "- client.filePolicy: "+s)
+	}
+	if ctx.BinaryInline != nil {
+		lines = append(lines, fmt.Sprintf("- client.binaryInline: %t", *ctx.BinaryInline))
+	}
+	lines = append(lines,
+		"",
+		"Choose outputs that match the client context.",
+		"When the client supports renderable outputs such as agent-render/v1 or vizspec/v1, prefer returning renderable objects over writing files.",
+		"Only save files when the user explicitly asks to save or export a file.",
+	)
+	return strings.Join(lines, "\n")
 }
 
 type llmExecPolicy struct {
@@ -405,9 +500,14 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 	turnID := req.TurnID
 	traceID := req.TraceID
 	maxTokens := req.Payload.MaxTokens
+	extraContext := buildLLMClientContextPromptExtra(req.Payload.ClientContext)
 	systemPrompt := shelllib.ResolveSystemPrompt(shelllib.PromptOptions{
 		SystemPrompt: req.Payload.SystemPrompt,
+		ExtraContext: extraContext,
 	})
+	if strings.TrimSpace(req.Payload.SystemPrompt) != "" && strings.TrimSpace(extraContext) != "" {
+		systemPrompt = strings.TrimSpace(req.Payload.SystemPrompt) + "\n\n## context\n\n" + strings.TrimSpace(extraContext)
+	}
 	messages := make([]shelllib.LLMChatMessage, 0, len(sess.History)+1)
 	messages = append(messages, sess.History...)
 	messages = append(messages, shelllib.LLMChatMessage{Role: "user", Content: text})
@@ -421,7 +521,7 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 		SystemPrompt: systemPrompt,
 		MaxTokens:    maxTokens,
 		Messages:     messages,
-	}, policy)
+	}, req.Payload.ClientContext.toMap(), policy)
 
 	return llmTurnAskResponse{Accepted: true, Status: "streaming"}, nil
 }
@@ -539,7 +639,7 @@ func llmSessionWithinReconnectGrace(sess *llmSession, now time.Time) bool {
 	return elapsed > llmSessionIdleTimeout && elapsed <= llmSessionIdleTimeout+llmSessionReconnectGrace
 }
 
-func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, policyOpt ...llmExecPolicy) {
+func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, clientContext map[string]any, policyOpt ...llmExecPolicy) {
 	startedAt := time.Now().UnixMilli()
 	policy := defaultLLMExecPolicy()
 	if len(policyOpt) > 0 {
@@ -644,7 +744,7 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 	if strings.TrimSpace(fullText) == "" {
 		fullText = "(empty)"
 	}
-	completedBlocks, historyTail := ctl.buildTurnCompletedBlocks(ctx, sessionID, turnID, traceID, streamReq, fullText, policy)
+	completedBlocks, historyTail := ctl.buildTurnCompletedBlocks(ctx, sessionID, turnID, traceID, streamReq, fullText, clientContext, policy)
 	if len(historyTail) == 0 {
 		historyTail = []shelllib.LLMChatMessage{{Role: "assistant", Content: fullText}}
 	}
@@ -694,7 +794,7 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 	ctl.finishLLMTurn(sessionID, turnID, "completed")
 }
 
-func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, initialText string, policy llmExecPolicy) ([]map[string]any, []shelllib.LLMChatMessage) {
+func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, initialText string, clientContext map[string]any, policy llmExecPolicy) ([]map[string]any, []shelllib.LLMChatMessage) {
 	blocks := []map[string]any{{"type": "text", "text": initialText}}
 	historyTail := []shelllib.LLMChatMessage{}
 	currentText := initialText
@@ -734,6 +834,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				MaxRows:        policy.MaxRows,
 				TimeoutMs:      policy.TimeoutMs,
 				MaxOutputBytes: policy.MaxOutputBytes,
+				ClientContext:  clientContext,
 			})
 			if err != nil {
 				errText := "Code execution error: " + err.Error()
@@ -937,7 +1038,7 @@ func isAgentRenderEnvelope(value any) bool {
 	if !renderFlag {
 		return false
 	}
-	if schema != "agent-render/v1" || renderer != "advn.tui" {
+	if schema != "agent-render/v1" || (renderer != "viz.tui" && renderer != "advn.tui") {
 		return false
 	}
 	return mode == "blocks" || mode == "lines"

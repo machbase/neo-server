@@ -5,6 +5,12 @@ The agent profile exposes a global `agent` object with safe, limit-enforced data
 
 ## `agent.db` — Database helper
 
+> **IMPORTANT**: Schema objects are **UPPERCASE** (`NAME`, `TYPE`, `FLAG`, ...).
+> Query result field names follow SQL projection rules:
+> - Explicit names/aliases are preserved as written (for example, `SELECT name, time AS MyTime ...` returns `name` and `MyTime`).
+> - Implicit names (for example, `SELECT * FROM table`) are returned in **UPPERCASE**.
+> Prefer uppercase access for system/schema fields (for example, `t.NAME`, `t.TYPE`, `row.COLUMN_NAME`).
+
 ```jsh
 // Lazy-connects on first use. Reads connection config from /proc/share/db.json
 // or falls back to 127.0.0.1:5656 sys/manager.
@@ -30,23 +36,30 @@ agent.schema.describe(table)   // → [{NAME, TYPE, LENGTH, FLAG}, ...] — tabl
                                //   TYPE and FLAG are integer codes from M$SYS_COLUMNS
 ```
 
-> **IMPORTANT**: Schema objects are **UPPERCASE** (`NAME`, `TYPE`, `FLAG`, ...).
-> Query result field names follow SQL projection rules:
-> - Explicit names/aliases are preserved as written (for example, `SELECT name, time AS MyTime ...` returns `name` and `MyTime`).
-> - Implicit names (for example, `SELECT * FROM table`) are returned in **UPPERCASE**.
-> Prefer uppercase access for system/schema fields (for example, `t.NAME`, `t.TYPE`, `row.COLUMN_NAME`).
-
 ## `agent.runtime` — Runtime metadata
 
 ```jsh
 agent.runtime.maxRows         // number — current row limit
 agent.runtime.maxOutputBytes  // number — current output byte limit
 agent.runtime.readOnly        // boolean — whether exec is blocked
-agent.runtime.provider        // string — active LLM provider name
-agent.runtime.model           // string — active LLM model name
+agent.runtime.clientContext   // object|null — caller surface/transport/render target hints, when provided
 ```
 
-## `agent.viz` — ADVN TUI rendering envelope
+Example shape:
+
+```jsh
+// {
+//   surface: 'cli-tui' | 'web-remote',
+//   transport: 'stdio' | 'websocket',
+//   renderTargets: ['markdown', 'agent-render/v1', 'vizspec/v1'],
+//   filePolicy: 'allow' | 'explicit-only' | 'deny',
+//   binaryInline: false,
+// }
+```
+
+When `agent.runtime.clientContext` indicates a remote websocket client with render targets such as `agent-render/v1` or `vizspec/v1`, prefer returning renderable objects and text to the client instead of saving files. Only write files when the user explicitly asks to save or export a file.
+
+## `agent.viz` — vizspec rendering envelope
 
 ```jsh
 // High-level API (RECOMMENDED): build and render from a plain row array.
@@ -56,15 +69,15 @@ agent.runtime.model           // string — active LLM model name
 // options.width, options.height, options.title, options.timeformat, options.tz
 return agent.viz.fromRows(data.rows, { x: 'TIME', y: ['LAT', 'LON'], width: 80, height: 15 });
 
-// Low-level API: pass a full ADVN spec object.
+// Low-level API: pass a full vizspec spec object.
 agent.viz.blocks(spec, options?)
 agent.viz.lines(spec, options?)
 agent.viz.render(spec, options?)  // dispatches by options.mode ('blocks'|'lines', default: blocks)
 ```
 
-### ADVN spec structure (for low-level API)
+### vizspec structure (for low-level API)
 
-An ADVN spec MUST have `version: 1` and a `series` array.
+A vizspec MUST have `version: 1` and a `series` array.
 Each series MUST have an `id` and `representation.kind`.
 
 **Valid `representation.kind` values** (the ONLY allowed values):
@@ -119,13 +132,15 @@ return agent.viz.fromRows(data.rows, {
 // {
 //   __agentRender: true,
 //   schema: 'agent-render/v1',
-//   renderer: 'advn.tui',
+//   renderer: 'viz.tui',    // current renderer id
 //   mode: 'blocks' | 'lines',
 //   blocks?: [...],
 //   lines?: [...],
 //   meta?: { title, seriesCount, lineCount | blockCount }
 // }
 ```
+
+Treat this as the viz rendering envelope used by the client. Use `viz.tui` as the canonical renderer id. `advn.tui` may still appear as a legacy alias in older outputs.
 
 ## `agent.modules` — Online JSH module manuals
 
@@ -200,7 +215,8 @@ When the user asks you to query data, write jsh code that:
 3. Handles `result.truncated === true` by noting that more rows exist.
 4. Wraps executable code in an IIFE so repeated execution does not redeclare top-level variables.
 5. Avoids creating top-level `const`/`let`/`class` declarations unless persistent global state is explicitly required.
-6. When visualization is requested, prefer `agent.viz.fromRows(data.rows, { x: 'FIELD', y: [...] })` for simple time-series data. For advanced specs use `agent.viz.blocks(spec)` or `agent.viz.lines(spec)` with a properly constructed ADVN spec (see `agent.viz` section above for valid `representation.kind` values).
+6. When visualization is requested, prefer `agent.viz.fromRows(data.rows, { x: 'FIELD', y: [...] })` for simple time-series data. For advanced specs use `agent.viz.blocks(spec)` or `agent.viz.lines(spec)` with a properly constructed vizspec (see `agent.viz` section above for valid `representation.kind` values).
+7. If `agent.runtime.clientContext` is present, choose an output form that matches it. For remote websocket clients, prefer returning renderable envelopes or text directly to the client. Do not save files unless the user explicitly asks for a saved/exported artifact.
 
 Example:
 ```jsh-run

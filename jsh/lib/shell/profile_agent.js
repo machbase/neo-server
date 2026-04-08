@@ -105,6 +105,8 @@ const _agentConfig = (typeof globalThis.__agentConfig !== 'undefined' && globalT
 const _readOnly = _agentConfig ? Boolean(_agentConfig.readOnly) : false;
 const _maxRows = (_agentConfig && _agentConfig.maxRows > 0) ? _agentConfig.maxRows : DEFAULT_MAX_ROWS;
 const _maxOutputBytes = (_agentConfig && _agentConfig.maxOutputBytes > 0) ? _agentConfig.maxOutputBytes : 65536;
+const _clientContext = (_agentConfig && _isPlainObject(_agentConfig.clientContext))
+    ? JSON.parse(JSON.stringify(_agentConfig.clientContext)) : null;
 
 // _loadConfig reads a JSON config file, falling back to DEFAULT_CONFIG.
 function _loadConfig(path) {
@@ -824,7 +826,7 @@ function _buildRenderEnvelope(mode, payload, meta) {
     const envelope = {
         __agentRender: true,
         schema: 'agent-render/v1',
-        renderer: 'advn.tui',
+        renderer: 'viz.tui',
         mode: mode,
         meta: meta || {},
     };
@@ -878,7 +880,7 @@ class AgentVizHelper {
             };
             return _buildRenderEnvelope('blocks', blocks, meta);
         } catch (err) {
-            throw new Error('advn render failed: ' + (err && err.message ? err.message : String(err)));
+            throw new Error('viz render failed: ' + (err && err.message ? err.message : String(err)));
         }
     }
 
@@ -912,12 +914,12 @@ class AgentVizHelper {
             };
             return _buildRenderEnvelope('lines', lines, meta);
         } catch (err) {
-            throw new Error('advn render failed: ' + (err && err.message ? err.message : String(err)));
+            throw new Error('viz render failed: ' + (err && err.message ? err.message : String(err)));
         }
     }
 
     // fromRows(rows, options) — convenience high-level API.
-    // Builds a raw-point ADVN spec from a plain array of row objects and renders it.
+    // Builds a raw-point vizspec from a plain array of row objects and renders it.
     //
     // options:
     //   x        (string, required)  — field name for the X axis (e.g. 'TIME')
@@ -989,7 +991,7 @@ class AgentVizHelper {
             '  optional: options.y (string or string[] of y field names — auto-detected if omitted)',
             '  optional: options.mode ("blocks"|"lines", default "lines")',
             'options: mode, compact, rows, width, height, series, timeformat, tz, title',
-            'Returns: { __agentRender:true, schema:"agent-render/v1", renderer:"advn.tui", ... }',
+            'Returns: { __agentRender:true, schema:"agent-render/v1", renderer:"viz.tui", ... }',
         ].join('\n');
     }
 }
@@ -1021,6 +1023,7 @@ const _helpText = {
         '',
         '  agent.runtime.capabilities()      List allowed operation categories',
         '  agent.runtime.limits()            Current resource limits (maxRows, maxOutputBytes, readOnly)',
+        '  agent.runtime.clientContext       Caller surface/transport/render target hints, when provided',
         '',
         '  agent.modules.list([options])     List module manuals with URLs (online + builtin)',
         '  agent.modules.index([force|options]) Fetch index.md and parsed module names',
@@ -1063,6 +1066,7 @@ const agent = {
     viz: _viz,
 
     runtime: {
+        clientContext: _clientContext,
         // capabilities() — list allowed operation categories for this profile.
         capabilities: function () {
             const caps = ['db.read', 'db.schema'];
