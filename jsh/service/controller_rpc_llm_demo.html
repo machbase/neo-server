@@ -1,0 +1,2057 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web AI Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-0: #f4f7f2;
+      --bg-1: #e7efe4;
+      --bg-2: #f8f2e9;
+      --ink: #132018;
+      --ink-soft: #3a4c40;
+      --accent: #1f8f63;
+      --accent-2: #cc6a2d;
+      --line: #c8d5c8;
+      --ok: #1f8f63;
+      --warn: #cc6a2d;
+      --err: #b52424;
+      --card: #fcfffbdd;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --sans: "Space Grotesk", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      --panel-height: min(78vh, 760px);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 10%, #d9f1e5 0%, transparent 30%),
+        radial-gradient(circle at 85% 0%, #ffe8d0 0%, transparent 26%),
+        linear-gradient(150deg, var(--bg-0), var(--bg-1) 55%, var(--bg-2));
+      min-height: 100vh;
+    }
+
+    .wrap {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .hero {
+      background: linear-gradient(130deg, #ffffffbf, #f8fff8cf);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px 20px;
+      box-shadow: 0 10px 25px #00000014;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      letter-spacing: 0.01em;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .layout > .card {
+      height: var(--panel-height);
+    }
+
+    .layout > .card:first-child {
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .layout > .card:first-child .body {
+      overflow: auto;
+      min-height: 0;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 8px 22px #00000010;
+      overflow: hidden;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 0.95rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #ffffffa8;
+    }
+
+    .card .body {
+      padding: 12px;
+    }
+
+    .field {
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--ink-soft);
+      margin-bottom: 6px;
+      letter-spacing: 0.03em;
+    }
+
+    .field input, .field textarea, .field select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 0.92rem;
+      outline: none;
+    }
+
+    .field input:focus, .field textarea:focus, .field select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px #1f8f6324;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-family: var(--sans);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: transform .12s ease, box-shadow .12s ease;
+      color: white;
+      background: var(--accent);
+      box-shadow: 0 6px 12px #1f8f6330;
+    }
+
+    button.secondary {
+      background: #51695a;
+      box-shadow: 0 6px 12px #00000024;
+    }
+
+    button.warn {
+      background: var(--accent-2);
+      box-shadow: 0 6px 12px #cc6a2d33;
+    }
+
+    button:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    .status {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      border: 1px solid var(--line);
+      background: #ffffffc7;
+      color: var(--ink-soft);
+      min-height: 36px;
+    }
+
+    .status.ok { border-color: #8ad4b3; color: #166144; }
+    .status.warn { border-color: #f0c8a8; color: #8a4b1f; }
+    .status.err { border-color: #efb0b0; color: #8a1f1f; }
+
+    .kv {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 0.82rem;
+    }
+
+    .kv div {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 8px;
+      align-items: baseline;
+      border-bottom: 1px dashed #d8e4d8;
+      padding-bottom: 4px;
+    }
+
+    .kv .k { color: var(--ink-soft); }
+    .kv .v { font-family: var(--mono); overflow-wrap: anywhere; }
+
+    .chat-shell {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .feed {
+      padding: 14px;
+      overflow: auto;
+      background:
+        linear-gradient(180deg, #fbfff9, #f7fbf3 40%, #fffdf9);
+    }
+
+    .msg {
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      animation: rise .2s ease;
+    }
+
+    .msg.user {
+      border-color: #b9dbc8;
+      background: #eefcf3;
+    }
+
+    .msg.assistant {
+      border-color: #f1d9c6;
+      background: #fff8f1;
+    }
+
+    .msg .meta {
+      font-size: 0.75rem;
+      color: var(--ink-soft);
+      margin-bottom: 6px;
+      font-family: var(--mono);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #f0c8a8;
+      background: #fff1e6;
+      color: #8a4b1f;
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .md-block {
+      margin: 8px 0;
+      border: 1px solid #d5e2d5;
+      background: #f9fcf8;
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .md-block .label {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: #3a4c40;
+      margin-bottom: 6px;
+    }
+
+    .md-block .content {
+      font-size: 0.9rem;
+      line-height: 1.55;
+      color: #1a2b1f;
+    }
+
+    .md-block .content.text-content {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      tab-size: 2;
+      font-family: var(--mono);
+      font-size: 0.86rem;
+    }
+
+    .md-block .content h1,
+    .md-block .content h2,
+    .md-block .content h3,
+    .md-block .content h4 {
+      margin: 0.65em 0 0.4em;
+    }
+
+    .md-block .content p {
+      margin: 0.5em 0;
+    }
+
+    .md-block .content pre {
+      margin: 0.6em 0;
+    }
+
+    .md-block .content code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+    }
+
+    .md-block .content table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #d7e1d7;
+      margin: 0.6em 0;
+      background: #ffffff;
+    }
+
+    .md-block .content th,
+    .md-block .content td {
+      border: 1px solid #d7e1d7;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .md-block .content th {
+      background: #f4f8f4;
+      font-weight: 600;
+    }
+
+    .viz-host {
+      margin-top: 8px;
+      border: 1px solid #d5e2d5;
+      background: #f9fcf8;
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .viz-host .label {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: #3a4c40;
+      margin-bottom: 6px;
+    }
+
+    .viz-host .canvas-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid #e1ebe1;
+      border-radius: 6px;
+      background: #ffffff;
+      padding: 4px;
+    }
+
+    .msg pre {
+      margin: 8px 0;
+      border: 1px solid #d5e2d5;
+      background: #f6fbf7;
+      border-radius: 8px;
+      padding: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--mono);
+      font-size: 0.83rem;
+      color: #193024;
+    }
+
+    .msg details {
+      margin-top: 6px;
+      border: 1px dashed #d8c8b8;
+      border-radius: 8px;
+      padding: 6px;
+      background: #fffdf8;
+    }
+
+    .msg summary {
+      cursor: pointer;
+      color: #7d4a24;
+      font-weight: 500;
+    }
+
+    .debug-panel {
+      margin-top: 8px;
+      border: 1px dashed #d8c8b8;
+      border-radius: 8px;
+      background: #fffdf8;
+      padding: 6px;
+    }
+
+    .debug-panel summary {
+      cursor: pointer;
+      color: #7d4a24;
+      font-weight: 500;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+    }
+
+    .debug-panel .debug-body {
+      margin-top: 6px;
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      background: #ffffffde;
+    }
+
+    .composer textarea {
+      width: 100%;
+      min-height: 90px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      resize: vertical;
+      font-family: var(--sans);
+      font-size: 0.94rem;
+      outline: none;
+    }
+
+    .composer textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px #1f8f6324;
+    }
+
+    .hint {
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: var(--ink-soft);
+      line-height: 1.45;
+    }
+
+    .thinking-indicator {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid #d6e2d8;
+      background: #f5faf6;
+      color: #41594b;
+      font-size: 0.8rem;
+      font-family: var(--mono);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s ease;
+    }
+
+    .thinking-indicator.active {
+      display: inline-flex;
+      opacity: 1;
+    }
+
+    .thinking-indicator.processing {
+      border-color: #f0c8a8;
+      background: #fff8f1;
+      color: #8a4b1f;
+    }
+
+    .composer-status {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+      min-height: 0;
+    }
+
+    .thinking-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    .logbox {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #f6faf6;
+      max-height: 180px;
+      overflow: auto;
+      padding: 8px;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: #2f4d3d;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    @keyframes rise {
+      from { opacity: .4; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0% { opacity: .35; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1); }
+      100% { opacity: .35; transform: scale(0.8); }
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .layout > .card { height: auto; }
+      .chat-shell {
+        height: min(72vh, 620px);
+        min-height: 520px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Web AI Demo (JSON-RPC + WS)</h1>
+      <p>Login -> WebSocket -> llm.session.open -> llm.turn.ask -> llm.event streaming</p>
+    </section>
+
+    <div class="layout">
+      <section class="card">
+        <h2>Connection</h2>
+        <div class="body">
+          <div class="field">
+            <label for="endpoint">Endpoint</label>
+            <input id="endpoint" value="http://127.0.0.1:5654" />
+          </div>
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" value="sys" />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" type="password" value="manager" />
+          </div>
+          <div class="field">
+            <label for="consoleId">Console ID</label>
+            <input id="consoleId" value="web-ai-demo" />
+          </div>
+          <div class="field">
+            <label for="provider">Provider</label>
+            <input id="provider" value="claude" />
+          </div>
+          <div class="field">
+            <label for="model">Model</label>
+            <input id="model" value="claude-opus-4-5" />
+          </div>
+          <div class="field">
+            <label for="vizFormat">Viz Format</label>
+            <select id="vizFormat">
+              <option value="auto" selected>auto</option>
+              <option value="echarts">echarts</option>
+              <option value="svg">svg</option>
+              <option value="png">png</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="vizspecNormalize">Vizspec Normalize</label>
+            <select id="vizspecNormalize">
+              <option value="rpc" selected>rpc(vizspec.render)</option>
+              <option value="client">client-only</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button id="btnLogin">Login</button>
+            <button id="btnConnect" class="secondary">Connect WS</button>
+            <button id="btnOpen" class="secondary">Open Session</button>
+            <button id="btnReset" class="warn">Reset Session</button>
+          </div>
+
+          <div id="status" class="status">Ready</div>
+
+          <div class="kv">
+            <div><span class="k">AccessToken</span><span class="v" id="vToken">-</span></div>
+            <div><span class="k">SessionId</span><span class="v" id="vSession">-</span></div>
+            <div><span class="k">WS</span><span class="v" id="vWs">disconnected</span></div>
+          </div>
+
+          <div class="logbox" id="logbox"></div>
+        </div>
+      </section>
+
+      <section class="card chat-shell">
+        <div id="feed" class="feed"></div>
+        <div class="composer">
+          <div class="composer-status">
+            <div id="thinkingIndicator" class="thinking-indicator" aria-live="polite">
+              <span class="thinking-dot"></span>
+              <span id="thinkingText">Thinking...</span>
+            </div>
+            <div id="processingIndicator" class="thinking-indicator processing" aria-live="polite">
+              <span class="thinking-dot"></span>
+              <span id="processingText">processing...</span>
+            </div>
+          </div>
+          <textarea id="input" placeholder="Type your message. Slash commands: /provider <name>, /model <name>, /reset"></textarea>
+          <div class="actions">
+            <button id="btnSend">Send</button>
+            <button id="btnCancel" class="warn" disabled>Stop</button>
+            <button id="btnClear" class="secondary">Clear Feed</button>
+          </div>
+          <div class="hint">
+            Slash examples: /provider openai, /model gpt-4.1-mini, /reset
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var state = {
+        endpoint: "http://127.0.0.1:5654",
+        accessToken: "",
+        refreshToken: "",
+        sessionId: "",
+        ws: null,
+        wsConnected: false,
+        rpcId: 1,
+        rpcSession: "ui-main",
+        pending: {},
+        turns: {},
+        lastTurnId: "",
+        thinkingTurnId: "",
+        isThinking: false,
+        isStopping: false,
+        processingCount: 0,
+        isProcessing: false,
+        feedAutoScroll: true,
+        pingTimer: null,
+        echartsLoading: null
+      };
+
+      var $ = function (id) { return document.getElementById(id); };
+
+      var el = {
+        endpoint: $("endpoint"),
+        username: $("username"),
+        password: $("password"),
+        consoleId: $("consoleId"),
+        provider: $("provider"),
+        model: $("model"),
+        vizFormat: $("vizFormat"),
+        vizspecNormalize: $("vizspecNormalize"),
+        status: $("status"),
+        token: $("vToken"),
+        session: $("vSession"),
+        ws: $("vWs"),
+        feed: $("feed"),
+        input: $("input"),
+        logbox: $("logbox"),
+        btnSend: $("btnSend"),
+        btnCancel: $("btnCancel"),
+        thinkingIndicator: $("thinkingIndicator"),
+        thinkingText: $("thinkingText"),
+        processingIndicator: $("processingIndicator"),
+        processingText: $("processingText")
+      };
+
+      function nowIso() {
+        return new Date().toISOString();
+      }
+
+      function short(v) {
+        if (!v) return "-";
+        if (v.length <= 18) return v;
+        return v.slice(0, 8) + "..." + v.slice(-8);
+      }
+
+      function uuid() {
+        if (window.crypto && window.crypto.randomUUID) {
+          return window.crypto.randomUUID();
+        }
+        return "id-" + Math.random().toString(16).slice(2) + Date.now().toString(16);
+      }
+
+      function wsUrl(endpoint, consoleId, token) {
+        var u = new URL(endpoint);
+        var protocol = u.protocol === "https:" ? "wss:" : "ws:";
+        return protocol + "//" + u.host + "/web/api/console/" + encodeURIComponent(consoleId) + "/data?token=" + encodeURIComponent(token);
+      }
+
+      function buildClientContext() {
+        return {
+          surface: "web-remote",
+          transport: "websocket",
+          renderTargets: ["markdown", "agent-render/v1", "vizspec/v1"],
+          filePolicy: "explicit-only",
+          binaryInline: false
+        };
+      }
+
+      function setStatus(message, kind) {
+        el.status.textContent = message;
+        el.status.className = "status" + (kind ? " " + kind : "");
+      }
+
+      function updateThinkingUx() {
+        if (el.btnSend) {
+          el.btnSend.disabled = state.isThinking;
+        }
+        if (el.btnCancel) {
+          el.btnCancel.disabled = !state.isThinking;
+          el.btnCancel.textContent = state.isStopping ? "Stopping..." : "Stop";
+        }
+        if (el.thinkingIndicator && el.thinkingText) {
+          if (state.isThinking) {
+            el.thinkingIndicator.classList.add("active");
+            el.thinkingText.textContent = state.isStopping ? "Stopping turn..." : "Thinking...";
+          } else {
+            el.thinkingIndicator.classList.remove("active");
+            el.thinkingText.textContent = "Thinking...";
+          }
+        }
+        if (el.processingIndicator && el.processingText) {
+          if (state.isProcessing) {
+            el.processingIndicator.classList.add("active");
+            el.processingText.textContent = "processing...";
+          } else {
+            el.processingIndicator.classList.remove("active");
+            el.processingText.textContent = "processing...";
+          }
+        }
+      }
+
+      function beginExecProcessing() {
+        state.processingCount = Math.max(0, Number(state.processingCount || 0)) + 1;
+        state.isProcessing = state.processingCount > 0;
+        updateThinkingUx();
+      }
+
+      function endExecProcessing() {
+        state.processingCount = Math.max(0, Number(state.processingCount || 0) - 1);
+        state.isProcessing = state.processingCount > 0;
+        updateThinkingUx();
+      }
+
+      function resetExecProcessing() {
+        state.processingCount = 0;
+        state.isProcessing = false;
+        updateThinkingUx();
+      }
+
+      function beginThinking(turnId) {
+        if (state.thinkingTurnId && state.thinkingTurnId !== turnId) {
+          setTurnLiveBadge(state.thinkingTurnId, false);
+        }
+        state.thinkingTurnId = turnId || state.thinkingTurnId;
+        state.isThinking = true;
+        state.isStopping = false;
+        setTurnLiveBadge(state.thinkingTurnId, true);
+        updateThinkingUx();
+      }
+
+      function endThinking(turnId) {
+        if (turnId && state.thinkingTurnId && state.thinkingTurnId !== turnId) {
+          return;
+        }
+        setTurnLiveBadge(state.thinkingTurnId, false);
+        state.thinkingTurnId = "";
+        state.isThinking = false;
+        state.isStopping = false;
+        updateThinkingUx();
+      }
+
+      function setTurnLiveBadge(turnId, isLive) {
+        if (!turnId) return;
+        var turn = state.turns[turnId];
+        if (!turn || !turn.view || !turn.view.meta) return;
+
+        if (isLive) {
+          if (!turn.liveBadge) {
+            var badge = document.createElement("span");
+            badge.className = "live-badge";
+            badge.textContent = "LIVE";
+            turn.view.meta.appendChild(badge);
+            turn.liveBadge = badge;
+          }
+          return;
+        }
+
+        if (turn.liveBadge && turn.liveBadge.parentNode) {
+          turn.liveBadge.parentNode.removeChild(turn.liveBadge);
+        }
+        turn.liveBadge = null;
+      }
+
+      function log(message, obj) {
+        var line = "[" + nowIso() + "] " + message;
+        if (obj !== undefined) {
+          try {
+            line += "\n" + JSON.stringify(obj, null, 2);
+          } catch (e) {
+            line += "\n" + String(obj);
+          }
+        }
+        el.logbox.textContent += line + "\n";
+        el.logbox.scrollTop = el.logbox.scrollHeight;
+      }
+
+      function refreshMeta() {
+        el.token.textContent = short(state.accessToken);
+        el.session.textContent = state.sessionId || "-";
+        el.ws.textContent = state.wsConnected ? "connected" : "disconnected";
+      }
+
+      function addMessage(kind, title, content, turnId) {
+        var box = document.createElement("article");
+        box.className = "msg " + kind;
+        box.dataset.turnId = turnId || "";
+
+        var meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = title;
+
+        var body = document.createElement("div");
+        body.className = "body";
+        body.textContent = content || "";
+
+        box.appendChild(meta);
+        box.appendChild(body);
+        el.feed.appendChild(box);
+        maybeScrollFeedToBottom();
+        return { box: box, body: body, meta: meta };
+      }
+
+      function isFeedNearBottom() {
+        if (!el.feed) return true;
+        var threshold = 40;
+        var distance = el.feed.scrollHeight - (el.feed.scrollTop + el.feed.clientHeight);
+        return distance <= threshold;
+      }
+
+      function maybeScrollFeedToBottom() {
+        if (!el.feed) return;
+        if (!state.feedAutoScroll) return;
+        el.feed.scrollTop = el.feed.scrollHeight;
+      }
+
+      function appendPre(target, label, text) {
+        var pre = document.createElement("pre");
+        pre.textContent = (label ? label + "\n" : "") + text;
+        target.appendChild(pre);
+      }
+
+      function appendCollapsedDebug(target, summaryText, label, text) {
+        var details = document.createElement("details");
+        details.className = "debug-panel";
+
+        var summary = document.createElement("summary");
+        summary.textContent = summaryText;
+        details.appendChild(summary);
+
+        var body = document.createElement("div");
+        body.className = "debug-body";
+        details.appendChild(body);
+
+        appendPre(body, label, text);
+        target.appendChild(details);
+        return body;
+      }
+
+      function ensureTurnExecDebug(turn) {
+        if (turn.execDebugBody) {
+          return turn.execDebugBody;
+        }
+        var body = appendCollapsedDebug(turn.view.body, "jsh exec debug (request/response)", "", "");
+        body.innerHTML = "";
+        turn.execDebugBody = body;
+        return body;
+      }
+
+      function appendTurnExecDebug(turn, label, payload) {
+        var body = ensureTurnExecDebug(turn);
+        var text;
+        if (typeof payload === "string") {
+          text = payload;
+        } else {
+          try {
+            text = JSON.stringify(payload || {}, null, 2);
+          } catch (e) {
+            text = String(payload);
+          }
+        }
+        appendPre(body, label, text);
+      }
+
+      function isAgentRenderEnvelope(spec) {
+        return !!spec &&
+          typeof spec === "object" &&
+          spec.__agentRender === true &&
+          spec.schema === "agent-render/v1" &&
+          (spec.renderer === "viz.tui" || spec.renderer === "advn.tui") &&
+          (spec.mode === "blocks" || spec.mode === "lines");
+      }
+
+      function rowsToText(rows) {
+        if (!Array.isArray(rows) || rows.length === 0) return "";
+        var lines = [];
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          if (Array.isArray(row)) {
+            lines.push(row.map(function (x) { return String(x); }).join(" | "));
+          } else {
+            lines.push(String(row));
+          }
+        }
+        return lines.join("\n");
+      }
+
+      function renderVizspecEnvelope(container, spec) {
+        if (spec.mode === "lines") {
+          var lines = Array.isArray(spec.lines) ? spec.lines.map(String).join("\n") : "";
+          appendPre(container, "vizspec.lines", lines || "(empty)");
+          return;
+        }
+
+        var blocks = Array.isArray(spec.blocks) ? spec.blocks : [];
+        if (blocks.length === 0) {
+          appendPre(container, "vizspec.blocks", "(empty)");
+          return;
+        }
+
+        for (var i = 0; i < blocks.length; i++) {
+          var b = blocks[i] || {};
+          var out = [];
+          if (b.title) out.push(String(b.title));
+
+          var stats = Array.isArray(b.stats) ? b.stats : [];
+          for (var j = 0; j < stats.length; j++) {
+            var one = stats[j] || {};
+            out.push(String(one.label || "") + ": " + String(one.value || ""));
+          }
+
+          var lineList = Array.isArray(b.lines) ? b.lines : [];
+          for (var k = 0; k < lineList.length; k++) {
+            out.push(String(lineList[k]));
+          }
+
+          var rowText = rowsToText(b.rows);
+          if (rowText) out.push(rowText);
+
+          appendPre(container, "vizspec.block[" + i + "]", out.join("\n"));
+        }
+      }
+
+      function renderVizspec(container, spec) {
+        if (isAgentRenderEnvelope(spec)) {
+          renderVizspecEnvelope(container, spec);
+          return;
+        }
+
+        var normalizeMode = (el.vizspecNormalize && el.vizspecNormalize.value) ? el.vizspecNormalize.value : "rpc";
+        if (normalizeMode === "rpc" && state.wsConnected) {
+          renderVizspecWithRpc(container, spec);
+          return;
+        }
+        renderVizspecResolved(container, spec);
+      }
+
+      function renderRawVizspec(container, spec) {
+        var details = document.createElement("details");
+        var summary = document.createElement("summary");
+        summary.textContent = "vizspec";
+        var pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(spec || {}, null, 2);
+        details.appendChild(summary);
+        details.appendChild(pre);
+        container.appendChild(details);
+      }
+
+      function renderVizspecResolved(container, spec) {
+        var vizspec = normalizeVizspecSpec(spec);
+        if (!vizspec) {
+          renderRawVizspec(container, spec);
+          return false;
+        }
+        renderVizspecSpec(container, spec, vizspec);
+        return true;
+      }
+
+      function normalizeVizspecByRpc(spec) {
+        return callRpcRaw("vizspec.render", [spec]).then(function (normalized) {
+          if (!normalized || typeof normalized !== "object") {
+            return spec;
+          }
+          return normalized;
+        });
+      }
+
+      function clonePlainObject(obj) {
+        try {
+          return JSON.parse(JSON.stringify(obj || {}));
+        } catch (e) {
+          return obj && typeof obj === "object" ? obj : {};
+        }
+      }
+
+      function buildVizspecRenderRequest(spec) {
+        var req = clonePlainObject(spec);
+        if (!req || typeof req !== "object") {
+          req = {};
+        }
+
+        var fmt = resolveVizFormat(req);
+        var preferred = [];
+        if (fmt === "echarts" || fmt === "svg" || fmt === "png") {
+          preferred.push(fmt);
+        }
+
+        if (!req.meta || typeof req.meta !== "object") {
+          req.meta = {};
+        }
+        var existing = Array.isArray(req.meta.preferred) ? req.meta.preferred : [];
+        for (var i = 0; i < existing.length; i++) {
+          var one = String(existing[i] || "").toLowerCase();
+          if (one === "echarts" || one === "svg" || one === "png") {
+            if (preferred.indexOf(one) < 0) preferred.push(one);
+          }
+        }
+        if (preferred.length > 0) {
+          req.meta.preferred = preferred;
+        }
+
+        req.clientHint = {
+          renderer: "vizspec",
+          preferred: preferred,
+          viewport: {
+            width: Math.max(0, window.innerWidth || 0),
+            height: Math.max(0, window.innerHeight || 0)
+          },
+          theme: "light"
+        };
+        return req;
+      }
+
+      function renderVizspecWithRpc(container, spec) {
+        var pending = document.createElement("div");
+        pending.className = "md-block";
+        var pendingLabel = document.createElement("div");
+        pendingLabel.className = "label";
+        pendingLabel.textContent = "vizspec(normalize:rpc)";
+        var pendingBody = document.createElement("div");
+        pendingBody.className = "content";
+        pendingBody.textContent = "(normalizing with vizspec.render...)";
+        pending.appendChild(pendingLabel);
+        pending.appendChild(pendingBody);
+        container.appendChild(pending);
+
+        var reqSpec = buildVizspecRenderRequest(spec);
+        normalizeVizspecByRpc(reqSpec)
+          .then(function (normalized) {
+            if (pending.parentNode) {
+              pending.parentNode.removeChild(pending);
+            }
+            renderVizspecResolved(container, normalized);
+          })
+          .catch(function (err) {
+            if (pending.parentNode) {
+              pending.parentNode.removeChild(pending);
+            }
+            log("vizspec.render failed; fallback to client normalize", err && err.message ? err.message : err);
+            renderVizspecResolved(container, spec);
+          });
+      }
+
+      function renderMarkdownHtml(markdownText) {
+        return callRpcRaw("markdown.render", [String(markdownText || ""), false]).then(function (html) {
+          return String(html || "");
+        });
+      }
+
+      function appendMarkdown(target, label, markdownText) {
+        var box = document.createElement("section");
+        box.className = "md-block";
+
+        if (label) {
+          var tag = document.createElement("div");
+          tag.className = "label";
+          tag.textContent = label;
+          box.appendChild(tag);
+        }
+
+        var body = document.createElement("div");
+        body.className = "content";
+        body.textContent = "(rendering markdown...)";
+        box.appendChild(body);
+        target.appendChild(box);
+
+        renderMarkdownHtml(markdownText)
+          .then(function (html) {
+            if (!html) {
+              body.classList.add("text-content");
+              body.textContent = String(markdownText || "");
+              return;
+            }
+            body.classList.remove("text-content");
+            body.innerHTML = html;
+          })
+          .catch(function (err) {
+            body.classList.add("text-content");
+            body.textContent = String(markdownText || "");
+            log("markdown.render failed", err && err.message ? err.message : err);
+          });
+      }
+
+      function normalizeVizspecSpec(spec) {
+        if (!spec || typeof spec !== "object") return null;
+        if (spec.schema !== "vizspec/v1" && spec.schema !== "advn/v1") return null;
+
+        var x = [];
+        var series = [];
+        var data = spec.data || {};
+
+        if (Array.isArray(data.x) && Array.isArray(data.series)) {
+          x = data.x.slice();
+          for (var i = 0; i < data.series.length; i++) {
+            var s = data.series[i] || {};
+            if (!Array.isArray(s.data)) continue;
+            series.push({ name: String(s.name || ("series-" + (i + 1))), data: s.data.slice() });
+          }
+        } else if (Array.isArray(spec.x) && Array.isArray(spec.series)) {
+          x = spec.x.slice();
+          for (var j = 0; j < spec.series.length; j++) {
+            var ss = spec.series[j] || {};
+            if (!Array.isArray(ss.data)) continue;
+            series.push({ name: String(ss.name || ("series-" + (j + 1))), data: ss.data.slice() });
+          }
+        } else if (Array.isArray(data.rows) && data.xKey) {
+          var yKeys = Array.isArray(data.yKeys) ? data.yKeys.slice() : [];
+          if (yKeys.length === 0 && data.rows.length > 0) {
+            var first = data.rows[0] || {};
+            var keys = Object.keys(first);
+            for (var k = 0; k < keys.length; k++) {
+              if (keys[k] !== data.xKey) yKeys.push(keys[k]);
+            }
+          }
+          for (var yi = 0; yi < yKeys.length; yi++) {
+            series.push({ name: String(yKeys[yi]), data: [] });
+          }
+          for (var r = 0; r < data.rows.length; r++) {
+            var row = data.rows[r] || {};
+            x.push(row[data.xKey]);
+            for (var y = 0; y < series.length; y++) {
+              series[y].data.push(row[series[y].name]);
+            }
+          }
+        }
+
+        if (x.length === 0 || series.length === 0) return null;
+        return { x: x, series: series, title: String((spec.meta && spec.meta.title) || spec.title || "") };
+      }
+
+      function resolveVizFormat(spec) {
+        var sel = String((el.vizFormat && el.vizFormat.value) || "auto").toLowerCase();
+        if (sel === "echarts" || sel === "svg" || sel === "png") return sel;
+
+        var preferred = (((spec || {}).meta || {}).preferred) || [];
+        for (var i = 0; i < preferred.length; i++) {
+          var p = String(preferred[i] || "").toLowerCase();
+          if (p === "echarts" || p === "svg" || p === "png") return p;
+        }
+        return "svg";
+      }
+
+      function createVizHost(target, label) {
+        var host = document.createElement("section");
+        host.className = "viz-host";
+
+        var tag = document.createElement("div");
+        tag.className = "label";
+        tag.textContent = label;
+        host.appendChild(tag);
+
+        var wrap = document.createElement("div");
+        wrap.className = "canvas-wrap";
+        host.appendChild(wrap);
+        target.appendChild(host);
+        return wrap;
+      }
+
+      function getSeriesRange(vizspec) {
+        var min = Number.POSITIVE_INFINITY;
+        var max = Number.NEGATIVE_INFINITY;
+        for (var i = 0; i < vizspec.series.length; i++) {
+          var values = vizspec.series[i].data || [];
+          for (var j = 0; j < values.length; j++) {
+            var n = Number(values[j]);
+            if (!isFinite(n)) continue;
+            if (n < min) min = n;
+            if (n > max) max = n;
+          }
+        }
+        if (!isFinite(min) || !isFinite(max)) return { min: 0, max: 1 };
+        if (min === max) return { min: min - 1, max: max + 1 };
+        return { min: min, max: max };
+      }
+
+      function colorAt(i) {
+        var palette = ["#2f7cff", "#1f8f63", "#cc6a2d", "#8a43c7", "#e43f5a", "#1584a3"];
+        return palette[i % palette.length];
+      }
+
+      function renderVizspecSvg(canvasWrap, vizspec) {
+        var width = Math.max(640, Math.min(980, canvasWrap.clientWidth || 760));
+        var height = 280;
+        var padL = 48;
+        var padR = 16;
+        var padT = 20;
+        var padB = 34;
+        var innerW = width - padL - padR;
+        var innerH = height - padT - padB;
+        var count = vizspec.x.length;
+        var stepX = count > 1 ? innerW / (count - 1) : innerW;
+        var range = getSeriesRange(vizspec);
+
+        var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        svg.setAttribute("width", String(width));
+        svg.setAttribute("height", String(height));
+
+        var bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bg.setAttribute("x", "0");
+        bg.setAttribute("y", "0");
+        bg.setAttribute("width", String(width));
+        bg.setAttribute("height", String(height));
+        bg.setAttribute("fill", "#ffffff");
+        svg.appendChild(bg);
+
+        var axis = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        axis.setAttribute("d", "M " + padL + " " + (padT + innerH) + " L " + (padL + innerW) + " " + (padT + innerH) + " M " + padL + " " + padT + " L " + padL + " " + (padT + innerH));
+        axis.setAttribute("stroke", "#8fa08f");
+        axis.setAttribute("stroke-width", "1");
+        axis.setAttribute("fill", "none");
+        svg.appendChild(axis);
+
+        for (var i = 0; i < vizspec.series.length; i++) {
+          var s = vizspec.series[i];
+          var d = [];
+          for (var j = 0; j < count; j++) {
+            var n = Number(s.data[j]);
+            if (!isFinite(n)) continue;
+            var x = padL + stepX * j;
+            var y = padT + innerH * (1 - ((n - range.min) / (range.max - range.min)));
+            d.push((d.length === 0 ? "M" : "L") + " " + x + " " + y);
+          }
+          if (d.length === 0) continue;
+          var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          line.setAttribute("d", d.join(" "));
+          line.setAttribute("stroke", colorAt(i));
+          line.setAttribute("stroke-width", "2");
+          line.setAttribute("fill", "none");
+          svg.appendChild(line);
+        }
+
+        canvasWrap.innerHTML = "";
+        canvasWrap.appendChild(svg);
+      }
+
+      function drawVizspecCanvas(canvas, vizspec) {
+        var ctx = canvas.getContext("2d");
+        var width = canvas.width;
+        var height = canvas.height;
+        var padL = 48;
+        var padR = 16;
+        var padT = 20;
+        var padB = 34;
+        var innerW = width - padL - padR;
+        var innerH = height - padT - padB;
+        var count = vizspec.x.length;
+        var stepX = count > 1 ? innerW / (count - 1) : innerW;
+        var range = getSeriesRange(vizspec);
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.strokeStyle = "#8fa08f";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padL, padT + innerH);
+        ctx.lineTo(padL + innerW, padT + innerH);
+        ctx.moveTo(padL, padT);
+        ctx.lineTo(padL, padT + innerH);
+        ctx.stroke();
+
+        for (var i = 0; i < vizspec.series.length; i++) {
+          var s = vizspec.series[i];
+          ctx.strokeStyle = colorAt(i);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          var started = false;
+          for (var j = 0; j < count; j++) {
+            var n = Number(s.data[j]);
+            if (!isFinite(n)) continue;
+            var x = padL + stepX * j;
+            var y = padT + innerH * (1 - ((n - range.min) / (range.max - range.min)));
+            if (!started) {
+              ctx.moveTo(x, y);
+              started = true;
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          if (started) ctx.stroke();
+        }
+      }
+
+      function renderVizspecPng(canvasWrap, vizspec) {
+        var width = Math.max(640, Math.min(980, canvasWrap.clientWidth || 760));
+        var height = 280;
+        var canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        drawVizspecCanvas(canvas, vizspec);
+        var img = document.createElement("img");
+        img.alt = "vizspec-png";
+        img.src = canvas.toDataURL("image/png");
+        img.style.maxWidth = "100%";
+        canvasWrap.innerHTML = "";
+        canvasWrap.appendChild(img);
+      }
+
+      function ensureEcharts() {
+        if (window.echarts) return Promise.resolve(window.echarts);
+        if (state.echartsLoading) return state.echartsLoading;
+        state.echartsLoading = new Promise(function (resolve, reject) {
+          var script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js";
+          script.onload = function () { resolve(window.echarts); };
+          script.onerror = function () { reject(new Error("failed to load echarts")); };
+          document.head.appendChild(script);
+        }).finally(function () {
+          if (!window.echarts) state.echartsLoading = null;
+        });
+        return state.echartsLoading;
+      }
+
+      function renderVizspecEcharts(canvasWrap, vizspec) {
+        return ensureEcharts().then(function (echarts) {
+          var dom = document.createElement("div");
+          dom.style.width = "100%";
+          dom.style.height = "300px";
+          canvasWrap.innerHTML = "";
+          canvasWrap.appendChild(dom);
+          var chart = echarts.init(dom, null, { renderer: "canvas" });
+          var series = [];
+          for (var i = 0; i < vizspec.series.length; i++) {
+            series.push({
+              name: vizspec.series[i].name,
+              type: "line",
+              showSymbol: false,
+              data: vizspec.series[i].data
+            });
+          }
+          chart.setOption({
+            animation: false,
+            tooltip: { trigger: "axis" },
+            legend: { top: 4 },
+            grid: { left: 42, right: 20, top: 32, bottom: 28 },
+            xAxis: { type: "category", data: vizspec.x },
+            yAxis: { type: "value" },
+            series: series
+          });
+        });
+      }
+
+      function renderVizspecSpec(container, spec, vizspec) {
+        var format = resolveVizFormat(spec);
+        var title = "vizspec(" + format + ")";
+        var wrap = createVizHost(container, title + (vizspec.title ? " - " + vizspec.title : ""));
+
+        if (format === "png") {
+          renderVizspecPng(wrap, vizspec);
+          return;
+        }
+        if (format === "echarts") {
+          renderVizspecEcharts(wrap, vizspec).catch(function (err) {
+            log("echarts render failed, fallback to svg", err && err.message ? err.message : err);
+            renderVizspecSvg(wrap, vizspec);
+          });
+          return;
+        }
+        renderVizspecSvg(wrap, vizspec);
+      }
+
+          var STREAM_MARKDOWN_DEBOUNCE_MS = 120;
+
+      function createMarkdownContainer(target, label) {
+        var box = document.createElement("section");
+        box.className = "md-block";
+
+        if (label) {
+          var tag = document.createElement("div");
+          tag.className = "label";
+          tag.textContent = label;
+          box.appendChild(tag);
+        }
+
+        var body = document.createElement("div");
+        body.className = "content";
+        body.textContent = "";
+        box.appendChild(body);
+        target.appendChild(box);
+        return { box: box, body: body };
+      }
+
+      function ensureStreamingMarkdownView(turn) {
+        if (turn.streamMd && turn.streamMd.body) {
+          return turn.streamMd;
+        }
+        turn.streamMd = createMarkdownContainer(turn.view.body, "text(stream)");
+        turn.streamRenderPending = false;
+        turn.streamRenderDirty = false;
+        turn.streamRenderSeq = 0;
+        turn.streamRenderApplied = 0;
+        turn.streamRenderTimer = null;
+        return turn.streamMd;
+      }
+
+      function queueStreamingMarkdownRender(turn) {
+        ensureStreamingMarkdownView(turn);
+        if (turn.streamRenderTimer) {
+          clearTimeout(turn.streamRenderTimer);
+        }
+        turn.streamRenderTimer = setTimeout(function () {
+          turn.streamRenderTimer = null;
+          scheduleStreamingMarkdownRender(turn);
+        }, STREAM_MARKDOWN_DEBOUNCE_MS);
+      }
+
+      function scheduleStreamingMarkdownRender(turn) {
+        if (turn.streamRenderPending) {
+          turn.streamRenderDirty = true;
+          return;
+        }
+
+        turn.streamRenderPending = true;
+        turn.streamRenderDirty = false;
+        var markdown = String(turn.text || "");
+        var reqSeq = (turn.streamRenderSeq || 0) + 1;
+        turn.streamRenderSeq = reqSeq;
+        var view = ensureStreamingMarkdownView(turn);
+
+        renderMarkdownHtml(markdown)
+          .then(function (html) {
+            if (reqSeq < (turn.streamRenderApplied || 0)) {
+              return;
+            }
+            turn.streamRenderApplied = reqSeq;
+            if (!html) {
+              view.body.classList.add("text-content");
+              view.body.textContent = markdown;
+            } else {
+              view.body.classList.remove("text-content");
+              view.body.innerHTML = html;
+            }
+          })
+          .catch(function () {
+            view.body.classList.add("text-content");
+            view.body.textContent = markdown;
+          })
+          .finally(function () {
+            turn.streamRenderPending = false;
+            if (turn.streamRenderDirty) {
+              queueStreamingMarkdownRender(turn);
+            }
+          });
+      }
+
+      function renderBlock(container, block) {
+        if (!block || typeof block !== "object") return;
+        var type = block.type || "unknown";
+        if (type === "text") {
+          var text = String(block.text || "");
+          if (text.indexOf("Code execution results:") === 0) {
+            var body = text.slice("Code execution results:".length).trim();
+            appendCollapsedDebug(container, "jsh result", "jsh result", body || "(empty)");
+            return;
+          }
+          appendMarkdown(container, "text", text);
+          return;
+        }
+        if (type === "jsh") {
+          appendCollapsedDebug(container, "jsh block", "jsh", String(block.code || ""));
+          return;
+        }
+        if (type === "vizspec") {
+          renderVizspec(container, block.spec);
+          return;
+        }
+        appendPre(container, type, JSON.stringify(block, null, 2));
+      }
+
+      function parseLoginResponse(data) {
+        if (!data || typeof data !== "object") {
+          throw new Error("invalid login response");
+        }
+        if (data.success === false) {
+          throw new Error(data.reason || "login failed");
+        }
+        if (!data.accessToken) {
+          throw new Error(data.reason || "missing accessToken");
+        }
+        return data;
+      }
+
+      function sendJson(obj) {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+          throw new Error("WebSocket is not connected");
+        }
+        state.ws.send(JSON.stringify(obj));
+      }
+
+      function callRpcWithParams(method, params) {
+        return new Promise(function (resolve, reject) {
+          var id = state.rpcId++;
+          state.pending[id] = { resolve: resolve, reject: reject, ts: Date.now(), method: method };
+          var evt = {
+            type: "rpc_req",
+            session: state.rpcSession,
+            rpc: {
+              jsonrpc: "2.0",
+              id: id,
+              method: method,
+              params: Array.isArray(params) ? params : []
+            }
+          };
+          try {
+            sendJson(evt);
+          } catch (err) {
+            delete state.pending[id];
+            reject(err);
+          }
+        });
+      }
+
+      function callRpc(method, paramsObj) {
+        return callRpcWithParams(method, [paramsObj || {}]);
+      }
+
+      function callRpcRaw(method, params) {
+        return callRpcWithParams(method, params || []);
+      }
+
+      function ensureSessionOpen() {
+        if (state.sessionId) {
+          return Promise.resolve(state.sessionId);
+        }
+        var req = {
+          sessionId: state.sessionId || "",
+          turnId: uuid(),
+          traceId: uuid(),
+          payload: {
+            resume: true,
+            sessionHint: state.sessionId || ""
+          }
+        };
+        return callRpc("llm.session.open", req).then(function (result) {
+          if (!result || !result.sessionId) {
+            throw new Error("llm.session.open returned no sessionId");
+          }
+          state.sessionId = result.sessionId;
+          refreshMeta();
+          setStatus("Session ready", "ok");
+          return state.sessionId;
+        });
+      }
+
+      function handleRpcResponseEnvelope(evt) {
+        if (!evt || evt.type !== "rpc_rsp" || !evt.rpc) {
+          return;
+        }
+        var rpc = evt.rpc;
+
+        if (rpc.method === "llm.event") {
+          handleLlmEvent(rpc.params || {});
+          return;
+        }
+
+        var pending = state.pending[rpc.id];
+        if (!pending) {
+          return;
+        }
+        delete state.pending[rpc.id];
+
+        if (rpc.error) {
+          pending.reject(rpc.error);
+          return;
+        }
+        pending.resolve(rpc.result);
+      }
+
+      function ensureTurnMessage(turnId) {
+        if (!state.turns[turnId]) {
+          var view = addMessage("assistant", "assistant | turn=" + turnId, "", turnId);
+          var metaText = document.createElement("span");
+          metaText.className = "meta-text";
+          metaText.textContent = view.meta.textContent;
+          view.meta.textContent = "";
+          view.meta.appendChild(metaText);
+          state.turns[turnId] = {
+            view: view,
+            metaText: metaText,
+            text: "",
+            streamMd: null,
+            execDebugBody: null,
+            liveBadge: null,
+            streamRenderPending: false,
+            streamRenderDirty: false,
+            streamRenderSeq: 0,
+            streamRenderApplied: 0,
+            streamRenderTimer: null
+          };
+        }
+        if (state.isThinking && state.thinkingTurnId === turnId) {
+          setTurnLiveBadge(turnId, true);
+        }
+        return state.turns[turnId];
+      }
+
+      function handleLlmEvent(params) {
+        var turnId = params.turnId || "turn-unknown";
+        var event = params.event || "unknown";
+        var payload = params.payload || {};
+
+        var turn = ensureTurnMessage(turnId);
+        turn.metaText.textContent = "assistant | " + event + " | turn=" + turnId + " | seq=" + (params.seq || "-");
+
+        if (event === "turn.delta") {
+          beginThinking(turnId);
+          var delta = payload.delta || "";
+          turn.text += delta;
+          ensureStreamingMarkdownView(turn);
+          queueStreamingMarkdownRender(turn);
+          maybeScrollFeedToBottom();
+          return;
+        }
+
+        if (event === "turn.failed") {
+          var message = "code=" + payload.code + " message=" + (payload.message || "") + " retryable=" + payload.retryable + " reason=" + (payload.reason || "");
+          appendPre(turn.view.body, "failed", message);
+          turn.view.box.style.borderColor = "#efb0b0";
+          var reasonText = String(payload.reason || "").toLowerCase();
+          var codeText = String(payload.code || "").toLowerCase();
+          if (reasonText.indexOf("cancel") >= 0 || codeText.indexOf("cancel") >= 0) {
+            setStatus("Turn canceled", "warn");
+          } else {
+            setStatus("Turn failed", "err");
+          }
+          endThinking(turnId);
+          resetExecProcessing();
+          return;
+        }
+
+        if (event === "turn.exec.started") {
+          beginExecProcessing();
+          appendTurnExecDebug(turn, "exec.started", payload);
+          setStatus("Executing jsh block...", "warn");
+          return;
+        }
+
+        if (event === "turn.exec.completed") {
+          endExecProcessing();
+          appendTurnExecDebug(turn, "exec.completed", payload);
+          if (payload.ok) {
+            var renders = Array.isArray(payload.renders) ? payload.renders : [];
+            for (var r = 0; r < renders.length; r++) {
+              var renderBlockPayload = renders[r] || {};
+              if (renderBlockPayload.type === "vizspec") {
+                renderVizspec(turn.view.body, renderBlockPayload.spec);
+              }
+            }
+            setStatus("Execution completed", "ok");
+          } else {
+            setStatus("Execution failed", "err");
+          }
+          return;
+        }
+
+        if (event === "turn.completed") {
+          if (turn.streamRenderTimer) {
+            clearTimeout(turn.streamRenderTimer);
+            turn.streamRenderTimer = null;
+          }
+          var blocks = Array.isArray(payload.blocks) ? payload.blocks : [];
+          if (blocks.length > 0) {
+            turn.view.body.textContent = "";
+            for (var i = 0; i < blocks.length; i++) {
+              renderBlock(turn.view.body, blocks[i]);
+            }
+          }
+          if (payload.usage) {
+            appendPre(turn.view.body, "usage", JSON.stringify(payload.usage, null, 2));
+          }
+          if (payload.latencyMs !== undefined) {
+            appendPre(turn.view.body, "latencyMs", String(payload.latencyMs));
+          }
+          setStatus("Turn completed", "ok");
+          endThinking(turnId);
+          resetExecProcessing();
+          return;
+        }
+
+        if (event === "turn.started") {
+          beginThinking(turnId);
+          resetExecProcessing();
+          if (turn.streamRenderTimer) {
+            clearTimeout(turn.streamRenderTimer);
+            turn.streamRenderTimer = null;
+          }
+          turn.view.body.textContent = "";
+          turn.text = "";
+          turn.streamMd = null;
+          turn.execDebugBody = null;
+          turn.streamRenderPending = false;
+          turn.streamRenderDirty = false;
+          turn.streamRenderSeq = 0;
+          turn.streamRenderApplied = 0;
+          setStatus("Streaming...", "warn");
+          return;
+        }
+      }
+
+      function handleSlash(inputText) {
+        var s = String(inputText || "").trim();
+        if (!s.startsWith("/")) return false;
+        var parts = s.split(/\s+/);
+        var cmd = parts[0].toLowerCase();
+
+        if (cmd === "/provider") {
+          var provider = parts[1];
+          if (!provider) {
+            setStatus("Usage: /provider <name>", "warn");
+            return true;
+          }
+          ensureSessionOpen().then(function () {
+            return callRpc("llm.provider.set", {
+              sessionId: state.sessionId,
+              turnId: uuid(),
+              traceId: uuid(),
+              payload: { provider: provider }
+            });
+          }).then(function (result) {
+            el.provider.value = result.provider || provider;
+            if (result.model) el.model.value = result.model;
+            setStatus("Provider changed", "ok");
+            log("provider.set", result);
+          }).catch(function (err) {
+            setStatus("Provider change failed", "err");
+            log("provider.set failed", err);
+          });
+          return true;
+        }
+
+        if (cmd === "/model") {
+          var model = parts.slice(1).join(" ").trim();
+          if (!model) {
+            setStatus("Usage: /model <name>", "warn");
+            return true;
+          }
+          ensureSessionOpen().then(function () {
+            return callRpc("llm.model.set", {
+              sessionId: state.sessionId,
+              turnId: uuid(),
+              traceId: uuid(),
+              payload: { model: model }
+            });
+          }).then(function (result) {
+            if (result.provider) el.provider.value = result.provider;
+            el.model.value = result.model || model;
+            setStatus("Model changed", "ok");
+            log("model.set", result);
+          }).catch(function (err) {
+            setStatus("Model change failed", "err");
+            log("model.set failed", err);
+          });
+          return true;
+        }
+
+        if (cmd === "/reset") {
+          ensureSessionOpen().then(function () {
+            return callRpc("llm.session.reset", {
+              sessionId: state.sessionId,
+              turnId: uuid(),
+              traceId: uuid(),
+              payload: { clearHistory: true }
+            });
+          }).then(function (result) {
+            state.sessionId = result.sessionId || "";
+            refreshMeta();
+            setStatus("Session reset", "ok");
+            log("session.reset", result);
+          }).catch(function (err) {
+            setStatus("Session reset failed", "err");
+            log("session.reset failed", err);
+          });
+          return true;
+        }
+
+        setStatus("Unknown slash command", "warn");
+        return true;
+      }
+
+      function doLogin() {
+        state.endpoint = el.endpoint.value.trim().replace(/\/$/, "");
+        var url = state.endpoint + "/web/api/login";
+        var body = {
+          loginName: el.username.value,
+          password: el.password.value
+        };
+        setStatus("Logging in...", "warn");
+        log("login request", { url: url, loginName: body.loginName });
+
+        return fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (res) {
+          return res.json().catch(function () {
+            throw new Error("invalid login response json");
+          });
+        }).then(function (json) {
+          var data = parseLoginResponse(json);
+          state.accessToken = data.accessToken;
+          state.refreshToken = data.refreshToken || "";
+          refreshMeta();
+          setStatus("Login success", "ok");
+          log("login success", data);
+          return data;
+        }).catch(function (err) {
+          setStatus("Login failed", "err");
+          log("login failed", err.message || String(err));
+          throw err;
+        });
+      }
+
+      function connectWs() {
+        if (!state.accessToken) {
+          return Promise.reject(new Error("login first"));
+        }
+
+        var url = wsUrl(state.endpoint, el.consoleId.value || "web-ai-demo", state.accessToken);
+        setStatus("Connecting WS...", "warn");
+        log("ws connect", url);
+
+        return new Promise(function (resolve, reject) {
+          var ws;
+          try {
+            ws = new WebSocket(url);
+          } catch (err) {
+            reject(err);
+            return;
+          }
+
+          ws.onopen = function () {
+            state.ws = ws;
+            state.wsConnected = true;
+            refreshMeta();
+            setStatus("WS connected", "ok");
+            log("ws open");
+            resolve();
+          };
+
+          ws.onerror = function () {
+            setStatus("WS error", "err");
+          };
+
+          ws.onclose = function () {
+            state.wsConnected = false;
+            refreshMeta();
+            setStatus("WS disconnected", "warn");
+            log("ws close");
+            state.ws = null;
+            if (state.pingTimer) {
+              clearInterval(state.pingTimer);
+              state.pingTimer = null;
+            }
+          };
+
+          ws.onmessage = function (ev) {
+            try {
+              var msg = JSON.parse(ev.data);
+              handleRpcResponseEnvelope(msg);
+            } catch (err) {
+              log("ws parse error", ev.data);
+            }
+          };
+
+          setTimeout(function () {
+            if (!state.wsConnected) {
+              reject(new Error("ws connection timeout"));
+            }
+          }, 5000);
+        }).catch(function (err) {
+          setStatus("WS connect failed", "err");
+          log("ws connect failed", err.message || String(err));
+          throw err;
+        });
+      }
+
+      function openSession() {
+        return ensureSessionOpen().then(function () {
+          log("session.open", { sessionId: state.sessionId });
+        }).catch(function (err) {
+          setStatus("Session open failed", "err");
+          log("session.open failed", err);
+          throw err;
+        });
+      }
+
+      function sendAsk(text) {
+        var clean = String(text || "").trim();
+        if (!clean) {
+          setStatus("input is empty", "warn");
+          return;
+        }
+
+        if (handleSlash(clean)) {
+          el.input.value = "";
+          return;
+        }
+
+        if (!state.wsConnected) {
+          setStatus("WS not connected", "err");
+          return;
+        }
+
+        var turnId = uuid();
+        var traceId = uuid();
+        state.lastTurnId = turnId;
+        beginThinking(turnId);
+        setStatus("Thinking...", "warn");
+
+        addMessage("user", "you", clean, turnId);
+        el.input.value = "";
+
+        ensureSessionOpen().then(function () {
+          var req = {
+            sessionId: state.sessionId,
+            turnId: turnId,
+            traceId: traceId,
+            payload: {
+              text: clean,
+              provider: el.provider.value.trim(),
+              model: el.model.value.trim(),
+              clientContext: buildClientContext(),
+              autoExecute: true,
+              execReadOnly: true,
+              execMaxRows: 1000,
+              execTimeoutMs: 30000,
+              execMaxOutputBytes: 65536,
+              execMaxRounds: 3
+            }
+          };
+          return callRpc("llm.turn.ask", req).then(function (result) {
+            log("turn.ask accepted", { turnId: turnId, result: result });
+            setStatus("Turn accepted", "ok");
+          });
+        }).catch(function (err) {
+          endThinking(turnId);
+          setStatus("Turn ask failed", "err");
+          log("turn.ask failed", err);
+        });
+      }
+
+      function cancelLastTurn() {
+        if (!state.sessionId || !state.lastTurnId || !state.isThinking) {
+          setStatus("No turn to cancel", "warn");
+          return;
+        }
+        state.isStopping = true;
+        updateThinkingUx();
+        callRpc("llm.turn.cancel", {
+          sessionId: state.sessionId,
+          turnId: state.lastTurnId,
+          traceId: uuid(),
+          payload: { reason: "user_requested" }
+        }).then(function (result) {
+          setStatus("Stop requested", "warn");
+          log("turn.cancel", result);
+        }).catch(function (err) {
+          state.isStopping = false;
+          updateThinkingUx();
+          setStatus("Cancel failed", "err");
+          log("turn.cancel failed", err);
+        });
+      }
+
+      function resetSession() {
+        if (!state.sessionId) {
+          setStatus("No session yet", "warn");
+          return;
+        }
+        callRpc("llm.session.reset", {
+          sessionId: state.sessionId,
+          turnId: uuid(),
+          traceId: uuid(),
+          payload: { clearHistory: true }
+        }).then(function (result) {
+          state.sessionId = result.sessionId || "";
+          refreshMeta();
+          setStatus("Session reset", "ok");
+          log("session.reset", result);
+        }).catch(function (err) {
+          setStatus("Session reset failed", "err");
+          log("session.reset failed", err);
+        });
+      }
+
+      function wire() {
+        $("btnLogin").addEventListener("click", function () { doLogin(); });
+        $("btnConnect").addEventListener("click", function () { connectWs(); });
+        $("btnOpen").addEventListener("click", function () { openSession(); });
+        el.btnSend.addEventListener("click", function () { sendAsk(el.input.value); });
+        el.btnCancel.addEventListener("click", cancelLastTurn);
+        $("btnReset").addEventListener("click", resetSession);
+        $("btnClear").addEventListener("click", function () {
+          el.feed.innerHTML = "";
+          state.turns = {};
+          state.feedAutoScroll = true;
+        });
+        el.feed.addEventListener("scroll", function () {
+          state.feedAutoScroll = isFeedNearBottom();
+        });
+        el.input.addEventListener("keydown", function (ev) {
+          if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
+            sendAsk(el.input.value);
+          }
+        });
+      }
+
+      wire();
+      updateThinkingUx();
+      refreshMeta();
+      log("ready", {
+        endpoint: el.endpoint.value,
+        loginApi: "/web/api/login",
+        wsApi: "/web/api/console/:console_id/data",
+        rpcFrame: "eventbus rpc_req/rpc_rsp"
+      });
+    })();
+  </script>
+</body>
+</html>
