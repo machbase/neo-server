@@ -35,7 +35,7 @@ func TestHttpRpc(t *testing.T) {
 		},
 		{
 			name:   "getServerInfo",
-			method: "getServerInfo",
+			method: "server.info.get",
 			params: []interface{}{},
 			expectFunc: func(t *testing.T, rsp gjson.Result) {
 				require.Equal(t, runtime.GOOS, rsp.Get("result.runtime.OS").String(), rsp.String())
@@ -43,7 +43,7 @@ func TestHttpRpc(t *testing.T) {
 		},
 		{
 			name:       "getServicePorts",
-			method:     "getServicePorts",
+			method:     "service.port.list",
 			params:     []interface{}{"mach"},
 			expectJSON: fmt.Sprintf(`[{"Service":"mach", "Address":"%s"}]`, machServerAddress),
 		},
@@ -54,7 +54,7 @@ func TestHttpRpc(t *testing.T) {
 
 	JsonRpcTestCase{
 		name:   "addShell_not_exists_cmd",
-		method: "addShell",
+		method: "shell.add",
 		params: []interface{}{"test-shell", `not_exists_cmd`},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("error").Exists())
@@ -71,7 +71,7 @@ func TestHttpRpc(t *testing.T) {
 	}
 	JsonRpcTestCase{
 		name:   "addShell",
-		method: "addShell",
+		method: "shell.add",
 		params: []interface{}{"test-shell", shellCommand},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("id").Exists(), rsp.String())
@@ -83,7 +83,7 @@ func TestHttpRpc(t *testing.T) {
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "listShells",
-		method: "listShells",
+		method: "shell.list",
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.Equal(t, 1, len(rsp.Get("result").Array()), rsp.String())
@@ -94,7 +94,7 @@ func TestHttpRpc(t *testing.T) {
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "deleteShell",
-		method: "deleteShell",
+		method: "shell.delete",
 		params: []interface{}{addShellResult()},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("result").Exists(), rsp.String())
@@ -102,7 +102,7 @@ func TestHttpRpc(t *testing.T) {
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "listShells",
-		method: "listShells",
+		method: "shell.list",
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.Equal(t, 0, len(rsp.Get("result").Array()), rsp.String())
@@ -111,7 +111,7 @@ func TestHttpRpc(t *testing.T) {
 
 	JsonRpcTestCase{
 		name:   "addBridge",
-		method: "addBridge",
+		method: "bridge.add",
 		params: []interface{}{"br-test", "sqlite", "file::memory:?cache=shared"},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("id").Exists(), rsp.String())
@@ -121,7 +121,7 @@ func TestHttpRpc(t *testing.T) {
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "listBridges",
-		method: "listBridges",
+		method: "bridge.list",
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("id").Exists(), rsp.String())
@@ -135,7 +135,7 @@ func TestHttpRpc(t *testing.T) {
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "deleteBridge",
-		method: "deleteBridge",
+		method: "bridge.delete",
 		params: []interface{}{"br-test"},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("id").Exists(), rsp.String())
@@ -147,7 +147,7 @@ func TestHttpRpc(t *testing.T) {
 	tests = []JsonRpcTestCase{
 		{
 			name:   "markdownRender-light",
-			method: "markdownRender",
+			method: "markdown.render",
 			params: []interface{}{"# Hello World\n\nThis is a **test**.", false},
 			expectFunc: func(t *testing.T, result gjson.Result) {
 				html := result.Get("result").String()
@@ -158,7 +158,7 @@ func TestHttpRpc(t *testing.T) {
 		},
 		{
 			name:   "markdownRender-dark",
-			method: "markdownRender",
+			method: "markdown.render",
 			params: []interface{}{"## Dark Mode Test\n\n- Item 1\n- Item 2", true},
 			expectFunc: func(t *testing.T, result gjson.Result) {
 				html := result.Get("result").String()

@@ -174,17 +174,17 @@ class Client extends _Client {
 
     markdownRender(mdText, darkMode = false) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('markdownRender', [mdText, darkMode]);
+            return this._rpcRequest('markdown.render', [mdText, darkMode]);
         });
     }
     getServicePorts(service = '') {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('getServicePorts', [service]);
+            return this._rpcRequest('service.port.list', [service]);
         });
     }
     getServerInfo() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('getServerInfo', []);
+            return this._rpcRequest('server.info.get', []);
         });
     }
     getMachbasePort(callback) {
@@ -208,102 +208,102 @@ class Client extends _Client {
     }
     listShells() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('listShells', []);
+            return this._rpcRequest('shell.list', []);
         });
     }
     addShell(label, command) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('addShell', [label, command]);
+            return this._rpcRequest('shell.add', [label, command]);
         });
     }
     deleteShell(id) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('deleteShell', [id]);
+            return this._rpcRequest('shell.delete', [id]);
         });
     }
     listBridges() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('listBridges', []);
+            return this._rpcRequest('bridge.list', []);
         });
     }
     addBridge(name, type, conn) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('addBridge', [name, type, conn]);
+            return this._rpcRequest('bridge.add', [name, type, conn]);
         });
     }
     deleteBridge(name) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('deleteBridge', [name]);
+            return this._rpcRequest('bridge.delete', [name]);
         });
     }
     testBridge(name) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('testBridge', [name]);
+            return this._rpcRequest('bridge.test', [name]);
         });
     }
     statsBridge(name) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('statsBridge', [name]);
+            return this._rpcRequest('bridge.stats', [name]);
         });
     }
     execBridge(name, command) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('execBridge', [name, command]);
+            return this._rpcRequest('bridge.exec', [name, command]);
         });
     }
     queryBridge(name, query) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('queryBridge', [name, query]);
+            return this._rpcRequest('bridge.query', [name, query]);
         });
     }
     fetchResultBridge(handle) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('fetchResultBridge', [handle]);
+            return this._rpcRequest('bridge.result.fetch', [handle]);
         });
     }
     closeResultBridge(handle) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('closeResultBridge', [handle]);
+            return this._rpcRequest('bridge.result.close', [handle]);
         });
     }
     listSSHKeys() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('listSSHKeys', []);
+            return this._rpcRequest('sshkey.list', []);
         });
     }
     addSSHKey(type, key, comment) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('addSSHKey', [type, key, comment]);
+            return this._rpcRequest('sshkey.add', [type, key, comment]);
         });
     }
     deleteSSHKey(key) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('deleteSSHKey', [key]);
+            return this._rpcRequest('sshkey.delete', [key]);
         });
     }
     listKeys() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('listKeys', []);
+            return this._rpcRequest('key.list', []);
         });
     }
     genKey(id) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('genKey', [id]);
+            return this._rpcRequest('key.generate', [id]);
         });
     }
     deleteKey(id) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('deleteKey', [id]);
+            return this._rpcRequest('key.delete', [id]);
         });
     }
     getServerCertificate() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('getServerCertificate', []);
+            return this._rpcRequest('server.certificate.get', []);
         });
     }
     listSchedules() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('listSchedules', []);
+            return this._rpcRequest('schedule.list', []);
         });
     }
     addSchedule(sch) {
@@ -318,10 +318,10 @@ class Client extends _Client {
 
         return this._executeWithAuth(() => {
             if (type === 'SUBSCRIBER') {
-                return this._rpcRequest('addSubscriberSchedule',
+                return this._rpcRequest('schedule.subscriber.add',
                     [name, bridge, task, true, topic, qos]);
             } else if (type === 'TIMER') {
-                return this._rpcRequest('addTimerSchedule',
+                return this._rpcRequest('schedule.timer.add',
                     [name, "", spec, task, autostart]);
             } else {
                 throw new Error(`Unsupported schedule type: ${type}`);
@@ -330,57 +330,57 @@ class Client extends _Client {
     }
     deleteSchedule(name) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('deleteSchedule', [name]);
+            return this._rpcRequest('schedule.delete', [name]);
         });
     }
     startSchedule(name) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('startSchedule', [name]);
+            return this._rpcRequest('schedule.start', [name]);
         });
     }
     stopSchedule(name) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('stopSchedule', [name]);
+            return this._rpcRequest('schedule.stop', [name]);
         });
     }
     listSessions() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('listSessions', []);
+            return this._rpcRequest('session.list', []);
         });
     }
     killSession(id, force = false) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('killSession', [id, force]);
+            return this._rpcRequest('session.kill', [id, force]);
         });
     }
     statSession(reset = false) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('statSession', [reset]);
+            return this._rpcRequest('session.stat', [reset]);
         });
     }
     getSessionLimit() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('getSessionLimit', []);
+            return this._rpcRequest('session.limit.get', []);
         });
     }
     setSessionLimit(limit = {}) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('setSessionLimit', [limit]);
+            return this._rpcRequest('session.limit.set', [limit]);
         });
     }
     shutdownServer() {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('shutdownServer', []);
+            return this._rpcRequest('server.shutdown', []);
         });
     }
     splitSqlStatements(sqlText) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('splitSqlStatements', [sqlText]);
+            return this._rpcRequest('sql.split', [sqlText]);
         });
     }
     setHttpDebug(conf = {}) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('setHttpDebug', [conf]);
+            return this._rpcRequest('http.debug.set', [conf]);
         });
     }
 }

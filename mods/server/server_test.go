@@ -231,7 +231,7 @@ func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
 	require.NoError(t, err)
 	require.Same(t, authSvc.rpcController, httpSvc.rpcController)
 
-	result, rpcErr := httpSvc.rpcController.CallJsonRpc("markdownRender", []any{"# Hello", false}, nil)
+	result, rpcErr := httpSvc.rpcController.CallJsonRpc("markdown.render", []any{"# Hello", false}, nil)
 	require.Nil(t, rpcErr)
 	require.Contains(t, result.(string), "Hello")
 }

@@ -121,7 +121,7 @@ func Configure(c Config) error {
 
 	rpcPayload := map[string]any{
 		"jsonrpc": "2.0",
-		"method":  "getServicePorts",
+		"method":  "service.port.list",
 		"params":  []any{},
 		"id":      1,
 	}
@@ -139,7 +139,7 @@ func Configure(c Config) error {
 	}
 	defer rpcRsp.Body.Close()
 	if rpcRsp.StatusCode != http.StatusOK {
-		return fmt.Errorf("getServicePorts failed with status code %d", rpcRsp.StatusCode)
+		return fmt.Errorf("service.port.list failed with status code %d", rpcRsp.StatusCode)
 	}
 	var rpcRspData struct {
 		Result []map[string]string `json:"result"`
@@ -177,7 +177,7 @@ func Configure(c Config) error {
 		c.env["SERVICE_CONTROLLER"] = serviceControllerAddr
 	}
 	if len(candidates) == 0 {
-		return errors.New("getServicePorts did not return any tcp:// address for mach service")
+		return errors.New("service.port.list did not return any tcp:// address for mach service")
 	}
 
 	slices.SortFunc(candidates, func(a, b HostPort) int {
