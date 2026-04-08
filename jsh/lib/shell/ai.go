@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -22,307 +20,6 @@ import (
 	"github.com/dop251/goja"
 	jshlog "github.com/machbase/neo-server/v8/jsh/log"
 )
-
-// ─── Config ──────────────────────────────────────────────────────────────────
-
-// llmConfig is the on-disk structure stored in
-// $HOME/.config/machbase/llm/config.json
-type llmConfig struct {
-	DefaultProvider string                      `json:"defaultProvider"`
-	Providers       map[string]*llmProviderConf `json:"providers"`
-	Exec            llmExecConf                 `json:"exec"`
-	Prompt          llmPromptConf               `json:"prompt"`
-}
-
-type llmProviderConf struct {
-	APIKey    string `json:"apiKey"`
-	BaseURL   string `json:"baseUrl"`
-	Model     string `json:"model"`
-	MaxTokens int    `json:"maxTokens"`
-}
-
-type llmLastConfig struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-}
-
-type llmExecConf struct {
-	MaxRows   int  `json:"maxRows"`
-	TimeoutMs int  `json:"timeoutMs"`
-	ReadOnly  bool `json:"readOnly"`
-}
-
-type llmPromptConf struct {
-	Segments  []string `json:"segments"`
-	CustomDir string   `json:"customDir"`
-}
-
-func defaultLLMConfig() *llmConfig {
-	return &llmConfig{
-		DefaultProvider: "claude",
-		Providers: map[string]*llmProviderConf{
-			"claude": {
-				MaxTokens: 8192,
-			},
-			"openai": {
-				BaseURL:   "https://api.openai.com/v1",
-				MaxTokens: 8192,
-			},
-			"ollama": {
-				BaseURL:   "http://127.0.0.1:11434",
-				MaxTokens: 8192,
-			},
-		},
-		Exec: llmExecConf{
-			MaxRows:   1000,
-			TimeoutMs: 30000,
-			ReadOnly:  true,
-		},
-		Prompt: llmPromptConf{
-			Segments: []string{"jsh-runtime", "jsh-modules", "agent-api", "machbase-sql"},
-		},
-	}
-}
-
-func defaultLastConfig() *llmLastConfig {
-	return &llmLastConfig{}
-}
-
-func llmConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "machbase", "llm", "config.json"), nil
-}
-
-func llmLastConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "machbase", "llm", "last.config"), nil
-}
-
-func llmCustomPromptDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "machbase", "llm", "prompts"), nil
-}
-
-func loadLLMConfig() (*llmConfig, error) {
-	path, err := llmConfigPath()
-	if err != nil {
-		return defaultLLMConfig(), nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return defaultLLMConfig(), nil
-		}
-		return nil, err
-	}
-	cfg := defaultLLMConfig()
-	if err := json.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("config parse error: %w", err)
-	}
-	sanitizeLLMConfig(cfg)
-	return cfg, nil
-}
-
-func saveLLMConfig(cfg *llmConfig) error {
-	sanitizeLLMConfig(cfg)
-	path, err := llmConfigPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
-}
-
-func loadLastConfig() (*llmLastConfig, error) {
-	path, err := llmLastConfigPath()
-	if err != nil {
-		return defaultLastConfig(), nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return defaultLastConfig(), nil
-		}
-		return nil, err
-	}
-	cfg := defaultLastConfig()
-	if err := json.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("last config parse error: %w", err)
-	}
-	return cfg, nil
-}
-
-func saveLastConfig(cfg *llmLastConfig) error {
-	path, err := llmLastConfigPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
-}
-
-func sanitizeLLMConfig(cfg *llmConfig) {
-	if cfg == nil {
-		return
-	}
-	if cfg.Providers == nil {
-		cfg.Providers = map[string]*llmProviderConf{}
-	}
-	for _, name := range supportedProviderNames() {
-		if cfg.Providers[name] == nil {
-			cfg.Providers[name] = &llmProviderConf{}
-		}
-		cfg.Providers[name].Model = ""
-		if cfg.Providers[name].MaxTokens == 0 {
-			cfg.Providers[name].MaxTokens = 8192
-		}
-	}
-	if cfg.Providers["openai"].BaseURL == "" {
-		cfg.Providers["openai"].BaseURL = "https://api.openai.com/v1"
-	}
-	if cfg.Providers["ollama"].BaseURL == "" {
-		cfg.Providers["ollama"].BaseURL = "http://127.0.0.1:11434"
-	}
-	if _, err := normalizeProviderName(cfg.DefaultProvider); err != nil {
-		cfg.DefaultProvider = "claude"
-	}
-	if cfg.Exec.MaxRows == 0 {
-		cfg.Exec.MaxRows = 1000
-	}
-	if cfg.Exec.TimeoutMs == 0 {
-		cfg.Exec.TimeoutMs = 30000
-	}
-	if len(cfg.Prompt.Segments) == 0 {
-		cfg.Prompt.Segments = []string{"jsh-runtime", "jsh-modules", "agent-api", "machbase-sql"}
-	}
-}
-
-// setDotKey sets a value in cfg using dot-notation key (e.g. "providers.claude.model").
-func setDotKey(cfg *llmConfig, key string, value string) error {
-	if isProviderModelKey(key) {
-		return fmt.Errorf("provider model is stored in last.config; use \\model instead")
-	}
-	data, err := json.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return err
-	}
-	parts := strings.Split(key, ".")
-	cur := m
-	for i, part := range parts {
-		if i == len(parts)-1 {
-			// Try to parse as number or bool, fall back to string
-			var v any
-			if err := json.Unmarshal([]byte(value), &v); err == nil {
-				cur[part] = v
-			} else {
-				cur[part] = value
-			}
-		} else {
-			sub, ok := cur[part]
-			if !ok {
-				sub = map[string]any{}
-				cur[part] = sub
-			}
-			next, ok := sub.(map[string]any)
-			if !ok {
-				return fmt.Errorf("key %q is not an object", strings.Join(parts[:i+1], "."))
-			}
-			cur = next
-		}
-	}
-	merged, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(merged, cfg); err != nil {
-		return err
-	}
-	sanitizeLLMConfig(cfg)
-	return nil
-}
-
-func isProviderModelKey(key string) bool {
-	parts := strings.Split(key, ".")
-	return len(parts) == 3 && parts[0] == "providers" && parts[2] == "model"
-}
-
-func supportedProviderNames() []string {
-	return []string{"claude", "openai", "ollama"}
-}
-
-func defaultModelForProvider(name string) string {
-	switch name {
-	case "openai":
-		return "gpt-4o"
-	case "ollama":
-		return "llama3.1"
-	default:
-		return "claude-opus-4-5"
-	}
-}
-
-func normalizeProviderName(name string) (string, error) {
-	switch name {
-	case "claude", "openai", "ollama":
-		return name, nil
-	default:
-		return "", fmt.Errorf("unsupported provider: %s", name)
-	}
-}
-
-// ─── LLM Provider interface ──────────────────────────────────────────────────
-
-type llmRequest struct {
-	Messages     []llmMessage
-	SystemPrompt string
-	Model        string
-	MaxTokens    int
-}
-
-type llmMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type llmResponse struct {
-	Content      string `json:"content"`
-	InputTokens  int    `json:"inputTokens"`
-	OutputTokens int    `json:"outputTokens"`
-	Provider     string `json:"provider"`
-	Model        string `json:"model"`
-}
-
-type llmProvider interface {
-	send(ctx context.Context, req llmRequest) (*llmResponse, error)
-	stream(ctx context.Context, req llmRequest, onToken func(token string)) (*llmResponse, error)
-	name() string
-	model() string
-}
 
 // ─── Claude provider ─────────────────────────────────────────────────────────
 
@@ -1400,66 +1097,11 @@ func (m *aiModule) jsLoadSegment(call goja.FunctionCall) goja.Value {
 }
 
 func (m *aiModule) listSegments() ([]string, error) {
-	seen := map[string]bool{}
-	var result []string
-
-	// 1. builtin from embedded FS
-	if m.promptFS != nil {
-		entries, err := fs.ReadDir(m.promptFS, ".")
-		if err == nil {
-			for _, e := range entries {
-				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-					continue
-				}
-				base := strings.TrimSuffix(e.Name(), ".md")
-				if !seen[base] {
-					seen[base] = true
-					result = append(result, base)
-				}
-			}
-		}
-	}
-
-	// 2. custom from host OS
-	customDir, err := llmCustomPromptDir()
-	if err == nil {
-		entries, err := os.ReadDir(customDir)
-		if err == nil {
-			for _, e := range entries {
-				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-					continue
-				}
-				base := strings.TrimSuffix(e.Name(), ".md")
-				if !seen[base] {
-					seen[base] = true
-					result = append(result, base)
-				}
-			}
-		}
-	}
-	return result, nil
+	return ListAIPromptSegments()
 }
 
 func (m *aiModule) loadSegment(name string) (string, error) {
-	// 1. custom override — host OS
-	customDir, err := llmCustomPromptDir()
-	if err == nil {
-		path := filepath.Join(customDir, name+".md")
-		data, err := os.ReadFile(path)
-		if err == nil {
-			return string(data), nil
-		}
-	}
-
-	// 2. builtin — embedded FS
-	if m.promptFS != nil {
-		data, err := m.promptFS.ReadFile(name + ".md")
-		if err == nil {
-			return string(data), nil
-		}
-	}
-
-	return "", fmt.Errorf("segment %q not found", name)
+	return LoadAIPromptSegment(name)
 }
 
 // ─── JS API: ai.editConfig ───────────────────────────────────────────────────
@@ -1528,20 +1170,12 @@ func findHostEditor() string {
 	return ""
 }
 
-// ─── Module registration ─────────────────────────────────────────────────────
-
-//go:embed ai_prompts
-var aiPromptsEmbed embed.FS
-
-// aiPromptSubFS is the sub-FS rooted at ai_prompts/ for segment lookup.
-var aiPromptSubFS, _ = fs.Sub(aiPromptsEmbed, "ai_prompts")
-
 // aiModule registration — called from Module() in shell.go
 // jsExecJsh runs jsh code via the agent REPL profile and returns the
 // structured JSON result objects emitted by AgentRenderer.
 //
 // Signature: ai.exec(code [, options]) → [{ok, type, value, elapsedMs, ...}]
-// options: { readOnly, maxRows, timeoutMs, maxOutputBytes }
+// options: { readOnly, maxRows, timeoutMs, maxOutputBytes, clientContext }
 //
 // Profile.Startup runs before eval so globalThis.agent (db, schema, runtime)
 // is available. Because this uses the same goja runtime as the caller, the
@@ -1549,79 +1183,115 @@ var aiPromptSubFS, _ = fs.Sub(aiPromptsEmbed, "ai_prompts")
 func (m *aiModule) jsExecJsh(call goja.FunctionCall) goja.Value {
 	code := call.Argument(0).String()
 
-	readOnly := true
-	maxRows := 1000
-	var timeoutMs int64 = 30000
-	maxOutputBytes := 65536
+	opts := AgentExecOptions{
+		ReadOnly:       true,
+		MaxRows:        1000,
+		TimeoutMs:      30000,
+		MaxOutputBytes: 65536,
+	}
 
-	if opts, ok := call.Argument(1).Export().(map[string]any); ok {
-		if v, ok := opts["readOnly"].(bool); ok {
-			readOnly = v
+	if rawOpts, ok := call.Argument(1).Export().(map[string]any); ok {
+		if v, ok := rawOpts["readOnly"].(bool); ok {
+			opts.ReadOnly = v
 		}
-		if v, ok := opts["maxRows"]; ok {
+		if v, ok := rawOpts["maxRows"]; ok {
 			if n := toInt64(v); n > 0 {
-				maxRows = int(n)
+				opts.MaxRows = int(n)
 			}
 		}
-		if v, ok := opts["timeoutMs"]; ok {
+		if v, ok := rawOpts["timeoutMs"]; ok {
 			if n := toInt64(v); n > 0 {
-				timeoutMs = n
+				opts.TimeoutMs = n
 			}
 		}
-		if v, ok := opts["maxOutputBytes"]; ok {
+		if v, ok := rawOpts["maxOutputBytes"]; ok {
 			if n := toInt64(v); n > 0 {
-				maxOutputBytes = int(n)
+				opts.MaxOutputBytes = int(n)
 			}
+		}
+		if v, ok := rawOpts["clientContext"].(map[string]any); ok {
+			opts.ClientContext = v
 		}
 	}
 
-	// Build an agent-profile Repl config. Profile.Startup will inject
-	// __agentConfig and load globalThis.agent before running eval.
+	results, err := ExecAgentCode(m.rt, code, opts)
+	if err != nil {
+		panic(m.rt.NewGoError(err))
+	}
+	out := make([]any, 0, len(results))
+	for _, r := range results {
+		out = append(out, r)
+	}
+	return m.rt.ToValue(out)
+}
+
+// AgentExecOptions defines capability and resource limits for agent-profile
+// code execution.
+//
+// New non-shell integrations should prefer package jsh/agentexec. This helper
+// remains the implementation used by ai.js and shell-internal flows.
+type AgentExecOptions struct {
+	ReadOnly       bool
+	MaxRows        int
+	TimeoutMs      int64
+	MaxOutputBytes int
+	ClientContext  map[string]any
+}
+
+func normalizeAgentExecOptions(opts AgentExecOptions) AgentExecOptions {
+	if opts.MaxRows <= 0 {
+		opts.MaxRows = 1000
+	}
+	if opts.TimeoutMs <= 0 {
+		opts.TimeoutMs = 30000
+	}
+	if opts.MaxOutputBytes <= 0 {
+		opts.MaxOutputBytes = 65536
+	}
+	return opts
+}
+
+// ExecAgentCode runs JavaScript code under the agent REPL profile and returns
+// the structured result objects emitted by AgentRenderer.
+func ExecAgentCode(rt *goja.Runtime, code string, opts AgentExecOptions) ([]map[string]any, error) {
+	if rt == nil {
+		return nil, fmt.Errorf("runtime is required")
+	}
+	opts = normalizeAgentExecOptions(opts)
+
 	agentCfg := agentProfileConfig{
-		ReadOnly:       readOnly,
-		MaxRows:        maxRows,
-		MaxOutputBytes: maxOutputBytes,
+		ReadOnly:       opts.ReadOnly,
+		MaxRows:        opts.MaxRows,
+		MaxOutputBytes: opts.MaxOutputBytes,
+		ClientContext:  opts.ClientContext,
 	}
 	cfg := defaultReplConfig()
 	cfg.Profile = agentReplProfileWith(agentCfg)
-	cfg.Renderer = &AgentRenderer{MaxOutputBytes: maxOutputBytes}
+	cfg.Renderer = &AgentRenderer{MaxOutputBytes: opts.MaxOutputBytes}
 	cfg.Eval = code
 	cfg.PrintEval = true
-	cfg.ReadOnly = readOnly
-	cfg.MaxRows = maxRows
-	cfg.MaxOutputBytes = maxOutputBytes
-	cfg.TimeoutMs = timeoutMs
+	cfg.ReadOnly = opts.ReadOnly
+	cfg.MaxRows = opts.MaxRows
+	cfg.MaxOutputBytes = opts.MaxOutputBytes
+	cfg.TimeoutMs = opts.TimeoutMs
 	cfg.History.Enabled = false
 
-	// Capture AgentRenderer NDJSON output into a buffer.
 	var buf bytes.Buffer
-
-	// Redirect console.log/println to a separate buffer so the output is captured
-	// for the LLM context. Without this redirect, console writes go to the engine's
-	// default writer (stdout) and are visible to the user but invisible to the LLM.
 	var consoleBuf bytes.Buffer
 	oldWriter := jshlog.SetDefaultWriter(&consoleBuf)
 
-	r := &Repl{rt: m.rt, cfg: cfg}
+	r := &Repl{rt: rt, cfg: cfg}
 	r.registerBuiltinCommands()
-	// Profile.Startup + runEval are invoked inside loopWithConfig.
-	// We call the internal path directly to inject our writer.
 	if err := cfg.Profile.RunStartup(r.rt); err != nil {
 		jshlog.SetDefaultWriter(oldWriter)
-		panic(m.rt.NewGoError(err))
+		return nil, err
 	}
-	r.runEval(code, true, &buf, cfg.Renderer, timeoutMs)
-
-	// Restore console output writer.
+	r.runEval(code, true, &buf, cfg.Renderer, opts.TimeoutMs)
 	jshlog.SetDefaultWriter(oldWriter)
 
-	// If console output was produced, prepend it as a print-type NDJSON entry
-	// so it appears in the structured result before the expression value.
 	var combined bytes.Buffer
 	if consoleBuf.Len() > 0 {
 		text := strings.TrimRight(consoleBuf.String(), "\n")
-		// Strip log-level prefixes (e.g. "INFO  ", "WARN  ") added by log.makeConsoleLog
-		// when the agent code calls console.log() instead of console.println().
 		text = stripLogLevelPrefixes(text)
 		printLine, _ := json.Marshal(map[string]any{
 			"ok":        true,
@@ -1634,23 +1304,20 @@ func (m *aiModule) jsExecJsh(call goja.FunctionCall) goja.Value {
 	}
 	combined.Write(buf.Bytes())
 
-	// Parse the NDJSON lines emitted by AgentRenderer into a JS array.
-	var results []any
+	results := make([]map[string]any, 0)
 	scanner := bufio.NewScanner(&combined)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
-		var obj any
+		var obj map[string]any
 		if err := json.Unmarshal([]byte(line), &obj); err == nil {
 			results = append(results, obj)
 		}
 	}
-	if results == nil {
-		results = []any{}
-	}
-	return m.rt.ToValue(results)
+
+	return results, nil
 }
 
 // stripLogLevelPrefixes removes slog level prefixes ("INFO  ", "WARN  ", "DEBUG ",
@@ -1672,20 +1339,21 @@ func stripLogLevelPrefixes(text string) string {
 }
 
 func registerAIModule(rt *goja.Runtime, o *goja.Object) {
-	m := newAIModule(rt, aiPromptSubFS.(fs.ReadFileFS))
+	m := newAIModule(rt, promptSubFS)
 
-	obj := rt.NewObject()
-	obj.Set("send", m.jsSend)
-	obj.Set("stream", m.jsStream)
-	obj.Set("exec", m.jsExecJsh)
-	obj.Set("setProvider", m.jsSetProvider)
-	obj.Set("setModel", m.jsSetModel)
-	obj.Set("cancel", m.jsCancel)
-	obj.Set("providerInfo", m.jsProviderInfo)
-	obj.Set("listSegments", m.jsListSegments)
-	obj.Set("loadSegment", m.jsLoadSegment)
-	obj.Set("editConfig", m.jsEditConfig)
-	obj.Set("config", m.makeConfigObject())
-	obj.Set("lastConfig", m.makeLastConfigObject())
-	o.Set("ai", obj)
+	aiObj := rt.NewObject()
+	aiObj.Set("send", m.jsSend)
+	aiObj.Set("stream", m.jsStream)
+	aiObj.Set("setProvider", m.jsSetProvider)
+	aiObj.Set("setModel", m.jsSetModel)
+	aiObj.Set("providerInfo", m.jsProviderInfo)
+	aiObj.Set("listSegments", m.jsListSegments)
+	aiObj.Set("loadSegment", m.jsLoadSegment)
+	aiObj.Set("editConfig", m.jsEditConfig)
+	aiObj.Set("cancel", m.jsCancel)
+	aiObj.Set("exec", m.jsExecJsh)
+	aiObj.Set("config", m.makeConfigObject())
+	aiObj.Set("lastConfig", m.makeLastConfigObject())
+
+	o.Set("ai", aiObj)
 }

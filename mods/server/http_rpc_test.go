@@ -168,6 +168,81 @@ func TestHttpRpc(t *testing.T) {
 				require.Contains(t, html, "<li>Item 2</li>")
 			},
 		},
+		{
+			name:   "vizspecRender-passthrough",
+			method: "vizspec.render",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec/v1", result.Get("result.schema").String())
+				require.Equal(t, "timeseries", result.Get("result.kind").String())
+				require.Equal(t, "t1", result.Get("result.data.x.0").String())
+				require.Equal(t, "value", result.Get("result.data.series.0.name").String())
+				require.Equal(t, int64(1), result.Get("result.data.series.0.data.0").Int())
+			},
+		},
+		{
+			name:   "vizspecExport-svg",
+			method: "vizspec.export",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}, "svg"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec-export/v1", result.Get("result.schema").String())
+				require.Equal(t, "svg", result.Get("result.format").String())
+				require.Equal(t, "image/svg+xml", result.Get("result.mimeType").String())
+				data := result.Get("result.data").String()
+				require.Contains(t, data, "<svg")
+			},
+		},
+		{
+			name:   "vizspecExport-png",
+			method: "vizspec.export",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}, "png"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec-export/v1", result.Get("result.schema").String())
+				require.Equal(t, "png", result.Get("result.format").String())
+				require.Equal(t, "image/png", result.Get("result.mimeType").String())
+				data := result.Get("result.data").String()
+				require.NotEmpty(t, data)
+			},
+		},
+		{
+			name:   "vizspecExport-echarts",
+			method: "vizspec.export",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}, "echarts"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec-export/v1", result.Get("result.schema").String())
+				require.Equal(t, "echarts", result.Get("result.format").String())
+				require.Equal(t, "application/json", result.Get("result.mimeType").String())
+				require.Equal(t, "line", result.Get("result.data.series.0.type").String())
+			},
+		},
 	}
 	for _, tc := range tests {
 		RunJsonRpcTest(t, at, tc)

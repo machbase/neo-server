@@ -39,6 +39,13 @@ func controllerBuiltinRPCMethods(ctl *Controller) map[string]any {
 		"service.uninstall":             ctl.rpcServiceUninstall,
 		"service.start":                 ctl.rpcServiceStart,
 		"service.stop":                  ctl.rpcServiceStop,
+		"llm.session.open":              ctl.rpcLLMSessionOpen,
+		"llm.session.get":               ctl.rpcLLMSessionGet,
+		"llm.session.reset":             ctl.rpcLLMSessionReset,
+		"llm.turn.ask":                  ctl.rpcLLMTurnAsk,
+		"llm.turn.cancel":               ctl.rpcLLMTurnCancel,
+		"llm.provider.set":              ctl.rpcLLMProviderSet,
+		"llm.model.set":                 ctl.rpcLLMModelSet,
 	}
 }
 

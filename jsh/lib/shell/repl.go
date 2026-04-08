@@ -143,6 +143,7 @@ type agentProfileConfig struct {
 	ReadOnly       bool
 	MaxRows        int
 	MaxOutputBytes int
+	ClientContext  map[string]any
 }
 
 // agentReplProfile returns the default agent RuntimeProfile (no limits overrides).
@@ -164,11 +165,15 @@ func agentReplProfileWith(cfg agentProfileConfig) RuntimeProfile {
 		Banner:      nil, // no banner; AgentRenderer emits JSON events
 		Startup: func(rt *goja.Runtime) error {
 			// Inject limits before requiring agent module so it can read them.
-			if err := rt.Set("__agentConfig", map[string]any{
+			agentConfig := map[string]any{
 				"readOnly":       cfg.ReadOnly,
 				"maxRows":        cfg.MaxRows,
 				"maxOutputBytes": cfg.MaxOutputBytes,
-			}); err != nil {
+			}
+			if len(cfg.ClientContext) > 0 {
+				agentConfig["clientContext"] = cfg.ClientContext
+			}
+			if err := rt.Set("__agentConfig", agentConfig); err != nil {
 				return err
 			}
 			_, err := rt.RunString(`globalThis.agent = require('repl/profiles/agent');`)
@@ -181,6 +186,7 @@ func agentReplProfileWith(cfg agentProfileConfig) RuntimeProfile {
 			"readOnly":       cfg.ReadOnly,
 			"maxRows":        cfg.MaxRows,
 			"maxOutputBytes": cfg.MaxOutputBytes,
+			"clientContext":  cfg.ClientContext,
 		},
 		KnownModules: append(base.KnownModules,
 			"repl/profiles/agent  — agent.db.*, agent.schema.*, agent.runtime.*",
@@ -444,10 +450,15 @@ func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplCo
 			case "user":
 				cfg.Profile = userReplProfile()
 			case "agent":
+				var clientContext map[string]any
+				if raw, ok := opts["clientContext"].(map[string]any); ok {
+					clientContext = raw
+				}
 				agentCfg := agentProfileConfig{
 					ReadOnly:       cfg.ReadOnly,
 					MaxRows:        cfg.MaxRows,
 					MaxOutputBytes: cfg.MaxOutputBytes,
+					ClientContext:  clientContext,
 				}
 				if agentCfg.MaxRows == 0 {
 					agentCfg.MaxRows = 1000

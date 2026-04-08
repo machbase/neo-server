@@ -20,6 +20,7 @@
 const { Client } = require('machcli');
 const fs = require('fs');
 const _http = require('@jsh/http');
+const vizspec = require('vizspec');
 
 const DEFAULT_CONFIG_PATH = '/proc/share/db.json';
 const DEFAULT_CONFIG = {
@@ -104,6 +105,8 @@ const _agentConfig = (typeof globalThis.__agentConfig !== 'undefined' && globalT
 const _readOnly = _agentConfig ? Boolean(_agentConfig.readOnly) : false;
 const _maxRows = (_agentConfig && _agentConfig.maxRows > 0) ? _agentConfig.maxRows : DEFAULT_MAX_ROWS;
 const _maxOutputBytes = (_agentConfig && _agentConfig.maxOutputBytes > 0) ? _agentConfig.maxOutputBytes : 65536;
+const _clientContext = (_agentConfig && _isPlainObject(_agentConfig.clientContext))
+    ? JSON.parse(JSON.stringify(_agentConfig.clientContext)) : null;
 
 // _loadConfig reads a JSON config file, falling back to DEFAULT_CONFIG.
 function _loadConfig(path) {
@@ -784,10 +787,220 @@ class AgentSQLReferenceDocsHelper {
     }
 }
 
+function _toPositiveIntOption(options, key, defaultValue) {
+    if (!options || options[key] === undefined || options[key] === null || options[key] === '') {
+        return defaultValue;
+    }
+    const n = Number(options[key]);
+    if (!isFinite(n) || n <= 0) {
+        throw new Error('agent.viz: option "' + key + '" must be greater than 0');
+    }
+    return Math.floor(n);
+}
+
+function _toBooleanOption(options, key, defaultValue) {
+    if (!options || options[key] === undefined || options[key] === null || options[key] === '') {
+        return defaultValue;
+    }
+    return Boolean(options[key]);
+}
+
+function _toStringOption(options, key, defaultValue) {
+    if (!options || options[key] === undefined || options[key] === null || options[key] === '') {
+        return defaultValue;
+    }
+    return String(options[key]);
+}
+
+function _normalizeVizOptions(options) {
+    if (options === undefined || options === null) {
+        return {};
+    }
+    if (!_isPlainObject(options)) {
+        throw new Error('agent.viz: options must be an object');
+    }
+    return options;
+}
+
+function _buildRenderEnvelope(mode, payload, meta) {
+    const envelope = {
+        __agentRender: true,
+        schema: 'agent-render/v1',
+        renderer: 'viz.tui',
+        mode: mode,
+        meta: meta || {},
+    };
+    if (mode === 'blocks') {
+        envelope.blocks = payload;
+    } else {
+        envelope.lines = payload;
+    }
+    if (meta && meta.title) {
+        envelope.title = meta.title;
+    }
+    return envelope;
+}
+
+class AgentVizHelper {
+    render(spec, options) {
+        const opts = _normalizeVizOptions(options);
+        const mode = _toStringOption(opts, 'mode', 'blocks').toLowerCase();
+        if (mode === 'lines') {
+            return this.lines(spec, opts);
+        }
+        if (mode !== 'blocks') {
+            throw new Error('agent.viz: unsupported mode "' + mode + '"');
+        }
+        return this.blocks(spec, opts);
+    }
+
+    blocks(spec, options) {
+        const opts = _normalizeVizOptions(options);
+        try {
+            vizspec.validate(spec);
+            const renderOptions = {
+                compact: _toBooleanOption(opts, 'compact', true),
+                rows: _toPositiveIntOption(opts, 'rows', 8),
+                width: _toPositiveIntOption(opts, 'width', 40),
+                timeformat: _toStringOption(opts, 'timeformat', ''),
+                tz: _toStringOption(opts, 'tz', ''),
+            };
+            if (renderOptions.timeformat === '') {
+                delete renderOptions.timeformat;
+            }
+            if (renderOptions.tz === '') {
+                delete renderOptions.tz;
+            }
+            const blocks = vizspec.toTUIBlocks(spec, renderOptions);
+            const listed = vizspec.listSeries(spec);
+            const meta = {
+                blockCount: Array.isArray(blocks) ? blocks.length : 0,
+                seriesCount: Array.isArray(listed) ? listed.length : 0,
+                title: _toStringOption(opts, 'title', ''),
+            };
+            return _buildRenderEnvelope('blocks', blocks, meta);
+        } catch (err) {
+            throw new Error('viz render failed: ' + (err && err.message ? err.message : String(err)));
+        }
+    }
+
+    lines(spec, options) {
+        const opts = _normalizeVizOptions(options);
+        try {
+            vizspec.validate(spec);
+            const renderOptions = {
+                height: _toPositiveIntOption(opts, 'height', 3),
+                width: _toPositiveIntOption(opts, 'width', 40),
+                timeformat: _toStringOption(opts, 'timeformat', ''),
+                tz: _toStringOption(opts, 'tz', ''),
+            };
+            const seriesId = _toStringOption(opts, 'series', '');
+            if (seriesId) {
+                renderOptions.seriesId = seriesId;
+            }
+            if (renderOptions.timeformat === '') {
+                delete renderOptions.timeformat;
+            }
+            if (renderOptions.tz === '') {
+                delete renderOptions.tz;
+            }
+            const lines = vizspec.toTUILines(spec, renderOptions);
+            const listed = vizspec.listSeries(spec);
+            const meta = {
+                lineCount: Array.isArray(lines) ? lines.length : 0,
+                seriesCount: Array.isArray(listed) ? listed.length : 0,
+                seriesId: renderOptions.seriesId || '',
+                title: _toStringOption(opts, 'title', ''),
+            };
+            return _buildRenderEnvelope('lines', lines, meta);
+        } catch (err) {
+            throw new Error('viz render failed: ' + (err && err.message ? err.message : String(err)));
+        }
+    }
+
+    // fromRows(rows, options) — convenience high-level API.
+    // Builds a raw-point vizspec from a plain array of row objects and renders it.
+    //
+    // options:
+    //   x        (string, required)  — field name for the X axis (e.g. 'TIME')
+    //   y        (string|string[])   — one or more field names for Y series (e.g. ['LAT', 'LON'])
+    //   mode     ('blocks'|'lines')  — render mode, default 'lines'
+    //   width    (number)            — render width  (default 80)
+    //   height   (number)            — render height for lines mode (default 10)
+    //   rows     (number)            — row count for blocks mode (default 8)
+    //   compact  (boolean)           — compact blocks (default true)
+    //   timeformat (string)          — 'rfc3339'|'s'|'ms'|'us'|'ns'
+    //   tz       (string)            — timezone
+    //   title    (string)            — chart title
+    fromRows(rows, options) {
+        const opts = _normalizeVizOptions(options);
+        const xField = _toStringOption(opts, 'x', '');
+        if (!xField) {
+            throw new Error('agent.viz.fromRows: options.x (x-axis field name) is required');
+        }
+        if (!Array.isArray(rows) || rows.length === 0) {
+            throw new Error('agent.viz.fromRows: rows must be a non-empty array');
+        }
+
+        // Determine y fields — accept a single string or an array.
+        let yFields = opts['y'];
+        if (typeof yFields === 'string' && yFields.length > 0) {
+            yFields = [yFields];
+        }
+        if (!Array.isArray(yFields) || yFields.length === 0) {
+            // Auto-detect: all numeric fields except the x field.
+            const sample = rows[0];
+            yFields = Object.keys(sample).filter(function (k) {
+                return k !== xField && typeof sample[k] === 'number';
+            });
+            if (yFields.length === 0) {
+                throw new Error('agent.viz.fromRows: no numeric y fields found; specify options.y explicitly');
+            }
+        }
+
+        // Build one raw-point series per y field.
+        // Data layout: each row becomes [xValue, yValue].
+        const seriesList = yFields.map(function (yField) {
+            return {
+                id: yField,
+                name: yField,
+                representation: {
+                    kind: 'raw-point',
+                    fields: [xField, yField],
+                },
+                data: rows.map(function (r) { return [r[xField], r[yField]]; }),
+            };
+        });
+
+        const spec = vizspec.createSpec({ series: seriesList });
+
+        const mode = _toStringOption(opts, 'mode', 'lines').toLowerCase();
+        if (mode === 'blocks') {
+            return this.blocks(spec, opts);
+        }
+        return this.lines(spec, opts);
+    }
+
+    help() {
+        return [
+            'agent.viz.render(spec[, options])           Render VIZSPEC into a structured TUI envelope',
+            'agent.viz.blocks(spec[, options])           Render VIZSPEC as TUI blocks envelope',
+            'agent.viz.lines(spec[, options])            Render VIZSPEC as TUI lines envelope',
+            'agent.viz.fromRows(rows, options)           High-level: build spec from row array and render',
+            '  required: options.x (x-axis field name)',
+            '  optional: options.y (string or string[] of y field names — auto-detected if omitted)',
+            '  optional: options.mode ("blocks"|"lines", default "lines")',
+            'options: mode, compact, rows, width, height, series, timeformat, tz, title',
+            'Returns: { __agentRender:true, schema:"agent-render/v1", renderer:"viz.tui", ... }',
+        ].join('\n');
+    }
+}
+
 const _db = new AgentDbHelper();
 const _schema = new AgentSchemaHelper(_db);
 const _modules = new AgentModuleDocsHelper();
 const _sqlref = new AgentSQLReferenceDocsHelper();
+const _viz = new AgentVizHelper();
 
 // _helpText for agent.help().
 const _helpText = {
@@ -810,6 +1023,7 @@ const _helpText = {
         '',
         '  agent.runtime.capabilities()      List allowed operation categories',
         '  agent.runtime.limits()            Current resource limits (maxRows, maxOutputBytes, readOnly)',
+        '  agent.runtime.clientContext       Caller surface/transport/render target hints, when provided',
         '',
         '  agent.modules.list([options])     List module manuals with URLs (online + builtin)',
         '  agent.modules.index([force|options]) Fetch index.md and parsed module names',
@@ -822,6 +1036,11 @@ const _helpText = {
         '  agent.sqlref.resolve(name)        Resolve SQL reference name/url/summary',
         '  agent.sqlref.fetch(name[, options]) Fetch one SQL reference markdown page',
         '  agent.sqlref.fetchAll([options])  Fetch all configured SQL reference markdown pages',
+        '',
+        '  agent.viz.render(spec[, options])        Render VIZSPEC into a TUI envelope ({__agentRender:true,...})',
+        '  agent.viz.blocks(spec[, options])        Render VIZSPEC as TUI blocks envelope',
+        '  agent.viz.lines(spec[, options])         Render VIZSPEC as TUI lines envelope',
+        '  agent.viz.fromRows(rows, {x, y?, mode?}) High-level: build spec from row array and render',
         '',
         '  agent.help([topic])               Show this help',
         '',
@@ -844,8 +1063,10 @@ const agent = {
     schema: _schema,
     modules: _modules,
     sqlref: _sqlref,
+    viz: _viz,
 
     runtime: {
+        clientContext: _clientContext,
         // capabilities() — list allowed operation categories for this profile.
         capabilities: function () {
             const caps = ['db.read', 'db.schema'];

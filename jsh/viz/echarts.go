@@ -1,4 +1,4 @@
-package advn
+package viz
 
 import (
 	"encoding/json"
@@ -780,6 +780,43 @@ func mergeStyle(base map[string]any, override map[string]any) map[string]any {
 	}
 	return base
 }
+
+// func toFloat64(v any) (float64, bool) {
+// 	switch n := v.(type) {
+// 	case float64:
+// 		return n, true
+// 	case float32:
+// 		return float64(n), true
+// 	case int:
+// 		return float64(n), true
+// 	case int8:
+// 		return float64(n), true
+// 	case int16:
+// 		return float64(n), true
+// 	case int32:
+// 		return float64(n), true
+// 	case int64:
+// 		return float64(n), true
+// 	case uint:
+// 		return float64(n), true
+// 	case uint8:
+// 		return float64(n), true
+// 	case uint16:
+// 		return float64(n), true
+// 	case uint32:
+// 		return float64(n), true
+// 	case uint64:
+// 		return float64(n), true
+// 	case string:
+// 		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+// 		if err != nil {
+// 			return 0, false
+// 		}
+// 		return f, true
+// 	default:
+// 		return 0, false
+// 	}
+// }
 
 func toFloat64(value any) (float64, bool) {
 	switch number := value.(type) {

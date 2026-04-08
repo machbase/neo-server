@@ -39,6 +39,7 @@ import (
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
+	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -1061,6 +1062,8 @@ func (s *Server) registerJsonRpcHandlers() {
 		return
 	}
 	ctl.RegisterJsonRpcHandler("markdown.render", rpcMarkdownRender)
+	ctl.RegisterJsonRpcHandler("vizspec.render", viz.RPCVizspecRender)
+	ctl.RegisterJsonRpcHandler("vizspec.export", viz.RPCVizspecExport)
 	ctl.RegisterJsonRpcHandler("server.info.get", s.getServerInfo)
 	ctl.RegisterJsonRpcHandler("service.port.list", s.getServicePorts)
 	ctl.RegisterJsonRpcHandler("shell.list", s.listShells)
