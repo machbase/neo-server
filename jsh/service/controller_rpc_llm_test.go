@@ -379,7 +379,7 @@ func TestLLMRPCSessionOpenResumeAndProviderDefaultModel(t *testing.T) {
 }
 
 func TestLLMNotifyHelpers(t *testing.T) {
-	require.False(t, emitJsonRpcNotification(nil, "llm.event", map[string]any{"a": 1}))
+	require.False(t, emitJsonRpcNotification(context.TODO(), "llm.event", map[string]any{"a": 1}))
 	require.False(t, emitJsonRpcNotification(context.Background(), "", map[string]any{"a": 1}))
 
 	ctx := WithJsonRpcNotificationWriter(context.Background(), nil)
