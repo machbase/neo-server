@@ -2,6 +2,7 @@ package mdconv
 
 import (
 	"io"
+	"regexp"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	pikchr "github.com/jchenry/goldmark-pikchr"
@@ -43,6 +44,9 @@ func (c *Converter) Convert(src []byte, w io.Writer) error {
 		highlightingStyle = "catppuccin-macchiato"
 	}
 
+	// Preprocess: map jsh/jsh-run code fences to javascript
+	src = c.mapCodeFenceLanguage(src)
+
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
@@ -62,4 +66,13 @@ func (c *Converter) Convert(src []byte, w io.Writer) error {
 		),
 	)
 	return md.Convert(src, w)
+}
+
+// mapCodeFenceLanguage converts jsh/jsh-run code fences to javascript for syntax highlighting
+func (c *Converter) mapCodeFenceLanguage(src []byte) []byte {
+	// Pattern to match code fences with jsh or jsh-run language
+	// Note: jsh-run must come before jsh in alternation to match correctly
+	pattern := regexp.MustCompile("(?m)^```(?:jsh-run|jsh)(.*)$")
+
+	return pattern.ReplaceAll(src, []byte("```javascript$1"))
 }

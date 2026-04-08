@@ -30,8 +30,11 @@ agent.schema.describe(table)   // → [{NAME, TYPE, LENGTH, FLAG}, ...] — tabl
                                //   TYPE and FLAG are integer codes from M$SYS_COLUMNS
 ```
 
-> **IMPORTANT**: All field names in query results and schema objects are **UPPERCASE**.
-> Use `t.NAME`, `t.TYPE`, `row.COLUMN_NAME`, etc. — never lowercase.
+> **IMPORTANT**: Schema objects are **UPPERCASE** (`NAME`, `TYPE`, `FLAG`, ...).
+> Query result field names follow SQL projection rules:
+> - Explicit names/aliases are preserved as written (for example, `SELECT name, time AS MyTime ...` returns `name` and `MyTime`).
+> - Implicit names (for example, `SELECT * FROM table`) are returned in **UPPERCASE**.
+> Prefer uppercase access for system/schema fields (for example, `t.NAME`, `t.TYPE`, `row.COLUMN_NAME`).
 
 ## `agent.runtime` — Runtime metadata
 
@@ -41,6 +44,87 @@ agent.runtime.maxOutputBytes  // number — current output byte limit
 agent.runtime.readOnly        // boolean — whether exec is blocked
 agent.runtime.provider        // string — active LLM provider name
 agent.runtime.model           // string — active LLM model name
+```
+
+## `agent.viz` — ADVN TUI rendering envelope
+
+```jsh
+// High-level API (RECOMMENDED): build and render from a plain row array.
+// options.x  — field name for the X axis (REQUIRED, typically 'TIME')
+// options.y  — field name(s) for Y axes: string or string[] (auto-detected if omitted)
+// options.mode — 'lines' (default) | 'blocks'
+// options.width, options.height, options.title, options.timeformat, options.tz
+return agent.viz.fromRows(data.rows, { x: 'TIME', y: ['LAT', 'LON'], width: 80, height: 15 });
+
+// Low-level API: pass a full ADVN spec object.
+agent.viz.blocks(spec, options?)
+agent.viz.lines(spec, options?)
+agent.viz.render(spec, options?)  // dispatches by options.mode ('blocks'|'lines', default: blocks)
+```
+
+### ADVN spec structure (for low-level API)
+
+An ADVN spec MUST have `version: 1` and a `series` array.
+Each series MUST have an `id` and `representation.kind`.
+
+**Valid `representation.kind` values** (the ONLY allowed values):
+- `"raw-point"` — raw time/value pairs: `fields: ['xField', 'yField']`
+- `"time-bucket-value"` — bucketed metrics: `fields: ['time', 'value']`
+- `"time-bucket-band"` — min/avg/max band: `fields: ['time', 'min', 'avg', 'max']` (any 2 of min/max/avg)
+- `"distribution-histogram"` — histogram bars: `fields: ['binStart', 'binEnd', 'count']`
+- `"distribution-boxplot"` — box plot: `fields: ['category', 'low', 'q1', 'median', 'q3', 'high']`
+- `"event-point"` — event markers: `fields: ['time', 'label']`
+- `"event-range"` — time ranges: `fields: ['from', 'to', 'label']`
+
+> **IMPORTANT**: `"line"`, `"bar"`, `"scatter"` are NOT valid kinds — they do not exist.
+
+**Data lives inside each series object, NOT at the spec top level:**
+
+```jsh
+// WRONG — do not put data at spec level:
+// { data: rows, series: [{ id: 'x', field: 'lat' }] }
+
+// CORRECT — data goes inside each series:
+const spec = vizspec.createSpec({
+    series: [{
+        id: 'lat',
+        name: 'Latitude',
+        representation: { kind: 'raw-point', fields: ['TIME', 'LAT'] },
+        data: data.rows.map(r => [r.TIME, r.LAT]),
+    }, {
+        id: 'lon',
+        name: 'Longitude',
+        representation: { kind: 'raw-point', fields: ['TIME', 'LON'] },
+        data: data.rows.map(r => [r.TIME, r.LON]),
+    }],
+});
+return agent.viz.lines(spec, { width: 80, height: 15, title: 'GPS Track' });
+```
+
+However, **prefer `agent.viz.fromRows()`** which handles spec construction automatically:
+
+```jsh
+const data = agent.db.query('SELECT time, lat, lon FROM demo WHERE name=\'firenze\' ORDER BY time LIMIT 50');
+return agent.viz.fromRows(data.rows, {
+    x: 'TIME',
+    y: ['LAT', 'LON'],
+    width: 80,
+    height: 15,
+    title: 'Firenze GPS Track',
+});
+```
+
+### Return shape:
+```jsh
+// {
+//   __agentRender: true,
+//   schema: 'agent-render/v1',
+//   renderer: 'advn.tui',
+//   mode: 'blocks' | 'lines',
+//   blocks?: [...],
+//   lines?: [...],
+//   meta?: { title, seriesCount, lineCount | blockCount }
+// }
 ```
 
 ## `agent.modules` — Online JSH module manuals
@@ -116,6 +200,7 @@ When the user asks you to query data, write jsh code that:
 3. Handles `result.truncated === true` by noting that more rows exist.
 4. Wraps executable code in an IIFE so repeated execution does not redeclare top-level variables.
 5. Avoids creating top-level `const`/`let`/`class` declarations unless persistent global state is explicitly required.
+6. When visualization is requested, prefer `agent.viz.fromRows(data.rows, { x: 'FIELD', y: [...] })` for simple time-series data. For advanced specs use `agent.viz.blocks(spec)` or `agent.viz.lines(spec)` with a properly constructed ADVN spec (see `agent.viz` section above for valid `representation.kind` values).
 
 Example:
 ```jsh-run

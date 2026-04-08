@@ -73,6 +73,30 @@ function executeJsh(code, options) {
     });
 }
 
+function isRenderEnvelope(value) {
+    return !!value &&
+        typeof value === 'object' &&
+        value.__agentRender === true &&
+        value.schema === 'agent-render/v1' &&
+        value.renderer === 'advn.tui' &&
+        (value.mode === 'blocks' || value.mode === 'lines');
+}
+
+function collectRenderEnvelopes(results) {
+    var envelopes = [];
+    if (!results || results.length === 0) {
+        return envelopes;
+    }
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i] || {};
+        if (!r.ok || !isRenderEnvelope(r.value)) {
+            continue;
+        }
+        envelopes.push(r.value);
+    }
+    return envelopes;
+}
+
 /**
  * Format an array of AgentRenderer result objects into a human-readable string.
  * Used to produce the tool-result message inserted into conversation history.
@@ -89,6 +113,18 @@ function formatResults(results) {
         var r = results[i];
         if (!r.ok) {
             lines.push('Error: ' + r.error);
+        } else if (isRenderEnvelope(r.value)) {
+            var env = r.value;
+            if (env.mode === 'blocks') {
+                var count = Array.isArray(env.blocks) ? env.blocks.length : 0;
+                lines.push('[rendered advn.tui blocks: ' + count + ']');
+            } else {
+                var lineCount = Array.isArray(env.lines) ? env.lines.length : 0;
+                lines.push('[rendered advn.tui lines: ' + lineCount + ']');
+            }
+        } else if (r.truncated && typeof r.value === 'string' && r.value.indexOf('[truncated:') === 0) {
+            lines.push('[render payload truncated: increase maxOutputBytes to render ADVN output]');
+            lines.push(r.value + '  [truncated]');
         } else if (r.type === 'print') {
             // console.log/println output captured during jsh execution.
             lines.push(String(r.value));
@@ -105,4 +141,10 @@ function formatResults(results) {
     return lines.length > 0 ? lines.join('\n') : '(no output)';
 }
 
-module.exports = { extractCodeBlocks, executeJsh, formatResults };
+module.exports = {
+    extractCodeBlocks,
+    executeJsh,
+    formatResults,
+    isRenderEnvelope,
+    collectRenderEnvelopes,
+};

@@ -19,7 +19,7 @@
     const viewConfig = {
         command: 'view',
         usage: 'viz view [options] [filename]',
-        description: 'Render an ADVN spec file or stdin as TUI blocks',
+        description: 'Render a VIZSPEC file or stdin as TUI blocks',
         options: {
             help: optionHelp,
             compact: { type: 'boolean', description: 'Hide series summary and raw data tables', default: false },
@@ -29,14 +29,14 @@
             ...pretty.TableArgOptions,
         },
         positionals: [
-            { name: 'filename', description: 'ADVN JSON file path', optional: true },
+            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
         ],
     };
 
     const linesConfig = {
         command: 'lines',
         usage: 'viz lines [options] [filename]',
-        description: 'Render an ADVN spec file or stdin as TUI chart lines',
+        description: 'Render a VIZSPEC file or stdin as TUI chart lines',
         options: {
             help: optionHelp,
             height: { type: 'integer', description: 'Chart height for sparkline-style lines', default: 3 },
@@ -46,26 +46,26 @@
             tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
         },
         positionals: [
-            { name: 'filename', description: 'ADVN JSON file path', optional: true },
+            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
         ],
     };
 
     const validateConfig = {
         command: 'validate',
         usage: 'viz validate [filename]',
-        description: 'Validate an ADVN spec file or stdin',
+        description: 'Validate a VIZSPEC file or stdin',
         options: {
             help: optionHelp,
         },
         positionals: [
-            { name: 'filename', description: 'ADVN JSON file path', optional: true },
+            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
         ],
     };
 
     const exportConfig = {
         command: 'export',
         usage: 'viz export [options] [filename]',
-        description: 'Export an ADVN spec file or stdin to SVG or PNG',
+        description: 'Export a VIZSPEC file or stdin to SVG or PNG',
         options: {
             help: optionHelp,
             format: { type: 'string', description: 'Export format', default: 'svg' },
@@ -82,7 +82,7 @@
             tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
         },
         positionals: [
-            { name: 'filename', description: 'ADVN JSON file path', optional: true },
+            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
         ],
     };
 
@@ -245,7 +245,7 @@
 
     function readSpecStdin() {
         if (process.stdin.isTTY()) {
-            throw new Error('filename is required unless ADVN JSON is provided on stdin');
+            throw new Error('filename is required unless VIZSPEC JSON is provided on stdin');
         }
         const content = process.stdin.read();
         if (!content || !String(content).trim()) {

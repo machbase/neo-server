@@ -9,9 +9,10 @@
 const process = require('process');
 const parseArgs = require('util/parseArgs');
 const { ReadLine } = require('readline');
+const pretty = require('pretty');
 const { ai } = require('@jsh/shell');
 const { buildSystemPrompt, listSegments } = require('ai/prompt');
-const { extractCodeBlocks, executeJsh, formatResults } = require('ai/executor');
+const { extractCodeBlocks, executeJsh, formatResults, isRenderEnvelope } = require('ai/executor');
 const { saveTranscript } = require('ai/transcript');
 
 // ─── CLI options ──────────────────────────────────────────────────────────────
@@ -157,6 +158,83 @@ function printInfo(text) {
 
 function printError(text) {
     console.println(RED + 'Error: ' + text + RESET);
+}
+
+function renderStatsTable(stats) {
+    var box = pretty.Table({ rownum: false, footer: false });
+    box.appendHeader(['NAME', 'VALUE']);
+    for (var i = 0; i < stats.length; i++) {
+        var one = stats[i] || {};
+        box.appendRow(box.row(String(one.label || ''), String(one.value || '')));
+    }
+    return box.render();
+}
+
+function renderRowsTable(block) {
+    var box = pretty.Table({ footer: false });
+    var cols = (Array.isArray(block.columns) && block.columns.length > 0) ? block.columns : ['VALUE'];
+    box.appendHeader(cols);
+    var rows = Array.isArray(block.rows) ? block.rows : [];
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (Array.isArray(row)) {
+            box.append(row);
+        } else {
+            box.append([String(row)]);
+        }
+    }
+    return box.render();
+}
+
+function renderAdvnBlocks(blocks) {
+    for (var i = 0; i < blocks.length; i++) {
+        var block = blocks[i] || {};
+        if (i > 0) {
+            console.println('');
+        }
+        if (block.title) {
+            console.println(String(block.title));
+            console.println('='.repeat(String(block.title).length));
+        }
+        if (Array.isArray(block.stats) && block.stats.length > 0) {
+            console.println(renderStatsTable(block.stats));
+        }
+        if (Array.isArray(block.lines) && block.lines.length > 0) {
+            for (var j = 0; j < block.lines.length; j++) {
+                console.println(String(block.lines[j]));
+            }
+        }
+        if (Array.isArray(block.rows) && block.rows.length > 0) {
+            console.println(renderRowsTable(block));
+        }
+    }
+}
+
+function renderAdvnLines(lines) {
+    for (var i = 0; i < lines.length; i++) {
+        console.println(String(lines[i]));
+    }
+}
+
+function renderAgentEnvelope(env) {
+    if (!isRenderEnvelope(env)) {
+        return false;
+    }
+    console.println(DIM + '[VIZSPEC TUI render: ' + env.mode + ']' + RESET);
+    try {
+        if (env.mode === 'blocks') {
+            renderAdvnBlocks(Array.isArray(env.blocks) ? env.blocks : []);
+            return true;
+        }
+        if (env.mode === 'lines') {
+            renderAdvnLines(Array.isArray(env.lines) ? env.lines : []);
+            return true;
+        }
+    } catch (e) {
+        printError('VIZSPEC render failed: ' + (e.message || String(e)));
+        return false;
+    }
+    return false;
 }
 
 function normalizeSlashCommand(line) {
@@ -488,6 +566,14 @@ function handleCodeBlocks(responseText) {
                     // Only shown to the user when verbose mode is on; always sent to LLM.
                     if (verboseExec) {
                         console.println(String(r.value));
+                    }
+                } else if (isRenderEnvelope(r.value)) {
+                    if (!renderAgentEnvelope(r.value)) {
+                        if (typeof r.value === 'object') {
+                            console.println(JSON.stringify(r.value, null, 2));
+                        } else {
+                            console.println(String(r.value));
+                        }
                     }
                 } else if (r.value !== undefined && r.value !== null && r.type !== 'undefined') {
                     if (typeof r.value === 'object') {
