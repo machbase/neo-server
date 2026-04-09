@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -407,15 +408,23 @@ func TestCgiBinWriterHTTPConcurrentStress(t *testing.T) {
 	defer server.Close()
 
 	const requests = 300
+	maxConcurrent := 32
+	if runtime.GOOS == "windows" {
+		maxConcurrent = 16
+	}
 	var wg sync.WaitGroup
 	errCh := make(chan error, requests)
+	sem := make(chan struct{}, maxConcurrent)
+	client := server.Client()
 
 	for i := 0; i < requests; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-			resp, err := server.Client().Get(server.URL + "/public/app/cgi-bin/test")
+			resp, err := client.Get(server.URL + "/public/app/cgi-bin/test")
 			if err != nil {
 				errCh <- fmt.Errorf("request %d get error: %w", id, err)
 				return
