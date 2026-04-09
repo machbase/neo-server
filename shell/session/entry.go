@@ -196,15 +196,9 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		conf.ProcCommand = executable[0]
 	}
 	conf.ProcArgs = append([]string{"shell"}, args...)
-	eng, err := engine.New(conf)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-	lib.Enable(eng)
-	eng.RegisterNativeModule("@jsh/session", Module)
 
-	// configure default session
+	// configure default session before engine creation so SERVICE_CONTROLLER
+	// is available during filesystem mount setup.
 	if err := Configure(Config{
 		Server:   neoHost,
 		User:     neoUser,
@@ -219,10 +213,18 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 		os.Exit(1)
 	}
 	for k, v := range defaultSession.env {
-		if o := eng.Env.Get(k); o == nil {
-			eng.Env.Set(k, v)
+		if _, ok := conf.Env[k]; !ok {
+			conf.Env[k] = v
 		}
 	}
+
+	eng, err := engine.New(conf)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+	lib.Enable(eng)
+	eng.RegisterNativeModule("@jsh/session", Module)
 	os.Exit(eng.Main())
 }
 

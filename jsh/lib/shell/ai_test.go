@@ -2028,3 +2028,93 @@ func TestAIExecutorExtractCodeBlocks_MultipleRunnableBlocks(t *testing.T) {
 		t.Fatalf("second block code = %q, want second runnable block", second["code"])
 	}
 }
+
+func TestAIExecutorExtractCodeBlocks_MixedRunnableFenceTypes(t *testing.T) {
+	rt := goja.New()
+	module := rt.NewObject()
+	exports := rt.NewObject()
+	if err := module.Set("exports", exports); err != nil {
+		t.Fatalf("module.exports setup failed: %v", err)
+	}
+	if err := rt.Set("module", module); err != nil {
+		t.Fatalf("module setup failed: %v", err)
+	}
+	if err := rt.Set("exports", exports); err != nil {
+		t.Fatalf("exports setup failed: %v", err)
+	}
+	if err := rt.Set("require", func(call goja.FunctionCall) goja.Value {
+		name := call.Argument(0).String()
+		if name != "@jsh/shell" {
+			panic(rt.NewTypeError("unexpected module: %s", name))
+		}
+		obj := rt.NewObject()
+		aiObj := rt.NewObject()
+		aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+		obj.Set("ai", aiObj)
+		return obj
+	}); err != nil {
+		t.Fatalf("require setup failed: %v", err)
+	}
+
+	if _, err := rt.RunString(string(aiExecutorJS)); err != nil {
+		t.Fatalf("loading ai_executor.js failed: %v", err)
+	}
+
+	exportsObj := module.Get("exports").ToObject(rt)
+	extractVal := exportsObj.Get("extractCodeBlocks")
+	extractFn, ok := goja.AssertFunction(extractVal)
+	if !ok {
+		t.Fatal("extractCodeBlocks export is not a function")
+	}
+
+	text := strings.Join([]string{
+		"```jsh-shell",
+		"ls -l /work",
+		"```",
+		"",
+		"```jsh",
+		"console.log('not runnable');",
+		"```",
+		"",
+		"```jsh-sql",
+		"SELECT * FROM M$SYS_TABLES LIMIT 5",
+		"```",
+		"",
+		"```jsh-run",
+		"console.log('run');",
+		"```",
+	}, "\n")
+
+	result, err := extractFn(goja.Undefined(), rt.ToValue(text))
+	if err != nil {
+		t.Fatalf("extractCodeBlocks() failed: %v", err)
+	}
+
+	blocks, ok := result.Export().([]any)
+	if !ok {
+		t.Fatalf("unexpected extractCodeBlocks() result type: %T", result.Export())
+	}
+	if len(blocks) != 3 {
+		t.Fatalf("extractCodeBlocks() returned %d blocks, want 3", len(blocks))
+	}
+
+	langs := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		m, ok := b.(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected block type: %T", b)
+		}
+		lang, _ := m["lang"].(string)
+		langs = append(langs, lang)
+	}
+
+	want := []string{"jsh-shell", "jsh-sql", "jsh-run"}
+	if len(langs) != len(want) {
+		t.Fatalf("block lang count mismatch: got=%v want=%v", langs, want)
+	}
+	for i := range want {
+		if langs[i] != want[i] {
+			t.Fatalf("block lang[%d] = %q, want %q", i, langs[i], want[i])
+		}
+	}
+}

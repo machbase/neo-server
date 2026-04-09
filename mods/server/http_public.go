@@ -86,6 +86,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -268,6 +270,27 @@ type CgiBinWriter struct {
 	response       *cgiResponseMeta
 }
 
+// Log implements jsh/log.LogKind to keep console.log output scoped to this response writer.
+// For CGI, write plain stdout lines without level prefixes.
+func (w *CgiBinWriter) Log(_ slog.Level, args ...any) {
+	_, _ = fmt.Fprintln(w, args...)
+}
+
+// Print implements jsh/log.PrintKind for request-local console output.
+func (w *CgiBinWriter) Print(args ...any) {
+	_, _ = fmt.Fprint(w, args...)
+}
+
+// Println implements jsh/log.PrintKind for request-local console output.
+func (w *CgiBinWriter) Println(args ...any) {
+	_, _ = fmt.Fprintln(w, args...)
+}
+
+// Printf implements jsh/log.PrintKind for request-local console output.
+func (w *CgiBinWriter) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
 func (w *CgiBinWriter) Write(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -352,8 +375,17 @@ func (w *CgiBinWriter) writeBody(p []byte) error {
 	if w.ctx.Request.Method == http.MethodHead {
 		return nil
 	}
-	_, err = w.ctx.Writer.Write(p)
-	return err
+	for len(p) > 0 {
+		n, writeErr := w.ctx.Writer.Write(p)
+		if writeErr != nil {
+			return writeErr
+		}
+		if n <= 0 {
+			return io.ErrShortWrite
+		}
+		p = p[n:]
+	}
+	return nil
 }
 
 func findCgiHeaderEnd(p []byte) (int, int) {

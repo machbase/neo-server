@@ -65,6 +65,9 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 			"ll": "ls -l",
 		}
 	}
+	if conf.Env == nil {
+		conf.Env = map[string]any{}
+	}
 	for k, v := range envVars {
 		conf.Env[k] = v
 	}

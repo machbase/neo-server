@@ -88,6 +88,9 @@ func (jr *JSRuntime) createProcProcessEntry(meta procProcessMeta) (*procProcessE
 	if mountPoint == "/" {
 		mountPoint = DefaultControllerSharedMount
 	}
+	if _, bestMount := jr.filesystem.bestMatch(mountPoint); bestMount != mountPoint {
+		return nil, nil
+	}
 
 	entry := &procProcessEntry{
 		jr:        jr,
