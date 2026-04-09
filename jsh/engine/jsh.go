@@ -57,10 +57,15 @@ func New(conf Config) (*JSRuntime, error) {
 	if conf.Writer != nil {
 		writer = conf.Writer
 	}
+	var errorWriter io.Writer = os.Stderr
+	if conf.ErrorWriter != nil {
+		errorWriter = conf.ErrorWriter
+	}
 	opts := []EnvOption{
 		WithFilesystem(filesystem),
 		WithReader(reader),
 		WithWriter(writer),
+		WithErrorWriter(errorWriter),
 		WithExecBuilder(conf.ExecBuilder),
 		WithAliases(conf.Aliases),
 	}
@@ -243,6 +248,7 @@ type Config struct {
 	Default     string          `json:"default,omitempty"`
 	Context     context.Context `json:"-"`
 	Writer      io.Writer       `json:"-"`
+	ErrorWriter io.Writer       `json:"-"`
 	Reader      io.Reader       `json:"-"`
 	ExecBuilder ExecBuilderFunc `json:"-"`
 	ProcRecord  bool            `json:"-"`

@@ -14,7 +14,7 @@ import (
 func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	ex.Stdin = resolveExecReader(jr.Env.Reader(), opts.Stdin)
 	ex.Stdout = resolveExecWriter(jr.Env.Writer(), opts.Stdout)
-	ex.Stderr = resolveExecWriter(jr.Env.Writer(), opts.Stderr)
+	ex.Stderr = resolveExecWriter(jr.Env.ErrorWriter(), opts.Stderr)
 
 	// Get terminal file descriptor
 	ttyFd := int(os.Stdin.Fd())
