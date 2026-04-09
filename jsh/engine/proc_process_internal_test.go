@@ -61,6 +61,31 @@ func TestCreateCurrentProcessEntrySkipsWithoutController(t *testing.T) {
 	}
 }
 
+func TestCreateCurrentProcessEntrySkipsWithoutProcMount(t *testing.T) {
+	jr, err := New(Config{
+		Name:   "proc-mount-skip-test",
+		Code:   `console.println("ok");`,
+		FSTabs: []FSTab{{MountPoint: "/", FS: NewVirtualFS()}},
+		Env: map[string]any{
+			"PWD": "/work",
+		},
+		Reader: &bytes.Buffer{},
+		Writer: &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	jr.Env.Set(ControllerAddressEnv, "stub://controller")
+
+	entry, err := jr.createCurrentProcessEntry("jsh", []string{"shell.js"})
+	if err != nil {
+		t.Fatalf("createCurrentProcessEntry() error = %v", err)
+	}
+	if entry != nil {
+		t.Fatal("createCurrentProcessEntry() returned entry without /proc mount")
+	}
+}
+
 func TestCreateProcProcessEntrySkipsInvalidPID(t *testing.T) {
 	jr := newProcTestRuntime(t, NewVirtualFS(), map[string]any{
 		"PWD":                "/work",
