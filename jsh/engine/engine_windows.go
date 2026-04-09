@@ -27,7 +27,10 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 
 	procEntry, err := jr.createProcessEntry(ex)
 	if err != nil {
-		return -1, err
+		// Process entry recording is best-effort.
+		// Do not fail command execution when service-controller is overloaded.
+		fmt.Fprintf(jr.Env.ErrorWriter(), "warning: process entry record failed: %v\n", err)
+		procEntry = nil
 	}
 
 	// wait for process to finish

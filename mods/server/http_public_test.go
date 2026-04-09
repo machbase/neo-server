@@ -363,6 +363,92 @@ func (w *shortWriteResponseWriter) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
+func TestCgiBinWriterHTTPConcurrentStress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping stress test in short mode")
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/public/app/cgi-bin/test", func(ctx *gin.Context) {
+		writer := &CgiBinWriter{ctx: ctx, router: router}
+
+		// Simulate fragmented CGI output from a script runtime.
+		_, err := writer.Write([]byte("Content-Type: text/plain\r\n"))
+		if err != nil {
+			ctx.String(http.StatusInternalServerError, "write header failed: %v", err)
+			return
+		}
+		_, err = writer.Write([]byte("X-Load: high\r\n"))
+		if err != nil {
+			ctx.String(http.StatusInternalServerError, "write extension header failed: %v", err)
+			return
+		}
+		_, err = writer.Write([]byte("\r\n"))
+		if err != nil {
+			ctx.String(http.StatusInternalServerError, "write header separator failed: %v", err)
+			return
+		}
+
+		for i := 0; i < 32; i++ {
+			_, err = writer.Write([]byte("payload-line\n"))
+			if err != nil {
+				ctx.String(http.StatusInternalServerError, "write body failed: %v", err)
+				return
+			}
+		}
+		if err := writer.Finalize(); err != nil {
+			ctx.String(http.StatusInternalServerError, "finalize failed: %v", err)
+			return
+		}
+	})
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	const requests = 300
+	var wg sync.WaitGroup
+	errCh := make(chan error, requests)
+
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			resp, err := server.Client().Get(server.URL + "/public/app/cgi-bin/test")
+			if err != nil {
+				errCh <- fmt.Errorf("request %d get error: %w", id, err)
+				return
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				errCh <- fmt.Errorf("request %d read body error: %w", id, err)
+				return
+			}
+			if resp.StatusCode != http.StatusOK {
+				errCh <- fmt.Errorf("request %d status=%d body=%q", id, resp.StatusCode, string(body))
+				return
+			}
+			if got := resp.Header.Get("Content-Type"); got != "text/plain" {
+				errCh <- fmt.Errorf("request %d content-type=%q", id, got)
+				return
+			}
+			if got := strings.Count(string(body), "payload-line\n"); got != 32 {
+				errCh <- fmt.Errorf("request %d payload lines=%d", id, got)
+				return
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+}
+
 func TestCgiBinWriterEmptyWrite(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -374,4 +460,29 @@ func TestCgiBinWriterEmptyWrite(t *testing.T) {
 	n, err := writer.Write([]byte{})
 	require.NoError(t, err)
 	require.Equal(t, 0, n)
+}
+
+func TestAppendCgiDiagnostic(t *testing.T) {
+	base := "invalid cgi response: missing header separator"
+	msg := appendCgiDiagnostic(base, "Content-Type: text/plain", "Error: boom")
+	require.Contains(t, msg, base)
+	require.Contains(t, msg, "cgi_stdout=")
+	require.Contains(t, msg, "cgi_stderr=")
+
+	msg = appendCgiDiagnostic(base, "", "")
+	require.Equal(t, base, msg)
+}
+
+func TestLimitedCaptureWriter(t *testing.T) {
+	w := newLimitedCaptureWriter(10)
+	n, err := w.Write([]byte("hello"))
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.Equal(t, "hello", w.String())
+
+	n, err = w.Write([]byte(" world and more"))
+	require.NoError(t, err)
+	require.Equal(t, len(" world and more"), n)
+	require.Contains(t, w.String(), "...<truncated>")
+	require.True(t, strings.HasPrefix(w.String(), "hello worl"))
 }

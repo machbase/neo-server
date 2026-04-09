@@ -103,6 +103,8 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/root"
 )
 
+const cgiDiagnosticMaxBytes = 4096
+
 func (svr *httpd) handlePublic(ctx *gin.Context) {
 	tick := time.Now()
 	path := ctx.Param("path")
@@ -155,13 +157,19 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		env["PWD"] = mountPoint + filepath.Dir(cgiPath)
 		env["QUERY"] = ctx.Request.URL.Query()
 		cgiWriter := &CgiBinWriter{ctx: ctx, svr: svr}
+		stdoutCapture := newLimitedCaptureWriter(cgiDiagnosticMaxBytes)
+		stderrCapture := newLimitedCaptureWriter(cgiDiagnosticMaxBytes)
 		conf := engine.Config{
 			Name:   path,
 			Code:   code,
 			FSTabs: fsTabs,
 			Env:    env,
 			Reader: ctx.Request.Body,
-			Writer: cgiWriter,
+			Writer: io.MultiWriter(cgiWriter, stdoutCapture),
+			ErrorWriter: io.MultiWriter(
+				stderrCapture,
+				os.Stderr,
+			),
 			ExecBuilder: func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
 				self, err := os.Executable()
 				if err != nil {
@@ -188,11 +196,15 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		}
 		lib.Enable(jr)
 		if err := jr.Run(); err != nil {
-			handleError(ctx, http.StatusInternalServerError, "engine run error: "+err.Error(), tick)
+			msg := "engine run error: " + err.Error()
+			msg = appendCgiDiagnostic(msg, stdoutCapture.String(), stderrCapture.String())
+			handleError(ctx, http.StatusInternalServerError, msg, tick)
 			return
 		}
 		if err := cgiWriter.Finalize(); err != nil {
-			handleError(ctx, http.StatusInternalServerError, "invalid cgi response: "+err.Error(), tick)
+			msg := "invalid cgi response: " + err.Error()
+			msg = appendCgiDiagnostic(msg, stdoutCapture.String(), stderrCapture.String())
+			handleError(ctx, http.StatusInternalServerError, msg, tick)
 		}
 		return
 	} else if ctx.Request.Method == http.MethodGet {
@@ -614,4 +626,64 @@ func onlyCgiExtensionHeaders(headers http.Header) bool {
 		}
 	}
 	return true
+}
+
+type limitedCaptureWriter struct {
+	max       int
+	buf       bytes.Buffer
+	truncated bool
+}
+
+func newLimitedCaptureWriter(max int) *limitedCaptureWriter {
+	if max <= 0 {
+		max = 1024
+	}
+	return &limitedCaptureWriter{max: max}
+}
+
+func (w *limitedCaptureWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	remaining := w.max - w.buf.Len()
+	if remaining > 0 {
+		toWrite := p
+		if len(toWrite) > remaining {
+			toWrite = toWrite[:remaining]
+		}
+		_, _ = w.buf.Write(toWrite)
+	}
+	if w.buf.Len() >= w.max && len(p) > remaining {
+		w.truncated = true
+	}
+	return len(p), nil
+}
+
+func (w *limitedCaptureWriter) String() string {
+	if w == nil {
+		return ""
+	}
+	if !w.truncated {
+		return w.buf.String()
+	}
+	return w.buf.String() + "\n...<truncated>"
+}
+
+func appendCgiDiagnostic(base string, stdout string, stderr string) string {
+	stdout = strings.TrimSpace(stdout)
+	stderr = strings.TrimSpace(stderr)
+	if stdout == "" && stderr == "" {
+		return base
+	}
+	b := strings.Builder{}
+	b.WriteString(base)
+	if stdout != "" {
+		b.WriteString("; cgi_stdout=")
+		b.WriteString(strconv.Quote(stdout))
+	}
+	if stderr != "" {
+		b.WriteString("; cgi_stderr=")
+		b.WriteString(strconv.Quote(stderr))
+	}
+	return b.String()
 }
