@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -15,7 +14,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
-	"github.com/machbase/neo-server/v8/shell/internal"
 	"github.com/nyaosorg/go-readline-ny"
 	"golang.org/x/term"
 )
@@ -163,10 +161,6 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 	}
 	if !conf.FSTabs.HasMountPoint("/lib") {
 		conf.FSTabs = append(conf.FSTabs, lib.LibFSTab())
-	}
-	if !conf.FSTabs.HasMountPoint("/usr") {
-		fsDir, _ := fs.Sub(internal.FsUsr, "usr")
-		conf.FSTabs = append(conf.FSTabs, engine.FSTab{MountPoint: "/usr", FS: fsDir})
 	}
 	if !conf.FSTabs.HasMountPoint("/work") {
 		fsDir, _ := engine.DirFS(".")

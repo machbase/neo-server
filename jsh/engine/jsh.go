@@ -69,8 +69,8 @@ func New(conf Config) (*JSRuntime, error) {
 		env.SetRaw(k, v)
 	}
 	// Default environment variables
-	env.Set("PATH", appendMissingPathElements(env.Get("PATH"), ".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin"))
-	env.Set("LIBRARY_PATH", appendMissingPathElements(env.Get("LIBRARY_PATH"), "./node_modules", "/work/node_modules", "/lib"))
+	env.Set("PATH", appendMissingPathElements(env.Get("PATH"), ".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin", "/usr/bin"))
+	env.Set("LIBRARY_PATH", appendMissingPathElements(env.Get("LIBRARY_PATH"), "./node_modules", "/work/node_modules", "/lib", "/usr/lib"))
 	if env.Get("HOME") == nil {
 		env.Set("HOME", "/")
 	}
