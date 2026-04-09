@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -196,6 +197,23 @@ func TestCgiBinWriterLogWritesPlainCgiOutput(t *testing.T) {
 	require.Equal(t, "hello\n", recorder.Body.String())
 }
 
+func TestCgiBinWriterPrintWritesWithoutNewline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/public/app/cgi-bin/test", nil)
+
+	writer := &CgiBinWriter{ctx: ctx}
+	writer.Print("Content-Type: text/plain")
+	writer.Print("\r\n\r\n")
+	writer.Print("hello")
+
+	require.NoError(t, writer.Finalize())
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "text/plain", recorder.Header().Get("Content-Type"))
+	require.Equal(t, "hello", recorder.Body.String())
+}
+
 // TestCgiBinWriterConcurrentRequests verifies that concurrent CGI requests each
 // write their full body without cross-contamination or truncation. Each goroutine
 // writes a 50-line body through its own CgiBinWriter and checks completeness.
@@ -301,6 +319,48 @@ func TestCgiBinWriterChunkedBodyWrites(t *testing.T) {
 	require.NoError(t, w.Finalize())
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, body, recorder.Body.String())
+}
+
+func TestCgiBinWriterWriteBodyShortWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/public/app/cgi-bin/test", nil)
+	ctx.Writer = &shortWriteResponseWriter{ResponseWriter: ctx.Writer, maxBytesPerWrite: 0}
+
+	writer := &CgiBinWriter{ctx: ctx}
+	_, err := writer.Write([]byte("Content-Type: text/plain\r\n\r\nhello"))
+	require.ErrorIs(t, err, io.ErrShortWrite)
+}
+
+func TestCgiBinWriterWriteBodyPartialWriteSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/public/app/cgi-bin/test", nil)
+	ctx.Writer = &shortWriteResponseWriter{ResponseWriter: ctx.Writer, maxBytesPerWrite: 1}
+
+	writer := &CgiBinWriter{ctx: ctx}
+	_, err := writer.Write([]byte("Content-Type: text/plain\r\n\r\nhello"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Finalize())
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "hello", recorder.Body.String())
+}
+
+type shortWriteResponseWriter struct {
+	gin.ResponseWriter
+	maxBytesPerWrite int
+}
+
+func (w *shortWriteResponseWriter) Write(data []byte) (int, error) {
+	if w.maxBytesPerWrite <= 0 {
+		return 0, nil
+	}
+	if len(data) > w.maxBytesPerWrite {
+		data = data[:w.maxBytesPerWrite]
+	}
+	return w.ResponseWriter.Write(data)
 }
 
 func TestCgiBinWriterEmptyWrite(t *testing.T) {
