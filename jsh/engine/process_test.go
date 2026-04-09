@@ -68,9 +68,9 @@ func TestProcess(t *testing.T) {
 				console.println("LIBRARY_PATH:", process.env.get("LIBRARY_PATH"));
 			`,
 			Output: []string{
-				"PATH: /work:/sbin:.:/work/node_modules/.bin:./node_modules/.bin",
+				"PATH: /work:/sbin:.:/work/node_modules/.bin:./node_modules/.bin:/usr/bin",
 				"PWD: /work",
-				"LIBRARY_PATH: ./node_modules:/lib:/work/node_modules",
+				"LIBRARY_PATH: ./node_modules:/lib:/work/node_modules:/usr/lib",
 			},
 		},
 		{
