@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -48,6 +50,27 @@ func ExecuteWithFSTabs(ctx context.Context, tabs engine.FSTabs, code string, opt
 	optJSON, _ := json.Marshal(optMap)
 
 	var stdout bytes.Buffer
+	self, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	execBuilder := func(source string, args []string, env map[string]any) (*exec.Cmd, error) {
+		conf := engine.Config{
+			Code:   source,
+			Args:   args,
+			FSTabs: tabs,
+			Env:    env,
+		}
+		secretBox, err := engine.NewSecretBox(conf)
+		if err != nil {
+			return nil, err
+		}
+		execArgs := []string{"-S", secretBox.FilePath()}
+		if len(args) > 0 {
+			execArgs = append(execArgs, args[0])
+		}
+		return exec.Command(self, execArgs...), nil
+	}
 	script := strings.Join([]string{
 		"const process = require('process');",
 		"const { ai } = require('@jsh/shell');",
@@ -56,11 +79,12 @@ func ExecuteWithFSTabs(ctx context.Context, tabs engine.FSTabs, code string, opt
 	}, "\n")
 
 	jr, err := engine.New(engine.Config{
-		Name:    "agentexec",
-		Code:    script,
-		Context: ctx,
-		FSTabs:  tabs,
-		Writer:  &stdout,
+		Name:        "agentexec",
+		Code:        script,
+		Context:     ctx,
+		FSTabs:      tabs,
+		Writer:      &stdout,
+		ExecBuilder: execBuilder,
 	})
 	if err != nil {
 		return nil, err

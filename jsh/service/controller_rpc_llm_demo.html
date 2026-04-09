@@ -1494,7 +1494,8 @@
           return;
         }
         if (type === "jsh") {
-          appendCollapsedDebug(container, "jsh block", "jsh", String(block.code || ""));
+          var lang = String(block.lang || "jsh-run");
+          appendCollapsedDebug(container, "jsh block (" + lang + ")", lang, String(block.code || ""));
           return;
         }
         if (type === "vizspec") {
@@ -1668,13 +1669,14 @@
         if (event === "turn.exec.started") {
           beginExecProcessing();
           appendTurnExecDebug(turn, "exec.started", payload);
-          setStatus("Executing jsh block...", "warn");
+          setStatus("Executing " + String(payload.lang || "jsh-run") + " block...", "warn");
           return;
         }
 
         if (event === "turn.exec.completed") {
           endExecProcessing();
           appendTurnExecDebug(turn, "exec.completed", payload);
+          var execLang = String(payload.lang || "jsh-run");
           if (payload.ok) {
             var renders = Array.isArray(payload.renders) ? payload.renders : [];
             for (var r = 0; r < renders.length; r++) {
@@ -1683,9 +1685,9 @@
                 renderVizspec(turn.view.body, renderBlockPayload.spec);
               }
             }
-            setStatus("Execution completed", "ok");
+            setStatus(execLang + " execution completed", "ok");
           } else {
-            setStatus("Execution failed", "err");
+            setStatus(execLang + " execution failed", "err");
           }
           return;
         }

@@ -275,7 +275,7 @@ LLM 호출은 WS 상에서 eventbus 프레임으로 전달됩니다.
 1. `turn.started`
 2. `turn.block.started`
 3. `turn.delta` (여러 번)
-4. (선택) `turn.exec.started` / `turn.exec.completed` (jsh auto execute 시)
+4. (선택) `turn.exec.started` / `turn.exec.completed` (runnable fence auto execute 시: `jsh-run`, `jsh-shell`, `jsh-sql`)
 5. `turn.block.completed`
 6. `turn.completed`
 
@@ -302,19 +302,19 @@ LLM 호출은 WS 상에서 eventbus 프레임으로 전달됩니다.
 `turn.exec.started`:
 
 ```json
-{ "index": 0, "readOnly": true }
+{ "index": 0, "lang": "jsh-sql", "readOnly": true }
 ```
 
 `turn.exec.completed` 성공:
 
 ```json
-{ "index": 0, "ok": true, "renders": [ { "type": "vizspec", "spec": { "...": "..." } } ] }
+{ "index": 0, "lang": "jsh-sql", "ok": true, "renders": [ { "type": "vizspec", "spec": { "...": "..." } } ] }
 ```
 
 `turn.exec.completed` 실패:
 
 ```json
-{ "index": 0, "ok": false, "error": "..." }
+{ "index": 0, "lang": "jsh-shell", "ok": false, "error": "..." }
 ```
 
 `turn.block.completed`:
@@ -332,7 +332,7 @@ LLM 호출은 WS 상에서 eventbus 프레임으로 전달됩니다.
   "latencyMs": 1234,
   "blocks": [
     { "type": "text", "text": "..." },
-    { "type": "jsh", "code": "..." },
+    { "type": "jsh", "lang": "jsh-shell", "code": "ls -l /work" },
     { "type": "vizspec", "spec": { "__agentRender": true, "schema": "agent-render/v1", "renderer": "viz.tui", "mode": "lines", "lines": [] } }
   ]
 }
@@ -364,8 +364,12 @@ LLM 호출은 WS 상에서 eventbus 프레임으로 전달됩니다.
 
 `turn.completed.payload.blocks`의 `type`별 렌더 권장:
 - `text`: markdown 렌더
-- `jsh`: collapse/expand code 카드
+- `jsh`: collapse/expand code 카드 (`lang` 값을 함께 표시: `jsh-run` | `jsh-shell` | `jsh-sql`)
 - `vizspec`: viz renderer(또는 fallback pre/json)
+
+실행 결과 표현 참고:
+- `jsh-shell`: 현재 기본 결과는 `command`, `args`, `exitCode` 중심의 구조화 값입니다.
+- `jsh-sql`: compact box 텍스트가 `Code execution results:` 블록으로 병합될 수 있습니다.
 
 `vizspec` 렌더 envelope 판별:
 - `__agentRender === true`
@@ -537,6 +541,8 @@ export type LlmEventName =
   | 'turn.completed'
   | 'turn.failed';
 
+export type JshRunnableLang = 'jsh-run' | 'jsh-shell' | 'jsh-sql';
+
 export interface LlmEventParams<TPayload = unknown> {
   sessionId: string;
   turnId: string;
@@ -545,6 +551,20 @@ export interface LlmEventParams<TPayload = unknown> {
   event: LlmEventName;
   ts: number;
   payload: TPayload;
+}
+
+export interface TurnExecStartedPayload {
+  index: number;
+  lang?: JshRunnableLang;
+  readOnly: boolean;
+}
+
+export interface TurnExecCompletedPayload {
+  index: number;
+  lang?: JshRunnableLang;
+  ok: boolean;
+  error?: string;
+  renders?: Array<{ type: 'vizspec'; spec: AgentRenderEnvelope | Record<string, unknown> }>;
 }
 
 export interface AgentRenderEnvelope {
@@ -567,7 +587,7 @@ export interface TurnCompletedPayload {
   latencyMs?: number;
   blocks: Array<
     | { type: 'text'; text: string }
-    | { type: 'jsh'; code: string }
+    | { type: 'jsh'; lang?: JshRunnableLang; code: string }
     | { type: 'vizspec'; spec: AgentRenderEnvelope | Record<string, unknown> }
     | { type: string; [k: string]: unknown }
   >;

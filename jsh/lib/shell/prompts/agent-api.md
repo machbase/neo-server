@@ -233,7 +233,13 @@ Example:
 
 ## Code block convention
 
-When generating executable jsh code, wrap it in a fenced code block with the `jsh-run` language tag:
+Use the runnable fence that best matches the requested task:
+
+- `jsh-shell`: simple shell command work (for example `ls`, `cat`, `pwd`, `wc`, `head`, `tail`)
+- `jsh-sql`: direct SQL statement execution with compact box-formatted output
+- `jsh-run`: multi-step JavaScript logic, agent API orchestration, data shaping, visualization, or any custom control flow
+
+When executable JavaScript is needed, wrap it in a fenced code block with the `jsh-run` language tag:
 
 ```jsh-run
 (function () {
@@ -243,10 +249,10 @@ When generating executable jsh code, wrap it in a fenced code block with the `js
 ```
 
 Use the `js` language tag only for explanatory examples that must not be executed automatically.
-Do not use `javascript` or `jsh` or `js` fences for executable content.
+Do not use `javascript` or `jsh` fences for executable content.
 
 The `ai` command may execute multiple generated scripts in the same runtime.
 Prefer function-local variables inside the IIFE instead of top-level declarations.
 Only write to `globalThis` when the user explicitly asks for persistent state across executions.
 
-The `ai` command detects ` ```jsh-run ` blocks and offers to execute them automatically.
+The `ai` command detects runnable fences (`jsh-run`, `jsh-shell`, `jsh-sql`) and offers to execute them automatically.

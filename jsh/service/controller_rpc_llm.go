@@ -37,7 +37,13 @@ const (
 	llmExecFollowupMaxRounds   = 3
 )
 
-var llmJshRunBlockRe = regexp.MustCompile("(?s)```jsh-run\\n(.*?)```")
+var llmRunnableBlockRe = regexp.MustCompile("(?s)```(jsh-run|jsh-shell|jsh-sql)\\n(.*?)```")
+
+type llmRunnableBlock struct {
+	Lang     string
+	Code     string
+	ExecCode string
+}
 
 type llmSession struct {
 	ID            string
@@ -802,20 +808,20 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 	for round := 0; round < policy.MaxRounds; round++ {
 		historyTail = append(historyTail, shelllib.LLMChatMessage{Role: "assistant", Content: currentText})
 
-		runnable := extractJshRunBlocks(currentText)
+		runnable := extractRunnableBlocks(currentText)
 		if len(runnable) == 0 {
 			break
 		}
 		if !policy.AutoExecute {
-			for _, code := range runnable {
-				blocks = append(blocks, map[string]any{"type": "jsh", "code": code})
+			for _, block := range runnable {
+				blocks = append(blocks, map[string]any{"type": "jsh", "lang": block.Lang, "code": block.Code})
 			}
 			break
 		}
 
 		tabs := engine.FSTabs{{MountPoint: "/", FS: ctl.fs}}
 		summaries := make([]string, 0, len(runnable))
-		for idx, code := range runnable {
+		for idx, block := range runnable {
 			emitJsonRpcNotification(ctx, "llm.event", map[string]any{
 				"sessionId": sessionID,
 				"turnId":    turnID,
@@ -825,11 +831,12 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				"ts":        time.Now().UnixMilli(),
 				"payload": map[string]any{
 					"index":    idx,
+					"lang":     block.Lang,
 					"readOnly": policy.ReadOnly,
 				},
 			})
-			blocks = append(blocks, map[string]any{"type": "jsh", "code": code})
-			rows, err := shelllib.ExecuteWithFSTabs(ctx, tabs, code, shelllib.Options{
+			blocks = append(blocks, map[string]any{"type": "jsh", "lang": block.Lang, "code": block.Code})
+			rows, err := shelllib.ExecuteWithFSTabs(ctx, tabs, block.ExecCode, shelllib.Options{
 				ReadOnly:       policy.ReadOnly,
 				MaxRows:        policy.MaxRows,
 				TimeoutMs:      policy.TimeoutMs,
@@ -849,6 +856,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 					"ts":        time.Now().UnixMilli(),
 					"payload": map[string]any{
 						"index": idx,
+						"lang":  block.Lang,
 						"ok":    false,
 						"error": err.Error(),
 					},
@@ -864,6 +872,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 			summaries = append(summaries, summary)
 			execPayload := map[string]any{
 				"index": idx,
+				"lang":  block.Lang,
 				"ok":    true,
 			}
 			if len(renderBlocks) > 0 {
@@ -939,26 +948,98 @@ func buildExecutionResultsPrompt(summaries []string) string {
 	return "Code execution results:\n\n" + strings.Join(parts, "\n\n")
 }
 
-func extractJshRunBlocks(text string) []string {
-	matches := llmJshRunBlockRe.FindAllStringSubmatch(text, -1)
+func extractRunnableBlocks(text string) []llmRunnableBlock {
+	matches := llmRunnableBlockRe.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(matches))
+	out := make([]llmRunnableBlock, 0, len(matches))
 	for _, m := range matches {
-		if len(m) < 2 {
+		if len(m) < 3 {
 			continue
 		}
-		code := strings.TrimSpace(m[1])
+		lang := strings.TrimSpace(strings.ToLower(m[1]))
+		code := strings.TrimSpace(m[2])
 		if code == "" {
 			continue
 		}
-		out = append(out, code)
+		execCode := buildRunnableExecCode(lang, code)
+		if strings.TrimSpace(execCode) == "" {
+			continue
+		}
+		out = append(out, llmRunnableBlock{Lang: lang, Code: code, ExecCode: execCode})
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func buildRunnableExecCode(lang string, code string) string {
+	switch strings.TrimSpace(strings.ToLower(lang)) {
+	case "jsh-run":
+		return code
+	case "jsh-shell":
+		commandJSON, _ := json.Marshal(code)
+		return strings.Join([]string{
+			"(function () {",
+			"    'use strict';",
+			"    const process = require('process');",
+			"    const splitFields = require('util/splitFields');",
+			"    const cmdline = " + string(commandJSON) + ";",
+			"    const line = String(cmdline || '').trim();",
+			"    if (!line) { throw new Error('jsh-shell: empty command'); }",
+			"    const fields = splitFields(line);",
+			"    if (!fields || fields.length === 0) { throw new Error('jsh-shell: invalid command'); }",
+			"    const command = fields[0];",
+			"    const args = fields.slice(1);",
+			"    const readOnly = !!(agent && agent.runtime && agent.runtime.limits && agent.runtime.limits().readOnly);",
+			"    const allow = { ls: true, cat: true, pwd: true, echo: true, wc: true, head: true, tail: true };",
+			"    if (readOnly && !allow[command]) { throw new Error('jsh-shell: command denied in read-only mode: ' + command); }",
+			"    const exitCode = process.exec(command, ...args);",
+			"    return { command: line, args: args, exitCode: exitCode };",
+			"}());",
+		}, "\n")
+	case "jsh-sql":
+		sqlJSON, _ := json.Marshal(code)
+		return strings.Join([]string{
+			"(function () {",
+			"    'use strict';",
+			"    const pretty = require('pretty');",
+			"    const sql = " + string(sqlJSON) + ";",
+			"    const text = String(sql || '').trim();",
+			"    if (!text) { throw new Error('jsh-sql: empty SQL'); }",
+			"    if (text.indexOf(';') >= 0) { throw new Error('jsh-sql: only single statement is allowed'); }",
+			"    const lowered = text.toLowerCase();",
+			"    const readOnly = !!(agent && agent.runtime && agent.runtime.limits && agent.runtime.limits().readOnly);",
+			"    const allowed = /^(select|show|describe|desc|explain)\\b/.test(lowered);",
+			"    if (readOnly && !allowed) { throw new Error('jsh-sql: write statements are denied in read-only mode'); }",
+			"    const result = agent.db.query(text);",
+			"    const box = pretty.Table({ rownum: false, footer: false, format: 'box' });",
+			"    const rows = (result && Array.isArray(result.rows)) ? result.rows : [];",
+			"    if (rows.length === 0) {",
+			"        return '(no rows)';",
+			"    }",
+			"    const columns = Object.keys(rows[0]);",
+			"    box.appendHeader(columns);",
+			"    for (let i = 0; i < rows.length; i++) {",
+			"        const row = rows[i] || {};",
+			"        const values = [];",
+			"        for (let c = 0; c < columns.length; c++) {",
+			"            values.push(row[columns[c]]);",
+			"        }",
+			"        box.append(values);",
+			"    }",
+			"    let rendered = box.render();",
+			"    if (result && result.truncated) {",
+			"        rendered += '\\n[truncated at ' + result.count + ' rows]';",
+			"    }",
+			"    return rendered;",
+			"}());",
+		}, "\n")
+	default:
+		return ""
+	}
 }
 
 func formatAgentExecSummary(rows []shelllib.Result) string {

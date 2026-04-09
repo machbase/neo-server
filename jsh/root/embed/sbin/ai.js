@@ -12,7 +12,7 @@ const { ReadLine } = require('readline');
 const pretty = require('pretty');
 const { ai } = require('@jsh/shell');
 const { buildSystemPrompt, listSegments } = require('ai/prompt');
-const { extractCodeBlocks, executeJsh, formatResults, isRenderEnvelope } = require('ai/executor');
+const { extractCodeBlocks, executeBlock, formatResults, isRenderEnvelope } = require('ai/executor');
 const { saveTranscript } = require('ai/transcript');
 
 // ─── CLI options ──────────────────────────────────────────────────────────────
@@ -488,13 +488,13 @@ function printCodeBlock(code, lang) {
     console.println(DIM + '└────────────────────────────────────────────────' + RESET);
 }
 
-// Ask the user whether to execute a jsh-run block.
+// Ask the user whether to execute a runnable block.
 // Returns 'yes', 'no', or 'all' (execute this and all following blocks).
-function promptExec(confirmRL) {
+function promptExec(confirmRL, lang) {
     var answer;
     try {
         answer = confirmRL.readLine({
-            prompt: function () { return YELLOW + 'Execute this jsh-run block? [y/N/a(ll)] ' + RESET; }
+            prompt: function () { return YELLOW + 'Execute this ' + lang + ' block? [y/N/a(ll)] ' + RESET; }
         });
     } catch (e) {
         return 'no';
@@ -506,7 +506,7 @@ function promptExec(confirmRL) {
     return 'no';
 }
 
-// Run all confirmed jsh-run blocks from an LLM response.
+// Run all confirmed runnable blocks from an LLM response.
 // Returns a summary string of results to append to conversation history,
 // or null if no blocks were executed.
 //
@@ -520,7 +520,7 @@ function handleCodeBlocks(responseText) {
 
     if (values.noExec) {
         console.println('');
-        printInfo('[--no-exec] ' + blocks.length + ' runnable jsh-run block(s) detected (not executed)');
+        printInfo('[--no-exec] ' + blocks.length + ' runnable block(s) detected (not executed)');
         for (var i = 0; i < blocks.length; i++) {
             printCodeBlock(blocks[i].code, blocks[i].lang);
         }
@@ -540,7 +540,7 @@ function handleCodeBlocks(responseText) {
             console.println('');
             printInfo('[Runnable block ' + (i + 1) + '/' + blocks.length + '] ' + block.lang + ' · ' + lineCount + ' lines');
 
-            var decision = execAll ? 'yes' : promptExec(confirmRL);
+            var decision = execAll ? 'yes' : promptExec(confirmRL, block.lang);
             if (decision === 'all') {
                 execAll = true;
                 decision = 'yes';
@@ -551,7 +551,7 @@ function handleCodeBlocks(responseText) {
             }
 
             printInfo('Executing...');
-            var results = executeJsh(block.code, execOpts);
+            var results = executeBlock(block, execOpts);
 
             // Print execution results to the user.
             var hadError = false;
