@@ -1,4 +1,4 @@
-package root_test
+package sbin_test
 
 import (
 	"archive/tar"
@@ -2135,7 +2135,7 @@ func TestPkgCopyGitHubProjectAndInstallDependencies(t *testing.T) {
 	defer server.Close()
 
 	env := map[string]any{
-		"PKG_GITHUB_API_URL":  server.URL + "/api",
+		"PKG_GITHUB_API_URL":   server.URL + "/api",
 		"PKG_NPM_REGISTRY_URL": server.URL + "/npm",
 	}
 
