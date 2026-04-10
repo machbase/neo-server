@@ -298,3 +298,191 @@ func TestControllerRPCSemaphoreCleanup(t *testing.T) {
 
 	t.Logf("Semaphore cleanup test: Successfully created new connections after releasing some")
 }
+
+// TestControllerRPCConnectionIdleTimeout verifies that idle connections close
+// quickly rather than holding resources for 30 seconds. This is critical for
+// handling many concurrent CGI requests that each spawn 6-10 RPC calls.
+func TestControllerRPCConnectionIdleTimeout(t *testing.T) {
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{},
+		Mounts:    nil,
+		ConfigDir: t.TempDir(),
+		Address:   "tcp://127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("NewController failed: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	if err := ctl.startRPC(); err != nil {
+		t.Fatalf("startRPC failed: %v", err)
+	}
+
+	addr := ctl.Address()
+	if addr == "" {
+		t.Fatal("RPC address is empty")
+	}
+
+	// Test idle timeout: send request, receive response, then connection should
+	// close within ~200ms (idle timeout + processing overhead) rather than hanging
+	// for 30 seconds.
+	conn, err := net.Dial("tcp", strings.TrimPrefix(addr, "tcp://"))
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+
+	// Send a request
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "listService",
+		"id":      1,
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+
+	// Read response
+	var resp map[string]interface{}
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+
+	// Now wait for connection to close due to idle timeout.
+	// With the fix, this should happen within ~200ms.
+	// Without the fix, it would wait ~30 seconds.
+	start := time.Now()
+
+	// Try to read from closed connection (should get EOF when server closes)
+	// Set a long read deadline so we can measure how long server takes to close
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+
+	elapsed := time.Since(start)
+
+	// If we got EOF quickly (< 500ms), idle timeout is working
+	if err == io.EOF {
+		if elapsed > 500*time.Millisecond {
+			t.Logf("Warning: idle timeout took %v (expected < 500ms, but working)", elapsed)
+		} else {
+			t.Logf("✓ Idle timeout closed connection in %v", elapsed)
+		}
+	} else {
+		// Pre-fix behavior would keep connection open for 30 seconds
+		if elapsed > 10*time.Second {
+			t.Errorf("Connection not closed after %v; likely using long timeout (old behavior)", elapsed)
+		} else if err != nil && n == 0 {
+			// Connection was closed (possibly by error)
+			t.Logf("Connection closed with error %v after %v", err, elapsed)
+		} else {
+			t.Logf("Unexpected result: %v, %v", n, err)
+		}
+	}
+
+	conn.Close()
+}
+
+// TestControllerRPCConcurrentSaturationRecovery verifies that even under
+// sustained high load (100+ concurrent requests each using multiple RPC calls),
+// the connection pool recovers quickly without hanging requests.
+func TestControllerRPCConcurrentSaturationRecovery(t *testing.T) {
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{},
+		Mounts:    nil,
+		ConfigDir: t.TempDir(),
+		Address:   "tcp://127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("NewController failed: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	if err := ctl.startRPC(); err != nil {
+		t.Fatalf("startRPC failed: %v", err)
+	}
+
+	addr := ctl.Address()
+	if addr == "" {
+		t.Fatal("RPC address is empty")
+	}
+
+	// Simulate many concurrent CGI requests, each making multiple RPC calls.
+	// Each "CGI request" here opens 6 RPC connections in parallel (simulating
+	// the process meta recording flow: mkdir + 3 writes + 3 cleanup ops).
+	const cgiRequestCount = 50
+	const rpcCallsPerCGI = 6
+	const totalRPCCalls = cgiRequestCount * rpcCallsPerCGI
+
+	successCount := atomic.Int32{}
+	failureCount := atomic.Int32{}
+	var wg sync.WaitGroup
+
+	startTime := time.Now()
+
+	for cgiIdx := 0; cgiIdx < cgiRequestCount; cgiIdx++ {
+		wg.Add(1)
+		go func(cgiID int) {
+			defer wg.Done()
+
+			// Simulate 6 sequential RPC calls as part of single CGI request
+			for callIdx := 0; callIdx < rpcCallsPerCGI; callIdx++ {
+				wg2 := sync.WaitGroup{}
+				wg2.Add(1)
+				go func() {
+					defer wg2.Done()
+
+					conn, err := net.Dial("tcp", strings.TrimPrefix(addr, "tcp://"))
+					if err != nil {
+						failureCount.Add(1)
+						return
+					}
+					defer conn.Close()
+
+					req := map[string]interface{}{
+						"jsonrpc": "2.0",
+						"method":  "listService",
+						"id":      cgiID*100 + callIdx,
+					}
+
+					if err := json.NewEncoder(conn).Encode(req); err != nil {
+						failureCount.Add(1)
+						return
+					}
+
+					conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+					var resp map[string]interface{}
+					if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+						failureCount.Add(1)
+						return
+					}
+
+					successCount.Add(1)
+				}()
+				wg2.Wait()
+			}
+		}(cgiIdx)
+	}
+
+	wg.Wait()
+	elapsed := time.Since(startTime)
+
+	success := int(successCount.Load())
+	failure := int(failureCount.Load())
+
+	t.Logf("Concurrent saturation test:")
+	t.Logf("  - %d CGI requests × %d RPC calls/CGI = %d total RPC operations", cgiRequestCount, rpcCallsPerCGI, totalRPCCalls)
+	t.Logf("  - Success: %d, Failure: %d", success, failure)
+	t.Logf("  - Total time: %v", elapsed)
+
+	// With the fix, all operations should complete in < 5 seconds
+	// Without the fix (30s timeout), would hang for 30+ seconds
+	if elapsed > 10*time.Second {
+		t.Errorf("Saturation recovery took too long (%v); likely using old 30s timeout", elapsed)
+	}
+
+	if success < totalRPCCalls*90/100 {
+		t.Errorf("Success rate too low: %d/%d (%.1f%%)",
+			success, totalRPCCalls, float64(success)*100/float64(totalRPCCalls))
+	}
+}

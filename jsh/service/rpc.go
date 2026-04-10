@@ -350,8 +350,20 @@ func (ctl *Controller) serveRPCConnWithLimit(conn net.Conn) {
 func (ctl *Controller) serveRPCConn(conn net.Conn) {
 	// Set connection read/write deadline to prevent hanging connections.
 	// This ensures slow or stuck clients don't hold resources indefinitely.
-	const rpcConnTimeout = 30 * time.Second
-	conn.SetDeadline(time.Now().Add(rpcConnTimeout))
+	//
+	// To prevent connection slot saturation under high concurrent load:
+	// - Initial timeout (rpcConnInitialTimeout): wait this long for first request
+	// - Idle timeout (rpcConnIdleTimeout): after processing each request, wait only
+	//   this long for the next request before closing the connection.
+	//
+	// This prevents situations where 100 concurrent CGI requests each use 6-10 RPC
+	// connections and hold them for 30 seconds while idle, exhausting the 256-slot
+	// semaphore. With short idle timeout, slots are released immediately after
+	// processing, allowing the connection pool to recycle for new requests.
+	const rpcConnInitialTimeout = 10 * time.Second    // Wait for first request during connection handshake
+	const rpcConnIdleTimeout = 100 * time.Millisecond // Idle wait between requests within same connection
+
+	conn.SetDeadline(time.Now().Add(rpcConnInitialTimeout))
 	defer conn.Close()
 
 	decoder := json.NewDecoder(conn)
@@ -363,21 +375,25 @@ func (ctl *Controller) serveRPCConn(conn net.Conn) {
 			if errors.Is(err, io.EOF) {
 				return
 			}
-			_ = encoder.Encode(controllerRPCResponse{
-				Version: jsonRPCVersion,
-				ID:      json.RawMessage("null"),
-				Error:   &controllerRPCError{Code: jsonRPCInvalidReq, Message: err.Error()},
-			})
+			// Timeout or other error: close connection rather than trying to respond
+			// (client likely already disconnected)
 			return
 		}
 
 		resp := ctl.handleRPC(req)
 		if !req.hasResponse() {
+			// Notification-only request; set short idle timeout before next request
+			conn.SetDeadline(time.Now().Add(rpcConnIdleTimeout))
 			continue
 		}
 		if err := encoder.Encode(resp); err != nil {
 			return
 		}
+
+		// After sending response, set short idle timeout to prevent slot exhaustion.
+		// ControllerFS clients close immediately after receiving response,
+		// so this timeout will typically trigger quickly, freeing the semaphore slot.
+		conn.SetDeadline(time.Now().Add(rpcConnIdleTimeout))
 	}
 }
 
