@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,10 @@ type ControllerFS struct {
 	controller string
 	clientID   string
 	endpoint   controllerFSEndpoint
+	// Connection pooling: persist single connection across multiple RPC calls
+	// (JSH runtime is single-threaded, so no synchronization needed)
+	conn   net.Conn
+	connMu sync.Mutex // Protect connection access during concurrent lifecycle operations
 }
 
 type controllerFSEndpoint struct {
@@ -247,7 +252,8 @@ func (cfs *ControllerFS) statSnapshot(name string) (controllerFSInfoSnapshot, er
 	return snapshot, nil
 }
 
-// call attempts an RPC call with exponential backoff retry for transient connection errors.
+// call attempts an RPC call with connection pooling and transient error retry.
+// Uses a persistent connection across multiple calls to avoid TCP handshake overhead.
 // RPC-level errors (method not found, invalid params, etc.) are not retried.
 func (cfs *ControllerFS) call(method string, params any, out any) error {
 	// Keep retry window short so service shutdown is not delayed.
@@ -262,9 +268,10 @@ func (cfs *ControllerFS) call(method string, params any, out any) error {
 	backoff := initialBackoff
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		conn, err := net.DialTimeout(cfs.endpoint.network, cfs.endpoint.address, controllerFSRPCTimeout)
+		// Get or create persistent connection
+		conn, err := cfs.getConnection()
 		if err != nil {
-			// Retry only transport-level errors. Path/RPC errors are not retried.
+			// Retry only transport-level errors
 			if !isRetryableControllerFSError(err) {
 				return err
 			}
@@ -281,12 +288,10 @@ func (cfs *ControllerFS) call(method string, params any, out any) error {
 			continue
 		}
 
-		// Connection successful - attempt RPC
+		// Attempt RPC on persistent connection
 		err = cfs.callOnConnection(conn, method, params, out)
-		conn.Close()
 
-		// Non-retryable RPC errors (invalid RPC response, marshal error, etc.)
-		// should fail immediately without retry
+		// Non-retryable RPC errors should fail immediately without retry
 		if err == nil {
 			return nil
 		}
@@ -296,7 +301,9 @@ func (cfs *ControllerFS) call(method string, params any, out any) error {
 			return err
 		}
 
-		// Connection or decode error - potentially transient
+		// Connection or decode error - mark connection as bad and retry with fresh connection
+		cfs.invalidateConnection()
+
 		lastErr = err
 		if attempt < maxAttempts-1 {
 			time.Sleep(backoff)
@@ -310,6 +317,45 @@ func (cfs *ControllerFS) call(method string, params any, out any) error {
 	}
 
 	return fmt.Errorf("controller RPC failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// getConnection returns the persistent connection, creating one if needed.
+func (cfs *ControllerFS) getConnection() (net.Conn, error) {
+	cfs.connMu.Lock()
+	if cfs.conn != nil {
+		defer cfs.connMu.Unlock()
+		return cfs.conn, nil
+	}
+	cfs.connMu.Unlock()
+
+	// Create new connection
+	conn, err := net.DialTimeout(cfs.endpoint.network, cfs.endpoint.address, controllerFSRPCTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store in ControllerFS (another goroutine might have created one in the meantime)
+	cfs.connMu.Lock()
+	if cfs.conn != nil {
+		// Another caller already created a connection; use that one
+		conn.Close()
+		defer cfs.connMu.Unlock()
+		return cfs.conn, nil
+	}
+	cfs.conn = conn
+	cfs.connMu.Unlock()
+
+	return conn, nil
+}
+
+// invalidateConnection closes and clears the persistent connection.
+func (cfs *ControllerFS) invalidateConnection() {
+	cfs.connMu.Lock()
+	if cfs.conn != nil {
+		cfs.conn.Close()
+		cfs.conn = nil
+	}
+	cfs.connMu.Unlock()
 }
 
 // callOnConnection performs a single RPC call on an established connection.
@@ -340,6 +386,19 @@ func (cfs *ControllerFS) callOnConnection(conn net.Conn, method string, params a
 		return nil
 	}
 	return json.Unmarshal(resp.Result, out)
+}
+
+// Close closes the persistent connection held by this ControllerFS instance.
+// Safe to call multiple times.
+func (cfs *ControllerFS) Close() error {
+	cfs.connMu.Lock()
+	defer cfs.connMu.Unlock()
+	if cfs.conn != nil {
+		err := cfs.conn.Close()
+		cfs.conn = nil
+		return err
+	}
+	return nil
 }
 
 // isRetryableControllerFSError returns true only for transient transport errors.
