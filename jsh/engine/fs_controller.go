@@ -191,7 +191,11 @@ func (cfs *ControllerFS) Mkdir(name string) error {
 }
 
 func (cfs *ControllerFS) Remove(name string) error {
-	path, err := normalizeControllerFSPath("remove", name, true)
+	trimmed := strings.TrimPrefix(name, "/")
+	if name == "" || trimmed == "" || trimmed == "." {
+		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrPermission}
+	}
+	path, err := normalizeControllerFSPath("remove", name, false)
 	if err != nil {
 		return err
 	}
@@ -457,6 +461,14 @@ func controllerSnapshotToFileInfo(snapshot controllerFSInfoSnapshot) fs.FileInfo
 	return controllerFSFileInfo{snapshot: snapshot}
 }
 
+// controllerFSRPCErrorCodes mirrors the error codes defined in the service package.
+// These must stay in sync with the server-side constants in jsh/service/rpc.go.
+const (
+	controllerFSRPCForbidden = -32003 // fs.ErrPermission
+	controllerFSRPCNotFound  = -32004 // fs.ErrNotExist
+	controllerFSRPCConflict  = -32009 // ECONFLICT (file locked / busy)
+)
+
 func controllerFSPathError(method string, params any, code int, message string) error {
 	path := "/"
 	if typed, ok := params.(map[string]any); ok {
@@ -466,15 +478,16 @@ func controllerFSPathError(method string, params any, code int, message string) 
 			path = value
 		}
 	}
-	err := fs.ErrInvalid
-	msg := strings.ToLower(message)
-	if strings.Contains(msg, "not found") || strings.Contains(msg, "no such") {
-		err = fs.ErrNotExist
-	}
-	if code == -32009 {
+	switch code {
+	case controllerFSRPCForbidden:
+		return &fs.PathError{Op: method, Path: path, Err: fmt.Errorf("%w: %s", fs.ErrPermission, message)}
+	case controllerFSRPCNotFound:
+		return &fs.PathError{Op: method, Path: path, Err: fmt.Errorf("%w: %s", fs.ErrNotExist, message)}
+	case controllerFSRPCConflict:
 		return &fs.PathError{Op: method, Path: path, Err: fmt.Errorf("ECONFLICT: %s", message)}
+	default:
+		return &fs.PathError{Op: method, Path: path, Err: fmt.Errorf("%w: %s", fs.ErrInvalid, message)}
 	}
-	return &fs.PathError{Op: method, Path: path, Err: fmt.Errorf("%w: %s", err, message)}
 }
 
 func (fi controllerFSFileInfo) Name() string {
@@ -569,3 +582,4 @@ func (fd *controllerFSRemoteFD) Chmod(mode fs.FileMode) error {
 func (fd *controllerFSRemoteFD) Chown(uid, gid int) error {
 	return fd.fs.call("fs.fchown", map[string]any{"fd": fd.id, "uid": uid, "gid": gid}, nil)
 }
+

@@ -150,8 +150,18 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 
 		env := contextToCGIEnv(ctx, path)
 		// ServiceController
-		env[engine.ControllerSharedMountEnv] = svr.authServer.serviceController.SharedMountPoint()
-		env[engine.ControllerAddressEnv] = svr.authServer.serviceController.Address()
+		controllerAddr := ""
+		sharedMount := engine.DefaultControllerSharedMount
+		if svr.authServer != nil && svr.authServer.serviceController != nil {
+			controllerAddr = svr.authServer.serviceController.Address()
+			sharedMount = svr.authServer.serviceController.SharedMountPoint()
+		}
+		if controllerAddr == "" {
+			handleError(ctx, http.StatusInternalServerError, "service controller is not available", tick)
+			return
+		}
+		env[engine.ControllerSharedMountEnv] = sharedMount
+		env[engine.ControllerAddressEnv] = controllerAddr
 		// Common env
 		env["HOME"] = "/work"
 		env["PWD"] = mountPoint + filepath.Dir(cgiPath)

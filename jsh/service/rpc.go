@@ -23,6 +23,7 @@ const (
 	jsonRPCMethodMiss   = -32601
 	jsonRPCInvalidParam = -32602
 	jsonRPCInternal     = -32603
+	jsonRPCForbidden    = -32003
 	jsonRPCNotFound     = -32004
 	jsonRPCConflict     = -32009
 )
@@ -851,6 +852,9 @@ func mapSharedFSError(err error) *controllerRPCError {
 	if errors.Is(err, fs.ErrNotExist) {
 		return &controllerRPCError{Code: jsonRPCNotFound, Message: err.Error()}
 	}
+	if errors.Is(err, fs.ErrPermission) {
+		return &controllerRPCError{Code: jsonRPCForbidden, Message: err.Error()}
+	}
 	return invalidParamsError(err)
 }
 
@@ -973,11 +977,12 @@ func (ctl *Controller) sharedWriteFileRPC(name string, encoded string) (SharedFi
 
 func (ctl *Controller) sharedWriteFile(name string, data []byte) error {
 	path := engine.CleanPath(name)
-	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
+	err := ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
 		return vfs.WriteFile(path, data)
 	}, func() error {
 		return ctl.persistSharedWriteFile(path, data)
 	})
+	return err
 }
 
 func (ctl *Controller) sharedWriteFileMode(name string, data []byte, mode uint32) error {
@@ -1026,11 +1031,15 @@ func (ctl *Controller) sharedMkdir(name string) error {
 
 func (ctl *Controller) sharedRemove(name string) error {
 	path := engine.CleanPath(name)
-	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
+	if path == "/" {
+		return fmt.Errorf("%w: remove /: operation not permitted", fs.ErrPermission)
+	}
+	err := ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
 		return vfs.Remove(path)
 	}, func() error {
 		return ctl.persistSharedRemove(path)
 	})
+	return err
 }
 
 func (ctl *Controller) sharedRename(oldName string, newName string) error {
