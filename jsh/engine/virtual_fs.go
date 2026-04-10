@@ -27,8 +27,17 @@ type VirtualFS struct {
 }
 
 type virtualFileEntry struct {
-	data []byte
-	prop VirtualFileProperty
+	data   []byte
+	loader func() []byte
+	prop   VirtualFileProperty
+}
+
+// getData returns the file content, invoking the lazy loader if set.
+func (e *virtualFileEntry) getData() []byte {
+	if e.loader != nil {
+		return e.loader()
+	}
+	return e.data
 }
 
 var _ fs.FS = (*VirtualFS)(nil)
@@ -56,10 +65,14 @@ func (vfs *VirtualFS) Clone() *VirtualFS {
 		clone.dirs[dirPath] = prop
 	}
 	for filePath, entry := range vfs.files {
-		clone.files[filePath] = &virtualFileEntry{
-			data: cloneVirtualBytes(entry.data),
-			prop: entry.prop,
+		newEntry := &virtualFileEntry{
+			loader: entry.loader,
+			prop:   entry.prop,
 		}
+		if entry.loader == nil {
+			newEntry.data = cloneVirtualBytes(entry.data)
+		}
+		clone.files[filePath] = newEntry
 	}
 	return clone
 }
@@ -67,16 +80,25 @@ func (vfs *VirtualFS) Clone() *VirtualFS {
 type VirtualFileContent []byte
 
 // AddFile adds a virtual file entry with caller-provided content and metadata.
-// The content must be []byte or string.
+// The content must be []byte, string, or func() []byte.
+// If content is func() []byte, it is stored as a lazy loader and called on each Open or ReadFile.
 func (vfs *VirtualFS) AddFile(name string, content any, prop VirtualFileProperty) error {
 	rel, err := normalizeVirtualPath("create", name, false)
 	if err != nil {
 		return err
 	}
 
-	data, err := toVirtualBytes(content)
-	if err != nil {
-		return err
+	var (
+		data   []byte
+		loader func() []byte
+	)
+	if fn, ok := content.(func() []byte); ok {
+		loader = fn
+	} else {
+		data, err = toVirtualBytes(content)
+		if err != nil {
+			return err
+		}
 	}
 
 	vfs.mu.Lock()
@@ -111,7 +133,7 @@ func (vfs *VirtualFS) AddFile(name string, content any, prop VirtualFileProperty
 
 	prop = normalizeVirtualProperty(prop)
 	vfs.ensureParentDirsLocked(rel, prop.ModTime)
-	vfs.files[rel] = &virtualFileEntry{data: data, prop: prop}
+	vfs.files[rel] = &virtualFileEntry{data: data, loader: loader, prop: prop}
 	return nil
 }
 
@@ -135,6 +157,9 @@ func (vfs *VirtualFS) WriteFile(name string, data []byte) error {
 	stamp := defaultTimestamp
 	mode := fs.FileMode(0)
 	if entry, exists := vfs.files[rel]; exists {
+		if entry.loader != nil {
+			return &fs.PathError{Op: "writefile", Path: name, Err: fs.ErrPermission}
+		}
 		stamp = entry.prop.CreateTime
 		mode = entry.prop.Mode
 	}
@@ -212,6 +237,9 @@ func (vfs *VirtualFS) AppendFile(name string, data []byte) error {
 		}
 	}
 	if entry, exists := vfs.files[rel]; exists {
+		if entry.loader != nil {
+			return &fs.PathError{Op: "appendfile", Path: name, Err: fs.ErrPermission}
+		}
 		entry.data = append(entry.data, data...)
 		entry.prop.ModTime = defaultTimestamp
 		vfs.touchParentDirsLocked(rel, entry.prop.ModTime)
@@ -403,8 +431,9 @@ func (vfs *VirtualFS) Open(name string) (fs.File, error) {
 	defer vfs.mu.RUnlock()
 
 	if entry, ok := vfs.files[rel]; ok {
-		info := buildVirtualFileInfo(path.Base(rel), false, int64(len(entry.data)), entry.prop.ModTime, entry.prop.CreateTime, entry.prop.Mode)
-		return &virtualOpenFile{reader: bytes.NewReader(entry.data), info: info}, nil
+		d := entry.getData()
+		info := buildVirtualFileInfo(path.Base(rel), false, int64(len(d)), entry.prop.ModTime, entry.prop.CreateTime, entry.prop.Mode)
+		return &virtualOpenFile{reader: bytes.NewReader(d), info: info}, nil
 	}
 
 	if !vfs.hasDirLocked(rel) {
@@ -429,8 +458,9 @@ func (vfs *VirtualFS) ReadFile(name string) ([]byte, error) {
 	if !ok {
 		return nil, &fs.PathError{Op: "readfile", Path: name, Err: fs.ErrNotExist}
 	}
-	ret := make([]byte, len(entry.data))
-	copy(ret, entry.data)
+	d := entry.getData()
+	ret := make([]byte, len(d))
+	copy(ret, d)
 	return ret, nil
 }
 
@@ -444,7 +474,7 @@ func (vfs *VirtualFS) Stat(name string) (fs.FileInfo, error) {
 	defer vfs.mu.RUnlock()
 
 	if entry, ok := vfs.files[rel]; ok {
-		return buildVirtualFileInfo(path.Base(rel), false, int64(len(entry.data)), entry.prop.ModTime, entry.prop.CreateTime, entry.prop.Mode), nil
+		return buildVirtualFileInfo(path.Base(rel), false, int64(len(entry.getData())), entry.prop.ModTime, entry.prop.CreateTime, entry.prop.Mode), nil
 	}
 	if prop, ok := vfs.dirPropLocked(rel); ok {
 		return buildVirtualFileInfo(dirName(rel), true, 0, prop.ModTime, prop.CreateTime, prop.Mode), nil
@@ -552,7 +582,7 @@ func (vfs *VirtualFS) readDirLocked(rel string) []fs.DirEntry {
 			ret = append(ret, &virtualDirEntry{info: buildVirtualFileInfo(name, true, 0, prop.ModTime, prop.CreateTime, prop.Mode)})
 			continue
 		}
-		ret = append(ret, &virtualDirEntry{info: buildVirtualFileInfo(name, false, int64(len(c.entry.data)), c.entry.prop.ModTime, c.entry.prop.CreateTime, c.entry.prop.Mode)})
+		ret = append(ret, &virtualDirEntry{info: buildVirtualFileInfo(name, false, int64(len(c.entry.getData())), c.entry.prop.ModTime, c.entry.prop.CreateTime, c.entry.prop.Mode)})
 	}
 	return ret
 }
