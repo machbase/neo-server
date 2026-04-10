@@ -1,4 +1,4 @@
-package root_test
+package sbin_test
 
 import (
 	"strings"

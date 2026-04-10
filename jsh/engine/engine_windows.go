@@ -17,7 +17,7 @@ var sendInterruptSignalFn = sendInterruptSignal
 func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	ex.Stdin = resolveExecReader(jr.Env.Reader(), opts.Stdin)
 	ex.Stdout = resolveExecWriter(jr.Env.Writer(), opts.Stdout)
-	ex.Stderr = resolveExecWriter(jr.Env.Writer(), opts.Stderr)
+	ex.Stderr = resolveExecWriter(jr.Env.ErrorWriter(), opts.Stderr)
 
 	// Windows doesn't support process groups like Unix
 	// Just run the process directly
@@ -25,9 +25,13 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
+	var procEntryWarn error
 	procEntry, err := jr.createProcessEntry(ex)
 	if err != nil {
-		return -1, err
+		// Process entry recording is best-effort.
+		// Do not fail command execution when service-controller is overloaded.
+		procEntryWarn = err
+		procEntry = nil
 	}
 
 	// wait for process to finish
@@ -44,6 +48,9 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 
 	if procEntry != nil {
 		procEntry.finish(result)
+	}
+	if procEntryWarn != nil {
+		fmt.Fprintf(jr.Env.ErrorWriter(), "warning: process entry record failed: %v\n", procEntryWarn)
 	}
 
 	return result, nil

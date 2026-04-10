@@ -8,12 +8,14 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dop251/goja"
 )
 
 var defaultWriter io.Writer = io.Discard
+var defaultWriterMu sync.RWMutex
 
 type LogKind interface {
 	Log(lvl slog.Level, args ...any)
@@ -27,13 +29,17 @@ type PrintKind interface {
 // SetDefaultWriter atomically swaps the console default output writer and returns
 // the previous one. Use this to temporarily redirect console output during eval.
 func SetDefaultWriter(w io.Writer) io.Writer {
+	defaultWriterMu.Lock()
+	defer defaultWriterMu.Unlock()
 	old := defaultWriter
 	defaultWriter = w
 	return old
 }
 
 func SetConsole(vm *goja.Runtime, w io.Writer) *goja.Object {
+	defaultWriterMu.Lock()
 	defaultWriter = w
+	defaultWriterMu.Unlock()
 
 	con := vm.NewObject()
 	if s, ok := w.(LogKind); ok {
@@ -63,18 +69,26 @@ func SetConsole(vm *goja.Runtime, w io.Writer) *goja.Object {
 }
 
 func Println(args ...interface{}) {
+	defaultWriterMu.RLock()
+	defer defaultWriterMu.RUnlock()
 	fmt.Fprintln(defaultWriter, args...)
 }
 
 func Print(args ...interface{}) {
+	defaultWriterMu.RLock()
+	defer defaultWriterMu.RUnlock()
 	fmt.Fprint(defaultWriter, args...)
 }
 
 func Printf(format string, args ...interface{}) {
+	defaultWriterMu.RLock()
+	defer defaultWriterMu.RUnlock()
 	fmt.Fprintf(defaultWriter, format, args...)
 }
 
 func Log(level slog.Level, args ...interface{}) {
+	defaultWriterMu.RLock()
+	defer defaultWriterMu.RUnlock()
 	strLevel := level.String()
 	strLevel = strLevel + strings.Repeat(" ", 5-len(strLevel))
 	fmt.Fprintln(defaultWriter, strLevel, fmt.Sprint(args...))

@@ -82,7 +82,7 @@ func (jr *JSRuntime) Run() error {
 	defer func() {
 		if r := recover(); r != nil {
 			if ie, ok := r.(*goja.InterruptedError); ok {
-				fmt.Fprintf(jr.Env.Writer(), "interrupted: %v\n", ie.Value())
+				fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
 			}
 			fmt.Fprintf(os.Stderr, "panic: %v\n%v\n", r, string(debug.Stack()))
 			os.Exit(1)
@@ -127,15 +127,15 @@ func (jr *JSRuntime) Run() error {
 					}
 					return
 				}
-				fmt.Fprintf(jr.Env.Writer(), "Interrupted: %s\n", ie.String())
+				fmt.Fprintf(jr.Env.ErrorWriter(), "Interrupted: %s\n", ie.String())
 			} else if jsErr, ok := err.(*goja.Exception); ok {
 				msg := jsErr.String()
 				msg = strings.TrimPrefix(msg, "GoError: ")
-				fmt.Fprintf(jr.Env.Writer(), "%s\n", msg)
+				fmt.Fprintf(jr.Env.ErrorWriter(), "%s\n", msg)
 			} else {
 				msg := err.Error()
 				msg = strings.TrimPrefix(msg, "GoError: ")
-				fmt.Fprintf(jr.Env.Writer(), "%s\n", msg)
+				fmt.Fprintf(jr.Env.ErrorWriter(), "%s\n", msg)
 			}
 			jr.exitCode = -1
 		}

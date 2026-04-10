@@ -723,3 +723,112 @@ func assertMockSharedFDUnchanged(vfs *VirtualFS, handle *mockSharedFD) error {
 	}
 	return nil
 }
+
+// TestControllerFS_ConnectionPooling verifies that ControllerFS reuses
+// a single persistent connection for multiple sequential RPC calls,
+// significantly reducing TCP handshake overhead.
+func TestControllerFS_ConnectionPooling(t *testing.T) {
+	address, shutdown := startMockControllerFSServer(t)
+	defer shutdown()
+
+	remoteFS, err := NewControllerFS(address)
+	if err != nil {
+		t.Fatalf("NewControllerFS() error: %v", err)
+	}
+	defer remoteFS.Close()
+
+	mfs := NewFS()
+	if err := mfs.Mount("/shared", remoteFS); err != nil {
+		t.Fatalf("Mount() error: %v", err)
+	}
+
+	// Perform multiple sequential RPC operations that should reuse the connection
+	operations := []struct {
+		name string
+		op   func() error
+	}{
+		{"Mkdir", func() error { return mfs.Mkdir("/shared/pooltest") }},
+		{"WriteFile1", func() error { return mfs.WriteFile("/shared/pooltest/file1.txt", []byte("data1")) }},
+		{"WriteFile2", func() error { return mfs.WriteFile("/shared/pooltest/file2.txt", []byte("data2")) }},
+		{"ReadFile1", func() error { _, err := fs.ReadFile(mfs, "/shared/pooltest/file1.txt"); return err }},
+		{"Rename", func() error { return mfs.Rename("/shared/pooltest/file1.txt", "/shared/pooltest/renamed.txt") }},
+		{"Stat", func() error { _, err := fs.Stat(mfs, "/shared/pooltest/renamed.txt"); return err }},
+		{"ReadDir", func() error { _, err := fs.ReadDir(mfs, "/shared/pooltest"); return err }},
+		{"Chmod", func() error { return mfs.Chmod("/shared/pooltest/renamed.txt", 0o600) }},
+	}
+
+	// Execute operations
+	for _, op := range operations {
+		if err := op.op(); err != nil {
+			t.Fatalf("%s error: %v", op.name, err)
+		}
+	}
+
+	// Verify the persistent connection was utilized (conn field should be set)
+	if remoteFS.conn == nil {
+		t.Fatal("Expected ControllerFS.conn to be set (i.e., connection should be persistent)")
+	}
+
+	// Verify connection is closed after Close()
+	if err := remoteFS.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+	if remoteFS.conn != nil {
+		t.Fatal("Expected ControllerFS.conn to be nil after Close()")
+	}
+
+	// Verify Close() is idempotent
+	if err := remoteFS.Close(); err != nil {
+		t.Fatalf("Second Close() error: %v", err)
+	}
+}
+
+// TestControllerFS_ConnectionResilience verifies that ControllerFS properly
+// recovers from connection errors by invalidating and re-establishing connections.
+func TestControllerFS_ConnectionResilience(t *testing.T) {
+	address, shutdown := startMockControllerFSServer(t)
+	defer shutdown()
+
+	remoteFS, err := NewControllerFS(address)
+	if err != nil {
+		t.Fatalf("NewControllerFS() error: %v", err)
+	}
+	defer remoteFS.Close()
+
+	mfs := NewFS()
+	if err := mfs.Mount("/shared", remoteFS); err != nil {
+		t.Fatalf("Mount() error: %v", err)
+	}
+
+	// Establish connection with first operation
+	if err := mfs.WriteFile("/shared/test1.txt", []byte("data1")); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	if remoteFS.conn == nil {
+		t.Fatal("Expected connection to be established after first operation")
+	}
+
+	// Simulate connection failure by invalidating it
+	remoteFS.invalidateConnection()
+	if remoteFS.conn != nil {
+		t.Fatal("Expected connection to be nil after invalidation")
+	}
+
+	// Verify new connection is established on next operation
+	if err := mfs.WriteFile("/shared/test2.txt", []byte("data2")); err != nil {
+		t.Fatalf("WriteFile() after invalidation error: %v", err)
+	}
+	if remoteFS.conn == nil {
+		t.Fatal("Expected connection to be re-established after next operation")
+	}
+
+	// Verify data was written correctly
+	data1, err := fs.ReadFile(mfs, "/shared/test1.txt")
+	if err != nil || string(data1) != "data1" {
+		t.Fatalf("ReadFile(test1) error or content mismatch: %v, %q", err, string(data1))
+	}
+	data2, err := fs.ReadFile(mfs, "/shared/test2.txt")
+	if err != nil || string(data2) != "data2" {
+		t.Fatalf("ReadFile(test2) error or content mismatch: %v, %q", err, string(data2))
+	}
+}

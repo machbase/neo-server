@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -75,6 +76,9 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 	if err := ctl.loadSharedFS(); err != nil {
 		return nil, err
 	}
+	now := time.Now().UnixNano()
+	ctl.rpcMetrics.startUnixNano.Store(now)
+	ctl.rpcMetrics.lastResetUnixNano.Store(now)
 
 	return ctl, nil
 }
@@ -99,8 +103,25 @@ type Controller struct {
 	rpcListenAddr    string
 	rpcWG            sync.WaitGroup
 	rpcLn            net.Listener
+	rpcConnSem       chan struct{}
+	rpcConnMax       int
+	rpcMetrics       controllerRPCMetrics
 	jsonRpcHandlers  map[string]any
 	llmSessions      map[string]*llmSession
+}
+
+type controllerRPCMetrics struct {
+	startUnixNano            atomic.Int64
+	lastResetUnixNano        atomic.Int64
+	activeConnections        atomic.Int64
+	highWaterMarkConnections atomic.Int64
+	acceptedConnections      atomic.Uint64
+	rejectedConnections      atomic.Uint64
+	closedConnections        atomic.Uint64
+	requestCount             atomic.Uint64
+	notificationCount        atomic.Uint64
+	responseCount            atomic.Uint64
+	responseEncodeErrorCount atomic.Uint64
 }
 
 func (ctl *Controller) loadSharedFS() error {
@@ -279,7 +300,7 @@ func (ctl *Controller) Status(filter func(*Service) bool) []*Service {
 	for _, name := range keys {
 		svc := ctl.services[name]
 		if filter == nil || filter(svc) {
-			result = append(result, svc)
+			result = append(result, cloneServiceSnapshot(svc))
 		}
 	}
 	return result
@@ -289,9 +310,25 @@ func (ctl *Controller) StatusOf(name string) *Service {
 	ctl.mu.RLock()
 	defer ctl.mu.RUnlock()
 	if svc, exists := ctl.services[name]; exists {
-		return svc
+		return cloneServiceSnapshot(svc)
 	}
 	return nil
+}
+
+func cloneServiceSnapshot(svc *Service) *Service {
+	if svc == nil {
+		return nil
+	}
+	clone := &Service{
+		Config:   svc.Config,
+		Status:   svc.Status,
+		ExitCode: svc.ExitCode,
+		Error:    svc.Error,
+		cmd:      svc.cmd,
+	}
+	clone.Runtime.output = svc.outputSnapshot()
+	clone.Runtime.details = svc.detailsSnapshot()
+	return clone
 }
 
 func (ctl *Controller) command(sc *Config) *exec.Cmd {
@@ -384,9 +421,11 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 				exitCode = -1
 			}
 		}
+		ctl.mu.Lock()
+		defer ctl.mu.Unlock()
+		ctl.cleanupSharedFDsByOwner(clientID)
 		svc.ExitCode = exitCode
 		svc.Status = ServiceStatusStopped
-		ctl.cleanupSharedFDsByOwner(clientID)
 		svc.sharedClientID = ""
 	}()
 	<-svc.startCh
@@ -540,9 +579,9 @@ func (ctl *Controller) Read() error {
 }
 
 func (ctl *Controller) StartService(name string) (*Service, error) {
-	ctl.mu.RLock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	svc, exists := ctl.services[name]
-	ctl.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}
@@ -554,9 +593,9 @@ func (ctl *Controller) StartService(name string) (*Service, error) {
 }
 
 func (ctl *Controller) StopService(name string) (*Service, error) {
-	ctl.mu.RLock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	svc, exists := ctl.services[name]
-	ctl.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}

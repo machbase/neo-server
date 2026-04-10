@@ -617,10 +617,10 @@ func TestNew_AppendsRequiredPathElements(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if got, want := jr.Env.Get("PATH"), "/custom/bin:./node_modules/.bin:.:/sbin:/work/node_modules/.bin"; got != want {
+	if got, want := jr.Env.Get("PATH"), "/custom/bin:./node_modules/.bin:.:/sbin:/work/node_modules/.bin:/usr/bin"; got != want {
 		t.Errorf("PATH = %v, want %v", got, want)
 	}
-	if got, want := jr.Env.Get("LIBRARY_PATH"), "/custom/lib:/work/node_modules:./node_modules:/lib"; got != want {
+	if got, want := jr.Env.Get("LIBRARY_PATH"), "/custom/lib:/work/node_modules:./node_modules:/lib:/usr/lib"; got != want {
 		t.Errorf("LIBRARY_PATH = %v, want %v", got, want)
 	}
 	if got := jr.Env.Get("HOME"); got != "/custom/home" {
@@ -635,10 +635,10 @@ func TestNew_AppendsRequiredPathElements(t *testing.T) {
 		t.Fatalf("New() with default env error = %v", err)
 	}
 
-	if got, want := jrDefault.Env.Get("PATH"), ".:/sbin:/work/node_modules/.bin:./node_modules/.bin"; got != want {
+	if got, want := jrDefault.Env.Get("PATH"), ".:/sbin:/work/node_modules/.bin:./node_modules/.bin:/usr/bin"; got != want {
 		t.Errorf("default PATH = %v, want %v", got, want)
 	}
-	if got, want := jrDefault.Env.Get("LIBRARY_PATH"), "./node_modules:/work/node_modules:/lib"; got != want {
+	if got, want := jrDefault.Env.Get("LIBRARY_PATH"), "./node_modules:/work/node_modules:/lib:/usr/lib"; got != want {
 		t.Errorf("default LIBRARY_PATH = %v, want %v", got, want)
 	}
 	if got, want := jrDefault.Env.Get("HOME"), "/"; got != want {

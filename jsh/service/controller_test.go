@@ -1437,8 +1437,11 @@ func TestControllerLaunchedServiceCleansAbandonedSharedFDs(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if len(ctl.sharedFDs) != 0 {
-		t.Fatalf("sharedFDs len=%d, want 0", len(ctl.sharedFDs))
+	ctl.sharedMu.RLock()
+	sharedFDCount := len(ctl.sharedFDs)
+	ctl.sharedMu.RUnlock()
+	if sharedFDCount != 0 {
+		t.Fatalf("sharedFDs len=%d, want 0", sharedFDCount)
 	}
 	result, err := ctl.sharedReadFile("/leak.txt")
 	if err != nil {

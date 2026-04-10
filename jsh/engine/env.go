@@ -16,6 +16,7 @@ import (
 
 type Env struct {
 	writer      io.Writer
+	errorWriter io.Writer
 	reader      io.Reader
 	fs          fs.FS
 	execBuilder ExecBuilderFunc
@@ -479,6 +480,12 @@ func WithWriter(w io.Writer) EnvOption {
 	}
 }
 
+func WithErrorWriter(w io.Writer) EnvOption {
+	return func(de *Env) {
+		de.errorWriter = w
+	}
+}
+
 func WithReader(r io.Reader) EnvOption {
 	return func(de *Env) {
 		de.reader = r
@@ -503,6 +510,13 @@ func (e *Env) Writer() io.Writer {
 		return e.writer
 	}
 	return os.Stdout
+}
+
+func (e *Env) ErrorWriter() io.Writer {
+	if e.errorWriter != nil {
+		return e.errorWriter
+	}
+	return os.Stderr
 }
 
 func (e *Env) Filesystem() fs.FS {

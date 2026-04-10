@@ -39,6 +39,8 @@ func controllerBuiltinRPCMethods(ctl *Controller) map[string]any {
 		"service.uninstall":             ctl.rpcServiceUninstall,
 		"service.start":                 ctl.rpcServiceStart,
 		"service.stop":                  ctl.rpcServiceStop,
+		"controller.metrics.get":        ctl.rpcControllerMetricsGet,
+		"controller.metrics.reset":      ctl.rpcControllerMetricsReset,
 		"llm.session.open":              ctl.rpcLLMSessionOpen,
 		"llm.session.get":               ctl.rpcLLMSessionGet,
 		"llm.session.reset":             ctl.rpcLLMSessionReset,
@@ -111,6 +113,14 @@ func (ctl *Controller) rpcServiceRuntimeDetailDelete(req serviceRuntimeDetailReq
 		return ServiceRuntimeSnapshot{}, &controllerRPCError{Code: jsonRPCNotFound, Message: err.Error()}
 	}
 	return snapshotServiceRuntime(svc), nil
+}
+
+func (ctl *Controller) rpcControllerMetricsGet() ControllerRPCMetricsSnapshot {
+	return ctl.rpcMetricsSnapshot()
+}
+
+func (ctl *Controller) rpcControllerMetricsReset() ControllerRPCMetricsSnapshot {
+	return ctl.resetRPCMetrics()
 }
 
 func (ctl *Controller) rpcFSStat(req sharedPathRequest) (SharedFileInfoSnapshot, error) {
@@ -315,8 +325,10 @@ func (ctl *Controller) rpcServiceStop(req serviceNameRequest) (ServiceSnapshot, 
 }
 
 func (ctl *Controller) requireService(name string) (*Service, error) {
-	svc := ctl.StatusOf(name)
-	if svc == nil {
+	ctl.mu.RLock()
+	svc, exists := ctl.services[name]
+	ctl.mu.RUnlock()
+	if !exists || svc == nil {
 		return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", name)}
 	}
 	return svc, nil

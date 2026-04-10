@@ -100,6 +100,19 @@ func (h *localFDHandle) Chown(uid, gid int) error {
 	return h.file.Chown(uid, gid)
 }
 
+// readOnlyFDHandle wraps fs.File for read-only access (e.g. embed.FS, fs.Sub, nested *FS)
+type readOnlyFDHandle struct {
+	file fs.File
+}
+
+func (h *readOnlyFDHandle) Read(p []byte) (int, error)  { return h.file.Read(p) }
+func (h *readOnlyFDHandle) Write(_ []byte) (int, error) { return 0, fs.ErrPermission }
+func (h *readOnlyFDHandle) Close() error                { return h.file.Close() }
+func (h *readOnlyFDHandle) Stat() (fs.FileInfo, error)  { return h.file.Stat() }
+func (h *readOnlyFDHandle) Sync() error                 { return nil }
+func (h *readOnlyFDHandle) Chmod(_ fs.FileMode) error   { return fs.ErrPermission }
+func (h *readOnlyFDHandle) Chown(_, _ int) error        { return fs.ErrPermission }
+
 // FS allows mounting multiple fs.FS at different paths
 type FS struct {
 	mounts map[string]fs.FS
@@ -625,24 +638,34 @@ func (m *FS) OpenFD(name string, flags int, mode uint32) (int, error) {
 	}
 
 	relPath := getRelativePath(name, bestMatch)
-	target, err := getOSPath(bestFS, relPath)
-	if err != nil {
-		return -1, err
+	if target, err := getOSPath(bestFS, relPath); err == nil {
+		file, err := os.OpenFile(target, flags, fs.FileMode(mode))
+		if err != nil {
+			return -1, err
+		}
+		m.fdMu.Lock()
+		defer m.fdMu.Unlock()
+		fd := m.nextFD
+		m.nextFD++
+		m.fds[fd] = &localFDHandle{file: file}
+		return fd, nil
 	}
 
-	file, err := os.OpenFile(target, flags, fs.FileMode(mode))
-	if err != nil {
-		return -1, err
+	// Fallback: use fs.Open for read-only access (embed.FS, fs.Sub, nested *FS, etc.)
+	if flags&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_APPEND) == 0 {
+		f, err := bestFS.Open(relPath)
+		if err != nil {
+			return -1, err
+		}
+		m.fdMu.Lock()
+		defer m.fdMu.Unlock()
+		fd := m.nextFD
+		m.nextFD++
+		m.fds[fd] = &readOnlyFDHandle{file: f}
+		return fd, nil
 	}
 
-	m.fdMu.Lock()
-	defer m.fdMu.Unlock()
-
-	fd := m.nextFD
-	m.nextFD++
-	m.fds[fd] = &localFDHandle{file: file}
-
-	return fd, nil
+	return -1, fs.ErrPermission
 }
 
 // CloseFD closes a file descriptor
@@ -851,6 +874,15 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 			f.Close()
 		}
 	}
+
+	// Strip any . and .. already returned by the underlying FS to avoid duplicates
+	filtered := entries[:0]
+	for _, e := range entries {
+		if e.Name() != "." && e.Name() != ".." {
+			filtered = append(filtered, e)
+		}
+	}
+	entries = filtered
 
 	// Add . and .. entries with real directory info
 	dotEntries := []fs.DirEntry{

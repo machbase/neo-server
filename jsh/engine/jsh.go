@@ -57,10 +57,15 @@ func New(conf Config) (*JSRuntime, error) {
 	if conf.Writer != nil {
 		writer = conf.Writer
 	}
+	var errorWriter io.Writer = os.Stderr
+	if conf.ErrorWriter != nil {
+		errorWriter = conf.ErrorWriter
+	}
 	opts := []EnvOption{
 		WithFilesystem(filesystem),
 		WithReader(reader),
 		WithWriter(writer),
+		WithErrorWriter(errorWriter),
 		WithExecBuilder(conf.ExecBuilder),
 		WithAliases(conf.Aliases),
 	}
@@ -69,8 +74,8 @@ func New(conf Config) (*JSRuntime, error) {
 		env.SetRaw(k, v)
 	}
 	// Default environment variables
-	env.Set("PATH", appendMissingPathElements(env.Get("PATH"), ".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin"))
-	env.Set("LIBRARY_PATH", appendMissingPathElements(env.Get("LIBRARY_PATH"), "./node_modules", "/work/node_modules", "/lib"))
+	env.Set("PATH", appendMissingPathElements(env.Get("PATH"), ".", "/sbin", "/work/node_modules/.bin", "./node_modules/.bin", "/usr/bin"))
+	env.Set("LIBRARY_PATH", appendMissingPathElements(env.Get("LIBRARY_PATH"), "./node_modules", "/work/node_modules", "/lib", "/usr/lib"))
 	if env.Get("HOME") == nil {
 		env.Set("HOME", "/")
 	}
@@ -243,6 +248,7 @@ type Config struct {
 	Default     string          `json:"default,omitempty"`
 	Context     context.Context `json:"-"`
 	Writer      io.Writer       `json:"-"`
+	ErrorWriter io.Writer       `json:"-"`
 	Reader      io.Reader       `json:"-"`
 	ExecBuilder ExecBuilderFunc `json:"-"`
 	ProcRecord  bool            `json:"-"`

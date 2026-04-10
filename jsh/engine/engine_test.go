@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/lib"
+	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
 
@@ -143,6 +145,93 @@ func TestExecStringWithOptions(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "hello from stdin" {
 		t.Fatalf("ExecStringWithOptions() stdout = %q, want %q", got, "hello from stdin")
+	}
+}
+
+func TestProcessStderrUsesErrorWriter(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	jr, err := engine.New(engine.Config{
+		Code:        `const process = require("process"); process.stderr.write("stderr only"); console.println("stdout only");`,
+		Writer:      &stdout,
+		ErrorWriter: &stderr,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+	lib.Enable(jr)
+	if err := jr.Run(); err != nil {
+		t.Fatalf("jr.Run() error = %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "stdout only" {
+		t.Fatalf("stdout = %q, want %q", got, "stdout only")
+	}
+	if got := stderr.String(); got != "stderr only" {
+		t.Fatalf("stderr = %q, want %q", got, "stderr only")
+	}
+}
+
+func TestExecStringSeparatesStdoutAndStderrByDefault(t *testing.T) {
+	var stderr bytes.Buffer
+	jr, err := engine.New(engine.Config{ExecBuilder: testExecBuilder, ErrorWriter: &stderr})
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	exitCode, err := jr.ExecStringWithOptions(`
+		const process = require("process");
+		process.stderr.write("stderr from child");
+		console.println("stdout from child");
+	`, engine.ExecOptions{
+		Stdout: &stdout,
+	})
+	if err != nil {
+		t.Fatalf("ExecStringWithOptions() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("ExecStringWithOptions() exitCode = %d, want 0", exitCode)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "stdout from child" {
+		t.Fatalf("stdout = %q, want %q", got, "stdout from child")
+	}
+	if got := stderr.String(); got != "stderr from child" {
+		t.Fatalf("stderr = %q, want %q", got, "stderr from child")
+	}
+}
+
+// TestScriptExceptionGoesToErrorWriter verifies that a JS exception thrown by a
+// script does NOT contaminate the stdout writer (e.g. CgiBinWriter). This is the
+// root cause of "missing header separator" when a cgi-bin script throws before
+// emitting the CGI header separator.
+func TestScriptExceptionGoesToErrorWriter(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	jr, err := engine.New(engine.Config{
+		Code:        `console.println("before"); throw new Error("boom");`,
+		Writer:      &stdout,
+		ErrorWriter: &stderr,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+	lib.Enable(jr)
+	// Run returns an error (the exception) - that is expected
+	_ = jr.Run()
+
+	if got := strings.TrimSpace(stdout.String()); got != "before" {
+		t.Fatalf("stdout should only contain 'before', got %q", got)
+	}
+	if !strings.Contains(stderr.String(), "boom") {
+		t.Fatalf("stderr should contain 'boom', got %q", stderr.String())
 	}
 }
 

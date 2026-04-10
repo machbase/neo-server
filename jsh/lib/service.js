@@ -41,6 +41,10 @@ class Client {
             start: (name, callback) => this.start(name, callback),
             stop: (name, callback) => this.stop(name, callback),
         };
+        this.controller = {
+            metrics: (callback) => this.controllerMetrics(callback),
+            reset: (callback) => this.controllerMetricsReset(callback),
+        };
     }
 
     call(method, params, callback) {
@@ -192,6 +196,14 @@ class Client {
             old_path: requirePath(oldPath),
             new_path: requirePath(newPath),
         }, callback);
+    }
+
+    controllerMetrics(callback) {
+        return this.call('controller.metrics.get', null, callback);
+    }
+
+    controllerMetricsReset(callback) {
+        return this.call('controller.metrics.reset', null, callback);
     }
 }
 
@@ -389,6 +401,22 @@ function fsRename(oldPath, newPath, options, callback) {
         options = undefined;
     }
     return new Client(options).filesystem.rename(oldPath, newPath, callback);
+}
+
+function adminMetrics(options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).controller.metrics(callback);
+}
+
+function adminReset(options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).controller.reset(callback);
 }
 
 function normalizeClientOptions(options) {
@@ -627,5 +655,9 @@ module.exports = {
         mkdir: fsMkdir,
         remove: fsRemove,
         rename: fsRename,
+    },
+    controller: {
+        metrics: adminMetrics,
+        reset: adminReset,
     },
 };

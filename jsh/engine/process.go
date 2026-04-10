@@ -205,6 +205,7 @@ func (jr *JSRuntime) createStdout(vm *goja.Runtime) *goja.Object {
 
 func (jr *JSRuntime) createStderr(vm *goja.Runtime) *goja.Object {
 	stderr := vm.NewObject()
+	errorWriter := jr.Env.ErrorWriter()
 
 	// write(data) - write data to stderr
 	stderr.Set("write", func(call goja.FunctionCall) goja.Value {
@@ -212,7 +213,7 @@ func (jr *JSRuntime) createStderr(vm *goja.Runtime) *goja.Object {
 			return vm.ToValue(true)
 		}
 		data := call.Argument(0).String()
-		_, err := os.Stderr.Write([]byte(data))
+		_, err := errorWriter.Write([]byte(data))
 		if err != nil {
 			return vm.ToValue(false)
 		}
@@ -221,7 +222,11 @@ func (jr *JSRuntime) createStderr(vm *goja.Runtime) *goja.Object {
 
 	// isTTY - check if stderr is a terminal
 	stderr.Set("isTTY", func(call goja.FunctionCall) goja.Value {
-		stat, err := os.Stderr.Stat()
+		file, ok := errorWriter.(*os.File)
+		if !ok {
+			return vm.ToValue(false)
+		}
+		stat, err := file.Stat()
 		if err != nil {
 			return vm.ToValue(false)
 		}

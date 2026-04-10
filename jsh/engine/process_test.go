@@ -31,6 +31,18 @@ type watchedProcFS struct {
 	once    sync.Once
 }
 
+type alwaysFailProcWriteFS struct {
+	*engine.VirtualFS
+}
+
+func newAlwaysFailProcWriteFS() *alwaysFailProcWriteFS {
+	return &alwaysFailProcWriteFS{VirtualFS: engine.NewVirtualFS()}
+}
+
+func (f *alwaysFailProcWriteFS) WriteFile(name string, data []byte) error {
+	return fmt.Errorf("simulated service-controller overload for %s", name)
+}
+
 func newWatchedProcFS() *watchedProcFS {
 	return &watchedProcFS{
 		VirtualFS: engine.NewVirtualFS(),
@@ -68,9 +80,9 @@ func TestProcess(t *testing.T) {
 				console.println("LIBRARY_PATH:", process.env.get("LIBRARY_PATH"));
 			`,
 			Output: []string{
-				"PATH: /work:/sbin:.:/work/node_modules/.bin:./node_modules/.bin",
+				"PATH: /work:/sbin:.:/work/node_modules/.bin:./node_modules/.bin:/usr/bin",
 				"PWD: /work",
-				"LIBRARY_PATH: ./node_modules:/lib:/work/node_modules",
+				"LIBRARY_PATH: ./node_modules:/lib:/work/node_modules:/usr/lib",
 			},
 		},
 		{
@@ -552,6 +564,75 @@ func TestProcessExecDoesNotWriteProcEntryWithoutController(t *testing.T) {
 
 	if _, statErr := os.Stat(filepath.Join(procDir, "process")); !os.IsNotExist(statErr) {
 		t.Fatalf("/proc/process should not exist without controller, err=%v", statErr)
+	}
+}
+
+func TestProcessExecStressWithProcEntryWriteFailures(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping stress test in short mode")
+	}
+
+	const workers = 48
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+
+	for i := 0; i < workers; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			procFS := newAlwaysFailProcWriteFS()
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			conf := engine.Config{
+				Name: "process_proc_stress",
+				FSTabs: []engine.FSTab{
+					root.RootFSTab(),
+					lib.LibFSTab(),
+					{MountPoint: "/proc-fail", FS: procFS},
+				},
+				Env: map[string]any{
+					"PATH":                 "/work:/sbin",
+					"PWD":                  "/work",
+					"HOME":                 "/work",
+					"LIBRARY_PATH":         "./node_modules:/lib",
+					"SERVICE_CONTROLLER":   "stub://controller",
+					"SERVICE_SHARED_MOUNT": "/proc-fail",
+				},
+				ExecBuilder: helperExecBuilder(jshBinPath),
+				Reader:      &bytes.Buffer{},
+				Writer:      &out,
+				ErrorWriter: &errOut,
+			}
+			jr, err := engine.New(conf)
+			if err != nil {
+				errCh <- fmt.Errorf("worker %d engine.New() error: %w", i, err)
+				return
+			}
+			lib.Enable(jr)
+
+			want := fmt.Sprintf("worker-%d", i)
+			exitCode, err := jr.Exec("/sbin/echo.js", want)
+			if err != nil {
+				errCh <- fmt.Errorf("worker %d jr.Exec() error: %w output=%q errout=%q", i, err, out.String(), errOut.String())
+				return
+			}
+			if exitCode != 0 {
+				errCh <- fmt.Errorf("worker %d exitCode=%d output=%q errout=%q", i, exitCode, out.String(), errOut.String())
+				return
+			}
+			if got := strings.TrimSpace(out.String()); got != want {
+				errCh <- fmt.Errorf("worker %d stdout=%q want=%q", i, got, want)
+				return
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
 	}
 }
 

@@ -241,11 +241,21 @@ func newSocketFromConn(conn net.Conn, obj *goja.Object, dispatch engine.EventDis
 func (s *Socket) readLoop() {
 	buf := make([]byte, 8192)
 	for {
-		if s.readTimeout > 0 {
-			s.conn.SetReadDeadline(time.Now().Add(s.readTimeout))
+		s.mu.Lock()
+		conn := s.conn
+		readTimeout := s.readTimeout
+		closed := s.closed
+		s.mu.Unlock()
+
+		if closed || conn == nil {
+			return
 		}
 
-		n, err := s.conn.Read(buf)
+		if readTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(readTimeout))
+		}
+
+		n, err := conn.Read(buf)
 		if err != nil {
 			if err == io.EOF {
 				s.emit("end", nil)

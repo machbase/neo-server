@@ -228,9 +228,12 @@ class ReadStream extends EventEmitter {
             this.fd = _fs.open(this.fullPath, this.flags);
             this.reader = _fs.hostReader(this.fd);
         } catch (e) {
-            const error = new Error(`EACCES: permission denied, open '${path}'`);
-            error.code = 'EACCES';
-            error.errno = -13;
+            const code = e?.code || 'EACCES';
+            const errno = code === 'ENOENT' ? -2 : -13;
+            const message = e?.message || `permission denied, open '${path}'`;
+            const error = new Error(`${code}: ${message}`);
+            error.code = code;
+            error.errno = errno;
             error.path = path;
             error.syscall = 'open';
             throw error;
