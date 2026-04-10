@@ -486,3 +486,109 @@ func TestControllerRPCConcurrentSaturationRecovery(t *testing.T) {
 			success, totalRPCCalls, float64(success)*100/float64(totalRPCCalls))
 	}
 }
+
+func TestControllerRPCMetricsHighWaterMark(t *testing.T) {
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{},
+		Mounts:    nil,
+		ConfigDir: t.TempDir(),
+		Address:   "tcp://127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("NewController failed: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	if err := ctl.startRPC(); err != nil {
+		t.Fatalf("startRPC failed: %v", err)
+	}
+
+	addr := strings.TrimPrefix(ctl.Address(), "tcp://")
+	if addr == "" {
+		t.Fatal("RPC address is empty")
+	}
+
+	conns := make([]net.Conn, 0, 12)
+	for i := 0; i < 12; i++ {
+		conn, dialErr := net.Dial("tcp", addr)
+		if dialErr != nil {
+			t.Fatalf("Dial failed at %d: %v", i, dialErr)
+		}
+		conns = append(conns, conn)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	snap := ctl.rpcControllerMetricsGet()
+	if snap.HighWaterMarkConnections < 12 {
+		t.Fatalf("high_water_mark_connections=%d, want >= 12", snap.HighWaterMarkConnections)
+	}
+	if snap.AcceptedConnections < 12 {
+		t.Fatalf("accepted_connections=%d, want >= 12", snap.AcceptedConnections)
+	}
+
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
+	time.Sleep(150 * time.Millisecond)
+
+	snap = ctl.rpcControllerMetricsGet()
+	if snap.ActiveConnections != 0 {
+		t.Fatalf("active_connections=%d, want 0", snap.ActiveConnections)
+	}
+}
+
+func TestControllerRPCMetricsReset(t *testing.T) {
+	ctl, err := NewController(&ControllerConfig{
+		Launcher:  []string{},
+		Mounts:    nil,
+		ConfigDir: t.TempDir(),
+		Address:   "tcp://127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("NewController failed: %v", err)
+	}
+	defer ctl.Stop(nil)
+
+	if err := ctl.startRPC(); err != nil {
+		t.Fatalf("startRPC failed: %v", err)
+	}
+
+	addr := strings.TrimPrefix(ctl.Address(), "tcp://")
+	if addr == "" {
+		t.Fatal("RPC address is empty")
+	}
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "service.list",
+		"id":      1,
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		_ = conn.Close()
+		t.Fatalf("Encode failed: %v", err)
+	}
+	var resp map[string]interface{}
+	_ = json.NewDecoder(conn).Decode(&resp)
+	_ = conn.Close()
+	time.Sleep(120 * time.Millisecond)
+
+	before := ctl.rpcControllerMetricsGet()
+	if before.RequestCount == 0 {
+		t.Fatalf("request_count=%d, want > 0 before reset", before.RequestCount)
+	}
+
+	reset := ctl.rpcControllerMetricsReset()
+	if reset.RequestCount != 0 {
+		t.Fatalf("request_count=%d, want 0 after reset", reset.RequestCount)
+	}
+	if reset.AcceptedConnections != 0 {
+		t.Fatalf("accepted_connections=%d, want 0 after reset", reset.AcceptedConnections)
+	}
+	if reset.RejectedConnections != 0 {
+		t.Fatalf("rejected_connections=%d, want 0 after reset", reset.RejectedConnections)
+	}
+}

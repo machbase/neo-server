@@ -99,6 +99,7 @@
         console.println('  details get <service_name> [key]');
         console.println('  details set <service_name> <key> <value> [--detail-type <string|number|boolean|bool|object|json>]');
         console.println('  details delete <service_name> <key>');
+        console.println('  controller [metrics|get|reset]');
         console.println('Examples:');
         console.println('  servicectl --controller=127.0.0.1:1234 details get alpha --format json');
         console.println('  servicectl --controller=127.0.0.1:1234 details set alpha retries 3 --detail-type number');
@@ -144,6 +145,8 @@
                 return clientCommandSpec(cmd, (callback) => serviceModule.stop(positionalArgs[0], rpcOptions, callback));
             case 'details':
                 return buildDetailsCommandSpec(positionalArgs);
+            case 'controller':
+                return buildControllerCommandSpec(positionalArgs);
             default:
                 fail(`Unknown command '${cmd}'.`);
                 return null;
@@ -215,6 +218,34 @@
                 fail(`Unknown details command '${action}'.`);
                 return null;
         }
+    }
+
+    function buildControllerCommandSpec(positionalArgs) {
+        const action = positionalArgs[0] || 'metrics';
+        if (action === 'metrics' || action === 'get') {
+            if (positionalArgs.length > 1) {
+                fail("Command 'controller metrics' does not accept additional arguments.");
+            }
+            return {
+                kind: 'client',
+                command: 'controller',
+                action: 'metrics',
+                execute: (callback) => serviceModule.controller.metrics(rpcOptions, callback),
+            };
+        }
+        if (action === 'reset') {
+            if (positionalArgs.length > 1) {
+                fail("Command 'controller reset' does not accept additional arguments.");
+            }
+            return {
+                kind: 'client',
+                command: 'controller',
+                action: 'reset',
+                execute: (callback) => serviceModule.controller.reset(rpcOptions, callback),
+            };
+        }
+        fail(`Unknown controller command '${action}'. Use metrics|get|reset.`);
+        return null;
     }
 
     function expectArgs(cmd, positionalArgs, expectedCount) {
@@ -422,9 +453,45 @@
             case 'details':
                 renderDetailsResult(commandSpec, result);
                 return;
+            case 'controller':
+                renderControllerResult(commandSpec, result);
+                return;
             default:
                 printJson(result);
         }
+    }
+
+    function renderControllerResult(commandSpec, metrics) {
+        if (!metrics || typeof metrics !== 'object') {
+            printJson(metrics);
+            return;
+        }
+        const actionLabel = commandSpec.action === 'reset' ? 'controller reset' : 'controller metrics';
+        console.println(`RPC METRICS (${actionLabel})`);
+        renderTable([
+            { key: 'key', title: 'KEY' },
+            { key: 'value', title: 'VALUE' },
+        ], [
+            { key: 'started_at', value: String(metrics.started_at || '-') },
+            { key: 'reset_at', value: String(metrics.reset_at || '-') },
+            { key: 'connection_limit', value: valueOrDash(metrics.connection_limit) },
+            { key: 'active_connections', value: valueOrDash(metrics.active_connections) },
+            { key: 'high_water_mark_connections', value: valueOrDash(metrics.high_water_mark_connections) },
+            { key: 'accepted_connections', value: valueOrDash(metrics.accepted_connections) },
+            { key: 'rejected_connections', value: valueOrDash(metrics.rejected_connections) },
+            { key: 'closed_connections', value: valueOrDash(metrics.closed_connections) },
+            { key: 'request_count', value: valueOrDash(metrics.request_count) },
+            { key: 'notification_count', value: valueOrDash(metrics.notification_count) },
+            { key: 'response_count', value: valueOrDash(metrics.response_count) },
+            { key: 'response_encode_error_count', value: valueOrDash(metrics.response_encode_error_count) },
+        ]);
+    }
+
+    function valueOrDash(value) {
+        if (value === undefined || value === null) {
+            return '-';
+        }
+        return String(value);
     }
 
     function renderDetailsResult(commandSpec, runtime) {

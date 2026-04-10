@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -75,6 +76,9 @@ func NewController(opt *ControllerConfig) (*Controller, error) {
 	if err := ctl.loadSharedFS(); err != nil {
 		return nil, err
 	}
+	now := time.Now().UnixNano()
+	ctl.rpcMetrics.startUnixNano.Store(now)
+	ctl.rpcMetrics.lastResetUnixNano.Store(now)
 
 	return ctl, nil
 }
@@ -101,8 +105,23 @@ type Controller struct {
 	rpcLn            net.Listener
 	rpcConnSem       chan struct{}
 	rpcConnMax       int
+	rpcMetrics       controllerRPCMetrics
 	jsonRpcHandlers  map[string]any
 	llmSessions      map[string]*llmSession
+}
+
+type controllerRPCMetrics struct {
+	startUnixNano            atomic.Int64
+	lastResetUnixNano        atomic.Int64
+	activeConnections        atomic.Int64
+	highWaterMarkConnections atomic.Int64
+	acceptedConnections      atomic.Uint64
+	rejectedConnections      atomic.Uint64
+	closedConnections        atomic.Uint64
+	requestCount             atomic.Uint64
+	notificationCount        atomic.Uint64
+	responseCount            atomic.Uint64
+	responseEncodeErrorCount atomic.Uint64
 }
 
 func (ctl *Controller) loadSharedFS() error {

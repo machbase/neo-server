@@ -100,6 +100,7 @@ type httpd struct {
 	licenseFilePath        string
 	licenseStatusLastTime  time.Time
 	licenseStatus          string
+	debugModeLock          sync.RWMutex
 	debugMode              bool
 	debugLogFilterLatency  time.Duration
 	readBufSize            int
@@ -210,11 +211,15 @@ func (svr *httpd) AdvertiseAddress() string {
 
 // DebugMode returns the current debug mode and the log filter latency
 func (svr *httpd) DebugMode() (bool, time.Duration) {
+	svr.debugModeLock.RLock()
+	defer svr.debugModeLock.RUnlock()
 	return svr.debugMode, svr.debugLogFilterLatency
 }
 
 // SetDebugMode sets the debug mode and the log filter latency
 func (svr *httpd) SetDebugMode(debug bool, filterLatency time.Duration) {
+	svr.debugModeLock.Lock()
+	defer svr.debugModeLock.Unlock()
 	svr.debugMode = debug
 	if filterLatency >= 0 {
 		svr.debugLogFilterLatency = filterLatency
@@ -224,7 +229,7 @@ func (svr *httpd) SetDebugMode(debug bool, filterLatency time.Duration) {
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(RecoveryWithLogging(svr.log))
-	r.Use(HttpLogger("http-log", &svr.debugMode, &svr.debugLogFilterLatency))
+	r.Use(HttpLogger("http-log", svr.DebugMode))
 	r.Use(svr.corsHandler())
 	r.Use(MetricsInterceptor())
 

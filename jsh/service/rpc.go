@@ -205,6 +205,21 @@ type sharedWriteFDRequest struct {
 	Data string `json:"data"`
 }
 
+type ControllerRPCMetricsSnapshot struct {
+	StartedAt                time.Time `json:"started_at"`
+	ResetAt                  time.Time `json:"reset_at"`
+	ConnectionLimit          int       `json:"connection_limit"`
+	ActiveConnections        int64     `json:"active_connections"`
+	HighWaterMarkConnections int64     `json:"high_water_mark_connections"`
+	AcceptedConnections      uint64    `json:"accepted_connections"`
+	RejectedConnections      uint64    `json:"rejected_connections"`
+	ClosedConnections        uint64    `json:"closed_connections"`
+	RequestCount             uint64    `json:"request_count"`
+	NotificationCount        uint64    `json:"notification_count"`
+	ResponseCount            uint64    `json:"response_count"`
+	ResponseEncodeErrorCount uint64    `json:"response_encode_error_count"`
+}
+
 type sharedFchmodFDRequest struct {
 	FD   int    `json:"fd"`
 	Mode uint32 `json:"mode"`
@@ -333,8 +348,10 @@ func (ctl *Controller) serveRPC(ln net.Listener) {
 		// If max concurrent connections reached, drop connection gracefully.
 		select {
 		case ctl.rpcConnSem <- struct{}{}:
+			ctl.rpcMetricsOnConnectionAccepted()
 			go ctl.serveRPCConnWithLimit(conn)
 		default:
+			ctl.rpcMetricsOnConnectionRejected()
 			conn.Close()
 		}
 	}
@@ -342,6 +359,7 @@ func (ctl *Controller) serveRPC(ln net.Listener) {
 
 func (ctl *Controller) serveRPCConnWithLimit(conn net.Conn) {
 	defer func() {
+		ctl.rpcMetricsOnConnectionClosed()
 		<-ctl.rpcConnSem // Release connection slot
 	}()
 	ctl.serveRPCConn(conn)
@@ -379,6 +397,7 @@ func (ctl *Controller) serveRPCConn(conn net.Conn) {
 			// (client likely already disconnected)
 			return
 		}
+		ctl.rpcMetricsOnRequest(req)
 
 		resp := ctl.handleRPC(req)
 		if !req.hasResponse() {
@@ -387,13 +406,78 @@ func (ctl *Controller) serveRPCConn(conn net.Conn) {
 			continue
 		}
 		if err := encoder.Encode(resp); err != nil {
+			ctl.rpcMetrics.responseEncodeErrorCount.Add(1)
 			return
 		}
+		ctl.rpcMetrics.responseCount.Add(1)
 
 		// After sending response, set short idle timeout to prevent slot exhaustion.
 		// ControllerFS clients close immediately after receiving response,
 		// so this timeout will typically trigger quickly, freeing the semaphore slot.
 		conn.SetDeadline(time.Now().Add(rpcConnIdleTimeout))
+	}
+}
+
+func (ctl *Controller) rpcMetricsSnapshot() ControllerRPCMetricsSnapshot {
+	started := time.Unix(0, ctl.rpcMetrics.startUnixNano.Load())
+	resetAt := time.Unix(0, ctl.rpcMetrics.lastResetUnixNano.Load())
+	return ControllerRPCMetricsSnapshot{
+		StartedAt:                started,
+		ResetAt:                  resetAt,
+		ConnectionLimit:          ctl.rpcConnMax,
+		ActiveConnections:        ctl.rpcMetrics.activeConnections.Load(),
+		HighWaterMarkConnections: ctl.rpcMetrics.highWaterMarkConnections.Load(),
+		AcceptedConnections:      ctl.rpcMetrics.acceptedConnections.Load(),
+		RejectedConnections:      ctl.rpcMetrics.rejectedConnections.Load(),
+		ClosedConnections:        ctl.rpcMetrics.closedConnections.Load(),
+		RequestCount:             ctl.rpcMetrics.requestCount.Load(),
+		NotificationCount:        ctl.rpcMetrics.notificationCount.Load(),
+		ResponseCount:            ctl.rpcMetrics.responseCount.Load(),
+		ResponseEncodeErrorCount: ctl.rpcMetrics.responseEncodeErrorCount.Load(),
+	}
+}
+
+func (ctl *Controller) resetRPCMetrics() ControllerRPCMetricsSnapshot {
+	now := time.Now().UnixNano()
+	ctl.rpcMetrics.lastResetUnixNano.Store(now)
+	ctl.rpcMetrics.acceptedConnections.Store(0)
+	ctl.rpcMetrics.rejectedConnections.Store(0)
+	ctl.rpcMetrics.closedConnections.Store(0)
+	ctl.rpcMetrics.requestCount.Store(0)
+	ctl.rpcMetrics.notificationCount.Store(0)
+	ctl.rpcMetrics.responseCount.Store(0)
+	ctl.rpcMetrics.responseEncodeErrorCount.Store(0)
+	ctl.rpcMetrics.highWaterMarkConnections.Store(ctl.rpcMetrics.activeConnections.Load())
+	return ctl.rpcMetricsSnapshot()
+}
+
+func (ctl *Controller) rpcMetricsOnConnectionAccepted() {
+	active := ctl.rpcMetrics.activeConnections.Add(1)
+	ctl.rpcMetrics.acceptedConnections.Add(1)
+	for {
+		peak := ctl.rpcMetrics.highWaterMarkConnections.Load()
+		if active <= peak {
+			break
+		}
+		if ctl.rpcMetrics.highWaterMarkConnections.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+}
+
+func (ctl *Controller) rpcMetricsOnConnectionRejected() {
+	ctl.rpcMetrics.rejectedConnections.Add(1)
+}
+
+func (ctl *Controller) rpcMetricsOnConnectionClosed() {
+	ctl.rpcMetrics.closedConnections.Add(1)
+	ctl.rpcMetrics.activeConnections.Add(-1)
+}
+
+func (ctl *Controller) rpcMetricsOnRequest(req controllerRPCRequest) {
+	ctl.rpcMetrics.requestCount.Add(1)
+	if !req.hasResponse() {
+		ctl.rpcMetrics.notificationCount.Add(1)
 	}
 }
 

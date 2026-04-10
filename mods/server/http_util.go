@@ -97,10 +97,15 @@ func RecoveryWithLogging(log logging.Log, recovery ...gin.RecoveryFunc) gin.Hand
 
 type HttpLoggerFilter func(req *http.Request, statusCode int, latency time.Duration) bool
 
-func HttpLogger(loggingName string, logEnabled *bool, logLatencyThreshold *time.Duration) gin.HandlerFunc {
+func HttpLogger(loggingName string, debugMode func() (bool, time.Duration)) gin.HandlerFunc {
 	return HttpLoggerWithFilter(loggingName, func(req *http.Request, statusCode int, latency time.Duration) bool {
+		enabled := false
+		threshold := time.Duration(-1)
+		if debugMode != nil {
+			enabled, threshold = debugMode()
+		}
 		// when log is disabled
-		if logEnabled == nil || !*logEnabled {
+		if !enabled {
 			return false
 		}
 		// when status code is error
@@ -108,12 +113,12 @@ func HttpLogger(loggingName string, logEnabled *bool, logLatencyThreshold *time.
 			return true
 		}
 		// when logLatencyThreshold is not set
-		if logLatencyThreshold == nil || *logLatencyThreshold < 0 {
+		if threshold < 0 {
 			return false
 		}
 
 		// when logLatencyThreshold is set
-		return latency >= *logLatencyThreshold
+		return latency >= threshold
 	})
 }
 
