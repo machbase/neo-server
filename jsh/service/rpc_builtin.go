@@ -315,8 +315,10 @@ func (ctl *Controller) rpcServiceStop(req serviceNameRequest) (ServiceSnapshot, 
 }
 
 func (ctl *Controller) requireService(name string) (*Service, error) {
-	svc := ctl.StatusOf(name)
-	if svc == nil {
+	ctl.mu.RLock()
+	svc, exists := ctl.services[name]
+	ctl.mu.RUnlock()
+	if !exists || svc == nil {
 		return nil, &controllerRPCError{Code: jsonRPCNotFound, Message: fmt.Sprintf("service %s not found", name)}
 	}
 	return svc, nil

@@ -281,7 +281,7 @@ func (ctl *Controller) Status(filter func(*Service) bool) []*Service {
 	for _, name := range keys {
 		svc := ctl.services[name]
 		if filter == nil || filter(svc) {
-			result = append(result, svc)
+			result = append(result, cloneServiceSnapshot(svc))
 		}
 	}
 	return result
@@ -291,9 +291,25 @@ func (ctl *Controller) StatusOf(name string) *Service {
 	ctl.mu.RLock()
 	defer ctl.mu.RUnlock()
 	if svc, exists := ctl.services[name]; exists {
-		return svc
+		return cloneServiceSnapshot(svc)
 	}
 	return nil
+}
+
+func cloneServiceSnapshot(svc *Service) *Service {
+	if svc == nil {
+		return nil
+	}
+	clone := &Service{
+		Config:   svc.Config,
+		Status:   svc.Status,
+		ExitCode: svc.ExitCode,
+		Error:    svc.Error,
+		cmd:      svc.cmd,
+	}
+	clone.Runtime.output = svc.outputSnapshot()
+	clone.Runtime.details = svc.detailsSnapshot()
+	return clone
 }
 
 func (ctl *Controller) command(sc *Config) *exec.Cmd {
@@ -386,9 +402,11 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 				exitCode = -1
 			}
 		}
+		ctl.mu.Lock()
+		defer ctl.mu.Unlock()
+		ctl.cleanupSharedFDsByOwner(clientID)
 		svc.ExitCode = exitCode
 		svc.Status = ServiceStatusStopped
-		ctl.cleanupSharedFDsByOwner(clientID)
 		svc.sharedClientID = ""
 	}()
 	<-svc.startCh
@@ -542,9 +560,9 @@ func (ctl *Controller) Read() error {
 }
 
 func (ctl *Controller) StartService(name string) (*Service, error) {
-	ctl.mu.RLock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	svc, exists := ctl.services[name]
-	ctl.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}
@@ -556,9 +574,9 @@ func (ctl *Controller) StartService(name string) (*Service, error) {
 }
 
 func (ctl *Controller) StopService(name string) (*Service, error) {
-	ctl.mu.RLock()
+	ctl.mu.Lock()
+	defer ctl.mu.Unlock()
 	svc, exists := ctl.services[name]
-	ctl.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -29,7 +30,7 @@ type WebConsole struct {
 	conn      *websocket.Conn
 	connMutex sync.Mutex
 	closeOnce sync.Once
-	closed    bool
+	closed    atomic.Bool
 
 	messages      []*eventbus.Event
 	lastFlushTime time.Time
@@ -80,7 +81,7 @@ func (cons *WebConsole) Run() {
 
 func (cons *WebConsole) Close() {
 	cons.closeOnce.Do(func() {
-		cons.closed = true
+		cons.closed.Store(true)
 		eventbus.Default.Unsubscribe(cons.topic, cons.Send)
 		if cons.conn != nil {
 			cons.conn.Close()
@@ -131,7 +132,7 @@ func (cons *WebConsole) readerLoop() {
 func (cons *WebConsole) flushLoop() {
 	ticker := time.NewTicker(cons.flushPeriod)
 	for range ticker.C {
-		if cons.closed {
+		if cons.closed.Load() {
 			break
 		}
 		cons.Send(nil)

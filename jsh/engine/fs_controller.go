@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -246,12 +247,74 @@ func (cfs *ControllerFS) statSnapshot(name string) (controllerFSInfoSnapshot, er
 	return snapshot, nil
 }
 
+// call attempts an RPC call with exponential backoff retry for transient connection errors.
+// RPC-level errors (method not found, invalid params, etc.) are not retried.
 func (cfs *ControllerFS) call(method string, params any, out any) error {
-	conn, err := net.DialTimeout(cfs.endpoint.network, cfs.endpoint.address, controllerFSRPCTimeout)
-	if err != nil {
-		return err
+	// Keep retry window short so service shutdown is not delayed.
+	// Backoff schedule: 50ms -> 100ms -> 200ms (max)
+	const (
+		maxAttempts    = 3
+		initialBackoff = 50 * time.Millisecond
+		maxBackoff     = 200 * time.Millisecond
+	)
+
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		conn, err := net.DialTimeout(cfs.endpoint.network, cfs.endpoint.address, controllerFSRPCTimeout)
+		if err != nil {
+			// Retry only transport-level errors. Path/RPC errors are not retried.
+			if !isRetryableControllerFSError(err) {
+				return err
+			}
+			lastErr = err
+			if attempt < maxAttempts-1 {
+				time.Sleep(backoff)
+				if backoff < maxBackoff {
+					backoff *= 2
+					if backoff > maxBackoff {
+						backoff = maxBackoff
+					}
+				}
+			}
+			continue
+		}
+
+		// Connection successful - attempt RPC
+		err = cfs.callOnConnection(conn, method, params, out)
+		conn.Close()
+
+		// Non-retryable RPC errors (invalid RPC response, marshal error, etc.)
+		// should fail immediately without retry
+		if err == nil {
+			return nil
+		}
+
+		// RPC/path errors are not retried; only transport-level failures are retried.
+		if !isRetryableControllerFSError(err) {
+			return err
+		}
+
+		// Connection or decode error - potentially transient
+		lastErr = err
+		if attempt < maxAttempts-1 {
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
 	}
-	defer conn.Close()
+
+	return fmt.Errorf("controller RPC failed after %d attempts: %w", maxAttempts, lastErr)
+}
+
+// callOnConnection performs a single RPC call on an established connection.
+// Does not retry; connection errors propagate directly.
+func (cfs *ControllerFS) callOnConnection(conn net.Conn, method string, params any, out any) error {
 	_ = conn.SetDeadline(time.Now().Add(controllerFSRPCTimeout))
 
 	req := controllerFSRequest{
@@ -277,6 +340,23 @@ func (cfs *ControllerFS) call(method string, params any, out any) error {
 		return nil
 	}
 	return json.Unmarshal(resp.Result, out)
+}
+
+// isRetryableControllerFSError returns true only for transient transport errors.
+// RPC/path errors (e.g. ECONFLICT) must be returned immediately.
+func isRetryableControllerFSError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func parseControllerFSEndpoint(raw string) (controllerFSEndpoint, error) {

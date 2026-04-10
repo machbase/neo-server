@@ -25,11 +25,12 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
+	var procEntryWarn error
 	procEntry, err := jr.createProcessEntry(ex)
 	if err != nil {
 		// Process entry recording is best-effort.
 		// Do not fail command execution when service-controller is overloaded.
-		fmt.Fprintf(jr.Env.ErrorWriter(), "warning: process entry record failed: %v\n", err)
+		procEntryWarn = err
 		procEntry = nil
 	}
 
@@ -47,6 +48,9 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 
 	if procEntry != nil {
 		procEntry.finish(result)
+	}
+	if procEntryWarn != nil {
+		fmt.Fprintf(jr.Env.ErrorWriter(), "warning: process entry record failed: %v\n", procEntryWarn)
 	}
 
 	return result, nil
