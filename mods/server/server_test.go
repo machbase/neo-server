@@ -356,6 +356,38 @@ func TestWriteSharedInfo(t *testing.T) {
 	require.Contains(t, string(configBody), "\"port\": 5656")
 }
 
+func TestWriteSharedInfoWithoutBackend(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "services"), 0o755))
+
+	ctl, err := service.NewController(&service.ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, ctl.Start(nil))
+	defer ctl.Stop(nil)
+
+	svr := &Server{serviceController: ctl}
+	require.NoError(t, svr.writeSharedInfo("/share/db.json", map[string]any{
+		"host": "127.0.0.1",
+		"port": 5656,
+		"user": "sys",
+	}))
+
+	cfs, err := engine.NewControllerFS(ctl.Address())
+	require.NoError(t, err)
+	defer cfs.Close()
+
+	body, err := cfs.ReadFile("/share/db.json")
+	require.NoError(t, err)
+	require.Contains(t, string(body), "\"host\": \"127.0.0.1\"")
+	require.Contains(t, string(body), "\"port\": 5656")
+	require.Contains(t, string(body), "\"user\": \"sys\"")
+}
+
 type ShellTestCase struct {
 	name      string
 	args      []string

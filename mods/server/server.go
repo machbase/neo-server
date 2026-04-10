@@ -262,19 +262,23 @@ func (s *Server) Start() error {
 	// This code for the shared info is temporary.
 	// We need to consider more about what information
 	// should be shared and how to share it in the future.
-	s.writeSharedInfo("/share/ports.json", sharedPorts)
+	if err := s.writeSharedInfo("/share/ports.json", sharedPorts); err != nil {
+		return fmt.Errorf("write shared ports info, %w", err)
+	}
 	// TODO: remove the default credential info from shared info
 	// This can not work well. Becuase the password can be changed by users.
 	machHost, machPort, err := s.getBestMachPort()
 	if err != nil {
 		return fmt.Errorf("best MACH port, %s", err.Error())
 	}
-	s.writeSharedInfo("/share/db.json", map[string]any{
+	if err := s.writeSharedInfo("/share/db.json", map[string]any{
 		"host":     machHost,
 		"port":     machPort,
 		"user":     "sys",
 		"password": "manager",
-	})
+	}); err != nil {
+		return fmt.Errorf("write shared db info, %w", err)
+	}
 	// ready message
 	svcPorts, err := s.getServicePorts("http")
 	if err != nil {
@@ -307,13 +311,18 @@ func (s *Server) Start() error {
 
 // write virtual files on shared dir, for example, for cli configuration
 func (s *Server) writeSharedInfo(filename string, data any) error {
+	if s.serviceController == nil {
+		return fmt.Errorf("service controller is not initialized")
+	}
 	filename = "/" + strings.TrimPrefix(filename, "/")
+	var err error
 	switch val := data.(type) {
 	case string:
-		return s.serviceController.WriteSharedFileString(filename, val)
+		err = s.serviceController.WriteSharedFileString(filename, val)
 	default:
-		return s.serviceController.WriteSharedFileJSON(filename, val)
+		err = s.serviceController.WriteSharedFileJSON(filename, val)
 	}
+	return err
 }
 
 func (s *Server) StartHeadless() error {

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -129,7 +130,15 @@ func (jr *JSRuntime) cleanupStaleProcessEntries(mountPoint string) error {
 		if entry == nil || !entry.IsDir() {
 			continue
 		}
-		pidDir := pathpkg.Join(rootDir, entry.Name())
+		entryName := strings.TrimSpace(entry.Name())
+		// Accept only numeric PID directories to avoid path traversal or synthetic entries like "."/"..".
+		if entryName == "" || entryName == "." || entryName == ".." || strings.Contains(entryName, "/") {
+			continue
+		}
+		if _, convErr := strconv.Atoi(entryName); convErr != nil {
+			continue
+		}
+		pidDir := pathpkg.Join(rootDir, entryName)
 		metaBytes, metaErr := jr.filesystem.ReadFile(pathpkg.Join(pidDir, "meta.json"))
 		statusBytes, statusErr := jr.filesystem.ReadFile(pathpkg.Join(pidDir, "status.json"))
 		if metaErr != nil || statusErr != nil {
@@ -210,11 +219,11 @@ func (jr *JSRuntime) removeProcessEntryDir(name string) error {
 		".status.json.tmp",
 	} {
 		childPath := pathpkg.Join(name, child)
-		if err := jr.filesystem.Remove(childPath); err != nil && err != fs.ErrNotExist {
+		if err := jr.filesystem.Remove(childPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
-	if err := jr.filesystem.Remove(name); err != nil && err != fs.ErrNotExist {
+	if err := jr.filesystem.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
