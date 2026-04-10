@@ -99,6 +99,8 @@ type Controller struct {
 	rpcListenAddr    string
 	rpcWG            sync.WaitGroup
 	rpcLn            net.Listener
+	rpcConnSem       chan struct{}
+	rpcConnMax       int
 	jsonRpcHandlers  map[string]any
 	llmSessions      map[string]*llmSession
 }

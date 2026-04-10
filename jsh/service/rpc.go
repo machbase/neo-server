@@ -288,6 +288,10 @@ func (ctl *Controller) startRPC() error {
 	}
 	ctl.rpcLn = ln
 	ctl.rpcListenAddr = formatRPCAddress(network, ln.Addr())
+	// Initialize connection semaphore for concurrency control.
+	// Limits concurrent RPC connections to prevent Accept queue saturation.
+	ctl.rpcConnMax = 256
+	ctl.rpcConnSem = make(chan struct{}, ctl.rpcConnMax)
 	ctl.rpcWG.Add(1)
 	go ctl.serveRPC(ln)
 	return nil
@@ -299,6 +303,8 @@ func (ctl *Controller) stopRPC() {
 	listenAddr := ctl.rpcListenAddr
 	ctl.rpcLn = nil
 	ctl.rpcListenAddr = ""
+	// Note: rpcConnSem is not cleared here to avoid race conditions.
+	// It remains allocated until next startRPC() call, which recreates it.
 	ctl.mu.Unlock()
 
 	if ln == nil {
@@ -323,11 +329,29 @@ func (ctl *Controller) serveRPC(ln net.Listener) {
 			}
 			return
 		}
-		go ctl.serveRPCConn(conn)
+		// Attempt to acquire connection slot from semaphore.
+		// If max concurrent connections reached, drop connection gracefully.
+		select {
+		case ctl.rpcConnSem <- struct{}{}:
+			go ctl.serveRPCConnWithLimit(conn)
+		default:
+			conn.Close()
+		}
 	}
 }
 
+func (ctl *Controller) serveRPCConnWithLimit(conn net.Conn) {
+	defer func() {
+		<-ctl.rpcConnSem // Release connection slot
+	}()
+	ctl.serveRPCConn(conn)
+}
+
 func (ctl *Controller) serveRPCConn(conn net.Conn) {
+	// Set connection read/write deadline to prevent hanging connections.
+	// This ensures slow or stuck clients don't hold resources indefinitely.
+	const rpcConnTimeout = 30 * time.Second
+	conn.SetDeadline(time.Now().Add(rpcConnTimeout))
 	defer conn.Close()
 
 	decoder := json.NewDecoder(conn)
