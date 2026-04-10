@@ -949,6 +949,13 @@ func (ctl *Controller) SharedMountPoint() string {
 	return ctl.sharedMountPoint
 }
 
+func (ctl *Controller) AddSharedFile(name string, content any, prop engine.VirtualFileProperty) error {
+	path := engine.CleanPath(name)
+	ctl.sharedMu.Lock()
+	defer ctl.sharedMu.Unlock()
+	return ctl.sharedFS.AddFile(path, content, prop)
+}
+
 func (ctl *Controller) WriteSharedFileString(name string, str string) error {
 	return ctl.sharedWriteFile(name, []byte(str))
 }

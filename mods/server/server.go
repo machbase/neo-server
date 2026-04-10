@@ -271,14 +271,37 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("best MACH port, %s", err.Error())
 	}
-	if err := s.writeSharedInfo("/share/db.json", map[string]any{
+	sharedInfo := map[string]any{
 		"host":     machHost,
 		"port":     machPort,
 		"user":     "sys",
 		"password": "manager",
-	}); err != nil {
+	}
+	if err := s.writeSharedInfo("/share/db.json", sharedInfo); err != nil {
 		return fmt.Errorf("write shared db info, %w", err)
 	}
+	sharedInfo = map[string]interface{}{
+		"machbase": map[string]any{
+			"home": s.Config.DataDir,
+		},
+		"http": map[string]any{
+			"listeners":         s.Config.Http.Listeners,
+			"enable-token-auth": s.Config.Http.EnableTokenAuth,
+		},
+		"mqtt": map[string]any{
+			"listeners":         s.Config.Mqtt.Listeners,
+			"enable-token-auth": s.Config.Mqtt.EnableTokenAuth,
+			"enable-tls":        s.Config.Mqtt.EnableTls,
+		},
+	}
+	if err := s.writeSharedInfo("/share/boot.json", sharedInfo); err != nil {
+		return fmt.Errorf("write shared boot options, %w", err)
+	}
+
+	s.addVStatFile("/share/now.json", func() []byte {
+		return []byte(fmt.Sprintf(`{"now":%q}`+"\n", time.Now().Format(time.RFC3339Nano)))
+	})
+
 	// ready message
 	svcPorts, err := s.getServicePorts("http")
 	if err != nil {
@@ -1063,6 +1086,15 @@ func (s *Server) initServiceController() error {
 
 	s.registerJsonRpcHandlers()
 	return nil
+}
+
+func (s *Server) addVStatFile(name string, fn func() []byte) {
+	prop := engine.VirtualFileProperty{
+		CreateTime: time.Now(),
+		ModTime:    time.Now(),
+		Mode:       0400,
+	}
+	s.serviceController.AddSharedFile(name, fn, prop)
 }
 
 func (s *Server) registerJsonRpcHandlers() {

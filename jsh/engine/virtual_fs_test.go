@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"fmt"
+	"io"
 	"io/fs"
 	"sort"
 	"testing"
@@ -261,5 +263,75 @@ func TestVirtualFS_MountedOnNewFS(t *testing.T) {
 	}
 	if len(rootBytes) == 0 {
 		t.Fatalf("root file is unexpectedly empty")
+	}
+}
+
+func TestVirtualFS_LazyLoaderFile(t *testing.T) {
+	vfs := NewVirtualFS()
+
+	counter := 0
+	loader := func() []byte {
+		counter++
+		return []byte(fmt.Sprintf("call-%d", counter))
+	}
+
+	if err := vfs.AddFile("dynamic.txt", loader, VirtualFileProperty{}); err != nil {
+		t.Fatalf("AddFile(loader) failed: %v", err)
+	}
+
+	// Each ReadFile call should invoke the loader freshly.
+	data1, err := fs.ReadFile(vfs, "dynamic.txt")
+	if err != nil {
+		t.Fatalf("ReadFile #1 failed: %v", err)
+	}
+	if string(data1) != "call-1" {
+		t.Fatalf("unexpected #1: %q", string(data1))
+	}
+
+	data2, err := fs.ReadFile(vfs, "dynamic.txt")
+	if err != nil {
+		t.Fatalf("ReadFile #2 failed: %v", err)
+	}
+	if string(data2) != "call-2" {
+		t.Fatalf("unexpected #2: %q", string(data2))
+	}
+
+	// Open + Read should also invoke the loader.
+	f, err := vfs.Open("dynamic.txt")
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer f.Close()
+	buf, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if string(buf) != "call-3" {
+		t.Fatalf("unexpected open-read: %q", string(buf))
+	}
+
+	// Stat size reflects each invocation's returned length.
+	info, err := fs.Stat(vfs, "dynamic.txt")
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+	// "call-4" is 6 bytes
+	if info.Size() != 6 {
+		t.Fatalf("unexpected stat size: %d", info.Size())
+	}
+
+	// WriteFile on a loader file must be rejected.
+	if err := vfs.WriteFile("dynamic.txt", []byte("x")); err == nil {
+		t.Fatal("WriteFile on loader file should fail")
+	}
+
+	// AppendFile on a loader file must be rejected.
+	if err := vfs.AppendFile("dynamic.txt", []byte("x")); err == nil {
+		t.Fatal("AppendFile on loader file should fail")
+	}
+
+	// AddFile duplicate must still fail.
+	if err := vfs.AddFile("dynamic.txt", loader, VirtualFileProperty{}); err == nil {
+		t.Fatal("duplicate AddFile should fail")
 	}
 }
