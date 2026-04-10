@@ -101,10 +101,10 @@
         console.println('  details delete <service_name> <key>');
         console.println('  controller [metrics|get|reset]');
         console.println('Examples:');
-        console.println('  servicectl --controller=127.0.0.1:1234 details get alpha --format json');
-        console.println('  servicectl --controller=127.0.0.1:1234 details set alpha retries 3 --detail-type number');
-        console.println('  servicectl --controller=127.0.0.1:1234 details set alpha enabled true --detail-type boolean');
-        console.println("  servicectl --controller=127.0.0.1:1234 details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
+        console.println('  servicectl details get alpha --format json');
+        console.println('  servicectl details set alpha retries 3 --detail-type number');
+        console.println('  servicectl details set alpha enabled true --detail-type boolean');
+        console.println("  servicectl details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
     }
 
     function fail(message) {
