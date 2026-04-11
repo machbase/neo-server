@@ -16,6 +16,9 @@
 //   });
 
 var { ai } = require('@jsh/shell');
+var fs = require('fs');
+var path = require('path');
+var process = require('process');
 
 var RUNNABLE_LANGS = {
     'jsh-run': true,
@@ -191,6 +194,295 @@ function collectRenderEnvelopes(results) {
 }
 
 /**
+ * Collect edit statistics from LLM execution blocks.
+ * Tracks operation types and count by language.
+ *
+ * @param {object[]} results
+ * @returns {object} { totalOps, runOps, createOps, patchOps, byLang }
+ */
+function collectEditStats(results) {
+    var stats = {
+        totalOps: 0,
+        runOps: 0,
+        createOps: 0,
+        patchOps: 0,
+        byLang: {},
+    };
+    if (!results || results.length === 0) {
+        return stats;
+    }
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        if (!r || r.ok !== true || r.type === 'undefined') {
+            continue;
+        }
+        // If the result value carries editStats (from agent.fs.* / agent.exec.*),
+        // aggregate those counts directly.
+        var es = r.value && typeof r.value === 'object' ? r.value.editStats : null;
+        if (es && typeof es === 'object') {
+            stats.totalOps += Number(es.totalOps || 0);
+            stats.runOps += Number(es.runOps || 0);
+            stats.createOps += Number(es.createOps || 0);
+            stats.patchOps += Number(es.patchOps || 0);
+            var bl = es.byLang;
+            if (bl && typeof bl === 'object') {
+                var keys = Object.keys(bl);
+                for (var k = 0; k < keys.length; k++) {
+                    var lang = keys[k];
+                    stats.byLang[lang] = (stats.byLang[lang] || 0) + Number(bl[lang] || 0);
+                }
+            }
+        } else {
+            // Plain code-block execution (jsh-run/jsh-shell/jsh-sql without agent.* calls).
+            stats.totalOps++;
+            stats.runOps++;
+        }
+    }
+    return stats;
+}
+
+/**
+ * Extract error location (path:line:col) from stderr/error messages.
+ * Supports go/js/shell common error patterns.
+ *
+ * @param {string} errMsg
+ * @returns {object|null} { path, line, col } or null if not found
+ */
+function extractErrorLocation(errMsg) {
+    if (!errMsg || typeof errMsg !== 'string') {
+        return null;
+    }
+    // Go error: "filename.go:123:1: message"
+    var goMatch = /^([^\s:]+\.go):([0-9]+):([0-9]+):/m.exec(errMsg);
+    if (goMatch) {
+        return { path: goMatch[1], line: parseInt(goMatch[2], 10), col: parseInt(goMatch[3], 10) };
+    }
+    // JS runtime: "Error at line 123, col 45 in script"
+    var jsMatch = /line\s+([0-9]+).*col\s+([0-9]+)/i.exec(errMsg);
+    if (jsMatch) {
+        return { path: 'script', line: parseInt(jsMatch[1], 10), col: parseInt(jsMatch[2], 10) };
+    }
+    // Unix/shell: "file.js:15: error message"
+    var unixMatch = /^([^\s:]+):([0-9]+):/m.exec(errMsg);
+    if (unixMatch) {
+        return { path: unixMatch[1], line: parseInt(unixMatch[2], 10), col: 1 };
+    }
+    return null;
+}
+
+function resolveDiagnosticPath(filePath) {
+    if (!filePath) {
+        return '';
+    }
+    if (filePath === 'script') {
+        return 'script';
+    }
+    if (String(filePath).charAt(0) === '/') {
+        return String(filePath);
+    }
+    return path.resolve(process.cwd(), String(filePath));
+}
+
+function readDiagnosticContext(filePath, line, contextLines) {
+    var target = resolveDiagnosticPath(filePath);
+    if (!target || target === 'script') {
+        return null;
+    }
+    try {
+        var text = fs.readFileSync(target, 'utf8');
+        var lines = String(text || '').split(/\r?\n/);
+        var center = Number(line || 1);
+        if (!Number.isFinite(center) || center < 1) {
+            center = 1;
+        }
+        var around = Number(contextLines || 2);
+        if (!Number.isFinite(around) || around < 0) {
+            around = 2;
+        }
+        if (around > 10) {
+            around = 10;
+        }
+        var startLine = Math.max(1, center - around);
+        var endLine = Math.min(lines.length, center + around);
+        return {
+            path: target,
+            startLine: startLine,
+            endLine: endLine,
+            snippet: lines.slice(startLine - 1, endLine).join('\n'),
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function collectErrorDiagnostics(results, options) {
+    var opts = options || {};
+    var contextLines = Number(opts.contextLines || 2);
+    if (!Number.isFinite(contextLines) || contextLines < 0) {
+        contextLines = 2;
+    }
+    var diagnostics = [];
+    if (!results || results.length === 0) {
+        return diagnostics;
+    }
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i] || {};
+        if (r.ok !== false) {
+            continue;
+        }
+        var msg = String(r.error || r.value || 'unknown execution error');
+        var location = extractErrorLocation(msg);
+        var diag = {
+            message: msg,
+            path: null,
+            line: null,
+            col: null,
+            context: null,
+        };
+        if (location) {
+            diag.path = location.path || null;
+            diag.line = location.line || null;
+            diag.col = location.col || null;
+            var ctx = readDiagnosticContext(location.path, location.line, contextLines);
+            if (ctx) {
+                diag.context = ctx;
+            }
+        }
+        diagnostics.push(diag);
+    }
+    return diagnostics;
+}
+
+function formatDiagnosticsPrompt(diagnostics, limit) {
+    if (!diagnostics || diagnostics.length === 0) {
+        return '';
+    }
+    var maxCount = Number(limit || 3);
+    if (!Number.isFinite(maxCount) || maxCount < 1) {
+        maxCount = 3;
+    }
+    var lines = [
+        'Execution diagnostics:',
+        'Use partial patch strategy first (agent.fs.patch) before full-file regeneration.',
+    ];
+    var n = Math.min(diagnostics.length, maxCount);
+    for (var i = 0; i < n; i++) {
+        var d = diagnostics[i] || {};
+        if (d.path && d.line) {
+            lines.push('- location: ' + d.path + ':' + d.line + (d.col ? ':' + d.col : ''));
+        }
+        lines.push('- error: ' + String(d.message || 'unknown error'));
+        if (d.context && d.context.snippet) {
+            lines.push('```');
+            lines.push(String(d.context.snippet));
+            lines.push('```');
+        }
+    }
+    return lines.join('\n');
+}
+
+function buildPatchGuardrailPrompt(diagnostics, options) {
+    if (!diagnostics || diagnostics.length === 0) {
+        return '';
+    }
+    var opts = options || {};
+    var maxCount = Number(opts.maxCount || 2);
+    if (!Number.isFinite(maxCount) || maxCount < 1) {
+        maxCount = 2;
+    }
+    var lines = [
+        'Patch-first guardrail:',
+        'Do not regenerate the whole file.',
+        'Use agent.fs.patch(...) first and change only minimal lines around the diagnostic location.',
+    ];
+    var n = Math.min(diagnostics.length, maxCount);
+    for (var i = 0; i < n; i++) {
+        var d = diagnostics[i] || {};
+        if (d.path && d.line) {
+            lines.push('- target: ' + d.path + ':' + d.line + (d.col ? ':' + d.col : ''));
+        }
+        if (d.message) {
+            lines.push('- reason: ' + String(d.message));
+        }
+    }
+    lines.push('If patch is impossible, explain why before proposing full rewrite.');
+    return lines.join('\n');
+}
+
+function buildAutoPatchSuggestionPrompt(diagnostics, options) {
+    if (!diagnostics || diagnostics.length === 0) {
+        return '';
+    }
+    var opts = options || {};
+    var maxCount = Number(opts.maxCount || 2);
+    if (!Number.isFinite(maxCount) || maxCount < 1) {
+        maxCount = 2;
+    }
+    var lines = [
+        'Auto patch suggestions:',
+        'Apply one minimal patch candidate first, then rerun the command.',
+        'Prefer agent.fs.patch with kind="lineRangePatch". Use anchorPatch only if line numbers are unreliable.',
+    ];
+    var n = Math.min(diagnostics.length, maxCount);
+    for (var i = 0; i < n; i++) {
+        var d = diagnostics[i] || {};
+        var filePath = String(d.path || '').trim();
+        var line = Number(d.line || 0);
+        if (!Number.isFinite(line) || line < 1) {
+            line = 1;
+        }
+        var col = Number(d.col || 0);
+        if (!Number.isFinite(col) || col < 1) {
+            col = 1;
+        }
+        lines.push('Candidate ' + (i + 1) + ':');
+        if (filePath) {
+            lines.push('- target: ' + filePath + ':' + line + ':' + col);
+        }
+        if (d.message) {
+            lines.push('- error: ' + String(d.message));
+        }
+        lines.push('```json');
+        lines.push('{');
+        lines.push('  "path": "' + filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '",');
+        lines.push('  "patch": {');
+        lines.push('    "kind": "lineRangePatch",');
+        lines.push('    "startLine": ' + line + ',');
+        lines.push('    "endLine": ' + line + ',');
+        lines.push('    "replacement": "// TODO: minimal fix for the failing line"');
+        lines.push('  }');
+        lines.push('}');
+        lines.push('```');
+    }
+    lines.push('Return only the minimal patch code/action, not full-file regeneration.');
+    return lines.join('\n');
+}
+
+function detectPatchFirstViolation(responseText, diagnostics, options) {
+    if (!responseText || !diagnostics || diagnostics.length === 0) {
+        return false;
+    }
+    var opts = options || {};
+    var lineThreshold = Number(opts.lineThreshold || 80);
+    if (!Number.isFinite(lineThreshold) || lineThreshold < 10) {
+        lineThreshold = 80;
+    }
+    var blocks = extractCodeBlocks(String(responseText));
+    if (!blocks || blocks.length === 0) {
+        return false;
+    }
+    for (var i = 0; i < blocks.length; i++) {
+        var block = blocks[i] || {};
+        var code = String(block.code || '');
+        var lineCount = code ? code.split(/\r?\n/).length : 0;
+        if (lineCount >= lineThreshold) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Format an array of AgentRenderer result objects into a human-readable string.
  * Used to produce the tool-result message inserted into conversation history.
  *
@@ -242,4 +534,11 @@ module.exports = {
     formatResults,
     isRenderEnvelope,
     collectRenderEnvelopes,
+    collectEditStats,
+    extractErrorLocation,
+    collectErrorDiagnostics,
+    formatDiagnosticsPrompt,
+    buildPatchGuardrailPrompt,
+    buildAutoPatchSuggestionPrompt,
+    detectPatchFirstViolation,
 };

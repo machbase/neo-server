@@ -19,6 +19,9 @@
 
 const { Client } = require('machcli');
 const fs = require('fs');
+const path = require('path');
+const process = require('process');
+const splitFields = require('util/splitFields');
 const _http = require('@jsh/http');
 const vizspec = require('vizspec');
 
@@ -107,6 +110,385 @@ const _maxRows = (_agentConfig && _agentConfig.maxRows > 0) ? _agentConfig.maxRo
 const _maxOutputBytes = (_agentConfig && _agentConfig.maxOutputBytes > 0) ? _agentConfig.maxOutputBytes : 65536;
 const _clientContext = (_agentConfig && _isPlainObject(_agentConfig.clientContext))
     ? JSON.parse(JSON.stringify(_agentConfig.clientContext)) : null;
+
+const READ_ONLY_EXEC_ALLOW = {
+    ls: true,
+    cat: true,
+    pwd: true,
+    echo: true,
+    wc: true,
+    head: true,
+    tail: true,
+};
+
+function _normalizeWorkspaceRoot(candidate) {
+    const fallback = '/';
+    if (candidate === undefined || candidate === null) {
+        return fallback;
+    }
+    const text = String(candidate).trim();
+    if (!text) {
+        return fallback;
+    }
+    const resolved = path.resolve(text);
+    if (!resolved) {
+        return fallback;
+    }
+    return resolved;
+}
+
+function _detectWorkspaceRoot() {
+    if (_agentConfig && typeof _agentConfig.workspaceRoot === 'string' && _agentConfig.workspaceRoot.trim() !== '') {
+        return _normalizeWorkspaceRoot(_agentConfig.workspaceRoot);
+    }
+    if (_agentConfig && typeof _agentConfig.cwd === 'string' && _agentConfig.cwd.trim() !== '') {
+        return _normalizeWorkspaceRoot(_agentConfig.cwd);
+    }
+    try {
+        return _normalizeWorkspaceRoot(process.cwd());
+    } catch (_) {
+        return '/';
+    }
+}
+
+const _workspaceRoot = _detectWorkspaceRoot();
+
+function _isWithinWorkspace(targetPath) {
+    if (_workspaceRoot === '/') {
+        return true;
+    }
+    return targetPath === _workspaceRoot || targetPath.indexOf(_workspaceRoot + '/') === 0;
+}
+
+function _resolveWorkspacePath(inputPath) {
+    if (inputPath === undefined || inputPath === null) {
+        throw new Error('path is required');
+    }
+    const raw = String(inputPath).trim();
+    if (!raw) {
+        throw new Error('path is required');
+    }
+    const resolved = path.resolve(process.cwd(), raw);
+    if (!_isWithinWorkspace(resolved)) {
+        throw new Error('workspace boundary violation: ' + resolved);
+    }
+    return resolved;
+}
+
+function _mkdirParentIfNeeded(targetPath, mkdirp) {
+    if (!mkdirp) {
+        return;
+    }
+    const parent = path.dirname(targetPath);
+    if (!parent || parent === '.' || parent === '/') {
+        return;
+    }
+    fs.mkdirSync(parent, { recursive: true });
+}
+
+function _countLines(text) {
+    const src = String(text);
+    if (src.length === 0) {
+        return 0;
+    }
+    return src.split(/\r?\n/).length;
+}
+
+function _toInteger(value, defaultValue) {
+    if (value === undefined || value === null || value === '') {
+        return defaultValue;
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+        return defaultValue;
+    }
+    return Math.floor(num);
+}
+
+function _resolveExecPolicy(opts) {
+    const requestedTimeoutMs = _toInteger(opts && opts.timeoutMs, 0);
+    const requestedMaxOutputBytes = _toInteger(opts && opts.maxOutputBytes, 0);
+    const effectiveTimeoutMs = requestedTimeoutMs > 0 ? requestedTimeoutMs : 0;
+    let effectiveMaxOutputBytes = _maxOutputBytes;
+    if (requestedMaxOutputBytes > 0) {
+        effectiveMaxOutputBytes = Math.min(requestedMaxOutputBytes, _maxOutputBytes);
+    }
+    return {
+        requestedTimeoutMs: requestedTimeoutMs,
+        requestedMaxOutputBytes: requestedMaxOutputBytes,
+        timeoutMs: effectiveTimeoutMs,
+        maxOutputBytes: effectiveMaxOutputBytes,
+    };
+}
+
+function _resolveRetryCount(opts) {
+    const retryCount = _toInteger(opts && opts.retryCount, 0);
+    return retryCount > 0 ? retryCount : 0;
+}
+
+function _buildEditStats(opType, lang) {
+    const byLang = {};
+    if (lang) {
+        byLang[String(lang)] = 1;
+    }
+    return {
+        totalOps: 1,
+        runOps: opType === 'run' ? 1 : 0,
+        createOps: (opType === 'create' || opType === 'write') ? 1 : 0,
+        patchOps: opType === 'patch' ? 1 : 0,
+        byLang: byLang,
+    };
+}
+
+function _writeTextAtomic(targetPath, content, encoding) {
+    const tempPath = targetPath + '.agenttmp.' + String(Date.now()) + '.' + String(Math.floor(Math.random() * 100000));
+    try {
+        fs.writeFileSync(tempPath, content, encoding);
+        fs.renameSync(tempPath, targetPath);
+    } catch (err) {
+        try {
+            if (fs.existsSync(tempPath)) {
+                fs.rmSync(tempPath, { force: true });
+            }
+        } catch (_) {
+        }
+        throw err;
+    }
+}
+
+function _normalizeLineRangePatchSpec(spec) {
+    const startLine = _toInteger(spec.startLine, NaN);
+    const endLine = _toInteger(spec.endLine, NaN);
+    if (!Number.isFinite(startLine) || startLine < 1) {
+        throw new Error('lineRangePatch.startLine must be >= 1');
+    }
+    if (!Number.isFinite(endLine) || endLine < startLine) {
+        throw new Error('lineRangePatch.endLine must be >= startLine');
+    }
+    const replacement = String(spec.replacement === undefined || spec.replacement === null ? '' : spec.replacement);
+    const normalized = {
+        kind: 'lineRangePatch',
+        startLine: startLine,
+        endLine: endLine,
+        replacement: replacement,
+    };
+    // anchorFallback: optional. If provided, used when lineRangePatch fails (e.g. out-of-range).
+    if (_isPlainObject(spec.anchorFallback)) {
+        const fb = spec.anchorFallback;
+        normalized.anchorFallback = _normalizeAnchorPatchSpec({
+            before: fb.before,
+            after: fb.after,
+            // fallback replacement defaults to the parent replacement if not specified
+            replacement: (fb.replacement !== undefined && fb.replacement !== null) ? fb.replacement : replacement,
+        });
+    }
+    return normalized;
+}
+
+function _normalizeAnchorPatchSpec(spec) {
+    const before = String(spec.before === undefined || spec.before === null ? '' : spec.before);
+    if (!before) {
+        throw new Error('anchorPatch.before is required');
+    }
+    return {
+        kind: 'anchorPatch',
+        before: before,
+        after: (spec.after === undefined || spec.after === null) ? null : String(spec.after),
+        replacement: String(spec.replacement === undefined || spec.replacement === null ? '' : spec.replacement),
+    };
+}
+
+function _normalizePatchSpec(spec) {
+    if (!_isPlainObject(spec)) {
+        throw new Error('patchSpec must be an object');
+    }
+    const kind = (spec.kind === undefined || spec.kind === null) ? '' : String(spec.kind);
+    if (kind === 'lineRangePatch' || (!kind && spec.startLine !== undefined && spec.endLine !== undefined)) {
+        return _normalizeLineRangePatchSpec(spec);
+    }
+    if (kind === 'anchorPatch' || (!kind && spec.before !== undefined)) {
+        return _normalizeAnchorPatchSpec(spec);
+    }
+    throw new Error('patchSpec.kind must be lineRangePatch or anchorPatch');
+}
+
+function _applyLineRangePatch(content, spec) {
+    const lines = String(content).split('\n');
+    if (spec.endLine > lines.length) {
+        throw new Error('lineRangePatch is out of file range: endLine=' + spec.endLine + ', lineCount=' + lines.length);
+    }
+    const replacementLines = spec.replacement.split('\n');
+    const startIndex = spec.startLine - 1;
+    const nextIndex = spec.endLine;
+    const patched = lines.slice(0, startIndex).concat(replacementLines, lines.slice(nextIndex));
+    return {
+        kind: spec.kind,
+        content: patched.join('\n'),
+        startLine: spec.startLine,
+        endLine: spec.endLine,
+    };
+}
+
+function _applyAnchorPatch(content, spec) {
+    const source = String(content);
+    const beforeIndex = source.indexOf(spec.before);
+    if (beforeIndex < 0) {
+        throw new Error('anchorPatch.before not found');
+    }
+    const insertFrom = beforeIndex + spec.before.length;
+    let insertTo = insertFrom;
+    if (spec.after !== null && spec.after !== '') {
+        const afterIndex = source.indexOf(spec.after, insertFrom);
+        if (afterIndex < 0) {
+            throw new Error('anchorPatch.after not found');
+        }
+        insertTo = afterIndex;
+    }
+    return {
+        kind: spec.kind,
+        content: source.slice(0, insertFrom) + spec.replacement + source.slice(insertTo),
+        startLine: null,
+        endLine: null,
+    };
+}
+
+function _applyPatch(content, patchSpec) {
+    const spec = _normalizePatchSpec(patchSpec);
+    if (spec.kind === 'lineRangePatch') {
+        // If anchorFallback is provided, check for out-of-range before attempting.
+        if (spec.anchorFallback) {
+            const v = _validatePatch(content, spec);
+            if (v.usedFallback) {
+                // lineRangePatch was out-of-range; anchorFallback validation was attempted.
+                if (v.ok) {
+                    const fallback = _applyAnchorPatch(content, spec.anchorFallback);
+                    return {
+                        kind: fallback.kind,
+                        content: fallback.content,
+                        startLine: fallback.startLine,
+                        endLine: fallback.endLine,
+                        usedFallback: true,
+                        fallbackKind: 'anchorPatch',
+                        fallbackReason: v.fallbackReason,
+                    };
+                }
+                // anchorFallback also failed — throw its reason.
+                throw new Error(v.detail || v.fallbackReason);
+            }
+        }
+        return _applyLineRangePatch(content, spec);
+    }
+    return _applyAnchorPatch(content, spec);
+}
+
+// _countStringOccurrences counts non-overlapping occurrences of needle in source.
+function _countStringOccurrences(source, needle) {
+    if (!needle || needle.length === 0) { return 0; }
+    let count = 0;
+    let pos = 0;
+    while ((pos = source.indexOf(needle, pos)) >= 0) {
+        count++;
+        pos += needle.length;
+    }
+    return count;
+}
+
+// _validatePatch checks whether a patch can be applied without modifying the file.
+// Returns { ok: true, kind, startLine, endLine } on success, or
+// { ok: false, reason: 'out-of-range'|'anchor-not-found'|'ambiguous', detail: string } on failure.
+// For lineRangePatch with anchorFallback: if lineRangePatch fails with out-of-range,
+// tries validating the anchorFallback and returns { ok, usedFallback: true, ... } accordingly.
+function _validatePatch(content, patchSpec) {
+    const spec = _normalizePatchSpec(patchSpec);
+    if (spec.kind === 'lineRangePatch') {
+        const lines = String(content).split('\n');
+        if (spec.endLine > lines.length) {
+            // Try anchorFallback if available
+            if (spec.anchorFallback) {
+                const fbResult = _validateAnchorPatch(content, spec.anchorFallback);
+                const fallbackReason = 'lineRangePatch is out of file range: endLine=' + spec.endLine + ', lineCount=' + lines.length;
+                if (fbResult.ok) {
+                    return {
+                        ok: true,
+                        kind: fbResult.kind,
+                        startLine: fbResult.startLine,
+                        endLine: fbResult.endLine,
+                        usedFallback: true,
+                        fallbackKind: 'anchorPatch',
+                        fallbackReason: fallbackReason,
+                    };
+                }
+                return {
+                    ok: false,
+                    reason: fbResult.reason,
+                    detail: fbResult.detail,
+                    usedFallback: true,
+                    fallbackKind: 'anchorPatch',
+                    fallbackReason: fallbackReason,
+                };
+            }
+            return {
+                ok: false,
+                reason: 'out-of-range',
+                detail: 'lineRangePatch is out of file range: endLine=' + spec.endLine + ', lineCount=' + lines.length,
+            };
+        }
+        return { ok: true, kind: spec.kind, startLine: spec.startLine, endLine: spec.endLine };
+    }
+    // anchorPatch
+    return _validateAnchorPatch(content, spec);
+}
+
+// _validateAnchorPatch validates an already-normalized anchorPatch spec.
+function _validateAnchorPatch(content, spec) {
+    const source = String(content);
+    const beforeCount = _countStringOccurrences(source, spec.before);
+    if (beforeCount === 0) {
+        return { ok: false, reason: 'anchor-not-found', detail: 'anchorPatch.before not found' };
+    }
+    if (beforeCount > 1) {
+        return { ok: false, reason: 'ambiguous', detail: 'anchorPatch.before matches ' + beforeCount + ' locations' };
+    }
+    if (spec.after !== null && spec.after !== '') {
+        const beforeIndex = source.indexOf(spec.before);
+        const insertFrom = beforeIndex + spec.before.length;
+        const afterIndex = source.indexOf(spec.after, insertFrom);
+        if (afterIndex < 0) {
+            return { ok: false, reason: 'anchor-not-found', detail: 'anchorPatch.after not found' };
+        }
+    }
+    return { ok: true, kind: spec.kind, startLine: null, endLine: null };
+}
+
+function _parseCommand(command) {
+    if (Array.isArray(command)) {
+        if (command.length === 0) {
+            throw new Error('command is required');
+        }
+        const cmd = String(command[0] || '').trim();
+        if (!cmd) {
+            throw new Error('command is required');
+        }
+        return {
+            command: cmd,
+            args: command.slice(1).map(function (one) { return String(one); }),
+            commandLine: [cmd].concat(command.slice(1).map(function (one) { return String(one); })).join(' '),
+        };
+    }
+    const line = String(command === undefined || command === null ? '' : command).trim();
+    if (!line) {
+        throw new Error('command is required');
+    }
+    const fields = splitFields(line);
+    if (!fields || fields.length === 0) {
+        throw new Error('command is required');
+    }
+    return {
+        command: String(fields[0]),
+        args: fields.slice(1).map(function (one) { return String(one); }),
+        commandLine: line,
+    };
+}
 
 // _loadConfig reads a JSON config file, falling back to DEFAULT_CONFIG.
 function _loadConfig(path) {
@@ -1002,6 +1384,332 @@ const _modules = new AgentModuleDocsHelper();
 const _sqlref = new AgentSQLReferenceDocsHelper();
 const _viz = new AgentVizHelper();
 
+// AgentFsHelper provides file operations with policy enforcement.
+class AgentFsHelper {
+    // write(path, content, opts?) — write file (create or overwrite).
+    // Denied when read-only mode is active.
+    write(path, content, opts) {
+        if (_readOnly) {
+            throw new Error('capability denied: fs.write is not allowed in read-only mode');
+        }
+        const options = _isPlainObject(opts) ? opts : {};
+        const targetPath = _resolveWorkspacePath(path);
+        const mkdirp = options.mkdirp !== false;
+        const atomic = options.atomic !== false;
+        const encoding = options.encoding === undefined ? 'utf8' : String(options.encoding);
+        const body = String(content === undefined || content === null ? '' : content);
+        const existed = fs.existsSync(targetPath);
+        const opType = existed ? 'write' : 'create';
+        const retryCount = _resolveRetryCount(options);
+
+        _mkdirParentIfNeeded(targetPath, mkdirp);
+
+        if (atomic) {
+            _writeTextAtomic(targetPath, body, encoding);
+        } else {
+            fs.writeFileSync(targetPath, body, encoding);
+        }
+
+        return {
+            path: targetPath,
+            bytes: Buffer.from(body, 'utf8').length,
+            lines: _countLines(body),
+            opType: opType,
+            retryCount: retryCount,
+            editStats: _buildEditStats(opType),
+        };
+    }
+
+    // read(path, opts?) — read file (with optional startLine, endLine for ranges).
+    // readOnly mode: allowed, but may be limited by workspace boundary.
+    read(path, opts) {
+        const options = _isPlainObject(opts) ? opts : {};
+        const targetPath = _resolveWorkspacePath(path);
+        const encoding = options.encoding === undefined ? 'utf8' : String(options.encoding);
+        const raw = fs.readFileSync(targetPath, encoding);
+        const text = (typeof raw === 'string') ? raw : String(raw);
+        const hasRange = options.startLine !== undefined || options.endLine !== undefined;
+
+        if (!hasRange) {
+            return {
+                path: targetPath,
+                content: text,
+                lineCount: _countLines(text),
+            };
+        }
+
+        const lines = text.split(/\r?\n/);
+        const startLine = Math.max(1, _toInteger(options.startLine, 1));
+        const endLine = Math.min(lines.length, _toInteger(options.endLine, lines.length));
+        if (endLine < startLine) {
+            throw new Error('invalid read range: endLine must be >= startLine');
+        }
+        const chunk = lines.slice(startLine - 1, endLine).join('\n');
+        return {
+            path: targetPath,
+            startLine: startLine,
+            endLine: endLine,
+            content: chunk,
+            lineCount: lines.length,
+        };
+    }
+
+    // patch(path, patchSpec, opts?) — apply line range or anchor-based patch.
+    // Denied when read-only mode is active (unless opts.dryRun is true).
+    // opts.dryRun: if true, validate the patch without modifying the file.
+    //   Returns { path, dryRun:true, ok, kind, startLine, endLine, reason?, detail? }
+    patch(path, patchSpec, opts) {
+        const options = _isPlainObject(opts) ? opts : {};
+        const dryRun = options.dryRun === true;
+        if (!dryRun && _readOnly) {
+            throw new Error('capability denied: fs.patch is not allowed in read-only mode');
+        }
+        const targetPath = _resolveWorkspacePath(path);
+        const original = fs.readFileSync(targetPath, 'utf8');
+
+        if (dryRun) {
+            const v = _validatePatch(original, patchSpec);
+            const result = {
+                path: targetPath,
+                dryRun: true,
+                ok: v.ok,
+                kind: v.kind !== undefined ? v.kind : null,
+                startLine: v.startLine !== undefined ? v.startLine : null,
+                endLine: v.endLine !== undefined ? v.endLine : null,
+            };
+            if (v.usedFallback) {
+                result.usedFallback = true;
+                result.fallbackKind = v.fallbackKind !== undefined ? v.fallbackKind : null;
+                result.fallbackReason = v.fallbackReason !== undefined ? v.fallbackReason : null;
+            }
+            if (!v.ok) {
+                result.reason = v.reason;
+                result.detail = v.detail;
+            }
+            return result;
+        }
+
+        const applied = _applyPatch(original, patchSpec);
+        const retryCount = _resolveRetryCount(_isPlainObject(patchSpec) ? patchSpec : null);
+
+        if (applied.content !== original) {
+            _writeTextAtomic(targetPath, applied.content, 'utf8');
+        }
+
+        const patchResult = {
+            path: targetPath,
+            applied: applied.content !== original,
+            kind: applied.kind,
+            startLine: applied.startLine,
+            endLine: applied.endLine,
+            opType: 'patch',
+            retryCount: retryCount,
+            editStats: _buildEditStats('patch'),
+        };
+        if (applied.usedFallback) {
+            patchResult.usedFallback = true;
+            patchResult.fallbackKind = applied.fallbackKind !== undefined ? applied.fallbackKind : null;
+            patchResult.fallbackReason = applied.fallbackReason !== undefined ? applied.fallbackReason : null;
+        }
+        return patchResult;
+    }
+}
+
+// AgentDiagnosticsHelper provides structured error diagnostics from raw output text.
+class AgentDiagnosticsHelper {
+    // fromOutput(text, opts?) — parse stderr/stdout text into structured diagnostics.
+    // Each diagnostic: { message, path, line, col, context? }
+    // opts.contextLines: number of surrounding lines to include (default 2, max 10).
+    fromOutput(text, opts) {
+        const options = (_isPlainObject(opts) ? opts : {});
+        let contextLines = Math.floor(Number(options.contextLines !== undefined ? options.contextLines : 2));
+        if (!isFinite(contextLines) || contextLines < 0) { contextLines = 2; }
+        if (contextLines > 10) { contextLines = 10; }
+
+        const src = String(text === undefined || text === null ? '' : text);
+        const errorLines = src.split(/\r?\n/).filter(function (l) { return l.trim().length > 0; });
+        const diagnostics = [];
+        const seen = {};
+
+        for (let i = 0; i < errorLines.length; i++) {
+            const msg = errorLines[i].trimRight();
+            const loc = _extractErrorLocation(msg);
+            const key = loc ? (loc.path + ':' + loc.line) : msg;
+            if (seen[key]) { continue; }
+            seen[key] = true;
+
+            const diag = { message: msg, path: null, line: null, col: null, context: null };
+            if (loc) {
+                diag.path = loc.path;
+                diag.line = loc.line;
+                diag.col = loc.col;
+                if (contextLines > 0) {
+                    diag.context = _readDiagnosticContext(loc.path, loc.line, contextLines);
+                }
+            }
+            diagnostics.push(diag);
+        }
+        return diagnostics;
+    }
+
+    // suggest(diagnostics, opts?) — build a patch suggestion prompt text from diagnostics.
+    // Returns a string describing patch candidates for the AI.
+    // opts.maxCount: max number of diagnostics to include (default 2).
+    suggest(diagnostics, opts) {
+        const options = (_isPlainObject(opts) ? opts : {});
+        let maxCount = Math.floor(Number(options.maxCount !== undefined ? options.maxCount : 2));
+        if (!isFinite(maxCount) || maxCount < 1) { maxCount = 2; }
+
+        const diags = Array.isArray(diagnostics) ? diagnostics : [];
+        if (diags.length === 0) { return ''; }
+
+        const out = [
+            'Patch suggestions from diagnostics:',
+            'Apply one minimal patch candidate first, then rerun the command.',
+            'Prefer agent.fs.patch with kind="lineRangePatch". Use anchorPatch only if line numbers are unreliable.',
+        ];
+        const n = Math.min(diags.length, maxCount);
+        for (let i = 0; i < n; i++) {
+            const d = diags[i] || {};
+            const filePath = String(d.path || '').trim();
+            let line = Math.floor(Number(d.line || 1));
+            if (!isFinite(line) || line < 1) { line = 1; }
+            let col = Math.floor(Number(d.col || 1));
+            if (!isFinite(col) || col < 1) { col = 1; }
+
+            out.push('Candidate ' + (i + 1) + ':');
+            if (filePath) {
+                out.push('- target: ' + filePath + ':' + line + ':' + col);
+            }
+            if (d.message) {
+                out.push('- error: ' + String(d.message));
+            }
+            if (d.context && d.context.snippet) {
+                out.push('```');
+                out.push(String(d.context.snippet));
+                out.push('```');
+            }
+            out.push('```json');
+            out.push('{');
+            out.push('  "path": "' + filePath.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '",');
+            out.push('  "patch": {');
+            out.push('    "kind": "lineRangePatch",');
+            out.push('    "startLine": ' + line + ',');
+            out.push('    "endLine": ' + line + ',');
+            out.push('    "replacement": "// TODO: minimal fix for the failing line"');
+            out.push('  }');
+            out.push('}');
+            out.push('```');
+        }
+        out.push('Return only the minimal patch code/action, not full-file regeneration.');
+        return out.join('\n');
+    }
+}
+
+// _extractErrorLocation — parse a single error message line into { path, line, col }.
+// Mirrors the logic in ai_executor.js extractErrorLocation for in-profile use.
+function _extractErrorLocation(errMsg) {
+    if (!errMsg || typeof errMsg !== 'string') { return null; }
+    // Go: "file.go:123:1: message"
+    const goMatch = /^([^\s:]+\.go):([0-9]+):([0-9]+):/m.exec(errMsg);
+    if (goMatch) {
+        return { path: goMatch[1], line: parseInt(goMatch[2], 10), col: parseInt(goMatch[3], 10) };
+    }
+    // JS runtime: "Error at line 123, col 45"
+    const jsMatch = /line\s+([0-9]+).*col\s+([0-9]+)/i.exec(errMsg);
+    if (jsMatch) {
+        return { path: 'script', line: parseInt(jsMatch[1], 10), col: parseInt(jsMatch[2], 10) };
+    }
+    // goja/jsh stack: "at func (file.js:15:8)"
+    const gojaMatch = /\(([^)]+\.js):([0-9]+):([0-9]+)\)/.exec(errMsg);
+    if (gojaMatch) {
+        return { path: gojaMatch[1], line: parseInt(gojaMatch[2], 10), col: parseInt(gojaMatch[3], 10) };
+    }
+    // Unix/shell: "file.js:15: error message"
+    const unixMatch = /^([^\s:]+):([0-9]+):/m.exec(errMsg);
+    if (unixMatch) {
+        return { path: unixMatch[1], line: parseInt(unixMatch[2], 10), col: 1 };
+    }
+    return null;
+}
+
+// _readDiagnosticContext — read surrounding lines of a file around a given line number.
+function _readDiagnosticContext(filePath, line, contextLines) {
+    if (!filePath || filePath === 'script') { return null; }
+    const target = String(filePath).charAt(0) === '/' ? String(filePath) : path.resolve(process.cwd(), String(filePath));
+    try {
+        const text = fs.readFileSync(target, 'utf8');
+        const lines = String(text || '').split(/\r?\n/);
+        const center = (Number.isFinite(Number(line)) && Number(line) >= 1) ? Number(line) : 1;
+        const around = (Number.isFinite(Number(contextLines)) && Number(contextLines) >= 0) ? Math.min(10, Number(contextLines)) : 2;
+        const startLine = Math.max(1, center - around);
+        const endLine = Math.min(lines.length, center + around);
+        return {
+            path: target,
+            startLine: startLine,
+            endLine: endLine,
+            snippet: lines.slice(startLine - 1, endLine).join('\n'),
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+// AgentExecHelper provides execution run with policy enforcement.
+class AgentExecHelper {
+    // run(command, opts?) — execute command (shell or other).
+    // readOnly mode: restricted to allowlist commands.
+    run(command, opts) {
+        const options = _isPlainObject(opts) ? opts : {};
+        const parsed = _parseCommand(command);
+        const policy = _resolveExecPolicy(options);
+        const retryCount = _resolveRetryCount(options);
+        if (_readOnly && !READ_ONLY_EXEC_ALLOW[parsed.command]) {
+            throw new Error('capability denied: exec.run command is not allowed in read-only mode: ' + parsed.command);
+        }
+
+        const previousCwd = process.cwd();
+        let changedCwd = false;
+        let targetCwd = previousCwd;
+        if (options.cwd !== undefined && options.cwd !== null && String(options.cwd).trim() !== '') {
+            targetCwd = _resolveWorkspacePath(options.cwd);
+            if (targetCwd !== previousCwd) {
+                process.chdir(targetCwd);
+                changedCwd = true;
+            }
+        }
+
+        try {
+            const exitCode = process.exec(parsed.command, ...parsed.args);
+            return {
+                command: parsed.command,
+                args: parsed.args,
+                commandLine: parsed.commandLine,
+                cwd: targetCwd,
+                exitCode: exitCode,
+                opType: 'run',
+                retryCount: retryCount,
+                editStats: _buildEditStats('run', 'jsh-shell'),
+                limits: {
+                    timeoutMs: policy.timeoutMs,
+                    maxOutputBytes: policy.maxOutputBytes,
+                },
+            };
+        } finally {
+            if (changedCwd) {
+                process.chdir(previousCwd);
+            }
+        }
+    }
+}
+
+// > **IMPORTANT**: Schema objects are **UPPERCASE** (`NAME`, `TYPE`, `FLAG`, ...).
+// > Query result field names follow SQL projection rules:
+// > - Explicit names/aliases are preserved as written (for example, `SELECT name, time AS MyTime ...` returns `name` and `MyTime`).
+// > - Implicit names (for example, `SELECT * FROM table`) are returned in **UPPERCASE**.
+// > Prefer uppercase access for system/schema fields (for example, `t.NAME`, `t.TYPE`, `row.COLUMN_NAME`).
+
+
 // _helpText for agent.help().
 const _helpText = {
     '': [
@@ -1018,8 +1726,11 @@ const _helpText = {
         '  agent.schema.tables([pattern])    List tables → [{ NAME, TYPE, FLAG }]',
         '  agent.schema.describe(tableName)  Column info → [{ NAME, TYPE, LENGTH, FLAG }]',
         '',
-        'NOTE: All field names in query results and schema objects are UPPERCASE.',
-        'Use t.NAME, t.TYPE, row.COLUMN_NAME, etc.',
+        'NOTE: Schema objects are **UPPERCASE** (`NAME`, `TYPE`, `FLAG`, ...).',
+        '  Query result field names follow SQL projection rules:',
+        '    - Explicit names/aliases are preserved as written (for example, `SELECT name, time AS MyTime ...` returns `name` and `MyTime`).',
+        '    - Implicit names (for example, `SELECT * FROM table`) are returned in **UPPERCASE**.',
+        '    - Prefer uppercase access for system/schema fields (for example, t.NAME, t.TYPE, row.COLUMN_NAME, etc.).',
         '',
         '  agent.runtime.capabilities()      List allowed operation categories',
         '  agent.runtime.limits()            Current resource limits (maxRows, maxOutputBytes, readOnly)',
@@ -1036,6 +1747,20 @@ const _helpText = {
         '  agent.sqlref.resolve(name)        Resolve SQL reference name/url/summary',
         '  agent.sqlref.fetch(name[, options]) Fetch one SQL reference markdown page',
         '  agent.sqlref.fetchAll([options])  Fetch all configured SQL reference markdown pages',
+        '',
+        '  agent.fs.write(path, content, opts?) Write/create file (denied in read-only mode)',
+        '  agent.fs.read(path, opts?)         Read file (with optional startLine, endLine)',
+        '  agent.fs.patch(path, patchSpec, opts?) Apply patch to file (denied in read-only mode)',
+        '    opts.dryRun: true → validate without modifying; returns {ok, reason?, detail?}',
+        '    patchSpec.anchorFallback: {before, after?, replacement?} — fallback anchor patch',
+        '      when lineRangePatch fails due to out-of-range (line shift); result has usedFallback:true',
+        '',
+        '  agent.exec.run(command, opts?)     Execute command/shell (restricted in read-only mode)',
+        '',
+        '  agent.diagnostics.fromOutput(text, opts?) Parse stderr/stdout text → [{message,path,line,col,context?}]',
+        '    opts.contextLines: surrounding file lines to include (default 2, max 10)',
+        '  agent.diagnostics.suggest(diags, opts?)   Build patch suggestion prompt from diagnostics array',
+        '    opts.maxCount: max candidates (default 2)',
         '',
         '  agent.viz.render(spec[, options])        Render VIZSPEC into a TUI envelope ({__agentRender:true,...})',
         '  agent.viz.blocks(spec[, options])        Render VIZSPEC as TUI blocks envelope',
@@ -1058,19 +1783,33 @@ const _helpText = {
 };
 
 // agent — the exported namespace object.
+const _fs = new AgentFsHelper();
+const _exec = new AgentExecHelper();
+const _diagnostics = new AgentDiagnosticsHelper();
+
 const agent = {
     db: _db,
     schema: _schema,
     modules: _modules,
     sqlref: _sqlref,
     viz: _viz,
+    fs: _fs,
+    exec: _exec,
+    diagnostics: _diagnostics,
 
     runtime: {
         clientContext: _clientContext,
         // capabilities() — list allowed operation categories for this profile.
         capabilities: function () {
-            const caps = ['db.read', 'db.schema'];
+            const caps = ['db.read', 'db.schema', 'fs.read', 'exec.run', 'diagnostics'];
             if (!_readOnly) { caps.push('db.write'); }
+            if (!_readOnly) {
+                caps.push('fs.write');
+                caps.push('fs.patch');
+            } else {
+                // dryRun is allowed even in read-only mode
+                caps.push('fs.patch.dryRun');
+            }
             return caps;
         },
         // limits() — current resource limits enforced by this profile.

@@ -1,0 +1,21 @@
+# Staging scenario pack for operational KPI monitoring
+{"id":"stg-01-overview","prompt":"Provide staging run overview plan for read-only validation."}
+{"id":"stg-02-schema-audit","prompt":"Audit schema and list critical operational tables."}
+{"id":"stg-03-recent-signal","prompt":"Query recent signal data window and summarize trends."}
+{"id":"stg-04-latency-check","prompt":"Run representative query and report perceived latency fields."}
+{"id":"stg-05-volume-check","prompt":"Count recent rows for key table and summarize volume."}
+{"id":"stg-06-anomaly-filter","prompt":"Filter potential anomaly rows with explicit threshold example."}
+{"id":"stg-07-null-ratio","prompt":"Estimate NULL ratio for selected metric column."}
+{"id":"stg-08-cardinality","prompt":"Compute cardinality sketch by grouped key example."}
+{"id":"stg-09-ordering","prompt":"Return top recent records in descending time order."}
+{"id":"stg-10-join-readonly","prompt":"Show safe read-only JOIN example for two relevant tables."}
+{"id":"stg-11-readonly-deny-sql","prompt":"Attempt write SQL and explain policy denial expectation."}
+{"id":"stg-12-readonly-deny-shell","prompt":"Attempt unsafe shell command and explain denial expectation."}
+{"id":"stg-13-file-boundary","prompt":"Explain workspace boundary policy for file write requests."}
+{"id":"stg-14-patch-repair","prompt":"Propose partial patch strategy after compile/runtime failure."}
+{"id":"stg-15-retry-loop","prompt":"Describe retry loop behavior with retryCount semantics."}
+{"id":"stg-16-edit-stats-audit","prompt":"Audit editStats totals and byLang for multi-block execution."}
+{"id":"stg-17-render-preference","prompt":"Prefer renderable response over file export when supported."}
+{"id":"stg-18-token-minimization","prompt":"Answer with minimal changed context to reduce token usage."}
+{"id":"stg-19-summary-contract","prompt":"Return concise summary containing ops, retries, denied count."}
+{"id":"stg-20-next-action","prompt":"Recommend next action after KPI regression detection."}

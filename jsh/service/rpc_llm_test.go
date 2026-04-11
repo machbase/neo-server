@@ -705,3 +705,238 @@ func TestLLMTurnFailedPayloadNormalization(t *testing.T) {
 		require.Equal(t, "internal", payload["reason"])
 	})
 }
+
+func TestLLMRPCTurnExecPayloadIncludesEditStatsAndRetryCount(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "analysis done"
+		if strings.HasPrefix(last, "Code execution results:") {
+			text = "final analysis"
+		} else {
+			text = "```jsh-run\nconsole.log('ok');\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  3,
+			OutputTokens: 2,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-exec-payload")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-exec-payload-1",
+		"traceId":   "trace-exec-payload-1",
+		"payload": map[string]any{
+			"text": "please run code",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var execStartedPayload map[string]any
+	var execCompletedPayload map[string]any
+	var turnCompletedPayload map[string]any
+
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		switch name {
+		case "turn.exec.started":
+			execStartedPayload = payload
+		case "turn.exec.completed":
+			execCompletedPayload = payload
+		case "turn.completed":
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+
+	require.NotNil(t, execStartedPayload)
+	require.Equal(t, "run", execStartedPayload["opType"])
+	require.Equal(t, 0, asInt(execStartedPayload["retryCount"]))
+
+	startedStats, ok := execStartedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(startedStats["totalOps"]))
+
+	require.NotNil(t, execCompletedPayload)
+	require.Equal(t, "run", execCompletedPayload["opType"])
+	completedStats, ok := execCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(completedStats["runOps"]))
+
+	require.NotNil(t, turnCompletedPayload)
+	require.Equal(t, 0, asInt(turnCompletedPayload["retryCount"]))
+	turnStats, ok := turnCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(turnStats["totalOps"]))
+}
+
+func TestLLMRPCTurnExecPayloadRetryCountIncrementsOnFollowUpExecution(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+
+		text := "done"
+		switch {
+		case strings.Contains(last, "first-pass"):
+			text = "final analysis"
+		case strings.HasPrefix(last, "Code execution results:"):
+			text = "```jsh-run\nconsole.log('first-pass');\n```"
+		default:
+			text = "```jsh-run\nconsole.log('initial-pass');\n```"
+		}
+
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  5,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-exec-retry")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-exec-retry-1",
+		"traceId":   "trace-exec-retry-1",
+		"payload": map[string]any{
+			"text": "please run code with retry",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+
+	seenRetryOneStarted := false
+	seenRetryOneCompleted := false
+	var turnCompletedPayload map[string]any
+
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		switch name {
+		case "turn.exec.started":
+			if asInt(payload["retryCount"]) == 1 {
+				seenRetryOneStarted = true
+			}
+		case "turn.exec.completed":
+			if asInt(payload["retryCount"]) == 1 {
+				seenRetryOneCompleted = true
+			}
+		case "turn.completed":
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.True(t, seenRetryOneStarted)
+	require.True(t, seenRetryOneCompleted)
+	require.NotNil(t, turnCompletedPayload)
+	require.Equal(t, 1, asInt(turnCompletedPayload["retryCount"]))
+
+	turnStats, ok := turnCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 2, asInt(turnStats["totalOps"]))
+	require.Equal(t, 2, asInt(turnStats["runOps"]))
+}

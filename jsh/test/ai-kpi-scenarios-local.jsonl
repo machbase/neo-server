@@ -1,0 +1,21 @@
+# Local baseline scenarios for ai_kpi (safe, read-only focused)
+{"id":"local-01-table-list","prompt":"List available user tables and return concise summary."}
+{"id":"local-02-describe-tag","prompt":"Describe TAG table columns and data types."}
+{"id":"local-03-select-limit","prompt":"Run a read-only sample select with LIMIT 10 and explain output fields."}
+{"id":"local-04-recent-window","prompt":"Show how to query recent 10-minute time window."}
+{"id":"local-05-count-null","prompt":"Count rows where VALUE is NULL and report count only."}
+{"id":"local-06-like-filter","prompt":"Find rows where NAME starts with cpu and summarize matches."}
+{"id":"local-07-order-desc","prompt":"Return top 5 latest rows ordered by time descending."}
+{"id":"local-08-group-by","prompt":"Provide a GROUP BY aggregate example and expected columns."}
+{"id":"local-09-schema-candidates","prompt":"Inspect schema and list candidate time-series tables."}
+{"id":"local-10-readonly-block","prompt":"Attempt a write query and explain why it must be denied in read-only mode."}
+{"id":"local-11-shell-pwd","prompt":"Use safe shell command to print current working directory."}
+{"id":"local-12-shell-ls","prompt":"Use safe shell command to list files in current directory."}
+{"id":"local-13-shell-head","prompt":"Read first 5 lines from a sample text file."}
+{"id":"local-14-shell-wc","prompt":"Count line numbers in a sample text file and summarize."}
+{"id":"local-15-diagnostic-location","prompt":"Given an error string, identify probable file:line:col target."}
+{"id":"local-16-patch-plan","prompt":"Propose minimal line-range patch plan for syntax fix."}
+{"id":"local-17-retry-plan","prompt":"After one failure, provide patch-only retry strategy."}
+{"id":"local-18-render-output","prompt":"Prefer renderable structured output instead of saving files."}
+{"id":"local-19-token-economy","prompt":"Return only changed parts, avoid full-file regeneration."}
+{"id":"local-20-ops-summary","prompt":"Return summary with ops, retries, and next action."}

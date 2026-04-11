@@ -1,0 +1,75 @@
+name: AI-KPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_mode:
+        description: 'Run real-mode smoke test'
+        required: false
+        default: 'false'
+      openai_api_key:
+        description: 'Optional OpenAI API key for real-mode smoke test'
+        required: false
+        default: ''
+  schedule:
+    - cron: '15 2 * * *'
+  pull_request:
+    paths:
+      - 'jsh/sbin/ai_kpi.js'
+      - 'jsh/sbin/ai_kpi_test.go'
+      - 'jsh/test/ai-kpi-scenarios-20.jsonl'
+      - '.github/workflows/ai-kpi.yml'
+
+jobs:
+  dry-run:
+    name: KPI dry-run
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup go compiler
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - name: Run dry-run KPI tests
+        run: |
+          go test ./jsh/sbin -run 'TestAIKPIHelp|TestAIKPIDryRunWritesReport|TestAIKPIDryRunWritesNDJSONAndCSV|TestAIKPIDryRunWithRepositoryScenarioPack' -count=1
+      - name: Generate dry-run KPI reports
+        run: |
+          mkdir -p tmp/ai-kpi
+          go run ./jsh/main.go ai_kpi --dry-run \
+            --scenarios jsh/test/ai-kpi-scenarios-ci.jsonl \
+            --out tmp/ai-kpi/report.json \
+            --out-ndjson tmp/ai-kpi/report.ndjson \
+            --out-csv tmp/ai-kpi/report.csv
+      - name: Upload dry-run KPI artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ai-kpi-dry-run
+          retention-days: 7
+          path: |
+            tmp/ai-kpi/report.json
+            tmp/ai-kpi/report.ndjson
+            tmp/ai-kpi/report.csv
+
+  real-mode:
+    name: KPI real-mode smoke
+    runs-on: ubuntu-24.04
+    needs: dry-run
+    if: github.event_name != 'pull_request'
+    env:
+      OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup go compiler
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - name: Skip when real-mode not requested
+        if: github.event_name == 'workflow_dispatch' && inputs.run_real_mode != 'true'
+        run: echo 'Real-mode smoke test not requested; skipping.'
+      - name: Run real-mode smoke test
+        if: github.event_name != 'workflow_dispatch' || inputs.run_real_mode == 'true'
+        run: |
+          go test ./jsh/sbin -run TestAIKPIRealModeSmoke -count=1

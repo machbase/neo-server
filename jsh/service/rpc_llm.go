@@ -45,6 +45,54 @@ type llmRunnableBlock struct {
 	ExecCode string
 }
 
+type llmEditStats struct {
+	TotalOps  int
+	RunOps    int
+	CreateOps int
+	PatchOps  int
+	ByLang    map[string]int
+}
+
+func newLLMEditStats() *llmEditStats {
+	return &llmEditStats{ByLang: map[string]int{}}
+}
+
+func (s *llmEditStats) recordRun(lang string) {
+	if s == nil {
+		return
+	}
+	trimmed := strings.TrimSpace(strings.ToLower(lang))
+	s.TotalOps++
+	s.RunOps++
+	if trimmed == "" {
+		trimmed = "unknown"
+	}
+	s.ByLang[trimmed]++
+}
+
+func (s *llmEditStats) toMap() map[string]any {
+	out := map[string]any{
+		"totalOps":  0,
+		"runOps":    0,
+		"createOps": 0,
+		"patchOps":  0,
+		"byLang":    map[string]any{},
+	}
+	if s == nil {
+		return out
+	}
+	out["totalOps"] = s.TotalOps
+	out["runOps"] = s.RunOps
+	out["createOps"] = s.CreateOps
+	out["patchOps"] = s.PatchOps
+	langMap := map[string]any{}
+	for lang, n := range s.ByLang {
+		langMap[lang] = n
+	}
+	out["byLang"] = langMap
+	return out
+}
+
 type llmSession struct {
 	ID            string
 	Provider      string
@@ -750,7 +798,7 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 	if strings.TrimSpace(fullText) == "" {
 		fullText = "(empty)"
 	}
-	completedBlocks, historyTail := ctl.buildTurnCompletedBlocks(ctx, sessionID, turnID, traceID, streamReq, fullText, clientContext, policy)
+	completedBlocks, historyTail, editStats, retryCount := ctl.buildTurnCompletedBlocks(ctx, sessionID, turnID, traceID, streamReq, fullText, clientContext, policy)
 	if len(historyTail) == 0 {
 		historyTail = []shelllib.LLMChatMessage{{Role: "assistant", Content: fullText}}
 	}
@@ -789,8 +837,10 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 				"outputTokens": resp.OutputTokens,
 				"totalTokens":  resp.InputTokens + resp.OutputTokens,
 			},
-			"latencyMs": time.Now().UnixMilli() - startedAt,
-			"blocks":    completedBlocks,
+			"latencyMs":  time.Now().UnixMilli() - startedAt,
+			"blocks":     completedBlocks,
+			"editStats":  editStats,
+			"retryCount": retryCount,
 		},
 	}) {
 		ctl.finishLLMTurn(sessionID, turnID, "failed")
@@ -800,10 +850,12 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 	ctl.finishLLMTurn(sessionID, turnID, "completed")
 }
 
-func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, initialText string, clientContext map[string]any, policy llmExecPolicy) ([]map[string]any, []shelllib.LLMChatMessage) {
+func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, initialText string, clientContext map[string]any, policy llmExecPolicy) ([]map[string]any, []shelllib.LLMChatMessage, map[string]any, int) {
 	blocks := []map[string]any{{"type": "text", "text": initialText}}
 	historyTail := []shelllib.LLMChatMessage{}
 	currentText := initialText
+	editStats := newLLMEditStats()
+	retryCount := 0
 
 	for round := 0; round < policy.MaxRounds; round++ {
 		historyTail = append(historyTail, shelllib.LLMChatMessage{Role: "assistant", Content: currentText})
@@ -811,6 +863,9 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 		runnable := extractRunnableBlocks(currentText)
 		if len(runnable) == 0 {
 			break
+		}
+		if round > 0 {
+			retryCount++
 		}
 		if !policy.AutoExecute {
 			for _, block := range runnable {
@@ -822,6 +877,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 		tabs := engine.FSTabs{{MountPoint: "/", FS: ctl.fs}}
 		summaries := make([]string, 0, len(runnable))
 		for idx, block := range runnable {
+			editStats.recordRun(block.Lang)
 			emitJsonRpcNotification(ctx, "llm.event", map[string]any{
 				"sessionId": sessionID,
 				"turnId":    turnID,
@@ -830,9 +886,12 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				"event":     "turn.exec.started",
 				"ts":        time.Now().UnixMilli(),
 				"payload": map[string]any{
-					"index":    idx,
-					"lang":     block.Lang,
-					"readOnly": policy.ReadOnly,
+					"index":      idx,
+					"lang":       block.Lang,
+					"readOnly":   policy.ReadOnly,
+					"opType":     "run",
+					"retryCount": retryCount,
+					"editStats":  editStats.toMap(),
 				},
 			})
 			blocks = append(blocks, map[string]any{"type": "jsh", "lang": block.Lang, "code": block.Code})
@@ -855,10 +914,13 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 					"event":     "turn.exec.completed",
 					"ts":        time.Now().UnixMilli(),
 					"payload": map[string]any{
-						"index": idx,
-						"lang":  block.Lang,
-						"ok":    false,
-						"error": err.Error(),
+						"index":      idx,
+						"lang":       block.Lang,
+						"ok":         false,
+						"error":      err.Error(),
+						"opType":     "run",
+						"retryCount": retryCount,
+						"editStats":  editStats.toMap(),
 					},
 				})
 				continue
@@ -871,9 +933,12 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 			blocks = append(blocks, map[string]any{"type": "text", "text": "Code execution results:\n" + summary})
 			summaries = append(summaries, summary)
 			execPayload := map[string]any{
-				"index": idx,
-				"lang":  block.Lang,
-				"ok":    true,
+				"index":      idx,
+				"lang":       block.Lang,
+				"ok":         true,
+				"opType":     "run",
+				"retryCount": retryCount,
+				"editStats":  editStats.toMap(),
 			}
 			if len(renderBlocks) > 0 {
 				execPayload["renders"] = renderBlocks
@@ -912,7 +977,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 		currentText = analysisText
 	}
 
-	return blocks, historyTail
+	return blocks, historyTail, editStats.toMap(), retryCount
 }
 
 func streamLLMToString(ctx context.Context, req shelllib.LLMStreamRequest) (string, error) {

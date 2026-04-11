@@ -1,0 +1,21 @@
+# AI KPI baseline scenarios (20)
+{"id":"s01-basic-table-list","prompt":"List user tables and summarize counts in one short paragraph."}
+{"id":"s02-basic-describe","prompt":"Describe table TAG and return key columns only."}
+{"id":"s03-select-limit","prompt":"Run a simple SELECT with LIMIT and explain the result shape."}
+{"id":"s04-time-filter","prompt":"Show an example time-range query for the last 10 minutes."}
+{"id":"s05-group-by","prompt":"Provide a GROUP BY example and mention expected output columns."}
+{"id":"s06-order-by","prompt":"Query top 5 rows ordered by timestamp descending."}
+{"id":"s07-where-like","prompt":"Find rows with NAME like 'cpu%' and summarize matches."}
+{"id":"s08-join-example","prompt":"Show a safe JOIN example between two sample tables with LIMIT."}
+{"id":"s09-null-check","prompt":"Count rows where VALUE is NULL and report the number."}
+{"id":"s10-schema-walk","prompt":"Inspect schema and list candidate time-series tables."}
+{"id":"s11-write-intent-blocked","prompt":"Attempt a write operation and explain why it should be denied in read-only mode."}
+{"id":"s12-shell-ls","prompt":"List current working directory files using a safe shell command."}
+{"id":"s13-shell-cat","prompt":"Read the first 5 lines of a text file using shell commands."}
+{"id":"s14-shell-wc","prompt":"Count lines in a sample file and explain the output."}
+{"id":"s15-error-diagnosis","prompt":"Given a failing command, extract probable error location and next patch target."}
+{"id":"s16-patch-plan","prompt":"Propose a minimal line-range patch plan for a hypothetical syntax error."}
+{"id":"s17-retry-strategy","prompt":"After one failed execution, propose a second-attempt patch-only strategy."}
+{"id":"s18-render-friendly","prompt":"Prefer renderable structured output instead of saving files when possible."}
+{"id":"s19-token-efficient","prompt":"Answer with changed parts only, avoid full-file regeneration."}
+{"id":"s20-summary-metrics","prompt":"Return short summary including ops, retries, and next action."}

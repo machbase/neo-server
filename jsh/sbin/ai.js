@@ -12,7 +12,7 @@ const { ReadLine } = require('readline');
 const pretty = require('pretty');
 const { ai } = require('@jsh/shell');
 const { buildSystemPrompt, listSegments } = require('ai/prompt');
-const { extractCodeBlocks, executeBlock, formatResults, isRenderEnvelope } = require('ai/executor');
+const { extractCodeBlocks, executeBlock, formatResults, isRenderEnvelope, collectEditStats, extractErrorLocation, collectErrorDiagnostics, formatDiagnosticsPrompt, buildPatchGuardrailPrompt, buildAutoPatchSuggestionPrompt, detectPatchFirstViolation } = require('ai/executor');
 const { saveTranscript } = require('ai/transcript');
 
 // ─── CLI options ──────────────────────────────────────────────────────────────
@@ -97,6 +97,7 @@ if (parseError || values.help) {
     console.println('  /config set <k> <v>    Set a config value (dot-notation)');
     console.println('  /config edit           Edit config file in host editor');
     console.println('  /config path           Print config file path');
+    console.println('  /metrics [reset]       Show or reset session KPI metrics');
     console.println('  /clear                 Clear conversation history');
     console.println('  /save <file_path>      Save the current session as Markdown (.md recommended)');
     console.println('  /help                  Show this help');
@@ -121,9 +122,67 @@ if (values.provider || values.model) {
 
 var history = [];   // [{role, content}, ...]
 var cfg = ai.config.load();
+var sessionMetrics = {
+    turns: 0,
+    assistantReplies: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    execOps: 0,
+    runOps: 0,
+    createOps: 0,
+    patchOps: 0,
+    executedBlocks: 0,
+    execElapsedMs: 0,
+};
 var activeSegments = (cfg.prompt && cfg.prompt.segments)
     ? cfg.prompt.segments.slice()
     : ['jsh-runtime', 'jsh-modules', 'agent-api', 'machbase-sql'];
+
+function resetSessionMetrics() {
+    sessionMetrics.turns = 0;
+    sessionMetrics.assistantReplies = 0;
+    sessionMetrics.inputTokens = 0;
+    sessionMetrics.outputTokens = 0;
+    sessionMetrics.execOps = 0;
+    sessionMetrics.runOps = 0;
+    sessionMetrics.createOps = 0;
+    sessionMetrics.patchOps = 0;
+    sessionMetrics.executedBlocks = 0;
+    sessionMetrics.execElapsedMs = 0;
+}
+
+function recordStreamMetrics(streamResult) {
+    if (!streamResult || !streamResult.response) {
+        return;
+    }
+    var resp = streamResult.response;
+    sessionMetrics.assistantReplies += 1;
+    sessionMetrics.inputTokens += Number(resp.inputTokens || 0);
+    sessionMetrics.outputTokens += Number(resp.outputTokens || 0);
+}
+
+function recordExecMetrics(execResult) {
+    if (!execResult || !execResult.editStats) {
+        return;
+    }
+    var s = execResult.editStats;
+    sessionMetrics.execOps += Number(s.totalOps || 0);
+    sessionMetrics.runOps += Number(s.runOps || 0);
+    sessionMetrics.createOps += Number(s.createOps || 0);
+    sessionMetrics.patchOps += Number(s.patchOps || 0);
+    sessionMetrics.executedBlocks += Number(execResult.executedCount || 0);
+    sessionMetrics.execElapsedMs += Number(execResult.elapsedMs || 0);
+}
+
+function printSessionMetrics() {
+    console.println('Session metrics');
+    console.println('  turns: ' + sessionMetrics.turns);
+    console.println('  assistant replies: ' + sessionMetrics.assistantReplies);
+    console.println('  tokens: ' + sessionMetrics.inputTokens + ' in / ' + sessionMetrics.outputTokens + ' out');
+    console.println('  exec ops: ' + sessionMetrics.execOps + ' (run=' + sessionMetrics.runOps + ' create=' + sessionMetrics.createOps + ' patch=' + sessionMetrics.patchOps + ')');
+    console.println('  executed blocks: ' + sessionMetrics.executedBlocks);
+    console.println('  exec elapsed: ' + sessionMetrics.execElapsedMs + 'ms');
+}
 
 function systemPrompt() {
     return buildSystemPrompt(activeSegments);
@@ -507,13 +566,13 @@ function promptExec(confirmRL, lang) {
 }
 
 // Run all confirmed runnable blocks from an LLM response.
-// Returns a summary string of results to append to conversation history,
+// Returns an object with summary string and execution metrics,
 // or null if no blocks were executed.
 //
 // When --no-exec is set, blocks are displayed but not executed.
 //
 // @param {string} responseText   full LLM response text
-// @returns {string|null}
+// @returns {{summary: string, editStats: object, diagnostics: object[], executedCount: number}|null}
 function handleCodeBlocks(responseText) {
     var blocks = extractCodeBlocks(responseText);
     if (blocks.length === 0) { return null; }
@@ -530,6 +589,9 @@ function handleCodeBlocks(responseText) {
     var confirmRL = new ReadLine({ historyName: '' });
     var execAll = false;
     var allOutput = [];
+    var allResults = [];
+    var executedCount = 0;
+    var accElapsedMs = 0;
 
     try {
         for (var i = 0; i < blocks.length; i++) {
@@ -552,6 +614,8 @@ function handleCodeBlocks(responseText) {
 
             printInfo('Executing...');
             var results = executeBlock(block, execOpts);
+            executedCount++;
+            allResults = allResults.concat(results);
 
             // Print execution results to the user.
             var hadError = false;
@@ -585,7 +649,7 @@ function handleCodeBlocks(responseText) {
                         printInfo('[output truncated]');
                     }
                 }
-                if (r.elapsedMs !== undefined) { lastElapsedMs = r.elapsedMs; }
+                if (r.elapsedMs !== undefined) { lastElapsedMs = r.elapsedMs; accElapsedMs += lastElapsedMs; }
             }
             printInfo('[' + lastElapsedMs + 'ms]');
 
@@ -598,7 +662,16 @@ function handleCodeBlocks(responseText) {
 
     if (allOutput.length === 0) { return null; }
 
-    return 'Code execution results:\n\n' + allOutput.join('\n\n');
+    var editStats = collectEditStats(allResults);
+    var diagnostics = collectErrorDiagnostics(allResults, { contextLines: 2 });
+
+    return {
+        summary: 'Code execution results:\n\n' + allOutput.join('\n\n'),
+        editStats: editStats,
+        diagnostics: diagnostics,
+        executedCount: executedCount,
+        elapsedMs: accElapsedMs,
+    };
 }
 
 // ─── One-shot mode ────────────────────────────────────────────────────────────
@@ -652,6 +725,8 @@ function handleSlash(line) {
         console.println('        Clear conversation history (start fresh context).');
         console.println('    ' + BOLD + '/save <file_path>' + RESET);
         console.println('        Save the current session as a Markdown transcript (.md recommended).');
+        console.println('    ' + BOLD + '/metrics [reset]' + RESET);
+        console.println('        Show current session KPI metrics or reset counters.');
         console.println('');
         console.println(BOLD + CYAN + '  Provider & Model' + RESET);
         console.println('    ' + BOLD + '/provider' + RESET);
@@ -705,6 +780,15 @@ function handleSlash(line) {
     } else if (cmd === '\\clear') {
         history = [];
         printInfo('Conversation history cleared.');
+
+    } else if (cmd === '\\metrics') {
+        var metricSub = parts[1] ? parts[1].toLowerCase() : '';
+        if (metricSub === 'reset') {
+            resetSessionMetrics();
+            printInfo('Session metrics reset.');
+        } else {
+            printSessionMetrics();
+        }
 
     } else if (cmd === '\\save') {
         var saveArg = line.trim().slice(cmd.length).trim();
@@ -906,6 +990,9 @@ while (true) {
         continue;
     }
 
+    sessionMetrics.turns += 1;
+    recordStreamMetrics(streamResult);
+
     if (responseContent) {
         history.push({ role: 'assistant', content: responseContent });
     }
@@ -914,11 +1001,33 @@ while (true) {
     // Loop: if the analysis response itself contains more code blocks, handle them too.
     var currentContent = responseContent;
     while (true) {
-        var execSummary = handleCodeBlocks(currentContent);
-        if (!execSummary) { break; }
+        var execResult = handleCodeBlocks(currentContent);
+        if (!execResult) { break; }
+        recordExecMetrics(execResult);
+
+        // Display execution metrics to user
+        if (execResult.editStats && execResult.editStats.totalOps > 0) {
+            var metricsLine = `[Exec] blocks=${execResult.executedCount}, ops=${execResult.editStats.totalOps} ` +
+                `(run=${execResult.editStats.runOps || 0} create=${execResult.editStats.createOps || 0} patch=${execResult.editStats.patchOps || 0}), ` +
+                `time=${execResult.elapsedMs || 0}ms`;
+            printInfo(metricsLine);
+        }
 
         // Record what the tool produced so the LLM sees execution context.
-        history.push({ role: 'user', content: execSummary });
+        history.push({ role: 'user', content: execResult.summary });
+
+        // Add structured diagnostics so follow-up can patch the exact location.
+        var diagPrompt = formatDiagnosticsPrompt(execResult.diagnostics, 3);
+        if (diagPrompt) {
+            history.push({ role: 'user', content: diagPrompt });
+            printInfo('[Diagnostics] attached ' + execResult.diagnostics.length + ' error location(s) for patch-first retry.');
+
+            var patchSuggestionPrompt = buildAutoPatchSuggestionPrompt(execResult.diagnostics, { maxCount: 2 });
+            if (patchSuggestionPrompt) {
+                history.push({ role: 'user', content: patchSuggestionPrompt });
+                printInfo('[Patch Suggestion] attached minimal patch candidates for faster retry.');
+            }
+        }
 
         // Ask LLM to interpret the results.
         printInfo('Sending execution results for analysis...');
@@ -931,6 +1040,33 @@ while (true) {
             break;
         }
         if (!analysisContent) { break; }
+
+        recordStreamMetrics(analysisResult);
+
+        // Guardrail: if diagnostics exist and analysis returns large regeneration-style code,
+        // ask one more time for patch-first response.
+        var needPatchGuardrailRetry = detectPatchFirstViolation(
+            analysisContent,
+            execResult.diagnostics,
+            { lineThreshold: 80 }
+        );
+        if (needPatchGuardrailRetry) {
+            var guardrailPrompt = buildPatchGuardrailPrompt(execResult.diagnostics, { maxCount: 2 });
+            if (guardrailPrompt) {
+                history.push({ role: 'user', content: guardrailPrompt });
+                printInfo('[Guardrail] regeneration-style response detected; requesting patch-first retry...');
+
+                var guardrailRetryResult = streamAssistantReply();
+                var guardrailRetryContent = guardrailRetryResult.content;
+                var guardrailRetryErr = guardrailRetryResult.error;
+                if (!guardrailRetryErr && guardrailRetryContent) {
+                    analysisContent = guardrailRetryContent;
+                    recordStreamMetrics(guardrailRetryResult);
+                } else if (guardrailRetryErr) {
+                    printError(String(guardrailRetryErr));
+                }
+            }
+        }
 
         history.push({ role: 'assistant', content: analysisContent });
         // Check if analysis response also contains code blocks.
