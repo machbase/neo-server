@@ -940,3 +940,262 @@ func TestLLMRPCTurnExecPayloadRetryCountIncrementsOnFollowUpExecution(t *testing
 	require.Equal(t, 2, asInt(turnStats["totalOps"]))
 	require.Equal(t, 2, asInt(turnStats["runOps"]))
 }
+
+func TestLLMRPCTurnExecPayloadIncludesMutationSummaryForCreate(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "final analysis"
+		if !strings.HasPrefix(last, "Code execution results:") {
+			text = "```jsh-run\n(function(){ return agent.fs.write('/work/phase6-create.txt', 'ok'); }());\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  4,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-exec-create")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-exec-create-1",
+		"traceId":   "trace-exec-create-1",
+		"payload": map[string]any{
+			"text":         "please create a file",
+			"execReadOnly": false,
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+
+	var execCompletedPayload map[string]any
+	var turnCompletedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.exec.completed" {
+			execCompletedPayload = payload
+		}
+		if name == "turn.completed" {
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, execCompletedPayload)
+	require.Equal(t, "create", execCompletedPayload["opType"])
+
+	stats, ok := execCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(stats["createOps"]))
+
+	ms, ok := execCompletedPayload["mutationSummary"].(string)
+	require.True(t, ok)
+	require.Contains(t, ms, "File mutations:")
+	require.Contains(t, ms, "/work/phase6-create.txt")
+
+	var first map[string]any
+	switch mm := execCompletedPayload["mutations"].(type) {
+	case []any:
+		require.NotEmpty(t, mm)
+		m0, ok := mm[0].(map[string]any)
+		require.True(t, ok)
+		first = m0
+	case []map[string]any:
+		require.NotEmpty(t, mm)
+		first = mm[0]
+	default:
+		t.Fatalf("unexpected mutations type %T", execCompletedPayload["mutations"])
+	}
+	require.Equal(t, "create", first["opType"])
+	require.Equal(t, "/work/phase6-create.txt", first["path"])
+
+	require.NotNil(t, turnCompletedPayload)
+	var blocks []map[string]any
+	switch bb := turnCompletedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range bb {
+			if m, ok := one.(map[string]any); ok {
+				blocks = append(blocks, m)
+			}
+		}
+	case []map[string]any:
+		blocks = bb
+	default:
+		t.Fatalf("unexpected blocks type %T", turnCompletedPayload["blocks"])
+	}
+	foundMutationText := false
+	for _, bm := range blocks {
+		typeText, _ := bm["type"].(string)
+		if typeText != "text" {
+			continue
+		}
+		text, _ := bm["text"].(string)
+		if strings.Contains(text, "File mutations:") && strings.Contains(text, "/work/phase6-create.txt") {
+			foundMutationText = true
+			break
+		}
+	}
+	require.True(t, foundMutationText, "turn.completed blocks should include explicit mutation summary text")
+}
+
+func TestLLMRPCTurnAskSlashSaveHandledServerSide(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	ctl.llmMu.Lock()
+	ctl.llmSessions[sessionID].History = []shelllib.LLMChatMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi"},
+	}
+	ctl.llmMu.Unlock()
+
+	streamCalled := false
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		streamCalled = true
+		if onToken != nil {
+			onToken("unexpected")
+		}
+		return &shelllib.LLMStreamResponse{Content: "unexpected", Provider: req.Provider, Model: req.Model}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-slash-save")
+
+	result, rpcErr := callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-slash-save-1",
+		"traceId":   "trace-slash-save-1",
+		"payload": map[string]any{
+			"text": "/save file.md",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+	askRsp, ok := result.(llmTurnAskResponse)
+	require.True(t, ok)
+	require.True(t, askRsp.Accepted)
+	require.Equal(t, "streaming", askRsp.Status)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	require.False(t, streamCalled, "slash save must not call llm stream")
+
+	content, err := ctl.fs.ReadFile("/work/file.md")
+	require.NoError(t, err)
+	require.Contains(t, string(content), "# AI Session")
+	require.Contains(t, string(content), "## User")
+	require.Contains(t, string(content), "/save file.md")
+
+	var completedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		if name == "turn.completed" {
+			completedPayload, _ = params["payload"].(map[string]any)
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, completedPayload)
+	var blocks []map[string]any
+	switch bb := completedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range bb {
+			if m, ok := one.(map[string]any); ok {
+				blocks = append(blocks, m)
+			}
+		}
+	case []map[string]any:
+		blocks = bb
+	default:
+		t.Fatalf("unexpected blocks type %T", completedPayload["blocks"])
+	}
+
+	foundSaveText := false
+	foundMutationText := false
+	for _, b := range blocks {
+		typeText, _ := b["type"].(string)
+		if typeText != "text" {
+			continue
+		}
+		text, _ := b["text"].(string)
+		if strings.Contains(text, "Saved AI session to /work/file.md") {
+			foundSaveText = true
+		}
+		if strings.Contains(text, "File mutations:") && strings.Contains(text, "/work/file.md") {
+			foundMutationText = true
+		}
+	}
+	require.True(t, foundSaveText)
+	require.True(t, foundMutationText)
+}

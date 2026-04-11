@@ -1864,6 +1864,25 @@ func TestFindHostEditor_EnvNotInPath(t *testing.T) {
 	_ = ed
 }
 
+// makeExtractTestRequire builds a require stub that satisfies ai_executor.js top-level imports.
+func makeExtractTestRequire(rt *goja.Runtime) func(goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		name := call.Argument(0).String()
+		switch name {
+		case "@jsh/shell":
+			obj := rt.NewObject()
+			aiObj := rt.NewObject()
+			aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+			obj.Set("ai", aiObj)
+			return obj
+		case "fs", "path", "process":
+			return rt.NewObject()
+		default:
+			panic(rt.NewTypeError("unexpected module: %s", name))
+		}
+	}
+}
+
 func TestAIExecutorExtractCodeBlocks_OnlyJshRun(t *testing.T) {
 	rt := goja.New()
 	module := rt.NewObject()
@@ -1877,17 +1896,7 @@ func TestAIExecutorExtractCodeBlocks_OnlyJshRun(t *testing.T) {
 	if err := rt.Set("exports", exports); err != nil {
 		t.Fatalf("exports setup failed: %v", err)
 	}
-	if err := rt.Set("require", func(call goja.FunctionCall) goja.Value {
-		name := call.Argument(0).String()
-		if name != "@jsh/shell" {
-			panic(rt.NewTypeError("unexpected module: %s", name))
-		}
-		obj := rt.NewObject()
-		aiObj := rt.NewObject()
-		aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
-		obj.Set("ai", aiObj)
-		return obj
-	}); err != nil {
+	if err := rt.Set("require", makeExtractTestRequire(rt)); err != nil {
 		t.Fatalf("require setup failed: %v", err)
 	}
 
@@ -1961,17 +1970,7 @@ func TestAIExecutorExtractCodeBlocks_MultipleRunnableBlocks(t *testing.T) {
 	if err := rt.Set("exports", exports); err != nil {
 		t.Fatalf("exports setup failed: %v", err)
 	}
-	if err := rt.Set("require", func(call goja.FunctionCall) goja.Value {
-		name := call.Argument(0).String()
-		if name != "@jsh/shell" {
-			panic(rt.NewTypeError("unexpected module: %s", name))
-		}
-		obj := rt.NewObject()
-		aiObj := rt.NewObject()
-		aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
-		obj.Set("ai", aiObj)
-		return obj
-	}); err != nil {
+	if err := rt.Set("require", makeExtractTestRequire(rt)); err != nil {
 		t.Fatalf("require setup failed: %v", err)
 	}
 
@@ -2042,17 +2041,7 @@ func TestAIExecutorExtractCodeBlocks_MixedRunnableFenceTypes(t *testing.T) {
 	if err := rt.Set("exports", exports); err != nil {
 		t.Fatalf("exports setup failed: %v", err)
 	}
-	if err := rt.Set("require", func(call goja.FunctionCall) goja.Value {
-		name := call.Argument(0).String()
-		if name != "@jsh/shell" {
-			panic(rt.NewTypeError("unexpected module: %s", name))
-		}
-		obj := rt.NewObject()
-		aiObj := rt.NewObject()
-		aiObj.Set("exec", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
-		obj.Set("ai", aiObj)
-		return obj
-	}); err != nil {
+	if err := rt.Set("require", makeExtractTestRequire(rt)); err != nil {
 		t.Fatalf("require setup failed: %v", err)
 	}
 
@@ -2115,6 +2104,67 @@ func TestAIExecutorExtractCodeBlocks_MixedRunnableFenceTypes(t *testing.T) {
 	for i := range want {
 		if langs[i] != want[i] {
 			t.Fatalf("block lang[%d] = %q, want %q", i, langs[i], want[i])
+		}
+	}
+}
+
+// ── Prompt segment content tests ─────────────────────────────────────────────
+// These tests load the real embedded prompt files to ensure required content
+// is present after edits.
+
+func loadRealSegment(t *testing.T, name string) string {
+	t.Helper()
+	rt := goja.New()
+	m := &aiModule{rt: rt, cfg: defaultLLMConfig(), promptFS: promptSubFS}
+	content, err := m.loadSegment(name)
+	if err != nil {
+		t.Fatalf("loadSegment(%q) error: %v", name, err)
+	}
+	return content
+}
+
+func TestAgentApiSegmentIncludesFileFirstStrategy(t *testing.T) {
+	content := loadRealSegment(t, "agent-api")
+	for _, want := range []string{
+		"File-first strategy",
+		"agent.fs.write",
+		"agent.exec.run",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("agent-api segment missing expected text %q", want)
+		}
+	}
+}
+
+func TestAgentApiSegmentIncludesFsExecDiagnostics(t *testing.T) {
+	content := loadRealSegment(t, "agent-api")
+	for _, want := range []string{
+		"## `agent.fs`",
+		"## `agent.exec`",
+		"## `agent.diagnostics`",
+		"agent.fs.patch",
+		"agent.exec.run",
+		"agent.diagnostics.fromOutput",
+		"agent.diagnostics.suggest",
+		"anchorFallback",
+		"dryRun",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("agent-api segment missing expected text %q", want)
+		}
+	}
+}
+
+func TestJshRuntimeSegmentIncludesCodeOutputPolicy(t *testing.T) {
+	content := loadRealSegment(t, "jsh-runtime")
+	for _, want := range []string{
+		"Code output policy",
+		"agent.fs.write",
+		"agent.exec.run",
+		"agent.diagnostics.fromOutput",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("jsh-runtime segment missing expected text %q", want)
 		}
 	}
 }

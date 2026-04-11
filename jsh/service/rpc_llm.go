@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -53,6 +55,17 @@ type llmEditStats struct {
 	ByLang    map[string]int
 }
 
+type llmMutationSummary struct {
+	OpType    string
+	Path      string
+	StartLine int
+	EndLine   int
+}
+
+type llmSlashSaveCommand struct {
+	Path string
+}
+
 func newLLMEditStats() *llmEditStats {
 	return &llmEditStats{ByLang: map[string]int{}}
 }
@@ -68,6 +81,39 @@ func (s *llmEditStats) recordRun(lang string) {
 		trimmed = "unknown"
 	}
 	s.ByLang[trimmed]++
+}
+
+func (s *llmEditStats) clone() *llmEditStats {
+	if s == nil {
+		return newLLMEditStats()
+	}
+	out := &llmEditStats{
+		TotalOps:  s.TotalOps,
+		RunOps:    s.RunOps,
+		CreateOps: s.CreateOps,
+		PatchOps:  s.PatchOps,
+		ByLang:    map[string]int{},
+	}
+	for k, v := range s.ByLang {
+		out.ByLang[k] = v
+	}
+	return out
+}
+
+func (s *llmEditStats) merge(other *llmEditStats) {
+	if s == nil || other == nil {
+		return
+	}
+	if s.ByLang == nil {
+		s.ByLang = map[string]int{}
+	}
+	s.TotalOps += other.TotalOps
+	s.RunOps += other.RunOps
+	s.CreateOps += other.CreateOps
+	s.PatchOps += other.PatchOps
+	for lang, n := range other.ByLang {
+		s.ByLang[lang] += n
+	}
 }
 
 func (s *llmEditStats) toMap() map[string]any {
@@ -553,6 +599,7 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 	sessionID := req.SessionID
 	turnID := req.TurnID
 	traceID := req.TraceID
+	historySnapshot := append([]shelllib.LLMChatMessage(nil), sess.History...)
 	maxTokens := req.Payload.MaxTokens
 	extraContext := buildLLMClientContextPromptExtra(req.Payload.ClientContext)
 	systemPrompt := shelllib.ResolveSystemPrompt(shelllib.PromptOptions{
@@ -569,6 +616,11 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 	sess.TurnCancels[turnID] = cancel
 
 	policy := llmExecPolicyFromPayload(req.Payload)
+	if slashCmd, ok := parseLLMSlashSaveCommand(text); ok {
+		go ctl.runLLMSlashSaveTurn(ctx, sessionID, turnID, traceID, provider, model, text, historySnapshot, slashCmd)
+		return llmTurnAskResponse{Accepted: true, Status: "streaming"}, nil
+	}
+
 	go ctl.streamLLMSkeleton(streamCtx, sessionID, turnID, traceID, shelllib.LLMStreamRequest{
 		Provider:     provider,
 		Model:        model,
@@ -578,6 +630,253 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 	}, req.Payload.ClientContext.toMap(), policy)
 
 	return llmTurnAskResponse{Accepted: true, Status: "streaming"}, nil
+}
+
+func parseLLMSlashSaveCommand(input string) (llmSlashSaveCommand, bool) {
+	line := strings.TrimSpace(input)
+	if !strings.HasPrefix(line, "/") {
+		return llmSlashSaveCommand{}, false
+	}
+	parts := strings.Fields(line)
+	if len(parts) < 1 || strings.ToLower(parts[0]) != "/save" {
+		return llmSlashSaveCommand{}, false
+	}
+	if len(parts) < 2 {
+		return llmSlashSaveCommand{Path: ""}, true
+	}
+	return llmSlashSaveCommand{Path: strings.TrimSpace(strings.Join(parts[1:], " "))}, true
+}
+
+func normalizeLLMSaveTarget(input string) (string, error) {
+	target := strings.TrimSpace(input)
+	if target == "" {
+		return "", fmt.Errorf("usage: /save <file_path>")
+	}
+	if strings.HasPrefix(target, "/") {
+		target = path.Clean(target)
+	} else {
+		target = path.Clean(path.Join("/work", target))
+	}
+	if target == "/" {
+		return "", fmt.Errorf("invalid save target")
+	}
+	if target != "/work" && !strings.HasPrefix(target, "/work/") {
+		return "", fmt.Errorf("save target must be under /work")
+	}
+	return target, nil
+}
+
+func llmCountUserTurns(entries []shelllib.LLMChatMessage) int {
+	turns := 0
+	for _, entry := range entries {
+		if strings.EqualFold(strings.TrimSpace(entry.Role), "user") {
+			turns++
+		}
+	}
+	return turns
+}
+
+func llmFormatTranscriptRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "user":
+		return "User"
+	case "assistant":
+		return "Assistant"
+	case "":
+		return "Message"
+	default:
+		r := strings.TrimSpace(role)
+		if r == "" {
+			return "Message"
+		}
+		return strings.ToUpper(r[:1]) + r[1:]
+	}
+}
+
+func buildLLMTranscriptMarkdown(entries []shelllib.LLMChatMessage, provider string, model string, savedAt time.Time) string {
+	lines := []string{
+		"# AI Session",
+		"",
+		"- Saved at: " + savedAt.Format(time.RFC3339),
+		"- Provider: " + provider,
+		"- Model: " + model,
+		fmt.Sprintf("- Turns: %d", llmCountUserTurns(entries)),
+		"",
+		"---",
+		"",
+	}
+	if len(entries) == 0 {
+		lines = append(lines, "_No conversation history saved._", "")
+		return strings.Join(lines, "\n")
+	}
+	for _, entry := range entries {
+		lines = append(lines, "## "+llmFormatTranscriptRole(entry.Role), "")
+		lines = append(lines, strings.TrimSpace(entry.Content), "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (ctl *Controller) llmMkdirAll(targetDir string) error {
+	dir := path.Clean(strings.TrimSpace(targetDir))
+	if dir == "" || dir == "." || dir == "/" {
+		return nil
+	}
+	parts := strings.Split(strings.TrimPrefix(dir, "/"), "/")
+	cur := ""
+	for _, part := range parts {
+		if part == "" || part == "." {
+			continue
+		}
+		cur = cur + "/" + part
+		if err := ctl.fs.Mkdir(cur); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+			if info, statErr := ctl.fs.Stat(cur); statErr == nil && info.IsDir() {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (ctl *Controller) runLLMSlashSaveTurn(ctx context.Context, sessionID string, turnID string, traceID string, provider string, model string, userText string, history []shelllib.LLMChatMessage, cmd llmSlashSaveCommand) {
+	startedAt := time.Now().UnixMilli()
+	if !emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+		"sessionId": sessionID,
+		"turnId":    turnID,
+		"traceId":   traceID,
+		"seq":       ctl.nextLLMSeq(sessionID),
+		"event":     "turn.started",
+		"ts":        time.Now().UnixMilli(),
+		"payload": map[string]any{
+			"provider": provider,
+			"model":    model,
+		},
+	}) {
+		ctl.finishLLMTurn(sessionID, turnID, "failed")
+		return
+	}
+
+	if !emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+		"sessionId": sessionID,
+		"turnId":    turnID,
+		"traceId":   traceID,
+		"seq":       ctl.nextLLMSeq(sessionID),
+		"event":     "turn.block.started",
+		"ts":        time.Now().UnixMilli(),
+		"payload": map[string]any{
+			"blockId":   "b1",
+			"blockType": "text",
+			"index":     0,
+		},
+	}) {
+		ctl.finishLLMTurn(sessionID, turnID, "failed")
+		return
+	}
+
+	target, err := normalizeLLMSaveTarget(cmd.Path)
+	if err != nil {
+		payload, status := llmTurnFailedPayload(err)
+		emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+			"sessionId": sessionID,
+			"turnId":    turnID,
+			"traceId":   traceID,
+			"seq":       ctl.nextLLMSeq(sessionID),
+			"event":     "turn.failed",
+			"ts":        time.Now().UnixMilli(),
+			"payload":   payload,
+		})
+		ctl.finishLLMTurn(sessionID, turnID, status)
+		return
+	}
+
+	historyForSave := append([]shelllib.LLMChatMessage(nil), history...)
+	historyForSave = append(historyForSave, shelllib.LLMChatMessage{Role: "user", Content: userText})
+	body := buildLLMTranscriptMarkdown(historyForSave, provider, model, time.Now())
+	if err := ctl.llmMkdirAll(path.Dir(target)); err != nil {
+		payload, status := llmTurnFailedPayload(err)
+		emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+			"sessionId": sessionID,
+			"turnId":    turnID,
+			"traceId":   traceID,
+			"seq":       ctl.nextLLMSeq(sessionID),
+			"event":     "turn.failed",
+			"ts":        time.Now().UnixMilli(),
+			"payload":   payload,
+		})
+		ctl.finishLLMTurn(sessionID, turnID, status)
+		return
+	}
+	if err := ctl.fs.WriteFile(target, []byte(body)); err != nil {
+		payload, status := llmTurnFailedPayload(err)
+		emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+			"sessionId": sessionID,
+			"turnId":    turnID,
+			"traceId":   traceID,
+			"seq":       ctl.nextLLMSeq(sessionID),
+			"event":     "turn.failed",
+			"ts":        time.Now().UnixMilli(),
+			"payload":   payload,
+		})
+		ctl.finishLLMTurn(sessionID, turnID, status)
+		return
+	}
+
+	assistantText := "Saved AI session to " + target
+	mutationText := "File mutations:\n- create " + target
+	blocks := []map[string]any{
+		{"type": "text", "text": assistantText},
+		{"type": "text", "text": mutationText},
+	}
+	editStats := (&llmEditStats{TotalOps: 1, CreateOps: 1, ByLang: map[string]int{"slash": 1}}).toMap()
+
+	if !emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+		"sessionId": sessionID,
+		"turnId":    turnID,
+		"traceId":   traceID,
+		"seq":       ctl.nextLLMSeq(sessionID),
+		"event":     "turn.block.completed",
+		"ts":        time.Now().UnixMilli(),
+		"payload": map[string]any{
+			"blockId":   "b1",
+			"blockType": "text",
+		},
+	}) {
+		ctl.finishLLMTurn(sessionID, turnID, "failed")
+		return
+	}
+
+	if !emitJsonRpcNotification(ctx, "llm.event", map[string]any{
+		"sessionId": sessionID,
+		"turnId":    turnID,
+		"traceId":   traceID,
+		"seq":       ctl.nextLLMSeq(sessionID),
+		"event":     "turn.completed",
+		"ts":        time.Now().UnixMilli(),
+		"payload": map[string]any{
+			"status": "completed",
+			"usage": map[string]any{
+				"inputTokens":  0,
+				"outputTokens": 0,
+				"totalTokens":  0,
+			},
+			"latencyMs":  time.Now().UnixMilli() - startedAt,
+			"blocks":     blocks,
+			"editStats":  editStats,
+			"retryCount": 0,
+		},
+	}) {
+		ctl.finishLLMTurn(sessionID, turnID, "failed")
+		return
+	}
+
+	ctl.appendLLMHistoryMessages(sessionID, []shelllib.LLMChatMessage{
+		{Role: "user", Content: userText},
+		{Role: "assistant", Content: assistantText},
+	})
+	ctl.finishLLMTurn(sessionID, turnID, "completed")
 }
 
 func (ctl *Controller) rpcLLMTurnCancel(req llmTurnCancelRequest) (llmTurnCancelResponse, error) {
@@ -877,7 +1176,8 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 		tabs := engine.FSTabs{{MountPoint: "/", FS: ctl.fs}}
 		summaries := make([]string, 0, len(runnable))
 		for idx, block := range runnable {
-			editStats.recordRun(block.Lang)
+			startedStats := editStats.clone()
+			startedStats.recordRun(block.Lang)
 			emitJsonRpcNotification(ctx, "llm.event", map[string]any{
 				"sessionId": sessionID,
 				"turnId":    turnID,
@@ -891,7 +1191,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 					"readOnly":   policy.ReadOnly,
 					"opType":     "run",
 					"retryCount": retryCount,
-					"editStats":  editStats.toMap(),
+					"editStats":  startedStats.toMap(),
 				},
 			})
 			blocks = append(blocks, map[string]any{"type": "jsh", "lang": block.Lang, "code": block.Code})
@@ -903,6 +1203,9 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				ClientContext:  clientContext,
 			})
 			if err != nil {
+				failedStats := newLLMEditStats()
+				failedStats.recordRun(block.Lang)
+				editStats.merge(failedStats)
 				errText := "Code execution error: " + err.Error()
 				blocks = append(blocks, map[string]any{"type": "text", "text": errText})
 				summaries = append(summaries, "Error: "+err.Error())
@@ -925,20 +1228,39 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				})
 				continue
 			}
+			blockStats := collectLLMEditStatsFromRows(rows)
+			if blockStats.TotalOps == 0 {
+				blockStats.recordRun(block.Lang)
+			}
+			editStats.merge(blockStats)
+			primaryOp := detectLLMPrimaryOpType(blockStats)
+			mutations := collectLLMMutationSummaries(rows)
 			summary := formatAgentExecSummary(rows)
+			if len(mutations) > 0 {
+				summary += "\n" + formatLLMMutationSummary(mutations)
+			}
 			renderBlocks := collectRenderEnvelopeBlocks(rows)
 			if len(renderBlocks) > 0 {
 				blocks = append(blocks, renderBlocks...)
 			}
 			blocks = append(blocks, map[string]any{"type": "text", "text": "Code execution results:\n" + summary})
+			if len(mutations) > 0 {
+				// Emit a dedicated mutation summary text block so generic clients can
+				// render file/line patch details without parsing mixed execution output.
+				blocks = append(blocks, map[string]any{"type": "text", "text": formatLLMMutationSummary(mutations)})
+			}
 			summaries = append(summaries, summary)
 			execPayload := map[string]any{
 				"index":      idx,
 				"lang":       block.Lang,
 				"ok":         true,
-				"opType":     "run",
+				"opType":     primaryOp,
 				"retryCount": retryCount,
 				"editStats":  editStats.toMap(),
+			}
+			if len(mutations) > 0 {
+				execPayload["mutations"] = llmMutationsToPayload(mutations)
+				execPayload["mutationSummary"] = formatLLMMutationSummary(mutations)
 			}
 			if len(renderBlocks) > 0 {
 				execPayload["renders"] = renderBlocks
@@ -1188,6 +1510,147 @@ func isAgentRenderEnvelope(value any) bool {
 		return false
 	}
 	return mode == "blocks" || mode == "lines"
+}
+
+func collectLLMEditStatsFromRows(rows []shelllib.Result) *llmEditStats {
+	stats := newLLMEditStats()
+	for _, row := range rows {
+		okVal, _ := row["ok"].(bool)
+		if !okVal {
+			continue
+		}
+		typeText, _ := row["type"].(string)
+		if typeText == "undefined" {
+			continue
+		}
+		value, exists := row["value"]
+		if !exists || value == nil {
+			continue
+		}
+		vm, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		es, ok := vm["editStats"].(map[string]any)
+		if !ok || es == nil {
+			continue
+		}
+		stats.TotalOps += toInt(es["totalOps"])
+		stats.RunOps += toInt(es["runOps"])
+		stats.CreateOps += toInt(es["createOps"])
+		stats.PatchOps += toInt(es["patchOps"])
+		if byLang, ok := es["byLang"].(map[string]any); ok {
+			for lang, n := range byLang {
+				stats.ByLang[strings.ToLower(strings.TrimSpace(lang))] += toInt(n)
+			}
+		}
+	}
+	return stats
+}
+
+func detectLLMPrimaryOpType(stats *llmEditStats) string {
+	if stats == nil {
+		return "run"
+	}
+	if stats.PatchOps > 0 {
+		return "patch"
+	}
+	if stats.CreateOps > 0 {
+		return "create"
+	}
+	return "run"
+}
+
+func collectLLMMutationSummaries(rows []shelllib.Result) []llmMutationSummary {
+	out := []llmMutationSummary{}
+	for _, row := range rows {
+		okVal, _ := row["ok"].(bool)
+		if !okVal {
+			continue
+		}
+		value, exists := row["value"]
+		if !exists || value == nil {
+			continue
+		}
+		vm, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		opType := strings.ToLower(strings.TrimSpace(fmt.Sprint(vm["opType"])))
+		switch opType {
+		case "write", "create":
+			opType = "create"
+		case "patch":
+			// keep patch
+		default:
+			continue
+		}
+		path, _ := vm["path"].(string)
+		out = append(out, llmMutationSummary{
+			OpType:    opType,
+			Path:      path,
+			StartLine: toInt(vm["startLine"]),
+			EndLine:   toInt(vm["endLine"]),
+		})
+	}
+	return out
+}
+
+func llmMutationsToPayload(items []llmMutationSummary) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		m := map[string]any{"opType": it.OpType}
+		if strings.TrimSpace(it.Path) != "" {
+			m["path"] = it.Path
+		}
+		if it.StartLine > 0 {
+			m["startLine"] = it.StartLine
+		}
+		if it.EndLine > 0 {
+			m["endLine"] = it.EndLine
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func formatLLMMutationSummary(items []llmMutationSummary) string {
+	if len(items) == 0 {
+		return ""
+	}
+	lines := []string{"File mutations:"}
+	for _, it := range items {
+		line := "- " + it.OpType
+		if strings.TrimSpace(it.Path) != "" {
+			line += " " + it.Path
+		}
+		if it.StartLine > 0 {
+			if it.EndLine > 0 && it.EndLine != it.StartLine {
+				line += fmt.Sprintf(":%d-%d", it.StartLine, it.EndLine)
+			} else {
+				line += fmt.Sprintf(":%d", it.StartLine)
+			}
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case int32:
+		return int(n)
+	case float64:
+		return int(n)
+	case float32:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 func (ctl *Controller) nextLLMSeq(sessionID string) int64 {
