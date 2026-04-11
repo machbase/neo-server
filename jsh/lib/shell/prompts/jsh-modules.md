@@ -5,37 +5,15 @@
 - Index: https://docs.machbase.com/neo/jsh/modules/index.md
 - In agent profile, use `agent.modules.list()`, `agent.modules.fetch(name, options)`, and `agent.modules.fetchAll(options)` to load latest online markdown manuals.
 - Use `maxBytes` to limit markdown payload size and `omitMarkdown: true` when only metadata is needed.
+- Fetch only the modules needed for the current task. Avoid bulk fetch unless the user explicitly asks for a full sweep.
+- Prefer this order: `list()` -> `fetch(name, { omitMarkdown: true })` -> `fetch(name)` only when full text is required.
 
-### Module Catalog
+### Frequently used modules
 
-- `archive`: Archive module group for TAR and ZIP handling in JSH applications. https://docs.machbase.com/neo/jsh/modules/archive.md
-- `archive/tar`: Create and extract TAR archives with memory, stream, and file APIs. https://docs.machbase.com/neo/jsh/modules/archive/tar.md
-- `archive/zip`: Create and extract ZIP archives with memory, stream, and file APIs. https://docs.machbase.com/neo/jsh/modules/archive/zip.md
-- `events`: EventEmitter utilities for event-driven JSH code. https://docs.machbase.com/neo/jsh/modules/events.md
-- `fs`: Filesystem APIs for file and directory operations. https://docs.machbase.com/neo/jsh/modules/fs.md
-- `http`: HTTP client and server APIs. https://docs.machbase.com/neo/jsh/modules/http.md
-- `machcli`: Machbase database client APIs. https://docs.machbase.com/neo/jsh/modules/machcli.md
-- `mathx/index`: General numeric and statistical helpers. https://docs.machbase.com/neo/jsh/modules/mathx/index.md
-- `mathx/filter`: Stateful filters for sampled numeric data. https://docs.machbase.com/neo/jsh/modules/mathx/filter.md
-- `mathx/interp`: Interpolation models for sample points. https://docs.machbase.com/neo/jsh/modules/mathx/interp.md
-- `mathx/mat`: Matrix and vector APIs for linear algebra. https://docs.machbase.com/neo/jsh/modules/mathx/mat.md
-- `mathx/simplex`: Seeded Simplex noise generator APIs. https://docs.machbase.com/neo/jsh/modules/mathx/simplex.md
-- `mathx/spatial`: Spatial helpers such as haversine distance. https://docs.machbase.com/neo/jsh/modules/mathx/spatial.md
-- `mqtt`: Event-driven MQTT client APIs. https://docs.machbase.com/neo/jsh/modules/mqtt.md
-- `nats`: Event-driven NATS client APIs. https://docs.machbase.com/neo/jsh/modules/nats.md
-- `net`: TCP client and server APIs. https://docs.machbase.com/neo/jsh/modules/net.md
-- `opcua`: OPC UA client APIs. https://docs.machbase.com/neo/jsh/modules/opcua.md
-- `os`: Operating system information APIs. https://docs.machbase.com/neo/jsh/modules/os.md
-- `parser`: Streaming CSV and NDJSON parser APIs. https://docs.machbase.com/neo/jsh/modules/parser.md
-- `path`: Path manipulation helper APIs. https://docs.machbase.com/neo/jsh/modules/path.md
-- `pretty`: Terminal output formatting helpers. https://docs.machbase.com/neo/jsh/modules/pretty.md
-- `process`: Process, runtime, and lifecycle APIs. https://docs.machbase.com/neo/jsh/modules/process.md
-- `readline`: Interactive line input APIs. https://docs.machbase.com/neo/jsh/modules/readline.md
-- `semver`: Semantic version comparison helpers. https://docs.machbase.com/neo/jsh/modules/semver.md
-- `service`: Machbase Neo service controller client APIs. https://docs.machbase.com/neo/jsh/modules/service.md
-- `util`: Utility helpers including parseArgs and splitFields. https://docs.machbase.com/neo/jsh/modules/util.md
-- `ws`: WebSocket client APIs. https://docs.machbase.com/neo/jsh/modules/ws.md
-- `zlib`: Compression and decompression APIs. https://docs.machbase.com/neo/jsh/modules/zlib.md
+- `fs`, `path`, `process`, `os`
+- `http`, `net`, `ws`
+- `machcli`, `pretty`, `parser`, `util`
+- For all module names and URLs, call `agent.modules.list()`.
 
 ## `fs` — Virtual Filesystem
 
@@ -173,3 +151,8 @@ ai.config.save(configObj)             // Persist config object to disk
 ai.config.set(dotKey, value)          // Set a single value by dot-notation key
 ai.config.path()                      // → string path to config file
 ```
+
+## Prompt usage rule
+
+- Keep module examples short and runnable.
+- For detailed behavior, fetch the exact module manual at runtime instead of embedding long excerpts.

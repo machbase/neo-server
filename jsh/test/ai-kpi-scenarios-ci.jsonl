@@ -1,0 +1,21 @@
+# CI scenario pack for ai_kpi dry-run and smoke execution
+{"id":"ci-01-health-summary","prompt":"Summarize health-check steps for query/read-only path."}
+{"id":"ci-02-table-introspect","prompt":"List tables and include only NAME, TYPE, FLAG fields."}
+{"id":"ci-03-column-introspect","prompt":"Describe one table and output compact column summary."}
+{"id":"ci-04-select-shape","prompt":"Run read-only select and report result shape only."}
+{"id":"ci-05-time-query","prompt":"Show a canonical time-range select query."}
+{"id":"ci-06-aggregate-query","prompt":"Show aggregate query with GROUP BY and ORDER BY."}
+{"id":"ci-07-filter-query","prompt":"Show filter query with WHERE and LIMIT."}
+{"id":"ci-08-readonly-safety","prompt":"Demonstrate why INSERT/UPDATE should be blocked under read-only."}
+{"id":"ci-09-shell-safe-set","prompt":"Use only safe shell commands (pwd, ls, cat, wc, head, tail, echo)."}
+{"id":"ci-10-shell-deny","prompt":"Demonstrate a denied shell command in read-only mode."}
+{"id":"ci-11-error-parser-go","prompt":"Parse a Go-style error line and extract location."}
+{"id":"ci-12-error-parser-js","prompt":"Parse a JS runtime error and extract location."}
+{"id":"ci-13-error-parser-unix","prompt":"Parse unix file:line error and extract location."}
+{"id":"ci-14-patch-line-range","prompt":"Suggest lineRangePatch for a one-line replacement."}
+{"id":"ci-15-patch-anchor","prompt":"Suggest anchorPatch for inserting one line after anchor."}
+{"id":"ci-16-retry-counting","prompt":"After failed run, describe retryCount increment expectation."}
+{"id":"ci-17-edit-stats","prompt":"Summarize expected editStats fields for one successful run."}
+{"id":"ci-18-kpi-token","prompt":"Report expected token KPI fields for one turn."}
+{"id":"ci-19-kpi-latency","prompt":"Report expected latency KPI fields for one turn."}
+{"id":"ci-20-kpi-report","prompt":"Summarize final KPI report fields and meaning."}

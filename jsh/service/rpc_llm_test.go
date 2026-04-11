@@ -216,6 +216,80 @@ func TestLLMRPCTurnAskValidationAndNotifications(t *testing.T) {
 	require.Contains(t, names, "turn.completed")
 }
 
+func TestLLMRPCTurnAskContinuesAfterRequestContextCancellation(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		time.Sleep(25 * time.Millisecond)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		text := "final analysis from execution"
+		if !strings.HasPrefix(last, "Code execution results:") && !strings.HasPrefix(last, "Structured execution evidence:") {
+			text = "```jsh-run\nconsole.log('ctx-detached');\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  4,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	baseCtx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-detach")
+	reqCtx, cancel := context.WithCancel(baseCtx)
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-detach-1",
+		"traceId":   "trace-detach-1",
+		"payload": map[string]any{
+			"text": "please continue after request context cancellation",
+		},
+	}}, reqCtx)
+	require.Nil(t, rpcErr)
+	cancel()
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 3*time.Second, 20*time.Millisecond)
+
+	names := notifier.eventNames()
+	require.Contains(t, names, "turn.exec.completed")
+	require.Contains(t, names, "turn.completed")
+	require.NotContains(t, names, "turn.failed")
+
+	ctl.llmMu.RLock()
+	status := ctl.llmSessions[sessionID].TurnStatus["turn-detach-1"]
+	ctl.llmMu.RUnlock()
+	require.Equal(t, "completed", status)
+}
+
 func TestLLMRPCTurnIdempotentResponse(t *testing.T) {
 	ctl := newLLMTestController(t)
 
@@ -648,10 +722,11 @@ func TestLLMRPCTurnAskClientContextAppendedToSystemPrompt(t *testing.T) {
 		"payload": map[string]any{
 			"text": "draw the result",
 			"clientContext": map[string]any{
-				"surface":       "web-remote",
-				"transport":     "websocket",
-				"renderTargets": []any{"markdown", "agent-render/v1", "vizspec/v1"},
-				"filePolicy":    "explicit-only",
+				"surface":             "web-remote",
+				"transport":           "websocket",
+				"renderTargets":       []any{"markdown", "agent-render/v1", "vizspec/v1"},
+				"preferredVizFormats": []any{"echarts", "svg"},
+				"filePolicy":          "explicit-only",
 			},
 		},
 	}}, ctx)
@@ -669,7 +744,31 @@ func TestLLMRPCTurnAskClientContextAppendedToSystemPrompt(t *testing.T) {
 	require.Contains(t, capturedReq.SystemPrompt, "client.surface: web-remote")
 	require.Contains(t, capturedReq.SystemPrompt, "client.transport: websocket")
 	require.Contains(t, capturedReq.SystemPrompt, "client.renderTargets: markdown, agent-render/v1, vizspec/v1")
+	require.Contains(t, capturedReq.SystemPrompt, "client.preferredVizFormats: echarts, svg")
 	require.Contains(t, capturedReq.SystemPrompt, "Only save files when the user explicitly asks to save or export a file.")
+}
+
+func TestCollectRenderEnvelopeBlocksIncludesRawVizspec(t *testing.T) {
+	rows := []shelllib.Result{
+		{
+			"ok": true,
+			"value": map[string]any{
+				"schema":  "advn/v1",
+				"version": 1,
+				"series": []any{map[string]any{
+					"id":             "cpu",
+					"representation": map[string]any{"kind": "raw-point"},
+				}},
+			},
+		},
+	}
+
+	blocks := collectRenderEnvelopeBlocks(rows)
+	require.Len(t, blocks, 1)
+	require.Equal(t, "vizspec", blocks[0]["type"])
+	spec, ok := blocks[0]["spec"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "advn/v1", spec["schema"])
 }
 
 func TestLLMTurnFailedPayloadNormalization(t *testing.T) {
@@ -704,4 +803,1082 @@ func TestLLMTurnFailedPayloadNormalization(t *testing.T) {
 		require.Equal(t, false, payload["retryable"])
 		require.Equal(t, "internal", payload["reason"])
 	})
+}
+
+func TestLLMRPCTurnExecPayloadIncludesEditStatsAndRetryCount(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "analysis done"
+		if strings.HasPrefix(last, "Code execution results:") || strings.HasPrefix(last, "Structured execution evidence:") {
+			text = "final analysis"
+		} else {
+			text = "```jsh-run\nconsole.log('ok');\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  3,
+			OutputTokens: 2,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-exec-payload")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-exec-payload-1",
+		"traceId":   "trace-exec-payload-1",
+		"payload": map[string]any{
+			"text": "please run code",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var execStartedPayload map[string]any
+	var execCompletedPayload map[string]any
+	var turnCompletedPayload map[string]any
+
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		switch name {
+		case "turn.exec.started":
+			execStartedPayload = payload
+		case "turn.exec.completed":
+			execCompletedPayload = payload
+		case "turn.completed":
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+
+	require.NotNil(t, execStartedPayload)
+	require.Equal(t, "run", execStartedPayload["opType"])
+	require.Equal(t, 0, asInt(execStartedPayload["retryCount"]))
+
+	startedStats, ok := execStartedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(startedStats["totalOps"]))
+
+	require.NotNil(t, execCompletedPayload)
+	require.Equal(t, "run", execCompletedPayload["opType"])
+	completedStats, ok := execCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(completedStats["runOps"]))
+
+	require.NotNil(t, turnCompletedPayload)
+	require.Equal(t, 0, asInt(turnCompletedPayload["retryCount"]))
+	turnStats, ok := turnCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(turnStats["totalOps"]))
+}
+
+func TestExtractRunnableBlocks_FlexibleFenceHeaders(t *testing.T) {
+	text := strings.Join([]string{
+		"before",
+		"```jsh-sql title=quick-check\\r",
+		"SELECT * FROM example LIMIT 1",
+		"```",
+		"``` JSH-RUN   ",
+		"console.log('ok');",
+		"```",
+		"```\tjsh-shell",
+		"pwd",
+		"```",
+		"```sql",
+		"SELECT 1",
+		"```",
+	}, "\n")
+
+	blocks := extractRunnableBlocks(text)
+	require.Len(t, blocks, 3)
+	require.Equal(t, "jsh-sql", blocks[0].Lang)
+	require.Equal(t, "SELECT * FROM example LIMIT 1", blocks[0].Code)
+	require.Equal(t, "jsh-run", blocks[1].Lang)
+	require.Equal(t, "console.log('ok');", blocks[1].Code)
+	require.Equal(t, "jsh-shell", blocks[2].Lang)
+	require.Equal(t, "pwd", blocks[2].Code)
+}
+
+func TestLLMRPCTurnExecPayloadRetryCountIncrementsOnFollowUpExecution(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	callCount := 0
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		callCount++
+		text := "final analysis"
+		switch callCount {
+		case 1:
+			text = "```jsh-run\nconsole.log('initial-pass');\n```"
+		case 2:
+			text = "```jsh-run\nconsole.log('first-pass');\n```"
+		}
+
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  5,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-exec-retry")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-exec-retry-1",
+		"traceId":   "trace-exec-retry-1",
+		"payload": map[string]any{
+			"text": "please run code with retry",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+
+	seenRetryOneStarted := false
+	seenRetryOneCompleted := false
+	var turnCompletedPayload map[string]any
+
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		switch name {
+		case "turn.exec.started":
+			if asInt(payload["retryCount"]) == 1 {
+				seenRetryOneStarted = true
+			}
+		case "turn.exec.completed":
+			if asInt(payload["retryCount"]) == 1 {
+				seenRetryOneCompleted = true
+			}
+		case "turn.completed":
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.True(t, seenRetryOneStarted)
+	require.True(t, seenRetryOneCompleted)
+	require.NotNil(t, turnCompletedPayload)
+	require.Equal(t, 1, asInt(turnCompletedPayload["retryCount"]))
+
+	turnStats, ok := turnCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 2, asInt(turnStats["totalOps"]))
+	require.Equal(t, 2, asInt(turnStats["runOps"]))
+}
+
+func TestExtractRunnableBlocksPromotesSafePlainFences(t *testing.T) {
+	text := strings.Join([]string{
+		"```sql",
+		"SELECT COUNT(*) AS CNT FROM example LIMIT 1",
+		"```",
+		"```javascript",
+		"(function () {",
+		"  const row = agent.db.queryRow('SELECT COUNT(*) AS CNT FROM example');",
+		"  console.println(String(row.CNT));",
+		"}());",
+		"```",
+		"```sql",
+		"DELETE FROM example",
+		"```",
+	}, "\n")
+
+	blocks := extractRunnableBlocks(text)
+	require.Len(t, blocks, 2)
+	require.Equal(t, "jsh-sql", blocks[0].Lang)
+	require.True(t, blocks[0].Promoted)
+	require.Equal(t, "sql", blocks[0].FromLang)
+	require.Equal(t, "jsh-run", blocks[1].Lang)
+	require.True(t, blocks[1].Promoted)
+	require.Equal(t, "javascript", blocks[1].FromLang)
+}
+
+func TestLLMRPCTurnExecPayloadIncludesStructuredEvidence(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "final analysis citing 1 row"
+		if !strings.HasPrefix(last, "Code execution results:") && !strings.HasPrefix(last, "Structured execution evidence:") {
+			text = "```sql\nSELECT 1 AS VALUE\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  4,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-evidence")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-evidence-1",
+		"traceId":   "trace-evidence-1",
+		"payload": map[string]any{
+			"text": "analyze this table and report",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var execCompletedPayload map[string]any
+	var turnCompletedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.exec.completed" {
+			execCompletedPayload = payload
+		}
+		if name == "turn.completed" {
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, execCompletedPayload)
+	var evidence []map[string]any
+	switch ev := execCompletedPayload["evidence"].(type) {
+	case []map[string]any:
+		evidence = ev
+	case []any:
+		evidence = make([]map[string]any, 0, len(ev))
+		for _, one := range ev {
+			m, ok := one.(map[string]any)
+			require.True(t, ok)
+			evidence = append(evidence, m)
+		}
+	case []llmStructuredEvidence:
+		evidence = llmEvidenceToPayload(ev)
+	default:
+		t.Fatalf("unexpected evidence type %T", execCompletedPayload["evidence"])
+	}
+	require.NotEmpty(t, evidence)
+	require.Equal(t, "sql", evidence[0]["kind"])
+	require.Equal(t, "SELECT 1 AS VALUE", evidence[0]["sql"])
+	rendered, _ := evidence[0]["rendered"].(string)
+	require.NotEmpty(t, rendered)
+
+	require.NotNil(t, turnCompletedPayload)
+	foundEvidenceText := false
+	switch blocks := turnCompletedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range blocks {
+			m, ok := one.(map[string]any)
+			if !ok {
+				continue
+			}
+			text, _ := m["text"].(string)
+			if strings.Contains(text, "Structured execution evidence:") {
+				foundEvidenceText = true
+				break
+			}
+		}
+	case []map[string]any:
+		for _, m := range blocks {
+			text, _ := m["text"].(string)
+			if strings.Contains(text, "Structured execution evidence:") {
+				foundEvidenceText = true
+				break
+			}
+		}
+	}
+	require.True(t, foundEvidenceText)
+}
+
+func TestLLMRPCFollowUpRetriesUngroundedReportWithEvidence(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	callCount := 0
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		callCount++
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "generic summary without evidence"
+		switch {
+		case callCount == 1:
+			text = "```sql\nSELECT 1 AS VALUE\n```"
+		case strings.HasPrefix(last, "Grounded report retry:"):
+			text = "The executed evidence shows 1 row and VALUE = 1, so the result is grounded."
+		default:
+			text = "This looks stable overall."
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  4,
+			OutputTokens: 4,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-grounded")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-grounded-1",
+		"traceId":   "trace-grounded-1",
+		"payload": map[string]any{
+			"text": "analyze and report from data",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var completedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.completed" {
+			completedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, completedPayload)
+	foundRetryNotice := false
+	foundGroundedText := false
+	switch blocks := completedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range blocks {
+			m, ok := one.(map[string]any)
+			if !ok {
+				continue
+			}
+			text, _ := m["text"].(string)
+			if strings.Contains(text, "[Grounded Report] requesting evidence-grounded rewrite") {
+				foundRetryNotice = true
+			}
+			if strings.Contains(text, "VALUE = 1") {
+				foundGroundedText = true
+			}
+		}
+	case []map[string]any:
+		for _, m := range blocks {
+			text, _ := m["text"].(string)
+			if strings.Contains(text, "[Grounded Report] requesting evidence-grounded rewrite") {
+				foundRetryNotice = true
+			}
+			if strings.Contains(text, "VALUE = 1") {
+				foundGroundedText = true
+			}
+		}
+	}
+	require.GreaterOrEqual(t, callCount, 3)
+	require.True(t, foundRetryNotice)
+	require.True(t, foundGroundedText)
+
+	metrics, ok := completedPayload["metrics"].(map[string]any)
+	require.True(t, ok)
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+	require.NotNil(t, metrics["groundedReportRetryCount"])
+	require.NotNil(t, metrics["groundedCitationPassCount"])
+	require.GreaterOrEqual(t, asInt(metrics["groundedReportRetryCount"]), 0)
+	require.GreaterOrEqual(t, asInt(metrics["groundedCitationPassCount"]), 0)
+}
+
+func TestLLMRPCTurnCompletedPayloadIncludesMetrics(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "final report with VALUE=1"
+		if !strings.HasPrefix(last, "Code execution results:") && !strings.HasPrefix(last, "Structured execution evidence:") {
+			text = "```sql\nSELECT 1 AS VALUE\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  3,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-metrics")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-metrics-1",
+		"traceId":   "trace-metrics-1",
+		"payload": map[string]any{
+			"text": "example 테이블 데이터를 분석해서 보고서를 작성해줘",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var turnCompletedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.completed" {
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, turnCompletedPayload)
+	metrics, ok := turnCompletedPayload["metrics"].(map[string]any)
+	require.True(t, ok)
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+	require.NotNil(t, metrics["analysisIntentTurns"])
+	require.NotNil(t, metrics["autoRepairCount"])
+	require.GreaterOrEqual(t, asInt(metrics["analysisIntentTurns"]), 1)
+	require.GreaterOrEqual(t, asInt(metrics["autoRepairCount"]), 1)
+}
+
+func TestLLMRPCTurnCompletedPayloadMetricsNonAnalysisPrompt(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		text := "plain response without runnable block"
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  2,
+			OutputTokens: 2,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-metrics-non-analysis")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-metrics-na-1",
+		"traceId":   "trace-metrics-na-1",
+		"payload": map[string]any{
+			"text": "hello there",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var turnCompletedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.completed" {
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, turnCompletedPayload)
+	metrics, ok := turnCompletedPayload["metrics"].(map[string]any)
+	require.True(t, ok)
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+	require.Equal(t, 0, asInt(metrics["analysisIntentTurns"]))
+	require.Equal(t, 0, asInt(metrics["autoRepairCount"]))
+}
+
+func TestLLMRPCTurnExecPayloadIncludesMutationSummaryForCreate(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		text := "final analysis"
+		if !strings.HasPrefix(last, "Code execution results:") && !strings.HasPrefix(last, "Structured execution evidence:") {
+			text = "```jsh-run\n(function(){ return agent.fs.write('/work/phase6-create.txt', 'ok'); }());\n```"
+		}
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  4,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-exec-create")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-exec-create-1",
+		"traceId":   "trace-exec-create-1",
+		"payload": map[string]any{
+			"text":         "please create a file",
+			"execReadOnly": false,
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	asInt := func(v any) int {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		default:
+			t.Fatalf("unexpected numeric type %T", v)
+			return 0
+		}
+	}
+
+	var execCompletedPayload map[string]any
+	var turnCompletedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.exec.completed" {
+			execCompletedPayload = payload
+		}
+		if name == "turn.completed" {
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, execCompletedPayload)
+	require.Equal(t, "create", execCompletedPayload["opType"])
+
+	stats, ok := execCompletedPayload["editStats"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 1, asInt(stats["createOps"]))
+
+	ms, ok := execCompletedPayload["mutationSummary"].(string)
+	require.True(t, ok)
+	require.Contains(t, ms, "File mutations:")
+	require.Contains(t, ms, "/work/phase6-create.txt")
+
+	var first map[string]any
+	switch mm := execCompletedPayload["mutations"].(type) {
+	case []any:
+		require.NotEmpty(t, mm)
+		m0, ok := mm[0].(map[string]any)
+		require.True(t, ok)
+		first = m0
+	case []map[string]any:
+		require.NotEmpty(t, mm)
+		first = mm[0]
+	default:
+		t.Fatalf("unexpected mutations type %T", execCompletedPayload["mutations"])
+	}
+	require.Equal(t, "create", first["opType"])
+	require.Equal(t, "/work/phase6-create.txt", first["path"])
+
+	require.NotNil(t, turnCompletedPayload)
+	var blocks []map[string]any
+	switch bb := turnCompletedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range bb {
+			if m, ok := one.(map[string]any); ok {
+				blocks = append(blocks, m)
+			}
+		}
+	case []map[string]any:
+		blocks = bb
+	default:
+		t.Fatalf("unexpected blocks type %T", turnCompletedPayload["blocks"])
+	}
+	foundMutationText := false
+	for _, bm := range blocks {
+		typeText, _ := bm["type"].(string)
+		if typeText != "text" {
+			continue
+		}
+		text, _ := bm["text"].(string)
+		if strings.Contains(text, "File mutations:") && strings.Contains(text, "/work/phase6-create.txt") {
+			foundMutationText = true
+			break
+		}
+	}
+	require.True(t, foundMutationText, "turn.completed blocks should include explicit mutation summary text")
+}
+
+func TestBuildExecutionResultsPromptTruncatesLargeSummaries(t *testing.T) {
+	large := strings.Repeat("A", llmExecPromptSummaryChars+500)
+	prompt := buildExecutionResultsPrompt([]string{large, large, large, large, large})
+	require.NotEmpty(t, prompt)
+	require.Contains(t, prompt, "Code execution results:")
+	require.Contains(t, prompt, "...[truncated]")
+	require.Contains(t, prompt, "[execution results truncated]")
+	require.LessOrEqual(t, len(prompt), llmExecPromptMaxChars+128)
+}
+
+func TestLLMRPCTurnCompletesWhenFollowUpTimesOut(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	prevStream := llmStreamFunc
+	prevTimeout := llmFollowupTimeout
+	llmFollowupTimeout = 20 * time.Millisecond
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		last := ""
+		if len(req.Messages) > 0 {
+			last = strings.TrimSpace(req.Messages[len(req.Messages)-1].Content)
+		}
+		if strings.HasPrefix(last, "Code execution results:") || strings.HasPrefix(last, "Structured execution evidence:") {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		text := "```jsh-run\nconsole.log('initial-pass');\n```"
+		if onToken != nil {
+			onToken(text)
+		}
+		return &shelllib.LLMStreamResponse{
+			Content:      text,
+			InputTokens:  5,
+			OutputTokens: 3,
+			Provider:     req.Provider,
+			Model:        req.Model,
+		}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prevStream
+		llmFollowupTimeout = prevTimeout
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-followup-timeout")
+
+	_, rpcErr = callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-followup-timeout-1",
+		"traceId":   "trace-followup-timeout-1",
+		"payload": map[string]any{
+			"text": "please run code and close even if follow-up stalls",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+
+	require.Eventually(t, func() bool {
+		for _, n := range notifier.eventNames() {
+			if n == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	var turnCompletedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		payload, _ := params["payload"].(map[string]any)
+		if name == "turn.completed" {
+			turnCompletedPayload = payload
+		}
+	}
+	notifier.mu.Unlock()
+	require.NotNil(t, turnCompletedPayload)
+
+	foundFollowupError := false
+	switch blocks := turnCompletedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range blocks {
+			m, ok := one.(map[string]any)
+			if !ok {
+				continue
+			}
+			text, _ := m["text"].(string)
+			if strings.Contains(text, "Follow-up analysis error:") {
+				foundFollowupError = true
+				break
+			}
+		}
+	case []map[string]any:
+		for _, m := range blocks {
+			text, _ := m["text"].(string)
+			if strings.Contains(text, "Follow-up analysis error:") {
+				foundFollowupError = true
+				break
+			}
+		}
+	}
+	require.True(t, foundFollowupError)
+}
+
+func TestLLMRPCTurnAskSlashSaveHandledServerSide(t *testing.T) {
+	ctl := newLLMTestController(t)
+
+	_, rpcErr := ctl.CallJsonRpc("llm.session.open", []any{map[string]any{"payload": map[string]any{"resume": false}}}, nil)
+	require.Nil(t, rpcErr)
+	sessionID := onlySessionID(t, ctl)
+
+	ctl.llmMu.Lock()
+	ctl.llmSessions[sessionID].History = []shelllib.LLMChatMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi"},
+	}
+	ctl.llmMu.Unlock()
+
+	streamCalled := false
+	prev := llmStreamFunc
+	llmStreamFunc = func(ctx context.Context, req shelllib.LLMStreamRequest, onToken func(string)) (*shelllib.LLMStreamResponse, error) {
+		streamCalled = true
+		if onToken != nil {
+			onToken("unexpected")
+		}
+		return &shelllib.LLMStreamResponse{Content: "unexpected", Provider: req.Provider, Model: req.Model}, nil
+	}
+	t.Cleanup(func() {
+		llmStreamFunc = prev
+	})
+
+	notifier := newTestRpcNotifier()
+	ctx := WithJsonRpcSession(WithJsonRpcNotificationWriter(context.Background(), notifier), "ws-session-slash-save")
+
+	result, rpcErr := callWithContext(ctl, "llm.turn.ask", []any{map[string]any{
+		"sessionId": sessionID,
+		"turnId":    "turn-slash-save-1",
+		"traceId":   "trace-slash-save-1",
+		"payload": map[string]any{
+			"text": "/save file.md",
+		},
+	}}, ctx)
+	require.Nil(t, rpcErr)
+	askRsp, ok := result.(llmTurnAskResponse)
+	require.True(t, ok)
+	require.True(t, askRsp.Accepted)
+	require.Equal(t, "streaming", askRsp.Status)
+
+	require.Eventually(t, func() bool {
+		notifier.mu.Lock()
+		defer notifier.mu.Unlock()
+		for _, evt := range notifier.events {
+			params, _ := evt["params"].(map[string]any)
+			name, _ := params["event"].(string)
+			if name == "turn.completed" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
+
+	require.False(t, streamCalled, "slash save must not call llm stream")
+
+	content, err := ctl.fs.ReadFile("/work/file.md")
+	require.NoError(t, err)
+	require.Contains(t, string(content), "# AI Session")
+	require.Contains(t, string(content), "## User")
+	require.Contains(t, string(content), "/save file.md")
+
+	var completedPayload map[string]any
+	notifier.mu.Lock()
+	for _, evt := range notifier.events {
+		params, _ := evt["params"].(map[string]any)
+		name, _ := params["event"].(string)
+		if name == "turn.completed" {
+			completedPayload, _ = params["payload"].(map[string]any)
+		}
+	}
+	notifier.mu.Unlock()
+
+	require.NotNil(t, completedPayload)
+	var blocks []map[string]any
+	switch bb := completedPayload["blocks"].(type) {
+	case []any:
+		for _, one := range bb {
+			if m, ok := one.(map[string]any); ok {
+				blocks = append(blocks, m)
+			}
+		}
+	case []map[string]any:
+		blocks = bb
+	default:
+		t.Fatalf("unexpected blocks type %T", completedPayload["blocks"])
+	}
+
+	foundSaveText := false
+	foundMutationText := false
+	for _, b := range blocks {
+		typeText, _ := b["type"].(string)
+		if typeText != "text" {
+			continue
+		}
+		text, _ := b["text"].(string)
+		if strings.Contains(text, "Saved AI session to /work/file.md") {
+			foundSaveText = true
+		}
+		if strings.Contains(text, "File mutations:") && strings.Contains(text, "/work/file.md") {
+			foundMutationText = true
+		}
+	}
+	require.True(t, foundSaveText)
+	require.True(t, foundMutationText)
 }

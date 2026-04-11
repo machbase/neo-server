@@ -23,6 +23,20 @@ func WithJsonRpcSession(ctx context.Context, session string) context.Context {
 	return context.WithValue(ctx, jsonRpcNotifySessionKey{}, session)
 }
 
+func DetachJsonRpcContext(ctx context.Context) context.Context {
+	base := context.Background()
+	if ctx == nil {
+		return base
+	}
+	if writer, ok := ctx.Value(jsonRpcNotifyWriterKey{}).(JsonRpcNotificationWriter); ok && writer != nil {
+		base = WithJsonRpcNotificationWriter(base, writer)
+	}
+	if session, _ := ctx.Value(jsonRpcNotifySessionKey{}).(string); session != "" {
+		base = WithJsonRpcSession(base, session)
+	}
+	return base
+}
+
 func emitJsonRpcNotification(ctx context.Context, method string, params map[string]any) bool {
 	if ctx == nil || method == "" {
 		return false

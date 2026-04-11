@@ -3,6 +3,20 @@
 The `ai` command runs inside the jsh REPL with the **agent profile** active.
 The agent profile exposes a global `agent` object with safe, limit-enforced database access.
 
+## Runnable fence roles
+
+Use runnable fences as **execution channels**, not as large source delivery channels.
+
+- `jsh-shell`: orchestration commands (build/test/list/check files, quick shell workflows)
+- `jsh-sql`: SQL queries for verification and data inspection
+- `jsh-run`: JavaScript logic that uses `agent.*` APIs
+
+When implementing non-trivial code, prefer the file-first loop:
+1. Write/update files with `agent.fs.write()` or `agent.fs.patch()`
+2. Execute with `agent.exec.run()`
+3. Parse failures with `agent.diagnostics.fromOutput()`
+4. Patch and re-run until success
+
 ## `agent.db` — Database helper
 
 > **IMPORTANT**: Schema objects are **UPPERCASE** (`NAME`, `TYPE`, `FLAG`, ...).
@@ -207,16 +221,131 @@ const pickedSqlPreview = agent.sqlref.fetchAll({
 });
 ```
 
+## `agent.fs` — File system operations
+
+Use the file API to create, read, and patch files within the workspace.
+All paths are resolved relative to the workspace boundary. Paths outside the workspace are rejected.
+
+### Writable VFS boundaries (important)
+
+- Writable/allowed directory is currently limited to `/work/...`.
+- Treat writes to any other top-level directory as disallowed unless the runtime explicitly reports otherwise.
+- `/tmp` may be mounted in the future, but assume it does not exist right now.
+
+### Public web directory
+
+- `/work/public/...` is the web-exposed directory.
+- Files under `/work/public/...` are intended to be reachable as `http://<server_address>/public/...`.
+- When you need to serve HTML assets, prefer writing them under `/work/public/...`.
+- Resolve `server_address` from `/proc/share/boot.json` by checking HTTP service listener entries.
+
+### Proactive web-serving behavior
+
+- If the user asks to preview/share/open a page in browser, prefer creating files under `/work/public/...` first.
+- After writing a web file, provide the expected URL path using `<server_http_address>/public/...`.
+- Prefer a concrete output path such as `/work/public/<task>/index.html` unless the user requested another name.
+- When relevant, also include companion assets under `/work/public/<task>/...` (for example CSS/JS) and keep links relative.
+- If listener details are available in `/proc/share/boot.json`, construct and report a full URL.
+
+```jsh
+agent.fs.write(path, content, opts?)
+agent.fs.read(path, { startLine?, endLine?, encoding? })
+
+// Preferred when line numbers are known:
+agent.fs.patch(path, {
+    kind: 'lineRangePatch',
+    startLine, endLine, replacement,
+    anchorFallback: { before, after?, replacement },
+}, { dryRun? });
+
+// Use when line numbers are unreliable:
+agent.fs.patch(path, { kind: 'anchorPatch', before, after?, replacement }, { dryRun? });
+```
+
+**Patch strategy guidance:**
+- Always try `agent.fs.patch` before rewriting whole files.
+- Use `lineRangePatch` when you know exact line numbers from a previous `agent.fs.read`.
+- Use `anchorPatch` when the file may have changed and line numbers could be stale.
+- Add `anchorFallback` to `lineRangePatch` specs as insurance against line shifts.
+- Use `dryRun: true` to verify a patch before applying it, especially for anchor patches.
+
+## `agent.exec` — Command execution
+
+```jsh
+agent.exec.run(command, {
+    cwd?, timeoutMs?, maxOutputBytes?, retryCount?
+});
+// → { command, args, commandLine, cwd, exitCode, opType:'run', limits, editStats }
+```
+
+## `agent.diagnostics` — Structured error diagnostics
+
+Parse raw stderr/stdout text into structured diagnostics for targeted patching.
+
+```jsh
+const diags = agent.diagnostics.fromOutput(errorText, { contextLines: 2 });
+const suggestion = agent.diagnostics.suggest(diags, { maxCount: 2 });
+```
+
+**Recommended error-recovery loop:**
+```jsh-run
+(function() {
+    const run = agent.exec.run('go build ./...');
+    if (run.exitCode === 0) { console.println('Build OK'); return; }
+
+    const diags = agent.diagnostics.fromOutput(/* error text */);
+    if (diags.length && diags[0].path && diags[0].line) {
+        const d = diags[0];
+        const spec = {
+            kind: 'lineRangePatch',
+            startLine: d.line,
+            endLine: d.line,
+            replacement: '/* fix here */',
+            anchorFallback: { before: '/* nearby code */', replacement: '/* fix here */' },
+        };
+        const check = agent.fs.patch(d.path, spec, { dryRun: true });
+        if (check && check.ok) {
+            agent.fs.patch(d.path, spec);
+        }
+    }
+}());
+```
+
 ## Output format
 
 When the user asks you to query data, write jsh code that:
 1. Uses `agent.db.query()` for SELECT statements.
-2. Returns results as `JSON.stringify(result)` or prints them using `console.log`.
+2. Returns results as `JSON.stringify(result)` or prints them using `console.println`.
 3. Handles `result.truncated === true` by noting that more rows exist.
 4. Wraps executable code in an IIFE so repeated execution does not redeclare top-level variables.
 5. Avoids creating top-level `const`/`let`/`class` declarations unless persistent global state is explicitly required.
-6. When visualization is requested, prefer `agent.viz.fromRows(data.rows, { x: 'FIELD', y: [...] })` for simple time-series data. For advanced specs use `agent.viz.blocks(spec)` or `agent.viz.lines(spec)` with a properly constructed vizspec (see `agent.viz` section above for valid `representation.kind` values).
-7. If `agent.runtime.clientContext` is present, choose an output form that matches it. For remote websocket clients, prefer returning renderable envelopes or text directly to the client. Do not save files unless the user explicitly asks for a saved/exported artifact.
+6. When visualization is requested, prefer `agent.viz.fromRows(data.rows, { x: 'FIELD', y: [...] })`.
+7. If `agent.runtime.clientContext` is present, match `renderTargets` and avoid file writes unless explicitly requested.
+
+When the user asks for **analysis, diagnosis, or a report based on data**, follow this loop:
+1. First emit a runnable fence (`jsh-sql` or `jsh-run`) that actually fetches or computes the evidence.
+2. The very first non-empty content in your answer must be that runnable fence.
+3. Do not place plain SQL/JS examples, narrative query plans, or markdown code blocks before the first runnable fence.
+2. Let the harness execute that fence.
+3. Use the execution results as the basis for the final report.
+4. Do not finalize the report before at least one runnable fence has been emitted and executed, unless execution is impossible.
+5. If execution is impossible, say what blocked execution instead of inventing analysis.
+6. In the final report, quote the observed values, counts, ranges, or aggregates returned by the immediately preceding execution results.
+7. Do not close with a generic summary that is not tied to executed evidence.
+8. Do not ask the user to run those queries manually or to paste execution results when harness execution is available.
+9. If your first response does not start with a runnable fence, the harness may ask you to retry in evidence-first mode.
+10. If your final report does not cite the executed evidence, the harness may ask you to rewrite it as a grounded report.
+
+For browser or websocket clients, prefer this sequence:
+1. `jsh-sql` for short verification queries.
+2. `jsh-run` for multi-step statistics, derived metrics, and `agent.viz.fromRows(...)`.
+3. Final markdown report grounded in the returned values or render envelopes.
+
+When responding with runnable fences:
+1. Keep the fence minimal and focused on immediate execution intent.
+2. Do not emit long source files inline unless the user explicitly asks for code in chat.
+3. Prefer referencing the file path and action taken (write/patch/run) over pasting whole files.
+4. Plain markdown code blocks are not enough for harness execution; use `jsh-run`, `jsh-shell`, or `jsh-sql` when you intend the harness to act.
 
 Example:
 ```jsh-run
@@ -227,7 +356,7 @@ Example:
     if (result.truncated) {
         console.error('Note: results were truncated at ' + result.count + ' rows');
     }
-    console.log(JSON.stringify(result.rows, null, 2));
+    console.println(JSON.stringify(result.rows, null, 2));
 }());
 ```
 
@@ -238,6 +367,35 @@ Use the runnable fence that best matches the requested task:
 - `jsh-shell`: simple shell command work (for example `ls`, `cat`, `pwd`, `wc`, `head`, `tail`)
 - `jsh-sql`: direct SQL statement execution with compact box-formatted output
 - `jsh-run`: multi-step JavaScript logic, agent API orchestration, data shaping, visualization, or any custom control flow
+
+For repeated report-style analysis, you may use:
+
+- `agent.analysis.timeseries.summary(rowsOrResult, { x?, y? })` for structured time-series statistics
+- `agent.analysis.report.grounding(evidence)` for report grounding highlights from structured evidence
+
+For data-analysis tasks, prefer `jsh-sql` first for compact inspection, then `jsh-run` for derived analysis only when needed.
+
+If the task asks for a report, the expected pattern is:
+1. runnable fence for evidence collection
+2. harness execution result
+3. report that cites those results
+
+Do not output a polished report first and runnable fences later.
+Do not end with phrases like "run these queries and share the results" when auto-execution is enabled.
+When you write code or runnable fences, keep executable code in English-friendly form, and make code comments, inline annotations, and console/log strings follow the user's prompt language.
+If the user's prompt language is unclear or mixed, default those comments and log strings to English.
+
+**File-first strategy (required when modifying or creating code files):**
+
+Do NOT output large blocks of code as fences just to show the user.
+Instead, use the file API to write code to a file, then execute it:
+
+1. `agent.fs.write(path, content)` — create or overwrite a file
+2. `agent.exec.run(command)` — run the file or a build command
+3. On failure: `agent.fs.patch(path, patchSpec)` — fix only the failing lines
+4. Repeat from step 2 until passing
+
+**Never regenerate a whole file when a small patch is possible.**
 
 When executable JavaScript is needed, wrap it in a fenced code block with the `jsh-run` language tag:
 
@@ -252,7 +410,4 @@ Use the `js` language tag only for explanatory examples that must not be execute
 Do not use `javascript` or `jsh` fences for executable content.
 
 The `ai` command may execute multiple generated scripts in the same runtime.
-Prefer function-local variables inside the IIFE instead of top-level declarations.
-Only write to `globalThis` when the user explicitly asks for persistent state across executions.
-
-The `ai` command detects runnable fences (`jsh-run`, `jsh-shell`, `jsh-sql`) and offers to execute them automatically.
+Prefer function-local variables in the IIFE and write to `globalThis` only on explicit request.
