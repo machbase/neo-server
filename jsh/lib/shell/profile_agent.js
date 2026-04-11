@@ -1204,6 +1204,77 @@ function _normalizeVizOptions(options) {
     return options;
 }
 
+function _normalizeStringList(values) {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+    const seen = {};
+    const out = [];
+    for (let i = 0; i < values.length; i++) {
+        const value = String(values[i] || '').trim().toLowerCase();
+        if (!value || seen[value]) {
+            continue;
+        }
+        seen[value] = true;
+        out.push(value);
+    }
+    return out;
+}
+
+function _clientRenderTargets() {
+    if (!_clientContext || !_isPlainObject(_clientContext)) {
+        return [];
+    }
+    return _normalizeStringList(_clientContext.renderTargets);
+}
+
+function _clientPreferredVizFormats() {
+    if (!_clientContext || !_isPlainObject(_clientContext)) {
+        return [];
+    }
+    const allowed = {
+        echarts: true,
+        svg: true,
+        png: true,
+    };
+    return _normalizeStringList(_clientContext.preferredVizFormats).filter(function (value) {
+        return allowed[value] === true;
+    });
+}
+
+function _shouldReturnRawVizspec(options) {
+    const target = _toStringOption(options, 'target', 'auto').toLowerCase();
+    if (target === 'tui') {
+        return false;
+    }
+    if (target === 'vizspec' || target === 'raw') {
+        return true;
+    }
+    return _clientRenderTargets().indexOf('vizspec/v1') >= 0;
+}
+
+function _buildRawVizspec(spec, options, meta) {
+    const normalized = vizspec.normalize(spec);
+    const preferred = _clientPreferredVizFormats();
+    const mergedMeta = {};
+    if (_isPlainObject(normalized.meta)) {
+        Object.assign(mergedMeta, normalized.meta);
+    }
+    if (_isPlainObject(meta)) {
+        Object.assign(mergedMeta, meta);
+    }
+    if (preferred.length > 0) {
+        mergedMeta.preferred = preferred;
+    }
+    const out = Object.assign({
+        schema: 'advn/v1',
+    }, normalized);
+    if (Object.keys(mergedMeta).length > 0) {
+        out.meta = mergedMeta;
+    }
+    return out;
+}
+
 function _buildRenderEnvelope(mode, payload, meta) {
     const envelope = {
         __agentRender: true,
@@ -1240,6 +1311,12 @@ class AgentVizHelper {
         const opts = _normalizeVizOptions(options);
         try {
             vizspec.validate(spec);
+            if (_shouldReturnRawVizspec(opts)) {
+                return _buildRawVizspec(spec, opts, {
+                    title: _toStringOption(opts, 'title', ''),
+                    mode: 'blocks',
+                });
+            }
             const renderOptions = {
                 compact: _toBooleanOption(opts, 'compact', true),
                 rows: _toPositiveIntOption(opts, 'rows', 8),
@@ -1270,6 +1347,12 @@ class AgentVizHelper {
         const opts = _normalizeVizOptions(options);
         try {
             vizspec.validate(spec);
+            if (_shouldReturnRawVizspec(opts)) {
+                return _buildRawVizspec(spec, opts, {
+                    title: _toStringOption(opts, 'title', ''),
+                    mode: 'lines',
+                });
+            }
             const renderOptions = {
                 height: _toPositiveIntOption(opts, 'height', 3),
                 width: _toPositiveIntOption(opts, 'width', 40),
@@ -1365,15 +1448,16 @@ class AgentVizHelper {
 
     help() {
         return [
-            'agent.viz.render(spec[, options])           Render VIZSPEC into a structured TUI envelope',
-            'agent.viz.blocks(spec[, options])           Render VIZSPEC as TUI blocks envelope',
-            'agent.viz.lines(spec[, options])            Render VIZSPEC as TUI lines envelope',
+            'agent.viz.render(spec[, options])           Render VIZSPEC for the current client context',
+            'agent.viz.blocks(spec[, options])           Render VIZSPEC as TUI blocks or raw vizspec',
+            'agent.viz.lines(spec[, options])            Render VIZSPEC as TUI lines or raw vizspec',
             'agent.viz.fromRows(rows, options)           High-level: build spec from row array and render',
             '  required: options.x (x-axis field name)',
             '  optional: options.y (string or string[] of y field names — auto-detected if omitted)',
             '  optional: options.mode ("blocks"|"lines", default "lines")',
+            '  optional: options.target ("auto"|"tui"|"vizspec", default "auto")',
             'options: mode, compact, rows, width, height, series, timeformat, tz, title',
-            'Returns: { __agentRender:true, schema:"agent-render/v1", renderer:"viz.tui", ... }',
+            'Returns: a TUI envelope or { schema:"advn/v1", ... } depending on clientContext/target',
         ].join('\n');
     }
 }
@@ -1762,9 +1846,9 @@ const _helpText = {
         '  agent.diagnostics.suggest(diags, opts?)   Build patch suggestion prompt from diagnostics array',
         '    opts.maxCount: max candidates (default 2)',
         '',
-        '  agent.viz.render(spec[, options])        Render VIZSPEC into a TUI envelope ({__agentRender:true,...})',
-        '  agent.viz.blocks(spec[, options])        Render VIZSPEC as TUI blocks envelope',
-        '  agent.viz.lines(spec[, options])         Render VIZSPEC as TUI lines envelope',
+        '  agent.viz.render(spec[, options])        Render VIZSPEC for the current client context',
+        '  agent.viz.blocks(spec[, options])        Render VIZSPEC as TUI blocks or raw vizspec',
+        '  agent.viz.lines(spec[, options])         Render VIZSPEC as TUI lines or raw vizspec',
         '  agent.viz.fromRows(rows, {x, y?, mode?}) High-level: build spec from row array and render',
         '',
         '  agent.help([topic])               Show this help',

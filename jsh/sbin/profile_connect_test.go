@@ -167,6 +167,60 @@ func TestAgentProfileVizBlocksReturnsRenderEnvelope(t *testing.T) {
 	}
 }
 
+func TestAgentProfileVizLinesReturnsRawVizspecForWebClient(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := strings.Join([]string{
+		"globalThis.__agentConfig = { clientContext: {",
+		"  surface: 'web-remote',",
+		"  transport: 'websocket',",
+		"  renderTargets: ['markdown', 'vizspec/v1'],",
+		"  preferredVizFormats: ['echarts', 'svg']",
+		"} };",
+		"const advn = require('vizspec');",
+		"const agent = require('repl/profiles/agent');",
+		"const spec = advn.createSpec({",
+		"  series: [{",
+		"    id: 'cpu',",
+		"    representation: { kind: 'raw-point', fields: ['x', 'y'] },",
+		"    data: [[0, 1], [1, 3], [2, 2], [3, 4]]",
+		"  }]",
+		"});",
+		"const env = agent.viz.lines(spec, { width: 12, height: 3, title: 'CPU' });",
+		"console.println(JSON.stringify(env));",
+	}, "\n")
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("agent viz web lines script failed: %v\n%s", err, output)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &env); err != nil {
+		t.Fatalf("parse raw vizspec JSON: %v\n%s", err, output)
+	}
+	if _, exists := env["__agentRender"]; exists {
+		t.Fatalf("__agentRender should be omitted for raw vizspec: %v", env)
+	}
+	if env["schema"] != "advn/v1" {
+		t.Fatalf("schema = %v, want advn/v1", env["schema"])
+	}
+	meta, ok := env["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta type = %T, want map[string]any", env["meta"])
+	}
+	if meta["title"] != "CPU" {
+		t.Fatalf("meta.title = %v, want CPU", meta["title"])
+	}
+	preferred, ok := meta["preferred"].([]any)
+	if !ok {
+		t.Fatalf("meta.preferred type = %T, want []any", meta["preferred"])
+	}
+	if len(preferred) != 2 || preferred[0] != "echarts" || preferred[1] != "svg" {
+		t.Fatalf("meta.preferred = %v, want [echarts svg]", preferred)
+	}
+}
+
 func TestAgentProfileVizFromRowsExplicitY(t *testing.T) {
 	workDir := t.TempDir()
 

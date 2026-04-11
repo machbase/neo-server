@@ -37,9 +37,13 @@ const (
 	llmExecTimeoutMs           = 30000
 	llmExecMaxOutputBytes      = 65536
 	llmExecFollowupMaxRounds   = 3
+	llmExecPromptMaxChars      = 12000
+	llmExecPromptSummaryChars  = 3000
 )
 
-var llmRunnableBlockRe = regexp.MustCompile("(?s)```(jsh-run|jsh-shell|jsh-sql)\\n(.*?)```")
+var llmFollowupTimeout = 30 * time.Second
+
+var llmRunnableBlockRe = regexp.MustCompile("(?is)```[ \\t]*(jsh-run|jsh-shell|jsh-sql)(?:[^\\r\\n`]*)\\r?\\n(.*?)```")
 
 type llmRunnableBlock struct {
 	Lang     string
@@ -234,11 +238,12 @@ type llmTurnAskPayload struct {
 }
 
 type llmClientContext struct {
-	Surface       string   `json:"surface,omitempty"`
-	Transport     string   `json:"transport,omitempty"`
-	RenderTargets []string `json:"renderTargets,omitempty"`
-	FilePolicy    string   `json:"filePolicy,omitempty"`
-	BinaryInline  *bool    `json:"binaryInline,omitempty"`
+	Surface             string   `json:"surface,omitempty"`
+	Transport           string   `json:"transport,omitempty"`
+	RenderTargets       []string `json:"renderTargets,omitempty"`
+	PreferredVizFormats []string `json:"preferredVizFormats,omitempty"`
+	FilePolicy          string   `json:"filePolicy,omitempty"`
+	BinaryInline        *bool    `json:"binaryInline,omitempty"`
 }
 
 func (ctx *llmClientContext) isEmpty() bool {
@@ -248,6 +253,7 @@ func (ctx *llmClientContext) isEmpty() bool {
 	return strings.TrimSpace(ctx.Surface) == "" &&
 		strings.TrimSpace(ctx.Transport) == "" &&
 		len(ctx.RenderTargets) == 0 &&
+		len(ctx.PreferredVizFormats) == 0 &&
 		strings.TrimSpace(ctx.FilePolicy) == "" &&
 		ctx.BinaryInline == nil
 }
@@ -274,6 +280,19 @@ func (ctx *llmClientContext) toMap() map[string]any {
 		}
 		if len(targets) > 0 {
 			out["renderTargets"] = targets
+		}
+	}
+	if len(ctx.PreferredVizFormats) > 0 {
+		formats := make([]string, 0, len(ctx.PreferredVizFormats))
+		for _, one := range ctx.PreferredVizFormats {
+			trimmed := strings.TrimSpace(one)
+			if trimmed == "" {
+				continue
+			}
+			formats = append(formats, trimmed)
+		}
+		if len(formats) > 0 {
+			out["preferredVizFormats"] = formats
 		}
 	}
 	if s := strings.TrimSpace(ctx.FilePolicy); s != "" {
@@ -310,6 +329,19 @@ func buildLLMClientContextPromptExtra(ctx *llmClientContext) string {
 		}
 		if len(targets) > 0 {
 			lines = append(lines, "- client.renderTargets: "+strings.Join(targets, ", "))
+		}
+	}
+	if len(ctx.PreferredVizFormats) > 0 {
+		formats := make([]string, 0, len(ctx.PreferredVizFormats))
+		for _, one := range ctx.PreferredVizFormats {
+			trimmed := strings.TrimSpace(one)
+			if trimmed == "" {
+				continue
+			}
+			formats = append(formats, trimmed)
+		}
+		if len(formats) > 0 {
+			lines = append(lines, "- client.preferredVizFormats: "+strings.Join(formats, ", "))
 		}
 	}
 	if s := strings.TrimSpace(ctx.FilePolicy); s != "" {
@@ -612,12 +644,12 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 	messages := make([]shelllib.LLMChatMessage, 0, len(sess.History)+1)
 	messages = append(messages, sess.History...)
 	messages = append(messages, shelllib.LLMChatMessage{Role: "user", Content: text})
-	streamCtx, cancel := context.WithCancel(ctx)
+	streamCtx, cancel := context.WithCancel(DetachJsonRpcContext(ctx))
 	sess.TurnCancels[turnID] = cancel
 
 	policy := llmExecPolicyFromPayload(req.Payload)
 	if slashCmd, ok := parseLLMSlashSaveCommand(text); ok {
-		go ctl.runLLMSlashSaveTurn(ctx, sessionID, turnID, traceID, provider, model, text, historySnapshot, slashCmd)
+		go ctl.runLLMSlashSaveTurn(streamCtx, sessionID, turnID, traceID, provider, model, text, historySnapshot, slashCmd)
 		return llmTurnAskResponse{Accepted: true, Status: "streaming"}, nil
 	}
 
@@ -1287,7 +1319,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 		followReq.Messages = append(followReq.Messages, streamReq.Messages...)
 		followReq.Messages = append(followReq.Messages, historyTail...)
 
-		analysisText, err := streamLLMToString(ctx, followReq)
+		analysisText, err := streamLLMToStringWithTimeout(ctx, followReq, llmFollowupTimeout)
 		if err != nil {
 			blocks = append(blocks, map[string]any{"type": "text", "text": "Follow-up analysis error: " + err.Error()})
 			break
@@ -1317,22 +1349,51 @@ func streamLLMToString(ctx context.Context, req shelllib.LLMStreamRequest) (stri
 	return text, nil
 }
 
+func streamLLMToStringWithTimeout(ctx context.Context, req shelllib.LLMStreamRequest, timeout time.Duration) (string, error) {
+	if timeout <= 0 {
+		return streamLLMToString(ctx, req)
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return streamLLMToString(callCtx, req)
+}
+
 func buildExecutionResultsPrompt(summaries []string) string {
 	if len(summaries) == 0 {
 		return ""
 	}
 	parts := make([]string, 0, len(summaries))
+	totalChars := 0
 	for _, summary := range summaries {
 		s := strings.TrimSpace(summary)
 		if s == "" {
 			continue
 		}
-		parts = append(parts, "```\n"+s+"\n```")
+		s = truncateLLMExecPromptText(s, llmExecPromptSummaryChars)
+		part := "```\n" + s + "\n```"
+		if totalChars > 0 && totalChars+len(part)+2 > llmExecPromptMaxChars {
+			parts = append(parts, "[execution results truncated]")
+			break
+		}
+		parts = append(parts, part)
+		totalChars += len(part)
 	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return "Code execution results:\n\n" + strings.Join(parts, "\n\n")
+}
+
+func truncateLLMExecPromptText(text string, limit int) string {
+	trimmed := strings.TrimSpace(text)
+	if limit <= 0 || len(trimmed) <= limit {
+		return trimmed
+	}
+	marker := "...[truncated]"
+	if limit <= len(marker) {
+		return trimmed[:limit]
+	}
+	return strings.TrimSpace(trimmed[:limit-len(marker)]) + marker
 }
 
 func extractRunnableBlocks(text string) []llmRunnableBlock {
@@ -1483,15 +1544,23 @@ func collectRenderEnvelopeBlocks(rows []shelllib.Result) []map[string]any {
 		if !exists || value == nil {
 			continue
 		}
-		if !isAgentRenderEnvelope(value) {
-			continue
+		if isAgentRenderEnvelope(value) || isRawVizspec(value) {
+			blocks = append(blocks, map[string]any{
+				"type": "vizspec",
+				"spec": value,
+			})
 		}
-		blocks = append(blocks, map[string]any{
-			"type": "vizspec",
-			"spec": value,
-		})
 	}
 	return blocks
+}
+
+func isRawVizspec(value any) bool {
+	m, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	schema, _ := m["schema"].(string)
+	return schema == "vizspec/v1" || schema == "advn/v1"
 }
 
 func isAgentRenderEnvelope(value any) bool {

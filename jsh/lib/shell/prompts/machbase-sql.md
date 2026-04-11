@@ -20,6 +20,16 @@
 - Do not run DDL/DML unless the user explicitly requests data/schema changes.
 - Always use bounded queries (`LIMIT`, or clear time range predicates for TAG data).
 - For system catalogs, prefer explicit column lists over `SELECT *` where practical.
+- For analysis/report requests, emit a bounded `jsh-sql` runnable fence first so the harness can execute evidence collection before you summarize findings.
+- For analysis/report requests, the first non-empty output must start with a runnable `jsh-sql` fence.
+- Do not present SQL as plain markdown examples when you intend the harness to run it.
+- Do not place plain SQL examples before the first runnable fence.
+- For time-series analysis, prefer a short verification query first, then follow with derived aggregation queries.
+- When a report is requested, the final narrative must cite the concrete values returned by those verification or aggregation queries.
+- SQL keywords and identifiers remain standard SQL/English forms.
+- SQL comments and surrounding explanatory text for execution workflow should follow the user's prompt language.
+- If prompt language is unclear or mixed, default those comments and explanations to English.
+- When harness execution is available, do not ask users to run SQL manually or paste query results.
 
 ## Table Types
 

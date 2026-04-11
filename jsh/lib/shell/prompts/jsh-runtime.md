@@ -106,3 +106,24 @@ Write code to a file with `agent.fs.write()` and run it. The standard loop is:
 4. Repeat until exit code is 0
 
 Only print code to the chat when the user explicitly asks to see source code.
+
+## Analysis/report execution rule
+
+For requests that ask you to analyze data, diagnose a problem, or write a report from live data:
+
+1. Start with a runnable fence, not with a speculative report.
+2. The first non-empty output must be a runnable fence (`jsh-sql` or `jsh-run`).
+3. Do not emit plain SQL/JS markdown examples before that first runnable fence.
+2. Prefer `jsh-sql` for direct bounded inspection queries.
+3. Use `jsh-run` only when you need multi-step calculations, custom logic, or `agent.viz.fromRows(...)`.
+4. After execution, write the report from observed results.
+5. If no runnable fence was emitted, assume the harness cannot verify your claims.
+6. In the final report, explicitly cite the executed row counts, timestamps, aggregates, or visualization outputs that support each conclusion.
+7. Do not finish with unsupported prose if those values are missing.
+8. When harness execution is available, do not ask the user to execute queries manually or provide result text.
+
+Plain markdown code blocks are explanatory only. They do not trigger the harness execution path.
+
+All generated code inside runnable fences should stay English-friendly.
+Code comments and user-visible diagnostic strings inside runnable fences should follow the user's prompt language.
+If prompt language is unclear or mixed, default comments and diagnostic strings to English.
