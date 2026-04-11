@@ -67,7 +67,16 @@ function buildSqlExecCode(sqlText) {
         "    const box = pretty.Table({ rownum: false, footer: false, format: 'box' });",
         '    const rows = (result && Array.isArray(result.rows)) ? result.rows : [];',
         '    if (rows.length === 0) {',
-        "        return '(no rows)';",
+        '        return {',
+        "            __agentSql: true,",
+        "            schema: 'agent-sql/v1',",
+        '            sql: text,',
+        '            columns: [],',
+        '            rows: [],',
+        '            rowCount: 0,',
+        '            truncated: !!(result && result.truncated),',
+        "            rendered: '(no rows)'",
+        '        };',
         '    }',
         '    const columns = Object.keys(rows[0]);',
         '    box.appendHeader(columns);',
@@ -83,7 +92,16 @@ function buildSqlExecCode(sqlText) {
         '    if (result && result.truncated) {',
         "        rendered += '\\n[truncated at ' + result.count + ' rows]';",
         '    }',
-        '    return rendered;',
+        '    return {',
+        "        __agentSql: true,",
+        "        schema: 'agent-sql/v1',",
+        '        sql: text,',
+        '        columns: columns,',
+        '        rows: rows,',
+        '        rowCount: rows.length,',
+        '        truncated: !!(result && result.truncated),',
+        '        rendered: rendered',
+        '    };',
         '}());',
     ].join('\n');
 }
@@ -133,6 +151,99 @@ function extractCodeBlocks(text) {
     return blocks;
 }
 
+function _extractAllFencedBlocks(text) {
+    var blocks = [];
+    var re = /```([a-z0-9_-]+)\n([\s\S]*?)```/g;
+    var m;
+    while ((m = re.exec(String(text || ''))) !== null) {
+        blocks.push({
+            lang: String(m[1] || '').toLowerCase(),
+            code: m[2],
+        });
+    }
+    return blocks;
+}
+
+function _isSingleSafeSelect(sqlText) {
+    var text = String(sqlText || '').trim();
+    if (!text) {
+        return false;
+    }
+    if (text.indexOf(';') >= 0) {
+        return false;
+    }
+    return /^(select|show|describe|desc|explain)\b/i.test(text);
+}
+
+function tryPromotePlainSqlBlock(block) {
+    if (!block || !block.code) {
+        return null;
+    }
+    var lang = String(block.lang || '').toLowerCase();
+    if (lang !== 'sql') {
+        return null;
+    }
+    if (!_isSingleSafeSelect(block.code)) {
+        return null;
+    }
+    return {
+        lang: 'jsh-sql',
+        code: String(block.code || '').trim(),
+        promoted: true,
+        promotedFrom: lang,
+    };
+}
+
+function tryPromotePlainJsBlock(block) {
+    if (!block || !block.code) {
+        return null;
+    }
+    var lang = String(block.lang || '').toLowerCase();
+    if (lang !== 'js' && lang !== 'javascript') {
+        return null;
+    }
+    var code = String(block.code || '').trim();
+    if (!code) {
+        return null;
+    }
+    if (code.split(/\r?\n/).length > 40) {
+        return null;
+    }
+    if (code.indexOf('agent.') < 0) {
+        return null;
+    }
+    if (/process\.exec|agent\.exec\.run|agent\.fs\.write|agent\.fs\.patch|agent\.db\.exec/.test(code)) {
+        return null;
+    }
+    return {
+        lang: 'jsh-run',
+        code: code,
+        promoted: true,
+        promotedFrom: lang,
+    };
+}
+
+function extractRunnableCandidates(text, options) {
+    var opts = options || {};
+    var blocks = extractCodeBlocks(text);
+    if (blocks.length > 0 || opts.autoRepair !== true) {
+        return blocks;
+    }
+    var allBlocks = _extractAllFencedBlocks(text);
+    var promoted = [];
+    for (var i = 0; i < allBlocks.length; i++) {
+        var block = allBlocks[i];
+        var candidate = tryPromotePlainSqlBlock(block);
+        if (!candidate) {
+            candidate = tryPromotePlainJsBlock(block);
+        }
+        if (candidate) {
+            promoted.push(candidate);
+        }
+    }
+    return promoted;
+}
+
 /**
  * Execute jsh code via the agent REPL profile.
  *
@@ -178,6 +289,13 @@ function isRenderEnvelope(value) {
         (value.mode === 'blocks' || value.mode === 'lines');
 }
 
+function isSqlEvidence(value) {
+    return !!value &&
+        typeof value === 'object' &&
+        value.__agentSql === true &&
+        value.schema === 'agent-sql/v1';
+}
+
 function collectRenderEnvelopes(results) {
     var envelopes = [];
     if (!results || results.length === 0) {
@@ -191,6 +309,83 @@ function collectRenderEnvelopes(results) {
         envelopes.push(r.value);
     }
     return envelopes;
+}
+
+function collectExecutionEvidence(results, block) {
+    var evidence = [];
+    if (!results || results.length === 0) {
+        return evidence;
+    }
+    var source = {
+        lang: block && block.lang ? String(block.lang) : '',
+        promoted: !!(block && block.promoted),
+        promotedFrom: block && block.promotedFrom ? String(block.promotedFrom) : '',
+    };
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i] || {};
+        if (r.ok !== true) {
+            continue;
+        }
+        if (isSqlEvidence(r.value)) {
+            evidence.push({
+                kind: 'sql',
+                source: source,
+                sql: r.value.sql || '',
+                columns: Array.isArray(r.value.columns) ? r.value.columns : [],
+                rows: Array.isArray(r.value.rows) ? r.value.rows : [],
+                rowCount: Number(r.value.rowCount || 0),
+                truncated: !!r.value.truncated,
+                rendered: r.value.rendered || '',
+            });
+            continue;
+        }
+        if (isRenderEnvelope(r.value)) {
+            evidence.push({
+                kind: 'viz',
+                source: source,
+                renderer: String(r.value.renderer || ''),
+                mode: String(r.value.mode || ''),
+                meta: r.value.meta || {},
+            });
+            continue;
+        }
+        if (r.type === 'print') {
+            evidence.push({
+                kind: 'print',
+                source: source,
+                text: String(r.value || ''),
+            });
+            continue;
+        }
+        if (r.value !== undefined && r.value !== null && r.type !== 'undefined') {
+            evidence.push({
+                kind: 'value',
+                source: source,
+                type: String(r.type || ''),
+                value: r.value,
+            });
+        }
+    }
+    return evidence;
+}
+
+function formatEvidencePrompt(evidence, options) {
+    var opts = options || {};
+    var maxItems = Number(opts.maxItems || 3);
+    if (!Number.isFinite(maxItems) || maxItems < 1) {
+        maxItems = 3;
+    }
+    var items = Array.isArray(evidence) ? evidence.slice(0, maxItems) : [];
+    if (items.length === 0) {
+        return '';
+    }
+    return [
+        'Structured execution evidence:',
+        'Use this evidence directly when writing the next analysis or report.',
+        '```json',
+        JSON.stringify(items, null, 2),
+        '```',
+    ].join('\n');
 }
 
 /**
@@ -482,6 +677,182 @@ function detectPatchFirstViolation(responseText, diagnostics, options) {
     return false;
 }
 
+function hasRunnableFence(text) {
+    return extractCodeBlocks(text).length > 0;
+}
+
+function detectAnalysisIntent(promptText) {
+    if (!promptText) {
+        return false;
+    }
+    var text = String(promptText).toLowerCase();
+    return /(\banaly[sz]e\b|\banalysis\b|\breport\b|\bsummarize\b|\bsummary\b|\bdiagnos(?:e|is)\b|\binsight\b|\bfindings\b|분석|리포트|보고서|요약|진단|통계|이상\s*징후)/i.test(text);
+}
+
+function buildEvidenceGatePrompt() {
+    return [
+        'Evidence-first retry:',
+        'This request requires executed evidence before the final report.',
+        'Start your next response with a runnable fence (`jsh-sql` or `jsh-run`).',
+        'Do not provide the final report yet.',
+        'Prefer a short bounded `jsh-sql` verification query first.',
+    ].join('\n');
+}
+
+function _collectEvidenceTokens(executionSummary, options) {
+    var opts = options || {};
+    var maxNumbers = Number(opts.maxNumbers || 8);
+    if (!Number.isFinite(maxNumbers) || maxNumbers < 1) {
+        maxNumbers = 8;
+    }
+    var text = String(executionSummary || '');
+    var tokens = [];
+    var seen = {};
+    var numberRe = /\b\d+(?:\.\d+)?\b/g;
+    var match;
+    while ((match = numberRe.exec(text)) !== null) {
+        var token = match[0];
+        if (!seen[token]) {
+            seen[token] = true;
+            tokens.push(token);
+            if (tokens.length >= maxNumbers) {
+                break;
+            }
+        }
+    }
+    return tokens;
+}
+
+function _collectEvidenceHints(evidence, options) {
+    var opts = options || {};
+    var maxHints = Number(opts.maxHints || 8);
+    if (!Number.isFinite(maxHints) || maxHints < 1) {
+        maxHints = 8;
+    }
+    var hints = [];
+    var seen = {};
+    var items = Array.isArray(evidence) ? evidence : [];
+    for (var i = 0; i < items.length && hints.length < maxHints; i++) {
+        var item = items[i] || {};
+        if (item.kind === 'sql') {
+            if (item.rowCount !== undefined && item.rowCount !== null) {
+                var rowCountText = String(item.rowCount);
+                if (!seen[rowCountText]) {
+                    seen[rowCountText] = true;
+                    hints.push(rowCountText);
+                    if (hints.length >= maxHints) {
+                        break;
+                    }
+                }
+            }
+            var columns = Array.isArray(item.columns) ? item.columns : [];
+            for (var c = 0; c < columns.length && hints.length < maxHints; c++) {
+                var col = String(columns[c] || '').trim();
+                if (col && !seen[col]) {
+                    seen[col] = true;
+                    hints.push(col);
+                }
+            }
+            var rows = Array.isArray(item.rows) ? item.rows : [];
+            for (var r = 0; r < rows.length && hints.length < maxHints; r++) {
+                var row = rows[r] || {};
+                var keys = Object.keys(row);
+                for (var k = 0; k < keys.length && hints.length < maxHints; k++) {
+                    var value = row[keys[k]];
+                    if (typeof value === 'number' || typeof value === 'string') {
+                        var token = String(value);
+                        if (token && !seen[token]) {
+                            seen[token] = true;
+                            hints.push(token);
+                        }
+                    }
+                }
+            }
+            var rendered = String(item.rendered || '');
+            var numbers = rendered.match(/\b\d+(?:\.\d+)?\b/g) || [];
+            for (var rn = 0; rn < numbers.length && hints.length < maxHints; rn++) {
+                var numToken = String(numbers[rn] || '');
+                if (numToken && !seen[numToken]) {
+                    seen[numToken] = true;
+                    hints.push(numToken);
+                }
+            }
+            continue;
+        }
+        if (item.kind === 'viz') {
+            var vizTokens = [item.renderer, item.mode];
+            for (var vt = 0; vt < vizTokens.length && hints.length < maxHints; vt++) {
+                var one = String(vizTokens[vt] || '').trim();
+                if (one && !seen[one]) {
+                    seen[one] = true;
+                    hints.push(one);
+                }
+            }
+        }
+    }
+    return hints;
+}
+
+function buildGroundedReportPrompt(evidence, options) {
+    var opts = options || {};
+    var evidenceTokens = _collectEvidenceHints(evidence, { maxHints: opts.maxHints || 8 });
+    var lines = [
+        'Grounded report retry:',
+        'Write the report from the executed evidence only.',
+        'Explicitly cite the observed values, counts, ranges, aggregates, or render outputs from the immediately preceding execution results.',
+        'Do not ask the user to run queries manually.',
+        'Do not provide unsupported generic conclusions.',
+    ];
+    if (evidenceTokens.length > 0) {
+        lines.push('Observed value hints: ' + evidenceTokens.join(', '));
+    }
+    return lines.join('\n');
+}
+
+function detectUngroundedReport(responseText, evidence, options) {
+    if (!responseText || !evidence || !Array.isArray(evidence) || evidence.length === 0) {
+        return false;
+    }
+    if (hasRunnableFence(responseText)) {
+        return false;
+    }
+    var opts = options || {};
+    var minResponseLength = Number(opts.minResponseLength || 40);
+    if (!Number.isFinite(minResponseLength) || minResponseLength < 1) {
+        minResponseLength = 40;
+    }
+    var response = String(responseText || '');
+    if (response.trim().length < minResponseLength) {
+        return false;
+    }
+    if (/blocked|cannot execute|execution is impossible|unable to execute|실행할 수 없|차단되었|불가능/.test(response.toLowerCase())) {
+        return false;
+    }
+    if (/run (these|this) quer(?:y|ies)|paste (the )?result|share the result|쿼리를 실행|결과를 붙여넣|결과를 공유/.test(response.toLowerCase())) {
+        return true;
+    }
+
+    var evidenceTokens = _collectEvidenceHints(evidence, { maxHints: opts.maxHints || 8 });
+    if (evidenceTokens.length > 0) {
+        for (var i = 0; i < evidenceTokens.length; i++) {
+            if (response.indexOf(evidenceTokens[i]) >= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    for (var j = 0; j < evidence.length; j++) {
+        if (evidence[j] && evidence[j].kind === 'viz') {
+            if (/render|chart|plot|series|blocks|lines|시각화|차트|그래프/.test(response.toLowerCase())) {
+                return false;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Format an array of AgentRenderer result objects into a human-readable string.
  * Used to produce the tool-result message inserted into conversation history.
@@ -498,6 +869,8 @@ function formatResults(results) {
         var r = results[i];
         if (!r.ok) {
             lines.push('Error: ' + r.error);
+        } else if (isSqlEvidence(r.value)) {
+            lines.push(String(r.value.rendered || '(no rows)'));
         } else if (isRenderEnvelope(r.value)) {
             var env = r.value;
             var rendererName = String(env.renderer || 'viz.tui');
@@ -529,11 +902,22 @@ function formatResults(results) {
 
 module.exports = {
     extractCodeBlocks,
+    extractRunnableCandidates,
+    tryPromotePlainSqlBlock,
+    tryPromotePlainJsBlock,
+    hasRunnableFence,
+    detectAnalysisIntent,
+    buildEvidenceGatePrompt,
+    buildGroundedReportPrompt,
+    detectUngroundedReport,
     executeJsh,
     executeBlock,
     formatResults,
+    isSqlEvidence,
     isRenderEnvelope,
     collectRenderEnvelopes,
+    collectExecutionEvidence,
+    formatEvidencePrompt,
     collectEditStats,
     extractErrorLocation,
     collectErrorDiagnostics,

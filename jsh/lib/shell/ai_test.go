@@ -2108,6 +2108,78 @@ func TestAIExecutorExtractCodeBlocks_MixedRunnableFenceTypes(t *testing.T) {
 	}
 }
 
+func TestAIExecutorExtractRunnableCandidatesPromotesSafePlainFences(t *testing.T) {
+	rt := goja.New()
+	module := rt.NewObject()
+	exports := rt.NewObject()
+	if err := module.Set("exports", exports); err != nil {
+		t.Fatalf("module.exports setup failed: %v", err)
+	}
+	if err := rt.Set("module", module); err != nil {
+		t.Fatalf("module setup failed: %v", err)
+	}
+	if err := rt.Set("exports", exports); err != nil {
+		t.Fatalf("exports setup failed: %v", err)
+	}
+	if err := rt.Set("require", makeExtractTestRequire(rt)); err != nil {
+		t.Fatalf("require setup failed: %v", err)
+	}
+
+	if _, err := rt.RunString(string(aiExecutorJS)); err != nil {
+		t.Fatalf("loading ai_executor.js failed: %v", err)
+	}
+
+	exportsObj := module.Get("exports").ToObject(rt)
+	extractVal := exportsObj.Get("extractRunnableCandidates")
+	extractFn, ok := goja.AssertFunction(extractVal)
+	if !ok {
+		t.Fatal("extractRunnableCandidates export is not a function")
+	}
+
+	text := strings.Join([]string{
+		"```sql",
+		"SELECT COUNT(*) AS CNT FROM example LIMIT 1",
+		"```",
+		"",
+		"```javascript",
+		"(function () {",
+		"  const row = agent.db.queryRow('SELECT COUNT(*) AS CNT FROM example');",
+		"  console.println(String(row.CNT));",
+		"}());",
+		"```",
+	}, "\n")
+
+	result, err := extractFn(goja.Undefined(), rt.ToValue(text), rt.ToValue(map[string]any{
+		"autoRepair": true,
+	}))
+	if err != nil {
+		t.Fatalf("extractRunnableCandidates() failed: %v", err)
+	}
+
+	blocks, ok := result.Export().([]any)
+	if !ok {
+		t.Fatalf("unexpected extractRunnableCandidates() result type: %T", result.Export())
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("extractRunnableCandidates() returned %d blocks, want 2", len(blocks))
+	}
+
+	first, ok := blocks[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected first block type: %T", blocks[0])
+	}
+	second, ok := blocks[1].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected second block type: %T", blocks[1])
+	}
+	if first["lang"] != "jsh-sql" || first["promoted"] != true {
+		t.Fatalf("first promoted block = %#v, want jsh-sql promoted", first)
+	}
+	if second["lang"] != "jsh-run" || second["promoted"] != true {
+		t.Fatalf("second promoted block = %#v, want jsh-run promoted", second)
+	}
+}
+
 // ── Prompt segment content tests ─────────────────────────────────────────────
 // These tests load the real embedded prompt files to ensure required content
 // is present after edits.
@@ -2142,6 +2214,8 @@ func TestAgentApiSegmentIncludesFsExecDiagnostics(t *testing.T) {
 		"## `agent.fs`",
 		"## `agent.exec`",
 		"## `agent.diagnostics`",
+		"agent.analysis.timeseries.summary",
+		"agent.analysis.report.grounding",
 		"agent.fs.patch",
 		"agent.exec.run",
 		"agent.diagnostics.fromOutput",
@@ -2164,6 +2238,28 @@ func TestJshRuntimeSegmentIncludesCodeOutputPolicy(t *testing.T) {
 		"agent.diagnostics.fromOutput",
 	} {
 		if !strings.Contains(content, want) {
+			t.Errorf("jsh-runtime segment missing expected text %q", want)
+		}
+	}
+}
+
+func TestAnalysisSegmentsIncludeEvidenceAndGroundedRetryRules(t *testing.T) {
+	agentContent := loadRealSegment(t, "agent-api")
+	for _, want := range []string{
+		"evidence-first mode",
+		"grounded report",
+	} {
+		if !strings.Contains(agentContent, want) {
+			t.Errorf("agent-api segment missing expected text %q", want)
+		}
+	}
+
+	runtimeContent := loadRealSegment(t, "jsh-runtime")
+	for _, want := range []string{
+		"evidence-first retry",
+		"grounded report retry",
+	} {
+		if !strings.Contains(runtimeContent, want) {
 			t.Errorf("jsh-runtime segment missing expected text %q", want)
 		}
 	}

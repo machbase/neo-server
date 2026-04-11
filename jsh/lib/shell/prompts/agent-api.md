@@ -333,6 +333,8 @@ When the user asks for **analysis, diagnosis, or a report based on data**, follo
 6. In the final report, quote the observed values, counts, ranges, or aggregates returned by the immediately preceding execution results.
 7. Do not close with a generic summary that is not tied to executed evidence.
 8. Do not ask the user to run those queries manually or to paste execution results when harness execution is available.
+9. If your first response does not start with a runnable fence, the harness may ask you to retry in evidence-first mode.
+10. If your final report does not cite the executed evidence, the harness may ask you to rewrite it as a grounded report.
 
 For browser or websocket clients, prefer this sequence:
 1. `jsh-sql` for short verification queries.
@@ -365,6 +367,11 @@ Use the runnable fence that best matches the requested task:
 - `jsh-shell`: simple shell command work (for example `ls`, `cat`, `pwd`, `wc`, `head`, `tail`)
 - `jsh-sql`: direct SQL statement execution with compact box-formatted output
 - `jsh-run`: multi-step JavaScript logic, agent API orchestration, data shaping, visualization, or any custom control flow
+
+For repeated report-style analysis, you may use:
+
+- `agent.analysis.timeseries.summary(rowsOrResult, { x?, y? })` for structured time-series statistics
+- `agent.analysis.report.grounding(evidence)` for report grounding highlights from structured evidence
 
 For data-analysis tasks, prefer `jsh-sql` first for compact inspection, then `jsh-run` for derived analysis only when needed.
 

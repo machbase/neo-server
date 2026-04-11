@@ -1690,6 +1690,196 @@ class AgentDiagnosticsHelper {
     }
 }
 
+function _coerceRowsInput(input) {
+    if (Array.isArray(input)) {
+        return input;
+    }
+    if (_isPlainObject(input) && Array.isArray(input.rows)) {
+        return input.rows;
+    }
+    throw new Error('agent.analysis: input must be an array of rows or { rows:[...] }');
+}
+
+function _resolveAnalysisYField(rows, opts) {
+    const options = _isPlainObject(opts) ? opts : {};
+    const explicit = options.y !== undefined && options.y !== null ? String(options.y).trim() : '';
+    if (explicit) {
+        return explicit;
+    }
+    const sample = rows[0] || {};
+    const keys = Object.keys(sample);
+    for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (typeof sample[key] === 'number') {
+            return key;
+        }
+    }
+    throw new Error('agent.analysis.timeseries.summary: no numeric y field found; specify options.y');
+}
+
+function _resolveAnalysisXField(rows, opts) {
+    const options = _isPlainObject(opts) ? opts : {};
+    const explicit = options.x !== undefined && options.x !== null ? String(options.x).trim() : '';
+    if (explicit) {
+        return explicit;
+    }
+    const sample = rows[0] || {};
+    const keys = Object.keys(sample);
+    const preferred = ['TIME', 'time', 'ts', 'timestamp', 'TIMESTAMP'];
+    for (let i = 0; i < preferred.length; i++) {
+        if (sample[preferred[i]] !== undefined) {
+            return preferred[i];
+        }
+    }
+    for (let j = 0; j < keys.length; j++) {
+        if (sample[keys[j]] instanceof Date) {
+            return keys[j];
+        }
+    }
+    return '';
+}
+
+function _coerceTimeValue(value) {
+    if (value instanceof Date) {
+        return value.getTime();
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+        const n = Date.parse(value);
+        if (Number.isFinite(n)) {
+            return n;
+        }
+    }
+    return NaN;
+}
+
+class AgentAnalysisHelper {
+    timeseriesSummary(input, opts) {
+        const rows = _coerceRowsInput(input);
+        if (rows.length === 0) {
+            throw new Error('agent.analysis.timeseries.summary: rows must be non-empty');
+        }
+        const yField = _resolveAnalysisYField(rows, opts);
+        const xField = _resolveAnalysisXField(rows, opts);
+        const values = [];
+        const timeValues = [];
+        let min = Infinity;
+        let max = -Infinity;
+        let sum = 0;
+        let sumSq = 0;
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i] || {};
+            const value = Number(row[yField]);
+            if (!Number.isFinite(value)) {
+                continue;
+            }
+            values.push(value);
+            sum += value;
+            sumSq += value * value;
+            if (value < min) { min = value; }
+            if (value > max) { max = value; }
+            if (xField) {
+                const tv = _coerceTimeValue(row[xField]);
+                if (Number.isFinite(tv)) {
+                    timeValues.push(tv);
+                }
+            }
+        }
+        if (values.length === 0) {
+            throw new Error('agent.analysis.timeseries.summary: no numeric samples found for the selected y field');
+        }
+        const count = values.length;
+        const avg = sum / count;
+        let varianceSum = 0;
+        let absPeak = 0;
+        for (let j = 0; j < values.length; j++) {
+            const v = values[j];
+            varianceSum += Math.pow(v - avg, 2);
+            if (Math.abs(v) > absPeak) {
+                absPeak = Math.abs(v);
+            }
+        }
+        const stddev = Math.sqrt(varianceSum / count);
+        const rms = Math.sqrt(sumSq / count);
+        const peakToPeak = max - min;
+        const crestFactor = rms > 0 ? absPeak / rms : 0;
+        let sampleInterval = null;
+        let timeRange = null;
+        if (timeValues.length >= 2) {
+            timeValues.sort(function(a, b) { return a - b; });
+            let diffSum = 0;
+            let diffCount = 0;
+            for (let k = 1; k < timeValues.length; k++) {
+                const diff = timeValues[k] - timeValues[k - 1];
+                if (Number.isFinite(diff) && diff >= 0) {
+                    diffSum += diff;
+                    diffCount += 1;
+                }
+            }
+            sampleInterval = diffCount > 0 ? diffSum / diffCount : null;
+            timeRange = {
+                start: new Date(timeValues[0]).toISOString(),
+                end: new Date(timeValues[timeValues.length - 1]).toISOString(),
+            };
+        }
+        return {
+            count: count,
+            xField: xField || null,
+            yField: yField,
+            min: min,
+            max: max,
+            avg: avg,
+            stddev: stddev,
+            rms: rms,
+            peakToPeak: peakToPeak,
+            crestFactor: crestFactor,
+            sampleInterval: sampleInterval,
+            timeRange: timeRange,
+        };
+    }
+
+    reportGrounding(evidence, opts) {
+        const options = _isPlainObject(opts) ? opts : {};
+        let maxItems = Math.floor(Number(options.maxItems !== undefined ? options.maxItems : 5));
+        if (!isFinite(maxItems) || maxItems < 1) { maxItems = 5; }
+        const items = Array.isArray(evidence) ? evidence : [];
+        const highlights = [];
+        for (let i = 0; i < items.length && highlights.length < maxItems; i++) {
+            const one = items[i] || {};
+            if (one.kind === 'sql') {
+                highlights.push({
+                    kind: 'sql',
+                    sql: one.sql || '',
+                    rowCount: one.rowCount || 0,
+                    columns: Array.isArray(one.columns) ? one.columns : [],
+                });
+                continue;
+            }
+            if (one.kind === 'viz') {
+                highlights.push({
+                    kind: 'viz',
+                    renderer: one.renderer || '',
+                    mode: one.mode || '',
+                });
+                continue;
+            }
+            if (one.kind === 'value') {
+                highlights.push({
+                    kind: 'value',
+                    valueType: one.valueType || '',
+                });
+            }
+        }
+        return {
+            count: highlights.length,
+            highlights: highlights,
+            instruction: 'Use these evidence highlights directly in the final report.',
+        };
+    }
+}
+
 // _extractErrorLocation — parse a single error message line into { path, line, col }.
 // Mirrors the logic in ai_executor.js extractErrorLocation for in-profile use.
 function _extractErrorLocation(errMsg) {
@@ -1846,6 +2036,10 @@ const _helpText = {
         '  agent.diagnostics.suggest(diags, opts?)   Build patch suggestion prompt from diagnostics array',
         '    opts.maxCount: max candidates (default 2)',
         '',
+        '  agent.analysis.timeseries.summary(input, opts?) Summarize numeric time-series rows',
+        '    opts.x: optional x/time field, opts.y: numeric value field',
+        '  agent.analysis.report.grounding(evidence, opts?) Build report grounding highlights',
+        '',
         '  agent.viz.render(spec[, options])        Render VIZSPEC for the current client context',
         '  agent.viz.blocks(spec[, options])        Render VIZSPEC as TUI blocks or raw vizspec',
         '  agent.viz.lines(spec[, options])         Render VIZSPEC as TUI lines or raw vizspec',
@@ -1870,6 +2064,7 @@ const _helpText = {
 const _fs = new AgentFsHelper();
 const _exec = new AgentExecHelper();
 const _diagnostics = new AgentDiagnosticsHelper();
+const _analysisHelper = new AgentAnalysisHelper();
 
 const agent = {
     db: _db,
@@ -1880,12 +2075,24 @@ const agent = {
     fs: _fs,
     exec: _exec,
     diagnostics: _diagnostics,
+    analysis: {
+        timeseries: {
+            summary: function (input, opts) {
+                return _analysisHelper.timeseriesSummary(input, opts);
+            },
+        },
+        report: {
+            grounding: function (evidence, opts) {
+                return _analysisHelper.reportGrounding(evidence, opts);
+            },
+        },
+    },
 
     runtime: {
         clientContext: _clientContext,
         // capabilities() — list allowed operation categories for this profile.
         capabilities: function () {
-            const caps = ['db.read', 'db.schema', 'fs.read', 'exec.run', 'diagnostics'];
+            const caps = ['db.read', 'db.schema', 'fs.read', 'exec.run', 'diagnostics', 'analysis'];
             if (!_readOnly) { caps.push('db.write'); }
             if (!_readOnly) {
                 caps.push('fs.write');

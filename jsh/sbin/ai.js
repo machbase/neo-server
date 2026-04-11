@@ -12,7 +12,7 @@ const { ReadLine } = require('readline');
 const pretty = require('pretty');
 const { ai } = require('@jsh/shell');
 const { buildSystemPrompt, listSegments } = require('ai/prompt');
-const { extractCodeBlocks, executeBlock, formatResults, isRenderEnvelope, collectEditStats, extractErrorLocation, collectErrorDiagnostics, formatDiagnosticsPrompt, buildPatchGuardrailPrompt, buildAutoPatchSuggestionPrompt, detectPatchFirstViolation } = require('ai/executor');
+const { extractRunnableCandidates, hasRunnableFence, detectAnalysisIntent, buildEvidenceGatePrompt, buildGroundedReportPrompt, detectUngroundedReport, executeBlock, formatResults, isSqlEvidence, isRenderEnvelope, collectExecutionEvidence, formatEvidencePrompt, collectEditStats, extractErrorLocation, collectErrorDiagnostics, formatDiagnosticsPrompt, buildPatchGuardrailPrompt, buildAutoPatchSuggestionPrompt, detectPatchFirstViolation } = require('ai/executor');
 const { saveTranscript } = require('ai/transcript');
 
 // ─── CLI options ──────────────────────────────────────────────────────────────
@@ -133,6 +133,11 @@ var sessionMetrics = {
     patchOps: 0,
     executedBlocks: 0,
     execElapsedMs: 0,
+    analysisIntentTurns: 0,
+    evidenceGateRetryCount: 0,
+    groundedReportRetryCount: 0,
+    groundedCitationPassCount: 0,
+    autoRepairCount: 0,
 };
 var activeSegments = (cfg.prompt && cfg.prompt.segments)
     ? cfg.prompt.segments.slice()
@@ -149,6 +154,11 @@ function resetSessionMetrics() {
     sessionMetrics.patchOps = 0;
     sessionMetrics.executedBlocks = 0;
     sessionMetrics.execElapsedMs = 0;
+    sessionMetrics.analysisIntentTurns = 0;
+    sessionMetrics.evidenceGateRetryCount = 0;
+    sessionMetrics.groundedReportRetryCount = 0;
+    sessionMetrics.groundedCitationPassCount = 0;
+    sessionMetrics.autoRepairCount = 0;
 }
 
 function recordStreamMetrics(streamResult) {
@@ -182,7 +192,12 @@ function printSessionMetrics() {
     console.println('  exec ops: ' + sessionMetrics.execOps + ' (run=' + sessionMetrics.runOps + ' create=' + sessionMetrics.createOps + ' patch=' + sessionMetrics.patchOps + ')');
     console.println('  executed blocks: ' + sessionMetrics.executedBlocks);
     console.println('  exec elapsed: ' + sessionMetrics.execElapsedMs + 'ms');
+    console.println('  analysis intent turns: ' + sessionMetrics.analysisIntentTurns);
+    console.println('  evidence gate retries: ' + sessionMetrics.evidenceGateRetryCount);
+    console.println('  grounded report retries: ' + sessionMetrics.groundedReportRetryCount + ' / pass: ' + sessionMetrics.groundedCitationPassCount);
+    console.println('  auto repairs: ' + sessionMetrics.autoRepairCount);
 }
+
 
 function systemPrompt() {
     return buildSystemPrompt(activeSegments);
@@ -548,21 +563,25 @@ function printCodeBlock(code, lang) {
 }
 
 // Ask the user whether to execute a runnable block.
-// Returns 'yes', 'no', or 'all' (execute this and all following blocks).
+// Returns 'yes', 'no', 'all' (execute this and all following blocks), or 'cancel'.
 function promptExec(confirmRL, lang) {
-    var answer;
-    try {
-        answer = confirmRL.readLine({
-            prompt: function () { return YELLOW + 'Execute this ' + lang + ' block? [y/N/a(ll)] ' + RESET; }
-        });
-    } catch (e) {
-        return 'no';
+    while (true) {
+        var answer;
+        try {
+            answer = confirmRL.readLine({
+                prompt: function () { return YELLOW + 'Execute this ' + lang + ' block? [y/n/a(ll)/c(ancel)] ' + RESET; }
+            });
+        } catch (e) {
+            return 'cancel';
+        }
+        if (answer === null || answer === undefined) { return 'cancel'; }
+        answer = answer.trim().toLowerCase();
+        if (answer === 'y' || answer === 'yes') { return 'yes'; }
+        if (answer === 'n' || answer === 'no') { return 'no'; }
+        if (answer === 'a' || answer === 'all') { return 'all'; }
+        if (answer === 'c' || answer === 'cancel') { return 'cancel'; }
+        printInfo('Invalid input. Use y, n, a, or c.');
     }
-    if (answer === null || answer === undefined) { return 'no'; }
-    answer = answer.trim().toLowerCase();
-    if (answer === 'y' || answer === 'yes') { return 'yes'; }
-    if (answer === 'a' || answer === 'all') { return 'all'; }
-    return 'no';
 }
 
 // Run all confirmed runnable blocks from an LLM response.
@@ -574,7 +593,7 @@ function promptExec(confirmRL, lang) {
 // @param {string} responseText   full LLM response text
 // @returns {{summary: string, editStats: object, diagnostics: object[], executedCount: number}|null}
 function handleCodeBlocks(responseText) {
-    var blocks = extractCodeBlocks(responseText);
+    var blocks = extractRunnableCandidates(responseText, { autoRepair: true });
     if (blocks.length === 0) { return null; }
 
     if (values.noExec) {
@@ -590,6 +609,7 @@ function handleCodeBlocks(responseText) {
     var execAll = false;
     var allOutput = [];
     var allResults = [];
+    var allEvidence = [];
     var executedCount = 0;
     var accElapsedMs = 0;
 
@@ -601,11 +621,19 @@ function handleCodeBlocks(responseText) {
             // Showing it again in a box would be redundant — show a compact summary instead.
             console.println('');
             printInfo('[Runnable block ' + (i + 1) + '/' + blocks.length + '] ' + block.lang + ' · ' + lineCount + ' lines');
+            if (block.promoted) {
+                sessionMetrics.autoRepairCount += 1;
+                printInfo('[Auto-repair] promoted plain ' + block.promotedFrom + ' fence to ' + block.lang + '.');
+            }
 
             var decision = execAll ? 'yes' : promptExec(confirmRL, block.lang);
             if (decision === 'all') {
                 execAll = true;
                 decision = 'yes';
+            }
+            if (decision === 'cancel') {
+                printInfo('Cancelled execution flow.');
+                break;
             }
             if (decision !== 'yes') {
                 printInfo('Skipped.');
@@ -616,6 +644,7 @@ function handleCodeBlocks(responseText) {
             var results = executeBlock(block, execOpts);
             executedCount++;
             allResults = allResults.concat(results);
+            allEvidence = allEvidence.concat(collectExecutionEvidence(results, block));
 
             // Print execution results to the user.
             var hadError = false;
@@ -630,6 +659,11 @@ function handleCodeBlocks(responseText) {
                     // Only shown to the user when verbose mode is on; always sent to LLM.
                     if (verboseExec) {
                         console.println(String(r.value));
+                    }
+                } else if (isSqlEvidence(r.value)) {
+                    console.println(String(r.value.rendered || '(no rows)'));
+                    if (r.value.truncated) {
+                        printInfo('[output truncated]');
                     }
                 } else if (isRenderEnvelope(r.value)) {
                     if (!renderAgentEnvelope(r.value)) {
@@ -664,11 +698,15 @@ function handleCodeBlocks(responseText) {
 
     var editStats = collectEditStats(allResults);
     var diagnostics = collectErrorDiagnostics(allResults, { contextLines: 2 });
+    var evidence = allEvidence;
+    var evidencePrompt = formatEvidencePrompt(evidence, { maxItems: 3 });
 
     return {
         summary: 'Code execution results:\n\n' + allOutput.join('\n\n'),
         editStats: editStats,
         diagnostics: diagnostics,
+        evidence: evidence,
+        evidencePrompt: evidencePrompt,
         executedCount: executedCount,
         elapsedMs: accElapsedMs,
     };
@@ -963,6 +1001,15 @@ while (true) {
         continue;
     }
 
+    var turnState = {
+        analysisIntent: detectAnalysisIntent(line),
+        hasEvidence: false,
+    };
+
+    if (turnState.analysisIntent) {
+        sessionMetrics.analysisIntentTurns += 1;
+    }
+
     // User message — add to history and stream response
     history.push({ role: 'user', content: line });
 
@@ -997,6 +1044,24 @@ while (true) {
         history.push({ role: 'assistant', content: responseContent });
     }
 
+    if (turnState.analysisIntent && responseContent && extractRunnableCandidates(responseContent, { autoRepair: true }).length === 0) {
+        var evidenceGatePrompt = buildEvidenceGatePrompt();
+        history.push({ role: 'user', content: evidenceGatePrompt });
+        sessionMetrics.evidenceGateRetryCount += 1;
+        printInfo('[Evidence Gate] analysis/report request detected; requesting runnable evidence first.');
+
+        var evidenceRetryResult = streamAssistantReply();
+        var evidenceRetryContent = evidenceRetryResult.content;
+        var evidenceRetryErr = evidenceRetryResult.error;
+        if (evidenceRetryErr) {
+            printError(String(evidenceRetryErr));
+        } else if (evidenceRetryContent) {
+            recordStreamMetrics(evidenceRetryResult);
+            history.push({ role: 'assistant', content: evidenceRetryContent });
+            responseContent = evidenceRetryContent;
+        }
+    }
+
     // Detect jsh-run blocks, ask the user, and execute confirmed ones.
     // Loop: if the analysis response itself contains more code blocks, handle them too.
     var currentContent = responseContent;
@@ -1004,6 +1069,7 @@ while (true) {
         var execResult = handleCodeBlocks(currentContent);
         if (!execResult) { break; }
         recordExecMetrics(execResult);
+        turnState.hasEvidence = execResult.executedCount > 0;
 
         // Display execution metrics to user
         if (execResult.editStats && execResult.editStats.totalOps > 0) {
@@ -1027,6 +1093,11 @@ while (true) {
                 history.push({ role: 'user', content: patchSuggestionPrompt });
                 printInfo('[Patch Suggestion] attached minimal patch candidates for faster retry.');
             }
+        }
+
+        if (execResult.evidencePrompt) {
+            history.push({ role: 'user', content: execResult.evidencePrompt });
+            printInfo('[Evidence] attached structured execution evidence for grounded follow-up.');
         }
 
         // Ask LLM to interpret the results.
@@ -1065,6 +1136,33 @@ while (true) {
                 } else if (guardrailRetryErr) {
                     printError(String(guardrailRetryErr));
                 }
+            }
+        }
+
+        if (turnState.analysisIntent && turnState.hasEvidence) {
+            var needGroundedReportRetry = detectUngroundedReport(
+                analysisContent,
+                execResult.evidence,
+                { minResponseLength: 40, maxHints: 8 }
+            );
+            if (needGroundedReportRetry) {
+                var groundedReportPrompt = buildGroundedReportPrompt(execResult.evidence, { maxHints: 8 });
+                history.push({ role: 'user', content: groundedReportPrompt });
+                sessionMetrics.groundedReportRetryCount += 1;
+                printInfo('[Grounded Report] unsupported summary detected; requesting evidence-grounded rewrite...');
+
+                var groundedRetryResult = streamAssistantReply();
+                var groundedRetryContent = groundedRetryResult.content;
+                var groundedRetryErr = groundedRetryResult.error;
+                if (!groundedRetryErr && groundedRetryContent) {
+                    analysisContent = groundedRetryContent;
+                    recordStreamMetrics(groundedRetryResult);
+                } else if (groundedRetryErr) {
+                    printError(String(groundedRetryErr));
+                }
+            } else {
+                // Validation passed
+                sessionMetrics.groundedCitationPassCount += 1;
             }
         }
 

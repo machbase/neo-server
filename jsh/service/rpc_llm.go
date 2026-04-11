@@ -44,11 +44,16 @@ const (
 var llmFollowupTimeout = 30 * time.Second
 
 var llmRunnableBlockRe = regexp.MustCompile("(?is)```[ \\t]*(jsh-run|jsh-shell|jsh-sql)(?:[^\\r\\n`]*)\\r?\\n(.*?)```")
+var llmAnyFenceRe = regexp.MustCompile("(?is)```[ \\t]*([a-z0-9_-]+)(?:[^\\r\\n`]*)\\r?\\n(.*?)```")
+var llmEvidenceNumberRe = regexp.MustCompile(`\b\d+(?:\.\d+)?\b`)
+var llmAnalysisIntentRe = regexp.MustCompile(`(?i)(\banaly[sz]e\b|\banalysis\b|\breport\b|\bsummarize\b|\bsummary\b|\bdiagnos(?:e|is)\b|\binsight\b|\bfindings\b|분석|리포트|보고서|요약|진단|통계|이상\s*징후)`)
 
 type llmRunnableBlock struct {
 	Lang     string
 	Code     string
 	ExecCode string
+	Promoted bool
+	FromLang string
 }
 
 type llmEditStats struct {
@@ -64,6 +69,45 @@ type llmMutationSummary struct {
 	Path      string
 	StartLine int
 	EndLine   int
+}
+
+type llmStructuredEvidence struct {
+	Kind      string           `json:"kind"`
+	Source    map[string]any   `json:"source,omitempty"`
+	SQL       string           `json:"sql,omitempty"`
+	Columns   []string         `json:"columns,omitempty"`
+	Rows      []map[string]any `json:"rows,omitempty"`
+	RowCount  int              `json:"rowCount,omitempty"`
+	Truncated bool             `json:"truncated,omitempty"`
+	Rendered  string           `json:"rendered,omitempty"`
+	Renderer  string           `json:"renderer,omitempty"`
+	Mode      string           `json:"mode,omitempty"`
+	Meta      map[string]any   `json:"meta,omitempty"`
+	Text      string           `json:"text,omitempty"`
+	Value     any              `json:"value,omitempty"`
+	ValueType string           `json:"valueType,omitempty"`
+}
+
+type llmSessionMetrics struct {
+	AnalysisIntentTurns       int
+	EvidenceGateRetryCount    int
+	GroundedReportRetryCount  int
+	GroundedCitationPassCount int
+	AutoRepairCount           int
+}
+
+func newLLMSessionMetrics() *llmSessionMetrics {
+	return &llmSessionMetrics{
+		AnalysisIntentTurns:       0,
+		EvidenceGateRetryCount:    0,
+		GroundedReportRetryCount:  0,
+		GroundedCitationPassCount: 0,
+		AutoRepairCount:           0,
+	}
+}
+
+func detectLLMAnalysisIntent(text string) bool {
+	return llmAnalysisIntentRe.MatchString(strings.TrimSpace(text))
 }
 
 type llmSlashSaveCommand struct {
@@ -155,6 +199,7 @@ type llmSession struct {
 	TurnCancels   map[string]context.CancelFunc
 	TurnResponses map[string]llmTurnAskResponse
 	History       []shelllib.LLMChatMessage
+	Metrics       *llmSessionMetrics
 }
 
 var llmStreamFunc = shelllib.StreamLLM
@@ -503,6 +548,7 @@ func (ctl *Controller) rpcLLMSessionOpen(req llmSessionOpenRequest) (llmSessionO
 		TurnCancels:   map[string]context.CancelFunc{},
 		TurnResponses: map[string]llmTurnAskResponse{},
 		History:       []shelllib.LLMChatMessage{},
+		Metrics:       newLLMSessionMetrics(),
 	}
 	return llmSessionOpenResponse{
 		Created:      true,
@@ -569,6 +615,7 @@ func (ctl *Controller) rpcLLMSessionReset(req llmSessionResetRequest) (llmSessio
 		TurnCancels:   map[string]context.CancelFunc{},
 		TurnResponses: map[string]llmTurnAskResponse{},
 		History:       []shelllib.LLMChatMessage{},
+		Metrics:       newLLMSessionMetrics(),
 	}
 	return llmSessionResetResponse{Reset: true, SessionID: newID}, nil
 }
@@ -620,10 +667,16 @@ func (ctl *Controller) rpcLLMTurnAsk(ctx context.Context, req llmTurnAskRequest)
 	if sess.History == nil {
 		sess.History = []shelllib.LLMChatMessage{}
 	}
+	if sess.Metrics == nil {
+		sess.Metrics = newLLMSessionMetrics()
+	}
 	sess.LastActivity = now
 	sess.LastTurnID = req.TurnID
 	sess.TurnStatus[req.TurnID] = "in-flight"
 	sess.TurnResponses[req.TurnID] = llmTurnAskResponse{Accepted: true, Status: "streaming"}
+	if detectLLMAnalysisIntent(req.Payload.Text) {
+		sess.Metrics.AnalysisIntentTurns++
+	}
 
 	provider := sess.Provider
 	model := sess.Model
@@ -1129,7 +1182,19 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 	if strings.TrimSpace(fullText) == "" {
 		fullText = "(empty)"
 	}
-	completedBlocks, historyTail, editStats, retryCount := ctl.buildTurnCompletedBlocks(ctx, sessionID, turnID, traceID, streamReq, fullText, clientContext, policy)
+	completedBlocks, historyTail, editStats, retryCount, groundedRetryCount, groundedPassCount, autoRepairCount := ctl.buildTurnCompletedBlocks(ctx, sessionID, turnID, traceID, streamReq, fullText, clientContext, policy)
+
+	// Update session metrics with grounded report results
+	if groundedRetryCount > 0 || groundedPassCount > 0 || autoRepairCount > 0 {
+		ctl.llmMu.Lock()
+		if sess, ok := ctl.llmSessions[sessionID]; ok && sess.Metrics != nil {
+			sess.Metrics.GroundedReportRetryCount += groundedRetryCount
+			sess.Metrics.GroundedCitationPassCount += groundedPassCount
+			sess.Metrics.AutoRepairCount += autoRepairCount
+		}
+		ctl.llmMu.Unlock()
+	}
+
 	if len(historyTail) == 0 {
 		historyTail = []shelllib.LLMChatMessage{{Role: "assistant", Content: fullText}}
 	}
@@ -1154,6 +1219,31 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 		return
 	}
 
+	// Get current session metrics for turn.completed event
+	var sessionMetrics *llmSessionMetrics
+	ctl.llmMu.Lock()
+	if sess, ok := ctl.llmSessions[sessionID]; ok && sess.Metrics != nil {
+		// Create a copy to avoid data race
+		m := *sess.Metrics
+		sessionMetrics = &m
+	}
+	ctl.llmMu.Unlock()
+
+	metricsPayload := map[string]any{
+		"analysisIntentTurns":       0,
+		"evidenceGateRetryCount":    0,
+		"groundedReportRetryCount":  0,
+		"groundedCitationPassCount": 0,
+		"autoRepairCount":           0,
+	}
+	if sessionMetrics != nil {
+		metricsPayload["analysisIntentTurns"] = sessionMetrics.AnalysisIntentTurns
+		metricsPayload["evidenceGateRetryCount"] = sessionMetrics.EvidenceGateRetryCount
+		metricsPayload["groundedReportRetryCount"] = sessionMetrics.GroundedReportRetryCount
+		metricsPayload["groundedCitationPassCount"] = sessionMetrics.GroundedCitationPassCount
+		metricsPayload["autoRepairCount"] = sessionMetrics.AutoRepairCount
+	}
+
 	if !emitJsonRpcNotification(ctx, "llm.event", map[string]any{
 		"sessionId": sessionID,
 		"turnId":    turnID,
@@ -1172,6 +1262,7 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 			"blocks":     completedBlocks,
 			"editStats":  editStats,
 			"retryCount": retryCount,
+			"metrics":    metricsPayload,
 		},
 	}) {
 		ctl.finishLLMTurn(sessionID, turnID, "failed")
@@ -1181,12 +1272,15 @@ func (ctl *Controller) streamLLMSkeleton(ctx context.Context, sessionID string, 
 	ctl.finishLLMTurn(sessionID, turnID, "completed")
 }
 
-func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, initialText string, clientContext map[string]any, policy llmExecPolicy) ([]map[string]any, []shelllib.LLMChatMessage, map[string]any, int) {
+func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID string, turnID string, traceID string, streamReq shelllib.LLMStreamRequest, initialText string, clientContext map[string]any, policy llmExecPolicy) ([]map[string]any, []shelllib.LLMChatMessage, map[string]any, int, int, int, int) {
 	blocks := []map[string]any{{"type": "text", "text": initialText}}
 	historyTail := []shelllib.LLMChatMessage{}
 	currentText := initialText
 	editStats := newLLMEditStats()
 	retryCount := 0
+	groundedRetryCount := 0
+	groundedPassCount := 0
+	autoRepairCount := 0
 
 	for round := 0; round < policy.MaxRounds; round++ {
 		historyTail = append(historyTail, shelllib.LLMChatMessage{Role: "assistant", Content: currentText})
@@ -1207,6 +1301,7 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 
 		tabs := engine.FSTabs{{MountPoint: "/", FS: ctl.fs}}
 		summaries := make([]string, 0, len(runnable))
+		evidenceItems := make([]llmStructuredEvidence, 0, len(runnable))
 		for idx, block := range runnable {
 			startedStats := editStats.clone()
 			startedStats.recordRun(block.Lang)
@@ -1227,6 +1322,10 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				},
 			})
 			blocks = append(blocks, map[string]any{"type": "jsh", "lang": block.Lang, "code": block.Code})
+			if block.Promoted {
+				autoRepairCount++
+				blocks = append(blocks, map[string]any{"type": "text", "text": fmt.Sprintf("[Auto-repair] promoted plain %s fence to %s.", block.FromLang, block.Lang)})
+			}
 			rows, err := shelllib.ExecuteWithFSTabs(ctx, tabs, block.ExecCode, shelllib.Options{
 				ReadOnly:       policy.ReadOnly,
 				MaxRows:        policy.MaxRows,
@@ -1275,7 +1374,30 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 			if len(renderBlocks) > 0 {
 				blocks = append(blocks, renderBlocks...)
 			}
+			blockEvidence := collectLLMStructuredEvidence(rows, block)
+			if len(blockEvidence) == 0 {
+				switch block.Lang {
+				case "jsh-sql":
+					blockEvidence = append(blockEvidence, llmStructuredEvidence{
+						Kind:     "sql",
+						Source:   map[string]any{"lang": block.Lang, "promoted": block.Promoted, "promotedFrom": block.FromLang},
+						SQL:      block.Code,
+						Rendered: summary,
+					})
+				case "jsh-run", "jsh-shell":
+					blockEvidence = append(blockEvidence, llmStructuredEvidence{
+						Kind:      "value",
+						Source:    map[string]any{"lang": block.Lang, "promoted": block.Promoted, "promotedFrom": block.FromLang},
+						Value:     summary,
+						ValueType: "summary",
+					})
+				}
+			}
+			evidenceItems = append(evidenceItems, blockEvidence...)
 			blocks = append(blocks, map[string]any{"type": "text", "text": "Code execution results:\n" + summary})
+			if evidenceText := buildStructuredEvidencePrompt(blockEvidence); strings.TrimSpace(evidenceText) != "" {
+				blocks = append(blocks, map[string]any{"type": "text", "text": evidenceText})
+			}
 			if len(mutations) > 0 {
 				// Emit a dedicated mutation summary text block so generic clients can
 				// render file/line patch details without parsing mixed execution output.
@@ -1294,8 +1416,14 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 				execPayload["mutations"] = llmMutationsToPayload(mutations)
 				execPayload["mutationSummary"] = formatLLMMutationSummary(mutations)
 			}
+			if block.Promoted {
+				execPayload["autoRepair"] = map[string]any{"applied": true, "fromLang": block.FromLang, "lang": block.Lang}
+			}
 			if len(renderBlocks) > 0 {
 				execPayload["renders"] = renderBlocks
+			}
+			if len(blockEvidence) > 0 {
+				execPayload["evidence"] = llmEvidenceToPayload(blockEvidence)
 			}
 			emitJsonRpcNotification(ctx, "llm.event", map[string]any{
 				"sessionId": sessionID,
@@ -1313,6 +1441,9 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 			break
 		}
 		historyTail = append(historyTail, shelllib.LLMChatMessage{Role: "user", Content: execPrompt})
+		if evidencePrompt := buildStructuredEvidencePrompt(evidenceItems); strings.TrimSpace(evidencePrompt) != "" {
+			historyTail = append(historyTail, shelllib.LLMChatMessage{Role: "user", Content: evidencePrompt})
+		}
 
 		followReq := streamReq
 		followReq.Messages = make([]shelllib.LLMChatMessage, 0, len(streamReq.Messages)+len(historyTail))
@@ -1327,11 +1458,34 @@ func (ctl *Controller) buildTurnCompletedBlocks(ctx context.Context, sessionID s
 		if strings.TrimSpace(analysisText) == "" {
 			analysisText = "(empty)"
 		}
+		if detectLLMUngroundedReport(analysisText, evidenceItems) {
+			groundedRetryCount += 1
+			groundedPrompt := buildLLMGroundedReportPrompt(evidenceItems)
+			historyTail = append(historyTail, shelllib.LLMChatMessage{Role: "user", Content: groundedPrompt})
+			blocks = append(blocks, map[string]any{"type": "text", "text": "[Grounded Report] requesting evidence-grounded rewrite..."})
+
+			rewriteReq := streamReq
+			rewriteReq.Messages = make([]shelllib.LLMChatMessage, 0, len(streamReq.Messages)+len(historyTail))
+			rewriteReq.Messages = append(rewriteReq.Messages, streamReq.Messages...)
+			rewriteReq.Messages = append(rewriteReq.Messages, historyTail...)
+
+			rewriteText, rewriteErr := streamLLMToStringWithTimeout(ctx, rewriteReq, llmFollowupTimeout)
+			if rewriteErr != nil {
+				blocks = append(blocks, map[string]any{"type": "text", "text": "Grounded report retry error: " + rewriteErr.Error()})
+				break
+			}
+			if strings.TrimSpace(rewriteText) != "" {
+				analysisText = rewriteText
+			}
+		} else {
+			// Validation passed
+			groundedPassCount += 1
+		}
 		blocks = append(blocks, map[string]any{"type": "text", "text": analysisText})
 		currentText = analysisText
 	}
 
-	return blocks, historyTail, editStats.toMap(), retryCount
+	return blocks, historyTail, editStats.toMap(), retryCount, groundedRetryCount, groundedPassCount, autoRepairCount
 }
 
 func streamLLMToString(ctx context.Context, req shelllib.LLMStreamRequest) (string, error) {
@@ -1384,6 +1538,141 @@ func buildExecutionResultsPrompt(summaries []string) string {
 	return "Code execution results:\n\n" + strings.Join(parts, "\n\n")
 }
 
+func buildStructuredEvidencePrompt(items []llmStructuredEvidence) string {
+	if len(items) == 0 {
+		return ""
+	}
+	limited := items
+	if len(limited) > 3 {
+		limited = limited[:3]
+	}
+	raw, err := json.MarshalIndent(limited, "", "  ")
+	if err != nil {
+		return ""
+	}
+	text := string(raw)
+	if len(text) > llmExecPromptMaxChars {
+		text = truncateLLMExecPromptText(text, llmExecPromptMaxChars)
+	}
+	return "Structured execution evidence:\n```json\n" + text + "\n```"
+}
+
+func collectLLMEvidenceHints(items []llmStructuredEvidence, maxHints int) []string {
+	if maxHints <= 0 {
+		maxHints = 8
+	}
+	hints := make([]string, 0, maxHints)
+	seen := map[string]bool{}
+	add := func(token string) {
+		token = strings.TrimSpace(token)
+		if token == "" || seen[token] || len(hints) >= maxHints {
+			return
+		}
+		seen[token] = true
+		hints = append(hints, token)
+	}
+	for _, item := range items {
+		switch item.Kind {
+		case "sql":
+			if item.RowCount > 0 {
+				add(fmt.Sprintf("%d", item.RowCount))
+			}
+			for _, col := range item.Columns {
+				add(col)
+			}
+			for _, row := range item.Rows {
+				for _, v := range row {
+					switch one := v.(type) {
+					case string:
+						add(one)
+					case float64:
+						add(fmt.Sprintf("%v", one))
+					case int:
+						add(fmt.Sprintf("%d", one))
+					}
+				}
+			}
+			for _, token := range llmEvidenceNumberRe.FindAllString(item.Rendered, -1) {
+				add(token)
+			}
+		case "viz":
+			add(item.Renderer)
+			add(item.Mode)
+		}
+		if len(hints) >= maxHints {
+			break
+		}
+	}
+	return hints
+}
+
+func buildLLMGroundedReportPrompt(items []llmStructuredEvidence) string {
+	hints := collectLLMEvidenceHints(items, 8)
+	lines := []string{
+		"Grounded report retry:",
+		"Write the report from the executed evidence only.",
+		"Explicitly cite the observed values, counts, ranges, aggregates, or render outputs from the immediately preceding execution results.",
+		"Do not ask the user to run queries manually.",
+		"Do not provide unsupported generic conclusions.",
+	}
+	if len(hints) > 0 {
+		lines = append(lines, "Observed value hints: "+strings.Join(hints, ", "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func detectLLMUngroundedReport(responseText string, evidence []llmStructuredEvidence) bool {
+	resp := strings.TrimSpace(responseText)
+	if resp == "" || len(evidence) == 0 {
+		return false
+	}
+	if len(extractRunnableBlocks(resp)) > 0 {
+		return false
+	}
+	lowered := strings.ToLower(resp)
+	if strings.Contains(lowered, "blocked") ||
+		strings.Contains(lowered, "cannot execute") ||
+		strings.Contains(lowered, "execution is impossible") ||
+		strings.Contains(lowered, "unable to execute") ||
+		strings.Contains(lowered, "실행할 수 없") ||
+		strings.Contains(lowered, "차단되었") ||
+		strings.Contains(lowered, "불가능") {
+		return false
+	}
+	if strings.Contains(lowered, "run these quer") ||
+		strings.Contains(lowered, "run this query") ||
+		strings.Contains(lowered, "paste the result") ||
+		strings.Contains(lowered, "share the result") ||
+		strings.Contains(lowered, "쿼리를 실행") ||
+		strings.Contains(lowered, "결과를 붙여넣") ||
+		strings.Contains(lowered, "결과를 공유") {
+		return true
+	}
+	hints := collectLLMEvidenceHints(evidence, 8)
+	for _, hint := range hints {
+		if strings.Contains(resp, hint) {
+			return false
+		}
+	}
+	for _, item := range evidence {
+		if item.Kind == "viz" {
+			if strings.Contains(lowered, "render") ||
+				strings.Contains(lowered, "chart") ||
+				strings.Contains(lowered, "plot") ||
+				strings.Contains(lowered, "series") ||
+				strings.Contains(lowered, "blocks") ||
+				strings.Contains(lowered, "lines") ||
+				strings.Contains(lowered, "시각화") ||
+				strings.Contains(lowered, "차트") ||
+				strings.Contains(lowered, "그래프") {
+				return false
+			}
+			return true
+		}
+	}
+	return len(hints) > 0
+}
+
 func truncateLLMExecPromptText(text string, limit int) string {
 	trimmed := strings.TrimSpace(text)
 	if limit <= 0 || len(trimmed) <= limit {
@@ -1398,9 +1687,6 @@ func truncateLLMExecPromptText(text string, limit int) string {
 
 func extractRunnableBlocks(text string) []llmRunnableBlock {
 	matches := llmRunnableBlockRe.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 {
-		return nil
-	}
 	out := make([]llmRunnableBlock, 0, len(matches))
 	for _, m := range matches {
 		if len(m) < 3 {
@@ -1418,9 +1704,91 @@ func extractRunnableBlocks(text string) []llmRunnableBlock {
 		out = append(out, llmRunnableBlock{Lang: lang, Code: code, ExecCode: execCode})
 	}
 	if len(out) == 0 {
+		for _, block := range tryPromoteRunnableBlocks(text) {
+			out = append(out, block)
+		}
+	}
+	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func tryPromoteRunnableBlocks(text string) []llmRunnableBlock {
+	matches := llmAnyFenceRe.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	out := make([]llmRunnableBlock, 0, len(matches))
+	for _, m := range matches {
+		if len(m) < 3 {
+			continue
+		}
+		lang := strings.TrimSpace(strings.ToLower(m[1]))
+		code := strings.TrimSpace(m[2])
+		if code == "" {
+			continue
+		}
+		if promoted, ok := tryPromotePlainSQLBlock(lang, code); ok {
+			out = append(out, promoted)
+			continue
+		}
+		if promoted, ok := tryPromotePlainJSBlock(lang, code); ok {
+			out = append(out, promoted)
+			continue
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func tryPromotePlainSQLBlock(lang string, code string) (llmRunnableBlock, bool) {
+	if lang != "sql" {
+		return llmRunnableBlock{}, false
+	}
+	text := strings.TrimSpace(code)
+	if text == "" || strings.Contains(text, ";") {
+		return llmRunnableBlock{}, false
+	}
+	if !regexp.MustCompile(`(?i)^(select|show|describe|desc|explain)\b`).MatchString(text) {
+		return llmRunnableBlock{}, false
+	}
+	return llmRunnableBlock{
+		Lang:     "jsh-sql",
+		Code:     text,
+		ExecCode: buildRunnableExecCode("jsh-sql", text),
+		Promoted: true,
+		FromLang: lang,
+	}, true
+}
+
+func tryPromotePlainJSBlock(lang string, code string) (llmRunnableBlock, bool) {
+	if lang != "js" && lang != "javascript" {
+		return llmRunnableBlock{}, false
+	}
+	text := strings.TrimSpace(code)
+	if text == "" || strings.Count(text, "\n") > 40 {
+		return llmRunnableBlock{}, false
+	}
+	if !strings.Contains(text, "agent.") {
+		return llmRunnableBlock{}, false
+	}
+	if strings.Contains(text, "process.exec") ||
+		strings.Contains(text, "agent.exec.run") ||
+		strings.Contains(text, "agent.fs.write") ||
+		strings.Contains(text, "agent.fs.patch") ||
+		strings.Contains(text, "agent.db.exec") {
+		return llmRunnableBlock{}, false
+	}
+	return llmRunnableBlock{
+		Lang:     "jsh-run",
+		Code:     text,
+		ExecCode: buildRunnableExecCode("jsh-run", text),
+		Promoted: true,
+		FromLang: lang,
+	}, true
 }
 
 func buildRunnableExecCode(lang string, code string) string {
@@ -1466,7 +1834,7 @@ func buildRunnableExecCode(lang string, code string) string {
 			"    const box = pretty.Table({ rownum: false, footer: false, format: 'box' });",
 			"    const rows = (result && Array.isArray(result.rows)) ? result.rows : [];",
 			"    if (rows.length === 0) {",
-			"        return '(no rows)';",
+			"        return { __agentSql: true, schema: 'agent-sql/v1', sql: text, columns: [], rows: [], rowCount: 0, truncated: !!(result && result.truncated), rendered: '(no rows)' };",
 			"    }",
 			"    const columns = Object.keys(rows[0]);",
 			"    box.appendHeader(columns);",
@@ -1482,7 +1850,7 @@ func buildRunnableExecCode(lang string, code string) string {
 			"    if (result && result.truncated) {",
 			"        rendered += '\\n[truncated at ' + result.count + ' rows]';",
 			"    }",
-			"    return rendered;",
+			"    return { __agentSql: true, schema: 'agent-sql/v1', sql: text, columns: columns, rows: rows, rowCount: rows.length, truncated: !!(result && result.truncated), rendered: rendered };",
 			"}());",
 		}, "\n")
 	default:
@@ -1554,8 +1922,89 @@ func collectRenderEnvelopeBlocks(rows []shelllib.Result) []map[string]any {
 	return blocks
 }
 
+func collectLLMStructuredEvidence(rows []shelllib.Result, block llmRunnableBlock) []llmStructuredEvidence {
+	out := []llmStructuredEvidence{}
+	source := map[string]any{"lang": block.Lang}
+	if block.Promoted {
+		source["promoted"] = true
+		source["promotedFrom"] = block.FromLang
+	}
+	for _, row := range rows {
+		okVal, _ := row["ok"].(bool)
+		if !okVal {
+			continue
+		}
+		value, exists := row["value"]
+		if !exists || value == nil {
+			continue
+		}
+		vm, ok := toObjectMap(value)
+		if !ok {
+			continue
+		}
+		if isAgentSQLEvidence(vm) {
+			out = append(out, llmStructuredEvidence{
+				Kind:      "sql",
+				Source:    source,
+				SQL:       strings.TrimSpace(fmt.Sprint(vm["sql"])),
+				Columns:   toStringSlice(vm["columns"]),
+				Rows:      toRowMaps(vm["rows"]),
+				RowCount:  toInt(vm["rowCount"]),
+				Truncated: toBool(vm["truncated"]),
+				Rendered:  strings.TrimSpace(fmt.Sprint(vm["rendered"])),
+			})
+			continue
+		}
+		if isAgentRenderEnvelope(value) || isRawVizspec(value) {
+			meta, _ := vm["meta"].(map[string]any)
+			out = append(out, llmStructuredEvidence{
+				Kind:     "viz",
+				Source:   source,
+				Renderer: strings.TrimSpace(fmt.Sprint(vm["renderer"])),
+				Mode:     strings.TrimSpace(fmt.Sprint(vm["mode"])),
+				Meta:     meta,
+			})
+			continue
+		}
+		typeText, _ := row["type"].(string)
+		if typeText == "print" {
+			out = append(out, llmStructuredEvidence{
+				Kind:   "print",
+				Source: source,
+				Text:   fmt.Sprint(value),
+			})
+			continue
+		}
+		if typeText != "undefined" {
+			out = append(out, llmStructuredEvidence{
+				Kind:      "value",
+				Source:    source,
+				ValueType: typeText,
+				Value:     value,
+			})
+		}
+	}
+	return out
+}
+
+func llmEvidenceToPayload(items []llmStructuredEvidence) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		raw, err := json.Marshal(item)
+		if err != nil {
+			continue
+		}
+		var one map[string]any
+		if err := json.Unmarshal(raw, &one); err != nil {
+			continue
+		}
+		out = append(out, one)
+	}
+	return out
+}
+
 func isRawVizspec(value any) bool {
-	m, ok := value.(map[string]any)
+	m, ok := toObjectMap(value)
 	if !ok {
 		return false
 	}
@@ -1563,8 +2012,18 @@ func isRawVizspec(value any) bool {
 	return schema == "vizspec/v1" || schema == "advn/v1"
 }
 
+func isAgentSQLEvidence(value any) bool {
+	m, ok := toObjectMap(value)
+	if !ok {
+		return false
+	}
+	flag, _ := m["__agentSql"].(bool)
+	schema, _ := m["schema"].(string)
+	return flag && schema == "agent-sql/v1"
+}
+
 func isAgentRenderEnvelope(value any) bool {
-	m, ok := value.(map[string]any)
+	m, ok := toObjectMap(value)
 	if !ok {
 		return false
 	}
@@ -1720,6 +2179,62 @@ func toInt(v any) int {
 	default:
 		return 0
 	}
+}
+
+func toBool(v any) bool {
+	switch b := v.(type) {
+	case bool:
+		return b
+	default:
+		return false
+	}
+}
+
+func toStringSlice(v any) []string {
+	switch items := v.(type) {
+	case []string:
+		return items
+	case []any:
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			out = append(out, fmt.Sprint(item))
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func toRowMaps(v any) []map[string]any {
+	items, ok := v.([]any)
+	if !ok {
+		if rows, ok := v.([]map[string]any); ok {
+			return rows
+		}
+		return nil
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func toObjectMap(v any) (map[string]any, bool) {
+	if m, ok := v.(map[string]any); ok {
+		return m, true
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 func (ctl *Controller) nextLLMSeq(sessionID string) int64 {

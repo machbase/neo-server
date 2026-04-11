@@ -121,6 +121,8 @@ For requests that ask you to analyze data, diagnose a problem, or write a report
 6. In the final report, explicitly cite the executed row counts, timestamps, aggregates, or visualization outputs that support each conclusion.
 7. Do not finish with unsupported prose if those values are missing.
 8. When harness execution is available, do not ask the user to execute queries manually or provide result text.
+9. If the harness asks for an evidence-first retry, your next response must begin with a runnable fence.
+10. If the harness asks for a grounded report retry, rewrite the report so it explicitly cites the executed evidence.
 
 Plain markdown code blocks are explanatory only. They do not trigger the harness execution path.
 

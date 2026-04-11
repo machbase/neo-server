@@ -664,6 +664,157 @@ console.println(text.indexOf('minimal patch') >= 0 ? 'minimal-ok' : 'minimal-mis
 	}
 }
 
+func TestAIExecutorDetectAnalysisIntent(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const { detectAnalysisIntent } = require('ai/executor');
+
+console.println(detectAnalysisIntent('Analyze this sensor data and write a report.') ? 'english-ok' : 'english-missing');
+console.println(detectAnalysisIntent('signal 데이터를 분석해서 보고서를 작성해줘') ? 'korean-ok' : 'korean-missing');
+console.println(detectAnalysisIntent('List files in /work') ? 'list-bad' : 'list-ok');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("detectAnalysisIntent script failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"english-ok", "korean-ok", "list-ok"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("analysis intent check missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestAIExecutorBuildEvidenceGateAndGroundedReportPrompts(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const { buildEvidenceGatePrompt, buildGroundedReportPrompt } = require('ai/executor');
+
+const gateText = buildEvidenceGatePrompt();
+const groundedText = buildGroundedReportPrompt([
+  { kind: 'sql', rowCount: 128, columns: ['VALUE'], rows: [{ VALUE: 3.14 }] }
+]);
+
+console.println(gateText.indexOf('runnable fence') >= 0 ? 'gate-fence-ok' : 'gate-fence-missing');
+console.println(gateText.indexOf('jsh-sql') >= 0 ? 'gate-sql-ok' : 'gate-sql-missing');
+console.println(groundedText.indexOf('executed evidence') >= 0 ? 'grounded-header-ok' : 'grounded-header-missing');
+console.println(groundedText.indexOf('128') >= 0 ? 'grounded-token-ok' : 'grounded-token-missing');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("buildEvidenceGate/buildGroundedReportPrompt script failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"gate-fence-ok", "gate-sql-ok", "grounded-header-ok", "grounded-token-ok"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("evidence/grounded prompt check missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestAIExecutorDetectUngroundedReport(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const { detectUngroundedReport } = require('ai/executor');
+
+const evidence = [{ kind: 'sql', rowCount: 128, columns: ['VALUE'], rows: [{ VALUE: 3.14 }] }];
+const bad = 'The dataset looks stable overall and appears normal without any remarkable issue.';
+const good = 'The dataset includes 128 rows and the average value is 3.14, so the baseline looks stable.';
+const tick = String.fromCharCode(96);
+const fence = tick + tick + tick;
+const runnable = fence + 'jsh-sql\nSELECT COUNT(*) FROM example\n' + fence;
+
+console.println(detectUngroundedReport(bad, evidence) ? 'bad-ok' : 'bad-missing');
+console.println(detectUngroundedReport(good, evidence) ? 'good-bad' : 'good-ok');
+console.println(detectUngroundedReport(runnable, evidence) ? 'runnable-bad' : 'runnable-ok');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("detectUngroundedReport script failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"bad-ok", "good-ok", "runnable-ok"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("ungrounded report check missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestAIExecutorExtractRunnableCandidatesAutoRepair(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const { extractRunnableCandidates } = require('ai/executor');
+const tick = String.fromCharCode(96);
+const fence = tick + tick + tick;
+
+const sqlText = fence + 'sql\nSELECT COUNT(*) AS CNT FROM example LIMIT 1\n' + fence;
+const jsText = fence + 'javascript\n(function () {\n  const row = agent.db.queryRow("SELECT COUNT(*) AS CNT FROM example");\n  console.println(String(row.CNT));\n}());\n' + fence;
+const badSqlText = fence + 'sql\nDELETE FROM example\n' + fence;
+
+const sqlBlocks = extractRunnableCandidates(sqlText, { autoRepair: true });
+const jsBlocks = extractRunnableCandidates(jsText, { autoRepair: true });
+const badSqlBlocks = extractRunnableCandidates(badSqlText, { autoRepair: true });
+
+console.println(sqlBlocks.length === 1 && sqlBlocks[0].lang === 'jsh-sql' && sqlBlocks[0].promoted ? 'sql-ok' : 'sql-missing');
+console.println(jsBlocks.length === 1 && jsBlocks[0].lang === 'jsh-run' && jsBlocks[0].promoted ? 'js-ok' : 'js-missing');
+console.println(badSqlBlocks.length === 0 ? 'bad-sql-ok' : 'bad-sql-bad');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("extractRunnableCandidates auto-repair script failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"sql-ok", "js-ok", "bad-sql-ok"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("auto-repair candidate check missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestAIExecutorCollectExecutionEvidenceAndFormatPrompt(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const { collectExecutionEvidence, formatEvidencePrompt } = require('ai/executor');
+
+const sqlResults = [{
+  ok: true,
+  type: 'object',
+  value: {
+    __agentSql: true,
+    schema: 'agent-sql/v1',
+    sql: 'SELECT COUNT(*) AS CNT FROM example',
+    columns: ['CNT'],
+    rows: [{ CNT: 1 }],
+    rowCount: 1,
+    truncated: false,
+    rendered: 'CNT\n---\n1'
+  }
+}];
+const sqlEvidence = collectExecutionEvidence(sqlResults, { lang: 'jsh-sql' });
+const promptText = formatEvidencePrompt(sqlEvidence, { maxItems: 2 });
+
+console.println(sqlEvidence.length > 0 && sqlEvidence[0].kind === 'sql' ? 'sql-evidence-ok' : 'sql-evidence-missing');
+console.println(sqlEvidence[0].rowCount === 1 ? 'rowcount-ok' : 'rowcount-missing');
+console.println(promptText.indexOf('Structured execution evidence:') >= 0 ? 'prompt-header-ok' : 'prompt-header-missing');
+console.println(promptText.indexOf('"kind": "sql"') >= 0 ? 'prompt-kind-ok' : 'prompt-kind-missing');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("collectExecutionEvidence/formatEvidencePrompt script failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"sql-evidence-ok", "rowcount-ok", "prompt-header-ok", "prompt-kind-ok"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("execution evidence check missing %q:\n%s", want, output)
+		}
+	}
+}
+
 func TestAgentFsAndExecMVP(t *testing.T) {
 	workDir := t.TempDir()
 
@@ -1312,6 +1463,63 @@ console.println(joined.indexOf('diagnostics') >= 0 ? 'diag-ok' : 'diag-bad');
 	for _, want := range []string{"dryrun-ok", "no-write-ok", "diag-ok"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("capabilities readOnly check missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestAgentRuntimeCapabilitiesIncludesAnalysis(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const agent = require('repl/profiles/agent');
+const caps = agent.runtime.capabilities();
+console.println(caps.indexOf('analysis') >= 0 ? 'analysis-ok' : 'analysis-bad');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("analysis capabilities script failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "analysis-ok") {
+		t.Fatalf("analysis capability missing:\n%s", output)
+	}
+}
+
+func TestAgentAnalysisTimeseriesSummaryAndGrounding(t *testing.T) {
+	workDir := t.TempDir()
+
+	script := `
+const agent = require('repl/profiles/agent');
+
+const rows = [
+  { TIME: '2026-04-11T00:00:00Z', VALUE: 1.0 },
+  { TIME: '2026-04-11T00:00:01Z', VALUE: 2.0 },
+  { TIME: '2026-04-11T00:00:02Z', VALUE: 3.0 }
+];
+
+const summary = agent.analysis.timeseries.summary(rows, { x: 'TIME', y: 'VALUE' });
+const grounding = agent.analysis.report.grounding([
+  { kind: 'sql', sql: 'SELECT VALUE FROM example', rowCount: 3, columns: ['VALUE'] },
+  { kind: 'viz', renderer: 'viz.tui', mode: 'lines' }
+], { maxItems: 2 });
+
+console.println(summary.count === 3 ? 'count-ok' : 'count-bad');
+console.println(summary.min === 1 ? 'min-ok' : 'min-bad');
+console.println(summary.max === 3 ? 'max-ok' : 'max-bad');
+console.println(Math.abs(summary.avg - 2) < 0.0001 ? 'avg-ok' : 'avg-bad');
+console.println(summary.sampleInterval === 1000 ? 'interval-ok' : 'interval-bad:' + summary.sampleInterval);
+console.println(grounding.count === 2 ? 'grounding-count-ok' : 'grounding-count-bad');
+console.println(grounding.highlights[0].kind === 'sql' ? 'grounding-sql-ok' : 'grounding-sql-bad');
+console.println(grounding.highlights[1].kind === 'viz' ? 'grounding-viz-ok' : 'grounding-viz-bad');
+`
+
+	output, err := runScript(workDir, nil, script)
+	if err != nil {
+		t.Fatalf("analysis helper script failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"count-ok", "min-ok", "max-ok", "avg-ok", "interval-ok", "grounding-count-ok", "grounding-sql-ok", "grounding-viz-ok"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("analysis helper check missing %q:\n%s", want, output)
 		}
 	}
 }

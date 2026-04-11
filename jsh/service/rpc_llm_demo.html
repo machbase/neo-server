@@ -398,6 +398,90 @@
       overflow-wrap: anywhere;
     }
 
+    .evidence-card {
+      margin: 8px 0;
+      border: 1px solid #b9d8e8;
+      background: #f4fbff;
+      border-radius: 10px;
+      padding: 8px;
+    }
+
+    .evidence-card .label {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: #23516c;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    .evidence-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    .evidence-item {
+      border: 1px solid #d3e7f2;
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: #ffffff;
+    }
+
+    .evidence-meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .evidence-kind {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #23516c;
+      background: #dff2ff;
+      border: 1px solid #b9d8e8;
+      border-radius: 999px;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .evidence-pill {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: #2c5870;
+      background: #eef8ff;
+      border: 1px solid #d3e7f2;
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .evidence-main {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: #254052;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .evidence-details {
+      margin-top: 6px;
+    }
+
+    .evidence-details summary {
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: #41657c;
+    }
+
     .viz-host {
       margin-top: 8px;
       border: 1px solid #d5e2d5;
@@ -1211,6 +1295,93 @@
         target.appendChild(card);
       }
 
+      function appendEvidenceSummary(target, evidence) {
+        var items = Array.isArray(evidence) ? evidence : [];
+        if (items.length === 0) {
+          return;
+        }
+
+        var card = document.createElement("section");
+        card.className = "evidence-card";
+
+        var label = document.createElement("div");
+        label.className = "label";
+        label.textContent = "Structured Evidence";
+        card.appendChild(label);
+
+        var list = document.createElement("ul");
+        list.className = "evidence-list";
+
+        for (var i = 0; i < items.length; i++) {
+          var one = items[i] || {};
+          var li = document.createElement("li");
+          li.className = "evidence-item";
+
+          var meta = document.createElement("div");
+          meta.className = "evidence-meta";
+
+          var kind = document.createElement("div");
+          kind.className = "evidence-kind";
+          kind.textContent = String(one.kind || "evidence");
+          meta.appendChild(kind);
+
+          if (one.source && one.source.lang) {
+            var sourceLang = document.createElement("span");
+            sourceLang.className = "evidence-pill";
+            sourceLang.textContent = "lang=" + String(one.source.lang);
+            meta.appendChild(sourceLang);
+          }
+          if (one.source && one.source.promoted) {
+            var promoted = document.createElement("span");
+            promoted.className = "evidence-pill";
+            promoted.textContent = "auto-repair:" + String(one.source.promotedFrom || "?");
+            meta.appendChild(promoted);
+          }
+          li.appendChild(meta);
+
+          var main = document.createElement("div");
+          main.className = "evidence-main";
+          if (one.kind === "sql") {
+            var sqlText = String(one.sql || "").trim();
+            var rowCount = one.rowCount !== undefined && one.rowCount !== null ? String(one.rowCount) : "-";
+            var columns = Array.isArray(one.columns) ? one.columns.join(", ") : "";
+            var preview = "";
+            if (Array.isArray(one.rows) && one.rows.length > 0) {
+              try {
+                preview = JSON.stringify(one.rows[0], null, 2);
+              } catch (e) {
+                preview = String(one.rows[0]);
+              }
+            }
+            main.textContent = "sql: " + sqlText + "\nrows: " + rowCount + (columns ? "\ncolumns: " + columns : "") + (preview ? "\npreview: " + preview : "");
+          } else if (one.kind === "viz") {
+            main.textContent = "renderer: " + String(one.renderer || "-") + "\nmode: " + String(one.mode || "-");
+          } else if (one.kind === "print") {
+            main.textContent = String(one.text || "");
+          } else {
+            try {
+              main.textContent = JSON.stringify(one, null, 2);
+            } catch (e) {
+              main.textContent = String(one);
+            }
+          }
+          li.appendChild(main);
+
+          var details = document.createElement("details");
+          details.className = "evidence-details";
+          var summary = document.createElement("summary");
+          summary.textContent = "raw evidence";
+          details.appendChild(summary);
+          appendPre(details, "", JSON.stringify(one, null, 2));
+          li.appendChild(details);
+
+          list.appendChild(li);
+        }
+
+        card.appendChild(list);
+        target.appendChild(card);
+      }
+
       function parseLoginResponse(data) {
         if (!data || typeof data !== "object") {
           throw new Error("invalid login response");
@@ -1391,6 +1562,7 @@
                 renderVizspec(turn.view.body, renderBlockPayload.spec);
               }
             }
+            appendEvidenceSummary(turn.view.body, payload.evidence);
             setStatus(execLang + " execution completed", "ok");
           } else {
             setStatus(execLang + " execution failed", "err");
@@ -1415,6 +1587,14 @@
           }
           if (payload.latencyMs !== undefined) {
             appendPre(turn.view.body, "latencyMs", String(payload.latencyMs));
+          }
+          if (payload.metrics) {
+            var metricsText = "analysisIntentTurns: " + payload.metrics.analysisIntentTurns + "\n" +
+              "evidenceGateRetryCount: " + payload.metrics.evidenceGateRetryCount + "\n" +
+              "groundedReportRetryCount: " + payload.metrics.groundedReportRetryCount + "\n" +
+              "groundedCitationPassCount: " + payload.metrics.groundedCitationPassCount + "\n" +
+              "autoRepairCount: " + payload.metrics.autoRepairCount;
+            appendPre(turn.view.body, "metrics", metricsText);
           }
           setStatus("Turn completed", "ok");
           endThinking(turnId);
