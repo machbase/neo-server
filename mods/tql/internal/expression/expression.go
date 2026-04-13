@@ -46,9 +46,15 @@ func New(expression string) (*Expression, error) {
 // Similar to [New], except that instead of a string, an already-tokenized expression is given.
 // This is useful in cases where you may be generating an expression automatically, or using some other parser (e.g., to parse from a query language)
 func NewFromTokens(tokens []Token) (*Expression, error) {
+	return NewFromTokensWithExpression(tokens, "")
+}
+
+// Similar to [NewFromTokens], while preserving an explicit source expression string.
+func NewFromTokensWithExpression(tokens []Token, inputExpression string) (*Expression, error) {
 	var err error
 	ret := new(Expression)
 	ret.QueryDateFormat = isoDateFormat
+	ret.inputExpression = inputExpression
 
 	err = checkBalance(tokens)
 	if err != nil {
@@ -191,22 +197,26 @@ func (ee Expression) evaluateStage(stage *evaluationStage, parameters Parameters
 		if stage.typeCheck == nil {
 			err = typeCheck(stage.leftTypeCheck, left, stage.symbol, stage.typeErrorFormat)
 			if err != nil {
-				return nil, err
+				return nil, ee.wrapEvaluationError("type_check", stage, err)
 			}
 			err = typeCheck(stage.rightTypeCheck, right, stage.symbol, stage.typeErrorFormat)
 			if err != nil {
-				return nil, err
+				return nil, ee.wrapEvaluationError("type_check", stage, err)
 			}
 		} else {
 			// special case where the type check needs to know both sides to determine if the operator can handle it
 			if !stage.typeCheck(left, right) {
 				errorMsg := fmt.Sprintf(stage.typeErrorFormat, left, stage.symbol.String())
-				return nil, errors.New(errorMsg)
+				return nil, ee.wrapEvaluationError("type_check", stage, errors.New(errorMsg))
 			}
 		}
 	}
 
-	return stage.operator(left, right, parameters)
+	ret, err := stage.operator(left, right, parameters)
+	if err != nil {
+		return nil, ee.wrapEvaluationError("operator", stage, err)
+	}
+	return ret, nil
 }
 
 func typeCheck(check stageTypeCheck, value any, symbol OperatorSymbol, format string) error {
@@ -218,6 +228,19 @@ func typeCheck(check stageTypeCheck, value any, symbol OperatorSymbol, format st
 	}
 	errorMsg := fmt.Sprintf(format, value, symbol.String())
 	return errors.New(errorMsg)
+}
+
+func (ee Expression) wrapEvaluationError(kind string, stage *evaluationStage, cause error) error {
+	if cause == nil {
+		return nil
+	}
+	return &EvaluationError{
+		Kind:    kind,
+		Message: cause.Error(),
+		Span:    stage.span,
+		Expr:    ee.inputExpression,
+		Cause:   cause,
+	}
 }
 
 // Returns an array representing the Tokens that make up this expression.

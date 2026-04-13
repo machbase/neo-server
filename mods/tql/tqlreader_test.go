@@ -2,27 +2,14 @@ package tql
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func runTestReadLine(t *testing.T, code string, expect []Line) {
 	t.Helper()
-
-	timeCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-
-	output := &bytes.Buffer{}
-	logBuf := &bytes.Buffer{}
-
-	task := NewTaskContext(timeCtx)
-	task.SetOutputWriter(output)
-	task.SetLogWriter(logBuf)
-	task.SetConsoleLogLevel(ERROR)
 
 	buf := []string{}
 	src := strings.Split(code, "\n")
@@ -32,7 +19,7 @@ func runTestReadLine(t *testing.T, code string, expect []Line) {
 	}
 	code = strings.Join(buf, "\n")
 	reader := bytes.NewBufferString(code)
-	lines, err := readLines(task, reader)
+	lines, err := scanLines(reader, functions)
 	if err != nil {
 		t.Fail()
 		return

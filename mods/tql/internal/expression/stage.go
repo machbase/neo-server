@@ -1,7 +1,6 @@
 package expression
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -38,363 +37,247 @@ var stageSymbolMap = map[OperatorSymbol]evaluationOperator{
 	SEPARATE:       separatorStage,
 }
 
-// A "precedent" is a function which will recursively parse new evaluateionStages from a given stream of tokens.
-// It's called a `precedent` because it is expected to handle exactly what precedence of operator,
-// and defer to other `precedent`s for other operators.
-type precedent func(stream *tokenStream) (*evaluationStage, error)
-
-// A convenience function for specifying the behavior of a `precedent`.
-// Most `precedent` functions can be described by the same function, just with different type checks, symbols, and error formats.
-// This struct is passed to `makePrecedentFromPlanner` to create a `precedent` function.
-type precedencePlanner struct {
-	validSymbols map[string]OperatorSymbol
-	validKinds   []TokenKind
-
-	typeErrorFormat string
-
-	next      precedent
-	nextRight precedent
-}
-
-var planPrefix precedent
-var planExponential precedent
-var planMultiplicative precedent
-var planAdditive precedent
-var planBitwise precedent
-var planShift precedent
-var planComparator precedent
-var planLogicalAnd precedent
-var planLogicalOr precedent
-var planTernary precedent
-var planSeparator precedent
-
-func init() {
-	// all these stages can use the same code (in `planPrecedenceLevel`) to execute,
-	// they simply need different type checks, symbols, and recursive precedents.
-	// While not all precedent phases are listed here, most can be represented this way.
-	planPrefix = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    prefixSymbols,
-		validKinds:      []TokenKind{PREFIX},
-		typeErrorFormat: prefixErrorFormat,
-		nextRight:       planFunction,
-	})
-	planExponential = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    exponentialSymbolsS,
-		validKinds:      []TokenKind{MODIFIER},
-		typeErrorFormat: modifierErrorFormat,
-		next:            planFunction,
-	})
-	planMultiplicative = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    multiplicativeSymbols,
-		validKinds:      []TokenKind{MODIFIER},
-		typeErrorFormat: modifierErrorFormat,
-		next:            planExponential,
-	})
-	planAdditive = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    additiveSymbols,
-		validKinds:      []TokenKind{MODIFIER},
-		typeErrorFormat: modifierErrorFormat,
-		next:            planMultiplicative,
-	})
-	planShift = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    bitwiseShiftSymbols,
-		validKinds:      []TokenKind{MODIFIER},
-		typeErrorFormat: modifierErrorFormat,
-		next:            planAdditive,
-	})
-	planBitwise = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    bitwiseSymbols,
-		validKinds:      []TokenKind{MODIFIER},
-		typeErrorFormat: modifierErrorFormat,
-		next:            planShift,
-	})
-	planComparator = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    comparatorSymbols,
-		validKinds:      []TokenKind{COMPARATOR},
-		typeErrorFormat: comparatorErrorFormat,
-		next:            planBitwise,
-	})
-	planLogicalAnd = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    map[string]OperatorSymbol{"&&": AND},
-		validKinds:      []TokenKind{LOGICALOP},
-		typeErrorFormat: logicalErrorFormat,
-		next:            planComparator,
-	})
-	planLogicalOr = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    map[string]OperatorSymbol{"||": OR},
-		validKinds:      []TokenKind{LOGICALOP},
-		typeErrorFormat: logicalErrorFormat,
-		next:            planLogicalAnd,
-	})
-	planTernary = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols:    ternarySymbols,
-		validKinds:      []TokenKind{TERNARY},
-		typeErrorFormat: ternaryErrorFormat,
-		next:            planLogicalOr,
-	})
-	planSeparator = makePrecedentFromPlanner(&precedencePlanner{
-		validSymbols: separatorSymbols,
-		validKinds:   []TokenKind{SEPARATOR},
-		next:         planTernary,
-	})
-}
-
-// Given a planner, creates a function which will evaluate a specific precedence level of operators,
-// and link it to other `precedent`s which recurse to parse other precedence levels.
-func makePrecedentFromPlanner(planner *precedencePlanner) precedent {
-
-	var generated precedent
-	var nextRight precedent
-
-	generated = func(stream *tokenStream) (*evaluationStage, error) {
-		return planPrecedenceLevel(
-			stream,
-			planner.typeErrorFormat,
-			planner.validSymbols,
-			planner.validKinds,
-			nextRight,
-			planner.next,
-		)
-	}
-
-	if planner.nextRight != nil {
-		nextRight = planner.nextRight
-	} else {
-		nextRight = generated
-	}
-
-	return generated
-}
-
-// Creates a `evaluationStageList` object which represents an execution plan (or tree)
-// which is used to completely evaluate a set of tokens at evaluation-time.
-// The three stages of evaluation can be thought of as parsing strings to tokens, then tokens to a stage list, then evaluation with parameters.
 func planStages(tokens []Token) (*evaluationStage, error) {
 	stream := newTokenStream(tokens)
-	stage, err := planTokens(stream)
+	stage, err := parseExpression(stream, 0)
 	if err != nil {
 		return nil, err
 	}
-	// while we're now fully-planned, we now need to re-order same-precedence operators.
-	// this could probably be avoided with a different planning method
-	reorderStages(stage)
+	if stream.hasNext() {
+		tok := stream.peek()
+		return nil, newParseError("unexpected_token", tok.Span, tok.Raw, fmt.Sprintf("unexpected token '%v'", tok.Value), nil)
+	}
 	stage = elideLiterals(stage)
 	return stage, nil
 }
 
-func planTokens(stream *tokenStream) (*evaluationStage, error) {
-	if !stream.hasNext() {
-		return nil, nil
-	}
-	return planSeparator(stream)
-}
-
-// The most usual method of parsing an evaluation stage for a given precedence.
-// Most stages use the same logic
-func planPrecedenceLevel(
-	stream *tokenStream,
-	typeErrorFormat string,
-	validSymbols map[string]OperatorSymbol,
-	validKinds []TokenKind,
-	rightPrecedent precedent,
-	leftPrecedent precedent) (*evaluationStage, error) {
-
-	var token Token
-	var symbol OperatorSymbol
-	var leftStage, rightStage *evaluationStage
-	var checks typeChecks
-	var err error
-	var keyFound bool
-
-	if leftPrecedent != nil {
-		leftStage, err = leftPrecedent(stream)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if stream.hasNext() {
-		token = stream.next()
-		if len(validKinds) > 0 {
-			keyFound = false
-			for _, kind := range validKinds {
-				if kind == token.Kind {
-					keyFound = true
-					break
-				}
-			}
-			if !keyFound {
-				goto doRewind
-			}
-		}
-
-		if validSymbols != nil {
-			if !isString(token.Value) {
-				goto doRewind
-			}
-			symbol, keyFound = validSymbols[token.Value.(string)]
-			if !keyFound {
-				goto doRewind
-			}
-		}
-
-		if rightPrecedent != nil {
-			rightStage, err = rightPrecedent(stream)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		checks = findTypeChecks(symbol)
-
-		return &evaluationStage{
-			symbol:     symbol,
-			leftStage:  leftStage,
-			rightStage: rightStage,
-			operator:   stageSymbolMap[symbol],
-
-			leftTypeCheck:   checks.left,
-			rightTypeCheck:  checks.right,
-			typeCheck:       checks.combined,
-			typeErrorFormat: typeErrorFormat,
-		}, nil
-	}
-
-doRewind:
-	stream.rewind()
-	return leftStage, nil
-}
-
-// A special case where functions need to be of higher precedence than values, and need a special wrapped execution stage operator.
-func planFunction(stream *tokenStream) (*evaluationStage, error) {
-	var token Token
-	var rightStage *evaluationStage
-	var err error
-
-	token = stream.next()
-	if token.Kind != FUNCTION {
-		stream.rewind()
-		return planAccessor(stream)
-	}
-
-	rightStage, err = planAccessor(stream)
+func parseExpression(stream *tokenStream, minBP int) (*evaluationStage, error) {
+	left, err := parsePrefix(stream)
 	if err != nil {
 		return nil, err
 	}
 
-	return &evaluationStage{
-		symbol:          FUNCTIONAL,
-		rightStage:      rightStage,
-		operator:        makeFunctionStage(token.Value.(Function)),
-		typeErrorFormat: "Unable to run function '%v': %v",
-	}, nil
-}
-
-func planAccessor(stream *tokenStream) (*evaluationStage, error) {
-	var token, otherToken Token
-	var rightStage *evaluationStage
-	var err error
-
-	if !stream.hasNext() {
-		return nil, nil
-	}
-
-	token = stream.next()
-	if token.Kind != ACCESSOR {
-		stream.rewind()
-		return planValue(stream)
-	}
-
-	// check if this is meant to be a function or a field.
-	// fields have a clause next to them, functions do not.
-	// if it's a function, parse the arguments. Otherwise leave the right stage null.
-	if stream.hasNext() {
-		otherToken = stream.next()
-		if otherToken.Kind == CLAUSE {
-			stream.rewind()
-			rightStage, err = planTokens(stream)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			stream.rewind()
+	for stream.hasNext() {
+		tok := stream.peek()
+		if tok.Kind == CLAUSE_CLOSE {
+			break
 		}
-	}
+		symbol, ok := infixOperatorForToken(tok)
+		if !ok {
+			break
+		}
+		bp, ok := infixBindingPowerFor(symbol)
+		if !ok || bp.left < minBP {
+			break
+		}
+		stream.next()
 
-	return &evaluationStage{
-		symbol:          ACCESS,
-		rightStage:      rightStage,
-		operator:        makeAccessorStage(token.Value.([]string)),
-		typeErrorFormat: "Unable to access parameter field or method '%v': %v",
-	}, nil
-}
-
-// A truly special precedence function, this handles all the "lowest-case" errata of the process, including literals, parmeters,
-// clauses, and prefixes.
-func planValue(stream *tokenStream) (*evaluationStage, error) {
-	var token Token
-	var symbol OperatorSymbol
-	var ret *evaluationStage
-	var operator evaluationOperator
-	var err error
-
-	if !stream.hasNext() {
-		return nil, nil
-	}
-
-	token = stream.next()
-	switch token.Kind {
-	case CLAUSE:
-		ret, err = planTokens(stream)
+		switch symbol {
+		case TERNARY_TRUE:
+			left, err = parseTernary(stream, left, tok)
+		default:
+			right, rightErr := parseExpression(stream, bp.right)
+			if rightErr != nil {
+				return nil, rightErr
+			}
+			left = makeInfixStage(symbol, tok, left, right)
+		}
 		if err != nil {
 			return nil, err
 		}
+	}
+	return left, nil
+}
 
-		// advance past the CLAUSE_CLOSE token. We know that it's a CLAUSE_CLOSE, because at parse-time we check for unbalanced parens.
-		stream.next()
+func parsePrefix(stream *tokenStream) (*evaluationStage, error) {
+	if !stream.hasNext() {
+		return nil, newParseError("unexpected_end", SourceSpan{}, "", "unexpected end of expression", nil)
+	}
 
-		// the stage we got represents all of the logic contained within the parens
-		// but for technical reasons, we need to wrap this stage in a "noop" stage which breaks long chains of precedence.
-		// see github #33.
-		ret = &evaluationStage{
-			rightStage: ret,
-			operator:   noopStageRight,
-			symbol:     NOOP,
-		}
-		return ret, nil
-	case CLAUSE_CLOSE:
-		// when functions have empty params, this will be hit. In this case, we don't have any evaluation stage to do,
-		// so we just return nil so that the stage planner continues on its way.
-		stream.rewind()
-		return nil, nil
-	case VARIABLE:
-		operator = makeParameterStage(token.Value.(string))
-	case NUMERIC:
-		fallthrough
-	case STRING:
-		fallthrough
-	case PATTERN:
-		fallthrough
-	case BOOLEAN:
-		symbol = LITERAL
-		operator = makeLiteralStage(token.Value)
-	case TIME:
-		symbol = LITERAL
-		operator = makeLiteralStage(float64(token.Value.(time.Time).Unix()))
+	tok := stream.next()
+	switch tok.Kind {
 	case PREFIX:
-		stream.rewind()
-		return planPrefix(stream)
+		symbol, ok := prefixSymbols[tok.Value.(string)]
+		if !ok {
+			return nil, newParseError("invalid_prefix", tok.Span, tok.Raw, fmt.Sprintf("invalid prefix '%v'", tok.Value), nil)
+		}
+		right, err := parseExpression(stream, 120)
+		if err != nil {
+			return nil, err
+		}
+		checks := findTypeChecks(symbol)
+		return &evaluationStage{
+			symbol:          symbol,
+			rightStage:      right,
+			operator:        stageSymbolMap[symbol],
+			leftTypeCheck:   checks.left,
+			rightTypeCheck:  checks.right,
+			typeCheck:       checks.combined,
+			typeErrorFormat: prefixErrorFormat,
+			span:            mergeSpan(tok.Span, right.span),
+		}, nil
+	case CLAUSE:
+		if stream.hasNext() && stream.peek().Kind == CLAUSE_CLOSE {
+			closeTok := stream.next()
+			return &evaluationStage{
+				symbol:   NOOP,
+				operator: noopStageRight,
+				span:     mergeSpan(tok.Span, closeTok.Span),
+			}, nil
+		}
+		expr, err := parseExpression(stream, 0)
+		if err != nil {
+			return nil, err
+		}
+		if !stream.hasNext() || stream.peek().Kind != CLAUSE_CLOSE {
+			return nil, newParseError("unclosed_clause", tok.Span, tok.Raw, "unbalanced parenthesis", nil)
+		}
+		closeTok := stream.next()
+		expr.span = mergeSpan(tok.Span, closeTok.Span)
+		return expr, nil
+	case FUNCTION:
+		args, span, err := parseCallArguments(stream, tok)
+		if err != nil {
+			return nil, err
+		}
+		return &evaluationStage{
+			symbol:          FUNCTIONAL,
+			rightStage:      args,
+			operator:        makeFunctionStage(tok.Value.(Function)),
+			typeErrorFormat: "Unable to run function '%v': %v",
+			span:            span,
+		}, nil
+	case ACCESSOR:
+		args, span, err := parseOptionalCallArguments(stream, tok)
+		if err != nil {
+			return nil, err
+		}
+		return &evaluationStage{
+			symbol:          ACCESS,
+			rightStage:      args,
+			operator:        makeAccessorStage(tok.Value.([]string)),
+			typeErrorFormat: "Unable to access parameter field or method '%v': %v",
+			span:            span,
+		}, nil
+	case VARIABLE:
+		return &evaluationStage{
+			symbol:   VALUE,
+			operator: makeParameterStage(tok.Value.(string)),
+			span:     tok.Span,
+		}, nil
+	case NUMERIC, STRING, PATTERN, BOOLEAN:
+		return &evaluationStage{
+			symbol:   LITERAL,
+			operator: makeLiteralStage(tok.Value),
+			span:     tok.Span,
+		}, nil
+	case TIME:
+		return &evaluationStage{
+			symbol:   LITERAL,
+			operator: makeLiteralStage(float64(tok.Value.(time.Time).Unix())),
+			span:     tok.Span,
+		}, nil
+	case CLAUSE_CLOSE:
+		return nil, newParseError("unexpected_clause_close", tok.Span, tok.Raw, "unexpected closing parenthesis", nil)
+	default:
+		return nil, newParseError("unexpected_token", tok.Span, tok.Raw, fmt.Sprintf("Unable to plan token kind: '%s', value: '%v'", tok.Kind.String(), tok.Value), nil)
 	}
+}
 
-	if operator == nil {
-		errorMsg := fmt.Sprintf("Unable to plan token kind: '%s', value: '%v'", token.Kind.String(), token.Value)
-		return nil, errors.New(errorMsg)
+func parseCallArguments(stream *tokenStream, callTok Token) (*evaluationStage, SourceSpan, error) {
+	if !stream.hasNext() || stream.peek().Kind != CLAUSE {
+		return nil, callTok.Span, nil
 	}
+	openTok := stream.next()
+	if stream.hasNext() && stream.peek().Kind == CLAUSE_CLOSE {
+		closeTok := stream.next()
+		return nil, mergeSpan(callTok.Span, closeTok.Span), nil
+	}
+	args, err := parseExpression(stream, 0)
+	if err != nil {
+		return nil, SourceSpan{}, err
+	}
+	if !stream.hasNext() || stream.peek().Kind != CLAUSE_CLOSE {
+		return nil, SourceSpan{}, newParseError("unclosed_call", openTok.Span, openTok.Raw, "unbalanced parenthesis", nil)
+	}
+	closeTok := stream.next()
+	return args, mergeSpan(callTok.Span, closeTok.Span), nil
+}
 
+func parseOptionalCallArguments(stream *tokenStream, tok Token) (*evaluationStage, SourceSpan, error) {
+	if !stream.hasNext() || stream.peek().Kind != CLAUSE {
+		return nil, tok.Span, nil
+	}
+	return parseCallArguments(stream, tok)
+}
+
+func parseTernary(stream *tokenStream, cond *evaluationStage, qTok Token) (*evaluationStage, error) {
+	trueExpr, err := parseExpression(stream, 0)
+	if err != nil {
+		return nil, err
+	}
+	trueChecks := findTypeChecks(TERNARY_TRUE)
+	trueStage := &evaluationStage{
+		symbol:          TERNARY_TRUE,
+		leftStage:       cond,
+		rightStage:      trueExpr,
+		operator:        stageSymbolMap[TERNARY_TRUE],
+		leftTypeCheck:   trueChecks.left,
+		rightTypeCheck:  trueChecks.right,
+		typeCheck:       trueChecks.combined,
+		typeErrorFormat: ternaryErrorFormat,
+		span:            mergeSpan(cond.span, trueExpr.span),
+	}
+	if !stream.hasNext() {
+		return trueStage, nil
+	}
+	colonTok := stream.peek()
+	if colonTok.Kind != TERNARY || colonTok.Value.(string) != ":" {
+		return trueStage, nil
+	}
+	stream.next()
+	falseExpr, err := parseExpression(stream, 19)
+	if err != nil {
+		return nil, err
+	}
+	falseChecks := findTypeChecks(TERNARY_FALSE)
 	return &evaluationStage{
-		symbol:   symbol,
-		operator: operator,
+		symbol:          TERNARY_FALSE,
+		leftStage:       trueStage,
+		rightStage:      falseExpr,
+		operator:        stageSymbolMap[TERNARY_FALSE],
+		leftTypeCheck:   falseChecks.left,
+		rightTypeCheck:  falseChecks.right,
+		typeCheck:       falseChecks.combined,
+		typeErrorFormat: ternaryErrorFormat,
+		span:            mergeSpan(cond.span, falseExpr.span),
 	}, nil
+}
+
+func makeInfixStage(symbol OperatorSymbol, tok Token, left, right *evaluationStage) *evaluationStage {
+	checks := findTypeChecks(symbol)
+	format := ""
+	switch symbol {
+	case AND, OR:
+		format = logicalErrorFormat
+	case EQ, NEQ, GT, LT, GTE, LTE, REQ, NREQ, IN:
+		format = comparatorErrorFormat
+	case PLUS, MINUS, MULTIPLY, DIVIDE, MODULUS, EXPONENT, BITWISE_AND, BITWISE_OR, BITWISE_XOR, BITWISE_LSHIFT, BITWISE_RSHIFT:
+		format = modifierErrorFormat
+	case COALESCE:
+		format = ternaryErrorFormat
+	}
+	return &evaluationStage{
+		symbol:          symbol,
+		leftStage:       left,
+		rightStage:      right,
+		operator:        stageSymbolMap[symbol],
+		leftTypeCheck:   checks.left,
+		rightTypeCheck:  checks.right,
+		typeCheck:       checks.combined,
+		typeErrorFormat: format,
+		span:            mergeSpan(left.span, right.span),
+	}
 }
 
 // Convenience function to pass a triplet of typechecks between `findTypeChecks` and `planPrecedenceLevel`.
@@ -482,8 +365,6 @@ func findTypeChecks(symbol OperatorSymbol) typeChecks {
 		return typeChecks{
 			left: isBool,
 		}
-
-	// unchecked cases
 	case EQ:
 		fallthrough
 	case NEQ:
@@ -497,84 +378,11 @@ func findTypeChecks(symbol OperatorSymbol) typeChecks {
 	}
 }
 
-// During stage planning, stages of equal precedence are parsed such that they'll be evaluated in reverse order.
-// For commutative operators like "+" or "-", it's no big deal. But for order-specific operators, it ruins the expected result.
-func reorderStages(rootStage *evaluationStage) {
-	// traverse every rightStage until we find multiples in a row of the same precedence.
-	var identicalPrecedences []*evaluationStage
-	var currentStage, nextStage *evaluationStage
-	var precedence, currentPrecedence operatorPrecedence
-
-	nextStage = rootStage
-	precedence = findOperatorPrecedenceForSymbol(rootStage.symbol)
-
-	for nextStage != nil {
-		currentStage = nextStage
-		nextStage = currentStage.rightStage
-		// left depth first, since this entire method only looks for precedences down the right side of the tree
-		if currentStage.leftStage != nil {
-			reorderStages(currentStage.leftStage)
-		}
-		currentPrecedence = findOperatorPrecedenceForSymbol(currentStage.symbol)
-		if currentPrecedence == precedence {
-			identicalPrecedences = append(identicalPrecedences, currentStage)
-			continue
-		}
-		// precedence break.
-		// See how many in a row we had, and reorder if there's more than one.
-		if len(identicalPrecedences) > 1 {
-			mirrorStageSubtree(identicalPrecedences)
-		}
-		identicalPrecedences = []*evaluationStage{currentStage}
-		precedence = currentPrecedence
-	}
-
-	if len(identicalPrecedences) > 1 {
-		mirrorStageSubtree(identicalPrecedences)
-	}
-}
-
-// Performs a "mirror" on a subtree of stages.
-// This mirror functionally inverts the order of execution for all members of the [stages] list.
-// That list is assumed to be a root-to-leaf (ordered) list of evaluation stages, where each is a right-hand stage of the last.
-func mirrorStageSubtree(stages []*evaluationStage) {
-	var rootStage, inverseStage, carryStage, frontStage *evaluationStage
-	stagesLength := len(stages)
-	// reverse all right/left
-	for _, frontStage = range stages {
-		carryStage = frontStage.rightStage
-		frontStage.rightStage = frontStage.leftStage
-		frontStage.leftStage = carryStage
-	}
-
-	// end left swaps with root right
-	rootStage = stages[0]
-	frontStage = stages[stagesLength-1]
-
-	carryStage = frontStage.leftStage
-	frontStage.leftStage = rootStage.rightStage
-	rootStage.rightStage = carryStage
-
-	// for all non-root non-end stages, right is swapped with inverse stage right in list
-	for i := 0; i < (stagesLength-2)/2+1; i++ {
-		frontStage = stages[i+1]
-		inverseStage = stages[stagesLength-i-1]
-
-		carryStage = frontStage.rightStage
-		frontStage.rightStage = inverseStage.rightStage
-		inverseStage.rightStage = carryStage
-	}
-
-	// swap all other information with inverse stages
-	for i := 0; i < stagesLength/2; i++ {
-		frontStage = stages[i]
-		inverseStage = stages[stagesLength-i-1]
-		frontStage.swapWith(inverseStage)
-	}
-}
-
 // Recurses through all operators in the entire tree, eliding operators where both sides are literals.
 func elideLiterals(root *evaluationStage) *evaluationStage {
+	if root == nil {
+		return nil
+	}
 	if root.leftStage != nil {
 		root.leftStage = elideLiterals(root.leftStage)
 	}
@@ -585,13 +393,10 @@ func elideLiterals(root *evaluationStage) *evaluationStage {
 }
 
 // Elides a specific stage, if possible.
-// Returns the unmodified [root] stage if it cannot or should not be elided.
-// Otherwise, returns a new stage representing the condensed value from the elided stages.
 func elideStage(root *evaluationStage) *evaluationStage {
 	var leftValue, rightValue, result interface{}
 	var err error
 
-	// right side must be a non-nil value. Left side must be nil or a value.
 	if root.rightStage == nil ||
 		root.rightStage.symbol != LITERAL ||
 		root.leftStage == nil ||
@@ -599,42 +404,31 @@ func elideStage(root *evaluationStage) *evaluationStage {
 		return root
 	}
 
-	// don't elide some operators
 	switch root.symbol {
-	case SEPARATE:
-		fallthrough
-	case IN:
+	case SEPARATE, IN:
 		return root
 	}
 
-	// both sides are values, get their actual values.
-	// errors should be near-impossible here. If we encounter them, just abort this optimization.
 	leftValue, err = root.leftStage.operator(nil, nil, nil)
 	if err != nil {
 		return root
 	}
-
 	rightValue, err = root.rightStage.operator(nil, nil, nil)
 	if err != nil {
 		return root
 	}
 
-	// typcheck, since the grammar checker is a bit loose with which operator symbols go together.
 	err = typeCheck(root.leftTypeCheck, leftValue, root.symbol, root.typeErrorFormat)
 	if err != nil {
 		return root
 	}
-
 	err = typeCheck(root.rightTypeCheck, rightValue, root.symbol, root.typeErrorFormat)
 	if err != nil {
 		return root
 	}
-
 	if root.typeCheck != nil && !root.typeCheck(leftValue, rightValue) {
 		return root
 	}
-
-	// pre-calculate, and return a new stage representing the result.
 	result, err = root.operator(leftValue, rightValue, nil)
 	if err != nil {
 		return root
@@ -643,5 +437,16 @@ func elideStage(root *evaluationStage) *evaluationStage {
 	return &evaluationStage{
 		symbol:   LITERAL,
 		operator: makeLiteralStage(result),
+		span:     root.span,
 	}
+}
+
+func mergeSpan(left, right SourceSpan) SourceSpan {
+	if left.IsZero() {
+		return right
+	}
+	if right.IsZero() {
+		return left
+	}
+	return SourceSpan{Start: left.Start, End: right.End}
 }

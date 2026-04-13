@@ -25,23 +25,30 @@ func checkExpressionSyntax(tokens []Token) error {
 	for _, tok := range tokens {
 		if !state.canTransitionTo(tok.Kind) {
 			if lastToken.Kind == VARIABLE && tok.Kind == CLAUSE {
-				return fmt.Errorf("undefined function %s", lastToken.Value.(string))
+				return newParseError("undefined_function", lastToken.Span, lastToken.Raw, fmt.Sprintf("undefined function %s", lastToken.Value.(string)), nil)
 			}
 			firstStateName := fmt.Sprintf("%s [%v]", state.kind.String(), lastToken.Value)
 			nextStateName := fmt.Sprintf("%s [%v]", tok.Kind.String(), tok.Value)
-			return fmt.Errorf("cannot transition token types from %s to %s", firstStateName, nextStateName)
+			return newParseError("invalid_syntax_transition", tok.Span, tok.Raw, fmt.Sprintf("cannot transition token types from %s to %s", firstStateName, nextStateName), nil)
 		}
 		state, err = getLexerStateForToken(tok.Kind)
 		if err != nil {
 			return err
 		}
 		if !state.isNullable && tok.Value == nil {
-			return fmt.Errorf("token kind '%v' cannot have a nil value", tok.Kind.String())
+			return newParseError("nil_token_value", tok.Span, tok.Raw, fmt.Sprintf("token kind '%v' cannot have a nil value", tok.Kind.String()), nil)
 		}
 		lastToken = tok
 	}
 	if !state.isEOF {
-		return fmt.Errorf("unexpected end of expression")
+		var span SourceSpan
+		var near string
+		if len(tokens) > 0 {
+			lastToken = tokens[len(tokens)-1]
+			span = SourceSpan{Start: lastToken.Span.End, End: lastToken.Span.End}
+			near = lastToken.Raw
+		}
+		return newParseError("unexpected_end", span, near, "unexpected end of expression", nil)
 	}
 	return nil
 }

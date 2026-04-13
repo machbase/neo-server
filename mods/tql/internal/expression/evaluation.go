@@ -23,6 +23,7 @@ type stageCombinedTypeCheck func(left any, right any) bool
 
 type evaluationStage struct {
 	symbol OperatorSymbol
+	span   SourceSpan
 
 	leftStage, rightStage *evaluationStage
 
@@ -46,21 +47,6 @@ var (
 	_true  = any(true)
 	_false = any(false)
 )
-
-func (es *evaluationStage) swapWith(other *evaluationStage) {
-	temp := *other
-	other.setToNonStage(*es)
-	es.setToNonStage(temp)
-}
-
-func (ev *evaluationStage) setToNonStage(other evaluationStage) {
-	ev.symbol = other.symbol
-	ev.operator = other.operator
-	ev.leftTypeCheck = other.leftTypeCheck
-	ev.rightTypeCheck = other.rightTypeCheck
-	ev.typeCheck = other.typeCheck
-	ev.typeErrorFormat = other.typeErrorFormat
-}
 
 func (ev *evaluationStage) isShortCircuitable() bool {
 	switch ev.symbol {

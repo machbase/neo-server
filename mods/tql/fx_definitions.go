@@ -11,6 +11,40 @@ type Definition struct {
 	Func any
 }
 
+var fxStatementKinds = map[string]StatementKind{
+	"SQL":             StatementSource,
+	"SQL_SELECT":      StatementSource,
+	"QUERY":           StatementSource,
+	"FAKE":            StatementSource,
+	"BYTES":           StatementSource,
+	"STRING":          StatementSource,
+	"ARGS":            StatementSource,
+	"SCRIPT":          StatementSourceOrMap,
+	"HTTP":            StatementSourceOrMap,
+	"CSV":             StatementSourceOrSink,
+	"INSERT":          StatementSink,
+	"APPEND":          StatementSink,
+	"JSON":            StatementSink,
+	"NDJSON":          StatementSink,
+	"MARKDOWN":        StatementSink,
+	"HTML":            StatementSink,
+	"TEXT":            StatementSink,
+	"DISCARD":         StatementSink,
+	"GEOMAP":          StatementSink,
+	"CHART":           StatementSink,
+	"CHART_LINE":      StatementSink,
+	"CHART_BAR":       StatementSink,
+	"CHART_SCATTER":   StatementSink,
+	"CHART_LINE3D":    StatementSink,
+	"CHART_BAR3D":     StatementSink,
+	"CHART_SCATTER3D": StatementSink,
+}
+
+func statementKindByFunctionName(name string) (StatementKind, bool) {
+	kind, ok := fxStatementKinds[name]
+	return kind, ok
+}
+
 var defTask = &Node{}
 
 var FxDefinitions = []Definition{
