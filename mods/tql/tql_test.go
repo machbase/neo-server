@@ -254,6 +254,72 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "SQL_show-license_JSON",
+			Script: `
+				SQL("show license")
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
+				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.7").String(), result)
+				require.Equal(t, int64(1), gjson.Get(result, "data.rows.#").Int(), result)
+			},
+		},
+		{
+			Name: "SQL_show-indexes_JSON",
+			Script: `
+				SQL("show indexes")
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
+				require.Equal(t, "BITMAP_ENCODE", gjson.Get(result, "data.columns.10").String(), result)
+				require.True(t, gjson.Get(result, "data.rows.#").Int() > 0, result)
+			},
+		},
+		{
+			Name: "SQL_show-info_JSON",
+			Script: `
+				SQL("show info")
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				if strings.TrimSpace(result) == "" {
+					return
+				}
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+			},
+		},
+		{
+			Name: "SQL_show-indexgap_JSON",
+			Script: `
+				SQL("show indexgap")
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				if strings.TrimSpace(result) == "" {
+					return
+				}
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
+				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.1").String(), result)
+			},
+		},
+		{
+			Name: "SQL_show-tagindexgap_JSON",
+			Script: `
+				SQL("show tagindexgap")
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
+				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.1").String(), result)
+			},
+		},
+		{
 			Name: "SQL_desc-table",
 			Script: `
 				SQL("desc tag_data;")
@@ -1011,6 +1077,238 @@ func TestTql(t *testing.T) {
 				`123,hello`,
 				"\n",
 			},
+		},
+		{
+			Name: "UTIL_sqlTimeformat_csv",
+			Script: `
+				FAKE( json({
+					[1701345032123456789, 10],
+					[1701345043219876543, 11]
+				}))
+				MAPVALUE(0, time(value(0)))
+				CSV(sqlTimeformat("YYYY-MM-DD HH24:MI:SS.nnnnnn"), tz("Asia/Seoul"))
+				`,
+			ExpectCSV: []string{
+				`2023-11-30 20:50:32.123456,10`,
+				`2023-11-30 20:50:43.219876,11`,
+				"\n",
+			},
+		},
+		{
+			Name: "UTIL_ansiTimeformat_csv",
+			Script: `
+				FAKE( json({
+					[1701345032123456789, 10],
+					[1701345043219876543, 11]
+				}))
+				MAPVALUE(0, time(value(0)))
+				CSV(ansiTimeformat("yyyy-mm-dd hh:nn:ss.ffffff"), tz("UTC"))
+				`,
+			ExpectCSV: []string{
+				`2023-11-30 11:50:32.123456,10`,
+				`2023-11-30 11:50:43.219876,11`,
+				"\n",
+			},
+		},
+		{
+			Name: "UTIL_string_trim_replace",
+			Script: `
+				FAKE( json({
+					["prefix-hello-suffix"]
+				}))
+				MAPVALUE(0, strTrimPrefix(value(0), "prefix-"))
+				MAPVALUE(0, strTrimSuffix(value(0), "-suffix"))
+				MAPVALUE(0, strReplace(value(0), "l", "L", 1))
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`heLlo`,
+				"\n",
+			},
+		},
+		{
+			Name: "UTIL_string_predicates",
+			Script: `
+				FAKE( json({
+					["prefix-hello-suffix"],
+					["hello"]
+				}))
+				PUSHVALUE(1, strHasPrefix(value(0), "prefix-"))
+				PUSHVALUE(2, strHasSuffix(value(0), "-suffix"))
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`prefix-hello-suffix,true,true`,
+				`hello,false,false`,
+				"\n",
+			},
+		},
+		{
+			Name: "UTIL_string_replace_all",
+			Script: `
+				FAKE( json({
+					["a-b-c"]
+				}))
+				MAPVALUE(0, strReplaceAll(value(0), "-", "_"))
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`a_b_c`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_pushkey_manual",
+			Script: `
+				FAKE( linspace(1, 2, 2) )
+				PUSHKEY("k")
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`1,1`,
+				`2,2`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_popkey_manual",
+			Script: `
+				FAKE( json({
+					["TAG0", 1, 10],
+					["TAG1", 2, 20]
+				}))
+				POPKEY()
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`1,10`,
+				`2,20`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_transpose_header_manual",
+			Script: `
+				FAKE(csv("CITY,DATE,TEMPERATURE,HUMIDITY\nTokyo,2023/12/07,23,30"))
+				TRANSPOSE(header(true))
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`CITY,Tokyo`,
+				`DATE,2023/12/07`,
+				`TEMPERATURE,23`,
+				`HUMIDITY,30`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_take_offset_count_manual",
+			Script: `
+				FAKE( json({
+					["TAG0", 1, 10],
+					["TAG0", 2, 11],
+					["TAG0", 3, 12],
+					["TAG0", 4, 13],
+					["TAG0", 5, 14],
+					["TAG0", 6, 15]
+				}))
+				TAKE(3, 2)
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`TAG0,4,13`,
+				`TAG0,5,14`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_drop_offset_count_manual",
+			Script: `
+				FAKE( json({
+					["TAG0", 1, 10],
+					["TAG0", 2, 11],
+					["TAG0", 3, 12],
+					["TAG0", 4, 13],
+					["TAG0", 5, 14],
+					["TAG0", 6, 15]
+				}))
+				DROP(2, 3)
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`TAG0,1,10`,
+				`TAG0,2,11`,
+				`TAG0,6,15`,
+				"\n",
+			},
+		},
+		{
+			Name: "FAKE_json_manual",
+			Script: `
+				FAKE(
+					json({
+						["A", 1, true],
+						["B", 2, false],
+						["C", 3, true]
+					})
+				)
+				MAPVALUE(1, value(1)*10)
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`A,10,true`,
+				`B,20,false`,
+				`C,30,true`,
+				"\n",
+			},
+		},
+		{
+			Name: "FAKE_csv_manual",
+			Script: `
+				FAKE(
+					csv(
+						strTrimSpace(` + "`" + `
+							A,1,true
+							B,2,false
+							C,3,true
+						` + "`" + `)
+					)
+				)
+				MAPVALUE(0, strTrimSpace(value(0)))
+				MAPVALUE(1, parseFloat(value(1))*10)
+				MAPVALUE(2, parseBool(value(2)))
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`A,10,true`,
+				`B,20,false`,
+				`C,30,true`,
+				"\n",
+			},
+		},
+		{
+			Name: "FAKE_meshgrid_manual",
+			Script: `
+				FAKE(
+					meshgrid(linspace(1, 2, 2), linspace(10, 20, 2))
+				)
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`1,10`,
+				`1,20`,
+				`2,10`,
+				`2,20`,
+				"\n",
+			},
+		},
+		{
+			Name: "FAKE_invalid_generator_type",
+			Script: `
+				FAKE( 123 )
+				CSV()
+				`,
+			ExpectErr: "f(FAKE) arg(0) should be fakeSource, but float64",
 		},
 		{
 			Name: "FAKE_arrange_zero_step",
