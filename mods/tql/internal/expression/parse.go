@@ -2,7 +2,6 @@ package expression
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -58,6 +57,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 	var found bool
 	var completed bool
 	var err error
+	var tokenStart int
 
 	// numeric is 0-9, or . or 0x followed by digits
 	// string starts with '
@@ -73,6 +73,8 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			continue
 		}
 
+		tokenStart = stream.position - 1
+
 		kind = UNKNOWN
 
 		// numeric constant
@@ -85,7 +87,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 					tokenValueInt, err := strconv.ParseUint(tokenString, 16, 64)
 
 					if err != nil {
-						return Token{}, fmt.Errorf("unable to parse hex value '%v' to uint64", tokenString), false
+						return Token{}, newParseError("invalid_numeric", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), fmt.Sprintf("unable to parse hex value '%v' to uint64", tokenString), err), false
 					}
 
 					kind = NUMERIC
@@ -100,7 +102,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			tokenValue, err = strconv.ParseFloat(tokenString, 64)
 
 			if err != nil {
-				return Token{}, fmt.Errorf("unable to parse numeric value '%v' to float64", tokenString), false
+				return Token{}, newParseError("invalid_numeric", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), fmt.Sprintf("unable to parse numeric value '%v' to float64", tokenString), err), false
 			}
 			kind = NUMERIC
 			break
@@ -119,7 +121,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			kind = VARIABLE
 
 			if !completed {
-				return Token{}, errors.New("unclosed parameter bracket"), false
+				return Token{}, newParseError("unclosed_parameter_bracket", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), "unclosed parameter bracket", nil), false
 			}
 
 			// above method normally rewinds us to the closing bracket, which we want to skip.
@@ -195,7 +197,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			if accessorIndex > 0 {
 				// check that it doesn't end with a hanging period
 				if tokenString[len(tokenString)-1] == '.' {
-					return Token{}, fmt.Errorf("hanging accessor on token '%s'", tokenString), false
+					return Token{}, newParseError("hanging_accessor", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), fmt.Sprintf("hanging accessor on token '%s'", tokenString), nil), false
 				}
 				kind = ACCESSOR
 				splits := strings.Split(tokenString, ".")
@@ -213,7 +215,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 							raw[0] = unicode.ToUpper(firstCharacter)
 							splits[i] = string(raw)
 						} else {
-							return Token{}, fmt.Errorf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), false
+							return Token{}, newParseError("unexported_accessor", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), fmt.Sprintf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), nil), false
 						}
 					}
 				}
@@ -225,7 +227,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotQuoteMatch(character))
 
 			if !completed {
-				return Token{}, errors.New("unclosed string literal"), false
+				return Token{}, newParseError("unclosed_string_literal", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), "unclosed string literal", nil), false
 			}
 
 			// advance the stream one position, since reading until false assumes the terminator is a real token
@@ -295,11 +297,13 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			break
 		}
 
-		return ret, fmt.Errorf("invalid token: '%s'", tokenString), false
+		return ret, newParseError("invalid_token", stream.currentSpan(tokenStart), stream.currentRaw(tokenStart), fmt.Sprintf("invalid token: '%s'", tokenString), nil), false
 	}
 
 	ret.Kind = kind
 	ret.Value = tokenValue
+	ret.Span = stream.currentSpan(tokenStart)
+	ret.Raw = stream.currentRaw(tokenStart)
 
 	return ret, nil, (kind != UNKNOWN)
 }
@@ -437,24 +441,28 @@ func optimizeTokens(tokens []Token) ([]Token, error) {
 func checkBalance(tokens []Token) error {
 	var stream *tokenStream
 	var token Token
-	var parens int
+	var clauses []Token
 
 	stream = newTokenStream(tokens)
 
 	for stream.hasNext() {
 		token = stream.next()
 		if token.Kind == CLAUSE {
-			parens++
+			clauses = append(clauses, token)
 			continue
 		}
 		if token.Kind == CLAUSE_CLOSE {
-			parens--
+			if len(clauses) == 0 {
+				return newParseError("unbalanced_parenthesis", token.Span, token.Raw, "unbalanced parenthesis", nil)
+			}
+			clauses = clauses[:len(clauses)-1]
 			continue
 		}
 	}
 
-	if parens != 0 {
-		return errors.New("unbalanced parenthesis")
+	if len(clauses) != 0 {
+		token = clauses[len(clauses)-1]
+		return newParseError("unbalanced_parenthesis", token.Span, token.Raw, "unbalanced parenthesis", nil)
 	}
 	return nil
 }

@@ -234,45 +234,34 @@ func (x *Task) Compile(codeReader io.Reader) error {
 }
 
 func (x *Task) compile(codeReader io.Reader) error {
-	lines, err := readLines(x, codeReader)
+	script, err := ParseScriptReader(codeReader, functions)
 	if err != nil {
 		x.compileErr = err
 		return err
 	}
-	if len(lines) == 0 {
+	if len(script.Statements) == 0 {
 		x.compileErr = errors.New("empty expressions")
 		return x.compileErr
 	}
-
-	var headExpr *Line
-	var tailExpr *Line
-	for _, line := range lines {
-		if !line.isComment {
-			if headExpr == nil {
-				headExpr = line
-			} else {
-				tailExpr = line
-			}
-		}
-	}
-
-	if headExpr == nil {
-		x.compileErr = errors.New("no source exists")
-		return x.compileErr
-	}
-	if tailExpr == nil {
-		x.compileErr = errors.New("no sink exists")
-		for no, line := range lines {
-			fmt.Println(no, line.text, line.isComment)
-		}
-		return x.compileErr
+	if err := ValidateScriptStructure(script); err != nil {
+		x.compileErr = err
+		return err
 	}
 
 	nodeIdx := 0
 	var pragmas map[string]string
-	for _, curLine := range lines {
-		if curLine.isPragma {
-			kvs := util.ParseNameValuePairs(curLine.text)
+	var codes []*Statement
+	for _, stmt := range script.Statements {
+		if stmt.IsCode() {
+			codes = append(codes, stmt)
+		}
+	}
+	tailStmt := codes[len(codes)-1]
+
+	for _, stmt := range script.Statements {
+		curLine := stmt.toLine()
+		if stmt.IsPragma {
+			kvs := util.ParseNameValuePairs(stmt.Text)
 			for _, kv := range kvs {
 				switch kv.Name {
 				case PRAGMA_LOG_LEVEL:
@@ -287,32 +276,29 @@ func (x *Task) compile(codeReader io.Reader) error {
 			}
 			continue
 		}
-		if curLine.isComment {
+		if stmt.IsComment {
 			continue
 		}
-		if curLine == tailExpr {
+		if stmt == tailStmt {
 			// sink
 			x.output, err = NewNode(x).compileSink(curLine)
 			if err != nil {
-				x.compileErr = fmt.Errorf("line %d: %s", curLine.line, err.Error())
+				x.compileErr = wrapCompileStatementError("sink_compile_error", stmt, curLine, err)
 				return x.compileErr
 			}
 			x.output.pragma = pragmas
-			x.nodes[nodeIdx-1].next = x.output
+			if nodeIdx > 0 {
+				x.nodes[nodeIdx-1].next = x.output
+			}
 		} else {
 			// src and map
 			node := NewNode(x)
-			if err := node.compile(curLine.text); err != nil {
-				return err
-			}
-
-			if nodeIdx == 0 && !srcOnlyFunctions[node.name] && !srcOrMapFunctions[node.name] && !srcOrSinkFunctions[node.name] {
-				// this node is NOT a SRC function, but used for the first node
-				x.compileErr = fmt.Errorf("%q is not applicable for SRC, line %d", node.name, curLine.line)
-				return x.compileErr
-			} else if nodeIdx > 0 && (srcOnlyFunctions[node.name] || srcOrSinkFunctions[node.name] || sinkOnlyFunctions[node.name]) {
-				// this node is SRC function
-				x.compileErr = fmt.Errorf("%q is not applicable for MAP, line %d", node.name, curLine.line)
+			if err := node.compile(stmt.Text); err != nil {
+				kind := "map_compile_error"
+				if nodeIdx == 0 {
+					kind = "source_compile_error"
+				}
+				x.compileErr = wrapCompileStatementError(kind, stmt, curLine, err)
 				return x.compileErr
 			}
 			node.pragma = pragmas
@@ -334,40 +320,24 @@ func (x *Task) compile(codeReader io.Reader) error {
 	return nil
 }
 
-var srcOnlyFunctions = map[string]bool{
-	"SQL()":        true,
-	"SQL_SELECT()": true,
-	"QUERY()":      true,
-	"FAKE()":       true,
-	"BYTES()":      true,
-	"STRING()":     true,
-	"ARGS()":       true,
-}
-
-var srcOrMapFunctions = map[string]bool{
-	"SCRIPT()": true,
-	"HTTP()":   true,
-}
-
-var srcOrSinkFunctions = map[string]bool{
-	"CSV()": true,
-}
-
-var sinkOnlyFunctions = map[string]bool{
-	"INSERT()":          true,
-	"APPEND()":          true,
-	"JSON()":            true,
-	"MARKDOWN()":        true,
-	"HTML()":            true,
-	"TEXT()":            true,
-	"DISCARD()":         true,
-	"CHART()":           true,
-	"CHART_LINE()":      true,
-	"CHART_BAR()":       true,
-	"CHART_SCATTER()":   true,
-	"CHART_LINE3D()":    true,
-	"CHART_BAR3D()":     true,
-	"CHART_SCATTER3D()": true,
+func wrapCompileStatementError(kind string, stmt *Statement, line *Line, cause error) error {
+	if cause == nil {
+		return nil
+	}
+	lineNo := 0
+	columnNo := 0
+	if line != nil {
+		lineNo = line.line
+	}
+	if stmt != nil {
+		if lineNo == 0 {
+			lineNo = stmt.Line
+		}
+		columnNo = stmt.Span.Start.Column
+	}
+	_ = lineNo
+	_ = columnNo
+	return newScriptError(kind, stmt, cause.Error(), cause)
 }
 
 type Result struct {

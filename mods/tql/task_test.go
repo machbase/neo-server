@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -2579,14 +2580,14 @@ func TestSrcError(t *testing.T) {
 		"JSON()",
 	}
 	resultLines := []string{}
-	runTest(t, codeLines, resultLines, CompileErr("\"SQL()\" is not applicable for MAP, line 2"))
+	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: \"SQL()\" is not applicable for MAP [statement: SQL('select * from example')]"))
 
 	codeLines = []string{
 		"MAPVALUE(0, 1)",
 		"SQL('select * from example')",
 		"JSON()",
 	}
-	runTest(t, codeLines, resultLines, CompileErr("\"MAPVALUE()\" is not applicable for SRC, line 1"))
+	runTest(t, codeLines, resultLines, CompileErr("line 1, column 1: \"MAPVALUE()\" is not applicable for SRC [statement: MAPVALUE(0, 1)]"))
 }
 
 func TestSinkMarkdown(t *testing.T) {
@@ -2597,7 +2598,7 @@ func TestSinkMarkdown(t *testing.T) {
 		"MARKDOWN(true)",
 	}
 	resultLines := []string{}
-	runTest(t, codeLines, resultLines, CompileErr("line 2: encoder 'markdown' invalid option true (bool)"))
+	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: encoder 'markdown' invalid option true (bool) [statement: MARKDOWN(true)]"))
 
 	codeLines = []string{
 		"STRING(file('/lines.txt'), separator('\\n'))",
@@ -2620,6 +2621,27 @@ func TestSinkMarkdown(t *testing.T) {
 		"|line4|",
 	}
 	runTest(t, codeLines, resultLines)
+}
+
+func TestCompileErrorIsScriptErrorForSink(t *testing.T) {
+	code := strings.Join([]string{
+		"STRING(file('/lines.txt'), separator('\\n'))",
+		"MARKDOWN(true)",
+	}, "\n")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	task := tql.NewTaskContext(ctx)
+	task.SetDatabase(testServer.DatabaseSVR())
+	err := task.CompileString(code)
+	require.Error(t, err)
+	require.Equal(t, "line 2, column 1: encoder 'markdown' invalid option true (bool) [statement: MARKDOWN(true)]", err.Error())
+
+	var scriptErr *tql.ScriptError
+	require.True(t, errors.As(err, &scriptErr))
+	require.Equal(t, "sink_compile_error", scriptErr.Kind)
+	require.Equal(t, 2, scriptErr.Span.Start.Line)
 }
 
 func TestQuerySql(t *testing.T) {

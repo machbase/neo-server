@@ -3,6 +3,8 @@ package expression
 type Token struct {
 	Kind  TokenKind
 	Value any
+	Span  SourceSpan
+	Raw   string
 }
 
 type TokenKind int
@@ -95,4 +97,8 @@ func (ts *tokenStream) next() Token {
 
 func (ts *tokenStream) hasNext() bool {
 	return ts.index < ts.length
+}
+
+func (ts *tokenStream) peek() Token {
+	return ts.tokens[ts.index]
 }
