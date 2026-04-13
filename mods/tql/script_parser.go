@@ -1,7 +1,6 @@
 package tql
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -194,8 +193,4 @@ func newScriptError(kind string, stmt *Statement, message string, cause error) e
 		err.StatementText = stmt.Text
 	}
 	return err
-}
-
-func ParseScriptBufferedReader(r *bufio.Reader, functions map[string]expression.Function) (*TQLScript, error) {
-	return ParseScriptReader(r, functions)
 }
