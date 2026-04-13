@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dop251/goja"
@@ -40,6 +42,9 @@ type JSRuntime struct {
 	procCommand     string
 	procArgs        []string
 	nowFunc         func() time.Time
+	// vmRef holds the goja.Runtime set right before the script runs so that
+	// RunContext can call vm.Interrupt() from a goroutine (goroutine-safe).
+	vmRef atomic.Pointer[goja.Runtime]
 }
 
 type ExecOptions struct {
@@ -71,9 +76,21 @@ func (jr *JSRuntime) RunContext(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			jr.eventLoop.Run(func(vm *goja.Runtime) {
+			// Wait for the vm reference to become available (set at the start of
+			// the event loop callback in Run, typically within nanoseconds).
+			for jr.vmRef.Load() == nil {
+				select {
+				case <-done:
+					return
+				default:
+					runtime.Gosched()
+				}
+			}
+			// vm.Interrupt is goroutine-safe and works even while the JS runtime
+			// is blocked in a tight loop (checked on every backward jump).
+			if vm := jr.vmRef.Load(); vm != nil {
 				vm.Interrupt(ctx.Err())
-			})
+			}
 		case <-done:
 		}
 	}()
@@ -128,6 +145,8 @@ func (jr *JSRuntime) Run() error {
 	}
 	var retErr error = nil
 	jr.eventLoop.Run(func(vm *goja.Runtime) {
+		// Store vm reference so RunContext can call vm.Interrupt() from a goroutine.
+		jr.vmRef.Store(vm)
 		buffer.Enable(vm)
 		url.Enable(vm)
 		vm.SetFieldNameMapper(goja.UncapFieldNameMapper())

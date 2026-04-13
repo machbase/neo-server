@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
@@ -391,4 +393,83 @@ func TestEventLoop(t *testing.T) {
 	for _, tc := range testCases {
 		test_engine.RunTest(t, tc)
 	}
+}
+func TestRunContext(t *testing.T) {
+	t.Run("nil ctx falls through to Run", func(t *testing.T) {
+		var buf bytes.Buffer
+		jr, err := engine.New(engine.Config{
+			Code:   `console.println("ok")`,
+			Writer: &buf,
+		})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+		if err := jr.RunContext(nil); err != nil {
+			t.Fatalf("RunContext(nil): %v", err)
+		}
+		if got := strings.TrimSpace(buf.String()); got != "ok" {
+			t.Fatalf("output=%q, want %q", got, "ok")
+		}
+	})
+
+	t.Run("normal completion returns nil", func(t *testing.T) {
+		ctx := context.Background()
+		var buf bytes.Buffer
+		jr, err := engine.New(engine.Config{
+			Code:   `console.println("done")`,
+			Writer: &buf,
+		})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+		if err := jr.RunContext(ctx); err != nil {
+			t.Fatalf("RunContext: %v", err)
+		}
+		if got := strings.TrimSpace(buf.String()); got != "done" {
+			t.Fatalf("output=%q, want %q", got, "done")
+		}
+	})
+
+	t.Run("cancelled ctx returns ctx error", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		jr, err := engine.New(engine.Config{
+			// Script loops indefinitely; cancellation interrupts it.
+			Code: `while(true) {}`,
+		})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+
+		go func() {
+			// Give the event loop a moment to start before cancelling.
+			time.Sleep(20 * time.Millisecond)
+			cancel()
+		}()
+
+		runErr := jr.RunContext(ctx)
+		if runErr == nil {
+			t.Fatal("RunContext should return an error when ctx is cancelled")
+		}
+		if runErr != context.Canceled {
+			t.Fatalf("RunContext error = %v, want context.Canceled", runErr)
+		}
+	})
+
+	t.Run("script error propagates when ctx is still active", func(t *testing.T) {
+		ctx := context.Background()
+		jr, err := engine.New(engine.Config{
+			Code: `throw new Error("boom")`,
+		})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+		runErr := jr.RunContext(ctx)
+		if runErr == nil {
+			t.Fatal("RunContext should return an error for a thrown exception")
+		}
+		if strings.Contains(runErr.Error(), "boom") == false {
+			t.Fatalf("RunContext error = %v, want it to contain 'boom'", runErr)
+		}
+	})
 }
