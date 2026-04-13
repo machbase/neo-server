@@ -84,6 +84,7 @@ This is an implementation-defined extension and is not part of standard parsed C
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -205,7 +206,11 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 			return
 		}
 		lib.Enable(jr)
-		if err := jr.Run(); err != nil {
+		if err := jr.RunContext(ctx.Request.Context()); err != nil {
+			if errors.Is(ctx.Request.Context().Err(), context.Canceled) ||
+				errors.Is(ctx.Request.Context().Err(), context.DeadlineExceeded) {
+				return
+			}
 			msg := "engine run error: " + err.Error()
 			msg = appendCgiDiagnostic(msg, stdoutCapture.String(), stderrCapture.String())
 			handleError(ctx, http.StatusInternalServerError, msg, tick)

@@ -148,6 +148,50 @@ func TestControllerStopServiceReturnsUpdatedStatus(t *testing.T) {
 	}
 }
 
+func TestControllerStopServiceNoDeadlockOnWaitGoroutineLockContention(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skip on windows due to sleep command compatibility")
+	}
+
+	ctl := &Controller{
+		launcher: []string{"env"},
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{Name: "svc-a", Enable: true, Executable: "sleep", Args: []string{"30"}},
+				Status: ServiceStatusStopped,
+			},
+		},
+	}
+
+	svc, err := ctl.StartService("svc-a")
+	if err != nil {
+		t.Fatalf("StartService() error: %v", err)
+	}
+	if svc == nil || svc.cmd == nil || svc.cmd.Process == nil {
+		t.Fatal("StartService() did not create a running process")
+	}
+	defer func() {
+		if svc.cmd != nil && svc.cmd.Process != nil {
+			_ = svc.cmd.Process.Kill()
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		_, stopErr := ctl.StopService("svc-a")
+		done <- stopErr
+	}()
+
+	select {
+	case stopErr := <-done:
+		if stopErr != nil {
+			t.Fatalf("StopService() error: %v", stopErr)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("StopService() blocked (possible deadlock)")
+	}
+}
+
 func TestControllerStartServiceReturnsUpdatedStatus(t *testing.T) {
 	ctl := &Controller{
 		services: map[string]*Service{
@@ -2310,4 +2354,129 @@ func TestRPCUtilityFunctionsAndDispatchErrors(t *testing.T) {
 			t.Fatalf("reloadSnapshot services=%v, want 2 services", result.Services)
 		}
 	})
+}
+
+// TestControllerUpdateDoesNotClobberRestartedService reproduces the state-clobber
+// bug where the wait goroutine from the previous run (G1) acquires ctl.mu AFTER
+// Update() has already re-started the service (G2) and overwrites the running
+// status back to Stopped, effectively making the service invisible as running.
+//
+// The root cause is that startServiceInstance captures svc by pointer in the
+// goroutine closure. When Update() stops and immediately restarts the service while
+// holding ctl.mu, the old goroutine (G1) eventually acquires the lock and writes
+// svc.Status = ServiceStatusStopped over the newly running G2.
+//
+// Expected before fix: status is Stopped (clobbered) or sharedClientID is empty
+// Expected after fix:  status remains Running
+func TestControllerUpdateDoesNotClobberRestartedService(t *testing.T) {
+	ctl := &Controller{
+		launcher: []string{"env"},
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{Name: "svc-a", Enable: true, Executable: "sleep", Args: []string{"30"}},
+				Status: ServiceStatusStopped,
+			},
+		},
+	}
+
+	// Start the service so a wait goroutine (G1) is running.
+	_, err := ctl.StartService("svc-a")
+	if err != nil {
+		t.Fatalf("StartService: %v", err)
+	}
+
+	// Confirm it's running.
+	snap := ctl.StatusOf("svc-a")
+	if snap.Status != ServiceStatusRunning {
+		t.Fatalf("before Update: status=%s, want running", snap.Status)
+	}
+
+	// Trigger an Update with the same service marked as "Updated" (config unchanged
+	// content-wise but present in reread.Updated simulates a config reload).
+	updatedCfg := Config{Name: "svc-a", Enable: true, Executable: "sleep", Args: []string{"30"}}
+	ctl.mu.Lock()
+	ctl.reread = &ServiceList{
+		Updated: []*Config{&updatedCfg},
+	}
+	ctl.mu.Unlock()
+
+	ctl.Update(nil)
+
+	// Give G1 (the goroutine from the first run) enough time to acquire ctl.mu
+	// and potentially clobber the state.  100 ms is ample for a goroutine that is
+	// only blocked on a mutex.
+	time.Sleep(100 * time.Millisecond)
+
+	snap = ctl.StatusOf("svc-a")
+	if snap == nil {
+		t.Fatal("after Update: service not found")
+	}
+	if snap.Status != ServiceStatusRunning {
+		t.Fatalf("after Update: status=%s, want running (old goroutine clobbered state)", snap.Status)
+	}
+	// sharedClientID is not included in the StatusOf snapshot; access live svc directly.
+	ctl.mu.RLock()
+	clientID := ctl.services["svc-a"].sharedClientID
+	ctl.mu.RUnlock()
+	if clientID == "" {
+		t.Fatal("after Update: sharedClientID is empty (old goroutine cleared it)")
+	}
+
+	// Cleanup: stop the restarted service.
+	ctl.StopService("svc-a") //nolint:errcheck
+}
+
+// TestControllerReloadDoesNotClobberRestartedServices is the same scenario for
+// the Reload() path, which stops all running services then re-starts them in one
+// locked call.
+func TestControllerReloadDoesNotClobberRestartedServices(t *testing.T) {
+	ctl := &Controller{
+		launcher: []string{"env"},
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{Name: "svc-a", Enable: true, Executable: "sleep", Args: []string{"30"}},
+				Status: ServiceStatusStopped,
+			},
+		},
+	}
+
+	_, err := ctl.StartService("svc-a")
+	if err != nil {
+		t.Fatalf("StartService: %v", err)
+	}
+
+	snap := ctl.StatusOf("svc-a")
+	if snap.Status != ServiceStatusRunning {
+		t.Fatalf("before Reload: status=%s, want running", snap.Status)
+	}
+
+	// Simulate a Reload that keeps svc-a (Unchanged) — Reload stops all running
+	// services and restarts all enabled ones, so G1 is spawned before Reload and
+	// G2 is spawned inside Reload.
+	ctl.mu.Lock()
+	ctl.reread = &ServiceList{
+		Unchanged: []*Config{{Name: "svc-a", Enable: true, Executable: "sleep", Args: []string{"30"}}},
+	}
+	ctl.mu.Unlock()
+
+	ctl.Reload(nil)
+
+	time.Sleep(100 * time.Millisecond)
+
+	snap = ctl.StatusOf("svc-a")
+	if snap == nil {
+		t.Fatal("after Reload: service not found")
+	}
+	if snap.Status != ServiceStatusRunning {
+		t.Fatalf("after Reload: status=%s, want running (old goroutine clobbered state)", snap.Status)
+	}
+	// sharedClientID is not included in the StatusOf snapshot; access live svc directly.
+	ctl.mu.RLock()
+	clientID := ctl.services["svc-a"].sharedClientID
+	ctl.mu.RUnlock()
+	if clientID == "" {
+		t.Fatal("after Reload: sharedClientID is empty (old goroutine cleared it)")
+	}
+
+	ctl.StopService("svc-a") //nolint:errcheck
 }

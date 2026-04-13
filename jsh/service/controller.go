@@ -407,10 +407,15 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 	svc.startCh = make(chan struct{})
 	svc.stopCh = make(chan struct{})
 	clientID := svc.sharedClientID
+	// Capture channels and cmd by value so that the goroutine never reads
+	// svc.stopCh/startCh/cmd after they may have been replaced by a concurrent
+	// restart (e.g. inside Update or Reload which hold ctl.mu).
+	myCmd := svc.cmd
+	myStartCh := svc.startCh
+	myStopCh := svc.stopCh
 	go func() {
-		close(svc.startCh)
-		defer close(svc.stopCh)
-		err := svc.cmd.Wait()
+		close(myStartCh)
+		err := myCmd.Wait()
 		stdoutWriter.Flush()
 		stderrWriter.Flush()
 		exitCode := 0
@@ -421,14 +426,22 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 				exitCode = -1
 			}
 		}
+		// Signal waiters before acquiring controller lock to avoid lock-wait cycles.
+		close(myStopCh)
 		ctl.mu.Lock()
 		defer ctl.mu.Unlock()
 		ctl.cleanupSharedFDsByOwner(clientID)
+		// Only update service state when we are still the active instance.
+		// If Update/Reload re-started the service while we were waiting, svc.stopCh
+		// will point to a newer channel and we must not clobber the new state.
+		if svc.stopCh != myStopCh {
+			return
+		}
 		svc.ExitCode = exitCode
 		svc.Status = ServiceStatusStopped
 		svc.sharedClientID = ""
 	}()
-	<-svc.startCh
+	<-myStartCh
 }
 
 func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
@@ -461,6 +474,7 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 		return
 	}
 	<-svc.stopCh
+	svc.Status = ServiceStatusStopped
 	svc.Error = nil
 }
 

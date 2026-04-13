@@ -163,7 +163,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	}
 
 	// it should run before the init code, so that the init code can use the native modules.
-	if err := jr.Run(); err != nil {
+	if err := jr.RunContext(node.task.ctx); err != nil {
 		return nil, fmt.Errorf("SCRIPT runtime, %s", err.Error())
 	}
 
