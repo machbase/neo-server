@@ -60,6 +60,33 @@ func (jr *JSRuntime) EventLoop() *eventloop.EventLoop {
 	return jr.eventLoop
 }
 
+func (jr *JSRuntime) RunContext(ctx context.Context) error {
+	if ctx == nil {
+		return jr.Run()
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			jr.eventLoop.Run(func(vm *goja.Runtime) {
+				vm.Interrupt(ctx.Err())
+			})
+		case <-done:
+		}
+	}()
+
+	err := jr.Run()
+	if err != nil {
+		if _, ok := err.(*goja.InterruptedError); ok && ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return err
+}
+
 func (jr *JSRuntime) Run() error {
 	if jr.Env == nil {
 		jr.Env = &Env{}
