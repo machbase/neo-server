@@ -394,6 +394,12 @@ func TestEventLoop(t *testing.T) {
 		test_engine.RunTest(t, tc)
 	}
 }
+
+// Returns nil context intentionally for testing RunContext(nil) behavior.
+func nilContextForTest() context.Context {
+	return nil
+}
+
 func TestRunContext(t *testing.T) {
 	t.Run("nil ctx falls through to Run", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -404,7 +410,7 @@ func TestRunContext(t *testing.T) {
 		if err != nil {
 			t.Fatalf("engine.New: %v", err)
 		}
-		if err := jr.RunContext(nil); err != nil {
+		if err := jr.RunContext(nilContextForTest()); err != nil {
 			t.Fatalf("RunContext(nil): %v", err)
 		}
 		if got := strings.TrimSpace(buf.String()); got != "ok" {
