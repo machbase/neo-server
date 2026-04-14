@@ -65,6 +65,10 @@ func (jr *JSRuntime) EventLoop() *eventloop.EventLoop {
 	return jr.eventLoop
 }
 
+func (jr *JSRuntime) MountedFS() *FS {
+	return jr.filesystem
+}
+
 func (jr *JSRuntime) RunContext(ctx context.Context) error {
 	if ctx == nil {
 		return jr.Run()

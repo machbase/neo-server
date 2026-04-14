@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,25 @@ import (
 	"syscall"
 	"unsafe"
 )
+
+func forwardSignalToChildGroup(ex *exec.Cmd, sig os.Signal) {
+	if ex == nil || ex.Process == nil {
+		return
+	}
+
+	childPID := ex.Process.Pid
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		_ = ex.Process.Signal(sig)
+		return
+	}
+
+	// Prefer delivering to the child's process group so descendants also receive it.
+	if err := syscall.Kill(-childPID, sysSig); err == nil {
+		return
+	}
+	_ = ex.Process.Signal(sig)
+}
 
 func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	ex.Stdin = resolveExecReader(jr.Env.Reader(), opts.Stdin)
@@ -37,10 +57,16 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		signal.Ignore(syscall.SIGTTOU)
 		signal.Ignore(syscall.SIGTTIN)
 		signal.Ignore(syscall.SIGTSTP)
+		// While child owns the foreground TTY, parent shell should not react to
+		// terminal interrupt/quit keys. Let the foreground child handle them.
+		signal.Ignore(syscall.SIGINT)
+		signal.Ignore(syscall.SIGQUIT)
 		defer func() {
 			signal.Reset(syscall.SIGTTOU)
 			signal.Reset(syscall.SIGTTIN)
 			signal.Reset(syscall.SIGTSTP)
+			signal.Reset(syscall.SIGINT)
+			signal.Reset(syscall.SIGQUIT)
 		}()
 	}
 
@@ -48,6 +74,26 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	if err := ex.Start(); err != nil {
 		return -1, err
 	}
+
+	// In SSH/PTY environments, SIGINT can be delivered to the parent shell
+	// process directly (instead of the foreground child). While waiting for the
+	// child, forward interrupt/quit to the child process group and keep parent alive.
+	parentSignalCh := make(chan os.Signal, 2)
+	signal.Notify(parentSignalCh, os.Interrupt, syscall.SIGQUIT)
+	defer signal.Stop(parentSignalCh)
+
+	forwardDone := make(chan struct{})
+	defer close(forwardDone)
+	go func() {
+		for {
+			select {
+			case <-forwardDone:
+				return
+			case sig := <-parentSignalCh:
+				forwardSignalToChildGroup(ex, sig)
+			}
+		}
+	}()
 
 	var procEntryWarn error
 	procEntry, err := jr.createProcessEntry(ex)
@@ -74,14 +120,21 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 
 	// wait for process to finish
 	var result int
-	if err := ex.Wait(); err != nil {
+	for {
+		err := ex.Wait()
+		if err == nil {
+			result = 0
+			break
+		}
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			result = exitErr.ExitCode()
 		} else {
 			result = -1
 		}
-	} else {
-		result = 0
+		break
 	}
 
 	if procEntry != nil {

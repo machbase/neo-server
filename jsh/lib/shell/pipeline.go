@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"sync"
 
@@ -200,6 +201,11 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	closeFiles(pipeReaders)
 	closeFiles(pipeWriters)
 
+	stopForwarder := startInterruptForwarder(shouldForwardInterrupts(sh.env.Reader()), func() []*exec.Cmd {
+		return started
+	})
+	defer stopForwarder()
+
 	lastExitCode := 0
 	for i, cmd := range started {
 		exitCode, err := waitCommand(cmd)
@@ -269,6 +275,10 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 		log.Printf("command start error: %v\n", err)
 		return 1
 	}
+	stopForwarder := startInterruptForwarder(shouldForwardInterrupts(sh.env.Reader()), func() []*exec.Cmd {
+		return []*exec.Cmd{cmd}
+	})
+	defer stopForwarder()
 	exitCode, err := waitCommand(cmd)
 	closeResources(redirectClosers)
 	if err != nil {
@@ -417,6 +427,49 @@ func waitCommand(cmd *exec.Cmd) (int, error) {
 		return -1, err
 	}
 	return 0, nil
+}
+
+func shouldForwardInterrupts(reader io.Reader) bool {
+	file, ok := reader.(*os.File)
+	if !ok {
+		return false
+	}
+	stat, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return (stat.Mode() & os.ModeCharDevice) != 0
+}
+
+func startInterruptForwarder(enabled bool, commands func() []*exec.Cmd) func() {
+	if !enabled {
+		return func() {}
+	}
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt)
+
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ch:
+				for _, cmd := range commands() {
+					if cmd == nil || cmd.Process == nil {
+						continue
+					}
+					_ = cmd.Process.Signal(os.Interrupt)
+				}
+			}
+		}
+	}()
+
+	return func() {
+		signal.Stop(ch)
+		close(done)
+	}
 }
 
 func killStarted(cmds []*exec.Cmd) {
