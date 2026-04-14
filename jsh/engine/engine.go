@@ -142,7 +142,9 @@ func (jr *JSRuntime) Run() error {
 					jr.exitCode = ec.Code
 					return
 				}
-				fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
+				if jr.ctx == nil || jr.ctx.Err() == nil {
+					fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
+				}
 				jr.exitCode = -1
 				return
 			}
@@ -191,7 +193,9 @@ func (jr *JSRuntime) Run() error {
 					}
 					return
 				}
-				fmt.Fprintf(jr.Env.ErrorWriter(), "Interrupted: %s\n", ie.String())
+				if jr.ctx == nil || jr.ctx.Err() == nil {
+					fmt.Fprintf(jr.Env.ErrorWriter(), "Interrupted: %s\n", ie.String())
+				}
 			} else if jsErr, ok := err.(*goja.Exception); ok {
 				msg := jsErr.String()
 				msg = strings.TrimPrefix(msg, "GoError: ")
