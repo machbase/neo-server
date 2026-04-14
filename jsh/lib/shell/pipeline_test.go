@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -494,6 +495,218 @@ func TestPipelineInterruptForwardingHelper(t *testing.T) {
 	_, _ = writer.WriteString(text)
 	_, _ = writer.WriteString(fmt.Sprintf("\nexitCode:%d alive:%v\n", exitCode, alive))
 	_ = writer.Flush()
+}
+
+func TestShouldForwardInterrupts(t *testing.T) {
+	t.Run("non file reader", func(t *testing.T) {
+		if shouldForwardInterrupts(bytes.NewBufferString("x")) {
+			t.Fatal("shouldForwardInterrupts should be false for non-file readers")
+		}
+	})
+
+	t.Run("stat error", func(t *testing.T) {
+		f, err := os.CreateTemp("", "pipeline-test-*")
+		if err != nil {
+			t.Fatalf("create temp file: %v", err)
+		}
+		name := f.Name()
+		_ = f.Close()
+		defer os.Remove(name)
+
+		if shouldForwardInterrupts(f) {
+			t.Fatal("shouldForwardInterrupts should be false when file stat fails")
+		}
+	})
+
+	t.Run("character device", func(t *testing.T) {
+		f, err := os.Open(os.DevNull)
+		if err != nil {
+			t.Fatalf("open dev null: %v", err)
+		}
+		defer f.Close()
+
+		st, err := f.Stat()
+		if err != nil {
+			t.Fatalf("stat dev null: %v", err)
+		}
+		want := (st.Mode() & os.ModeCharDevice) != 0
+		if got := shouldForwardInterrupts(f); got != want {
+			t.Fatalf("shouldForwardInterrupts(devnull)=%v, want %v", got, want)
+		}
+	})
+}
+
+func TestStartInterruptForwarder(t *testing.T) {
+	t.Run("disabled no-op", func(t *testing.T) {
+		stop := startInterruptForwarder(false, func() []*exec.Cmd {
+			return nil
+		})
+		stop()
+	})
+
+	t.Run("enabled forwards interrupt in helper", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("SIGINT forwarding helper is only covered on unix-like platforms")
+		}
+
+		cmd := exec.Command(os.Args[0], "-test.run=^TestStartInterruptForwarderHelper$", "--")
+		cmd.Env = append(os.Environ(), "GO_WANT_START_INTERRUPT_FORWARDER_HELPER=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("startInterruptForwarder helper failed: %v\noutput:\n%s", err, string(out))
+		}
+		if !strings.Contains(normalizeTestNewlines(string(out)), "child-caught") {
+			t.Fatalf("helper output does not contain child-caught marker:\n%s", string(out))
+		}
+	})
+
+	t.Run("enabled forwards interrupt in process", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("SIGINT forwarding is only covered on unix-like platforms")
+		}
+
+		child := exec.Command("sh", "-c", "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do sleep 1; done")
+		stdout, err := child.StdoutPipe()
+		if err != nil {
+			t.Fatalf("stdout pipe: %v", err)
+		}
+		child.Stderr = child.Stdout
+		if err := child.Start(); err != nil {
+			t.Fatalf("start child: %v", err)
+		}
+
+		readyCh := make(chan struct{}, 1)
+		caughtCh := make(chan struct{}, 1)
+		doneRead := make(chan struct{})
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line == "child-ready" {
+					select {
+					case readyCh <- struct{}{}:
+					default:
+					}
+				}
+				if line == "child-caught" {
+					select {
+					case caughtCh <- struct{}{}:
+					default:
+					}
+				}
+			}
+			close(doneRead)
+		}()
+
+		stop := startInterruptForwarder(true, func() []*exec.Cmd {
+			return []*exec.Cmd{nil, &exec.Cmd{}, child}
+		})
+		defer stop()
+
+		select {
+		case <-readyCh:
+		case <-time.After(2 * time.Second):
+			_ = child.Process.Kill()
+			_, _ = waitCommand(child)
+			t.Fatal("timed out waiting for child-ready")
+		}
+
+		proc, err := os.FindProcess(os.Getpid())
+		if err != nil {
+			t.Fatalf("find self process: %v", err)
+		}
+		if err := proc.Signal(os.Interrupt); err != nil {
+			t.Fatalf("send interrupt: %v", err)
+		}
+
+		doneWait := make(chan error, 1)
+		go func() {
+			_, err := waitCommand(child)
+			doneWait <- err
+		}()
+
+		select {
+		case err := <-doneWait:
+			if err != nil {
+				t.Fatalf("child wait: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			_ = child.Process.Kill()
+			<-doneWait
+			t.Fatal("timed out waiting for child exit")
+		}
+
+		select {
+		case <-caughtCh:
+		case <-time.After(1 * time.Second):
+			t.Fatal("did not observe child-caught after forwarded interrupt")
+		}
+
+		<-doneRead
+	})
+}
+
+func TestStartInterruptForwarderHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_START_INTERRUPT_FORWARDER_HELPER") != "1" {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("helper runs only on unix-like platforms")
+	}
+
+	child := exec.Command("sh", "-c", "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do sleep 1; done")
+	var childOutput bytes.Buffer
+	child.Stdout = &childOutput
+	child.Stderr = &childOutput
+	if err := child.Start(); err != nil {
+		t.Fatalf("start helper child: %v", err)
+	}
+
+	stop := startInterruptForwarder(true, func() []*exec.Cmd {
+		return []*exec.Cmd{nil, {}, child}
+	})
+	defer stop()
+
+	ready := false
+	for i := 0; i < 40; i++ {
+		if strings.Contains(childOutput.String(), "child-ready") {
+			ready = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !ready {
+		_ = child.Process.Kill()
+		_, _ = waitCommand(child)
+		t.Fatalf("child-ready marker not observed, output:\n%s", childOutput.String())
+	}
+
+	proc, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatalf("find self process: %v", err)
+	}
+	if err := proc.Signal(os.Interrupt); err != nil {
+		t.Fatalf("send interrupt to self: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := waitCommand(child)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("child wait error: %v\noutput:\n%s", err, childOutput.String())
+		}
+	case <-time.After(3 * time.Second):
+		_ = child.Process.Kill()
+		<-done
+		t.Fatalf("child did not exit after forwarded interrupt, output:\n%s", childOutput.String())
+	}
+
+	_, _ = io.WriteString(os.Stdout, normalizeTestNewlines(childOutput.String()))
 }
 
 func TestProcessWordExpansion(t *testing.T) {
