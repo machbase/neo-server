@@ -1897,6 +1897,12 @@ func TestScript(t *testing.T) {
 }
 
 func TestScriptInterrupt(t *testing.T) {
+	requireNoPayload := func(t *testing.T, result string) {
+		// Timeout interrupts may flush either "" or "\n" depending on writer/runtime timing.
+		// The semantic contract is that no payload rows are produced.
+		require.Equal(t, "", strings.TrimSpace(result))
+	}
+
 	tests := []TqlTestCase{
 		{
 			Name: "js-timeout",
@@ -1912,9 +1918,7 @@ func TestScriptInterrupt(t *testing.T) {
 			CtxTimeout: 100 * time.Millisecond,
 			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
 			ExpectFunc: func(t *testing.T, result string) {
-				// SCRIPT should be interrupted by context timeout,
-				// so no result should be returned
-				require.Equal(t, "\n", result)
+				requireNoPayload(t, result)
 			},
 		},
 		{
@@ -1931,9 +1935,7 @@ func TestScriptInterrupt(t *testing.T) {
 			CtxTimeout: 100 * time.Millisecond,
 			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
 			ExpectFunc: func(t *testing.T, result string) {
-				// SCRIPT should be interrupted by context timeout,
-				// so no result should be returned
-				require.Equal(t, "\n", result)
+				requireNoPayload(t, result)
 			},
 		},
 		{
@@ -1950,9 +1952,7 @@ func TestScriptInterrupt(t *testing.T) {
 			`,
 			CtxTimeout: 100 * time.Millisecond,
 			ExpectFunc: func(t *testing.T, result string) {
-				// SCRIPT should be interrupted by context timeout,
-				// so no result should be returned
-				require.Equal(t, "\n", result)
+				requireNoPayload(t, result)
 			},
 		},
 		{

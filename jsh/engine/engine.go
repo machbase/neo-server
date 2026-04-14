@@ -65,10 +65,20 @@ func (jr *JSRuntime) EventLoop() *eventloop.EventLoop {
 	return jr.eventLoop
 }
 
+func (jr *JSRuntime) MountedFS() *FS {
+	return jr.filesystem
+}
+
 func (jr *JSRuntime) RunContext(ctx context.Context) error {
 	if ctx == nil {
 		return jr.Run()
 	}
+
+	prevCtx := jr.ctx
+	jr.ctx = ctx
+	defer func() {
+		jr.ctx = prevCtx
+	}()
 
 	done := make(chan struct{})
 	defer close(done)
@@ -126,7 +136,17 @@ func (jr *JSRuntime) Run() error {
 	defer func() {
 		if r := recover(); r != nil {
 			if ie, ok := r.(*goja.InterruptedError); ok {
-				fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
+				if ec, ok := ie.Value().(Exit); ok {
+					// process.exit() can be raised from async callbacks (e.g. signal handlers)
+					// as a VM interrupt panic. Treat it as a normal runtime exit.
+					jr.exitCode = ec.Code
+					return
+				}
+				if jr.ctx == nil || jr.ctx.Err() == nil {
+					fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
+				}
+				jr.exitCode = -1
+				return
 			}
 			fmt.Fprintf(os.Stderr, "panic: %v\n%v\n", r, string(debug.Stack()))
 			os.Exit(1)
@@ -173,7 +193,9 @@ func (jr *JSRuntime) Run() error {
 					}
 					return
 				}
-				fmt.Fprintf(jr.Env.ErrorWriter(), "Interrupted: %s\n", ie.String())
+				if jr.ctx == nil || jr.ctx.Err() == nil {
+					fmt.Fprintf(jr.Env.ErrorWriter(), "Interrupted: %s\n", ie.String())
+				}
 			} else if jsErr, ok := err.(*goja.Exception); ok {
 				msg := jsErr.String()
 				msg = strings.TrimPrefix(msg, "GoError: ")

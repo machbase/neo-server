@@ -331,6 +331,15 @@ func (m *FS) mapHostPathToVirtual(hostPath string) (string, error) {
 	return "", fs.ErrNotExist
 }
 
+// ResolveHostPath converts a virtual path to its mounted host filesystem path.
+func (m *FS) ResolveHostPath(name string) (string, error) {
+	_, _, _, hostPath, err := m.resolveHostPath(name)
+	if err != nil {
+		return "", err
+	}
+	return hostPath, nil
+}
+
 // Open implements fs.FS
 func (m *FS) Open(name string) (fs.File, error) {
 	name = CleanPath(name)

@@ -3,22 +3,48 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 	"unsafe"
 )
+
+func forwardSignalToChildGroup(ex *exec.Cmd, sig os.Signal) {
+	if ex == nil || ex.Process == nil {
+		return
+	}
+
+	childPID := ex.Process.Pid
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		_ = ex.Process.Signal(sig)
+		return
+	}
+
+	// Prefer delivering to the child's process group so descendants also receive it.
+	if err := syscall.Kill(-childPID, sysSig); err == nil {
+		return
+	}
+	_ = ex.Process.Signal(sig)
+}
 
 func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	ex.Stdin = resolveExecReader(jr.Env.Reader(), opts.Stdin)
 	ex.Stdout = resolveExecWriter(jr.Env.Writer(), opts.Stdout)
 	ex.Stderr = resolveExecWriter(jr.Env.ErrorWriter(), opts.Stderr)
 
-	// Get terminal file descriptor
-	ttyFd := int(os.Stdin.Fd())
-	isTTY := isatty(ttyFd)
+	// Determine interactive mode from the actual stdin wired into the child.
+	// CGI/background executions should not capture process-wide SIGINT handlers.
+	ttyFd := -1
+	isTTY := false
+	if stdinFile, ok := ex.Stdin.(*os.File); ok {
+		ttyFd = int(stdinFile.Fd())
+		isTTY = isatty(ttyFd)
+	}
 
 	// Get shell's process group ID
 	var shellPgid int
@@ -49,6 +75,30 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
+	var parentSignalCh chan os.Signal
+	var forwardDone chan struct{}
+	if isTTY {
+		// In interactive/TTY mode, SIGINT can be delivered to the parent shell
+		// process directly (instead of the foreground child). While waiting for the
+		// child, forward interrupt/quit to the child process group.
+		parentSignalCh = make(chan os.Signal, 2)
+		signal.Notify(parentSignalCh, os.Interrupt, syscall.SIGQUIT)
+		defer signal.Stop(parentSignalCh)
+
+		forwardDone = make(chan struct{})
+		defer close(forwardDone)
+		go func() {
+			for {
+				select {
+				case <-forwardDone:
+					return
+				case sig := <-parentSignalCh:
+					forwardSignalToChildGroup(ex, sig)
+				}
+			}
+		}()
+	}
+
 	var procEntryWarn error
 	procEntry, err := jr.createProcessEntry(ex)
 	if err != nil {
@@ -72,16 +122,56 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		}
 	}
 
+	var cancelDone chan struct{}
+	if jr.ctx != nil {
+		cancelDone = make(chan struct{})
+		go func(pid int) {
+			select {
+			case <-cancelDone:
+				return
+			case <-jr.ctx.Done():
+				// Try graceful termination first for the whole process group.
+				if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+					if proc := ex.Process; proc != nil {
+						_ = proc.Signal(syscall.SIGTERM)
+					}
+				}
+
+				timer := time.NewTimer(2 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-cancelDone:
+					return
+				case <-timer.C:
+					// Ensure no zombie child remains after request cancellation.
+					if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+						if proc := ex.Process; proc != nil {
+							_ = proc.Signal(syscall.SIGKILL)
+						}
+					}
+				}
+			}
+		}(ex.Process.Pid)
+		defer close(cancelDone)
+	}
+
 	// wait for process to finish
 	var result int
-	if err := ex.Wait(); err != nil {
+	for {
+		err := ex.Wait()
+		if err == nil {
+			result = 0
+			break
+		}
+		if errors.Is(err, syscall.EINTR) {
+			continue
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			result = exitErr.ExitCode()
 		} else {
 			result = -1
 		}
-	} else {
-		result = 0
+		break
 	}
 
 	if procEntry != nil {
@@ -95,7 +185,7 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	if isTTY {
 		_, _, err := syscall.Syscall(
 			syscall.SYS_IOCTL,
-			uintptr(os.Stdin.Fd()),
+			uintptr(ttyFd),
 			syscall.TIOCSPGRP,
 			uintptr(unsafe.Pointer(&shellPgid)))
 		if err != 0 {

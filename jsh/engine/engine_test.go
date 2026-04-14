@@ -472,4 +472,62 @@ func TestRunContext(t *testing.T) {
 			t.Fatalf("RunContext error = %v, want it to contain 'boom'", runErr)
 		}
 	})
+
+	// Regression history:
+	//
+	// During development of CGI SSE support and SIGINT handling, we hit a severe
+	// shutdown issue: request/context cancellation interrupted the JS runtime, but
+	// a child process started by process.exec() could remain alive and keep waiting
+	// in the background. In practice this surfaced as:
+	//   1) foreground server Ctrl+C appearing to hang,
+	//   2) lingering CGI child processes visible in ps,
+	//   3) shutdown only completing after manually killing those child processes.
+	//
+	// The fix path bound RunContext()'s context into JSRuntime and made exec0()
+	// terminate child process groups when context cancellation is observed.
+	//
+	// This test protects that exact failure mode by running a long-lived shell
+	// command that intentionally ignores SIGTERM, then forcing context timeout.
+	// We assert that RunContext() returns promptly with a cancellation error
+	// instead of hanging due to a leaked child process.
+	t.Run("cancelled ctx stops process.exec child", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("process.exec child cancellation regression test is unix-only")
+		}
+		if _, err := os.Stat("/bin/sh"); err != nil {
+			t.Skipf("/bin/sh is unavailable: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+
+		jr, err := engine.New(engine.Config{
+			Code: `
+				const process = require("process");
+				process.exec("@/bin/sh", "-c", "trap '' TERM; while :; do sleep 1; done");
+			`,
+			FSTabs: []engine.FSTab{
+				root.RootFSTab(),
+				lib.LibFSTab(),
+			},
+		})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+		lib.Enable(jr)
+
+		start := time.Now()
+		runErr := jr.RunContext(ctx)
+		elapsed := time.Since(start)
+
+		if runErr == nil {
+			t.Fatal("RunContext should return context cancellation error")
+		}
+		if runErr != context.DeadlineExceeded && runErr != context.Canceled {
+			t.Fatalf("RunContext error = %v, want context cancellation", runErr)
+		}
+		if elapsed > 5*time.Second {
+			t.Fatalf("RunContext cancellation took too long: %v", elapsed)
+		}
+	})
 }

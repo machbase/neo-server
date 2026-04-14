@@ -151,6 +151,60 @@ func TestCgiBinWriterChunkedWrites(t *testing.T) {
 	require.Equal(t, "hello world", recorder.Body.String())
 }
 
+// Regression history:
+//
+// During CGI SSE integration (handlePublic + util/tail/sse), clients could
+// connect but not receive events promptly. In practice this looked like
+// "curl connected and waiting forever" until enough output accumulated.
+//
+// The fix made CgiBinWriter commit/flush SSE headers immediately after parsing
+// header-only output, so streaming clients can switch to event consumption at
+// once without waiting for later body bytes.
+func TestCgiBinWriterSSEHeaderOnlyFlushesImmediately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/public/app/cgi-bin/test", nil)
+
+	flushWriter := &flushTrackingResponseWriter{ResponseWriter: ctx.Writer}
+	ctx.Writer = flushWriter
+
+	writer := &CgiBinWriter{ctx: ctx}
+	_, err := writer.Write([]byte("Content-Type: text/event-stream\r\nCache-Control: no-cache\r\n\r\n"))
+	require.NoError(t, err)
+
+	// SSE should start response immediately even without body bytes yet.
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
+	require.GreaterOrEqual(t, flushWriter.flushCount, 1)
+
+	require.NoError(t, writer.Finalize())
+}
+
+// Companion regression check for low-latency SSE delivery:
+// each event body write should trigger an additional flush.
+func TestCgiBinWriterSSEBodyFlushesOnWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/public/app/cgi-bin/test", nil)
+
+	flushWriter := &flushTrackingResponseWriter{ResponseWriter: ctx.Writer}
+	ctx.Writer = flushWriter
+
+	writer := &CgiBinWriter{ctx: ctx}
+	_, err := writer.Write([]byte("Content-Type: text/event-stream\r\n\r\n"))
+	require.NoError(t, err)
+
+	headerFlushCount := flushWriter.flushCount
+	_, err = writer.Write([]byte("event: log\ndata: hello\n\n"))
+	require.NoError(t, err)
+	require.Greater(t, flushWriter.flushCount, headerFlushCount)
+	require.Equal(t, "event: log\ndata: hello\n\n", recorder.Body.String())
+
+	require.NoError(t, writer.Finalize())
+}
+
 func TestCgiBinWriterHeadRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -352,6 +406,16 @@ func TestCgiBinWriterWriteBodyPartialWriteSuccess(t *testing.T) {
 type shortWriteResponseWriter struct {
 	gin.ResponseWriter
 	maxBytesPerWrite int
+}
+
+type flushTrackingResponseWriter struct {
+	gin.ResponseWriter
+	flushCount int
+}
+
+func (w *flushTrackingResponseWriter) Flush() {
+	w.flushCount++
+	w.ResponseWriter.Flush()
 }
 
 func (w *shortWriteResponseWriter) Write(data []byte) (int, error) {
