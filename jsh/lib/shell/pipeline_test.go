@@ -565,50 +565,31 @@ func TestStartInterruptForwarder(t *testing.T) {
 			t.Skip("SIGINT forwarding is only covered on unix-like platforms")
 		}
 
-		child := exec.Command("sh", "-c", "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do sleep 1; done")
-		stdout, err := child.StdoutPipe()
-		if err != nil {
-			t.Fatalf("stdout pipe: %v", err)
-		}
-		child.Stderr = child.Stdout
+		child := exec.Command("sh", "-c", "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do :; done")
+		var childOutput bytes.Buffer
+		child.Stdout = &childOutput
+		child.Stderr = &childOutput
 		if err := child.Start(); err != nil {
 			t.Fatalf("start child: %v", err)
 		}
-
-		readyCh := make(chan struct{}, 1)
-		caughtCh := make(chan struct{}, 1)
-		doneRead := make(chan struct{})
-		go func() {
-			scanner := bufio.NewScanner(stdout)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if line == "child-ready" {
-					select {
-					case readyCh <- struct{}{}:
-					default:
-					}
-				}
-				if line == "child-caught" {
-					select {
-					case caughtCh <- struct{}{}:
-					default:
-					}
-				}
-			}
-			close(doneRead)
-		}()
 
 		stop := startInterruptForwarder(true, func() []*exec.Cmd {
 			return []*exec.Cmd{nil, &exec.Cmd{}, child}
 		})
 		defer stop()
 
-		select {
-		case <-readyCh:
-		case <-time.After(2 * time.Second):
+		ready := false
+		for i := 0; i < 40; i++ {
+			if strings.Contains(childOutput.String(), "child-ready") {
+				ready = true
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !ready {
 			_ = child.Process.Kill()
 			_, _ = waitCommand(child)
-			t.Fatal("timed out waiting for child-ready")
+			t.Fatalf("timed out waiting for child-ready, output:\n%s", childOutput.String())
 		}
 
 		proc, err := os.FindProcess(os.Getpid())
@@ -628,21 +609,18 @@ func TestStartInterruptForwarder(t *testing.T) {
 		select {
 		case err := <-doneWait:
 			if err != nil {
-				t.Fatalf("child wait: %v", err)
+				t.Fatalf("child wait: %v\noutput:\n%s", err, childOutput.String())
 			}
 		case <-time.After(3 * time.Second):
 			_ = child.Process.Kill()
 			<-doneWait
-			t.Fatal("timed out waiting for child exit")
+			t.Fatalf("timed out waiting for child exit, output:\n%s", childOutput.String())
 		}
 
-		select {
-		case <-caughtCh:
-		case <-time.After(1 * time.Second):
-			t.Fatal("did not observe child-caught after forwarded interrupt")
+		out := normalizeTestNewlines(childOutput.String())
+		if !strings.Contains(out, "child-caught") {
+			t.Fatalf("did not observe child-caught after forwarded interrupt, output:\n%s", out)
 		}
-
-		<-doneRead
 	})
 }
 
