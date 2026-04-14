@@ -7,8 +7,11 @@ File: public/myapp/cgi-bin/log-stream.js
 
 const fs = require('fs');
 const tailSSE = require('util/tail/sse');
+const process = require('process');
 
-const target = process.env.QUERY_FILE || '/tmp/app.log';
+const path = process.env.get('SCRIPT_NAME');
+const target = '/work/'+path.substring(0, path.lastIndexOf('/')) + '/app.log';
+
 const intervalMs = Number(process.env.QUERY_INTERVAL_MS || 500);
 
 const adapter = tailSSE.create(target, {

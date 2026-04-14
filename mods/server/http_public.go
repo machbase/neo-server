@@ -349,6 +349,17 @@ func (w *CgiBinWriter) Write(p []byte) (n int, err error) {
 	w.response = response
 
 	if bodyStart == len(buffered) {
+		if isSSEContentType(response.contentType) {
+			responseType, classifyErr := response.classify(false)
+			if classifyErr != nil {
+				return 0, classifyErr
+			}
+			if err := w.applyResponseHeaders(responseType); err != nil {
+				return 0, err
+			}
+			w.ctx.Writer.WriteHeaderNow()
+			flushIfPossible(w.ctx.Writer)
+		}
 		return len(p), nil
 	}
 	if err := w.writeBody(buffered[bodyStart:]); err != nil {
@@ -412,7 +423,24 @@ func (w *CgiBinWriter) writeBody(p []byte) error {
 		}
 		p = p[n:]
 	}
+	flushIfPossible(w.ctx.Writer)
 	return nil
+}
+
+func isSSEContentType(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/event-stream")
+}
+
+func flushIfPossible(writer any) {
+	type flusher interface {
+		Flush()
+	}
+	if f, ok := writer.(flusher); ok {
+		f.Flush()
+	}
 }
 
 func findCgiHeaderEnd(p []byte) (int, int) {

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/root"
@@ -400,6 +402,98 @@ func TestProcessSetenvAndEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPipelineInterruptForwardingIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGINT integration is only covered on unix-like platforms")
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestPipelineInterruptForwardingHelper$", "--")
+	cmd.Env = append(os.Environ(), "GO_WANT_PIPELINE_INTERRUPT_HELPER=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("interrupt helper failed: %v\noutput:\n%s", err, string(out))
+	}
+
+	text := normalizeTestNewlines(string(out))
+	if !strings.Contains(text, "child-ready") {
+		t.Fatalf("helper output does not contain child-ready marker:\n%s", text)
+	}
+	if !strings.Contains(text, "child-caught") {
+		t.Fatalf("helper output does not contain child-caught marker:\n%s", text)
+	}
+	if !strings.Contains(text, "alive:true") {
+		t.Fatalf("helper output does not contain alive:true marker:\n%s", text)
+	}
+}
+
+func TestPipelineInterruptForwardingHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_PIPELINE_INTERRUPT_HELPER") != "1" {
+		return
+	}
+
+	if runtime.GOOS == "windows" {
+		t.Skip("helper runs only on unix-like platforms")
+	}
+
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer devNull.Close()
+
+	fileSystem := engine.NewFS()
+	rootTab := root.RootFSTab()
+	if err := fileSystem.Mount(rootTab.MountPoint, rootTab.FS); err != nil {
+		t.Fatalf("mount root fs: %v", err)
+	}
+	workFS, err := engine.DirFS(shellTestDir)
+	if err != nil {
+		t.Fatalf("work dir fs: %v", err)
+	}
+	if err := fileSystem.Mount("/work", workFS); err != nil {
+		t.Fatalf("mount work fs: %v", err)
+	}
+
+	var output bytes.Buffer
+	env := engine.NewEnv(
+		engine.WithFilesystem(fileSystem),
+		engine.WithExecBuilder(shellTestExecBuilder),
+		engine.WithWriter(&output),
+		engine.WithReader(devNull),
+	)
+	env.Set("PATH", "/work:/sbin")
+	env.Set("PWD", "/work")
+	env.Set("HOME", "/work")
+
+	sh := &Shell{env: env}
+
+	go func() {
+		// Trigger SIGINT while shell is blocked in external command wait path.
+		time.Sleep(400 * time.Millisecond)
+		if proc, err := os.FindProcess(os.Getpid()); err == nil {
+			_ = proc.Signal(os.Interrupt)
+		}
+	}()
+
+	exitCode, alive := sh.process(`@sh -c "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do sleep 1; done"`)
+
+	text := normalizeTestNewlines(output.String())
+	if !strings.Contains(text, "child-ready") {
+		t.Fatalf("missing child-ready marker in helper output:\n%s", text)
+	}
+	if !strings.Contains(text, "child-caught") {
+		t.Fatalf("missing child-caught marker in helper output:\n%s", text)
+	}
+	if !alive {
+		t.Fatalf("shell should stay alive after SIGINT forwarding, exitCode=%d output:\n%s", exitCode, text)
+	}
+
+	writer := bufio.NewWriter(os.Stdout)
+	_, _ = writer.WriteString(text)
+	_, _ = writer.WriteString(fmt.Sprintf("\nexitCode:%d alive:%v\n", exitCode, alive))
+	_ = writer.Flush()
 }
 
 func TestProcessWordExpansion(t *testing.T) {

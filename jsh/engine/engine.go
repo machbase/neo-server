@@ -74,6 +74,12 @@ func (jr *JSRuntime) RunContext(ctx context.Context) error {
 		return jr.Run()
 	}
 
+	prevCtx := jr.ctx
+	jr.ctx = ctx
+	defer func() {
+		jr.ctx = prevCtx
+	}()
+
 	done := make(chan struct{})
 	defer close(done)
 
@@ -130,7 +136,15 @@ func (jr *JSRuntime) Run() error {
 	defer func() {
 		if r := recover(); r != nil {
 			if ie, ok := r.(*goja.InterruptedError); ok {
+				if ec, ok := ie.Value().(Exit); ok {
+					// process.exit() can be raised from async callbacks (e.g. signal handlers)
+					// as a VM interrupt panic. Treat it as a normal runtime exit.
+					jr.exitCode = ec.Code
+					return
+				}
 				fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
+				jr.exitCode = -1
+				return
 			}
 			fmt.Fprintf(os.Stderr, "panic: %v\n%v\n", r, string(debug.Stack()))
 			os.Exit(1)

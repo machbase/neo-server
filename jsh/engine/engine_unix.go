@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -36,9 +37,14 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	ex.Stdout = resolveExecWriter(jr.Env.Writer(), opts.Stdout)
 	ex.Stderr = resolveExecWriter(jr.Env.ErrorWriter(), opts.Stderr)
 
-	// Get terminal file descriptor
-	ttyFd := int(os.Stdin.Fd())
-	isTTY := isatty(ttyFd)
+	// Determine interactive mode from the actual stdin wired into the child.
+	// CGI/background executions should not capture process-wide SIGINT handlers.
+	ttyFd := -1
+	isTTY := false
+	if stdinFile, ok := ex.Stdin.(*os.File); ok {
+		ttyFd = int(stdinFile.Fd())
+		isTTY = isatty(ttyFd)
+	}
 
 	// Get shell's process group ID
 	var shellPgid int
@@ -57,16 +63,10 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		signal.Ignore(syscall.SIGTTOU)
 		signal.Ignore(syscall.SIGTTIN)
 		signal.Ignore(syscall.SIGTSTP)
-		// While child owns the foreground TTY, parent shell should not react to
-		// terminal interrupt/quit keys. Let the foreground child handle them.
-		signal.Ignore(syscall.SIGINT)
-		signal.Ignore(syscall.SIGQUIT)
 		defer func() {
 			signal.Reset(syscall.SIGTTOU)
 			signal.Reset(syscall.SIGTTIN)
 			signal.Reset(syscall.SIGTSTP)
-			signal.Reset(syscall.SIGINT)
-			signal.Reset(syscall.SIGQUIT)
 		}()
 	}
 
@@ -75,25 +75,29 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
-	// In SSH/PTY environments, SIGINT can be delivered to the parent shell
-	// process directly (instead of the foreground child). While waiting for the
-	// child, forward interrupt/quit to the child process group and keep parent alive.
-	parentSignalCh := make(chan os.Signal, 2)
-	signal.Notify(parentSignalCh, os.Interrupt, syscall.SIGQUIT)
-	defer signal.Stop(parentSignalCh)
+	var parentSignalCh chan os.Signal
+	var forwardDone chan struct{}
+	if isTTY {
+		// In interactive/TTY mode, SIGINT can be delivered to the parent shell
+		// process directly (instead of the foreground child). While waiting for the
+		// child, forward interrupt/quit to the child process group.
+		parentSignalCh = make(chan os.Signal, 2)
+		signal.Notify(parentSignalCh, os.Interrupt, syscall.SIGQUIT)
+		defer signal.Stop(parentSignalCh)
 
-	forwardDone := make(chan struct{})
-	defer close(forwardDone)
-	go func() {
-		for {
-			select {
-			case <-forwardDone:
-				return
-			case sig := <-parentSignalCh:
-				forwardSignalToChildGroup(ex, sig)
+		forwardDone = make(chan struct{})
+		defer close(forwardDone)
+		go func() {
+			for {
+				select {
+				case <-forwardDone:
+					return
+				case sig := <-parentSignalCh:
+					forwardSignalToChildGroup(ex, sig)
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	var procEntryWarn error
 	procEntry, err := jr.createProcessEntry(ex)
@@ -116,6 +120,39 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		if err != 0 {
 			fmt.Printf("failed to set foreground: %v\n", err)
 		}
+	}
+
+	var cancelDone chan struct{}
+	if jr.ctx != nil {
+		cancelDone = make(chan struct{})
+		go func(pid int) {
+			select {
+			case <-cancelDone:
+				return
+			case <-jr.ctx.Done():
+				// Try graceful termination first for the whole process group.
+				if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+					if proc := ex.Process; proc != nil {
+						_ = proc.Signal(syscall.SIGTERM)
+					}
+				}
+
+				timer := time.NewTimer(2 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-cancelDone:
+					return
+				case <-timer.C:
+					// Ensure no zombie child remains after request cancellation.
+					if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+						if proc := ex.Process; proc != nil {
+							_ = proc.Signal(syscall.SIGKILL)
+						}
+					}
+				}
+			}
+		}(ex.Process.Pid)
+		defer close(cancelDone)
 	}
 
 	// wait for process to finish
@@ -148,7 +185,7 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	if isTTY {
 		_, _, err := syscall.Syscall(
 			syscall.SYS_IOCTL,
-			uintptr(os.Stdin.Fd()),
+			uintptr(ttyFd),
 			syscall.TIOCSPGRP,
 			uintptr(unsafe.Pointer(&shellPgid)))
 		if err != 0 {
