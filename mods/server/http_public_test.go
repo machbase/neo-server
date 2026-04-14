@@ -151,6 +151,15 @@ func TestCgiBinWriterChunkedWrites(t *testing.T) {
 	require.Equal(t, "hello world", recorder.Body.String())
 }
 
+// Regression history:
+//
+// During CGI SSE integration (handlePublic + util/tail/sse), clients could
+// connect but not receive events promptly. In practice this looked like
+// "curl connected and waiting forever" until enough output accumulated.
+//
+// The fix made CgiBinWriter commit/flush SSE headers immediately after parsing
+// header-only output, so streaming clients can switch to event consumption at
+// once without waiting for later body bytes.
 func TestCgiBinWriterSSEHeaderOnlyFlushesImmediately(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -172,6 +181,8 @@ func TestCgiBinWriterSSEHeaderOnlyFlushesImmediately(t *testing.T) {
 	require.NoError(t, writer.Finalize())
 }
 
+// Companion regression check for low-latency SSE delivery:
+// each event body write should trigger an additional flush.
 func TestCgiBinWriterSSEBodyFlushesOnWrite(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
