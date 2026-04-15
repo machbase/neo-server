@@ -194,3 +194,29 @@ func runTimeformat(t *testing.T, format string) string {
 
 	return w.String()
 }
+
+type flushBuffer struct {
+	bytes.Buffer
+	flushed bool
+}
+
+func (f *flushBuffer) Flush() error {
+	f.flushed = true
+	return nil
+}
+
+func TestCsvEncoderSetterPaths(t *testing.T) {
+	w := &flushBuffer{}
+	enc := csv.NewEncoder()
+	enc.SetOutputStream(w)
+	enc.SetHeading(true)
+	enc.SetDelimiter(";")
+	enc.SetColumns("a", "b")
+	enc.SetColumnTypes()
+	require.NoError(t, enc.Open())
+	require.NoError(t, enc.AddRow([]any{1, nil}))
+	enc.Flush(true)
+	enc.Close()
+	require.True(t, w.flushed)
+	require.Contains(t, w.String(), "a;b")
+}

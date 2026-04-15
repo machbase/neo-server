@@ -275,7 +275,7 @@ func TestAnscombeQuatet(t *testing.T) {
 					"data": [
 						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
 					]
-				}	
+				}
 			},
 			{
 				"name": "III",
@@ -287,7 +287,7 @@ func TestAnscombeQuatet(t *testing.T) {
 					"data": [
 						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
 					]
-				}	
+				}
 			},
 			{
 				"name": "IV",
@@ -302,7 +302,7 @@ func TestAnscombeQuatet(t *testing.T) {
 							{"coord": [1701059614000, 13]}
 						]
 					]
-				}	
+				}
 			}
 		]
 	}`)

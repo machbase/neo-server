@@ -287,3 +287,31 @@ func TestCoord(t *testing.T) {
 		})
 	}
 }
+
+func TestGeoMapSetterPaths(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	fsmock := &VolatileFileWriterMock{}
+	gm := geomap.New()
+	gm.SetLogger(facility.TestLogger(t))
+	gm.SetOutputStream(buffer)
+	gm.SetVolatileFileWriter(fsmock)
+	gm.SetGeomapID("map-1")
+	gm.SetSize("320px", "240px")
+	gm.SetMapAssets("a.css", "b.js")
+	gm.SetInitialLocation(nums.NewLatLon(37.5, 127.0), 9)
+	gm.SetTileTemplate("vworld")
+	gm.SetTileOption(`opacity:0.8`)
+	gm.SetGeoMapJson(true)
+	gm.SetTileGrayscale(1.5)
+	gm.SetIcon("pin", `{"iconUrl":"/pin.png"}`)
+	gm.SetIcon("pin", `{"iconUrl":"/pin2.png"}`)
+	require.Equal(t, 100, gm.TileGrayscale())
+	require.Equal(t, `vworld`, gm.TileTemplate())
+
+	gm.Open()
+	require.NoError(t, gm.AddRow([]any{"unsupported"}))
+	gm.Flush(false)
+	gm.Close()
+	require.Contains(t, buffer.String(), "map-1")
+	require.Contains(t, fsmock.buff.String(), `xdworld.vworld.kr`)
+}

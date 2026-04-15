@@ -16,7 +16,7 @@ func (reb *RowsEncoderBase) SetHttpHeader(key string, value string) {
 }
 
 func (reb *RowsEncoderBase) DelHttpHeader(key string) {
-	if reb.httpHeaders != nil {
+	if reb.httpHeaders == nil {
 		return
 	}
 	delete(reb.httpHeaders, key)
