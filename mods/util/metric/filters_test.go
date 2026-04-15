@@ -240,3 +240,34 @@ func TestOrFilter(t *testing.T) {
 		t.Error("OrFilter: expected nil when both filters are nil")
 	}
 }
+
+func TestFilterHelpers(t *testing.T) {
+	if !IsFilterPattern("cpu:*") {
+		t.Fatal("expected wildcard pattern to be detected")
+	}
+	if IsFilterPattern("plain-text") {
+		t.Fatal("expected plain text to not be treated as filter pattern")
+	}
+
+	f, err := Compile([]string{"cpu:*"}, '|')
+	if err != nil {
+		t.Fatalf("Compile with separator returned error: %v", err)
+	}
+	if !f.Match("cpu|user") {
+		t.Fatal("expected custom separator match to succeed")
+	}
+
+	incExc, err := CompileIncludeAndExclude([]string{"cpu:*", "mem:*"}, []string{"*:idle"}, ':')
+	if err != nil {
+		t.Fatalf("CompileIncludeAndExclude returned error: %v", err)
+	}
+	if !incExc.Match("cpu:user") {
+		t.Fatal("expected include filter to allow cpu:user")
+	}
+	if incExc.Match("cpu:idle") {
+		t.Fatal("expected exclude filter to deny cpu:idle")
+	}
+	if incExc.Match("disk:used") {
+		t.Fatal("expected unmatched name to be denied")
+	}
+}

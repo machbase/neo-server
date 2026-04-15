@@ -128,3 +128,22 @@ func TestConvertProductSkipsZeroSamples(t *testing.T) {
 		require.Nil(t, recs)
 	}
 }
+
+func TestProcessReturnsConnectionError(t *testing.T) {
+	m := &MachCli{
+		Host: "127.0.0.1",
+		Port: 1,
+		User: "sys",
+		Pass: "manager",
+	}
+
+	err := m.Process(metric.Product{
+		Name: "requests",
+		Time: time.Unix(1710000000, 0),
+		Value: &metric.CounterValue{
+			Samples: 1,
+			Value:   42,
+		},
+	})
+	require.Error(t, err)
+}

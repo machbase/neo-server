@@ -47,3 +47,14 @@ func TestOdometerJSON(t *testing.T) {
 	require.Equal(t, om.last, om2.last)
 	require.Equal(t, om.initialized, om2.initialized)
 }
+
+func TestOdometerHelpers(t *testing.T) {
+	value := &OdometerValue{First: 10, Last: 7, Samples: 2}
+	odo := NewOdometerWithValue(value)
+	produced, ok := odo.Produce(false).(*OdometerValue)
+	require.True(t, ok)
+	require.Equal(t, -3.0, produced.Diff())
+	require.Equal(t, 0.0, produced.NonNegativeDiff())
+	require.Equal(t, 3.0, produced.AbsDiff())
+	require.Contains(t, odo.String(), `"samples":2`)
+}

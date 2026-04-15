@@ -429,3 +429,20 @@ func BenchmarkUnicode(t *testing.B) {
 		}
 	}
 }
+func TestIsGlob(t *testing.T) {
+	cases := []struct {
+		pattern string
+		want    bool
+	}{
+		{pattern: "plain-text", want: false},
+		{pattern: "hello*", want: true},
+		{pattern: "hello?world", want: true},
+		{pattern: "[ab]cd", want: true},
+		{pattern: "[", want: false},
+	}
+	for _, tc := range cases {
+		if got := IsGlob(tc.pattern); got != tc.want {
+			t.Fatalf("IsGlob(%q)=%v, want %v", tc.pattern, got, tc.want)
+		}
+	}
+}

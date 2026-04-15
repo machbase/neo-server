@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -73,6 +74,7 @@ func TestBlockHelpersAndRendererWithEmptyBlock(t *testing.T) {
 	blankBlock.SetLines(blankLines)
 	blankBlock.AppendChild(blankBlock, ast.NewTextSegment(text.NewSegment(0, 1)))
 	require.True(t, blankBlock.IsBlank(blankSource))
+	require.NotPanics(t, func() { blankBlock.Dump(blankSource, 0) })
 
 	nonBlankSource := []byte("x\n")
 	nonBlankBlock := &Block{}
@@ -101,4 +103,37 @@ func TestBlockHelpersAndRendererWithEmptyBlock(t *testing.T) {
 	ptr := Pointer(42)
 	require.NotNil(t, ptr)
 	require.Equal(t, 42, *ptr)
+}
+
+type nodeRendererRegistererStub struct {
+	kinds []ast.NodeKind
+}
+
+func (s *nodeRendererRegistererStub) Register(kind ast.NodeKind, _ renderer.NodeRendererFunc) {
+	s.kinds = append(s.kinds, kind)
+}
+
+func TestHTMLRendererRegisterAndRender(t *testing.T) {
+	reg := &nodeRendererRegistererStub{}
+	r := &HTMLRenderer{}
+	r.RegisterFuncs(reg)
+	require.Contains(t, reg.kinds, KindBlock)
+
+	source := []byte("a -> b\n")
+	block := &Block{}
+	lines := text.NewSegments()
+	lines.Append(text.NewSegment(0, len(source)-1))
+	block.SetLines(lines)
+
+	backing := &bytes.Buffer{}
+	buf := bufio.NewWriter(backing)
+	status, err := r.Render(buf, source, block, true)
+	require.NoError(t, err)
+	require.Equal(t, ast.WalkContinue, status)
+	status, err = r.Render(buf, source, block, false)
+	require.NoError(t, err)
+	require.Equal(t, ast.WalkContinue, status)
+	require.NoError(t, buf.Flush())
+	require.Contains(t, backing.String(), `<div class="d2">`)
+	require.Contains(t, backing.String(), `<svg`)
 }

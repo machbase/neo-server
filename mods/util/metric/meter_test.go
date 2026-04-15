@@ -30,3 +30,16 @@ func TestMeterJSON(t *testing.T) {
 	require.Equal(t, m.sum, m2.sum)
 	require.Equal(t, m.samples, m2.samples)
 }
+
+func TestMeterConstructorsAndString(t *testing.T) {
+	value := &MeterValue{Samples: 2, First: 3, Last: 5, Min: 3, Max: 5, Sum: 8}
+	value.SetDerivedValue("copy", &GaugeValue{Value: 1})
+	meter := NewMeterWithValue(value)
+	produced, ok := meter.Produce(false).(*MeterValue)
+	require.True(t, ok)
+	require.Equal(t, int64(2), produced.Samples)
+	require.Equal(t, 3.0, produced.First)
+	require.Equal(t, 5.0, produced.Last)
+	require.Contains(t, meter.String(), `"sum":8`)
+	require.Contains(t, value.String(), `"derived"`)
+}

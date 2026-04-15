@@ -27,3 +27,16 @@ func TestGaugeJSON(t *testing.T) {
 	require.Equal(t, g.sum, g2.sum)
 	require.Equal(t, g.value, g2.value)
 }
+
+func TestGaugeConstructorsAndString(t *testing.T) {
+	value := &GaugeValue{Samples: 2, Sum: 10, Value: 7}
+	value.SetDerivedValue("copy", &GaugeValue{Value: 1})
+	gauge := NewGaugeWithValue(value)
+	produced, ok := gauge.Produce(false).(*GaugeValue)
+	require.True(t, ok)
+	require.Equal(t, int64(2), produced.Samples)
+	require.Equal(t, 10.0, produced.Sum)
+	require.Equal(t, 7.0, produced.Value)
+	require.Contains(t, gauge.String(), `"sum":10`)
+	require.Contains(t, value.String(), `"derived"`)
+}

@@ -312,3 +312,31 @@ key4 = ${section1.key2}
 		t.Error("Fail to load ini with multi line keys, key4")
 	}
 }
+
+func TestLoadBytesAndWriteToFile(t *testing.T) {
+	content := []byte("[main]\nkey=value\n")
+	cfg := New()
+	require.NoError(t, cfg.LoadBytes(content))
+
+	section, err := cfg.Section("main")
+	require.NoError(t, err)
+	require.Equal(t, "main", section.Name)
+	require.Equal(t, "key", section.Key("key").Name())
+	require.Equal(t, "value", section.Key("key").ValueWithDefault("fallback"))
+	require.Equal(t, "missing", section.Key("missing").Name())
+	require.Equal(t, "fallback", section.Key("missing").ValueWithDefault("fallback"))
+	require.Contains(t, section.String(), "[main]")
+	require.Contains(t, section.String(), "key=value")
+
+	_, err = cfg.Section("missing")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no such section:missing")
+
+	file := t.TempDir() + "/saved.ini"
+	require.NoError(t, cfg.WriteToFile(file))
+
+	loaded := New()
+	require.NoError(t, loaded.LoadFile(file))
+	require.Equal(t, "value", loaded.GetValueWithDefault("main", "key", ""))
+	require.Contains(t, loaded.String(), "key=value")
+}

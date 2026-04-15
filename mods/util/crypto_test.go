@@ -147,3 +147,26 @@ func TestQueryCypher(t *testing.T) {
 	// SkEWZMD0vnvoKYZWDtFo2alFuMVjkvdEug7JQexO5C8=
 	fmt.Println(cnd)
 }
+
+func TestPKCS5PadAndUnpad(t *testing.T) {
+	original := []byte("1234567")
+	padded := PKCS5Pad(original, 8)
+	if len(padded)%8 != 0 {
+		t.Fatalf("padded length=%d, want multiple of 8", len(padded))
+	}
+	unpad, err := PKCS5Unpad(padded, 8)
+	if err != nil {
+		t.Fatalf("PKCS5Unpad() error = %v", err)
+	}
+	if string(unpad) != string(original) {
+		t.Fatalf("unpad=%q, want %q", string(unpad), string(original))
+	}
+
+	if _, err := PKCS5Unpad([]byte("short"), 8); err == nil {
+		t.Fatal("expected invalid padding size error")
+	}
+	badPadding := []byte{'A', 'B', 'C', 'D', 'E', 'F', 2, 3}
+	if _, err := PKCS5Unpad(badPadding, 8); err == nil {
+		t.Fatal("expected invalid padding error")
+	}
+}

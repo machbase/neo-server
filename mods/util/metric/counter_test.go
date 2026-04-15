@@ -26,3 +26,15 @@ func TestCounterJSON(t *testing.T) {
 	require.Equal(t, c.samples, c2.samples)
 	require.Equal(t, c.value, c2.value)
 }
+
+func TestCounterConstructorsAndString(t *testing.T) {
+	value := &CounterValue{Samples: 2, Value: 42.5}
+	value.SetDerivedValue("copy", &CounterValue{Value: 1})
+	counter := NewCounterWithValue(value)
+	produced, ok := counter.Produce(false).(*CounterValue)
+	require.True(t, ok)
+	require.Equal(t, int64(2), produced.Samples)
+	require.Equal(t, 42.5, produced.Value)
+	require.Contains(t, counter.String(), `"value":42.5`)
+	require.Contains(t, value.String(), `"derived"`)
+}

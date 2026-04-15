@@ -68,3 +68,15 @@ func TestHistogramJSON(t *testing.T) {
 		require.Equal(t, h.bins[i].count, h2.bins[i].count)
 	}
 }
+
+func TestHistogramConstructorsAndString(t *testing.T) {
+	value := &HistogramValue{Samples: 4, P: []float64{0.5, 0.9}, Values: []float64{10, 20}}
+	value.SetDerivedValue("copy", &GaugeValue{Value: 1})
+	h := NewHistogramWithValue(value, 4, 0.5, 0.9)
+	produced, ok := h.Produce(false).(*HistogramValue)
+	require.True(t, ok)
+	require.Equal(t, int64(4), produced.Samples)
+	require.Len(t, produced.Values, 2)
+	require.Contains(t, h.String(), `"samples":4`)
+	require.Contains(t, value.String(), `"derived"`)
+}
