@@ -2373,6 +2373,55 @@ func TestPkgCopyGitHubViaLocalCloneBase(t *testing.T) {
 	assertPackageVersion(t, filepath.Join(destDir, "cgi-bin", "node_modules", "cgi-dep", "package.json"), "2.0.1")
 }
 
+func TestPkgInstallGitHubCloneFallbackCleansTempRoot(t *testing.T) {
+	workDir := t.TempDir()
+	tmpDir := "/work/tmp-root"
+	missingCloneBase := filepath.Join(workDir, "missing-remote-root")
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/repos/acme/fallback/tags":
+			writeJSON(w, []map[string]any{{"name": "v1.0.0"}})
+		case "/api/repos/acme/fallback/contents":
+			if got := r.URL.Query().Get("ref"); got != "v1.0.0" {
+				t.Fatalf("unexpected ref query: %q", got)
+			}
+			writeJSON(w, []map[string]any{
+				{"type": "file", "path": "package.json", "download_url": server.URL + "/download/fallback/v1.0.0/package.json"},
+				{"type": "file", "path": "index.js", "download_url": server.URL + "/download/fallback/v1.0.0/index.js"},
+			})
+		case "/download/fallback/v1.0.0/package.json":
+			_, _ = w.Write([]byte("{\n  \"name\": \"fallback\",\n  \"version\": \"1.0.0\",\n  \"main\": \"index.js\"\n}\n"))
+		case "/download/fallback/v1.0.0/index.js":
+			_, _ = w.Write([]byte("module.exports = { value: 'fallback-ok' };\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_BASE_URL": fileURLFromPath(missingCloneBase),
+		"PKG_GITHUB_API_URL":  server.URL + "/api",
+		"PKG_TMPDIR":          tmpDir,
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/fallback")
+	if err != nil {
+		t.Fatalf("pkg install fallback failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Clone failed, falling back to GitHub API download") {
+		t.Fatalf("expected fallback log in output: %q", output)
+	}
+	assertPackageVersion(t, filepath.Join(workDir, "node_modules", "github.com", "acme", "fallback", "package.json"), "1.0.0")
+
+	_, statErr := os.Stat(filepath.Join(workDir, "tmp-root", ".pkg-tmp"))
+	if !os.IsNotExist(statErr) {
+		t.Fatalf("temporary clone root should be cleaned up, stat err=%v", statErr)
+	}
+}
+
 func runCommand(workDir string, extraEnv map[string]any, args ...string) (string, error) {
 	conf := commandConfig(workDir, extraEnv)
 	conf.Args = args
