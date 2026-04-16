@@ -2,6 +2,7 @@ package mqtt_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -32,12 +33,13 @@ func setupTestBroker() *mqtt.Server {
 	if err != nil {
 		panic(err)
 	}
-	broker.AddHook(&AuthHook{HookBase: &mqtt.HookBase{}}, nil)
+	broker.AddHook(&AuthHook{HookBase: &mqtt.HookBase{}, broker: broker}, nil)
 	return broker
 }
 
 type AuthHook struct {
 	*mqtt.HookBase
+	broker *mqtt.Server
 }
 
 var _ mqtt.Hook = (*AuthHook)(nil)
@@ -53,6 +55,7 @@ func (h *AuthHook) Provides(b byte) bool {
 		mqtt.OnStopped,
 		mqtt.OnConnectAuthenticate,
 		mqtt.OnACLCheck,
+		mqtt.OnPublished,
 	}, []byte{b})
 }
 
@@ -72,6 +75,33 @@ func (h *AuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) boo
 		return true
 	}
 	return false
+}
+
+func (h *AuthHook) OnPublished(cl *mqtt.Client, pk packets.Packet) {
+	if h.broker == nil {
+		return
+	}
+	if pk.TopicName != "test/echo-user-properties" {
+		return
+	}
+	if pk.Properties.ResponseTopic == "" {
+		return
+	}
+
+	user := map[string]string{}
+	for _, prop := range pk.Properties.User {
+		user[prop.Key] = prop.Val
+	}
+	payload, err := json.Marshal(map[string]any{
+		"topic":         pk.TopicName,
+		"payload":       string(pk.Payload),
+		"responseTopic": pk.Properties.ResponseTopic,
+		"user":          user,
+	})
+	if err != nil {
+		return
+	}
+	_ = h.broker.Publish(pk.Properties.ResponseTopic, payload, false, 1)
 }
 
 func TestMain(m *testing.M) {
@@ -335,6 +365,80 @@ func TestMqtt(t *testing.T) {
 				"User source: properties_test",
 				"User format: text",
 				"Unsubscribed from: test/properties reason: 0",
+				"Disconnected",
+			},
+			Vars: map[string]any{
+				"brokerAddr": brokerAddr,
+			},
+		},
+		{
+			Name: "publish_user_properties_broker_roundtrip",
+			Script: `
+				const addr = require("process").env.get('brokerAddr');
+				const mqtt = require("mqtt");
+				const replyTopic = 'test/echo-user-properties/reply';
+				const client = new mqtt.Client({
+					servers: [addr],
+					username: "user",
+					password: "pass",
+					keepAlive: 60,
+					cleanStartOnInitialConnection: true,
+					connectRetryDelay: 2000,
+					connectTimeout: 10*1000,
+				});
+				client.on('open', () => {
+					console.println("Connected");
+					client.subscribe(replyTopic, { qos: 1 });
+				});
+				client.on('error', (err) => {
+					console.println("Error:", err.message);
+				});
+				client.on('close', () => {
+					console.println("Disconnected");
+				});
+				client.on('subscribed', (topic, reason) => {
+					console.println("Subscribed to:", topic, "reason:", reason);
+					if (topic === replyTopic) {
+						client.publish('test/echo-user-properties', 'verify-user-props', {
+							qos: 1,
+							properties: {
+								responseTopic: replyTopic,
+								user: {
+									source: 'broker_roundtrip',
+									format: 'json',
+									count: 42,
+								},
+							},
+						});
+					}
+				});
+				client.on('published', (topic, reason) => {
+					console.println("Published to:", topic, "Payload:", reason);
+				});
+				client.on('message', (msg) => {
+					const body = JSON.parse(msg.payloadText);
+					console.println("Reply topic:", body.responseTopic);
+					console.println("Reply payload:", body.payload);
+					console.println("Reply user source:", body.user.source);
+					console.println("Reply user format:", body.user.format);
+					console.println("Reply user count:", body.user.count);
+					client.unsubscribe(replyTopic);
+				});
+				client.on('unsubscribed', (topic, reason) => {
+					console.println("Unsubscribed from:", topic, "reason:", reason);
+					client.close();
+				});
+			`,
+			Output: []string{
+				"Connected",
+				"Subscribed to: test/echo-user-properties/reply reason: 1",
+				"Published to: test/echo-user-properties Payload: 1",
+				"Reply topic: test/echo-user-properties/reply",
+				"Reply payload: verify-user-props",
+				"Reply user source: broker_roundtrip",
+				"Reply user format: json",
+				"Reply user count: 42",
+				"Unsubscribed from: test/echo-user-properties/reply reason: 0",
 				"Disconnected",
 			},
 			Vars: map[string]any{
