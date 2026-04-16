@@ -15,7 +15,7 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gliderlabs/ssh v0.3.8
-	github.com/go-git/go-git/v5 v5.17.0
+	github.com/go-git/go-git/v5 v5.17.2
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang-jwt/jwt/v4 v4.5.2

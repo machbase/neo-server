@@ -18,6 +18,9 @@ import (
 	"testing"
 	"time"
 
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
@@ -2262,6 +2265,114 @@ func TestPkgCopyForceAllowsExistingDestination(t *testing.T) {
 	}
 }
 
+func TestPkgInstallGitHubViaLocalCloneBase(t *testing.T) {
+	workDir := t.TempDir()
+	remoteRoot := t.TempDir()
+	createGitRepository(t, remoteRoot, "acme", "localdemo", "main", map[string]string{
+		"package.json": "{\n  \"name\": \"localdemo\",\n  \"version\": \"1.2.3\",\n  \"main\": \"index.js\"\n}\n",
+		"index.js":     "module.exports = { value: 'local-clone-install' };\n",
+	}, []string{"v1.2.3"})
+
+	env := map[string]any{
+		"PKG_GITHUB_BASE_URL": fileURLFromPath(remoteRoot),
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "install", "github.com/acme/localdemo")
+	if err != nil {
+		t.Fatalf("pkg install via local clone failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(output, "Installed github.com/acme/localdemo#tag=v1.2.3") {
+		t.Fatalf("install output = %q, want clone-based canonical tag log", output)
+	}
+
+	message, err := runScript(workDir, env, "const pkg = require('github.com/acme/localdemo'); console.println(pkg.value);")
+	if err != nil {
+		t.Fatalf("require installed local GitHub package failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "local-clone-install" {
+		t.Fatalf("require output = %q, want local-clone-install", strings.TrimSpace(message))
+	}
+}
+
+func TestPkgCopyGitHubViaLocalCloneBase(t *testing.T) {
+	workDir := t.TempDir()
+	remoteRoot := t.TempDir()
+	createGitRepository(t, remoteRoot, "acme", "copyclone", "main", map[string]string{
+		"package.json":         "{\n  \"name\": \"copyclone\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": {\n    \"root-dep\": \"^1.0.0\"\n  }\n}\n",
+		"index.js":             "module.exports = { value: 'copy-root' };\n",
+		"cgi-bin/package.json": "{\n  \"name\": \"copyclone-cgi\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": {\n    \"cgi-dep\": \"^2.0.0\"\n  }\n}\n",
+		"cgi-bin/handler.js":   "module.exports = { handler: 'cgi-handler' };\n",
+		"public/readme.txt":    "copied asset\n",
+	}, nil)
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/npm/root-dep":
+			writeJSON(w, map[string]any{
+				"name":      "root-dep",
+				"dist-tags": map[string]any{"latest": "1.1.0"},
+				"versions": map[string]any{
+					"1.1.0": map[string]any{
+						"name":    "root-dep",
+						"version": "1.1.0",
+						"main":    "index.js",
+						"dist":    map[string]any{"tarball": server.URL + "/tarballs/root-dep-1.1.0.tgz"},
+					},
+				},
+			})
+		case "/npm/cgi-dep":
+			writeJSON(w, map[string]any{
+				"name":      "cgi-dep",
+				"dist-tags": map[string]any{"latest": "2.0.1"},
+				"versions": map[string]any{
+					"2.0.1": map[string]any{
+						"name":    "cgi-dep",
+						"version": "2.0.1",
+						"main":    "index.js",
+						"dist":    map[string]any{"tarball": server.URL + "/tarballs/cgi-dep-2.0.1.tgz"},
+					},
+				},
+			})
+		case "/tarballs/root-dep-1.1.0.tgz":
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(makeTgzPackage(t, map[string]any{
+				"name":    "root-dep",
+				"version": "1.1.0",
+				"main":    "index.js",
+			}, map[string]string{
+				"index.js": "module.exports = { value: 'root-dep-1.1.0' };\n",
+			}))
+		case "/tarballs/cgi-dep-2.0.1.tgz":
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(makeTgzPackage(t, map[string]any{
+				"name":    "cgi-dep",
+				"version": "2.0.1",
+				"main":    "index.js",
+			}, map[string]string{
+				"index.js": "module.exports = { value: 'cgi-dep-2.0.1' };\n",
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	env := map[string]any{
+		"PKG_GITHUB_BASE_URL":  fileURLFromPath(remoteRoot),
+		"PKG_NPM_REGISTRY_URL": server.URL + "/npm",
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "copy", "github.com/acme/copyclone", "public/copied-app")
+	if err != nil {
+		t.Fatalf("pkg copy via local clone failed: %v\n%s", err, output)
+	}
+
+	destDir := filepath.Join(workDir, "public", "copied-app")
+	assertPackageVersion(t, filepath.Join(destDir, "node_modules", "root-dep", "package.json"), "1.1.0")
+	assertPackageVersion(t, filepath.Join(destDir, "cgi-bin", "node_modules", "cgi-dep", "package.json"), "2.0.1")
+}
+
 func runCommand(workDir string, extraEnv map[string]any, args ...string) (string, error) {
 	conf := commandConfig(workDir, extraEnv)
 	conf.Args = args
@@ -2500,6 +2611,73 @@ func makeTgzPackage(t *testing.T, manifest map[string]any, files map[string]stri
 		t.Fatalf("close gzip writer: %v", err)
 	}
 	return compressed.Bytes()
+}
+
+func createGitRepository(t *testing.T, baseDir string, owner string, repoName string, defaultBranch string, files map[string]string, tags []string) string {
+	t.Helper()
+	repoDir := filepath.Join(baseDir, owner, repoName)
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo dir: %v", err)
+	}
+
+	repo, err := git.PlainInit(repoDir, false)
+	if err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	for name, content := range files {
+		fullPath := filepath.Join(repoDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("mkdir file dir %s: %v", name, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write file %s: %v", name, err)
+		}
+	}
+	if err := wt.AddGlob("."); err != nil {
+		t.Fatalf("add repo files: %v", err)
+	}
+
+	commitHash, err := wt.Commit("initial commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "pkg-test",
+			Email: "pkg-test@example.com",
+			When:  time.Unix(1700000000, 0),
+		},
+	})
+	if err != nil {
+		t.Fatalf("commit repo: %v", err)
+	}
+
+	if defaultBranch != "" && defaultBranch != "master" {
+		err = wt.Checkout(&git.CheckoutOptions{
+			Branch: plumbing.NewBranchReferenceName(defaultBranch),
+			Create: true,
+			Hash:   commitHash,
+		})
+		if err != nil {
+			t.Fatalf("checkout branch %s: %v", defaultBranch, err)
+		}
+	}
+
+	for _, tagName := range tags {
+		if _, err := repo.CreateTag(tagName, commitHash, nil); err != nil {
+			t.Fatalf("create tag %s: %v", tagName, err)
+		}
+	}
+	return repoDir
+}
+
+func fileURLFromPath(path string) string {
+	clean := filepath.ToSlash(path)
+	if strings.HasPrefix(clean, "/") {
+		return "file://" + clean
+	}
+	return "file:///" + clean
 }
 
 func TestPkgInstallRejectsUnsafeGitHubEntries(t *testing.T) {
