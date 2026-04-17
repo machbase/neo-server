@@ -62,6 +62,7 @@ jobs:
         shell: bash
         run: |
           docker buildx build --progress=plain --push \
+            --provenance=false \
             --platform linux/amd64 \
             --tag machbase/machbase-neo:${{ needs.prepare.outputs.version }}-amd64 \
             -f ./scripts/machbase-neo.Dockerfile \
@@ -90,6 +91,7 @@ jobs:
         shell: bash
         run: |
           docker buildx build --progress=plain --push \
+            --provenance=false \
             --platform linux/arm64 \
             --tag machbase/machbase-neo:${{ needs.prepare.outputs.version }}-arm64 \
             -f ./scripts/machbase-neo.Dockerfile \
