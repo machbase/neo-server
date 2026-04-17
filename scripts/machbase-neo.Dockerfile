@@ -18,9 +18,13 @@
 
 FROM ubuntu:22.04 AS build-stage
 
-RUN apt-get update && \
-    apt-get install -y build-essential && \
-    apt-get install -y wget curl tar gzip && \
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -exec \
+      sed -i 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g; s|http://ports.ubuntu.com/ubuntu-ports|https://ports.ubuntu.com/ubuntu-ports|g' {} + && \
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout="30" -o Acquire::https::Timeout="30" -o Acquire::ForceIPv4="true" -o Acquire::https::Verify-Peer="false" -o Acquire::https::Verify-Host="false" update && \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 -o Acquire::https::Verify-Peer="false" -o Acquire::https::Verify-Host="false" build-essential wget curl tar gzip ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
     MACHINE=$(uname -m) && \
     case $MACHINE in \
     x86_64) ARCH="amd64" ;; \
@@ -30,7 +34,7 @@ RUN apt-get update && \
     esac && \
     echo "Building for architecture: $ARCH" && \
     echo "Install Go" && \
-    curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 30 \
+    curl -fsSL --retry 5 --retry-delay 5 --connect-timeout 30 \
     https://go.dev/dl/go1.24.5.linux-$ARCH.tar.gz -o /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
     rm -f /tmp/go.tar.gz
@@ -56,9 +60,13 @@ FROM ubuntu:22.04 AS runtime-stage
 
 LABEL MAINTAINER="machbase.com <support@machbase.com>"
 
-RUN apt-get update && \
-    apt-get install -y ca-certificates && \
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -exec \
+      sed -i 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g; s|http://ports.ubuntu.com/ubuntu-ports|https://ports.ubuntu.com/ubuntu-ports|g' {} + && \
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout="30" -o Acquire::https::Timeout="30" -o Acquire::ForceIPv4="true" -o Acquire::https::Verify-Peer="false" -o Acquire::https::Verify-Host="false" update && \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 -o Acquire::https::Verify-Peer="false" -o Acquire::https::Verify-Host="false" ca-certificates && \
     update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
     mkdir -p /file /data /backups
 
 COPY --from=build-stage /opt/machbase-neo /opt/machbase-neo
