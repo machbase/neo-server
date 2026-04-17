@@ -80,6 +80,20 @@ func TestDataTypeNodeIDName(t *testing.T) {
 		"i=9":  "UInt64",
 		"i=10": "Float",
 		"i=11": "Double",
+		"i=12": "String",
+		"i=13": "DateTime",
+		"i=14": "Guid",
+		"i=15": "ByteString",
+		"i=16": "XmlElement",
+		"i=17": "NodeId",
+		"i=18": "ExpandedNodeId",
+		"i=19": "StatusCode",
+		"i=20": "QualifiedName",
+		"i=21": "LocalizedText",
+		"i=22": "ExtensionObject",
+		"i=23": "DataValue",
+		"i=24": "Variant",
+		"i=25": "DiagnosticInfo",
 	}
 
 	for id, want := range set {
