@@ -39,10 +39,16 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
-      - name: Test without Docker
-        run: go run mage.go test
+      - name: Test
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "ubuntu-24.04" ]]; then
+            ENABLE_DOCKER_TESTS=true go run mage.go test
+          else
+            go run mage.go test
+          fi
       - name: Codecov
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
