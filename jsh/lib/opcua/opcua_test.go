@@ -190,7 +190,7 @@ func TestScriptOPCUA(t *testing.T) {
 						nodeClassMask: ua.NodeClass.Variable,
 					});
 					refs.sort((a,b) => a.browseName < b.browseName ? -1 : 1)
-						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass));
+						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass, r.dataType));
 				} catch(e) {
 					console.println("Error:", e);
 				} finally {
@@ -198,14 +198,14 @@ func TestScriptOPCUA(t *testing.T) {
 				}
 			`,
 			Output: []string{
-				"NoAccessVariable ns=1;s=NoAccessVariable 2",
-				"NoPermVariable ns=1;s=NoPermVariable 2",
-				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2",
-				"ReadWriteVariable ns=1;s=ReadWriteVariable 2",
-				"ro_bool ns=1;s=ro_bool 2",
-				"ro_int32 ns=1;s=ro_int32 2",
-				"rw_bool ns=1;s=rw_bool 2",
-				"rw_int32 ns=1;s=rw_int32 2",
+				"NoAccessVariable ns=1;s=NoAccessVariable 2 ",
+				"NoPermVariable ns=1;s=NoPermVariable 2 Int32",
+				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2 Double",
+				"ReadWriteVariable ns=1;s=ReadWriteVariable 2 Double",
+				"ro_bool ns=1;s=ro_bool 2 Boolean",
+				"ro_int32 ns=1;s=ro_int32 2 Int32",
+				"rw_bool ns=1;s=rw_bool 2 Boolean",
+				"rw_int32 ns=1;s=rw_int32 2 Int32",
 			},
 		},
 		{
@@ -419,14 +419,18 @@ func startOPCUAServer() *opc_server.Server {
 	// Create some nodes for it.
 	n := nodeNS.AddNewVariableStringNode("ro_bool", true)
 	n.SetAttribute(ua.AttributeIDUserAccessLevel, &ua.DataValue{EncodingMask: ua.DataValueValue, Value: ua.MustVariant(byte(1))})
+	n.SetAttribute(ua.AttributeIDDataType, opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 1)))
 	nns_obj.AddRef(n, id.HasComponent, true)
 	n = nodeNS.AddNewVariableStringNode("rw_bool", true)
+	n.SetAttribute(ua.AttributeIDDataType, opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 1)))
 	nns_obj.AddRef(n, id.HasComponent, true)
 
 	n = nodeNS.AddNewVariableStringNode("ro_int32", int32(5))
 	n.SetAttribute(ua.AttributeIDUserAccessLevel, &ua.DataValue{EncodingMask: ua.DataValueValue, Value: ua.MustVariant(byte(1))})
+	n.SetAttribute(ua.AttributeIDDataType, opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 6)))
 	nns_obj.AddRef(n, id.HasComponent, true)
 	n = nodeNS.AddNewVariableStringNode("rw_int32", int32(5))
+	n.SetAttribute(ua.AttributeIDDataType, opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 6)))
 	nns_obj.AddRef(n, id.HasComponent, true)
 
 	var3 := opc_server.NewNode(
@@ -434,6 +438,7 @@ func startOPCUAServer() *opc_server.Server {
 		map[ua.AttributeID]*ua.DataValue{
 			ua.AttributeIDBrowseName: opc_server.DataValueFromValue(attrs.BrowseName("NoPermVariable")),
 			ua.AttributeIDNodeClass:  opc_server.DataValueFromValue(uint32(ua.NodeClassVariable)),
+			ua.AttributeIDDataType:   opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 6)),
 		},
 		nil,
 		func() *ua.DataValue { return opc_server.DataValueFromValue(int32(742)) },
@@ -448,6 +453,7 @@ func startOPCUAServer() *opc_server.Server {
 			ua.AttributeIDUserAccessLevel: opc_server.DataValueFromValue(byte(ua.AccessLevelTypeCurrentRead | ua.AccessLevelTypeCurrentWrite)),
 			ua.AttributeIDBrowseName:      opc_server.DataValueFromValue(attrs.BrowseName("ReadWriteVariable")),
 			ua.AttributeIDNodeClass:       opc_server.DataValueFromValue(uint32(ua.NodeClassVariable)),
+			ua.AttributeIDDataType:        opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 11)),
 		},
 		nil,
 		func() *ua.DataValue { return opc_server.DataValueFromValue(12.34) },
@@ -462,6 +468,7 @@ func startOPCUAServer() *opc_server.Server {
 			ua.AttributeIDUserAccessLevel: opc_server.DataValueFromValue(byte(ua.AccessLevelTypeCurrentRead)),
 			ua.AttributeIDBrowseName:      opc_server.DataValueFromValue(attrs.BrowseName("ReadOnlyVariable")),
 			ua.AttributeIDNodeClass:       opc_server.DataValueFromValue(uint32(ua.NodeClassVariable)),
+			ua.AttributeIDDataType:        opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 11)),
 		},
 		nil,
 		func() *ua.DataValue { return opc_server.DataValueFromValue(9.87) },
@@ -476,6 +483,7 @@ func startOPCUAServer() *opc_server.Server {
 			ua.AttributeIDUserAccessLevel: opc_server.DataValueFromValue(byte(ua.AccessLevelTypeNone)),
 			ua.AttributeIDBrowseName:      opc_server.DataValueFromValue(attrs.BrowseName("NoAccessVariable")),
 			ua.AttributeIDNodeClass:       opc_server.DataValueFromValue(uint32(ua.NodeClassVariable)),
+			ua.AttributeIDDataType:        opc_server.DataValueFromValue(ua.NewNumericExpandedNodeID(0, 11)),
 		},
 		nil,
 		func() *ua.DataValue { return opc_server.DataValueFromValue(55.43) },

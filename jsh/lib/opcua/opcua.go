@@ -147,6 +147,7 @@ type ChildrenResult struct {
 	DisplayName     string `json:"displayName"`
 	NodeClass       uint32 `json:"nodeClass"`
 	TypeDefinition  string `json:"typeDefinition"`
+	DataType        string `json:"dataType"`
 }
 
 type WriteValue struct {
@@ -397,7 +398,7 @@ func toBrowseResults(results []*ua.BrowseResult) []BrowseResult {
 			}
 			var typeDefStr string
 			if ref.TypeDefinition != nil && ref.TypeDefinition.NodeID != nil {
-				typeDefStr = ref.TypeDefinition.NodeID.String()
+				typeDefStr = id.Name(ref.TypeDefinition.NodeID.IntID())
 			}
 			refs = append(refs, BrowseReference{
 				ReferenceTypeId: ref.ReferenceTypeID.String(),
@@ -468,7 +469,21 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 		}
 		var typeDefStr string
 		if ref.TypeDefinition != nil && ref.TypeDefinition.NodeID != nil {
-			typeDefStr = dataTypeNodeIDName(ref.TypeDefinition.NodeID)
+			typeDefStr = id.Name(ref.TypeDefinition.NodeID.IntID())
+		}
+		var dataType string
+		if ref.NodeID != nil && ref.NodeClass == ua.NodeClassVariable {
+			attrs, err := c.client.NodeFromExpandedNodeID(ref.NodeID).Attributes(c.ctx, ua.AttributeIDDataType)
+			if err == nil && len(attrs) > 0 {
+				if attrs[0].Status == ua.StatusOK {
+					switch v := attrs[0].Value.Value().(type) {
+					case *ua.ExpandedNodeID: // for TestServer
+						dataType = id.Name(v.NodeID.IntID())
+					case *ua.NodeID:
+						dataType = id.Name(v.IntID())
+					}
+				}
+			}
 		}
 
 		ret = append(ret, ChildrenResult{
@@ -479,64 +494,8 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 			DisplayName:     displayName,
 			NodeClass:       uint32(ref.NodeClass),
 			TypeDefinition:  typeDefStr,
+			DataType:        dataType,
 		})
 	}
 	return ret, nil
-}
-
-func dataTypeNodeIDName(nodeID *ua.NodeID) string {
-	switch nodeID.String() {
-	case "i=1":
-		return "Boolean"
-	case "i=2":
-		return "SByte"
-	case "i=3":
-		return "Byte"
-	case "i=4":
-		return "Int16"
-	case "i=5":
-		return "UInt16"
-	case "i=6":
-		return "Int32"
-	case "i=7":
-		return "UInt32"
-	case "i=8":
-		return "Int64"
-	case "i=9":
-		return "UInt64"
-	case "i=10":
-		return "Float"
-	case "i=11":
-		return "Double"
-	case "i=12":
-		return "String"
-	case "i=13":
-		return "DateTime"
-	case "i=14":
-		return "Guid"
-	case "i=15":
-		return "ByteString"
-	case "i=16":
-		return "XmlElement"
-	case "i=17":
-		return "NodeId"
-	case "i=18":
-		return "ExpandedNodeId"
-	case "i=19":
-		return "StatusCode"
-	case "i=20":
-		return "QualifiedName"
-	case "i=21":
-		return "LocalizedText"
-	case "i=22":
-		return "ExtensionObject"
-	case "i=23":
-		return "DataValue"
-	case "i=24":
-		return "Variant"
-	case "i=25":
-		return "DiagnosticInfo"
-	default:
-		return nodeID.String()
-	}
 }
