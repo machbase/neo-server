@@ -468,8 +468,9 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 		}
 		var typeDefStr string
 		if ref.TypeDefinition != nil && ref.TypeDefinition.NodeID != nil {
-			typeDefStr = ref.TypeDefinition.NodeID.String()
+			typeDefStr = dataTypeNodeIDName(ref.TypeDefinition.NodeID)
 		}
+
 		ret = append(ret, ChildrenResult{
 			ReferenceTypeId: ref.ReferenceTypeID.String(),
 			IsForward:       ref.IsForward,
@@ -481,4 +482,61 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 		})
 	}
 	return ret, nil
+}
+
+func dataTypeNodeIDName(nodeID *ua.NodeID) string {
+	switch nodeID.String() {
+	case "i=1":
+		return "Boolean"
+	case "i=2":
+		return "SByte"
+	case "i=3":
+		return "Byte"
+	case "i=4":
+		return "Int16"
+	case "i=5":
+		return "UInt16"
+	case "i=6":
+		return "Int32"
+	case "i=7":
+		return "UInt32"
+	case "i=8":
+		return "Int64"
+	case "i=9":
+		return "UInt64"
+	case "i=10":
+		return "Float"
+	case "i=11":
+		return "Double"
+	case "i=12":
+		return "String"
+	case "i=13":
+		return "DateTime"
+	case "i=14":
+		return "Guid"
+	case "i=15":
+		return "ByteString"
+	case "i=16":
+		return "XmlElement"
+	case "i=17":
+		return "NodeId"
+	case "i=18":
+		return "ExpandedNodeId"
+	case "i=19":
+		return "StatusCode"
+	case "i=20":
+		return "QualifiedName"
+	case "i=21":
+		return "LocalizedText"
+	case "i=22":
+		return "ExtensionObject"
+	case "i=23":
+		return "DataValue"
+	case "i=24":
+		return "Variant"
+	case "i=25":
+		return "DiagnosticInfo"
+	default:
+		return nodeID.String()
+	}
 }
