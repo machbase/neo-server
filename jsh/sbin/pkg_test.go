@@ -2192,6 +2192,37 @@ func TestPkgCopyGitHubProjectAndInstallDependencies(t *testing.T) {
 	}
 }
 
+func TestPkgCopyAllowsExistingEmptyDestination(t *testing.T) {
+	workDir := t.TempDir()
+	destDir := filepath.Join(workDir, "public", "copied-app")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatalf("mkdir dest: %v", err)
+	}
+
+	remoteRoot := t.TempDir()
+	createGitRepository(t, remoteRoot, "acme", "emptycopy", "main", map[string]string{
+		"package.json": "{\n  \"name\": \"emptycopy\",\n  \"version\": \"1.0.0\",\n  \"main\": \"index.js\"\n}\n",
+		"index.js":     "module.exports = { value: 'empty-dest-ok' };\n",
+	}, nil)
+
+	env := map[string]any{
+		"PKG_GITHUB_BASE_URL": fileURLFromPath(remoteRoot),
+	}
+
+	output, err := runCommand(workDir, env, "pkg", "copy", "github.com/acme/emptycopy", "public/copied-app")
+	if err != nil {
+		t.Fatalf("pkg copy into existing empty destination failed: %v\n%s", err, output)
+	}
+
+	message, err := runScript(destDir, env, "const pkg = require('./index.js'); console.println(pkg.value);")
+	if err != nil {
+		t.Fatalf("require copied file failed: %v\n%s", err, message)
+	}
+	if strings.TrimSpace(message) != "empty-dest-ok" {
+		t.Fatalf("require output = %q, want empty-dest-ok", strings.TrimSpace(message))
+	}
+}
+
 func TestPkgCopyRejectsNonEmptyDestinationWithoutForce(t *testing.T) {
 	workDir := t.TempDir()
 	destDir := filepath.Join(workDir, "public", "copied-app")

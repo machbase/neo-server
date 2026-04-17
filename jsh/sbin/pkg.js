@@ -1244,7 +1244,7 @@
         if (force) {
             return;
         }
-        const entries = fs.readdirSync(dest);
+        const entries = fs.readdirSync(dest).filter((entry) => entry !== '.' && entry !== '..');
         if (entries.length > 0) {
             throw new Error(`Copy destination is not empty: ${dest}`);
         }
