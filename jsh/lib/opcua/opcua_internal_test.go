@@ -67,6 +67,31 @@ func TestDecodeContinuationPoint(t *testing.T) {
 	}
 }
 
+func TestDataTypeNodeIDName(t *testing.T) {
+	set := map[string]string{
+		"i=1":  "Boolean",
+		"i=2":  "SByte",
+		"i=3":  "Byte",
+		"i=4":  "Int16",
+		"i=5":  "UInt16",
+		"i=6":  "Int32",
+		"i=7":  "UInt32",
+		"i=8":  "Int64",
+		"i=9":  "UInt64",
+		"i=10": "Float",
+		"i=11": "Double",
+	}
+
+	for id, want := range set {
+		nid := ua.MustParseNodeID(id)
+		exnid := ua.NewExpandedNodeID(nid, "", 0)
+		got := dataTypeNodeIDName(exnid.NodeID)
+		if got != want {
+			t.Fatalf("unexpected type definition(got=%s, want=%s)", got, want)
+		}
+	}
+}
+
 func TestCloseNilClient(t *testing.T) {
 	client := &Client{}
 	if err := client.Close(); err != nil {
