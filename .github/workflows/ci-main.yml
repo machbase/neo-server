@@ -54,9 +54,19 @@ jobs:
         env:
           ENABLE_DOCKER_TESTS: 'true'
         run: go run mage.go test
+      - name: Set up Docker Buildx
+        if: matrix.os == 'linux' && matrix.arch != 'arm32'
+        uses: docker/setup-buildx-action@v3
       - name: Build Docker Image
         if: matrix.os == 'linux' && matrix.arch != 'arm32'
-        run: docker build -t ubuntu18-build-env -f ./scripts/Ubuntu18.04.Dockerfile .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./scripts/Ubuntu18.04.Dockerfile
+          tags: ubuntu18-build-env:latest
+          load: true
+          cache-from: type=gha,scope=ubuntu18-build-env-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=ubuntu18-build-env-${{ matrix.arch }}
       - name: Run Container
         if: matrix.os == 'linux' && matrix.arch != 'arm32'
         run: docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages ubuntu18-build-env

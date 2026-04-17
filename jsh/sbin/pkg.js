@@ -6,6 +6,7 @@
     const path = require('path');
     const parseArgs = require('util/parseArgs');
     const splitFields = require('util/splitFields');
+    const rawGit = require('@jsh/git');
     const rawHttp = require('@jsh/http');
     const zip = require('archive/zip');
     const tar = require('archive/tar');
@@ -99,6 +100,7 @@
         ],
     };
 
+    const GITHUB_DEFAULT_BASE_URL = 'https://github.com';
     const GITHUB_DEFAULT_API_URL = 'https://api.github.com';
     const NPM_DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org';
 
@@ -331,6 +333,7 @@
         return {
             invocationCwd,
             tempRootBase: resolveTempRootBase(invocationCwd),
+            githubBaseUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_BASE_URL') || GITHUB_DEFAULT_BASE_URL),
             githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
             registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
             requested: new Set(),
@@ -356,6 +359,7 @@
             projectManifest: readOptionalJsonFile(manifestPath),
             lockFile: readOptionalJsonFile(lockPath),
             registryUrl: normalizeBaseUrl(process.env.get('PKG_NPM_REGISTRY_URL') || NPM_DEFAULT_REGISTRY_URL),
+            githubBaseUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_BASE_URL') || GITHUB_DEFAULT_BASE_URL),
             githubApiUrl: normalizeBaseUrl(process.env.get('PKG_GITHUB_API_URL') || process.env.get('PKG_MACHBASE_GITHUB_API_URL') || GITHUB_DEFAULT_API_URL),
             requested: new Set(),
             resolvedPackages: {},
@@ -481,8 +485,14 @@
         const tempRoot = allocateTempRoot(state.tempRootBase, task.name.replace(/[\/]/g, '-'));
         const stageDir = path.join(tempRoot, 'stage');
         try {
-            reportInstallStep(state, `Downloading ${formatGitHubPackageSource(source)}`);
-            downloadGitHubDirectory(source, state, stageDir);
+            reportInstallStep(state, `Cloning ${formatGitHubPackageSource(source)}`);
+            try {
+                cloneGitHubRepository(source, state, stageDir);
+            } catch (cloneErr) {
+                printInstallLog(state, `Clone failed, falling back to GitHub API download: ${cloneErr.message}`);
+                reportInstallStep(state, `Downloading ${formatGitHubPackageSource(source)}`);
+                downloadGitHubDirectory(source, state, stageDir);
+            }
             return finalizeGitHubStage(task, locked, source, tempRoot, stageDir);
         } catch (err) {
             cleanupPath(tempRoot);
@@ -1086,6 +1096,19 @@
 
     function resolveLatestGitHubRef(source, state) {
         const packageLabel = `github.com/${source.owner}/${source.repo}`;
+        const cloneUrl = resolveGitHubCloneUrl(source, state);
+        const refsResult = tryGetGitRemoteRefs(cloneUrl);
+        if (!refsResult.error) {
+            const latestTag = selectLatestGitTag(refsResult.value);
+            if (latestTag) {
+                return { ref: latestTag, refType: 'tag' };
+            }
+            const defaultBranch = selectDefaultGitBranch(refsResult.value);
+            if (defaultBranch) {
+                return { ref: defaultBranch, refType: 'branch' };
+            }
+        }
+
         const tagsResult = tryGetGitHubJson(`${state.githubApiUrl}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/tags`);
         if (!tagsResult.error) {
             const payload = tagsResult.value;
@@ -1106,6 +1129,11 @@
         }
 
         const reasons = [];
+        if (refsResult.error) {
+            reasons.push(`git remote lookup failed: ${refsResult.error.message}`);
+        } else {
+            reasons.push('git remote did not expose tags or a default branch');
+        }
         if (tagsResult.error) {
             reasons.push(`tags lookup failed: ${tagsResult.error.message}`);
         } else {
@@ -1216,7 +1244,7 @@
         if (force) {
             return;
         }
-        const entries = fs.readdirSync(dest);
+        const entries = fs.readdirSync(dest).filter((entry) => entry !== '.' && entry !== '..');
         if (entries.length > 0) {
             throw new Error(`Copy destination is not empty: ${dest}`);
         }
@@ -1252,6 +1280,95 @@
     function formatGitHubRequestedSpecifier(refType, ref) {
         const normalizedType = refType === 'branch' ? 'branch' : 'tag';
         return `#${normalizedType}=${ref}`;
+    }
+
+    function resolveGitHubCloneUrl(source, state) {
+        const baseUrl = normalizeBaseUrl(state.githubBaseUrl || GITHUB_DEFAULT_BASE_URL);
+        return `${baseUrl}/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}`;
+    }
+
+    function cloneGitHubRepository(source, state, targetDir) {
+        const cloneUrl = resolveGitHubCloneUrl(source, state);
+        rawGit.cloneRepository(cloneUrl, targetDir, {
+            ref: source.ref,
+            refType: source.refType,
+            depth: 1,
+            singleBranch: source.refType !== 'tag',
+            removeGitDir: true,
+        });
+    }
+
+    function tryGetGitRemoteRefs(url) {
+        try {
+            return {
+                value: rawGit.listRemoteRefs(url),
+                error: null,
+            };
+        } catch (err) {
+            return {
+                value: null,
+                error: err,
+            };
+        }
+    }
+
+    function selectLatestGitTag(refs) {
+        if (!Array.isArray(refs)) {
+            return '';
+        }
+        const tags = [];
+        for (const ref of refs) {
+            if (!isRecord(ref) || !ref.isTag || typeof ref.shortName !== 'string' || ref.shortName.length === 0) {
+                continue;
+            }
+            if (!tags.includes(ref.shortName)) {
+                tags.push(ref.shortName);
+            }
+        }
+        if (tags.length === 0) {
+            return '';
+        }
+
+        const semverTags = tags.filter((tag) => {
+            try {
+                return !!semver.valid(tag);
+            } catch (err) {
+                return false;
+            }
+        });
+        if (semverTags.length > 0) {
+            semverTags.sort((left, right) => semver.rcompare(left, right));
+            return semverTags[0];
+        }
+
+        tags.sort();
+        return tags[tags.length - 1];
+    }
+
+    function selectDefaultGitBranch(refs) {
+        if (!Array.isArray(refs)) {
+            return '';
+        }
+        for (const ref of refs) {
+            if (!isRecord(ref) || !ref.isHEAD || typeof ref.target !== 'string') {
+                continue;
+            }
+            if (ref.target.startsWith('refs/heads/')) {
+                return ref.target.slice('refs/heads/'.length);
+            }
+        }
+
+        const branches = refs
+            .filter((ref) => isRecord(ref) && ref.isBranch && typeof ref.shortName === 'string' && ref.shortName.length > 0)
+            .map((ref) => ref.shortName);
+        if (branches.includes('main')) {
+            return 'main';
+        }
+        if (branches.includes('master')) {
+            return 'master';
+        }
+        branches.sort();
+        return branches[0] || '';
     }
 
     function tryGetGitHubJson(url) {

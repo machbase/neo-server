@@ -15,7 +15,7 @@ RUN apt-get update && \
     ARCH=$([ "$(uname -m)" = "aarch64" ] && echo "arm64" || echo "amd64") && \
     echo "Building for architecture: $ARCH" && \
     echo "Install Go" && \
-    wget -L https://go.dev/dl/go1.24.5.linux-$ARCH.tar.gz -O /tmp/go.tar.gz && \
+    wget -L https://go.dev/dl/go1.26.2.linux-$ARCH.tar.gz -O /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
     rm -f /tmp/go.tar.gz
 
