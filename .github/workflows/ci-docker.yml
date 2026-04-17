@@ -21,8 +21,25 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: '1.26'
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+      - name: Diagnose Docker Environment
+        shell: bash
+        run: |
+          set -x
+          uname -a
+          docker version
+          docker info
+          docker buildx version
+          docker buildx ls
+          docker buildx inspect --bootstrap
+          ls -l /proc/sys/fs/binfmt_misc || true
+          cat /proc/sys/fs/binfmt_misc/qemu-aarch64 || true
+          docker run --rm --platform linux/arm64 ubuntu:22.04 uname -m
       - name: Docker version
         run: docker -v
       - name: Get Next Version
@@ -54,14 +71,14 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.check_stable.outputs.is_stable }}" == "true" ]]; then
-            docker buildx build --push \
+            docker buildx build --progress=plain --push \
             --platform linux/arm64,linux/amd64 \
             --tag ${{ steps.check_stable.outputs.version_tag }} \
             --tag ${{ steps.check_stable.outputs.latest_tag }} \
             -f ./scripts/machbase-neo.Dockerfile \
             .
           else
-            docker buildx build --push \
+            docker buildx build --progress=plain --push \
             --platform linux/arm64,linux/amd64 \
             --tag ${{ steps.check_stable.outputs.version_tag }} \
             -f ./scripts/machbase-neo.Dockerfile \
