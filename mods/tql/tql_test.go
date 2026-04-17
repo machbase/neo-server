@@ -1903,6 +1903,10 @@ func TestScriptInterrupt(t *testing.T) {
 		require.Equal(t, "", strings.TrimSpace(result))
 	}
 
+	// Give the JS runtime enough time to start on slower CI runners so these
+	// cases validate interrupt handling rather than startup scheduling.
+	interruptTimeout := 500 * time.Millisecond
+
 	tests := []TqlTestCase{
 		{
 			Name: "js-timeout",
@@ -1915,24 +1919,7 @@ func TestScriptInterrupt(t *testing.T) {
 				})
 				CSV()
 			`,
-			CtxTimeout: 100 * time.Millisecond,
-			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
-			ExpectFunc: func(t *testing.T, result string) {
-				requireNoPayload(t, result)
-			},
-		},
-		{
-			Name: "js-timeout",
-			Script: `
-				FAKE( linspace(1,10,10))
-				SCRIPT("js", {
-					while(true) {
-					}
-					$.yield(123)
-				})
-				CSV()
-			`,
-			CtxTimeout: 100 * time.Millisecond,
+			CtxTimeout: interruptTimeout,
 			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
 			ExpectFunc: func(t *testing.T, result string) {
 				requireNoPayload(t, result)
@@ -1950,7 +1937,7 @@ func TestScriptInterrupt(t *testing.T) {
 				})
 				CSV()
 			`,
-			CtxTimeout: 100 * time.Millisecond,
+			CtxTimeout: interruptTimeout,
 			ExpectFunc: func(t *testing.T, result string) {
 				requireNoPayload(t, result)
 			},
@@ -1968,7 +1955,7 @@ func TestScriptInterrupt(t *testing.T) {
 				})
 				CSV()
 			`,
-			CtxTimeout: 100 * time.Millisecond,
+			CtxTimeout: interruptTimeout,
 			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:2:6(1))"},
 			ExpectFunc: func(t *testing.T, result string) {
 				// SCRIPT was interrupted during the finalize()
