@@ -8,10 +8,11 @@ on:
       - v*
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.get_version.outputs.ver }}
+      is_stable: ${{ steps.check_stable.outputs.is_stable }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -21,27 +22,6 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: '1.26'
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Diagnose Docker Environment
-        shell: bash
-        run: |
-          set -x
-          uname -a
-          docker version
-          docker info
-          docker buildx version
-          docker buildx ls
-          docker buildx inspect --bootstrap
-          ls -l /proc/sys/fs/binfmt_misc || true
-          cat /proc/sys/fs/binfmt_misc/qemu-aarch64 || true
-          docker run --rm --platform linux/arm64 ubuntu:22.04 uname -m
-      - name: Docker version
-        run: docker -v
       - name: Get Next Version
         id: get_version
         run: echo "ver=$(go run mage.go buildversion)" >> $GITHUB_OUTPUT
@@ -52,35 +32,107 @@ jobs:
           VERSION="${{ steps.get_version.outputs.ver }}"
           if [[ "$VERSION" != *"snapshot"* && "$VERSION" != *"rc"* ]]; then
             echo "is_stable=true" >> $GITHUB_OUTPUT
-            echo "version_tag=machbase/machbase-neo:$VERSION" >> $GITHUB_OUTPUT
-            echo "latest_tag=machbase/machbase-neo:latest" >> $GITHUB_OUTPUT
             echo "This is a stable version: $VERSION - will tag as latest"
           else
             echo "is_stable=false" >> $GITHUB_OUTPUT
-            echo "version_tag=machbase/machbase-neo:$VERSION" >> $GITHUB_OUTPUT
-            echo "latest_tag=" >> $GITHUB_OUTPUT
             echo "This is a pre-release version: $VERSION - will not tag as latest"
           fi
         shell: bash
+
+  build-amd64:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup go compiler
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - name: Docker Login
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Docker Build and Push
+      - name: Build amd64 image
         shell: bash
         run: |
-          if [[ "${{ steps.check_stable.outputs.is_stable }}" == "true" ]]; then
-            docker buildx build --progress=plain --push \
-            --platform linux/arm64,linux/amd64 \
-            --tag ${{ steps.check_stable.outputs.version_tag }} \
-            --tag ${{ steps.check_stable.outputs.latest_tag }} \
+          docker buildx build --progress=plain --push \
+            --platform linux/amd64 \
+            --tag machbase/machbase-neo:${{ needs.prepare.outputs.version }}-amd64 \
             -f ./scripts/machbase-neo.Dockerfile \
             .
+
+  build-arm64:
+    needs: prepare
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup go compiler
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Docker Login
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build arm64 image
+        shell: bash
+        run: |
+          docker buildx build --progress=plain --push \
+            --platform linux/arm64 \
+            --tag machbase/machbase-neo:${{ needs.prepare.outputs.version }}-arm64 \
+            -f ./scripts/machbase-neo.Dockerfile \
+            .
+
+  publish-manifest:
+    needs:
+      - prepare
+      - build-amd64
+      - build-arm64
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Docker Login
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Publish multi-arch manifest
+        shell: bash
+        run: |
+          VERSION_TAG=machbase/machbase-neo:${{ needs.prepare.outputs.version }}
+          AMD64_TAG=${VERSION_TAG}-amd64
+          ARM64_TAG=${VERSION_TAG}-arm64
+
+          if [[ "${{ needs.prepare.outputs.is_stable }}" == "true" ]]; then
+            docker buildx imagetools create \
+              --tag "$VERSION_TAG" \
+              --tag machbase/machbase-neo:latest \
+              "$AMD64_TAG" \
+              "$ARM64_TAG"
           else
-            docker buildx build --progress=plain --push \
-            --platform linux/arm64,linux/amd64 \
-            --tag ${{ steps.check_stable.outputs.version_tag }} \
-            -f ./scripts/machbase-neo.Dockerfile \
-            .
+            docker buildx imagetools create \
+              --tag "$VERSION_TAG" \
+              "$AMD64_TAG" \
+              "$ARM64_TAG"
+          fi
+
+      - name: Inspect published manifest
+        shell: bash
+        run: |
+          docker buildx imagetools inspect machbase/machbase-neo:${{ needs.prepare.outputs.version }}
+          if [[ "${{ needs.prepare.outputs.is_stable }}" == "true" ]]; then
+            docker buildx imagetools inspect machbase/machbase-neo:latest
           fi
