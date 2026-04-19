@@ -118,6 +118,7 @@ type ReadRequest struct {
 
 type ReadResult struct {
 	Status          uint32 `json:"status"`
+	StatusCode      string `json:"statusCode"`
 	Value           any    `json:"value"`
 	Type            string `json:"type"`
 	SourceTimestamp int64  `json:"sourceTimestamp"`
@@ -280,10 +281,15 @@ func (c *Client) Read(request ReadRequest) ([]ReadResult, error) {
 	}
 	ret := make([]ReadResult, 0, len(rsp.Results))
 	for _, data := range rsp.Results {
+		code := ""
+		if c, ok := ua.StatusCodes[data.Status]; ok {
+			code = c.Name
+		}
 		val := data.Value.Value()
 		typ := strings.TrimPrefix(data.Value.Type().String(), "TypeID")
 		ret = append(ret, ReadResult{
 			Status:          uint32(data.Status),
+			StatusCode:      code,
 			Value:           val,
 			Type:            typ,
 			SourceTimestamp: data.SourceTimestamp.UnixMilli(),

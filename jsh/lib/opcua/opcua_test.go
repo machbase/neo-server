@@ -57,7 +57,7 @@ func TestScriptOPCUA(t *testing.T) {
 						nodes = nodeList[i];
 						vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturn.Both});
 						vs.forEach((v, idx) => {
-							console.println(nodes[idx], v.status, v.value, v.type);
+							console.println(nodes[idx], v.statusCode, v.value, v.type);
 						})
 					}
 				} catch (e) {
@@ -68,14 +68,14 @@ func TestScriptOPCUA(t *testing.T) {
 				}
 			`,
 			Output: []string{
-				"ns=1;s=ro_bool 0 true Boolean",
-				"ns=1;s=rw_bool 0 true Boolean",
-				"ns=1;s=ro_int32 0 5 Int32",
-				"ns=1;s=rw_int32 0 5 Int32",
-				"ns=1;s=NoPermVariable 0 742 Int32",
-				"ns=1;s=ReadWriteVariable 0 12.34 Double",
-				"ns=1;s=ReadOnlyVariable 0 9.87 Double",
-				"ns=1;s=NoAccessVariable 2149515264 null Null",
+				"ns=1;s=ro_bool StatusGood true Boolean",
+				"ns=1;s=rw_bool StatusGood true Boolean",
+				"ns=1;s=ro_int32 StatusGood 5 Int32",
+				"ns=1;s=rw_int32 StatusGood 5 Int32",
+				"ns=1;s=NoPermVariable StatusGood 742 Int32",
+				"ns=1;s=ReadWriteVariable StatusGood 12.34 Double",
+				"ns=1;s=ReadOnlyVariable StatusGood 9.87 Double",
+				"ns=1;s=NoAccessVariable StatusBadUserAccessDenied null Null",
 			},
 		},
 		{
