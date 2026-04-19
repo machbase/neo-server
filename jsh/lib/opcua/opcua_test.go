@@ -57,7 +57,7 @@ func TestScriptOPCUA(t *testing.T) {
 						nodes = nodeList[i];
 						vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturn.Both});
 						vs.forEach((v, idx) => {
-							console.println(nodes[idx], v.status, v.statusCode, v.value, v.type);
+							console.println(nodes[idx], v.status, v.value, v.type);
 						})
 					}
 				} catch (e) {
@@ -68,14 +68,14 @@ func TestScriptOPCUA(t *testing.T) {
 				}
 			`,
 			Output: []string{
-				"ns=1;s=ro_bool 0 StatusGood true Boolean",
-				"ns=1;s=rw_bool 0 StatusGood true Boolean",
-				"ns=1;s=ro_int32 0 StatusGood 5 Int32",
-				"ns=1;s=rw_int32 0 StatusGood 5 Int32",
-				"ns=1;s=NoPermVariable 0 StatusGood 742 Int32",
-				"ns=1;s=ReadWriteVariable 0 StatusGood 12.34 Double",
-				"ns=1;s=ReadOnlyVariable 0 StatusGood 9.87 Double",
-				"ns=1;s=NoAccessVariable 2149515264 StatusBadUserAccessDenied null Null",
+				"ns=1;s=ro_bool 0 true Boolean",
+				"ns=1;s=rw_bool 0 true Boolean",
+				"ns=1;s=ro_int32 0 5 Int32",
+				"ns=1;s=rw_int32 0 5 Int32",
+				"ns=1;s=NoPermVariable 0 742 Int32",
+				"ns=1;s=ReadWriteVariable 0 12.34 Double",
+				"ns=1;s=ReadOnlyVariable 0 9.87 Double",
+				"ns=1;s=NoAccessVariable 2149515264 null Null",
 			},
 		},
 		{
@@ -190,7 +190,7 @@ func TestScriptOPCUA(t *testing.T) {
 						nodeClassMask: ua.NodeClass.Variable,
 					});
 					refs.sort((a,b) => a.browseName < b.browseName ? -1 : 1)
-						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass, r.dataType));
+						.forEach(r => console.println(r.browseName, r.nodeId, r.nodeClass));
 				} catch(e) {
 					console.println("Error:", e);
 				} finally {
@@ -198,14 +198,14 @@ func TestScriptOPCUA(t *testing.T) {
 				}
 			`,
 			Output: []string{
-				"NoAccessVariable ns=1;s=NoAccessVariable 2 ",
-				"NoPermVariable ns=1;s=NoPermVariable 2 Int32",
-				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2 Double",
-				"ReadWriteVariable ns=1;s=ReadWriteVariable 2 Double",
-				"ro_bool ns=1;s=ro_bool 2 Boolean",
-				"ro_int32 ns=1;s=ro_int32 2 Int32",
-				"rw_bool ns=1;s=rw_bool 2 Boolean",
-				"rw_int32 ns=1;s=rw_int32 2 Int32",
+				"NoAccessVariable ns=1;s=NoAccessVariable 2",
+				"NoPermVariable ns=1;s=NoPermVariable 2",
+				"ReadOnlyVariable ns=1;s=ReadOnlyVariable 2",
+				"ReadWriteVariable ns=1;s=ReadWriteVariable 2",
+				"ro_bool ns=1;s=ro_bool 2",
+				"ro_int32 ns=1;s=ro_int32 2",
+				"rw_bool ns=1;s=rw_bool 2",
+				"rw_int32 ns=1;s=rw_int32 2",
 			},
 		},
 		{
@@ -264,7 +264,7 @@ func TestScriptOPCUA(t *testing.T) {
 						includeSubtypes: true,
 						resultMask: ua.BrowseResultMask.All,
 					});
-					console.println("browse custom status:", results[0].statusText);
+					console.println("browse custom status:", results[0].status);
 				} finally {
 					if (client !== undefined) client.close();
 				}
@@ -272,7 +272,7 @@ func TestScriptOPCUA(t *testing.T) {
 			Output: []string{
 				"browse missing nodes: true",
 				"browse invalid node: true",
-				"browse custom status: The operation succeeded. StatusGood (0x0)",
+				"browse custom status: 0",
 			},
 		},
 		{
@@ -337,6 +337,63 @@ func TestScriptOPCUA(t *testing.T) {
 			Output: []string{
 				"browseNext missing continuationPoints: true",
 				"browseNext invalid continuationPoint: true",
+			},
+		},
+		{
+			Name: "opcua-attributes",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					results = client.attributes({ requests: [
+						{ node: "ns=1;s=ro_bool",           attributeId: ua.AttributeID.DataType },
+						{ node: "ns=1;s=ro_int32",          attributeId: ua.AttributeID.DataType },
+						{ node: "ns=1;s=ReadWriteVariable", attributeId: ua.AttributeID.DataType },
+						{ node: "ns=1;s=ReadWriteVariable", attributeId: ua.AttributeID.BrowseName },
+						{ node: "ns=1;s=ReadWriteVariable", attributeId: ua.AttributeID.NodeClass },
+					]});
+					results.forEach(r => console.println(r.status, r.value));
+				} catch(e) {
+					console.println("Error:", e);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"0 Boolean",
+				"0 Int32",
+				"0 Double",
+				"0 ReadWriteVariable",
+				"0 NodeClassVariable",
+			},
+		},
+		{
+			Name: "opcua-attributes-errors",
+			Script: `
+				ua = require("opcua");
+				try {
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					failed = false;
+					try {
+						client.attributes({ requests: [] });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("attributes empty:", failed);
+					failed = false;
+					try {
+						client.attributes({ requests: [{ node: "ns=x;i=1", attributeId: ua.AttributeID.DataType }] });
+					} catch (e) {
+						failed = true;
+					}
+					console.println("attributes invalid node:", failed);
+				} finally {
+					if (client !== undefined) client.close();
+				}
+			`,
+			Output: []string{
+				"attributes empty: true",
+				"attributes invalid node: true",
 			},
 		},
 		{

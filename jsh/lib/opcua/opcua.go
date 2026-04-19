@@ -78,6 +78,30 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 		"Neither": ua.TimestampsToReturnNeither,
 		"Invalid": ua.TimestampsToReturnInvalid,
 	}))
+	// AttributeID
+	o.Set("AttributeID", rt.ToValue(map[string]any{
+		"NodeClass":       ua.AttributeIDNodeClass,
+		"BrowseName":      ua.AttributeIDBrowseName,
+		"DisplayName":     ua.AttributeIDDisplayName,
+		"Description":     ua.AttributeIDDescription,
+		"DataType":        ua.AttributeIDDataType,
+		"AccessLevel":     ua.AttributeIDAccessLevel,
+		"UserAccessLevel": ua.AttributeIDUserAccessLevel,
+	}))
+	// StatusCode
+	o.Set("StatusCode", rt.ToValue(map[string]any{
+		"Good":                   ua.StatusOK,
+		"Uncertain":              ua.StatusUncertain,
+		"BadNodeIdUnknown":       ua.StatusBadNodeIDUnknown,
+		"BadNodeIdInvalid":       ua.StatusBadNodeIDInvalid,
+		"BadAttributeIdInvalid":  ua.StatusBadAttributeIDInvalid,
+		"BadNotReadable":         ua.StatusBadNotReadable,
+		"BadUserAccessDenied":    ua.StatusBadUserAccessDenied,
+		"BadTimeout":             ua.StatusBadTimeout,
+		"BadConnectionRejected":  ua.StatusBadConnectionRejected,
+		"BadSessionIdInvalid":    ua.StatusBadSessionIDInvalid,
+		"BadSecureChannelClosed": ua.StatusBadSecureChannelClosed,
+	}))
 }
 
 type ClientOptions struct {
@@ -94,8 +118,6 @@ type ReadRequest struct {
 
 type ReadResult struct {
 	Status          uint32 `json:"status"`
-	StatusText      string `json:"statusText"`
-	StatusCode      string `json:"statusCode"`
 	Value           any    `json:"value"`
 	Type            string `json:"type"`
 	SourceTimestamp int64  `json:"sourceTimestamp"`
@@ -119,7 +141,6 @@ type BrowseNextRequest struct {
 
 type BrowseResult struct {
 	Status            uint32            `json:"status"`
-	StatusText        string            `json:"statusText"`
 	ContinuationPoint string            `json:"continuationPoint"`
 	References        []BrowseReference `json:"references"`
 }
@@ -147,7 +168,20 @@ type ChildrenResult struct {
 	DisplayName     string `json:"displayName"`
 	NodeClass       uint32 `json:"nodeClass"`
 	TypeDefinition  string `json:"typeDefinition"`
-	DataType        string `json:"dataType"`
+}
+
+type AttributeRequest struct {
+	Node        string `json:"node"`
+	AttributeId uint32 `json:"attributeId"`
+}
+
+type AttributesRequest struct {
+	Requests []AttributeRequest `json:"requests"`
+}
+
+type AttributeResult struct {
+	Status uint32 `json:"status"`
+	Value  string `json:"value"`
 }
 
 type WriteValue struct {
@@ -246,16 +280,10 @@ func (c *Client) Read(request ReadRequest) ([]ReadResult, error) {
 	}
 	ret := make([]ReadResult, 0, len(rsp.Results))
 	for _, data := range rsp.Results {
-		code := ""
-		if c, ok := ua.StatusCodes[data.Status]; ok {
-			code = c.Name
-		}
 		val := data.Value.Value()
 		typ := strings.TrimPrefix(data.Value.Type().String(), "TypeID")
 		ret = append(ret, ReadResult{
 			Status:          uint32(data.Status),
-			StatusText:      data.Status.Error(),
-			StatusCode:      code,
 			Value:           val,
 			Type:            typ,
 			SourceTimestamp: data.SourceTimestamp.UnixMilli(),
@@ -412,7 +440,6 @@ func toBrowseResults(results []*ua.BrowseResult) []BrowseResult {
 		}
 		ret = append(ret, BrowseResult{
 			Status:            uint32(result.StatusCode),
-			StatusText:        result.StatusCode.Error(),
 			ContinuationPoint: encodeContinuationPoint(result.ContinuationPoint),
 			References:        refs,
 		})
@@ -436,6 +463,75 @@ func decodeContinuationPoint(point string) ([]byte, error) {
 		return nil, err
 	}
 	return decoded, nil
+}
+
+func (c *Client) Attributes(request AttributesRequest) ([]AttributeResult, error) {
+	if len(request.Requests) == 0 {
+		return nil, errors.New("missing requests")
+	}
+
+	req := &ua.ReadRequest{
+		NodesToRead: make([]*ua.ReadValueID, len(request.Requests)),
+	}
+
+	for i, r := range request.Requests {
+		nodeID, err := ua.ParseNodeID(r.Node)
+		if err != nil {
+			return nil, err
+		}
+
+		req.NodesToRead[i] = &ua.ReadValueID{
+			NodeID:      nodeID,
+			AttributeID: ua.AttributeID(r.AttributeId),
+		}
+	}
+
+	rsp, err := c.client.Read(c.ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]AttributeResult, len(request.Requests))
+	for i, data := range rsp.Results {
+		ret[i].Status = uint32(data.Status)
+		if data.Status == ua.StatusOK && data.Value != nil {
+			ret[i].Value = parseAttributeValue(req.NodesToRead[i].AttributeID, data)
+		}
+	}
+
+	return ret, nil
+}
+
+func parseAttributeValue(attrID ua.AttributeID, data *ua.DataValue) string {
+	switch attrID {
+	case ua.AttributeIDDataType:
+		switch n := data.Value.Value().(type) {
+		case *ua.NodeID:
+			return id.Name(n.IntID())
+		case *ua.ExpandedNodeID:
+			return id.Name(n.NodeID.IntID())
+		}
+	case ua.AttributeIDDisplayName, ua.AttributeIDDescription:
+		if t, ok := data.Value.Value().(*ua.LocalizedText); ok {
+			return t.Text
+		}
+	case ua.AttributeIDBrowseName:
+		if q, ok := data.Value.Value().(*ua.QualifiedName); ok {
+			return q.Name
+		}
+	case ua.AttributeIDNodeClass:
+		return ua.NodeClass(data.Value.Int()).String()
+	case ua.AttributeIDAccessLevel:
+		if lev, ok := data.Value.Value().(uint8); ok {
+			return ua.AccessLevelType(lev).String()
+		}
+	case ua.AttributeIDUserAccessLevel:
+		if lev, ok := data.Value.Value().(uint8); ok {
+			return ua.AccessLevelType(lev).String()
+		}
+	}
+
+	return ""
 }
 
 func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
@@ -471,20 +567,6 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 		if ref.TypeDefinition != nil && ref.TypeDefinition.NodeID != nil {
 			typeDefStr = id.Name(ref.TypeDefinition.NodeID.IntID())
 		}
-		var dataType string
-		if ref.NodeID != nil && ref.NodeClass == ua.NodeClassVariable {
-			attrs, err := c.client.NodeFromExpandedNodeID(ref.NodeID).Attributes(c.ctx, ua.AttributeIDDataType)
-			if err == nil && len(attrs) > 0 {
-				if attrs[0].Status == ua.StatusOK {
-					switch v := attrs[0].Value.Value().(type) {
-					case *ua.ExpandedNodeID: // for TestServer
-						dataType = id.Name(v.NodeID.IntID())
-					case *ua.NodeID:
-						dataType = id.Name(v.IntID())
-					}
-				}
-			}
-		}
 
 		ret = append(ret, ChildrenResult{
 			ReferenceTypeId: ref.ReferenceTypeID.String(),
@@ -494,7 +576,6 @@ func (c *Client) Children(request ChildrenRequest) ([]ChildrenResult, error) {
 			DisplayName:     displayName,
 			NodeClass:       uint32(ref.NodeClass),
 			TypeDefinition:  typeDefStr,
-			DataType:        dataType,
 		})
 	}
 	return ret, nil

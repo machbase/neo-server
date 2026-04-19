@@ -111,6 +111,11 @@ class Client {
     children(request) {
         return this._client.children(request);
     }
+
+    attributes(request) {
+        return this._client.attributes(request);
+    }
+
 }
 
 /**
@@ -138,6 +143,16 @@ const NodeClass = _opcua.NodeClass;
  */
 const BrowseResultMask = _opcua.BrowseResultMask;
 
+/**
+ * OPC UA attribute ID constants.
+ */
+const AttributeID = _opcua.AttributeID;
+
+/**
+ * OPC UA status code constants.
+ */
+const StatusCode = _opcua.StatusCode;
+
 module.exports = {
     Client,
     MessageSecurityMode,
@@ -145,4 +160,6 @@ module.exports = {
     BrowseDirection,
     NodeClass,
     BrowseResultMask,
+    AttributeID,
+    StatusCode,
 };
