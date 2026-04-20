@@ -90,17 +90,17 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	}))
 	// StatusCode
 	o.Set("StatusCode", rt.ToValue(map[string]any{
-		"Good":                   ua.StatusOK,
-		"Uncertain":              ua.StatusUncertain,
-		"BadNodeIdUnknown":       ua.StatusBadNodeIDUnknown,
-		"BadNodeIdInvalid":       ua.StatusBadNodeIDInvalid,
-		"BadAttributeIdInvalid":  ua.StatusBadAttributeIDInvalid,
-		"BadNotReadable":         ua.StatusBadNotReadable,
-		"BadUserAccessDenied":    ua.StatusBadUserAccessDenied,
-		"BadTimeout":             ua.StatusBadTimeout,
-		"BadConnectionRejected":  ua.StatusBadConnectionRejected,
-		"BadSessionIdInvalid":    ua.StatusBadSessionIDInvalid,
-		"BadSecureChannelClosed": ua.StatusBadSecureChannelClosed,
+		"Good":                   uint32(ua.StatusOK),
+		"Uncertain":              uint32(ua.StatusUncertain),
+		"BadNodeIdUnknown":       uint32(ua.StatusBadNodeIDUnknown),
+		"BadNodeIdInvalid":       uint32(ua.StatusBadNodeIDInvalid),
+		"BadAttributeIdInvalid":  uint32(ua.StatusBadAttributeIDInvalid),
+		"BadNotReadable":         uint32(ua.StatusBadNotReadable),
+		"BadUserAccessDenied":    uint32(ua.StatusBadUserAccessDenied),
+		"BadTimeout":             uint32(ua.StatusBadTimeout),
+		"BadConnectionRejected":  uint32(ua.StatusBadConnectionRejected),
+		"BadSessionIdInvalid":    uint32(ua.StatusBadSessionIDInvalid),
+		"BadSecureChannelClosed": uint32(ua.StatusBadSecureChannelClosed),
 	}))
 }
 
