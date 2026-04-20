@@ -56,10 +56,10 @@ jobs:
         run: go run mage.go test
       - name: Set up Docker Buildx
         if: matrix.os == 'linux' && matrix.arch != 'arm32'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Build Docker Image
         if: matrix.os == 'linux' && matrix.arch != 'arm32'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./scripts/Ubuntu18.04.Dockerfile
