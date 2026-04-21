@@ -213,7 +213,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.NullFloat64:
 			if v.Valid {
-				ex.values[i] = v.Float64
+				ex.values[i] = PrecisionFloat64(v.Float64)
 			}
 		case *sql.NullInt16:
 			if v.Valid {
@@ -225,7 +225,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.Null[float32]:
 			if v.Valid {
-				ex.values[i] = v.V
+				ex.values[i] = PrecisionFloat64(float64(v.V))
 			}
 		case *sql.NullInt64:
 			if v.Valid {

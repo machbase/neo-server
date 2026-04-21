@@ -2,6 +2,8 @@ package ndjson_test
 
 import (
 	"bytes"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,5 +71,101 @@ func TestJsonEncode(t *testing.T) {
 		}
 		enc.Close()
 		require.Equal(t, tt.expect, out.String())
+	}
+}
+
+func TestPrecisionFloat64MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		value  float64
+		expect string
+	}{
+		{
+			name:   "dynamic-significant-digits-trims-trailing-zeros",
+			value:  12.3400,
+			expect: "12.34",
+		},
+		{
+			name:   "integer-like-float-without-fixed-decimals",
+			value:  10.0,
+			expect: "10",
+		},
+		{
+			name:   "normalize-negative-zero",
+			value:  math.Copysign(0, -1),
+			expect: "0",
+		},
+		{
+			name:   "nan-as-string-token",
+			value:  math.NaN(),
+			expect: `"NaN"`,
+		},
+		{
+			name:   "negative-infinity-as-string-token",
+			value:  math.Inf(-1),
+			expect: `"-Inf"`,
+		},
+		{
+			name:   "positive-infinity-as-string-token",
+			value:  math.Inf(1),
+			expect: `"+Inf"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := ndjson.PrecisionFloat64(tt.value).MarshalJSON()
+			require.NoError(t, err)
+			require.Equal(t, tt.expect, string(b))
+		})
+	}
+}
+
+func TestNdjsonEncodeFloatFormatting(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       float64
+		expectField string
+	}{
+		{
+			name:        "trailing-zeros-trimmed",
+			value:       12.3400,
+			expectField: `"value":12.34`,
+		},
+		{
+			name:        "integer-like-float",
+			value:       10.0,
+			expectField: `"value":10`,
+		},
+		{
+			name:        "nan-as-quoted-string",
+			value:       math.NaN(),
+			expectField: `"value":"NaN"`,
+		},
+		{
+			name:        "negative-inf-as-quoted-string",
+			value:       math.Inf(-1),
+			expectField: `"value":"-Inf"`,
+		},
+		{
+			name:        "positive-inf-as-quoted-string",
+			value:       math.Inf(1),
+			expectField: `"value":"+Inf"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := &bytes.Buffer{}
+			enc := ndjson.NewEncoder()
+			enc.SetOutputStream(out)
+			enc.SetColumnTypes("double")
+			enc.SetColumns("value")
+			enc.Open()
+			require.NoError(t, enc.AddRow([]any{tt.value}))
+			enc.Close()
+			require.True(t, strings.Contains(out.String(), tt.expectField),
+				"output %q does not contain %q", out.String(), tt.expectField)
+		})
 	}
 }
