@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -42,6 +43,7 @@ func NewEncoder() *Exporter {
 	return &Exporter{
 		tick:          time.Now(),
 		timeformatter: util.NewTimeFormatter(),
+		precision:     -1,
 	}
 }
 
@@ -157,15 +159,22 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
-func (ex *Exporter) encodeFloat64(v float64) any {
-	if math.IsNaN(v) {
-		return "NaN"
-	} else if math.IsInf(v, -1) {
-		return "-Inf"
-	} else if math.IsInf(v, 1) {
-		return "+Inf"
+type PrecisionFloat64 float64
+
+func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
+	v := float64(pf)
+	switch {
+	case math.IsNaN(v):
+		return []byte(`"NaN"`), nil
+	case math.IsInf(v, -1):
+		return []byte(`"-Inf"`), nil
+	case math.IsInf(v, 1):
+		return []byte(`"+Inf"`), nil
+	case v == 0:
+		// Keep zero formatting stable and avoid "-0".
+		return []byte("0"), nil
 	}
-	return v
+	return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
 }
 
 func (ex *Exporter) AddRow(source []any) error {
@@ -183,13 +192,13 @@ func (ex *Exporter) AddRow(source []any) error {
 		case time.Time:
 			ex.values[i] = ex.timeformatter.FormatEpoch(v)
 		case *float64:
-			ex.values[i] = ex.encodeFloat64(*v)
+			ex.values[i] = PrecisionFloat64(*v)
 		case float64:
-			ex.values[i] = ex.encodeFloat64(v)
+			ex.values[i] = PrecisionFloat64(v)
 		case *float32:
-			ex.values[i] = ex.encodeFloat64(float64(*v))
+			ex.values[i] = PrecisionFloat64(float64(*v))
 		case float32:
-			ex.values[i] = ex.encodeFloat64(float64(v))
+			ex.values[i] = PrecisionFloat64(float64(v))
 		case *net.IP:
 			ex.values[i] = v.String()
 		case net.IP:

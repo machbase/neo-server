@@ -2,12 +2,30 @@ package json_test
 
 import (
 	"bytes"
+	gojson "encoding/json"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/json"
 	"github.com/stretchr/testify/require"
 )
+
+type flushCloseBuffer struct {
+	bytes.Buffer
+	flushCount int
+	closeCount int
+}
+
+func (b *flushCloseBuffer) Flush() error {
+	b.flushCount++
+	return nil
+}
+
+func (b *flushCloseBuffer) Close() error {
+	b.closeCount++
+	return nil
+}
 
 // previous version of json_encode.go
 // cpu: AMD Ryzen 9 3900X 12-Core Processor
@@ -118,4 +136,151 @@ func TestJsonEncode(t *testing.T) {
 			require.Equal(t, tt.expect, substr)
 		})
 	}
+}
+
+func TestPrecisionFloat64MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		value  float64
+		expect string
+	}{
+		{
+			name:   "dynamic-significant-digits-trims-trailing-zeros",
+			value:  12.3400,
+			expect: "12.34",
+		},
+		{
+			name:   "integer-like-float-without-fixed-decimals",
+			value:  10.0,
+			expect: "10",
+		},
+		{
+			name:   "normalize-negative-zero",
+			value:  math.Copysign(0, -1),
+			expect: "0",
+		},
+		{
+			name:   "nan-as-string-token",
+			value:  math.NaN(),
+			expect: `"NaN"`,
+		},
+		{
+			name:   "negative-infinity-as-string-token",
+			value:  math.Inf(-1),
+			expect: `"-Inf"`,
+		},
+		{
+			name:   "positive-infinity-as-string-token",
+			value:  math.Inf(1),
+			expect: `"+Inf"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.PrecisionFloat64(tt.value).MarshalJSON()
+			require.NoError(t, err)
+			require.Equal(t, tt.expect, string(b))
+		})
+	}
+}
+
+func TestJsonEncodeFlushAndClose(t *testing.T) {
+	out := &flushCloseBuffer{}
+	enc := json.NewEncoder()
+	enc.SetOutputStream(out)
+	enc.SetColumnTypes("string")
+	enc.SetColumns("name")
+	require.NoError(t, enc.Open())
+
+	enc.Flush(false)
+	require.Equal(t, 1, out.flushCount)
+
+	enc.Close()
+	require.Equal(t, 1, out.closeCount)
+}
+
+func TestJsonEncodeRowsArray(t *testing.T) {
+	out := &bytes.Buffer{}
+	enc := json.NewEncoder()
+	enc.SetOutputStream(out)
+	enc.SetColumnTypes("string", "long", "double")
+	enc.SetColumns("name", "seq", "value")
+	enc.SetRowsArray(true)
+	require.NoError(t, enc.Open())
+	require.NoError(t, enc.AddRow([]any{"car-1", int64(7), float64(12.3400)}))
+	enc.Close()
+
+	var payload map[string]any
+	require.NoError(t, gojson.Unmarshal(out.Bytes(), &payload))
+
+	data, ok := payload["data"].(map[string]any)
+	require.True(t, ok)
+	rows, ok := data["rows"].([]any)
+	require.True(t, ok)
+	require.Len(t, rows, 1)
+
+	row, ok := rows[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "car-1", row["name"])
+	require.Equal(t, float64(7), row["seq"])
+	require.Equal(t, float64(12.34), row["value"])
+}
+
+func TestJsonEncodeRowsFlatten(t *testing.T) {
+	out := &bytes.Buffer{}
+	enc := json.NewEncoder()
+	enc.SetOutputStream(out)
+	enc.SetColumnTypes("string", "long", "double")
+	enc.SetColumns("name", "seq", "value")
+	enc.SetRowsFlatten(true)
+	require.NoError(t, enc.Open())
+	require.NoError(t, enc.AddRow([]any{"car-1", int64(1), float64(1.2500)}))
+	require.NoError(t, enc.AddRow([]any{"car-2", int64(2), float64(2.5000)}))
+	enc.Close()
+
+	var payload map[string]any
+	require.NoError(t, gojson.Unmarshal(out.Bytes(), &payload))
+
+	data, ok := payload["data"].(map[string]any)
+	require.True(t, ok)
+	rows, ok := data["rows"].([]any)
+	require.True(t, ok)
+	require.Len(t, rows, 6)
+	require.Equal(t, "car-1", rows[0])
+	require.Equal(t, float64(1), rows[1])
+	require.Equal(t, float64(1.25), rows[2])
+	require.Equal(t, "car-2", rows[3])
+	require.Equal(t, float64(2), rows[4])
+	require.Equal(t, float64(2.5), rows[5])
+}
+
+func TestJsonEncodeTranspose(t *testing.T) {
+	out := &bytes.Buffer{}
+	enc := json.NewEncoder()
+	enc.SetOutputStream(out)
+	enc.SetColumnTypes("string", "double")
+	enc.SetColumns("name", "value")
+	enc.SetTranspose(true)
+	require.NoError(t, enc.Open())
+	require.NoError(t, enc.AddRow([]any{"car-1", float64(1.0)}))
+	require.NoError(t, enc.AddRow([]any{"car-2", float64(2.5000)}))
+	enc.Close()
+
+	var payload map[string]any
+	require.NoError(t, gojson.Unmarshal(out.Bytes(), &payload))
+
+	data, ok := payload["data"].(map[string]any)
+	require.True(t, ok)
+	cols, ok := data["cols"].([]any)
+	require.True(t, ok)
+	require.Len(t, cols, 2)
+
+	col0, ok := cols[0].([]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"car-1", "car-2"}, col0)
+
+	col1, ok := cols[1].([]any)
+	require.True(t, ok)
+	require.Equal(t, []any{float64(1), float64(2.5)}, col1)
 }
