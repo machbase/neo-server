@@ -240,7 +240,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 
 		expects := []string{
 			"bin,ptr_bin,empty_bin,nil_bin",
-			"0x0102,0x0304,,",
+			"AQI=,AwQ=,,",
 			"",
 			"",
 		}

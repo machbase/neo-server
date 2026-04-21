@@ -37,7 +37,7 @@ type Exporter struct {
 	heading  bool
 	colNames []string
 	colTypes []api.DataType
-	binMode  string // 'hex', 'base64', default 'hex'
+	binMode  string // 'hex', 'base64', default 'base64'
 
 	closeOnce sync.Once
 }
@@ -47,7 +47,7 @@ func NewEncoder() *Exporter {
 		precision:       -1,
 		nullAlternative: "NULL",
 		timeformat:      util.NewTimeFormatter(),
-		binMode:         "hex",
+		binMode:         "base64",
 	}
 	return rr
 }
