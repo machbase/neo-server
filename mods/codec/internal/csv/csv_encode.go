@@ -2,7 +2,9 @@ package csv
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -35,6 +37,7 @@ type Exporter struct {
 	heading  bool
 	colNames []string
 	colTypes []api.DataType
+	binMode  string // 'hex', 'base64', default 'hex'
 
 	closeOnce sync.Once
 }
@@ -44,6 +47,7 @@ func NewEncoder() *Exporter {
 		precision:       -1,
 		nullAlternative: "NULL",
 		timeformat:      util.NewTimeFormatter(),
+		binMode:         "hex",
 	}
 	return rr
 }
@@ -79,6 +83,10 @@ func (ex *Exporter) SetHeading(show bool) {
 
 func (ex *Exporter) SetHeader(show bool) {
 	ex.heading = show
+}
+
+func (ex *Exporter) SetBinaryMode(mode string) {
+	ex.binMode = strings.ToLower(mode)
 }
 
 func (ex *Exporter) SetDelimiter(delimiter string) {
@@ -261,17 +269,9 @@ func (ex *Exporter) AddRow(values []any) error {
 		case uint8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *[]uint8:
-			strArr := []string{}
-			for _, c := range *v {
-				strArr = append(strArr, fmt.Sprintf("\\x%02X", c))
-			}
-			cols[i] = strings.Join(strArr, "")
+			cols[i] = encodeBinary(*v, ex.binMode)
 		case []uint8:
-			strArr := []string{}
-			for _, c := range v {
-				strArr = append(strArr, fmt.Sprintf("\\x%02X", c))
-			}
-			cols[i] = strings.Join(strArr, "")
+			cols[i] = encodeBinary(v, ex.binMode)
 		case *nums.LatLon:
 			cols[i] = fmt.Sprintf("[%v,%v]", v.Lat, v.Lon)
 		case *nums.SingleLatLon:
@@ -292,4 +292,14 @@ func (ex *Exporter) AddRow(values []any) error {
 	} else {
 		return ex.writer.Write(cols)
 	}
+}
+
+func encodeBinary(v []byte, mode string) string {
+	if len(v) == 0 {
+		return ""
+	}
+	if mode == "base64" {
+		return base64.StdEncoding.EncodeToString(v)
+	}
+	return "0x" + hex.EncodeToString(v)
 }

@@ -590,10 +590,10 @@ func TestBytes(t *testing.T) {
 	}
 	resultLines = []string{
 		"ROWNUM,BYTES",
-		`1,\x6C\x69\x6E\x65\x31`,
-		`2,\x6C\x69\x6E\x65\x32`,
+		`1,0x6c696e6531`,
+		`2,0x6c696e6532`,
 		`3,`,
-		`4,\x6C\x69\x6E\x65\x34`,
+		`4,0x6c696e6534`,
 		"",
 	}
 	runTest(t, codeLines, resultLines)
@@ -604,10 +604,10 @@ func TestBytes(t *testing.T) {
 	}
 	resultLines = []string{
 		"BYTES",
-		`\x6C\x69\x6E\x65\x31`,
-		`\x6C\x69\x6E\x65\x32`,
+		`0x6c696e6531`,
+		`0x6c696e6532`,
 		``,
-		`\x6C\x69\x6E\x65\x34`,
+		`0x6c696e6534`,
 		"",
 	}
 	runTest(t, codeLines, resultLines)
@@ -663,7 +663,7 @@ func TestHttpFile(t *testing.T) {
 		`CSV()`,
 	}
 	resultLines = []string{
-		`\x6F\x6B\x2E`,
+		`0x6f6b2e`,
 		"",
 	}
 	runTest(t, codeLines, resultLines, httpClient)
