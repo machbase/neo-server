@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -99,15 +100,21 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
-func (ex *Exporter) encodeFloat64(v float64) any {
-	if math.IsNaN(v) {
-		return "NaN"
-	} else if math.IsInf(v, -1) {
-		return "-Inf"
-	} else if math.IsInf(v, 1) {
-		return "+Inf"
+type PrecisionFloat64 float64
+
+func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
+	v := float64(pf)
+	switch {
+	case math.IsNaN(v):
+		return []byte(`"NaN"`), nil
+	case math.IsInf(v, -1):
+		return []byte(`"-Inf"`), nil
+	case math.IsInf(v, 1):
+		return []byte(`"+Inf"`), nil
+	case v == 0:
+		return []byte("0"), nil
 	}
-	return v
+	return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
 }
 
 func (ex *Exporter) AddRow(source []any) error {
@@ -121,13 +128,13 @@ func (ex *Exporter) AddRow(source []any) error {
 		case time.Time:
 			values[i] = ex.timeformat.FormatEpoch(v)
 		case *float64:
-			values[i] = ex.encodeFloat64(*v)
+			values[i] = PrecisionFloat64(*v)
 		case float64:
-			values[i] = ex.encodeFloat64(v)
+			values[i] = PrecisionFloat64(v)
 		case *float32:
-			values[i] = ex.encodeFloat64(float64(*v))
+			values[i] = PrecisionFloat64(float64(*v))
 		case float32:
-			values[i] = ex.encodeFloat64(float64(v))
+			values[i] = PrecisionFloat64(float64(v))
 		case *net.IP:
 			values[i] = v.String()
 		case net.IP:
@@ -142,7 +149,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.NullFloat64:
 			if v.Valid {
-				values[i] = v.Float64
+				values[i] = PrecisionFloat64(v.Float64)
 			}
 		case *sql.NullInt16:
 			if v.Valid {
@@ -151,6 +158,10 @@ func (ex *Exporter) AddRow(source []any) error {
 		case *sql.NullInt32:
 			if v.Valid {
 				values[i] = v.Int32
+			}
+		case *sql.Null[float32]:
+			if v.Valid {
+				values[i] = PrecisionFloat64(float64(v.V))
 			}
 		case *sql.NullInt64:
 			if v.Valid {
@@ -163,6 +174,10 @@ func (ex *Exporter) AddRow(source []any) error {
 		case *sql.NullTime:
 			if v.Valid {
 				values[i] = ex.timeformat.Format(v.Time)
+			}
+		case *sql.Null[net.IP]:
+			if v.Valid {
+				values[i] = v.V.String()
 			}
 		default:
 			values[i] = field
