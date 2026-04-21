@@ -1033,7 +1033,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			}
 		case MACHCLI_SQL_TYPE_BINARY:
 			var v = make([]byte, desc.Size+1)
-			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), len(v)); err != nil {
+			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_BINARY, unsafe.Pointer(&v[0]), len(v)); err != nil {
 				return nil, errorWithCause(stmt, err)
 			} else if n == -1 {
 				values[i] = nil

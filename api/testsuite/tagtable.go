@@ -44,6 +44,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeString},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
+		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 32767, DataType: api.DataTypeBinary},
 	}
 	cols, _ := appender.Columns()
 	require.Equal(t, len(expectCols), len(cols))
@@ -100,6 +101,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 			fmt.Sprintf("{\"json\":%d}", i), // json_value
 			ip4,                             // IPv4_value
 			ip6,                             // IPv6_value
+			[]byte{0x01, 0x02, 0x03},        // bin_value
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -129,7 +131,8 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 		time     datetime basetime,
 		value    double summarized,
 		id       varchar(80),
-		jsondata json)`, tableName))
+		jsondata json,
+		bindata  binary)`, tableName))
 	conn.Close()
 	require.NoError(t, result.Err(), "create table fail")
 
@@ -156,7 +159,9 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 			ts.Add(time.Duration(i)),
 			1.001*float64(i+1),
 			"some-id-string",
-			`{"name":"json"}`)
+			`{"name":"json"}`,
+			[]byte{0x01, 0x02, 0x03},
+		)
 		if err != nil {
 			panic(err)
 		}
@@ -177,6 +182,32 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 	}
 	require.Equal(t, testCount, count)
 	conn.Close()
+
+	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+	rows, err := conn.Query(ctx, "select * from "+tableName+" where time >= ?", ts)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var time time.Time
+		var value float64
+		var id string
+		var jsondata string
+		var bindata []byte
+		err = rows.Scan(&name, &time, &value, &id, &jsondata, &bindata)
+		if err != nil {
+			panic(err)
+		}
+		require.NotEmpty(t, name)
+		require.NotZero(t, time)
+		require.NotZero(t, value)
+		require.NotEmpty(t, id)
+		require.Equal(t, `{"name":"json"}`, jsondata)
+		require.Equal(t, []byte{0x01, 0x02, 0x03}, bindata)
+	}
 }
 
 func AppendTagNotExist(t *testing.T, db api.Database, ctx context.Context) {

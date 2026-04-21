@@ -265,7 +265,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 			cols := q.Columns()
 			require.Equal(t, []string{"NAME", "TIME", "VALUE",
 				"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
-				"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE"}, cols.Names())
+				"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
 			require.Equal(t, []api.DataType{
 				api.DataTypeString,
 				api.DataTypeDatetime,
@@ -280,6 +280,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 				api.DataTypeString,
 				api.DataTypeIPv4,
 				api.DataTypeIPv6,
+				api.DataTypeBinary,
 			}, cols.DataTypes())
 		},
 		Next: func(q *server_api.Query, rownum int64) bool {
@@ -328,17 +329,18 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	err = queryCtx.Execute(ctx, conn, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
 		`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
 		`?, ?, `+ // long_value, ulong_value
-		`?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value
-		1.23,                 // value
-		10,                   // ushort_value
-		2,                    // int_value
-		20,                   // uint_value
-		3,                    // long_value
-		40,                   // ulong_value
-		"str1",               // str_value
-		`{"key1": "value1"}`, // json_value
-		nil,                  // ipv4_value
-		nil,                  // ipv6_value
+		`?, ?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value, bin_value
+		1.23,                     // value
+		10,                       // ushort_value
+		2,                        // int_value
+		20,                       // uint_value
+		3,                        // long_value
+		40,                       // ulong_value
+		"str1",                   // str_value
+		`{"key1": "value1"}`,     // json_value
+		nil,                      // ipv4_value
+		nil,                      // ipv6_value
+		[]byte{0x01, 0x02, 0x03}, // bin_value
 	)
 	require.NoError(t, err, "query-insert fail")
 	require.True(t, endCalled)
