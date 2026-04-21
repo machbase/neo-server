@@ -2,13 +2,16 @@ package csv_test
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"net"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/csv"
+	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/stretchr/testify/require"
 )
 
@@ -219,4 +222,147 @@ func TestCsvEncoderSetterPaths(t *testing.T) {
 	enc.Close()
 	require.True(t, w.flushed)
 	require.Contains(t, w.String(), "a;b")
+}
+
+func TestCsvEncoderBinaryMode(t *testing.T) {
+	t.Run("default hex", func(t *testing.T) {
+		enc := csv.NewEncoder()
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetColumns("bin", "ptr_bin", "empty_bin", "nil_bin")
+		enc.SetHeader(true)
+		require.NoError(t, enc.Open())
+
+		ptrBin := []byte{0x03, 0x04}
+		var nilBin []byte
+		require.NoError(t, enc.AddRow([]any{[]byte{0x01, 0x02}, &ptrBin, []byte{}, nilBin}))
+		enc.Close()
+
+		expects := []string{
+			"bin,ptr_bin,empty_bin,nil_bin",
+			"AQI=,AwQ=,,",
+			"",
+			"",
+		}
+		require.Equal(t, strings.Join(expects, "\n"), w.String())
+	})
+
+	t.Run("base64", func(t *testing.T) {
+		enc := csv.NewEncoder()
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetColumns("bin", "ptr_bin", "empty_bin", "nil_bin")
+		enc.SetHeader(true)
+		enc.SetBinaryMode("BASE64")
+		require.NoError(t, enc.Open())
+
+		ptrBin := []byte{0x03, 0x04}
+		var nilBin []byte
+		require.NoError(t, enc.AddRow([]any{[]byte{0x01, 0x02}, &ptrBin, []byte{}, nilBin}))
+		enc.Close()
+
+		expects := []string{
+			"bin,ptr_bin,empty_bin,nil_bin",
+			"AQI=,AwQ=,,",
+			"",
+			"",
+		}
+		require.Equal(t, strings.Join(expects, "\n"), w.String())
+	})
+
+	t.Run("unknown mode falls back to hex", func(t *testing.T) {
+		enc := csv.NewEncoder()
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetColumns("bin")
+		enc.SetHeader(true)
+		enc.SetBinaryMode("raw")
+		require.NoError(t, enc.Open())
+
+		require.NoError(t, enc.AddRow([]any{[]byte{0x0a, 0x0b}}))
+		enc.Close()
+
+		expects := []string{
+			"bin",
+			"0x0a0b",
+			"",
+			"",
+		}
+		require.Equal(t, strings.Join(expects, "\n"), w.String())
+	})
+}
+
+func TestCsvEncoderSqlAndGeoTypes(t *testing.T) {
+	enc := csv.NewEncoder()
+	w := &bytes.Buffer{}
+	enc.SetOutputStream(w)
+	enc.SetTimeformat("KITCHEN")
+	enc.SetSubstituteNull("N/A")
+	enc.SetColumns("bool_v", "byte_v", "float_v", "int16_v", "int32_v", "int64_v", "string_v", "time_v", "float32_v", "ip_v", "latlon_v", "point_v")
+	enc.SetHeader(true)
+	require.NoError(t, enc.Open())
+
+	ts := time.Unix(1691800174, 0).UTC()
+	ip := net.ParseIP("127.0.0.1")
+	require.NoError(t, enc.AddRow([]any{
+		&sql.NullBool{Bool: true, Valid: true},
+		&sql.NullByte{Byte: 7, Valid: true},
+		&sql.NullFloat64{Float64: 3.5, Valid: true},
+		&sql.NullInt16{Int16: 16, Valid: true},
+		&sql.NullInt32{Int32: 32, Valid: true},
+		&sql.NullInt64{Int64: 64, Valid: true},
+		&sql.NullString{String: "text", Valid: true},
+		&sql.NullTime{Time: ts, Valid: true},
+		&sql.Null[float32]{V: float32(1.25), Valid: true},
+		&sql.Null[net.IP]{V: ip, Valid: true},
+		nums.NewLatLon(37.123, 127.456),
+		nums.NewGeoPoint(nums.NewLatLon(38.321, 128.654), nil),
+	}))
+	require.NoError(t, enc.AddRow([]any{
+		&sql.NullBool{Valid: false},
+		&sql.NullByte{Valid: false},
+		&sql.NullFloat64{Valid: false},
+		&sql.NullInt16{Valid: false},
+		&sql.NullInt32{Valid: false},
+		&sql.NullInt64{Valid: false},
+		&sql.NullString{Valid: false},
+		&sql.NullTime{Valid: false},
+		&sql.Null[float32]{Valid: false},
+		&sql.Null[net.IP]{Valid: false},
+		nil,
+		nil,
+	}))
+	enc.Close()
+
+	expects := []string{
+		"bool_v,byte_v,float_v,int16_v,int32_v,int64_v,string_v,time_v,float32_v,ip_v,latlon_v,point_v",
+		"true,7,3.5,16,32,64,text,12:29:34AM,1.25,127.0.0.1," +
+			"\"[37.123,127.456]\",\"[38.321,128.654]\"",
+		"N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A",
+		"",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
+}
+
+func TestCsvEncoderTreatIntValueAsFloat(t *testing.T) {
+	enc := csv.NewEncoder()
+	w := &bytes.Buffer{}
+	enc.SetOutputStream(w)
+	enc.SetPrecision(2)
+	enc.SetColumns("int_v", "int8_v", "int16_v", "int32_v", "int64_v")
+	enc.SetColumnTypes(api.DataTypeFloat64, api.DataTypeFloat32, api.DataTypeFloat64, api.DataTypeFloat32, api.DataTypeFloat64)
+	enc.SetHeader(true)
+	require.NoError(t, enc.Open())
+
+	require.NoError(t, enc.AddRow([]any{int(1), int8(2), int16(3), int32(4), int64(5)}))
+	enc.Close()
+
+	expects := []string{
+		"int_v,int8_v,int16_v,int32_v,int64_v",
+		"1.00,2.00,3.00,4.00,5.00",
+		"",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
 }

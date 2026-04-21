@@ -782,19 +782,19 @@ func TestHttpWrite(t *testing.T) {
 			payloadType: "application/json",
 			payloadReq: map[string]any{
 				"data": map[string]any{
-					"columns": []string{"name", "time", "value", "jsondata", "ival", "sval"},
+					"columns": []string{"name", "time", "value", "jsondata", "ival", "sval", "bval"},
 					"rows": [][]any{
-						{"test_1", testTimeTick.Unix(), 1.12, nil, 101, 102},
-						{"test_1", testTimeTick.Unix() + 1, 2.23, nil, 201, 202},
+						{"test_1", testTimeTick.Unix(), 1.12, nil, 101, 102, []byte{0x1, 0x2}},
+						{"test_1", testTimeTick.Unix() + 1, 2.23, nil, 201, 202, []byte{0x3, 0x4}},
 					},
 				},
 			},
 			selectSql:        `select * from test_w where name = 'test_1'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`test_1,1705291859,1.12,NULL,101,102`,
-				`test_1,1705291860,2.23,NULL,201,202`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`test_1,1705291859,1.12,NULL,101,102,AQI=`,
+				`test_1,1705291860,2.23,NULL,201,202,AwQ=`,
 				"\n"},
 		},
 		{
@@ -802,15 +802,15 @@ func TestHttpWrite(t *testing.T) {
 			queryParams: "?timeformat=s&method=insert",
 			payloadType: "application/x-ndjson",
 			payloadReq: []any{
-				map[string]any{"name": "test_2", "time": testTimeTick.Unix(), "value": 1.12, "jsondata": nil, "ival": 101, "sval": 102},
-				map[string]any{"name": "test_2", "time": testTimeTick.Unix() + 1, "value": 2.23, "jsondata": nil, "ival": 201, "sval": 202},
+				map[string]any{"name": "test_2", "time": testTimeTick.Unix(), "value": 1.12, "jsondata": nil, "ival": 101, "sval": 102, "bval": []byte{0x1, 0x2}},
+				map[string]any{"name": "test_2", "time": testTimeTick.Unix() + 1, "value": 2.23, "jsondata": nil, "ival": 201, "sval": 202, "bval": []byte{0x3, 0x4}},
 			},
 			selectSql:        `select * from test_w where name = 'test_2'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`test_2,1705291859,1.12,NULL,101,102`,
-				`test_2,1705291860,2.23,NULL,201,202`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`test_2,1705291859,1.12,NULL,101,102,AQI=`,
+				`test_2,1705291860,2.23,NULL,201,202,AwQ=`,
 				"\n"},
 		},
 		{
@@ -818,15 +818,15 @@ func TestHttpWrite(t *testing.T) {
 			queryParams: "?timeformat=s&method=append",
 			payloadType: "application/x-ndjson",
 			payloadReq: []any{
-				map[string]any{"name": "test_3", "time": testTimeTick.Unix(), "value": 1.12, "jsondata": nil, "ival": 101, "sval": 102},
-				map[string]any{"name": "test_3", "time": testTimeTick.Unix() + 1, "value": 2.23, "jsondata": nil, "ival": 201, "sval": 202},
+				map[string]any{"name": "test_3", "time": testTimeTick.Unix(), "value": 1.12, "jsondata": nil, "ival": 101, "sval": 102, "bval": []byte{0x1, 0x2}},
+				map[string]any{"name": "test_3", "time": testTimeTick.Unix() + 1, "value": 2.23, "jsondata": nil, "ival": 201, "sval": 202, "bval": []byte{0x3, 0x4}},
 			},
 			selectSql:        `select * from test_w where name = 'test_3'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`test_3,1705291859,1.12,NULL,101,102`,
-				`test_3,1705291860,2.23,NULL,201,202`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`test_3,1705291859,1.12,NULL,101,102,AQI=`,
+				`test_3,1705291860,2.23,NULL,201,202,AwQ=`,
 				"\n"},
 		},
 		{
@@ -834,16 +834,16 @@ func TestHttpWrite(t *testing.T) {
 			queryParams: "?timeformat=s&method=insert&header=columns",
 			payloadType: "text/csv",
 			payloadReq: []any{
-				`name,TIME,Value,JSONDATA,ival,SVAL`, // case insensitive
-				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102`,
-				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202`,
+				`name,TIME,Value,JSONDATA,ival,SVAL,BVAL`, // case insensitive
+				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102,` + base64.StdEncoding.EncodeToString([]byte{1, 2}),
+				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202,` + base64.StdEncoding.EncodeToString([]byte{3, 4}),
 			},
 			selectSql:        `select * from test_w where name = 'csv_1'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`csv_1,1705291859,1.12,NULL,101,102`,
-				`csv_1,1705291860,2.23,NULL,201,202`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`csv_1,1705291859,1.12,NULL,101,102,AQI=`,
+				`csv_1,1705291860,2.23,NULL,201,202,AwQ=`,
 				"\n"},
 		},
 		{
@@ -858,9 +858,9 @@ func TestHttpWrite(t *testing.T) {
 			selectSql:        `select * from test_w where name = 'csv_partial_1'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`csv_partial_1,1705291859,1.12,NULL,NULL,NULL`,
-				`csv_partial_1,1705291860,2.23,NULL,NULL,NULL`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`csv_partial_1,1705291859,1.12,NULL,NULL,NULL,NULL`,
+				`csv_partial_1,1705291860,2.23,NULL,NULL,NULL,NULL`,
 				"\n"},
 		},
 		{
@@ -875,26 +875,26 @@ func TestHttpWrite(t *testing.T) {
 			selectSql:        `select * from test_w where name = 'csv_partial_2'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`csv_partial_2,1705291859,1.12,NULL,NULL,102`,
-				`csv_partial_2,1705291860,2.23,NULL,NULL,202`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`csv_partial_2,1705291859,1.12,NULL,NULL,102,NULL`,
+				`csv_partial_2,1705291860,2.23,NULL,NULL,202,NULL`,
 				"\n"},
 		},
 		{
-			name:        "csv",
+			name:        "csv_gzip",
 			queryParams: "?timeformat=s&method=insert&header=columns&compress=gzip",
 			payloadType: "text/csv",
 			payloadReq: []any{
-				`name,TIME,Value,JSONDATA,ival,SVAL`, // case insensitive
-				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102`,
-				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202`,
+				`name,TIME,Value,JSONDATA,ival,SVAL,bval`, // case insensitive
+				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102,` + base64.StdEncoding.EncodeToString([]byte{1, 2}),
+				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202,` + base64.StdEncoding.EncodeToString([]byte{3, 4}),
 			},
 			selectSql:        `select * from test_w where name = 'csv_gzip'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`csv_gzip,1705291859,1.12,NULL,101,102`,
-				`csv_gzip,1705291860,2.23,NULL,201,202`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`csv_gzip,1705291859,1.12,NULL,101,102,AQI=`,
+				`csv_gzip,1705291860,2.23,NULL,201,202,AwQ=`,
 				"\n"},
 		},
 		{
@@ -909,9 +909,9 @@ func TestHttpWrite(t *testing.T) {
 			selectSql:        `select * from test_w where name = 'csv_partial_gzip'`,
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
-				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
-				`csv_partial_gzip,1705291859,1.12,NULL,NULL,NULL`,
-				`csv_partial_gzip,1705291860,2.23,NULL,NULL,NULL`,
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
+				`csv_partial_gzip,1705291859,1.12,NULL,NULL,NULL,NULL`,
+				`csv_partial_gzip,1705291860,2.23,NULL,NULL,NULL,NULL`,
 				"\n"},
 		},
 	}
@@ -925,7 +925,8 @@ func TestHttpWrite(t *testing.T) {
 		value double summarized,
 		jsondata json,
 		ival int,
-		sval short)`
+		sval short,
+		bval binary)`
 	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 	rsp, err := http.DefaultClient.Do(req)

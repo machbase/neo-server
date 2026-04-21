@@ -261,6 +261,7 @@ func NewNode(task *Task) *Node {
 		// codec.opts
 		"httpHeader":          x.gen_httpHeader,
 		"autoRotate":          x.gen_autoRotate,
+		"binaryMode":          x.gen_binaryMode,
 		"boxDrawBorder":       x.gen_boxDrawBorder,
 		"boxSeparateColumns":  x.gen_boxSeparateColumns,
 		"boxStyle":            x.gen_boxStyle,
@@ -4049,6 +4050,21 @@ func (x *Node) gen_autoRotate(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.AutoRotate(p0)
+	return ret, nil
+}
+
+// gen_binaryMode
+//
+// syntax: binaryMode(string)
+func (x *Node) gen_binaryMode(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("binaryMode", 1, len(args))
+	}
+	p0, err := convString(args, 0, "binaryMode", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.BinaryMode(p0)
 	return ret, nil
 }
 
