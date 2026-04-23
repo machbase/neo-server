@@ -481,12 +481,7 @@ func (tw *TableWriter) RenderNDJSON() string {
 				out.WriteRune(',')
 			}
 			out.WriteString(fmt.Sprintf("\"%s\":", headers[i]))
-			switch v := col.(type) {
-			case string:
-				out.WriteString(fmt.Sprintf("\"%s\"", v))
-			default:
-				out.WriteString(fmt.Sprint(v))
-			}
+			tw.writeJSONValue(&out, col)
 		}
 		out.WriteRune('}')
 		out.WriteRune('\n')
@@ -498,7 +493,7 @@ func (tw *TableWriter) RenderNDJSON() string {
 	return ret
 }
 
-func renderRowsJSON(out *strings.Builder, rows []table.Row) {
+func (tw *TableWriter) renderRowsJSON(out *strings.Builder, rows []table.Row) {
 	for rIdx, row := range rows {
 		if rIdx > 0 {
 			out.WriteString(",")
@@ -508,12 +503,7 @@ func renderRowsJSON(out *strings.Builder, rows []table.Row) {
 			if i > 0 {
 				out.WriteRune(',')
 			}
-			switch v := col.(type) {
-			case string:
-				out.WriteString(fmt.Sprintf("\"%s\"", v))
-			default:
-				out.WriteString(fmt.Sprint(v))
-			}
+			tw.writeJSONValue(out, col)
 		}
 		out.WriteString("]")
 	}
@@ -524,7 +514,7 @@ func (tw *TableWriter) RenderJSON() string {
 	rows := tw.rawRows
 
 	if tw.renderCount > 0 {
-		renderRowsJSON(&out, rows)
+		tw.renderRowsJSON(&out, rows)
 		return out.String()
 	}
 
@@ -567,7 +557,7 @@ func (tw *TableWriter) RenderJSON() string {
 		out.WriteString("],")
 	}
 	out.WriteString("\"rows\":[")
-	renderRowsJSON(&out, rows)
+	tw.renderRowsJSON(&out, rows)
 	out.WriteString("]")
 	out.WriteString("}\n")
 	ret := out.String()
@@ -575,4 +565,26 @@ func (tw *TableWriter) RenderJSON() string {
 		tw.output.Write([]byte(ret))
 	}
 	return ret
+}
+
+func (tw *TableWriter) writeJSONValue(out *strings.Builder, col any) {
+	switch v := col.(type) {
+	case string:
+		out.WriteString(fmt.Sprintf("\"%s\"", v))
+	case float64:
+		writeFormattedJSONFloat(out, v, tw.precision)
+	case float32:
+		writeFormattedJSONFloat(out, float64(v), tw.precision)
+	default:
+		out.WriteString(fmt.Sprint(v))
+	}
+}
+
+func writeFormattedJSONFloat(out *strings.Builder, value float64, precision int) {
+	formatted := formatPrecisionFloat(value, precision)
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		out.WriteString(fmt.Sprintf("\"%s\"", formatted))
+		return
+	}
+	out.WriteString(formatted)
 }

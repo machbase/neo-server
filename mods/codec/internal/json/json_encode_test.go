@@ -2,8 +2,10 @@ package json_test
 
 import (
 	"bytes"
+	"database/sql"
 	gojson "encoding/json"
 	"math"
+	"net"
 	"testing"
 	"time"
 
@@ -304,4 +306,124 @@ func TestJsonEncodeTranspose(t *testing.T) {
 	col1, ok := cols[1].([]any)
 	require.True(t, ok)
 	require.Equal(t, []any{float64(1), float64(2.5)}, col1)
+}
+
+func TestAppendJSONValueCoversPrimitiveTypes(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     any
+		precision int
+		expect    string
+	}{
+		{name: "nil", value: nil, precision: -1, expect: "null"},
+		{name: "string", value: "hello", precision: -1, expect: `"hello"`},
+		{name: "bool", value: true, precision: -1, expect: "true"},
+		{name: "float32", value: float32(1.25), precision: 2, expect: "1.25"},
+		{name: "int", value: int(1), precision: -1, expect: "1"},
+		{name: "int8", value: int8(2), precision: -1, expect: "2"},
+		{name: "int16", value: int16(3), precision: -1, expect: "3"},
+		{name: "int32", value: int32(4), precision: -1, expect: "4"},
+		{name: "int64", value: int64(5), precision: -1, expect: "5"},
+		{name: "uint", value: uint(6), precision: -1, expect: "6"},
+		{name: "uint8", value: uint8(7), precision: -1, expect: "7"},
+		{name: "uint16", value: uint16(8), precision: -1, expect: "8"},
+		{name: "uint32", value: uint32(9), precision: -1, expect: "9"},
+		{name: "uint64", value: uint64(10), precision: -1, expect: "10"},
+		{name: "number", value: gojson.Number("11.5"), precision: -1, expect: "11.5"},
+		{name: "map", value: map[string]any{"k": "v"}, precision: -1, expect: `{"k":"v"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := json.AppendJSONValue(nil, tt.value, tt.precision)
+			require.NoError(t, err)
+			require.Equal(t, tt.expect, string(got))
+		})
+	}
+
+	_, err := json.AppendJSONValue(nil, func() {}, -1)
+	require.Error(t, err)
+}
+
+func TestJsonEncodeSettersAndTypedRows(t *testing.T) {
+	out := &flushCloseBuffer{}
+	enc := json.NewEncoder()
+	enc.SetOutputStream(out)
+	enc.SetHeader(true)
+	enc.SetHeading(false)
+	enc.SetPrecision(2)
+	enc.SetRowsArray(true)
+	enc.SetRownum(true)
+	enc.SetColumnTypes("datetime", "double", "double", "string", "bool", "byte", "double", "int16", "int32", "double", "int64", "string", "datetime", "string", "string")
+	enc.SetColumns("ptime", "pfloat64", "pfloat32", "ip", "nbool", "nbyte", "nfloat64", "nint16", "nint32", "nfloat32", "nint64", "nstring", "ntime", "nip", "plain")
+	require.NoError(t, enc.Open())
+
+	tm := time.Unix(1700000000, 0).UTC()
+	f64 := 3.5
+	f32 := float32(1.25)
+	ip := net.ParseIP("127.0.0.1")
+	require.NoError(t, enc.AddRow([]any{
+		&tm,
+		&f64,
+		&f32,
+		&ip,
+		&sql.NullBool{Bool: true, Valid: true},
+		&sql.NullByte{Byte: 7, Valid: true},
+		&sql.NullFloat64{Float64: 8.5, Valid: true},
+		&sql.NullInt16{Int16: 16, Valid: true},
+		&sql.NullInt32{Int32: 32, Valid: true},
+		&sql.Null[float32]{V: float32(2.5), Valid: true},
+		&sql.NullInt64{Int64: 64, Valid: true},
+		&sql.NullString{String: "text", Valid: true},
+		&sql.NullTime{Time: tm, Valid: true},
+		&sql.Null[net.IP]{V: ip, Valid: true},
+		map[string]any{"nested": 1},
+	}))
+	enc.Flush(false)
+	enc.Close()
+
+	require.Equal(t, 1, out.flushCount)
+	require.Equal(t, 1, out.closeCount)
+
+	var payload map[string]any
+	require.NoError(t, gojson.Unmarshal(out.Bytes(), &payload))
+	row := payload["data"].(map[string]any)["rows"].([]any)[0].(map[string]any)
+	require.Equal(t, float64(1), row["ROWNUM"])
+	require.Equal(t, float64(tm.UnixNano()), row["ptime"])
+	require.Equal(t, float64(3.5), row["pfloat64"])
+	require.Equal(t, float64(1.25), row["pfloat32"])
+	require.Equal(t, "127.0.0.1", row["ip"])
+	require.Equal(t, true, row["nbool"])
+	require.Equal(t, float64(7), row["nbyte"])
+	require.Equal(t, float64(8.5), row["nfloat64"])
+	require.Equal(t, float64(16), row["nint16"])
+	require.Equal(t, float64(32), row["nint32"])
+	require.Equal(t, float64(2.5), row["nfloat32"])
+	require.Equal(t, float64(64), row["nint64"])
+	require.Equal(t, "text", row["nstring"])
+	require.Equal(t, tm.Format(time.RFC3339), time.Unix(0, int64(row["ptime"].(float64))).UTC().Format(time.RFC3339))
+	require.Equal(t, "127.0.0.1", row["nip"])
+	require.Equal(t, map[string]any{"nested": float64(1)}, row["plain"])
+}
+
+func TestJsonEncodeErrorPaths(t *testing.T) {
+	t.Run("rows array marshal error", func(t *testing.T) {
+		enc := json.NewEncoder()
+		enc.SetOutputStream(&bytes.Buffer{})
+		enc.SetRowsArray(true)
+		enc.SetColumns("bad")
+		enc.SetColumnTypes("string")
+		require.NoError(t, enc.Open())
+		require.Error(t, enc.AddRow([]any{func() {}}))
+	})
+
+	t.Run("rows flatten marshal error", func(t *testing.T) {
+		enc := json.NewEncoder()
+		enc.SetOutputStream(&bytes.Buffer{})
+		enc.SetRowsFlatten(true)
+		enc.SetColumns("bad")
+		enc.SetColumnTypes("string")
+		require.NoError(t, enc.Open())
+		require.Error(t, enc.AddRow([]any{func() {}}))
+	})
 }
