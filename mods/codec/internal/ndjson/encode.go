@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -112,9 +111,17 @@ func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
 	case math.IsInf(v, 1):
 		return []byte(`"+Inf"`), nil
 	case v == 0:
+		// Keep zero formatting stable and avoid "-0".
 		return []byte("0"), nil
 	}
-	return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
+	r := []byte(fmt.Sprintf("%f", v))
+	for len(r) > 0 && r[len(r)-1] == '0' {
+		r = r[:len(r)-1]
+	}
+	if len(r) > 0 && r[len(r)-1] == '.' {
+		r = r[:len(r)-1]
+	}
+	return r, nil
 }
 
 func (ex *Exporter) AddRow(source []any) error {

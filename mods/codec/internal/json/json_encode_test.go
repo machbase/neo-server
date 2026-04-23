@@ -138,6 +138,10 @@ func TestJsonEncode(t *testing.T) {
 	}
 }
 
+func runtimeSubtractFloat64(a, b float64) float64 {
+	return a - b
+}
+
 func TestPrecisionFloat64MarshalJSON(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -173,6 +177,11 @@ func TestPrecisionFloat64MarshalJSON(t *testing.T) {
 			name:   "positive-infinity-as-string-token",
 			value:  math.Inf(1),
 			expect: `"+Inf"`,
+		},
+		{
+			name:   "regular-float-runtime-expression",
+			value:  runtimeSubtractFloat64(20.55, 22.2),
+			expect: "-1.65",
 		},
 	}
 
