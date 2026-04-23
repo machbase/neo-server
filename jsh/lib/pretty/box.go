@@ -3,6 +3,8 @@ package pretty
 import (
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -348,6 +350,34 @@ func (tw *TableWriter) ResetRows() {
 	tw.Writer.ResetRows()
 }
 
+func formatPrecisionFloat(value float64, precision int) string {
+	switch {
+	case math.IsNaN(value):
+		return "NaN"
+	case math.IsInf(value, -1):
+		return "-Inf"
+	case math.IsInf(value, 1):
+		return "+Inf"
+	case value == 0:
+		if precision >= 0 {
+			return strconv.FormatFloat(0, 'f', precision, 64)
+		}
+		return "0"
+	}
+
+	prec := 6
+	if precision >= 0 {
+		prec = precision
+	}
+
+	result := strconv.FormatFloat(value, 'f', prec, 64)
+	if precision < 0 {
+		result = strings.TrimRight(result, "0")
+		result = strings.TrimRight(result, ".")
+	}
+	return result
+}
+
 func (tw *TableWriter) transformer(value any) string {
 	if value == nil {
 		return tw.nullValue
@@ -366,12 +396,10 @@ func (tw *TableWriter) transformer(value any) string {
 		default:
 			return fmt.Sprint(val.In(tw.tz).Format(tw.timeformat))
 		}
-	case float64, float32:
-		if tw.precision >= 0 {
-			return fmt.Sprintf("%."+fmt.Sprint(tw.precision)+"f", val)
-		} else {
-			return fmt.Sprint(val)
-		}
+	case float64:
+		return formatPrecisionFloat(val, tw.precision)
+	case float32:
+		return formatPrecisionFloat(float64(val), tw.precision)
 	case string:
 		if tw.stringEscape {
 			var result strings.Builder

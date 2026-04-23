@@ -3,6 +3,7 @@ package pretty
 import (
 	"bytes"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,10 @@ import (
 
 	prettytable "github.com/jedib0t/go-pretty/v6/table"
 )
+
+func runtimeSubtractFloat64(a, b float64) float64 {
+	return a - b
+}
 
 func TestParseTimeCoverage(t *testing.T) {
 	for _, tc := range []struct {
@@ -242,6 +247,29 @@ func TestTableBehaviorCoverage(t *testing.T) {
 	tw.precision = -1
 	if got := tw.transformer(1.25); got != "1.25" {
 		t.Fatalf("transformer(float,no precision) = %q", got)
+	}
+	if got := tw.transformer(runtimeSubtractFloat64(20.55, 22.2)); got != "-1.65" {
+		t.Fatalf("transformer(runtime float,no precision) = %q", got)
+	}
+	if got := tw.transformer(math.Copysign(0, -1)); got != "0" {
+		t.Fatalf("transformer(negative zero,no precision) = %q", got)
+	}
+	tw.precision = 2
+	if got := tw.transformer(float64(10)); got != "10.00" {
+		t.Fatalf("transformer(float,precision) = %q", got)
+	}
+	if got := tw.transformer(math.Copysign(0, -1)); got != "0.00" {
+		t.Fatalf("transformer(negative zero,precision) = %q", got)
+	}
+	tw.precision = -1
+	if got := tw.transformer(math.NaN()); got != "NaN" {
+		t.Fatalf("transformer(nan) = %q", got)
+	}
+	if got := tw.transformer(math.Inf(-1)); got != "-Inf" {
+		t.Fatalf("transformer(-inf) = %q", got)
+	}
+	if got := tw.transformer(math.Inf(1)); got != "+Inf" {
+		t.Fatalf("transformer(+inf) = %q", got)
 	}
 	tw.precision = 2
 	tw.SetStringEscape(true)
