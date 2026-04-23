@@ -37,6 +37,7 @@ func NewEncoder() *Exporter {
 	return &Exporter{
 		tick:       time.Now(),
 		timeformat: util.NewTimeFormatter(),
+		precision:  -1,
 	}
 }
 
@@ -106,11 +107,11 @@ func (ex *Exporter) Flush(heading bool) {
 type PrecisionFloat64 float64
 
 func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
-	r := appendPrecisionFloat64(make([]byte, 0, 24), float64(pf))
+	r := appendPrecisionFloat64(make([]byte, 0, 24), float64(pf), -1)
 	return r, nil
 }
 
-func appendPrecisionFloat64(dst []byte, value float64) []byte {
+func appendPrecisionFloat64(dst []byte, value float64, precision int) []byte {
 	switch {
 	case math.IsNaN(value):
 		return append(dst, `"NaN"`...)
@@ -122,17 +123,24 @@ func appendPrecisionFloat64(dst []byte, value float64) []byte {
 		// Keep zero formatting stable and avoid "-0".
 		return append(dst, '0')
 	}
-	r := strconv.AppendFloat(dst, value, 'f', 6, 64)
-	for len(r) > 0 && r[len(r)-1] == '0' {
-		r = r[:len(r)-1]
+	prec := 6
+	if precision >= 0 {
+		prec = precision
 	}
-	if len(r) > 0 && r[len(r)-1] == '.' {
-		r = r[:len(r)-1]
+	r := strconv.AppendFloat(dst, value, 'f', prec, 64)
+	if precision < 0 {
+		// if precision is not explicitly set, trim trailing zeros for better readability
+		for len(r) > 0 && r[len(r)-1] == '0' {
+			r = r[:len(r)-1]
+		}
+		if len(r) > 0 && r[len(r)-1] == '.' {
+			r = r[:len(r)-1]
+		}
 	}
 	return r
 }
 
-func appendJSONValue(dst []byte, value any) ([]byte, error) {
+func appendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
 	switch v := value.(type) {
 	case nil:
 		return append(dst, "null"...), nil
@@ -141,11 +149,11 @@ func appendJSONValue(dst []byte, value any) ([]byte, error) {
 	case bool:
 		return strconv.AppendBool(dst, v), nil
 	case PrecisionFloat64:
-		return appendPrecisionFloat64(dst, float64(v)), nil
+		return appendPrecisionFloat64(dst, float64(v), precision), nil
 	case float64:
-		return appendPrecisionFloat64(dst, v), nil
+		return appendPrecisionFloat64(dst, v, precision), nil
 	case float32:
-		return appendPrecisionFloat64(dst, float64(v)), nil
+		return appendPrecisionFloat64(dst, float64(v), precision), nil
 	case int:
 		return strconv.AppendInt(dst, int64(v), 10), nil
 	case int8:
@@ -280,7 +288,7 @@ func (ex *Exporter) AddRow(source []any) error {
 	fieldIndex := 0
 	if ex.Rownum {
 		ex.buffer.WriteString(`"ROWNUM":`)
-		encoded, err := appendJSONValue(ex.buffer.Bytes(), ex.nrow)
+		encoded, err := appendJSONValue(ex.buffer.Bytes(), ex.nrow, ex.precision)
 		if err != nil {
 			return err
 		}
@@ -297,7 +305,7 @@ func (ex *Exporter) AddRow(source []any) error {
 		}
 		ex.buffer.WriteString(strconv.Quote(ex.colNames[i]))
 		ex.buffer.WriteByte(':')
-		encoded, err := appendJSONValue(ex.buffer.Bytes(), v)
+		encoded, err := appendJSONValue(ex.buffer.Bytes(), v, ex.precision)
 		if err != nil {
 			return err
 		}

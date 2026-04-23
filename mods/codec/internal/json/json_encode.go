@@ -177,15 +177,19 @@ func appendPrecisionFloat64(dst []byte, value float64, precision int) []byte {
 		// Keep zero formatting stable and avoid "-0".
 		return append(dst, '0')
 	}
+	prec := 6
+	if precision >= 0 {
+		prec = precision
+	}
+	r := strconv.AppendFloat(dst, value, 'f', prec, 64)
 	if precision < 0 {
-		precision = 6
-	}
-	r := strconv.AppendFloat(dst, value, 'f', precision, 64)
-	for len(r) > 0 && r[len(r)-1] == '0' {
-		r = r[:len(r)-1]
-	}
-	if len(r) > 0 && r[len(r)-1] == '.' {
-		r = r[:len(r)-1]
+		// if precision is not explicitly set, trim trailing zeros for better readability
+		for len(r) > 0 && r[len(r)-1] == '0' {
+			r = r[:len(r)-1]
+		}
+		if len(r) > 0 && r[len(r)-1] == '.' {
+			r = r[:len(r)-1]
+		}
 	}
 	return r
 }

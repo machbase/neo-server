@@ -1664,7 +1664,7 @@ func TestFake_oscillator(t *testing.T) {
 				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
 				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
 				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
+				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
 			},
 		},
 		{
@@ -1678,7 +1678,7 @@ func TestFake_oscillator(t *testing.T) {
 				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
 				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
 				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
+				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
 			},
 		},
 		{
