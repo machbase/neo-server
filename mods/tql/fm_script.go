@@ -250,7 +250,7 @@ func closeJSContext(ctx *JSContext) {
 		return
 	}
 	ctx.onceInterrupt.Do(func() {
-		ctx.engine.EventLoop().Run(func(vm *goja.Runtime) {
+		ctx.engine.EventLoop().RunOnLoop(func(vm *goja.Runtime) {
 			vm.Interrupt("interrupt")
 		})
 	})

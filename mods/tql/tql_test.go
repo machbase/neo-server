@@ -574,7 +574,7 @@ func TestDatabaseTql(t *testing.T) {
 							rsp.text(function(body){
 								obj = JSON.parse(body);
 								obj.data.rows.forEach(function(r){
-									$.yield(r[0], r[1], r[2]);
+									$.yield(r[0], new Date(r[1]/1000000), r[2]);
 								})
 							})
 						})
@@ -585,7 +585,7 @@ func TestDatabaseTql(t *testing.T) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
 				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[["tag1",1692686707380411000,0.1],["tag1",1692686708380411000,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
+				require.Equal(t, `[["tag1",1692686707,0.1],["tag1",1692686708,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
 			},
 		},
 		{
@@ -602,7 +602,7 @@ func TestDatabaseTql(t *testing.T) {
 							{method: 'GET'}
 						).do(function(rsp) {
 							rsp.csv(function(r){
-								$.yield(r[0], parseInt(r[1]), parseFloat(r[2]));
+								$.yield(r[0], new Date(parseInt(r[1]/1000000)), parseFloat(r[2]));
 							})
 						})
 					})
@@ -612,7 +612,7 @@ func TestDatabaseTql(t *testing.T) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
 				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[["tag1",1692686707380411000,0.1],["tag1",1692686708380411000,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
+				require.Equal(t, `[["tag1",1692686707,0.1],["tag1",1692686708,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
 			},
 		},
 		{
@@ -1657,28 +1657,28 @@ func TestFake_oscillator(t *testing.T) {
 			Name: "FAKE_oscillator_1",
 			Script: `
 				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms')) )
-				JSON()
+				JSON(precision(16))
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
 				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
 				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.09615299237813928],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
+				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
 			},
 		},
 		{
 			Name: "FAKE_oscillator_2",
 			Script: `
 				FAKE( oscillator(freq(1.0, 1.0), range(time('now'), '-1s', '200ms')) )
-				JSON()
+				JSON(precision(16))
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
 				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
 				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.09615299237813928],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
+				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
 			},
 		},
 		{

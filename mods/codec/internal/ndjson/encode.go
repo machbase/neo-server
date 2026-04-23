@@ -1,12 +1,14 @@
 package ndjson
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -27,6 +29,8 @@ type Exporter struct {
 
 	colNames []string
 	colTypes []api.DataType
+	values   []any
+	buffer   *bytes.Buffer
 }
 
 func NewEncoder() *Exporter {
@@ -102,117 +106,207 @@ func (ex *Exporter) Flush(heading bool) {
 type PrecisionFloat64 float64
 
 func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
-	v := float64(pf)
+	r := appendPrecisionFloat64(make([]byte, 0, 24), float64(pf))
+	return r, nil
+}
+
+func appendPrecisionFloat64(dst []byte, value float64) []byte {
 	switch {
-	case math.IsNaN(v):
-		return []byte(`"NaN"`), nil
-	case math.IsInf(v, -1):
-		return []byte(`"-Inf"`), nil
-	case math.IsInf(v, 1):
-		return []byte(`"+Inf"`), nil
-	case v == 0:
+	case math.IsNaN(value):
+		return append(dst, `"NaN"`...)
+	case math.IsInf(value, -1):
+		return append(dst, `"-Inf"`...)
+	case math.IsInf(value, 1):
+		return append(dst, `"+Inf"`...)
+	case value == 0:
 		// Keep zero formatting stable and avoid "-0".
-		return []byte("0"), nil
+		return append(dst, '0')
 	}
-	r := []byte(fmt.Sprintf("%f", v))
+	r := strconv.AppendFloat(dst, value, 'f', 6, 64)
 	for len(r) > 0 && r[len(r)-1] == '0' {
 		r = r[:len(r)-1]
 	}
 	if len(r) > 0 && r[len(r)-1] == '.' {
 		r = r[:len(r)-1]
 	}
-	return r, nil
+	return r
+}
+
+func appendJSONValue(dst []byte, value any) ([]byte, error) {
+	switch v := value.(type) {
+	case nil:
+		return append(dst, "null"...), nil
+	case string:
+		return strconv.AppendQuote(dst, v), nil
+	case bool:
+		return strconv.AppendBool(dst, v), nil
+	case PrecisionFloat64:
+		return appendPrecisionFloat64(dst, float64(v)), nil
+	case float64:
+		return appendPrecisionFloat64(dst, v), nil
+	case float32:
+		return appendPrecisionFloat64(dst, float64(v)), nil
+	case int:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int8:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int16:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int32:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int64:
+		return strconv.AppendInt(dst, v, 10), nil
+	case uint:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint8:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint16:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint32:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint64:
+		return strconv.AppendUint(dst, v, 10), nil
+	case json.Number:
+		return append(dst, string(v)...), nil
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return append(dst, encoded...), nil
+	}
 }
 
 func (ex *Exporter) AddRow(source []any) error {
 	ex.nrow++
 
-	values := make([]any, len(source))
+	if cap(ex.values) < len(source) {
+		ex.values = make([]any, len(source))
+	} else {
+		ex.values = ex.values[:len(source)]
+	}
 	for i, field := range source {
 		switch v := field.(type) {
 		case *time.Time:
-			values[i] = ex.timeformat.FormatEpoch(*v)
+			ex.values[i] = ex.timeformat.FormatEpoch(*v)
 		case time.Time:
-			values[i] = ex.timeformat.FormatEpoch(v)
+			ex.values[i] = ex.timeformat.FormatEpoch(v)
 		case *float64:
-			values[i] = PrecisionFloat64(*v)
+			ex.values[i] = PrecisionFloat64(*v)
 		case float64:
-			values[i] = PrecisionFloat64(v)
+			ex.values[i] = PrecisionFloat64(v)
 		case *float32:
-			values[i] = PrecisionFloat64(float64(*v))
+			ex.values[i] = PrecisionFloat64(float64(*v))
 		case float32:
-			values[i] = PrecisionFloat64(float64(v))
+			ex.values[i] = PrecisionFloat64(float64(v))
 		case *net.IP:
-			values[i] = v.String()
+			ex.values[i] = v.String()
 		case net.IP:
-			values[i] = v.String()
+			ex.values[i] = v.String()
 		case *sql.NullBool:
 			if v.Valid {
-				values[i] = v.Bool
+				ex.values[i] = v.Bool
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullByte:
 			if v.Valid {
-				values[i] = v.Byte
+				ex.values[i] = v.Byte
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullFloat64:
 			if v.Valid {
-				values[i] = PrecisionFloat64(v.Float64)
+				ex.values[i] = PrecisionFloat64(v.Float64)
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullInt16:
 			if v.Valid {
-				values[i] = v.Int16
+				ex.values[i] = v.Int16
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullInt32:
 			if v.Valid {
-				values[i] = v.Int32
+				ex.values[i] = v.Int32
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.Null[float32]:
 			if v.Valid {
-				values[i] = PrecisionFloat64(float64(v.V))
+				ex.values[i] = PrecisionFloat64(float64(v.V))
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullInt64:
 			if v.Valid {
-				values[i] = v.Int64
+				ex.values[i] = v.Int64
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullString:
 			if v.Valid {
-				values[i] = v.String
+				ex.values[i] = v.String
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.NullTime:
 			if v.Valid {
-				values[i] = ex.timeformat.Format(v.Time)
+				ex.values[i] = ex.timeformat.Format(v.Time)
+			} else {
+				ex.values[i] = nil
 			}
 		case *sql.Null[net.IP]:
 			if v.Valid {
-				values[i] = v.V.String()
+				ex.values[i] = v.V.String()
+			} else {
+				ex.values[i] = nil
 			}
 		default:
-			values[i] = field
+			ex.values[i] = field
 		}
 	}
 
-	if len(values) != len(ex.colNames) {
+	if len(ex.values) != len(ex.colNames) {
 		return fmt.Errorf("rows[%d] number of columns not matched (%d); table '%s' has %d columns",
-			ex.nrow, len(values), ex.colNames, len(ex.colNames))
+			ex.nrow, len(ex.values), ex.colNames, len(ex.colNames))
 	}
-	var recJson []byte
-	var err error
-	var vs = map[string]any{}
+	if ex.buffer == nil {
+		ex.buffer = &bytes.Buffer{}
+	}
+	ex.buffer.Reset()
+	ex.buffer.WriteByte('{')
+	fieldIndex := 0
 	if ex.Rownum {
-		vs["ROWNUM"] = ex.nrow
+		ex.buffer.WriteString(`"ROWNUM":`)
+		encoded, err := appendJSONValue(ex.buffer.Bytes(), ex.nrow)
+		if err != nil {
+			return err
+		}
+		ex.buffer.Reset()
+		ex.buffer.Write(encoded)
+		fieldIndex = 1
 	}
-	for i, v := range values {
+	for i, v := range ex.values {
 		if i >= len(ex.colNames) {
 			break
 		}
-		vs[ex.colNames[i]] = v
+		if fieldIndex > 0 {
+			ex.buffer.WriteByte(',')
+		}
+		ex.buffer.WriteString(strconv.Quote(ex.colNames[i]))
+		ex.buffer.WriteByte(':')
+		encoded, err := appendJSONValue(ex.buffer.Bytes(), v)
+		if err != nil {
+			return err
+		}
+		ex.buffer.Reset()
+		ex.buffer.Write(encoded)
+		fieldIndex++
 	}
-	recJson, err = json.Marshal(vs)
-	if err != nil {
-		return err
-	}
-	ex.output.Write(recJson)
-	ex.output.Write([]byte("\n"))
+	ex.buffer.WriteString("}\n")
+	ex.output.Write(ex.buffer.Bytes())
 
 	return nil
 }

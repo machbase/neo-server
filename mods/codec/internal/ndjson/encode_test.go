@@ -11,6 +11,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 2026-04-23 - direct NDJSON row encoding with trimmed float formatting
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkNDJsonEncoder-24          53876             24156 ns/op            3280 B/op         64 allocs/op
+// BenchmarkNDJsonEncoder-24          48442             24049 ns/op            3280 B/op         64 allocs/op
+// BenchmarkNDJsonEncoder-24          49390             23963 ns/op            3280 B/op         64 allocs/op
+// BenchmarkNDJsonEncoder-24          49273             24242 ns/op            3280 B/op         64 allocs/op
+// BenchmarkNDJsonEncoder-24          48763             23263 ns/op            3280 B/op         64 allocs/op
+
+func BenchmarkNDJsonEncoder(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		out := &bytes.Buffer{}
+
+		enc := ndjson.NewEncoder()
+		enc.SetOutputStream(out)
+		enc.SetTimeformat("Default")
+		enc.SetTimeLocation(time.UTC)
+		enc.SetColumnTypes("string", "datetime", "double")
+		enc.SetColumns("name", "time", "value")
+		require.NoError(b, enc.Open())
+		for row := 0; row < 10; row++ {
+			require.NoError(b, enc.AddRow([]any{"my-car", time.Unix(0, 1670380343000000000).In(time.UTC), 2.0002}))
+		}
+		enc.Close()
+	}
+}
+
 func TestJsonEncode(t *testing.T) {
 	tests := []struct {
 		input      [][]any

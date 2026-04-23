@@ -53,6 +53,19 @@ func (b *flushCloseBuffer) Close() error {
 // BenchmarkJsonEncoder-24            52461             22694 ns/op            3729 B/op         96 allocs/op
 // BenchmarkJsonEncoder-24            51908             22689 ns/op            3728 B/op         96 allocs/op
 
+// 2026-04-23 - refactor json_encode.go to reduce allocations and improve performance
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkJsonEncoder-24            65336             18398 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            65083             18203 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            65349             17986 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            65488             18143 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            64909             18116 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            69688             18246 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            65103             18232 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            64610             18266 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            65314             18069 ns/op            3375 B/op         85 allocs/op
+// BenchmarkJsonEncoder-24            65167             18272 ns/op            3375 B/op         85 allocs/op
+
 func BenchmarkJsonEncoder(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		out := &bytes.Buffer{}

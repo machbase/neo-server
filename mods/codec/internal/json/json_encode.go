@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -34,7 +35,6 @@ type Exporter struct {
 	rowsArray   bool
 	series      [][]any
 	values      []any
-	jsonEncoder *gojson.Encoder
 	buffer      *bytes.Buffer
 }
 
@@ -161,26 +161,78 @@ func (ex *Exporter) Flush(heading bool) {
 type PrecisionFloat64 float64
 
 func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
-	v := float64(pf)
+	r := appendPrecisionFloat64(make([]byte, 0, 24), float64(pf), -1)
+	return r, nil
+}
+
+func appendPrecisionFloat64(dst []byte, value float64, precision int) []byte {
 	switch {
-	case math.IsNaN(v):
-		return []byte(`"NaN"`), nil
-	case math.IsInf(v, -1):
-		return []byte(`"-Inf"`), nil
-	case math.IsInf(v, 1):
-		return []byte(`"+Inf"`), nil
-	case v == 0:
+	case math.IsNaN(value):
+		return append(dst, `"NaN"`...)
+	case math.IsInf(value, -1):
+		return append(dst, `"-Inf"`...)
+	case math.IsInf(value, 1):
+		return append(dst, `"+Inf"`...)
+	case value == 0:
 		// Keep zero formatting stable and avoid "-0".
-		return []byte("0"), nil
+		return append(dst, '0')
 	}
-	r := []byte(fmt.Sprintf("%f", v))
+	if precision < 0 {
+		precision = 6
+	}
+	r := strconv.AppendFloat(dst, value, 'f', precision, 64)
 	for len(r) > 0 && r[len(r)-1] == '0' {
 		r = r[:len(r)-1]
 	}
 	if len(r) > 0 && r[len(r)-1] == '.' {
 		r = r[:len(r)-1]
 	}
-	return r, nil
+	return r
+}
+
+func appendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
+	switch v := value.(type) {
+	case nil:
+		return append(dst, "null"...), nil
+	case string:
+		return strconv.AppendQuote(dst, v), nil
+	case bool:
+		return strconv.AppendBool(dst, v), nil
+	case PrecisionFloat64:
+		return appendPrecisionFloat64(dst, float64(v), precision), nil
+	case float64:
+		return appendPrecisionFloat64(dst, v, precision), nil
+	case float32:
+		return appendPrecisionFloat64(dst, float64(v), precision), nil
+	case int:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int8:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int16:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int32:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int64:
+		return strconv.AppendInt(dst, v, 10), nil
+	case uint:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint8:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint16:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint32:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint64:
+		return strconv.AppendUint(dst, v, 10), nil
+	case gojson.Number:
+		return append(dst, string(v)...), nil
+	default:
+		encoded, err := gojson.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return append(dst, encoded...), nil
+	}
 }
 
 func (ex *Exporter) AddRow(source []any) error {
@@ -305,26 +357,38 @@ func (ex *Exporter) AddRow(source []any) error {
 	} else {
 		if ex.buffer == nil {
 			ex.buffer = &bytes.Buffer{}
-			ex.jsonEncoder = gojson.NewEncoder(ex.buffer)
 		}
 		ex.buffer.Reset()
 
-		var err error
+		ex.buffer.WriteByte('[')
+		fieldIndex := 0
 		if ex.Rownum {
-			vs := append([]any{ex.nrow}, ex.values...)
-			err = ex.jsonEncoder.Encode(vs)
-		} else {
-			err = ex.jsonEncoder.Encode(ex.values)
+			encoded, err := appendJSONValue(ex.buffer.Bytes(), ex.nrow, 0)
+			if err != nil {
+				return err
+			}
+			ex.buffer.Reset()
+			ex.buffer.Write(encoded)
+			fieldIndex = 1
 		}
-		if err != nil {
-			return err
+		for _, value := range ex.values {
+			if fieldIndex > 0 {
+				ex.buffer.WriteByte(',')
+			}
+			encoded, err := appendJSONValue(ex.buffer.Bytes(), value, ex.precision)
+			if err != nil {
+				return err
+			}
+			ex.buffer.Reset()
+			ex.buffer.Write(encoded)
+			fieldIndex++
 		}
+		ex.buffer.WriteByte(']')
 
 		if ex.nrow > 1 {
 			ex.output.Write([]byte(","))
 		}
-		str := ex.buffer.Bytes() // trim the last newline '\n'
-		ex.output.Write(str[0 : len(str)-1])
+		ex.output.Write(ex.buffer.Bytes())
 	}
 
 	return nil
