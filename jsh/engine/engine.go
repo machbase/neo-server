@@ -29,6 +29,7 @@ type JSRuntime struct {
 	Args   []string
 	Strict bool
 	Env    *Env
+	ctxMu  sync.RWMutex
 	ctx    context.Context
 
 	registry        *require.Registry
@@ -55,9 +56,21 @@ type ExecOptions struct {
 
 type NativeModuleLoader func(ctx context.Context, rt *goja.Runtime, module *goja.Object)
 
+func (jr *JSRuntime) currentContext() context.Context {
+	jr.ctxMu.RLock()
+	defer jr.ctxMu.RUnlock()
+	return jr.ctx
+}
+
+func (jr *JSRuntime) setContext(ctx context.Context) {
+	jr.ctxMu.Lock()
+	jr.ctx = ctx
+	jr.ctxMu.Unlock()
+}
+
 func (jr *JSRuntime) RegisterNativeModule(name string, loader NativeModuleLoader) {
 	jr.registry.RegisterNativeModule(name, func(rt *goja.Runtime, module *goja.Object) {
-		loader(jr.ctx, rt, module)
+		loader(jr.currentContext(), rt, module)
 	})
 }
 
@@ -74,10 +87,10 @@ func (jr *JSRuntime) RunContext(ctx context.Context) error {
 		return jr.Run()
 	}
 
-	prevCtx := jr.ctx
-	jr.ctx = ctx
+	prevCtx := jr.currentContext()
+	jr.setContext(ctx)
 	defer func() {
-		jr.ctx = prevCtx
+		jr.setContext(prevCtx)
 	}()
 
 	done := make(chan struct{})
@@ -142,7 +155,7 @@ func (jr *JSRuntime) Run() error {
 					jr.exitCode = ec.Code
 					return
 				}
-				if jr.ctx == nil || jr.ctx.Err() == nil {
+				if runCtx := jr.currentContext(); runCtx == nil || runCtx.Err() == nil {
 					fmt.Fprintf(jr.Env.ErrorWriter(), "interrupted: %v\n", ie.Value())
 				}
 				jr.exitCode = -1
@@ -193,7 +206,7 @@ func (jr *JSRuntime) Run() error {
 					}
 					return
 				}
-				if jr.ctx == nil || jr.ctx.Err() == nil {
+				if runCtx := jr.currentContext(); runCtx == nil || runCtx.Err() == nil {
 					fmt.Fprintf(jr.Env.ErrorWriter(), "Interrupted: %s\n", ie.String())
 				}
 			} else if jsErr, ok := err.(*goja.Exception); ok {

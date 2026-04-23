@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -123,13 +124,13 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 	}
 
 	var cancelDone chan struct{}
-	if jr.ctx != nil {
+	if runCtx := jr.currentContext(); runCtx != nil {
 		cancelDone = make(chan struct{})
-		go func(pid int) {
+		go func(ctx context.Context, pid int) {
 			select {
 			case <-cancelDone:
 				return
-			case <-jr.ctx.Done():
+			case <-ctx.Done():
 				// Try graceful termination first for the whole process group.
 				if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
 					if proc := ex.Process; proc != nil {
@@ -151,7 +152,7 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 					}
 				}
 			}
-		}(ex.Process.Pid)
+		}(runCtx, ex.Process.Pid)
 		defer close(cancelDone)
 	}
 

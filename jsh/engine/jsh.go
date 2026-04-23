@@ -145,9 +145,9 @@ func New(conf Config) (*JSRuntime, error) {
 		procArgs:    append([]string{}, conf.ProcArgs...),
 	}
 	if conf.Context != nil {
-		jr.ctx = conf.Context
+		jr.setContext(conf.Context)
 	} else {
-		jr.ctx = context.Background()
+		jr.setContext(context.Background())
 	}
 
 	jr.registry = require.NewRegistry(
