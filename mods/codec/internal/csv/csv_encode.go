@@ -229,36 +229,36 @@ func (ex *Exporter) AddRow(values []any) error {
 		case time.Time:
 			cols[i] = ex.timeformat.Format(v)
 		case float64:
-			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
+			cols[i] = internal.FormatPrecisionFloat64(v, ex.precision, false)
 		case float32:
-			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+			cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 		case int:
 			if treatIntValueAsFloat {
-				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
 		case int8:
 			if treatIntValueAsFloat {
-				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
 		case int16:
 			if treatIntValueAsFloat {
-				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
 		case int32:
 			if treatIntValueAsFloat {
-				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
 		case int64:
 			if treatIntValueAsFloat {
-				cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 64)
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(v, 10)
 			}

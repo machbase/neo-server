@@ -3,6 +3,8 @@ package pretty
 import (
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -348,6 +350,34 @@ func (tw *TableWriter) ResetRows() {
 	tw.Writer.ResetRows()
 }
 
+func formatPrecisionFloat(value float64, precision int) string {
+	switch {
+	case math.IsNaN(value):
+		return "NaN"
+	case math.IsInf(value, -1):
+		return "-Inf"
+	case math.IsInf(value, 1):
+		return "+Inf"
+	case value == 0:
+		if precision >= 0 {
+			return strconv.FormatFloat(0, 'f', precision, 64)
+		}
+		return "0"
+	}
+
+	prec := 6
+	if precision >= 0 {
+		prec = precision
+	}
+
+	result := strconv.FormatFloat(value, 'f', prec, 64)
+	if precision < 0 {
+		result = strings.TrimRight(result, "0")
+		result = strings.TrimRight(result, ".")
+	}
+	return result
+}
+
 func (tw *TableWriter) transformer(value any) string {
 	if value == nil {
 		return tw.nullValue
@@ -366,12 +396,10 @@ func (tw *TableWriter) transformer(value any) string {
 		default:
 			return fmt.Sprint(val.In(tw.tz).Format(tw.timeformat))
 		}
-	case float64, float32:
-		if tw.precision >= 0 {
-			return fmt.Sprintf("%."+fmt.Sprint(tw.precision)+"f", val)
-		} else {
-			return fmt.Sprint(val)
-		}
+	case float64:
+		return formatPrecisionFloat(val, tw.precision)
+	case float32:
+		return formatPrecisionFloat(float64(val), tw.precision)
 	case string:
 		if tw.stringEscape {
 			var result strings.Builder
@@ -453,12 +481,7 @@ func (tw *TableWriter) RenderNDJSON() string {
 				out.WriteRune(',')
 			}
 			out.WriteString(fmt.Sprintf("\"%s\":", headers[i]))
-			switch v := col.(type) {
-			case string:
-				out.WriteString(fmt.Sprintf("\"%s\"", v))
-			default:
-				out.WriteString(fmt.Sprint(v))
-			}
+			tw.writeJSONValue(&out, col)
 		}
 		out.WriteRune('}')
 		out.WriteRune('\n')
@@ -470,7 +493,7 @@ func (tw *TableWriter) RenderNDJSON() string {
 	return ret
 }
 
-func renderRowsJSON(out *strings.Builder, rows []table.Row) {
+func (tw *TableWriter) renderRowsJSON(out *strings.Builder, rows []table.Row) {
 	for rIdx, row := range rows {
 		if rIdx > 0 {
 			out.WriteString(",")
@@ -480,12 +503,7 @@ func renderRowsJSON(out *strings.Builder, rows []table.Row) {
 			if i > 0 {
 				out.WriteRune(',')
 			}
-			switch v := col.(type) {
-			case string:
-				out.WriteString(fmt.Sprintf("\"%s\"", v))
-			default:
-				out.WriteString(fmt.Sprint(v))
-			}
+			tw.writeJSONValue(out, col)
 		}
 		out.WriteString("]")
 	}
@@ -496,7 +514,7 @@ func (tw *TableWriter) RenderJSON() string {
 	rows := tw.rawRows
 
 	if tw.renderCount > 0 {
-		renderRowsJSON(&out, rows)
+		tw.renderRowsJSON(&out, rows)
 		return out.String()
 	}
 
@@ -539,7 +557,7 @@ func (tw *TableWriter) RenderJSON() string {
 		out.WriteString("],")
 	}
 	out.WriteString("\"rows\":[")
-	renderRowsJSON(&out, rows)
+	tw.renderRowsJSON(&out, rows)
 	out.WriteString("]")
 	out.WriteString("}\n")
 	ret := out.String()
@@ -547,4 +565,26 @@ func (tw *TableWriter) RenderJSON() string {
 		tw.output.Write([]byte(ret))
 	}
 	return ret
+}
+
+func (tw *TableWriter) writeJSONValue(out *strings.Builder, col any) {
+	switch v := col.(type) {
+	case string:
+		out.WriteString(fmt.Sprintf("\"%s\"", v))
+	case float64:
+		writeFormattedJSONFloat(out, v, tw.precision)
+	case float32:
+		writeFormattedJSONFloat(out, float64(v), tw.precision)
+	default:
+		out.WriteString(fmt.Sprint(v))
+	}
+}
+
+func writeFormattedJSONFloat(out *strings.Builder, value float64, precision int) {
+	formatted := formatPrecisionFloat(value, precision)
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		out.WriteString(fmt.Sprintf("\"%s\"", formatted))
+		return
+	}
+	out.WriteString(formatted)
 }

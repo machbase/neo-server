@@ -6,7 +6,6 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"strconv"
 	"time"
@@ -35,7 +34,6 @@ type Exporter struct {
 	rowsArray   bool
 	series      [][]any
 	values      []any
-	jsonEncoder *gojson.Encoder
 	buffer      *bytes.Buffer
 }
 
@@ -159,22 +157,47 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
-type PrecisionFloat64 float64
-
-func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
-	v := float64(pf)
-	switch {
-	case math.IsNaN(v):
-		return []byte(`"NaN"`), nil
-	case math.IsInf(v, -1):
-		return []byte(`"-Inf"`), nil
-	case math.IsInf(v, 1):
-		return []byte(`"+Inf"`), nil
-	case v == 0:
-		// Keep zero formatting stable and avoid "-0".
-		return []byte("0"), nil
+func AppendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
+	switch v := value.(type) {
+	case nil:
+		return append(dst, "null"...), nil
+	case string:
+		return strconv.AppendQuote(dst, v), nil
+	case bool:
+		return strconv.AppendBool(dst, v), nil
+	case float64:
+		return internal.AppendPrecisionFloat64(dst, v, precision, true), nil
+	case float32:
+		return internal.AppendPrecisionFloat64(dst, float64(v), precision, true), nil
+	case int:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int8:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int16:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int32:
+		return strconv.AppendInt(dst, int64(v), 10), nil
+	case int64:
+		return strconv.AppendInt(dst, v, 10), nil
+	case uint:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint8:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint16:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint32:
+		return strconv.AppendUint(dst, uint64(v), 10), nil
+	case uint64:
+		return strconv.AppendUint(dst, v, 10), nil
+	case gojson.Number:
+		return append(dst, string(v)...), nil
+	default:
+		encoded, err := gojson.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return append(dst, encoded...), nil
 	}
-	return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
 }
 
 func (ex *Exporter) AddRow(source []any) error {
@@ -192,13 +215,13 @@ func (ex *Exporter) AddRow(source []any) error {
 		case time.Time:
 			ex.values[i] = ex.timeformatter.FormatEpoch(v)
 		case *float64:
-			ex.values[i] = PrecisionFloat64(*v)
+			ex.values[i] = *v
 		case float64:
-			ex.values[i] = PrecisionFloat64(v)
+			ex.values[i] = v
 		case *float32:
-			ex.values[i] = PrecisionFloat64(float64(*v))
+			ex.values[i] = float64(*v)
 		case float32:
-			ex.values[i] = PrecisionFloat64(float64(v))
+			ex.values[i] = float64(v)
 		case *net.IP:
 			ex.values[i] = v.String()
 		case net.IP:
@@ -213,7 +236,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.NullFloat64:
 			if v.Valid {
-				ex.values[i] = PrecisionFloat64(v.Float64)
+				ex.values[i] = v.Float64
 			}
 		case *sql.NullInt16:
 			if v.Valid {
@@ -225,7 +248,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.Null[float32]:
 			if v.Valid {
-				ex.values[i] = PrecisionFloat64(float64(v.V))
+				ex.values[i] = float64(v.V)
 			}
 		case *sql.NullInt64:
 			if v.Valid {
@@ -299,26 +322,38 @@ func (ex *Exporter) AddRow(source []any) error {
 	} else {
 		if ex.buffer == nil {
 			ex.buffer = &bytes.Buffer{}
-			ex.jsonEncoder = gojson.NewEncoder(ex.buffer)
 		}
 		ex.buffer.Reset()
 
-		var err error
+		ex.buffer.WriteByte('[')
+		fieldIndex := 0
 		if ex.Rownum {
-			vs := append([]any{ex.nrow}, ex.values...)
-			err = ex.jsonEncoder.Encode(vs)
-		} else {
-			err = ex.jsonEncoder.Encode(ex.values)
+			encoded, err := AppendJSONValue(ex.buffer.Bytes(), ex.nrow, 0)
+			if err != nil {
+				return err
+			}
+			ex.buffer.Reset()
+			ex.buffer.Write(encoded)
+			fieldIndex = 1
 		}
-		if err != nil {
-			return err
+		for _, value := range ex.values {
+			if fieldIndex > 0 {
+				ex.buffer.WriteByte(',')
+			}
+			encoded, err := AppendJSONValue(ex.buffer.Bytes(), value, ex.precision)
+			if err != nil {
+				return err
+			}
+			ex.buffer.Reset()
+			ex.buffer.Write(encoded)
+			fieldIndex++
 		}
+		ex.buffer.WriteByte(']')
 
 		if ex.nrow > 1 {
 			ex.output.Write([]byte(","))
 		}
-		str := ex.buffer.Bytes() // trim the last newline '\n'
-		ex.output.Write(str[0 : len(str)-1])
+		ex.output.Write(ex.buffer.Bytes())
 	}
 
 	return nil

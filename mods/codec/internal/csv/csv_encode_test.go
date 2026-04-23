@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"testing"
@@ -14,6 +15,10 @@ import (
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/stretchr/testify/require"
 )
+
+func runtimeSubtractFloat64(a, b float64) float64 {
+	return a - b
+}
 
 func TestCsvEncoder(t *testing.T) {
 	enc := csv.NewEncoder()
@@ -361,6 +366,33 @@ func TestCsvEncoderTreatIntValueAsFloat(t *testing.T) {
 	expects := []string{
 		"int_v,int8_v,int16_v,int32_v,int64_v",
 		"1.00,2.00,3.00,4.00,5.00",
+		"",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
+}
+
+func TestCsvEncoderFloatFormattingMatchesJSON(t *testing.T) {
+	enc := csv.NewEncoder()
+	w := &bytes.Buffer{}
+	enc.SetOutputStream(w)
+	enc.SetColumns("runtime", "trimmed", "negzero", "nan", "ninf", "pinf")
+	enc.SetHeader(true)
+	require.NoError(t, enc.Open())
+
+	require.NoError(t, enc.AddRow([]any{
+		runtimeSubtractFloat64(20.55, 22.2),
+		12.3400,
+		math.Copysign(0, -1),
+		math.NaN(),
+		math.Inf(-1),
+		math.Inf(1),
+	}))
+	enc.Close()
+
+	expects := []string{
+		"runtime,trimmed,negzero,nan,ninf,pinf",
+		"-1.65,12.34,0,NaN,-Inf,+Inf",
 		"",
 		"",
 	}
