@@ -1083,6 +1083,7 @@ func (s *Server) initServiceController() error {
 	})
 
 	tql.SetServiceControllerAddress(ctrl.Address())
+	tql.SetServiceWorkspace(workspacePath)
 
 	s.registerJsonRpcHandlers()
 	return nil
