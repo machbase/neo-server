@@ -6,7 +6,6 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"strconv"
 	"time"
@@ -158,35 +157,6 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
-func appendPrecisionFloat64(dst []byte, value float64, precision int) []byte {
-	switch {
-	case math.IsNaN(value):
-		return append(dst, `"NaN"`...)
-	case math.IsInf(value, -1):
-		return append(dst, `"-Inf"`...)
-	case math.IsInf(value, 1):
-		return append(dst, `"+Inf"`...)
-	case value == 0:
-		// Keep zero formatting stable and avoid "-0".
-		return append(dst, '0')
-	}
-	prec := 6
-	if precision >= 0 {
-		prec = precision
-	}
-	r := strconv.AppendFloat(dst, value, 'f', prec, 64)
-	if precision < 0 {
-		// if precision is not explicitly set, trim trailing zeros for better readability
-		for len(r) > 0 && r[len(r)-1] == '0' {
-			r = r[:len(r)-1]
-		}
-		if len(r) > 0 && r[len(r)-1] == '.' {
-			r = r[:len(r)-1]
-		}
-	}
-	return r
-}
-
 func AppendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
 	switch v := value.(type) {
 	case nil:
@@ -196,9 +166,9 @@ func AppendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
 	case bool:
 		return strconv.AppendBool(dst, v), nil
 	case float64:
-		return appendPrecisionFloat64(dst, v, precision), nil
+		return internal.AppendPrecisionFloat64(dst, v, precision, true), nil
 	case float32:
-		return appendPrecisionFloat64(dst, float64(v), precision), nil
+		return internal.AppendPrecisionFloat64(dst, float64(v), precision, true), nil
 	case int:
 		return strconv.AppendInt(dst, int64(v), 10), nil
 	case int8:
