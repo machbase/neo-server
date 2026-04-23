@@ -418,13 +418,7 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 
 	// []string{"scp", "-t", "/data/logs/a.txt"}
 	svr.log.Infof("%s command %+v", ss.User(), cmdArr)
-
-	var cmd *exec.Cmd
-	if len(cmdArr) > 1 {
-		cmd = exec.Command(cmdArr[0], cmdArr[1:]...)
-	} else {
-		cmd = exec.Command(cmdArr[0])
-	}
+	cmd := exec.Command(cmdArr[0], cmdArr[1:]...)
 	cmd.Env = append(cmd.Env, shell.Envs...)
 
 	stdin, err := cmd.StdinPipe()
