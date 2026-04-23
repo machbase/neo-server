@@ -14,6 +14,9 @@ func AppendPrecisionFloat64(dst []byte, value float64, precision int, quoteSpeci
 	case math.IsInf(value, 1):
 		return appendSpecialFloatToken(dst, "+Inf", quoteSpecial)
 	case value == 0:
+		if precision >= 0 {
+			return strconv.AppendFloat(dst, 0, 'f', precision, 64)
+		}
 		return append(dst, '0')
 	}
 

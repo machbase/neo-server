@@ -37,6 +37,12 @@ func TestAppendPrecisionFloat64(t *testing.T) {
 			expect:    "3.100",
 		},
 		{
+			name:      "explicit precision pads integer fraction zeros",
+			value:     10,
+			precision: 2,
+			expect:    "10.00",
+		},
+		{
 			name:      "negative zero normalized",
 			value:     math.Copysign(0, -1),
 			precision: -1,
@@ -79,6 +85,10 @@ func TestAppendPrecisionFloat64(t *testing.T) {
 func TestFormatPrecisionFloat64(t *testing.T) {
 	if got := FormatPrecisionFloat64(10.0, -1, false); got != "10" {
 		t.Fatalf("FormatPrecisionFloat64()=%q, want %q", got, "10")
+	}
+
+	if got := FormatPrecisionFloat64(10.0, 4, false); got != "10.0000" {
+		t.Fatalf("FormatPrecisionFloat64()=%q, want %q", got, "10.0000")
 	}
 
 	if got := FormatPrecisionFloat64(math.NaN(), -1, true); got != `"NaN"` {
