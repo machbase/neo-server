@@ -145,7 +145,6 @@ func TestJsonEncode(t *testing.T) {
 				t.Fail()
 			}
 			substr := out.String()[:len(tt.expect)]
-			t.Log("output: ", substr)
 			require.Equal(t, tt.expect, substr)
 		})
 	}
@@ -200,7 +199,7 @@ func TestPrecisionFloat64MarshalJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, err := json.PrecisionFloat64(tt.value).MarshalJSON()
+			b, err := json.AppendJSONValue(nil, tt.value, -1)
 			require.NoError(t, err)
 			require.Equal(t, tt.expect, string(b))
 		})

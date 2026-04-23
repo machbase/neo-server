@@ -158,13 +158,6 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
-type PrecisionFloat64 float64
-
-func (pf PrecisionFloat64) MarshalJSON() ([]byte, error) {
-	r := appendPrecisionFloat64(make([]byte, 0, 24), float64(pf), -1)
-	return r, nil
-}
-
 func appendPrecisionFloat64(dst []byte, value float64, precision int) []byte {
 	switch {
 	case math.IsNaN(value):
@@ -194,7 +187,7 @@ func appendPrecisionFloat64(dst []byte, value float64, precision int) []byte {
 	return r
 }
 
-func appendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
+func AppendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
 	switch v := value.(type) {
 	case nil:
 		return append(dst, "null"...), nil
@@ -202,8 +195,6 @@ func appendJSONValue(dst []byte, value any, precision int) ([]byte, error) {
 		return strconv.AppendQuote(dst, v), nil
 	case bool:
 		return strconv.AppendBool(dst, v), nil
-	case PrecisionFloat64:
-		return appendPrecisionFloat64(dst, float64(v), precision), nil
 	case float64:
 		return appendPrecisionFloat64(dst, v, precision), nil
 	case float32:
@@ -254,13 +245,13 @@ func (ex *Exporter) AddRow(source []any) error {
 		case time.Time:
 			ex.values[i] = ex.timeformatter.FormatEpoch(v)
 		case *float64:
-			ex.values[i] = PrecisionFloat64(*v)
+			ex.values[i] = *v
 		case float64:
-			ex.values[i] = PrecisionFloat64(v)
+			ex.values[i] = v
 		case *float32:
-			ex.values[i] = PrecisionFloat64(float64(*v))
+			ex.values[i] = float64(*v)
 		case float32:
-			ex.values[i] = PrecisionFloat64(float64(v))
+			ex.values[i] = float64(v)
 		case *net.IP:
 			ex.values[i] = v.String()
 		case net.IP:
@@ -275,7 +266,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.NullFloat64:
 			if v.Valid {
-				ex.values[i] = PrecisionFloat64(v.Float64)
+				ex.values[i] = v.Float64
 			}
 		case *sql.NullInt16:
 			if v.Valid {
@@ -287,7 +278,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.Null[float32]:
 			if v.Valid {
-				ex.values[i] = PrecisionFloat64(float64(v.V))
+				ex.values[i] = float64(v.V)
 			}
 		case *sql.NullInt64:
 			if v.Valid {
@@ -367,7 +358,7 @@ func (ex *Exporter) AddRow(source []any) error {
 		ex.buffer.WriteByte('[')
 		fieldIndex := 0
 		if ex.Rownum {
-			encoded, err := appendJSONValue(ex.buffer.Bytes(), ex.nrow, 0)
+			encoded, err := AppendJSONValue(ex.buffer.Bytes(), ex.nrow, 0)
 			if err != nil {
 				return err
 			}
@@ -379,7 +370,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			if fieldIndex > 0 {
 				ex.buffer.WriteByte(',')
 			}
-			encoded, err := appendJSONValue(ex.buffer.Bytes(), value, ex.precision)
+			encoded, err := AppendJSONValue(ex.buffer.Bytes(), value, ex.precision)
 			if err != nil {
 				return err
 			}

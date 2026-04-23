@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	jsonEnc "github.com/machbase/neo-server/v8/mods/codec/internal/json"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/ndjson"
 	"github.com/stretchr/testify/require"
 )
@@ -140,7 +141,7 @@ func TestPrecisionFloat64MarshalJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, err := ndjson.PrecisionFloat64(tt.value).MarshalJSON()
+			b, err := jsonEnc.AppendJSONValue(nil, tt.value, -1)
 			require.NoError(t, err)
 			require.Equal(t, tt.expect, string(b))
 		})
