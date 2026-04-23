@@ -322,7 +322,7 @@ class Client extends _Client {
                     [name, bridge, task, true, topic, qos]);
             } else if (type === 'TIMER') {
                 return this._rpcRequest('schedule.timer.add',
-                    [name, "", spec, task, autostart]);
+                    [name, spec, task, autostart]);
             } else {
                 throw new Error(`Unsupported schedule type: ${type}`);
             }

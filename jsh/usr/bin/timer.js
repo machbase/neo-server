@@ -32,7 +32,7 @@ const addConfig = {
     description: 'Add a new timer',
     options: {
         help: optionHelp,
-        autoStart: { type: 'boolean', description: 'Enable autostart for the timer', default: false },
+        autostart: { type: 'boolean', description: 'Enable autostart for the timer', default: false },
     },
     positionals: [
         { name: 'name', description: 'Name of the timer' },
@@ -41,7 +41,7 @@ const addConfig = {
     ],
     longDescription: `
     ex)
-        timer add --auto-start my_sched '@every 10s' /hello.tql
+        timer add --autostart my_sched '@every 10s' /hello.tql
     `,
 }
 
@@ -122,8 +122,8 @@ function doAdd(config, args) {
     const name = args.name;
     const spec = args.spec;
     const tqlPath = args.tqlPath;
-    const autoStart = args.autoStart || false;
-    client.addSchedule({ name: name, type: 'TIMER', spec: spec, task: tqlPath, autoStart: autoStart })
+    const autostart = config.autostart || false;
+    client.addSchedule({ name: name, type: 'TIMER', spec: spec, task: tqlPath, autostart: autostart })
         .then(() => {
             console.println(`Timer '${name}' added successfully.`);
         })
