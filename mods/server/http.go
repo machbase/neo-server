@@ -1980,11 +1980,11 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Demo web app", Addr: "https://github.com/machbase/neo-apps"})
 
 		sdk := &WebReferenceGroup{Label: "SDK"}
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK Download", Addr: "https://docs.machbase.com/neo/releases/#sdk-with-classic", Target: "_home_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://docs.machbase.com/dbms/sdk/dotnet/", Target: "_docs_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "JDBC Driver", Addr: "https://docs.machbase.com/dbms/sdk/jdbc/", Target: "_docs_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc/", Target: "_docs_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc-example/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK", Addr: "https://docs.machbase.com/dbms/sdk-integration/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://docs.machbase.com/dbms/sdk-integration/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "JDBC Driver", Addr: "https://docs.machbase.com/dbms/sdk-integration/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/dbms/sdk-integration/cli-odbc/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://docs.machbase.com/dbms/sdk-integration/cli-odbc-example/", Target: "_docs_machbase"})
 
 		cheatSheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
