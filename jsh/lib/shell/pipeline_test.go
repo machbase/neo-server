@@ -1193,6 +1193,16 @@ func TestProcessAssignmentPrefix(t *testing.T) {
 			alive: true,
 		},
 		{
+			// This tests that assignment prefixes are parsed and applied after word expansion,
+			// so that the assignment value cannot affect the command or argument expansion.
+			// This is identical to the behavior of bash and zsh.
+			name:  "assignment does not affect same command argument expansion",
+			line:  "VAR1=123 echo pre-$VAR1-post",
+			want:  "pre--post",
+			exit:  0,
+			alive: true,
+		},
+		{
 			name:  "assignment does not persist after command",
 			line:  "FOO=bar env FOO && env FOO",
 			want:  "FOO=bar",
