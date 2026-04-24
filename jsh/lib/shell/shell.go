@@ -9,7 +9,6 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/hymkor/go-multiline-ny"
-	"github.com/hymkor/go-multiline-ny/completion"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/log"
 	"github.com/mattn/go-colorable"
@@ -186,12 +185,7 @@ func (sh *Shell) configureEditorSession(ed *multiline.Editor) {
 	ed.DefaultColor = "\x1B[37;49;1m"
 
 	// enable completion
-	ed.BindKey(keys.CtrlI, &completion.CmdCompletionOrList{
-		Delimiter:  "&|><",
-		Enclosure:  `"'`,
-		Postfix:    " ",
-		Candidates: sh.getCompletionCandidates,
-	})
+	ed.BindKey(keys.CtrlI, newShellCompletionCommand(sh))
 	sh.bindPredictionKeys(ed)
 }
 
@@ -256,10 +250,6 @@ func shouldAcceptPrediction(cursor int, bufferLen int, cursorLine int, lineCount
 		return true
 	}
 	return cursorLine >= lineCount-1
-}
-
-func (sh *Shell) getCompletionCandidates(fields []string) (forCompletion []string, forListing []string) {
-	return
 }
 
 // process evaluates shell statements and operators.
