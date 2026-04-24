@@ -1207,6 +1207,13 @@ func TestProcessAssignmentPrefix(t *testing.T) {
 			alive: true,
 		},
 		{
+			name:  "assignment in later pipeline stage",
+			line:  "echo hi | FOO=bar env FOO",
+			want:  "FOO=bar",
+			exit:  0,
+			alive: true,
+		},
+		{
 			name:  "assignment-only statement is an error",
 			line:  "FOO=bar",
 			want:  "assignment without command is not supported",
