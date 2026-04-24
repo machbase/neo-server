@@ -339,8 +339,6 @@ github.com/nats-io/nkeys v0.4.15/go.mod h1:CpMchTXC9fxA5zrMo4KpySxNjiDVvr8ANOSZd
 github.com/nats-io/nuid v1.0.1 h1:5iA8DT8V7q8WK2EScv2padNa/rTESc1KdnPw4TC2paw=
 github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OSON2c=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
-github.com/nyaosorg/go-box/v3 v3.0.0 h1:W5qfScEkKBoD68gbP/lwfWlvcTRB0rwXkhL+9iC62xI=
-github.com/nyaosorg/go-box/v3 v3.0.0/go.mod h1:70GsE9mIh7JKVCxt71q3jEijO6C9YJmOZqWpPa9w+GY=
 github.com/nyaosorg/go-readline-ny v1.14.1 h1:bWyXpR6jRaCXysx4bnioxk36+YjQ6dypHKMjHnzIXdk=
 github.com/nyaosorg/go-readline-ny v1.14.1/go.mod h1:/BDf3/H/AScnvey4LoDws1bjTZDB76EE7uKnW2apoKU=
 github.com/nyaosorg/go-ttyadapter v0.3.0 h1:/Y7+rGJ0LEcs+AExevwNmND2VJvvpBmgbMuCbntKq3c=
