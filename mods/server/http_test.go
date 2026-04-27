@@ -1076,7 +1076,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 				require.Equal(t, "image.png", gjson.Get(extData, "FN").String(), extData)
 				require.Equal(t, int64(12692), gjson.Get(extData, "SZ").Int(), extData)
 				require.Equal(t, "image/png", gjson.Get(extData, "CT").String(), extData)
-				require.Equal(t, "./testsuite_tmp/store", gjson.Get(extData, "SD").String(), extData)
+				require.Equal(t, filepath.Join(projRootDir, "tmp", "test", "machbase_home", "store"), gjson.Get(extData, "SD").String(), extData)
 				fileId = gjson.Get(extData, "ID").String()
 				break waiting_loop
 			}
@@ -1134,7 +1134,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 							"CT":"image/png",
 							"FN":"image.png",
 							"ID":"`+ext_id+`",
-							"SD":"./testsuite_tmp/store",
+							"SD":"`+filepath.Join(projRootDir, "tmp", "test", "machbase_home", "store")+`",
 							"SZ":12692
 						}
 					}
@@ -1572,7 +1572,6 @@ func TestHttpTables(t *testing.T) {
 						[]any{float64(1), "MACHBASEDB", "SYS", "EXAMPLE", "Tag Table"},
 						[]any{float64(2), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
 						[]any{float64(3), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
-						[]any{float64(4), "MACHBASEDB", "SYS", "TAG_SIMPLE", "Tag Table"},
 					},
 				},
 			},
@@ -1591,7 +1590,6 @@ func TestHttpTables(t *testing.T) {
 						[]any{float64(3), "MACHBASEDB", "SYS", "_EXAMPLE_DATA_0", "KeyValue Table (data)"},
 						[]any{float64(4), "MACHBASEDB", "SYS", "_TAG_DATA_DATA_0", "KeyValue Table (data)"},
 						[]any{float64(5), "MACHBASEDB", "SYS", "_TAG_DATA_META", "Lookup Table (meta)"},
-						[]any{float64(6), "MACHBASEDB", "SYS", "_TAG_SIMPLE_DATA_0", "KeyValue Table (data)"},
 					},
 				},
 			},

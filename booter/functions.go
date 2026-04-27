@@ -166,7 +166,7 @@ var GetArgLenFunc = function.New(&function.Spec{
 	Params: []function.Parameter{},
 	Type:   function.StaticReturnType(cty.String),
 	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-		return gocty.ToCtyValue(len(os.Args), cty.Number)
+		return gocty.ToCtyValue(len(Args), cty.Number)
 	},
 })
 
@@ -191,7 +191,7 @@ var GetArgFunc = function.New(&function.Spec{
 			return cty.NilVal, err
 		}
 		a := make([]string, 0)
-		for i, v := range os.Args {
+		for i, v := range Args {
 			if i != 0 && strings.HasPrefix(v, "-") {
 				continue
 			}
@@ -220,7 +220,7 @@ var GetArg2Func = function.New(&function.Spec{
 			return cty.NilVal, err
 		}
 		a := make([]string, 0)
-		for i, v := range os.Args {
+		for i, v := range Args {
 			if i != 0 && strings.HasPrefix(v, "-") {
 				continue
 			}
@@ -292,10 +292,10 @@ var GetFlag2Func = function.New(&function.Spec{
 	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 		in := args[0].AsString()
 		out := ""
-		for i, arg := range os.Args {
+		for i, arg := range Args {
 			if arg == in {
-				if i < len(os.Args)-1 {
-					out = os.Args[i+1]
+				if i < len(Args)-1 {
+					out = Args[i+1]
 				}
 				return cty.StringVal(out), nil
 			} else if strings.HasPrefix(arg, in+"=") {
@@ -329,10 +329,10 @@ var GetFlagFunc = function.New(&function.Spec{
 		if !args[1].IsNull() {
 			out = args[1].AsString()
 		}
-		for i, arg := range os.Args {
+		for i, arg := range Args {
 			if arg == in {
-				if i < len(os.Args)-1 {
-					out = os.Args[i+1]
+				if i < len(Args)-1 {
+					out = Args[i+1]
 				}
 				break
 			} else if strings.HasPrefix(arg, in+"=") {

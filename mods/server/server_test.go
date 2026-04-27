@@ -20,13 +20,13 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
 )
 
+var projRootDir string
 var testTimeTick = time.Unix(1705291859, 0)
 
 var machServerAddress = ""
@@ -45,33 +45,42 @@ func TestMain(m *testing.M) {
 	if !ok {
 		panic("Failed to get current file path")
 	}
-	projRoot := filepath.Join(filepath.Dir(filename), "../../")
+	projRootDir = filepath.Join(filepath.Dir(filename), "../../")
 
-	prefDir := filepath.Join(projRoot, "tmp", "test", "pref")
-	fileDir := filepath.Join(projRoot, "tmp", "test", "files")
-	dataDir := filepath.Join(projRoot, "tmp", "test", "machbase_home")
+	prefDir := filepath.Join(projRootDir, "tmp", "test", "pref")
+	fileDir := filepath.Join(projRootDir, "mods", "server", "test")
+	dataDir := filepath.Join(projRootDir, "tmp", "test", "machbase_home")
+	binPath := filepath.Join(projRootDir, "tmp", "machbase-neo")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
 	// cleanup pref and files directories before test
 	os.RemoveAll(prefDir)
-	os.RemoveAll(fileDir)
 	os.RemoveAll(dataDir)
 
 	machPort := 15656
+	grpcPort := 15655
 	httpPort := 15654
 	mqttPort := 15653
+	shellPort := 15622
 	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", machPort)
-	httpServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", httpPort)
-	mqttServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", mqttPort)
+	httpServerAddress = fmt.Sprintf("http://127.0.0.1:%d", httpPort)
+	mqttServerAddress = fmt.Sprintf("127.0.0.1:%d", mqttPort)
 
 	var server *Server
 	go func() {
-		Main([]string{"machbase-neo",
+		Main([]string{binPath,
 			"serve",
 			"--data", dataDir,
-			"--files", fileDir,
+			"--file", fileDir,
 			"--pref", prefDir,
 			"--mach-port", strconv.Itoa(machPort),
+			"--grpc-port", strconv.Itoa(grpcPort),
 			"--http-port", strconv.Itoa(httpPort),
 			"--mqtt-port", strconv.Itoa(mqttPort),
+			"--shell-port", strconv.Itoa(shellPort),
+			"--jwt-secret", "__secr3t__",
 			"--log-filename", "-",
 			"--log-level", "INFO",
 		})
@@ -79,7 +88,31 @@ func TestMain(m *testing.M) {
 	<-testServerAfterStart
 	if b := booter.GetInstance("machbase.com/neo-server"); b != nil {
 		server = b.(*Server)
+	} else {
+		panic("failed to get server instance from booter")
 	}
+
+	httpServer = server.httpd
+	mqttServer = server.mqttd
+
+	// build shell binary for shell tests
+	func() {
+		buildShellCmd := []string{
+			"go", "build", "-o", binPath, filepath.Join(projRootDir, "main", "machbase-neo"),
+		}
+		err := exec.Command(buildShellCmd[0], buildShellCmd[1:]...).Run()
+		if err != nil {
+			panic(err)
+		}
+		shellArgs = []string{
+			binPath,
+			"shell",
+			"--server", httpServerAddress,
+			"--user", "sys",
+			"--password", "manager",
+			"-v", fmt.Sprintf("/work=%s", fileDir),
+		}
+	}()
 
 	func(db api.Database) {
 		ctx := context.TODO()
@@ -89,11 +122,52 @@ func TestMain(m *testing.M) {
 		}
 		defer conn.Close()
 
-		result := conn.Exec(ctx, `CREATE TAG TABLE example (
-				name VARCHAR(40) PRIMARY KEY,
-				time DATETIME BASETIME,
-				value DOUBLE SUMMARIZED
-			) TAG_DUPLICATE_CHECK_DURATION=1`)
+		result := conn.Exec(ctx, `CREATE TAG TABLE TAG_DATA(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double summarized,
+			short_value     short,
+			ushort_value    ushort,
+			int_value       integer,
+			uint_value 	    uinteger,
+			long_value      long,
+			ulong_value 	ulong,
+			str_value       varchar(400),
+			json_value      json,
+			ipv4_value      ipv4,
+			ipv6_value      ipv6,
+			bin_value		binary
+		) TAG_PARTITION_COUNT=1`)
+		if result.Err() != nil {
+			panic(result.Err())
+		}
+
+		result = conn.Exec(ctx, `CREATE TABLE LOG_DATA(
+			time datetime,
+			short_value short,
+			ushort_value ushort,
+			int_value integer,
+			uint_value uinteger,
+			long_value long,
+			ulong_value ulong,
+			double_value double,
+			float_value float,
+			str_value varchar(400),
+			json_value json,
+			ipv4_value ipv4,
+			ipv6_value ipv6,
+			text_value text,
+			bin_value binary
+		)`)
+		if result.Err() != nil {
+			panic(result.Err())
+		}
+
+		result = conn.Exec(ctx, `CREATE TAG TABLE example (
+			name VARCHAR(40) PRIMARY KEY,
+			time DATETIME BASETIME,
+			value DOUBLE SUMMARIZED
+		) TAG_PARTITION_COUNT=1, TAG_DUPLICATE_CHECK_DURATION=1`)
 		if result.Err() != nil {
 			panic(result.Err())
 		}
@@ -114,64 +188,6 @@ func TestMain(m *testing.M) {
 		}
 		conn.Exec(ctx, `EXEC table_flush(example)`)
 	}(api.Default())
-
-	database := api.Default()
-	httpServer = server.httpd
-	mqttServer = server.mqttd
-
-	// get http listener address
-	if addr := httpServer.listeners[0].Addr().String(); addr == "" {
-		panic("Listener not found")
-	} else {
-		httpServerAddress = "http://" + strings.TrimPrefix(addr, "tcp://")
-	}
-
-	// mqtt broker
-	mqttOpts := []MqttOption{
-		WithMqttTcpListener("127.0.0.1:0", nil),
-		WithMqttTqlLoader(tql.NewLoader()),
-	}
-	if svr, err := NewMqtt(database, mqttOpts...); err != nil {
-		panic(err)
-	} else {
-		mqttServer = svr
-	}
-
-	if err := mqttServer.Start(); err != nil {
-		panic(err)
-	}
-
-	// get mqtt listener address
-	if addr, ok := mqttServer.broker.Listeners.Get("mqtt-tcp-0"); !ok {
-		panic("Listener not found")
-	} else {
-		mqttServerAddress = strings.TrimPrefix(addr.Address(), "tcp://")
-	}
-
-	// build shell binary for shell tests
-	func() {
-		var projRoot = filepath.FromSlash("../../")
-		var binPath = filepath.Join(projRoot, "tmp", "machbase-neo")
-		if runtime.GOOS == "windows" {
-			binPath += ".exe"
-		}
-		buildShellCmd := []string{
-			"go", "build", "-o", binPath, filepath.Join(projRoot, "main", "machbase-neo"),
-		}
-		err := exec.Command(buildShellCmd[0], buildShellCmd[1:]...).Run()
-		if err != nil {
-			panic(err)
-		}
-
-		shellArgs = []string{
-			binPath,
-			"shell",
-			"--server", httpServerAddress,
-			"--user", "sys",
-			"--password", "manager",
-			"-v", "/work=./test",
-		}
-	}()
 
 	// run tests
 	m.Run()
@@ -417,10 +433,9 @@ func TestShellShow(t *testing.T) {
 			args: append(shellArgs, "show", "tables", "--format", "csv"),
 			expect: []string{
 				"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
-				"1,MACHBASEDB,SYS,EXAMPLE,22,Tag,",
-				"2,MACHBASEDB,SYS,LOG_DATA,15,Log,",
+				"1,MACHBASEDB,SYS,EXAMPLE,15,Tag,",
+				"2,MACHBASEDB,SYS,LOG_DATA,8,Log,",
 				"3,MACHBASEDB,SYS,TAG_DATA,7,Tag,",
-				"4,MACHBASEDB,SYS,TAG_SIMPLE,14,Tag,",
 			},
 		},
 	}
@@ -1457,10 +1472,9 @@ func TestShellRun(t *testing.T) {
 				"┌────────┬───────────────┬───────────┬────────────┬──────────┬────────────┬────────────┐",
 				"│ ROWNUM │ DATABASE_NAME │ USER_NAME │ TABLE_NAME │ TABLE_ID │ TABLE_TYPE │ TABLE_FLAG │",
 				"├────────┼───────────────┼───────────┼────────────┼──────────┼────────────┼────────────┤",
-				"│      1 │ MACHBASEDB    │ SYS       │ EXAMPLE    │       22 │ Tag        │            │",
-				"│      2 │ MACHBASEDB    │ SYS       │ LOG_DATA   │       15 │ Log        │            │",
+				"│      1 │ MACHBASEDB    │ SYS       │ EXAMPLE    │       15 │ Tag        │            │",
+				"│      2 │ MACHBASEDB    │ SYS       │ LOG_DATA   │        8 │ Log        │            │",
 				"│      3 │ MACHBASEDB    │ SYS       │ TAG_DATA   │        7 │ Tag        │            │",
-				"│      4 │ MACHBASEDB    │ SYS       │ TAG_SIMPLE │       14 │ Tag        │            │",
 				"└────────┴───────────────┴───────────┴────────────┴──────────┴────────────┴────────────┘",
 				"",
 				"INSERT INTO EXAMPLE VALUES('shell_run', 1773722371000000000, 1.234)",

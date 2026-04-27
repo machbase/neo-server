@@ -33,6 +33,8 @@ type boot struct {
 	shutdownHooks []func()
 }
 
+var Args []string = os.Args
+
 func NewWithDefinitions(definitions []*Definition) (Booter, error) {
 	b := &boot{
 		moduleDefs: definitions,

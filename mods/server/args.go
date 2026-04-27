@@ -16,6 +16,7 @@ import (
 )
 
 func Main(args []string) int {
+	booter.Args = args
 	cli, err := ParseCommand(args)
 	if err != nil {
 		if cli != nil {
@@ -222,16 +223,16 @@ func doHelp(command string) error {
 
 	switch command {
 	case "serve":
-		fmt.Println(os.Args[0] + " serve [args...]")
+		fmt.Println(booter.Args[0] + " serve [args...]")
 		showShellHelp = false
 	case "serve-headless":
-		fmt.Println(os.Args[0] + " serve-headless [args...]")
+		fmt.Println(booter.Args[0] + " serve-headless [args...]")
 		showShellHelp = false
 	case "shell":
-		fmt.Println(os.Args[0] + " shell [flags] <sub-command> [args...]")
+		fmt.Println(booter.Args[0] + " shell [flags] <sub-command> [args...]")
 		showServeHelp = false
 	case "restore":
-		fmt.Println(os.Args[0] + " restore --data <machbase_home_dir> <backup_dir>")
+		fmt.Println(booter.Args[0] + " restore --data <machbase_home_dir> <backup_dir>")
 		showShellHelp = false
 		showServeHelp = false
 	case "timeformat":
@@ -243,7 +244,7 @@ func doHelp(command string) error {
 		fmt.Printf("%s\n", util.HelpTimeZones())
 		return nil
 	default:
-		fmt.Println(filepath.Base(os.Args[0]) + helpRootText)
+		fmt.Println(filepath.Base(booter.Args[0]) + helpRootText)
 	}
 
 	if showServeHelp {
