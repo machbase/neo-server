@@ -127,7 +127,14 @@ func Restore(dataDir string, backupDir string) error {
 	return nil
 }
 
+// Test purposed notification channels
+var testServerAfterStart = make(chan struct{})
+var testServerBeforeStop = make(chan struct{})
+
 func (s *Server) Start() error {
+	defer close(testServerAfterStart)
+	util.AddShutdownHook(func() { close(testServerBeforeStop) })
+
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
 

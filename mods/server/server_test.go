@@ -10,20 +10,18 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
-	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -42,25 +40,46 @@ var httpServerAddress = ""
 var shellArgs = []string{}
 
 func TestMain(m *testing.M) {
-	// logging
-	logging.Configure(&logging.Config{
-		Console:                     true,
-		Filename:                    "-",
-		Append:                      false,
-		DefaultPrefixWidth:          10,
-		DefaultEnableSourceLocation: true,
-		DefaultLevel:                "INFO",
-	})
+	// get project root based current test case file path
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("Failed to get current file path")
+	}
+	projRoot := filepath.Join(filepath.Dir(filename), "../../")
 
-	dataPath := "./testsuite_tmp"
-	// database
-	testServer := testsuite.NewServer(dataPath)
-	testServer.StartServer()
-	testServer.CreateTestTables()
-	database := testServer.DatabaseSVR()
+	prefDir := filepath.Join(projRoot, "tmp", "test", "pref")
+	fileDir := filepath.Join(projRoot, "tmp", "test", "files")
+	dataDir := filepath.Join(projRoot, "tmp", "test", "machbase_home")
+	// cleanup pref and files directories before test
+	os.RemoveAll(prefDir)
+	os.RemoveAll(fileDir)
+	os.RemoveAll(dataDir)
 
-	// default database
-	api.SetDefault(database)
+	machPort := 15656
+	httpPort := 15654
+	mqttPort := 15653
+	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", machPort)
+	httpServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", httpPort)
+	mqttServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", mqttPort)
+
+	var server *Server
+	go func() {
+		Main([]string{"machbase-neo",
+			"serve",
+			"--data", dataDir,
+			"--files", fileDir,
+			"--pref", prefDir,
+			"--mach-port", strconv.Itoa(machPort),
+			"--http-port", strconv.Itoa(httpPort),
+			"--mqtt-port", strconv.Itoa(mqttPort),
+			"--log-filename", "-",
+			"--log-level", "INFO",
+		})
+	}()
+	<-testServerAfterStart
+	if b := booter.GetInstance("machbase.com/neo-server"); b != nil {
+		server = b.(*Server)
+	}
 
 	func(db api.Database) {
 		ctx := context.TODO()
@@ -94,56 +113,11 @@ func TestMain(m *testing.M) {
 			}
 		}
 		conn.Exec(ctx, `EXEC table_flush(example)`)
-	}(database)
+	}(api.Default())
 
-	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", testServer.MachPort())
-
-	// metric
-	server_api.StartMetrics()
-	// append worker
-	server_api.StartAppendWorkers()
-
-	var projRoot = filepath.FromSlash("../../")
-	prefDir := filepath.Join(projRoot, "tmp", "test", "pref")
-	filesDir := filepath.Join(projRoot, "tmp", "test", "files")
-	// cleanup pref and files directories before test
-	os.RemoveAll(prefDir)
-	os.RemoveAll(filesDir)
-	// create server instance
-	var server, _ = NewServer(&Config{
-		PrefDir:  prefDir,
-		FileDirs: []string{filesDir},
-	})
-	server.preparePrefDir()
-	server.startModelService()
-	server.startBridgeAndSchedulerService()
-	server.AddServicePort("mach", machServerAddress)
-	server.rpcController = &service.Controller{}
-	server.registerJsonRpcHandlers()
-
-	// tql
-	fileDirs := []string{"/=./test"}
-	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
-	ssfs.SetDefault(serverFs)
-	tql.Init()
-	defer tql.Deinit()
-
-	// http server
-	httpOpts := []HttpOption{
-		WithHttpListenAddress("tcp://127.0.0.1:0"),
-		WithHttpAuthServer(server, false),
-		WithHttpTqlLoader(tql.NewLoader()),
-		WithHttpEulaFilePath("./testsuite_tmp/eula.txt"),
-		WithHttpPathMap("data", dataPath),
-	}
-	if svr, err := NewHttp(database, httpOpts...); err != nil {
-		panic(err)
-	} else {
-		httpServer = svr
-	}
-	if err := httpServer.Start(); err != nil {
-		panic(err)
-	}
+	database := api.Default()
+	httpServer = server.httpd
+	mqttServer = server.mqttd
 
 	// get http listener address
 	if addr := httpServer.listeners[0].Addr().String(); addr == "" {
@@ -203,12 +177,8 @@ func TestMain(m *testing.M) {
 	m.Run()
 
 	// cleanup
-	mqttServer.Stop()
-	httpServer.Stop()
-	server_api.StopAppendWorkers()
-	testServer.DropTestTables()
-	server_api.StopMetrics()
-	testServer.StopServer()
+	booter.NotifySignal()
+	<-testServerBeforeStop
 }
 
 func TestRepresentativePort(t *testing.T) {
