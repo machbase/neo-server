@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package args
+package server
 
 import "fmt"
 

@@ -1154,6 +1154,7 @@ func TestProcessExecSignalCleanup(t *testing.T) {
 		_ = cmd.Process.Kill()
 		t.Fatalf("timeout waiting for exec helper after child signal")
 	}
+	waitForProcessExit(t, childPID, 5*time.Second)
 
 	finalLines := collectRemainingLines(lines)
 	assertLinePresent(t, finalLines, fmt.Sprintf("child-ready: %d", childPID))
@@ -1204,6 +1205,7 @@ func TestProcessExecParentSignalForwarding(t *testing.T) {
 		_ = cmd.Process.Kill()
 		t.Skip("timeout waiting for exec helper after parent signal (environment-dependent)")
 	}
+	waitForProcessExit(t, childPID, 5*time.Second)
 
 	finalLines := collectRemainingLines(lines)
 	assertLinePresent(t, finalLines, fmt.Sprintf("child-ready: %d", childPID))
@@ -1483,6 +1485,7 @@ func startProcessExecSignalHelper(t *testing.T, signalName string) (<-chan strin
 					_ = cmd.Process.Kill()
 					t.Fatalf("parse child pid from %q: %v", line, err)
 				}
+				registerProcessExecHelperCleanup(t, cmd, childPID)
 
 				buffered := make(chan string, 16)
 				for _, existing := range lines {
@@ -2111,6 +2114,51 @@ func collectRemainingLines(lines <-chan string) []string {
 		collected = append(collected, line)
 	}
 	return collected
+}
+
+func registerProcessExecHelperCleanup(t *testing.T, cmd *exec.Cmd, childPID int) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		killProcessForTest(childPID)
+		if cmd != nil && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+}
+
+func waitForProcessExit(t *testing.T, pid int, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for processExistsForTest(pid) {
+		if time.Now().After(deadline) {
+			t.Fatalf("process %d still exists after %v", pid, timeout)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func processExistsForTest(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+func killProcessForTest(pid int) {
+	if pid <= 0 {
+		return
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return
+	}
+	_ = proc.Kill()
 }
 
 func TestProcessNextTick(t *testing.T) {

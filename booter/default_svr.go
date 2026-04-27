@@ -339,7 +339,7 @@ func parseflags() {
 	}
 
 	// parse args
-	parser := NewCommandLineParser(os.Args)
+	parser := NewCommandLineParser(Args)
 	parser.AddHintBool(conf.flags[DaemonFlag].Long, conf.flags[DaemonFlag].Short, false)
 	parser.AddHintBool(conf.flags[HelpFlag].Long, conf.flags[HelpFlag].Short, false)
 

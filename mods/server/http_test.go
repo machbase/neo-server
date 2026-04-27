@@ -13,6 +13,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/textproto"
 	"net/url"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
@@ -31,7 +33,10 @@ import (
 	shelllib "github.com/machbase/neo-server/v8/jsh/lib/shell"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -1076,7 +1081,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 				require.Equal(t, "image.png", gjson.Get(extData, "FN").String(), extData)
 				require.Equal(t, int64(12692), gjson.Get(extData, "SZ").Int(), extData)
 				require.Equal(t, "image/png", gjson.Get(extData, "CT").String(), extData)
-				require.Equal(t, "./testsuite_tmp/store", gjson.Get(extData, "SD").String(), extData)
+				require.Equal(t, filepath.Join(projRootDir, "tmp", "test", "machbase_home", "store"), gjson.Get(extData, "SD").String(), extData)
 				fileId = gjson.Get(extData, "ID").String()
 				break waiting_loop
 			}
@@ -1134,7 +1139,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 							"CT":"image/png",
 							"FN":"image.png",
 							"ID":"`+ext_id+`",
-							"SD":"./testsuite_tmp/store",
+							"SD":"`+filepath.Join(projRootDir, "tmp", "test", "machbase_home", "store")+`",
 							"SZ":12692
 						}
 					}
@@ -1572,7 +1577,6 @@ func TestHttpTables(t *testing.T) {
 						[]any{float64(1), "MACHBASEDB", "SYS", "EXAMPLE", "Tag Table"},
 						[]any{float64(2), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
 						[]any{float64(3), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
-						[]any{float64(4), "MACHBASEDB", "SYS", "TAG_SIMPLE", "Tag Table"},
 					},
 				},
 			},
@@ -1591,7 +1595,6 @@ func TestHttpTables(t *testing.T) {
 						[]any{float64(3), "MACHBASEDB", "SYS", "_EXAMPLE_DATA_0", "KeyValue Table (data)"},
 						[]any{float64(4), "MACHBASEDB", "SYS", "_TAG_DATA_DATA_0", "KeyValue Table (data)"},
 						[]any{float64(5), "MACHBASEDB", "SYS", "_TAG_DATA_META", "Lookup Table (meta)"},
-						[]any{float64(6), "MACHBASEDB", "SYS", "_TAG_SIMPLE_DATA_0", "KeyValue Table (data)"},
 					},
 				},
 			},
@@ -2008,4 +2011,210 @@ Host: localhost:8080`,
 			require.EqualValues(t, tc.expects, resultObj.Data.Statements)
 		})
 	}
+}
+
+func newTestHTTPServer(t *testing.T) *httpd {
+	t.Helper()
+	root := t.TempDir()
+	serverFs, err := ssfs.NewServerSideFileSystem([]string{"/=" + root})
+	require.NoError(t, err)
+	gin.SetMode(gin.TestMode)
+	return &httpd{log: logging.GetLog("httpd-fake"), serverFs: serverFs}
+}
+
+func newTestHTTPContext(method, target string, body []byte) (*gin.Context, *httptest.ResponseRecorder) {
+	writer := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(writer)
+	ctx.Request = httptest.NewRequest(method, target, bytes.NewReader(body))
+	return ctx, writer
+}
+
+func TestTerminalsRegisterFindUnregister(t *testing.T) {
+	terms := &Terminals{}
+	terms.list = cmap.New[*WebTerm]()
+
+	term := &WebTerm{Rows: 25, Cols: 80}
+	terms.Register("user-term", term)
+
+	found, ok := terms.Find("user-term")
+	require.True(t, ok)
+	require.Same(t, term, found)
+
+	terms.Unregister("user-term")
+	_, ok = terms.Find("user-term")
+	require.False(t, ok)
+}
+
+func TestHandleTermWindowSize(t *testing.T) {
+	svr := &httpd{log: logging.GetLog("httpd-fake")}
+
+	t.Run("requires-claim", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/term/term-1/windowsize?rows=24&cols=80", nil)
+		ctx.Params = gin.Params{{Key: "term_id", Value: "term-1"}}
+
+		svr.handleTermWindowSize(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "unauthorized access")
+	})
+
+	t.Run("rejects-zero-size", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/term/term-1/windowsize?rows=0&cols=80", nil)
+		ctx.Params = gin.Params{{Key: "term_id", Value: "term-1"}}
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleTermWindowSize(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "rows or cols can't be zero")
+	})
+
+	t.Run("missing-terminal", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/term/term-1/windowsize?rows=24&cols=80", nil)
+		ctx.Params = gin.Params{{Key: "term_id", Value: "term-1"}}
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleTermWindowSize(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "not found")
+	})
+
+	t.Run("accepts-jsh-terminal", func(t *testing.T) {
+		termKey := "sys-term-1"
+		terminals.Register(termKey, nil)
+		defer terminals.Unregister(termKey)
+
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/term/term-1/windowsize?rows=24&cols=80", nil)
+		ctx.Params = gin.Params{{Key: "term_id", Value: "term-1"}}
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleTermWindowSize(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`)
+	})
+}
+
+func TestHandleFiles(t *testing.T) {
+	svr := newTestHTTPServer(t)
+
+	t.Run("create-directory", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/files/docs", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`)
+	})
+
+	t.Run("write-and-read-file", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/files/docs/readme.md", []byte("hello world"))
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/readme.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+
+		ctx, writer = newTestHTTPContext(http.MethodGet, "/web/api/files/docs/readme.md", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/readme.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Equal(t, "text/markdown", writer.Header().Get("Content-Type"))
+		require.Equal(t, "hello world", writer.Body.String())
+	})
+
+	t.Run("list-directory", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files/docs", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`)
+		require.Contains(t, writer.Body.String(), "readme.md")
+	})
+
+	t.Run("rename-requires-destination", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPut, "/web/api/files/docs/readme.md", []byte(`{}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/readme.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "destination is not specified")
+	})
+
+	t.Run("rename-file", func(t *testing.T) {
+		payload, err := json.Marshal(RenameReq{Dest: "/docs/guide.md"})
+		require.NoError(t, err)
+
+		ctx, writer := newTestHTTPContext(http.MethodPut, "/web/api/files/docs/readme.md", payload)
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/readme.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+
+		ctx, writer = newTestHTTPContext(http.MethodGet, "/web/api/files/docs/guide.md", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/guide.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Equal(t, "hello world", writer.Body.String())
+	})
+
+	t.Run("delete-non-empty-directory-without-recursive", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodDelete, "/web/api/files/docs", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusUnprocessableEntity, writer.Code)
+		require.Contains(t, writer.Body.String(), "directory is not empty")
+	})
+
+	t.Run("delete-file", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodDelete, "/web/api/files/docs/guide.md", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/guide.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+
+		ctx, writer = newTestHTTPContext(http.MethodGet, "/web/api/files/docs/guide.md", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/docs/guide.md"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusNotFound, writer.Code)
+	})
+
+	t.Run("delete-directory-recursively", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/files/tree", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/tree"}}
+		svr.handleFiles(ctx)
+		require.Equal(t, http.StatusOK, writer.Code)
+
+		ctx, writer = newTestHTTPContext(http.MethodPost, "/web/api/files/tree/child", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/tree/child"}}
+		svr.handleFiles(ctx)
+		require.Equal(t, http.StatusOK, writer.Code)
+
+		require.NoError(t, svr.serverFs.Set("/tree/child/note.txt", []byte("data")))
+
+		ctx, writer = newTestHTTPContext(http.MethodDelete, "/web/api/files/tree?recursive=true", nil)
+		ctx.Params = gin.Params{{Key: "path", Value: "/tree"}}
+
+		svr.handleFiles(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`)
+	})
 }

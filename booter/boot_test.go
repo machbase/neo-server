@@ -21,7 +21,7 @@ var BmodId = "github.com/booter/bmod"
 var customFunc function.Function
 
 func TestMain(m *testing.M) {
-	os.Args = []string{
+	booter.Args = []string{
 		"--logging-default-level", "WARN",
 		"--logging-default-enable-source-location", "true",
 		"--logging-default-prefix-width", "30",

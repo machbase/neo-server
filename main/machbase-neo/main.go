@@ -5,7 +5,7 @@ import (
 	"os"
 
 	jshSession "github.com/machbase/neo-server/v8/jsh/session"
-	"github.com/machbase/neo-server/v8/mods/args"
+	"github.com/machbase/neo-server/v8/mods/server"
 	shellSession "github.com/machbase/neo-server/v8/shell/session"
 )
 
@@ -28,6 +28,6 @@ func main() {
 		jshSession.Main(flagSet, []string{self, "jsh"}, os.Args[2:])
 	} else {
 		// handling "machbase-neo serve ..." or others
-		os.Exit(args.Main())
+		os.Exit(server.Main(os.Args))
 	}
 }

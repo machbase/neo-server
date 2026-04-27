@@ -1,9 +1,8 @@
-package args_test
+package server
 
 import (
 	"testing"
 
-	. "github.com/machbase/neo-server/v8/mods/args"
 	"github.com/stretchr/testify/require"
 )
 
@@ -201,4 +200,18 @@ func TestParseGenConfig(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, cli)
 	require.Equal(t, "gen-config", cli.Command)
+}
+
+func TestDoHelp(t *testing.T) {
+	err := doHelp("serve")
+	require.Nil(t, err)
+
+	err = doHelp("shell")
+	require.Nil(t, err)
+
+	err = doHelp("timeformat")
+	require.Nil(t, err)
+
+	err = doHelp("tz")
+	require.Nil(t, err)
 }
