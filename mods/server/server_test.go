@@ -37,6 +37,8 @@ var mqttServerAddress = ""
 var httpServer *httpd
 var httpServerAddress = ""
 
+var shellPort = 15622
+
 var shellArgs = []string{}
 
 func TestMain(m *testing.M) {
@@ -63,7 +65,6 @@ func TestMain(m *testing.M) {
 	grpcPort := 15655
 	httpPort := 15654
 	mqttPort := 15653
-	shellPort := 15622
 	machServerAddress = fmt.Sprintf("tcp://127.0.0.1:%d", machPort)
 	httpServerAddress = fmt.Sprintf("http://127.0.0.1:%d", httpPort)
 	mqttServerAddress = fmt.Sprintf("127.0.0.1:%d", mqttPort)
@@ -112,6 +113,12 @@ func TestMain(m *testing.M) {
 			"--password", "manager",
 			"-v", fmt.Sprintf("/work=%s", fileDir),
 		}
+		server.models.ShellProvider().SetDefaultShellCommand(
+			fmt.Sprintf("%q shell --server %s --user sys --password manager -v %q", binPath, httpServerAddress, fmt.Sprintf("/work=%s", fileDir)),
+		)
+		server.models.ShellProvider().SetDefaultJshCommand(
+			fmt.Sprintf("%q jsh -v %q", binPath, fmt.Sprintf("/work=%s", fileDir)),
+		)
 	}()
 
 	func(db api.Database) {
