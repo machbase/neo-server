@@ -71,7 +71,7 @@ type Config struct {
 	Machbase       MachbaseConfig
 	AuthHandler    AuthHandlerConfig
 	Shell          ShellConfig
-	Grpc           GrpcConfig
+	Grpc           GrpcConfig // deprecated, left for previous version's configuration file compatibility
 	Http           HttpConfig
 	Mqtt           MqttConfig
 	Jwt            JwtConfig
@@ -121,6 +121,7 @@ type AuthHandlerConfig struct {
 	Enabled bool
 }
 
+// deprecated, left for previous version's configuration file compatibility
 type GrpcConfig struct {
 	Listeners      []string
 	MaxRecvMsgSize int
