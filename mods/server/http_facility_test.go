@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -534,6 +535,23 @@ func TestBridge(t *testing.T) {
 	}
 	require.Equal(t, http.StatusOK, rsp.StatusCode, postRsp)
 
+	defer func() {
+		// ========================
+		// DELETE bridge-delete
+		rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/bridges/test-br", nil)
+
+		deleteRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+			Elapse  string `json:"elapse"`
+		}{}
+		err = json.Unmarshal(payload, &deleteRsp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
+	}()
+
 	// ========================
 	// POST bridge-add duplicate
 	b = &bytes.Buffer{}
@@ -567,7 +585,9 @@ func TestBridge(t *testing.T) {
 	}
 	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, deleteRsp)
 	require.False(t, deleteRsp.Success)
-	require.Contains(t, deleteRsp.Reason, "no such file")
+	if runtime.GOOS != "windows" {
+		require.Contains(t, deleteRsp.Reason, "no such file")
+	}
 
 	// ========================
 	// POST bridge-state test
@@ -611,21 +631,6 @@ func TestBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, stateRsp)
-
-	// ========================
-	// DELETE bridge-delete
-	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/bridges/test-br", nil)
-
-	deleteRsp = struct {
-		Success bool   `json:"success"`
-		Reason  string `json:"reason"`
-		Elapse  string `json:"elapse"`
-	}{}
-	err = json.Unmarshal(payload, &deleteRsp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
 }
 
 func TestSubscriber(t *testing.T) {
