@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/robfig/cron/v3"
@@ -485,65 +486,32 @@ func TestShell(t *testing.T) {
 	require.Equal(t, "not found", getRsp.Reason)
 }
 
-/*
 func TestBridge(t *testing.T) {
-	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true, ""),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wsvr.bridgeMgmtImpl = bridgeServerMock{}
-
-	router := wsvr.Router()
-
-	var b *bytes.Buffer
-	var w *httptest.ResponseRecorder
-	var req *http.Request
-	var expectStatus int
-
 	// accessToken
-	w = httptest.NewRecorder()
-	s, _, _ := NewMockServer(w)
-	err = s.Login("sys", "manager")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Shutdown()
+	jwt := HttpTestLogin(t, "sys", "manager")
 
 	// ========================
 	//GET bridge-list
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/bridges", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	rsp, payload := request(t, jwt, http.MethodGet, "/web/api/bridges", nil)
 
 	listRsp := struct {
-		Success bool                `json:"success"`
-		Reason  string              `json:"reason"`
-		Data    []*bridgerpc.Bridge `json:"data"`
-		Elapse  string              `json:"elapse"`
+		Success bool                 `json:"success"`
+		Reason  string               `json:"reason"`
+		Data    []*bridge.BridgeInfo `json:"data"`
+		Elapse  string               `json:"elapse"`
 	}{}
 
-	payload := w.Body.Bytes()
-	err = json.Unmarshal(payload, &listRsp)
+	err := json.Unmarshal(payload, &listRsp)
 	if err != nil {
 		t.Log("rsp", string(payload))
 		t.Fatal(err)
 	}
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, listRsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
 
 	// ========================
 	// POST bridge-add
-	b = &bytes.Buffer{}
+	b := &bytes.Buffer{}
 	bridgeReq := map[string]string{
 		"name": "test-br",
 		"type": "sqlite",
@@ -553,72 +521,53 @@ func TestBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/bridges", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/bridges", b)
 
-	rsp := struct {
+	postRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-	err = json.Unmarshal(w.Body.Bytes(), &rsp)
+	err = json.Unmarshal(payload, &postRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, postRsp)
 
 	// ========================
 	// POST bridge-add duplicate
 	b = &bytes.Buffer{}
 	bridgeReq = map[string]string{
-		"name": "existing-bridge",
-		"type": "mqtt",
-		"path": "tcp://localhost:1883",
+		"name": "test-br",
+		"type": "sqlite",
+		"path": "file::memory:?cache=shared",
 	}
 	if err = json.NewEncoder(b).Encode(bridgeReq); err != nil {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/bridges", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusBadRequest
-	require.Equal(t, expectStatus, w.Code)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/bridges", b)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
+	json.Unmarshal(payload, &postRsp)
+	require.False(t, postRsp.Success)
+	require.Equal(t, "'test-br' is duplicate bridge name.", postRsp.Reason)
 
 	// ========================
 	// DELETE bridge-delete
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("DELETE", "/web/api/bridges/test-br", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/bridges/non-existing-br", nil)
 
-	rsp = struct {
+	deleteRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-	err = json.Unmarshal(w.Body.Bytes(), &rsp)
+	err = json.Unmarshal(payload, &deleteRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, deleteRsp)
+	require.False(t, deleteRsp.Success)
+	require.Contains(t, deleteRsp.Reason, "no such file")
 
 	// ========================
 	// POST bridge-state test
@@ -629,27 +578,17 @@ func TestBridge(t *testing.T) {
 	if err = json.NewEncoder(b).Encode(stateReq); err != nil {
 		t.Fatal(err)
 	}
-
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/bridges/existing-bridge/state", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp = struct {
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/bridges/test-br/state", b)
+	stateRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-	err = json.Unmarshal(w.Body.Bytes(), &rsp)
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
 
 	// ========================
 	// POST bridge-state invalid
@@ -661,59 +600,57 @@ func TestBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/bridges/test-br/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/bridges/test-br/state", b)
+	stateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, stateRsp)
 
-	expectStatus = http.StatusBadRequest
-	require.Equal(t, expectStatus, w.Code)
+	// ========================
+	// DELETE bridge-delete
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/bridges/test-br", nil)
+
+	deleteRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &deleteRsp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
 }
 
 func TestSubscriber(t *testing.T) {
-	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true, ""),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wsvr.schedMgmtImpl = &schedServerMock{}
-	wsvr.bridgeMgmtImpl = bridgeServerMock{}
-
-	router := wsvr.Router()
-
-	var b *bytes.Buffer
-	var w *httptest.ResponseRecorder
-	var req *http.Request
-	var expectStatus int
-
-	// accessToken
-	w = httptest.NewRecorder()
-	s, _, _ := NewMockServer(w)
-	err = s.Login("sys", "manager")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Shutdown()
+	jwt := HttpTestLogin(t, "sys", "manager")
 
 	// ========================
-	// GET /api/subscribers
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/subscribers", nil)
-	if err != nil {
+	// POST add mqtt bridge for subscriber test
+	b := &bytes.Buffer{}
+	bridgeReq := map[string]string{
+		"name": "existing-bridge",
+		"type": "mqtt",
+		"path": "broker=" + mqttServerAddress + " id=client-id",
+	}
+	if err := json.NewEncoder(b).Encode(bridgeReq); err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	rsp, payload := request(t, jwt, http.MethodPost, "/web/api/bridges", b)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	defer func() {
+		// ========================
+		// DELETE mqtt bridge
+		rsp, _ = request(t, jwt, http.MethodDelete, "/web/api/bridges/existing-bridge", nil)
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+	}()
 
 	// ========================
 	// POST /api/subscribers  - add subscriber
@@ -734,45 +671,44 @@ func TestSubscriber(t *testing.T) {
 	}
 
 	b = &bytes.Buffer{}
-	if err = json.NewEncoder(b).Encode(addReq); err != nil {
+	if err := json.NewEncoder(b).Encode(addReq); err != nil {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/subscribers", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp := struct {
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers", b)
+	addRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-	err = json.Unmarshal(w.Body.Bytes(), &rsp)
+	err := json.Unmarshal(payload, &addRsp)
 	if err != nil {
-		t.Log(w.Body.String())
+		t.Log(string(payload))
 		t.Fatal(err)
 	}
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, addRsp)
 
 	// ========================
 	// GET /api/subscribers/:name
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/subscribers/eleven", nil)
-	if err != nil {
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/test-sub", nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+
+	// ========================
+	// GET /api/subscribers
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers", nil)
+	listRsp := struct {
+		Success bool                  `json:"success"`
+		Reason  string                `json:"reason"`
+		Data    []*scheduler.Schedule `json:"data"`
+		Elapse  string                `json:"elapse"`
+	}{}
+	if err := json.Unmarshal(payload, &listRsp); err != nil {
+		t.Log("rsp", string(payload))
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	require.Equal(t, "TEST-SUB", listRsp.Data[0].Name)
+	require.Equal(t, "existing-bridge", listRsp.Data[0].Bridge)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
 
 	// ========================
 	// POST /api/subscribers/:name/state START
@@ -784,17 +720,17 @@ func TestSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/subscribers/test-sub/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/test-sub/state", b)
+	stateRsp := struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
 
 	// ========================
 	// POST /api/subscribers/:name/state STOP
@@ -805,18 +741,17 @@ func TestSubscriber(t *testing.T) {
 	if err = json.NewEncoder(b).Encode(stateReq); err != nil {
 		t.Fatal(err)
 	}
-
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/subscribers/test-sub/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/test-sub/state", b)
+	stateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
 
 	// ========================
 	// POST /api/subscribers/:name/state invalid
@@ -828,33 +763,40 @@ func TestSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/subscribers/test-sub/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/test-sub/state", b)
+	stateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusBadRequest
-	require.Equal(t, expectStatus, w.Code)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, stateRsp)
 
 	// ========================
 	// DELETE /api/subscribers/:name
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("DELETE", "/web/api/subscribers/test-sub", nil)
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/subscribers/test-sub", nil)
+	deleteRsp := struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &deleteRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
+	require.True(t, deleteRsp.Success)
+	require.Equal(t, "success", deleteRsp.Reason)
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	// ========================
+	// GET /api/subscribers/:name after deletion
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/test-sub", nil)
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode)
+	require.Contains(t, string(payload), "no such file or directory")
 }
-*/
 
 func TestSshKey(t *testing.T) {
 	jwt := HttpTestLogin(t, "sys", "manager")
