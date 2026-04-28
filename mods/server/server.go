@@ -840,7 +840,6 @@ func (s *Server) startGrpcServer() error {
 	}
 	util.AddShutdownHook(func() { s.grpcd.Stop() })
 
-	tql.SetGrpcAddresses(s.Grpc.Listeners)
 	tql.SetHttpAddresses(s.Http.Listeners)
 
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})

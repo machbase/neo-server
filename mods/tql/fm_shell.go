@@ -7,28 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
-
-var _grpcServer string
-
-func SetGrpcAddresses(addrs []string) {
-	for _, addr := range addrs {
-		if strings.HasPrefix(addr, "unix://") && runtime.GOOS != "windows" {
-			_grpcServer = addr
-			break
-		}
-		if strings.HasPrefix(addr, "tcp://127.0.0.1:") {
-			_grpcServer = addr
-		} else {
-			_grpcServer = addr
-		}
-	}
-}
 
 var _httpServer string
 
