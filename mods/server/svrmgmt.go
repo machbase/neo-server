@@ -27,16 +27,29 @@ import (
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"google.golang.org/grpc/peer"
 )
 
-func (s *Server) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
+type ListKeyResponse struct {
+	Success bool       `json:"success"`
+	Reason  string     `json:"reason"`
+	Elapse  string     `json:"elapse"`
+	Keys    []*KeyInfo `json:"keys"`
+}
+
+type KeyInfo struct {
+	Idx       int    `json:"idx"`
+	Id        string `json:"id"`
+	NotBefore int64  `json:"notBefore"`
+	NotAfter  int64  `json:"notAfter"`
+}
+
+func (s *Server) ListKey(context.Context) (*ListKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.ListKeyResponse{}
+	rsp := &ListKeyResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -52,7 +65,8 @@ func (s *Server) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyRe
 			return true
 		}
 
-		item := mgmt.KeyInfo{
+		item := KeyInfo{
+			Idx:       len(rsp.Keys),
 			Id:        cert.Subject.CommonName,
 			NotBefore: cert.NotBefore.Unix(),
 			NotAfter:  cert.NotAfter.Unix(),
@@ -70,9 +84,26 @@ func (s *Server) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyRe
 	return rsp, nil
 }
 
-func (s *Server) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKeyResponse, error) {
+type GenKeyRequest struct {
+	Id        string `json:"id"`
+	Type      string `json:"type"`      // rsa, ecdsa
+	NotBefore int64  `json:"notBefore"` // unix epoch in seconds
+	NotAfter  int64  `json:"notAfter"`  // unix epoch in seconds
+}
+
+type GenKeyResponse struct {
+	Success     bool   `json:"success"`
+	Reason      string `json:"reason"`
+	Elapse      string `json:"elapse"`
+	Id          string `json:"id"`
+	Token       string `json:"token"`
+	Key         string `json:"key"`
+	Certificate string `json:"certificate"`
+}
+
+func (s *Server) GenKey(ctx context.Context, req *GenKeyRequest) (*GenKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.GenKeyResponse{Reason: "not specified"}
+	rsp := &GenKeyResponse{Reason: "not specified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -133,9 +164,19 @@ func (s *Server) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.Gen
 	return rsp, nil
 }
 
-func (s *Server) DelKey(ctx context.Context, req *mgmt.DelKeyRequest) (*mgmt.DelKeyResponse, error) {
+type DelKeyRequest struct {
+	Id string `json:"id"`
+}
+
+type DelKeyResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) DelKey(ctx context.Context, req *DelKeyRequest) (*DelKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.DelKeyResponse{}
+	rsp := &DelKeyResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -151,9 +192,16 @@ func (s *Server) DelKey(ctx context.Context, req *mgmt.DelKeyRequest) (*mgmt.Del
 	return rsp, nil
 }
 
-func (s *Server) ServerKey(ctx context.Context, req *mgmt.ServerKeyRequest) (*mgmt.ServerKeyResponse, error) {
+type ServerKeyResponse struct {
+	Success     bool   `json:"success"`
+	Reason      string `json:"reason"`
+	Elapse      string `json:"elapse"`
+	Certificate string `json:"certificate"`
+}
+
+func (s *Server) ServerKey(ctx context.Context) (*ServerKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.ServerKeyResponse{Reason: "unspecified"}
+	rsp := &ServerKeyResponse{Reason: "unspecified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -296,15 +344,28 @@ func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error
 	}
 }
 
-func (s *Server) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShellResponse, error) {
+type ListShellResponse struct {
+	Success bool               `json:"success"`
+	Reason  string             `json:"reason"`
+	Elapse  string             `json:"elapse"`
+	Shells  []*ShellDefinition `json:"shells"`
+}
+
+type ShellDefinition struct {
+	Id      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
+func (s *Server) ListShell(context.Context) (*ListShellResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.ListShellResponse{}
+	rsp := &ListShellResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
 	lst := s.models.ShellProvider().GetAllShells(false)
 	for _, define := range lst {
-		rsp.Shells = append(rsp.Shells, &mgmt.ShellDefinition{
+		rsp.Shells = append(rsp.Shells, &ShellDefinition{
 			Id:      define.Id,
 			Name:    define.Label,
 			Command: define.Command,
@@ -314,9 +375,20 @@ func (s *Server) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListS
 	return rsp, nil
 }
 
-func (s *Server) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.AddShellResponse, error) {
+type AddShellRequest struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
+type AddShellResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) AddShell(ctx context.Context, req *AddShellRequest) (*AddShellResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.AddShellResponse{Reason: "not specified"}
+	rsp := &AddShellResponse{Reason: "not specified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -351,9 +423,19 @@ func (s *Server) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt
 	return rsp, nil
 }
 
-func (s *Server) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt.DelShellResponse, error) {
+type DelShellRequest struct {
+	Id string `json:"id"`
+}
+
+type DelShellResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) DelShell(ctx context.Context, req *DelShellRequest) (*DelShellResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.DelShellResponse{}
+	rsp := &DelShellResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -365,9 +447,22 @@ func (s *Server) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt
 	return rsp, nil
 }
 
-func (s *Server) ListSshKey(ctx context.Context, req *mgmt.ListSshKeyRequest) (*mgmt.ListSshKeyResponse, error) {
+type ListSshKeyResponse struct {
+	Success bool      `json:"success"`
+	Reason  string    `json:"reason"`
+	Elapse  string    `json:"elapse"`
+	SshKeys []*SshKey `json:"sshKeys"`
+}
+
+type SshKey struct {
+	KeyType     string `json:"keyType"`
+	Fingerprint string `json:"fingerprint"`
+	Comment     string `json:"comment"`
+}
+
+func (s *Server) ListSshKey(ctx context.Context) (*ListSshKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.ListSshKeyResponse{Reason: "not-implemented"}
+	rsp := &ListSshKeyResponse{Reason: "not-implemented"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -377,15 +472,27 @@ func (s *Server) ListSshKey(ctx context.Context, req *mgmt.ListSshKeyRequest) (*
 		return nil, err
 	}
 	for _, rec := range list {
-		rsp.SshKeys = append(rsp.SshKeys, &mgmt.SshKey{KeyType: rec.KeyType, Fingerprint: rec.Fingerprint, Comment: rec.Comment})
+		rsp.SshKeys = append(rsp.SshKeys, &SshKey{KeyType: rec.KeyType, Fingerprint: rec.Fingerprint, Comment: rec.Comment})
 	}
 	rsp.Success, rsp.Reason = true, "success"
 	return rsp, nil
 }
 
-func (s *Server) AddSshKey(ctx context.Context, req *mgmt.AddSshKeyRequest) (*mgmt.AddSshKeyResponse, error) {
+type AddSshKeyRequest struct {
+	KeyType string `json:"keyType"`
+	Key     string `json:"key"`
+	Comment string `json:"comment"`
+}
+
+type AddSshKeyResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) AddSshKey(ctx context.Context, req *AddSshKeyRequest) (*AddSshKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.AddSshKeyResponse{Reason: "not-implemented"}
+	rsp := &AddSshKeyResponse{Reason: "not-implemented"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -399,9 +506,19 @@ func (s *Server) AddSshKey(ctx context.Context, req *mgmt.AddSshKeyRequest) (*mg
 	return rsp, nil
 }
 
-func (s *Server) DelSshKey(ctx context.Context, req *mgmt.DelSshKeyRequest) (*mgmt.DelSshKeyResponse, error) {
+type DelSshKeyRequest struct {
+	Fingerprint string `json:"fingerprint"`
+}
+
+type DelSshKeyResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) DelSshKey(ctx context.Context, req *DelSshKeyRequest) (*DelSshKeyResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.DelSshKeyResponse{Reason: "not-implemented"}
+	rsp := &DelSshKeyResponse{Reason: "not-implemented"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -415,8 +532,14 @@ func (s *Server) DelSshKey(ctx context.Context, req *mgmt.DelSshKeyRequest) (*mg
 	return rsp, nil
 }
 
-// // mgmt server implements
-func (s *Server) Shutdown(ctx context.Context, _ *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
+type ShutdownResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+// mgmt server implements
+func (s *Server) Shutdown(ctx context.Context) (*ShutdownResponse, error) {
 	if ctx, ok := ctx.(*gin.Context); ok {
 		remoteAddr := ctx.RemoteIP()
 		isTcpLocal := false
@@ -433,7 +556,7 @@ func (s *Server) Shutdown(ctx context.Context, _ *mgmt.ShutdownRequest) (*mgmt.S
 		return nil, nil
 	}
 	tick := time.Now()
-	rsp := &mgmt.ShutdownResponse{}
+	rsp := &ShutdownResponse{}
 	if runtime.GOOS != "windows" {
 		p, ok := peer.FromContext(ctx)
 		if !ok {
@@ -471,17 +594,33 @@ func (s *Server) Shutdown(ctx context.Context, _ *mgmt.ShutdownRequest) (*mgmt.S
 	return rsp, nil
 }
 
-func (s *Server) ServicePorts(ctx context.Context, req *mgmt.ServicePortsRequest) (*mgmt.ServicePortsResponse, error) {
-	tick := time.Now()
-	rsp := &mgmt.ServicePortsResponse{}
+type ServicePortsRequest struct {
+	Service string `json:"service"`
+}
 
-	ret := []*mgmt.Port{}
+type ServicePortsResponse struct {
+	Success bool           `json:"success"`
+	Reason  string         `json:"reason"`
+	Elapse  string         `json:"elapse"`
+	Ports   []*ServicePort `json:"ports"`
+}
+
+type ServicePort struct {
+	Service string `json:"service"`
+	Address string `json:"address"`
+}
+
+func (s *Server) ServicePorts(ctx context.Context, req *ServicePortsRequest) (*ServicePortsResponse, error) {
+	tick := time.Now()
+	rsp := &ServicePortsResponse{}
+
+	ret := []*ServicePort{}
 	ports, err := s.getServicePorts(req.Service)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range ports {
-		ret = append(ret, &mgmt.Port{
+		ret = append(ret, &ServicePort{
 			Service: p.Service,
 			Address: p.Address,
 		})
@@ -492,9 +631,37 @@ func (s *Server) ServicePorts(ctx context.Context, req *mgmt.ServicePortsRequest
 	return rsp, nil
 }
 
-func (s *Server) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*mgmt.ServerInfoResponse, error) {
+type ServerInfoResponse struct {
+	Success bool     `json:"success"`
+	Reason  string   `json:"reason"`
+	Elapse  string   `json:"elapse"`
+	Version *Version `json:"version"`
+	Runtime *Runtime `json:"runtime"`
+}
+
+type Version struct {
+	Major          int32  `json:"major"`
+	Minor          int32  `json:"minor"`
+	Patch          int32  `json:"patch"`
+	GitSHA         string `json:"gitSHA"`
+	BuildTimestamp string `json:"buildTimestamp"`
+	BuildCompiler  string `json:"buildCompiler"`
+	Engine         string `json:"engine"`
+}
+
+type Runtime struct {
+	OS             string            `json:"OS,omitempty"`
+	Arch           string            `json:"arch,omitempty"`
+	Pid            int32             `json:"pid,omitempty"`
+	UptimeInSecond int64             `json:"uptimeInSecond,omitempty"`
+	Processes      int32             `json:"processes,omitempty"`
+	Goroutines     int32             `json:"goroutines,omitempty"`
+	Mem            map[string]uint64 `json:"mem,omitempty"`
+}
+
+func (s *Server) ServerInfo(ctx context.Context) (*ServerInfoResponse, error) {
 	tick := time.Now()
-	rsp := &mgmt.ServerInfoResponse{}
+	rsp := &ServerInfoResponse{}
 	defer func() {
 		if panic := recover(); panic != nil {
 			s.log.Error("GetServerInfo panic recover", panic)
@@ -514,8 +681,29 @@ func (s *Server) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*
 	return rsp, nil
 }
 
-func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt.SessionsResponse, error) {
-	rsp := &mgmt.SessionsResponse{}
+type SessionsRequest struct {
+	Statz      bool `json:"statz"`
+	Sessions   bool `json:"sessions"`
+	ResetStatz bool `json:"resetStatz"`
+}
+
+type SessionsResponse struct {
+	Success  bool              `json:"success"`
+	Reason   string            `json:"reason"`
+	Elapse   string            `json:"elapse"`
+	Statz    *server_api.Statz `json:"statz"`
+	Sessions []*Session        `json:"sessions"`
+}
+
+type Session struct {
+	Id            string `json:"id"`
+	CreTime       int64  `json:"creTime"`
+	LatestSqlTime int64  `json:"latestSqlTime"`
+	LatestSql     string `json:"latestSql"`
+}
+
+func (s *Server) Sessions(ctx context.Context, req *SessionsRequest) (*SessionsResponse, error) {
+	rsp := &SessionsResponse{}
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
@@ -532,10 +720,10 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 		rsp.Statz = server_api.StatzSnapshot()
 	}
 	if req.Sessions {
-		sessions := []*mgmt.Session{}
+		sessions := []*Session{}
 		if db, ok := api.Default().(*machsvr.Database); ok {
 			db.ListWatcher(func(st *machsvr.ConnState) bool {
-				sessions = append(sessions, &mgmt.Session{
+				sessions = append(sessions, &Session{
 					Id:            st.Id,
 					CreTime:       st.CreatedTime.UnixNano(),
 					LatestSqlTime: st.LatestTime.UnixNano(),
@@ -551,8 +739,19 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 	return rsp, nil
 }
 
-func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) (*mgmt.KillSessionResponse, error) {
-	rsp := &mgmt.KillSessionResponse{}
+type KillSessionRequest struct {
+	Id    string `json:"id"`
+	Force bool   `json:"force"`
+}
+
+type KillSessionResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) KillSession(ctx context.Context, req *KillSessionRequest) (*KillSessionResponse, error) {
+	rsp := &KillSessionResponse{}
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
@@ -575,8 +774,26 @@ func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) 
 	return rsp, nil
 }
 
-func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest) (*mgmt.LimitSessionResponse, error) {
-	rsp := &mgmt.LimitSessionResponse{}
+type LimitSessionRequest struct {
+	Cmd          string `json:"cmd"`                    // get, set
+	MaxOpenConn  int32  `json:"maxOpenConn,omitempty"`  // set
+	MaxOpenQuery int32  `json:"maxOpenQuery,omitempty"` // set
+	MaxPoolSize  int32  `json:"maxPoolSize,omitempty"`  // set
+}
+
+type LimitSessionResponse struct {
+	Success           bool   `json:"success"`
+	Reason            string `json:"reason"`
+	Elapse            string `json:"elapse"`
+	MaxOpenConn       int32  `json:"maxOpenConn,omitempty"`       // get
+	RemainedOpenConn  int32  `json:"remainedOpenConn,omitempty"`  // get
+	MaxOpenQuery      int32  `json:"maxOpenQuery,omitempty"`      // get
+	RemainedOpenQuery int32  `json:"remainedOpenQuery,omitempty"` // get
+	MaxPoolSize       int32  `json:"maxPoolSize,omitempty"`       // get
+}
+
+func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*LimitSessionResponse, error) {
+	rsp := &LimitSessionResponse{}
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
@@ -613,8 +830,22 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 	return rsp, nil
 }
 
-func (s *Server) HttpDebugMode(ctx context.Context, req *mgmt.HttpDebugModeRequest) (*mgmt.HttpDebugModeResponse, error) {
-	rsp := &mgmt.HttpDebugModeResponse{}
+type HttpDebugModeRequest struct {
+	Cmd        string `json:"cmd"`                  // get, set
+	Enable     bool   `json:"enable,omitempty"`     // set
+	LogLatency int64  `json:"logLatency,omitempty"` // set
+}
+
+type HttpDebugModeResponse struct {
+	Success    bool   `json:"success"`
+	Reason     string `json:"reason"`
+	Elapse     string `json:"elapse"`
+	Enable     bool   `json:"enable,omitempty"`     // get
+	LogLatency int64  `json:"logLatency,omitempty"` // get
+}
+
+func (s *Server) HttpDebugMode(ctx context.Context, req *HttpDebugModeRequest) (*HttpDebugModeResponse, error) {
+	rsp := &HttpDebugModeResponse{}
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
@@ -638,7 +869,7 @@ var maxProcessors int32
 var pid int32
 var ver *mods.Version
 
-func (s *Server) getServerInfo() (*mgmt.ServerInfoResponse, error) {
+func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
 	if maxProcessors == 0 {
 		maxProcessors = int32(runtime.GOMAXPROCS(-1))
 	}
@@ -649,8 +880,8 @@ func (s *Server) getServerInfo() (*mgmt.ServerInfoResponse, error) {
 		pid = int32(os.Getpid())
 	}
 
-	rsp := &mgmt.ServerInfoResponse{
-		Version: &mgmt.Version{
+	rsp := &ServerInfoResponse{
+		Version: &Version{
 			Engine:         machsvr.LinkInfo(),
 			Major:          int32(ver.Major),
 			Minor:          int32(ver.Minor),
@@ -659,7 +890,7 @@ func (s *Server) getServerInfo() (*mgmt.ServerInfoResponse, error) {
 			BuildTimestamp: mods.BuildTimestamp(),
 			BuildCompiler:  mods.BuildCompiler(),
 		},
-		Runtime: &mgmt.Runtime{
+		Runtime: &Runtime{
 			OS:             runtime.GOOS,
 			Arch:           runtime.GOARCH,
 			Pid:            pid,

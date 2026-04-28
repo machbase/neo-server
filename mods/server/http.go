@@ -31,7 +31,6 @@ import (
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
@@ -84,7 +83,6 @@ type httpd struct {
 	listeners         []net.Listener
 	jwtCache          JwtCache
 	bakd              *backupd
-	mgmtImpl          mgmt.ManagementServer
 	schedMgmtImpl     schedule.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
 	bridgeRuntimeImpl bridge.RuntimeServer

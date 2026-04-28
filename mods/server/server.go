@@ -34,7 +34,6 @@ import (
 	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -54,7 +53,6 @@ import (
 )
 
 type Server struct {
-	mgmt.UnimplementedManagementServer
 	Config
 
 	log   logging.Log
@@ -833,7 +831,6 @@ func (s *Server) startGrpcServer() error {
 		WithGrpcMaxRecvMsgSize(s.Grpc.MaxRecvMsgSize*1024*1024),
 		WithGrpcMaxSendMsgSize(s.Grpc.MaxSendMsgSize*1024*1024),
 		WithGrpcTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
-		WithGrpcManagementServer(s),
 		WithGrpcBridgeServer(s.bridgeSvc),
 		WithGrpcScheduleServer(s.schedSvc),
 		WithGrpcServerInsecure(s.Grpc.Insecure),
@@ -949,7 +946,6 @@ func (s *Server) startHttpServer() error {
 		WithHttpListenAddress(s.Http.Listeners...),
 		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
 		WithHttpTqlLoader(tql.NewLoader()),
-		WithHttpManagementServer(s),        // add, key
 		WithHttpScheduleServer(s.schedSvc), // add, timer
 		WithHttpBridgeServer(s.bridgeSvc),
 		WithHttpServerSideFileSystem(ssfs.Default()),
@@ -1580,8 +1576,8 @@ func (s *Server) deleteSSHKey(key string) error {
 	return s.RemoveAuthorizedSshKey(key)
 }
 
-func (s *Server) listKeys(ctx context.Context) ([]*mgmt.KeyInfo, error) {
-	rsp, err := s.ListKey(ctx, &mgmt.ListKeyRequest{})
+func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
+	rsp, err := s.ListKey(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1589,7 +1585,7 @@ func (s *Server) listKeys(ctx context.Context) ([]*mgmt.KeyInfo, error) {
 		return nil, errors.New(rsp.Reason)
 	}
 	if rsp.Keys == nil {
-		return []*mgmt.KeyInfo{}, nil
+		return []*KeyInfo{}, nil
 	}
 	return rsp.Keys, nil
 }
@@ -1601,7 +1597,7 @@ func (s *Server) genKey(ctx context.Context, id string) (any, error) {
 		return nil, fmt.Errorf("id contains invalid letter, use only alphnum and _.@-")
 	}
 
-	rsp, err := s.GenKey(ctx, &mgmt.GenKeyRequest{
+	rsp, err := s.GenKey(ctx, &GenKeyRequest{
 		Id:        id,
 		Type:      "ec",
 		NotBefore: time.Now().Unix(),
@@ -1622,7 +1618,7 @@ func (s *Server) genKey(ctx context.Context, id string) (any, error) {
 }
 
 func (s *Server) deleteKey(ctx context.Context, id string) error {
-	rsp, err := s.DelKey(ctx, &mgmt.DelKeyRequest{
+	rsp, err := s.DelKey(ctx, &DelKeyRequest{
 		Id: id,
 	})
 	if err != nil {
@@ -1635,7 +1631,7 @@ func (s *Server) deleteKey(ctx context.Context, id string) error {
 }
 
 func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
-	rsp, err := s.ServerKey(ctx, &mgmt.ServerKeyRequest{})
+	rsp, err := s.ServerKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -1779,8 +1775,8 @@ func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string
 	return m, nil
 }
 
-func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
-	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
+func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
+	rsp, err := s.Sessions(ctx, &SessionsRequest{
 		Statz: false, Sessions: true, ResetStatz: false,
 	})
 	if err != nil {
@@ -1790,13 +1786,13 @@ func (s *Server) listSessions(ctx context.Context) ([]*mgmt.Session, error) {
 		return nil, errors.New(rsp.Reason)
 	}
 	if rsp.Sessions == nil {
-		return []*mgmt.Session{}, nil
+		return []*Session{}, nil
 	}
 	return rsp.Sessions, nil
 }
 
 func (s *Server) killSession(ctx context.Context, id string, force bool) error {
-	rsp, err := s.KillSession(ctx, &mgmt.KillSessionRequest{
+	rsp, err := s.KillSession(ctx, &KillSessionRequest{
 		Id:    id,
 		Force: force,
 	})
@@ -1809,8 +1805,8 @@ func (s *Server) killSession(ctx context.Context, id string, force bool) error {
 	return nil
 }
 
-func (s *Server) statSession(ctx context.Context, reset bool) (*mgmt.Statz, error) {
-	rsp, err := s.Sessions(ctx, &mgmt.SessionsRequest{
+func (s *Server) statSession(ctx context.Context, reset bool) (*server_api.Statz, error) {
+	rsp, err := s.Sessions(ctx, &SessionsRequest{
 		Statz: true, Sessions: false, ResetStatz: reset,
 	})
 	if err != nil {
@@ -1831,7 +1827,7 @@ type SessionLimit struct {
 }
 
 func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
-	rsp, err := s.LimitSession(ctx, &mgmt.LimitSessionRequest{
+	rsp, err := s.LimitSession(ctx, &LimitSessionRequest{
 		Cmd: "get",
 	})
 	if err != nil {
@@ -1872,7 +1868,7 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 		}
 	}
 
-	rsp, err := s.LimitSession(ctx, &mgmt.LimitSessionRequest{
+	rsp, err := s.LimitSession(ctx, &LimitSessionRequest{
 		Cmd:          "set",
 		MaxPoolSize:  int32(limit.MaxPoolSize),
 		MaxOpenConn:  int32(limit.MaxOpenConn),
@@ -1965,6 +1961,7 @@ func (s *Server) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
 		switch record[0] {
 		case "ssh-rsa":
 		case "ecdsa-sha2-nistp256":
+		case "ed25519":
 		default:
 			continue
 		}
@@ -1980,6 +1977,7 @@ func (s *Server) AddAuthorizedSshKey(keyType string, key string, comment string)
 	switch keyType {
 	case "ssh-rsa":
 	case "ecdsa-sha2-nistp256":
+	case "ed25519":
 	default:
 		return fmt.Errorf("key type '%s' is not supported", keyType)
 	}

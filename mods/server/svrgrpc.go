@@ -16,7 +16,6 @@ import (
 
 	"github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machsvr"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -69,13 +68,6 @@ func WithGrpcTlsCreds(keyPath string, certPath string) Option {
 	}
 }
 
-// mgmt implements
-func WithGrpcManagementServer(handler mgmt.ManagementServer) Option {
-	return func(s *grpcd) {
-		s.mgmtImpl = handler
-	}
-}
-
 // bridge implements
 func WithGrpcBridgeServer(handler any) Option {
 	return func(s *grpcd) {
@@ -112,7 +104,6 @@ type grpcd struct {
 	ignoreInsecure  bool
 
 	machImpl          *machsvr.RPCServer
-	mgmtImpl          mgmt.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
 	bridgeRuntimeImpl bridge.RuntimeServer
 	schedMgmtImpl     schedule.ManagementServer
@@ -151,11 +142,6 @@ func (svr *grpcd) Start() error {
 	// create grpc server
 	svr.rpcServer = grpc.NewServer(grpcOptions...)
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
-
-	if svr.mgmtImpl != nil {
-		mgmt.RegisterManagementServer(svr.mgmtServer, svr.mgmtImpl)
-		mgmt.RegisterManagementServer(svr.mgmtServerInsecure, svr.mgmtImpl)
-	}
 
 	// mgmtServer serves bridge management service
 	if svr.bridgeMgmtImpl != nil {

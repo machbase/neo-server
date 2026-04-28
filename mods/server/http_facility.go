@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -466,18 +465,11 @@ func (svr *httpd) handleDeleteShell(ctx *gin.Context) {
 	}
 }
 
-type KeyInfo struct {
-	Idx       int    `json:"idx"`
-	Id        string `json:"id"`
-	NotBefore int64  `json:"notBefore"`
-	NotAfter  int64  `json:"notAfter"`
-}
-
 func (svr *httpd) handleKeys(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	mgmtRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
+	mgmtRsp, err := svr.authServer.ListKey(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -527,7 +519,7 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 	}
 
 	// name duplicate
-	listRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
+	listRsp, err := svr.authServer.ListKey(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -565,7 +557,7 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 		req.NotAfter = time.Now().Add(10 * time.Hour * 24 * 365).Unix() // 10 years
 	}
 
-	genRsp, err := svr.mgmtImpl.GenKey(ctx, &mgmt.GenKeyRequest{
+	genRsp, err := svr.authServer.GenKey(ctx, &GenKeyRequest{
 		Id:        name,
 		Type:      "ec",
 		NotBefore: req.NotBefore,
@@ -584,7 +576,7 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 		return
 	}
 
-	serverRsp, err := svr.mgmtImpl.ServerKey(ctx, &mgmt.ServerKeyRequest{})
+	serverRsp, err := svr.authServer.ServerKey(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -661,7 +653,7 @@ func (svr *httpd) handleKeysDel(ctx *gin.Context) {
 		return
 	}
 
-	mgmtRsp, err := svr.mgmtImpl.DelKey(ctx, &mgmt.DelKeyRequest{
+	mgmtRsp, err := svr.authServer.DelKey(ctx, &DelKeyRequest{
 		Id: keyId,
 	})
 	if err != nil {
@@ -687,7 +679,7 @@ func (svr *httpd) handleSshKeys(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	mgmtRsp, err := svr.mgmtImpl.ListSshKey(ctx, &mgmt.ListSshKeyRequest{})
+	mgmtRsp, err := svr.authServer.ListSshKey(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -735,7 +727,7 @@ func (svr *httpd) handleSshKeysAdd(ctx *gin.Context) {
 
 	// 중복검사
 
-	mgmtRsp, err := svr.mgmtImpl.AddSshKey(ctx, &mgmt.AddSshKeyRequest{
+	mgmtRsp, err := svr.authServer.AddSshKey(ctx, &AddSshKeyRequest{
 		KeyType: fields[0], Key: fields[1], Comment: fields[2],
 	})
 	if err != nil {
@@ -763,7 +755,7 @@ func (svr *httpd) handleSshKeysDel(ctx *gin.Context) {
 
 	fingerPrint := ctx.Param("fingerprint")
 
-	mgmtRsp, err := svr.mgmtImpl.DelSshKey(ctx, &mgmt.DelSshKeyRequest{
+	mgmtRsp, err := svr.authServer.DelSshKey(ctx, &DelSshKeyRequest{
 		Fingerprint: fingerPrint,
 	})
 	if err != nil {

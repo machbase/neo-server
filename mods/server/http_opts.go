@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -190,12 +189,6 @@ func WithHttpQueryCypher(algAndKey string) HttpOption {
 func WithHttpMqttWsHandlerFunc(fn http.HandlerFunc) HttpOption {
 	return func(s *httpd) {
 		s.mqttWsHandler = gin.WrapF(fn)
-	}
-}
-
-func WithHttpManagementServer(handler mgmt.ManagementServer) HttpOption {
-	return func(s *httpd) {
-		s.mgmtImpl = handler
 	}
 }
 

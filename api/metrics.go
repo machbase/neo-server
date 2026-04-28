@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
@@ -127,8 +126,32 @@ func elapseAvgMax(key string) (uint64, uint64, int64) {
 	return 0, 0, 0
 }
 
-func StatzSnapshot() *mgmt.Statz {
-	ret := &mgmt.Statz{}
+type Statz struct {
+	Conns          int64  `json:"conns"`
+	Stmts          int64  `json:"stmts"`
+	Appenders      int64  `json:"appenders"`
+	ConnsInUse     int32  `json:"connsInUse"`
+	StmtsInUse     int32  `json:"stmtsInUse"`
+	AppendersInUse int32  `json:"appendersInUse"`
+	RawConns       int32  `json:"rawConns"`
+	ConnWaitTime   uint64 `json:"connWaitTime"`
+	ConnUseTime    uint64 `json:"connUseTime"`
+	QueryHwm       uint64 `json:"queryHwm"`
+	QueryHwmSql    string `json:"queryHwmSql"`
+	QueryHwmExec   uint64 `json:"queryHwmExec"`
+	QueryHwmWait   uint64 `json:"queryHwmWait"`
+	QueryHwmFetch  uint64 `json:"queryHwmFetch"`
+	QueryHwmSqlArg string `json:"queryHwmSqlArg"`
+	QueryExecHwm   uint64 `json:"queryExecHwm"`
+	QueryExecAvg   uint64 `json:"queryExecAvg"`
+	QueryWaitHwm   uint64 `json:"queryWaitHwm"`
+	QueryWaitAvg   uint64 `json:"queryWaitAvg"`
+	QueryFetchHwm  uint64 `json:"queryFetchHwm"`
+	QueryFetchAvg  uint64 `json:"queryFetchAvg"`
+}
+
+func StatzSnapshot() *Statz {
+	ret := &Statz{}
 	ret.ConnWaitTime, _, _ = elapseAvgMax("machbase:session:conn:wait_time")
 	ret.ConnUseTime, _, ret.Conns = elapseAvgMax("machbase:session:conn:use_time")
 	ret.ConnsInUse = int32(metricConnsInUse.Load())

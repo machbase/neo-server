@@ -461,6 +461,31 @@ func TestRefsFiles(t *testing.T) {
 	require.Equal(t, 3, len(obj.Data.Refs[2].Items))
 }
 
+func HttpTestLogin(t *testing.T, username, password string) *LoginRsp {
+	t.Helper()
+
+	b := &bytes.Buffer{}
+	loginReq := &LoginReq{
+		LoginName: username,
+		Password:  password,
+	}
+	if err := json.NewEncoder(b).Encode(loginReq); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/login", b)
+	req.Header.Set("Content-type", "application/json")
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+
+	dec := json.NewDecoder(rsp.Body)
+	loginRsp := &LoginRsp{}
+	err = dec.Decode(loginRsp)
+	require.NoError(t, err)
+	rsp.Body.Close()
+	return loginRsp
+}
+
 func TestLoginRoute(t *testing.T) {
 	// wrong password case - login
 	b := &bytes.Buffer{}

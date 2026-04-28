@@ -275,7 +275,7 @@ func Protoc() error {
 	args := []string{}
 	if len(args) == 0 {
 		args = []string{
-			"mgmt", "bridge", "schedule",
+			"bridge", "schedule",
 		}
 	}
 

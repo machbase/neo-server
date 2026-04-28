@@ -2,199 +2,43 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"sync"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/api"
-	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
-	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 )
 
-type mockServer struct {
-	api.Database
-	svr *httptest.Server
-	w   *httptest.ResponseRecorder
-
-	accessToken  string
-	refreshToken string
-
-	neoShellAddress string
-	neoShellAccount map[string]string
-
-	ctx    *gin.Context
-	engine *gin.Engine
-}
-
-func (fda *mockServer) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
-	if user == "sys" && password == "manager" {
-		return true, "", nil
+func request(t *testing.T, jwt *LoginRsp, method, requestPath string, body io.Reader) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(method, httpServerAddress+requestPath, body)
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	return false, "invalid username or password", nil
-}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", jwt.AccessToken))
 
-func (fda *mockServer) Login(user string, password string) error {
-	var reader io.Reader = bytes.NewBufferString(
-		fmt.Sprintf(`{"loginName":"%s","password":"%s"}`, user, password))
-	fda.ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/login", reader)
-	fda.ctx.Request.Header.Set("Content-Type", "application/json")
-	fda.engine.HandleContext(fda.ctx)
-
-	if fda.w.Result().StatusCode != 200 {
-		return fmt.Errorf("login failure - %s", fda.w.Body.String())
-	}
-	loginRsp := &LoginRsp{}
-	json.Unmarshal(fda.w.Body.Bytes(), loginRsp)
-	fda.w.Body.Reset()
-
-	fda.accessToken = loginRsp.AccessToken
-	fda.refreshToken = loginRsp.RefreshToken
-	return nil
-}
-
-func (fda *mockServer) URL() string {
-	return fda.svr.URL
-}
-
-func (fda *mockServer) AccessToken() string {
-	return fda.accessToken
-}
-
-func (fda *mockServer) RefreshToken() string {
-	return fda.refreshToken
-}
-
-var singleMockServer sync.Mutex
-
-func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gin.Engine) {
-	singleMockServer.Lock()
-	ret := &mockServer{}
-	svr := &httpd{
-		log:      logging.GetLog("httpd-fake"),
-		db:       ret,
-		jwtCache: NewJwtCache(),
-	}
-	ctx, engine := gin.CreateTestContext(w)
-	engine.POST("/web/api/login", svr.handleLogin)
-	engine.GET("/web/api/console/:console_id/data", svr.handleConsoleData)
-	engine.Use(svr.handleJwtToken)
-	engine.POST("/web/api/tql", svr.handleTqlQuery)
-	engine.POST("/web/api/md", svr.handleMarkdown)
-	engine.GET("/web/api/refs/*path", svr.handleRefs)
-	engine.GET("/db/query", svr.handleQuery)
-	engine.POST("/db/query", svr.handleQuery)
-	engine.GET("/db/statz", svr.handleStatz)
-
-	ret.w = w
-	ret.ctx = ctx
-	ret.engine = engine
-
-	ret.svr = httptest.NewServer(engine)
-	return ret, ctx, engine
-}
-
-func (fds *mockServer) Shutdown() {
-	fds.svr.Close()
-	singleMockServer.Unlock()
-}
-
-type schedServerMock struct {
-	schedule.ManagementServer
-}
-
-func (mock *schedServerMock) GetSchedule(ctx context.Context, req *schedule.GetScheduleRequest) (*schedule.GetScheduleResponse, error) {
-	if req.Name == "eleven" {
-		return &schedule.GetScheduleResponse{Success: true, Schedule: &schedule.Schedule{
-			Name:      "eleven",
-			AutoStart: true,
-		}}, nil
-	}
-	return &schedule.GetScheduleResponse{Success: false}, nil
-}
-
-func (mock *schedServerMock) ListSchedule(context.Context, *schedule.ListScheduleRequest) (*schedule.ListScheduleResponse, error) {
-	return &schedule.ListScheduleResponse{Success: true}, nil
-}
-
-func (mock *schedServerMock) AddSchedule(ctx context.Context, req *schedule.AddScheduleRequest) (*schedule.AddScheduleResponse, error) {
-	if req.Type == "subscriber" {
-		return &schedule.AddScheduleResponse{Success: true}, nil
-	}
-	_, err := parseSchedule(req.Schedule)
-	if err != nil {
-		return &schedule.AddScheduleResponse{Success: false}, err
-	}
-	return &schedule.AddScheduleResponse{Success: true}, nil
-}
-
-func (mock *schedServerMock) StartSchedule(context.Context, *schedule.StartScheduleRequest) (*schedule.StartScheduleResponse, error) {
-	return &schedule.StartScheduleResponse{Success: true}, nil
-}
-
-func (mock *schedServerMock) StopSchedule(context.Context, *schedule.StopScheduleRequest) (*schedule.StopScheduleResponse, error) {
-	return &schedule.StopScheduleResponse{Success: true}, nil
-}
-
-func (mock *schedServerMock) UpdateSchedule(ctx context.Context, req *schedule.UpdateScheduleRequest) (*schedule.UpdateScheduleResponse, error) {
-	_, err := parseSchedule(req.Schedule)
-	if err != nil {
-		return nil, err
-	}
-	return &schedule.UpdateScheduleResponse{Success: true}, nil
-}
-
-func (mock *schedServerMock) DelSchedule(context.Context, *schedule.DelScheduleRequest) (*schedule.DelScheduleResponse, error) {
-	return &schedule.DelScheduleResponse{Success: true}, nil
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	payload, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+	rsp.Body.Close()
+	return rsp, payload
 }
 
 func TestTimer(t *testing.T) {
-	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true, ""),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wsvr.schedMgmtImpl = &schedServerMock{}
-
-	router := wsvr.Router()
-
-	var b *bytes.Buffer
-	var w *httptest.ResponseRecorder
-	var req *http.Request
-	var expectStatus int
-
-	// accessToken
-	w = httptest.NewRecorder()
-	s, _, _ := NewMockServer(w)
-	err = s.Login("sys", "manager")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Shutdown()
-
-	// ========================
-	//GET /api/timers
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/timers", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
+	// Login
+	jwt := HttpTestLogin(t, "sys", "manager")
+	timerName := fmt.Sprintf("timer-%d", time.Now().UnixNano())
+	invalidTimerName := fmt.Sprintf("%s-invalid", timerName)
 
 	listRsp := struct {
 		Success bool                 `json:"success"`
@@ -203,14 +47,15 @@ func TestTimer(t *testing.T) {
 		Elapse  string               `json:"elapse"`
 	}{}
 
-	payload := w.Body.Bytes()
-	err = json.Unmarshal(payload, &listRsp)
+	// ========================
+	//GET /api/timers
+	rsp, payload := request(t, jwt, http.MethodGet, "/web/api/timers", nil)
+	err := json.Unmarshal(payload, &listRsp)
 	if err != nil {
+		t.Log("rsp", string(payload))
 		t.Fatal(err)
 	}
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, listRsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
 
 	// ========================
 	// POST /api/timers  Success, correct schedule
@@ -218,43 +63,32 @@ func TestTimer(t *testing.T) {
 		Name      string `json:"name"`
 		AutoStart bool   `json:"autoStart"`
 		Schedule  string `json:"schedule"`
-		TqlPath   string `json:"tqlPath"`
+		Path      string `json:"path"`
 	}{
-		Name:      "twelve",
+		Name:      timerName,
 		AutoStart: false,
 		Schedule:  "0 30 * * * *",
-		TqlPath:   "timer.tql",
+		Path:      "csv_map.tql",
 	}
 
-	b = &bytes.Buffer{}
+	b := &bytes.Buffer{}
 	if err = json.NewEncoder(b).Encode(addReq); err != nil {
 		t.Fatal(err)
 	}
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers", b)
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp := struct {
+	addRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
 
-	payload = w.Body.Bytes()
-	err = json.Unmarshal(payload, &rsp)
+	err = json.Unmarshal(payload, &addRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, addRsp)
 
 	// ========================
 	// POST /api/timers  Failed, incorrect schedule
@@ -262,43 +96,31 @@ func TestTimer(t *testing.T) {
 		Name      string `json:"name"`
 		AutoStart bool   `json:"autoStart"`
 		Schedule  string `json:"schedule"`
-		TqlPath   string `json:"tqlPath"`
+		Path      string `json:"path"`
 	}{
-		Name:      "twelve",
+		Name:      invalidTimerName,
 		AutoStart: false,
 		Schedule:  "* * a b c d ",
-		TqlPath:   "timer.tql",
+		Path:      "csv_map.tql",
 	}
 
 	b = &bytes.Buffer{}
 	if err = json.NewEncoder(b).Encode(addReq); err != nil {
 		t.Fatal(err)
 	}
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers", b)
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp = struct {
+	addRsp = struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
 
-	payload = w.Body.Bytes()
-	err = json.Unmarshal(payload, &rsp)
+	err = json.Unmarshal(payload, &addRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	expectStatus = http.StatusInternalServerError
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, addRsp)
 
 	// ========================
 	// POST /api/timers/:name/state  START
@@ -313,30 +135,17 @@ func TestTimer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers/twelve/state", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp = struct {
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers/"+timerName+"/state", b)
+	stateRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-
-	payload = w.Body.Bytes()
-	err = json.Unmarshal(payload, &rsp)
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
 
 	// ========================
 	// POST /api/timers/:name/state  Stop
@@ -351,30 +160,17 @@ func TestTimer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers/eleven/state", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp = struct {
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers/"+timerName+"/state", b)
+	stateRsp = struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-
-	payload = w.Body.Bytes()
-	err = json.Unmarshal(payload, &rsp)
+	err = json.Unmarshal(payload, &stateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
 
 	// ========================
 	// PUT /api/timers/:name Update
@@ -385,7 +181,7 @@ func TestTimer(t *testing.T) {
 	}{
 		AutoStart: true,
 		Schedule:  "0 30 * * * *",
-		Path:      "example.tql",
+		Path:      "csv_map.tql",
 	}
 
 	b = &bytes.Buffer{}
@@ -393,57 +189,31 @@ func TestTimer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("PUT", "/web/api/timers/eleven", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp = struct {
+	rsp, payload = request(t, jwt, http.MethodPut, "/web/api/timers/"+timerName, b)
+	updateRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-
-	payload = w.Body.Bytes()
-	err = json.Unmarshal(payload, &rsp)
+	err = json.Unmarshal(payload, &updateRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, updateRsp)
 
 	// ========================
 	// DELETE /api/timers/:name
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("DELETE", "/web/api/timers/eleven", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	rsp = struct {
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/timers/"+timerName, nil)
+	deleteRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-
-	payload = w.Body.Bytes()
-	err = json.Unmarshal(payload, &rsp)
+	err = json.Unmarshal(payload, &deleteRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, rsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
 }
 
 func parseSchedule(schedule string) (cron.Schedule, error) {
@@ -455,75 +225,18 @@ func parseSchedule(schedule string) (cron.Schedule, error) {
 	}
 }
 
-type mgmtServerMock struct {
-	mgmt.UnimplementedManagementServer
-}
-
-func (mock *mgmtServerMock) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
-	return &mgmt.ListKeyResponse{Success: true}, nil
-}
-
-func (mock *mgmtServerMock) GenKey(context.Context, *mgmt.GenKeyRequest) (*mgmt.GenKeyResponse, error) {
-	return &mgmt.GenKeyResponse{Success: true}, nil
-}
-
-func (mock *mgmtServerMock) ServerKey(context.Context, *mgmt.ServerKeyRequest) (*mgmt.ServerKeyResponse, error) {
-	return &mgmt.ServerKeyResponse{Success: true}, nil
-}
-
-func (mock *mgmtServerMock) DelKey(context.Context, *mgmt.DelKeyRequest) (*mgmt.DelKeyResponse, error) {
-	return &mgmt.DelKeyResponse{Success: true}, nil
-}
-
-func (mock *mgmtServerMock) ListSshKey(context.Context, *mgmt.ListSshKeyRequest) (*mgmt.ListSshKeyResponse, error) {
-	return &mgmt.ListSshKeyResponse{Success: true}, nil
-}
-
-func (mock *mgmtServerMock) AddSshKey(context.Context, *mgmt.AddSshKeyRequest) (*mgmt.AddSshKeyResponse, error) {
-	return &mgmt.AddSshKeyResponse{Success: true}, nil
-}
-
-func (mock *mgmtServerMock) DelSshKey(context.Context, *mgmt.DelSshKeyRequest) (*mgmt.DelSshKeyResponse, error) {
-	return &mgmt.DelSshKeyResponse{Success: true}, nil
-}
-
 func TestKey(t *testing.T) {
-	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true, ""),
-	)
-	if err != nil {
-		t.Fatal(err)
+	// Login
+	jwt := HttpTestLogin(t, "sys", "manager")
+
+	keyExists := func(keys []KeyInfo, name string) bool {
+		for _, key := range keys {
+			if key.Id == name {
+				return true
+			}
+		}
+		return false
 	}
-
-	wsvr.mgmtImpl = &mgmtServerMock{}
-
-	router := wsvr.Router()
-
-	var b *bytes.Buffer
-	var w *httptest.ResponseRecorder
-	var req *http.Request
-	var expectStatus int
-
-	// accessToken
-	w = httptest.NewRecorder()
-	s, _, _ := NewMockServer(w)
-	err = s.Login("sys", "manager")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Shutdown()
-
-	// ========================
-	//GET key-list
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/keys", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
 
 	listRsp := struct {
 		Success bool      `json:"success"`
@@ -532,19 +245,21 @@ func TestKey(t *testing.T) {
 		Elapse  string    `json:"elapse"`
 	}{}
 
-	payload := w.Body.Bytes()
-	err = json.Unmarshal(payload, &listRsp)
+	// ========================
+	//GET key-list
+	rsp, payload := request(t, jwt, http.MethodGet, "/web/api/keys", nil)
+	err := json.Unmarshal(payload, &listRsp)
 	if err != nil {
 		t.Log("rsp", string(payload))
 		t.Fatal(err)
 	}
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, listRsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
+	require.False(t, keyExists(listRsp.Data, "twelve"))
 
 	// ========================
 	// POST key-gen
-	b = &bytes.Buffer{}
+	b := &bytes.Buffer{}
 
 	param := map[string]interface{}{}
 	param["name"] = "twelve"
@@ -553,15 +268,7 @@ func TestKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/keys", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/keys", b)
 	genRsp := struct {
 		Success     bool   `json:"success"`
 		Reason      string `json:"reason"`
@@ -571,62 +278,214 @@ func TestKey(t *testing.T) {
 		Certificate string `json:"certificate"`
 		Token       string `json:"token"`
 	}{}
-	err = json.Unmarshal(w.Body.Bytes(), &genRsp)
+	err = json.Unmarshal(payload, &listRsp)
 	if err != nil {
-		t.Log(w.Body.String())
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	err = json.Unmarshal(payload, &genRsp)
+	if err != nil {
+		t.Log(string(payload))
 		t.Fatal(err)
 	}
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, genRsp)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, genRsp)
+	require.True(t, genRsp.Success)
+	require.Equal(t, "success", genRsp.Reason)
+	require.NotEmpty(t, genRsp.ServerKey)
+	require.NotEmpty(t, genRsp.PrivateKey)
+	require.NotEmpty(t, genRsp.Certificate)
+	require.NotEmpty(t, genRsp.Token)
+
+	// ========================
+	// GET key-list after creation
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/keys", nil)
+	listRsp = struct {
+		Success bool      `json:"success"`
+		Reason  string    `json:"reason"`
+		Data    []KeyInfo `json:"data"`
+		Elapse  string    `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &listRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
+	require.True(t, keyExists(listRsp.Data, "twelve"))
 
 	// ========================
 	// DELETE key-delete
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("DELETE", "/web/api/keys/eleven", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
 	deleteRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-	err = json.Unmarshal(w.Body.Bytes(), &deleteRsp)
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/keys/twelve", nil)
+	err = json.Unmarshal(payload, &deleteRsp)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code, deleteRsp)
-}
+	require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
+	require.True(t, deleteRsp.Success)
+	require.Equal(t, "success", deleteRsp.Reason)
 
-type bridgeServerMock struct {
-	bridgerpc.UnimplementedManagementServer
-}
-
-func (mock bridgeServerMock) ListBridge(ctx context.Context, req *bridgerpc.ListBridgeRequest) (*bridgerpc.ListBridgeResponse, error) {
-	return &bridgerpc.ListBridgeResponse{Success: true}, nil
-}
-func (mock bridgeServerMock) AddBridge(ctx context.Context, req *bridgerpc.AddBridgeRequest) (*bridgerpc.AddBridgeResponse, error) {
-	return &bridgerpc.AddBridgeResponse{Success: true}, nil
-}
-func (mock bridgeServerMock) DelBridge(ctx context.Context, req *bridgerpc.DelBridgeRequest) (*bridgerpc.DelBridgeResponse, error) {
-	return &bridgerpc.DelBridgeResponse{Success: true}, nil
-}
-func (mock bridgeServerMock) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) (*bridgerpc.TestBridgeResponse, error) {
-	return &bridgerpc.TestBridgeResponse{Success: true}, nil
-}
-func (mock bridgeServerMock) GetBridge(ctx context.Context, req *bridgerpc.GetBridgeRequest) (*bridgerpc.GetBridgeResponse, error) {
-	if req.Name == "existing-bridge" {
-		return &bridgerpc.GetBridgeResponse{Success: true, Bridge: &bridgerpc.Bridge{Name: "existing-bridge", Type: "mqtt"}}, nil
+	// ========================
+	// GET key-list after deletion
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/keys", nil)
+	listRsp = struct {
+		Success bool      `json:"success"`
+		Reason  string    `json:"reason"`
+		Data    []KeyInfo `json:"data"`
+		Elapse  string    `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &listRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
 	}
-	return &bridgerpc.GetBridgeResponse{Success: false}, nil
+	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
+	require.False(t, keyExists(listRsp.Data, "twelve"))
 }
 
+func TestShell(t *testing.T) {
+	jwt := HttpTestLogin(t, "sys", "manager")
+
+	execPath, err := os.Executable()
+	require.NoError(t, err)
+
+	shellId := strings.ToUpper(fmt.Sprintf("test-shell-%d", time.Now().UnixNano()))
+	shellReq := &model.ShellDefinition{
+		Id:      shellId,
+		Type:    model.SHELL_TERM,
+		Icon:    "console",
+		Label:   "TEST SHELL",
+		Command: fmt.Sprintf(`"%s" shell`, execPath),
+		Attributes: &model.ShellAttributes{
+			Removable: true,
+			Cloneable: true,
+			Editable:  true,
+		},
+	}
+
+	// ========================
+	// GET shell before creation
+	rsp, payload := request(t, jwt, http.MethodGet, "/web/api/shell/"+shellId, nil)
+	getRsp := struct {
+		Success bool                   `json:"success"`
+		Reason  string                 `json:"reason"`
+		Data    *model.ShellDefinition `json:"data"`
+		Elapse  string                 `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &getRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, rsp.StatusCode, string(payload))
+	require.False(t, getRsp.Success)
+	require.Equal(t, "not found", getRsp.Reason)
+
+	// ========================
+	// POST shell create
+	b := &bytes.Buffer{}
+	err = json.NewEncoder(b).Encode(shellReq)
+	require.NoError(t, err)
+
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/shell/"+shellId, b)
+	postRsp := struct {
+		Success bool                   `json:"success"`
+		Reason  string                 `json:"reason"`
+		Data    *model.ShellDefinition `json:"data"`
+		Elapse  string                 `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &postRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.True(t, postRsp.Success)
+	require.Equal(t, "success", postRsp.Reason)
+	require.NotNil(t, postRsp.Data)
+	require.Equal(t, shellId, postRsp.Data.Id)
+	require.Equal(t, shellReq.Command, postRsp.Data.Command)
+
+	// ========================
+	// GET shell after creation
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/shell/"+shellId, nil)
+	getRsp = struct {
+		Success bool                   `json:"success"`
+		Reason  string                 `json:"reason"`
+		Data    *model.ShellDefinition `json:"data"`
+		Elapse  string                 `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &getRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.True(t, getRsp.Success)
+	require.NotNil(t, getRsp.Data)
+	require.Equal(t, shellId, getRsp.Data.Id)
+	require.Equal(t, shellReq.Label, getRsp.Data.Label)
+
+	// ========================
+	// GET shell copy
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/shell/"+shellId+"/copy", nil)
+	copyRsp := struct {
+		Success bool                   `json:"success"`
+		Reason  string                 `json:"reason"`
+		Data    *model.ShellDefinition `json:"data"`
+		Elapse  string                 `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &copyRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.True(t, copyRsp.Success)
+	require.NotNil(t, copyRsp.Data)
+	require.NotEmpty(t, copyRsp.Data.Id)
+	require.NotEqual(t, shellId, copyRsp.Data.Id)
+	require.Equal(t, "CUSTOM SHELL", copyRsp.Data.Label)
+	require.Equal(t, shellReq.Command, copyRsp.Data.Command)
+
+	// ========================
+	// DELETE original shell
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/shell/"+shellId, nil)
+	deleteRsp := struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &deleteRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.True(t, deleteRsp.Success)
+	require.Equal(t, "success", deleteRsp.Reason)
+
+	// ========================
+	// DELETE copied shell
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/shell/"+copyRsp.Data.Id, nil)
+	deleteRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &deleteRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.True(t, deleteRsp.Success)
+
+	// ========================
+	// GET original shell after deletion
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/shell/"+shellId, nil)
+	getRsp = struct {
+		Success bool                   `json:"success"`
+		Reason  string                 `json:"reason"`
+		Data    *model.ShellDefinition `json:"data"`
+		Elapse  string                 `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &getRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, rsp.StatusCode, string(payload))
+	require.False(t, getRsp.Success)
+	require.Equal(t, "not found", getRsp.Reason)
+}
+
+/*
 func TestBridge(t *testing.T) {
 	wsvr, err := NewHttp(nil,
 		WithHttpDebugMode(true, ""),
@@ -995,68 +854,27 @@ func TestSubscriber(t *testing.T) {
 	expectStatus = http.StatusOK
 	require.Equal(t, expectStatus, w.Code)
 }
+*/
 
 func TestSshKey(t *testing.T) {
-	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true, ""),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wsvr.mgmtImpl = &mgmtServerMock{}
-
-	router := wsvr.Router()
-
-	var b *bytes.Buffer
-	var w *httptest.ResponseRecorder
-	var req *http.Request
-	var expectStatus int
-
-	// accessToken
-	w = httptest.NewRecorder()
-	s, _, _ := NewMockServer(w)
-	err = s.Login("sys", "manager")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Shutdown()
+	jwt := HttpTestLogin(t, "sys", "manager")
 
 	// ========================
 	// GET /api/sshkeys
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/sshkeys", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	rsp, _ := request(t, jwt, http.MethodGet, "/web/api/sshkeys", nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
 
 	// ========================
 	// POST /api/sshkeys - add key
-	b = &bytes.Buffer{}
+	b := &bytes.Buffer{}
 	sshKeyReq := map[string]string{
-		"key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQ test@host",
+		"key": "ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKMYQpY26gDO9JAK7gFRtM3JR2JiDCLGKsTqVzcQmNvJ your_email@example.com",
 	}
-	if err = json.NewEncoder(b).Encode(sshKeyReq); err != nil {
+	if err := json.NewEncoder(b).Encode(sshKeyReq); err != nil {
 		t.Fatal(err)
 	}
-
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/sshkeys", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	rsp, _ = request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
 
 	// ========================
 	// POST /api/sshkeys - invalid key format
@@ -1064,32 +882,29 @@ func TestSshKey(t *testing.T) {
 	sshKeyReq = map[string]string{
 		"key": "invalidkey",
 	}
-	if err = json.NewEncoder(b).Encode(sshKeyReq); err != nil {
+	if err := json.NewEncoder(b).Encode(sshKeyReq); err != nil {
 		t.Fatal(err)
 	}
+	rsp, _ = request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
 
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/sshkeys", b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusBadRequest
-	require.Equal(t, expectStatus, w.Code)
+	// ========================
+	// GET /api/sshkeys
+	rsp, payload := request(t, jwt, http.MethodGet, "/web/api/sshkeys", nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	keysRsp := struct {
+		Success bool     `json:"success"`
+		Reason  string   `json:"reason"`
+		Data    []SshKey `json:"data"`
+		Elapse  string   `json:"elapse"`
+	}{}
+	err := json.Unmarshal(payload, &keysRsp)
+	require.NoError(t, err)
+	require.True(t, keysRsp.Success)
+	require.Len(t, keysRsp.Data, 1)
 
 	// ========================
 	// DELETE /api/sshkeys/:fingerprint
-	w = httptest.NewRecorder()
-	req, err = http.NewRequest("DELETE", "/web/api/sshkeys/SHA256:abc123", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	router.ServeHTTP(w, req)
-
-	expectStatus = http.StatusOK
-	require.Equal(t, expectStatus, w.Code)
+	rsp, _ = request(t, jwt, http.MethodDelete, "/web/api/sshkeys/"+keysRsp.Data[0].Fingerprint, nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
 }
