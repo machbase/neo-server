@@ -55,7 +55,6 @@ type Server struct {
 
 	log   logging.Log
 	navel *net.TCPConn
-	grpcd *grpcd
 	mqttd *mqttd
 	httpd *httpd
 	sshd  *sshd
@@ -219,11 +218,6 @@ func (s *Server) Start() error {
 	// native port
 	if !HeadOnly {
 		s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
-	}
-
-	// grpc server
-	if err := s.startGrpcServer(); err != nil {
-		return fmt.Errorf("grpc server: %w", err)
 	}
 
 	// mqtt server
@@ -596,13 +590,6 @@ func (s *Server) preparePorts() error {
 			}
 		}
 	}
-	// port-check gRPC
-	for _, addr := range s.Grpc.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return fmt.Errorf("gRPC port not available, %s", err.Error())
-		}
-		s.AddServicePort("grpc", addr)
-	}
 	// port-check HTTP
 	for _, addr := range s.Http.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
@@ -816,39 +803,6 @@ func (s *Server) runInitScripts() error {
 	return nil
 }
 
-func (s *Server) startGrpcServer() error {
-	if len(s.Grpc.Listeners) == 0 {
-		return nil
-	}
-	machRpcSvr := machsvr.NewRPCServer(api.Default(),
-		machsvr.WithLogger(logging.Wrap(s.log, nil)),
-		machsvr.WithAuthProvider(s),
-	)
-	if grpcd, err := NewGrpc(machRpcSvr,
-		WithGrpcListenAddress(s.Grpc.Listeners...),
-		WithGrpcMaxRecvMsgSize(s.Grpc.MaxRecvMsgSize*1024*1024),
-		WithGrpcMaxSendMsgSize(s.Grpc.MaxSendMsgSize*1024*1024),
-		WithGrpcTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
-		WithGrpcServerInsecure(s.Grpc.Insecure),
-	); err != nil {
-		return err
-	} else {
-		s.grpcd = grpcd
-	}
-	if err := s.grpcd.Start(); err != nil {
-		return err
-	}
-	util.AddShutdownHook(func() { s.grpcd.Stop() })
-
-	tql.SetGrpcAddresses(s.Grpc.Listeners)
-	tql.SetHttpAddresses(s.Http.Listeners)
-
-	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
-	util.AddShutdownHook(func() { tql.StopCache() })
-
-	return nil
-}
-
 func (s *Server) startBridgeAndSchedulerService() error {
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
@@ -987,6 +941,11 @@ func (s *Server) startHttpServer() error {
 		return fmt.Errorf("http server, %s", err.Error())
 	}
 	util.AddShutdownHook(func() { s.httpd.Stop() })
+
+	tql.SetHttpAddresses(s.Http.Listeners)
+	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
+	util.AddShutdownHook(func() { tql.StopCache() })
+
 	return nil
 }
 

@@ -106,15 +106,6 @@ module "machbase.com/neo-server" {
             Listeners        = [ "tcp://${VARS_SHELL_LISTEN_HOST}:${VARS_SHELL_LISTEN_PORT}" ]
             IdleTimeout      = "5m"
         }
-        Grpc = {
-            Listeners        = [ 
-                "unix://${VARS_GRPC_LISTEN_SOCK}",
-                "tcp://${VARS_GRPC_LISTEN_HOST}:${VARS_GRPC_LISTEN_PORT}",
-            ]
-            MaxRecvMsgSize   = 4
-            MaxSendMsgSize   = 4
-            Insecure         = DEF_GRPC_INSECURE
-        }
         Http = {
             Listeners        = [
                 "unix://${VARS_HTTP_LISTEN_SOCK}",
