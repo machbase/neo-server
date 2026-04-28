@@ -3,12 +3,14 @@ package mods
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"golang.org/x/term"
 )
 
 var (
@@ -83,6 +85,11 @@ func GenBanner() string {
 		if major <= 10 && build < 14931 {
 			supportColor = false
 		}
+	} else {
+		// check tty
+		if !IsTerminal() {
+			supportColor = false
+		}
 	}
 
 	logo := bannerAnsic
@@ -96,4 +103,8 @@ func GenBanner() string {
 	lines[7] = lines[7] + fmt.Sprintf("  engine v%s (%s)", machsvr.LinkVersion(), machsvr.LinkGitHash())
 	lines[8] = lines[8] + fmt.Sprintf("  %s %s", machsvr.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n")
+}
+
+func IsTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }

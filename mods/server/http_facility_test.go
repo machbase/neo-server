@@ -800,7 +800,9 @@ func TestSubscriber(t *testing.T) {
 	// GET /api/subscribers/:name after deletion
 	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/test-sub", nil)
 	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode)
-	require.Contains(t, string(payload), "no such file or directory")
+	if runtime.GOOS != "windows" {
+		require.Contains(t, string(payload), "no such file or directory")
+	}
 }
 
 func TestSshKey(t *testing.T) {
