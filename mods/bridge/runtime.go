@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 )
 
 type rowsWrap struct {
@@ -26,10 +24,67 @@ type rowsWrap struct {
 
 var contextIdSerial int64
 
+type ExecRequest struct {
+	Name    string      `json:"name"`
+	Command ExecCommand `json:"command"`
+}
+
+type ExecCommand struct {
+	SqlExec  *SqlRequest    `json:"sqlExec,omitempty"`
+	SqlQuery *SqlRequest    `json:"sqlQuery,omitempty"`
+	Invoke   *InvokeRequest `json:"invoke,omitempty"`
+}
+
+type SqlRequest struct {
+	SqlText string `json:"sqlText"`
+	Params  []any  `json:"params,omitempty"`
+}
+
+type InvokeRequest struct {
+	Args  []string `json:"args"`
+	Stdin []byte   `json:"stdin,omitempty"`
+}
+
+type ExecResponse struct {
+	Success bool       `json:"success"`
+	Reason  string     `json:"reason"`
+	Elapse  string     `json:"elapse"`
+	Result  ExecResult `json:"result"`
+}
+
+type ExecResult struct {
+	SqlExecResult  *SqlExecResult  `json:"sqlExecResult,omitempty"`
+	SqlQueryResult *SqlQueryResult `json:"sqlQueryResult,omitempty"`
+	InvokeResult   *InvokeResult   `json:"invokeResult,omitempty"`
+}
+
+type SqlExecResult struct {
+	LastInsertedId int64 `json:"lastInsertedId"`
+	RowsAffected   int64 `json:"rowsAffected"`
+}
+
+type SqlQueryResult struct {
+	Handle string                 `json:"handle,omitempty"`
+	Fields []*SqlQueryResultField `json:"fields,omitempty"`
+}
+
+type SqlQueryResultField struct {
+	Name   string `json:"name,omitempty"`
+	Type   string `json:"type,omitempty"`
+	Size   int32  `json:"size,omitempty"`
+	Length int32  `json:"length,omitempty"`
+}
+
+type InvokeResult struct {
+	ExitCode int32  `json:"exitCode"`
+	Stdout   []byte `json:"stdout"`
+	Stderr   []byte `json:"stderr"`
+}
+
 // ////////////////////////////
 // runtime service
-func (s *svr) Exec(ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.ExecResponse, error) {
-	rsp := &bridgerpc.ExecResponse{}
+func (s *Service) Exec(ctx context.Context, req *ExecRequest) (*ExecResponse, error) {
+	rsp := &ExecResponse{}
 	tick := time.Now()
 	conn, err := GetBridge(req.Name)
 	if err != nil {
@@ -39,22 +94,22 @@ func (s *svr) Exec(ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.
 	}
 	switch br := conn.(type) {
 	case SqlBridge:
-		switch cmd := req.Command.(type) {
-		case *bridgerpc.ExecRequest_SqlExec:
+		switch {
+		case req.Command.SqlExec != nil:
 			return s.execSqlBridge(br, ctx, req)
-		case *bridgerpc.ExecRequest_SqlQuery:
+		case req.Command.SqlQuery != nil:
 			return s.querySqlBridge(br, req)
 		default:
-			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), cmd)
+			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), req.Command)
 			rsp.Elapse = time.Since(tick).String()
 			return rsp, nil
 		}
 	case PythonBridge:
-		switch cmd := req.Command.(type) {
-		case *bridgerpc.ExecRequest_Invoke:
-			return s.execPythonBridge(br, ctx, cmd)
+		switch {
+		case req.Command.Invoke != nil:
+			return s.execPythonBridge(br, ctx, req.Command.Invoke)
 		default:
-			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), cmd)
+			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), req.Command)
 			rsp.Elapse = time.Since(tick).String()
 			return rsp, nil
 		}
@@ -69,9 +124,9 @@ func (s *svr) Exec(ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.
 	}
 }
 
-func (s *svr) execSqlBridge(br SqlBridge, ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.ExecResponse, error) {
-	cmd := req.Command.(*bridgerpc.ExecRequest_SqlExec).SqlExec
-	rsp := &bridgerpc.ExecResponse{}
+func (s *Service) execSqlBridge(br SqlBridge, ctx context.Context, req *ExecRequest) (*ExecResponse, error) {
+	cmd := req.Command.SqlExec
+	rsp := &ExecResponse{}
 	tick := time.Now()
 	defer func() {
 		if err := recover(); err != nil {
@@ -79,23 +134,18 @@ func (s *svr) execSqlBridge(br SqlBridge, ctx context.Context, req *bridgerpc.Ex
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	params, err := ConvertFromDatum(cmd.Params...)
-	if err != nil {
-		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
-		return rsp, nil
-	}
 	conn, err := br.Connect(ctx)
 	if err != nil {
 		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
 	defer conn.Close()
-	result, err := conn.ExecContext(ctx, cmd.SqlText, params...)
+	result, err := conn.ExecContext(ctx, cmd.SqlText, cmd.Params...)
 	if err != nil {
 		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
-	ret := &bridgerpc.SqlExecResult{}
+	ret := &SqlExecResult{}
 	if br.SupportLastInsertId() {
 		ret.LastInsertedId, err = result.LastInsertId()
 		if err != nil {
@@ -111,13 +161,13 @@ func (s *svr) execSqlBridge(br SqlBridge, ctx context.Context, req *bridgerpc.Ex
 		return rsp, nil
 	}
 	rsp.Success, rsp.Reason = true, "success"
-	rsp.Result = &bridgerpc.ExecResponse_SqlExecResult{SqlExecResult: ret}
+	rsp.Result.SqlExecResult = ret
 	return rsp, nil
 }
 
-func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridgerpc.ExecResponse, error) {
-	cmd := req.Command.(*bridgerpc.ExecRequest_SqlQuery).SqlQuery
-	rsp := &bridgerpc.ExecResponse{}
+func (s *Service) querySqlBridge(br SqlBridge, req *ExecRequest) (*ExecResponse, error) {
+	cmd := req.Command.SqlQuery
+	rsp := &ExecResponse{}
 	tick := time.Now()
 	defer func() {
 		if err := recover(); err != nil {
@@ -125,11 +175,6 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	params, err := ConvertFromDatum(cmd.Params...)
-	if err != nil {
-		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
-		return rsp, nil
-	}
 	// context should be managed independently,
 	// to keep the state of sql conn and rows
 	ctx := context.Background()
@@ -138,7 +183,7 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
-	rows, err := conn.QueryContext(ctx, cmd.SqlText, params...)
+	rows, err := conn.QueryContext(ctx, cmd.SqlText, cmd.Params...)
 	if err != nil {
 		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		conn.Close()
@@ -152,17 +197,17 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 		return rsp, nil
 	}
 
-	ret := &bridgerpc.SqlQueryResult{}
+	ret := &SqlQueryResult{}
 	for _, c := range cols {
 		length, _ := c.Length()
-		ret.Fields = append(ret.Fields, &bridgerpc.SqlQueryResultField{
+		ret.Fields = append(ret.Fields, &SqlQueryResultField{
 			Name:   c.Name(),
 			Type:   c.DatabaseTypeName(),
 			Size:   int32(length),
 			Length: int32(length),
 		})
 	}
-	rsp.Result = &bridgerpc.ExecResponse_SqlQueryResult{SqlQueryResult: ret}
+	rsp.Result.SqlQueryResult = ret
 
 	if len(cols) > 0 { // Fetchable
 		handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
@@ -192,8 +237,16 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 	return rsp, nil
 }
 
-func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryResult) (*bridgerpc.SqlQueryResultFetchResponse, error) {
-	rsp := &bridgerpc.SqlQueryResultFetchResponse{}
+type SqlQueryResultFetchResponse struct {
+	Success   bool   `json:"success,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Elapse    string `json:"elapse,omitempty"`
+	HasNoRows bool   `json:"hasNoRows,omitempty"`
+	Values    []any  `json:"values,omitempty"`
+}
+
+func (s *Service) SqlQueryResultFetch(ctx context.Context, cr *SqlQueryResult) (*SqlQueryResultFetchResponse, error) {
+	rsp := &SqlQueryResultFetchResponse{}
 	tick := time.Now()
 	defer func() {
 		if err := recover(); err != nil {
@@ -230,29 +283,168 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 		return rsp, nil
 	}
 
-	fields := make([]any, len(columns))
+	rsp.Values = make([]any, len(columns))
 	for i, c := range columns {
-		fields[i] = rowsWrap.bridge.NewScanType(c.ScanType().String(), strings.ToUpper(c.DatabaseTypeName()))
+		rsp.Values[i] = rowsWrap.bridge.NewScanType(c.ScanType().String(), strings.ToUpper(c.DatabaseTypeName()))
 	}
-	err = rowsWrap.rows.Scan(fields...)
+	err = rowsWrap.rows.Scan(rsp.Values...)
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
-	rsp.Values, err = ConvertToDatum(fields...)
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
-		return rsp, nil
+	for i, v := range rsp.Values {
+		rsp.Values[i] = UnboxValueToNative(v)
 	}
 	rsp.Success = true
 	rsp.Reason = "success"
 	return rsp, nil
 }
 
-func (s *svr) SqlQueryResultClose(ctx context.Context, cr *bridgerpc.SqlQueryResult) (*bridgerpc.SqlQueryResultCloseResponse, error) {
-	rsp := &bridgerpc.SqlQueryResultCloseResponse{}
+func UnboxValueToNative(v any) any {
+	switch val := v.(type) {
+	case *float32:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *float64:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *int:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *int8:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *int16:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *int32:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *int64:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *uint:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *uint8:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *uint16:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *uint32:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *uint64:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *bool:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *string:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *time.Time:
+		if val == nil {
+			return nil
+		}
+		return *val
+	case *sql.NullString:
+		if val.Valid {
+			return val.String
+		}
+		return nil
+	case *sql.NullInt16:
+		if val.Valid {
+			return val.Int16
+		}
+		return nil
+	case *sql.NullInt32:
+		if val.Valid {
+			return val.Int32
+		}
+		return nil
+	case *sql.NullInt64:
+		if val.Valid {
+			return val.Int64
+		}
+		return nil
+	case *sql.NullFloat64:
+		if val.Valid {
+			return val.Float64
+		}
+		return nil
+	case *sql.NullBool:
+		if val.Valid {
+			return val.Bool
+		}
+		return nil
+	case *sql.NullTime:
+		if val.Valid {
+			return val.Time
+		}
+		return nil
+	case *sql.NullByte:
+		if val.Valid {
+			return val.Byte
+		}
+		return nil
+	case *sql.RawBytes:
+		if val == nil {
+			return nil
+		}
+		dst := make([]byte, len(*val))
+		copy(dst, *val)
+		return dst
+	case *[]uint8:
+		if val == nil {
+			return nil
+		}
+		dst := make([]byte, len(*val))
+		copy(dst, *val)
+		return dst
+	default:
+		return v
+	}
+}
+
+type SqlQueryResultCloseResponse struct {
+	Success bool   `json:"success,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Elapse  string `json:"elapse,omitempty"`
+}
+
+func (s *Service) SqlQueryResultClose(ctx context.Context, cr *SqlQueryResult) (*SqlQueryResultCloseResponse, error) {
+	rsp := &SqlQueryResultCloseResponse{}
 	tick := time.Now()
 	defer func() {
 		if err := recover(); err != nil {
@@ -271,8 +463,8 @@ func (s *svr) SqlQueryResultClose(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	return rsp, nil
 }
 
-func (s *svr) execPythonBridge(br PythonBridge, ctx context.Context, req *bridgerpc.ExecRequest_Invoke) (*bridgerpc.ExecResponse, error) {
-	rsp := &bridgerpc.ExecResponse{}
+func (s *Service) execPythonBridge(br PythonBridge, ctx context.Context, req *InvokeRequest) (*ExecResponse, error) {
+	rsp := &ExecResponse{}
 
 	tick := time.Now()
 	defer func() {
@@ -282,16 +474,16 @@ func (s *svr) execPythonBridge(br PythonBridge, ctx context.Context, req *bridge
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	exitCode, stdout, stderr, err := br.Invoke(ctx, req.Invoke.Args, req.Invoke.Stdin)
+	exitCode, stdout, stderr, err := br.Invoke(ctx, req.Args, req.Stdin)
 	if err != nil {
 		rsp.Reason = err.Error()
 	} else {
 		rsp.Success, rsp.Reason = true, "success"
 	}
-	rsp.Result = &bridgerpc.ExecResponse_InvokeResult{InvokeResult: &bridgerpc.InvokeResult{
+	rsp.Result.InvokeResult = &InvokeResult{
 		ExitCode: int32(exitCode),
 		Stdout:   stdout,
 		Stderr:   stderr,
-	}}
+	}
 	return rsp, nil
 }

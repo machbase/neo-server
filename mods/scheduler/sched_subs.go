@@ -32,7 +32,7 @@ type SubscriberEntry struct {
 	QueueName  string // nats only, Queue Group
 	StreamName string // nats only, JetStream
 
-	s   *svr
+	s   *Service
 	log logging.Log
 
 	shouldSubscribe bool
@@ -47,7 +47,7 @@ type SubscriberEntry struct {
 
 var _ Entry = (*SubscriberEntry)(nil)
 
-func NewSubscriberEntry(s *svr, def *model.ScheduleDefinition) (*SubscriberEntry, error) {
+func NewSubscriberEntry(s *Service, def *model.ScheduleDefinition) (*SubscriberEntry, error) {
 	ret := &SubscriberEntry{
 		BaseEntry:  BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:    def.Task,

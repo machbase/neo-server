@@ -184,12 +184,10 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.True(t, datetimeValue.Valid)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), datetimeValue.Time.UTC())
 
-	datums, err := bridgepkg.ConvertToDatum(fields...)
-	require.NoError(t, err)
-	require.Len(t, datums, 17)
-
-	values, err := bridgepkg.ConvertFromDatum(datums...)
-	require.NoError(t, err)
+	values := make([]any, len(fields))
+	for i, v := range fields {
+		values[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Equal(t, int64(1), values[0])
 	require.Equal(t, int64(7), values[1])
 	require.Equal(t, int64(12), values[2])
@@ -309,12 +307,16 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, nullDatetimeValue.Valid)
 
-	nullDatums, err := bridgepkg.ConvertToDatum(nullFields...)
-	require.NoError(t, err)
+	nullDatums := make([]any, len(nullFields))
+	for i, v := range nullFields {
+		nullDatums[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Len(t, nullDatums, 17)
 
-	nullValues, err := bridgepkg.ConvertFromDatum(nullDatums...)
-	require.NoError(t, err)
+	nullValues := make([]any, len(nullDatums))
+	for i, v := range nullDatums {
+		nullValues[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Equal(t, int64(2), nullValues[0])
 	require.Nil(t, nullValues[1])
 	require.Nil(t, nullValues[2])

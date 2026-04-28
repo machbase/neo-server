@@ -176,10 +176,10 @@ func TestSqliteSupportedTypes(t *testing.T) {
 	require.True(t, timeValue.Valid)
 	require.Equal(t, createdAt.UTC(), timeValue.Time.UTC())
 
-	datums, err := bridgepkg.ConvertToDatum(fields...)
-	require.NoError(t, err)
-	values, err := bridgepkg.ConvertFromDatum(datums...)
-	require.NoError(t, err)
+	values := make([]any, len(fields))
+	for i, v := range fields {
+		values[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Equal(t, true, values[0])
 	require.Equal(t, int64(42), values[1])
 	convertedReal, ok := values[2].(float64)
@@ -233,10 +233,10 @@ func TestSqliteSupportedTypes(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, nullTimeValue.Valid)
 
-	nullDatums, err := bridgepkg.ConvertToDatum(nullFields...)
-	require.NoError(t, err)
-	nullValues, err := bridgepkg.ConvertFromDatum(nullDatums...)
-	require.NoError(t, err)
+	nullValues := make([]any, len(nullFields))
+	for i, v := range nullFields {
+		nullValues[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Nil(t, nullValues[0])
 	require.Nil(t, nullValues[1])
 	require.Nil(t, nullValues[2])

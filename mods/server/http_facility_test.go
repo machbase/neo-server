@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -41,10 +41,10 @@ func TestTimer(t *testing.T) {
 	invalidTimerName := fmt.Sprintf("%s-invalid", timerName)
 
 	listRsp := struct {
-		Success bool                 `json:"success"`
-		Reason  string               `json:"reason"`
-		Data    []*schedule.Schedule `json:"data"`
-		Elapse  string               `json:"elapse"`
+		Success bool                  `json:"success"`
+		Reason  string                `json:"reason"`
+		Data    []*scheduler.Schedule `json:"data"`
+		Elapse  string                `json:"elapse"`
 	}{}
 
 	// ========================

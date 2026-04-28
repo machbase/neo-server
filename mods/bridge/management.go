@@ -4,17 +4,27 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
-	"strings"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/model"
 )
 
-func (s *svr) ListBridge(context.Context, *bridgerpc.ListBridgeRequest) (*bridgerpc.ListBridgeResponse, error) {
+type ListBridgeResponse struct {
+	Success bool          `json:"success"`
+	Reason  string        `json:"reason"`
+	Elapse  string        `json:"elapse"`
+	Bridges []*BridgeInfo `json:"bridges"`
+}
+
+type BridgeInfo struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+func (s *Service) ListBridge(context.Context) (*ListBridgeResponse, error) {
 	tick := time.Now()
-	rsp := &bridgerpc.ListBridgeResponse{}
+	rsp := &ListBridgeResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -23,7 +33,7 @@ func (s *svr) ListBridge(context.Context, *bridgerpc.ListBridgeRequest) (*bridge
 		return rsp, nil
 	} else {
 		for _, define := range lst {
-			rsp.Bridges = append(rsp.Bridges, &bridgerpc.Bridge{
+			rsp.Bridges = append(rsp.Bridges, &BridgeInfo{
 				Name: define.Name,
 				Type: string(define.Type),
 				Path: define.Path,
@@ -34,16 +44,27 @@ func (s *svr) ListBridge(context.Context, *bridgerpc.ListBridgeRequest) (*bridge
 	}
 }
 
-func (s *svr) GetBridge(ctx context.Context, req *bridgerpc.GetBridgeRequest) (*bridgerpc.GetBridgeResponse, error) {
+type GetBridgeRequest struct {
+	Name string `json:"name"`
+}
+
+type GetBridgeResponse struct {
+	Success bool        `json:"success"`
+	Reason  string      `json:"reason"`
+	Elapse  string      `json:"elapse"`
+	Bridge  *BridgeInfo `json:"bridge"`
+}
+
+func (s *Service) GetBridge(ctx context.Context, req *GetBridgeRequest) (*GetBridgeResponse, error) {
 	tick := time.Now()
-	rsp := &bridgerpc.GetBridgeResponse{}
+	rsp := &GetBridgeResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
 	if define, err := s.models.LoadBridge(req.Name); err != nil {
 		rsp.Reason = err.Error()
 	} else {
-		rsp.Bridge = &bridgerpc.Bridge{
+		rsp.Bridge = &BridgeInfo{
 			Name: define.Name,
 			Type: string(define.Type),
 			Path: define.Path,
@@ -53,9 +74,21 @@ func (s *svr) GetBridge(ctx context.Context, req *bridgerpc.GetBridgeRequest) (*
 	return rsp, nil
 }
 
-func (s *svr) AddBridge(ctx context.Context, req *bridgerpc.AddBridgeRequest) (*bridgerpc.AddBridgeResponse, error) {
+type AddBridgeRequest struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+type AddBridgeResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Service) AddBridge(ctx context.Context, req *AddBridgeRequest) (*AddBridgeResponse, error) {
 	tick := time.Now()
-	rsp := &bridgerpc.AddBridgeResponse{Reason: "not specified"}
+	rsp := &AddBridgeResponse{Reason: "not specified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -97,30 +130,22 @@ func (s *svr) AddBridge(ctx context.Context, req *bridgerpc.AddBridgeRequest) (*
 	return rsp, nil
 }
 
-func (s *svr) DelBridge(ctx context.Context, req *bridgerpc.DelBridgeRequest) (*bridgerpc.DelBridgeResponse, error) {
+type DelBridgeRequest struct {
+	Name string `json:"name"`
+}
+
+type DelBridgeResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Service) DelBridge(ctx context.Context, req *DelBridgeRequest) (*DelBridgeResponse, error) {
 	tick := time.Now()
-	rsp := &bridgerpc.DelBridgeResponse{}
+	rsp := &DelBridgeResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-
-	listRsp, err := s.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	subscribers := make([]string, 0)
-	for _, schedule := range listRsp.Schedules {
-		if strings.EqualFold(schedule.Bridge, req.Name) {
-			subscribers = append(subscribers, schedule.Name)
-		}
-	}
-
-	if len(subscribers) == 1 {
-		return rsp, fmt.Errorf("bridge %q has a subscriber, %s", req.Name, subscribers[0])
-	} else if len(subscribers) > 1 {
-		return rsp, fmt.Errorf("bridge %q has subscribers, %s", req.Name, strings.Join(subscribers, ","))
-	}
 
 	if err := s.models.RemoveBridge(req.Name); err != nil {
 		rsp.Reason = err.Error()
@@ -134,14 +159,24 @@ func (s *svr) DelBridge(ctx context.Context, req *bridgerpc.DelBridgeRequest) (*
 
 }
 
-func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) (*bridgerpc.TestBridgeResponse, error) {
+type TestBridgeRequest struct {
+	Name string `json:"name"`
+}
+
+type TestBridgeResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Service) TestBridge(ctx context.Context, req *TestBridgeRequest) (*TestBridgeResponse, error) {
 	defer func() {
 		if o := recover(); o != nil {
 			fmt.Printf("panic %s\n%s", o, debug.Stack())
 		}
 	}()
 	tick := time.Now()
-	rsp := &bridgerpc.TestBridgeResponse{Reason: "unspecified"}
+	rsp := &TestBridgeResponse{Reason: "unspecified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -187,9 +222,25 @@ func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) 
 	}
 }
 
-func (s *svr) StatsBridge(ctx context.Context, req *bridgerpc.StatsBridgeRequest) (*bridgerpc.StatsBridgeResponse, error) {
+type StatsBridgeRequest struct {
+	Name string `json:"name"`
+}
+
+type StatsBridgeResponse struct {
+	Success  bool   `json:"success"`
+	Reason   string `json:"reason"`
+	Elapse   string `json:"elapse"`
+	InMsgs   uint64 `json:"inMsgs"`
+	InBytes  uint64 `json:"inBytes"`
+	OutMsgs  uint64 `json:"outMsgs"`
+	OutBytes uint64 `json:"outBytes"`
+	Inserted uint64 `json:"inserted"`
+	Appended uint64 `json:"appended"`
+}
+
+func (s *Service) StatsBridge(ctx context.Context, req *StatsBridgeRequest) (*StatsBridgeResponse, error) {
 	tick := time.Now()
-	rsp := &bridgerpc.StatsBridgeResponse{Reason: "unspecified"}
+	rsp := &StatsBridgeResponse{Reason: "unspecified"}
 
 	defer func() {
 		if o := recover(); o != nil {

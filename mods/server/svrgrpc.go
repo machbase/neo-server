@@ -14,9 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machsvr"
-	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"google.golang.org/grpc"
@@ -68,25 +66,7 @@ func WithGrpcTlsCreds(keyPath string, certPath string) Option {
 	}
 }
 
-// bridge implements
-func WithGrpcBridgeServer(handler any) Option {
-	return func(s *grpcd) {
-		if o, ok := handler.(bridge.ManagementServer); ok {
-			s.bridgeMgmtImpl = o
-		}
-		if o, ok := handler.(bridge.RuntimeServer); ok {
-			s.bridgeRuntimeImpl = o
-		}
-	}
-}
-
 // schedule
-func WithGrpcScheduleServer(handler schedule.ManagementServer) Option {
-	return func(s *grpcd) {
-		s.schedMgmtImpl = handler
-	}
-}
-
 func WithGrpcServerInsecure(ignoreInsecure bool) Option {
 	return func(s *grpcd) {
 		s.ignoreInsecure = ignoreInsecure
@@ -103,10 +83,7 @@ type grpcd struct {
 	certPath        string
 	ignoreInsecure  bool
 
-	machImpl          *machsvr.RPCServer
-	bridgeMgmtImpl    bridge.ManagementServer
-	bridgeRuntimeImpl bridge.RuntimeServer
-	schedMgmtImpl     schedule.ManagementServer
+	machImpl *machsvr.RPCServer
 
 	rpcServer          *grpc.Server
 	rpcServerInsecure  *grpc.Server
@@ -142,25 +119,6 @@ func (svr *grpcd) Start() error {
 	// create grpc server
 	svr.rpcServer = grpc.NewServer(grpcOptions...)
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
-
-	// mgmtServer serves bridge management service
-	if svr.bridgeMgmtImpl != nil {
-		bridge.RegisterManagementServer(svr.mgmtServer, svr.bridgeMgmtImpl)
-		bridge.RegisterManagementServer(svr.mgmtServerInsecure, svr.bridgeMgmtImpl)
-	}
-
-	// rpcServer can serve bridge runtime service
-	if svr.bridgeRuntimeImpl != nil {
-		bridge.RegisterRuntimeServer(svr.rpcServer, svr.bridgeRuntimeImpl)
-		bridge.RegisterRuntimeServer(svr.mgmtServer, svr.bridgeRuntimeImpl)
-		bridge.RegisterRuntimeServer(svr.mgmtServerInsecure, svr.bridgeRuntimeImpl)
-	}
-
-	// schedServer management service
-	if svr.schedMgmtImpl != nil {
-		schedule.RegisterManagementServer(svr.mgmtServer, svr.schedMgmtImpl)
-		schedule.RegisterManagementServer(svr.mgmtServerInsecure, svr.schedMgmtImpl)
-	}
 
 	// listeners
 	for _, listen := range svr.listenAddresses {

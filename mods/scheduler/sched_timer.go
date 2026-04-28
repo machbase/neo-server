@@ -18,13 +18,13 @@ type TimerEntry struct {
 	TaskTql  string
 	Schedule string
 	entryId  cron.EntryID
-	s        *svr
+	s        *Service
 	log      logging.Log
 }
 
 var _ Entry = (*TimerEntry)(nil)
 
-func NewTimerEntry(s *svr, def *model.ScheduleDefinition) (*TimerEntry, error) {
+func NewTimerEntry(s *Service, def *model.ScheduleDefinition) (*TimerEntry, error) {
 	ret := &TimerEntry{
 		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:   def.Task,

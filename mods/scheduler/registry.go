@@ -79,7 +79,7 @@ func (e *BaseEntry) Error() error {
 var registry = map[string]Entry{}
 var registryLock sync.RWMutex
 
-func Register(s *svr, def *model.ScheduleDefinition) error {
+func Register(s *Service, def *model.ScheduleDefinition) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 

@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -23,7 +22,7 @@ func (svr *httpd) handleTimer(ctx *gin.Context) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
 	name := ctx.Param("name")
-	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &scheduler.GetScheduleRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -50,7 +49,7 @@ func (svr *httpd) handleTimers(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
+	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -64,7 +63,7 @@ func (svr *httpd) handleTimers(ctx *gin.Context) {
 		return
 	}
 
-	list := []*schedule.Schedule{}
+	list := []*scheduler.Schedule{}
 	for _, c := range listRsp.Schedules {
 		typ := strings.ToUpper(c.Type)
 		if typ != "TIMER" {
@@ -98,7 +97,7 @@ func (svr *httpd) handleTimersAdd(ctx *gin.Context) {
 		return
 	}
 
-	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{Name: req.Name})
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &scheduler.GetScheduleRequest{Name: req.Name})
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -112,7 +111,7 @@ func (svr *httpd) handleTimersAdd(ctx *gin.Context) {
 		return
 	}
 
-	addRsp, err := svr.schedMgmtImpl.AddSchedule(ctx, &schedule.AddScheduleRequest{
+	addRsp, err := svr.schedMgmtImpl.AddSchedule(ctx, &scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
 		Type:      "timer",
 		AutoStart: req.AutoStart,
@@ -163,7 +162,7 @@ func (svr *httpd) handleTimersState(ctx *gin.Context) {
 
 	switch strings.ToUpper(req.State) {
 	case "START":
-		startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
+		startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &scheduler.StartScheduleRequest{
 			Name: name,
 		})
 		if err != nil {
@@ -179,7 +178,7 @@ func (svr *httpd) handleTimersState(ctx *gin.Context) {
 			return
 		}
 	case "STOP":
-		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
+		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &scheduler.StopScheduleRequest{
 			Name: name,
 		})
 		if err != nil {
@@ -232,7 +231,7 @@ func (svr *httpd) handleTimersUpdate(ctx *gin.Context) {
 		return
 	}
 
-	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &scheduler.GetScheduleRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -248,7 +247,7 @@ func (svr *httpd) handleTimersUpdate(ctx *gin.Context) {
 		return
 	}
 
-	updateRsp, err := svr.schedMgmtImpl.UpdateSchedule(ctx, &schedule.UpdateScheduleRequest{
+	updateRsp, err := svr.schedMgmtImpl.UpdateSchedule(ctx, &scheduler.UpdateScheduleRequest{
 		Name:      name,
 		AutoStart: req.AutoStart,
 		Schedule:  req.Schedule,
@@ -285,7 +284,7 @@ func (svr *httpd) handleTimersDel(ctx *gin.Context) {
 		return
 	}
 
-	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &scheduler.GetScheduleRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -301,7 +300,7 @@ func (svr *httpd) handleTimersDel(ctx *gin.Context) {
 		return
 	}
 	if getRsp.Schedule.State == "RUNNING" {
-		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
+		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &scheduler.StopScheduleRequest{
 			Name: name,
 		})
 		if err != nil {
@@ -318,7 +317,7 @@ func (svr *httpd) handleTimersDel(ctx *gin.Context) {
 		}
 	}
 
-	deleteRsp, err := svr.schedMgmtImpl.DelSchedule(ctx, &schedule.DelScheduleRequest{
+	deleteRsp, err := svr.schedMgmtImpl.DelSchedule(ctx, &scheduler.DelScheduleRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -782,7 +781,7 @@ func (svr *httpd) handleSubscriber(ctx *gin.Context) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
 	name := ctx.Param("name")
-	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{Name: name})
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &scheduler.GetScheduleRequest{Name: name})
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -807,7 +806,7 @@ func (svr *httpd) handleSubscribers(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	schedRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
+	schedRsp, err := svr.schedMgmtImpl.ListSchedule(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -821,7 +820,7 @@ func (svr *httpd) handleSubscribers(ctx *gin.Context) {
 		return
 	}
 
-	lst := []*schedule.Schedule{}
+	lst := []*scheduler.Schedule{}
 	for _, c := range schedRsp.Schedules {
 		typ := strings.ToUpper(c.Type)
 		if typ != "SUBSCRIBER" {
@@ -864,7 +863,7 @@ func (svr *httpd) handleSubscribersAdd(ctx *gin.Context) {
 		return
 	}
 
-	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{Name: req.Name})
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &scheduler.GetScheduleRequest{Name: req.Name})
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -878,7 +877,7 @@ func (svr *httpd) handleSubscribersAdd(ctx *gin.Context) {
 		return
 	}
 
-	bridgeRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridgerpc.GetBridgeRequest{Name: req.Bridge})
+	bridgeRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridge.GetBridgeRequest{Name: req.Bridge})
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -893,7 +892,7 @@ func (svr *httpd) handleSubscribersAdd(ctx *gin.Context) {
 	}
 	bridgeType := bridgeRsp.Bridge.Type
 
-	addSchedReq := &schedule.AddScheduleRequest{
+	addSchedReq := &scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
 		Type:      "subscriber",
 		AutoStart: req.AutoStart,
@@ -903,19 +902,15 @@ func (svr *httpd) handleSubscribersAdd(ctx *gin.Context) {
 
 	switch bridgeType {
 	case "mqtt":
-		addSchedReq.Opt = &schedule.AddScheduleRequest_Mqtt{
-			Mqtt: &schedule.MqttOption{
-				Topic: req.Topic,
-				QoS:   int32(req.QoS),
-			},
+		addSchedReq.Opt.Mqtt = &scheduler.MqttOption{
+			Topic: req.Topic,
+			QoS:   int32(req.QoS),
 		}
 	case "nats":
-		addSchedReq.Opt = &schedule.AddScheduleRequest_Nats{
-			Nats: &schedule.NatsOption{
-				Subject:    req.Topic,
-				QueueName:  req.Queue,
-				StreamName: req.Stream,
-			},
+		addSchedReq.Opt.Nats = &scheduler.NatsOption{
+			Subject:    req.Topic,
+			QueueName:  req.Queue,
+			StreamName: req.Stream,
 		}
 	default:
 		rsp["reason"] = fmt.Sprintf("unknown birdge type %q", bridgeType)
@@ -949,7 +944,7 @@ func (svr *httpd) handleSubscribersDel(ctx *gin.Context) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	name := ctx.Param("name")
 
-	schedRsp, err := svr.schedMgmtImpl.DelSchedule(ctx, &schedule.DelScheduleRequest{
+	schedRsp, err := svr.schedMgmtImpl.DelSchedule(ctx, &scheduler.DelScheduleRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -990,7 +985,7 @@ func (svr *httpd) handleSubscribersState(ctx *gin.Context) {
 
 	switch strings.ToUpper(req.State) {
 	case "START":
-		schedRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
+		schedRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &scheduler.StartScheduleRequest{
 			Name: name,
 		})
 		if err != nil {
@@ -1006,7 +1001,7 @@ func (svr *httpd) handleSubscribersState(ctx *gin.Context) {
 			return
 		}
 	case "STOP":
-		schedRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
+		schedRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &scheduler.StopScheduleRequest{
 			Name: name,
 		})
 		if err != nil {
@@ -1038,7 +1033,7 @@ func (svr *httpd) handleBridges(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	listRsp, err := svr.bridgeMgmtImpl.ListBridge(ctx, &bridgerpc.ListBridgeRequest{})
+	listRsp, err := svr.bridgeMgmtImpl.ListBridge(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -1078,7 +1073,7 @@ func (svr *httpd) handleBridgesAdd(ctx *gin.Context) {
 		return
 	}
 
-	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridgerpc.GetBridgeRequest{
+	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridge.GetBridgeRequest{
 		Name: req.Name,
 	})
 	if err != nil {
@@ -1094,7 +1089,7 @@ func (svr *httpd) handleBridgesAdd(ctx *gin.Context) {
 		return
 	}
 
-	addRsp, err := svr.bridgeMgmtImpl.AddBridge(ctx, &bridgerpc.AddBridgeRequest{
+	addRsp, err := svr.bridgeMgmtImpl.AddBridge(ctx, &bridge.AddBridgeRequest{
 		Name: strings.ToLower(req.Name), Type: strings.ToLower(req.Type), Path: req.Path,
 	})
 	if err != nil {
@@ -1128,7 +1123,34 @@ func (svr *httpd) handleBridgesDel(ctx *gin.Context) {
 		return
 	}
 
-	delRsp, err := svr.bridgeMgmtImpl.DelBridge(ctx, &bridgerpc.DelBridgeRequest{
+	listRsp, err := svr.authServer.schedSvc.ListSchedule(ctx)
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	subscribers := make([]string, 0)
+	for _, schedule := range listRsp.Schedules {
+		if strings.EqualFold(schedule.Bridge, name) {
+			subscribers = append(subscribers, schedule.Name)
+		}
+	}
+
+	if len(subscribers) == 1 {
+		rsp["reason"] = fmt.Sprintf("bridge %q has a subscriber, %s", name, subscribers[0])
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	} else if len(subscribers) > 1 {
+		rsp["reason"] = fmt.Sprintf("bridge %q has subscribers, %s", name, strings.Join(subscribers, ","))
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	delRsp, err := svr.bridgeMgmtImpl.DelBridge(ctx, &bridge.DelBridgeRequest{
 		Name: strings.ToLower(name),
 	})
 	if err != nil {
@@ -1197,7 +1219,7 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
 	// bridge type find
-	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridgerpc.GetBridgeRequest{
+	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridge.GetBridgeRequest{
 		Name: req.Name,
 	})
 	if err != nil {
@@ -1223,10 +1245,13 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 
 	switch brType {
 	case "python":
-		cmd := &bridgerpc.ExecRequest_Invoke{Invoke: &bridgerpc.InvokeRequest{}}
-		cmd.Invoke.Args = []string{req.Command}
-		execRsp, err := svr.bridgeRuntimeImpl.Exec(ctx, &bridgerpc.ExecRequest{Name: req.Name, Command: cmd})
-		result := execRsp.GetInvokeResult()
+		execRsp, err := svr.bridgeMgmtImpl.Exec(ctx, &bridge.ExecRequest{
+			Name: req.Name,
+			Command: bridge.ExecCommand{
+				Invoke: &bridge.InvokeRequest{Args: []string{req.Command}},
+			},
+		})
+		result := execRsp.Result.InvokeResult
 		if result != nil && len(result.Stdout) > 0 {
 			rsp["stdout"] = string(result.Stdout)
 		}
@@ -1246,9 +1271,14 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 			return
 		}
 	default:
-		cmd := &bridgerpc.ExecRequest_SqlExec{SqlExec: &bridgerpc.SqlRequest{}}
-		cmd.SqlExec.SqlText = req.Command
-		execRsp, err := svr.bridgeRuntimeImpl.Exec(ctx, &bridgerpc.ExecRequest{Name: req.Name, Command: cmd})
+		execRsp, err := svr.bridgeMgmtImpl.Exec(ctx, &bridge.ExecRequest{
+			Name: req.Name,
+			Command: bridge.ExecCommand{
+				SqlExec: &bridge.SqlRequest{
+					SqlText: req.Command,
+				},
+			},
+		})
 		if err != nil {
 			rsp["reason"] = err.Error()
 			rsp["elapse"] = time.Since(tick).String()
@@ -1261,7 +1291,7 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
-		result := execRsp.GetSqlExecResult()
+		result := execRsp.Result.SqlExecResult
 		if result == nil {
 			rsp["reason"] = "exec result is empty"
 			rsp["elapse"] = time.Since(tick).String()
@@ -1287,10 +1317,12 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 		return
 	}
 
-	cmd := &bridgerpc.ExecRequest_SqlQuery{SqlQuery: &bridgerpc.SqlRequest{}}
-	cmd.SqlQuery.SqlText = req.Command
-
-	execRsp, err := svr.bridgeRuntimeImpl.Exec(ctx, &bridgerpc.ExecRequest{Name: req.Name, Command: cmd})
+	execRsp, err := svr.bridgeMgmtImpl.Exec(ctx, &bridge.ExecRequest{
+		Name: req.Name,
+		Command: bridge.ExecCommand{SqlQuery: &bridge.SqlRequest{
+			SqlText: req.Command,
+		}},
+	})
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -1304,10 +1336,10 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 		return
 	}
 
-	result := execRsp.GetSqlQueryResult()
-	defer svr.bridgeRuntimeImpl.SqlQueryResultClose(ctx, result)
+	result := execRsp.Result.SqlQueryResult
+	defer svr.bridgeMgmtImpl.SqlQueryResultClose(ctx, result)
 
-	if execRsp.Result != nil && len(result.Fields) == 0 {
+	if result != nil && len(result.Fields) == 0 {
 		rsp["success"] = true
 		rsp["reason"] = "0 rows"
 		ctx.JSON(http.StatusOK, rsp)
@@ -1322,7 +1354,7 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	rows := [][]any{}
 	rownum := 0
 	for {
-		fetch, err0 := svr.bridgeRuntimeImpl.SqlQueryResultFetch(ctx, result)
+		fetch, err0 := svr.bridgeMgmtImpl.SqlQueryResultFetch(ctx, result)
 		if err0 != nil {
 			err = err0
 			break
@@ -1335,12 +1367,7 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 			break
 		}
 		rownum++
-		vals, err0 := bridge.ConvertFromDatum(fetch.Values...)
-		if err0 != nil {
-			err = err0
-			break
-		}
-		rows = append(rows, vals)
+		rows = append(rows, fetch.Values)
 	}
 
 	if err != nil {
@@ -1364,7 +1391,7 @@ func testBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	testRsp, err := svr.bridgeMgmtImpl.TestBridge(ctx, &bridgerpc.TestBridgeRequest{
+	testRsp, err := svr.bridgeMgmtImpl.TestBridge(ctx, &bridge.TestBridgeRequest{
 		Name: req.Name,
 	})
 	if err != nil {

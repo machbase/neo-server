@@ -31,10 +31,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
-	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
-	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -63,8 +61,8 @@ type Server struct {
 	sshd  *sshd
 	bakd  *backupd
 
-	bridgeSvc bridge.Service
-	schedSvc  scheduler.Service
+	bridgeSvc *bridge.Service
+	schedSvc  *scheduler.Service
 
 	authHandler       AuthHandler
 	authorizedKeysDir string
@@ -831,8 +829,6 @@ func (s *Server) startGrpcServer() error {
 		WithGrpcMaxRecvMsgSize(s.Grpc.MaxRecvMsgSize*1024*1024),
 		WithGrpcMaxSendMsgSize(s.Grpc.MaxSendMsgSize*1024*1024),
 		WithGrpcTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
-		WithGrpcBridgeServer(s.bridgeSvc),
-		WithGrpcScheduleServer(s.schedSvc),
 		WithGrpcServerInsecure(s.Grpc.Insecure),
 	); err != nil {
 		return err
@@ -863,7 +859,6 @@ func (s *Server) startBridgeAndSchedulerService() error {
 
 	s.bridgeSvc = bridge.NewService(
 		bridge.WithProvider(s.models.BridgeProvider()),
-		bridge.WithScheduleServer(s.schedSvc),
 	)
 
 	if err := s.bridgeSvc.Start(); err != nil {
@@ -1318,9 +1313,9 @@ func (s *Server) deleteShell(id string) error {
 	return s.models.ShellProvider().RemoveShell(id)
 }
 
-func (s *Server) getBridge(name string) (*bridgerpc.Bridge, error) {
+func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.GetBridge(ctx, &bridgerpc.GetBridgeRequest{
+	rsp, err := s.bridgeSvc.GetBridge(ctx, &bridge.GetBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1332,13 +1327,13 @@ func (s *Server) getBridge(name string) (*bridgerpc.Bridge, error) {
 	return rsp.Bridge, nil
 }
 
-func (s *Server) listBridges() ([]*bridgerpc.Bridge, error) {
+func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
 	ctx := context.Background()
-	if rsp, err := s.bridgeSvc.ListBridge(ctx, nil); err != nil {
+	if rsp, err := s.bridgeSvc.ListBridge(ctx); err != nil {
 		return nil, err
 	} else {
 		if rsp.Bridges == nil {
-			return []*bridgerpc.Bridge{}, nil
+			return []*bridge.BridgeInfo{}, nil
 		}
 		return rsp.Bridges, nil
 	}
@@ -1346,7 +1341,7 @@ func (s *Server) listBridges() ([]*bridgerpc.Bridge, error) {
 
 func (s *Server) addBridge(name string, typ string, conn string) error {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridgerpc.AddBridgeRequest{
+	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridge.AddBridgeRequest{
 		Name: name,
 		Type: typ,
 		Path: conn,
@@ -1362,7 +1357,26 @@ func (s *Server) addBridge(name string, typ string, conn string) error {
 
 func (s *Server) deleteBridge(name string) error {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.DelBridge(ctx, &bridgerpc.DelBridgeRequest{
+
+	listRsp, err := s.schedSvc.ListSchedule(ctx)
+	if err != nil {
+		return err
+	}
+
+	subscribers := make([]string, 0)
+	for _, schedule := range listRsp.Schedules {
+		if strings.EqualFold(schedule.Bridge, name) {
+			subscribers = append(subscribers, schedule.Name)
+		}
+	}
+
+	if len(subscribers) == 1 {
+		return fmt.Errorf("bridge %q has a subscriber, %s", name, subscribers[0])
+	} else if len(subscribers) > 1 {
+		return fmt.Errorf("bridge %q has subscribers, %s", name, strings.Join(subscribers, ","))
+	}
+
+	rsp, err := s.bridgeSvc.DelBridge(ctx, &bridge.DelBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1376,7 +1390,7 @@ func (s *Server) deleteBridge(name string) error {
 
 func (s *Server) testBridge(name string) (bool, error) {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridgerpc.TestBridgeRequest{
+	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridge.TestBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1399,7 +1413,7 @@ type BridgeStats struct {
 
 func (s *Server) statsBridge(name string) (BridgeStats, error) {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridgerpc.StatsBridgeRequest{
+	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridge.StatsBridgeRequest{
 		Name: name,
 	})
 	ret := BridgeStats{}
@@ -1426,10 +1440,10 @@ type BridgeExecResult struct {
 
 func (s *Server) execBridge(name string, command string) (BridgeExecResult, error) {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.Exec(ctx, &bridgerpc.ExecRequest{
+	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
 		Name: name,
-		Command: &bridgerpc.ExecRequest_SqlExec{
-			SqlExec: &bridgerpc.SqlRequest{
+		Command: bridge.ExecCommand{
+			SqlExec: &bridge.SqlRequest{
 				SqlText: command,
 			},
 		},
@@ -1441,7 +1455,7 @@ func (s *Server) execBridge(name string, command string) (BridgeExecResult, erro
 	if !rsp.Success {
 		return ret, errors.New(rsp.Reason)
 	}
-	result := rsp.GetSqlExecResult()
+	result := rsp.Result.SqlExecResult
 	ret.Reason = rsp.Reason
 	ret.LastInsertedId = result.LastInsertedId
 	ret.RowsAffected = result.RowsAffected
@@ -1462,10 +1476,10 @@ type BridgeQueryColumn struct {
 
 func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, error) {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.Exec(ctx, &bridgerpc.ExecRequest{
+	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
 		Name: name,
-		Command: &bridgerpc.ExecRequest_SqlQuery{
-			SqlQuery: &bridgerpc.SqlRequest{
+		Command: bridge.ExecCommand{
+			SqlQuery: &bridge.SqlRequest{
 				SqlText: query,
 			},
 		},
@@ -1477,7 +1491,7 @@ func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, erro
 	if !rsp.Success {
 		return ret, errors.New(rsp.Reason)
 	}
-	result := rsp.GetSqlQueryResult()
+	result := rsp.Result.SqlQueryResult
 	ret.Handle = result.Handle
 	for _, col := range result.Fields {
 		ret.Columns = append(ret.Columns, BridgeQueryColumn{
@@ -1497,7 +1511,7 @@ type BridgeQueryRow struct {
 
 func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.SqlQueryResultFetch(ctx, &bridgerpc.SqlQueryResult{
+	rsp, err := s.bridgeSvc.SqlQueryResultFetch(ctx, &bridge.SqlQueryResult{
 		Handle: handle,
 	})
 	ret := BridgeQueryRow{}
@@ -1509,43 +1523,13 @@ func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
 	}
 
 	ret.HasNoRows = rsp.HasNoRows
-	for _, v := range rsp.Values {
-		switch val := v.Value.(type) {
-		case *bridgerpc.Datum_VInt32:
-			ret.Values = append(ret.Values, val.VInt32)
-		case *bridgerpc.Datum_VUint32:
-			ret.Values = append(ret.Values, val.VUint32)
-		case *bridgerpc.Datum_VInt64:
-			ret.Values = append(ret.Values, val.VInt64)
-		case *bridgerpc.Datum_VUint64:
-			ret.Values = append(ret.Values, val.VUint64)
-		case *bridgerpc.Datum_VFloat:
-			ret.Values = append(ret.Values, val.VFloat)
-		case *bridgerpc.Datum_VDouble:
-			ret.Values = append(ret.Values, val.VDouble)
-		case *bridgerpc.Datum_VString:
-			ret.Values = append(ret.Values, val.VString)
-		case *bridgerpc.Datum_VBytes:
-			ret.Values = append(ret.Values, val.VBytes)
-		case *bridgerpc.Datum_VBool:
-			ret.Values = append(ret.Values, val.VBool)
-		case *bridgerpc.Datum_VTime:
-			t := time.Unix(0, val.VTime)
-			ret.Values = append(ret.Values, t)
-		case *bridgerpc.Datum_VIp:
-			ret.Values = append(ret.Values, val.VIp)
-		case *bridgerpc.Datum_VNull:
-			ret.Values = append(ret.Values, nil)
-		default:
-			ret.Values = append(ret.Values, nil)
-		}
-	}
+	ret.Values = rsp.Values
 	return ret, nil
 }
 
 func (s *Server) closeResultBridge(handle string) error {
 	ctx := context.Background()
-	rsp, err := s.bridgeSvc.SqlQueryResultClose(ctx, &bridgerpc.SqlQueryResult{
+	rsp, err := s.bridgeSvc.SqlQueryResultClose(ctx, &bridge.SqlQueryResult{
 		Handle: handle,
 	})
 	if err != nil {
@@ -1641,26 +1625,26 @@ func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
 	return rsp.Certificate, nil
 }
 
-func (s *Server) listSchedules(ctx context.Context) ([]*schedrpc.Schedule, error) {
-	rsp, err := s.schedSvc.ListSchedule(ctx, &schedrpc.ListScheduleRequest{})
+func (s *Server) listSchedules(ctx context.Context) ([]*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.ListSchedule(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if len(rsp.Schedules) == 0 {
-		return []*schedrpc.Schedule{}, nil
+		return []*scheduler.Schedule{}, nil
 	}
 	return rsp.Schedules, nil
 }
 
 func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
-	req := schedrpc.AddScheduleRequest{
+	req := &scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(name),
 		Type:      "TIMER",
 		AutoStart: autoStart,
 		Schedule:  spec,
 		Task:      command,
 	}
-	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
+	rsp, err := s.schedSvc.AddSchedule(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -1671,14 +1655,14 @@ func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string,
 }
 
 func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge string, command string, autoStart bool, topic string, qos int) error {
-	req := schedrpc.AddScheduleRequest{
+	req := scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(name),
 		Type:      "SUBSCRIBER",
 		AutoStart: autoStart,
 		Task:      command,
 		Bridge:    bridge,
-		Opt: &schedrpc.AddScheduleRequest_Mqtt{
-			Mqtt: &schedrpc.MqttOption{
+		Opt: scheduler.AddScheduleOption{
+			Mqtt: &scheduler.MqttOption{
 				Topic: topic,
 				QoS:   int32(qos),
 			},
@@ -1696,7 +1680,7 @@ func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge 
 
 func (s *Server) deleteSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
-	rsp, err := s.schedSvc.DelSchedule(ctx, &schedrpc.DelScheduleRequest{Name: name})
+	rsp, err := s.schedSvc.DelSchedule(ctx, &scheduler.DelScheduleRequest{Name: name})
 	if err != nil {
 		return err
 	}
@@ -1708,7 +1692,7 @@ func (s *Server) deleteSchedule(ctx context.Context, name string) error {
 
 func (s *Server) startSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
-	rsp, err := s.schedSvc.StartSchedule(ctx, &schedrpc.StartScheduleRequest{Name: name})
+	rsp, err := s.schedSvc.StartSchedule(ctx, &scheduler.StartScheduleRequest{Name: name})
 	if err != nil {
 		return err
 	}
@@ -1720,7 +1704,7 @@ func (s *Server) startSchedule(ctx context.Context, name string) error {
 
 func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
-	rsp, err := s.schedSvc.StopSchedule(ctx, &schedrpc.StopScheduleRequest{Name: name})
+	rsp, err := s.schedSvc.StopSchedule(ctx, &scheduler.StopScheduleRequest{Name: name})
 	if err != nil {
 		return err
 	}

@@ -5,14 +5,32 @@ import (
 	"fmt"
 	"time"
 
-	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/robfig/cron/v3"
 )
 
-func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*schedrpc.ListScheduleResponse, error) {
+type ListScheduleResponse struct {
+	Success   bool        `json:"success,omitempty"`
+	Reason    string      `json:"reason,omitempty"`
+	Elapse    string      `json:"elapse,omitempty"`
+	Schedules []*Schedule `json:"schedules,omitempty"`
+}
+
+type Schedule struct {
+	Name      string `json:"name,omitempty"`
+	Type      string `json:"type,omitempty"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+	State     string `json:"state,omitempty"`
+	Task      string `json:"task,omitempty"`
+	Schedule  string `json:"schedule,omitempty"`
+	Bridge    string `json:"bridge,omitempty"`
+	Topic     string `json:"topic,omitempty"`
+	QoS       int32  `json:"QoS,omitempty"`
+}
+
+func (s *Service) ListSchedule(context.Context) (*ListScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.ListScheduleResponse{}
+	rsp := &ListScheduleResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -22,7 +40,7 @@ func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*sch
 		return rsp, nil
 	}
 	for _, define := range lst {
-		sched := &schedrpc.Schedule{
+		sched := &Schedule{
 			Name:      define.Name,
 			Type:      define.Type.String(),
 			AutoStart: define.AutoStart,
@@ -46,16 +64,27 @@ func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*sch
 	return rsp, nil
 }
 
-func (s *svr) GetSchedule(ctx context.Context, req *schedrpc.GetScheduleRequest) (*schedrpc.GetScheduleResponse, error) {
+type GetScheduleRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
+type GetScheduleResponse struct {
+	Success  bool      `json:"success,omitempty"`
+	Reason   string    `json:"reason,omitempty"`
+	Elapse   string    `json:"elapse,omitempty"`
+	Schedule *Schedule `json:"schedule,omitempty"`
+}
+
+func (s *Service) GetSchedule(ctx context.Context, req *GetScheduleRequest) (*GetScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.GetScheduleResponse{}
+	rsp := &GetScheduleResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
 	if define, err := s.models.LoadSchedule(req.Name); err != nil {
 		rsp.Reason = err.Error()
 	} else {
-		rsp.Schedule = &schedrpc.Schedule{
+		rsp.Schedule = &Schedule{
 			Name:      define.Name,
 			Type:      define.Type.String(),
 			AutoStart: define.AutoStart,
@@ -74,9 +103,41 @@ func (s *svr) GetSchedule(ctx context.Context, req *schedrpc.GetScheduleRequest)
 	return rsp, nil
 }
 
-func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest) (*schedrpc.AddScheduleResponse, error) {
+type AddScheduleRequest struct {
+	Name      string            `json:"name,omitempty"`
+	Type      string            `json:"type,omitempty"`
+	AutoStart bool              `json:"autoStart,omitempty"`
+	Task      string            `json:"task,omitempty"`
+	Schedule  string            `json:"schedule,omitempty"`
+	Bridge    string            `json:"bridge,omitempty"`
+	Opt       AddScheduleOption `json:"opt"`
+}
+
+type AddScheduleOption struct {
+	Mqtt *MqttOption `json:"mqtt,omitempty"`
+	Nats *NatsOption `json:"nats,omitempty"`
+}
+
+type MqttOption struct {
+	Topic string `json:"Topic,omitempty"`
+	QoS   int32  `json:"QoS,omitempty"`
+}
+
+type NatsOption struct {
+	Subject    string `json:"Subject,omitempty"`
+	QueueName  string `json:"QueueName,omitempty"`
+	StreamName string `json:"StreamName,omitempty"`
+}
+
+type AddScheduleResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Service) AddSchedule(ctx context.Context, req *AddScheduleRequest) (*AddScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.AddScheduleResponse{Reason: "not specified"}
+	rsp := &AddScheduleResponse{Reason: "not specified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -94,13 +155,13 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 	def.Schedule = req.Schedule
 	def.Task = req.Task
 	def.Type = model.ParseScheduleType(req.Type)
-	if opt, ok := req.Opt.(*schedrpc.AddScheduleRequest_Mqtt); ok {
-		def.Topic = opt.Mqtt.Topic
-		def.QoS = int(opt.Mqtt.QoS)
-	} else if opt, ok := req.Opt.(*schedrpc.AddScheduleRequest_Nats); ok {
-		def.Topic = opt.Nats.Subject
-		def.QueueName = opt.Nats.QueueName
-		def.StreamName = opt.Nats.StreamName
+	if req.Opt.Mqtt != nil {
+		def.Topic = req.Opt.Mqtt.Topic
+		def.QoS = int(req.Opt.Mqtt.QoS)
+	} else if req.Opt.Nats != nil {
+		def.Topic = req.Opt.Nats.Subject
+		def.QueueName = req.Opt.Nats.QueueName
+		def.StreamName = req.Opt.Nats.StreamName
 	}
 
 	switch def.Type {
@@ -144,9 +205,19 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 	return rsp, nil
 }
 
-func (s *svr) DelSchedule(ctx context.Context, req *schedrpc.DelScheduleRequest) (*schedrpc.DelScheduleResponse, error) {
+type DelScheduleRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
+type DelScheduleResponse struct {
+	Success bool   `json:"success,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Elapse  string `json:"elapse,omitempty"`
+}
+
+func (s *Service) DelSchedule(ctx context.Context, req *DelScheduleRequest) (*DelScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.DelScheduleResponse{}
+	rsp := &DelScheduleResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -163,9 +234,25 @@ func (s *svr) DelSchedule(ctx context.Context, req *schedrpc.DelScheduleRequest)
 
 }
 
-func (s *svr) UpdateSchedule(ctx context.Context, req *schedrpc.UpdateScheduleRequest) (*schedrpc.UpdateScheduleResponse, error) {
+type UpdateScheduleRequest struct {
+	Name      string `json:"name,omitempty"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+	Task      string `json:"task,omitempty"`
+	Schedule  string `json:"schedule,omitempty"`
+	Bridge    string `json:"bridge,omitempty"`
+	Topic     string `json:"topic,omitempty"`
+	QoS       int32  `json:"QoS,omitempty"`
+}
+
+type UpdateScheduleResponse struct {
+	Success bool   `json:"success,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Elapse  string `json:"elapse,omitempty"`
+}
+
+func (s *Service) UpdateSchedule(ctx context.Context, req *UpdateScheduleRequest) (*UpdateScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.UpdateScheduleResponse{}
+	rsp := &UpdateScheduleResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -201,9 +288,19 @@ func (s *svr) UpdateSchedule(ctx context.Context, req *schedrpc.UpdateScheduleRe
 	return rsp, nil
 }
 
-func (s *svr) StartSchedule(ctx context.Context, req *schedrpc.StartScheduleRequest) (*schedrpc.StartScheduleResponse, error) {
+type StartScheduleRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
+type StartScheduleResponse struct {
+	Success bool   `json:"success,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Elapse  string `json:"elapse,omitempty"`
+}
+
+func (s *Service) StartSchedule(ctx context.Context, req *StartScheduleRequest) (*StartScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.StartScheduleResponse{}
+	rsp := &StartScheduleResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -220,9 +317,19 @@ func (s *svr) StartSchedule(ctx context.Context, req *schedrpc.StartScheduleRequ
 	return rsp, nil
 }
 
-func (s *svr) StopSchedule(ctx context.Context, req *schedrpc.StopScheduleRequest) (*schedrpc.StopScheduleResponse, error) {
+type StopScheduleRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
+type StopScheduleResponse struct {
+	Success bool   `json:"success,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Elapse  string `json:"elapse,omitempty"`
+}
+
+func (s *Service) StopSchedule(ctx context.Context, req *StopScheduleRequest) (*StopScheduleResponse, error) {
 	tick := time.Now()
-	rsp := &schedrpc.StopScheduleResponse{}
+	rsp := &StopScheduleResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()

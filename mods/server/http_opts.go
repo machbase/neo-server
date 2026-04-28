@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
+	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -192,20 +192,15 @@ func WithHttpMqttWsHandlerFunc(fn http.HandlerFunc) HttpOption {
 	}
 }
 
-func WithHttpScheduleServer(handler schedule.ManagementServer) HttpOption {
+func WithHttpScheduleServer(handler *scheduler.Service) HttpOption {
 	return func(s *httpd) {
 		s.schedMgmtImpl = handler
 	}
 }
 
-func WithHttpBridgeServer(handler any) HttpOption {
+func WithHttpBridgeServer(handler *bridge.Service) HttpOption {
 	return func(s *httpd) {
-		if o, ok := handler.(bridge.ManagementServer); ok {
-			s.bridgeMgmtImpl = o
-		}
-		if o, ok := handler.(bridge.RuntimeServer); ok {
-			s.bridgeRuntimeImpl = o
-		}
+		s.bridgeMgmtImpl = handler
 	}
 }
 

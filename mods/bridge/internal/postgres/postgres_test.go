@@ -224,17 +224,15 @@ func TestPostgresDateTypes(t *testing.T) {
 	require.True(t, timestampTZValue.Valid)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), timestampTZValue.Time.UTC())
 
-	datums, err := bridgepkg.ConvertToDatum(fields...)
-	require.NoError(t, err)
-	require.Len(t, datums, 9)
-
-	values, err := bridgepkg.ConvertFromDatum(datums...)
-	require.NoError(t, err)
+	values := make([]any, len(fields))
+	for i, v := range fields {
+		values[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Equal(t, true, values[0])
 	require.Equal(t, int32(42), values[1])
 	require.Equal(t, int64(4200000000), values[2])
 	convertedReal, ok := values[3].(float32)
-	require.True(t, ok)
+	require.True(t, ok, fmt.Sprintf("value type:%T", values[3]))
 	require.InDelta(t, 3.25, convertedReal, 0.0001)
 	require.Equal(t, "pg-text", values[4])
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", values[5])
@@ -306,12 +304,10 @@ func TestPostgresDateTypes(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, nullTimestampTZValue.Valid)
 
-	nullDatums, err := bridgepkg.ConvertToDatum(nullFields...)
-	require.NoError(t, err)
-	require.Len(t, nullDatums, 9)
-
-	nullValues, err := bridgepkg.ConvertFromDatum(nullDatums...)
-	require.NoError(t, err)
+	nullValues := make([]any, len(nullFields))
+	for i, v := range nullFields {
+		nullValues[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Nil(t, nullValues[0])
 	require.Nil(t, nullValues[1])
 	require.Nil(t, nullValues[2])

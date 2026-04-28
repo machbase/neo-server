@@ -170,12 +170,10 @@ func TestMySQLDateTypes(t *testing.T) {
 	require.True(t, timestampValue.Valid)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), timestampValue.Time.UTC())
 
-	datums, err := bridgepkg.ConvertToDatum(fields...)
-	require.NoError(t, err)
-	require.Len(t, datums, 11)
-
-	values, err := bridgepkg.ConvertFromDatum(datums...)
-	require.NoError(t, err)
+	values := make([]any, len(fields))
+	for i, v := range fields {
+		values[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	requireMySQLIntegerValue(t, values[0], 4200000000)
 	requireMySQLIntegerValue(t, values[1], 123456)
 	requireMySQLIntegerValue(t, values[2], 12)
@@ -252,12 +250,16 @@ func TestMySQLDateTypes(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, nullTimestampValue.Valid)
 
-	nullDatums, err := bridgepkg.ConvertToDatum(nullFields...)
-	require.NoError(t, err)
+	nullDatums := make([]any, len(nullFields))
+	for i, v := range nullFields {
+		nullDatums[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Len(t, nullDatums, 11)
 
-	nullValues, err := bridgepkg.ConvertFromDatum(nullDatums...)
-	require.NoError(t, err)
+	nullValues := make([]any, len(nullDatums))
+	for i, v := range nullDatums {
+		nullValues[i] = bridgepkg.UnboxValueToNative(v)
+	}
 	require.Nil(t, nullValues[0])
 	require.Nil(t, nullValues[1])
 	require.Nil(t, nullValues[2])

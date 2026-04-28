@@ -30,14 +30,14 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
+	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
@@ -79,14 +79,13 @@ type httpd struct {
 	handlers        []*HandlerConfig
 	mqttWsHandler   func(*gin.Context)
 
-	httpServer        *http.Server
-	listeners         []net.Listener
-	jwtCache          JwtCache
-	bakd              *backupd
-	schedMgmtImpl     schedule.ManagementServer
-	bridgeMgmtImpl    bridge.ManagementServer
-	bridgeRuntimeImpl bridge.RuntimeServer
-	pkgMgr            *pkgs.PkgManager
+	httpServer     *http.Server
+	listeners      []net.Listener
+	jwtCache       JwtCache
+	bakd           *backupd
+	schedMgmtImpl  *scheduler.Service
+	bridgeMgmtImpl *bridge.Service
+	pkgMgr         *pkgs.PkgManager
 
 	authServer    *Server
 	rpcController *service.Controller

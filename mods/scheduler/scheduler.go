@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
 	logging "github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -14,8 +13,8 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-func NewService(opts ...Option) Service {
-	ret := &svr{
+func NewService(opts ...Option) *Service {
+	ret := &Service{
 		log: logging.GetLog("scheduler"),
 	}
 	for _, o := range opts {
@@ -34,16 +33,7 @@ func NewService(opts ...Option) Service {
 	return ret
 }
 
-type Service interface {
-	schedrpc.ManagementServer
-	Start() error
-	Stop()
-
-	AddEntry(Entry) error
-}
-
-type svr struct {
-	Service
+type Service struct {
 	log       logging.Log
 	crons     *cron.Cron
 	tqlLoader tql.Loader
@@ -53,33 +43,33 @@ type svr struct {
 	models model.ScheduleProvider
 }
 
-type Option func(*svr)
+type Option func(*Service)
 
 func WithProvider(provider model.ScheduleProvider) Option {
-	return func(s *svr) {
+	return func(s *Service) {
 		s.models = provider
 	}
 }
 
 func WithTqlLoader(ldr tql.Loader) Option {
-	return func(s *svr) {
+	return func(s *Service) {
 		s.tqlLoader = ldr
 	}
 }
 
 func WithDatabase(db api.Database) Option {
-	return func(s *svr) {
+	return func(s *Service) {
 		s.db = db
 	}
 }
 
 func WithVerbose(flag bool) Option {
-	return func(s *svr) {
+	return func(s *Service) {
 		s.verbose = flag
 	}
 }
 
-func (s *svr) Start() error {
+func (s *Service) Start() error {
 	lst, err := s.models.LoadAllSchedules()
 	if err != nil {
 		return err
@@ -96,7 +86,7 @@ func (s *svr) Start() error {
 	return nil
 }
 
-func (s *svr) Stop() {
+func (s *Service) Stop() {
 	UnregisterAll()
 
 	ctx := s.crons.Stop()
@@ -104,7 +94,7 @@ func (s *svr) Stop() {
 	s.log.Info("closed.")
 }
 
-func (s *svr) AddEntry(entry Entry) error {
+func (s *Service) AddEntry(entry Entry) error {
 	if entry.AutoStart() {
 		if err := entry.Start(); err != nil {
 			return err
@@ -114,7 +104,7 @@ func (s *svr) AddEntry(entry Entry) error {
 }
 
 // implements cron.Log
-func (s *svr) Info(msg string, keysAndValues ...any) {
+func (s *Service) Info(msg string, keysAndValues ...any) {
 	if !s.verbose {
 		return
 	}
@@ -142,6 +132,6 @@ func (s *svr) Info(msg string, keysAndValues ...any) {
 	}
 }
 
-func (s *svr) Error(err error, msg string, keysAndValues ...any) {
+func (s *Service) Error(err error, msg string, keysAndValues ...any) {
 	s.log.Error(append([]any{err.Error(), msg}, keysAndValues...)...)
 }

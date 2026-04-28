@@ -1,15 +1,13 @@
 package bridge
 
 import (
-	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
-	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
-func NewService(opts ...Option) Service {
-	s := &svr{
+func NewService(opts ...Option) *Service {
+	s := &Service{
 		log:    logging.GetLog("bridge"),
 		ctxMap: cmap.New[*rowsWrap](),
 	}
@@ -19,39 +17,22 @@ func NewService(opts ...Option) Service {
 	return s
 }
 
-type Service interface {
-	bridgerpc.ManagementServer
-	bridgerpc.RuntimeServer
-
-	Start() error
-	Stop()
-}
-
-type Option func(*svr)
+type Option func(*Service)
 
 func WithProvider(provider model.BridgeProvider) Option {
-	return func(s *svr) {
+	return func(s *Service) {
 		s.models = provider
 	}
 }
 
-func WithScheduleServer(handler schedule.ManagementServer) Option {
-	return func(s *svr) {
-		s.schedMgmtImpl = handler
-	}
-}
-
-type svr struct {
-	Service
-
+type Service struct {
 	log    logging.Log
 	ctxMap cmap.ConcurrentMap[string, *rowsWrap]
 
-	schedMgmtImpl schedule.ManagementServer
-	models        model.BridgeProvider
+	models model.BridgeProvider
 }
 
-func (s *svr) Start() error {
+func (s *Service) Start() error {
 	lst, err := s.models.LoadAllBridges()
 	if err != nil {
 		return err
@@ -66,7 +47,7 @@ func (s *svr) Start() error {
 	return nil
 }
 
-func (s *svr) Stop() {
+func (s *Service) Stop() {
 	UnregisterAll()
 	s.log.Info("closed.")
 }
