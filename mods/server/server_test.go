@@ -86,13 +86,14 @@ func TestMain(m *testing.M) {
 			"--log-level", "INFO",
 		})
 	}()
-	<-testServerAfterStart
+	<-serverAfterStartC
 	if b := booter.GetInstance("machbase.com/neo-server"); b != nil {
 		server = b.(*Server)
 	} else {
 		panic("failed to get server instance from booter")
 	}
 
+	server.binExecutable = binPath
 	httpServer = server.httpd
 	mqttServer = server.mqttd
 
@@ -201,7 +202,7 @@ func TestMain(m *testing.M) {
 
 	// cleanup
 	booter.NotifySignal()
-	<-testServerBeforeStop
+	<-serverBeforeStopC
 }
 
 func TestRepresentativePort(t *testing.T) {

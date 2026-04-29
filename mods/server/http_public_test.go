@@ -15,6 +15,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func requestPublic(t *testing.T, method, requestPath string, body io.Reader) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(method, httpServerAddress+requestPath, body)
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	payload, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+	rsp.Body.Close()
+	return rsp, payload
+}
+
+func TestPublicStatic(t *testing.T) {
+	rsp, payload := requestPublic(t, http.MethodGet, "/public/app/index.html", nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.Equal(t, "text/html", rsp.Header.Get("Content-Type"))
+	require.Equal(t, "<html><body>CGI Test</body></html>", string(payload))
+}
+
+func TestPublicCGI_Basic(t *testing.T) {
+	rsp, payload := requestPublic(t, http.MethodGet, "/public/app/cgi-bin/hello", nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.Equal(t, "text/plain; charset=utf-8;", rsp.Header.Get("Content-Type"))
+	require.Equal(t, "GREETING: Good morning \n", string(payload))
+}
+
+func TestPublicCGI_Basic201(t *testing.T) {
+	rsp, payload := requestPublic(t, http.MethodGet, "/public/app/cgi-bin/basic_201", nil)
+	require.Equal(t, http.StatusCreated, rsp.StatusCode, string(payload))
+	require.Equal(t, "text/plain", rsp.Header.Get("Content-Type"))
+	require.Equal(t, "ok", rsp.Header.Get("X-Test"))
+	require.Equal(t, "hello\n", string(payload))
+}
+
 func TestCgiBinWriterDocumentResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

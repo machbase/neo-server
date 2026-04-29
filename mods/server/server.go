@@ -92,7 +92,13 @@ type Server struct {
 	neoShellAddress   string
 	neoShellAccountMu sync.RWMutex
 	neoShellAccount   map[string]string
+
+	// test purpose only, not set in normal execution
+	binExecutable string
 }
+
+var serverAfterStartC = make(chan struct{})
+var serverBeforeStopC = make(chan struct{})
 
 var _ booter.Boot = (*Server)(nil)
 
@@ -112,6 +118,13 @@ func NewServer(conf *Config) (*Server, error) {
 	}, nil
 }
 
+func (s *Server) Executable() (string, error) {
+	if s.binExecutable != "" {
+		return s.binExecutable, nil
+	}
+	return os.Executable()
+}
+
 func Restore(dataDir string, backupDir string) error {
 	if err := machsvr.Initialize(dataDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		return err
@@ -122,13 +135,9 @@ func Restore(dataDir string, backupDir string) error {
 	return nil
 }
 
-// Test purposed notification channels
-var testServerAfterStart = make(chan struct{})
-var testServerBeforeStop = make(chan struct{})
-
 func (s *Server) Start() error {
-	defer close(testServerAfterStart)
-	util.AddShutdownHook(func() { close(testServerBeforeStop) })
+	defer close(serverAfterStartC)
+	util.AddShutdownHook(func() { close(serverBeforeStopC) })
 
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")

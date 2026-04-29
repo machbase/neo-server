@@ -182,7 +182,7 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 				os.Stderr,
 			),
 			ExecBuilder: func(code string, args []string, env map[string]any) (*exec.Cmd, error) {
-				self, err := os.Executable()
+				self, err := svr.authServer.Executable()
 				if err != nil {
 					return nil, err
 				}
