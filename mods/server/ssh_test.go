@@ -81,7 +81,7 @@ func TestSSH(t *testing.T) {
 		},
 		{
 			name: "bridge_sqlite_insert",
-			cmd:  `bridge exec mem "insert into mem_example(company, employee, discount, created_on) values ('acme', 10, 1.234, '2023-09-09 00:00:00');"`,
+			cmd:  `bridge exec mem "insert into mem_example(company, employee, discount, created_on) values ('acme', 10, 1.234, '2023-09-09 00:00:00Z');"`,
 			expect: []string{
 				`executed.`,
 			},
@@ -90,11 +90,11 @@ func TestSSH(t *testing.T) {
 			name: "bridge_sqlite_select",
 			cmd:  `bridge query mem "select company, employee, discount, created_on from mem_example;"`,
 			expect: []string{
-				`┌────────┬─────────┬──────────┬──────────┬───────────────────────────┐`,
-				`│ ROWNUM │ COMPANY │ EMPLOYEE │ DISCOUNT │ CREATED_ON                │`,
-				`├────────┼─────────┼──────────┼──────────┼───────────────────────────┤`,
-				`│      1 │ acme    │       10 │    1.234 │ 2023-09-09T09:00:00+09:00 │`,
-				`└────────┴─────────┴──────────┴──────────┴───────────────────────────┘`,
+				`┌────────┬─────────┬──────────┬──────────┬──────────────────────┐`,
+				`│ ROWNUM │ COMPANY │ EMPLOYEE │ DISCOUNT │ CREATED_ON           │`,
+				`├────────┼─────────┼──────────┼──────────┼──────────────────────┤`,
+				`│      1 │ acme    │       10 │    1.234 │ 2023-09-09T00:00:00Z │`,
+				`└────────┴─────────┴──────────┴──────────┴──────────────────────┘`,
 			},
 		},
 		{

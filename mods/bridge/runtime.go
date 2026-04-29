@@ -302,6 +302,10 @@ func (s *Service) SqlQueryResultFetch(ctx context.Context, cr *SqlQueryResult) (
 }
 
 func UnboxValueToNative(v any) any {
+	return UnboxValueToNativeTZ(v, time.UTC)
+}
+
+func UnboxValueToNativeTZ(v any, runtimeTZ *time.Location) any {
 	switch val := v.(type) {
 	case *float32:
 		if val == nil {
@@ -410,7 +414,7 @@ func UnboxValueToNative(v any) any {
 		return nil
 	case *sql.NullTime:
 		if val.Valid {
-			return val.Time.In(time.Local)
+			return val.Time.In(runtimeTZ)
 		}
 		return nil
 	case *sql.NullByte:
