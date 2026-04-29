@@ -326,6 +326,16 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 	ts := time.Now()
 	columns := []string{}
 	values := []any{}
+	savedFilePaths := []string{}
+	insertSucceeded := false
+	defer func() {
+		if insertSucceeded {
+			return
+		}
+		for _, savedPath := range savedFilePaths {
+			_ = os.Remove(savedPath)
+		}
+	}()
 	for k, v := range form.Value {
 		if c := findColumn(k); c != nil {
 			columns = append(columns, c.Name)
@@ -418,6 +428,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
+		savedFilePaths = append(savedFilePaths, filepath.Join(mff.StoreDir, mff.Id))
 		if rsp.Data == nil {
 			rsp.Data = &WriteResponseData{}
 			rsp.Data.Files = make(map[string]*UserFileData)
@@ -438,6 +449,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		return
 	}
 
+	insertSucceeded = true
 	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) inserted", 1)
 	rsp.Elapse = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)

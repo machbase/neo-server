@@ -633,6 +633,166 @@ func TestBridge(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, stateRsp)
 }
 
+func TestBridgeStateExecAndQuery(t *testing.T) {
+	jwt := HttpTestLogin(t, "sys", "manager")
+	bridgeName := fmt.Sprintf("bridge-state-%d", time.Now().UnixNano())
+
+	addBridge := func(t *testing.T) {
+		t.Helper()
+		b := &bytes.Buffer{}
+		bridgeReq := map[string]string{
+			"name": bridgeName,
+			"type": "sqlite",
+			"path": "file::memory:?cache=shared",
+		}
+		require.NoError(t, json.NewEncoder(b).Encode(bridgeReq))
+
+		rsp, payload := request(t, jwt, http.MethodPost, "/web/api/bridges", b)
+		addRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &addRsp))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+		require.True(t, addRsp.Success, string(payload))
+	}
+
+	deleteBridge := func(t *testing.T) {
+		t.Helper()
+		rsp, payload := request(t, jwt, http.MethodDelete, "/web/api/bridges/"+bridgeName, nil)
+		deleteRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &deleteRsp))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+		require.True(t, deleteRsp.Success, string(payload))
+	}
+
+	postState := func(t *testing.T, name string, reqBody map[string]string) (*http.Response, []byte) {
+		t.Helper()
+		b := &bytes.Buffer{}
+		require.NoError(t, json.NewEncoder(b).Encode(reqBody))
+		return request(t, jwt, http.MethodPost, "/web/api/bridges/"+name+"/state", b)
+	}
+
+	addBridge(t)
+	defer deleteBridge(t)
+
+	t.Run("exec success with sqlite bridge", func(t *testing.T) {
+		rsp, payload := postState(t, bridgeName, map[string]string{
+			"state":   "exec",
+			"command": "CREATE TABLE IF NOT EXISTS test_exec (id INTEGER, name TEXT)",
+		})
+
+		execRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &execRsp))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+		require.True(t, execRsp.Success, string(payload))
+		require.Equal(t, "success", execRsp.Reason)
+	})
+
+	t.Run("exec returns internal server error on missing bridge", func(t *testing.T) {
+		rsp, payload := postState(t, "missing-bridge", map[string]string{
+			"state":   "exec",
+			"command": "CREATE TABLE missing_test (id INTEGER)",
+		})
+
+		execRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &execRsp))
+		require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+		require.False(t, execRsp.Success, string(payload))
+		require.NotEmpty(t, execRsp.Reason)
+	})
+
+	t.Run("exec returns internal server error on invalid sql", func(t *testing.T) {
+		rsp, payload := postState(t, bridgeName, map[string]string{
+			"state":   "exec",
+			"command": "THIS IS NOT SQL",
+		})
+
+		execRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &execRsp))
+		require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+		require.False(t, execRsp.Success, string(payload))
+		require.NotEmpty(t, execRsp.Reason)
+	})
+
+	t.Run("query rejects empty command", func(t *testing.T) {
+		rsp, payload := postState(t, bridgeName, map[string]string{
+			"state":   "query",
+			"command": "",
+		})
+
+		queryRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &queryRsp))
+		require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(payload))
+		require.False(t, queryRsp.Success, string(payload))
+		require.Equal(t, "no command specified", queryRsp.Reason)
+	})
+
+	t.Run("query success fetches rows", func(t *testing.T) {
+		_, payload := postState(t, bridgeName, map[string]string{
+			"state":   "exec",
+			"command": "INSERT INTO test_exec VALUES (1, 'alpha'), (2, 'beta')",
+		})
+		execRsp := struct {
+			Success bool `json:"success"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &execRsp))
+		require.True(t, execRsp.Success, string(payload))
+
+		rsp, payload := postState(t, bridgeName, map[string]string{
+			"state":   "query",
+			"command": "SELECT id, name FROM test_exec ORDER BY id",
+		})
+
+		queryRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+			Data    struct {
+				Column []string `json:"column"`
+				Rows   [][]any  `json:"rows"`
+			} `json:"data"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &queryRsp))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+		require.True(t, queryRsp.Success, string(payload))
+		require.Equal(t, []string{"id", "name"}, queryRsp.Data.Column)
+		require.Len(t, queryRsp.Data.Rows, 2)
+		require.EqualValues(t, []any{float64(1), "alpha"}, queryRsp.Data.Rows[0])
+		require.EqualValues(t, []any{float64(2), "beta"}, queryRsp.Data.Rows[1])
+	})
+
+	t.Run("query returns internal server error on invalid sql", func(t *testing.T) {
+		rsp, payload := postState(t, bridgeName, map[string]string{
+			"state":   "query",
+			"command": "SELECT * FROM table_that_does_not_exist",
+		})
+
+		queryRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+		}{}
+		require.NoError(t, json.Unmarshal(payload, &queryRsp))
+		require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+		require.False(t, queryRsp.Success, string(payload))
+		require.NotEmpty(t, queryRsp.Reason)
+	})
+}
+
 func TestSubscriber(t *testing.T) {
 	jwt := HttpTestLogin(t, "sys", "manager")
 
