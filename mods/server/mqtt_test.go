@@ -288,6 +288,68 @@ func TestMqttQuery(t *testing.T) {
 	}
 }
 
+func TestMqttQueryFailures(t *testing.T) {
+	conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
+	require.NoError(t, err)
+	defer conn.Close()
+	conn.Exec(t.Context(), `drop table mqtt_query_exec`)
+	defer conn.Exec(t.Context(), `drop table mqtt_query_exec`)
+
+	tests := []MqttTestCase{
+		{
+			Name:      "query_invalid_json",
+			Topic:     "db/query",
+			Payload:   []byte(`{"q":`),
+			Subscribe: "db/reply",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), "unexpected EOF", strPayload)
+			},
+		},
+		{
+			Name:      "query_invalid_tz_custom_reply",
+			Topic:     "db/query",
+			Payload:   []byte(`{"q":"select 1","tz":"Invalid/Zone","reply":"db/reply/query-failure"}`),
+			Subscribe: "db/reply/query-failure",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), "unknown time zone", strPayload)
+			},
+		},
+		{
+			Name:      "query_sql_error",
+			Topic:     "db/query",
+			Payload:   []byte(`{"q":"select * from missing_mqtt_query_table"}`),
+			Subscribe: "db/reply",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.NotEmpty(t, gjson.Get(strPayload, "reason").String(), strPayload)
+			},
+		},
+		{
+			Name:      "query_statement_success",
+			Topic:     "db/query",
+			Payload:   []byte(`{"q":"create tag table mqtt_query_exec (name varchar(20) primary key, time datetime basetime, value double)","reply":"db/reply/query-exec"}`),
+			Subscribe: "db/reply/query-exec",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.NotEmpty(t, gjson.Get(strPayload, "reason").String(), strPayload)
+				require.False(t, gjson.Get(strPayload, "data").Exists(), strPayload)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			runMqttTest(t, &tt)
+		})
+	}
+}
+
 func TestWriteResponse(t *testing.T) {
 	brokerUrl, err := url.Parse("tcp://" + mqttServerAddress)
 	require.NoError(t, err)
@@ -517,6 +579,99 @@ func TestMqttWrite(t *testing.T) {
 				conn.Close()
 			})
 		}
+	}
+}
+
+func TestMqttWriteFailures(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	creTable := `create tag table test_mqtt_failure (
+		name varchar(200) primary key,
+		time datetime basetime,
+		value double
+	) TAG_DUPLICATE_CHECK_DURATION=1;`
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	rsp.Body.Close()
+
+	defer func() {
+		dropTable := `drop table test_mqtt_failure`
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(dropTable), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, _ := http.DefaultClient.Do(req)
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+	}()
+
+	tests := []MqttTestCase{
+		{
+			Name:       "mqtt-write-unsupported-format",
+			Topic:      "db/write/test_mqtt_failure",
+			Payload:    []byte(`[["bad-format",1705291859000000000,1.23]]`),
+			Properties: map[string]string{"reply": "db/reply/write-failure", "format": "xml"},
+			Subscribe:  "db/reply/write-failure",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), `unsupported format "xml"`, strPayload)
+			},
+		},
+		{
+			Name:       "mqtt-write-unsupported-compress",
+			Topic:      "db/write/test_mqtt_failure",
+			Payload:    []byte(`[["bad-compress",1705291859000000000,1.23]]`),
+			Properties: map[string]string{"reply": "db/reply/write-failure", "compress": "zip"},
+			Subscribe:  "db/reply/write-failure",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), `unsupported compress "zip"`, strPayload)
+			},
+		},
+		{
+			Name:       "mqtt-write-missing-table",
+			Topic:      "db/write/",
+			Payload:    []byte(`[]`),
+			Properties: map[string]string{"reply": "db/reply/write-failure"},
+			Subscribe:  "db/reply/write-failure",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "table is not specified", gjson.Get(strPayload, "reason").String(), strPayload)
+			},
+		},
+		{
+			Name:       "mqtt-write-invalid-gzip",
+			Topic:      "db/write/test_mqtt_failure:json:gzip",
+			Payload:    []byte("not-gzip"),
+			Properties: map[string]string{"reply": "db/reply/write-failure"},
+			Subscribe:  "db/reply/write-failure",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), "fail to unzip", strPayload)
+			},
+		},
+		{
+			Name:      "mqtt-write-unknown-column",
+			Topic:     "db/write/test_mqtt_failure",
+			Payload:   []byte(`{"reply":"db/reply/write-failure","data":{"columns":["NAME","MISSING","VALUE"],"rows":[["bad-column",1705291859000000000,1.23]]}}`),
+			Subscribe: "db/reply/write-failure",
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), `column "MISSING" not found`, strPayload)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			runMqttTest(t, &tt)
+		})
 	}
 }
 
