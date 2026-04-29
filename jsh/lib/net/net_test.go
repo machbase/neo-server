@@ -291,12 +291,12 @@ func TestNetEchoServer(t *testing.T) {
 						setTimeout(() => {
 							console.println('[Client] Sending: Test Message 2');
 							client.write('Test Message 2\n');
+
+							setTimeout(() => {
+								console.println('[Client] Closing connection');
+								client.end();
+							}, 100);
 						}, 100);
-						
-						setTimeout(() => {
-							console.println('[Client] Closing connection');
-							client.end();
-						}, 200);
 					});
 					
 					client.on('data', (data) => {
