@@ -23,37 +23,108 @@ function sqlArgument(fields, line) {
         }
         const secondFieldLower = fields[1].toLowerCase();
         if (secondFieldLower === 'exec' || secondFieldLower === 'query') {
-            let bridgeName = fields[2];
-            let verb = fields[3];
-            fields = [firstFieldLower, secondFieldLower, bridgeName];
-            let sqlText = line.substring(line.indexOf(verb)).trim();
-            fields.push(sqlText);
-            return fields;
+            const bridgeName = fields[2];
+            const sqlText = extractBridgeSqlText(line);
+            if (!sqlText) {
+                return fields;
+            }
+            return [firstFieldLower, secondFieldLower, bridgeName, sqlText];
         } else {
             return fields;
         }
     }
 
     fields = fields.slice(1);
-    // find sql verb in the line, and split the rest as sql args
-    const lineUpper = line.toUpperCase();
-    for (const verb of SQL_VERBS.values()) {
-        const index = lineUpper.indexOf(verb);
-        if (index < 0) {
-            continue;
-        }
-        const sqlText = line.substring(index);
-        // find and remove fields after the verb
-        for (let i = 0; i < fields.length; i++) {
-            if (fields[i].toUpperCase() === verb) {
-                fields = [firstField, ...fields.slice(0, i), sqlText];
-                return fields;
+    if (firstFieldLower === 'sql' && fields.length === 1 && fields[0] === line) {
+        return [firstField, trimOuterMatchingQuotes(line.trim())];
+    }
+    // find the first SQL verb field and keep everything before it split like splitFields()
+    for (let i = 0; i < fields.length; i++) {
+        const upperField = fields[i].toUpperCase();
+        for (const verb of SQL_VERBS.values()) {
+            if (upperField !== verb && !upperField.startsWith(verb + ' ')) {
+                continue;
             }
+            const sqlText = extractSqlText(line, i + 1);
+            return [firstField, ...fields.slice(0, i), sqlText];
         }
     }
     // if no sql verb found, join all args as a sql text.
     const sqlArgs = fields.join(' ');
     return [firstField, sqlArgs];
+}
+
+function extractSqlText(line, leadingFieldCount) {
+    return trimOuterMatchingQuotes(skipFieldCount(line, leadingFieldCount).trim());
+}
+
+function extractBridgeSqlText(line) {
+    const remainder = extractSqlText(line, 3);
+    return remainder;
+}
+
+function skipFieldCount(line, fieldCount) {
+    let index = 0;
+    let consumed = 0;
+    const text = String(line);
+
+    while (index < text.length && consumed < fieldCount) {
+        while (index < text.length && isWhitespace(text[index])) {
+            index++;
+        }
+        if (index >= text.length) {
+            return '';
+        }
+        index = skipField(text, index);
+        consumed++;
+    }
+
+    return text.substring(index);
+}
+
+function skipField(text, index) {
+    let inQuote = false;
+    let quoteChar = '';
+
+    while (index < text.length) {
+        const char = text[index];
+        if (inQuote) {
+            if (char === quoteChar) {
+                inQuote = false;
+                quoteChar = '';
+            }
+            index++;
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            inQuote = true;
+            quoteChar = char;
+            index++;
+            continue;
+        }
+        if (isWhitespace(char)) {
+            break;
+        }
+        index++;
+    }
+
+    return index;
+}
+
+function trimOuterMatchingQuotes(text) {
+    if (text.length < 2) {
+        return text;
+    }
+    const first = text[0];
+    const last = text[text.length - 1];
+    if ((first === '"' || first === "'") && first === last) {
+        return text.substring(1, text.length - 1);
+    }
+    return text;
+}
+
+function isWhitespace(char) {
+    return char === ' ' || char === '\t' || char === '\n' || char === '\r';
 }
 
 const SQL_VERBS = new Set([

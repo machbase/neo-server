@@ -43,12 +43,84 @@ func TestSSH(t *testing.T) {
 				"ssh-ok",
 			},
 		},
+		{
+			name: "bridge_sqlite_add",
+			cmd:  `bridge add -t sqlite mem file::memory:?cache=shared`,
+			expect: []string{
+				`Adding bridge... mem type: sqlite path: file::memory:?cache=shared`,
+			},
+		},
+		{
+			name: "bridge_sqlite_list",
+			cmd:  "bridge list",
+			expect: []string{
+				`┌────────┬──────┬────────┬────────────────────────────┐`,
+				`│ ROWNUM │ NAME │ TYPE   │ CONNECTION                 │`,
+				`├────────┼──────┼────────┼────────────────────────────┤`,
+				`│      1 │ mem  │ sqlite │ file::memory:?cache=shared │`,
+				`└────────┴──────┴────────┴────────────────────────────┘`,
+			},
+		},
+		{
+			name: "bridge_sqlite_create_table",
+			cmd:  `bridge exec mem "CREATE TABLE IF NOT EXISTS mem_example (id INTEGER NOT NULL PRIMARY KEY, company TEXT, employee INTEGER, discount REAL, code TEXT, valid BOOLEAN, memo BLOB,  created_on DATETIME NOT NULL);"`,
+			expect: []string{
+				`executed.`,
+			},
+		},
+		{
+			name: "bridge_sqlite_query_table",
+			cmd:  `bridge query mem "SELECT * FROM sqlite_schema WHERE name = 'mem_example';"`,
+			expect: []string{
+				`┌────────┬───────┬─────────────┬─────────────┬──────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐`,
+				`│ ROWNUM │ TYPE  │ NAME        │ TBL_NAME    │ ROOTPAGE │ SQL                                                                                                                                                                           │`,
+				`├────────┼───────┼─────────────┼─────────────┼──────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤`,
+				`│      1 │ table │ mem_example │ mem_example │        2 │ CREATE TABLE mem_example (id INTEGER NOT NULL PRIMARY KEY, company TEXT, employee INTEGER, discount REAL, code TEXT, valid BOOLEAN, memo BLOB,  created_on DATETIME NOT NULL) │`,
+				`└────────┴───────┴─────────────┴─────────────┴──────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘`,
+			},
+		},
+		{
+			name: "bridge_sqlite_insert",
+			cmd:  `bridge exec mem "insert into mem_example(company, employee, discount, created_on) values ('acme', 10, 1.234, '2023-09-09 00:00:00');"`,
+			expect: []string{
+				`executed.`,
+			},
+		},
+		{
+			name: "bridge_sqlite_select",
+			cmd:  `bridge query mem "select company, employee, discount, created_on from mem_example;"`,
+			expect: []string{
+				`┌────────┬─────────┬──────────┬──────────┬───────────────────────────┐`,
+				`│ ROWNUM │ COMPANY │ EMPLOYEE │ DISCOUNT │ CREATED_ON                │`,
+				`├────────┼─────────┼──────────┼──────────┼───────────────────────────┤`,
+				`│      1 │ acme    │       10 │    1.234 │ 2023-09-09T09:00:00+09:00 │`,
+				`└────────┴─────────┴──────────┴──────────┴───────────────────────────┘`,
+			},
+		},
+		{
+			name: "bridge_sqlite_drop_table",
+			cmd:  `bridge exec mem "drop table mem_example;"`,
+			expect: []string{
+				`executed.`,
+			},
+		},
+		{
+			name: "bridge_sqlite_delete",
+			cmd:  `bridge del mem`,
+			expect: []string{
+				`Deleted.`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			user := tt.user
+			if user == "" {
+				user = "sys"
+			}
 			client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
-				User: tt.user,
+				User: user,
 				Auth: []ssh.AuthMethod{
 					ssh.Password("manager"),
 				},
@@ -88,7 +160,7 @@ func TestSSH(t *testing.T) {
 				t.Fatalf("Failed to write SSH command: %v", err)
 			}
 			if !waitForExpectedOutput(&stdout, tt.expect, 5*time.Second) {
-				t.Fatalf("Timed out waiting for SSH output, got %q", stdout.String())
+				t.Fatalf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(stdout.String()))
 			}
 			if _, err := stdin.Write([]byte("exit\n")); err != nil {
 				if !errors.Is(err, io.EOF) {
@@ -99,7 +171,7 @@ func TestSSH(t *testing.T) {
 
 			if err := session.Wait(); err != nil {
 				if !strings.Contains(err.Error(), "remote command exited without exit status or exit signal") {
-					t.Fatalf("SSH shell failed: %v, stderr: %s", err, stderr.String())
+					t.Fatalf("SSH shell failed: %v, stderr: %s", err, removeTerminalControlCharacters(stderr.String()))
 				}
 			}
 
@@ -109,7 +181,7 @@ func TestSSH(t *testing.T) {
 				t.Fatalf("Expected SSH command to produce output")
 			}
 			if strings.TrimSpace(stderr.String()) != "" {
-				t.Fatalf("Expected empty stderr, got %q", stderr.String())
+				t.Fatalf("Expected empty stderr, got %s", removeTerminalControlCharacters(stderr.String()))
 			}
 			if strings.Contains(rawOutput, "panic:") {
 				t.Fatalf("Unexpected panic in SSH shell output: %s", rawOutput)
@@ -160,7 +232,22 @@ func waitForExpectedOutput(buf *lockedBuffer, expects []string, timeout time.Dur
 	return false
 }
 
+func TestRemoveTerminalControlCharactersPreservesBoxDrawing(t *testing.T) {
+	expected := strings.Join([]string{
+		`┌────────┬──────┬────────┬────────────────────────────┐`,
+		`│ ROWNUM │ NAME │ TYPE   │ CONNECTION                 │`,
+		`├────────┼──────┼────────┼────────────────────────────┤`,
+		`│      1 │ mem  │ sqlite │ file::memory:?cache=shared │`,
+		`└────────┴──────┴────────┴────────────────────────────┘`,
+	}, "\n")
+
+	actual := removeTerminalControlCharacters("\x1b[32m" + expected + "\x1b[0m")
+
+	require.Equal(t, expected, actual)
+}
+
 func removeTerminalControlCharacters(s string) string {
+	runes := []rune(s)
 	var lines []string
 	line := make([]rune, 0, 128)
 	cursor := 0
@@ -193,24 +280,24 @@ func removeTerminalControlCharacters(s string) string {
 		cursor = 0
 	}
 
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
+	for i := 0; i < len(runes); i++ {
+		switch runes[i] {
 		case '\x1b':
-			if i+1 >= len(s) {
+			if i+1 >= len(runes) {
 				continue
 			}
-			switch s[i+1] {
+			switch runes[i+1] {
 			case '[':
 				j := i + 2
-				for j < len(s) && (s[j] < '@' || s[j] > '~') {
+				for j < len(runes) && (runes[j] < '@' || runes[j] > '~') {
 					j++
 				}
-				if j >= len(s) {
-					i = len(s)
+				if j >= len(runes) {
+					i = len(runes)
 					break
 				}
-				params := s[i+2 : j]
-				final := s[j]
+				params := string(runes[i+2 : j])
+				final := runes[j]
 				paramValues := parseTerminalParams(params)
 				switch final {
 				case 'm', 'h', 'l':
@@ -259,8 +346,8 @@ func removeTerminalControlCharacters(s string) string {
 				i = j
 			case ']':
 				j := i + 2
-				for j < len(s) && s[j] != '\a' {
-					if s[j] == '\x1b' && j+1 < len(s) && s[j+1] == '\\' {
+				for j < len(runes) && runes[j] != '\a' {
+					if runes[j] == '\x1b' && j+1 < len(runes) && runes[j+1] == '\\' {
 						j++
 						break
 					}
@@ -284,8 +371,8 @@ func removeTerminalControlCharacters(s string) string {
 				writeRune(' ')
 			}
 		default:
-			if s[i] >= 0x20 {
-				writeRune(rune(s[i]))
+			if runes[i] >= 0x20 {
+				writeRune(runes[i])
 			}
 		}
 	}

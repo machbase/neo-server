@@ -410,7 +410,7 @@ func UnboxValueToNative(v any) any {
 		return nil
 	case *sql.NullTime:
 		if val.Valid {
-			return val.Time
+			return val.Time.In(time.Local)
 		}
 		return nil
 	case *sql.NullByte:
