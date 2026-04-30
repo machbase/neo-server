@@ -30,7 +30,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/stream"
 	"github.com/machbase/neo-server/v8/jsh/lib/system"
 	"github.com/machbase/neo-server/v8/jsh/lib/util"
-	utiltail "github.com/machbase/neo-server/v8/jsh/lib/util/tail"
+	"github.com/machbase/neo-server/v8/jsh/lib/util/tail"
 	"github.com/machbase/neo-server/v8/jsh/lib/uuid"
 	"github.com/machbase/neo-server/v8/jsh/lib/vizspec"
 	"github.com/machbase/neo-server/v8/jsh/lib/ws"
@@ -135,10 +135,11 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/stream", stream.Module)
 	addFiles(stream.Files())
 	n.RegisterNativeModule("@jsh/system", system.Module)
+	addFiles(system.Files())
 	n.RegisterNativeModule("@jsh/util", util.Module)
 	addFiles(util.Files())
-	n.RegisterNativeModule("@jsh/util/tail", utiltail.ModuleWithFS(n.MountedFS()))
-	addFiles(utiltail.Files())
+	n.RegisterNativeModule("@jsh/util/tail", tail.ModuleWithFS(n.MountedFS()))
+	addFiles(tail.Files())
 	n.RegisterNativeModule("@jsh/vizspec", vizspec.Module)
 	addFiles(vizspec.Files())
 	n.RegisterNativeModule("@jsh/ws", ws.Module)
