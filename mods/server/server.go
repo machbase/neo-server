@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -286,9 +287,27 @@ func (s *Server) Start() error {
 	if err := s.writeSharedInfo("/share/db.json", sharedInfo); err != nil {
 		return fmt.Errorf("write shared db info, %w", err)
 	}
+	userEnv := "USER"
+	if runtime.GOOS == "windows" {
+		userEnv = "USERNAME"
+	}
+	fileDir := ""
+	for _, d := range s.Config.FileDirs {
+		if strings.HasPrefix(d, "/=") {
+			fileDir = strings.TrimPrefix(d, "/=")
+		}
+	}
 	sharedInfo = map[string]interface{}{
 		"machbase": map[string]any{
-			"home": s.Config.DataDir,
+			"home":   s.Config.DataDir,
+			"file":   fileDir,
+			"preset": s.MachbasePreset.String(),
+		},
+		"process": map[string]any{
+			"pid":  os.Getpid(),
+			"ppid": os.Getppid(),
+			"uid":  os.Getuid(),
+			"user": os.Getenv(userEnv),
 		},
 		"http": map[string]any{
 			"listeners":         s.Config.Http.Listeners,

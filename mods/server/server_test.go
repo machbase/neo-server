@@ -383,10 +383,11 @@ func TestWriteSharedInfoWithoutBackend(t *testing.T) {
 }
 
 type ShellTestCase struct {
-	name      string
-	args      []string
-	expect    []string
-	expectErr string
+	name       string
+	args       []string
+	expect     []string
+	expectErr  string
+	expectFunc func(t *testing.T, output string) error
 }
 
 func runShellTestCase(t *testing.T, tt ShellTestCase) {
@@ -398,6 +399,10 @@ func runShellTestCase(t *testing.T, tt ShellTestCase) {
 		if tt.expectErr != "" {
 			require.Error(t, err, "Expected error: %s", tt.expectErr)
 			require.Contains(t, string(output), tt.expectErr, "Expected error message not found")
+			return
+		}
+		if tt.expectFunc != nil {
+			require.NoError(t, tt.expectFunc(t, string(output)), "Output did not satisfy expectation function")
 			return
 		}
 		require.NoError(t, err, "Shell command failed: %s", string(output))
@@ -421,6 +426,25 @@ func runShellTestCase(t *testing.T, tt ShellTestCase) {
 			}
 		}
 	})
+}
+
+func TestSharedInfo(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name: "share_boot_json",
+			args: append(shellArgs, "/sbin/cat", "/proc/share/boot.json"),
+			expectFunc: func(t *testing.T, output string) error {
+				require.Contains(t, output, `"http": {`)
+				require.Contains(t, output, `"mqtt": {`)
+				require.Contains(t, output, `"process": {`)
+				require.Contains(t, output, `"machbase": {`)
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
 }
 
 func TestShellShow(t *testing.T) {
