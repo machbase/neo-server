@@ -4,9 +4,53 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestNormalizeShellArgs(t *testing.T) {
+	testCases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "empty args",
+			args: nil,
+			want: nil,
+		},
+		{
+			name: "non sql command unchanged",
+			args: []string{"show", "tables"},
+			want: []string{"show", "tables"},
+		},
+		{
+			name: "select prepends sql",
+			args: []string{"SELECT", "*", "FROM", "example"},
+			want: []string{"sql", "SELECT", "*", "FROM", "example"},
+		},
+		{
+			name: "exec prepends sql case insensitive",
+			args: []string{"exec", "table_flush(example)"},
+			want: []string{"sql", "exec", "table_flush(example)"},
+		},
+		{
+			name: "single arg sql statement prepends sql",
+			args: []string{"SELECT time, value FROM example WHERE name='my-car'"},
+			want: []string{"sql", "SELECT time, value FROM example WHERE name='my-car'"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeShellArgs(tc.args)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("normalizeShellArgs() = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestConfigureHandlesUnixServicePorts(t *testing.T) {
 	mux := http.NewServeMux()

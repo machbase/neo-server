@@ -1,3 +1,5 @@
+//go:generate go run sql_verbs_generate.go
+
 package session
 
 import (
@@ -137,7 +139,7 @@ func Main(flags *flag.FlagSet, executable []string, args []string) {
 			conf.Code = *src
 		}
 		conf.FSTabs = fsTabs
-		conf.Args = flags.Args()
+		conf.Args = normalizeShellArgs(flags.Args())
 		conf.Default = "/usr/bin/neo-shell.js" // default script to run if no args
 		conf.Env = map[string]any{
 			"PATH":              "/usr/bin:/usr/lib:/sbin:/lib:/work",
@@ -258,4 +260,18 @@ func readLine(prompt string, defaultValue string) (string, error) {
 		text = defaultValue
 	}
 	return text, err
+}
+
+func normalizeShellArgs(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	firstToken := args[0]
+	if fields := strings.Fields(firstToken); len(fields) > 0 {
+		firstToken = fields[0]
+	}
+	if _, ok := implicitSQLVerbs[strings.ToUpper(firstToken)]; !ok {
+		return args
+	}
+	return append([]string{"sql"}, args...)
 }

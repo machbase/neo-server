@@ -1,0 +1,19 @@
+[
+  "ALTER",
+  "BACKUP",
+  "CREATE",
+  "COMMIT",
+  "DELETE",
+  "DROP",
+  "EXEC",
+  "GRANT",
+  "INSERT",
+  "MOUNT",
+  "REVOKE",
+  "ROLLBACK",
+  "SAVEPOINT",
+  "SELECT",
+  "TRUNCATE",
+  "UNMOUNT",
+  "UPDATE"
+]

@@ -1515,3 +1515,98 @@ func TestShellRun(t *testing.T) {
 		runShellTestCase(t, tt)
 	}
 }
+
+func TestShellSql(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name: "sql_invalid_query",
+			args: append(shellArgs, "sql", "SELECT * FROM non_existent_table"),
+			expect: []string{
+				"Error:  MACHCLI-ERR-2025, Table NON_EXISTENT_TABLE does not exist.",
+			},
+		},
+		{
+			name: "sql_valid_query",
+			args: append(shellArgs, "sql", "SELECT 1 AS COL1, 'test' AS COL2"),
+			expect: []string{
+				"┌────────┬──────┬──────┐",
+				"│ ROWNUM │ COL1 │ COL2 │",
+				"├────────┼──────┼──────┤",
+				"│      1 │    1 │ test │",
+				"└────────┴──────┴──────┘",
+				"a row selected.",
+			},
+		},
+		{
+			name: "sql_crud_insert",
+			args: append(shellArgs, "sql", "INSERT INTO example VALUES('my-crd', to_date('2023-08-03'), 1.2345)"),
+			expect: []string{
+				"a row inserted.",
+			},
+		},
+		{
+			name: "sql_crud_flush",
+			args: append(shellArgs, "sql", "EXEC table_flush(example)"),
+			expect: []string{
+				"rollup executed.", // TODO: check this message, it should be "executed." instead of "rollup executed." since it's called from SQL, not CLI
+			},
+		},
+		{
+			name: "sql_crud_select",
+			args: append(shellArgs, "sql", "SELECT * FROM example WHERE name='my-crd'"),
+			expect: []string{
+				"┌────────┬────────┬─────────────────────┬────────┐",
+				"│ ROWNUM │ NAME   │ TIME                │  VALUE │",
+				"├────────┼────────┼─────────────────────┼────────┤",
+				"│      1 │ my-crd │ 2023-08-03 00:00:00 │ 1.2345 │",
+				"└────────┴────────┴─────────────────────┴────────┘",
+				"a row selected.",
+			},
+		},
+		{
+			name: "sql_crud_select",
+			args: append(shellArgs, "SELECT time, value FROM example WHERE name='my-crd'"),
+			expect: []string{
+				"┌────────┬─────────────────────┬────────┐",
+				"│ ROWNUM │ TIME                │  VALUE │",
+				"├────────┼─────────────────────┼────────┤",
+				"│      1 │ 2023-08-03 00:00:00 │ 1.2345 │",
+				"└────────┴─────────────────────┴────────┘",
+				"a row selected.",
+			},
+		},
+		{
+			name: "sql_crud_delete",
+			args: append(shellArgs, "sql", "DELETE FROM example WHERE name='my-crd'"),
+			expect: []string{
+				"a row deleted.",
+				"",
+			},
+		},
+		{
+			name: "sql_crud_flush_after_delete",
+			args: append(shellArgs, "EXEC table_flush(example)"),
+			expect: []string{
+				// TODO: check this message, it should be "executed."
+				// instead of "rollup executed." since it's called from SQL, not CLI
+				// this message is built in neo-client/machgo/machgo.go
+				"rollup executed.",
+			},
+		},
+		{
+			name: "sql_crud_select_after_delete",
+			args: append(shellArgs, "SELECT count(*) FROM example WHERE name='my-crd'"),
+			expect: []string{
+				"┌────────┬──────────┐",
+				"│ ROWNUM │ COUNT(*) │",
+				"├────────┼──────────┤",
+				"│      1 │        0 │",
+				"└────────┴──────────┘",
+				"a row selected.",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}

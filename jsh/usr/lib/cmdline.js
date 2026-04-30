@@ -1,6 +1,7 @@
 'use strict';
 
 const { splitFields } = require('util');
+const { SQL_VERBS } = require('/usr/lib/sql_verbs');
 
 // Keep quoted strings intact for `sql`, `explain`, `bridge exec` and `bridge query` commands;
 // otherwise, the SQL text may be parsed incorrectly.
@@ -126,12 +127,6 @@ function trimOuterMatchingQuotes(text) {
 function isWhitespace(char) {
     return char === ' ' || char === '\t' || char === '\n' || char === '\r';
 }
-
-const SQL_VERBS = new Set([
-    'ALTER', 'BACKUP', 'CREATE', 'COMMIT', 'DELETE', 'DROP',
-    'EXEC', 'GRANT', 'INSERT', 'MOUNT', 'REVOKE', 'ROLLBACK',
-    'SAVEPOINT', 'SELECT', 'TRUNCATE', 'UNMOUNT', 'UPDATE',
-]);
 
 function splitCmdLine(env, line) {
     let fields = splitFields(line);
