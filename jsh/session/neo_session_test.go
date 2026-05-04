@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -262,7 +263,7 @@ func TestResolveUnixSocketPath(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolveUnixSocketPath(%q) error = %v", tt.input, err)
 			}
-			if tt.wantAbs && (len(got) == 0 || got[0] != '/') {
+			if tt.wantAbs && !filepath.IsAbs(got) {
 				t.Errorf("resolveUnixSocketPath(%q) = %q, want absolute path", tt.input, got)
 			}
 		})
@@ -283,7 +284,7 @@ func TestResolveUnixSocketPathRelative(t *testing.T) {
 			t.Errorf("resolveUnixSocketPath(%q) error = %v", input, err)
 			continue
 		}
-		if len(got) == 0 || got[0] != '/' {
+		if !filepath.IsAbs(got) {
 			t.Errorf("resolveUnixSocketPath(%q) = %q, want absolute path", input, got)
 		}
 	}
@@ -467,7 +468,7 @@ func TestConfigureWithUnixSocket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Configure() error = %v", err)
 	}
-	if defaultSession.httpUnix != socketPath {
+	if filepath.Clean(defaultSession.httpUnix) != filepath.Clean(socketPath) {
 		t.Fatalf("httpUnix = %q, want %q", defaultSession.httpUnix, socketPath)
 	}
 }
@@ -478,8 +479,11 @@ func TestResolveUnixSocketPathAbsoluteNoPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveUnixSocketPath error = %v", err)
 	}
-	if got != "/var/run/test.sock" {
-		t.Fatalf("got = %q, want %q", got, "/var/run/test.sock")
+	if !filepath.IsAbs(got) {
+		t.Fatalf("got = %q, want absolute path", got)
+	}
+	if !strings.HasSuffix(filepath.Clean(got), filepath.Clean(filepath.Join("var", "run", "test.sock"))) {
+		t.Fatalf("got = %q, want path ending with %q", got, filepath.Join("var", "run", "test.sock"))
 	}
 }
 
