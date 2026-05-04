@@ -100,7 +100,7 @@ func TestMain(m *testing.M) {
 	// build shell binary for shell tests
 	func() {
 		buildShellCmd := []string{
-			"go", "build", "-o", binPath, filepath.Join(projRootDir, "main", "machbase-neo"),
+			"go", "build", "-o", binPath, filepath.Join(projRootDir, "cmd", "machbase-neo"),
 		}
 		err := exec.Command(buildShellCmd[0], buildShellCmd[1:]...).Run()
 		if err != nil {

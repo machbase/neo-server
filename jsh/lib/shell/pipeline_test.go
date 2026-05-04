@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		shellTestJshBinPath += ".exe"
 	}
-	args = append(args, shellTestJshBinPath, filepath.Join(shellDir, "..", ".."))
+	args = append(args, shellTestJshBinPath, filepath.Join(shellDir, "..", "..", "..", "cmd", "jsh"))
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		os.Exit(2)

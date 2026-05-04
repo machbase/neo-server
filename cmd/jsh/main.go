@@ -12,5 +12,5 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	os.Exit(session.Main(flag.CommandLine, []string{self}, os.Args[1:]))
+	os.Exit(session.JshMain(flag.CommandLine, []string{self}, os.Args[1:]))
 }

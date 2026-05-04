@@ -228,22 +228,18 @@ func resolveUnixSocketPath(addr string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if strings.HasPrefix(addr, "unix://../") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("unix://../"):]))
-	} else if strings.HasPrefix(addr, "../") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("../"):]))
-	} else if strings.HasPrefix(addr, "unix://./") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("unix://./"):]))
-	} else if strings.HasPrefix(addr, "./") {
-		addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("./"):]))
-	} else if strings.HasPrefix(addr, "/") {
-		addr = fmt.Sprintf("unix://%s", addr)
-	}
-
 	path := strings.TrimPrefix(addr, "unix://")
+
+	// For unix-style absolute paths (e.g. /tmp/test.sock), attach current drive on Windows.
+	if strings.HasPrefix(path, "/") && filepath.VolumeName(path) == "" {
+		path = filepath.VolumeName(pwd) + path
+	}
+	path = filepath.FromSlash(path)
+
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(pwd, path)
 	}
+
 	path = filepath.Clean(path)
 	return path, nil
 }

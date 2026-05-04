@@ -4,7 +4,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/machbase/neo-server/v8/shell/session"
+	"github.com/machbase/neo-server/v8/jsh/session"
 )
 
 func main() {
@@ -12,5 +12,5 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	session.Main(flag.CommandLine, []string{self}, os.Args[1:])
+	session.NeoShellMain(flag.CommandLine, []string{self}, os.Args[1:])
 }
