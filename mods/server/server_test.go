@@ -42,6 +42,10 @@ var shellPort = 15622
 var shellArgs = []string{}
 
 func TestMain(m *testing.M) {
+	if os.Getenv("GO_WANT_DO_RESTORE_HELPER") == "1" {
+		os.Exit(m.Run())
+	}
+
 	// get project root based current test case file path
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -203,6 +207,29 @@ func TestMain(m *testing.M) {
 	// cleanup
 	booter.NotifySignal()
 	<-serverBeforeStopC
+}
+
+func TestDoRestore(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDoRestoreHelper$")
+	cmd.Env = append(os.Environ(), "GO_WANT_DO_RESTORE_HELPER=1")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(output))
+	if len(output) > 0 {
+		t.Log(string(output))
+	}
+}
+
+func TestDoRestoreHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_DO_RESTORE_HELPER") != "1" {
+		t.Skip("helper test")
+	}
+
+	restoreCmd := &RestoreCmd{
+		DataDir:   "/definitely/not/real",
+		BackupDir: "/definitely/not/real/backup",
+	}
+
+	require.Equal(t, -1, doRestore(restoreCmd))
 }
 
 func TestRepresentativePort(t *testing.T) {

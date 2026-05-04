@@ -1,6 +1,9 @@
 package server
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -200,6 +203,67 @@ func TestParseGenConfig(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, cli)
 	require.Equal(t, "gen-config", cli.Command)
+}
+
+func TestParseRestore(t *testing.T) {
+	t.Run("explicit data dir", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"--data", "/tmp/data", "/tmp/backup"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.NoError(t, err)
+		require.Same(t, cli, parsed)
+		require.Equal(t, "/tmp/data", parsed.Restore.DataDir)
+		require.Equal(t, "/tmp/backup", parsed.Restore.BackupDir)
+	})
+
+	t.Run("default data dir uses executable directory", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"/tmp/backup"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.NoError(t, err)
+		require.Equal(t, "/tmp/backup", parsed.Restore.BackupDir)
+
+		ep, err := os.Executable()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(filepath.Dir(ep), "machbase_home"), parsed.Restore.DataDir)
+	})
+
+	t.Run("missing backup dir returns error", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"--data", "/tmp/data"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.Error(t, err)
+		require.Nil(t, parsed)
+	})
+}
+
+func TestParseService(t *testing.T) {
+	cli := &NeoCommand{args: []string{"install", "neo", "--force"}}
+
+	parsed, err := parseService(cli)
+
+	require.NoError(t, err)
+	require.Same(t, cli, parsed)
+	require.Equal(t, []string{"install", "neo", "--force"}, parsed.Service.Args)
+}
+
+func TestParseCommandService(t *testing.T) {
+	cli, err := ParseCommand([]string{"test", "service", "install"})
+
+	if runtime.GOOS == "windows" {
+		require.NoError(t, err)
+		require.NotNil(t, cli)
+		require.Equal(t, "service", cli.Command)
+		require.Equal(t, []string{"install"}, cli.Service.Args)
+		return
+	}
+
+	require.Error(t, err)
+	require.Nil(t, cli)
+	require.Contains(t, err.Error(), "only available on Windows")
 }
 
 func TestDoHelp(t *testing.T) {
