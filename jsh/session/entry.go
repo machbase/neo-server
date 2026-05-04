@@ -19,7 +19,30 @@ import (
 //     ex: jsh script.js arg1 arg2
 //  3. no args : start interactive shell
 //     ex: jsh
-func Main(flags *flag.FlagSet, executable []string, args []string) int {
+func JshMain(flags *flag.FlagSet, executable []string, args []string) int {
+	engine, exitCode, err := entry(flags, executable, args, &ExtConfig{
+		callback: func(conf *engine.Config, extFlags ExtFlags) error {
+			conf.Default = "/sbin/shell.js"
+			conf.ProcRecord = true
+			if len(executable) > 0 {
+				conf.ProcCommand = executable[0]
+			}
+			conf.ProcArgs = append([]string{"jsh"}, args...)
+			return nil
+		},
+	})
+	if err != nil {
+		fmt.Println(err.Error())
+		return exitCode
+	}
+	if exitCode != 0 {
+		return exitCode
+	}
+	lib.Enable(engine)
+	return engine.Main()
+}
+
+func entry(flags *flag.FlagSet, executable []string, args []string, ext *ExtConfig) (*engine.JSRuntime, int, error) {
 	var fsTabs engine.FSTabs
 	var envVars engine.EnvVars = make(map[string]any)
 
@@ -27,17 +50,24 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 	scf := flags.String("S", "", "configured file to start from")
 	flags.Var(&fsTabs, "v", "volume to mount (format: /mountpoint=source)")
 	flags.Var(&envVars, "e", "environment variable (format: name=value)")
-	if err := flags.Parse(args); err != nil {
-		fmt.Println("Error parsing flags:", err.Error())
-		return 1
+	// if extFlags have envKey, add flag for it
+	for i := range ext.flags {
+		flags.StringVar(&ext.flags[i].value, ext.flags[i].flag, "", ext.flags[i].comment)
 	}
 
-	conf := engine.Config{}
+	if err := flags.Parse(args); err != nil {
+		return nil, 1, fmt.Errorf("Error parsing flags: %s", err.Error())
+	}
+
+	conf := engine.Config{
+		Env:     map[string]any{},
+		Aliases: map[string]string{},
+	}
+
 	if *scf != "" {
-		// when it starts with "-s", read secret box
+		// when it starts with "-S", read secret box
 		if err := engine.ReadSecretBox(*scf, &conf); err != nil {
-			fmt.Println("Error reading secret file:", err.Error())
-			os.Exit(1)
+			return nil, 1, fmt.Errorf("Error reading secret file: %s", err.Error())
 		}
 	} else {
 		// otherwise, use command args to build ExecPass
@@ -53,23 +83,33 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 			conf.Code = *src
 		}
 		conf.FSTabs = fsTabs
-		conf.Args = flags.Args()
-		conf.Default = "/sbin/shell.js" // default script to run if no args
-		conf.Env = map[string]any{
-			"PATH":         "/sbin:/work",
-			"HOME":         "/work",
-			"PWD":          "/work",
-			"LIBRARY_PATH": "./node_modules:/lib",
+		if ext.argsNormalizer != nil {
+			conf.Args = ext.argsNormalizer(flags.Args())
+		} else {
+			conf.Args = flags.Args()
 		}
-		conf.Aliases = map[string]string{
-			"ll": "ls -l",
-		}
+		conf.Env["PATH"] = "/sbin:/work"
+		conf.Env["HOME"] = "/work"
+		conf.Env["PWD"] = "/work"
+		conf.Env["LIBRARY_PATH"] = "./node_modules:/lib"
+		conf.Aliases["ll"] = "ls -l"
 	}
-	if conf.Env == nil {
-		conf.Env = map[string]any{}
-	}
+
+	// if `-e name=value` is set, split it and set to conf.Env
 	for k, v := range envVars {
 		conf.Env[k] = v
+	}
+	// if extFlags have envKey, get value from conf.Env and set to flagValue
+	for _, ef := range ext.flags {
+		if ef.envKey != "" {
+			if val, ok := conf.Env[ef.envKey]; ok {
+				if sec, ok := val.(engine.SecureString); ok {
+					ef.value = sec.Value()
+				} else {
+					ef.value = val.(string)
+				}
+			}
+		}
 	}
 	if !conf.FSTabs.HasMountPoint("/") {
 		conf.FSTabs = append([]engine.FSTab{root.RootFSTab()}, conf.FSTabs...)
@@ -99,18 +139,42 @@ func Main(flags *flag.FlagSet, executable []string, args []string) int {
 		execCmd := exec.Command(executable[0], execArgs...)
 		return execCmd, nil
 	}
-	conf.ProcRecord = true
-	if len(executable) > 0 {
-		conf.ProcCommand = executable[0]
+	// if callback is set, call it with conf and extFlags
+	if ext != nil && ext.callback != nil {
+		if err := ext.callback(&conf, ext.flags); err != nil {
+			return nil, 1, fmt.Errorf("Error in callback: %s", err.Error())
+		}
 	}
-	conf.ProcArgs = append([]string{"jsh"}, args...)
 
 	engine, err := engine.New(conf)
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		return nil, 1, fmt.Errorf("Error creating engine: %s", err.Error())
 	}
-	lib.Enable(engine)
+	return engine, 0, nil
+}
 
-	return engine.Main()
+type ExtConfig struct {
+	flags          ExtFlags
+	callback       ExtFlagCallback
+	argsNormalizer func([]string) []string
+}
+
+type ExtFlag struct {
+	flag    string
+	value   string
+	comment string
+	envKey  string
+}
+
+type ExtFlags []*ExtFlag
+
+type ExtFlagCallback func(*engine.Config, ExtFlags) error
+
+func (efs ExtFlags) Get(flag string) *ExtFlag {
+	for _, ef := range efs {
+		if ef.flag == flag {
+			return ef
+		}
+	}
+	return nil
 }

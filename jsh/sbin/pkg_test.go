@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		pkgTestJshBinPath += ".exe"
 	}
-	args = append(args, pkgTestJshBinPath, "..")
+	args = append(args, pkgTestJshBinPath, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		fmt.Println("Failed to build jsh binary for pkg tests:", err)

@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 		jshBinPath = jshBinPath + ".exe"
 	}
 	args = append(args, jshBinPath)
-	args = append(args, "..")
+	args = append(args, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		fmt.Println("Failed to build jsh binary for tests:", err)

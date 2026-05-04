@@ -3,7 +3,7 @@
 ## Go
 
 ```sh
-go install github.com/machbase/neo-server/v8/shell@latest
+go install github.com/machbase/neo-server/v8/cmd/neo-shell@latest
 ```
 
 # Run

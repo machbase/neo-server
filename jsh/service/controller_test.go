@@ -1064,7 +1064,7 @@ func TestServices(t *testing.T) {
 		jshBinPath = jshBinPath + ".exe"
 	}
 	args = append(args, jshBinPath)
-	args = append(args, "..")
+	args = append(args, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build jsh binary for tests: %v", err)
@@ -1123,7 +1123,7 @@ func TestControllerLaunchedServiceAutoMountsSharedFS(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		jshBinPath += ".exe"
 	}
-	args = append(args, jshBinPath, "..")
+	args = append(args, jshBinPath, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build jsh binary for shared fs test: %v", err)
@@ -1235,7 +1235,7 @@ func TestControllerLaunchedServiceSharedFSConflictCode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		jshBinPath += ".exe"
 	}
-	args = append(args, jshBinPath, "..")
+	args = append(args, jshBinPath, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build jsh binary for shared fs conflict test: %v", err)
@@ -1325,7 +1325,7 @@ func TestControllerLaunchedServiceSharedFSAppendNoConflict(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		jshBinPath += ".exe"
 	}
-	args = append(args, jshBinPath, "..")
+	args = append(args, jshBinPath, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build jsh binary for shared fs append test: %v", err)
@@ -1410,7 +1410,7 @@ func TestControllerLaunchedServiceCleansAbandonedSharedFDs(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		jshBinPath += ".exe"
 	}
-	args = append(args, jshBinPath, "..")
+	args = append(args, jshBinPath, "../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build jsh binary for shared fs cleanup test: %v", err)

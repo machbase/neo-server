@@ -26,7 +26,7 @@ var Default = BuildNeoServer
 var Aliases = map[string]any{
 	"machbase-neo":       BuildNeoServer,
 	"machbase-neo-debug": BuildNeoServerDebug,
-	"neoshell":           BuildNeoShell,
+	"neo-shell":          BuildNeoShell,
 	"cleanpackage":       CleanPackage,
 	"buildversion":       BuildVersion,
 	"install-neo-web":    InstallNeoWeb,
@@ -51,7 +51,7 @@ func BuildNeoServerDebug() error {
 }
 
 func BuildNeoShell() error {
-	return Build("neoshell", true)
+	return Build("neo-shell", true)
 }
 
 func Build(target string, strip bool) error {
@@ -66,11 +66,6 @@ func Build(target string, strip bool) error {
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
 	env := map[string]string{"GO111MODULE": "on"}
-	if target == "neoshell" {
-		// FIXME: neoshell should not link to engine
-		env["CGO_ENABLED"] = "1"
-	}
-
 	args := []string{"build"}
 	ldflags := strings.Join([]string{
 		"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
@@ -96,7 +91,7 @@ func Build(target string, strip bool) error {
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
 	}
 	// source directory
-	args = append(args, fmt.Sprintf("./main/%s", target))
+	args = append(args, fmt.Sprintf("./cmd/%s", target))
 
 	if err := sh.RunV("go", "mod", "download"); err != nil {
 		return err
@@ -129,7 +124,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
 	env := map[string]string{"GO111MODULE": "on"}
-	if target != "neoshell" {
+	if target == "machbase-neo" {
 		env["CGO_ENABLED"] = "1"
 	} else {
 		env["CGO_ENABLED"] = "0"

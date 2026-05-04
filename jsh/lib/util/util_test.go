@@ -21,7 +21,7 @@ func TestParseArgs(t *testing.T) {
 	}
 	binPath := filepath.Join(tmpDir, binName)
 	args = append(args, binPath)
-	args = append(args, "../../main.go")
+	args = append(args, "../../../cmd/jsh")
 	cmd := exec.Command("go", args...)
 	if err := cmd.Run(); err != nil {
 		fmt.Println("Failed to build jsh binary for tests:", err)
