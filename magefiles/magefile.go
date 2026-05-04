@@ -190,7 +190,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
 	}
 	// source directory
-	args = append(args, fmt.Sprintf("./main/%s", target))
+	args = append(args, fmt.Sprintf("./cmd/%s", target))
 
 	if err := sh.RunV("go", "mod", "download"); err != nil {
 		return err
