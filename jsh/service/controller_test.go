@@ -1346,9 +1346,9 @@ func TestControllerLaunchedServiceSharedFSAppendNoConflict(t *testing.T) {
 	script := "const fs = require('fs');\n" +
 		"const fd1 = fs.openSync('/mnt/shared/append.txt', 'a');\n" +
 		"const fd2 = fs.openSync('/mnt/shared/append.txt', 'a');\n" +
-		"fs.writeSync(fd1, '-one');\n" +
+		"fs.writeSync(fd1, new Uint8Array([45,111,110,101]));\n" +
 		"fs.fsyncSync(fd1);\n" +
-		"fs.writeSync(fd2, '-two');\n" +
+		"fs.writeSync(fd2, new Uint8Array([45,116,119,111]));\n" +
 		"fs.fsyncSync(fd2);\n" +
 		"fs.closeSync(fd1);\n" +
 		"fs.closeSync(fd2);\n" +
