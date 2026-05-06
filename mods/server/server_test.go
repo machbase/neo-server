@@ -1661,3 +1661,69 @@ func TestShellSql(t *testing.T) {
 		runShellTestCase(t, tt)
 	}
 }
+
+func TestParseMachbaseAddress(t *testing.T) {
+	t.Run("parses full address", func(t *testing.T) {
+		host, port, user, pass, err := parseMachbaseAddress("machbase://sys:manager@127.0.0.1:5656")
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1", host)
+		require.Equal(t, 5656, port)
+		require.Equal(t, "sys", user)
+		require.Equal(t, "manager", pass)
+	})
+
+	t.Run("parses address without credentials", func(t *testing.T) {
+		host, port, user, pass, err := parseMachbaseAddress("machbase://localhost:7777")
+		require.NoError(t, err)
+		require.Equal(t, "localhost", host)
+		require.Equal(t, 7777, port)
+		require.Equal(t, "", user)
+		require.Equal(t, "", pass)
+	})
+
+	for _, tc := range []struct {
+		name string
+		addr string
+	}{
+		{name: "invalid scheme", addr: "http://127.0.0.1:5656"},
+		{name: "missing host", addr: "machbase://"},
+		{name: "missing port", addr: "machbase://127.0.0.1"},
+		{name: "invalid port", addr: "machbase://127.0.0.1:abc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, _, err := parseMachbaseAddress(tc.addr)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid --data address for headless mode")
+		})
+	}
+}
+
+func TestLoadSqlScriptFile(t *testing.T) {
+	t.Run("ignores comments and joins multi-line statements", func(t *testing.T) {
+		input := strings.NewReader(`
+# shell style comment
+-- sql style comment
+
+CREATE TABLE demo (
+  id INTEGER,
+  name VARCHAR(20)
+);
+
+INSERT INTO demo VALUES
+(1, 'neo');
+`)
+
+		stmts, err := loadSqlScriptFile(input)
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"CREATE TABLE demo ( id INTEGER, name VARCHAR(20) )",
+			"INSERT INTO demo VALUES (1, 'neo')",
+		}, stmts)
+	})
+
+	t.Run("drops unterminated trailing statement", func(t *testing.T) {
+		stmts, err := loadSqlScriptFile(strings.NewReader("SELECT 1\n"))
+		require.NoError(t, err)
+		require.Empty(t, stmts)
+	})
+}

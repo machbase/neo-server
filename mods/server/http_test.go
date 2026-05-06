@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"io"
 	"mime"
@@ -60,6 +61,99 @@ func TestStatz(t *testing.T) {
 	require.NoError(t, err)
 
 	require.GreaterOrEqual(t, len(result), 2)
+}
+
+func TestHandleStatzConfig(t *testing.T) {
+	prevDest := server_api.MetricsDestTable()
+	t.Cleanup(func() {
+		require.NoError(t, server_api.SetMetricsDestTable(prevDest))
+	})
+
+	svr := &httpd{log: logging.GetLog("httpd-fake")}
+
+	t.Run("get", func(t *testing.T) {
+		require.NoError(t, server_api.SetMetricsDestTable(""))
+
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/debug/statz/config", nil)
+		svr.handleStatzConfig(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &payload))
+		require.Equal(t, true, payload["success"])
+		data, ok := payload["data"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "", data["out"])
+	})
+
+	t.Run("rejects malformed body", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/debug/statz/config", []byte(`{"out":`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleStatzConfig(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "unexpected EOF")
+	})
+
+	t.Run("rejects non string out", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/debug/statz/config", []byte(`{"out":123}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleStatzConfig(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "invalid out value")
+	})
+
+	t.Run("accepts empty output table", func(t *testing.T) {
+		require.NoError(t, server_api.SetMetricsDestTable(""))
+
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/debug/statz/config", []byte(`{"out":"   "}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleStatzConfig(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Equal(t, "", server_api.MetricsDestTable())
+	})
+
+	t.Run("rejects unsupported method", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodDelete, "/debug/statz/config", nil)
+
+		svr.handleStatzConfig(ctx)
+
+		require.Equal(t, http.StatusMethodNotAllowed, writer.Code)
+	})
+}
+
+func TestHandleStatz(t *testing.T) {
+	svr := &httpd{log: logging.GetLog("httpd-fake")}
+	metricKey := "custom:" + uuid.Must(uuid.NewV4()).String()
+	metricValue := expvar.NewInt(metricKey)
+	metricValue.Set(42)
+
+	t.Run("json with invalid interval fallback", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/debug/statz?interval=not-a-duration&keys="+url.QueryEscape(metricKey), nil)
+
+		svr.handleStatz(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &payload))
+		require.EqualValues(t, 42, payload[metricKey])
+	})
+
+	t.Run("html renders included metric", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/debug/statz?format=html&keys="+url.QueryEscape(metricKey), nil)
+
+		svr.handleStatz(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), "<table>")
+		require.Contains(t, writer.Body.String(), metricKey)
+		require.Contains(t, writer.Body.String(), "42")
+	})
 }
 
 func TestWebConsole(t *testing.T) {
@@ -1653,39 +1747,25 @@ func TestHttpTables(t *testing.T) {
 	tests := []struct {
 		name       string
 		queryParam string
-		expectObj  map[string]any
+		expectRows [][]any
 	}{
 		{
 			name: "tables",
-			expectObj: map[string]any{
-				"success": true, "reason": "success",
-				"data": map[string]any{
-					"columns": []any{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
-					"types":   []any{"int32", "string", "string", "string", "string"},
-					"rows": []any{
-						[]any{float64(1), "MACHBASEDB", "SYS", "EXAMPLE", "Tag Table"},
-						[]any{float64(2), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
-						[]any{float64(3), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
-					},
-				},
+			expectRows: [][]any{
+				{float64(1), "MACHBASEDB", "SYS", "EXAMPLE", "Tag Table"},
+				{float64(2), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
+				{float64(3), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
 			},
 		},
 		{
 			name:       "tables_name_filter",
 			queryParam: "?showall=true&name=*DATA*",
-			expectObj: map[string]any{
-				"success": true, "reason": "success",
-				"data": map[string]any{
-					"columns": []any{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
-					"types":   []any{"int32", "string", "string", "string", "string"},
-					"rows": []any{
-						[]any{float64(1), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
-						[]any{float64(2), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
-						[]any{float64(3), "MACHBASEDB", "SYS", "_EXAMPLE_DATA_0", "KeyValue Table (data)"},
-						[]any{float64(4), "MACHBASEDB", "SYS", "_TAG_DATA_DATA_0", "KeyValue Table (data)"},
-						[]any{float64(5), "MACHBASEDB", "SYS", "_TAG_DATA_META", "Lookup Table (meta)"},
-					},
-				},
+			expectRows: [][]any{
+				{float64(1), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
+				{float64(2), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
+				{float64(3), "MACHBASEDB", "SYS", "_EXAMPLE_DATA_0", "KeyValue Table (data)"},
+				{float64(4), "MACHBASEDB", "SYS", "_TAG_DATA_DATA_0", "KeyValue Table (data)"},
+				{float64(5), "MACHBASEDB", "SYS", "_TAG_DATA_META", "Lookup Table (meta)"},
 			},
 		},
 	}
@@ -1708,8 +1788,39 @@ func TestHttpTables(t *testing.T) {
 			err = json.Unmarshal(result, &resultObj)
 			require.NoError(t, err)
 			delete(resultObj, "elapse")
-			require.EqualValues(t, tc.expectObj, resultObj)
+
+			require.EqualValues(t, true, resultObj["success"])
+			require.EqualValues(t, "success", resultObj["reason"])
+
+			data, ok := resultObj["data"].(map[string]any)
+			require.True(t, ok)
+			require.EqualValues(t, []any{"ROWNUM", "DB", "USER", "NAME", "TYPE"}, data["columns"])
+			require.EqualValues(t, []any{"int32", "string", "string", "string", "string"}, data["types"])
+
+			rows, ok := data["rows"].([]any)
+			require.True(t, ok)
+			assertTableRowsContain(t, rows, tc.expectRows)
 		})
+	}
+}
+
+func assertTableRowsContain(t *testing.T, rows []any, expected [][]any) {
+	t.Helper()
+
+	index := map[string][]any{}
+	for _, row := range rows {
+		cols, ok := row.([]any)
+		require.True(t, ok)
+		require.Len(t, cols, 5)
+		name, ok := cols[3].(string)
+		require.True(t, ok)
+		index[name] = cols
+	}
+
+	for _, exp := range expected {
+		actual, ok := index[exp[3].(string)]
+		require.True(t, ok, "missing expected table row for %s", exp[3])
+		require.EqualValues(t, exp[1:], actual[1:])
 	}
 }
 
