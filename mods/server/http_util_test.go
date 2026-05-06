@@ -19,7 +19,21 @@ func TestHttpLoggerWithFileWritesAccessLog(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "access.log")
 
 	router := gin.New()
-	router.Use(HttpLoggerWithFile("http-util-file", logPath))
+	accessLog := logging.NewLogFile("http-util-file", logging.LogFileConf{
+		Filename:             logPath,
+		Level:                "DEBUG",
+		MaxSize:              10,
+		MaxBackups:           2,
+		MaxAge:               7,
+		Compress:             false,
+		Append:               true,
+		RotateSchedule:       "@midnight",
+		Console:              false,
+		PrefixWidth:          20,
+		EnableSourceLocation: false,
+	})
+	closeLogOnCleanup(t, accessLog)
+	router.Use(logger(accessLog, nil))
 	router.GET("/logging/file", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -38,9 +52,7 @@ func TestHttpLoggerWithFileWritesAccessLog(t *testing.T) {
 func TestHttpLoggerWithFileConfWritesAccessLog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logPath := filepath.Join(t.TempDir(), "access-conf.log")
-
-	router := gin.New()
-	router.Use(HttpLoggerWithFileConf("http-util-file-conf", logging.LogFileConf{
+	fileConf := logging.LogFileConf{
 		Filename:             logPath,
 		Level:                "DEBUG",
 		MaxSize:              1,
@@ -49,7 +61,12 @@ func TestHttpLoggerWithFileConfWritesAccessLog(t *testing.T) {
 		Append:               true,
 		PrefixWidth:          12,
 		EnableSourceLocation: false,
-	}))
+	}
+
+	router := gin.New()
+	accessLog := logging.NewLogFile("http-util-file-conf", fileConf)
+	closeLogOnCleanup(t, accessLog)
+	router.Use(logger(accessLog, nil))
 	router.POST("/logging/file-conf", func(c *gin.Context) {
 		_, _ = io.WriteString(c.Writer, "created")
 	})
@@ -122,4 +139,15 @@ func osReadFileWithRetry(path string) ([]byte, error) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return nil, lastErr
+}
+
+func closeLogOnCleanup(t *testing.T, log logging.Log) {
+	t.Helper()
+	closer, ok := log.(interface{ Close() error })
+	if !ok {
+		return
+	}
+	t.Cleanup(func() {
+		require.NoError(t, closer.Close())
+	})
 }

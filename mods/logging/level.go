@@ -189,6 +189,19 @@ func (l *levelLogger) Write(buff []byte) (n int, err error) {
 	return
 }
 
+func (l *levelLogger) Close() error {
+	var firstErr error
+	for _, writer := range l.underlying {
+		if writer == nil || writer.closer == nil {
+			continue
+		}
+		if err := writer.closer.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 const (
 	green   = "\033[97;42m"
 	white   = "\033[90;47m"
