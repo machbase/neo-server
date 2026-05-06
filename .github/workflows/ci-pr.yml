@@ -39,6 +39,8 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Test
         shell: bash
         run: |
