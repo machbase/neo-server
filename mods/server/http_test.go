@@ -648,6 +648,8 @@ func TestLicense(t *testing.T) {
 		name   string
 		method string
 		path   string
+		body   func(t *testing.T) (io.Reader, string)
+		setup  func(t *testing.T, req *http.Request)
 		expect func(t *testing.T, rsp *http.Response)
 	}{
 		{
@@ -690,6 +692,57 @@ func TestLicense(t *testing.T) {
 			},
 		},
 		{
+			name:   "get-license",
+			method: http.MethodGet,
+			path:   "/web/api/license",
+			expect: func(t *testing.T, rsp *http.Response) {
+				require.Equal(t, http.StatusOK, rsp.StatusCode)
+				require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, true, gjson.GetBytes(body, "success").Bool(), string(body))
+				require.Equal(t, "success", gjson.GetBytes(body, "reason").String(), string(body))
+				require.True(t, gjson.GetBytes(body, "data.licenseStatus").Exists(), string(body))
+			},
+		},
+		{
+			name:   "post-license-missing-file",
+			method: http.MethodPost,
+			path:   "/web/api/license",
+			expect: func(t *testing.T, rsp *http.Response) {
+				require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
+				require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, false, gjson.GetBytes(body, "success").Bool(), string(body))
+				require.NotEmpty(t, gjson.GetBytes(body, "reason").String(), string(body))
+			},
+		},
+		{
+			name:   "post-license-too-large",
+			method: http.MethodPost,
+			path:   "/web/api/license",
+			body: func(t *testing.T) (io.Reader, string) {
+				t.Helper()
+				buf := &bytes.Buffer{}
+				writer := multipart.NewWriter(buf)
+				part, err := writer.CreateFormFile("license.dat", "license.dat")
+				require.NoError(t, err)
+				_, err = part.Write(bytes.Repeat([]byte{'x'}, 4097))
+				require.NoError(t, err)
+				require.NoError(t, writer.Close())
+				return buf, writer.FormDataContentType()
+			},
+			expect: func(t *testing.T, rsp *http.Response) {
+				require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
+				require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, false, gjson.GetBytes(body, "success").Bool(), string(body))
+				require.Equal(t, "Too large file as a license file.", gjson.GetBytes(body, "reason").String(), string(body))
+			},
+		},
+		{
 			name:   "get-check-eula",
 			method: http.MethodGet,
 			path:   "/web/api/check",
@@ -720,8 +773,19 @@ func TestLicense(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req, _ := http.NewRequest(tc.method, httpServerAddress+tc.path, nil)
+			var body io.Reader
+			var contentType string
+			if tc.body != nil {
+				body, contentType = tc.body(t)
+			}
+			req, _ := http.NewRequest(tc.method, httpServerAddress+tc.path, body)
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			if contentType != "" {
+				req.Header.Set("Content-Type", contentType)
+			}
+			if tc.setup != nil {
+				tc.setup(t, req)
+			}
 			rsp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			tc.expect(t, rsp)
