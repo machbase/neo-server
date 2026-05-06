@@ -41,7 +41,6 @@ jobs:
         if: matrix.os == 'linux' && matrix.arch == 'arm32'
         uses: mlugg/setup-zig@v2
       - name: Install Neo Web
-        if: matrix.os != 'linux' || matrix.arch == 'arm32'
         run: go run mage.go InstallNeoWeb
       - name: Install Neo Launcher
         if: matrix.os != 'linux'
