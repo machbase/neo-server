@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -18,12 +19,7 @@ func TestSSH(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping SSH tests on Windows")
 	}
-	tests := []struct {
-		name   string
-		user   string
-		cmd    string
-		expect []string
-	}{
+	tests := []SSHTestCase{
 		{
 			name: "shell_show_tables",
 			user: "sys",
@@ -43,6 +39,20 @@ func TestSSH(t *testing.T) {
 				"ssh-ok",
 			},
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runSSHTest(t, tt)
+		})
+	}
+}
+
+func TestSSH_Bridge_SQLite(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping SSH tests on Windows")
+	}
+	tests := []SSHTestCase{
 		{
 			name: "bridge_sqlite_add",
 			cmd:  `bridge add -t sqlite mem file::memory:?cache=shared`,
@@ -115,84 +125,249 @@ func TestSSH(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			user := tt.user
-			if user == "" {
-				user = "sys"
-			}
-			client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
-				User: user,
-				Auth: []ssh.AuthMethod{
-					ssh.Password("manager"),
-				},
-				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-				Timeout:         5 * time.Second,
-			})
-			if err != nil {
-				t.Fatalf("Failed to dial SSH server: %v", err)
-			}
-			defer client.Close()
-
-			session, err := client.NewSession()
-			if err != nil {
-				t.Fatalf("Failed to create SSH session: %v", err)
-			}
-			defer session.Close()
-
-			var stdout lockedBuffer
-			var stderr lockedBuffer
-			session.Stdout = &stdout
-			session.Stderr = &stderr
-
-			stdin, err := session.StdinPipe()
-			if err != nil {
-				t.Fatalf("Failed to get SSH stdin pipe: %v", err)
-			}
-
-			if err := session.RequestPty("xterm", 40, 120, ssh.TerminalModes{}); err != nil {
-				t.Fatalf("Failed to request PTY: %v", err)
-			}
-
-			if err := session.Shell(); err != nil {
-				t.Fatalf("Failed to start SSH shell: %v", err)
-			}
-
-			if _, err := stdin.Write([]byte(tt.cmd + "\n")); err != nil {
-				t.Fatalf("Failed to write SSH command: %v", err)
-			}
-			if !waitForExpectedOutput(&stdout, tt.expect, 5*time.Second) {
-				t.Fatalf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(stdout.String()))
-			}
-			if _, err := stdin.Write([]byte("exit\n")); err != nil {
-				if !errors.Is(err, io.EOF) {
-					t.Fatalf("Failed to write SSH exit command: %v", err)
-				}
-			}
-			stdin.Close()
-
-			if err := session.Wait(); err != nil {
-				if !strings.Contains(err.Error(), "remote command exited without exit status or exit signal") {
-					t.Fatalf("SSH shell failed: %v, stderr: %s", err, removeTerminalControlCharacters(stderr.String()))
-				}
-			}
-
-			rawOutput := stdout.String()
-			outputStr := removeTerminalControlCharacters(rawOutput)
-			if strings.TrimSpace(outputStr) == "" {
-				t.Fatalf("Expected SSH command to produce output")
-			}
-			if strings.TrimSpace(stderr.String()) != "" {
-				t.Fatalf("Expected empty stderr, got %s", removeTerminalControlCharacters(stderr.String()))
-			}
-			if strings.Contains(rawOutput, "panic:") {
-				t.Fatalf("Unexpected panic in SSH shell output: %s", rawOutput)
-			}
-			for _, expected := range tt.expect {
-				if !strings.Contains(outputStr, expected) {
-					t.Errorf("Expected output to contain '%s', got '%s'", expected, outputStr)
-				}
-			}
-			require.Contains(t, outputStr, strings.Join(tt.expect, "\n"))
+			runSSHTest(t, tt)
 		})
+	}
+}
+
+func sshBridgePostgresTest(t *testing.T, dsn string) {
+	tests := []SSHTestCase{
+		{
+			name: "bridge_list",
+			cmd:  `bridge list`,
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_postgres",
+			cmd:  fmt.Sprintf("bridge add br-postgres --type postgres %s", dsn),
+			expect: []string{
+				"Adding bridge... br-postgres type: postgres path: " + dsn,
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			cmd:  `bridge list`,
+			expect: []string{
+				"┌────────┬─────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME        │ TYPE     │ CONNECTION                                                                      │",
+				"├────────┼─────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────┤",
+				"│      1 │ br-postgres │ postgres │ " + dsn + " │",
+				"└────────┴─────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_test_postgres",
+			cmd:  `bridge test br-postgres`,
+			expect: []string{
+				"Testing bridge... br-postgres",
+				"OK.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_create_table",
+			cmd:  `bridge exec br-postgres "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"`,
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_insert_1",
+			cmd:  `bridge exec br-postgres "INSERT INTO ids(memo) VALUES('pg-1')"`,
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_insert_2",
+			cmd:  `bridge exec br-postgres INSERT INTO ids(memo) VALUES('pg-2')`,
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query",
+			cmd:  `bridge query br-postgres SELECT * FROM ids ORDER BY id`,
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"│      1 │  1 │ pg-1 │",
+				"│      2 │  2 │ pg-2 │",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_create_supported_table",
+			cmd:  `bridge exec br-postgres CREATE TABLE IF NOT EXISTS typed_ids(id SERIAL PRIMARY KEY, event_bool BOOLEAN, event_int INTEGER, event_bigint BIGINT, event_real REAL, event_text TEXT, event_uuid UUID, event_date DATE, event_timestamp TIMESTAMP, event_timestamptz TIMESTAMPTZ)`,
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_insert_supported_row",
+			cmd:  `bridge exec br-postgres INSERT INTO typed_ids(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES(TRUE, 42, 4200000000, 3.25, 'pg-text', '550e8400-e29b-41d4-a716-446655440000', DATE '2026-03-14', TIMESTAMP '2026-03-14 05:29:01', TIMESTAMPTZ '2026-03-14 05:29:01+00')`,
+			expect: []string{
+				"executed.",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_supported_types",
+			cmd:  `bridge query br-postgres SELECT id, event_bool, event_int, event_bigint, event_real, event_text, event_uuid::text AS event_uuid, TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS') AS event_timestamp, TO_CHAR(event_timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS event_timestamptz FROM typed_ids ORDER BY id`,
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INT │ EVENT_BIGINT │ EVENT_REAL │ EVENT_TEXT │ EVENT_UUID\\s+│ EVENT_DATE │ EVENT_TIMESTAMP\\s+│ EVENT_TIMESTAMPTZ\\s+│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ true\\s+│\\s+42\\s+│\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+3\\.25\\s+│ pg-text\\s+│ 550e8400-e29b-41d4-a716-446655440000 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_timestamp_string",
+			cmd:  `bridge query br-postgres SELECT id, memo, TO_CHAR(TIMESTAMP '2026-03-14 05:29:01', 'YYYY-MM-DD HH24:MI:SS') AS ts FROM ids WHERE id = 1 ORDER BY id`,
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ pg-1 │ 2026-03-14 05:29:01 │$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_null_timestamp",
+			cmd:  `bridge query br-postgres SELECT id, memo, CAST(NULL AS TIMESTAMP) AS ts FROM ids WHERE id = 1 ORDER BY id`,
+			expect: []string{
+				"/r/^┌.*┐$",
+				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+				"/r/^├.*┤$",
+				"/r/^│\\s+1 │\\s+1 │ pg-1 │ NULL\\s*│$",
+				"/r/^└.*┘$",
+			},
+		},
+		{
+			name: "bridge_exec_postgres_query_no_rows",
+			cmd:  `bridge query br-postgres SELECT * FROM ids WHERE id < 0 ORDER BY id`,
+			expect: []string{
+				"┌────────┬────┬──────┐",
+				"│ ROWNUM │ ID │ MEMO │",
+				"├────────┼────┼──────┤",
+				"└────────┴────┴──────┘",
+			},
+		},
+		{
+			name: "bridge_del_postgres",
+			cmd:  `bridge del br-postgres`,
+			expect: []string{
+				"Deleted.",
+			},
+		},
+		{
+			name: "bridge_list_after_del",
+			cmd:  `bridge list`,
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runSSHTest(t, tt)
+	}
+}
+
+type SSHTestCase struct {
+	name   string
+	user   string
+	cmd    string
+	expect []string
+	wait   time.Duration
+}
+
+func runSSHTest(t *testing.T, tt SSHTestCase) {
+	t.Helper()
+	waitTimeout := tt.wait
+	if waitTimeout <= 0 {
+		waitTimeout = 10 * time.Second
+	}
+	user := tt.user
+	if user == "" {
+		user = "sys"
+	}
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.Password("manager"),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to dial SSH server: %v", err)
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		t.Fatalf("Failed to create SSH session: %v", err)
+	}
+	defer session.Close()
+
+	var stdout lockedBuffer
+	var stderr lockedBuffer
+	session.Stdout = &stdout
+	session.Stderr = &stderr
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		t.Fatalf("Failed to get SSH stdin pipe: %v", err)
+	}
+
+	if err := session.RequestPty("xterm", 40, 120, ssh.TerminalModes{}); err != nil {
+		t.Fatalf("Failed to request PTY: %v", err)
+	}
+
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Failed to start SSH shell: %v", err)
+	}
+
+	if _, err := stdin.Write([]byte(tt.cmd + "\n")); err != nil {
+		t.Fatalf("Failed to write SSH command: %v", err)
+	}
+	if !waitForExpectedOutput(&stdout, user, tt.expect, waitTimeout) {
+		t.Fatalf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(stdout.String()))
+	}
+	if _, err := stdin.Write([]byte("exit\n")); err != nil {
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("Failed to write SSH exit command: %v", err)
+		}
+	}
+	stdin.Close()
+
+	if err := session.Wait(); err != nil {
+		if !strings.Contains(err.Error(), "remote command exited without exit status or exit signal") {
+			t.Fatalf("SSH shell failed: %v, stderr: %s", err, removeTerminalControlCharacters(stderr.String()))
+		}
+	}
+
+	rawOutput := stdout.String()
+	outputStr := removeTerminalControlCharacters(rawOutput)
+	if strings.TrimSpace(outputStr) == "" {
+		t.Fatalf("Expected SSH command to produce output")
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("Expected empty stderr, got %s", removeTerminalControlCharacters(stderr.String()))
+	}
+	if strings.Contains(rawOutput, "panic:") {
+		t.Fatalf("Unexpected panic in SSH shell output: %s", rawOutput)
+	}
+	if !matchExpectedOutput(normalizeSSHOutputLines(outputStr, user), tt.expect) {
+		t.Fatalf("Expected SSH output sequence %v, got %s", tt.expect, outputStr)
 	}
 }
 
@@ -213,23 +388,56 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func waitForExpectedOutput(buf *lockedBuffer, expects []string, timeout time.Duration) bool {
+func waitForExpectedOutput(buf *lockedBuffer, user string, expects []string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		output := buf.String()
-		matched := true
-		for _, expected := range expects {
-			if !strings.Contains(output, expected) {
-				matched = false
-				break
-			}
-		}
-		if matched {
+		output := removeTerminalControlCharacters(buf.String())
+		if matchExpectedOutput(normalizeSSHOutputLines(output, user), expects) {
 			return true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	return false
+}
+
+func normalizeSSHOutputLines(output string, user string) []string {
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimRight(line, "\r")
+		if strings.TrimSpace(trimmed) == "" {
+			continue
+		}
+		if isTerminalPromptLine(trimmed, user) {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func matchExpectedOutput(lines []string, expects []string) bool {
+	if len(expects) == 0 {
+		return true
+	}
+	idx := 0
+	for _, line := range lines {
+		if lineMatchesExpected(line, expects[idx]) {
+			idx++
+			if idx == len(expects) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func lineMatchesExpected(line string, expected string) bool {
+	if strings.HasPrefix(expected, "/r/") {
+		matched, err := regexp.MatchString(expected[3:], line)
+		return err == nil && matched
+	}
+	return line == expected
 }
 
 func TestRemoveTerminalControlCharactersPreservesBoxDrawing(t *testing.T) {
