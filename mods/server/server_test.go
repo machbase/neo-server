@@ -650,6 +650,9 @@ func TestShellBridge(t *testing.T) {
 	t.Run("shellBridgePostgresTest", func(t *testing.T) {
 		shellBridgePostgresTest(t, postgresDSN)
 	})
+	t.Run("sshBridgePostgresTest", func(t *testing.T) {
+		sshBridgePostgresTest(t, postgresDSN)
+	})
 	t.Run("shellBridgeMSSqlTest", func(t *testing.T) {
 		shellBridgeMSSqlTest(t, mssqlDSN)
 	})
