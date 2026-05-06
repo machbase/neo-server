@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,12 +13,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 )
+
+type facilityTestShellProvider struct {
+	saveErr    error
+	savedShell *model.ShellDefinition
+}
+
+func (p *facilityTestShellProvider) SetDefaultShellCommand(cmd string) {}
+
+func (p *facilityTestShellProvider) SetDefaultJshCommand(cmd string) {}
+
+func (p *facilityTestShellProvider) GetAllShells(includeWebShells bool) []*model.ShellDefinition {
+	return nil
+}
+
+func (p *facilityTestShellProvider) GetShell(id string) (*model.ShellDefinition, error) {
+	return nil, nil
+}
+
+func (p *facilityTestShellProvider) CopyShell(id string) (*model.ShellDefinition, error) {
+	return nil, nil
+}
+
+func (p *facilityTestShellProvider) SaveShell(def *model.ShellDefinition) error {
+	p.savedShell = def
+	return p.saveErr
+}
+
+func (p *facilityTestShellProvider) RemoveShell(id string) error {
+	return nil
+}
 
 func request(t *testing.T, jwt *LoginRsp, method, requestPath string, body io.Reader) (*http.Response, []byte) {
 	t.Helper()
@@ -375,6 +408,17 @@ func TestTimer(t *testing.T) {
 	}
 }
 
+func TestHandleTimersDelDirect(t *testing.T) {
+	svr := &httpd{log: logging.GetLog("httpd-fake")}
+	ctx, writer := newTestHTTPContext(http.MethodDelete, "/web/api/timers/", nil)
+	ctx.Params = gin.Params{{Key: "name", Value: ""}}
+
+	svr.handleTimersDel(ctx)
+
+	require.Equal(t, http.StatusBadRequest, writer.Code)
+	require.Contains(t, writer.Body.String(), "no name specified")
+}
+
 func parseSchedule(schedule string) (cron.Schedule, error) {
 	scheduleParser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 	if s, err := scheduleParser.Parse(schedule); err != nil {
@@ -457,6 +501,42 @@ func TestKey(t *testing.T) {
 	require.NotEmpty(t, genRsp.Token)
 
 	// ========================
+	// POST key-gen duplicate id
+	b = &bytes.Buffer{}
+	param = map[string]interface{}{}
+	param["name"] = "twelve"
+	require.NoError(t, json.NewEncoder(b).Encode(param))
+
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/keys", b)
+	dupRsp := struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	require.NoError(t, json.Unmarshal(payload, &dupRsp))
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(payload))
+	require.False(t, dupRsp.Success)
+	require.Contains(t, dupRsp.Reason, "duplicate id")
+
+	// ========================
+	// POST key-gen invalid id
+	b = &bytes.Buffer{}
+	param = map[string]interface{}{}
+	param["name"] = "!!!"
+	require.NoError(t, json.NewEncoder(b).Encode(param))
+
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/keys", b)
+	invalidRsp := struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	require.NoError(t, json.Unmarshal(payload, &invalidRsp))
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(payload))
+	require.False(t, invalidRsp.Success)
+	require.Contains(t, invalidRsp.Reason, "id contains invalid letter")
+
+	// ========================
 	// GET key-list after creation
 	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/keys", nil)
 	listRsp = struct {
@@ -506,6 +586,51 @@ func TestKey(t *testing.T) {
 	}
 	require.Equal(t, http.StatusOK, rsp.StatusCode, listRsp)
 	require.False(t, keyExists(listRsp.Data, "twelve"))
+}
+
+func TestHandlePostShellDirect(t *testing.T) {
+	t.Run("rejects missing id", func(t *testing.T) {
+		provider := &facilityTestShellProvider{}
+		svr := &httpd{log: logging.GetLog("httpd-fake"), webShellProvider: provider}
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/shell/", []byte(`{"id":"shell-1"}`))
+		ctx.Params = gin.Params{{Key: "id", Value: ""}}
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handlePostShell(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "no id specified")
+		require.Nil(t, provider.savedShell)
+	})
+
+	t.Run("rejects malformed body", func(t *testing.T) {
+		provider := &facilityTestShellProvider{}
+		svr := &httpd{log: logging.GetLog("httpd-fake"), webShellProvider: provider}
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/shell/shell-1", []byte(`{"id":`))
+		ctx.Params = gin.Params{{Key: "id", Value: "shell-1"}}
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handlePostShell(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "unexpected EOF")
+		require.Nil(t, provider.savedShell)
+	})
+
+	t.Run("propagates provider save error", func(t *testing.T) {
+		provider := &facilityTestShellProvider{saveErr: errors.New("save failed")}
+		svr := &httpd{log: logging.GetLog("httpd-fake"), webShellProvider: provider}
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/shell/shell-1", []byte(`{"id":"shell-1","label":"Test Shell"}`))
+		ctx.Params = gin.Params{{Key: "id", Value: "shell-1"}}
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handlePostShell(ctx)
+
+		require.Equal(t, http.StatusInternalServerError, writer.Code)
+		require.Contains(t, writer.Body.String(), "save failed")
+		require.NotNil(t, provider.savedShell)
+		require.Equal(t, "shell-1", provider.savedShell.Id)
+	})
 }
 
 func TestShell(t *testing.T) {
