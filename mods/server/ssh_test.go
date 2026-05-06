@@ -454,6 +454,68 @@ func TestRemoveTerminalControlCharactersPreservesBoxDrawing(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
+func TestNormalizeSSHOutputLinesRemovesPromptAndBlankLines(t *testing.T) {
+	raw := strings.Join([]string{
+		"Greetings, SYS",
+		"machbase-neo  ( )",
+		"",
+		"sys machbase-neo 2026-05-06 10:20:37",
+		"> bridge list",
+		"┌────────┬──────┬──────┬────────────┐",
+		"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+		"└────────┴──────┴──────┴────────────┘",
+		"sys machbase-neo 2026-05-06 10:20:37",
+		">",
+	}, "\n")
+
+	actual := normalizeSSHOutputLines(raw, "sys")
+
+	require.Equal(t, []string{
+		"Greetings, SYS",
+		"machbase-neo  ( )",
+		"> bridge list",
+		"┌────────┬──────┬──────┬────────────┐",
+		"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+		"└────────┴──────┴──────┴────────────┘",
+		">",
+	}, actual)
+}
+
+func TestMatchExpectedOutputSupportsRegexSequence(t *testing.T) {
+	lines := []string{
+		"bridge query br-postgres SELECT * FROM ids ORDER BY id",
+		"┌────────┬────┬──────┐",
+		"│ ROWNUM │ ID │ MEMO │",
+		"├────────┼────┼──────┤",
+		"│      1 │  1 │ pg-1 │",
+		"│      2 │  2 │ pg-2 │",
+		"└────────┴────┴──────┘",
+	}
+
+	require.True(t, matchExpectedOutput(lines, []string{
+		`/r/^┌.*┐$`,
+		`/r/^│ ROWNUM │ ID │ MEMO │$`,
+		`/r/^├.*┤$`,
+		`/r/^│\s+1 │\s+1 │ pg-1 │$`,
+		`/r/^│\s+2 │\s+2 │ pg-2 │$`,
+		`/r/^└.*┘$`,
+	}))
+}
+
+func TestMatchExpectedOutputRejectsOutOfOrderSequence(t *testing.T) {
+	lines := []string{
+		"first",
+		"second",
+		"third",
+	}
+
+	require.False(t, matchExpectedOutput(lines, []string{"second", "first"}))
+}
+
+func TestLineMatchesExpectedInvalidRegexReturnsFalse(t *testing.T) {
+	require.False(t, lineMatchesExpected("value", "/r/[invalid"))
+}
+
 func removeTerminalControlCharacters(s string) string {
 	runes := []rune(s)
 	var lines []string
