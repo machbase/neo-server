@@ -93,6 +93,22 @@ func TestTimer(t *testing.T) {
 	require.Equal(t, http.StatusOK, rsp.StatusCode, addRsp)
 
 	// ========================
+	// POST /api/timers malformed json
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers", bytes.NewBufferString("{"))
+	addRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &addRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, addRsp)
+	require.False(t, addRsp.Success)
+
+	// ========================
 	// POST /api/timers  Failed, incorrect schedule
 	addReq = struct {
 		Name      string `json:"name"`
@@ -125,6 +141,26 @@ func TestTimer(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, addRsp)
 
 	// ========================
+	// GET /api/timers/:name
+	getRsp := struct {
+		Success bool                `json:"success"`
+		Reason  string              `json:"reason"`
+		Data    *scheduler.Schedule `json:"data"`
+		Elapse  string              `json:"elapse"`
+	}{}
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/timers/"+timerName, nil)
+	err = json.Unmarshal(payload, &getRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusOK, rsp.StatusCode, getRsp)
+	require.True(t, getRsp.Success)
+	require.Equal(t, "success", getRsp.Reason)
+	require.NotNil(t, getRsp.Data)
+	require.Equal(t, strings.ToUpper(timerName), getRsp.Data.Name)
+
+	// ========================
 	// POST /api/timers/:name/state  START
 	doReq := struct {
 		State string `json:"state"`
@@ -148,6 +184,49 @@ func TestTimer(t *testing.T) {
 		t.Fatal(err)
 	}
 	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
+
+	// ========================
+	// POST /api/timers/:name/state malformed json
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers/"+timerName+"/state", bytes.NewBufferString("{"))
+	stateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, stateRsp)
+	require.False(t, stateRsp.Success)
+
+	// ========================
+	// POST /api/timers/:name/state invalid
+	doReq = struct {
+		State string `json:"state"`
+	}{
+		State: "invalid",
+	}
+
+	b = &bytes.Buffer{}
+	if err = json.NewEncoder(b).Encode(doReq); err != nil {
+		t.Fatal(err)
+	}
+
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/timers/"+timerName+"/state", b)
+	stateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, stateRsp)
+	require.False(t, stateRsp.Success)
+	require.Contains(t, stateRsp.Reason, "no state specified")
 
 	// ========================
 	// POST /api/timers/:name/state  Stop
@@ -204,6 +283,22 @@ func TestTimer(t *testing.T) {
 	require.Equal(t, http.StatusOK, rsp.StatusCode, updateRsp)
 
 	// ========================
+	// PUT /api/timers/:name malformed json
+	rsp, payload = request(t, jwt, http.MethodPut, "/web/api/timers/"+timerName, bytes.NewBufferString("{"))
+	updateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &updateRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, updateRsp)
+	require.False(t, updateRsp.Success)
+
+	// ========================
 	// DELETE /api/timers/:name
 	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/timers/"+timerName, nil)
 	deleteRsp := struct {
@@ -216,6 +311,68 @@ func TestTimer(t *testing.T) {
 		t.Fatal(err)
 	}
 	require.Equal(t, http.StatusOK, rsp.StatusCode, deleteRsp)
+
+	// ========================
+	// GET /api/timers/:name after deletion
+	getRsp = struct {
+		Success bool                `json:"success"`
+		Reason  string              `json:"reason"`
+		Data    *scheduler.Schedule `json:"data"`
+		Elapse  string              `json:"elapse"`
+	}{}
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/timers/"+timerName, nil)
+	err = json.Unmarshal(payload, &getRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+	require.False(t, getRsp.Success)
+	if runtime.GOOS != "windows" {
+		require.Contains(t, getRsp.Reason, "no such file")
+	}
+
+	// ========================
+	// PUT /api/timers/:name after deletion
+	b = &bytes.Buffer{}
+	if err = json.NewEncoder(b).Encode(updateReq); err != nil {
+		t.Fatal(err)
+	}
+	rsp, payload = request(t, jwt, http.MethodPut, "/web/api/timers/"+timerName, b)
+	updateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &updateRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+	require.False(t, updateRsp.Success)
+	if runtime.GOOS != "windows" {
+		require.Contains(t, updateRsp.Reason, "no such file")
+	}
+
+	// ========================
+	// DELETE /api/timers/:name after deletion
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/timers/"+timerName, nil)
+	deleteRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &deleteRsp)
+	if err != nil {
+		t.Log("rsp", string(payload))
+		t.Fatal(err)
+	}
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+	require.False(t, deleteRsp.Success)
+	if runtime.GOOS != "windows" {
+		require.Contains(t, deleteRsp.Reason, "no such file")
+	}
 }
 
 func parseSchedule(schedule string) (cron.Schedule, error) {
@@ -795,6 +952,7 @@ func TestBridgeStateExecAndQuery(t *testing.T) {
 
 func TestSubscriber(t *testing.T) {
 	jwt := HttpTestLogin(t, "sys", "manager")
+	subscriberName := "test-sub"
 
 	// ========================
 	// POST add mqtt bridge for subscriber test
@@ -818,6 +976,19 @@ func TestSubscriber(t *testing.T) {
 	}()
 
 	// ========================
+	// POST /api/subscribers malformed json
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers", bytes.NewBufferString("{"))
+	addRsp := struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err := json.Unmarshal(payload, &addRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(payload))
+	require.False(t, addRsp.Success)
+
+	// ========================
 	// POST /api/subscribers  - add subscriber
 	addReq := struct {
 		Name      string `json:"name"`
@@ -827,7 +998,7 @@ func TestSubscriber(t *testing.T) {
 		Task      string `json:"task"`
 		QoS       int    `json:"QoS"`
 	}{
-		Name:      "test-sub",
+		Name:      subscriberName,
 		AutoStart: false,
 		Bridge:    "existing-bridge",
 		Topic:     "test/topic",
@@ -841,12 +1012,12 @@ func TestSubscriber(t *testing.T) {
 	}
 
 	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers", b)
-	addRsp := struct {
+	addRsp = struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
 		Elapse  string `json:"elapse"`
 	}{}
-	err := json.Unmarshal(payload, &addRsp)
+	err = json.Unmarshal(payload, &addRsp)
 	if err != nil {
 		t.Log(string(payload))
 		t.Fatal(err)
@@ -855,8 +1026,21 @@ func TestSubscriber(t *testing.T) {
 
 	// ========================
 	// GET /api/subscribers/:name
-	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/test-sub", nil)
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	getRsp := struct {
+		Success bool                `json:"success"`
+		Reason  string              `json:"reason"`
+		Data    *scheduler.Schedule `json:"data"`
+		Elapse  string              `json:"elapse"`
+	}{}
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/"+subscriberName, nil)
+	err = json.Unmarshal(payload, &getRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	require.True(t, getRsp.Success)
+	require.Equal(t, "success", getRsp.Reason)
+	require.NotNil(t, getRsp.Data)
+	require.Equal(t, strings.ToUpper(subscriberName), getRsp.Data.Name)
+	require.Equal(t, "existing-bridge", getRsp.Data.Bridge)
 
 	// ========================
 	// GET /api/subscribers
@@ -885,7 +1069,7 @@ func TestSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/test-sub/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/"+subscriberName+"/state", b)
 	stateRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
@@ -898,6 +1082,19 @@ func TestSubscriber(t *testing.T) {
 	require.Equal(t, http.StatusOK, rsp.StatusCode, stateRsp)
 
 	// ========================
+	// POST /api/subscribers/:name/state malformed json
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/"+subscriberName+"/state", bytes.NewBufferString("{"))
+	stateRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &stateRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(payload))
+	require.False(t, stateRsp.Success)
+
+	// ========================
 	// POST /api/subscribers/:name/state STOP
 	b = &bytes.Buffer{}
 	stateReq = struct {
@@ -906,7 +1103,7 @@ func TestSubscriber(t *testing.T) {
 	if err = json.NewEncoder(b).Encode(stateReq); err != nil {
 		t.Fatal(err)
 	}
-	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/test-sub/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/"+subscriberName+"/state", b)
 	stateRsp = struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
@@ -928,7 +1125,7 @@ func TestSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/test-sub/state", b)
+	rsp, payload = request(t, jwt, http.MethodPost, "/web/api/subscribers/"+subscriberName+"/state", b)
 	stateRsp = struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
@@ -942,7 +1139,7 @@ func TestSubscriber(t *testing.T) {
 
 	// ========================
 	// DELETE /api/subscribers/:name
-	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/subscribers/test-sub", nil)
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/subscribers/"+subscriberName, nil)
 	deleteRsp := struct {
 		Success bool   `json:"success"`
 		Reason  string `json:"reason"`
@@ -958,10 +1155,26 @@ func TestSubscriber(t *testing.T) {
 
 	// ========================
 	// GET /api/subscribers/:name after deletion
-	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/test-sub", nil)
+	rsp, payload = request(t, jwt, http.MethodGet, "/web/api/subscribers/"+subscriberName, nil)
 	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode)
 	if runtime.GOOS != "windows" {
 		require.Contains(t, string(payload), "no such file or directory")
+	}
+
+	// ========================
+	// DELETE /api/subscribers/:name after deletion
+	rsp, payload = request(t, jwt, http.MethodDelete, "/web/api/subscribers/"+subscriberName, nil)
+	deleteRsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+	err = json.Unmarshal(payload, &deleteRsp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(payload))
+	require.False(t, deleteRsp.Success)
+	if runtime.GOOS != "windows" {
+		require.Contains(t, deleteRsp.Reason, "no such file")
 	}
 }
 

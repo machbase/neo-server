@@ -42,6 +42,10 @@ var shellPort = 15622
 var shellArgs = []string{}
 
 func TestMain(m *testing.M) {
+	if os.Getenv("GO_WANT_DO_RESTORE_HELPER") == "1" {
+		os.Exit(m.Run())
+	}
+
 	// get project root based current test case file path
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -203,6 +207,29 @@ func TestMain(m *testing.M) {
 	// cleanup
 	booter.NotifySignal()
 	<-serverBeforeStopC
+}
+
+func TestDoRestore(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDoRestoreHelper$")
+	cmd.Env = append(os.Environ(), "GO_WANT_DO_RESTORE_HELPER=1")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(output))
+	if len(output) > 0 {
+		t.Log(string(output))
+	}
+}
+
+func TestDoRestoreHelper(t *testing.T) {
+	if os.Getenv("GO_WANT_DO_RESTORE_HELPER") != "1" {
+		t.Skip("helper test")
+	}
+
+	restoreCmd := &RestoreCmd{
+		DataDir:   "/definitely/not/real",
+		BackupDir: "/definitely/not/real/backup",
+	}
+
+	require.Equal(t, -1, doRestore(restoreCmd))
 }
 
 func TestRepresentativePort(t *testing.T) {
@@ -622,6 +649,9 @@ func TestShellBridge(t *testing.T) {
 	})
 	t.Run("shellBridgePostgresTest", func(t *testing.T) {
 		shellBridgePostgresTest(t, postgresDSN)
+	})
+	t.Run("sshBridgePostgresTest", func(t *testing.T) {
+		sshBridgePostgresTest(t, postgresDSN)
 	})
 	t.Run("shellBridgeMSSqlTest", func(t *testing.T) {
 		shellBridgeMSSqlTest(t, mssqlDSN)
@@ -1633,4 +1663,70 @@ func TestShellSql(t *testing.T) {
 	for _, tt := range tests {
 		runShellTestCase(t, tt)
 	}
+}
+
+func TestParseMachbaseAddress(t *testing.T) {
+	t.Run("parses full address", func(t *testing.T) {
+		host, port, user, pass, err := parseMachbaseAddress("machbase://sys:manager@127.0.0.1:5656")
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1", host)
+		require.Equal(t, 5656, port)
+		require.Equal(t, "sys", user)
+		require.Equal(t, "manager", pass)
+	})
+
+	t.Run("parses address without credentials", func(t *testing.T) {
+		host, port, user, pass, err := parseMachbaseAddress("machbase://localhost:7777")
+		require.NoError(t, err)
+		require.Equal(t, "localhost", host)
+		require.Equal(t, 7777, port)
+		require.Equal(t, "", user)
+		require.Equal(t, "", pass)
+	})
+
+	for _, tc := range []struct {
+		name string
+		addr string
+	}{
+		{name: "invalid scheme", addr: "http://127.0.0.1:5656"},
+		{name: "missing host", addr: "machbase://"},
+		{name: "missing port", addr: "machbase://127.0.0.1"},
+		{name: "invalid port", addr: "machbase://127.0.0.1:abc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, _, err := parseMachbaseAddress(tc.addr)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid --data address for headless mode")
+		})
+	}
+}
+
+func TestLoadSqlScriptFile(t *testing.T) {
+	t.Run("ignores comments and joins multi-line statements", func(t *testing.T) {
+		input := strings.NewReader(`
+# shell style comment
+-- sql style comment
+
+CREATE TABLE demo (
+  id INTEGER,
+  name VARCHAR(20)
+);
+
+INSERT INTO demo VALUES
+(1, 'neo');
+`)
+
+		stmts, err := loadSqlScriptFile(input)
+		require.NoError(t, err)
+		require.Equal(t, []string{
+			"CREATE TABLE demo ( id INTEGER, name VARCHAR(20) )",
+			"INSERT INTO demo VALUES (1, 'neo')",
+		}, stmts)
+	})
+
+	t.Run("drops unterminated trailing statement", func(t *testing.T) {
+		stmts, err := loadSqlScriptFile(strings.NewReader("SELECT 1\n"))
+		require.NoError(t, err)
+		require.Empty(t, stmts)
+	})
 }

@@ -186,11 +186,11 @@ func NewLogFile(name string, cfg LogFileConf) Log {
 
 		if cfg.Console {
 			underlying = []*logWriter{
-				{Writer: lj, isTerm: false},
+				{Writer: lj, isTerm: false, closer: lj},
 				{Writer: os.Stdout, isTerm: true},
 			}
 		} else {
-			underlying = []*logWriter{{Writer: lj, isTerm: false}}
+			underlying = []*logWriter{{Writer: lj, isTerm: false, closer: lj}}
 		}
 	}
 
@@ -206,4 +206,5 @@ func NewLogFile(name string, cfg LogFileConf) Log {
 type logWriter struct {
 	io.Writer
 	isTerm bool
+	closer io.Closer
 }
