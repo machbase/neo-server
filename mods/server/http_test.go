@@ -5,12 +5,18 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"expvar"
 	"fmt"
 	"io"
+	"math/big"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -484,6 +490,235 @@ func TestIsErrTokenExpired(t *testing.T) {
 
 	// not expired
 	require.False(t, IsErrTokenExpired(fmt.Errorf("other error")))
+}
+
+type httpTestDatabase struct {
+	connectErr    error
+	conn          *httpTestConn
+	lastTrustUser string
+}
+
+func (db *httpTestDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
+	for _, opt := range options {
+		if trust, ok := opt.(*api.ConnectOptionTrustUser); ok {
+			db.lastTrustUser = trust.User
+		}
+	}
+	if db.connectErr != nil {
+		return nil, db.connectErr
+	}
+	if db.conn == nil {
+		db.conn = &httpTestConn{}
+	}
+	return db.conn, nil
+}
+
+func (db *httpTestDatabase) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
+	return false, "", nil
+}
+
+func (db *httpTestDatabase) Ping(ctx context.Context) (time.Duration, error) {
+	return 0, nil
+}
+
+type httpTestConn struct {
+	lastSQL    string
+	closed     bool
+	execResult api.Result
+}
+
+func (conn *httpTestConn) Close() error {
+	conn.closed = true
+	return nil
+}
+
+func (conn *httpTestConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+	conn.lastSQL = sqlText
+	if conn.execResult != nil {
+		return conn.execResult
+	}
+	return &httpTestResult{}
+}
+
+func (conn *httpTestConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+	panic("unexpected Query call")
+}
+
+func (conn *httpTestConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
+	panic("unexpected QueryRow call")
+}
+
+func (conn *httpTestConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
+	panic("unexpected Prepare call")
+}
+
+func (conn *httpTestConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	panic("unexpected Appender call")
+}
+
+func (conn *httpTestConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
+	panic("unexpected Explain call")
+}
+
+type httpTestResult struct {
+	err          error
+	rowsAffected int64
+	message      string
+}
+
+func (r *httpTestResult) Err() error {
+	return r.err
+}
+
+func (r *httpTestResult) RowsAffected() int64 {
+	return r.rowsAffected
+}
+
+func (r *httpTestResult) Message() string {
+	return r.message
+}
+
+func makeAuthorizedClientToken(t *testing.T) (*Server, string) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "client1",
+		},
+		NotBefore: time.Now().Add(-time.Hour),
+		NotAfter:  time.Now().Add(time.Hour),
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+
+	server := &Server{
+		authorizedKeysDir: t.TempDir(),
+		neoShellAccount:   make(map[string]string),
+	}
+	require.NoError(t, server.SetAuthorizedCertificate("client1", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})))
+
+	token, err := GenerateClientToken("client1", privateKey, "b")
+	require.NoError(t, err)
+
+	return server, token
+}
+
+func TestHandleAuthToken(t *testing.T) {
+	t.Run("rejects when auth server is missing", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake")}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files?token=ignored", nil)
+
+		svr.handleAuthToken(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "no auth server")
+		require.True(t, ctx.IsAborted())
+	})
+
+	t.Run("rejects when token is missing", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir(), neoShellAccount: map[string]string{}}}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files", nil)
+
+		svr.handleAuthToken(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "missing authorization token")
+		require.True(t, ctx.IsAborted())
+	})
+
+	t.Run("rejects invalid bearer token", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir(), neoShellAccount: map[string]string{}}}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files", nil)
+		ctx.Request.Header.Set("Authorization", "Bearer invalid-token")
+
+		svr.handleAuthToken(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "missing valid token")
+		require.True(t, ctx.IsAborted())
+	})
+
+	t.Run("accepts valid query token", func(t *testing.T) {
+		authServer, token := makeAuthorizedClientToken(t)
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: authServer}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files?token="+url.QueryEscape(token), nil)
+
+		svr.handleAuthToken(ctx)
+
+		require.False(t, ctx.IsAborted())
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Empty(t, writer.Body.String())
+	})
+}
+
+func TestHandleChangePassword(t *testing.T) {
+	newServer := func(db api.Database) *httpd {
+		return &httpd{
+			log:        logging.GetLog("httpd-fake"),
+			db:         db,
+			authServer: &Server{neoShellAccount: map[string]string{}},
+		}
+	}
+
+	t.Run("rejects invalid password", func(t *testing.T) {
+		svr := newServer(&httpTestDatabase{})
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"bad'pw"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleChangePassword(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "invalid new password")
+	})
+
+	t.Run("rejects unauthorized request", func(t *testing.T) {
+		svr := newServer(&httpTestDatabase{})
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleChangePassword(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "unauthorized request")
+	})
+
+	t.Run("returns database execution error message", func(t *testing.T) {
+		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{err: errors.New("exec failed"), message: "alter failed"}}}
+		svr := newServer(db)
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleChangePassword(ctx)
+
+		require.Equal(t, http.StatusInternalServerError, writer.Code)
+		require.Contains(t, writer.Body.String(), "alter failed")
+		require.Equal(t, "sys", db.lastTrustUser)
+		require.Contains(t, db.conn.lastSQL, "ALTER USER sys IDENTIFIED BY 'updated-password'")
+		require.True(t, db.conn.closed)
+	})
+
+	t.Run("updates password cache on success", func(t *testing.T) {
+		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{}}}
+		svr := newServer(db)
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleChangePassword(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`)
+		require.Equal(t, "sys", db.lastTrustUser)
+		require.Contains(t, db.conn.lastSQL, "ALTER USER sys IDENTIFIED BY 'updated-password'")
+		require.Equal(t, "updated-password", svr.authServer.neoShellAccount["sys"])
+		require.True(t, db.conn.closed)
+	})
 }
 
 func TestDebugMode(t *testing.T) {
@@ -2293,6 +2528,43 @@ func TestHandleTermWindowSize(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
+	})
+}
+
+func TestHandleTermData(t *testing.T) {
+	svr := &httpd{log: logging.GetLog("httpd-fake")}
+
+	t.Run("rejects missing terminal id", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/term//data?token=ignored", nil)
+		ctx.Params = gin.Params{{Key: "term_id", Value: ""}}
+
+		svr.handleTermData(ctx)
+
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+		require.Contains(t, writer.Body.String(), "invalid termId")
+	})
+
+	t.Run("rejects invalid access token before websocket upgrade", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/term/term-1/data?token=invalid", nil)
+		ctx.Params = gin.Params{{Key: "term_id", Value: "term-1"}}
+
+		svr.handleTermData(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "unauthorized access")
+	})
+}
+
+func TestNewWebTermInvalidAddress(t *testing.T) {
+	term, err := NewWebTerm("invalid-address", "", "sys", "manager")
+	require.Nil(t, term)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NewTerm dial")
+}
+
+func TestWebTermCloseNilSafe(t *testing.T) {
+	require.NotPanics(t, func() {
+		(&WebTerm{}).Close()
 	})
 }
 

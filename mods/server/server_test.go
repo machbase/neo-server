@@ -978,21 +978,33 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 		},
 		{
 			name: "bridge_exec_mssql_create_table",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "CREATE TABLE ids(id INT NOT NULL PRIMARY KEY, memo TEXT)"),
+			args: append(shellArgs, "bridge", "exec", "br-ms", `
+				CREATE TABLE ids(
+					id INT NOT NULL PRIMARY KEY,
+					company VARCHAR(50) UNIQUE NOT NULL,
+					discount REAL,
+					pricePlan NUMERIC(7,2),
+					code BINARY,
+					memo TEXT,
+					created_on DATETIME NOT NULL,
+					CONSTRAINT uk_company UNIQUE(company)
+				)
+			`),
 			expect: []string{
 				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_mssql_insert_1",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, memo) VALUES(1, 'ms-1')"),
+			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, company, discount, pricePlan, code, memo, created_on) "+
+				"VALUES(1, 'acme', 0.1, 100.00, 0x01, 'ms-1', '2026-03-14 05:29:01')"),
 			expect: []string{
 				"executed.",
 			},
 		},
 		{
 			name: "bridge_exec_mssql_insert_2",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, memo) VALUES(2, 'ms-2')"),
+			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, company, memo, created_on) VALUES(2, 'company', 'ms-2', '2026-03-14 05:29:01')"),
 			expect: []string{
 				"executed.",
 			},
@@ -1001,12 +1013,12 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 			name: "bridge_exec_mssql_query",
 			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids ORDER BY id"),
 			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"│      1 │  1 │ ms-1 │",
-				"│      2 │  2 │ ms-2 │",
-				"└────────┴────┴──────┘",
+				"┌────────┬────┬─────────┬──────────┬───────────┬──────┬──────┬──────────────────────┐",
+				"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON           │",
+				"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼──────────────────────┤",
+				"│      1 │  1 │ acme    │ 0.1      │ 100       │ AQ== │ ms-1 │ 2026-03-14T05:29:01Z │",
+				"│      2 │  2 │ company │ NULL     │ NULL      │      │ ms-2 │ 2026-03-14T05:29:01Z │",
+				"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴──────────────────────┘",
 			},
 		},
 		{
@@ -1049,10 +1061,10 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 			name: "bridge_exec_mssql_query_no_rows",
 			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
 			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"└────────┴────┴──────┘",
+				"┌────────┬────┬─────────┬──────────┬───────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON │",
+				"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼────────────┤",
+				"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴────────────┘",
 			},
 		},
 		{
