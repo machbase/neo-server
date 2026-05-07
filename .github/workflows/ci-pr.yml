@@ -37,8 +37,6 @@ jobs:
       - name: Setup zig
         if: matrix.platform == 'ubuntu-22.04'
         uses: mlugg/setup-zig@v2
-        with:
-          version: 0.11.0
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Test
