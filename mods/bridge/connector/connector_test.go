@@ -9,6 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func closeBridgedDatabase(t *testing.T, db any) {
+	t.Helper()
+	bridged, ok := db.(*BridgedDatabase)
+	if !ok || bridged == nil || bridged.db == nil {
+		return
+	}
+	require.NoError(t, bridged.db.Close())
+}
+
 func resetDatabasesForTest(t *testing.T) {
 	t.Helper()
 	databasesLock.Lock()
@@ -16,6 +25,11 @@ func resetDatabasesForTest(t *testing.T) {
 	databases = map[string]*BridgedDatabase{}
 	databasesLock.Unlock()
 	t.Cleanup(func() {
+		for _, db := range databases {
+			if db != nil && db.db != nil {
+				require.NoError(t, db.db.Close())
+			}
+		}
 		databasesLock.Lock()
 		databases = prev
 		databasesLock.Unlock()
@@ -36,6 +50,7 @@ func TestNewCachesAndConnectsSqlite(t *testing.T) {
 	first, err := New(name)
 	require.NoError(t, err)
 	require.NotNil(t, first)
+	t.Cleanup(func() { closeBridgedDatabase(t, first) })
 
 	second, err := New(name)
 	require.NoError(t, err)
@@ -66,6 +81,7 @@ func TestNewWithDataSourceAndSetDatabase(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, db)
 	require.Empty(t, opts)
+	t.Cleanup(func() { closeBridgedDatabase(t, db) })
 
 	_, _, err = NewWithDataSource("postgresql", "postgres://user:pass@127.0.0.1/db")
 	require.NoError(t, err)
