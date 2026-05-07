@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/jsh/engine"
+	wsmod "github.com/machbase/neo-server/v8/jsh/lib/ws"
 )
 
 var defaultRouter *gin.Engine
@@ -61,6 +62,7 @@ type Listener interface {
 	Post(path string, callback func(*RouterContext))
 	Put(path string, callback func(*RouterContext))
 	Delete(path string, callback func(*RouterContext))
+	WebSocket(path string, verifyClient func(*WebSocketRequest) bool, handleProtocols func([]string, *WebSocketRequest) string, callback func(*wsmod.WebSocket, *WebSocketRequest))
 	Static(path string, realPath string) error
 	StaticFile(path string, realPath string) error
 	LoadHTMLGlob(pattern string) error
@@ -93,6 +95,9 @@ func (l *BaseListener) Put(path string, callback func(*RouterContext)) {
 }
 func (l *BaseListener) Delete(path string, callback func(*RouterContext)) {
 	l.router.Delete(path, callback)
+}
+func (l *BaseListener) WebSocket(path string, verifyClient func(*WebSocketRequest) bool, handleProtocols func([]string, *WebSocketRequest) string, callback func(*wsmod.WebSocket, *WebSocketRequest)) {
+	l.router.WebSocket(path, verifyClient, handleProtocols, callback)
 }
 func (l *BaseListener) Static(path string, realPath string) error {
 	return l.router.Static(path, realPath)

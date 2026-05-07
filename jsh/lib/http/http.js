@@ -3,6 +3,8 @@
 const _http = require('@jsh/http');
 const EventEmitter = require('/lib/events');
 
+let WebSocketServerCtor = null;
+
 class Agent {
     constructor(opts = {}) {
         this.options = opts;
@@ -349,12 +351,20 @@ class Server {
             requestListener.env = env;
         }
         this.raw = _http.NewServer(requestListener);
+        this.listening = false;
     }
     serve(callback) {
         this.raw.serve(callback);
+        this.listening = true;
+        const interval = setInterval(() => {
+            if (!this.listening) {
+                clearInterval(interval);
+            }
+        }, 200);
         return this;
     }
     close(callback) {
+        this.listening = false;
         this.raw.close(callback);
         return this;
     }
@@ -372,6 +382,29 @@ class Server {
     }
     delete(path, callback) {
         this.raw.delete(path, wrapServerHandler(callback));
+        return this;
+    }
+    _attachWebSocket(path, verifyClient, handleProtocols, callback) {
+        this.raw.webSocket(path, verifyClient, handleProtocols, callback);
+        return this;
+    }
+    ws(path, options, handler) {
+        if (typeof options === 'function') {
+            handler = options;
+            options = {};
+        }
+        if (typeof handler !== 'function') {
+            throw new TypeError('WebSocket handler must be a function');
+        }
+        if (!WebSocketServerCtor) {
+            ({ WebSocketServer: WebSocketServerCtor } = require('ws'));
+        }
+        const wss = new WebSocketServerCtor({
+            ...options,
+            server: this,
+            path,
+        });
+        wss.on('connection', handler);
         return this;
     }
     static(path, root) {

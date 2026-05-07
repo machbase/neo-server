@@ -4,6 +4,8 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"net/http"
+	"sync"
 
 	"github.com/dop251/goja"
 	"github.com/gorilla/websocket"
@@ -23,12 +25,16 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	m := module.Get("exports").(*goja.Object)
 	m.Set("NewWebSocket", NewNativeWebSocket)
+	m.Set("BindWebSocket", BindWebSocket)
+	m.Set("CreateUpgrader", NewUpgrader)
+	m.Set("IsWebSocketUpgrade", IsWebSocketUpgrade)
 }
 
-func NewNativeWebSocket(obj *goja.Object, url string, dispatch engine.EventDispatchFunc) *WebSocket {
+func NewNativeWebSocket(obj *goja.Object, url string, protocols []string, dispatch engine.EventDispatchFunc) *WebSocket {
 	return &WebSocket{
-		obj: obj,
-		url: url,
+		obj:       obj,
+		url:       url,
+		protocols: protocols,
 		emit: func(event string, data any) {
 			dispatch(obj, event, data)
 		},
@@ -40,16 +46,93 @@ type WebSocket struct {
 	url  string
 	emit func(event string, data any)
 	conn *websocket.Conn
+
+	protocols []string
+
+	runOnce sync.Once
+
+	onMessage func(map[string]any)
+	onClose   func(any)
+	onError   func(any)
+}
+
+func NewAcceptedWebSocket(conn *websocket.Conn) *WebSocket {
+	return &WebSocket{conn: conn}
+}
+
+func BindWebSocket(obj *goja.Object, raw *WebSocket, dispatch engine.EventDispatchFunc) *WebSocket {
+	raw.obj = obj
+	raw.emit = func(event string, data any) {
+		dispatch(obj, event, data)
+	}
+	raw.startReadLoop()
+	return raw
+}
+
+func (ws *WebSocket) Bind(obj *goja.Object, dispatch engine.EventDispatchFunc) *WebSocket {
+	ws.obj = obj
+	ws.emit = func(event string, data any) {
+		dispatch(obj, event, data)
+	}
+	ws.startReadLoop()
+	return ws
+}
+
+func (ws *WebSocket) OnMessage(callback func(map[string]any)) {
+	ws.onMessage = callback
+}
+
+func (ws *WebSocket) OnClose(callback func(any)) {
+	ws.onClose = callback
+}
+
+func (ws *WebSocket) OnError(callback func(any)) {
+	ws.onError = callback
+}
+
+func (ws *WebSocket) Start() {
+	ws.startReadLoop()
+}
+
+func (ws *WebSocket) RunDirect() {
+	ws.run()
+}
+
+func NewUpgrader() *websocket.Upgrader {
+	return &websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+}
+
+func IsWebSocketUpgrade(r *http.Request) bool {
+	return websocket.IsWebSocketUpgrade(r)
 }
 
 func (ws *WebSocket) Connect() error {
-	if conn, _, err := websocket.DefaultDialer.Dial(ws.url, nil); err != nil {
+	headers := http.Header{}
+	if len(ws.protocols) > 0 {
+		headers.Set("Sec-WebSocket-Protocol", joinProtocols(ws.protocols))
+	}
+	if conn, _, err := websocket.DefaultDialer.Dial(ws.url, headers); err != nil {
 		return err
 	} else {
 		ws.conn = conn
-		go ws.run()
+		ws.startReadLoop()
 		return nil
 	}
+}
+
+func joinProtocols(protocols []string) string {
+	if len(protocols) == 0 {
+		return ""
+	}
+	result := protocols[0]
+	for i := 1; i < len(protocols); i++ {
+		result += ", " + protocols[i]
+	}
+	return result
 }
 
 func (ws *WebSocket) Close() error {
@@ -73,14 +156,42 @@ func (ws *WebSocket) Send(typ int, message any) error {
 	}
 }
 
+func (ws *WebSocket) Protocol() string {
+	if ws.conn == nil {
+		return ""
+	}
+	return ws.conn.Subprotocol()
+}
+
+func (ws *WebSocket) startReadLoop() {
+	ws.runOnce.Do(func() {
+		go ws.run()
+	})
+}
+
 func (ws *WebSocket) run() {
 	for {
 		typ, message, err := ws.conn.ReadMessage()
 		if err != nil {
-			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				ws.emit("close", err)
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
+				payload := map[string]any{"error": err.Error()}
+				if ws.onClose != nil {
+					ws.onClose(payload)
+				} else if ws.emit != nil {
+					ws.emit("close", payload)
+				}
 			} else {
-				ws.emit("error", err)
+				payload := map[string]any{"error": err.Error()}
+				if ws.onError != nil {
+					ws.onError(err)
+				} else if ws.emit != nil {
+					ws.emit("error", err)
+				}
+				if ws.onClose != nil {
+					ws.onClose(payload)
+				} else if ws.emit != nil {
+					ws.emit("close", payload)
+				}
 			}
 			return
 		}
@@ -92,6 +203,10 @@ func (ws *WebSocket) run() {
 		} else {
 			data["data"] = message
 		}
-		ws.emit("message", data)
+		if ws.onMessage != nil {
+			ws.onMessage(data)
+		} else if ws.emit != nil {
+			ws.emit("message", data)
+		}
 	}
 }
