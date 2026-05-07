@@ -21,3 +21,9 @@ func TestSetServiceControllerAddress(t *testing.T) {
 	SetServiceControllerAddress("unix:///tmp/controller.sock")
 	require.Equal(t, "unix:///tmp/controller.sock", _serviceControllerAddr)
 }
+
+func TestSetServiceWorkspace(t *testing.T) {
+	_serviceWorkspace = ""
+	SetServiceWorkspace("/tmp/service-workspace")
+	require.Equal(t, "/tmp/service-workspace", _serviceWorkspace)
+}
