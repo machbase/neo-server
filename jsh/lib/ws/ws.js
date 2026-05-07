@@ -65,12 +65,12 @@ class WebSocket extends EventEmitter {
         }
     }
     close() {
-        if (this.readyState === this.CLOSED) {
+        if (this.readyState === WebSocket.CLOSING || this.readyState === WebSocket.CLOSED) {
             return;
         }
-        this.readyState = this.CLOSING;
+        this.readyState = WebSocket.CLOSING;
         this.raw.close();
-        this.readyState = this.CLOSED;
+        this.readyState = WebSocket.CLOSED;
         this.emit('close');
     }
 

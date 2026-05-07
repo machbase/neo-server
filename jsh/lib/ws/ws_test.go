@@ -70,10 +70,12 @@ func TestWebSocket(t *testing.T) {
 				try {
 					new m1.WebSocket();
 				} catch(e) {
-					throw e;
+					console.println("constructor error:", e.message);
 				}
 			`,
-			Err: "URL must be a string",
+			Output: []string{
+				"constructor error: URL must be a string, got undefined",
+			},
 		},
 		{
 			Name: "constructor",
@@ -497,6 +499,19 @@ func TestWebSocketServer(t *testing.T) {
 				const hold = setInterval(() => {}, 100);
 				const ws = new WebSocket('ws://127.0.0.1:29887/tracked');
 				let closed = false;
+				let attempts = 0;
+				function checkTrackedSize() {
+					http.get('http://127.0.0.1:29887/tracked-size', (response) => {
+						const size = response.text();
+						if (size === '0' || attempts >= 20) {
+							console.println('tracked size:', size);
+							clearInterval(hold);
+							return;
+						}
+						attempts++;
+						setTimeout(checkTrackedSize, 20);
+					});
+				}
 				ws.on('message', (event) => {
 					console.println('tracked recv:', event.data);
 					ws.close();
@@ -507,10 +522,7 @@ func TestWebSocketServer(t *testing.T) {
 					}
 					closed = true;
 					console.println('tracked close');
-					http.get('http://127.0.0.1:29887/tracked-size', (response) => {
-						console.println('tracked size:', response.text());
-						clearInterval(hold);
-					});
+					checkTrackedSize();
 				});
 			`,
 			Output: []string{
