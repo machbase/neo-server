@@ -70,6 +70,30 @@ func TestHandleLspUnsupportedLanguage(t *testing.T) {
 	}
 }
 
+func TestHandleLspJshDiagnostics(t *testing.T) {
+	body := `{"language":"jsh","uri":"memory://test.js","text":"await run()"}`
+	rsp := postLspTestRequest(t, "/lsp/diagnostics", body, func(router *gin.Engine, svr *httpd) {
+		router.POST("/lsp/diagnostics", svr.handleLspDiagnostics)
+	})
+
+	if rsp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
+	}
+	result := decodeLspTestResponse(t, rsp.Body.Bytes())
+	if !result.Success {
+		t.Fatalf("expected success response: %+v", result)
+	}
+	data := result.Data.(map[string]any)
+	diagnostics := data["diagnostics"].([]any)
+	if len(diagnostics) == 0 {
+		t.Fatal("expected JSH diagnostics")
+	}
+	diagnostic := diagnostics[0].(map[string]any)
+	if diagnostic["source"] != "jsh" {
+		t.Fatalf("expected jsh diagnostic, got %+v", diagnostic)
+	}
+}
+
 type lspTestResponse struct {
 	Success bool   `json:"success"`
 	Reason  string `json:"reason"`

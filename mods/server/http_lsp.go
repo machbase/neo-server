@@ -7,6 +7,7 @@ import (
 	"time"
 
 	base "github.com/machbase/neo-server/v8/mods/lsp"
+	lspjsh "github.com/machbase/neo-server/v8/mods/lsp/jsh"
 	lsptql "github.com/machbase/neo-server/v8/mods/lsp/tql"
 
 	"github.com/gin-gonic/gin"
@@ -97,7 +98,9 @@ func lspLanguageService(language string) (base.LanguageService, error) {
 	switch base.Language(strings.ToLower(language)) {
 	case base.LanguageTQL:
 		return lsptql.NewService(), nil
-	case base.LanguageSQL, base.LanguageJSH:
+	case base.LanguageJSH:
+		return lspjsh.NewService(), nil
+	case base.LanguageSQL:
 		return nil, fmt.Errorf("%s language service is not implemented yet", language)
 	default:
 		return nil, fmt.Errorf("unsupported language %q", language)
