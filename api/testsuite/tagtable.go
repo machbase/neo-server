@@ -21,6 +21,9 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	require.Equal(t, "TAG_DATA", appender.TableName())
+	require.Equal(t, api.TableTypeTag, appender.TableType())
+	appender = appender.WithInputFormats()
 
 	// On systems with slow network configurations (e.g., GitHub Actions runners),
 	// the appender may flush data too frequently (default: 5ms), causing rapid,
@@ -150,6 +153,8 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 	if err != nil {
 		panic(err)
 	}
+	require.Equal(t, strings.ToUpper(tableName), appender.TableName())
+	require.Equal(t, api.TableTypeTag, appender.TableType())
 
 	testCount := 100
 	ts := time.Now()
@@ -253,6 +258,8 @@ func AppendTagPartial(t *testing.T, db api.Database, ctx context.Context) {
 	if err != nil {
 		panic(err)
 	}
+	require.Equal(t, strings.ToUpper(tableName), appender.TableName())
+	require.Equal(t, api.TableTypeTag, appender.TableType())
 
 	// arbitrary column order
 	appender = appender.WithInputColumns("time", "name", "jsondata", "value")

@@ -43,6 +43,7 @@ func LogTableExec(t *testing.T, db api.Database, ctx context.Context) {
 	if err := result.Err(); err != nil {
 		t.Fatal(err)
 	}
+	require.Equal(t, int64(1), result.RowsAffected())
 	result = conn.Exec(ctx, "insert into log_data values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		tick.Add(1), // time
 		0, one,      // short, ushort
@@ -58,6 +59,7 @@ func LogTableExec(t *testing.T, db api.Database, ctx context.Context) {
 	if err := result.Err(); err != nil {
 		t.Fatal(err)
 	}
+	require.Equal(t, int64(1), result.RowsAffected())
 }
 
 func LogTableAppend(t *testing.T, db api.Database, ctx context.Context) {
@@ -67,6 +69,9 @@ func LogTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 
 	appender, err := conn.Appender(ctx, "log_data")
 	require.NoError(t, err)
+	require.Equal(t, "LOG_DATA", appender.TableName())
+	require.Equal(t, api.TableTypeLog, appender.TableType())
+	appender = appender.WithInputFormats()
 
 	expectCols := []*api.Column{
 		{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
@@ -121,6 +126,10 @@ func LogTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 		require.NoError(t, err)
 	}
 	sc, fc, err := appender.Close()
+	require.NoError(t, err)
+	require.Equal(t, int64(expectCount), sc)
+	require.Equal(t, int64(0), fc)
+	sc, fc, err = appender.Close()
 	require.NoError(t, err)
 	require.Equal(t, int64(expectCount), sc)
 	require.Equal(t, int64(0), fc)

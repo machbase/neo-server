@@ -535,6 +535,9 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 
 // Close closes connection
 func (conn *Conn) Close() (err error) {
+	if conn == nil || conn.db == nil || conn.handle == nil {
+		return api.ErrDatabaseNoConnection
+	}
 	if conn.db.enableWorkerPool {
 		return conn.CloseAsync()
 	}
@@ -568,6 +571,9 @@ func (conn *Conn) CloseSync() (err error) {
 }
 
 func (conn *Conn) Cancel() error {
+	if conn == nil || conn.handle == nil {
+		return api.ErrDatabaseNoConnection
+	}
 	if err := mach.EngCancel(conn.handle); err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package markdown_test
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,5 +114,69 @@ func TestMarkdown(t *testing.T) {
 		if !StringsEq(t, expectStr, buffer.String()) {
 			require.Equal(t, expectStr, buffer.String(), "md result %q unmatched\n%s", tt.result, buffer.String())
 		}
+	}
+}
+
+func TestMarkdownAddRowTypes(t *testing.T) {
+	tick := time.Unix(0, 1692670838086467000).UTC()
+	boolValue := true
+	stringValue := "text"
+	float64Value := 1.25
+	float32Value := float32(2.5)
+	intValue := 3
+	int8Value := int8(4)
+	int16Value := int16(5)
+	int32Value := int32(6)
+	int64Value := int64(7)
+	ipValue := net.ParseIP("127.0.0.1")
+
+	tests := []struct {
+		name     string
+		value    any
+		expected string
+	}{
+		{name: "nil", value: nil, expected: "NULL"},
+		{name: "bool", value: true, expected: "true"},
+		{name: "bool pointer", value: &boolValue, expected: "true"},
+		{name: "string", value: "text", expected: "text"},
+		{name: "string pointer", value: &stringValue, expected: "text"},
+		{name: "time", value: tick, expected: "2023/08/22 02:20:38.086"},
+		{name: "time pointer", value: &tick, expected: "2023/08/22 02:20:38.086"},
+		{name: "float64", value: 1.25, expected: "1.250000"},
+		{name: "float64 pointer", value: &float64Value, expected: "1.250000"},
+		{name: "float32", value: float32(2.5), expected: "2.500000"},
+		{name: "float32 pointer", value: &float32Value, expected: "2.500000"},
+		{name: "int", value: 3, expected: "3"},
+		{name: "int pointer", value: &intValue, expected: "3"},
+		{name: "int8", value: int8(4), expected: "4"},
+		{name: "int8 pointer", value: &int8Value, expected: "4"},
+		{name: "int16", value: int16(5), expected: "5"},
+		{name: "int16 pointer", value: &int16Value, expected: "5"},
+		{name: "int32", value: int32(6), expected: "6"},
+		{name: "int32 pointer", value: &int32Value, expected: "6"},
+		{name: "int64", value: int64(7), expected: "7"},
+		{name: "int64 pointer", value: &int64Value, expected: "7"},
+		{name: "ip", value: ipValue, expected: "127.0.0.1"},
+		{name: "ip pointer", value: &ipValue, expected: "127.0.0.1"},
+		{name: "fallback", value: struct{ Name string }{Name: "x"}, expected: "struct { Name string }"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buffer := &bytes.Buffer{}
+
+			md := markdown.NewEncoder()
+			md.SetOutputStream(buffer)
+			md.SetColumns("value")
+			md.SetTimeformat("2006/01/02 15:04:05.999")
+			md.SetTimeLocation(time.UTC)
+
+			require.NoError(t, md.Open())
+			require.NoError(t, md.AddRow([]any{tt.value}))
+			md.Close()
+
+			expected := "|value|\n|:-----|\n|" + tt.expected + "|\n"
+			require.Equal(t, expected, buffer.String())
+		})
 	}
 }

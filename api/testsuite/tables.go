@@ -149,10 +149,12 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	result := conn.Exec(ctx, `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) `+
 		`values('insert-once', '`+nowStrInLocal+`', 1.23, 1, 2, 3, 'str1', '{"key1": "value1"}')`)
 	require.NoError(t, result.Err(), "insert fail")
+	require.Equal(t, int64(1), result.RowsAffected())
 
 	sysConn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"), api.WithStatementCache(api.StatementCacheAuto))
 	result = sysConn.Exec(ctx, `EXEC table_flush(tag_data)`)
 	require.NoError(t, result.Err(), "table_flush fail")
+	require.Equal(t, int64(0), result.RowsAffected())
 	sysConn.Close()
 
 	// prepare and query

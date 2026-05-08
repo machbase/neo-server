@@ -15,6 +15,8 @@ func QueryRow(t *testing.T, db api.Database, ctx context.Context) {
 
 	row := conn.QueryRow(ctx, "SELECT * from tag_data WHERE name='_not_exist_'")
 	require.EqualError(t, row.Err(), "sql: no rows in result set")
+	require.Equal(t, int64(0), row.RowsAffected())
+	require.Equal(t, "sql: no rows in result set", row.Message())
 	var result int
 	err = row.Scan(&result)
 	require.EqualError(t, err, "sql: no rows in result set")
@@ -31,4 +33,14 @@ func QueryRow(t *testing.T, db api.Database, ctx context.Context) {
 	for i, col := range columns {
 		require.Equal(t, expectedColumns[i], col.Name)
 	}
+
+	row = conn.QueryRow(ctx, "SELECT count(*) from tag_data")
+	require.NoError(t, row.Err())
+	require.Equal(t, int64(1), row.RowsAffected())
+	require.Equal(t, "a row selected.", row.Message())
+
+	var count int64
+	err = row.Scan(&count)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, count, int64(0))
 }
