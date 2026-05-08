@@ -21,9 +21,10 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
-	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
+
+const testProcProcessRoot = "process"
 
 type watchedProcFS struct {
 	*engine.VirtualFS
@@ -363,45 +364,21 @@ func TestProcessExec(t *testing.T) {
 }
 
 func TestProcessExecRegistersProcEntry(t *testing.T) {
-	tmpDir := t.TempDir()
-	servicesDir := filepath.Join(tmpDir, "services")
-	backendDir := filepath.Join(tmpDir, "shared")
-	if err := os.MkdirAll(servicesDir, 0o755); err != nil {
-		t.Fatalf("mkdir services: %v", err)
-	}
-	if err := os.MkdirAll(backendDir, 0o755); err != nil {
-		t.Fatalf("mkdir shared: %v", err)
-	}
-
-	ctl, err := service.NewController(&service.ControllerConfig{
-		ConfigDir: "/work/services",
-		SharedFS: service.ControllerSharedFSConfig{
-			BackendDir: "/work/shared",
-		},
-		Mounts: []engine.FSTab{
-			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewController() error = %v", err)
-	}
-	if err := ctl.Start(nil); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	defer ctl.Stop(nil)
+	procFS := newWatchedProcFS()
 
 	conf := engine.Config{
 		Name: "process_proc_entry",
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
+			{MountPoint: "/proc", FS: procFS},
 		},
 		Env: map[string]any{
 			"PATH":               "/work:/sbin",
 			"PWD":                "/work",
 			"HOME":               "/work",
 			"LIBRARY_PATH":       "./node_modules:/lib",
-			"SERVICE_CONTROLLER": ctl.Address(),
+			"SERVICE_CONTROLLER": "stub://controller",
 		},
 		ExecBuilder: helperExecBuilder(jshBinPath),
 		Reader:      &bytes.Buffer{},
@@ -425,8 +402,23 @@ func TestProcessExecRegistersProcEntry(t *testing.T) {
 		}{exitCode: exitCode, err: execErr}
 	}()
 
-	processRoot := filepath.Join(backendDir, "process")
-	var procDir string
+	select {
+	case <-procFS.created:
+	case result := <-resultCh:
+		t.Fatalf("jr.Exec() finished before proc entry appeared: exitCode=%d err=%v output=%q", result.exitCode, result.err, conf.Writer.(*bytes.Buffer).String())
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for proc entry signal output=%q", conf.Writer.(*bytes.Buffer).String())
+	}
+
+	entries, readErr := fs.ReadDir(procFS, testProcProcessRoot)
+	if readErr != nil {
+		t.Fatalf("readdir %s: %v", testProcProcessRoot, readErr)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("no proc entries found under /%s", testProcProcessRoot)
+	}
+
+	procDir := pathpkg.Join(testProcProcessRoot, entries[0].Name())
 	var meta struct {
 		Pid                       int      `json:"pid"`
 		Ppid                      int      `json:"ppid"`
@@ -445,33 +437,16 @@ func TestProcessExecRegistersProcEntry(t *testing.T) {
 		StartedAt string `json:"started_at"`
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		select {
-		case result := <-resultCh:
-			t.Fatalf("jr.Exec() finished before proc entry appeared: exitCode=%d err=%v output=%q", result.exitCode, result.err, conf.Writer.(*bytes.Buffer).String())
-		default:
-		}
-
-		entries, readErr := os.ReadDir(processRoot)
-		if readErr == nil && len(entries) > 0 {
-			procDir = filepath.Join(processRoot, entries[0].Name())
-			metaBytes, metaErr := os.ReadFile(filepath.Join(procDir, "meta.json"))
-			statusBytes, statusErr := os.ReadFile(filepath.Join(procDir, "status.json"))
-			if metaErr == nil && statusErr == nil {
-				if err := json.Unmarshal(metaBytes, &meta); err != nil {
-					t.Fatalf("unmarshal meta.json: %v", err)
-				}
-				if err := json.Unmarshal(statusBytes, &status); err != nil {
-					t.Fatalf("unmarshal status.json: %v", err)
-				}
-				break
-			}
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for proc entry under %s output=%q", processRoot, conf.Writer.(*bytes.Buffer).String())
-		}
-		time.Sleep(20 * time.Millisecond)
+	metaBytes, metaErr := fs.ReadFile(procFS, pathpkg.Join(procDir, "meta.json"))
+	statusBytes, statusErr := fs.ReadFile(procFS, pathpkg.Join(procDir, "status.json"))
+	if metaErr != nil || statusErr != nil {
+		t.Fatalf("proc entry files missing metaErr=%v statusErr=%v", metaErr, statusErr)
+	}
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		t.Fatalf("unmarshal meta.json: %v", err)
+	}
+	if err := json.Unmarshal(statusBytes, &status); err != nil {
+		t.Fatalf("unmarshal status.json: %v", err)
 	}
 
 	if meta.Pid <= 0 {
@@ -512,18 +487,18 @@ func TestProcessExecRegistersProcEntry(t *testing.T) {
 
 	removeDeadline := time.Now().Add(15 * time.Second)
 	for {
-		_, metaErr := os.Stat(filepath.Join(procDir, "meta.json"))
-		_, statusErr := os.Stat(filepath.Join(procDir, "status.json"))
+		_, metaErr := fs.Stat(procFS, pathpkg.Join(procDir, "meta.json"))
+		_, statusErr := fs.Stat(procFS, pathpkg.Join(procDir, "status.json"))
 		if os.IsNotExist(metaErr) && os.IsNotExist(statusErr) {
 			break
 		}
 		if time.Now().After(removeDeadline) {
-			entries, _ := os.ReadDir(procDir)
+			entries, _ := fs.ReadDir(procFS, procDir)
 			names := make([]string, 0, len(entries))
 			for _, entry := range entries {
 				names = append(names, entry.Name())
 			}
-			t.Fatalf("proc entry files still exist: %s entries=%v", procDir, names)
+			t.Fatalf("proc entry files still exist: /%s entries=%v", procDir, names)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

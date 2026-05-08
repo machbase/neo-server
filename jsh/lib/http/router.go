@@ -13,7 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
+	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-server/v8/jsh/engine"
+	wsmod "github.com/machbase/neo-server/v8/jsh/lib/ws"
 )
 
 type Router struct {
@@ -35,6 +37,39 @@ func (r *Router) Put(path string, callback func(*RouterContext)) {
 }
 func (r *Router) Delete(path string, callback func(*RouterContext)) {
 	r.handle("DELETE", path, callback)
+}
+
+func (r *Router) WebSocket(path string, verifyClient func(*WebSocketRequest) bool, handleProtocols func([]string, *WebSocketRequest) string, callback func(*wsmod.WebSocket, *WebSocketRequest)) {
+	upgrader := wsmod.NewUpgrader()
+	r.ir.GET(path, func(ctx *gin.Context) {
+		if !wsmod.IsWebSocketUpgrade(ctx.Request) {
+			ctx.String(http.StatusBadRequest, "websocket upgrade required")
+			return
+		}
+
+		request := NewWebSocketRequest(ctx.Request)
+		if verifyClient != nil && !verifyClient(request) {
+			ctx.String(http.StatusForbidden, "websocket upgrade rejected")
+			return
+		}
+
+		responseHeader := http.Header{}
+		if handleProtocols != nil {
+			selected := handleProtocols(websocket.Subprotocols(ctx.Request), request)
+			if selected != "" {
+				responseHeader.Set("Sec-WebSocket-Protocol", selected)
+			}
+		}
+
+		conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, responseHeader)
+		if err != nil {
+			return
+		}
+
+		accepted := wsmod.NewAcceptedWebSocket(conn)
+		callback(accepted, request)
+		accepted.RunDirect()
+	})
 }
 
 func (r *Router) handle(method string, path string, callback func(*RouterContext)) {
@@ -158,6 +193,70 @@ type RouterRequest struct {
 
 func (r *RouterRequest) GetHeader(name string) string {
 	return r.Request.Header.Get(name)
+}
+
+type WebSocketRequest struct {
+	URL           string
+	Method        string
+	Headers       map[string]any
+	RawHeaders    []string
+	Path          string
+	RemoteAddress string
+	Host          string
+	Proto         string
+	RequestURI    string
+
+	req *http.Request
+}
+
+func NewWebSocketRequest(req *http.Request) *WebSocketRequest {
+	headers := map[string]any{}
+	rawHeaders := make([]string, 0, len(req.Header)*2)
+	for key, values := range req.Header {
+		if len(values) == 1 {
+			headers[key] = values[0]
+		} else {
+			copied := make([]string, len(values))
+			copy(copied, values)
+			headers[key] = copied
+		}
+		for _, value := range values {
+			rawHeaders = append(rawHeaders, key, value)
+		}
+	}
+	return &WebSocketRequest{
+		URL:           req.URL.String(),
+		Method:        req.Method,
+		Headers:       headers,
+		RawHeaders:    rawHeaders,
+		Path:          req.URL.Path,
+		RemoteAddress: req.RemoteAddr,
+		Host:          req.Host,
+		Proto:         req.Proto,
+		RequestURI:    req.RequestURI,
+		req:           req,
+	}
+}
+
+func (req *WebSocketRequest) Query(name string) string {
+	if req == nil || req.req == nil {
+		return ""
+	}
+	return req.req.URL.Query().Get(name)
+}
+
+func (req *WebSocketRequest) GetHeader(name string) string {
+	if req == nil || req.req == nil {
+		return ""
+	}
+	return req.req.Header.Get(name)
+}
+
+func (req *WebSocketRequest) HasHeader(name string) bool {
+	if req == nil || req.req == nil {
+		return false
+	}
+	return req.req.Header.Get(name) != ""
 }
 
 type RouterContext struct {

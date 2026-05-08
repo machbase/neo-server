@@ -97,8 +97,10 @@ func (w *Worker) Start() {
 	go func() {
 		defer w.closeWg.Done()
 		runtime.LockOSThread()
-		// intentionally ignore calling runtime.UnlockOSThread()
-		// to terminate the native thread
+		defer runtime.UnlockOSThread()
+		// Keep a dedicated OS thread while the worker is active.
+		// Unlocking only at shutdown avoids returning from a locked goroutine,
+		// which has been unstable on some macOS Intel CI runs.
 	loop:
 		for {
 			select {
