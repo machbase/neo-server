@@ -5,8 +5,22 @@ import (
 	"os"
 	"testing"
 
+	jshlib "github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
+
+func TestUserModuleFilesIncludesPublicWrappers(t *testing.T) {
+	files := jshlib.UserModuleFiles()
+	if len(files) == 0 {
+		t.Fatal("expected user module files")
+	}
+	if _, ok := files["fs.js"]; !ok {
+		t.Fatal("expected fs.js wrapper")
+	}
+	if _, ok := files["process.js"]; !ok {
+		t.Fatal("expected process.js wrapper")
+	}
+}
 
 func TestFS_Module(t *testing.T) {
 	script := `

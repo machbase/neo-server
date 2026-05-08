@@ -52,6 +52,41 @@ func TestHandleLspCompletion(t *testing.T) {
 	}
 }
 
+func TestHandleLspHover(t *testing.T) {
+	body := `{"language":"tql","uri":"memory://test.tql","text":"FAKE()","position":{"line":1,"column":2}}`
+	rsp := postLspTestRequest(t, "/lsp/hover", body, func(router *gin.Engine, svr *httpd) {
+		router.POST("/lsp/hover", svr.handleLspHover)
+	})
+
+	if rsp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
+	}
+	result := decodeLspTestResponse(t, rsp.Body.Bytes())
+	if !result.Success {
+		t.Fatalf("expected success response: %+v", result)
+	}
+	data := result.Data.(map[string]any)
+	hover := data["hover"].(map[string]any)
+	if !strings.Contains(hover["contents"].(string), "FAKE") {
+		t.Fatalf("expected FAKE hover, got %+v", hover)
+	}
+}
+
+func TestHandleLspHoverUnsupportedLanguage(t *testing.T) {
+	body := `{"language":"sql","uri":"memory://test.sql","text":"select 1","position":{"line":1,"column":1}}`
+	rsp := postLspTestRequest(t, "/lsp/hover", body, func(router *gin.Engine, svr *httpd) {
+		router.POST("/lsp/hover", svr.handleLspHover)
+	})
+
+	if rsp.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rsp.Code, rsp.Body.String())
+	}
+	result := decodeLspTestResponse(t, rsp.Body.Bytes())
+	if result.Success {
+		t.Fatal("expected failure response")
+	}
+}
+
 func TestHandleLspSignatureHelp(t *testing.T) {
 	body := `{"language":"jsh","uri":"memory://test.js","text":"const fs = require('fs');\nfs.readFileSync('/tmp/a', ","position":{"line":2,"column":27}}`
 	rsp := postLspTestRequest(t, "/lsp/signature", body, func(router *gin.Engine, svr *httpd) {
@@ -149,6 +184,24 @@ func TestHandleLspUnsupportedLanguage(t *testing.T) {
 	}
 	if !strings.Contains(result.Reason, "not implemented yet") {
 		t.Fatalf("unexpected reason: %s", result.Reason)
+	}
+}
+
+func TestLspLanguageServiceUnsupportedDefault(t *testing.T) {
+	_, err := lspLanguageService("unknown")
+	if err == nil || !strings.Contains(err.Error(), "unsupported language") {
+		t.Fatalf("expected unsupported language error, got %v", err)
+	}
+}
+
+func TestLspMetadataUnsupportedLanguages(t *testing.T) {
+	_, err := lspMetadata("sql")
+	if err == nil || !strings.Contains(err.Error(), "not implemented yet") {
+		t.Fatalf("expected sql metadata error, got %v", err)
+	}
+	_, err = lspMetadata("unknown")
+	if err == nil || !strings.Contains(err.Error(), "unsupported language") {
+		t.Fatalf("expected unsupported metadata error, got %v", err)
 	}
 }
 

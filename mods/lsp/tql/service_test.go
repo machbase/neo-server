@@ -94,6 +94,17 @@ func TestBuildMetadataIncludesTqlFunctions(t *testing.T) {
 	}
 }
 
+func TestMetadataReturnsTqlMetadata(t *testing.T) {
+	svc := NewService()
+	metadata := svc.Metadata()
+	if metadata.Language != base.LanguageTQL {
+		t.Fatalf("expected tql metadata, got %q", metadata.Language)
+	}
+	if len(metadata.Symbols) == 0 {
+		t.Fatal("expected tql symbols")
+	}
+}
+
 func TestHoverReturnsFunctionInfo(t *testing.T) {
 	svc := NewService()
 	hover, err := svc.Hover(context.Background(), base.Document{

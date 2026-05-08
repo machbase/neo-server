@@ -32,6 +32,20 @@ func (tc FunctionTestCase) run(t *testing.T) {
 	require.Equal(t, tc.expect, ret)
 }
 
+func TestStatementKindByFunctionName(t *testing.T) {
+	kind, ok := tql.StatementKindByFunctionName("CSV()")
+	require.True(t, ok)
+	require.Equal(t, tql.StatementSourceOrSink, kind)
+
+	kind, ok = tql.StatementKindByFunctionName("customMap")
+	require.True(t, ok)
+	require.Equal(t, tql.StatementMap, kind)
+
+	kind, ok = tql.StatementKindByFunctionName("")
+	require.False(t, ok)
+	require.Equal(t, tql.StatementUnknown, kind)
+}
+
 func TestEscapeParam(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("escapeParam"),

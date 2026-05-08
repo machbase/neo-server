@@ -119,6 +119,17 @@ func TestBuildMetadataIncludesJSDocExports(t *testing.T) {
 	}
 }
 
+func TestMetadataReturnsJshMetadata(t *testing.T) {
+	svc := NewService()
+	metadata := svc.Metadata()
+	if metadata.Language != base.LanguageJSH {
+		t.Fatalf("expected jsh metadata, got %q", metadata.Language)
+	}
+	if len(metadata.Modules) == 0 {
+		t.Fatal("expected module metadata")
+	}
+}
+
 func TestHoverReturnsJshRuntimeInfo(t *testing.T) {
 	svc := NewService()
 	hover, err := svc.Hover(context.Background(), base.Document{
