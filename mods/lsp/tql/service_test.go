@@ -66,6 +66,31 @@ func TestCompletionIncludesTqlFunctions(t *testing.T) {
 	}
 }
 
+func TestBuildMetadataIncludesTqlFunctions(t *testing.T) {
+	metadata := BuildMetadata()
+	if metadata.Language != base.LanguageTQL {
+		t.Fatalf("expected tql metadata, got %q", metadata.Language)
+	}
+	if metadata.Version == "" {
+		t.Fatal("expected metadata version")
+	}
+	if !hasKeyword(metadata.Keywords, "FAKE") {
+		t.Fatal("expected FAKE keyword")
+	}
+	if !hasKeyword(metadata.Keywords, "MAPVALUE") {
+		t.Fatal("expected MAPVALUE keyword")
+	}
+	if !hasSymbolStatementKind(metadata.Symbols, "FAKE", "source") {
+		t.Fatal("expected FAKE source symbol")
+	}
+	if !hasSymbolStatementKind(metadata.Symbols, "MAPVALUE", "map") {
+		t.Fatal("expected MAPVALUE map symbol")
+	}
+	if !hasSymbolStatementKind(metadata.Symbols, "CSV", "source_or_sink") {
+		t.Fatal("expected CSV source_or_sink symbol")
+	}
+}
+
 func TestHoverReturnsFunctionInfo(t *testing.T) {
 	svc := NewService()
 	hover, err := svc.Hover(context.Background(), base.Document{
@@ -89,6 +114,24 @@ func TestHoverReturnsFunctionInfo(t *testing.T) {
 func hasCompletion(items []base.CompletionItem, label string) bool {
 	for _, item := range items {
 		if item.Label == label {
+			return true
+		}
+	}
+	return false
+}
+
+func hasKeyword(items []base.KeywordInfo, label string) bool {
+	for _, item := range items {
+		if item.Label == label {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSymbolStatementKind(items []base.SymbolInfo, label string, statementKind string) bool {
+	for _, item := range items {
+		if item.Label == label && item.StatementKind == statementKind {
 			return true
 		}
 	}

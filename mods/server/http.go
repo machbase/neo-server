@@ -306,6 +306,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/lsp/diagnostics", svr.handleLspDiagnostics)
 			group.POST("/api/lsp/completion", svr.handleLspCompletion)
 			group.POST("/api/lsp/hover", svr.handleLspHover)
+			group.GET("/api/lsp/metadata", svr.handleLspMetadata)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
 			group.POST("/api/chpasswd", svr.handleChangePassword)

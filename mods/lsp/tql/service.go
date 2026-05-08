@@ -12,50 +12,102 @@ import (
 )
 
 type Service struct {
-	functions []functionInfo
-	items     []base.CompletionItem
-	hovers    map[string]string
-}
-
-type functionInfo struct {
-	Name     string
-	Category string
+	metadata base.Metadata
+	items    []base.CompletionItem
+	hovers   map[string]string
 }
 
 func NewService() *Service {
-	functions := tqlFunctions()
-	items := make([]base.CompletionItem, 0, len(functions))
-	hovers := make(map[string]string, len(functions))
-	for _, fn := range functions {
-		detail := fn.Category
-		insertText := fn.Name
-		if !strings.HasSuffix(insertText, "()") {
-			insertText += "()"
+	metadata := BuildMetadata()
+	items := make([]base.CompletionItem, 0, len(metadata.Symbols))
+	hovers := make(map[string]string, len(metadata.Symbols))
+	for _, symbol := range metadata.Symbols {
+		insertText := symbol.InsertText
+		if insertText == "" {
+			insertText = symbol.Label
 		}
-		doc := "TQL function"
 		items = append(items, base.CompletionItem{
-			Label:         fn.Name,
-			Kind:          base.CompletionFunction,
-			Detail:        detail,
-			Documentation: doc,
+			Label:         symbol.Label,
+			Kind:          symbol.Kind,
+			Detail:        symbol.Detail,
+			Documentation: symbol.Documentation,
 			InsertText:    insertText,
 		})
-		hovers[strings.ToUpper(fn.Name)] = fn.Name + "\n\n" + doc + "\n\nCategory: " + fn.Category
+		hovers[strings.ToUpper(symbol.Label)] = hoverContents(symbol)
 	}
-	return &Service{functions: functions, items: items, hovers: hovers}
+	return &Service{metadata: metadata, items: items, hovers: hovers}
 }
 
-func tqlFunctions() []functionInfo {
-	ret := make([]functionInfo, 0, len(coretql.FxDefinitions))
+func BuildMetadata() base.Metadata {
+	symbols := make([]base.SymbolInfo, 0, len(coretql.FxDefinitions))
+	keywords := make([]base.KeywordInfo, 0, len(coretql.FxDefinitions))
 	category := "general"
 	for _, def := range coretql.FxDefinitions {
 		if strings.HasPrefix(def.Name, "//") {
 			category = strings.TrimSpace(strings.TrimPrefix(def.Name, "//"))
 			continue
 		}
-		ret = append(ret, functionInfo{Name: def.Name, Category: category})
+		symbol := base.SymbolInfo{
+			Label:         def.Name,
+			Kind:          base.CompletionFunction,
+			Category:      category,
+			Detail:        category,
+			Documentation: "TQL function",
+			InsertText:    insertText(def.Name),
+		}
+		if kind, ok := coretql.StatementKindByFunctionName(def.Name); ok {
+			symbol.StatementKind = statementKindString(kind)
+		}
+		symbols = append(symbols, symbol)
+		keywords = append(keywords, base.KeywordInfo{
+			Label:         def.Name,
+			Category:      category,
+			Detail:        symbol.Detail,
+			Documentation: symbol.Documentation,
+		})
 	}
-	return ret
+	return base.Metadata{
+		Language: base.LanguageTQL,
+		Version:  "tql-fx-definitions-v1",
+		Keywords: keywords,
+		Symbols:  symbols,
+	}
+}
+
+func (svc *Service) Metadata() base.Metadata {
+	return svc.metadata
+}
+
+func insertText(label string) string {
+	if strings.HasSuffix(label, "()") {
+		return label
+	}
+	return label + "()"
+}
+
+func hoverContents(symbol base.SymbolInfo) string {
+	contents := symbol.Label + "\n\n" + symbol.Documentation + "\n\nCategory: " + symbol.Category
+	if symbol.StatementKind != "" {
+		contents += "\n\nStatement: " + symbol.StatementKind
+	}
+	return contents
+}
+
+func statementKindString(kind coretql.StatementKind) string {
+	switch kind {
+	case coretql.StatementSource:
+		return "source"
+	case coretql.StatementMap:
+		return "map"
+	case coretql.StatementSink:
+		return "sink"
+	case coretql.StatementSourceOrMap:
+		return "source_or_map"
+	case coretql.StatementSourceOrSink:
+		return "source_or_sink"
+	default:
+		return "unknown"
+	}
 }
 
 func (svc *Service) Diagnostics(_ context.Context, doc base.Document) ([]base.Diagnostic, error) {

@@ -1,6 +1,8 @@
 package tql
 
 import (
+	"strings"
+
 	"github.com/machbase/neo-server/v8/mods/nums"
 )
 
@@ -43,6 +45,17 @@ var fxStatementKinds = map[string]StatementKind{
 func statementKindByFunctionName(name string) (StatementKind, bool) {
 	kind, ok := fxStatementKinds[name]
 	return kind, ok
+}
+
+func StatementKindByFunctionName(name string) (StatementKind, bool) {
+	trimmed := strings.TrimSuffix(name, "()")
+	if kind, ok := statementKindByFunctionName(trimmed); ok {
+		return kind, true
+	}
+	if trimmed != "" {
+		return StatementMap, true
+	}
+	return StatementUnknown, false
 }
 
 var defTask = &Node{}

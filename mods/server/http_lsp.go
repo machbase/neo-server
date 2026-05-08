@@ -72,6 +72,17 @@ func (svr *httpd) handleLspHover(ctx *gin.Context) {
 	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"hover": hover})
 }
 
+func (svr *httpd) handleLspMetadata(ctx *gin.Context) {
+	rsp := &lspResponse{Success: false, Reason: "not specified"}
+	tick := time.Now()
+	metadata, err := lspMetadata(ctx.Query("language"))
+	if err != nil {
+		svr.writeLspError(ctx, rsp, tick, http.StatusBadRequest, err)
+		return
+	}
+	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"metadata": metadata})
+}
+
 func (svr *httpd) bindLspRequest(ctx *gin.Context, rsp *lspResponse, tick time.Time) (*lspDocumentRequest, base.LanguageService, bool) {
 	req := &lspDocumentRequest{}
 	if err := ctx.ShouldBindJSON(req); err != nil {
@@ -104,6 +115,19 @@ func lspLanguageService(language string) (base.LanguageService, error) {
 		return nil, fmt.Errorf("%s language service is not implemented yet", language)
 	default:
 		return nil, fmt.Errorf("unsupported language %q", language)
+	}
+}
+
+func lspMetadata(language string) (base.Metadata, error) {
+	switch base.Language(strings.ToLower(language)) {
+	case base.LanguageTQL:
+		return lsptql.BuildMetadata(), nil
+	case base.LanguageJSH:
+		return base.Metadata{}, fmt.Errorf("%s metadata is not implemented yet", language)
+	case base.LanguageSQL:
+		return base.Metadata{}, fmt.Errorf("%s metadata is not implemented yet", language)
+	default:
+		return base.Metadata{}, fmt.Errorf("unsupported language %q", language)
 	}
 }
 
