@@ -1,13 +1,21 @@
 package http_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/lib"
+	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 )
 
@@ -880,5 +888,257 @@ func TestHttpEdgeCases(t *testing.T) {
 			"testURL": server.URL,
 		}
 		test_engine.RunTest(t, tc)
+	}
+}
+
+func TestHttpRouterCoverage(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve test file path")
+	}
+	baseDir := filepath.Dir(filename)
+	docsSource := filepath.Join(baseDir, "test")
+	address := "127.0.0.1:29879"
+
+	serverScript := `
+		const http = require('http');
+		const process = require('process');
+		const server = new http.Server({network:'tcp', address:'` + address + `'});
+
+		server.post('/post-json-clamp', (ctx) => {
+			ctx.json(http.status.OK, ctx.request.body, {space: 12.9});
+		});
+
+		server.post('/post-json-string-space', (ctx) => {
+			ctx.json(http.status.OK, ctx.request.body, {space: '0123456789ABCDE'});
+		});
+
+		server.put('/put-text', (ctx) => {
+			ctx.text(http.status.OK, 'body:%s', ctx.request.body);
+		});
+
+		server.delete('/delete-bytes', (ctx) => {
+			ctx.text(http.status.OK, 'len:%d', ctx.request.body.length);
+		});
+
+		server.get('/abort', (ctx) => {
+			ctx.setHeader('X-Abort', 'yes');
+			ctx.abort();
+			ctx.text(http.status.Unauthorized, 'blocked');
+		});
+
+		server.loadHTMLFiles('/docs/template/hello.html');
+		server.get('/html-files', (ctx) => {
+			ctx.html(http.status.OK, 'hello.html', {str:'Router', num: 7, bool: false});
+		});
+
+		server.ws('/ws', {
+			verifyClient: ({req}) => req.query('token') === 'allow' && req.hasHeader('sec-websocket-key'),
+			handleProtocols: (items, req) => req.hasHeader('sec-websocket-protocol') ? items[0] : '',
+		}, (socket, req) => {
+			socket.send('ws:' + req.query('token') + ':' + String(req.getHeader('sec-websocket-key') !== '') + ':' + String(req.hasHeader('sec-websocket-key')) + ':' + req.path + ':' + req.host + ':' + req.requestUri + ':' + req.httpVersion + ':' + socket.protocol);
+			socket.close();
+		});
+
+		server.get('/health', (ctx) => {
+			ctx.text(http.status.OK, 'ok');
+		});
+
+		server.get('/shutdown', (ctx) => {
+			ctx.text(http.status.OK, 'bye');
+			setImmediate(() => {
+				server.close(() => process.exit(0));
+			});
+		});
+
+		server.serve(() => {});
+		setTimeout(() => { server.close(); }, 4000);
+	`
+
+	conf := engine.Config{
+		Name: "TestHttpRouterCoverage",
+		Code: serverScript,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			{MountPoint: "/docs", Source: docsSource},
+			{MountPoint: "/lib", FS: lib.LibFS()},
+		},
+		Env:    map[string]any{},
+		Reader: &bytes.Buffer{},
+		Writer: &bytes.Buffer{},
+	}
+	jr, err := engine.New(conf)
+	if err != nil {
+		t.Fatalf("Failed to create JSRuntime: %v", err)
+	}
+	lib.Enable(jr)
+
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- jr.Run()
+	}()
+
+	healthURL := "http://" + address + "/health"
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := http.Get(healthURL)
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for server start: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	tests := []test_engine.TestCase{
+		{
+			Name: "router_post_json_clamp",
+			Script: `
+				const http = require('http');
+				const {env} = require('process');
+				const req = http.request(env.get('testURL'), {method:'POST', headers:{'Content-Type':'application/json'}});
+				req.end('{"alpha":1}', (response) => {
+					console.print(response.text());
+				});
+			`,
+			Vars: map[string]any{
+				"testURL": "http://" + address + "/post-json-clamp",
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				if !strings.Contains(result, "\n          \"alpha\": 1\n") {
+					t.Fatalf("expected 10-space indentation, got %q", result)
+				}
+			},
+		},
+		{
+			Name: "router_post_json_string_space",
+			Script: `
+				const http = require('http');
+				const {env} = require('process');
+				const req = http.request(env.get('testURL'), {method:'POST', headers:{'Content-Type':'application/json'}});
+				req.end('{"alpha":1}', (response) => {
+					console.print(response.text());
+				});
+			`,
+			Vars: map[string]any{
+				"testURL": "http://" + address + "/post-json-string-space",
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				if !strings.Contains(result, "\n0123456789\"alpha\": 1\n") {
+					t.Fatalf("expected truncated string indentation, got %q", result)
+				}
+			},
+		},
+		{
+			Name: "router_put_text_body",
+			Script: `
+				const http = require('http');
+				const {env} = require('process');
+				const req = http.request(env.get('testURL'), {method:'PUT', headers:{'Content-Type':'text/plain'}});
+				req.end('plain text', (response) => {
+					console.println(response.text());
+				});
+			`,
+			Vars: map[string]any{
+				"testURL": "http://" + address + "/put-text",
+			},
+			Output: []string{
+				"body:plain text",
+			},
+		},
+		{
+			Name: "router_delete_bytes_body",
+			Script: `
+				const http = require('http');
+				const {env} = require('process');
+				const req = http.request(env.get('testURL'), {method:'DELETE', headers:{'Content-Type':'application/octet-stream'}});
+				req.end(new Uint8Array([1,2,3,4]), (response) => {
+					console.println(response.text());
+				});
+			`,
+			Vars: map[string]any{
+				"testURL": "http://" + address + "/delete-bytes",
+			},
+			Output: []string{
+				"len:4",
+			},
+		},
+		{
+			Name: "router_abort_response",
+			Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get('testURL'), (response) => {
+					console.println('status:', response.statusCode);
+					console.println('abort:', response.headers['X-Abort']);
+					console.println('body:', response.text());
+				});
+			`,
+			Vars: map[string]any{
+				"testURL": "http://" + address + "/abort",
+			},
+			Output: []string{
+				"status: 401",
+				"abort: yes",
+				"body: blocked",
+			},
+		},
+		{
+			Name: "router_load_html_files",
+			Script: `
+				const http = require('http');
+				const {env} = require('process');
+				http.get(env.get('testURL'), (response) => {
+					console.println(response.headers['Content-Type']);
+					console.print(response.text());
+				});
+			`,
+			Vars: map[string]any{
+				"testURL": "http://" + address + "/html-files",
+			},
+			Output: []string{
+				"text/html; charset=utf-8",
+				"<html><body>",
+				"  <h1>Hello, Router!</h1>",
+				"  <p>num: 7</p>",
+				"  <p>bool: false</p>",
+				"</body></html>",
+			},
+		},
+		{
+			Name: "router_websocket_request_helpers",
+			Script: `
+				const {WebSocket} = require('ws');
+				const hold = setInterval(() => {}, 100);
+				const ws = new WebSocket('ws://` + address + `/ws?token=allow', 'chat');
+				ws.on('message', (event) => {
+					console.println(event.data);
+					clearInterval(hold);
+					ws.close();
+				});
+			`,
+			Output: []string{
+				"ws:allow:true:true:/ws:" + address + ":/ws?token=allow:1.1:chat",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		test_engine.RunTest(t, tc)
+	}
+
+	httpResp, err := http.Get("http://" + address + "/shutdown")
+	if err == nil {
+		httpResp.Body.Close()
+	}
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatalf("server runtime error: %v", err)
+		}
+	default:
 	}
 }
