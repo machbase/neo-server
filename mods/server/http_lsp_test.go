@@ -52,6 +52,30 @@ func TestHandleLspCompletion(t *testing.T) {
 	}
 }
 
+func TestHandleLspSignatureHelp(t *testing.T) {
+	body := `{"language":"jsh","uri":"memory://test.js","text":"const fs = require('fs');\nfs.readFileSync('/tmp/a', ","position":{"line":2,"column":27}}`
+	rsp := postLspTestRequest(t, "/lsp/signature", body, func(router *gin.Engine, svr *httpd) {
+		router.POST("/lsp/signature", svr.handleLspSignatureHelp)
+	})
+
+	if rsp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
+	}
+	result := decodeLspTestResponse(t, rsp.Body.Bytes())
+	if !result.Success {
+		t.Fatalf("expected success response: %+v", result)
+	}
+	data := result.Data.(map[string]any)
+	help := data["signatureHelp"].(map[string]any)
+	signatures := help["signatures"].([]any)
+	if !containsLspLabelPrefix(signatures, "readFileSync(path: string, options: object)") {
+		t.Fatalf("expected readFileSync signature help, got %+v", signatures)
+	}
+	if help["activeParameter"] != float64(1) {
+		t.Fatalf("expected active parameter 1, got %+v", help)
+	}
+}
+
 func TestHandleLspMetadata(t *testing.T) {
 	rsp := getLspTestRequest(t, "/lsp/metadata?language=tql", func(router *gin.Engine, svr *httpd) {
 		router.GET("/lsp/metadata", svr.handleLspMetadata)
@@ -76,6 +100,37 @@ func TestHandleLspMetadata(t *testing.T) {
 	symbols := metadata["symbols"].([]any)
 	if !containsLspStatementKind(symbols, "FAKE", "source") {
 		t.Fatalf("expected FAKE source symbol, got %+v", symbols)
+	}
+}
+
+func TestHandleLspJshMetadata(t *testing.T) {
+	rsp := getLspTestRequest(t, "/lsp/metadata?language=jsh", func(router *gin.Engine, svr *httpd) {
+		router.GET("/lsp/metadata", svr.handleLspMetadata)
+	})
+
+	if rsp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
+	}
+	result := decodeLspTestResponse(t, rsp.Body.Bytes())
+	if !result.Success {
+		t.Fatalf("expected success response: %+v", result)
+	}
+	data := result.Data.(map[string]any)
+	metadata := data["metadata"].(map[string]any)
+	if metadata["language"] != "jsh" {
+		t.Fatalf("expected jsh metadata, got %+v", metadata)
+	}
+	modules := metadata["modules"].([]any)
+	if containsLspModuleID(modules, "@jsh/fs") {
+		t.Fatalf("did not expect @jsh/fs module metadata")
+	}
+	fsModule := findLspModule(modules, "fs")
+	if fsModule == nil {
+		t.Fatalf("expected fs module metadata, got %+v", modules)
+	}
+	exports := fsModule["exports"].([]any)
+	if !containsLspLabel(exports, "readFileSync") {
+		t.Fatalf("expected readFileSync export metadata, got %+v", exports)
 	}
 }
 
@@ -171,6 +226,17 @@ func containsLspLabel(items []any, label string) bool {
 	return false
 }
 
+func containsLspLabelPrefix(items []any, prefix string) bool {
+	for _, item := range items {
+		obj, ok := item.(map[string]any)
+		label, labelOK := obj["label"].(string)
+		if ok && labelOK && strings.HasPrefix(label, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func containsLspStatementKind(items []any, label string, statementKind string) bool {
 	for _, item := range items {
 		obj, ok := item.(map[string]any)
@@ -179,4 +245,18 @@ func containsLspStatementKind(items []any, label string, statementKind string) b
 		}
 	}
 	return false
+}
+
+func containsLspModuleID(items []any, id string) bool {
+	return findLspModule(items, id) != nil
+}
+
+func findLspModule(items []any, id string) map[string]any {
+	for _, item := range items {
+		obj, ok := item.(map[string]any)
+		if ok && obj["id"] == id {
+			return obj
+		}
+	}
+	return nil
 }

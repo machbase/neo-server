@@ -89,6 +89,9 @@ func TestBuildMetadataIncludesTqlFunctions(t *testing.T) {
 	if !hasSymbolStatementKind(metadata.Symbols, "CSV", "source_or_sink") {
 		t.Fatal("expected CSV source_or_sink symbol")
 	}
+	if !hasSymbolSignature(metadata.Symbols, "MAPVALUE") {
+		t.Fatal("expected MAPVALUE signature")
+	}
 }
 
 func TestHoverReturnsFunctionInfo(t *testing.T) {
@@ -108,6 +111,23 @@ func TestHoverReturnsFunctionInfo(t *testing.T) {
 	}
 	if hover.Contents == "" {
 		t.Fatal("expected hover contents")
+	}
+}
+
+func TestSignatureHelpReturnsTqlFunctionInfo(t *testing.T) {
+	svc := NewService()
+	help, err := svc.SignatureHelp(context.Background(), base.Document{Language: base.LanguageTQL, Text: "MAPVALUE(0, value(0))"}, base.Position{Line: 1, Column: 12})
+	if err != nil {
+		t.Fatalf("SignatureHelp returned error: %v", err)
+	}
+	if help == nil || len(help.Signatures) == 0 {
+		t.Fatalf("expected signature help, got %+v", help)
+	}
+	if help.Signatures[0].Label != "MAPVALUE(...)" {
+		t.Fatalf("expected MAPVALUE signature, got %+v", help.Signatures[0])
+	}
+	if help.ActiveParameter != 0 {
+		t.Fatalf("expected active parameter 0, got %d", help.ActiveParameter)
 	}
 }
 
@@ -132,6 +152,15 @@ func hasKeyword(items []base.KeywordInfo, label string) bool {
 func hasSymbolStatementKind(items []base.SymbolInfo, label string, statementKind string) bool {
 	for _, item := range items {
 		if item.Label == label && item.StatementKind == statementKind {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSymbolSignature(items []base.SymbolInfo, label string) bool {
+	for _, item := range items {
+		if item.Label == label && item.Signature != nil && item.Signature.Label != "" {
 			return true
 		}
 	}

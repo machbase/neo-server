@@ -58,6 +58,7 @@ func BuildMetadata() base.Metadata {
 		if kind, ok := coretql.StatementKindByFunctionName(def.Name); ok {
 			symbol.StatementKind = statementKindString(kind)
 		}
+		symbol.Signature = tqlSignature(def.Name)
 		symbols = append(symbols, symbol)
 		keywords = append(keywords, base.KeywordInfo{
 			Label:         def.Name,
@@ -91,6 +92,15 @@ func hoverContents(symbol base.SymbolInfo) string {
 		contents += "\n\nStatement: " + symbol.StatementKind
 	}
 	return contents
+}
+
+func tqlSignature(label string) *base.SignatureInfo {
+	name := strings.TrimSuffix(label, "()")
+	return &base.SignatureInfo{
+		Label:         name + "(...)",
+		Documentation: "TQL function",
+		Parameters:    []base.ParameterInfo{{Label: "args", Documentation: "Function arguments"}},
+	}
 }
 
 func statementKindString(kind coretql.StatementKind) string {
@@ -137,6 +147,20 @@ func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Positio
 		return nil, nil
 	}
 	return &base.Hover{Range: rng, Contents: contents}, nil
+}
+
+func (svc *Service) SignatureHelp(_ context.Context, doc base.Document, pos base.Position) (*base.SignatureHelp, error) {
+	callee, activeParameter, ok := callExpressionAtPosition(doc.Text, pos)
+	if !ok {
+		return nil, nil
+	}
+	callee = strings.ToUpper(callee)
+	for _, symbol := range svc.metadata.Symbols {
+		if strings.ToUpper(strings.TrimSuffix(symbol.Label, "()")) == callee && symbol.Signature != nil {
+			return signatureHelp(symbol.Signature, activeParameter), nil
+		}
+	}
+	return nil, nil
 }
 
 func diagnosticFromError(err error) base.Diagnostic {
@@ -232,4 +256,112 @@ func wordAtPosition(text string, pos base.Position) (string, base.Range) {
 
 func isWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+type callFrame struct {
+	open   int
+	commas int
+}
+
+func callExpressionAtPosition(text string, pos base.Position) (string, int, bool) {
+	prefix, ok := textBeforePosition(text, pos)
+	if !ok {
+		return "", 0, false
+	}
+	frames := make([]callFrame, 0)
+	quote := rune(0)
+	escaped := false
+	for idx, r := range prefix {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' || r == '`' {
+			quote = r
+			continue
+		}
+		switch r {
+		case '(':
+			frames = append(frames, callFrame{open: idx})
+		case ')':
+			if len(frames) > 0 {
+				frames = frames[:len(frames)-1]
+			}
+		case ',':
+			if len(frames) > 0 {
+				frames[len(frames)-1].commas++
+			}
+		}
+	}
+	if len(frames) == 0 {
+		return "", 0, false
+	}
+	frame := frames[len(frames)-1]
+	callee := calleeBeforeOpen(prefix, frame.open)
+	if callee == "" {
+		return "", 0, false
+	}
+	return callee, frame.commas, true
+}
+
+func calleeBeforeOpen(prefix string, open int) string {
+	idx := open - 1
+	for idx >= 0 && unicode.IsSpace(rune(prefix[idx])) {
+		idx--
+	}
+	end := idx + 1
+	for idx >= 0 {
+		r := rune(prefix[idx])
+		if !(r == '_' || r == '$' || r == '.' || unicode.IsLetter(r) || unicode.IsDigit(r)) {
+			break
+		}
+		idx--
+	}
+	return prefix[idx+1 : end]
+}
+
+func textBeforePosition(text string, pos base.Position) (string, bool) {
+	lines := strings.Split(text, "\n")
+	if pos.Line <= 0 || pos.Line > len(lines) {
+		return "", false
+	}
+	line := []rune(lines[pos.Line-1])
+	column := pos.Column
+	if column <= 0 {
+		column = 1
+	}
+	idx := column - 1
+	if idx > len(line) {
+		idx = len(line)
+	}
+	var builder strings.Builder
+	for i := 0; i < pos.Line-1; i++ {
+		builder.WriteString(lines[i])
+		builder.WriteByte('\n')
+	}
+	builder.WriteString(string(line[:idx]))
+	return builder.String(), true
+}
+
+func signatureHelp(signature *base.SignatureInfo, activeParameter int) *base.SignatureHelp {
+	if signature == nil {
+		return nil
+	}
+	if len(signature.Parameters) > 0 && activeParameter >= len(signature.Parameters) {
+		activeParameter = len(signature.Parameters) - 1
+	}
+	if activeParameter < 0 {
+		activeParameter = 0
+	}
+	return &base.SignatureHelp{Signatures: []base.SignatureInfo{*signature}, ActiveSignature: 0, ActiveParameter: activeParameter}
 }

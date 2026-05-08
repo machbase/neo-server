@@ -76,8 +76,15 @@ type Hover struct {
 	Contents string `json:"contents"`
 }
 
+type SignatureHelp struct {
+	Signatures      []SignatureInfo `json:"signatures"`
+	ActiveSignature int             `json:"activeSignature"`
+	ActiveParameter int             `json:"activeParameter"`
+}
+
 type LanguageService interface {
 	Diagnostics(ctx context.Context, doc Document) ([]Diagnostic, error)
 	Completion(ctx context.Context, doc Document, pos Position) ([]CompletionItem, error)
 	Hover(ctx context.Context, doc Document, pos Position) (*Hover, error)
+	SignatureHelp(ctx context.Context, doc Document, pos Position) (*SignatureHelp, error)
 }

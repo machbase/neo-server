@@ -78,6 +78,47 @@ func libFiles() map[string][]byte {
 	}
 }
 
+func UserModuleFiles() map[string][]byte {
+	files := map[string][]byte{}
+	addUserModuleFiles(files, libFiles())
+	addUserModuleFiles(files, tar.Files())
+	addUserModuleFiles(files, zip.Files())
+	addUserModuleFiles(files, git.Files())
+	addUserModuleFiles(files, http.Files())
+	addUserModuleFiles(files, machcli.Files())
+	addUserModuleFiles(files, mathx.Files())
+	addUserModuleFiles(files, filter.Files())
+	addUserModuleFiles(files, interp.Files())
+	addUserModuleFiles(files, mat.Files())
+	addUserModuleFiles(files, simplex.Files())
+	addUserModuleFiles(files, spatial.Files())
+	addUserModuleFiles(files, nats.Files())
+	addUserModuleFiles(files, mqtt.Files())
+	addUserModuleFiles(files, net.Files())
+	addUserModuleFiles(files, opcua.Files())
+	addUserModuleFiles(files, os.Files())
+	addUserModuleFiles(files, parser.Files())
+	addUserModuleFiles(files, pretty.Files())
+	addUserModuleFiles(files, readline.Files())
+	addUserModuleFiles(files, semver.Files())
+	addUserModuleFiles(files, shell.Files())
+	addUserModuleFiles(files, stream.Files())
+	addUserModuleFiles(files, system.Files())
+	addUserModuleFiles(files, util.Files())
+	addUserModuleFiles(files, tail.Files())
+	addUserModuleFiles(files, vizspec.Files())
+	addUserModuleFiles(files, ws.Files())
+	addUserModuleFiles(files, uuid.Files())
+	addUserModuleFiles(files, zlib.Files())
+	return files
+}
+
+func addUserModuleFiles(dst map[string][]byte, src map[string][]byte) {
+	for name, content := range src {
+		dst[name] = content
+	}
+}
+
 // Enable registers all native modules to the given JSRuntime
 // If you want to link only specific modules, register them individually.
 func Enable(n *engine.JSRuntime) {

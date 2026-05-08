@@ -3,17 +3,22 @@ package jsh
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja/parser"
+	jshlib "github.com/machbase/neo-server/v8/jsh/lib"
 	base "github.com/machbase/neo-server/v8/mods/lsp"
 )
 
 type Service struct {
-	items  []base.CompletionItem
-	hovers map[string]string
+	metadata base.Metadata
+	items    []base.CompletionItem
+	hovers   map[string]string
+	modules  map[string]base.ModuleInfo
 }
 
 type symbolInfo struct {
@@ -26,20 +31,25 @@ type symbolInfo struct {
 var restrictedSyntaxPattern = regexp.MustCompile(`\b(await|import)\b`)
 
 func NewService() *Service {
-	symbols := jshSymbols()
+	metadata := BuildMetadata()
+	symbols := metadata.Symbols
 	items := make([]base.CompletionItem, 0, len(symbols))
 	hovers := make(map[string]string, len(symbols))
+	modules := make(map[string]base.ModuleInfo, len(metadata.Modules))
+	for _, module := range metadata.Modules {
+		modules[module.ID] = module
+	}
 	for _, symbol := range symbols {
 		items = append(items, base.CompletionItem{
-			Label:         symbol.Name,
+			Label:         symbol.Label,
 			Kind:          symbol.Kind,
 			Detail:        symbol.Detail,
 			Documentation: symbol.Documentation,
-			InsertText:    symbol.Name,
+			InsertText:    symbol.InsertText,
 		})
-		hovers[symbol.Name] = symbol.Name + "\n\n" + symbol.Documentation
+		hovers[symbol.Label] = symbol.Label + "\n\n" + symbol.Documentation
 	}
-	return &Service{items: items, hovers: hovers}
+	return &Service{metadata: metadata, items: items, hovers: hovers, modules: modules}
 }
 
 func jshSymbols() []symbolInfo {
@@ -49,14 +59,72 @@ func jshSymbols() []symbolInfo {
 		{Name: "process", Kind: base.CompletionVariable, Detail: "JSH process", Documentation: "JSH process object provided by the runtime."},
 		{Name: "Buffer", Kind: base.CompletionClass, Detail: "buffer", Documentation: "Buffer is available implicitly in the JSH goja runtime."},
 		{Name: "URL", Kind: base.CompletionClass, Detail: "url", Documentation: "URL is available implicitly in the JSH goja runtime."},
-		{Name: "@jsh/process", Kind: base.CompletionModule, Detail: "native module", Documentation: "JSH native process module."},
-		{Name: "@jsh/fs", Kind: base.CompletionModule, Detail: "native module", Documentation: "JSH native filesystem module."},
-		{Name: "@jsh/machcli", Kind: base.CompletionModule, Detail: "native module", Documentation: "JSH native Machbase client module."},
-		{Name: "@jsh/session", Kind: base.CompletionModule, Detail: "native module", Documentation: "JSH native session module."},
-		{Name: "@jsh/pretty", Kind: base.CompletionModule, Detail: "native module", Documentation: "JSH native pretty formatting module."},
-		{Name: "machcli", Kind: base.CompletionModule, Detail: "module", Documentation: "JSH Machbase client module wrapper."},
-		{Name: "pretty", Kind: base.CompletionModule, Detail: "module", Documentation: "JSH pretty formatting module wrapper."},
 	}
+}
+
+func BuildMetadata() base.Metadata {
+	symbols := make([]base.SymbolInfo, 0)
+	keywords := make([]base.KeywordInfo, 0)
+	modules := make([]base.ModuleInfo, 0)
+	for _, symbol := range jshSymbols() {
+		info := base.SymbolInfo{
+			Label:         symbol.Name,
+			Kind:          symbol.Kind,
+			Category:      "runtime",
+			Detail:        symbol.Detail,
+			Documentation: symbol.Documentation,
+			InsertText:    symbol.Name,
+		}
+		symbols = append(symbols, info)
+		keywords = append(keywords, base.KeywordInfo{Label: symbol.Name, Category: "runtime", Detail: symbol.Detail, Documentation: symbol.Documentation})
+	}
+
+	moduleIDs := make([]string, 0)
+	moduleFiles := jshlib.UserModuleFiles()
+	for path := range moduleFiles {
+		moduleID := moduleIDFromFile(path)
+		if moduleID == "" || strings.HasPrefix(moduleID, "@jsh/") {
+			continue
+		}
+		moduleIDs = append(moduleIDs, moduleID)
+	}
+	sort.Strings(moduleIDs)
+
+	seenModules := map[string]bool{}
+	for _, moduleID := range moduleIDs {
+		if seenModules[moduleID] {
+			continue
+		}
+		seenModules[moduleID] = true
+		source := string(moduleFiles[moduleID+".js"])
+		if source == "" {
+			source = string(moduleFiles[moduleID])
+		}
+		if source == "" {
+			for path, content := range moduleFiles {
+				if moduleIDFromFile(path) == moduleID {
+					source = string(content)
+					break
+				}
+			}
+		}
+		exports := extractModuleSymbols(moduleID, source)
+		modules = append(modules, base.ModuleInfo{ID: moduleID, Detail: "JSH module", Documentation: "JSH " + moduleID + " module", Exports: exports})
+		symbols = append(symbols, base.SymbolInfo{Label: moduleID, Kind: base.CompletionModule, Category: "module", Detail: "JSH module", Documentation: "JSH " + moduleID + " module", InsertText: moduleID})
+	}
+
+	return base.Metadata{Language: base.LanguageJSH, Version: "jsh-jsdoc-v1", Keywords: keywords, Symbols: symbols, Modules: modules}
+}
+
+func (svc *Service) Metadata() base.Metadata {
+	return svc.metadata
+}
+
+func moduleIDFromFile(path string) string {
+	if !strings.HasSuffix(path, ".js") {
+		return ""
+	}
+	return strings.TrimSuffix(filepath.ToSlash(path), ".js")
 }
 
 func (svc *Service) Diagnostics(_ context.Context, doc base.Document) ([]base.Diagnostic, error) {
@@ -68,13 +136,28 @@ func (svc *Service) Diagnostics(_ context.Context, doc base.Document) ([]base.Di
 	return diagnostics, nil
 }
 
-func (svc *Service) Completion(_ context.Context, _ base.Document, _ base.Position) ([]base.CompletionItem, error) {
+func (svc *Service) Completion(_ context.Context, doc base.Document, pos base.Position) ([]base.CompletionItem, error) {
+	if isRequireStringPosition(doc.Text, pos) {
+		return svc.moduleCompletionItems(), nil
+	}
+	if moduleID, ok := moduleMemberContext(doc.Text, pos); ok {
+		if module, exists := svc.modules[moduleID]; exists {
+			return symbolCompletionItems(module.Exports), nil
+		}
+	}
 	items := make([]base.CompletionItem, len(svc.items))
 	copy(items, svc.items)
 	return items, nil
 }
 
 func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Position) (*base.Hover, error) {
+	if moduleID, member, rng, ok := moduleMemberAtPosition(doc.Text, pos); ok {
+		if module, exists := svc.modules[moduleID]; exists {
+			if symbol, found := findModuleSymbol(module.Exports, member); found {
+				return &base.Hover{Range: rng, Contents: symbolHoverContents(module.ID, symbol)}, nil
+			}
+		}
+	}
 	word, rng := wordAtPosition(doc.Text, pos)
 	if word == "" {
 		return nil, nil
@@ -84,6 +167,60 @@ func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Positio
 		return nil, nil
 	}
 	return &base.Hover{Range: rng, Contents: contents}, nil
+}
+
+func (svc *Service) SignatureHelp(_ context.Context, doc base.Document, pos base.Position) (*base.SignatureHelp, error) {
+	callee, activeParameter, ok := callExpressionAtPosition(doc.Text, pos)
+	if !ok {
+		return nil, nil
+	}
+	if callee == "require" {
+		return signatureHelp(requireSignature(), activeParameter), nil
+	}
+	if moduleID, member, ok := moduleMemberCallee(doc.Text, callee); ok {
+		if module, exists := svc.modules[moduleID]; exists {
+			if symbol, found := findModuleSymbol(module.Exports, member); found && symbol.Signature != nil {
+				return signatureHelp(symbol.Signature, activeParameter), nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (svc *Service) moduleCompletionItems() []base.CompletionItem {
+	items := make([]base.CompletionItem, 0, len(svc.metadata.Modules))
+	for _, module := range svc.metadata.Modules {
+		items = append(items, base.CompletionItem{Label: module.ID, Kind: base.CompletionModule, Detail: module.Detail, Documentation: module.Documentation, InsertText: module.ID})
+	}
+	return items
+}
+
+func symbolCompletionItems(symbols []base.SymbolInfo) []base.CompletionItem {
+	items := make([]base.CompletionItem, 0, len(symbols))
+	for _, symbol := range symbols {
+		insertText := symbol.InsertText
+		if insertText == "" {
+			insertText = symbol.Label
+		}
+		items = append(items, base.CompletionItem{Label: symbol.Label, Kind: symbol.Kind, Detail: symbol.Detail, Documentation: symbol.Documentation, InsertText: insertText})
+	}
+	return items
+}
+
+func symbolHoverContents(moduleID string, symbol base.SymbolInfo) string {
+	contents := moduleID + "." + symbol.Label
+	if symbol.Documentation != "" {
+		contents += "\n\n" + symbol.Documentation
+	}
+	return contents
+}
+
+func requireSignature() *base.SignatureInfo {
+	return &base.SignatureInfo{
+		Label:         "require(module)",
+		Documentation: "Loads a JSH JavaScript module.",
+		Parameters:    []base.ParameterInfo{{Label: "module", Documentation: "User-facing module id"}},
+	}
 }
 
 func restrictedSyntaxDiagnostics(text string) []base.Diagnostic {

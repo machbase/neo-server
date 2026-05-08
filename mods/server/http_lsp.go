@@ -72,6 +72,21 @@ func (svr *httpd) handleLspHover(ctx *gin.Context) {
 	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"hover": hover})
 }
 
+func (svr *httpd) handleLspSignatureHelp(ctx *gin.Context) {
+	rsp := &lspResponse{Success: false, Reason: "not specified"}
+	tick := time.Now()
+	req, svc, ok := svr.bindLspRequest(ctx, rsp, tick)
+	if !ok {
+		return
+	}
+	help, err := svc.SignatureHelp(ctx.Request.Context(), req.document(), req.Position)
+	if err != nil {
+		svr.writeLspError(ctx, rsp, tick, http.StatusInternalServerError, err)
+		return
+	}
+	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"signatureHelp": help})
+}
+
 func (svr *httpd) handleLspMetadata(ctx *gin.Context) {
 	rsp := &lspResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
@@ -123,7 +138,7 @@ func lspMetadata(language string) (base.Metadata, error) {
 	case base.LanguageTQL:
 		return lsptql.BuildMetadata(), nil
 	case base.LanguageJSH:
-		return base.Metadata{}, fmt.Errorf("%s metadata is not implemented yet", language)
+		return lspjsh.BuildMetadata(), nil
 	case base.LanguageSQL:
 		return base.Metadata{}, fmt.Errorf("%s metadata is not implemented yet", language)
 	default:
