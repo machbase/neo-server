@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
+	"github.com/machbase/neo-server/v8/mods/tql/expression"
 )
 
 func ParseScript(source string, functions map[string]expression.Function) (*TQLScript, error) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
+	"github.com/machbase/neo-server/v8/mods/tql/expression"
 )
 
 func TestParseScript(t *testing.T) {
