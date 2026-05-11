@@ -142,18 +142,26 @@ func BuildMetadata() base.Metadata {
 			category = strings.TrimSpace(strings.TrimPrefix(def.Name, "//"))
 			continue
 		}
+		documentation := tqlFunctionDocumentation(def.Name, category)
+		signature := tqlSignature(def.Name)
+		if doc, ok := generatedTqlDocs[def.Name]; ok && tqlDocHasContent(doc) {
+			documentation = doc.Description
+			if docSignature := signatureFromDoc(doc); docSignature != nil {
+				signature = docSignature
+			}
+		}
 		symbol := base.SymbolInfo{
 			Label:         def.Name,
 			Kind:          base.CompletionFunction,
 			Category:      category,
 			Detail:        category,
-			Documentation: tqlFunctionDocumentation(def.Name, category),
+			Documentation: documentation,
 			InsertText:    insertText(def.Name),
 		}
 		if kind, ok := tqlStatementKind(def.Name); ok {
 			symbol.StatementKind = statementKindString(kind)
 		}
-		symbol.Signature = tqlSignature(def.Name)
+		symbol.Signature = signature
 		symbols = append(symbols, symbol)
 		keywords = append(keywords, base.KeywordInfo{
 			Label:         def.Name,
@@ -191,11 +199,60 @@ func insertText(label string) string {
 }
 
 func hoverContents(symbol base.SymbolInfo) string {
+	if doc, ok := generatedTqlDocs[symbol.Label]; ok && tqlDocHasContent(doc) {
+		return doc.Markdown
+	}
 	contents := symbol.Label + "\n\n" + symbol.Documentation + "\n\nCategory: " + symbol.Category
 	if symbol.StatementKind != "" {
 		contents += "\n\nStatement: " + symbol.StatementKind
 	}
 	return contents
+}
+
+func tqlDocHasContent(doc tqlDocInfo) bool {
+	description := strings.TrimSpace(doc.Description)
+	return description != "" && !strings.EqualFold(description, "TODO")
+}
+
+func signatureFromDoc(doc tqlDocInfo) *base.SignatureInfo {
+	if len(doc.Signatures) == 0 {
+		return nil
+	}
+	signature := doc.Signatures[0]
+	info := &base.SignatureInfo{Label: signature.Label, Documentation: doc.Description}
+	for _, label := range signature.Parameters {
+		info.Parameters = append(info.Parameters, base.ParameterInfo{Label: label, Documentation: docSlotDocumentation(doc, label)})
+	}
+	if len(info.Parameters) == 0 {
+		for _, slot := range doc.Slots {
+			info.Parameters = append(info.Parameters, base.ParameterInfo{Label: slot.Name, Documentation: docSlotDocumentation(doc, slot.Name)})
+		}
+	}
+	return info
+}
+
+func docSlotDocumentation(doc tqlDocInfo, name string) string {
+	trimmedName := strings.TrimSuffix(name, "...")
+	for _, slot := range doc.Slots {
+		if slot.Name != trimmedName {
+			continue
+		}
+		parts := make([]string, 0, 3)
+		if slot.Accepts != "" {
+			parts = append(parts, "accepts "+slot.Accepts)
+		}
+		if slot.Required {
+			parts = append(parts, "required")
+		}
+		if slot.Repeat {
+			parts = append(parts, "repeatable")
+		}
+		if len(slot.Suggestions) > 0 {
+			parts = append(parts, "suggestions: "+strings.Join(slot.Suggestions, ", "))
+		}
+		return strings.Join(parts, "; ")
+	}
+	return ""
 }
 
 func tqlFunctionDocumentation(label string, category string) string {
@@ -307,10 +364,148 @@ func (svc *Service) Diagnostics(_ context.Context, doc base.Document) ([]base.Di
 	return nil, nil
 }
 
-func (svc *Service) Completion(_ context.Context, _ base.Document, _ base.Position) ([]base.CompletionItem, error) {
+func (svc *Service) Completion(_ context.Context, doc base.Document, pos base.Position) ([]base.CompletionItem, error) {
 	items := make([]base.CompletionItem, len(svc.items))
 	copy(items, svc.items)
+	if prioritized := svc.completionItemsForArgument(doc.Text, pos); len(prioritized) > 0 {
+		return mergeCompletionItems(prioritized, items), nil
+	}
 	return items, nil
+}
+
+func (svc *Service) completionItemsForArgument(text string, pos base.Position) []base.CompletionItem {
+	call, ok := callContextAtPosition(text, pos)
+	if !ok {
+		return nil
+	}
+	doc, ok := generatedTqlDocs[call.callee]
+	if !ok || len(doc.Slots) == 0 {
+		return nil
+	}
+	suggestions := suggestionsForCallSlot(doc, call)
+	items := make([]base.CompletionItem, 0, len(suggestions))
+	for _, suggestion := range suggestions {
+		if item, ok := svc.completionItemForSuggestion(suggestion); ok {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func suggestionsForCallSlot(doc tqlDocInfo, call callContext) []string {
+	slotNames := activeSlotNames(doc, call)
+	seen := make(map[string]bool)
+	suggestions := make([]string, 0)
+	for _, slotName := range slotNames {
+		for _, slot := range doc.Slots {
+			if slot.Name != slotName {
+				continue
+			}
+			for _, suggestion := range slot.Suggestions {
+				if !seen[suggestion] {
+					seen[suggestion] = true
+					suggestions = append(suggestions, suggestion)
+				}
+			}
+		}
+	}
+	return suggestions
+}
+
+func activeSlotNames(doc tqlDocInfo, call callContext) []string {
+	switch doc.Label {
+	case "SQL":
+		if call.activeParameter == 0 {
+			return []string{"bridge", "sqlText"}
+		}
+		if call.activeParameter == 1 && len(call.arguments) > 0 && isHelperCall(call.arguments[0], "bridge") {
+			return []string{"sqlText"}
+		}
+		return []string{"params"}
+	case "MAPVALUE":
+		switch call.activeParameter {
+		case 0:
+			return []string{"index"}
+		case 1:
+			return []string{"expression"}
+		default:
+			return []string{"options"}
+		}
+	case "CSV":
+		if call.activeParameter == 0 {
+			return []string{"input", "options"}
+		}
+		return []string{"options"}
+	}
+	if call.activeParameter < len(doc.Slots) {
+		return []string{doc.Slots[call.activeParameter].Name}
+	}
+	for _, slot := range doc.Slots {
+		if slot.Repeat {
+			return []string{slot.Name}
+		}
+	}
+	return nil
+}
+
+func isHelperCall(value string, name string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, name+"(") || strings.HasPrefix(strings.ToUpper(trimmed), strings.ToUpper(name)+"(")
+}
+
+func (svc *Service) completionItemForSuggestion(suggestion string) (base.CompletionItem, bool) {
+	suggestion = strings.TrimSpace(suggestion)
+	if suggestion == "" {
+		return base.CompletionItem{}, false
+	}
+	switch suggestion {
+	case "backtick-sql-string":
+		return base.CompletionItem{Label: "SQL string", Kind: base.CompletionSnippet, Detail: "SQL text", Documentation: "Backtick SQL text literal.", InsertText: "`SELECT * FROM ${1:table}`"}, true
+	}
+	if strings.Contains(suggestion, " ") {
+		return base.CompletionItem{}, false
+	}
+	for _, item := range svc.items {
+		if item.Label == suggestion {
+			return item, true
+		}
+	}
+	if isNumericSuggestion(suggestion) {
+		return base.CompletionItem{Label: suggestion, Kind: base.CompletionValue, Detail: "literal", Documentation: "Literal value suggestion.", InsertText: suggestion}, true
+	}
+	return base.CompletionItem{}, false
+}
+
+func isNumericSuggestion(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeCompletionItems(prioritized []base.CompletionItem, fallback []base.CompletionItem) []base.CompletionItem {
+	seen := make(map[string]bool, len(prioritized))
+	items := make([]base.CompletionItem, 0, len(prioritized)+len(fallback))
+	for _, item := range prioritized {
+		if seen[item.Label] {
+			continue
+		}
+		seen[item.Label] = true
+		items = append(items, item)
+	}
+	for _, item := range fallback {
+		if seen[item.Label] {
+			continue
+		}
+		seen[item.Label] = true
+		items = append(items, item)
+	}
+	return items
 }
 
 func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Position) (*base.Hover, error) {
@@ -479,11 +674,45 @@ type callFrame struct {
 	commas int
 }
 
+type callContext struct {
+	callee          string
+	activeParameter int
+	arguments       []string
+}
+
+func callContextAtPosition(text string, pos base.Position) (callContext, bool) {
+	prefix, ok := textBeforePosition(text, pos)
+	if !ok {
+		return callContext{}, false
+	}
+	frame, ok := innermostCallFrame(prefix)
+	if !ok {
+		return callContext{}, false
+	}
+	callee := calleeBeforeOpen(prefix, frame.open)
+	if callee == "" {
+		return callContext{}, false
+	}
+	return callContext{callee: strings.ToUpper(callee), activeParameter: frame.commas, arguments: splitTopLevelArguments(prefix[frame.open+1:])}, true
+}
+
 func callExpressionAtPosition(text string, pos base.Position) (string, int, bool) {
 	prefix, ok := textBeforePosition(text, pos)
 	if !ok {
 		return "", 0, false
 	}
+	frame, ok := innermostCallFrame(prefix)
+	if !ok {
+		return "", 0, false
+	}
+	callee := calleeBeforeOpen(prefix, frame.open)
+	if callee == "" {
+		return "", 0, false
+	}
+	return callee, frame.commas, true
+}
+
+func innermostCallFrame(prefix string) (callFrame, bool) {
 	frames := make([]callFrame, 0)
 	quote := rune(0)
 	escaped := false
@@ -520,14 +749,52 @@ func callExpressionAtPosition(text string, pos base.Position) (string, int, bool
 		}
 	}
 	if len(frames) == 0 {
-		return "", 0, false
+		return callFrame{}, false
 	}
-	frame := frames[len(frames)-1]
-	callee := calleeBeforeOpen(prefix, frame.open)
-	if callee == "" {
-		return "", 0, false
+	return frames[len(frames)-1], true
+}
+
+func splitTopLevelArguments(value string) []string {
+	args := make([]string, 0)
+	start := 0
+	depth := 0
+	quote := rune(0)
+	escaped := false
+	for idx, r := range value {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if r == '\\' {
+				escaped = true
+				continue
+			}
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' || r == '`' {
+			quote = r
+			continue
+		}
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				args = append(args, strings.TrimSpace(value[start:idx]))
+				start = idx + 1
+			}
+		}
 	}
-	return callee, frame.commas, true
+	args = append(args, strings.TrimSpace(value[start:]))
+	return args
 }
 
 func calleeBeforeOpen(prefix string, open int) string {

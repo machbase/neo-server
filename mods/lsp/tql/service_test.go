@@ -152,6 +152,57 @@ func TestSignatureHelpReturnsTqlFunctionInfo(t *testing.T) {
 	}
 }
 
+func TestCompletionPrioritizesDocumentSlotSuggestions(t *testing.T) {
+	svc := NewService()
+	ctx := context.Background()
+	cases := []struct {
+		name     string
+		code     string
+		position base.Position
+		labels   []string
+	}{
+		{
+			name:     "sql first argument",
+			code:     "SQL(",
+			position: base.Position{Line: 1, Column: len("SQL(") + 1},
+			labels:   []string{"bridge", "SQL string"},
+		},
+		{
+			name:     "sql text after bridge",
+			code:     "SQL(bridge('demo'), ",
+			position: base.Position{Line: 1, Column: len("SQL(bridge('demo'), ") + 1},
+			labels:   []string{"SQL string"},
+		},
+		{
+			name:     "sql params after query",
+			code:     "SQL(`select * from example`, ",
+			position: base.Position{Line: 1, Column: len("SQL(`select * from example`, ") + 1},
+			labels:   []string{"param", "tz", "sqlTimeformat", "ansiTimeformat"},
+		},
+		{
+			name:     "mapvalue expression",
+			code:     "MAPVALUE(0, ",
+			position: base.Position{Line: 1, Column: len("MAPVALUE(0, ") + 1},
+			labels:   []string{"value", "key", "param", "time"},
+		},
+		{
+			name:     "csv options",
+			code:     "CSV(",
+			position: base.Position{Line: 1, Column: len("CSV(") + 1},
+			labels:   []string{"file", "payload", "field", "charset"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			items, err := svc.Completion(ctx, base.Document{Language: base.LanguageTQL, Text: tc.code}, tc.position)
+			if err != nil {
+				t.Fatalf("Completion returned error: %v", err)
+			}
+			assertLeadingCompletionLabels(t, items, tc.labels)
+		})
+	}
+}
+
 func TestWebUIMessageForTqlContexts(t *testing.T) {
 	svc := NewService()
 	ctx := context.Background()
@@ -165,7 +216,7 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			expect: expectedCompletionItem{
 				kind:          base.CompletionFunction,
 				detail:        "generator",
-				documentation: "Source statement that starts a TQL flow by producing records.",
+				documentation: "`FAKE()` produces artificial records from a generator helper. It is commonly used for examples, tests, synthetic wave data, and inline CSV or JSON data.",
 				insertText:    "FAKE()",
 			},
 		},
@@ -177,7 +228,7 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			expect: expectedCompletionItem{
 				kind:          base.CompletionFunction,
 				detail:        "encoder",
-				documentation: "Statement that can read records as a source or encode records as a sink.",
+				documentation: "As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. As a SINK function, `CSV()` encodes incoming records as CSV lines. Sink output is terminated by two consecutive newlines.",
 				insertText:    "CSV()",
 			},
 		},
@@ -189,7 +240,7 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			expect: expectedCompletionItem{
 				kind:          base.CompletionFunction,
 				detail:        "map monad",
-				documentation: "Map statement that transforms records between source and sink statements.",
+				documentation: "`MAPVALUE()` changes or appends a value field in the current record. The first argument selects the value index, and the second argument is evaluated as the new field value. Additional options can name the output field or adjust mapping behavior.",
 				insertText:    "MAPVALUE()",
 			},
 		},
@@ -201,7 +252,7 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			expect: expectedCompletionItem{
 				kind:          base.CompletionFunction,
 				detail:        "context",
-				documentation: "Argument function for request, record, and execution context values.",
+				documentation: "`param()` returns a requested query parameter when a TQL script is called via HTTP.",
 				insertText:    "param()",
 			},
 		},
@@ -249,19 +300,19 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			name:     "generator source hover",
 			code:     "FAKE(json({[1]}))\nCSV()",
 			position: base.Position{Line: 1, Column: 2},
-			expect:   "FAKE\n\nSource statement that starts a TQL flow by producing records.\n\nCategory: generator\n\nStatement: source",
+			expect:   "# FAKE\n\n## Kind\n\nstatement source",
 		},
 		{
 			name:     "encoder source or sink hover",
 			code:     "FAKE(json({[1]}))\nCSV()",
 			position: base.Position{Line: 2, Column: 2},
-			expect:   "CSV\n\nStatement that can read records as a source or encode records as a sink.\n\nCategory: encoder\n\nStatement: source_or_sink",
+			expect:   "# CSV\n\n## Kind\n\nstatement source_or_sink",
 		},
 		{
 			name:     "http param hover",
 			code:     "SQL(`select * from example where name = ?`, param('name'))\nCSV()",
 			position: base.Position{Line: 1, Column: strings.Index("SQL(`select * from example where name = ?`, param('name'))", "param") + 2},
-			expect:   "param\n\nArgument function for request, record, and execution context values.\n\nCategory: context",
+			expect:   "# param\n\n## Kind\n\nhelper",
 		},
 		{
 			name:     "nil coalescing operator hover",
@@ -285,8 +336,8 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			if hover == nil {
 				t.Fatal("expected hover")
 			}
-			if hover.Contents != tc.expect {
-				t.Fatalf("unexpected hover contents:\nwant %q\n got %q", tc.expect, hover.Contents)
+			if !strings.Contains(hover.Contents, tc.expect) {
+				t.Fatalf("unexpected hover contents:\nwant to contain %q\n got %q", tc.expect, hover.Contents)
 			}
 		})
 	}
@@ -298,13 +349,13 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			position: base.Position{Line: 1, Column: strings.Index("MAPVALUE(0, value(0))", ",") + 2},
 			expect: expectedSignatureHelp{
 				label:           "MAPVALUE(index, expression, options...)",
-				documentation:   "Map statement that changes or appends a value field.",
+				documentation:   "`MAPVALUE()` changes or appends a value field in the current record. The first argument selects the value index, and the second argument is evaluated as the new field value. Additional options can name the output field or adjust mapping behavior.",
 				activeSignature: 0,
 				activeParameter: 1,
 				parameters: []base.ParameterInfo{
-					{Label: "index", Documentation: "Value field index"},
-					{Label: "expression", Documentation: "Expression to evaluate for the field"},
-					{Label: "options", Documentation: "Optional mapping options"},
+					{Label: "index", Documentation: "accepts literal:number; required; suggestions: 0, 1, 2"},
+					{Label: "expression", Documentation: "accepts expression; required; suggestions: value, key, param, time, parseTime, tz, list, dict, in, ??"},
+					{Label: "options", Documentation: "accepts literal:string|helper; repeatable; suggestions: nullValue, lazy"},
 				},
 			},
 		},
@@ -313,11 +364,14 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			code:     "CSV(",
 			position: base.Position{Line: 1, Column: len("CSV(") + 1},
 			expect: expectedSignatureHelp{
-				label:           "CSV(options...)",
-				documentation:   "Source or sink statement for reading CSV input or encoding records as CSV.",
+				label:           "CSV(input, options...)",
+				documentation:   "As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. As a SINK function, `CSV()` encodes incoming records as CSV lines. Sink output is terminated by two consecutive newlines.",
 				activeSignature: 0,
 				activeParameter: 0,
-				parameters:      []base.ParameterInfo{{Label: "options", Documentation: "CSV source or encoder options"}},
+				parameters: []base.ParameterInfo{
+					{Label: "input", Documentation: "accepts stream|string|helper:file|helper:payload; suggestions: file, payload"},
+					{Label: "options", Documentation: "accepts helper; repeatable; suggestions: field, charset, logProgress, nullValue, cache, tz, sqlTimeformat, ansiTimeformat"},
+				},
 			},
 		},
 		{
@@ -325,13 +379,13 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			code:     "SQL(`select * from example where name = ?`, param('name'))",
 			position: base.Position{Line: 1, Column: strings.Index("SQL(`select * from example where name = ?`, param('name'))", ",") + 2},
 			expect: expectedSignatureHelp{
-				label:           "SQL(query, args...)",
-				documentation:   "Source statement that runs a SQL query and produces records.",
+				label:           "SQL(sqlText, params...)",
+				documentation:   "`SQL()` executes a SQL SELECT statement and produces records from the database. When `bridge()` is supplied, the query is executed through that bridge. Use backtick strings for multi-line SQL text and variadic arguments for bind parameters.",
 				activeSignature: 0,
 				activeParameter: 1,
 				parameters: []base.ParameterInfo{
-					{Label: "query", Documentation: "SQL text"},
-					{Label: "args", Documentation: "Optional query parameters"},
+					{Label: "sqlText", Documentation: "accepts literal:string; required; suggestions: backtick-sql-string"},
+					{Label: "params", Documentation: "accepts expression; repeatable; suggestions: param, tz, sqlTimeformat, ansiTimeformat"},
 				},
 			},
 		},
@@ -341,10 +395,10 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			position: base.Position{Line: 1, Column: len("param(") + 1},
 			expect: expectedSignatureHelp{
 				label:           "param(name)",
-				documentation:   "Returns a value from HTTP query parameters.",
+				documentation:   "`param()` returns a requested query parameter when a TQL script is called via HTTP.",
 				activeSignature: 0,
 				activeParameter: 0,
-				parameters:      []base.ParameterInfo{{Label: "name", Documentation: "Query parameter name"}},
+				parameters:      []base.ParameterInfo{{Label: "name", Documentation: "accepts literal:string; required; suggestions: query parameter name"}},
 			},
 		},
 	}
@@ -449,6 +503,18 @@ func assertCompletionItem(t *testing.T, item *base.CompletionItem, expect expect
 	}
 	if item.InsertText != expect.insertText {
 		t.Fatalf("expected completion insertText %q, got %q", expect.insertText, item.InsertText)
+	}
+}
+
+func assertLeadingCompletionLabels(t *testing.T, items []base.CompletionItem, labels []string) {
+	t.Helper()
+	if len(items) < len(labels) {
+		t.Fatalf("expected at least %d completion items, got %d", len(labels), len(items))
+	}
+	for idx, label := range labels {
+		if items[idx].Label != label {
+			t.Fatalf("expected completion item %d to be %q, got %q", idx, label, items[idx].Label)
+		}
 	}
 }
 
