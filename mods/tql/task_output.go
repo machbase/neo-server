@@ -96,9 +96,9 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 		}
 		var writer io.Writer = node.task.OutputWriter()
 		// check cache option
-		if val.cacheOption != nil && tqlResultCache != nil {
+		if cache := tqlResultCache.Load(); val.cacheOption != nil && cache != nil {
 			ret.cacheOption = val.cacheOption
-			if item := tqlResultCache.Get(val.cacheOption.key); item != nil {
+			if item := cache.Get(val.cacheOption.key); item != nil {
 				// get cached data
 				ret.cachedData = item.Data
 				// check preemptive update is set and valid
@@ -239,9 +239,9 @@ func (out *output) start() {
 			}
 		}
 
-		if out.cacheOption != nil && out.cacheOption.key != "" && out.cacheWriter != nil && tqlResultCache != nil {
+		if cache := tqlResultCache.Load(); out.cacheOption != nil && out.cacheOption.key != "" && out.cacheWriter != nil && cache != nil {
 			if data := out.cacheWriter.Bytes(); len(data) > 0 {
-				tqlResultCache.Set(out.cacheOption.key, data, out.cacheOption.ttl)
+				cache.Set(out.cacheOption.key, data, out.cacheOption.ttl)
 			}
 		}
 	}()

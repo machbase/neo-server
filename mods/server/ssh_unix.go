@@ -91,14 +91,29 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 			ss.Exit(1)
 			return
 		}
+		setWinsize(fn, ptyReq.Window.Width, ptyReq.Window.Height)
+		resizeDone := make(chan struct{})
+		var resizeWG sync.WaitGroup
+		resizeWG.Add(1)
 		svr.addChild(cmd.Process)
 		defer func() {
+			close(resizeDone)
+			resizeWG.Wait()
 			svr.removeChild(cmd.Process)
 			fn.Close()
 		}()
 		go func() {
-			for win := range winCh {
-				setWinsize(fn, win.Width, win.Height)
+			defer resizeWG.Done()
+			for {
+				select {
+				case <-resizeDone:
+					return
+				case win, ok := <-winCh:
+					if !ok {
+						return
+					}
+					setWinsize(fn, win.Width, win.Height)
+				}
 			}
 		}()
 		go func() {
