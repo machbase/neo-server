@@ -171,8 +171,10 @@ func (out *output) start() {
 				out.task.fireCircuitBreak(nil)
 				// task has been cancelled.
 				break loop
-			case rec := <-out.src:
-				if rec.IsEOF() || rec.IsCircuitBreak() {
+			case rec, ok := <-out.src:
+				if !ok || rec == nil {
+					break loop
+				} else if rec.IsEOF() || rec.IsCircuitBreak() {
 					break loop
 				} else if rec.IsError() {
 					out.lastError = rec.Error()
