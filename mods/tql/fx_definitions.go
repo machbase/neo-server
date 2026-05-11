@@ -1,6 +1,8 @@
 package tql
 
 import (
+	"strings"
+
 	"github.com/machbase/neo-server/v8/mods/nums"
 )
 
@@ -37,12 +39,24 @@ var fxStatementKinds = map[string]StatementKind{
 	"CHART_SCATTER":   StatementSink,
 	"CHART_LINE3D":    StatementSink,
 	"CHART_BAR3D":     StatementSink,
+	"CHART_SURFACE3D": StatementSink,
 	"CHART_SCATTER3D": StatementSink,
 }
 
 func statementKindByFunctionName(name string) (StatementKind, bool) {
 	kind, ok := fxStatementKinds[name]
 	return kind, ok
+}
+
+func StatementKindByFunctionName(name string) (StatementKind, bool) {
+	trimmed := strings.TrimSuffix(name, "()")
+	if kind, ok := statementKindByFunctionName(trimmed); ok {
+		return kind, true
+	}
+	if trimmed != "" {
+		return StatementMap, true
+	}
+	return StatementUnknown, false
 }
 
 var defTask = &Node{}
@@ -88,16 +102,12 @@ var FxDefinitions = []Definition{
 	{"tan", `mathWrap("tan", math.Tan)`},
 	{"tanh", `mathWrap("tanh", math.Tanh)`},
 	{"trunc", `mathWrap("trunc", math.Trunc)`},
-	// nums
-	{"// nums", nil},
+	// arrays
+	{"// arrays", nil},
 	{"len", "nums.Len"},
 	{"element", "nums.Element"},
-	{"linspace", defTask.fmLinspace},
-	{"linspace50", defTask.fmLinspace50},
-	{"meshgrid", defTask.fmMeshgrid},
-	{"arrange", defTask.fmArrange},
-	{"once", defTask.fmOnce},
-	// geo
+	// geo spatial
+	{"// geo spatial", nil},
 	{"latlon", nums.NewLatLon},
 	{"geoPoint", nums.NewGeoPoint},
 	{"geoCircle", nums.NewGeoCircle},
@@ -106,10 +116,9 @@ var FxDefinitions = []Definition{
 	{"geoLineString", nums.NewGeoLineStringFunc},
 	{"geoPointMarker", nums.NewGeoPointMarker},
 	{"geoCircleMarker", nums.NewGeoCircleMarker},
-	// maps.time
-	{"// maps.time", nil},
+	// map time
+	{"// map time", nil},
 	{"period", defTask.fmPeriod},
-	{"nullValue", defTask.fmNullValue},
 	{"time", defTask.fmTime},
 	{"timeUnix", defTask.fmTimeUnix},
 	{"timeUnixMilli", defTask.fmTimeUnixMilli},
@@ -132,8 +141,8 @@ var FxDefinitions = []Definition{
 	{"range", defTask.fmTimeRange},
 	{"sqlTimeformat", defTask.fmSqlTimeformat},
 	{"ansiTimeformat", defTask.fmAnsiTimeformat},
-	// maps.stat
-	{"// maps.stat", nil},
+	// maps stat
+	{"// maps stat", nil},
 	{"HISTOGRAM", defTask.fmHistogram},
 	{"bins", defTask.fmBins},
 	{"BOXPLOT", defTask.fmBoxplot},
@@ -141,8 +150,8 @@ var FxDefinitions = []Definition{
 	{"boxplotOutput", defTask.fmBoxplotOutputFormat},
 	{"category", defTask.fmCategory},
 	{"order", defTask.fmOrder},
-	// maps.monad
-	{"// maps.monad", nil},
+	// map monad
+	{"// map monad", nil},
 	{"TAKE", defTask.fmTake},
 	{"DROP", defTask.fmDrop},
 	{"FILTER", defTask.fmFilter},
@@ -172,8 +181,11 @@ var FxDefinitions = []Definition{
 	{"TIMEWINDOW", defTask.fmTimeWindow}, // deprecated
 	{"SCRIPT", defTask.fmScript},
 	{"SHELL", defTask.fmShell},
+	// arrays and dictionaries
+	{"// arrays and dictionaries", nil},
 	{"list", defTask.fmList},
 	{"dict", defTask.fmDictionary},
+	{"nullValue", defTask.fmNullValue},
 	{"lazy", defTask.fmLazy},
 	{"glob", defTask.fmGlob},
 	{"regexp", defTask.fmRegexp},
@@ -183,8 +195,8 @@ var FxDefinitions = []Definition{
 	{"args", defTask.fmArgsParam},
 	{"WHEN", defTask.fmWhen},
 	{"THROTTLE", defTask.fmThrottle},
-	// maps.dbsrc
-	{"// maps.dbsrc", nil},
+	// database source
+	{"// database source", nil},
 	{"from", defTask.fmFrom},
 	{"limit", defTask.fmLimit},
 	{"between", defTask.fmBetween},
@@ -192,22 +204,22 @@ var FxDefinitions = []Definition{
 	{"QUERY", defTask.fmQuery},
 	{"SQL", defTask.fmSql},
 	{"SQL_SELECT", defTask.fmSqlSelect},
-	// maps.dbsink
-	{"// maps.dbsink", nil},
+	// database sink
+	{"// database sink", nil},
 	{"table", defTask.fmTable},
 	{"tag", defTask.fmTag},
 	{"INSERT", defTask.fmInsert},
 	{"APPEND", defTask.fmAppend},
-	// maps.bridge
-	{"// maps.bridge", nil},
+	// bridge
+	{"// bridge", nil},
 	{"bridge", defTask.fmBridge},
-	// maps.fourier
-	{"// maps.fourier", nil},
+	// fourier transform
+	{"// fourier transform", nil},
 	{"minHz", defTask.fmMinHz},
 	{"maxHz", defTask.fmMaxHz},
 	{"FFT", defTask.fmFastFourierTransform},
-	// maps.encoder
-	{"// maps.encoder", nil},
+	// encoder
+	{"// encoder", nil},
 	{"cache", defTask.fmCache},
 	{"CSV", defTask.fmCsv},
 	{"JSON", defTask.fmJson},
@@ -226,16 +238,16 @@ var FxDefinitions = []Definition{
 	{"CHART_SCATTER3D", defTask.fmChartScatter3D},
 	{"GEOMAP", defTask.fmGeoMap},
 	{"HTTP", defTask.fmHttp},
-	// maps.bytes
-	{"// maps.bytes", nil},
+	// bytes
+	{"// bytes", nil},
 	{"separator", defTask.fmSeparator},
 	{"trimspace", defTask.fmTrimspace},
 	{"file", defTask.fmFile},
 	{"charset", defTask.fmCharset},
 	{"STRING", defTask.fmString},
 	{"BYTES", defTask.fmBytes},
-	// maps.csv
-	{"// maps.csv", nil},
+	// csv
+	{"// csv", nil},
 	{"col", defTask.fmCol},
 	{"field", defTask.fmField},
 	{"stringType", defTask.fmStringType},
@@ -245,9 +257,24 @@ var FxDefinitions = []Definition{
 	{"floatType", defTask.fmDoubleType},      // since v8.0.20
 	{"boolType", defTask.fmBoolType},         // since v8.0.20
 	{"logProgress", defTask.fmLogProgress},   // since v8.0.29
-	// maps.fake
+	// generator
+	{"// generator", nil},
+	{"linspace", defTask.fmLinspace},
+	{"linspace50", defTask.fmLinspace50},
+	{"meshgrid", defTask.fmMeshgrid},
+	{"arrange", defTask.fmArrange},
+	{"once", defTask.fmOnce},
 	{"simplex", defTask.fmSimplex},
 	{"random", defTask.fmRandom},
+	{"freq", defTask.fmFreq},
+	{"oscillator", defTask.fmOscillator},
+	{"sphere", defTask.fmSphere},
+	{"json", defTask.fmJsonData},
+	{"csv", defTask.fmCsvData},
+	{"statz", defTask.fmStatz},
+	{"FAKE", defTask.fmFake},
+	// conversion
+	{"// conversion", nil},
 	{"parseFloat", defTask.fmParseFloat},
 	{"parseBool", defTask.fmParseBoolean},
 	{"strTime", defTask.fmStrTime},
@@ -264,13 +291,6 @@ var FxDefinitions = []Definition{
 	{"strLastIndex", defTask.fmStrLastIndex},
 	{"strToUpper", defTask.fmStrToUpper},
 	{"strToLower", defTask.fmStrToLower},
-	{"freq", defTask.fmFreq},
-	{"oscillator", defTask.fmOscillator},
-	{"sphere", defTask.fmSphere},
-	{"json", defTask.fmJsonData},
-	{"csv", defTask.fmCsvData},
-	{"statz", defTask.fmStatz},
-	{"FAKE", defTask.fmFake},
 	// maps.group
 	{"GROUP", defTask.fmGroup},
 	{"by", defTask.fmBy},

@@ -21,7 +21,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
-	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
+	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 

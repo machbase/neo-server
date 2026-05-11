@@ -8,7 +8,7 @@ import (
 
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/tql"
-	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
+	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +30,20 @@ func (tc FunctionTestCase) run(t *testing.T) {
 	}
 	require.Nil(t, err)
 	require.Equal(t, tc.expect, ret)
+}
+
+func TestStatementKindByFunctionName(t *testing.T) {
+	kind, ok := tql.StatementKindByFunctionName("CSV()")
+	require.True(t, ok)
+	require.Equal(t, tql.StatementSourceOrSink, kind)
+
+	kind, ok = tql.StatementKindByFunctionName("customMap")
+	require.True(t, ok)
+	require.Equal(t, tql.StatementMap, kind)
+
+	kind, ok = tql.StatementKindByFunctionName("")
+	require.False(t, ok)
+	require.Equal(t, tql.StatementUnknown, kind)
 }
 
 func TestEscapeParam(t *testing.T) {

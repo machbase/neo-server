@@ -1,6 +1,6 @@
 package tql
 
-import "github.com/machbase/neo-server/v8/mods/tql/internal/expression"
+import "github.com/machbase/neo-server/v8/mods/tql/expression"
 
 type StatementKind int
 

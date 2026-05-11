@@ -1,0 +1,37 @@
+# table
+
+## Kind
+
+helper
+
+## Category
+
+database sink
+
+## Signatures
+
+```text
+table(...)
+```
+
+## Slots
+
+| Slot | Required | Repeat | Accepts | Suggestions |
+| --- | --- | --- | --- | --- |
+| args | no | yes | expression | TODO |
+
+## Description
+
+TODO
+
+## Examples
+
+### Basic
+
+```js
+table()
+```
+
+## Related
+
+TODO
