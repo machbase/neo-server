@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"reflect"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -27,6 +28,7 @@ type Booter interface {
 type boot struct {
 	moduleDefs []*Definition
 	wrappers   []wrapper
+	quitMu     sync.RWMutex
 	quitChan   chan os.Signal
 
 	startupHooks  []func()
@@ -136,17 +138,29 @@ func (bt *boot) ShutdownAndExit(exitCode int) {
 
 func (bt *boot) WaitSignal() {
 	// signal handler
-	bt.quitChan = make(chan os.Signal)
-	signal.Notify(bt.quitChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	quitChan := make(chan os.Signal)
+	bt.quitMu.Lock()
+	bt.quitChan = quitChan
+	bt.quitMu.Unlock()
+	signal.Notify(quitChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	// wait signal
-	<-bt.quitChan
+	<-quitChan
 }
 
 func (bt *boot) NotifySignal() {
-	if bt.quitChan != nil {
-		bt.quitChan <- syscall.SIGINT
+	bt.quitMu.RLock()
+	quitChan := bt.quitChan
+	bt.quitMu.RUnlock()
+	if quitChan != nil {
+		quitChan <- syscall.SIGINT
 	}
+}
+
+func (bt *boot) signalChan() chan os.Signal {
+	bt.quitMu.RLock()
+	defer bt.quitMu.RUnlock()
+	return bt.quitChan
 }
 
 func (bt *boot) AddShutdownHook(f ...func()) {

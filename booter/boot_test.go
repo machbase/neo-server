@@ -522,7 +522,7 @@ func TestBootWaitAndNotifySignalInternal(t *testing.T) {
 	}()
 
 	require.Eventually(t, func() bool {
-		return bt.quitChan != nil
+		return bt.signalChan() != nil
 	}, time.Second, 10*time.Millisecond)
 
 	go bt.NotifySignal()
@@ -536,5 +536,5 @@ func TestBootWaitAndNotifySignalInternal(t *testing.T) {
 		}
 	}, time.Second, 10*time.Millisecond)
 
-	signal.Stop(bt.quitChan)
+	signal.Stop(bt.signalChan())
 }

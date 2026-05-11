@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -277,7 +278,126 @@ func sshBridgePostgresTest(t *testing.T, dsn string) {
 		},
 	}
 	for _, tt := range tests {
-		runSSHTest(t, tt)
+		t.Run(tt.name, func(t *testing.T) {
+			runSSHTest(t, tt)
+		})
+	}
+}
+
+func sshBridgeMySqlTest(t *testing.T, dsn string) {
+	tests := []SSHTestCase{
+		{
+			name: "bridge_list",
+			cmd:  `bridge list`,
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+		{
+			name: "bridge_add_mysql",
+			cmd:  fmt.Sprintf(`bridge add -t mysql my "%s"`, dsn),
+			expect: []string{
+				"Adding bridge... my type: mysql path: " + dsn,
+			},
+		},
+		{
+			name: "bridge_list_after_add",
+			cmd:  `bridge list`,
+			expect: []string{
+				"┌────────┬──────┬───────┬──────────────────────────────────────────────────────┐",
+				"│ ROWNUM │ NAME │ TYPE  │ CONNECTION                                           │",
+				"├────────┼──────┼───────┼──────────────────────────────────────────────────────┤",
+				"│      1 │ my   │ mysql │ " + dsn + " │",
+				"└────────┴──────┴───────┴──────────────────────────────────────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_create_mysql_table",
+			cmd: "bridge exec my \"CREATE TABLE IF NOT EXISTS my_example(" +
+				"id INT NOT NULL AUTO_INCREMENT, " +
+				"company VARCHAR(50) UNIQUE NOT NULL, " +
+				"employee INT, " +
+				"discount REAL, " +
+				"plan FLOAT, " +
+				"code CHAR(64), " +
+				"valid SMALLINT, " +
+				"memo TEXT, " +
+				"created_on TIMESTAMP NOT NULL, " +
+				"PRIMARY KEY(id));\"",
+			expect: []string{
+				`executed.`,
+			},
+		},
+		{
+			name: "bridge_desc_table",
+			cmd:  `bridge query my desc my_example`,
+			expect: []string{
+				"┌────────┬────────────┬─────────────┬──────┬─────┬─────────┬────────────────┐",
+				"│ ROWNUM │ FIELD      │ TYPE        │ NULL │ KEY │ DEFAULT │ EXTRA          │",
+				"├────────┼────────────┼─────────────┼──────┼─────┼─────────┼────────────────┤",
+				"│      1 │ id         │ int         │ NO   │ PRI │ NULL    │ auto_increment │",
+				"│      2 │ company    │ varchar(50) │ NO   │ UNI │ NULL    │                │",
+				"│      3 │ employee   │ int         │ YES  │     │ NULL    │                │",
+				"│      4 │ discount   │ double      │ YES  │     │ NULL    │                │",
+				"│      5 │ plan       │ float       │ YES  │     │ NULL    │                │",
+				"│      6 │ code       │ char(64)    │ YES  │     │ NULL    │                │",
+				"│      7 │ valid      │ smallint    │ YES  │     │ NULL    │                │",
+				"│      8 │ memo       │ text        │ YES  │     │ NULL    │                │",
+				"│      9 │ created_on │ timestamp   │ NO   │     │ NULL    │                │",
+				"└────────┴────────────┴─────────────┴──────┴─────┴─────────┴────────────────┘",
+			},
+		},
+		{
+			name: "bridge_insert_mysql",
+			cmd:  `bridge exec my "insert into my_example(company, employee, discount, plan, created_on) value ('acme', 10, 1.234, 2.3456, '2023-09-09 00:00:00')"`,
+			expect: []string{
+				`executed.`,
+			},
+		},
+		{
+			name: "bridge_select_mysql",
+			cmd:  `bridge query my "select * from my_example;"`,
+			expect: []string{
+				"┌────────┬────┬─────────┬──────────┬──────────┬────────┬──────┬───────┬──────┬──────────────────────┐",
+				"│ ROWNUM │ ID │ COMPANY │ EMPLOYEE │ DISCOUNT │   PLAN │ CODE │ VALID │ MEMO │ CREATED_ON           │",
+				"├────────┼────┼─────────┼──────────┼──────────┼────────┼──────┼───────┼──────┼──────────────────────┤",
+				"│      1 │  1 │ acme    │       10 │    1.234 │ 2.3456 │ NULL │ NULL  │ NULL │ 2023-09-09T00:00:00Z │",
+				"└────────┴────┴─────────┴──────────┴──────────┴────────┴──────┴───────┴──────┴──────────────────────┘",
+			},
+		},
+		{
+			name: "bridge_drop_mysql_table",
+			cmd:  `bridge exec my "drop table my_example;"`,
+			expect: []string{
+				`executed.`,
+			},
+		},
+		{
+			name: "bridge_del_mysql",
+			cmd:  `bridge del my`,
+			expect: []string{
+				`Deleted.`,
+			},
+			wait: 5 * time.Second,
+		},
+		{
+			name: "bridge_list_after_del",
+			cmd:  `bridge list`,
+			expect: []string{
+				"┌────────┬──────┬──────┬────────────┐",
+				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
+				"├────────┼──────┼──────┼────────────┤",
+				"└────────┴──────┴──────┴────────────┘",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runSSHTest(t, tt)
+		})
 	}
 }
 
@@ -328,7 +448,7 @@ func runSSHTest(t *testing.T, tt SSHTestCase) {
 		t.Fatalf("Failed to get SSH stdin pipe: %v", err)
 	}
 
-	if err := session.RequestPty("xterm", 40, 120, ssh.TerminalModes{}); err != nil {
+	if err := session.RequestPty("xterm", 40, 240, ssh.TerminalModes{}); err != nil {
 		t.Fatalf("Failed to request PTY: %v", err)
 	}
 
@@ -339,7 +459,7 @@ func runSSHTest(t *testing.T, tt SSHTestCase) {
 	if _, err := stdin.Write([]byte(tt.cmd + "\n")); err != nil {
 		t.Fatalf("Failed to write SSH command: %v", err)
 	}
-	if !waitForExpectedOutput(&stdout, user, tt.expect, waitTimeout) {
+	if !waitForSSHOutput(&stdout, user, tt.expect, waitTimeout) {
 		t.Fatalf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(stdout.String()))
 	}
 	if _, err := stdin.Write([]byte("exit\n")); err != nil {
@@ -400,6 +520,53 @@ func waitForExpectedOutput(buf *lockedBuffer, user string, expects []string, tim
 	return false
 }
 
+func waitForSSHOutput(buf *lockedBuffer, user string, expects []string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		output := removeTerminalControlCharacters(buf.String())
+		lines := normalizeSSHOutputLines(output, user)
+		if matchExpectedOutput(lines, expects) || isSSHOutputAtPrompt(lines, user) {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+func waitForSSHPrompt(buf *lockedBuffer, user string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		output := removeTerminalControlCharacters(buf.String())
+		lines := normalizeSSHOutputLines(output, user)
+		if isSSHOutputAtPrompt(lines, user) {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+func isSSHOutputAtPrompt(lines []string, user string) bool {
+	if len(lines) == 0 {
+		return false
+	}
+	lastLine := strings.TrimSpace(lines[len(lines)-1])
+	if lastLine == ">" {
+		return true
+	}
+	if sshShellID(user) == "jsh" {
+		return strings.EqualFold(lastLine, "jsh>") || strings.EqualFold(lastLine, "jsh >")
+	}
+	return false
+}
+
+func sshShellID(user string) string {
+	if idx := strings.Index(user, ":"); idx >= 0 {
+		return strings.ToLower(strings.TrimSpace(user[idx+1:]))
+	}
+	return ""
+}
+
 func normalizeSSHOutputLines(output string, user string) []string {
 	lines := strings.Split(output, "\n")
 	result := make([]string, 0, len(lines))
@@ -411,9 +578,28 @@ func normalizeSSHOutputLines(output string, user string) []string {
 		if isTerminalPromptLine(trimmed, user) {
 			continue
 		}
+		if len(result) > 0 && shouldJoinWrappedSSHLine(result[len(result)-1], trimmed) {
+			result[len(result)-1] += trimmed
+			continue
+		}
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+func shouldJoinWrappedSSHLine(previous string, current string) bool {
+	if previous == "" || current == "" {
+		return false
+	}
+	first, _ := utf8.DecodeRuneInString(previous)
+	if !strings.ContainsRune("┌├└│", first) {
+		return false
+	}
+	last, _ := utf8.DecodeLastRuneInString(previous)
+	if strings.ContainsRune("┐┤┘│", last) {
+		return false
+	}
+	return true
 }
 
 func matchExpectedOutput(lines []string, expects []string) bool {
@@ -477,6 +663,41 @@ func TestNormalizeSSHOutputLinesRemovesPromptAndBlankLines(t *testing.T) {
 		"┌────────┬──────┬──────┬────────────┐",
 		"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
 		"└────────┴──────┴──────┴────────────┘",
+		">",
+	}, actual)
+}
+
+func TestNormalizeSSHOutputLinesJoinsWrappedTableLines(t *testing.T) {
+	raw := strings.Join([]string{
+		"Greetings, SYS",
+		"machbase-neo  ( )",
+		"sys machbase-neo 2026-05-06 10:20:37",
+		"> bridge list",
+		"┌────────┬──────┬───────┬───────────────────────────────────────────────",
+		"───────┐",
+		"│ ROWNUM │ NAME │ TYPE  │ CONNECTION                                    ",
+		"       │",
+		"├────────┼──────┼───────┼───────────────────────────────────────────────",
+		"───────┤",
+		"│      1 │ my   │ mysql │ dbuser:secret@tcp(127.0.0.1:55050)/db?parseTime",
+		"=true │",
+		"└────────┴──────┴───────┴───────────────────────────────────────────────",
+		"───────┘",
+		"sys machbase-neo 2026-05-06 10:20:37",
+		">",
+	}, "\n")
+
+	actual := normalizeSSHOutputLines(raw, "sys")
+
+	require.Equal(t, []string{
+		"Greetings, SYS",
+		"machbase-neo  ( )",
+		"> bridge list",
+		"┌────────┬──────┬───────┬──────────────────────────────────────────────────────┐",
+		"│ ROWNUM │ NAME │ TYPE  │ CONNECTION                                           │",
+		"├────────┼──────┼───────┼──────────────────────────────────────────────────────┤",
+		"│      1 │ my   │ mysql │ dbuser:secret@tcp(127.0.0.1:55050)/db?parseTime=true │",
+		"└────────┴──────┴───────┴──────────────────────────────────────────────────────┘",
 		">",
 	}, actual)
 }

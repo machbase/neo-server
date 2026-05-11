@@ -13,7 +13,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
-var tqlResultCache *Cache
+var tqlResultCache atomic.Pointer[Cache]
 
 type CacheOption struct {
 	MaxCapacity uint64 // max number of items
@@ -22,33 +22,34 @@ type CacheOption struct {
 }
 
 func StartCache(cap CacheOption) {
-	tqlResultCache = newCache(cap)
-	tqlResultCache.closeWg.Add(1)
-	go func() {
-		defer tqlResultCache.closeWg.Done()
-		tqlResultCache.cache.Start()
-	}()
+	cache := newCache(cap)
+	tqlResultCache.Store(cache)
+	cache.closeWg.Add(1)
+	go func(cache *Cache) {
+		defer cache.closeWg.Done()
+		cache.cache.Start()
+	}(cache)
 
 	api.AddMetricsFunc(func(g *metric.Gather) error {
-		if tqlResultCache == nil || tqlResultCache.cache == nil {
+		cache := tqlResultCache.Load()
+		if cache == nil || cache.cache == nil {
 			return errors.New("tql cache not started")
 		}
-		stat := tqlResultCache.cache.Metrics()
+		stat := cache.cache.Metrics()
 		g.Add("tql:cache:evictions", float64(stat.Evictions), metric.GaugeType(metric.UnitShort))
 		g.Add("tql:cache:insertions", float64(stat.Insertions), metric.GaugeType(metric.UnitShort))
 		g.Add("tql:cache:hits", float64(stat.Hits), metric.GaugeType(metric.UnitShort))
 		g.Add("tql:cache:misses", float64(stat.Misses), metric.GaugeType(metric.UnitShort))
-		g.Add("tql:cache:items", float64(tqlResultCache.cache.Len()), metric.GaugeType(metric.UnitShort))
+		g.Add("tql:cache:items", float64(cache.cache.Len()), metric.GaugeType(metric.UnitShort))
 		return nil
 	})
 }
 
 func StopCache() {
-	if tqlResultCache != nil {
-		tqlResultCache.cache.Stop()
-		close(tqlResultCache.closeCh)
-		tqlResultCache.closeWg.Wait()
-		tqlResultCache = nil
+	if cache := tqlResultCache.Swap(nil); cache != nil {
+		cache.cache.Stop()
+		close(cache.closeCh)
+		cache.closeWg.Wait()
 	}
 }
 

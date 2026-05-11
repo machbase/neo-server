@@ -659,6 +659,9 @@ func TestShellBridge(t *testing.T) {
 	t.Run("shellBridgeMySqlTest", func(t *testing.T) {
 		shellBridgeMySqlTest(t, mysqlDSN)
 	})
+	t.Run("sshBridgeMySqlTest", func(t *testing.T) {
+		sshBridgeMySqlTest(t, mysqlDSN)
+	})
 	t.Run("shellBridgeMqttTest", func(t *testing.T) {
 		shellBridgeMqttTest(t, mosquittoHostPort)
 	})
