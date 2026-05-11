@@ -92,6 +92,9 @@ func NewTaskContext(ctx context.Context) *Task {
 	}
 	ret.volatileAssetsProvider = instance.vap
 	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
+	context.AfterFunc(ret.ctx, func() {
+		ret.fireCircuitBreak(nil)
+	})
 	return ret
 }
 
@@ -409,6 +412,9 @@ func (x *Task) execute() *Result {
 			var cancel context.CancelFunc
 			x._preemptiveCacheUpdateTimeout = 10 * time.Second
 			x.ctx, cancel = context.WithTimeout(context.Background(), x._preemptiveCacheUpdateTimeout)
+			context.AfterFunc(x.ctx, func() {
+				x.fireCircuitBreak(nil)
+			})
 			x._preemptiveCacheUpdateStarted = true
 			go func() {
 				defer cancel()

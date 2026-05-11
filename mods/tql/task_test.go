@@ -219,6 +219,27 @@ func TestTaskCancelNotifiesLateShouldStopListener(t *testing.T) {
 	}
 }
 
+func TestTaskContextCancelNotifiesLateShouldStopListener(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	task := tql.NewTaskContext(ctx)
+	cancel()
+
+	called := make(chan struct{}, 1)
+	task.AddShouldStopListener(func() {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+	})
+
+	select {
+	case <-called:
+		return
+	case <-time.After(1 * time.Second):
+		t.Fatal("late should-stop listener was not notified after context cancellation")
+	}
+}
+
 func TestHistogram(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{

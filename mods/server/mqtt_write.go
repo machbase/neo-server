@@ -111,7 +111,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	case "ndjson":
 	default:
 		rsp.Reason = fmt.Sprintf("%s unsupported format %q", pk.TopicName, wp.Format)
-		s.log.Warnf(cl.Net.Remote, rsp.Reason)
+		s.log.Warn(cl.Net.Remote, rsp.Reason)
 		return
 	}
 	switch wp.Compress {
