@@ -1558,7 +1558,7 @@ func TestShellRun(t *testing.T) {
 				"a row inserted.",
 				"",
 				"exec table_flush(example)",
-				"rollup executed.",
+				"table flushed.",
 				"",
 				"sql --timeformat kitchen --tz Asia/Seoul -Z --no-pause",
 				"SELECT",
@@ -1617,7 +1617,7 @@ func TestShellSql(t *testing.T) {
 			name: "sql_crud_flush",
 			args: append(shellArgs, "sql", "EXEC table_flush(example)"),
 			expect: []string{
-				"rollup executed.", // TODO: check this message, it should be "executed." instead of "rollup executed." since it's called from SQL, not CLI
+				"table flushed.",
 			},
 		},
 		{
@@ -1656,10 +1656,7 @@ func TestShellSql(t *testing.T) {
 			name: "sql_crud_flush_after_delete",
 			args: append(shellArgs, "EXEC table_flush(example)"),
 			expect: []string{
-				// TODO: check this message, it should be "executed."
-				// instead of "rollup executed." since it's called from SQL, not CLI
-				// this message is built in neo-client/machgo/machgo.go
-				"rollup executed.",
+				"table flushed.",
 			},
 		},
 		{
