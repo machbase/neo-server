@@ -90,8 +90,17 @@ func TestBuildMetadataIncludesTqlFunctions(t *testing.T) {
 	if !hasSymbolStatementKind(metadata.Symbols, "CSV", "source_or_sink") {
 		t.Fatal("expected CSV source_or_sink symbol")
 	}
+	if !hasSymbolStatementKind(metadata.Symbols, "CHART_SURFACE3D", "sink") {
+		t.Fatal("expected CHART_SURFACE3D sink symbol")
+	}
 	if !hasSymbolSignature(metadata.Symbols, "MAPVALUE") {
 		t.Fatal("expected MAPVALUE signature")
+	}
+	if !hasKeyword(metadata.Keywords, "NULL") {
+		t.Fatal("expected NULL keyword")
+	}
+	if !hasKeyword(metadata.Keywords, "log-level") {
+		t.Fatal("expected log-level pragma keyword")
 	}
 }
 
@@ -135,11 +144,11 @@ func TestSignatureHelpReturnsTqlFunctionInfo(t *testing.T) {
 	if help == nil || len(help.Signatures) == 0 {
 		t.Fatalf("expected signature help, got %+v", help)
 	}
-	if help.Signatures[0].Label != "MAPVALUE(...)" {
+	if help.Signatures[0].Label != "MAPVALUE(index, expression, options...)" {
 		t.Fatalf("expected MAPVALUE signature, got %+v", help.Signatures[0])
 	}
-	if help.ActiveParameter != 0 {
-		t.Fatalf("expected active parameter 0, got %d", help.ActiveParameter)
+	if help.ActiveParameter != 1 {
+		t.Fatalf("expected active parameter 1, got %d", help.ActiveParameter)
 	}
 }
 
@@ -156,7 +165,7 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			expect: expectedCompletionItem{
 				kind:          base.CompletionFunction,
 				detail:        "generator",
-				documentation: "TQL function",
+				documentation: "Source statement that starts a TQL flow by producing records.",
 				insertText:    "FAKE()",
 			},
 		},
@@ -168,8 +177,56 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			expect: expectedCompletionItem{
 				kind:          base.CompletionFunction,
 				detail:        "encoder",
-				documentation: "TQL function",
+				documentation: "Statement that can read records as a source or encode records as a sink.",
 				insertText:    "CSV()",
+			},
+		},
+		{
+			name:     "map statement completion",
+			code:     "FAKE(linspace(1, 3, 3))\nMAP",
+			position: base.Position{Line: 2, Column: len("MAP") + 1},
+			label:    "MAPVALUE",
+			expect: expectedCompletionItem{
+				kind:          base.CompletionFunction,
+				detail:        "map monad",
+				documentation: "Map statement that transforms records between source and sink statements.",
+				insertText:    "MAPVALUE()",
+			},
+		},
+		{
+			name:     "query parameter helper completion",
+			code:     "param",
+			position: base.Position{Line: 1, Column: len("param") + 1},
+			label:    "param",
+			expect: expectedCompletionItem{
+				kind:          base.CompletionFunction,
+				detail:        "context",
+				documentation: "Argument function for request, record, and execution context values.",
+				insertText:    "param()",
+			},
+		},
+		{
+			name:     "null literal completion",
+			code:     "NU",
+			position: base.Position{Line: 1, Column: len("NU") + 1},
+			label:    "NULL",
+			expect: expectedCompletionItem{
+				kind:          base.CompletionValue,
+				detail:        "null",
+				documentation: "Null literal used in comparisons and default expressions.",
+				insertText:    "NULL",
+			},
+		},
+		{
+			name:     "pragma completion",
+			code:     "//+ log",
+			position: base.Position{Line: 1, Column: len("//+ log") + 1},
+			label:    "log-level",
+			expect: expectedCompletionItem{
+				kind:          base.CompletionKeyword,
+				detail:        "TRACE | DEBUG | INFO | WARN | ERROR",
+				documentation: "Pragma that sets the TQL execution log level.",
+				insertText:    "//+ log-level=ERROR",
 			},
 		},
 	}
@@ -192,13 +249,31 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			name:     "generator source hover",
 			code:     "FAKE(json({[1]}))\nCSV()",
 			position: base.Position{Line: 1, Column: 2},
-			expect:   "FAKE\n\nTQL function\n\nCategory: generator\n\nStatement: source",
+			expect:   "FAKE\n\nSource statement that starts a TQL flow by producing records.\n\nCategory: generator\n\nStatement: source",
 		},
 		{
 			name:     "encoder source or sink hover",
 			code:     "FAKE(json({[1]}))\nCSV()",
 			position: base.Position{Line: 2, Column: 2},
-			expect:   "CSV\n\nTQL function\n\nCategory: encoder\n\nStatement: source_or_sink",
+			expect:   "CSV\n\nStatement that can read records as a source or encode records as a sink.\n\nCategory: encoder\n\nStatement: source_or_sink",
+		},
+		{
+			name:     "http param hover",
+			code:     "SQL(`select * from example where name = ?`, param('name'))\nCSV()",
+			position: base.Position{Line: 1, Column: strings.Index("SQL(`select * from example where name = ?`, param('name'))", "param") + 2},
+			expect:   "param\n\nArgument function for request, record, and execution context values.\n\nCategory: context",
+		},
+		{
+			name:     "nil coalescing operator hover",
+			code:     "SQL_SELECT('time', 'value', from('example', param('name') ?? 'temperature'))\nCSV()",
+			position: base.Position{Line: 1, Column: strings.Index("SQL_SELECT('time', 'value', from('example', param('name') ?? 'temperature'))", "??") + 1},
+			expect:   "??\n\nReturns the left operand when it is defined, otherwise returns the right operand.\n\nCategory: operator",
+		},
+		{
+			name:     "pragma hover",
+			code:     "//+ log-level=TRACE\nSQL('select * from example')\nCSV()",
+			position: base.Position{Line: 1, Column: strings.Index("//+ log-level=TRACE", "log-level") + 2},
+			expect:   "log-level\n\nPragma that sets the TQL execution log level.\n\nCategory: pragma",
 		},
 	}
 	for _, tc := range hoverCases {
@@ -222,11 +297,15 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			code:     "MAPVALUE(0, value(0))",
 			position: base.Position{Line: 1, Column: strings.Index("MAPVALUE(0, value(0))", ",") + 2},
 			expect: expectedSignatureHelp{
-				label:           "MAPVALUE(...)",
-				documentation:   "TQL function",
+				label:           "MAPVALUE(index, expression, options...)",
+				documentation:   "Map statement that changes or appends a value field.",
 				activeSignature: 0,
-				activeParameter: 0,
-				parameters:      []base.ParameterInfo{{Label: "args", Documentation: "Function arguments"}},
+				activeParameter: 1,
+				parameters: []base.ParameterInfo{
+					{Label: "index", Documentation: "Value field index"},
+					{Label: "expression", Documentation: "Expression to evaluate for the field"},
+					{Label: "options", Documentation: "Optional mapping options"},
+				},
 			},
 		},
 		{
@@ -234,11 +313,38 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			code:     "CSV(",
 			position: base.Position{Line: 1, Column: len("CSV(") + 1},
 			expect: expectedSignatureHelp{
-				label:           "CSV(...)",
-				documentation:   "TQL function",
+				label:           "CSV(options...)",
+				documentation:   "Source or sink statement for reading CSV input or encoding records as CSV.",
 				activeSignature: 0,
 				activeParameter: 0,
-				parameters:      []base.ParameterInfo{{Label: "args", Documentation: "Function arguments"}},
+				parameters:      []base.ParameterInfo{{Label: "options", Documentation: "CSV source or encoder options"}},
+			},
+		},
+		{
+			name:     "sql query parameter",
+			code:     "SQL(`select * from example where name = ?`, param('name'))",
+			position: base.Position{Line: 1, Column: strings.Index("SQL(`select * from example where name = ?`, param('name'))", ",") + 2},
+			expect: expectedSignatureHelp{
+				label:           "SQL(query, args...)",
+				documentation:   "Source statement that runs a SQL query and produces records.",
+				activeSignature: 0,
+				activeParameter: 1,
+				parameters: []base.ParameterInfo{
+					{Label: "query", Documentation: "SQL text"},
+					{Label: "args", Documentation: "Optional query parameters"},
+				},
+			},
+		},
+		{
+			name:     "param helper first argument",
+			code:     "param(",
+			position: base.Position{Line: 1, Column: len("param(") + 1},
+			expect: expectedSignatureHelp{
+				label:           "param(name)",
+				documentation:   "Returns a value from HTTP query parameters.",
+				activeSignature: 0,
+				activeParameter: 0,
+				parameters:      []base.ParameterInfo{{Label: "name", Documentation: "Query parameter name"}},
 			},
 		},
 	}

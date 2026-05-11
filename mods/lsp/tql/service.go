@@ -17,6 +17,97 @@ type Service struct {
 	hovers   map[string]string
 }
 
+var tqlLanguageSymbols = []base.SymbolInfo{
+	{
+		Label:         "true",
+		Kind:          base.CompletionValue,
+		Category:      "primitive",
+		Detail:        "boolean",
+		Documentation: "Boolean literal.",
+		InsertText:    "true",
+	},
+	{
+		Label:         "false",
+		Kind:          base.CompletionValue,
+		Category:      "primitive",
+		Detail:        "boolean",
+		Documentation: "Boolean literal.",
+		InsertText:    "false",
+	},
+	{
+		Label:         "NULL",
+		Kind:          base.CompletionValue,
+		Category:      "primitive",
+		Detail:        "null",
+		Documentation: "Null literal used in comparisons and default expressions.",
+		InsertText:    "NULL",
+	},
+	{
+		Label:         "nil",
+		Kind:          base.CompletionValue,
+		Category:      "primitive",
+		Detail:        "null",
+		Documentation: "Null literal alias.",
+		InsertText:    "nil",
+	},
+	{
+		Label:         "PI",
+		Kind:          base.CompletionValue,
+		Category:      "primitive",
+		Detail:        "number",
+		Documentation: "Numeric constant for pi.",
+		InsertText:    "PI",
+	},
+	{
+		Label:         "in",
+		Kind:          base.CompletionKeyword,
+		Category:      "operator",
+		Detail:        "relational",
+		Documentation: "Returns true when the left operand is contained in the argument list.",
+		InsertText:    "in",
+	},
+	{
+		Label:         "??",
+		Kind:          base.CompletionKeyword,
+		Category:      "operator",
+		Detail:        "nil coalescing",
+		Documentation: "Returns the left operand when it is defined, otherwise returns the right operand.",
+		InsertText:    "??",
+	},
+	{
+		Label:         "?",
+		Kind:          base.CompletionKeyword,
+		Category:      "operator",
+		Detail:        "ternary",
+		Documentation: "Starts a conditional expression in the form condition ? trueValue : falseValue.",
+		InsertText:    "?",
+	},
+	{
+		Label:         ":",
+		Kind:          base.CompletionKeyword,
+		Category:      "operator",
+		Detail:        "ternary",
+		Documentation: "Separates true and false branches in a ternary expression.",
+		InsertText:    ":",
+	},
+	{
+		Label:         "log-level",
+		Kind:          base.CompletionKeyword,
+		Category:      "pragma",
+		Detail:        "TRACE | DEBUG | INFO | WARN | ERROR",
+		Documentation: "Pragma that sets the TQL execution log level.",
+		InsertText:    "//+ log-level=ERROR",
+	},
+	{
+		Label:         "sql-thread-lock",
+		Kind:          base.CompletionKeyword,
+		Category:      "pragma",
+		Detail:        "SQL thread lock",
+		Documentation: "Pragma that runs SQL() on a dedicated native thread for the script execution.",
+		InsertText:    "//+ sql-thread-lock",
+	},
+}
+
 func NewService() *Service {
 	metadata := BuildMetadata()
 	items := make([]base.CompletionItem, 0, len(metadata.Symbols))
@@ -43,8 +134,8 @@ func NewService() *Service {
 }
 
 func BuildMetadata() base.Metadata {
-	symbols := make([]base.SymbolInfo, 0, len(coretql.FxDefinitions))
-	keywords := make([]base.KeywordInfo, 0, len(coretql.FxDefinitions))
+	symbols := make([]base.SymbolInfo, 0, len(coretql.FxDefinitions)+len(tqlLanguageSymbols))
+	keywords := make([]base.KeywordInfo, 0, len(coretql.FxDefinitions)+len(tqlLanguageSymbols))
 	category := "general"
 	for _, def := range coretql.FxDefinitions {
 		if strings.HasPrefix(def.Name, "//") {
@@ -56,10 +147,10 @@ func BuildMetadata() base.Metadata {
 			Kind:          base.CompletionFunction,
 			Category:      category,
 			Detail:        category,
-			Documentation: "TQL function",
+			Documentation: tqlFunctionDocumentation(def.Name, category),
 			InsertText:    insertText(def.Name),
 		}
-		if kind, ok := coretql.StatementKindByFunctionName(def.Name); ok {
+		if kind, ok := tqlStatementKind(def.Name); ok {
 			symbol.StatementKind = statementKindString(kind)
 		}
 		symbol.Signature = tqlSignature(def.Name)
@@ -71,9 +162,18 @@ func BuildMetadata() base.Metadata {
 			Documentation: symbol.Documentation,
 		})
 	}
+	for _, symbol := range tqlLanguageSymbols {
+		symbols = append(symbols, symbol)
+		keywords = append(keywords, base.KeywordInfo{
+			Label:         symbol.Label,
+			Category:      symbol.Category,
+			Detail:        symbol.Detail,
+			Documentation: symbol.Documentation,
+		})
+	}
 	return base.Metadata{
 		Language: base.LanguageTQL,
-		Version:  "tql-fx-definitions-v1",
+		Version:  "tql-fx-definitions-v2",
 		Keywords: keywords,
 		Symbols:  symbols,
 	}
@@ -98,11 +198,83 @@ func hoverContents(symbol base.SymbolInfo) string {
 	return contents
 }
 
+func tqlFunctionDocumentation(label string, category string) string {
+	name := strings.TrimSuffix(label, "()")
+	if kind, ok := tqlStatementKind(name); ok {
+		switch kind {
+		case coretql.StatementSource:
+			return "Source statement that starts a TQL flow by producing records."
+		case coretql.StatementMap:
+			return "Map statement that transforms records between source and sink statements."
+		case coretql.StatementSink:
+			return "Sink statement that terminates a TQL flow by encoding or writing records."
+		case coretql.StatementSourceOrMap:
+			return "Statement that can produce records as a source or transform records as a map."
+		case coretql.StatementSourceOrSink:
+			return "Statement that can read records as a source or encode records as a sink."
+		}
+	}
+	switch category {
+	case "context":
+		return "Argument function for request, record, and execution context values."
+	case "math":
+		return "Argument function for numeric expressions."
+	case "arrays", "arrays and dictionaries":
+		return "Argument function for list and dictionary values."
+	case "map time":
+		return "Argument function for time and time zone values."
+	case "database source":
+		return "Argument function for database source statements."
+	case "database sink":
+		return "Argument function for database sink statements."
+	case "generator":
+		return "Argument function for generated records used by FAKE()."
+	case "conversion":
+		return "Argument function for converting strings, numbers, booleans, and time values."
+	case "encoder":
+		return "Argument function for output encoders and chart statements."
+	case "maps stat", "map monad", "maps.group":
+		return "Argument function for record transformation and aggregation."
+	default:
+		return "TQL argument function."
+	}
+}
+
+func tqlStatementKind(label string) (coretql.StatementKind, bool) {
+	name := strings.TrimSuffix(label, "()")
+	if name == "" || name != strings.ToUpper(name) {
+		return coretql.StatementUnknown, false
+	}
+	return coretql.StatementKindByFunctionName(name)
+}
+
 func tqlSignature(label string) *base.SignatureInfo {
 	name := strings.TrimSuffix(label, "()")
+	switch name {
+	case "SQL":
+		return &base.SignatureInfo{Label: "SQL(query, args...)", Documentation: "Source statement that runs a SQL query and produces records.", Parameters: []base.ParameterInfo{{Label: "query", Documentation: "SQL text"}, {Label: "args", Documentation: "Optional query parameters"}}}
+	case "SQL_SELECT":
+		return &base.SignatureInfo{Label: "SQL_SELECT(fields..., options...)", Documentation: "Source statement that selects columns from a table or tag query.", Parameters: []base.ParameterInfo{{Label: "fields", Documentation: "Column names"}, {Label: "options", Documentation: "from(), limit(), between(), and related options"}}}
+	case "FAKE":
+		return &base.SignatureInfo{Label: "FAKE(generator)", Documentation: "Source statement that generates artificial records for tests and examples.", Parameters: []base.ParameterInfo{{Label: "generator", Documentation: "Generator such as linspace(), oscillator(), json(), or csv()"}}}
+	case "MAPVALUE":
+		return &base.SignatureInfo{Label: "MAPVALUE(index, expression, options...)", Documentation: "Map statement that changes or appends a value field.", Parameters: []base.ParameterInfo{{Label: "index", Documentation: "Value field index"}, {Label: "expression", Documentation: "Expression to evaluate for the field"}, {Label: "options", Documentation: "Optional mapping options"}}}
+	case "CSV":
+		return &base.SignatureInfo{Label: "CSV(options...)", Documentation: "Source or sink statement for reading CSV input or encoding records as CSV.", Parameters: []base.ParameterInfo{{Label: "options", Documentation: "CSV source or encoder options"}}}
+	case "JSON":
+		return &base.SignatureInfo{Label: "JSON(options...)", Documentation: "Sink statement that encodes records as JSON.", Parameters: []base.ParameterInfo{{Label: "options", Documentation: "JSON encoder options such as transpose(true)"}}}
+	case "param":
+		return &base.SignatureInfo{Label: "param(name)", Documentation: "Returns a value from HTTP query parameters.", Parameters: []base.ParameterInfo{{Label: "name", Documentation: "Query parameter name"}}}
+	case "value":
+		return &base.SignatureInfo{Label: "value(index)", Documentation: "Returns a field from the current record value.", Parameters: []base.ParameterInfo{{Label: "index", Documentation: "Value field index"}}}
+	case "list":
+		return &base.SignatureInfo{Label: "list(values...)", Documentation: "Creates a list value.", Parameters: []base.ParameterInfo{{Label: "values", Documentation: "List elements"}}}
+	case "dict":
+		return &base.SignatureInfo{Label: "dict(keyValues...)", Documentation: "Creates a dictionary value from key and value pairs.", Parameters: []base.ParameterInfo{{Label: "keyValues", Documentation: "Alternating keys and values"}}}
+	}
 	return &base.SignatureInfo{
 		Label:         name + "(...)",
-		Documentation: "TQL function",
+		Documentation: tqlFunctionDocumentation(name, ""),
 		Parameters:    []base.ParameterInfo{{Label: "args", Documentation: "Function arguments"}},
 	}
 }
@@ -143,17 +315,22 @@ func (svc *Service) Completion(_ context.Context, _ base.Document, _ base.Positi
 
 func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Position) (*base.Hover, error) {
 	word, rng := wordAtPosition(doc.Text, pos)
-	if word == "" {
-		return nil, nil
+	if word != "" {
+		contents, ok := svc.hovers[word]
+		if !ok {
+			contents, ok = svc.hovers[strings.ToUpper(word)]
+		}
+		if ok {
+			return &base.Hover{Range: rng, Contents: contents}, nil
+		}
 	}
-	contents, ok := svc.hovers[word]
-	if !ok {
-		contents, ok = svc.hovers[strings.ToUpper(word)]
+	symbol, rng := symbolAtPosition(doc.Text, pos)
+	if symbol != "" {
+		if contents, ok := svc.hovers[symbol]; ok {
+			return &base.Hover{Range: rng, Contents: contents}, nil
+		}
 	}
-	if !ok {
-		return nil, nil
-	}
-	return &base.Hover{Range: rng, Contents: contents}, nil
+	return nil, nil
 }
 
 func (svc *Service) SignatureHelp(_ context.Context, doc base.Document, pos base.Position) (*base.SignatureHelp, error) {
@@ -262,7 +439,39 @@ func wordAtPosition(text string, pos base.Position) (string, base.Range) {
 }
 
 func isWordRune(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	return r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func symbolAtPosition(text string, pos base.Position) (string, base.Range) {
+	lines := strings.Split(text, "\n")
+	if pos.Line <= 0 || pos.Line > len(lines) {
+		return "", base.Range{}
+	}
+	line := []rune(lines[pos.Line-1])
+	column := pos.Column
+	if column <= 0 {
+		column = 1
+	}
+	idx := column - 1
+	if idx >= len(line) {
+		idx = len(line) - 1
+	}
+	if idx < 0 || !isOperatorRune(line[idx]) {
+		return "", base.Range{}
+	}
+	start := idx
+	for start > 0 && isOperatorRune(line[start-1]) {
+		start--
+	}
+	end := idx + 1
+	for end < len(line) && isOperatorRune(line[end]) {
+		end++
+	}
+	return string(line[start:end]), base.Range{Start: base.Position{Line: pos.Line, Column: start + 1}, End: base.Position{Line: pos.Line, Column: end + 1}}
+}
+
+func isOperatorRune(r rune) bool {
+	return strings.ContainsRune("?=:!<>|&+-*/%^~", r)
 }
 
 type callFrame struct {

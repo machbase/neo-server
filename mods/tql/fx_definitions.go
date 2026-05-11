@@ -39,6 +39,7 @@ var fxStatementKinds = map[string]StatementKind{
 	"CHART_SCATTER":   StatementSink,
 	"CHART_LINE3D":    StatementSink,
 	"CHART_BAR3D":     StatementSink,
+	"CHART_SURFACE3D": StatementSink,
 	"CHART_SCATTER3D": StatementSink,
 }
 
