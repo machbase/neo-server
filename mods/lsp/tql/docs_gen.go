@@ -159,6 +159,7 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 	},
 	"CHART_SURFACE3D": {
 		Label: "CHART_SURFACE3D",
+		Draft: true,
 		Kind: "statement sink",
 		Category: "encoder",
 		Signatures: []tqlDocSignature{
@@ -183,8 +184,39 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 			{Name: "options", Required: false, Repeat: true, Accepts: "helper", Suggestions: []string{"field", "charset", "logProgress", "nullValue", "cache", "tz", "sqlTimeformat", "ansiTimeformat"}},
 		},
 		Description: "As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. As a SINK function, `CSV()` encodes incoming records as CSV lines. Sink output is terminated by two consecutive newlines.",
-		Markdown: "# CSV\n\n## Kind\n\nstatement source_or_sink\n\n## Category\n\ncsv source or encoder\n\n## Signatures\n\n```text\nCSV(input, options...)\nCSV(options...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| input | no | no | stream|string|helper:file|helper:payload | file, payload |\n| options | no | yes | helper | field, charset, logProgress, nullValue, cache, tz, sqlTimeformat, ansiTimeformat |\n\n## Description\n\nAs a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. As a SINK function, `CSV()` encodes incoming records as CSV lines. Sink output is terminated by two consecutive newlines.\n\n## Examples\n\n### Read CSV payload\n\n```js\nCSV(payload(),\n    field(0, stringType(), 'name'),\n    field(1, timeType('s'), 'time'),\n    field(2, floatType(), 'value'),\n    header(false)\n)\nAPPEND(table('example'))\n```\n\n### Write CSV\n\n```js\nFAKE(arrange(1, 3, 1))\nMAPVALUE(1, value(0) * 10, 'x10')\nCSV()\n```\n\n## Related\n\nfile, payload, field, charset, stringType, datetimeType, timeType, doubleType, floatType, boolType, nullValue, cache, tz",
+		Markdown: "# CSV\n\n## Kind\n\nstatement source_or_sink\n\n## Category\n\ncsv source or encoder\n\n## Signatures\n\n```text\nCSV(input, options...)\nCSV(options...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| input | no | no | stream|string|helper:file|helper:payload | file, payload |\n| options | no | yes | helper | field, charset, logProgress, nullValue, cache, tz, sqlTimeformat, ansiTimeformat |\n\n## Description\n\nAs a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. As a SINK function, `CSV()` encodes incoming records as CSV lines. Sink output is terminated by two consecutive newlines.\n\n## Examples\n\n### Read CSV payload\n\n```js\nCSV(payload(),\n    field(0, stringType(), 'name'),\n    field(1, timeType('s'), 'time'),\n    field(2, floatType(), 'value'),\n    header(false)\n)\nAPPEND(table('example'))\n```\n\n### Write CSV\n\n```js\nFAKE(arrange(1, 3, 1))\nMAPVALUE(1, value(0) * 10, 'x10')\nCSV()\n```\n\n## Related\n\nfile, payload, field, charset, stringType, datetimeType, timeType, doubleType, floatType, boolType, nullValue, cache, tz\n\n## Source\n\n### Kind\n\nstatement source\n\n### Category\n\ncsv source\n\n### Signatures\n\n```text\nCSV(input, options...)\n```\n\n### Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| input | yes | no | stream|string|helper:file|helper:payload | file, payload |\n| options | no | yes | helper | field, charset, logProgress |\n\n### Description\n\nAs a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. Use `field()` helpers to declare input column types and names.\n\n### Related\n\nfile, payload, field, charset, stringType, datetimeType, timeType, doubleType, floatType, boolType\n\n## Sink\n\n### Kind\n\nstatement sink\n\n### Category\n\ncsv encoder\n\n### Signatures\n\n```text\nCSV(options...)\n```\n\n### Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| options | no | yes | helper | nullValue, cache, tz, sqlTimeformat, ansiTimeformat |\n\n### Description\n\nAs a SINK function, `CSV()` encodes incoming records as CSV lines. Time and null rendering can be adjusted with formatting helpers.\n\n### Related\n\nnullValue, cache, tz, sqlTimeformat, ansiTimeformat",
 		Related: []string{"file", "payload", "field", "charset", "stringType", "datetimeType", "timeType", "doubleType", "floatType", "boolType", "nullValue", "cache", "tz"},
+		Roles: map[string]tqlDocVariant{
+			"sink": {
+				Role: "sink",
+				Kind: "statement sink",
+				Category: "csv encoder",
+				Signatures: []tqlDocSignature{
+					{Label: "CSV(options...)", Parameters: []string{"options"}},
+				},
+				Slots: []tqlDocSlot{
+					{Name: "options", Required: false, Repeat: true, Accepts: "helper", Suggestions: []string{"nullValue", "cache", "tz", "sqlTimeformat", "ansiTimeformat"}},
+				},
+				Description: "As a SINK function, `CSV()` encodes incoming records as CSV lines. Time and null rendering can be adjusted with formatting helpers.",
+				Markdown: "# CSV\n\n## Kind\n\nstatement sink\n\n## Category\n\ncsv encoder\n\n## Signatures\n\n```text\nCSV(options...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| options | no | yes | helper | nullValue, cache, tz, sqlTimeformat, ansiTimeformat |\n\n## Description\n\nAs a SINK function, `CSV()` encodes incoming records as CSV lines. Time and null rendering can be adjusted with formatting helpers.",
+				Related: []string{"nullValue", "cache", "tz", "sqlTimeformat", "ansiTimeformat"},
+			},
+			"source": {
+				Role: "source",
+				Kind: "statement source",
+				Category: "csv source",
+				Signatures: []tqlDocSignature{
+					{Label: "CSV(input, options...)", Parameters: []string{"input", "options"}},
+				},
+				Slots: []tqlDocSlot{
+					{Name: "input", Required: true, Repeat: false, Accepts: "stream|string|helper:file|helper:payload", Suggestions: []string{"file", "payload"}},
+					{Name: "options", Required: false, Repeat: true, Accepts: "helper", Suggestions: []string{"field", "charset", "logProgress"}},
+				},
+				Description: "As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. Use `field()` helpers to declare input column types and names.",
+				Markdown: "# CSV\n\n## Kind\n\nstatement source\n\n## Category\n\ncsv source\n\n## Signatures\n\n```text\nCSV(input, options...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| input | yes | no | stream|string|helper:file|helper:payload | file, payload |\n| options | no | yes | helper | field, charset, logProgress |\n\n## Description\n\nAs a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. Use `field()` helpers to declare input column types and names.",
+				Related: []string{"file", "payload", "field", "charset", "stringType", "datetimeType", "timeType", "doubleType", "floatType", "boolType"},
+			},
+		},
 	},
 	"DISCARD": {
 		Label: "DISCARD",
@@ -608,6 +640,7 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 	},
 	"QUERY": {
 		Label: "QUERY",
+		Draft: true,
 		Kind: "statement source",
 		Category: "database source",
 		Signatures: []tqlDocSignature{
@@ -630,8 +663,38 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 			{Name: "args", Required: false, Repeat: true, Accepts: "expression", Suggestions: []string{"script options"}},
 		},
 		Description: "`SCRIPT()` supports user-defined script execution in TQL flows. The official manual points to the dedicated SCRIPT section for detailed language-specific examples.",
-		Markdown: "# SCRIPT\n\n## Kind\n\nstatement source_or_map\n\n## Category\n\nscript\n\n## Signatures\n\n```text\nSCRIPT(args...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | script options |\n\n## Description\n\n`SCRIPT()` supports user-defined script execution in TQL flows. The official manual points to the dedicated SCRIPT section for detailed language-specific examples.\n\n## Examples\n\n### Placeholder\n\n```js\nSCRIPT()\n```\n\n## Related\n\nARGS, do, context",
+		Markdown: "# SCRIPT\n\n## Kind\n\nstatement source_or_map\n\n## Category\n\nscript\n\n## Signatures\n\n```text\nSCRIPT(args...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | script options |\n\n## Description\n\n`SCRIPT()` supports user-defined script execution in TQL flows. The official manual points to the dedicated SCRIPT section for detailed language-specific examples.\n\n## Examples\n\n### Placeholder\n\n```js\nSCRIPT()\n```\n\n## Related\n\nARGS, do, context\n\n## Source\n\n### Kind\n\nstatement source\n\n### Category\n\nscript source\n\n### Signatures\n\n```text\nSCRIPT(args...)\n```\n\n### Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | script options |\n\n### Description\n\nAs a SRC function, `SCRIPT()` starts a TQL flow from user-defined script output.\n\n### Related\n\nARGS, do, context\n\n## Map\n\n### Kind\n\nstatement map\n\n### Category\n\nscript map\n\n### Signatures\n\n```text\nSCRIPT(args...)\n```\n\n### Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | script options |\n\n### Description\n\nAs a MAP function, `SCRIPT()` transforms records already flowing through the TQL pipeline.\n\n### Related\n\nARGS, do, context",
 		Related: []string{"ARGS", "do", "context"},
+		Roles: map[string]tqlDocVariant{
+			"map": {
+				Role: "map",
+				Kind: "statement map",
+				Category: "script map",
+				Signatures: []tqlDocSignature{
+					{Label: "SCRIPT(args...)", Parameters: []string{"args"}},
+				},
+				Slots: []tqlDocSlot{
+					{Name: "args", Required: false, Repeat: true, Accepts: "expression", Suggestions: []string{"script options"}},
+				},
+				Description: "As a MAP function, `SCRIPT()` transforms records already flowing through the TQL pipeline.",
+				Markdown: "# SCRIPT\n\n## Kind\n\nstatement map\n\n## Category\n\nscript map\n\n## Signatures\n\n```text\nSCRIPT(args...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | script options |\n\n## Description\n\nAs a MAP function, `SCRIPT()` transforms records already flowing through the TQL pipeline.",
+				Related: []string{"ARGS", "do", "context"},
+			},
+			"source": {
+				Role: "source",
+				Kind: "statement source",
+				Category: "script source",
+				Signatures: []tqlDocSignature{
+					{Label: "SCRIPT(args...)", Parameters: []string{"args"}},
+				},
+				Slots: []tqlDocSlot{
+					{Name: "args", Required: false, Repeat: true, Accepts: "expression", Suggestions: []string{"script options"}},
+				},
+				Description: "As a SRC function, `SCRIPT()` starts a TQL flow from user-defined script output.",
+				Markdown: "# SCRIPT\n\n## Kind\n\nstatement source\n\n## Category\n\nscript source\n\n## Signatures\n\n```text\nSCRIPT(args...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | script options |\n\n## Description\n\nAs a SRC function, `SCRIPT()` starts a TQL flow from user-defined script output.",
+				Related: []string{"ARGS", "do", "context"},
+			},
+		},
 	},
 	"SET": {
 		Label: "SET",
@@ -648,6 +711,7 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 	},
 	"SHELL": {
 		Label: "SHELL",
+		Draft: true,
 		Kind: "statement map",
 		Category: "map monad",
 		Signatures: []tqlDocSignature{

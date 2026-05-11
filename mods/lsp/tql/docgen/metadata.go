@@ -12,6 +12,19 @@ import (
 
 type parsedDoc struct {
 	Label       string
+	Draft       bool
+	Kind        string
+	Category    string
+	Signatures  []parsedSignature
+	Slots       []parsedSlot
+	Description string
+	Markdown    string
+	Related     []string
+	Roles       map[string]parsedDocVariant
+}
+
+type parsedDocVariant struct {
+	Role        string
 	Kind        string
 	Category    string
 	Signatures  []parsedSignature
@@ -69,6 +82,8 @@ func parseDocs(docRoot string, targets map[string]docTarget) ([]parsedDoc, error
 }
 
 func parseDoc(markdown string, target docTarget) (parsedDoc, error) {
+	frontmatter, body := parseFrontmatter(markdown)
+	markdown = body
 	sections := splitSections(markdown)
 	label := firstHeading(markdown)
 	if label == "" {
@@ -84,6 +99,7 @@ func parseDoc(markdown string, target docTarget) (parsedDoc, error) {
 	}
 	doc := parsedDoc{
 		Label:       label,
+		Draft:       frontmatter["draft"] == "true",
 		Kind:        strings.TrimSpace(sections["Kind"]),
 		Category:    strings.TrimSpace(sections["Category"]),
 		Signatures:  parseSignatures(sections["Signatures"]),
@@ -91,11 +107,128 @@ func parseDoc(markdown string, target docTarget) (parsedDoc, error) {
 		Description: strings.TrimSpace(sections["Description"]),
 		Markdown:    strings.TrimSpace(markdown),
 		Related:     parseCSVList(sections["Related"]),
+		Roles:       parseRoleVariants(label, sections),
 	}
 	if len(doc.Signatures) == 0 {
 		return parsedDoc{}, fmt.Errorf("missing signature")
 	}
 	return doc, nil
+}
+
+func parseFrontmatter(markdown string) (map[string]string, string) {
+	metadata := make(map[string]string)
+	markdown = strings.TrimPrefix(markdown, "\ufeff")
+	if !strings.HasPrefix(markdown, "---\n") && !strings.HasPrefix(markdown, "---\r\n") {
+		return metadata, markdown
+	}
+	lines := strings.Split(markdown, "\n")
+	end := -1
+	for idx := 1; idx < len(lines); idx++ {
+		if strings.TrimSpace(lines[idx]) == "---" {
+			end = idx
+			break
+		}
+	}
+	if end < 0 {
+		return metadata, markdown
+	}
+	for _, line := range lines[1:end] {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		metadata[strings.ToLower(strings.TrimSpace(key))] = strings.ToLower(strings.Trim(strings.TrimSpace(value), `"'`))
+	}
+	return metadata, strings.TrimLeft(strings.Join(lines[end+1:], "\n"), "\r\n")
+}
+
+func parseRoleVariants(label string, sections map[string]string) map[string]parsedDocVariant {
+	roles := make(map[string]parsedDocVariant)
+	for _, role := range []string{"source", "map", "sink"} {
+		section, ok := sections[roleTitle(role)]
+		if !ok {
+			continue
+		}
+		subsections := splitSubsections(section)
+		variant := parsedDocVariant{
+			Role:        role,
+			Kind:        sectionOrDefault(subsections, "Kind", "statement "+role),
+			Category:    sectionOrDefault(subsections, "Category", strings.TrimSpace(sections["Category"])),
+			Signatures:  parseSignatures(sectionOrDefault(subsections, "Signatures", sections["Signatures"])),
+			Slots:       parseSlots(sectionOrDefault(subsections, "Slots", sections["Slots"])),
+			Description: sectionOrDefault(subsections, "Description", sections["Description"]),
+			Related:     parseCSVList(sectionOrDefault(subsections, "Related", sections["Related"])),
+		}
+		variant.Markdown = renderVariantMarkdown(label, variant)
+		roles[role] = variant
+	}
+	if len(roles) == 0 {
+		return nil
+	}
+	return roles
+}
+
+func roleTitle(role string) string {
+	return strings.ToUpper(role[:1]) + role[1:]
+}
+
+func splitSubsections(markdown string) map[string]string {
+	sections := make(map[string]string)
+	current := ""
+	var builder strings.Builder
+	flush := func() {
+		if current != "" {
+			sections[current] = strings.TrimSpace(builder.String())
+			builder.Reset()
+		}
+	}
+	for _, line := range strings.Split(markdown, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "### ") {
+			flush()
+			current = strings.TrimSpace(strings.TrimPrefix(trimmed, "### "))
+			continue
+		}
+		if current != "" {
+			builder.WriteString(line)
+			builder.WriteByte('\n')
+		}
+	}
+	flush()
+	return sections
+}
+
+func sectionOrDefault(sections map[string]string, name string, fallback string) string {
+	if section := strings.TrimSpace(sections[name]); section != "" {
+		return section
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func renderVariantMarkdown(label string, variant parsedDocVariant) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n## Kind\n\n%s\n\n## Category\n\n%s\n\n## Signatures\n\n```text\n", label, variant.Kind, variant.Category)
+	for _, signature := range variant.Signatures {
+		fmt.Fprintln(&b, signature.Label)
+	}
+	b.WriteString("```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n")
+	if len(variant.Slots) == 0 {
+		b.WriteString("| none | no | no | none | none |\n")
+	} else {
+		for _, slot := range variant.Slots {
+			required := "no"
+			if slot.Required {
+				required = "yes"
+			}
+			repeat := "no"
+			if slot.Repeat {
+				repeat = "yes"
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", slot.Name, required, repeat, slot.Accepts, strings.Join(slot.Suggestions, ", "))
+		}
+	}
+	fmt.Fprintf(&b, "\n## Description\n\n%s\n", variant.Description)
+	return strings.TrimSpace(b.String())
 }
 
 func firstHeading(markdown string) string {
@@ -265,6 +398,9 @@ func writeGeneratedDocs(path string, docs []parsedDoc) error {
 	for _, doc := range docs {
 		fmt.Fprintf(&b, "\t%s: {\n", quote(doc.Label))
 		fmt.Fprintf(&b, "\t\tLabel: %s,\n", quote(doc.Label))
+		if doc.Draft {
+			b.WriteString("\t\tDraft: true,\n")
+		}
 		fmt.Fprintf(&b, "\t\tKind: %s,\n", quote(doc.Kind))
 		fmt.Fprintf(&b, "\t\tCategory: %s,\n", quote(doc.Category))
 		writeGeneratedSignatures(&b, doc.Signatures)
@@ -272,10 +408,63 @@ func writeGeneratedDocs(path string, docs []parsedDoc) error {
 		fmt.Fprintf(&b, "\t\tDescription: %s,\n", quote(doc.Description))
 		fmt.Fprintf(&b, "\t\tMarkdown: %s,\n", quote(doc.Markdown))
 		writeGeneratedStringSlice(&b, "Related", doc.Related, 2)
+		writeGeneratedRoles(&b, doc.Roles)
 		b.WriteString("\t},\n")
 	}
 	b.WriteString("}\n")
 	return os.WriteFile(path, b.Bytes(), 0o644)
+}
+
+func writeGeneratedRoles(b *bytes.Buffer, roles map[string]parsedDocVariant) {
+	if len(roles) == 0 {
+		return
+	}
+	names := make([]string, 0, len(roles))
+	for name := range roles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	b.WriteString("\t\tRoles: map[string]tqlDocVariant{\n")
+	for _, name := range names {
+		role := roles[name]
+		fmt.Fprintf(b, "\t\t\t%s: {\n", quote(name))
+		fmt.Fprintf(b, "\t\t\t\tRole: %s,\n", quote(role.Role))
+		fmt.Fprintf(b, "\t\t\t\tKind: %s,\n", quote(role.Kind))
+		fmt.Fprintf(b, "\t\t\t\tCategory: %s,\n", quote(role.Category))
+		writeGeneratedVariantSignatures(b, role.Signatures)
+		writeGeneratedVariantSlots(b, role.Slots)
+		fmt.Fprintf(b, "\t\t\t\tDescription: %s,\n", quote(role.Description))
+		fmt.Fprintf(b, "\t\t\t\tMarkdown: %s,\n", quote(role.Markdown))
+		writeGeneratedStringSlice(b, "Related", role.Related, 4)
+		b.WriteString("\t\t\t},\n")
+	}
+	b.WriteString("\t\t},\n")
+}
+
+func writeGeneratedVariantSignatures(b *bytes.Buffer, signatures []parsedSignature) {
+	b.WriteString("\t\t\t\tSignatures: []tqlDocSignature{\n")
+	for _, signature := range signatures {
+		fmt.Fprintf(b, "\t\t\t\t\t{Label: %s", quote(signature.Label))
+		if len(signature.Parameters) > 0 {
+			b.WriteString(", Parameters: ")
+			writeInlineStringSlice(b, signature.Parameters)
+		}
+		b.WriteString("},\n")
+	}
+	b.WriteString("\t\t\t\t},\n")
+}
+
+func writeGeneratedVariantSlots(b *bytes.Buffer, slots []parsedSlot) {
+	b.WriteString("\t\t\t\tSlots: []tqlDocSlot{\n")
+	for _, slot := range slots {
+		fmt.Fprintf(b, "\t\t\t\t\t{Name: %s, Required: %t, Repeat: %t, Accepts: %s", quote(slot.Name), slot.Required, slot.Repeat, quote(slot.Accepts))
+		if len(slot.Suggestions) > 0 {
+			b.WriteString(", Suggestions: ")
+			writeInlineStringSlice(b, slot.Suggestions)
+		}
+		b.WriteString("},\n")
+	}
+	b.WriteString("\t\t\t\t},\n")
 }
 
 func writeGeneratedSignatures(b *bytes.Buffer, signatures []parsedSignature) {

@@ -15,6 +15,7 @@ type Service struct {
 	metadata base.Metadata
 	items    []base.CompletionItem
 	hovers   map[string]string
+	symbols  map[string]base.SymbolInfo
 }
 
 var tqlLanguageSymbols = []base.SymbolInfo{
@@ -112,6 +113,7 @@ func NewService() *Service {
 	metadata := BuildMetadata()
 	items := make([]base.CompletionItem, 0, len(metadata.Symbols))
 	hovers := make(map[string]string, len(metadata.Symbols))
+	symbols := make(map[string]base.SymbolInfo, len(metadata.Symbols))
 	for _, symbol := range metadata.Symbols {
 		insertText := symbol.InsertText
 		if insertText == "" {
@@ -125,12 +127,16 @@ func NewService() *Service {
 			InsertText:    insertText,
 		})
 		hovers[symbol.Label] = hoverContents(symbol)
+		symbols[symbol.Label] = symbol
 		upperLabel := strings.ToUpper(symbol.Label)
 		if _, exists := hovers[upperLabel]; !exists {
 			hovers[upperLabel] = hoverContents(symbol)
 		}
+		if _, exists := symbols[upperLabel]; !exists {
+			symbols[upperLabel] = symbol
+		}
 	}
-	return &Service{metadata: metadata, items: items, hovers: hovers}
+	return &Service{metadata: metadata, items: items, hovers: hovers, symbols: symbols}
 }
 
 func BuildMetadata() base.Metadata {
@@ -140,6 +146,9 @@ func BuildMetadata() base.Metadata {
 	for _, def := range coretql.FxDefinitions {
 		if strings.HasPrefix(def.Name, "//") {
 			category = strings.TrimSpace(strings.TrimPrefix(def.Name, "//"))
+			continue
+		}
+		if doc, ok := generatedTqlDocs[def.Name]; ok && doc.Draft {
 			continue
 		}
 		documentation := tqlFunctionDocumentation(def.Name, category)
@@ -199,7 +208,14 @@ func insertText(label string) string {
 }
 
 func hoverContents(symbol base.SymbolInfo) string {
+	return hoverContentsForRole(symbol, "")
+}
+
+func hoverContentsForRole(symbol base.SymbolInfo, role string) string {
 	if doc, ok := generatedTqlDocs[symbol.Label]; ok && tqlDocHasContent(doc) {
+		if variant, ok := tqlDocVariantForRole(doc, role); ok && tqlDocVariantHasContent(variant) {
+			return variant.Markdown
+		}
 		return doc.Markdown
 	}
 	contents := symbol.Label + "\n\n" + symbol.Documentation + "\n\nCategory: " + symbol.Category
@@ -214,26 +230,54 @@ func tqlDocHasContent(doc tqlDocInfo) bool {
 	return description != "" && !strings.EqualFold(description, "TODO")
 }
 
+func tqlDocVariantHasContent(doc tqlDocVariant) bool {
+	description := strings.TrimSpace(doc.Description)
+	return description != "" && !strings.EqualFold(description, "TODO")
+}
+
+func tqlDocVariantForRole(doc tqlDocInfo, role string) (tqlDocVariant, bool) {
+	if role == "" || len(doc.Roles) == 0 {
+		return tqlDocVariant{}, false
+	}
+	variant, ok := doc.Roles[role]
+	return variant, ok
+}
+
 func signatureFromDoc(doc tqlDocInfo) *base.SignatureInfo {
-	if len(doc.Signatures) == 0 {
+	return signatureFromDocVariant(doc.Description, doc.Signatures, doc.Slots)
+}
+
+func signatureFromDocForRole(doc tqlDocInfo, role string) *base.SignatureInfo {
+	if variant, ok := tqlDocVariantForRole(doc, role); ok && tqlDocVariantHasContent(variant) {
+		return signatureFromDocVariant(variant.Description, variant.Signatures, variant.Slots)
+	}
+	return signatureFromDoc(doc)
+}
+
+func signatureFromDocVariant(description string, signatures []tqlDocSignature, slots []tqlDocSlot) *base.SignatureInfo {
+	if len(signatures) == 0 {
 		return nil
 	}
-	signature := doc.Signatures[0]
-	info := &base.SignatureInfo{Label: signature.Label, Documentation: doc.Description}
+	signature := signatures[0]
+	info := &base.SignatureInfo{Label: signature.Label, Documentation: description}
 	for _, label := range signature.Parameters {
-		info.Parameters = append(info.Parameters, base.ParameterInfo{Label: label, Documentation: docSlotDocumentation(doc, label)})
+		info.Parameters = append(info.Parameters, base.ParameterInfo{Label: label, Documentation: slotDocumentation(slots, label)})
 	}
 	if len(info.Parameters) == 0 {
-		for _, slot := range doc.Slots {
-			info.Parameters = append(info.Parameters, base.ParameterInfo{Label: slot.Name, Documentation: docSlotDocumentation(doc, slot.Name)})
+		for _, slot := range slots {
+			info.Parameters = append(info.Parameters, base.ParameterInfo{Label: slot.Name, Documentation: slotDocumentation(slots, slot.Name)})
 		}
 	}
 	return info
 }
 
 func docSlotDocumentation(doc tqlDocInfo, name string) string {
+	return slotDocumentation(doc.Slots, name)
+}
+
+func slotDocumentation(slots []tqlDocSlot, name string) string {
 	trimmedName := strings.TrimSuffix(name, "...")
-	for _, slot := range doc.Slots {
+	for _, slot := range slots {
 		if slot.Name != trimmedName {
 			continue
 		}
@@ -382,7 +426,8 @@ func (svc *Service) completionItemsForArgument(text string, pos base.Position) [
 	if !ok || len(doc.Slots) == 0 {
 		return nil
 	}
-	suggestions := suggestionsForCallSlot(doc, call)
+	variant, variantOK := tqlDocVariantForRole(doc, statementRoleAtPosition(text, pos))
+	suggestions := suggestionsForCallSlot(doc, variant, variantOK, call)
 	items := make([]base.CompletionItem, 0, len(suggestions))
 	for _, suggestion := range suggestions {
 		if item, ok := svc.completionItemForSuggestion(suggestion); ok {
@@ -392,12 +437,16 @@ func (svc *Service) completionItemsForArgument(text string, pos base.Position) [
 	return items
 }
 
-func suggestionsForCallSlot(doc tqlDocInfo, call callContext) []string {
-	slotNames := activeSlotNames(doc, call)
+func suggestionsForCallSlot(doc tqlDocInfo, variant tqlDocVariant, hasVariant bool, call callContext) []string {
+	slots := doc.Slots
+	if hasVariant {
+		slots = variant.Slots
+	}
+	slotNames := activeSlotNames(doc, variant, hasVariant, call)
 	seen := make(map[string]bool)
 	suggestions := make([]string, 0)
 	for _, slotName := range slotNames {
-		for _, slot := range doc.Slots {
+		for _, slot := range slots {
 			if slot.Name != slotName {
 				continue
 			}
@@ -412,7 +461,11 @@ func suggestionsForCallSlot(doc tqlDocInfo, call callContext) []string {
 	return suggestions
 }
 
-func activeSlotNames(doc tqlDocInfo, call callContext) []string {
+func activeSlotNames(doc tqlDocInfo, variant tqlDocVariant, hasVariant bool, call callContext) []string {
+	slots := doc.Slots
+	if hasVariant {
+		slots = variant.Slots
+	}
 	switch doc.Label {
 	case "SQL":
 		if call.activeParameter == 0 {
@@ -437,15 +490,62 @@ func activeSlotNames(doc tqlDocInfo, call callContext) []string {
 		}
 		return []string{"options"}
 	}
-	if call.activeParameter < len(doc.Slots) {
-		return []string{doc.Slots[call.activeParameter].Name}
+	if call.activeParameter < len(slots) {
+		return []string{slots[call.activeParameter].Name}
 	}
-	for _, slot := range doc.Slots {
+	for _, slot := range slots {
 		if slot.Repeat {
 			return []string{slot.Name}
 		}
 	}
 	return nil
+}
+
+func statementRoleAtPosition(text string, pos base.Position) string {
+	type statementLine struct {
+		line int
+		name string
+	}
+	lines := strings.Split(text, "\n")
+	statements := make([]statementLine, 0)
+	for lineIndex, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		nameEnd := 0
+		for nameEnd < len(trimmed) {
+			r := rune(trimmed[nameEnd])
+			if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
+				break
+			}
+			nameEnd++
+		}
+		if nameEnd == 0 || nameEnd >= len(trimmed) || trimmed[nameEnd] != '(' {
+			continue
+		}
+		statements = append(statements, statementLine{line: lineIndex, name: strings.ToUpper(trimmed[:nameEnd])})
+	}
+	if len(statements) == 0 {
+		return ""
+	}
+	line := pos.Line - 1
+	statementIndex := -1
+	for idx, statement := range statements {
+		if statement.line <= line {
+			statementIndex = idx
+		}
+	}
+	if statementIndex < 0 {
+		return ""
+	}
+	if statementIndex == 0 {
+		return "source"
+	}
+	if statementIndex == len(statements)-1 {
+		return "sink"
+	}
+	return "map"
 }
 
 func isHelperCall(value string, name string) bool {
@@ -511,11 +611,12 @@ func mergeCompletionItems(prioritized []base.CompletionItem, fallback []base.Com
 func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Position) (*base.Hover, error) {
 	word, rng := wordAtPosition(doc.Text, pos)
 	if word != "" {
-		contents, ok := svc.hovers[word]
+		symbol, ok := svc.symbols[word]
 		if !ok {
-			contents, ok = svc.hovers[strings.ToUpper(word)]
+			symbol, ok = svc.symbols[strings.ToUpper(word)]
 		}
 		if ok {
+			contents := hoverContentsForRole(symbol, statementRoleAtPosition(doc.Text, pos))
 			return &base.Hover{Range: rng, Contents: contents}, nil
 		}
 	}
@@ -534,6 +635,11 @@ func (svc *Service) SignatureHelp(_ context.Context, doc base.Document, pos base
 		return nil, nil
 	}
 	callee = strings.ToUpper(callee)
+	if docInfo, ok := generatedTqlDocs[callee]; ok && !docInfo.Draft {
+		if signature := signatureFromDocForRole(docInfo, statementRoleAtPosition(doc.Text, pos)); signature != nil {
+			return signatureHelp(signature, activeParameter), nil
+		}
+	}
 	for _, symbol := range svc.metadata.Symbols {
 		if strings.ToUpper(strings.TrimSuffix(symbol.Label, "()")) == callee && symbol.Signature != nil {
 			return signatureHelp(symbol.Signature, activeParameter), nil

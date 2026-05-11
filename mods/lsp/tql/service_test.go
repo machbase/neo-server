@@ -186,10 +186,16 @@ func TestCompletionPrioritizesDocumentSlotSuggestions(t *testing.T) {
 			labels:   []string{"value", "key", "param", "time"},
 		},
 		{
-			name:     "csv options",
+			name:     "csv source options",
 			code:     "CSV(",
 			position: base.Position{Line: 1, Column: len("CSV(") + 1},
 			labels:   []string{"file", "payload", "field", "charset"},
+		},
+		{
+			name:     "csv sink options",
+			code:     "FAKE(linspace(1, 3, 3))\nCSV(",
+			position: base.Position{Line: 2, Column: len("CSV(") + 1},
+			labels:   []string{"nullValue", "cache", "tz", "sqlTimeformat", "ansiTimeformat"},
 		},
 	}
 	for _, tc := range cases {
@@ -306,7 +312,7 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			name:     "encoder source or sink hover",
 			code:     "FAKE(json({[1]}))\nCSV()",
 			position: base.Position{Line: 2, Column: 2},
-			expect:   "# CSV\n\n## Kind\n\nstatement source_or_sink",
+			expect:   "# CSV\n\n## Kind\n\nstatement sink",
 		},
 		{
 			name:     "http param hover",
@@ -360,17 +366,31 @@ func TestWebUIMessageForTqlContexts(t *testing.T) {
 			},
 		},
 		{
-			name:     "sink function first argument",
+			name:     "source csv first argument",
 			code:     "CSV(",
 			position: base.Position{Line: 1, Column: len("CSV(") + 1},
 			expect: expectedSignatureHelp{
 				label:           "CSV(input, options...)",
-				documentation:   "As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. As a SINK function, `CSV()` encodes incoming records as CSV lines. Sink output is terminated by two consecutive newlines.",
+				documentation:   "As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. Use `field()` helpers to declare input column types and names.",
 				activeSignature: 0,
 				activeParameter: 0,
 				parameters: []base.ParameterInfo{
-					{Label: "input", Documentation: "accepts stream|string|helper:file|helper:payload; suggestions: file, payload"},
-					{Label: "options", Documentation: "accepts helper; repeatable; suggestions: field, charset, logProgress, nullValue, cache, tz, sqlTimeformat, ansiTimeformat"},
+					{Label: "input", Documentation: "accepts stream|string|helper:file|helper:payload; required; suggestions: file, payload"},
+					{Label: "options", Documentation: "accepts helper; repeatable; suggestions: field, charset, logProgress"},
+				},
+			},
+		},
+		{
+			name:     "sink csv options",
+			code:     "FAKE(linspace(1, 3, 3))\nCSV(",
+			position: base.Position{Line: 2, Column: len("CSV(") + 1},
+			expect: expectedSignatureHelp{
+				label:           "CSV(options...)",
+				documentation:   "As a SINK function, `CSV()` encodes incoming records as CSV lines. Time and null rendering can be adjusted with formatting helpers.",
+				activeSignature: 0,
+				activeParameter: 0,
+				parameters: []base.ParameterInfo{
+					{Label: "options", Documentation: "accepts helper; repeatable; suggestions: nullValue, cache, tz, sqlTimeformat, ansiTimeformat"},
 				},
 			},
 		},

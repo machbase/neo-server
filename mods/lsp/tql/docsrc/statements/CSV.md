@@ -51,3 +51,64 @@ CSV()
 ## Related
 
 file, payload, field, charset, stringType, datetimeType, timeType, doubleType, floatType, boolType, nullValue, cache, tz
+
+## Source
+
+### Kind
+
+statement source
+
+### Category
+
+csv source
+
+### Signatures
+
+```text
+CSV(input, options...)
+```
+
+### Slots
+
+| Slot | Required | Repeat | Accepts | Suggestions |
+| --- | --- | --- | --- | --- |
+| input | yes | no | stream|string|helper:file|helper:payload | file, payload |
+| options | no | yes | helper | field, charset, logProgress |
+
+### Description
+
+As a SRC function, `CSV()` reads CSV data from `file()`, `payload()`, or inline content and yields records. Use `field()` helpers to declare input column types and names.
+
+### Related
+
+file, payload, field, charset, stringType, datetimeType, timeType, doubleType, floatType, boolType
+
+## Sink
+
+### Kind
+
+statement sink
+
+### Category
+
+csv encoder
+
+### Signatures
+
+```text
+CSV(options...)
+```
+
+### Slots
+
+| Slot | Required | Repeat | Accepts | Suggestions |
+| --- | --- | --- | --- | --- |
+| options | no | yes | helper | nullValue, cache, tz, sqlTimeformat, ansiTimeformat |
+
+### Description
+
+As a SINK function, `CSV()` encodes incoming records as CSV lines. Time and null rendering can be adjusted with formatting helpers.
+
+### Related
+
+nullValue, cache, tz, sqlTimeformat, ansiTimeformat

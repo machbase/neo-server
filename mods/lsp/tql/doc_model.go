@@ -2,6 +2,19 @@ package tql
 
 type tqlDocInfo struct {
 	Label       string
+	Draft       bool
+	Kind        string
+	Category    string
+	Signatures  []tqlDocSignature
+	Slots       []tqlDocSlot
+	Description string
+	Markdown    string
+	Related     []string
+	Roles       map[string]tqlDocVariant
+}
+
+type tqlDocVariant struct {
+	Role        string
 	Kind        string
 	Category    string
 	Signatures  []tqlDocSignature

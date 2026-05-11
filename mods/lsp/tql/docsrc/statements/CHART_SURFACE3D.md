@@ -1,3 +1,7 @@
+---
+draft: true
+---
+
 # CHART_SURFACE3D
 
 ## Kind

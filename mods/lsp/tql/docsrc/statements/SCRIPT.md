@@ -35,3 +35,63 @@ SCRIPT()
 ## Related
 
 ARGS, do, context
+
+## Source
+
+### Kind
+
+statement source
+
+### Category
+
+script source
+
+### Signatures
+
+```text
+SCRIPT(args...)
+```
+
+### Slots
+
+| Slot | Required | Repeat | Accepts | Suggestions |
+| --- | --- | --- | --- | --- |
+| args | no | yes | expression | script options |
+
+### Description
+
+As a SRC function, `SCRIPT()` starts a TQL flow from user-defined script output.
+
+### Related
+
+ARGS, do, context
+
+## Map
+
+### Kind
+
+statement map
+
+### Category
+
+script map
+
+### Signatures
+
+```text
+SCRIPT(args...)
+```
+
+### Slots
+
+| Slot | Required | Repeat | Accepts | Suggestions |
+| --- | --- | --- | --- | --- |
+| args | no | yes | expression | script options |
+
+### Description
+
+As a MAP function, `SCRIPT()` transforms records already flowing through the TQL pipeline.
+
+### Related
+
+ARGS, do, context
