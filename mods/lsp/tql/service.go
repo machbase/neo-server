@@ -33,7 +33,11 @@ func NewService() *Service {
 			Documentation: symbol.Documentation,
 			InsertText:    insertText,
 		})
-		hovers[strings.ToUpper(symbol.Label)] = hoverContents(symbol)
+		hovers[symbol.Label] = hoverContents(symbol)
+		upperLabel := strings.ToUpper(symbol.Label)
+		if _, exists := hovers[upperLabel]; !exists {
+			hovers[upperLabel] = hoverContents(symbol)
+		}
 	}
 	return &Service{metadata: metadata, items: items, hovers: hovers}
 }
@@ -142,7 +146,10 @@ func (svc *Service) Hover(_ context.Context, doc base.Document, pos base.Positio
 	if word == "" {
 		return nil, nil
 	}
-	contents, ok := svc.hovers[strings.ToUpper(word)]
+	contents, ok := svc.hovers[word]
+	if !ok {
+		contents, ok = svc.hovers[strings.ToUpper(word)]
+	}
 	if !ok {
 		return nil, nil
 	}

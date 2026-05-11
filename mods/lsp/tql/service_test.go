@@ -2,6 +2,7 @@ package tql
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	base "github.com/machbase/neo-server/v8/mods/lsp"
@@ -142,13 +143,164 @@ func TestSignatureHelpReturnsTqlFunctionInfo(t *testing.T) {
 	}
 }
 
+func TestWebUIMessageForTqlContexts(t *testing.T) {
+	svc := NewService()
+	ctx := context.Background()
+
+	completionCases := []webUICompletionCase{
+		{
+			name:     "generator source completion",
+			code:     "FA",
+			position: base.Position{Line: 1, Column: len("FA") + 1},
+			label:    "FAKE",
+			expect: expectedCompletionItem{
+				kind:          base.CompletionFunction,
+				detail:        "generator",
+				documentation: "TQL function",
+				insertText:    "FAKE()",
+			},
+		},
+		{
+			name:     "encoder sink completion",
+			code:     "CSV",
+			position: base.Position{Line: 1, Column: len("CSV") + 1},
+			label:    "CSV",
+			expect: expectedCompletionItem{
+				kind:          base.CompletionFunction,
+				detail:        "encoder",
+				documentation: "TQL function",
+				insertText:    "CSV()",
+			},
+		},
+	}
+	for _, tc := range completionCases {
+		t.Run("completion/"+tc.name, func(t *testing.T) {
+			items, err := svc.Completion(ctx, base.Document{Language: base.LanguageTQL, Text: tc.code}, tc.position)
+			if err != nil {
+				t.Fatalf("Completion returned error: %v", err)
+			}
+			item := findCompletion(items, tc.label)
+			if item == nil {
+				t.Fatalf("expected %q completion", tc.label)
+			}
+			assertCompletionItem(t, item, tc.expect)
+		})
+	}
+
+	hoverCases := []webUIHoverCase{
+		{
+			name:     "generator source hover",
+			code:     "FAKE(json({[1]}))\nCSV()",
+			position: base.Position{Line: 1, Column: 2},
+			expect:   "FAKE\n\nTQL function\n\nCategory: generator\n\nStatement: source",
+		},
+		{
+			name:     "encoder source or sink hover",
+			code:     "FAKE(json({[1]}))\nCSV()",
+			position: base.Position{Line: 2, Column: 2},
+			expect:   "CSV\n\nTQL function\n\nCategory: encoder\n\nStatement: source_or_sink",
+		},
+	}
+	for _, tc := range hoverCases {
+		t.Run("hover/"+tc.name, func(t *testing.T) {
+			hover, err := svc.Hover(ctx, base.Document{Language: base.LanguageTQL, Text: tc.code}, tc.position)
+			if err != nil {
+				t.Fatalf("Hover returned error: %v", err)
+			}
+			if hover == nil {
+				t.Fatal("expected hover")
+			}
+			if hover.Contents != tc.expect {
+				t.Fatalf("unexpected hover contents:\nwant %q\n got %q", tc.expect, hover.Contents)
+			}
+		})
+	}
+
+	signatureCases := []webUISignatureCase{
+		{
+			name:     "map function after first argument",
+			code:     "MAPVALUE(0, value(0))",
+			position: base.Position{Line: 1, Column: strings.Index("MAPVALUE(0, value(0))", ",") + 2},
+			expect: expectedSignatureHelp{
+				label:           "MAPVALUE(...)",
+				documentation:   "TQL function",
+				activeSignature: 0,
+				activeParameter: 0,
+				parameters:      []base.ParameterInfo{{Label: "args", Documentation: "Function arguments"}},
+			},
+		},
+		{
+			name:     "sink function first argument",
+			code:     "CSV(",
+			position: base.Position{Line: 1, Column: len("CSV(") + 1},
+			expect: expectedSignatureHelp{
+				label:           "CSV(...)",
+				documentation:   "TQL function",
+				activeSignature: 0,
+				activeParameter: 0,
+				parameters:      []base.ParameterInfo{{Label: "args", Documentation: "Function arguments"}},
+			},
+		},
+	}
+	for _, tc := range signatureCases {
+		t.Run("signature/"+tc.name, func(t *testing.T) {
+			help, err := svc.SignatureHelp(ctx, base.Document{Language: base.LanguageTQL, Text: tc.code}, tc.position)
+			if err != nil {
+				t.Fatalf("SignatureHelp returned error: %v", err)
+			}
+			assertSignatureHelp(t, help, tc.expect)
+		})
+	}
+}
+
+type webUICompletionCase struct {
+	name     string
+	code     string
+	position base.Position
+	label    string
+	expect   expectedCompletionItem
+}
+
+type expectedCompletionItem struct {
+	kind          base.CompletionItemKind
+	detail        string
+	documentation string
+	insertText    string
+}
+
+type webUIHoverCase struct {
+	name     string
+	code     string
+	position base.Position
+	expect   string
+}
+
+type webUISignatureCase struct {
+	name     string
+	code     string
+	position base.Position
+	expect   expectedSignatureHelp
+}
+
+type expectedSignatureHelp struct {
+	label           string
+	documentation   string
+	activeSignature int
+	activeParameter int
+	parameters      []base.ParameterInfo
+}
+
 func hasCompletion(items []base.CompletionItem, label string) bool {
+	return findCompletion(items, label) != nil
+}
+
+func findCompletion(items []base.CompletionItem, label string) *base.CompletionItem {
 	for _, item := range items {
 		if item.Label == label {
-			return true
+			return &item
 		}
 	}
-	return false
+	return nil
 }
 
 func hasKeyword(items []base.KeywordInfo, label string) bool {
@@ -176,4 +328,49 @@ func hasSymbolSignature(items []base.SymbolInfo, label string) bool {
 		}
 	}
 	return false
+}
+
+func assertCompletionItem(t *testing.T, item *base.CompletionItem, expect expectedCompletionItem) {
+	t.Helper()
+	if item.Kind != expect.kind {
+		t.Fatalf("expected completion kind %d, got %d", expect.kind, item.Kind)
+	}
+	if item.Detail != expect.detail {
+		t.Fatalf("expected completion detail %q, got %q", expect.detail, item.Detail)
+	}
+	if item.Documentation != expect.documentation {
+		t.Fatalf("expected completion documentation %q, got %q", expect.documentation, item.Documentation)
+	}
+	if item.InsertText != expect.insertText {
+		t.Fatalf("expected completion insertText %q, got %q", expect.insertText, item.InsertText)
+	}
+}
+
+func assertSignatureHelp(t *testing.T, help *base.SignatureHelp, expect expectedSignatureHelp) {
+	t.Helper()
+	if help == nil || len(help.Signatures) != 1 {
+		t.Fatalf("expected one signature help item, got %+v", help)
+	}
+	if help.ActiveSignature != expect.activeSignature {
+		t.Fatalf("expected active signature %d, got %d", expect.activeSignature, help.ActiveSignature)
+	}
+	if help.ActiveParameter != expect.activeParameter {
+		t.Fatalf("expected active parameter %d, got %d", expect.activeParameter, help.ActiveParameter)
+	}
+	signature := help.Signatures[0]
+	if signature.Label != expect.label {
+		t.Fatalf("expected signature label %q, got %q", expect.label, signature.Label)
+	}
+	if signature.Documentation != expect.documentation {
+		t.Fatalf("expected signature documentation %q, got %q", expect.documentation, signature.Documentation)
+	}
+	if len(signature.Parameters) != len(expect.parameters) {
+		t.Fatalf("expected %d signature parameters, got %d", len(expect.parameters), len(signature.Parameters))
+	}
+	for idx, expected := range expect.parameters {
+		actual := signature.Parameters[idx]
+		if actual.Label != expected.Label || actual.Documentation != expected.Documentation {
+			t.Fatalf("unexpected signature parameter %d: want %+v got %+v", idx, expected, actual)
+		}
+	}
 }
