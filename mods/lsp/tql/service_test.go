@@ -90,8 +90,8 @@ func TestBuildMetadataIncludesTqlFunctions(t *testing.T) {
 	if !hasSymbolStatementKind(metadata.Symbols, "CSV", "source_or_sink") {
 		t.Fatal("expected CSV source_or_sink symbol")
 	}
-	if !hasSymbolStatementKind(metadata.Symbols, "CHART_SURFACE3D", "sink") {
-		t.Fatal("expected CHART_SURFACE3D sink symbol")
+	if !hasSymbolStatementKind(metadata.Symbols, "CHART", "sink") {
+		t.Fatal("expected CHART sink symbol")
 	}
 	if !hasSymbolSignature(metadata.Symbols, "MAPVALUE") {
 		t.Fatal("expected MAPVALUE signature")
