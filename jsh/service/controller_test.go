@@ -148,6 +148,35 @@ func TestControllerStopServiceReturnsUpdatedStatus(t *testing.T) {
 	}
 }
 
+func TestControllerStopServiceEmitsLifecycleEvent(t *testing.T) {
+	ctl := &Controller{
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{Name: "svc-a", Enable: true, Executable: "echo"},
+				Status: ServiceStatusRunning,
+			},
+		},
+	}
+	events := make(chan ServiceLifecycleEvent, 1)
+	ctl.OnServiceLifecycle(func(event ServiceLifecycleEvent) {
+		events <- event
+	})
+
+	_, err := ctl.StopService("svc-a")
+	if err != nil {
+		t.Fatalf("StopService() error: %v", err)
+	}
+
+	select {
+	case event := <-events:
+		if event.Name != "svc-a" || event.Action != ServiceLifecycleStopped || event.Error != nil {
+			t.Fatalf("event=%+v, want svc-a stopped without error", event)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for lifecycle event")
+	}
+}
+
 func TestControllerStopServiceNoDeadlockOnWaitGoroutineLockContention(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip on windows due to sleep command compatibility")

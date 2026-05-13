@@ -35,6 +35,18 @@ type ControllerSharedFSConfig struct {
 	MountPoint string
 }
 
+type ServiceLifecycleAction string
+
+const (
+	ServiceLifecycleStopped ServiceLifecycleAction = "stopped"
+)
+
+type ServiceLifecycleEvent struct {
+	Name   string
+	Action ServiceLifecycleAction
+	Error  error
+}
+
 var errServiceMustBeStopped = errors.New("service must be stopped before uninstall")
 
 func NewController(opt *ControllerConfig) (*Controller, error) {
@@ -99,6 +111,8 @@ type Controller struct {
 	sharedFS         *engine.VirtualFS
 	sharedFDs        map[int]*sharedFileHandle
 	sharedNextFD     int
+	lifecycleMu      sync.RWMutex
+	lifecycleHooks   []func(ServiceLifecycleEvent)
 	rpcConfigAddr    string
 	rpcListenAddr    string
 	rpcWG            sync.WaitGroup
@@ -108,6 +122,24 @@ type Controller struct {
 	rpcMetrics       controllerRPCMetrics
 	jsonRpcHandlers  map[string]any
 	llmSessions      map[string]*llmSession
+}
+
+func (ctl *Controller) OnServiceLifecycle(hook func(ServiceLifecycleEvent)) {
+	if hook == nil {
+		return
+	}
+	ctl.lifecycleMu.Lock()
+	defer ctl.lifecycleMu.Unlock()
+	ctl.lifecycleHooks = append(ctl.lifecycleHooks, hook)
+}
+
+func (ctl *Controller) emitServiceLifecycle(event ServiceLifecycleEvent) {
+	ctl.lifecycleMu.RLock()
+	hooks := append([]func(ServiceLifecycleEvent){}, ctl.lifecycleHooks...)
+	ctl.lifecycleMu.RUnlock()
+	for _, hook := range hooks {
+		hook(event)
+	}
 }
 
 type controllerRPCMetrics struct {
@@ -413,6 +445,7 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 	myCmd := svc.cmd
 	myStartCh := svc.startCh
 	myStopCh := svc.stopCh
+	serviceName := svc.Config.Name
 	go func() {
 		close(myStartCh)
 		err := myCmd.Wait()
@@ -429,17 +462,22 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 		// Signal waiters before acquiring controller lock to avoid lock-wait cycles.
 		close(myStopCh)
 		ctl.mu.Lock()
-		defer ctl.mu.Unlock()
 		ctl.cleanupSharedFDsByOwner(clientID)
 		// Only update service state when we are still the active instance.
 		// If Update/Reload re-started the service while we were waiting, svc.stopCh
 		// will point to a newer channel and we must not clobber the new state.
 		if svc.stopCh != myStopCh {
+			ctl.mu.Unlock()
 			return
 		}
+		controlledStop := svc.Status == ServiceStatusStopping
 		svc.ExitCode = exitCode
 		svc.Status = ServiceStatusStopped
 		svc.sharedClientID = ""
+		ctl.mu.Unlock()
+		if !controlledStop {
+			ctl.emitServiceLifecycle(ServiceLifecycleEvent{Name: serviceName, Action: ServiceLifecycleStopped, Error: err})
+		}
 	}()
 	<-myStartCh
 }
@@ -447,12 +485,17 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	sc.StopError = nil
 	svc.Config.StopError = nil
+	serviceName := svc.Config.Name
+	statusBefore := svc.Status
 
 	if svc.Status != ServiceStatusRunning && svc.Status != ServiceStatusStarting {
 		if svc.cmd == nil {
 			svc.Status = ServiceStatusStopped
 			ctl.cleanupSharedFDsByOwner(svc.sharedClientID)
 			svc.sharedClientID = ""
+		}
+		if statusBefore != ServiceStatusStopped {
+			ctl.emitServiceLifecycle(ServiceLifecycleEvent{Name: serviceName, Action: ServiceLifecycleStopped})
 		}
 		return
 	}
@@ -462,6 +505,7 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 		svc.Error = nil
 		ctl.cleanupSharedFDsByOwner(svc.sharedClientID)
 		svc.sharedClientID = ""
+		ctl.emitServiceLifecycle(ServiceLifecycleEvent{Name: serviceName, Action: ServiceLifecycleStopped})
 		return
 	}
 
@@ -476,6 +520,7 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	<-svc.stopCh
 	svc.Status = ServiceStatusStopped
 	svc.Error = nil
+	ctl.emitServiceLifecycle(ServiceLifecycleEvent{Name: serviceName, Action: ServiceLifecycleStopped})
 }
 
 func newSharedClientID(serviceName string) string {

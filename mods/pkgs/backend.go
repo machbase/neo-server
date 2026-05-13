@@ -23,7 +23,6 @@ type PkgBackend struct {
 	StdoutLog    string            `yaml:"stdout_log,omitempty"`
 	StderrLog    string            `yaml:"stderr_log,omitempty"`
 	Env          []string          `yaml:"env,omitempty"`
-	HttpProxy    *HttpProxy        `yaml:"http_proxy,omitempty"`
 
 	installEnv  []string
 	mergedEnv   []string
@@ -228,23 +227,9 @@ func (ps *PkgBackend) Stop() {
 	ps.stop0()
 }
 
-type SetBackendRequest struct {
-	HttpProxy *HttpProxy `json:"http_proxy,omitempty"`
-}
+type SetBackendRequest struct{}
 
 func (ps *PkgBackend) SetBackend(req *SetBackendRequest) {
-	ps.Lock()
-	defer ps.Unlock()
-	if req.HttpProxy != nil {
-		if ps.HttpProxy == nil {
-			ps.HttpProxy = &HttpProxy{}
-		}
-		ps.HttpProxy.Prefix = req.HttpProxy.Prefix
-		ps.HttpProxy.Address = req.HttpProxy.Address
-		ps.HttpProxy.StripPrefix = req.HttpProxy.StripPrefix
-		ps.HttpProxy.proxy = nil
-		ps.log.Debugf("set backend %+v", ps.HttpProxy)
-	}
 }
 
 func (ps *PkgBackend) Status() PkgStatus {

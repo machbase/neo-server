@@ -591,6 +591,140 @@ func TestServiceCommandDetailsSetRejectsInvalidTypeInput(t *testing.T) {
 	}
 }
 
+func TestServiceCommandProxyCommands(t *testing.T) {
+	const serviceName = "github.com/acme/chart"
+	entry := map[string]any{
+		"service":      serviceName,
+		"prefix":       "/api/",
+		"target":       "http://127.0.0.1:18080",
+		"strip_prefix": "/web/services/github.com/acme/chart",
+		"health_path":  "/healthz",
+	}
+	methods := []string{}
+	addr, shutdown := startMockServiceRPCServer(t, func(req serviceRPCRequest) any {
+		methods = append(methods, req.Method)
+		switch req.Method {
+		case "proxy.register":
+			var params map[string]any
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				t.Fatalf("unmarshal register params: %v", err)
+			}
+			if params["service"] != serviceName || params["prefix"] != "/api/" || params["target"] != "http://127.0.0.1:18080" {
+				t.Fatalf("register params=%v", params)
+			}
+			if params["strip_prefix"] != "/web/services/github.com/acme/chart" || params["health_path"] != "/healthz" {
+				t.Fatalf("register optional params=%v", params)
+			}
+			return entry
+		case "proxy.get":
+			var params map[string]any
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				t.Fatalf("unmarshal get params: %v", err)
+			}
+			if params["service"] != serviceName || params["prefix"] != "/api/" {
+				t.Fatalf("get params=%v", params)
+			}
+			return entry
+		case "proxy.list":
+			var service string
+			if err := json.Unmarshal(req.Params, &service); err != nil {
+				t.Fatalf("unmarshal list params: %v", err)
+			}
+			if service != serviceName {
+				t.Fatalf("list service=%q, want %q", service, serviceName)
+			}
+			return []any{entry}
+		case "proxy.unregister":
+			var params map[string]any
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				t.Fatalf("unmarshal unregister params: %v", err)
+			}
+			if params["service"] != serviceName || params["prefix"] != "/api/" {
+				t.Fatalf("unregister params=%v", params)
+			}
+			return []any{entry}
+		default:
+			t.Fatalf("unexpected method=%q", req.Method)
+			return nil
+		}
+	})
+	defer shutdown()
+
+	registerOutput, err := runCommand(t.TempDir(), nil,
+		"servicectl",
+		"--controller="+addr,
+		"proxy",
+		"register",
+		serviceName,
+		"/api/",
+		"http://127.0.0.1:18080",
+		"--strip-prefix",
+		"/web/services/github.com/acme/chart",
+		"--health-path",
+		"/healthz",
+	)
+	if err != nil {
+		t.Fatalf("proxy register failed: %v\n%s", err, registerOutput)
+	}
+	for _, check := range []string{"PROXY", "SERVICE", serviceName, "/api/", "http://127.0.0.1:18080", "STRIP_PREFIX", "/web/services/github.com/acme/chart", "HEALTH_PATH", "/healthz"} {
+		if !strings.Contains(registerOutput, check) {
+			t.Fatalf("proxy register output missing %q:\n%s", check, registerOutput)
+		}
+	}
+
+	getOutput, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "proxy", "get", serviceName, "/api/")
+	if err != nil {
+		t.Fatalf("proxy get failed: %v\n%s", err, getOutput)
+	}
+	if !strings.Contains(getOutput, "PROXY") || !strings.Contains(getOutput, serviceName) || !strings.Contains(getOutput, "/api/") {
+		t.Fatalf("proxy get output missing expected row:\n%s", getOutput)
+	}
+
+	listOutput, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "proxy", "list", serviceName)
+	if err != nil {
+		t.Fatalf("proxy list failed: %v\n%s", err, listOutput)
+	}
+	if !strings.Contains(listOutput, "PROXIES (1)") || !strings.Contains(listOutput, serviceName) || !strings.Contains(listOutput, "/api/") {
+		t.Fatalf("proxy list output missing expected row:\n%s", listOutput)
+	}
+
+	unregisterOutput, err := runCommand(t.TempDir(), nil, "servicectl", "--controller="+addr, "proxy", "unregister", serviceName, "/api/")
+	if err != nil {
+		t.Fatalf("proxy unregister failed: %v\n%s", err, unregisterOutput)
+	}
+	if !strings.Contains(unregisterOutput, "REMOVED PROXIES (1)") || !strings.Contains(unregisterOutput, serviceName) || !strings.Contains(unregisterOutput, "/api/") {
+		t.Fatalf("proxy unregister output missing expected row:\n%s", unregisterOutput)
+	}
+
+	wantMethods := []string{"proxy.register", "proxy.get", "proxy.list", "proxy.unregister"}
+	if len(methods) != len(wantMethods) {
+		t.Fatalf("methods=%v, want %v", methods, wantMethods)
+	}
+	for idx := range wantMethods {
+		if methods[idx] != wantMethods[idx] {
+			t.Fatalf("methods=%v, want %v", methods, wantMethods)
+		}
+	}
+}
+
+func TestServiceCommandProxyRejectsInvalidArgs(t *testing.T) {
+	output, err := runCommand(t.TempDir(), nil, "servicectl", "--controller=127.0.0.1:1", "proxy")
+	if err == nil {
+		t.Fatalf("proxy command unexpectedly succeeded:\n%s", output)
+	}
+	if !strings.Contains(output, "Command 'proxy' requires a subcommand") {
+		t.Fatalf("output=%q, want proxy subcommand error", output)
+	}
+
+	output, err = runCommand(t.TempDir(), nil, "servicectl", "--controller=127.0.0.1:1", "proxy", "register", "alpha", "/api/")
+	if err == nil {
+		t.Fatalf("proxy register unexpectedly succeeded:\n%s", output)
+	}
+	if !strings.Contains(output, "Command 'proxy register' requires <service_name> <prefix> <target>.") {
+		t.Fatalf("output=%q, want proxy register argument error", output)
+	}
+}
+
 func TestServiceCommandControllerEndToEnd(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

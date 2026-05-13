@@ -280,14 +280,12 @@ func (svr *httpd) Router() *gin.Engine {
 			if svr.tqlLoader != nil {
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
 			}
-			if svr.pkgMgr != nil {
-				svr.pkgMgr.HttpAppRouter(group, svr.handleTqlFile)
-			}
 			group.GET("/api/tql-exec", svr.handleTqlQueryExec)
 			group.Use(svr.handleJwtToken)
 			if svr.pkgMgr != nil {
 				svr.pkgMgr.HttpPkgRouter(group.Group("/api/pkgs"))
 			}
+			group.Any("/services/:name/*path", svr.handleServiceProxy)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.GET("/api/tql/*path", svr.handleTqlFile)
 			group.POST("/api/tql/*path", svr.handleTqlFile)

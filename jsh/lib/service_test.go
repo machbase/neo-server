@@ -259,6 +259,149 @@ func TestServiceModuleCommandHelpers(t *testing.T) {
 	})
 }
 
+func TestServiceModuleProxyHelpers(t *testing.T) {
+	const serviceName = "github.com/acme/chart"
+	methods := []string{}
+	entry := map[string]any{
+		"service":      serviceName,
+		"prefix":       "/api/",
+		"target":       "unix:///tmp/acme-chart.sock",
+		"strip_prefix": "/web/services/github.com/acme/chart/api/",
+		"health_path":  "/healthz",
+	}
+	addr, shutdown := startMockServiceModuleRPCServer(t, func(req serviceModuleRPCRequest) any {
+		methods = append(methods, req.Method)
+		switch req.Method {
+		case "proxy.register":
+			var params map[string]any
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				t.Fatalf("proxy.register params: %v", err)
+			}
+			if params["service"] != serviceName || params["prefix"] != "/api/" || params["target"] != "unix:///tmp/acme-chart.sock" {
+				t.Fatalf("proxy.register params=%v", params)
+			}
+			if params["strip_prefix"] != "/web/services/github.com/acme/chart/api/" || params["health_path"] != "/healthz" {
+				t.Fatalf("proxy.register optional params=%v", params)
+			}
+			return entry
+		case "proxy.get":
+			var params map[string]any
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				t.Fatalf("proxy.get params: %v", err)
+			}
+			if params["service"] != serviceName || params["prefix"] != "/api/" {
+				t.Fatalf("proxy.get params=%v", params)
+			}
+			return entry
+		case "proxy.list":
+			var service string
+			if err := json.Unmarshal(req.Params, &service); err != nil {
+				t.Fatalf("proxy.list params: %v", err)
+			}
+			if service != serviceName {
+				t.Fatalf("proxy.list service=%q", service)
+			}
+			return []any{entry}
+		case "proxy.unregister":
+			var params map[string]any
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				t.Fatalf("proxy.unregister params: %v", err)
+			}
+			if params["service"] != serviceName {
+				t.Fatalf("proxy.unregister service params=%v", params)
+			}
+			if params["prefix"] == "/api/" {
+				return []any{entry}
+			}
+			if params["prefix"] != "" {
+				t.Fatalf("proxy.unregister prefix params=%v", params)
+			}
+			return []any{}
+		default:
+			t.Fatalf("unexpected RPC method %q", req.Method)
+			return nil
+		}
+	})
+	defer shutdown()
+
+	test_engine.RunTest(t, test_engine.TestCase{
+		Name: "service_module_proxy",
+		Vars: map[string]any{
+			"SERVICE_CONTROLLER": addr,
+		},
+		Script: `
+			const service = require('service');
+
+			const options = { timeout: 1000 };
+			const client = new service.Client(options);
+			const serviceName = 'github.com/acme/chart';
+
+			service.proxy.register({
+				service: serviceName,
+				prefix: '/api/',
+				target: 'unix:///tmp/acme-chart.sock',
+				stripPrefix: '/web/services/github.com/acme/chart/api/',
+				healthPath: '/healthz',
+			}, options, (err, registered) => {
+				if (err) {
+					console.println('ERR register', err.message);
+					return;
+				}
+				console.println('proxy.registered', registered.service, registered.prefix, registered.target);
+
+				client.proxy.get(serviceName, '/api/', (err, got) => {
+					if (err) {
+						console.println('ERR get', err.message);
+						return;
+					}
+					console.println('proxy.got', got.strip_prefix, got.health_path);
+
+					service.proxy.list(serviceName, options, (err, entries) => {
+						if (err) {
+							console.println('ERR list', err.message);
+							return;
+						}
+						console.println('proxy.list', entries.length);
+
+						client.proxy.unregister(serviceName, '/api/', (err, removed) => {
+							if (err) {
+								console.println('ERR unregister.prefix', err.message);
+								return;
+							}
+							console.println('proxy.unregister.prefix', removed.length);
+
+							service.proxy.unregister(serviceName, options, (err, removedAll) => {
+								if (err) {
+									console.println('ERR unregister.all', err.message);
+									return;
+								}
+								console.println('proxy.unregister.all', removedAll.length);
+							});
+						});
+					});
+				});
+			});
+		`,
+		Output: []string{
+			"proxy.registered github.com/acme/chart /api/ unix:///tmp/acme-chart.sock",
+			"proxy.got /web/services/github.com/acme/chart/api/ /healthz",
+			"proxy.list 1",
+			"proxy.unregister.prefix 1",
+			"proxy.unregister.all 0",
+		},
+	})
+
+	wantMethods := []string{"proxy.register", "proxy.get", "proxy.list", "proxy.unregister", "proxy.unregister"}
+	if len(methods) != len(wantMethods) {
+		t.Fatalf("methods=%v, want %v", methods, wantMethods)
+	}
+	for i := range wantMethods {
+		if methods[i] != wantMethods[i] {
+			t.Fatalf("methods=%v, want %v", methods, wantMethods)
+		}
+	}
+}
+
 func TestServiceModuleFilesystemHelpers(t *testing.T) {
 	tmpDir := t.TempDir()
 	servicesDir := filepath.Join(tmpDir, "services")
