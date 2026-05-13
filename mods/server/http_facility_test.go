@@ -18,7 +18,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
-	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -417,15 +416,6 @@ func TestHandleTimersDelDirect(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, writer.Code)
 	require.Contains(t, writer.Body.String(), "no name specified")
-}
-
-func parseSchedule(schedule string) (cron.Schedule, error) {
-	scheduleParser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-	if s, err := scheduleParser.Parse(schedule); err != nil {
-		return nil, fmt.Errorf("invalid schedule, %s", err.Error())
-	} else {
-		return s, err
-	}
 }
 
 func TestKey(t *testing.T) {

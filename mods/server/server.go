@@ -1702,24 +1702,6 @@ func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *Server) getHttpServer(ctx context.Context, m map[string]any) (map[string]any, error) {
-	cmd := m["cmd"]
-	if cmdStr, ok := cmd.(string); !ok || cmdStr == "" {
-		return nil, fmt.Errorf("cmd not specified")
-	} else {
-		cmd = cmdStr
-	}
-	switch cmd.(string) {
-	case "debug":
-		debugEnabled, debugLatency := s.httpd.DebugMode()
-		m["enable"] = debugEnabled
-		m["logLatency"] = debugLatency
-	default:
-		return nil, fmt.Errorf("unknown cmd '%s'", cmd.(string))
-	}
-	return m, nil
-}
-
 func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string]any, error) {
 	enableAny, hasEnable := m["enable"]
 	latencyAny, hasLatency := m["logLatency"]

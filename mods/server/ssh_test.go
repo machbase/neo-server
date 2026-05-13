@@ -508,37 +508,12 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func waitForExpectedOutput(buf *lockedBuffer, user string, expects []string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		output := removeTerminalControlCharacters(buf.String())
-		if matchExpectedOutput(normalizeSSHOutputLines(output, user), expects) {
-			return true
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return false
-}
-
 func waitForSSHOutput(buf *lockedBuffer, user string, expects []string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		output := removeTerminalControlCharacters(buf.String())
 		lines := normalizeSSHOutputLines(output, user)
 		if matchExpectedOutput(lines, expects) || isSSHOutputAtPrompt(lines, user) {
-			return true
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return false
-}
-
-func waitForSSHPrompt(buf *lockedBuffer, user string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		output := removeTerminalControlCharacters(buf.String())
-		lines := normalizeSSHOutputLines(output, user)
-		if isSSHOutputAtPrompt(lines, user) {
 			return true
 		}
 		time.Sleep(100 * time.Millisecond)
