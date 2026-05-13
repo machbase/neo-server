@@ -1127,6 +1127,7 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("session.limit.get", s.getSessionLimit)
 	ctl.RegisterJsonRpcHandler("session.limit.set", s.setSessionLimit)
 	ctl.RegisterJsonRpcHandler("sql.split", s.splitSqlStatements)
+	registerLspJsonRpcHandlers(ctl)
 }
 
 // find most feasible MACH port from s.servicePorts and return it.

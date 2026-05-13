@@ -9,307 +9,238 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/v8/jsh/service"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
-func TestHandleLspDiagnostics(t *testing.T) {
-	body := `{"language":"tql","uri":"memory://test.tql","text":"MAPVALUE(0, 1)\nCSV()"}`
-	rsp := postLspTestRequest(t, "/lsp/diagnostics", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/diagnostics", svr.handleLspDiagnostics)
+func TestHandleRpcLspDiagnostics(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "tql diagnostics",
+		method: "lsp.diagnostics",
+		params: []any{map[string]any{
+			"language": "tql",
+			"uri":      "memory://test.tql",
+			"text":     "MAPVALUE(0, 1)\nCSV()",
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			diagnostics := rsp.Get("result.diagnostics").Array()
+			require.Len(t, diagnostics, 1, rsp.String())
+			require.Equal(t, "invalid_source", diagnostics[0].Get("code").String(), rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if !result.Success {
-		t.Fatalf("expected success response: %+v", result)
-	}
-	data := result.Data.(map[string]any)
-	diagnostics := data["diagnostics"].([]any)
-	if len(diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diagnostics))
-	}
-	diagnostic := diagnostics[0].(map[string]any)
-	if diagnostic["code"] != "invalid_source" {
-		t.Fatalf("expected invalid_source, got %+v", diagnostic)
-	}
 }
 
-func TestHandleLspCompletion(t *testing.T) {
-	body := `{"language":"tql","uri":"memory://test.tql","text":"","position":{"line":1,"column":1}}`
-	rsp := postLspTestRequest(t, "/lsp/completion", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/completion", svr.handleLspCompletion)
+func TestHandleRpcLspCompletion(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "tql completion",
+		method: "lsp.completion",
+		params: []any{map[string]any{
+			"language": "tql",
+			"uri":      "memory://test.tql",
+			"text":     "",
+			"position": map[string]any{"line": 1, "column": 1},
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, containsLspLabelResult(rsp.Get("result.items"), "FAKE"), rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	data := result.Data.(map[string]any)
-	items := data["items"].([]any)
-	if !containsLspLabel(items, "FAKE") {
-		t.Fatalf("expected FAKE completion")
-	}
 }
 
-func TestHandleLspHover(t *testing.T) {
-	body := `{"language":"tql","uri":"memory://test.tql","text":"FAKE()","position":{"line":1,"column":2}}`
-	rsp := postLspTestRequest(t, "/lsp/hover", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/hover", svr.handleLspHover)
+func TestHandleRpcLspHover(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "tql hover",
+		method: "lsp.hover",
+		params: []any{map[string]any{
+			"language": "tql",
+			"uri":      "memory://test.tql",
+			"text":     "FAKE()",
+			"position": map[string]any{"line": 1, "column": 2},
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Contains(t, rsp.Get("result.hover.contents").String(), "FAKE", rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if !result.Success {
-		t.Fatalf("expected success response: %+v", result)
-	}
-	data := result.Data.(map[string]any)
-	hover := data["hover"].(map[string]any)
-	if !strings.Contains(hover["contents"].(string), "FAKE") {
-		t.Fatalf("expected FAKE hover, got %+v", hover)
-	}
 }
 
-func TestHandleLspHoverUnsupportedLanguage(t *testing.T) {
-	body := `{"language":"sql","uri":"memory://test.sql","text":"select 1","position":{"line":1,"column":1}}`
-	rsp := postLspTestRequest(t, "/lsp/hover", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/hover", svr.handleLspHover)
+func TestHandleRpcLspSignatureHelp(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "jsh signature help",
+		method: "lsp.signature",
+		params: []any{map[string]any{
+			"language": "jsh",
+			"uri":      "memory://test.js",
+			"text":     "const fs = require('fs');\nfs.readFileSync('/tmp/a', ",
+			"position": map[string]any{"line": 2, "column": 27},
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, containsLspLabelPrefixResult(rsp.Get("result.signatureHelp.signatures"), "readFileSync(path: string, options: object)"), rsp.String())
+			require.Equal(t, int64(1), rsp.Get("result.signatureHelp.activeParameter").Int(), rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if result.Success {
-		t.Fatal("expected failure response")
-	}
 }
 
-func TestHandleLspSignatureHelp(t *testing.T) {
-	body := `{"language":"jsh","uri":"memory://test.js","text":"const fs = require('fs');\nfs.readFileSync('/tmp/a', ","position":{"line":2,"column":27}}`
-	rsp := postLspTestRequest(t, "/lsp/signature", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/signature", svr.handleLspSignatureHelp)
+func TestHandleRpcLspMetadata(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "tql metadata",
+		method: "lsp.metadata",
+		params: []any{map[string]any{"language": "tql"}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, "tql", rsp.Get("result.metadata.language").String(), rsp.String())
+			keywords := rsp.Get("result.metadata.keywords")
+			require.True(t, containsLspLabelResult(keywords, "FAKE"), rsp.String())
+			require.True(t, containsLspLabelResult(keywords, "MAPVALUE"), rsp.String())
+			require.True(t, containsLspLabelResult(keywords, "CSV"), rsp.String())
+			require.True(t, containsLspStatementKindResult(rsp.Get("result.metadata.symbols"), "FAKE", "source"), rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if !result.Success {
-		t.Fatalf("expected success response: %+v", result)
-	}
-	data := result.Data.(map[string]any)
-	help := data["signatureHelp"].(map[string]any)
-	signatures := help["signatures"].([]any)
-	if !containsLspLabelPrefix(signatures, "readFileSync(path: string, options: object)") {
-		t.Fatalf("expected readFileSync signature help, got %+v", signatures)
-	}
-	if help["activeParameter"] != float64(1) {
-		t.Fatalf("expected active parameter 1, got %+v", help)
-	}
 }
 
-func TestHandleLspMetadata(t *testing.T) {
-	rsp := getLspTestRequest(t, "/lsp/metadata?language=tql", func(router *gin.Engine, svr *httpd) {
-		router.GET("/lsp/metadata", svr.handleLspMetadata)
+func TestHandleRpcLspJshMetadata(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "jsh metadata",
+		method: "lsp.metadata",
+		params: []any{map[string]any{"language": "jsh"}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, "jsh", rsp.Get("result.metadata.language").String(), rsp.String())
+			modules := rsp.Get("result.metadata.modules")
+			require.False(t, containsLspModuleIDResult(modules, "@jsh/fs"), rsp.String())
+			fsModule, ok := findLspModuleResult(modules, "fs")
+			require.True(t, ok, rsp.String())
+			require.True(t, containsLspLabelResult(fsModule.Get("exports"), "readFileSync"), rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if !result.Success {
-		t.Fatalf("expected success response: %+v", result)
-	}
-	data := result.Data.(map[string]any)
-	metadata := data["metadata"].(map[string]any)
-	if metadata["language"] != "tql" {
-		t.Fatalf("expected tql metadata, got %+v", metadata)
-	}
-	keywords := metadata["keywords"].([]any)
-	if !containsLspLabel(keywords, "FAKE") || !containsLspLabel(keywords, "MAPVALUE") || !containsLspLabel(keywords, "CSV") {
-		t.Fatalf("expected TQL function keywords, got %+v", keywords)
-	}
-	symbols := metadata["symbols"].([]any)
-	if !containsLspStatementKind(symbols, "FAKE", "source") {
-		t.Fatalf("expected FAKE source symbol, got %+v", symbols)
-	}
 }
 
-func TestHandleLspJshMetadata(t *testing.T) {
-	rsp := getLspTestRequest(t, "/lsp/metadata?language=jsh", func(router *gin.Engine, svr *httpd) {
-		router.GET("/lsp/metadata", svr.handleLspMetadata)
+func TestHandleRpcLspUnsupportedLanguage(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "unsupported diagnostics language",
+		method: "lsp.diagnostics",
+		params: []any{map[string]any{
+			"language": "sql",
+			"uri":      "memory://test.sql",
+			"text":     "select 1",
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, int64(-32602), rsp.Get("error.code").Int(), rsp.String())
+			require.Contains(t, rsp.Get("error.message").String(), "not implemented yet", rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if !result.Success {
-		t.Fatalf("expected success response: %+v", result)
-	}
-	data := result.Data.(map[string]any)
-	metadata := data["metadata"].(map[string]any)
-	if metadata["language"] != "jsh" {
-		t.Fatalf("expected jsh metadata, got %+v", metadata)
-	}
-	modules := metadata["modules"].([]any)
-	if containsLspModuleID(modules, "@jsh/fs") {
-		t.Fatalf("did not expect @jsh/fs module metadata")
-	}
-	fsModule := findLspModule(modules, "fs")
-	if fsModule == nil {
-		t.Fatalf("expected fs module metadata, got %+v", modules)
-	}
-	exports := fsModule["exports"].([]any)
-	if !containsLspLabel(exports, "readFileSync") {
-		t.Fatalf("expected readFileSync export metadata, got %+v", exports)
-	}
 }
 
-func TestHandleLspUnsupportedLanguage(t *testing.T) {
-	body := `{"language":"sql","uri":"memory://test.sql","text":"select 1"}`
-	rsp := postLspTestRequest(t, "/lsp/diagnostics", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/diagnostics", svr.handleLspDiagnostics)
+func TestHandleRpcLspMetadataUnsupportedLanguage(t *testing.T) {
+	runLspJsonRpcTest(t, lspJsonRpcTestCase{
+		name:   "unsupported metadata language",
+		method: "lsp.metadata",
+		params: []any{map[string]any{"language": "sql"}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, int64(-32602), rsp.Get("error.code").Int(), rsp.String())
+			require.Contains(t, rsp.Get("error.message").String(), "not implemented yet", rsp.String())
+		},
 	})
-
-	if rsp.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if result.Success {
-		t.Fatalf("expected failure response")
-	}
-	if !strings.Contains(result.Reason, "not implemented yet") {
-		t.Fatalf("unexpected reason: %s", result.Reason)
-	}
 }
 
 func TestLspLanguageServiceUnsupportedDefault(t *testing.T) {
 	_, err := lspLanguageService("unknown")
-	if err == nil || !strings.Contains(err.Error(), "unsupported language") {
-		t.Fatalf("expected unsupported language error, got %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported language")
 }
 
 func TestLspMetadataUnsupportedLanguages(t *testing.T) {
 	_, err := lspMetadata("sql")
-	if err == nil || !strings.Contains(err.Error(), "not implemented yet") {
-		t.Fatalf("expected sql metadata error, got %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not implemented yet")
+
 	_, err = lspMetadata("unknown")
-	if err == nil || !strings.Contains(err.Error(), "unsupported language") {
-		t.Fatalf("expected unsupported metadata error, got %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported language")
 }
 
-func TestHandleLspJshDiagnostics(t *testing.T) {
-	body := `{"language":"jsh","uri":"memory://test.js","text":"await run()"}`
-	rsp := postLspTestRequest(t, "/lsp/diagnostics", body, func(router *gin.Engine, svr *httpd) {
-		router.POST("/lsp/diagnostics", svr.handleLspDiagnostics)
+type lspJsonRpcTestCase struct {
+	name       string
+	method     string
+	params     []any
+	expectFunc func(t *testing.T, result gjson.Result)
+}
+
+func runLspJsonRpcTest(t *testing.T, tc lspJsonRpcTestCase) {
+	t.Helper()
+	t.Run(tc.name, func(t *testing.T) {
+		t.Helper()
+		rsp := postLspRpcTestRequest(t, tc.method, tc.params)
+		require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
+
+		jsonRsp := gjson.ParseBytes(rsp.Body.Bytes())
+		require.Equal(t, "2.0", jsonRsp.Get("jsonrpc").String(), jsonRsp.String())
+		require.Equal(t, int64(1), jsonRsp.Get("id").Int(), jsonRsp.String())
+		if tc.expectFunc != nil {
+			tc.expectFunc(t, jsonRsp)
+		}
 	})
-
-	if rsp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rsp.Code, rsp.Body.String())
-	}
-	result := decodeLspTestResponse(t, rsp.Body.Bytes())
-	if !result.Success {
-		t.Fatalf("expected success response: %+v", result)
-	}
-	data := result.Data.(map[string]any)
-	diagnostics := data["diagnostics"].([]any)
-	if len(diagnostics) == 0 {
-		t.Fatal("expected JSH diagnostics")
-	}
-	diagnostic := diagnostics[0].(map[string]any)
-	if diagnostic["source"] != "jsh" {
-		t.Fatalf("expected jsh diagnostic, got %+v", diagnostic)
-	}
 }
 
-type lspTestResponse struct {
-	Success bool   `json:"success"`
-	Reason  string `json:"reason"`
-	Data    any    `json:"data"`
-}
-
-func postLspTestRequest(t *testing.T, path string, body string, register func(*gin.Engine, *httpd)) *httptest.ResponseRecorder {
+func postLspRpcTestRequest(t *testing.T, method string, params []any) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	svr := &httpd{}
-	register(router, svr)
-	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+	ctl := &service.Controller{}
+	registerLspJsonRpcHandlers(ctl)
+	svr := &httpd{rpcController: ctl}
+	router.POST("/rpc", svr.handleHttpRpc)
+
+	rpcReq := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	}
+	reqBody, err := json.Marshal(rpcReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	rsp := httptest.NewRecorder()
 	router.ServeHTTP(rsp, req)
 	return rsp
 }
 
-func getLspTestRequest(t *testing.T, path string, register func(*gin.Engine, *httpd)) *httptest.ResponseRecorder {
-	t.Helper()
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	svr := &httpd{}
-	register(router, svr)
-	req := httptest.NewRequest(http.MethodGet, path, nil)
-	rsp := httptest.NewRecorder()
-	router.ServeHTTP(rsp, req)
-	return rsp
-}
-
-func decodeLspTestResponse(t *testing.T, body []byte) lspTestResponse {
-	t.Helper()
-	var result lspTestResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	return result
-}
-
-func containsLspLabel(items []any, label string) bool {
-	for _, item := range items {
-		obj, ok := item.(map[string]any)
-		if ok && obj["label"] == label {
+func containsLspLabelResult(items gjson.Result, label string) bool {
+	for _, item := range items.Array() {
+		if item.Get("label").String() == label {
 			return true
 		}
 	}
 	return false
 }
 
-func containsLspLabelPrefix(items []any, prefix string) bool {
-	for _, item := range items {
-		obj, ok := item.(map[string]any)
-		label, labelOK := obj["label"].(string)
-		if ok && labelOK && strings.HasPrefix(label, prefix) {
+func containsLspLabelPrefixResult(items gjson.Result, prefix string) bool {
+	for _, item := range items.Array() {
+		if strings.HasPrefix(item.Get("label").String(), prefix) {
 			return true
 		}
 	}
 	return false
 }
 
-func containsLspStatementKind(items []any, label string, statementKind string) bool {
-	for _, item := range items {
-		obj, ok := item.(map[string]any)
-		if ok && obj["label"] == label && obj["statementKind"] == statementKind {
+func containsLspStatementKindResult(items gjson.Result, label string, statementKind string) bool {
+	for _, item := range items.Array() {
+		if item.Get("label").String() == label && item.Get("statementKind").String() == statementKind {
 			return true
 		}
 	}
 	return false
 }
 
-func containsLspModuleID(items []any, id string) bool {
-	return findLspModule(items, id) != nil
+func containsLspModuleIDResult(items gjson.Result, id string) bool {
+	_, ok := findLspModuleResult(items, id)
+	return ok
 }
 
-func findLspModule(items []any, id string) map[string]any {
-	for _, item := range items {
-		obj, ok := item.(map[string]any)
-		if ok && obj["id"] == id {
-			return obj
+func findLspModuleResult(items gjson.Result, id string) (gjson.Result, bool) {
+	for _, item := range items.Array() {
+		if item.Get("id").String() == id {
+			return item, true
 		}
 	}
-	return nil
+	return gjson.Result{}, false
 }

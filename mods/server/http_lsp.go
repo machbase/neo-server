@@ -1,24 +1,15 @@
 package server
 
 import (
+	"context"
 	"fmt"
-	"net/http"
 	"strings"
-	"time"
 
+	"github.com/machbase/neo-server/v8/jsh/service"
 	base "github.com/machbase/neo-server/v8/mods/lsp"
 	lspjsh "github.com/machbase/neo-server/v8/mods/lsp/jsh"
 	lsptql "github.com/machbase/neo-server/v8/mods/lsp/tql"
-
-	"github.com/gin-gonic/gin"
 )
-
-type lspResponse struct {
-	Success bool   `json:"success"`
-	Reason  string `json:"reason"`
-	Elapse  string `json:"elapse"`
-	Data    any    `json:"data,omitempty"`
-}
 
 type lspDocumentRequest struct {
 	Language string        `json:"language"`
@@ -27,89 +18,16 @@ type lspDocumentRequest struct {
 	Position base.Position `json:"position"`
 }
 
-func (svr *httpd) handleLspDiagnostics(ctx *gin.Context) {
-	rsp := &lspResponse{Success: false, Reason: "not specified"}
-	tick := time.Now()
-	req, svc, ok := svr.bindLspRequest(ctx, rsp, tick)
-	if !ok {
-		return
-	}
-	diagnostics, err := svc.Diagnostics(ctx.Request.Context(), req.document())
-	if err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusInternalServerError, err)
-		return
-	}
-	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"diagnostics": diagnostics})
+type lspMetadataRequest struct {
+	Language string `json:"language"`
 }
 
-func (svr *httpd) handleLspCompletion(ctx *gin.Context) {
-	rsp := &lspResponse{Success: false, Reason: "not specified"}
-	tick := time.Now()
-	req, svc, ok := svr.bindLspRequest(ctx, rsp, tick)
-	if !ok {
-		return
-	}
-	items, err := svc.Completion(ctx.Request.Context(), req.document(), req.Position)
-	if err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusInternalServerError, err)
-		return
-	}
-	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"items": items})
-}
-
-func (svr *httpd) handleLspHover(ctx *gin.Context) {
-	rsp := &lspResponse{Success: false, Reason: "not specified"}
-	tick := time.Now()
-	req, svc, ok := svr.bindLspRequest(ctx, rsp, tick)
-	if !ok {
-		return
-	}
-	hover, err := svc.Hover(ctx.Request.Context(), req.document(), req.Position)
-	if err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusInternalServerError, err)
-		return
-	}
-	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"hover": hover})
-}
-
-func (svr *httpd) handleLspSignatureHelp(ctx *gin.Context) {
-	rsp := &lspResponse{Success: false, Reason: "not specified"}
-	tick := time.Now()
-	req, svc, ok := svr.bindLspRequest(ctx, rsp, tick)
-	if !ok {
-		return
-	}
-	help, err := svc.SignatureHelp(ctx.Request.Context(), req.document(), req.Position)
-	if err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusInternalServerError, err)
-		return
-	}
-	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"signatureHelp": help})
-}
-
-func (svr *httpd) handleLspMetadata(ctx *gin.Context) {
-	rsp := &lspResponse{Success: false, Reason: "not specified"}
-	tick := time.Now()
-	metadata, err := lspMetadata(ctx.Query("language"))
-	if err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusBadRequest, err)
-		return
-	}
-	svr.writeLspSuccess(ctx, rsp, tick, map[string]any{"metadata": metadata})
-}
-
-func (svr *httpd) bindLspRequest(ctx *gin.Context, rsp *lspResponse, tick time.Time) (*lspDocumentRequest, base.LanguageService, bool) {
-	req := &lspDocumentRequest{}
-	if err := ctx.ShouldBindJSON(req); err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusBadRequest, err)
-		return nil, nil, false
-	}
-	svc, err := lspLanguageService(req.Language)
-	if err != nil {
-		svr.writeLspError(ctx, rsp, tick, http.StatusBadRequest, err)
-		return nil, nil, false
-	}
-	return req, svc, true
+func registerLspJsonRpcHandlers(ctl *service.Controller) {
+	ctl.RegisterJsonRpcHandler("lsp.diagnostics", rpcLspDiagnostics)
+	ctl.RegisterJsonRpcHandler("lsp.completion", rpcLspCompletion)
+	ctl.RegisterJsonRpcHandler("lsp.hover", rpcLspHover)
+	ctl.RegisterJsonRpcHandler("lsp.signature", rpcLspSignatureHelp)
+	ctl.RegisterJsonRpcHandler("lsp.metadata", rpcLspMetadata)
 }
 
 func (req *lspDocumentRequest) document() base.Document {
@@ -118,6 +36,82 @@ func (req *lspDocumentRequest) document() base.Document {
 		Language: base.Language(strings.ToLower(req.Language)),
 		Text:     req.Text,
 	}
+}
+
+func rpcLspDiagnostics(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
+	svc, err := lspLanguageService(req.Language)
+	if err != nil {
+		return nil, lspRpcInvalidParams(err)
+	}
+	diagnostics, err := lspDiagnostics(ctx, svc, req)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"diagnostics": diagnostics}, nil
+}
+
+func rpcLspCompletion(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
+	svc, err := lspLanguageService(req.Language)
+	if err != nil {
+		return nil, lspRpcInvalidParams(err)
+	}
+	items, err := lspCompletion(ctx, svc, req)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"items": items}, nil
+}
+
+func rpcLspHover(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
+	svc, err := lspLanguageService(req.Language)
+	if err != nil {
+		return nil, lspRpcInvalidParams(err)
+	}
+	hover, err := lspHover(ctx, svc, req)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"hover": hover}, nil
+}
+
+func rpcLspSignatureHelp(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
+	svc, err := lspLanguageService(req.Language)
+	if err != nil {
+		return nil, lspRpcInvalidParams(err)
+	}
+	help, err := lspSignatureHelp(ctx, svc, req)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"signatureHelp": help}, nil
+}
+
+func rpcLspMetadata(req lspMetadataRequest) (map[string]any, error) {
+	metadata, err := lspMetadata(req.Language)
+	if err != nil {
+		return nil, lspRpcInvalidParams(err)
+	}
+	return map[string]any{"metadata": metadata}, nil
+}
+
+func lspDiagnostics(ctx context.Context, svc base.LanguageService, req lspDocumentRequest) ([]base.Diagnostic, error) {
+	return svc.Diagnostics(ctx, req.document())
+}
+
+func lspCompletion(ctx context.Context, svc base.LanguageService, req lspDocumentRequest) ([]base.CompletionItem, error) {
+	return svc.Completion(ctx, req.document(), req.Position)
+}
+
+func lspHover(ctx context.Context, svc base.LanguageService, req lspDocumentRequest) (*base.Hover, error) {
+	return svc.Hover(ctx, req.document(), req.Position)
+}
+
+func lspSignatureHelp(ctx context.Context, svc base.LanguageService, req lspDocumentRequest) (*base.SignatureHelp, error) {
+	return svc.SignatureHelp(ctx, req.document(), req.Position)
+}
+
+func lspRpcInvalidParams(err error) error {
+	return &service.JsonRpcError{Code: -32602, Message: err.Error()}
 }
 
 func lspLanguageService(language string) (base.LanguageService, error) {
@@ -144,19 +138,4 @@ func lspMetadata(language string) (base.Metadata, error) {
 	default:
 		return base.Metadata{}, fmt.Errorf("unsupported language %q", language)
 	}
-}
-
-func (svr *httpd) writeLspSuccess(ctx *gin.Context, rsp *lspResponse, tick time.Time, data any) {
-	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.Data = data
-	rsp.Elapse = time.Since(tick).String()
-	ctx.JSON(http.StatusOK, rsp)
-}
-
-func (svr *httpd) writeLspError(ctx *gin.Context, rsp *lspResponse, tick time.Time, status int, err error) {
-	rsp.Success = false
-	rsp.Reason = err.Error()
-	rsp.Elapse = time.Since(tick).String()
-	ctx.JSON(status, rsp)
 }
