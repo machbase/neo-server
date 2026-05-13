@@ -3,13 +3,12 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -167,10 +166,10 @@ func runLspJsonRpcTest(t *testing.T, tc lspJsonRpcTestCase) {
 	t.Helper()
 	t.Run(tc.name, func(t *testing.T) {
 		t.Helper()
-		rsp := postLspRpcTestRequest(t, tc.method, tc.params)
-		require.Equal(t, http.StatusOK, rsp.Code, rsp.Body.String())
+		rsp, body := postLspRpcTestRequest(t, tc.method, tc.params)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
 
-		jsonRsp := gjson.ParseBytes(rsp.Body.Bytes())
+		jsonRsp := gjson.ParseBytes(body)
 		require.Equal(t, "2.0", jsonRsp.Get("jsonrpc").String(), jsonRsp.String())
 		require.Equal(t, int64(1), jsonRsp.Get("id").Int(), jsonRsp.String())
 		if tc.expectFunc != nil {
@@ -179,14 +178,11 @@ func runLspJsonRpcTest(t *testing.T, tc lspJsonRpcTestCase) {
 	})
 }
 
-func postLspRpcTestRequest(t *testing.T, method string, params []any) *httptest.ResponseRecorder {
+func postLspRpcTestRequest(t *testing.T, method string, params []any) (*http.Response, []byte) {
 	t.Helper()
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	ctl := &service.Controller{}
-	registerLspJsonRpcHandlers(ctl)
-	svr := &httpd{rpcController: ctl}
-	router.POST("/rpc", svr.handleHttpRpc)
+	accessToken, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+	require.NotEmpty(t, accessToken)
 
 	rpcReq := map[string]any{
 		"jsonrpc": "2.0",
@@ -197,11 +193,18 @@ func postLspRpcTestRequest(t *testing.T, method string, params []any) *httptest.
 	reqBody, err := json.Marshal(rpcReq)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/rpc", bytes.NewBuffer(reqBody))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 	req.Header.Set("Content-Type", "application/json")
-	rsp := httptest.NewRecorder()
-	router.ServeHTTP(rsp, req)
-	return rsp
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		rsp.Body.Close()
+	})
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+	return rsp, body
 }
 
 func containsLspLabelResult(items gjson.Result, label string) bool {

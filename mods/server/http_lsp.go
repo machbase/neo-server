@@ -22,14 +22,6 @@ type lspMetadataRequest struct {
 	Language string `json:"language"`
 }
 
-func registerLspJsonRpcHandlers(ctl *service.Controller) {
-	ctl.RegisterJsonRpcHandler("lsp.diagnostics", rpcLspDiagnostics)
-	ctl.RegisterJsonRpcHandler("lsp.completion", rpcLspCompletion)
-	ctl.RegisterJsonRpcHandler("lsp.hover", rpcLspHover)
-	ctl.RegisterJsonRpcHandler("lsp.signature", rpcLspSignatureHelp)
-	ctl.RegisterJsonRpcHandler("lsp.metadata", rpcLspMetadata)
-}
-
 func (req *lspDocumentRequest) document() base.Document {
 	return base.Document{
 		URI:      req.URI,
