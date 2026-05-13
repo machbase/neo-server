@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -131,57 +132,75 @@ func (l *PListener) Close() {}
 
 type RListener struct {
 	BaseListener
-	lsnr    net.Listener
-	closeCh chan struct{}
+	mu   sync.Mutex
+	lsnr net.Listener
+	svr  *http.Server
+	done chan struct{}
 }
 
 func (l *RListener) Serve(callback func(map[string]any)) error {
 	if lsnr, err := net.Listen(l.Network, l.Address); err != nil {
 		return errors.New("http.Listener.Listen: " + err.Error())
 	} else {
+		l.mu.Lock()
+		if l.lsnr != nil {
+			l.mu.Unlock()
+			_ = lsnr.Close()
+			return errors.New("http.Listener.Listen: already serving")
+		}
 		l.lsnr = lsnr
+		l.svr = &http.Server{Handler: l.router.ir}
+		l.done = make(chan struct{})
+		l.mu.Unlock()
 	}
+
+	l.mu.Lock()
+	lsnr := l.lsnr
+	svr := l.svr
+	done := l.done
+	l.mu.Unlock()
+
+	go func() {
+		defer close(done)
+		_ = svr.Serve(lsnr)
+
+		l.mu.Lock()
+		if l.lsnr == lsnr {
+			l.lsnr = nil
+			l.svr = nil
+			l.done = nil
+		}
+		l.mu.Unlock()
+
+		if l.Network == "unix" {
+			_ = os.Remove(l.Address)
+		}
+	}()
 
 	if callback != nil {
 		obj := map[string]interface{}{
-			"network": l.lsnr.Addr().Network(),
-			"address": l.lsnr.Addr().String(),
+			"network": lsnr.Addr().Network(),
+			"address": lsnr.Addr().String(),
 		}
 		callback(obj)
-	}
-	svr := &http.Server{}
-	svr.Handler = l.router.ir
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		svr.Serve(l.lsnr)
-	}()
-
-	l.closeCh = make(chan struct{})
-	select {
-	case <-done:
-	case <-l.closeCh:
-	}
-
-	l.lsnr.Close()
-	l.lsnr = nil
-	svr.Close()
-
-	if l.Network == "unix" {
-		os.Remove(l.Address)
-	}
-	if l.closeCh != nil {
-		close(l.closeCh)
-		l.closeCh = nil
 	}
 
 	return nil
 }
 
 func (l *RListener) Close() {
-	if l.closeCh != nil {
-		close(l.closeCh)
-		l.closeCh = nil
+	l.mu.Lock()
+	lsnr := l.lsnr
+	svr := l.svr
+	l.lsnr = nil
+	l.svr = nil
+	l.done = nil
+	l.mu.Unlock()
+
+	if lsnr != nil {
+		_ = lsnr.Close()
+	}
+	if svr != nil {
+		_ = svr.Close()
 	}
 }

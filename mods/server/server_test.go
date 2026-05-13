@@ -460,16 +460,16 @@ func TestHandleServiceProxy(t *testing.T) {
 	defer target.Close()
 
 	pm := NewProxyManager()
-	_, err := pm.Register(ProxyRegisterRequest{Service: "alpha", Prefix: "/api/", Target: target.URL})
+	_, err := pm.Register(ProxyRegisterRequest{Service: "github.com/acme/chart", Prefix: "/api/", Target: target.URL})
 	require.NoError(t, err)
 	svr := &httpd{authServer: &Server{proxyMgr: pm}}
 
 	router := gin.New()
-	router.Any("/web/services/:name/*path", svr.handleServiceProxy)
+	router.Any("/web/services/*path", svr.handleServiceProxy)
 	frontend := httptest.NewServer(router)
 	defer frontend.Close()
 
-	rsp, err := http.Get(frontend.URL + "/web/services/alpha/api/v1")
+	rsp, err := http.Get(frontend.URL + "/web/services/github.com/acme/chart/api/v1")
 	require.NoError(t, err)
 	defer rsp.Body.Close()
 	body, err := io.ReadAll(rsp.Body)

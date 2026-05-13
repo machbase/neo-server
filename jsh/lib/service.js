@@ -564,9 +564,7 @@ function parseController(value) {
 }
 
 function sendRPCRequest(endpoint, request, timeoutMsec, callback) {
-    const socket = endpoint.network === 'unix'
-        ? net.createConnection({ path: endpoint.path })
-        : net.createConnection({ host: endpoint.host, port: endpoint.port });
+    const socket = new net.Socket();
     let buffer = '';
     let settled = false;
     const hold = createRequestHold(timeoutMsec);
@@ -627,6 +625,16 @@ function sendRPCRequest(endpoint, request, timeoutMsec, callback) {
             settle(new Error('Controller closed the connection before sending a complete response.'));
         }
     });
+
+    try {
+        if (endpoint.network === 'unix') {
+            socket.connect({ path: endpoint.path });
+        } else {
+            socket.connect({ host: endpoint.host, port: endpoint.port });
+        }
+    } catch (err) {
+        settle(err);
+    }
 }
 
 function createRequestHold(timeoutMsec) {

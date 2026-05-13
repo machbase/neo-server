@@ -1059,13 +1059,16 @@ func (s *Server) initServiceController() error {
 			s.cleanupServiceProxies(event.Name)
 		}
 	})
+	s.serviceController = ctrl
+	s.rpcController = ctrl
+	s.registerJsonRpcHandlers()
 	if err := ctrl.Start(func(sc *service.Config, action string, err error) {
 		s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
 	}); err != nil {
+		s.serviceController = nil
+		s.rpcController = nil
 		return err
 	}
-	s.serviceController = ctrl
-	s.rpcController = ctrl
 	s.AddServicePort("servicectl", ctrl.Address())
 
 	util.AddShutdownHook(func() {
@@ -1077,7 +1080,6 @@ func (s *Server) initServiceController() error {
 	tql.SetServiceControllerAddress(ctrl.Address())
 	tql.SetServiceWorkspace(workspacePath)
 
-	s.registerJsonRpcHandlers()
 	return nil
 }
 

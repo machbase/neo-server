@@ -101,6 +101,12 @@ func (pm *ProxyManager) Register(req ProxyRegisterRequest) (ProxyEntrySnapshot, 
 		existing.UpdatedAt = now
 		return existing.ProxyEntrySnapshot, nil
 	}
+	routePrefix := proxyServiceRoutePrefix(req.Service, req.Prefix)
+	for _, existing := range pm.entries {
+		if proxyServiceRoutePrefix(existing.Service, existing.Prefix) == routePrefix {
+			return ProxyEntrySnapshot{}, fmt.Errorf("%w: public route %s", errProxyConflict, routePrefix)
+		}
+	}
 	entry := &proxyEntry{
 		ProxyEntrySnapshot: ProxyEntrySnapshot{
 			Service:      req.Service,
@@ -185,8 +191,8 @@ func (pm *ProxyManager) List(service string) []ProxyEntrySnapshot {
 	return result
 }
 
-func (pm *ProxyManager) Handle(ctx *gin.Context, serviceName string, appPath string) bool {
-	entry := pm.match(serviceName, appPath)
+func (pm *ProxyManager) Handle(ctx *gin.Context, servicePath string) bool {
+	entry := pm.match(servicePath)
 	if entry == nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"success": false, "reason": "proxy not registered"})
 		return true
@@ -195,24 +201,23 @@ func (pm *ProxyManager) Handle(ctx *gin.Context, serviceName string, appPath str
 	return true
 }
 
-func (pm *ProxyManager) match(serviceName string, appPath string) *proxyEntry {
+func (pm *ProxyManager) match(servicePath string) *proxyEntry {
 	if pm == nil {
 		return nil
 	}
-	serviceName = strings.TrimSpace(serviceName)
-	appPath = cleanProxyPath(appPath)
+	servicePath = cleanProxyPath(servicePath)
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	var selected *proxyEntry
+	selectedPrefixLen := 0
 	for _, entry := range pm.entries {
-		if entry.Service != serviceName {
+		routePrefix := proxyServiceRoutePrefix(entry.Service, entry.Prefix)
+		if !proxyPrefixMatch(servicePath, routePrefix) {
 			continue
 		}
-		if !proxyPrefixMatch(appPath, entry.Prefix) {
-			continue
-		}
-		if selected == nil || len(entry.Prefix) > len(selected.Prefix) {
+		if selected == nil || len(routePrefix) > selectedPrefixLen {
 			selected = entry
+			selectedPrefixLen = len(routePrefix)
 		}
 	}
 	return selected
@@ -341,6 +346,10 @@ func stripProxyRequestPath(requestPath string, stripPrefix string) string {
 
 func proxyKey(service string, prefix string) string {
 	return service + "\x00" + normalizeProxyPrefix(prefix)
+}
+
+func proxyServiceRoutePrefix(service string, prefix string) string {
+	return normalizeProxyPrefix("/" + strings.Trim(strings.TrimSpace(service), "/") + normalizeProxyPrefix(prefix))
 }
 
 func sortProxySnapshots(entries []ProxyEntrySnapshot) {

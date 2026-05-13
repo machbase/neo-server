@@ -53,5 +53,5 @@ func (svr *httpd) handleServiceProxy(ctx *gin.Context) {
 		ctx.JSON(404, gin.H{"success": false, "reason": "proxy not registered"})
 		return
 	}
-	svr.authServer.proxyMgr.Handle(ctx, ctx.Param("name"), ctx.Param("path"))
+	svr.authServer.proxyMgr.Handle(ctx, ctx.Param("path"))
 }

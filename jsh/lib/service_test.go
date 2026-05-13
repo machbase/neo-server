@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -402,6 +403,103 @@ func TestServiceModuleProxyHelpers(t *testing.T) {
 	}
 }
 
+func TestServiceModuleProxyRegisterCallbackUnixController(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix domain sockets are not supported on Windows")
+	}
+	const serviceName = "github.com/acme/chart"
+	addr, shutdown := startMockServiceModuleRPCServerTransport(t, "unix", func(req serviceModuleRPCRequest) any {
+		if req.Method != "proxy.register" {
+			t.Fatalf("method=%q, want proxy.register", req.Method)
+		}
+		return map[string]any{
+			"service": serviceName,
+			"prefix":  "/api/",
+			"target":  "http://127.0.0.1:18080",
+		}
+	})
+	defer shutdown()
+
+	test_engine.RunTest(t, test_engine.TestCase{
+		Name: "service_module_proxy_register_callback_unix_controller",
+		Vars: map[string]any{
+			"SERVICE_CONTROLLER": addr,
+		},
+		Script: `
+			const service = require('service');
+			console.println('before register');
+			service.proxy.register({
+				service: 'github.com/acme/chart',
+				prefix: '/api/',
+				target: 'http://127.0.0.1:18080',
+			}, (err, registered) => {
+				if (err) {
+					console.println('callback error', err.message);
+					return;
+				}
+				console.println('callback ok', registered.service, registered.prefix, registered.target);
+			});
+			console.println('after register');
+		`,
+		Output: []string{
+			"before register",
+			"after register",
+			"callback ok github.com/acme/chart /api/ http://127.0.0.1:18080",
+		},
+	})
+}
+
+func TestServiceModuleProxyRegisterFromHTTPServeCallback(t *testing.T) {
+	const serviceName = "github.com/acme/http-app"
+	addr, shutdown := startMockServiceModuleRPCServer(t, func(req serviceModuleRPCRequest) any {
+		if req.Method != "proxy.register" {
+			t.Fatalf("method=%q, want proxy.register", req.Method)
+		}
+		return map[string]any{
+			"service": serviceName,
+			"prefix":  "/api/",
+			"target":  "http://127.0.0.1:7575",
+		}
+	})
+	defer shutdown()
+
+	test_engine.RunTest(t, test_engine.TestCase{
+		Name: "service_module_proxy_register_from_http_serve_callback",
+		Vars: map[string]any{
+			"SERVICE_CONTROLLER": addr,
+		},
+		Script: `
+			const http = require('http');
+			const service = require('service');
+
+			const server = new http.Server({ network: 'tcp', address: '127.0.0.1:0' });
+			server.get('/healthz', (ctx) => {
+				ctx.text(http.status.OK, 'ok');
+			});
+			server.serve((result) => {
+				console.println('server started', result.network);
+				console.println('before register');
+				service.proxy.register({
+					service: 'github.com/acme/http-app',
+					prefix: '/api/',
+					target: 'http://127.0.0.1:7575',
+					healthPath: '/healthz',
+				}, (err) => {
+					console.println('callback called', err ? err.message : 'ok');
+					server.close();
+				});
+				console.println('after register');
+			});
+		`,
+		Output: []string{
+			"server started tcp",
+			"before register",
+			"after register",
+			"callback called ok",
+		},
+	})
+}
+
 func TestServiceModuleFilesystemHelpers(t *testing.T) {
 	tmpDir := t.TempDir()
 	servicesDir := filepath.Join(tmpDir, "services")
@@ -509,8 +607,26 @@ type serviceModuleRPCRequest struct {
 
 func startMockServiceModuleRPCServer(t *testing.T, handler func(serviceModuleRPCRequest) any) (string, func()) {
 	t.Helper()
+	return startMockServiceModuleRPCServerTransport(t, "tcp", handler)
+}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+func startMockServiceModuleRPCServerTransport(t *testing.T, network string, handler func(serviceModuleRPCRequest) any) (string, func()) {
+	t.Helper()
+
+	listenAddr := "127.0.0.1:0"
+	listenURLPrefix := "tcp://"
+	cleanupDir := ""
+	if network == "unix" {
+		var err error
+		cleanupDir, err = os.MkdirTemp("", "jsh-rpc-")
+		if err != nil {
+			t.Fatalf("MkdirTemp: %v", err)
+		}
+		listenAddr = filepath.Join(cleanupDir, "rpc.sock")
+		listenURLPrefix = "unix://"
+		_ = os.Remove(listenAddr)
+	}
+	ln, err := net.Listen(network, listenAddr)
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
@@ -566,9 +682,12 @@ func startMockServiceModuleRPCServer(t *testing.T, handler func(serviceModuleRPC
 		}
 	}()
 
-	return fmt.Sprintf("tcp://%s", ln.Addr().String()), func() {
+	return fmt.Sprintf("%s%s", listenURLPrefix, ln.Addr().String()), func() {
 		close(stop)
 		_ = ln.Close()
 		wg.Wait()
+		if network == "unix" {
+			_ = os.RemoveAll(cleanupDir)
+		}
 	}
 }

@@ -37,6 +37,12 @@ func TestProxyManagerRegisterValidationAndConflict(t *testing.T) {
 
 	_, err = pm.Register(ProxyRegisterRequest{Service: "demo", Prefix: "/api/", Target: "http://127.0.0.1:9090"})
 	require.Error(t, err)
+
+	_, err = pm.Register(ProxyRegisterRequest{Service: "demo", Prefix: "/api/foo/", Target: "http://127.0.0.1:8080"})
+	require.NoError(t, err)
+
+	_, err = pm.Register(ProxyRegisterRequest{Service: "demo/api", Prefix: "/foo/", Target: "http://127.0.0.1:8080"})
+	require.Error(t, err)
 }
 
 func TestProxyManagerGetAndUnregister(t *testing.T) {
@@ -61,7 +67,7 @@ func TestProxyManagerGetAndUnregister(t *testing.T) {
 	require.ErrorIs(t, err, errProxyNotFound)
 }
 
-func TestProxyManagerHandleProxiesRegisteredAppPath(t *testing.T) {
+func TestProxyManagerHandleProxiesRegisteredServicePath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	seen := make(chan string, 1)
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,17 +77,17 @@ func TestProxyManagerHandleProxiesRegisteredAppPath(t *testing.T) {
 	defer target.Close()
 
 	pm := NewProxyManager()
-	_, err := pm.Register(ProxyRegisterRequest{Service: "demo", Prefix: "/api/", Target: target.URL})
+	_, err := pm.Register(ProxyRegisterRequest{Service: "github.com/acme/chart", Prefix: "/api/", Target: target.URL})
 	require.NoError(t, err)
 
 	router := gin.New()
-	router.Any("/web/services/:name/*path", func(ctx *gin.Context) {
-		pm.Handle(ctx, ctx.Param("name"), ctx.Param("path"))
+	router.Any("/web/services/*path", func(ctx *gin.Context) {
+		pm.Handle(ctx, ctx.Param("path"))
 	})
 	frontend := httptest.NewServer(router)
 	defer frontend.Close()
 
-	req, err := http.NewRequest(http.MethodGet, frontend.URL+"/web/services/demo/api/v1/resource?q=ok", nil)
+	req, err := http.NewRequest(http.MethodGet, frontend.URL+"/web/services/github.com/acme/chart/api/v1/resource?q=ok", nil)
 	require.NoError(t, err)
 	req.Host = "neo.local"
 	rsp, err := http.DefaultClient.Do(req)
@@ -92,7 +98,7 @@ func TestProxyManagerHandleProxiesRegisteredAppPath(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rsp.StatusCode)
 	require.Equal(t, "proxied", string(body))
-	require.Equal(t, "/v1/resource?q=ok|neo.local|/web/services/demo/api", <-seen)
+	require.Equal(t, "/v1/resource?q=ok|neo.local|/web/services/github.com/acme/chart/api", <-seen)
 }
 
 func TestProxyManagerHandleProxiesUnixSocketTarget(t *testing.T) {
@@ -119,8 +125,8 @@ func TestProxyManagerHandleProxiesUnixSocketTarget(t *testing.T) {
 	require.NoError(t, err)
 
 	router := gin.New()
-	router.Any("/web/services/:name/*path", func(ctx *gin.Context) {
-		pm.Handle(ctx, ctx.Param("name"), ctx.Param("path"))
+	router.Any("/web/services/*path", func(ctx *gin.Context) {
+		pm.Handle(ctx, ctx.Param("path"))
 	})
 	frontend := httptest.NewServer(router)
 	defer frontend.Close()
@@ -140,8 +146,8 @@ func TestProxyManagerHandleUnregisteredPathDoesNotFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	pm := NewProxyManager()
 	router := gin.New()
-	router.Any("/web/services/:name/*path", func(ctx *gin.Context) {
-		pm.Handle(ctx, ctx.Param("name"), ctx.Param("path"))
+	router.Any("/web/services/*path", func(ctx *gin.Context) {
+		pm.Handle(ctx, ctx.Param("path"))
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/web/services/demo/api/v1/resource", nil)
@@ -169,8 +175,8 @@ func TestProxyManagerHandleProxiesServerSentEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	router := gin.New()
-	router.Any("/web/services/:name/*path", func(ctx *gin.Context) {
-		pm.Handle(ctx, ctx.Param("name"), ctx.Param("path"))
+	router.Any("/web/services/*path", func(ctx *gin.Context) {
+		pm.Handle(ctx, ctx.Param("path"))
 	})
 	frontend := httptest.NewServer(router)
 	defer frontend.Close()
@@ -206,8 +212,8 @@ func TestProxyManagerHandleProxiesWebSocketUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	router := gin.New()
-	router.Any("/web/services/:name/*path", func(ctx *gin.Context) {
-		pm.Handle(ctx, ctx.Param("name"), ctx.Param("path"))
+	router.Any("/web/services/*path", func(ctx *gin.Context) {
+		pm.Handle(ctx, ctx.Param("path"))
 	})
 	frontend := httptest.NewServer(router)
 	defer frontend.Close()
