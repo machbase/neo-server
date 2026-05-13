@@ -199,10 +199,6 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 	r.Any("/apps/:name/*path", func(ctx *gin.Context) {
 		name := ctx.Param("name")
 		path := ctx.Param("path")
-		if bp := pm.pkgBackends[name]; bp != nil && bp.cmd != nil && bp.HttpProxy != nil && bp.Match(path) {
-			bp.Handle(ctx)
-			return
-		}
 		if strings.HasSuffix(path, ".tql") {
 			path = fmt.Sprintf("/apps/%s/%s", name, path)
 			for i := range ctx.Params {

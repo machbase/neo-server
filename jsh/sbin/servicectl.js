@@ -20,6 +20,8 @@
         env: { type: 'string', short: 'e', description: 'Environment variable KEY=VALUE for inline install', multiple: true },
         detailType: { type: 'string', description: 'Detail value type for details set: string, number, boolean/bool, object/json', default: '' },
         format: { type: 'string', description: 'Output format for details get: box or json', default: 'box' },
+        stripPrefix: { type: 'string', description: 'Public path prefix to strip for proxy register', default: '' },
+        healthPath: { type: 'string', description: 'Health check path metadata for proxy register', default: '' },
         timeout: { type: 'integer', short: 't', description: 'RPC timeout in milliseconds', default: 5000 },
     };
 
@@ -99,12 +101,18 @@
         console.println('  details get <service_name> [key]');
         console.println('  details set <service_name> <key> <value> [--detail-type <string|number|boolean|bool|object|json>]');
         console.println('  details delete <service_name> <key>');
+        console.println('  proxy list [service_name]');
+        console.println('  proxy get <service_name> <prefix>');
+        console.println('  proxy register <service_name> <prefix> <target> [--strip-prefix <path>] [--health-path <path>]');
+        console.println('  proxy unregister <service_name> [prefix]');
         console.println('  controller [metrics|get|reset]');
         console.println('Examples:');
         console.println('  servicectl details get alpha --format json');
         console.println('  servicectl details set alpha retries 3 --detail-type number');
         console.println('  servicectl details set alpha enabled true --detail-type boolean');
         console.println("  servicectl details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
+        console.println('  servicectl proxy list github.com/acme/chart');
+        console.println('  servicectl proxy register github.com/acme/chart /api/ http://127.0.0.1:18080 --health-path /healthz');
     }
 
     function fail(message) {
@@ -145,6 +153,8 @@
                 return clientCommandSpec(cmd, (callback) => serviceModule.stop(positionalArgs[0], rpcOptions, callback));
             case 'details':
                 return buildDetailsCommandSpec(positionalArgs);
+            case 'proxy':
+                return buildProxyCommandSpec(positionalArgs);
             case 'controller':
                 return buildControllerCommandSpec(positionalArgs);
             default:
@@ -216,6 +226,72 @@
                 };
             default:
                 fail(`Unknown details command '${action}'.`);
+                return null;
+        }
+    }
+
+    function buildProxyCommandSpec(positionalArgs) {
+        if (positionalArgs.length === 0) {
+            fail("Command 'proxy' requires a subcommand: list, get, register, unregister.");
+        }
+        const action = positionalArgs[0];
+        switch (action) {
+            case 'list':
+                if (positionalArgs.length > 2) {
+                    fail("Command 'proxy list' accepts optional [service_name].");
+                }
+                return {
+                    kind: 'client',
+                    command: 'proxy',
+                    action,
+                    serviceName: positionalArgs[1] || '',
+                    execute: (callback) => serviceModule.proxy.list(positionalArgs[1] || '', rpcOptions, callback),
+                };
+            case 'get':
+                if (positionalArgs.length !== 3) {
+                    fail("Command 'proxy get' requires <service_name> <prefix>.");
+                }
+                return {
+                    kind: 'client',
+                    command: 'proxy',
+                    action,
+                    serviceName: positionalArgs[1],
+                    prefix: positionalArgs[2],
+                    execute: (callback) => serviceModule.proxy.get(positionalArgs[1], positionalArgs[2], rpcOptions, callback),
+                };
+            case 'register':
+                if (positionalArgs.length !== 4) {
+                    fail("Command 'proxy register' requires <service_name> <prefix> <target>.");
+                }
+                return {
+                    kind: 'client',
+                    command: 'proxy',
+                    action,
+                    serviceName: positionalArgs[1],
+                    prefix: positionalArgs[2],
+                    target: positionalArgs[3],
+                    execute: (callback) => serviceModule.proxy.register({
+                        service: positionalArgs[1],
+                        prefix: positionalArgs[2],
+                        target: positionalArgs[3],
+                        stripPrefix: parsed.values.stripPrefix || '',
+                        healthPath: parsed.values.healthPath || '',
+                    }, rpcOptions, callback),
+                };
+            case 'unregister':
+                if (positionalArgs.length !== 2 && positionalArgs.length !== 3) {
+                    fail("Command 'proxy unregister' requires <service_name> and optional [prefix].");
+                }
+                return {
+                    kind: 'client',
+                    command: 'proxy',
+                    action,
+                    serviceName: positionalArgs[1],
+                    prefix: positionalArgs[2] || '',
+                    execute: (callback) => serviceModule.proxy.unregister(positionalArgs[1], positionalArgs[2] || '', rpcOptions, callback),
+                };
+            default:
+                fail(`Unknown proxy command '${action}'.`);
                 return null;
         }
     }
@@ -452,6 +528,9 @@
                 return;
             case 'details':
                 renderDetailsResult(commandSpec, result);
+                return;
+            case 'proxy':
+                renderProxyResult(commandSpec, result);
                 return;
             case 'controller':
                 renderControllerResult(commandSpec, result);
@@ -801,6 +880,42 @@
             { key: 'pid', title: 'PID' },
             { key: 'exitCode', title: 'EXIT_CODE' },
             { key: 'error', title: 'ERROR' },
+        ], rows);
+    }
+
+    function renderProxyResult(commandSpec, result) {
+        if (commandSpec.action === 'list') {
+            const rows = Array.isArray(result) ? result : [];
+            console.println(`PROXIES (${rows.length})`);
+            renderProxyTable(rows);
+            return;
+        }
+        if (commandSpec.action === 'unregister') {
+            const rows = Array.isArray(result) ? result : [];
+            console.println(`REMOVED PROXIES (${rows.length})`);
+            renderProxyTable(rows);
+            return;
+        }
+        console.println('PROXY');
+        renderProxyTable(result ? [result] : []);
+    }
+
+    function renderProxyTable(entries) {
+        const rows = Array.isArray(entries) && entries.length > 0
+            ? entries.map((entry) => ({
+                service: entry.service || '',
+                prefix: entry.prefix || '',
+                target: entry.target || '',
+                stripPrefix: entry.strip_prefix || '-',
+                healthPath: entry.health_path || '-',
+            }))
+            : [{ service: '(none)', prefix: '', target: '', stripPrefix: '', healthPath: '' }];
+        renderTable([
+            { key: 'service', title: 'SERVICE' },
+            { key: 'prefix', title: 'PREFIX' },
+            { key: 'target', title: 'TARGET' },
+            { key: 'stripPrefix', title: 'STRIP_PREFIX' },
+            { key: 'healthPath', title: 'HEALTH_PATH' },
         ], rows);
     }
 

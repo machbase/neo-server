@@ -22,6 +22,12 @@ class Client {
             set: (name, key, value, callback) => this.detailWrite('service.runtime.detail.set', name, key, value, callback),
             delete: (name, key, callback) => this.detailsDelete(name, key, callback),
         };
+        this.proxy = {
+            register: (config, callback) => this.proxyRegister(config, callback),
+            unregister: (service, prefix, callback) => this.proxyUnregister(service, prefix, callback),
+            list: (service, callback) => this.proxyList(service, callback),
+            get: (service, prefix, callback) => this.proxyGet(service, prefix, callback),
+        };
         this.filesystem = {
             stat: (filePath, callback) => this.fsStat(filePath, callback),
             readDir: (filePath, callback) => this.fsReadDir(filePath, callback),
@@ -155,6 +161,36 @@ class Client {
         return this.call('service.runtime.detail.delete', {
             name: requireName(name),
             key: normalizeDetailKey(key, true),
+        }, callback);
+    }
+
+    proxyRegister(config, callback) {
+        return this.call('proxy.register', normalizeProxyConfig(config), callback);
+    }
+
+    proxyUnregister(service, prefix, callback) {
+        if (typeof prefix === 'function') {
+            callback = prefix;
+            prefix = '';
+        }
+        return this.call('proxy.unregister', {
+            service: requireName(service),
+            prefix: prefix ? String(prefix) : '',
+        }, callback);
+    }
+
+    proxyList(service, callback) {
+        if (typeof service === 'function') {
+            callback = service;
+            service = '';
+        }
+        return this.call('proxy.list', service ? String(service) : '', callback);
+    }
+
+    proxyGet(service, prefix, callback) {
+        return this.call('proxy.get', {
+            service: requireName(service),
+            prefix: requireProxyPrefix(prefix),
         }, callback);
     }
 
@@ -345,6 +381,54 @@ function detailsDelete(name, key, options, callback) {
         options = undefined;
     }
     return new Client(options).details.delete(name, key, callback);
+}
+
+function proxyRegister(config, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).proxy.register(config, callback);
+}
+
+function proxyUnregister(service, prefix, options, callback) {
+    if (typeof prefix === 'function') {
+        callback = prefix;
+        prefix = '';
+        options = undefined;
+    } else if (typeof prefix === 'object' && prefix !== null) {
+        callback = options;
+        options = prefix;
+        prefix = '';
+    } else if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).proxy.unregister(service, prefix, callback);
+}
+
+function proxyList(service, options, callback) {
+    if (typeof service === 'function') {
+        callback = service;
+        service = '';
+        options = undefined;
+    } else if (typeof service === 'object' && service !== null) {
+        callback = options;
+        options = service;
+        service = '';
+    } else if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).proxy.list(service, callback);
+}
+
+function proxyGet(service, prefix, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).proxy.get(service, prefix, callback);
 }
 
 function fsStat(filePath, options, callback) {
@@ -587,6 +671,42 @@ function requirePath(filePath) {
     return filePath;
 }
 
+function requireProxyPrefix(prefix) {
+    if (typeof prefix !== 'string' || prefix === '') {
+        throw new Error('proxy prefix is required');
+    }
+    return prefix;
+}
+
+function normalizeProxyConfig(config) {
+    if (!config || typeof config !== 'object') {
+        throw new Error('proxy config is required');
+    }
+    const normalized = {
+        service: requireName(config.service),
+        prefix: requireProxyPrefix(config.prefix),
+        target: requireProxyTarget(config.target),
+    };
+    if (config.strip_prefix !== undefined && config.strip_prefix !== null && config.strip_prefix !== '') {
+        normalized.strip_prefix = String(config.strip_prefix);
+    } else if (config.stripPrefix !== undefined && config.stripPrefix !== null && config.stripPrefix !== '') {
+        normalized.strip_prefix = String(config.stripPrefix);
+    }
+    if (config.health_path !== undefined && config.health_path !== null && config.health_path !== '') {
+        normalized.health_path = String(config.health_path);
+    } else if (config.healthPath !== undefined && config.healthPath !== null && config.healthPath !== '') {
+        normalized.health_path = String(config.healthPath);
+    }
+    return normalized;
+}
+
+function requireProxyTarget(target) {
+    if (typeof target !== 'string' || target === '') {
+        throw new Error('proxy target is required');
+    }
+    return target;
+}
+
 function encodeWriteFileData(data) {
     if (data === undefined || data === null) {
         throw new Error('filesystem write data is required');
@@ -646,6 +766,12 @@ module.exports = {
         update: (name, key, value, options, callback) => detailsWrite('service.runtime.detail.update', name, key, value, options, callback),
         set: (name, key, value, options, callback) => detailsWrite('service.runtime.detail.set', name, key, value, options, callback),
         delete: detailsDelete,
+    },
+    proxy: {
+        register: proxyRegister,
+        unregister: proxyUnregister,
+        list: proxyList,
+        get: proxyGet,
     },
     filesystem: {
         stat: fsStat,

@@ -3,8 +3,12 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -407,6 +412,106 @@ func TestWriteSharedInfoWithoutBackend(t *testing.T) {
 	require.Contains(t, string(body), "\"host\": \"127.0.0.1\"")
 	require.Contains(t, string(body), "\"port\": 5656")
 	require.Contains(t, string(body), "\"user\": \"sys\"")
+}
+
+func TestCleanupServiceProxies(t *testing.T) {
+	svr := &Server{proxyMgr: NewProxyManager()}
+	_, err := svr.proxyMgr.Register(ProxyRegisterRequest{Service: "alpha", Prefix: "/api/", Target: "http://127.0.0.1:8080"})
+	require.NoError(t, err)
+	_, err = svr.proxyMgr.Register(ProxyRegisterRequest{Service: "alpha", Prefix: "/ui/", Target: "http://127.0.0.1:8081"})
+	require.NoError(t, err)
+	_, err = svr.proxyMgr.Register(ProxyRegisterRequest{Service: "beta", Prefix: "/api/", Target: "http://127.0.0.1:9090"})
+	require.NoError(t, err)
+
+	svr.cleanupServiceProxies("alpha")
+
+	require.Empty(t, svr.proxyMgr.List("alpha"))
+	require.Len(t, svr.proxyMgr.List("beta"), 1)
+}
+
+func TestProxyRPCHandlers(t *testing.T) {
+	svr := &Server{proxyMgr: NewProxyManager()}
+
+	registered, err := svr.registerProxy(ProxyRegisterRequest{Service: "alpha", Prefix: "/api", Target: "http://127.0.0.1:8080"})
+	require.NoError(t, err)
+	require.Equal(t, "/api/", registered.Prefix)
+
+	got, err := svr.getProxy(ProxyGetRequest{Service: "alpha", Prefix: "/api/"})
+	require.NoError(t, err)
+	require.Equal(t, registered.Target, got.Target)
+
+	listed, err := svr.listProxies("alpha")
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+
+	removed, err := svr.unregisterProxy(ProxyUnregisterRequest{Service: "alpha", Prefix: "/api/"})
+	require.NoError(t, err)
+	require.Len(t, removed, 1)
+
+	_, err = svr.getProxy(ProxyGetRequest{Service: "alpha", Prefix: "/api/"})
+	require.ErrorIs(t, err, errProxyNotFound)
+}
+
+func TestHandleServiceProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	}))
+	defer target.Close()
+
+	pm := NewProxyManager()
+	_, err := pm.Register(ProxyRegisterRequest{Service: "alpha", Prefix: "/api/", Target: target.URL})
+	require.NoError(t, err)
+	svr := &httpd{authServer: &Server{proxyMgr: pm}}
+
+	router := gin.New()
+	router.Any("/web/services/:name/*path", svr.handleServiceProxy)
+	frontend := httptest.NewServer(router)
+	defer frontend.Close()
+
+	rsp, err := http.Get(frontend.URL + "/web/services/alpha/api/v1")
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	require.Equal(t, "/v1", string(body))
+}
+
+func TestServiceLifecycleCleansProxies(t *testing.T) {
+	tmpDir := t.TempDir()
+	servicesDir := filepath.Join(tmpDir, "services")
+	require.NoError(t, os.MkdirAll(servicesDir, 0o755))
+	config := service.Config{Name: "alpha", Enable: false, Executable: "echo"}
+	data, err := json.MarshalIndent(config, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(servicesDir, "alpha.json"), data, 0o644))
+
+	ctl, err := service.NewController(&service.ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	require.NoError(t, err)
+	svr := &Server{proxyMgr: NewProxyManager()}
+	ctl.OnServiceLifecycle(func(event service.ServiceLifecycleEvent) {
+		if event.Action == service.ServiceLifecycleStopped {
+			svr.cleanupServiceProxies(event.Name)
+		}
+	})
+	require.NoError(t, ctl.Start(nil))
+	defer ctl.Stop(nil)
+
+	_, err = svr.proxyMgr.Register(ProxyRegisterRequest{Service: "alpha", Prefix: "/api/", Target: "http://127.0.0.1:8080"})
+	require.NoError(t, err)
+	_, err = ctl.StartService("alpha")
+	require.NoError(t, err)
+	_, err = ctl.StopService("alpha")
+	require.NoError(t, err)
+
+	require.Empty(t, svr.proxyMgr.List("alpha"))
 }
 
 type ShellTestCase struct {

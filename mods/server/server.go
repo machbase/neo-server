@@ -70,7 +70,8 @@ type Server struct {
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
-	pkgMgr *pkgs.PkgManager
+	pkgMgr   *pkgs.PkgManager
+	proxyMgr *ProxyManager
 
 	serviceController *service.Controller
 	rpcController     *service.Controller
@@ -114,6 +115,7 @@ func NewServer(conf *Config) (*Server, error) {
 	return &Server{
 		Config:          *conf,
 		servicePorts:    make(map[string][]*model.ServicePort),
+		proxyMgr:        NewProxyManager(),
 		neoShellAccount: make(map[string]string),
 		rpcController:   &service.Controller{},
 	}, nil
@@ -1052,6 +1054,11 @@ func (s *Server) initServiceController() error {
 	if err != nil {
 		return err
 	}
+	ctrl.OnServiceLifecycle(func(event service.ServiceLifecycleEvent) {
+		if event.Action == service.ServiceLifecycleStopped {
+			s.cleanupServiceProxies(event.Name)
+		}
+	})
 	if err := ctrl.Start(func(sc *service.Config, action string, err error) {
 		s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
 	}); err != nil {
@@ -1093,6 +1100,10 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("vizspec.export", viz.RPCVizspecExport)
 	ctl.RegisterJsonRpcHandler("server.info.get", s.getServerInfo)
 	ctl.RegisterJsonRpcHandler("service.port.list", s.getServicePorts)
+	ctl.RegisterJsonRpcHandler("proxy.register", s.registerProxy)
+	ctl.RegisterJsonRpcHandler("proxy.unregister", s.unregisterProxy)
+	ctl.RegisterJsonRpcHandler("proxy.list", s.listProxies)
+	ctl.RegisterJsonRpcHandler("proxy.get", s.getProxy)
 	ctl.RegisterJsonRpcHandler("shell.list", s.listShells)
 	ctl.RegisterJsonRpcHandler("shell.add", s.addShell)
 	ctl.RegisterJsonRpcHandler("shell.delete", s.deleteShell)
