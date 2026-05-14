@@ -28,24 +28,27 @@ func AutoRotate(speed float64) Option {
 	}
 }
 
-// SetBinaryMode
+// SetBinaryFormat
 //
-//	mods/codec/internal/csv/csv_encode.go:88:1
-type CanSetBinaryMode interface {
-	SetBinaryMode(mode string)
+//	mods/codec/internal/box/box_encode.go:68:1
+//	mods/codec/internal/csv/csv_encode.go:70:1
+//	mods/codec/internal/json/json_encode.go:76:1
+//	mods/codec/internal/markdown/md_encode.go:77:1
+type CanSetBinaryFormat interface {
+	SetBinaryFormat(format string)
 }
 
-func BinaryMode(mode string) Option {
+func BinaryFormat(format string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetBinaryMode); ok {
-			_o.SetBinaryMode(mode)
+		if _o, ok := _one.(CanSetBinaryFormat); ok {
+			_o.SetBinaryFormat(format)
 		}
 	}
 }
 
 // SetBoxDrawBorder
 //
-//	mods/codec/internal/box/box_encode.go:92:1
+//	mods/codec/internal/box/box_encode.go:96:1
 type CanSetBoxDrawBorder interface {
 	SetBoxDrawBorder(flag bool)
 }
@@ -60,7 +63,7 @@ func BoxDrawBorder(flag bool) Option {
 
 // SetBoxSeparateColumns
 //
-//	mods/codec/internal/box/box_encode.go:88:1
+//	mods/codec/internal/box/box_encode.go:92:1
 type CanSetBoxSeparateColumns interface {
 	SetBoxSeparateColumns(flag bool)
 }
@@ -75,7 +78,7 @@ func BoxSeparateColumns(flag bool) Option {
 
 // SetBoxStyle
 //
-//	mods/codec/internal/box/box_encode.go:84:1
+//	mods/codec/internal/box/box_encode.go:88:1
 type CanSetBoxStyle interface {
 	SetBoxStyle(style string)
 }
@@ -90,7 +93,7 @@ func BoxStyle(style string) Option {
 
 // SetBrief
 //
-//	mods/codec/internal/markdown/md_encode.go:87:1
+//	mods/codec/internal/markdown/md_encode.go:93:1
 type CanSetBrief interface {
 	SetBrief(flag bool)
 }
@@ -105,7 +108,7 @@ func Brief(flag bool) Option {
 
 // SetBriefCount
 //
-//	mods/codec/internal/markdown/md_encode.go:95:1
+//	mods/codec/internal/markdown/md_encode.go:101:1
 type CanSetBriefCount interface {
 	SetBriefCount(count int)
 }
@@ -240,13 +243,13 @@ func ChartOption(opt string) Option {
 
 // SetColumnTypes
 //
-//	mods/codec/internal/box/box_encode.go:100:1
+//	mods/codec/internal/box/box_encode.go:104:1
 //	mods/codec/internal/csv/csv_decode.go:81:1
-//	mods/codec/internal/csv/csv_encode.go:101:1
+//	mods/codec/internal/csv/csv_encode.go:100:1
 //	mods/codec/internal/json/json_decode.go:44:1
-//	mods/codec/internal/json/json_encode.go:90:1
+//	mods/codec/internal/json/json_encode.go:96:1
 //	mods/codec/internal/ndjson/decode.go:56:1
-//	mods/codec/internal/ndjson/encode.go:81:1
+//	mods/codec/internal/ndjson/encode.go:87:1
 type CanSetColumnTypes interface {
 	SetColumnTypes(types ...api.DataType)
 }
@@ -261,13 +264,13 @@ func ColumnTypes(types ...api.DataType) Option {
 
 // SetColumns
 //
-//	mods/codec/internal/box/box_encode.go:96:1
+//	mods/codec/internal/box/box_encode.go:100:1
 //	mods/codec/internal/csv/csv_decode.go:77:1
-//	mods/codec/internal/csv/csv_encode.go:97:1
-//	mods/codec/internal/json/json_encode.go:86:1
-//	mods/codec/internal/markdown/md_encode.go:63:1
+//	mods/codec/internal/csv/csv_encode.go:96:1
+//	mods/codec/internal/json/json_encode.go:92:1
+//	mods/codec/internal/markdown/md_encode.go:65:1
 //	mods/codec/internal/ndjson/decode.go:48:1
-//	mods/codec/internal/ndjson/encode.go:77:1
+//	mods/codec/internal/ndjson/encode.go:83:1
 //	mods/codec/internal/templ/templ.go:67:1
 type CanSetColumns interface {
 	SetColumns(names ...string)
@@ -314,15 +317,15 @@ func DataZoom(typ string, minPercentage float32, maxPercentage float32) Option {
 // SetDelimiter
 //
 //	mods/codec/internal/csv/csv_decode.go:68:1
-//	mods/codec/internal/csv/csv_encode.go:92:1
+//	mods/codec/internal/csv/csv_encode.go:91:1
 type CanSetDelimiter interface {
-	SetDelimiter(delimiter string)
+	SetDelimiter(newDelimiter string)
 }
 
-func Delimiter(delimiter string) Option {
+func Delimiter(newDelimiter string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetDelimiter); ok {
-			_o.SetDelimiter(delimiter)
+			_o.SetDelimiter(newDelimiter)
 		}
 	}
 }
@@ -389,11 +392,11 @@ func GridSize(args ...float64) Option {
 
 // SetHeader
 //
-//	mods/codec/internal/box/box_encode.go:76:1
+//	mods/codec/internal/box/box_encode.go:80:1
 //	mods/codec/internal/csv/csv_decode.go:60:1
-//	mods/codec/internal/csv/csv_encode.go:84:1
-//	mods/codec/internal/json/json_encode.go:78:1
-//	mods/codec/internal/ndjson/encode.go:69:1
+//	mods/codec/internal/csv/csv_encode.go:87:1
+//	mods/codec/internal/json/json_encode.go:84:1
+//	mods/codec/internal/ndjson/encode.go:75:1
 type CanSetHeader interface {
 	SetHeader(show bool)
 }
@@ -423,11 +426,11 @@ func HeaderColumns(headerColumns bool) Option {
 
 // SetHeading
 //
-//	mods/codec/internal/box/box_encode.go:80:1
+//	mods/codec/internal/box/box_encode.go:84:1
 //	mods/codec/internal/csv/csv_decode.go:56:1
-//	mods/codec/internal/csv/csv_encode.go:80:1
-//	mods/codec/internal/json/json_encode.go:82:1
-//	mods/codec/internal/ndjson/encode.go:73:1
+//	mods/codec/internal/csv/csv_encode.go:83:1
+//	mods/codec/internal/json/json_encode.go:88:1
+//	mods/codec/internal/ndjson/encode.go:79:1
 type CanSetHeading interface {
 	SetHeading(show bool)
 }
@@ -442,7 +445,7 @@ func Heading(show bool) Option {
 
 // SetHtml
 //
-//	mods/codec/internal/markdown/md_encode.go:83:1
+//	mods/codec/internal/markdown/md_encode.go:89:1
 type CanSetHtml interface {
 	SetHtml(flag bool)
 }
@@ -521,7 +524,7 @@ func LineWidth(width float64) Option {
 //
 //	mods/codec/internal/chart/chart.go:67:1
 //	mods/codec/internal/geomap/geomap.go:70:1
-//	mods/codec/internal/markdown/md_encode.go:55:1
+//	mods/codec/internal/markdown/md_encode.go:57:1
 type CanSetLogger interface {
 	SetLogger(l facility.Logger)
 }
@@ -613,11 +616,11 @@ func Opacity(opacity float64) Option {
 //
 //	mods/codec/internal/box/box_encode.go:54:1
 //	mods/codec/internal/chart/chart.go:75:1
-//	mods/codec/internal/csv/csv_encode.go:59:1
+//	mods/codec/internal/csv/csv_encode.go:58:1
 //	mods/codec/internal/geomap/geomap.go:78:1
-//	mods/codec/internal/json/json_encode.go:52:1
-//	mods/codec/internal/markdown/md_encode.go:59:1
-//	mods/codec/internal/ndjson/encode.go:43:1
+//	mods/codec/internal/json/json_encode.go:54:1
+//	mods/codec/internal/markdown/md_encode.go:61:1
+//	mods/codec/internal/ndjson/encode.go:49:1
 //	mods/codec/internal/templ/templ.go:55:1
 type CanSetOutputStream interface {
 	SetOutputStream(o io.Writer)
@@ -648,11 +651,11 @@ func Plugins(plugins ...string) Option {
 
 // SetPrecision
 //
-//	mods/codec/internal/box/box_encode.go:68:1
-//	mods/codec/internal/csv/csv_encode.go:71:1
-//	mods/codec/internal/json/json_encode.go:70:1
-//	mods/codec/internal/markdown/md_encode.go:75:1
-//	mods/codec/internal/ndjson/encode.go:61:1
+//	mods/codec/internal/box/box_encode.go:72:1
+//	mods/codec/internal/csv/csv_encode.go:74:1
+//	mods/codec/internal/json/json_encode.go:72:1
+//	mods/codec/internal/markdown/md_encode.go:81:1
+//	mods/codec/internal/ndjson/encode.go:67:1
 type CanSetPrecision interface {
 	SetPrecision(precision int)
 }
@@ -667,11 +670,11 @@ func Precision(precision int) Option {
 
 // SetRownum
 //
-//	mods/codec/internal/box/box_encode.go:72:1
-//	mods/codec/internal/csv/csv_encode.go:75:1
-//	mods/codec/internal/json/json_encode.go:74:1
-//	mods/codec/internal/markdown/md_encode.go:79:1
-//	mods/codec/internal/ndjson/encode.go:65:1
+//	mods/codec/internal/box/box_encode.go:76:1
+//	mods/codec/internal/csv/csv_encode.go:78:1
+//	mods/codec/internal/json/json_encode.go:80:1
+//	mods/codec/internal/markdown/md_encode.go:85:1
+//	mods/codec/internal/ndjson/encode.go:71:1
 type CanSetRownum interface {
 	SetRownum(show bool)
 }
@@ -686,7 +689,7 @@ func Rownum(show bool) Option {
 
 // SetRowsArray
 //
-//	mods/codec/internal/json/json_encode.go:102:1
+//	mods/codec/internal/json/json_encode.go:108:1
 type CanSetRowsArray interface {
 	SetRowsArray(flag bool)
 }
@@ -701,7 +704,7 @@ func RowsArray(flag bool) Option {
 
 // SetRowsFlatten
 //
-//	mods/codec/internal/json/json_encode.go:98:1
+//	mods/codec/internal/json/json_encode.go:104:1
 type CanSetRowsFlatten interface {
 	SetRowsFlatten(flag bool)
 }
@@ -747,7 +750,7 @@ func Size(width string, height string) Option {
 
 // SetSubstituteNull
 //
-//	mods/codec/internal/csv/csv_encode.go:105:1
+//	mods/codec/internal/csv/csv_encode.go:104:1
 type CanSetSubstituteNull interface {
 	SetSubstituteNull(alternative any)
 }
@@ -871,12 +874,12 @@ func TileTemplate(url string) Option {
 //
 //	mods/codec/internal/box/box_encode.go:63:1
 //	mods/codec/internal/csv/csv_decode.go:51:1
-//	mods/codec/internal/csv/csv_encode.go:67:1
+//	mods/codec/internal/csv/csv_encode.go:66:1
 //	mods/codec/internal/json/json_decode.go:36:1
-//	mods/codec/internal/json/json_encode.go:63:1
-//	mods/codec/internal/markdown/md_encode.go:71:1
+//	mods/codec/internal/json/json_encode.go:65:1
+//	mods/codec/internal/markdown/md_encode.go:73:1
 //	mods/codec/internal/ndjson/decode.go:40:1
-//	mods/codec/internal/ndjson/encode.go:54:1
+//	mods/codec/internal/ndjson/encode.go:60:1
 type CanSetTimeLocation interface {
 	SetTimeLocation(tz *time.Location)
 }
@@ -894,12 +897,12 @@ func TimeLocation(tz *time.Location) Option {
 //	mods/codec/internal/box/box_encode.go:58:1
 //	mods/codec/internal/chart/chartcompat.go:285:1
 //	mods/codec/internal/csv/csv_decode.go:47:1
-//	mods/codec/internal/csv/csv_encode.go:63:1
+//	mods/codec/internal/csv/csv_encode.go:62:1
 //	mods/codec/internal/json/json_decode.go:32:1
-//	mods/codec/internal/json/json_encode.go:56:1
-//	mods/codec/internal/markdown/md_encode.go:67:1
+//	mods/codec/internal/json/json_encode.go:58:1
+//	mods/codec/internal/markdown/md_encode.go:69:1
 //	mods/codec/internal/ndjson/decode.go:36:1
-//	mods/codec/internal/ndjson/encode.go:47:1
+//	mods/codec/internal/ndjson/encode.go:53:1
 type CanSetTimeformat interface {
 	SetTimeformat(f string)
 }
@@ -974,7 +977,7 @@ func ToolboxSaveAsImage(name string) Option {
 
 // SetTranspose
 //
-//	mods/codec/internal/json/json_encode.go:94:1
+//	mods/codec/internal/json/json_encode.go:100:1
 type CanSetTranspose interface {
 	SetTranspose(flag bool)
 }

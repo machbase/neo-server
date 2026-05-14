@@ -10,7 +10,6 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -33,11 +32,11 @@ type Exporter struct {
 	precision       int
 	nullAlternative any
 	timeformat      *util.TimeFormatter
+	binaryFormatter *util.BinaryFormatter
 
 	heading  bool
 	colNames []string
 	colTypes []api.DataType
-	binMode  string // 'hex', 'base64', default 'base64'
 
 	closeOnce sync.Once
 }
@@ -47,7 +46,7 @@ func NewEncoder() *Exporter {
 		precision:       -1,
 		nullAlternative: "NULL",
 		timeformat:      util.NewTimeFormatter(),
-		binMode:         "base64",
+		binaryFormatter: util.NewBinaryFormatter("hex"),
 	}
 	return rr
 }
@@ -68,6 +67,10 @@ func (ex *Exporter) SetTimeLocation(tz *time.Location) {
 	ex.timeformat.Set(util.TimeLocation(tz))
 }
 
+func (ex *Exporter) SetBinaryFormat(format string) {
+	ex.binaryFormatter.SetFormat(format)
+}
+
 func (ex *Exporter) SetPrecision(precision int) {
 	ex.precision = precision
 }
@@ -83,10 +86,6 @@ func (ex *Exporter) SetHeading(show bool) {
 
 func (ex *Exporter) SetHeader(show bool) {
 	ex.heading = show
-}
-
-func (ex *Exporter) SetBinaryMode(mode string) {
-	ex.binMode = strings.ToLower(mode)
 }
 
 func (ex *Exporter) SetDelimiter(delimiter string) {
@@ -269,9 +268,9 @@ func (ex *Exporter) AddRow(values []any) error {
 		case uint8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *[]uint8:
-			cols[i] = encodeBinary(*v, ex.binMode)
+			cols[i] = ex.binaryFormatter.Format(*v)
 		case []uint8:
-			cols[i] = encodeBinary(v, ex.binMode)
+			cols[i] = ex.binaryFormatter.Format(v)
 		case *nums.LatLon:
 			cols[i] = fmt.Sprintf("[%v,%v]", v.Lat, v.Lon)
 		case *nums.SingleLatLon:

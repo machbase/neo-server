@@ -158,6 +158,8 @@ func TestMarkdownAddRowTypes(t *testing.T) {
 		{name: "int64 pointer", value: &int64Value, expected: "7"},
 		{name: "ip", value: ipValue, expected: "127.0.0.1"},
 		{name: "ip pointer", value: &ipValue, expected: "127.0.0.1"},
+		{name: "byte slice", value: []byte{97, 98, 99, 100, 101}, expected: "0x6162636465"},
+		{name: "byte slice pointer", value: &[]byte{97, 98, 99, 100, 101}, expected: "0x6162636465"},
 		{name: "fallback", value: struct{ Name string }{Name: "x"}, expected: "struct { Name string }"},
 	}
 
@@ -178,5 +180,38 @@ func TestMarkdownAddRowTypes(t *testing.T) {
 			expected := "|value|\n|:-----|\n|" + tt.expected + "|\n"
 			require.Equal(t, expected, buffer.String())
 		})
+	}
+}
+
+func TestBinaryFormat(t *testing.T) {
+	tests := []struct {
+		input        []byte
+		binaryformat string
+		expect       string
+	}{
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "preview", "|1|preview|0x0102030405..|"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "hex", "|1|hex|0x010203040506|"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "bytes", "|1|bytes|[1 2 3 4 5 6]|"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "base64", "|1|base64|AQIDBAUG|"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "_unknown_", "|1|_unknown_|0x010203040506|"},
+	}
+
+	for _, tt := range tests {
+		enc := markdown.NewEncoder()
+
+		require.Equal(t, "text/markdown", enc.ContentType())
+
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetBinaryFormat(tt.binaryformat)
+		enc.SetRownum(true)
+		enc.SetColumns("FORMAT", "BIN")
+		err := enc.Open()
+		require.Nil(t, err)
+		enc.AddRow([]any{tt.binaryformat, tt.input})
+		enc.Close()
+
+		result := w.String()
+		require.Contains(t, result, tt.expect)
 	}
 }

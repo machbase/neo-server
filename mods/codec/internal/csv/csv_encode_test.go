@@ -229,6 +229,40 @@ func TestCsvEncoderSetterPaths(t *testing.T) {
 	require.Contains(t, w.String(), "a;b")
 }
 
+func TestBinaryFormat(t *testing.T) {
+	tests := []struct {
+		input        []byte
+		binaryformat string
+		expect       string
+	}{
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "preview", "1,preview,0x0102030405.."},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "hex", "1,hex,0x010203040506"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "bytes", "1,bytes,[1 2 3 4 5 6]"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "base64", "1,base64,AQIDBAUG"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "_unknown_", "1,_unknown_,0x010203040506"},
+	}
+
+	for _, tt := range tests {
+		enc := csv.NewEncoder()
+
+		require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
+
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetBinaryFormat(tt.binaryformat)
+		enc.SetRownum(true)
+		enc.SetColumns("BIN")
+		enc.SetHeading(true)
+		err := enc.Open()
+		require.Nil(t, err)
+		enc.AddRow([]any{tt.binaryformat, tt.input})
+		enc.Close()
+
+		result := w.String()
+		require.Contains(t, result, tt.expect)
+	}
+}
+
 func TestCsvEncoderBinaryMode(t *testing.T) {
 	t.Run("default hex", func(t *testing.T) {
 		enc := csv.NewEncoder()
@@ -245,7 +279,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 
 		expects := []string{
 			"bin,ptr_bin,empty_bin,nil_bin",
-			"AQI=,AwQ=,,",
+			"0x0102,0x0304,,NULL",
 			"",
 			"",
 		}
@@ -258,7 +292,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 		enc.SetOutputStream(w)
 		enc.SetColumns("bin", "ptr_bin", "empty_bin", "nil_bin")
 		enc.SetHeader(true)
-		enc.SetBinaryMode("BASE64")
+		enc.SetBinaryFormat("BASE64")
 		require.NoError(t, enc.Open())
 
 		ptrBin := []byte{0x03, 0x04}
@@ -268,7 +302,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 
 		expects := []string{
 			"bin,ptr_bin,empty_bin,nil_bin",
-			"AQI=,AwQ=,,",
+			"AQI=,AwQ=,,NULL",
 			"",
 			"",
 		}
@@ -281,7 +315,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 		enc.SetOutputStream(w)
 		enc.SetColumns("bin")
 		enc.SetHeader(true)
-		enc.SetBinaryMode("raw")
+		enc.SetBinaryFormat("raw")
 		require.NoError(t, enc.Open())
 
 		require.NoError(t, enc.AddRow([]any{[]byte{0x0a, 0x0b}}))

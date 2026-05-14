@@ -43,7 +43,7 @@ func NewEncoder() *Exporter {
 		precision:       -1,
 		showTz:          true,
 		timeformatter:   util.NewTimeFormatter(),
-		binaryFormatter: util.NewBinaryFormatter(),
+		binaryFormatter: util.NewBinaryFormatter("preview"),
 	}
 }
 
@@ -63,6 +63,10 @@ func (ex *Exporter) SetTimeformat(format string) {
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
 	ex.tz = tz.String()
 	ex.timeformatter.Set(util.TimeLocation(tz))
+}
+
+func (ex *Exporter) SetBinaryFormat(format string) {
+	ex.binaryFormatter.SetFormat(format)
 }
 
 func (ex *Exporter) SetPrecision(precision int) {

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,18 +17,30 @@ func ErrIncompatible(dstType string, src any) error {
 }
 
 type BinaryFormatter struct {
-	hexMode bool
-	maxLen  int
-	prefix  string
-	suffix  string
+	format string
 }
 
-func NewBinaryFormatter() *BinaryFormatter {
-	return &BinaryFormatter{
-		hexMode: true,
-		maxLen:  10,
-		prefix:  "0x",
-		suffix:  "..",
+// NewBinaryFormat creates a BinaryFormat with the specified format.
+// Supported formats are "base64", "hex", "bytes", and "preview".
+// The default is "base64".
+func NewBinaryFormatter(format string) *BinaryFormatter {
+	ret := &BinaryFormatter{}
+	ret.SetFormat(format)
+	return ret
+}
+
+func (ret *BinaryFormatter) SetFormat(binaryFormat string) {
+	switch strings.ToLower(binaryFormat) {
+	case "base64":
+		ret.format = "base64"
+	case "hex":
+		ret.format = "hex"
+	case "bytes":
+		ret.format = "bytes"
+	case "preview":
+		ret.format = "preview"
+	default:
+		ret.format = "hex"
 	}
 }
 
@@ -35,33 +48,29 @@ func (bf *BinaryFormatter) Format(val []byte) string {
 	if val == nil {
 		return "NULL"
 	}
-	suffix := bf.suffix
-	maxLen := bf.maxLen
-	maxLen -= len(suffix)
-	if bf.hexMode {
-		maxLen = maxLen / 2 // a byte becomes two digits
+	if len(val) == 0 {
+		return ""
 	}
-	if maxLen > len(val) {
-		maxLen = len(val)
-		suffix = ""
-	}
-	var encoded string
-	if bf.hexMode {
-		encoded = hex.EncodeToString(val[0:maxLen])
-	} else {
-		chars := make([]byte, maxLen)
-		for i, b := range val[0:maxLen] {
-			if b < 32 || b > 126 {
-				chars[i] = '.'
-			} else {
-				chars[i] = b
-			}
-		}
-		encoded = string(chars)
-	}
+	switch bf.format {
+	default:
+		return base64.StdEncoding.EncodeToString(val)
+	case "base64":
+		return base64.StdEncoding.EncodeToString(val)
+	case "bytes":
+		return fmt.Sprintf("%v", val)
+	case "hex":
+		return "0x" + hex.EncodeToString(val)
+	case "preview":
+		suffix := ".."
+		maxLen := 5
+		prefix := "0x"
 
-	ret := bf.prefix + encoded + suffix
-	return ret
+		if maxLen >= len(val) {
+			maxLen = len(val)
+			suffix = ""
+		}
+		return prefix + hex.EncodeToString(val[0:maxLen]) + suffix
+	}
 }
 
 var StandardTimeNow func() time.Time = time.Now

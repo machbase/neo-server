@@ -12,18 +12,19 @@ import (
 type QueryRequest struct {
 	SqlText      string `json:"q"`
 	Params       []any  `json:"p,omitempty"`
-	ReplyTo      string `json:"reply,omitempty"`       // for mqtt query only
-	RowsFlatten  bool   `json:"rowsFlatten,omitempty"` // json output only for http, mqtt
-	RowsArray    bool   `json:"rowsArray,omitempty"`   // json output only for http, mqtt
-	Transpose    bool   `json:"transpose,omitempty"`   // json output only for http, mqtt
-	Timeformat   string `json:"timeformat,omitempty"`  //
-	TimeLocation string `json:"tz,omitempty"`          //
-	Format       string `json:"format,omitempty"`      //
-	Compress     string `json:"compress,omitempty"`    //
-	Precision    int    `json:"precision,omitempty"`   //
-	Rownum       bool   `json:"rownum,omitempty"`      //
-	Heading      bool   `json:"heading,omitempty"`     // deprecated, use Header
-	Header       string `json:"header,omitempty"`      //
+	ReplyTo      string `json:"reply,omitempty"`        // for mqtt query only
+	RowsFlatten  bool   `json:"rowsFlatten,omitempty"`  // json output only for http, mqtt
+	RowsArray    bool   `json:"rowsArray,omitempty"`    // json output only for http, mqtt
+	Transpose    bool   `json:"transpose,omitempty"`    // json output only for http, mqtt
+	Timeformat   string `json:"timeformat,omitempty"`   //
+	TimeLocation string `json:"tz,omitempty"`           //
+	Format       string `json:"format,omitempty"`       //
+	BinaryFormat string `json:"binaryformat,omitempty"` //
+	Compress     string `json:"compress,omitempty"`     //
+	Precision    int    `json:"precision,omitempty"`    //
+	Rownum       bool   `json:"rownum,omitempty"`       //
+	Heading      bool   `json:"heading,omitempty"`      // deprecated, use Header
+	Header       string `json:"header,omitempty"`       //
 }
 
 func decodeQueryRequestJSON(r io.Reader, req *QueryRequest) error {

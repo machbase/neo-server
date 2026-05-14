@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type TableOption struct {
@@ -18,6 +19,7 @@ type TableOption struct {
 	Tz           string `json:"tz"`
 	Precision    int    `json:"precision"`
 	Format       string `json:"format"`
+	Binaryformat string `json:"binaryformat"`
 	Header       bool   `json:"header"`
 	Footer       bool   `json:"footer"`
 	Pause        bool   `json:"pause"`
@@ -30,6 +32,7 @@ type TableWriter struct {
 	table.Writer
 	format       string
 	timeformat   string
+	binFormatter *util.BinaryFormatter
 	tz           *time.Location
 	precision    int
 	headerRow    table.Row
@@ -71,6 +74,7 @@ func Table(opt TableOption) (table.Writer, error) {
 	if err := ret.SetTz(opt.Tz); err != nil {
 		return nil, err
 	}
+	ret.SetBinaryFormat(opt.Binaryformat)
 	ret.SetAutoIndex(false)
 	// initialize terminal size and page height
 	if ret.pause && IsTerminal() {
@@ -187,6 +191,14 @@ func (tw *TableWriter) SetTimeformat(format string) {
 		tw.timeformat = time.StampNano
 	default:
 		tw.timeformat = format
+	}
+}
+
+func (tw *TableWriter) SetBinaryFormat(format string) {
+	if tw.binFormatter == nil {
+		tw.binFormatter = util.NewBinaryFormatter(format)
+	} else {
+		tw.binFormatter.SetFormat(format)
 	}
 }
 
@@ -414,6 +426,10 @@ func (tw *TableWriter) transformer(value any) string {
 		} else {
 			return val
 		}
+	case []byte:
+		return tw.binFormatter.Format(val)
+	case *[]byte:
+		return tw.binFormatter.Format(*val)
 	default:
 		return fmt.Sprint(val)
 	}

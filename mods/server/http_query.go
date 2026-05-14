@@ -48,6 +48,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Timeformat = "ns"
 			req.TimeLocation = "UTC"
 			req.Format = "json"
+			req.BinaryFormat = "base64"
 			req.Rownum = false
 			req.Heading = true
 			req.Precision = -1
@@ -71,6 +72,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Timeformat = strString(ctx.PostForm("timeformat"), "ns")
 			req.TimeLocation = strString(ctx.PostForm("tz"), "UTC")
 			req.Format = strString(ctx.PostForm("format"), "json")
+			req.BinaryFormat = strString(ctx.PostForm("binaryformat"), "base64")
 			req.Compress = ctx.PostForm("compress")
 			req.Rownum = strBool(ctx.PostForm("rownum"), false)
 			req.Heading = strBool(ctx.PostForm("heading"), true)
@@ -98,6 +100,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		req.Timeformat = strString(ctx.Query("timeformat"), "ns")
 		req.TimeLocation = strString(ctx.Query("tz"), "UTC")
 		req.Format = strString(ctx.Query("format"), "json")
+		req.BinaryFormat = ctx.Query("binaryformat")
 		req.Compress = ctx.Query("compress")
 		req.Rownum = strBool(ctx.Query("rownum"), false)
 		req.Heading = strBool(ctx.Query("heading"), true)
@@ -149,6 +152,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	encoder := codec.NewEncoder(req.Format,
 		opts.OutputStream(output),
 		opts.Timeformat(req.Timeformat),
+		opts.BinaryFormat(req.BinaryFormat),
 		opts.Precision(req.Precision),
 		opts.Rownum(req.Rownum),
 		opts.Header(req.Heading),

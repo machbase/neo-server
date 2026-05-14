@@ -1216,8 +1216,8 @@ func TestHttpWrite(t *testing.T) {
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
 				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
-				`test_1,1705291859,1.12,NULL,101,102,AQI=`,
-				`test_1,1705291860,2.23,NULL,201,202,AwQ=`,
+				`test_1,1705291859,1.12,NULL,101,102,0x0102`,
+				`test_1,1705291860,2.23,NULL,201,202,0x0304`,
 				"\n"},
 		},
 		{
@@ -1232,8 +1232,8 @@ func TestHttpWrite(t *testing.T) {
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
 				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
-				`test_2,1705291859,1.12,NULL,101,102,AQI=`,
-				`test_2,1705291860,2.23,NULL,201,202,AwQ=`,
+				`test_2,1705291859,1.12,NULL,101,102,0x0102`,
+				`test_2,1705291860,2.23,NULL,201,202,0x0304`,
 				"\n"},
 		},
 		{
@@ -1248,8 +1248,8 @@ func TestHttpWrite(t *testing.T) {
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
 				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
-				`test_3,1705291859,1.12,NULL,101,102,AQI=`,
-				`test_3,1705291860,2.23,NULL,201,202,AwQ=`,
+				`test_3,1705291859,1.12,NULL,101,102,0x0102`,
+				`test_3,1705291860,2.23,NULL,201,202,0x0304`,
 				"\n"},
 		},
 		{
@@ -1265,8 +1265,8 @@ func TestHttpWrite(t *testing.T) {
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
 				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
-				`csv_1,1705291859,1.12,NULL,101,102,AQI=`,
-				`csv_1,1705291860,2.23,NULL,201,202,AwQ=`,
+				`csv_1,1705291859,1.12,NULL,101,102,0x0102`,
+				`csv_1,1705291860,2.23,NULL,201,202,0x0304`,
 				"\n"},
 		},
 		{
@@ -1316,8 +1316,8 @@ func TestHttpWrite(t *testing.T) {
 			selectQueryParam: `&timeformat=s&format=csv`,
 			selectExpect: []string{
 				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL,BVAL`,
-				`csv_gzip,1705291859,1.12,NULL,101,102,AQI=`,
-				`csv_gzip,1705291860,2.23,NULL,201,202,AwQ=`,
+				`csv_gzip,1705291859,1.12,NULL,101,102,0x0102`,
+				`csv_gzip,1705291860,2.23,NULL,201,202,0x0304`,
 				"\n"},
 		},
 		{

@@ -20,11 +20,12 @@ type Exporter struct {
 	tick time.Time
 	nrow int
 
-	output        io.Writer
-	Rownum        bool
-	Heading       bool
-	precision     int
-	timeformatter *util.TimeFormatter
+	output          io.Writer
+	Rownum          bool
+	Heading         bool
+	precision       int
+	timeformatter   *util.TimeFormatter
+	binaryFormatter *util.BinaryFormatter
 
 	colNames []string
 	colTypes []api.DataType
@@ -39,9 +40,10 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	return &Exporter{
-		tick:          time.Now(),
-		timeformatter: util.NewTimeFormatter(),
-		precision:     -1,
+		tick:            time.Now(),
+		timeformatter:   util.NewTimeFormatter(),
+		binaryFormatter: util.NewBinaryFormatter("hex"),
+		precision:       -1,
 	}
 }
 
@@ -69,6 +71,10 @@ func (ex *Exporter) SetTimeLocation(tz *time.Location) {
 
 func (ex *Exporter) SetPrecision(precision int) {
 	ex.precision = precision
+}
+
+func (ex *Exporter) SetBinaryFormat(format string) {
+	ex.binaryFormatter.SetFormat(format)
 }
 
 func (ex *Exporter) SetRownum(show bool) {
@@ -214,6 +220,10 @@ func (ex *Exporter) AddRow(source []any) error {
 			ex.values[i] = ex.timeformatter.FormatEpoch(*v)
 		case time.Time:
 			ex.values[i] = ex.timeformatter.FormatEpoch(v)
+		case []byte:
+			ex.values[i] = ex.binaryFormatter.Format(v)
+		case *[]byte:
+			ex.values[i] = ex.binaryFormatter.Format(*v)
 		case *float64:
 			ex.values[i] = *v
 		case float64:
