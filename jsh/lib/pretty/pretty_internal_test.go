@@ -11,6 +11,7 @@ import (
 	"time"
 
 	prettytable "github.com/jedib0t/go-pretty/v6/table"
+	"github.com/stretchr/testify/require"
 )
 
 func runtimeSubtractFloat64(a, b float64) float64 {
@@ -226,6 +227,22 @@ func TestTableConfigurationAndRenderCoverage(t *testing.T) {
 	if tsvWriter.(*TableWriter).pageHeightSpaceLines != 1 {
 		t.Fatal("tsv format should set pageHeightSpaceLines to 1")
 	}
+}
+
+func TestTableWriterBinaryTransformer(t *testing.T) {
+	writer, err := Table(TableOption{Format: "box", Binaryformat: "base64"})
+	require.NoError(t, err)
+	tw := writer.(*TableWriter)
+	require.Equal(t, "AQID", tw.transformer([]byte{1, 2, 3}))
+
+	bytes := []byte{0x0a, 0x0b}
+	require.Equal(t, "Cgs=", tw.transformer(&bytes))
+
+	tw.SetBinaryformat("hex")
+	require.Equal(t, "0x0a0b", tw.transformer(bytes))
+
+	tw.SetBinaryformat("bytes")
+	require.Equal(t, "[10 11]", tw.transformer(bytes))
 }
 
 func TestTableBehaviorCoverage(t *testing.T) {

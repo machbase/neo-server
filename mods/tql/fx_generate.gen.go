@@ -52,14 +52,10 @@ func NewNode(task *Task) *Node {
 		"tan":       mathWrap("tan", math.Tan),
 		"tanh":      mathWrap("tanh", math.Tanh),
 		"trunc":     mathWrap("trunc", math.Trunc),
-		// nums
-		"len":             nums.Len,
-		"element":         nums.Element,
-		"linspace":        x.gen_linspace,
-		"linspace50":      x.gen_linspace50,
-		"meshgrid":        x.gen_meshgrid,
-		"arrange":         x.gen_arrange,
-		"once":            x.gen_once,
+		// arrays
+		"len":     nums.Len,
+		"element": nums.Element,
+		// geo spatial
 		"latlon":          x.gen_latlon,
 		"geoPoint":        x.gen_geoPoint,
 		"geoCircle":       x.gen_geoCircle,
@@ -68,9 +64,8 @@ func NewNode(task *Task) *Node {
 		"geoLineString":   x.gen_geoLineString,
 		"geoPointMarker":  x.gen_geoPointMarker,
 		"geoCircleMarker": x.gen_geoCircleMarker,
-		// maps.time
+		// map time
 		"period":         x.gen_period,
-		"nullValue":      x.gen_nullValue,
 		"time":           x.gen_time,
 		"timeUnix":       x.gen_timeUnix,
 		"timeUnixMilli":  x.gen_timeUnixMilli,
@@ -93,7 +88,7 @@ func NewNode(task *Task) *Node {
 		"range":          x.gen_range,
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
-		// maps.stat
+		// maps stat
 		"HISTOGRAM":     x.gen_HISTOGRAM,
 		"bins":          x.gen_bins,
 		"BOXPLOT":       x.gen_BOXPLOT,
@@ -101,7 +96,7 @@ func NewNode(task *Task) *Node {
 		"boxplotOutput": x.gen_boxplotOutput,
 		"category":      x.gen_category,
 		"order":         x.gen_order,
-		// maps.monad
+		// map monad
 		"TAKE":             x.gen_TAKE,
 		"DROP":             x.gen_DROP,
 		"FILTER":           x.gen_FILTER,
@@ -131,18 +126,20 @@ func NewNode(task *Task) *Node {
 		"TIMEWINDOW":       x.gen_TIMEWINDOW,
 		"SCRIPT":           x.gen_SCRIPT,
 		"SHELL":            x.gen_SHELL,
-		"list":             x.gen_list,
-		"dict":             x.gen_dict,
-		"lazy":             x.gen_lazy,
-		"glob":             x.gen_glob,
-		"regexp":           x.gen_regexp,
-		"doLog":            x.gen_doLog,
-		"doHttp":           x.gen_doHttp,
-		"do":               x.gen_do,
-		"args":             x.gen_args,
-		"WHEN":             x.gen_WHEN,
-		"THROTTLE":         x.gen_THROTTLE,
-		// maps.dbsrc
+		// arrays and dictionaries
+		"list":      x.gen_list,
+		"dict":      x.gen_dict,
+		"nullValue": x.gen_nullValue,
+		"lazy":      x.gen_lazy,
+		"glob":      x.gen_glob,
+		"regexp":    x.gen_regexp,
+		"doLog":     x.gen_doLog,
+		"doHttp":    x.gen_doHttp,
+		"do":        x.gen_do,
+		"args":      x.gen_args,
+		"WHEN":      x.gen_WHEN,
+		"THROTTLE":  x.gen_THROTTLE,
+		// database source
 		"from":       x.gen_from,
 		"limit":      x.gen_limit,
 		"between":    x.gen_between,
@@ -150,18 +147,18 @@ func NewNode(task *Task) *Node {
 		"QUERY":      x.gen_QUERY,
 		"SQL":        x.gen_SQL,
 		"SQL_SELECT": x.gen_SQL_SELECT,
-		// maps.dbsink
+		// database sink
 		"table":  x.gen_table,
 		"tag":    x.gen_tag,
 		"INSERT": x.gen_INSERT,
 		"APPEND": x.gen_APPEND,
-		// maps.bridge
+		// bridge
 		"bridge": x.gen_bridge,
-		// maps.fourier
+		// fourier transform
 		"minHz": x.gen_minHz,
 		"maxHz": x.gen_maxHz,
 		"FFT":   x.gen_FFT,
-		// maps.encoder
+		// encoder
 		"cache":           x.gen_cache,
 		"CSV":             x.gen_CSV,
 		"JSON":            x.gen_JSON,
@@ -180,25 +177,39 @@ func NewNode(task *Task) *Node {
 		"CHART_SCATTER3D": x.gen_CHART_SCATTER3D,
 		"GEOMAP":          x.gen_GEOMAP,
 		"HTTP":            x.gen_HTTP,
-		// maps.bytes
+		// bytes
 		"separator": x.gen_separator,
 		"trimspace": x.gen_trimspace,
 		"file":      x.gen_file,
 		"charset":   x.gen_charset,
 		"STRING":    x.gen_STRING,
 		"BYTES":     x.gen_BYTES,
-		// maps.csv
-		"col":                  x.gen_col,
-		"field":                x.gen_field,
-		"stringType":           x.gen_stringType,
-		"datetimeType":         x.gen_datetimeType,
-		"doubleType":           x.gen_doubleType,
-		"timeType":             x.gen_timeType,
-		"floatType":            x.gen_floatType,
-		"boolType":             x.gen_boolType,
-		"logProgress":          x.gen_logProgress,
-		"simplex":              x.gen_simplex,
-		"random":               x.gen_random,
+		// csv
+		"col":          x.gen_col,
+		"field":        x.gen_field,
+		"stringType":   x.gen_stringType,
+		"datetimeType": x.gen_datetimeType,
+		"doubleType":   x.gen_doubleType,
+		"timeType":     x.gen_timeType,
+		"floatType":    x.gen_floatType,
+		"boolType":     x.gen_boolType,
+		"logProgress":  x.gen_logProgress,
+		// generator
+		"linspace":   x.gen_linspace,
+		"linspace50": x.gen_linspace50,
+		"meshgrid":   x.gen_meshgrid,
+		"arrange":    x.gen_arrange,
+		"once":       x.gen_once,
+		"simplex":    x.gen_simplex,
+		"random":     x.gen_random,
+		"freq":       x.gen_freq,
+		"oscillator": x.gen_oscillator,
+		"sphere":     x.gen_sphere,
+		"json":       x.gen_json,
+		"csv":        x.gen_csv,
+		"statz":      x.gen_statz,
+		"FAKE":       x.gen_FAKE,
+		// conversion
 		"parseFloat":           x.gen_parseFloat,
 		"parseBool":            x.gen_parseBool,
 		"strTime":              x.gen_strTime,
@@ -215,13 +226,6 @@ func NewNode(task *Task) *Node {
 		"strLastIndex":         x.gen_strLastIndex,
 		"strToUpper":           x.gen_strToUpper,
 		"strToLower":           x.gen_strToLower,
-		"freq":                 x.gen_freq,
-		"oscillator":           x.gen_oscillator,
-		"sphere":               x.gen_sphere,
-		"json":                 x.gen_json,
-		"csv":                  x.gen_csv,
-		"statz":                x.gen_statz,
-		"FAKE":                 x.gen_FAKE,
 		"GROUP":                x.gen_GROUP,
 		"by":                   x.gen_by,
 		"timewindow":           x.gen_timewindow,
@@ -261,7 +265,7 @@ func NewNode(task *Task) *Node {
 		// codec.opts
 		"httpHeader":          x.gen_httpHeader,
 		"autoRotate":          x.gen_autoRotate,
-		"binaryMode":          x.gen_binaryMode,
+		"binaryformat":        x.gen_binaryformat,
 		"boxDrawBorder":       x.gen_boxDrawBorder,
 		"boxSeparateColumns":  x.gen_boxSeparateColumns,
 		"boxStyle":            x.gen_boxStyle,
@@ -452,103 +456,6 @@ func (x *Node) gen_ARGS(args ...any) (any, error) {
 	return x.fmArgs()
 }
 
-// gen_linspace
-//
-// syntax: linspace(float64, float64, int)
-func (x *Node) gen_linspace(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("linspace", 3, len(args))
-	}
-	p0, err := convFloat64(args, 0, "linspace", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "linspace", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convInt(args, 2, "linspace", "int")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmLinspace(p0, p1, p2)
-	return ret, nil
-}
-
-// gen_linspace50
-//
-// syntax: linspace50(float64, float64)
-func (x *Node) gen_linspace50(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("linspace50", 2, len(args))
-	}
-	p0, err := convFloat64(args, 0, "linspace50", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "linspace50", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmLinspace50(p0, p1)
-	return ret, nil
-}
-
-// gen_meshgrid
-//
-// syntax: meshgrid(, )
-func (x *Node) gen_meshgrid(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("meshgrid", 2, len(args))
-	}
-	p0, err := convAny(args, 0, "meshgrid", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convAny(args, 1, "meshgrid", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmMeshgrid(p0, p1)
-	return ret, nil
-}
-
-// gen_arrange
-//
-// syntax: arrange(float64, float64, float64)
-func (x *Node) gen_arrange(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("arrange", 3, len(args))
-	}
-	p0, err := convFloat64(args, 0, "arrange", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "arrange", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convFloat64(args, 2, "arrange", "float64")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmArrange(p0, p1, p2)
-}
-
-// gen_once
-//
-// syntax: once(float64)
-func (x *Node) gen_once(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("once", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "once", "float64")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmOnce(p0)
-}
-
 // gen_latlon
 //
 // syntax: latlon(float64, float64)
@@ -723,21 +630,6 @@ func (x *Node) gen_period(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmPeriod(p0)
-}
-
-// gen_nullValue
-//
-// syntax: nullValue()
-func (x *Node) gen_nullValue(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("nullValue", 1, len(args))
-	}
-	p0, err := convAny(args, 0, "nullValue", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmNullValue(p0)
-	return ret, nil
 }
 
 // gen_time
@@ -1906,6 +1798,21 @@ func (x *Node) gen_dict(args ...any) (any, error) {
 	return x.fmDictionary(p0...)
 }
 
+// gen_nullValue
+//
+// syntax: nullValue()
+func (x *Node) gen_nullValue(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("nullValue", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "nullValue", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmNullValue(p0)
+	return ret, nil
+}
+
 // gen_lazy
 //
 // syntax: lazy(bool)
@@ -2844,6 +2751,103 @@ func (x *Node) gen_logProgress(args ...any) (any, error) {
 	return x.fmLogProgress(p0...)
 }
 
+// gen_linspace
+//
+// syntax: linspace(float64, float64, int)
+func (x *Node) gen_linspace(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("linspace", 3, len(args))
+	}
+	p0, err := convFloat64(args, 0, "linspace", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "linspace", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convInt(args, 2, "linspace", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmLinspace(p0, p1, p2)
+	return ret, nil
+}
+
+// gen_linspace50
+//
+// syntax: linspace50(float64, float64)
+func (x *Node) gen_linspace50(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("linspace50", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "linspace50", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "linspace50", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmLinspace50(p0, p1)
+	return ret, nil
+}
+
+// gen_meshgrid
+//
+// syntax: meshgrid(, )
+func (x *Node) gen_meshgrid(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("meshgrid", 2, len(args))
+	}
+	p0, err := convAny(args, 0, "meshgrid", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "meshgrid", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmMeshgrid(p0, p1)
+	return ret, nil
+}
+
+// gen_arrange
+//
+// syntax: arrange(float64, float64, float64)
+func (x *Node) gen_arrange(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("arrange", 3, len(args))
+	}
+	p0, err := convFloat64(args, 0, "arrange", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "arrange", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convFloat64(args, 2, "arrange", "float64")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmArrange(p0, p1, p2)
+}
+
+// gen_once
+//
+// syntax: once(float64)
+func (x *Node) gen_once(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("once", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "once", "float64")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmOnce(p0)
+}
+
 // gen_simplex
 //
 // syntax: simplex(int64, float64, ...float64)
@@ -2879,6 +2883,132 @@ func (x *Node) gen_random(args ...any) (any, error) {
 	}
 	ret := x.fmRandom()
 	return ret, nil
+}
+
+// gen_freq
+//
+// syntax: freq(float64, float64, ...float64)
+func (x *Node) gen_freq(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("freq", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "freq", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "freq", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []float64{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convFloat64(args, n, "freq", "...float64")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmFreq(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_oscillator
+//
+// syntax: oscillator(...interface {})
+func (x *Node) gen_oscillator(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "oscillator", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmOscillator(p0...)
+}
+
+// gen_sphere
+//
+// syntax: sphere(float64, float64)
+func (x *Node) gen_sphere(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("sphere", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "sphere", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "sphere", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmSphere(p0, p1)
+	return ret, nil
+}
+
+// gen_json
+//
+// syntax: json(string)
+func (x *Node) gen_json(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("json", 1, len(args))
+	}
+	p0, err := convString(args, 0, "json", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmJsonData(p0)
+}
+
+// gen_csv
+//
+// syntax: csv(string)
+func (x *Node) gen_csv(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("csv", 1, len(args))
+	}
+	p0, err := convString(args, 0, "csv", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmCsvData(p0)
+}
+
+// gen_statz
+//
+// syntax: statz(string, ...string)
+func (x *Node) gen_statz(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("statz", 1, len(args))
+	}
+	p0, err := convString(args, 0, "statz", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []string{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convString(args, n, "statz", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmStatz(p0, p1...)
+	return ret, nil
+}
+
+// gen_FAKE
+//
+// syntax: FAKE()
+func (x *Node) gen_FAKE(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("FAKE", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "FAKE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmFake(p0)
 }
 
 // gen_parseFloat
@@ -3188,132 +3318,6 @@ func (x *Node) gen_strToLower(args ...any) (any, error) {
 	}
 	ret := x.fmStrToLower(p0)
 	return ret, nil
-}
-
-// gen_freq
-//
-// syntax: freq(float64, float64, ...float64)
-func (x *Node) gen_freq(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("freq", 2, len(args))
-	}
-	p0, err := convFloat64(args, 0, "freq", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "freq", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []float64{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convFloat64(args, n, "freq", "...float64")
-		if err != nil {
-			return nil, err
-		}
-		p2 = append(p2, argv)
-	}
-	ret := x.fmFreq(p0, p1, p2...)
-	return ret, nil
-}
-
-// gen_oscillator
-//
-// syntax: oscillator(...interface {})
-func (x *Node) gen_oscillator(args ...any) (any, error) {
-	p0 := []interface{}{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convAny(args, n, "oscillator", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	return x.fmOscillator(p0...)
-}
-
-// gen_sphere
-//
-// syntax: sphere(float64, float64)
-func (x *Node) gen_sphere(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("sphere", 2, len(args))
-	}
-	p0, err := convFloat64(args, 0, "sphere", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "sphere", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmSphere(p0, p1)
-	return ret, nil
-}
-
-// gen_json
-//
-// syntax: json(string)
-func (x *Node) gen_json(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("json", 1, len(args))
-	}
-	p0, err := convString(args, 0, "json", "string")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmJsonData(p0)
-}
-
-// gen_csv
-//
-// syntax: csv(string)
-func (x *Node) gen_csv(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("csv", 1, len(args))
-	}
-	p0, err := convString(args, 0, "csv", "string")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmCsvData(p0)
-}
-
-// gen_statz
-//
-// syntax: statz(string, ...string)
-func (x *Node) gen_statz(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("statz", 1, len(args))
-	}
-	p0, err := convString(args, 0, "statz", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1 := []string{}
-	for n := 1; n < len(args); n++ {
-		argv, err := convString(args, n, "statz", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p1 = append(p1, argv)
-	}
-	ret := x.fmStatz(p0, p1...)
-	return ret, nil
-}
-
-// gen_FAKE
-//
-// syntax: FAKE()
-func (x *Node) gen_FAKE(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("FAKE", 1, len(args))
-	}
-	p0, err := convAny(args, 0, "FAKE", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmFake(p0)
 }
 
 // gen_GROUP
@@ -4053,18 +4057,18 @@ func (x *Node) gen_autoRotate(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_binaryMode
+// gen_binaryformat
 //
-// syntax: binaryMode(string)
-func (x *Node) gen_binaryMode(args ...any) (any, error) {
+// syntax: binaryformat(string)
+func (x *Node) gen_binaryformat(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("binaryMode", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("binaryformat", 1, len(args))
 	}
-	p0, err := convString(args, 0, "binaryMode", "string")
+	p0, err := convString(args, 0, "binaryformat", "string")
 	if err != nil {
 		return nil, err
 	}
-	ret := opts.BinaryMode(p0)
+	ret := opts.Binaryformat(p0)
 	return ret, nil
 }
 

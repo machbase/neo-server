@@ -26,10 +26,11 @@ type Exporter struct {
 	rownum     int64
 	mdLines    []string
 
-	output        io.Writer
-	showRownum    bool
-	precision     int
-	timeformatter *util.TimeFormatter
+	output          io.Writer
+	showRownum      bool
+	precision       int
+	timeformatter   *util.TimeFormatter
+	binaryFormatter *util.BinaryFormatter
 
 	headerNames []string
 	closeOnce   sync.Once
@@ -37,9 +38,10 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	ret := &Exporter{
-		precision:     -1,
-		timeformatter: util.NewTimeFormatter(),
-		brief:         0,
+		precision:       -1,
+		timeformatter:   util.NewTimeFormatter(),
+		binaryFormatter: util.NewBinaryFormatter("hex"),
+		brief:           0,
 	}
 	return ret
 }
@@ -70,6 +72,10 @@ func (ex *Exporter) SetTimeformat(format string) {
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
 	ex.timeformatter.Set(util.TimeLocation(tz))
+}
+
+func (ex *Exporter) SetBinaryformat(format string) {
+	ex.binaryFormatter.SetFormat(format)
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -208,6 +214,10 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = ex.encodeFloat64(float64(*v))
 		case float32:
 			cols[i] = ex.encodeFloat64(float64(v))
+		case []byte:
+			cols[i] = ex.binaryFormatter.Format(v)
+		case *[]byte:
+			cols[i] = ex.binaryFormatter.Format(*v)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:

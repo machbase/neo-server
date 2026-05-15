@@ -221,3 +221,104 @@ func TestHandleTqlFile(t *testing.T) {
 		require.Contains(t, string(body), `"jsCodeAssets"`)
 	})
 }
+
+func TestQueryBinaryFormat(t *testing.T) {
+	// create table
+	sql := "CREATE TAG TABLE IF NOT EXISTS test_bin (name varchar(40) primary key, time datetime base time, value binary)"
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(sql), nil)
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	rsp.Body.Close()
+
+	// insert data
+	sql = "INSERT INTO test_bin VALUES('name', now, '0x0102A0B0')"
+	req, _ = http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(sql), nil)
+	rsp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	rsp.Body.Close()
+
+	// drop table
+	defer func() {
+		sql := "DROP TABLE test_bin"
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(sql), nil)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		resp.Body.Close()
+	}()
+
+	tests := []struct {
+		name      string
+		format    string
+		binformat string
+		expect    string
+	}{
+		{
+			name:   "json_default",
+			format: "json",
+			expect: `["name","0x0102a0b0"]`,
+		},
+		{
+			name:      "json_base64",
+			format:    "json",
+			binformat: "base64",
+			expect:    `["name","AQKgsA=="]`,
+		},
+		{
+			name:   "csv_default",
+			format: "csv",
+			expect: "name,0x0102a0b0\n",
+		},
+		{
+			name:      "csv_base64",
+			format:    "csv",
+			binformat: "base64",
+			expect:    "name,AQKgsA==\n",
+		},
+		{
+			name:   "ndjson_defaul",
+			format: "ndjson",
+			expect: `{"NAME":"name","VALUE":"0x0102a0b0"}` + "\n",
+		},
+		{
+			name:      "ndjson_base64",
+			format:    "ndjson",
+			binformat: "base64",
+			expect:    `{"NAME":"name","VALUE":"AQKgsA=="}` + "\n",
+		},
+		{
+			name:   "box_default",
+			format: "box",
+			expect: "| name | 0x0102a0b0 |\n",
+		},
+		{
+			name:      "box_base64",
+			format:    "box",
+			binformat: "base64",
+			expect:    "| name | AQKgsA== |\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sql = "SELECT NAME, VALUE FROM test_bin"
+			query := httpServerAddress + "/db/query?q=" + url.QueryEscape(sql)
+			if tt.format != "" {
+				query += "&format=" + url.QueryEscape(tt.format)
+			}
+			if tt.binformat != "" {
+				query += "&binaryformat=" + url.QueryEscape(tt.binformat)
+			}
+			req, _ = http.NewRequest(http.MethodGet, query, nil)
+			rsp, err = http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			body, err := io.ReadAll(rsp.Body)
+			require.NoError(t, err)
+			require.Contains(t, string(body), tt.expect)
+			rsp.Body.Close()
+		})
+	}
+}

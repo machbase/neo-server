@@ -17,13 +17,13 @@ type NatsBridge struct {
 	name string
 	path string
 
-	alive      bool
+	alive      atomic.Bool
 	stopSig    chan bool
 	natsOpts   nats.Options
 	natsStatus nats.Status
 	natsConn   *nats.Conn
 
-	natsConnMutex sync.Mutex
+	natsConnMutex sync.RWMutex
 
 	subscriberWait sync.WaitGroup
 	subscribers    map[*NatsSubscription]bool
@@ -139,8 +139,8 @@ func (c *NatsBridge) tryConnect() error {
 		return err
 	} else {
 		c.log.Info(c.name + " connected")
-		c.alive = true
-		c.natsConn = conn
+		c.alive.Store(true)
+		c.setConn(conn)
 		c.natsStatus = nats.CONNECTED
 		go c.run()
 	}
@@ -148,7 +148,7 @@ func (c *NatsBridge) tryConnect() error {
 }
 
 func (c *NatsBridge) AfterUnregister() error {
-	if c.alive {
+	if c.alive.Load() {
 		c.stopSig <- true
 	}
 	return nil
@@ -163,10 +163,23 @@ func (c *NatsBridge) Name() string {
 }
 
 func (c *NatsBridge) IsConnected() bool {
-	if c.natsConn != nil && c.natsConn.IsConnected() {
+	conn := c.getConn()
+	if conn != nil && conn.IsConnected() {
 		return true
 	}
 	return false
+}
+
+func (c *NatsBridge) getConn() *nats.Conn {
+	c.natsConnMutex.RLock()
+	defer c.natsConnMutex.RUnlock()
+	return c.natsConn
+}
+
+func (c *NatsBridge) setConn(conn *nats.Conn) {
+	c.natsConnMutex.Lock()
+	c.natsConn = conn
+	c.natsConnMutex.Unlock()
 }
 
 type NatsStats struct {
@@ -176,38 +189,43 @@ type NatsStats struct {
 }
 
 func (c *NatsBridge) Stats() NatsStats {
-	if c.natsConn == nil {
+	conn := c.getConn()
+	if conn == nil {
 		return NatsStats{}
 	}
 	return NatsStats{
-		Statistics: c.natsConn.Stats(),
+		Statistics: conn.Stats(),
 		Appended:   atomic.LoadUint64(&c.Appended),
 		Inserted:   atomic.LoadUint64(&c.Inserted),
 	}
 }
 
 func (c *NatsBridge) run() {
-	stsChan := c.natsConn.StatusChanged()
-	for c.alive {
+	conn := c.getConn()
+	stsChan := conn.StatusChanged()
+	for c.alive.Load() {
 		select {
 		case status := <-stsChan:
 			c.natsStatus = status
 			c.log.Info(c.name, "status", status.String())
 		case <-c.stopSig:
-			c.alive = false
+			c.alive.Store(false)
 		}
 	}
+	c.subscriberLock.Lock()
 	for st := range c.subscribers {
-		if st.subscription != nil {
+		if st.getSubscription() != nil {
 			st.sigChan <- true
 		}
 	}
+	c.subscriberLock.Unlock()
 
 	c.subscriberWait.Wait()
-	c.natsConn.Close()
+	conn.Close()
 }
 
 type NatsSubscription struct {
+	mu           sync.Mutex
 	bridge       *NatsBridge
 	subscription *nats.Subscription
 	subject      string
@@ -234,11 +252,23 @@ func (ns *NatsSubscription) Unsubscribe() error {
 	ns.bridge.subscriberLock.Lock()
 	defer ns.bridge.subscriberLock.Unlock()
 
-	if ns.subscription != nil {
+	if ns.getSubscription() != nil {
 		ns.sigChan <- true
 	}
 	delete(ns.bridge.subscribers, ns)
 	return nil
+}
+
+func (ns *NatsSubscription) getSubscription() *nats.Subscription {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	return ns.subscription
+}
+
+func (ns *NatsSubscription) setSubscription(subscription *nats.Subscription) {
+	ns.mu.Lock()
+	ns.subscription = subscription
+	ns.mu.Unlock()
 }
 
 type NatsMsgHandler func(*nats.Msg)
@@ -266,7 +296,8 @@ func NatsStreamName(streamName string) NatsSubscribeOption {
 }
 
 func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler, opts ...NatsSubscribeOption) (*NatsSubscription, error) {
-	if !c.IsConnected() {
+	conn := c.getConn()
+	if conn == nil || !conn.IsConnected() {
 		return nil, fmt.Errorf("nats connection is unavailable")
 	}
 
@@ -292,7 +323,7 @@ func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler, opts ...NatsSubs
 
 	if st.streamName != "" {
 		var js nats.JetStreamContext
-		if stream, err := c.natsConn.JetStream(); err != nil {
+		if stream, err := conn.JetStream(); err != nil {
 			return nil, err
 		} else {
 			js = stream
@@ -320,27 +351,27 @@ func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler, opts ...NatsSubs
 			if s, err := js.ChanSubscribe(st.subject, st.msgChan, subOpts...); err != nil {
 				return nil, err
 			} else {
-				st.subscription = s
+				st.setSubscription(s)
 			}
 		} else {
 			if s, err := js.ChanQueueSubscribe(st.subject, st.queueName, st.msgChan, subOpts...); err != nil {
 				return nil, err
 			} else {
-				st.subscription = s
+				st.setSubscription(s)
 			}
 		}
 	} else {
 		if st.queueName == "" {
-			if s, err := c.natsConn.ChanSubscribe(st.subject, st.msgChan); err != nil {
+			if s, err := conn.ChanSubscribe(st.subject, st.msgChan); err != nil {
 				return nil, err
 			} else {
-				st.subscription = s
+				st.setSubscription(s)
 			}
 		} else {
-			if s, err := c.natsConn.ChanQueueSubscribe(st.subject, st.queueName, st.msgChan); err != nil {
+			if s, err := conn.ChanQueueSubscribe(st.subject, st.queueName, st.msgChan); err != nil {
 				return nil, err
 			} else {
-				st.subscription = s
+				st.setSubscription(s)
 			}
 		}
 	}
@@ -350,7 +381,7 @@ func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler, opts ...NatsSubs
 	c.subscriberWait.Add(1)
 	go func(st *NatsSubscription) {
 	loop:
-		for c.alive {
+		for c.alive.Load() {
 			select {
 			case <-st.sigChan:
 				break loop
@@ -358,15 +389,18 @@ func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler, opts ...NatsSubs
 				cb(msg)
 			}
 		}
-		st.subscription.Unsubscribe()
-		st.subscription = nil
+		if subscription := st.getSubscription(); subscription != nil {
+			subscription.Unsubscribe()
+			st.setSubscription(nil)
+		}
 		c.subscriberWait.Done()
 	}(st)
 	return st, nil
 }
 
 func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
-	if !c.IsConnected() {
+	conn := c.getConn()
+	if conn == nil || !conn.IsConnected() {
 		return false, fmt.Errorf("nats connection is unavailable")
 	}
 	var data []byte
@@ -378,14 +412,11 @@ func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
 	default:
 		return false, fmt.Errorf("nats bridge can not publish %T", raw)
 	}
-	err := c.natsConn.Publish(topic, data)
+	err := conn.Publish(topic, data)
 	return err == nil, err
 }
 
 func (c *NatsBridge) TestConnection() (bool, string) {
-	c.natsConnMutex.Lock()
-	defer c.natsConnMutex.Unlock()
-
 	connected := c.IsConnected()
 	if !connected {
 		if err := c.tryConnect(); err != nil {
@@ -396,7 +427,11 @@ func (c *NatsBridge) TestConnection() (bool, string) {
 		}
 	}
 
-	if err := c.natsConn.FlushTimeout(10 * time.Second); err != nil {
+	conn := c.getConn()
+	if conn == nil {
+		return false, "not connected"
+	}
+	if err := conn.FlushTimeout(10 * time.Second); err != nil {
 		c.log.Error("error to connect", err.Error())
 		return false, "error to connect"
 	}

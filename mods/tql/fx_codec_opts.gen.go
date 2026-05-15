@@ -11,7 +11,7 @@ import (
 var CodecOptsDefinitions = []Definition{
 	{Name: "httpHeader", Func: opts.HttpHeader},
 	{Name: "autoRotate", Func: opts.AutoRotate},
-	{Name: "binaryMode", Func: opts.BinaryMode},
+	{Name: "binaryformat", Func: opts.Binaryformat},
 	{Name: "boxDrawBorder", Func: opts.BoxDrawBorder},
 	{Name: "boxSeparateColumns", Func: opts.BoxSeparateColumns},
 	{Name: "boxStyle", Func: opts.BoxStyle},

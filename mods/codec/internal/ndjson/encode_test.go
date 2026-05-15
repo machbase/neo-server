@@ -83,6 +83,19 @@ func TestJsonEncode(t *testing.T) {
 			tz:         time.UTC,
 			rownum:     true,
 		},
+		{
+			input: [][]any{
+				{"my-car", time.Unix(0, 1670380342000000000).In(time.UTC), []byte{97, 98, 99}},
+				{"my-car", time.Unix(0, 1670380343000000000).In(time.UTC), &[]byte{100, 101, 102}},
+			},
+			expect: `{"ROWNUM":1,"name":"my-car","time":"2022/12/07 02:32:22.000","value":"0x616263"}
+{"ROWNUM":2,"name":"my-car","time":"2022/12/07 02:32:23.000","value":"0x646566"}
+
+`,
+			timeformat: "2006/01/02 15:04:05.000",
+			tz:         time.UTC,
+			rownum:     true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -346,4 +359,38 @@ func TestNdjsonEncodeErrorPaths(t *testing.T) {
 		require.NoError(t, enc.Open())
 		require.Error(t, enc.AddRow([]any{func() {}}))
 	})
+}
+
+func TestBinaryFormat(t *testing.T) {
+	tests := []struct {
+		input        []byte
+		binaryformat string
+		expect       string
+	}{
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "preview", `{"ROWNUM":1,"FORMAT":"preview","BIN":"0x0102030405.."}`},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "hex", `{"ROWNUM":1,"FORMAT":"hex","BIN":"0x010203040506"}`},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "bytes", `{"ROWNUM":1,"FORMAT":"bytes","BIN":"[1 2 3 4 5 6]"}`},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "base64", `{"ROWNUM":1,"FORMAT":"base64","BIN":"AQIDBAUG"}`},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "_unknown_", `{"ROWNUM":1,"FORMAT":"_unknown_","BIN":"0x010203040506"}`},
+	}
+
+	for _, tt := range tests {
+		enc := ndjson.NewEncoder()
+
+		require.Equal(t, "application/x-ndjson", enc.ContentType())
+
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetBinaryformat(tt.binaryformat)
+		enc.SetRownum(true)
+		enc.SetColumns("FORMAT", "BIN")
+		enc.SetHeading(true)
+		err := enc.Open()
+		require.Nil(t, err)
+		enc.AddRow([]any{tt.binaryformat, tt.input})
+		enc.Close()
+
+		result := w.String()
+		require.Contains(t, result, tt.expect)
+	}
 }

@@ -10,10 +10,11 @@ import (
 
 func TestDecodeQueryRequestJSONNormalizesParams(t *testing.T) {
 	req := &QueryRequest{}
-	err := decodeQueryRequestJSON(strings.NewReader(`{"q":"select * from t where a = ?","p":[1,1.5,true,"neo"]}`), req)
+	err := decodeQueryRequestJSON(strings.NewReader(`{"q":"select * from t where a = ?","p":[1,1.5,true,"neo"],"binaryformat":"base64"}`), req)
 	require.NoError(t, err)
 	require.Equal(t, "select * from t where a = ?", req.SqlText)
 	require.Equal(t, []any{int64(1), 1.5, true, "neo"}, req.Params)
+	require.Equal(t, "base64", req.BinaryFormat)
 }
 
 func TestDecodeQueryRequestJSONRejectsCompositeParam(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/stretchr/testify/require"
 )
 
@@ -332,4 +333,98 @@ func TestHandleLineWrite(t *testing.T) {
 		status, body := doLineWrite(t, buf.Bytes(), map[string]string{"Content-Encoding": "gzip"}, "")
 		require.Equal(t, http.StatusNoContent, status, body)
 	})
+}
+
+func TestWriteBinaryFormat(t *testing.T) {
+	// create table
+	sql := "CREATE TAG TABLE IF NOT EXISTS wbin (name varchar(40) primary key, time datetime base time, value binary)"
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(sql), nil)
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	rsp.Body.Close()
+
+	// drop table
+	defer func() {
+		done := server_api.StopAppendWorker("wbin")
+		<-done
+
+		sql := "DROP TABLE wbin"
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(sql), nil)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		resp.Body.Close()
+	}()
+
+	tests := []struct {
+		name        string
+		contentType string
+		binformat   string
+		input       string
+		expectQuery string
+		expect      string
+	}{
+		{
+			name:        "json_base64",
+			contentType: "application/json",
+			binformat:   "base64",
+			input:       `{"data":{"columns":["NAME", "TIME", "VALUE"],"rows":[["json_base64", 1691800174123456789, "AQKgsMDQ4PA="]]}}`,
+			expectQuery: `select name, value from wbin where name='json_base64'`,
+			expect:      `["json_base64","0x0102a0b0c0d0e0f0"]`,
+		},
+		{
+			name:        "json_hex",
+			contentType: "application/json",
+			binformat:   "hex",
+			input:       `{"data":{"columns":["NAME", "TIME", "VALUE"],"rows":[["json_hex", 1691800174123456789, "0x0102a0b0c0d0e0f0"]]}}`,
+			expectQuery: `select name, value from wbin where name='json_hex'`,
+			expect:      `["json_hex","0x0102a0b0c0d0e0f0"]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// call write API with then given content type and binary format
+			path := httpServerAddress + "/db/write/wbin?method=append"
+			// For testing method=append, the server side appender should be closed.
+			// The alive 'append' connection prevents the cleaning up (drop table) after test and cause other test failure,
+			// it cause "resource busy" error when drop table.
+
+			if tt.binformat != "" {
+				path += "&binaryformat=" + url.QueryEscape(tt.binformat)
+			}
+			req, _ = http.NewRequest(http.MethodPost, path, strings.NewReader(tt.input))
+			req.Header.Set("Content-Type", tt.contentType)
+			rsp, err = http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			response, _ := io.ReadAll(rsp.Body)
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(response))
+			rsp.Body.Close()
+
+			// flush appender to make sure data is visible to query,
+			// since the test is using method=append,
+			// the data is not immediately visible to query until the appender is flushed or closed.
+			server_api.FlushAppendWorkers("wbin")
+
+			// flush to make sure data is visible to query
+			flush := httpServerAddress + "/db/query?q=" + url.QueryEscape("exec table_flush(wbin)")
+			req, _ = http.NewRequest(http.MethodGet, flush, nil)
+			rsp, err = http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			rsp.Body.Close()
+
+			// query the table to verify the value is stored and returned as expected
+			query := httpServerAddress + "/db/query?q=" + url.QueryEscape(tt.expectQuery)
+			req, _ = http.NewRequest(http.MethodGet, query, nil)
+			rsp, err = http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			body, err := io.ReadAll(rsp.Body)
+			require.NoError(t, err)
+			require.Contains(t, string(body), tt.expect)
+			rsp.Body.Close()
+		})
+	}
 }

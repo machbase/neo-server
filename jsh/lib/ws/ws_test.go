@@ -3,6 +3,8 @@ package ws_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -267,7 +269,7 @@ func TestWebSocketServer(t *testing.T) {
 
 	serverOutput := &bytes.Buffer{}
 	serverDone := make(chan error, 1)
-	address := "127.0.0.1:29887"
+	address := freeTCPAddress(t)
 	serverScript := `
 		const http = require('http');
 		const {WebSocketServer} = require('ws');
@@ -289,16 +291,24 @@ func TestWebSocketServer(t *testing.T) {
 			},
 		});
 		const tracked = new WebSocketServer({server, path:'/tracked'});
-		wss.on('error', (err) => {
-			console.println('wss error:', err.message || String(err));
-		});
-		setTimeout(() => {
+		let closeTimer;
+		let closing = false;
+		function closeAll() {
+			if (closing) {
+				return;
+			}
+			closing = true;
+			clearTimeout(closeTimer);
 			wss.close();
 			verified.close();
 			protocols.close();
 			tracked.close();
 			server.close();
-		}, 3000);
+		}
+		wss.on('error', (err) => {
+			console.println('wss error:', err.message || String(err));
+		});
+		closeTimer = setTimeout(closeAll, 3000);
 
 		server.get('/health', (ctx) => {
 			ctx.text(http.status.OK, 'ok');
@@ -308,13 +318,7 @@ func TestWebSocketServer(t *testing.T) {
 		});
 		server.get('/shutdown', (ctx) => {
 			ctx.text(http.status.OK, 'bye');
-			setImmediate(() => {
-				wss.close();
-				verified.close();
-				protocols.close();
-				tracked.close();
-				server.close();
-			});
+			setTimeout(closeAll, 100);
 		});
 
 		wss.on('connection', (socket) => {
@@ -377,14 +381,14 @@ func TestWebSocketServer(t *testing.T) {
 		serverDone <- jr.RunContext(runCtx)
 	}()
 
-	time.Sleep(300 * time.Millisecond)
+	waitForWebSocketHTTPReady(t, address, serverDone)
 
 	tests := []test_engine.TestCase{
 		{
 			Name: "ws_server_http_coexist",
 			Script: `
 				const http = require('http');
-				http.get('http://127.0.0.1:29887/health', (response) => {
+				http.get('http://` + address + `/health', (response) => {
 					console.println('health:', response.text());
 				});
 			`,
@@ -396,7 +400,7 @@ func TestWebSocketServer(t *testing.T) {
 			Name: "ws_server_echo",
 			Script: `
 				const {WebSocket} = require('ws');
-				const ws = new WebSocket('ws://127.0.0.1:29887/ws?client=neo');
+				const ws = new WebSocket('ws://` + address + `/ws?client=neo');
 				const hold = setInterval(() => {}, 100);
 				let closed = false;
 				ws.on('open', () => {
@@ -427,7 +431,7 @@ func TestWebSocketServer(t *testing.T) {
 			Script: `
 				const {WebSocket} = require('ws');
 				const hold = setInterval(() => {}, 100);
-				const ws = new WebSocket('ws://127.0.0.1:29887/verify?token=allow');
+				const ws = new WebSocket('ws://` + address + `/verify?token=allow');
 				let closed = false;
 				ws.on('message', (event) => {
 					console.println('verify recv:', event.data);
@@ -452,7 +456,7 @@ func TestWebSocketServer(t *testing.T) {
 			Script: `
 				const {WebSocket} = require('ws');
 				const hold = setInterval(() => {}, 100);
-				const ws = new WebSocket('ws://127.0.0.1:29887/verify?token=deny');
+				const ws = new WebSocket('ws://` + address + `/verify?token=deny');
 				ws.on('error', (err) => {
 					console.println('verify error:', err.message);
 					clearInterval(hold);
@@ -467,7 +471,7 @@ func TestWebSocketServer(t *testing.T) {
 			Script: `
 				const {WebSocket} = require('ws');
 				const hold = setInterval(() => {}, 100);
-				const ws = new WebSocket('ws://127.0.0.1:29887/proto', ['chat', 'machbase.rpc']);
+				const ws = new WebSocket('ws://` + address + `/proto', ['chat', 'machbase.rpc']);
 				let closed = false;
 				ws.on('open', () => {
 					console.println('proto open:', ws.protocol);
@@ -497,11 +501,11 @@ func TestWebSocketServer(t *testing.T) {
 				const http = require('http');
 				const {WebSocket} = require('ws');
 				const hold = setInterval(() => {}, 100);
-				const ws = new WebSocket('ws://127.0.0.1:29887/tracked');
+				const ws = new WebSocket('ws://` + address + `/tracked');
 				let closed = false;
 				let attempts = 0;
 				function checkTrackedSize() {
-					http.get('http://127.0.0.1:29887/tracked-size', (response) => {
+					http.get('http://` + address + `/tracked-size', (response) => {
 						const size = response.text();
 						if (size === '0' || attempts >= 20) {
 							console.println('tracked size:', size);
@@ -536,7 +540,7 @@ func TestWebSocketServer(t *testing.T) {
 			Script: `
 				const {WebSocket} = require('ws');
 				const hold = setInterval(() => {}, 100);
-				const ws = new WebSocket('ws://127.0.0.1:29887/sugar');
+				const ws = new WebSocket('ws://` + address + `/sugar');
 				let closed = false;
 				ws.on('open', () => {
 					ws.send('hello');
@@ -563,7 +567,7 @@ func TestWebSocketServer(t *testing.T) {
 			Name: "ws_server_shutdown",
 			Script: `
 				const http = require('http');
-				http.get('http://127.0.0.1:29887/shutdown', (response) => {
+				http.get('http://` + address + `/shutdown', (response) => {
 					console.println('shutdown:', response.text());
 				});
 			`,
@@ -576,4 +580,64 @@ func TestWebSocketServer(t *testing.T) {
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
 	}
+
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatalf("websocket server runtime error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		select {
+		case err := <-serverDone:
+			if err != nil && err != context.Canceled {
+				t.Fatalf("websocket server runtime error after cancel: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for websocket server shutdown")
+		}
+	}
+}
+
+func freeTCPAddress(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("allocate free tcp address: %v", err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close free tcp listener: %v", err)
+	}
+	return addr
+}
+
+func waitForWebSocketHTTPReady(t *testing.T, address string, serverDone <-chan error) {
+	t.Helper()
+	url := "http://" + address + "/health"
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-serverDone:
+			if err != nil {
+				t.Fatalf("websocket server runtime exited before health check passed: %v", err)
+			}
+			t.Fatalf("websocket server runtime exited before health check passed")
+		default:
+		}
+
+		resp, err := http.Get(url)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+			lastErr = fmt.Errorf("unexpected status %s", resp.Status)
+		} else {
+			lastErr = err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for websocket test server health check: %v", lastErr)
 }

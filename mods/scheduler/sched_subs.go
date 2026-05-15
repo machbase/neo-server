@@ -49,7 +49,7 @@ var _ Entry = (*SubscriberEntry)(nil)
 
 func NewSubscriberEntry(s *Service, def *model.ScheduleDefinition) (*SubscriberEntry, error) {
 	ret := &SubscriberEntry{
-		BaseEntry:  BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
+		BaseEntry:  NewBaseEntry(def.Name, STOP, def.AutoStart),
 		TaskTql:    def.Task,
 		Bridge:     def.Bridge,
 		Topic:      def.Topic,
@@ -63,16 +63,14 @@ func NewSubscriberEntry(s *Service, def *model.ScheduleDefinition) (*SubscriberE
 }
 
 func (ent *SubscriberEntry) Start() error {
-	ent.state = STARTING
-	ent.err = nil
+	ent.setStateError(STARTING, nil)
 	ent.shouldSubscribe = true
 	ent.ctx, ent.ctxCancel = context.WithCancel(context.Background())
 
 	ent.log.Infof("starting, bridge=%s, topic=%s", ent.Bridge, ent.Topic)
 	if br0, err := bridge.GetBridge(ent.Bridge); err != nil {
 		ent.log.Tracef("get bridge, %s", err.Error())
-		ent.state = FAILED
-		ent.err = err
+		ent.setStateError(FAILED, err)
 		return err
 	} else {
 		if wd, err := util.NewWriteDescriptor(ent.TaskTql); err != nil {
@@ -86,9 +84,9 @@ func (ent *SubscriberEntry) Start() error {
 		case *bridge.NatsBridge:
 			return ent.startNats(br)
 		default:
-			ent.state = FAILED
-			ent.err = fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
-			return ent.err
+			err := fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
+			ent.setStateError(FAILED, err)
+			return err
 		}
 	}
 }
@@ -98,39 +96,37 @@ func (ent *SubscriberEntry) doMqttOnConnect(br *bridge.MqttBridge) {
 		return
 	}
 	if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
-		ent.state = FAILED
-		ent.err = err
+		ent.setStateError(FAILED, err)
 	} else {
 		if subscription == nil {
-			ent.state = FAILED
-			ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+			err := fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+			ent.setStateError(FAILED, err)
 		} else {
 			ent.subscription = subscription
-			ent.state = RUNNING
-			ent.err = nil
+			ent.setStateError(RUNNING, nil)
 		}
 	}
 }
 
 func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 	if ent.Topic == "" {
-		ent.state = FAILED
-		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
-		return ent.err
+		err := fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
+		ent.setStateError(FAILED, err)
+		return err
 	}
 	if br.IsConnected() {
 		ent.log.Tracef("bridge %s is already connected, renew subscription", br.String())
 		ent.doMqttOnConnect(br)
-		return ent.err
+		return ent.Error()
 	}
 	br.OnConnect(func(bridge any) {
 		ent.doMqttOnConnect(br)
 	})
 	br.OnDisconnect(func(bridge any) {
 		if ent.shouldSubscribe {
-			ent.state = STARTING
+			ent.setState(STARTING)
 		} else {
-			ent.state = STOP
+			ent.setState(STOP)
 		}
 	})
 
@@ -139,9 +135,9 @@ func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 
 func (ent *SubscriberEntry) startNats(br *bridge.NatsBridge) error {
 	if ent.Topic == "" {
-		ent.state = FAILED
-		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
-		return ent.err
+		err := fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
+		ent.setStateError(FAILED, err)
+		return err
 	}
 	subscribeOptions := []bridge.NatsSubscribeOption{}
 	if ent.QueueName != "" {
@@ -151,15 +147,14 @@ func (ent *SubscriberEntry) startNats(br *bridge.NatsBridge) error {
 		subscribeOptions = append(subscribeOptions, bridge.NatsStreamName(ent.StreamName))
 	}
 	if sub, err := br.Subscribe(ent.Topic, ent.doNatsTask, subscribeOptions...); err != nil {
-		ent.state = FAILED
-		ent.err = err
+		ent.setStateError(FAILED, err)
 	} else {
 		if sub == nil {
-			ent.state = FAILED
-			ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+			err := fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+			ent.setStateError(FAILED, err)
 		} else {
 			ent.subscription = sub
-			ent.state = RUNNING
+			ent.setState(RUNNING)
 		}
 	}
 	return nil
@@ -168,8 +163,7 @@ func (ent *SubscriberEntry) startNats(br *bridge.NatsBridge) error {
 func (ent *SubscriberEntry) Stop() error {
 	ent.log.Infof("stopping, bridge=%s, topic=%s", ent.Bridge, ent.Topic)
 
-	ent.state = STOPPING
-	ent.err = nil
+	ent.setStateError(STOPPING, nil)
 	ent.shouldSubscribe = false
 	defer func() {
 		if ent.appender != nil {
@@ -187,13 +181,12 @@ func (ent *SubscriberEntry) Stop() error {
 	}()
 
 	if ent.subscription == nil {
-		ent.state = STOP
+		ent.setState(STOP)
 		return nil
 	}
 
 	if br0, err := bridge.GetBridge(ent.Bridge); err != nil {
-		ent.state = FAILED
-		ent.err = err
+		ent.setStateError(FAILED, err)
 		return err
 	} else {
 		var err error
@@ -203,16 +196,15 @@ func (ent *SubscriberEntry) Stop() error {
 		case *bridge.NatsBridge:
 			err = ent.subscription.Unsubscribe()
 		default:
-			ent.state = FAILED
-			ent.err = fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
-			return ent.err
+			err := fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
+			ent.setStateError(FAILED, err)
+			return err
 		}
 		if err != nil {
-			ent.state = FAILED
-			ent.err = err
+			ent.setStateError(FAILED, err)
 			return err
 		} else {
-			ent.state = STOP
+			ent.setState(STOP)
 			return nil
 		}
 	}
@@ -229,10 +221,11 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 	rsp := &Reason{Reason: "not specified"}
 
 	defer func() {
-		if ent.err != nil {
-			ent.log.Warn(ent.name, ent.TaskTql, ent.state.String(), ent.err.Error(), time.Since(tick).String())
+		state, err := ent.statusError()
+		if err != nil {
+			ent.log.Warn(ent.name, ent.TaskTql, state.String(), err.Error(), time.Since(tick).String())
 		} else {
-			ent.log.Trace(ent.name, ent.TaskTql, ent.state.String(), time.Since(tick).String())
+			ent.log.Trace(ent.name, ent.TaskTql, state.String(), time.Since(tick).String())
 		}
 	}()
 	if ent.wd.IsTqlDestination() {
@@ -257,11 +250,12 @@ func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
-		if ent.err != nil {
-			rsp.Reason = ent.err.Error()
-			ent.log.Warn(ent.name, ent.TaskTql, ent.state.String(), ent.err.Error(), rsp.Elapse)
+		state, err := ent.statusError()
+		if err != nil {
+			rsp.Reason = err.Error()
+			ent.log.Warn(ent.name, ent.TaskTql, state.String(), err.Error(), rsp.Elapse)
 		} else {
-			ent.log.Trace(ent.name, ent.TaskTql, ent.state.String(), rsp.Reason, rsp.Elapse)
+			ent.log.Trace(ent.name, ent.TaskTql, state.String(), rsp.Reason, rsp.Elapse)
 		}
 		if natsMsg.Reply != "" {
 			buff, _ := json.Marshal(rsp)
@@ -284,8 +278,7 @@ func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rsp *Reason) {
 	sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
 	if err != nil {
-		ent.err = err
-		ent.state = FAILED
+		ent.setStateError(FAILED, err)
 		ent.Stop()
 		return
 	}
@@ -300,16 +293,16 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 	}
 	task.SetParams(params)
 	if err := task.CompileScript(sc); err != nil {
-		ent.err = err
-		ent.state = FAILED
+		ent.setStateError(FAILED, err)
 		ent.Stop()
 		return
 	}
 	if result := task.Execute(); result == nil || result.Err != nil {
+		var err error
 		if result != nil && result.Err != nil {
-			ent.err = result.Err
+			err = result.Err
 		}
-		ent.state = FAILED
+		ent.setStateError(FAILED, err)
 		ent.Stop()
 	} else {
 		rsp.Success, rsp.Reason = true, "success"

@@ -70,7 +70,7 @@ func (jr *JSRuntime) setContext(ctx context.Context) {
 
 func (jr *JSRuntime) RegisterNativeModule(name string, loader NativeModuleLoader) {
 	jr.registry.RegisterNativeModule(name, func(rt *goja.Runtime, module *goja.Object) {
-		loader(jr.currentContext(), rt, module)
+		loader(ContextWithEventLoop(jr.currentContext(), jr.eventLoop), rt, module)
 	})
 }
 

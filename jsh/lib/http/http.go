@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
+	"github.com/machbase/neo-server/v8/jsh/engine"
 )
 
 //go:embed http.js
@@ -22,13 +23,16 @@ func Files() map[string][]byte {
 	}
 }
 
-func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
+func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	m := module.Get("exports").(*goja.Object)
 	m.Set("NewClient", NewClient)
 	m.Set("NewRequest", NewRequest)
 
-	m.Set("NewServer", NewServer)
+	loop := engine.EventLoopFromContext(ctx)
+	m.Set("NewServer", func(config map[string]any) (Listener, error) {
+		return NewServerWithEventLoop(config, loop)
+	})
 
 	m.Set("status", statusCodes)
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,9 +20,10 @@ type MqttBridge struct {
 	name string
 	path string
 
+	clientMu   sync.RWMutex
 	client     paho.Client
 	clientOpts *paho.ClientOptions
-	alive      bool
+	alive      atomic.Bool
 	stopSig    chan bool
 
 	connectListeners    []func(any)
@@ -161,7 +163,7 @@ func (c *MqttBridge) BeforeRegister() error {
 }
 
 func (c *MqttBridge) AfterUnregister() error {
-	if c.alive {
+	if c.alive.Load() {
 		c.stopSig <- true
 	}
 	return nil
@@ -186,7 +188,7 @@ type MqttStats struct {
 
 func (c *MqttBridge) Stats() MqttStats {
 	ret := MqttStats{}
-	if c.client == nil {
+	if c.getClient() == nil {
 		return ret
 	}
 	ret.InBytes = atomic.LoadUint64(&c.inBytes)
@@ -199,24 +201,39 @@ func (c *MqttBridge) Stats() MqttStats {
 }
 
 func (c *MqttBridge) IsConnected() bool {
-	if !c.alive || c.client == nil || !c.client.IsConnected() {
+	client := c.getClient()
+	if !c.alive.Load() || client == nil || !client.IsConnected() {
 		return false
 	}
 	return true
 }
 
+func (c *MqttBridge) getClient() paho.Client {
+	c.clientMu.RLock()
+	defer c.clientMu.RUnlock()
+	return c.client
+}
+
+func (c *MqttBridge) setClient(client paho.Client) {
+	c.clientMu.Lock()
+	c.client = client
+	c.clientMu.Unlock()
+}
+
 func (c *MqttBridge) run() {
 	var fallbackWait = 1 * time.Second
 	ticker := time.NewTicker(1 * time.Second)
-	c.alive = true
-	for c.alive {
+	c.alive.Store(true)
+	for c.alive.Load() {
 		select {
 		case <-ticker.C:
-			if c.client == nil || !c.client.IsConnected() {
+			client := c.getClient()
+			if client == nil || !client.IsConnected() {
 				c.log.Tracef("bridge [%s] connecting... %v", c.name, c.clientOpts.Servers)
-				c.client = paho.NewClient(c.clientOpts)
-				clientToken := c.client.Connect()
-				if beforeTimedout := clientToken.WaitTimeout(c.connectTimeout); c.client.IsConnected() {
+				client = paho.NewClient(c.clientOpts)
+				c.setClient(client)
+				clientToken := client.Connect()
+				if beforeTimedout := clientToken.WaitTimeout(c.connectTimeout); client.IsConnected() {
 					c.log.Tracef("bridge [%s] connected.", c.name)
 					go c.notifyConnectListeners()
 					ticker.Reset(10 * time.Second)
@@ -237,12 +254,13 @@ func (c *MqttBridge) run() {
 				}
 			}
 		case <-c.stopSig:
-			c.alive = false
+			c.alive.Store(false)
 		}
 	}
 	ticker.Stop()
-	if c.client != nil && c.client.IsConnected() {
-		c.client.Disconnect(300)
+	client := c.getClient()
+	if client != nil && client.IsConnected() {
+		client.Disconnect(300)
 	}
 }
 
@@ -285,10 +303,14 @@ type MqttSubscription struct {
 }
 
 func (ns *MqttSubscription) Unsubscribe() error {
-	if ns.bridge == nil || ns.bridge.client == nil || !ns.bridge.client.IsConnected() {
+	if ns.bridge == nil {
 		return fmt.Errorf("mqtt connection is unavailable")
 	}
-	token := ns.bridge.client.Unsubscribe(ns.topic)
+	client := ns.bridge.getClient()
+	if client == nil || !client.IsConnected() {
+		return fmt.Errorf("mqtt connection is unavailable")
+	}
+	token := client.Unsubscribe(ns.topic)
 	success := token.WaitTimeout(ns.bridge.unsubscribeTimeout)
 	if !success {
 		return fmt.Errorf("mqtt unsubscribe timeout")
@@ -305,10 +327,11 @@ func (ns *MqttSubscription) AddInserted(delta uint64) {
 }
 
 func (c *MqttBridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (*MqttSubscription, error) {
-	if c.client == nil || !c.client.IsConnected() {
+	client := c.getClient()
+	if client == nil || !client.IsConnected() {
 		return nil, fmt.Errorf("mqtt connection is unavailable")
 	}
-	token := c.client.Subscribe(topic, qos, func(_ paho.Client, msg paho.Message) {
+	token := client.Subscribe(topic, qos, func(_ paho.Client, msg paho.Message) {
 		atomic.AddUint64(&c.inMsgs, 1)
 		atomic.AddUint64(&c.inBytes, uint64(len(msg.Payload())))
 		cb(msg.Topic(), msg.Payload(), int(msg.MessageID()), msg.Duplicate(), msg.Retained())
@@ -326,7 +349,8 @@ func (c *MqttBridge) Subscribe(topic string, qos byte, cb func(topic string, pay
 }
 
 func (c *MqttBridge) Publish(topic string, payload any) (bool, error) {
-	if c.client == nil || !c.client.IsConnected() {
+	client := c.getClient()
+	if client == nil || !client.IsConnected() {
 		return false, fmt.Errorf("mqtt connection is unavailable")
 	}
 	var data []byte
@@ -341,7 +365,7 @@ func (c *MqttBridge) Publish(topic string, payload any) (bool, error) {
 	atomic.AddUint64(&c.outMsgs, 1)
 	atomic.AddUint64(&c.outBytes, uint64(len(data)))
 	var qos byte = 1
-	token := c.client.Publish(topic, qos, false, data)
+	token := client.Publish(topic, qos, false, data)
 	success := token.WaitTimeout(c.publishTimeout)
 	return success, nil
 }

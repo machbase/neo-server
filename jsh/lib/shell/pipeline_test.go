@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,23 @@ import (
 var shellTestExecBuilder engine.ExecBuilderFunc
 var shellTestJshBinPath string
 var shellTestDir string
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
 func TestMain(m *testing.M) {
 	_, filename, _, ok := runtime.Caller(0)
@@ -566,7 +584,7 @@ func TestStartInterruptForwarder(t *testing.T) {
 		}
 
 		child := exec.Command("sh", "-c", "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do :; done")
-		var childOutput bytes.Buffer
+		var childOutput lockedBuffer
 		child.Stdout = &childOutput
 		child.Stderr = &childOutput
 		if err := child.Start(); err != nil {
@@ -633,7 +651,7 @@ func TestStartInterruptForwarderHelper(t *testing.T) {
 	}
 
 	child := exec.Command("sh", "-c", "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do sleep 1; done")
-	var childOutput bytes.Buffer
+	var childOutput lockedBuffer
 	child.Stdout = &childOutput
 	child.Stderr = &childOutput
 	if err := child.Start(); err != nil {

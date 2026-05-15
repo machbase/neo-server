@@ -285,6 +285,82 @@ func TestTable(t *testing.T) {
 				"└────────┴─────────┴───────────────────────────┘",
 			},
 		},
+		{
+			Name: "Table_binaryformat_hex",
+			Script: `
+				const pretty = require('pretty');
+				const tw = pretty.Table({style: 'light', binaryformat: 'hex'});
+				tw.appendHeader(['Name', 'Data']);
+				tw.appendRow(tw.row('Blob1', Buffer.from([0x01, 0x02, 0x03])));
+				tw.appendRow(tw.row('Blob2', Buffer.from([0x0a, 0x0b])));
+				console.println(tw.render());
+			`,
+			Output: []string{
+				"┌────────┬───────┬──────────┐",
+				"│ ROWNUM │ NAME  │ DATA     │",
+				"├────────┼───────┼──────────┤",
+				"│      1 │ Blob1 │ 0x010203 │",
+				"│      2 │ Blob2 │ 0x0a0b   │",
+				"└────────┴───────┴──────────┘",
+			},
+		},
+		{
+			Name: "Table_binaryformat_base64",
+			Script: `
+				const pretty = require('pretty');
+				const tw = pretty.Table({style: 'light', binaryformat: 'base64'});
+				tw.appendHeader(['Name', 'Data']);
+				tw.appendRow(tw.row('Blob1', Buffer.from([0x01, 0x02, 0x03])));
+				tw.appendRow(tw.row('Blob2', Buffer.from([0x0a, 0x0b])));
+				console.println(tw.render());
+			`,
+			Output: []string{
+				"┌────────┬───────┬──────┐",
+				"│ ROWNUM │ NAME  │ DATA │",
+				"├────────┼───────┼──────┤",
+				"│      1 │ Blob1 │ AQID │",
+				"│      2 │ Blob2 │ Cgs= │",
+				"└────────┴───────┴──────┘",
+			},
+		},
+		{
+			Name: "Table_binaryformat_preview",
+			Script: `
+					const pretty = require('pretty');
+					const tw = pretty.Table({style: 'light', binaryformat: 'preview'});
+					tw.appendHeader(['Name', 'Data']);
+					tw.appendRow(tw.row('Blob1', Buffer.from([0x01, 0x02, 0x03, 0x04, 0x05, 0x06])));
+					tw.appendRow(tw.row('Blob2', Buffer.from([0x0a, 0x0b])));
+					console.println(tw.render());
+				`,
+			Output: []string{
+				"┌────────┬───────┬────────────────┐",
+				"│ ROWNUM │ NAME  │ DATA           │",
+				"├────────┼───────┼────────────────┤",
+				"│      1 │ Blob1 │ 0x0102030405.. │",
+				"│      2 │ Blob2 │ 0x0a0b         │",
+				"└────────┴───────┴────────────────┘",
+			},
+		},
+		{
+			Name: "Table_binaryformat_bytes",
+			Script: `
+					const pretty = require('pretty');
+					const tw = pretty.Table({style: 'light', binaryformat: 'bytes'});
+					tw.appendHeader(['Name', 'Data']);
+					tw.appendRow(tw.row('Blob1', Buffer.from([0x01, 0x02, 0x03])));
+					tw.appendRow(tw.row('Blob2', Buffer.from([0x0a, 0x0b])));
+					console.println(tw.render());
+				`,
+			Output: []string{
+				"┌────────┬───────┬─────────┐",
+				"│ ROWNUM │ NAME  │ DATA    │",
+				"├────────┼───────┼─────────┤",
+				"│      1 │ Blob1 │ [1 2 3] │",
+				"│      2 │ Blob2 │ [10 11] │",
+				"└────────┴───────┴─────────┘",
+			},
+		},
 	}
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)

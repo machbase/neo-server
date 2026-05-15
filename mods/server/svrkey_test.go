@@ -28,9 +28,6 @@ func TestKeyGen(t *testing.T) {
 	pub_pem, err := ec.EncodePublic(pub)
 	require.Nil(t, err)
 	require.NotEmpty(t, pub_pem)
-
-	fmt.Println(pri_pem)
-	fmt.Println(pub_pem)
 }
 
 func TestKeyEncodeDecode(t *testing.T) {

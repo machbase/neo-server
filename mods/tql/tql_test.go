@@ -735,6 +735,155 @@ func TestDatabaseTql(t *testing.T) {
 	}
 }
 
+func TestDatabaseBinaryTql(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "create-tqlbin",
+			Script: `
+				SCRIPT("js", {
+					var ret = $.db().exec("create tag table tqlbin (name varchar(40) primary key, time datetime basetime, value binary)");
+					if (ret instanceof Error) {
+						$.yield(ret.message);
+					} else {
+						$.yield("create-tqlbin done");
+					}
+				})
+				CSV()`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "create-tqlbin done\n\n", result)
+			},
+		},
+		// INSERT binary data
+		{
+			Name: "insert-binary",
+			Script: `
+				SCRIPT({
+					$.yield('bin1', 1692686707380411000, '0x0102030405060708090a');
+				})
+				INSERT('name', 'time', 'value', table('tqlbin'))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Contains(t, result, "1 row inserted.")
+				db := api.Default()
+				conn, _ := db.Connect(t.Context(), api.WithTrustUser("sys"))
+				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.Close()
+			},
+		},
+		{
+			Name: "select-binary-hex",
+			Script: `
+				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"NAME,VALUE",
+				"bin1,0x0102030405060708090a",
+				"\n",
+			},
+		},
+		{
+			Name: "select-binary-bytes",
+			Script: `
+				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+				CSV(header(true), binaryformat('preview'))
+			`,
+			ExpectCSV: []string{
+				"NAME,VALUE",
+				"bin1,0x0102030405..",
+				"\n",
+			},
+		},
+		{
+			Name: "select-binary-base64",
+			Script: `
+				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+				CSV(header(true), binaryformat('base64'))
+			`,
+			ExpectCSV: []string{
+				"NAME,VALUE",
+				"bin1,AQIDBAUGBwgJCg==",
+				"\n",
+			},
+		},
+		{
+			Name: "select-binary-bytes",
+			Script: `
+				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+				CSV(header(true), binaryformat('bytes'))
+			`,
+			ExpectCSV: []string{
+				"NAME,VALUE",
+				"bin1,[1 2 3 4 5 6 7 8 9 10]",
+				"\n",
+			},
+		},
+		// APPEND binary data
+		{
+			Name: "append-binary",
+			Script: `
+				SCRIPT({
+					$.yield('bin2', 1692686707380411000, '0x0102030405060708090a');
+					$.yield('bin2', 1692686707380412000, '0x02030405060708090a10');
+					$.yield('bin2', 1692686707380413000, '0x030405060708090a1011');
+					$.yield('bin2', 1692686707380414000, '0x0405060708090a101213');
+					$.yield('bin2', 1692686707380415000, '0x05060708090a10121314');
+				})
+				APPEND(table('tqlbin'))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Contains(t, result, "append 5 rows (success 5, fail 0)")
+
+				// flush appender
+				server_api.FlushAppendWorkers("tqlbin")
+
+				// flush table
+				db := api.Default()
+				conn, _ := db.Connect(t.Context(), api.WithTrustUser("sys"))
+				time.Sleep(3 * time.Second)
+				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.Close()
+			},
+		},
+		{
+			Name: "append-select-binary-hex",
+			Script: `
+				SQL("select NAME, VALUE from tqlbin where name = 'bin2'")
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"NAME,VALUE",
+				"bin2,0x0102030405060708090a",
+				"bin2,0x02030405060708090a10",
+				"bin2,0x030405060708090a1011",
+				"bin2,0x0405060708090a101213",
+				"bin2,0x05060708090a10121314",
+				"\n",
+			},
+		},
+		// DROP TABLE
+		{
+			Name: "drop-table",
+			Script: `
+				SCRIPT("js", {
+					var ret = $.db().exec("drop table tqlbin");
+					if (ret instanceof Error) {
+						console.error(ret.message);
+					}
+				})
+				DISCARD()`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Empty(t, result)
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestTql(t *testing.T) {
 	tests := []TqlTestCase{
 		{

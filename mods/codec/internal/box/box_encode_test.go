@@ -266,6 +266,42 @@ func TestPrecision(t *testing.T) {
 	}
 }
 
+func TestBinaryFormat(t *testing.T) {
+	tests := []struct {
+		input        []byte
+		binaryformat string
+		expect       string
+	}{
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "preview", "│ 0x0102030405.. │"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "hex", "│ 0x010203040506 │"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "bytes", "│ [1 2 3 4 5 6] │"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "base64", "│ AQIDBAUG │"},
+		{[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}, "_unknown_", "│ 0x010203040506 │"},
+	}
+
+	for _, tt := range tests {
+		enc := box.NewEncoder()
+
+		require.Equal(t, "text/plain", enc.ContentType())
+
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetBinaryformat(tt.binaryformat)
+		enc.SetRownum(true)
+		enc.SetBoxStyle("round")
+		enc.SetBoxSeparateColumns(true)
+		enc.SetColumns("BIN")
+		enc.SetHeading(true)
+		err := enc.Open()
+		require.Nil(t, err)
+		enc.AddRow([]any{tt.binaryformat, tt.input})
+		enc.Close()
+
+		result := w.String()
+		require.Contains(t, result, tt.expect)
+	}
+}
+
 func TestBoxWide(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skip on windows")

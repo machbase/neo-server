@@ -46,10 +46,15 @@ type Entry interface {
 }
 
 type BaseEntry struct {
+	mu        sync.RWMutex
 	name      string
 	state     State
 	autoStart bool
 	err       error
+}
+
+func NewBaseEntry(name string, state State, autoStart bool) BaseEntry {
+	return BaseEntry{name: name, state: state, autoStart: autoStart}
 }
 
 func (e *BaseEntry) Name() string {
@@ -65,6 +70,8 @@ func (e *BaseEntry) Stop() error {
 }
 
 func (e *BaseEntry) Status() State {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.state
 }
 
@@ -73,7 +80,34 @@ func (e *BaseEntry) AutoStart() bool {
 }
 
 func (e *BaseEntry) Error() error {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.err
+}
+
+func (e *BaseEntry) setState(state State) {
+	e.mu.Lock()
+	e.state = state
+	e.mu.Unlock()
+}
+
+func (e *BaseEntry) setError(err error) {
+	e.mu.Lock()
+	e.err = err
+	e.mu.Unlock()
+}
+
+func (e *BaseEntry) setStateError(state State, err error) {
+	e.mu.Lock()
+	e.state = state
+	e.err = err
+	e.mu.Unlock()
+}
+
+func (e *BaseEntry) statusError() (State, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.state, e.err
 }
 
 var registry = map[string]Entry{}
@@ -118,12 +152,10 @@ func Register(s *Service, def *model.ScheduleDefinition) error {
 	if be, ok := ent.(*TimerEntry); ok {
 		prevState := ent.Status()
 		if _, err := s.tqlLoader.Load(def.Task); err != nil {
-			if be, ok := ent.(*TimerEntry); ok {
-				be.state = FAILED
-			}
+			be.setState(FAILED)
 			return err
 		}
-		be.state = prevState
+		be.setState(prevState)
 	}
 
 	if initRegister {
