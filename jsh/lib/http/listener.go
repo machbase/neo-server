@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/dop251/goja_nodejs/eventloop"
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	wsmod "github.com/machbase/neo-server/v8/jsh/lib/ws"
@@ -23,6 +24,10 @@ func DefaultRouter() *gin.Engine {
 }
 
 func NewServer(config map[string]any) (Listener, error) {
+	return NewServerWithEventLoop(config, nil)
+}
+
+func NewServerWithEventLoop(config map[string]any, loop *eventloop.EventLoop) (Listener, error) {
 	base := BaseListener{
 		Network: "tcp",
 		Address: "",
@@ -44,12 +49,12 @@ func NewServer(config map[string]any) (Listener, error) {
 		if DefaultRouter() == nil {
 			return nil, errors.New("http.NewServer: address is not set")
 		}
-		base.router = &Router{env: env, ir: DefaultRouter()}
+		base.router = &Router{env: env, ir: DefaultRouter(), loop: loop}
 		// Proxy listener that uses the existing http listener
 		lsnr = &PListener{BaseListener: base}
 	} else {
 		// Regular listener that creates its own http listener
-		base.router = &Router{env: env, ir: gin.New()}
+		base.router = &Router{env: env, ir: gin.New(), loop: loop}
 		lsnr = &RListener{BaseListener: base}
 	}
 

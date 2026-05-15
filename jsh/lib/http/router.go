@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/eventloop"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
 	"github.com/gorilla/websocket"
@@ -19,8 +21,9 @@ import (
 )
 
 type Router struct {
-	ir  *gin.Engine `json:"-"`
-	env *engine.Env `json:"-"`
+	ir   *gin.Engine          `json:"-"`
+	env  *engine.Env          `json:"-"`
+	loop *eventloop.EventLoop `json:"-"`
 }
 
 func (r *Router) All(path string, callback func(*RouterContext)) {
@@ -48,14 +51,25 @@ func (r *Router) WebSocket(path string, verifyClient func(*WebSocketRequest) boo
 		}
 
 		request := NewWebSocketRequest(ctx.Request)
-		if verifyClient != nil && !verifyClient(request) {
-			ctx.String(http.StatusForbidden, "websocket upgrade rejected")
-			return
+		if verifyClient != nil {
+			accepted, err := r.callWebSocketVerify(verifyClient, request)
+			if err != nil {
+				ctx.String(http.StatusInternalServerError, err.Error())
+				return
+			}
+			if !accepted {
+				ctx.String(http.StatusForbidden, "websocket upgrade rejected")
+				return
+			}
 		}
 
 		responseHeader := http.Header{}
 		if handleProtocols != nil {
-			selected := handleProtocols(websocket.Subprotocols(ctx.Request), request)
+			selected, err := r.callWebSocketProtocols(handleProtocols, websocket.Subprotocols(ctx.Request), request)
+			if err != nil {
+				ctx.String(http.StatusInternalServerError, err.Error())
+				return
+			}
 			if selected != "" {
 				responseHeader.Set("Sec-WebSocket-Protocol", selected)
 			}
@@ -66,8 +80,11 @@ func (r *Router) WebSocket(path string, verifyClient func(*WebSocketRequest) boo
 			return
 		}
 
-		accepted := wsmod.NewAcceptedWebSocket(conn)
-		callback(accepted, request)
+		accepted := wsmod.NewAcceptedWebSocket(conn, r.loop)
+		if err := r.callWebSocketHandler(callback, accepted, request); err != nil {
+			_ = accepted.Close()
+			return
+		}
 		accepted.RunDirect()
 	})
 }
@@ -100,8 +117,122 @@ func (r *Router) handle(method string, path string, callback func(*RouterContext
 		if err != nil {
 			panic(fmt.Errorf("http.Router.%s: %v", method, err))
 		}
-		callback(ctxObj)
+		if err := r.callHandler(callback, ctxObj); err != nil {
+			ctx.String(http.StatusInternalServerError, err.Error())
+		}
 	})
+}
+
+func (r *Router) callHandler(callback func(*RouterContext), ctxObj *RouterContext) (err error) {
+	if r.loop == nil {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("%v", recovered)
+			}
+		}()
+		callback(ctxObj)
+		return nil
+	}
+
+	done := make(chan error, 1)
+	if ok := r.loop.RunOnLoop(func(vm *goja.Runtime) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				done <- fmt.Errorf("%v", recovered)
+			} else {
+				done <- nil
+			}
+		}()
+		callback(ctxObj)
+	}); !ok {
+		return errors.New("http.Router: event loop is closed")
+	}
+	return <-done
+}
+
+func (r *Router) callWebSocketVerify(callback func(*WebSocketRequest) bool, request *WebSocketRequest) (result bool, err error) {
+	if r.loop == nil {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("%v", recovered)
+			}
+		}()
+		return callback(request), nil
+	}
+
+	type verifyResult struct {
+		result bool
+		err    error
+	}
+	done := make(chan verifyResult, 1)
+	if ok := r.loop.RunOnLoop(func(vm *goja.Runtime) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				done <- verifyResult{err: fmt.Errorf("%v", recovered)}
+			}
+		}()
+		done <- verifyResult{result: callback(request)}
+	}); !ok {
+		return false, errors.New("http.Router: event loop is closed")
+	}
+	ret := <-done
+	return ret.result, ret.err
+}
+
+func (r *Router) callWebSocketProtocols(callback func([]string, *WebSocketRequest) string, protocols []string, request *WebSocketRequest) (selected string, err error) {
+	if r.loop == nil {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("%v", recovered)
+			}
+		}()
+		return callback(protocols, request), nil
+	}
+
+	type protocolResult struct {
+		selected string
+		err      error
+	}
+	done := make(chan protocolResult, 1)
+	if ok := r.loop.RunOnLoop(func(vm *goja.Runtime) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				done <- protocolResult{err: fmt.Errorf("%v", recovered)}
+			}
+		}()
+		done <- protocolResult{selected: callback(protocols, request)}
+	}); !ok {
+		return "", errors.New("http.Router: event loop is closed")
+	}
+	ret := <-done
+	return ret.selected, ret.err
+}
+
+func (r *Router) callWebSocketHandler(callback func(*wsmod.WebSocket, *WebSocketRequest), socket *wsmod.WebSocket, request *WebSocketRequest) (err error) {
+	if r.loop == nil {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("%v", recovered)
+			}
+		}()
+		callback(socket, request)
+		return nil
+	}
+
+	done := make(chan error, 1)
+	if ok := r.loop.RunOnLoop(func(vm *goja.Runtime) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				done <- fmt.Errorf("%v", recovered)
+			} else {
+				done <- nil
+			}
+		}()
+		callback(socket, request)
+	}); !ok {
+		return errors.New("http.Router: event loop is closed")
+	}
+	return <-done
 }
 
 func (r *Router) LoadHTMLFiles(paths ...string) error {

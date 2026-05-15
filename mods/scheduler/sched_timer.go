@@ -26,7 +26,7 @@ var _ Entry = (*TimerEntry)(nil)
 
 func NewTimerEntry(s *Service, def *model.ScheduleDefinition) (*TimerEntry, error) {
 	ret := &TimerEntry{
-		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
+		BaseEntry: NewBaseEntry(def.Name, STOP, def.AutoStart),
 		TaskTql:   def.Task,
 		Schedule:  def.Schedule,
 		log:       logging.GetLog(fmt.Sprintf("timer-%s", strings.ToLower(def.Name))),
@@ -37,40 +37,38 @@ func NewTimerEntry(s *Service, def *model.ScheduleDefinition) (*TimerEntry, erro
 }
 
 func (ent *TimerEntry) Start() error {
-	ent.state = STARTING
-	ent.err = nil
+	ent.setStateError(STARTING, nil)
 
 	if len(ent.Schedule) == 0 {
-		ent.state = FAILED
-		ent.err = fmt.Errorf("invalid configure - missing Schedule")
-		return ent.err
+		err := fmt.Errorf("invalid configure - missing Schedule")
+		ent.setStateError(FAILED, err)
+		return err
 	}
 	if ent.TaskTql == "" {
-		ent.state = FAILED
-		ent.err = fmt.Errorf("invalid configure - missing Task")
-		return ent.err
+		err := fmt.Errorf("invalid configure - missing Task")
+		ent.setStateError(FAILED, err)
+		return err
 	}
 	if entryId, err := ent.s.crons.AddFunc(ent.Schedule, ent.doTask); err != nil {
-		ent.state = FAILED
-		ent.err = err
+		ent.setStateError(FAILED, err)
 		return err
 	} else {
 		ent.entryId = entryId
-		ent.state = RUNNING
+		ent.setState(RUNNING)
 	}
 	return nil
 }
 
 func (ent *TimerEntry) Stop() error {
-	prevState := ent.state
-	ent.state = STOPPING
+	prevState := ent.Status()
+	ent.setState(STOPPING)
 	defer func() {
-		if ent.state != STOP {
-			ent.state = prevState
+		if ent.Status() != STOP {
+			ent.setState(prevState)
 		}
 	}()
 	ent.s.crons.Remove(ent.entryId)
-	ent.state = STOP
+	ent.setState(STOP)
 	return nil
 }
 
@@ -78,16 +76,16 @@ func (ent *TimerEntry) doTask() {
 	tick := time.Now()
 	ent.log.Info(ent.name, ent.TaskTql, "start")
 	defer func() {
-		if ent.err != nil {
-			ent.log.Warn(ent.name, ent.TaskTql, ent.state.String(), ent.err.Error(), "elapsed", time.Since(tick).String())
+		state, err := ent.statusError()
+		if err != nil {
+			ent.log.Warn(ent.name, ent.TaskTql, state.String(), err.Error(), "elapsed", time.Since(tick).String())
 		} else {
-			ent.log.Info(ent.name, ent.TaskTql, ent.state.String(), "elapsed", time.Since(tick).String())
+			ent.log.Info(ent.name, ent.TaskTql, state.String(), "elapsed", time.Since(tick).String())
 		}
 	}()
 	sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
 	if err != nil {
-		ent.err = err
-		ent.state = FAILED
+		ent.setStateError(FAILED, err)
 		ent.Stop()
 		return
 	}
@@ -97,14 +95,15 @@ func (ent *TimerEntry) doTask() {
 	task.SetInputReader(nil)
 	task.SetOutputWriterJson(io.Discard, true)
 	if err := task.CompileScript(sc); err != nil {
-		ent.err = err
-		ent.state = FAILED
+		ent.setStateError(FAILED, err)
 		ent.Stop()
 		return
 	}
 	if result := task.Execute(); result == nil || result.Err != nil {
-		ent.err = err
-		ent.state = FAILED
+		if result != nil {
+			err = result.Err
+		}
+		ent.setStateError(FAILED, err)
 		ent.Stop()
 	}
 }

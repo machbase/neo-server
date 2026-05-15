@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/eventloop"
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 )
@@ -48,6 +49,7 @@ type WebSocket struct {
 	conn *websocket.Conn
 
 	protocols []string
+	loop      *eventloop.EventLoop
 
 	runOnce sync.Once
 
@@ -56,8 +58,8 @@ type WebSocket struct {
 	onError   func(any)
 }
 
-func NewAcceptedWebSocket(conn *websocket.Conn) *WebSocket {
-	return &WebSocket{conn: conn}
+func NewAcceptedWebSocket(conn *websocket.Conn, loop *eventloop.EventLoop) *WebSocket {
+	return &WebSocket{conn: conn, loop: loop}
 }
 
 func BindWebSocket(obj *goja.Object, raw *WebSocket, dispatch engine.EventDispatchFunc) *WebSocket {
@@ -176,19 +178,19 @@ func (ws *WebSocket) run() {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
 				payload := map[string]any{"error": err.Error()}
 				if ws.onClose != nil {
-					ws.onClose(payload)
+					ws.dispatchCallback(func() { ws.onClose(payload) })
 				} else if ws.emit != nil {
 					ws.emit("close", payload)
 				}
 			} else {
 				payload := map[string]any{"error": err.Error()}
 				if ws.onError != nil {
-					ws.onError(err)
+					ws.dispatchCallback(func() { ws.onError(err) })
 				} else if ws.emit != nil {
 					ws.emit("error", err)
 				}
 				if ws.onClose != nil {
-					ws.onClose(payload)
+					ws.dispatchCallback(func() { ws.onClose(payload) })
 				} else if ws.emit != nil {
 					ws.emit("close", payload)
 				}
@@ -204,9 +206,24 @@ func (ws *WebSocket) run() {
 			data["data"] = message
 		}
 		if ws.onMessage != nil {
-			ws.onMessage(data)
+			ws.dispatchCallback(func() { ws.onMessage(data) })
 		} else if ws.emit != nil {
 			ws.emit("message", data)
 		}
 	}
+}
+
+func (ws *WebSocket) dispatchCallback(callback func()) {
+	if ws.loop == nil {
+		callback()
+		return
+	}
+	done := make(chan struct{})
+	if ok := ws.loop.RunOnLoop(func(vm *goja.Runtime) {
+		defer close(done)
+		callback()
+	}); !ok {
+		return
+	}
+	<-done
 }
