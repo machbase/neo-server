@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"bytes"
+	"net"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -139,13 +140,12 @@ func TestServer(t *testing.T) {
 		jr.RegisterNativeModule("@jsh/process", jr.Process)
 		jr.RegisterNativeModule("@jsh/http", http.Module)
 
+		serverDone := make(chan error, 1)
 		go func() {
-			if err := jr.Run(); err != nil {
-				panic(err)
-			}
+			serverDone <- jr.Run()
 		}()
 
-		time.Sleep(1 * time.Second) // wait for server start
+		waitForListenerReady(t, tn.network, tn.address, serverDone)
 
 		tests := []test_engine.TestCase{
 			{
@@ -553,4 +553,29 @@ func TestServer(t *testing.T) {
 			test_engine.RunTest(t, tc)
 		}
 	}
+}
+
+func waitForListenerReady(t *testing.T, network string, address string, serverDone <-chan error) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-serverDone:
+			if err != nil {
+				t.Fatalf("server runtime exited before listener was ready: %v", err)
+			}
+			t.Fatalf("server runtime exited before listener was ready")
+		default:
+		}
+
+		conn, err := net.DialTimeout(network, address, 100*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		lastErr = err
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s listener %s: %v", network, address, lastErr)
 }
