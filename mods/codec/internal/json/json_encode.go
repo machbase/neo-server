@@ -73,7 +73,7 @@ func (ex *Exporter) SetPrecision(precision int) {
 	ex.precision = precision
 }
 
-func (ex *Exporter) SetBinaryFormat(format string) {
+func (ex *Exporter) SetBinaryformat(format string) {
 	ex.binaryFormatter.SetFormat(format)
 }
 

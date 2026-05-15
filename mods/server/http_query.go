@@ -152,7 +152,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	encoder := codec.NewEncoder(req.Format,
 		opts.OutputStream(output),
 		opts.Timeformat(req.Timeformat),
-		opts.BinaryFormat(req.BinaryFormat),
+		opts.Binaryformat(req.BinaryFormat),
 		opts.Precision(req.Precision),
 		opts.Rownum(req.Rownum),
 		opts.Header(req.Heading),

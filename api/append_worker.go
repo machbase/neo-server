@@ -33,11 +33,18 @@ var appenders map[string]*AppendWorker
 var appendersLock sync.Mutex
 var appendersFlusher chan struct{}
 var appendersFlusherWg sync.WaitGroup
+var appendersControl chan *AppendWorkerControl // send table name to stop the appender
+
+type AppendWorkerControl struct {
+	TableName string
+	ack       chan struct{}
+}
 
 func StartAppendWorkers() {
 	appenders = make(map[string]*AppendWorker)
 	appendersFlusher = make(chan struct{})
 	appendersFlusherWg.Add(1)
+	appendersControl = make(chan *AppendWorkerControl)
 	go func() {
 		defer appendersFlusherWg.Done()
 		for {
@@ -55,6 +62,14 @@ func StartAppendWorkers() {
 					delete(appenders, tableName)
 				}
 				appendersLock.Unlock()
+			case control := <-appendersControl:
+				appendersLock.Lock()
+				if value, exists := appenders[control.TableName]; exists {
+					value.Stop()
+					delete(appenders, control.TableName)
+				}
+				appendersLock.Unlock()
+				close(control.ack)
 			case <-appendersFlusher:
 				return
 			}
@@ -68,6 +83,17 @@ func StopAppendWorkers() {
 	for _, value := range appenders {
 		value.Stop()
 	}
+}
+
+// StopAppendWorker stops the append worker for the specified table
+// and returns a channel to wait for the stop to complete
+func StopAppendWorker(tableName string) chan struct{} {
+	ack := make(chan struct{})
+	appendersControl <- &AppendWorkerControl{
+		TableName: strings.ToLower(tableName),
+		ack:       ack,
+	}
+	return ack
 }
 
 // FlushAppendWorkers flushes all append workers
@@ -84,6 +110,7 @@ func FlushAppendWorkers(tables ...string) {
 	} else {
 		var deleting []string
 		for _, tableName := range tables {
+			tableName = strings.ToLower(tableName)
 			if value, exists := appenders[tableName]; exists {
 				value.Stop()
 				deleting = append(deleting, tableName)
@@ -99,6 +126,7 @@ func GetAppendWorker(ctx context.Context, db api.Database, tableName string) (*A
 	appendersLock.Lock()
 	defer appendersLock.Unlock()
 
+	tableName = strings.ToLower(tableName)
 	if aw, exists := appenders[tableName]; exists {
 		aw.lastTime = time.Now()
 		atomic.AddInt32(&aw.refCount, 1)
@@ -135,7 +163,7 @@ func GetAppendWorker(ctx context.Context, db api.Database, tableName string) (*A
 		tableDesc: tableDesc,
 		lastTime:  time.Now(),
 		refCount:  1,
-		log:       logging.GetLog(fmt.Sprintf("appender-%s", strings.ToLower(tableName))),
+		log:       logging.GetLog(fmt.Sprintf("appender-%s", tableName)),
 	}
 	appenders[tableName] = ret
 	ret.Start()

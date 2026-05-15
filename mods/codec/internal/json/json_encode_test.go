@@ -448,7 +448,7 @@ func TestBinaryFormat(t *testing.T) {
 
 		w := &bytes.Buffer{}
 		enc.SetOutputStream(w)
-		enc.SetBinaryFormat(tt.binaryformat)
+		enc.SetBinaryformat(tt.binaryformat)
 		enc.SetRownum(true)
 		enc.SetColumns("FORMAT", "BIN")
 		enc.SetHeading(true)

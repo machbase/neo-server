@@ -286,7 +286,7 @@ func TestBinaryFormat(t *testing.T) {
 
 		w := &bytes.Buffer{}
 		enc.SetOutputStream(w)
-		enc.SetBinaryFormat(tt.binaryformat)
+		enc.SetBinaryformat(tt.binaryformat)
 		enc.SetRownum(true)
 		enc.SetBoxStyle("round")
 		enc.SetBoxSeparateColumns(true)

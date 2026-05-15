@@ -607,7 +607,7 @@ func TestBytes(t *testing.T) {
 	codeLines = []string{
 		`BYTES("line1\nline2\n\nline4", separator("\n"))`,
 		`PUSHKEY('test')`,
-		`CSV( heading(true), binaryFormat("hex") )`,
+		`CSV( heading(true), binaryformat("hex") )`,
 	}
 	resultLines = []string{
 		"ROWNUM,BYTES",
@@ -621,7 +621,7 @@ func TestBytes(t *testing.T) {
 
 	codeLines = []string{
 		`BYTES("line1\nline2\n\nline4", separator("\n"))`,
-		`CSV( heading(true), binaryFormat("hex") )`,
+		`CSV( heading(true), binaryformat("hex") )`,
 	}
 	resultLines = []string{
 		"BYTES",
@@ -638,7 +638,7 @@ func TestBytes(t *testing.T) {
 
 	codeLines = []string{
 		`BYTES(file("/lines.txt"), separator("\n"))`,
-		`CSV( header(true), binaryFormat("hex") )`,
+		`CSV( header(true), binaryformat("hex") )`,
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -681,7 +681,7 @@ func TestHttpFile(t *testing.T) {
 
 	codeLines = []string{
 		`BYTES(file("http://example.com/bytes"))`,
-		`CSV(binaryFormat("hex"))`,
+		`CSV(binaryformat("hex"))`,
 	}
 	resultLines = []string{
 		`0x6f6b2e`,

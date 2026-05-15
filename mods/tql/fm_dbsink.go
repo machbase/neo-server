@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-client/api"
 	server_api "github.com/machbase/neo-server/v8/api"
@@ -183,6 +184,7 @@ func (x *Node) fmAppend(args ...any) (*appender, error) {
 type appender struct {
 	nrows      int
 	dbAppender api.Appender
+	dbColumns  api.Columns
 	table      *Table
 }
 
@@ -218,6 +220,31 @@ func (app *appender) AddRow(values []any) error {
 	if app.dbAppender == nil {
 		return errors.New("f(APPEND) no appender exists")
 	}
+	if app.dbColumns == nil {
+		if columns, err := app.dbAppender.Columns(); err != nil {
+			return fmt.Errorf("failed to get appender columns, %s", err.Error())
+		} else {
+			app.dbColumns = columns
+		}
+	}
+
+	var timeformat string = "ns"
+	var timeLocation *time.Location
+	for idx, col := range app.dbColumns {
+		if idx >= len(values) {
+			return fmt.Errorf("missing value for column %s", col.Name)
+		}
+		if values[idx] == nil {
+			continue
+		}
+		val, err := col.DataType.Apply(values[idx], timeformat, timeLocation)
+		if err != nil {
+			return fmt.Errorf("invalid value for column %s: %v, error: %s", col.Name, values[idx], err.Error())
+		} else {
+			values[idx] = val
+		}
+	}
+
 	err := app.dbAppender.Append(values...)
 	if err == nil {
 		app.nrows++

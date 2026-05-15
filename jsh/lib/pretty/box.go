@@ -74,7 +74,7 @@ func Table(opt TableOption) (table.Writer, error) {
 	if err := ret.SetTz(opt.Tz); err != nil {
 		return nil, err
 	}
-	ret.SetBinaryFormat(opt.Binaryformat)
+	ret.SetBinaryformat(opt.Binaryformat)
 	ret.SetAutoIndex(false)
 	// initialize terminal size and page height
 	if ret.pause && IsTerminal() {
@@ -194,7 +194,7 @@ func (tw *TableWriter) SetTimeformat(format string) {
 	}
 }
 
-func (tw *TableWriter) SetBinaryFormat(format string) {
+func (tw *TableWriter) SetBinaryformat(format string) {
 	if tw.binFormatter == nil {
 		tw.binFormatter = util.NewBinaryFormatter(format)
 	} else {

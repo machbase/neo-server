@@ -67,7 +67,7 @@ func (ex *Exporter) SetTimeLocation(tz *time.Location) {
 	ex.timeformat.Set(util.TimeLocation(tz))
 }
 
-func (ex *Exporter) SetBinaryFormat(format string) {
+func (ex *Exporter) SetBinaryformat(format string) {
 	ex.binaryFormatter.SetFormat(format)
 }
 

@@ -249,7 +249,7 @@ func TestBinaryFormat(t *testing.T) {
 
 		w := &bytes.Buffer{}
 		enc.SetOutputStream(w)
-		enc.SetBinaryFormat(tt.binaryformat)
+		enc.SetBinaryformat(tt.binaryformat)
 		enc.SetRownum(true)
 		enc.SetColumns("BIN")
 		enc.SetHeading(true)
@@ -292,7 +292,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 		enc.SetOutputStream(w)
 		enc.SetColumns("bin", "ptr_bin", "empty_bin", "nil_bin")
 		enc.SetHeader(true)
-		enc.SetBinaryFormat("BASE64")
+		enc.SetBinaryformat("BASE64")
 		require.NoError(t, enc.Open())
 
 		ptrBin := []byte{0x03, 0x04}
@@ -315,7 +315,7 @@ func TestCsvEncoderBinaryMode(t *testing.T) {
 		enc.SetOutputStream(w)
 		enc.SetColumns("bin")
 		enc.SetHeader(true)
-		enc.SetBinaryFormat("raw")
+		enc.SetBinaryformat("raw")
 		require.NoError(t, enc.Open())
 
 		require.NoError(t, enc.AddRow([]any{[]byte{0x0a, 0x0b}}))
