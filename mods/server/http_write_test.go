@@ -402,8 +402,10 @@ func TestWriteBinaryFormat(t *testing.T) {
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(response))
 			rsp.Body.Close()
 
-			// flush appender to make sure the appender is closed and resource is released.
-			//server_api.FlushAppendWorkers("wbin")
+			// flush appender to make sure data is visible to query,
+			// since the test is using method=append,
+			// the data is not immediately visible to query until the appender is flushed or closed.
+			server_api.FlushAppendWorkers("wbin")
 
 			// flush to make sure data is visible to query
 			flush := httpServerAddress + "/db/query?q=" + url.QueryEscape("exec table_flush(wbin)")
