@@ -178,6 +178,7 @@ const TableType = {
     Lookup: 4,
     KeyValue: 5,
     Tag: 6,
+    View: 7,
 };
 
 function stringTableType(typ) {
@@ -194,6 +195,8 @@ function stringTableType(typ) {
             return "KeyValue";
         case TableType.Tag:
             return "Tag";
+        case TableType.View:
+            return "View";
         default:
             return `UndefinedTable-${typ}`;
     }
