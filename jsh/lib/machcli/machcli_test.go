@@ -46,6 +46,9 @@ func TestDatabase(t *testing.T) {
 					result = conn.exec("CREATE TAG TABLE IF NOT EXISTS TAG (NAME VARCHAR(100) primary key, TIME DATETIME basetime, VALUE DOUBLE)");
 					console.println("Created Table Message:", result.message);
 
+					result = conn.exec("CREATE VIEW TAGVIEW as select * from TAG where name='jsh'");
+					console.println("Created View Message:", result.message);
+
 					result = conn.exec("INSERT INTO TAG values(?, ?, ?)", 'jsh', tick, 123);
 					console.println("Inserted rows:", result.rowsAffected, "Message:", result.message);
 				} catch(err) {
@@ -57,7 +60,29 @@ func TestDatabase(t *testing.T) {
 			`,
 			Output: []string{
 				"Created Table Message: ",
+				"Created View Message: ",
 				"Inserted rows: 1 Message: ",
+			},
+		},
+		{
+			Name: "mach_table_types",
+			Script: `
+				const {Client, stringTableType} = require('machcli');
+				const conf = require("process").env.get("conf");
+				db = new Client(conf);
+				conn = db.connect();
+				rows = conn.query("SELECT NAME, TYPE from M$SYS_TABLES ORDER BY NAME");
+				for (const row of rows) {
+					if (row.NAME.startsWith("_")) continue;
+					console.println("TABLE:", row.NAME, "TYPE:", stringTableType(row.TYPE));
+				}
+				rows.close();
+				conn.close();
+				db.close();
+			`,
+			Output: []string{
+				"TABLE: TAG TYPE: Tag",
+				"TABLE: TAGVIEW TYPE: View",
 			},
 		},
 		{
