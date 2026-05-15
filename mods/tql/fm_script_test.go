@@ -3,7 +3,7 @@ package tql_test
 import (
 	"context"
 	"fmt"
-	"log"
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -646,13 +646,15 @@ func TestScriptException(t *testing.T) {
 }
 
 func TestScriptOPCUA(t *testing.T) {
-	svr := startOPCUAServer()
-	defer svr.Close()
+	svr, endpoint := startOPCUAServer(t)
+	t.Cleanup(func() {
+		require.NoError(t, svr.Close())
+	})
 
 	tests := []TqlTestCase{
 		{
 			Name: "js-opcua-read",
-			Script: `
+			Script: fmt.Sprintf(`
 				SCRIPT("js", {
 					ua = require("opcua");
 					nodes = [
@@ -661,7 +663,7 @@ func TestScriptOPCUA(t *testing.T) {
 						"ns=1;s=ro_int32",  // int32(5)
 						"ns=1;s=rw_int32",  // int32(5)
 					];
-					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					client = new ua.Client({ endpoint: %q });
 					vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturn.Both});
 					vs.forEach((v, idx) => {
 						$.yield(nodes[idx], v.status, v.value, v.type);
@@ -669,7 +671,7 @@ func TestScriptOPCUA(t *testing.T) {
 					client.close();
 				})
 				CSV(timeformat('default'), tz('UTC'))
-			`,
+			`, endpoint),
 			ExpectCSV: []string{
 				"ns=1;s=ro_bool,0,true,Boolean",
 				"ns=1;s=rw_bool,0,true,Boolean",
@@ -679,7 +681,7 @@ func TestScriptOPCUA(t *testing.T) {
 		},
 		{
 			Name: "js-opcua-read-perms",
-			Script: `
+			Script: fmt.Sprintf(`
 				SCRIPT("js", {
 					ua = require("opcua");
 					nodes = [
@@ -688,7 +690,7 @@ func TestScriptOPCUA(t *testing.T) {
 						"ns=1;s=ReadOnlyVariable",  // ua.StatusOK, 9.87
 						"ns=1;s=NoAccessVariable",  // ua.StatusBadUserAccessDenied
 					];
-					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					client = new ua.Client({ endpoint: %q });
 					vs = client.read({ nodes: nodes});
 					vs.forEach((v, idx) => {
 						$.yield(nodes[idx], v.statusCode, v.value, v.type);
@@ -696,7 +698,7 @@ func TestScriptOPCUA(t *testing.T) {
 					client.close();
 				})
 				CSV()
-			`,
+			`, endpoint),
 			ExpectCSV: []string{
 				"ns=1;s=NoPermVariable,StatusGood,742,Int32",
 				"ns=1;s=ReadWriteVariable,StatusGood,12.34,Double",
@@ -712,9 +714,12 @@ func TestScriptOPCUA(t *testing.T) {
 	}
 }
 
-func startOPCUAServer() *opc_server.Server {
+func startOPCUAServer(t *testing.T) (*opc_server.Server, string) {
+	t.Helper()
+
 	var opts []opc_server.Option
-	port := 4840
+	port := freeOPCUAPort(t)
+	endpoint := fmt.Sprintf("opc.tcp://127.0.0.1:%d", port)
 
 	opts = append(opts,
 		opc_server.EnableSecurity("None", ua.MessageSecurityModeNone),
@@ -738,7 +743,7 @@ func startOPCUAServer() *opc_server.Server {
 	)
 
 	opts = append(opts,
-		opc_server.EndPoint("localhost", port),
+		opc_server.EndPoint("127.0.0.1", port),
 	)
 
 	s := opc_server.New(opts...)
@@ -832,7 +837,16 @@ func startOPCUAServer() *opc_server.Server {
 	// Create a new node namespace.  You can add namespaces before or after starting the server.
 	// Start the server
 	if err := s.Start(context.Background()); err != nil {
-		log.Fatalf("Error starting server, exiting: %s", err)
+		t.Fatalf("failed to start OPC UA test server at %s: %s", endpoint, err)
 	}
-	return s
+	return s, endpoint
+}
+
+func freeOPCUAPort(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port
 }
