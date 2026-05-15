@@ -9,6 +9,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBinaryFormatter(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		input  []byte
+		expect string
+	}{
+		{name: "nil", format: "hex", input: nil, expect: "NULL"},
+		{name: "empty", format: "hex", input: []byte{}, expect: ""},
+		{name: "hex", format: "hex", input: []byte{0x01, 0x2a}, expect: "0x012a"},
+		{name: "base64", format: "base64", input: []byte("neo"), expect: "bmVv"},
+		{name: "bytes", format: "bytes", input: []byte{1, 2, 3}, expect: "[1 2 3]"},
+		{name: "preview short", format: "preview", input: []byte{1, 2, 3}, expect: "0x010203"},
+		{name: "preview long", format: "preview", input: []byte{1, 2, 3, 4, 5, 6}, expect: "0x0102030405.."},
+		{name: "unknown defaults hex", format: "unknown", input: []byte{0x0f}, expect: "0x0f"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			formatter := util.NewBinaryFormatter(tc.format)
+			require.Equal(t, tc.expect, formatter.Format(tc.input))
+		})
+	}
+
+	formatter := util.NewBinaryFormatter("hex")
+	formatter.SetFormat("base64")
+	require.Equal(t, "AQI=", formatter.Format([]byte{1, 2}))
+}
+
 func TestTimeFormatter(t *testing.T) {
 	ts := time.Unix(0, 1692907084548634123)
 

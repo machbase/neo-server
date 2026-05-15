@@ -417,9 +417,6 @@ func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
 }
 
 func (c *NatsBridge) TestConnection() (bool, string) {
-	c.natsConnMutex.Lock()
-	defer c.natsConnMutex.Unlock()
-
 	connected := c.IsConnected()
 	if !connected {
 		if err := c.tryConnect(); err != nil {
