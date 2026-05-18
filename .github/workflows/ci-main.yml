@@ -10,10 +10,6 @@ on:
 
 jobs:
   build:
-    environment: codesign
-    permissions:
-      contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -95,34 +91,50 @@ jobs:
           apple-team-id: ${{ secrets.CODESIGN_DARWIN_APPLE_TEAM_ID }}
           app-path: |-
             ./tmp/machbase-neo
-      # - name: Azure login for code signing
-      #   if: matrix.os == 'windows'
-      #   uses: azure/login@v3
-      #   with:
-      #     client-id: ${{ secrets.AZURE_CLIENT_ID }}
-      #     tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-      #     subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      # - name: Codesign windows app
-      #   if: matrix.os == 'windows'
-      #   uses: azure/artifact-signing-action@v2
-      #   with:
-      #     endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-      #     signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-      #     certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_CERT_PROFILE }}
-      #     files: ${{ github.workspace }}\tmp\machbase-neo.exe
-      #     file-digest: SHA256
-      #     timestamp-rfc3161: http://timestamp.acs.microsoft.com
-      #     timestamp-digest: SHA256
-      #     exclude-environment-credential: true
-      #     exclude-workload-identity-credential: true
-      #     exclude-managed-identity-credential: true
-      #     exclude-shared-token-cache-credential: true
-      #     exclude-visual-studio-credential: true
-      #     exclude-visual-studio-code-credential: true
-      #     exclude-azure-cli-credential: false
-      #     exclude-azure-powershell-credential: true
-      #     exclude-azure-developer-cli-credential: true
-      #     exclude-interactive-browser-credential: true
+      - name: Codesign windows app
+        if: matrix.os == 'windows-no-sign'
+        shell: pwsh
+        env:
+          CODESIGN_WIN_CERTIFICATE: ${{ secrets.CODESIGN_WIN_CERTIFICATE }}
+          CODESIGN_WIN_PASS: ${{ secrets.CODESIGN_WIN_PASS }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          try {
+            $certificateBase64 = $env:CODESIGN_WIN_CERTIFICATE `
+              -replace '-----BEGIN CERTIFICATE-----', '' `
+              -replace '-----END CERTIFICATE-----', '' `
+              -replace '\s', ''
+
+            [System.IO.File]::WriteAllBytes(
+              $pfxPath,
+              [System.Convert]::FromBase64String($certificateBase64)
+            )
+
+            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName
+
+            if (-not $signtool) {
+              throw 'signtool.exe not found'
+            }
+
+            & $signtool sign `
+              /f $pfxPath `
+              /p $env:CODESIGN_WIN_PASS `
+              /tr http://timestamp.digicert.com `
+              /td sha256 `
+              /fd sha256 `
+              './tmp/machbase-neo.exe'
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "signtool.exe failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            if (Test-Path $pfxPath) {
+              Remove-Item $pfxPath -Force
+            }
+          }
       - name: Package
         if: matrix.os != 'linux'
         run: go run mage.go package
