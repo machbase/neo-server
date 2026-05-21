@@ -15,7 +15,7 @@ import (
 )
 
 func TestKeyGen(t *testing.T) {
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 	require.NotNil(t, pri)
@@ -30,8 +30,16 @@ func TestKeyGen(t *testing.T) {
 	require.NotEmpty(t, pub_pem)
 }
 
+func TestNewEllipticCurveP256(t *testing.T) {
+	ec := NewEllipticCurveP256()
+	pri, _, err := ec.GenerateKeys()
+	require.Nil(t, err)
+	require.NotNil(t, pri)
+	require.Equal(t, 256, pri.Curve.Params().BitSize)
+}
+
 func TestKeyEncodeDecode(t *testing.T) {
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 
@@ -51,7 +59,7 @@ func TestKeyEncodeDecode(t *testing.T) {
 }
 
 func TestKeyVerifySignature(t *testing.T) {
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 
@@ -62,7 +70,7 @@ func TestKeyVerifySignature(t *testing.T) {
 }
 
 func TestKeyTest(t *testing.T) {
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 
@@ -71,7 +79,7 @@ func TestKeyTest(t *testing.T) {
 }
 
 func TestHashCertificate(t *testing.T) {
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 
@@ -91,7 +99,7 @@ func TestHashCertificate(t *testing.T) {
 }
 
 func TestCert(t *testing.T) {
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 
 	// server key
 	svrPri, svrPub, err := ec.GenerateKeys()
@@ -116,7 +124,7 @@ func TestCert(t *testing.T) {
 	require.NotNil(t, svrCert)
 
 	// client key
-	ec = NewEllipticCurveP521()
+	ec = NewEllipticCurveP256()
 	cliPri, cliPub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 	require.NotNil(t, cliPri)

@@ -27,6 +27,7 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 	tt := []TestCase{
 		UserAuth,
 		Ping,
+		AuthKeyConnect,
 		License,
 		DescribeTable,
 		InsertAndQuery,

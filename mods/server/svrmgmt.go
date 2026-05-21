@@ -253,7 +253,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 		}
 		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
 	case "ec", "ecdsa":
-		ec := NewEllipticCurveP521()
+		ec := NewEllipticCurveP256()
 		pri, pub, err := ec.GenerateKeys()
 		if err != nil {
 			return nil, nil, "", err

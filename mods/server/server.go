@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -188,6 +189,11 @@ func (s *Server) Start() error {
 		if err := s.startMachbaseSvr(); err != nil {
 			return err
 		}
+	}
+
+	// check if the server keys are exist, if not, register the keys
+	if err := s.registerServerKeys(); err != nil {
+		return err
 	}
 
 	if !s.NoBanner {
@@ -2134,6 +2140,114 @@ func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
 	return priKey, nil
 }
 
+type UserAuthKeyInfo struct {
+	KeyID       int
+	UserName    string
+	KeyAlgo     string
+	KeyParam    string
+	Activated   int
+	ValidAfter  string
+	ValidBefore string
+	Comment     string
+	PubKey      string
+}
+
+func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
+	row := conn.QueryRow(ctx, `SELECT
+		KEY_ID,
+		USER_NAME,
+		KEY_ALGO,
+		KEY_PARAM,
+		ACTIVATED,
+		VALID_AFTER,
+		VALID_BEFORE,
+		COMMENT,
+		PUBKEY
+	FROM
+		V$USER_AUTH_KEYS
+	WHERE
+		USER_NAME=?
+	AND PUBKEY=?`,
+		user, pubPem)
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+	var nfo UserAuthKeyInfo
+	if err := row.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &nfo.Comment, &nfo.PubKey); err != nil {
+		return nil, err
+	}
+	return &nfo, nil
+}
+
+func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) error {
+	// 30 years later
+	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
+
+	// TODO: use parameterized query when supported
+	// result := conn.Exec(ctx,
+	// 	"ALTER USER SYS ADD AUTH KEY (KEY = ?, VALID_BEFORE = ?, COMMENT = ?)",
+	// 	pubPem, "2100-01-01", "machbase-neo server key")
+	result := conn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
+			user, pubPem, validBefore, "machbase-neo server key"))
+	return result.Err()
+}
+
+func activateUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId int) error {
+	result := conn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s ACTIVATE AUTH KEY ID %d", user, keyId),
+	)
+	return result.Err()
+}
+
+func (s *Server) registerServerKeys() error {
+	ctx := context.Background()
+	user := "SYS"
+	// check if server keys exist, if not create new one.
+	db := api.Default()
+	conn, err := db.Connect(ctx, api.WithTrustUser(user))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	// server's public key in pem
+	pubFile := s.ServerPublicKeyPath()
+	pubPemStr := ""
+	if pubBytes, err := os.ReadFile(pubFile); err == nil {
+		pubPemStr = strings.TrimSpace(string(pubBytes))
+	} else {
+		return fmt.Errorf("failed to read server public key: %s", err.Error())
+	}
+
+	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			// other error
+			return err
+		}
+		// pubkey not found, add new authkey
+		if err := registerUserAuthKey(ctx, conn, user, pubPemStr); err != nil {
+			return err
+		}
+		// get authkey info again after registration
+		nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
+		if err != nil {
+			return err
+		}
+		// activate authkey
+		if err := activateUserAuthKey(ctx, conn, user, nfo.KeyID); err != nil {
+			return err
+		}
+		// get authkey info again after activation
+		nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) mkKeysIfNotExists() error {
 	priPath := s.ServerPrivateKeyPath()
 	pubPath := s.ServerPublicKeyPath()
@@ -2155,7 +2269,7 @@ func (s *Server) mkKeysIfNotExists() error {
 		return nil
 	}
 
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	if err != nil {
 		return err
