@@ -76,6 +76,19 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		return -1, err
 	}
 
+	if isTTY {
+		childPgid := ex.Process.Pid
+		// give terminal control to child process
+		_, _, err := syscall.Syscall(
+			syscall.SYS_IOCTL,
+			uintptr(ttyFd),
+			syscall.TIOCSPGRP,
+			uintptr(unsafe.Pointer(&childPgid)))
+		if err != 0 {
+			fmt.Printf("failed to set foreground: %v\n", err)
+		}
+	}
+
 	var parentSignalCh chan os.Signal
 	var forwardDone chan struct{}
 	if isTTY {
@@ -107,20 +120,6 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		// Do not fail command execution when service-controller is overloaded.
 		procEntryWarn = err
 		procEntry = nil
-	}
-
-	if isTTY {
-
-		childPgid := ex.Process.Pid
-		// give terminal control to child process
-		_, _, err := syscall.Syscall(
-			syscall.SYS_IOCTL,
-			uintptr(ttyFd),
-			syscall.TIOCSPGRP,
-			uintptr(unsafe.Pointer(&childPgid)))
-		if err != 0 {
-			fmt.Printf("failed to set foreground: %v\n", err)
-		}
 	}
 
 	var cancelDone chan struct{}

@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -103,41 +102,6 @@ func TestTerminalHelpersCoverage(t *testing.T) {
 	}
 	if !PauseTerminal() {
 		t.Fatal("PauseTerminal() should return true when raw mode setup fails")
-	}
-}
-
-func TestReadPauseKeyDrainsBufferedInput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("buffered terminal input draining is Unix-specific")
-	}
-
-	rIn, wIn, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe() failed: %v", err)
-	}
-	defer rIn.Close()
-
-	if _, err := wIn.Write([]byte("\x1b[A")); err != nil {
-		t.Fatalf("pipe write failed: %v", err)
-	}
-
-	key, err := readPauseKey(rIn)
-	if err != nil {
-		t.Fatalf("readPauseKey() error = %v", err)
-	}
-	if key != '\x1b' {
-		t.Fatalf("readPauseKey() = %q, want ESC", key)
-	}
-
-	if err := wIn.Close(); err != nil {
-		t.Fatalf("pipe close failed: %v", err)
-	}
-	remaining, err := io.ReadAll(rIn)
-	if err != nil {
-		t.Fatalf("pipe read failed: %v", err)
-	}
-	if len(remaining) != 0 {
-		t.Fatalf("readPauseKey() left buffered input %q", string(remaining))
 	}
 }
 

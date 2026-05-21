@@ -128,18 +128,19 @@ func PauseTerminal() bool {
 	fmt.Fprintf(os.Stdout, ":")
 	// switch stdin into 'raw' mode
 	if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
-		if key, err := readPauseKey(os.Stdin); err == nil {
-			_ = term.Restore(int(os.Stdin.Fd()), oldState)
+		var b []byte = make([]byte, 3)
+		if _, err := os.Stdin.Read(b); err == nil {
+			term.Restore(int(os.Stdin.Fd()), oldState)
 			// remove prompt, erase the current line
 			fmt.Fprintf(os.Stdout, "\x1b[2K")
 			// cursor backward
 			fmt.Fprintf(os.Stdout, "\x1b[1D")
-			if key == 'q' || key == 'Q' {
+			if b[0] == 'q' || b[0] == 'Q' {
 				return false
 			}
 			return true
 		}
-		_ = term.Restore(int(os.Stdin.Fd()), oldState)
+		term.Restore(int(os.Stdin.Fd()), oldState)
 	}
 	return true
 }
