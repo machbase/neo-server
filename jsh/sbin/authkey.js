@@ -35,7 +35,7 @@
         description: 'Generate auth private/public key files.',
         options: {
             type: { type: 'string', short: 't', description: 'key type: rsa or ecdsa', default: 'ecdsa' },
-            output: { type: 'string', short: 'o', description: 'output base path (prefix with @ for host OS path)', default: '' },
+            output: { type: 'string', short: 'o', description: 'output base path (prefix with @ for host OS path)' },
             help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
         },
         allowPositionals: false,
