@@ -65,7 +65,7 @@ func AuthKeyConnect(t *testing.T, db api.Database, ctx context.Context) {
 			require.NoError(t, err)
 			defer authDB.Close()
 
-			authConn, err := authDB.Connect(ctx, api.WithAuthKey("sys", privatePath))
+			authConn, err := authDB.Connect(ctx, api.WithAuthKeyFile("sys", privatePath))
 			require.NoError(t, err)
 			defer authConn.Close()
 

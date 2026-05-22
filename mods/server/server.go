@@ -2168,7 +2168,7 @@ func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem stri
 	WHERE
 		USER_NAME=?
 	AND PUBKEY=?`,
-		user, pubPem)
+		strings.ToUpper(user), strings.TrimSpace(pubPem))
 	if row.Err() != nil {
 		return nil, row.Err()
 	}
@@ -2353,7 +2353,24 @@ func (s *Server) ValidateClientCertificate(clientId string, certHash string) (bo
 	return hash == certHash, nil
 }
 
-func (s *Server) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error) {
+func ConvertSshPublicKeyToPem(publicKey ssh.PublicKey) (string, error) {
+	cryptoPublicKey, ok := publicKey.(ssh.CryptoPublicKey)
+	if !ok {
+		return "", fmt.Errorf("ssh public key does not expose crypto public key")
+	}
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(cryptoPublicKey.CryptoPublicKey())
+	if err != nil {
+		return "", err
+	}
+	pubPemBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyBytes,
+	})
+	pubPemStr := strings.TrimSpace(string(pubPemBytes))
+	return pubPemStr, nil
+}
+
+func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, string, error) {
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
 		s.log.Warnf("ssh %q public key", user, err.Error())
@@ -2367,6 +2384,35 @@ func (s *Server) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bo
 			s.log.Debugf("ssh %q public key authorized: %s %s", user, rec.KeyType, rec.Fingerprint)
 			return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
 		}
+	}
+
+	pubPemStr, err := ConvertSshPublicKeyToPem(publicKey)
+	if err != nil {
+		s.log.Warnf("ssh %q public key to pem, %s", user, err.Error())
+		return false, "", err
+	}
+
+	// find the matched key from database, v$user_auth_keys.
+	db := api.Default()
+	conn, err := db.Connect(ctx, api.WithAuthKeyFile("sys", s.ServerPrivateKeyPath()))
+	if err != nil {
+		s.log.Warnf("db server key auth fail, %s", err.Error())
+		return false, "", err
+	}
+	defer conn.Close()
+
+	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
+	if nfo != nil && err == nil {
+		s.log.Debugf("db %q public key authorized: %s", user, nfo.Comment)
+		return true, "", nil
+	}
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.log.Warnf("db %q public key not found", user)
+			return false, "", nil
+		}
+		s.log.Warnf("db %q public key, %s", user, err.Error())
+		return false, "", err
 	}
 	return false, "", nil
 }

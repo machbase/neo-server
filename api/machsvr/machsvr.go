@@ -475,6 +475,9 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 			// currently fetch rows in CLI is ignored, so it is ignored here
 		case *api.ConnectOptionIOMetrics:
 			// currently IO metrics in CLI is ignored, so it is ignored here
+		case *api.ConnectOptionAuthKey:
+			ret.username = v.User
+			ret.isTrustUser = true
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}

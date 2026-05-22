@@ -274,7 +274,7 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	valid, _, err := svr.authServer.ValidateUserPublicKey(user, key)
+	valid, _, err := svr.authServer.ValidateUserPublicKey(ctx, user, key)
 	if err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
