@@ -32,8 +32,8 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
 	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -437,7 +437,7 @@ func (s *Server) Stop() {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}
 		machsvr.Finalize()
-	} else if db, ok := api.Default().(*machcli.Database); ok {
+	} else if db, ok := api.Default().(*machgo.Database); ok {
 		if err := db.Close(); err != nil {
 			s.log.Warnf("db close; %s", err.Error())
 		}
@@ -503,7 +503,7 @@ func (s *Server) startMachbaseCli() error {
 		return err
 	}
 
-	db, err := machcli.NewDatabase(&machcli.Config{
+	db, err := machgo.NewDatabase(&machgo.Config{
 		Host:               host,
 		Port:               port,
 		MaxOpenConn:        s.Config.MaxOpenConn,

@@ -400,11 +400,19 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 	}
 
 	if shellId == model.SHELLID_SHELL {
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
 		svr.authServer.neoShellAccountMu.RLock()
 		pass := svr.authServer.neoShellAccount[strings.ToLower(user)]
 		svr.authServer.neoShellAccountMu.RUnlock()
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", pass))
+		secretEnv := []string{"NEOSHELL_USER", user}
+		if pass != "" {
+			secretEnv = append(secretEnv, "NEOSHELL_PASSWORD", pass)
+		}
+		cleanupSecret := svr.appendNeoShellSecretEnv(shell, secretEnv...)
+		defer cleanupSecret()
+		if svr.authServer.serviceController != nil {
+			shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",
+				svr.authServer.serviceController.Address()))
+		}
 	}
 
 	cmdArr := []string{shell.Cmd}

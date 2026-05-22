@@ -12,7 +12,6 @@ import (
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
@@ -350,11 +349,6 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
 	require.NoError(t, result.Err(), "table_flush fail")
 
-	if _, ok := db.(*machcli.Database); ok {
-		// TODO: MACHCLI-ERR-3, Communication link failure
-		<-time.After(time.Second * 3)
-	}
-
 	// tags
 	tags := []*server_api.TagInfo{}
 	server_api.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *server_api.TagInfo) bool {
@@ -537,10 +531,7 @@ func BitTable(t *testing.T, db api.Database, ctx context.Context) {
 	rows.Close()
 
 	rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
-	if _, ok := conn.(*machcli.Conn); ok {
-		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
-		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
-	} else if _, ok := conn.(*machgo.Conn); ok {
+	if _, ok := conn.(*machgo.Conn); ok {
 		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
 		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 	} else {
@@ -556,10 +547,7 @@ func BitTable(t *testing.T, db api.Database, ctx context.Context) {
 	}
 
 	rows, err = conn.Query(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
-	if _, ok := conn.(*machcli.Conn); ok {
-		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
-		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
-	} else if _, ok := conn.(*machgo.Conn); ok {
+	if _, ok := conn.(*machgo.Conn); ok {
 		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
 		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 	} else {

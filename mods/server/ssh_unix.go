@@ -61,15 +61,20 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		// shell.Envs = filtered
 	} else {
 		if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
-			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-
 			// ssh context contains the password only when it provided by the client.
 			// If it contains the password, the client is web terminal.
 			// If the clients is ssh client, the password is not provided in the context for security reason.
+			secretPassword := ""
 			pass := ss.Context().Value(sshContextPasswordKey)
 			if password, ok := pass.(string); ok && password != "" {
-				shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", password))
+				secretPassword = password
 			}
+			secretEnv := []string{"NEOSHELL_USER", user}
+			if secretPassword != "" {
+				secretEnv = append(secretEnv, "NEOSHELL_PASSWORD", secretPassword)
+			}
+			cleanupSecret := svr.appendNeoShellSecretEnv(shell, secretEnv...)
+			defer cleanupSecret()
 
 			if svr.authServer.serviceController != nil {
 				shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",

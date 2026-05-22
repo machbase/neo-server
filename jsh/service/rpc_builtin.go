@@ -41,6 +41,7 @@ func controllerBuiltinRPCMethods(ctl *Controller) map[string]any {
 		"service.stop":                  ctl.rpcServiceStop,
 		"controller.metrics.get":        ctl.rpcControllerMetricsGet,
 		"controller.metrics.reset":      ctl.rpcControllerMetricsReset,
+		"secret.consume":                ctl.rpcSecretConsume,
 		"llm.session.open":              ctl.rpcLLMSessionOpen,
 		"llm.session.get":               ctl.rpcLLMSessionGet,
 		"llm.session.reset":             ctl.rpcLLMSessionReset,

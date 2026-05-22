@@ -17,7 +17,6 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 )
 
@@ -160,7 +159,6 @@ type Server struct {
 	machsvrDatabase *machsvr.Database
 	machsvrDataDir  string
 	machsvrPort     int
-	machcliDatabase *machcli.Database
 	machgoDatabase  *machgo.Database
 }
 
@@ -245,19 +243,6 @@ func (s *Server) StartServer() {
 	}
 	conn.Close()
 
-	// machcli database
-	if db, err := machcli.NewDatabase(&machcli.Config{
-		Host:         "127.0.0.1",
-		Port:         s.machsvrPort,
-		TrustUsers:   map[string]string{"sys": "manager"},
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
-	}); err != nil {
-		panic(err)
-	} else {
-		s.machcliDatabase = db
-	}
-
 	// machgo database
 	if db, err := machgo.NewDatabase(&machgo.Config{
 		Host:         "127.0.0.1",
@@ -274,9 +259,6 @@ func (s *Server) StartServer() {
 
 func (s *Server) StopServer() {
 	if err := s.machgoDatabase.Close(); err != nil {
-		panic(err)
-	}
-	if err := s.machcliDatabase.Close(); err != nil {
 		panic(err)
 	}
 	if err := s.machsvrDatabase.Shutdown(); err != nil {
@@ -322,10 +304,6 @@ func Database_machsvr(t TestingT) api.Database {
 
 func (s *Server) DatabaseSVR() api.Database {
 	return s.machsvrDatabase
-}
-
-func (s *Server) DatabaseCLI() api.Database {
-	return s.machcliDatabase
 }
 
 func (s *Server) DatabaseGO() api.Database {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
+	jshservice "github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/nyaosorg/go-readline-ny"
 	"golang.org/x/term"
 )
@@ -58,6 +59,9 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 	return func(conf *engine.Config, extFlags ExtFlags) error {
 		var ef *ExtFlag
 		var err error
+		if err := consumeNeoShellSecret(conf, extFlags); err != nil {
+			return err
+		}
 
 		if ef = extFlags.Get("server"); ef == nil {
 			return fmt.Errorf("server flag is not configured")
@@ -86,7 +90,6 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		if ef.value == "" {
 			return errors.New("Server is required")
 		}
-
 		if ef = extFlags.Get("user"); ef == nil {
 			return fmt.Errorf("user flag is not configured")
 		}
@@ -102,7 +105,6 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		if ef.value == "" {
 			return errors.New("User is required")
 		}
-
 		if ef = extFlags.Get("password"); ef == nil {
 			return fmt.Errorf("password flag is not configured")
 		}
@@ -156,6 +158,48 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		}
 		return nil
 	}
+}
+
+func consumeNeoShellSecret(conf *engine.Config, extFlags ExtFlags) error {
+	token := os.Getenv(jshservice.SecretRefEnv)
+	if token == "" {
+		if value, ok := conf.Env[jshservice.SecretRefEnv]; ok && value != nil {
+			token = fmt.Sprint(value)
+		}
+	}
+	if token == "" {
+		return nil
+	}
+	controller := ""
+	if value, ok := conf.Env[engine.ControllerAddressEnv]; ok && value != nil {
+		controller = fmt.Sprint(value)
+	}
+	if controller == "" {
+		controller = os.Getenv(engine.ControllerAddressEnv)
+	}
+	items, err := jshservice.ConsumeSecret(controller, token)
+	if err != nil {
+		return fmt.Errorf("Error reading neo shell secret: %w", err)
+	}
+	os.Unsetenv(jshservice.SecretRefEnv)
+	delete(conf.Env, jshservice.SecretRefEnv)
+	for _, item := range items {
+		switch item.Key {
+		case "NEOSHELL_USER":
+			if ef := extFlags.Get("user"); ef != nil {
+				ef.value = item.Value
+			}
+			conf.Env[item.Key] = item.Value
+		case "NEOSHELL_PASSWORD":
+			if ef := extFlags.Get("password"); ef != nil {
+				ef.value = item.Value
+			}
+			conf.Env[item.Key] = engine.SecureString(item.Value)
+		default:
+			conf.Env[item.Key] = item.Value
+		}
+	}
+	return nil
 }
 
 func readPassword(prompt string, defaultValue string) (string, error) {

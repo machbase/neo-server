@@ -100,6 +100,7 @@ type Controller struct {
 	sharedMu         sync.RWMutex
 	llmMu            sync.RWMutex
 	jsonRpcMu        sync.RWMutex
+	secretMu         sync.Mutex
 	jsonRpcInit      sync.Once
 	services         map[string]*Service
 	fs               *engine.FS
@@ -122,6 +123,7 @@ type Controller struct {
 	rpcMetrics       controllerRPCMetrics
 	jsonRpcHandlers  map[string]any
 	llmSessions      map[string]*llmSession
+	secrets          map[string]secretEntry
 }
 
 func (ctl *Controller) OnServiceLifecycle(hook func(ServiceLifecycleEvent)) {
@@ -302,6 +304,7 @@ func (ctl *Controller) Start(callback func(sc *Config, action string, err error)
 
 func (ctl *Controller) Stop(callback func(sc *Config, action string, err error)) {
 	ctl.stopRPC()
+	ctl.clearSecrets()
 	ctl.mu.Lock()
 	configs := make([]*Config, 0, len(ctl.services))
 	for _, svc := range ctl.services {

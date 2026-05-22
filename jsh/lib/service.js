@@ -51,6 +51,9 @@ class Client {
             metrics: (callback) => this.controllerMetrics(callback),
             reset: (callback) => this.controllerMetricsReset(callback),
         };
+        this.secret = {
+            consume: (token, callback) => this.secretConsume(token, callback),
+        };
     }
 
     call(method, params, callback) {
@@ -240,6 +243,10 @@ class Client {
 
     controllerMetricsReset(callback) {
         return this.call('controller.metrics.reset', null, callback);
+    }
+
+    secretConsume(token, callback) {
+        return this.call('secret.consume', { token: requireSecretToken(token) }, callback);
     }
 }
 
@@ -503,6 +510,14 @@ function adminReset(options, callback) {
     return new Client(options).controller.reset(callback);
 }
 
+function secretConsume(token, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = undefined;
+    }
+    return new Client(options).secret.consume(token, callback);
+}
+
 function normalizeClientOptions(options) {
     if (typeof options === 'string') {
         options = { controller: options };
@@ -686,6 +701,13 @@ function requireProxyPrefix(prefix) {
     return prefix;
 }
 
+function requireSecretToken(token) {
+    if (typeof token !== 'string' || token === '') {
+        throw new Error('secret token is required');
+    }
+    return token;
+}
+
 function normalizeProxyConfig(config) {
     if (!config || typeof config !== 'object') {
         throw new Error('proxy config is required');
@@ -793,5 +815,8 @@ module.exports = {
     controller: {
         metrics: adminMetrics,
         reset: adminReset,
+    },
+    secret: {
+        consume: secretConsume,
     },
 };

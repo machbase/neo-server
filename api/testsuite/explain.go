@@ -7,7 +7,6 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,9 +34,7 @@ func ExplainFull(t *testing.T, db api.Database, ctx context.Context) {
 	require.Nil(t, err)
 	require.True(t, len(plan) > 0)
 	require.True(t, strings.Contains(plan, "********"))
-	if _, ok := db.(*machcli.Database); ok {
-		require.True(t, strings.Contains(plan, " NAME           COUNT   ACCUM(ms)  AVG(ms)"))
-	} else if _, ok := db.(*machgo.Database); ok {
+	if _, ok := db.(*machgo.Database); ok {
 		require.True(t, strings.Contains(plan, " NAME           COUNT   ACCUM(ms)  AVG(ms)"))
 	} else {
 		require.True(t, strings.Contains(plan, " NAME           COUNT   ACCUMULATE(ms)  AVERAGE(ms)"), plan)

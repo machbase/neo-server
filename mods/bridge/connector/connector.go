@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
 	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
@@ -174,7 +174,7 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 		if user != "" {
 			opts = append(opts, api.WithPassword(user, password))
 		}
-		db, err := machcli.NewDatabase(&machcli.Config{
+		db, err := machgo.NewDatabase(&machgo.Config{
 			Host:         host,
 			Port:         port,
 			TrustUsers:   map[string]string{},
