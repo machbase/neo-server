@@ -212,10 +212,16 @@ func (jr *JSRuntime) Run() error {
 			} else if jsErr, ok := err.(*goja.Exception); ok {
 				msg := jsErr.String()
 				msg = strings.TrimPrefix(msg, "GoError: ")
+				if strings.HasPrefix(msg, "Invalid module") && jr.Env != nil && jr.Env.lastRequireSpec != "" {
+					msg = strings.Replace(msg, "Invalid module", "Invalid module: "+jr.Env.lastRequireSpec, 1)
+				}
 				fmt.Fprintf(jr.Env.ErrorWriter(), "%s\n", msg)
 			} else {
 				msg := err.Error()
 				msg = strings.TrimPrefix(msg, "GoError: ")
+				if strings.HasPrefix(msg, "Invalid module") && jr.Env != nil && jr.Env.lastRequireSpec != "" {
+					msg = strings.Replace(msg, "Invalid module", "Invalid module: "+jr.Env.lastRequireSpec, 1)
+				}
 				fmt.Fprintf(jr.Env.ErrorWriter(), "%s\n", msg)
 			}
 			jr.exitCode = -1
