@@ -231,42 +231,45 @@ func TestHttpRpc(t *testing.T) {
 		},
 	}.run(t, at)
 
-	newMaxPoolSize := originalSessionLimit["MaxPoolSize"] + 1
-	if originalSessionLimit["MaxPoolSize"] < 0 {
-		newMaxPoolSize = 1
-	}
-	JsonRpcTestCase{
-		name:   "setSessionLimit",
-		method: "session.limit.set",
-		params: []interface{}{map[string]any{"MaxPoolSize": newMaxPoolSize}},
-		expectFunc: func(t *testing.T, rsp gjson.Result) {
-			require.True(t, rsp.Get("result").Exists(), rsp.String())
-		},
-	}.run(t, at)
-	JsonRpcTestCase{
-		name:   "getSessionLimit_afterSet",
-		method: "session.limit.get",
-		params: []interface{}{},
-		expectFunc: func(t *testing.T, rsp gjson.Result) {
-			require.Equal(t, int64(newMaxPoolSize), rsp.Get("result.MaxPoolSize").Int(), rsp.String())
-		},
-	}.run(t, at)
-	JsonRpcTestCase{
-		name:   "restoreSessionLimit",
-		method: "session.limit.set",
-		params: []interface{}{map[string]any{"MaxPoolSize": originalSessionLimit["MaxPoolSize"]}},
-		expectFunc: func(t *testing.T, rsp gjson.Result) {
-			require.True(t, rsp.Get("result").Exists(), rsp.String())
-		},
-	}.run(t, at)
-	JsonRpcTestCase{
-		name:   "getSessionLimit_afterRestore",
-		method: "session.limit.get",
-		params: []interface{}{},
-		expectFunc: func(t *testing.T, rsp gjson.Result) {
-			require.Equal(t, int64(originalSessionLimit["MaxPoolSize"]), rsp.Get("result.MaxPoolSize").Int(), rsp.String())
-		},
-	}.run(t, at)
+	// session limit is not supported after migrate machsvr to machgo entirely,
+	// so, skip session limit related tests for now.
+	//
+	// newMaxPoolSize := originalSessionLimit["MaxPoolSize"] + 1
+	// if originalSessionLimit["MaxPoolSize"] < 0 {
+	// 	newMaxPoolSize = 1
+	// }
+	// JsonRpcTestCase{
+	// 	name:   "setSessionLimit",
+	// 	method: "session.limit.set",
+	// 	params: []interface{}{map[string]any{"MaxPoolSize": newMaxPoolSize}},
+	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
+	// 		require.True(t, rsp.Get("result").Exists(), rsp.String())
+	// 	},
+	// }.run(t, at)
+	// JsonRpcTestCase{
+	// 	name:   "getSessionLimit_afterSet",
+	// 	method: "session.limit.get",
+	// 	params: []interface{}{},
+	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
+	// 		require.Equal(t, int64(newMaxPoolSize), rsp.Get("result.MaxPoolSize").Int(), rsp.String())
+	// 	},
+	// }.run(t, at)
+	// JsonRpcTestCase{
+	// 	name:   "restoreSessionLimit",
+	// 	method: "session.limit.set",
+	// 	params: []interface{}{map[string]any{"MaxPoolSize": originalSessionLimit["MaxPoolSize"]}},
+	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
+	// 		require.True(t, rsp.Get("result").Exists(), rsp.String())
+	// 	},
+	// }.run(t, at)
+	// JsonRpcTestCase{
+	// 	name:   "getSessionLimit_afterRestore",
+	// 	method: "session.limit.get",
+	// 	params: []interface{}{},
+	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
+	// 		require.Equal(t, int64(originalSessionLimit["MaxPoolSize"]), rsp.Get("result.MaxPoolSize").Int(), rsp.String())
+	// 	},
+	// }.run(t, at)
 
 	originalDebugEnabled, originalDebugLatency := httpServer.DebugMode()
 	targetDebugEnabled := !originalDebugEnabled

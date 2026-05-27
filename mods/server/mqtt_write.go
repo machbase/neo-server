@@ -325,6 +325,10 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	if pk.ProtocolVersion == 5 {
 		for _, p := range pk.Properties.User {
 			switch p.Key {
+			case "AppendWorkerMaxIdleTimeout":
+				if d, err := time.ParseDuration(p.Val); err == nil {
+					server_api.AppendWorkerMaxIdleTimeout = d
+				}
 			case "format":
 				wp.Format = p.Val
 			case "compress":

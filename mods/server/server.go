@@ -33,8 +33,8 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
+	mach "github.com/machbase/neo-engine/v8"
 	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -130,10 +130,10 @@ func (s *Server) Executable() (string, error) {
 }
 
 func Restore(dataDir string, backupDir string) error {
-	if err := machsvr.Initialize(dataDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
+	if err := mach.Initialize(dataDir, 0, mach.OPT_SIGHANDLER_OFF); err != nil {
 		return err
 	}
-	if err := machsvr.RestoreDatabase(backupDir); err != nil {
+	if err := mach.RestoreDatabase(backupDir); err != nil {
 		return err
 	}
 	return nil
@@ -199,8 +199,6 @@ func (s *Server) Start() error {
 	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
-
-	s.checkMaxOpenConnections()
 
 	if !HeadOnly {
 		if err := s.checkAndInstallLicense(); err != nil {
@@ -398,8 +396,6 @@ func (s *Server) StartHeadless() error {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
-	s.checkMaxOpenConnections()
-
 	if err := s.checkAndInstallLicense(); err != nil {
 		return err
 	}
@@ -432,16 +428,15 @@ func (s *Server) Stop() {
 
 	tql.Deinit()
 
-	if db, ok := api.Default().(*machsvr.Database); ok {
-		if err := db.Shutdown(); err != nil {
-			s.log.Warnf("db shutdown; %s", err.Error())
-		}
-		machsvr.Finalize()
-	} else if db, ok := api.Default().(*machgo.Database); ok {
+	if db, ok := api.Default().(*machgo.Database); ok {
 		if err := db.Close(); err != nil {
 			s.log.Warnf("db close; %s", err.Error())
 		}
 	}
+	if err := mach.StopDatabase(); err != nil {
+		s.log.Warnf("db shutdown; %s", err.Error())
+	}
+	mach.Finalize()
 	s.log.Infof("shutdown.")
 }
 
@@ -461,24 +456,29 @@ func (s *Server) startMachbaseSvr() error {
 	}
 
 	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
-	if err := machsvr.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
+	if err := mach.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
 		return fmt.Errorf("initialize database failed, %s", err.Error())
 	}
-	if !machsvr.ExistsDatabase() {
+	if !mach.ExistsDatabase() {
 		s.log.Info("create database")
-		if err := machsvr.CreateDatabase(); err != nil {
+		if err := mach.CreateDatabase(); err != nil {
 			return fmt.Errorf("create database failed, %s", err.Error())
 		}
 		s.databaseCreated = true
 	}
 
+	if err := mach.StartDatabase(); err != nil {
+		return fmt.Errorf("start database failed, %s", err.Error())
+	}
 	// create database instance
-	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{
+	db, err := machgo.NewDatabase(&machgo.Config{
+		Host:               "127.0.0.1",
+		Port:               s.Machbase.PORT_NO,
 		MaxOpenConn:        s.Config.MaxOpenConn,
 		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
 		MaxOpenQuery:       s.Config.MaxOpenQuery,
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-		MaxWorkerPoolSize:  s.Config.MaxPoolSize,
+		StatementCache:     api.StatementCacheAuto,
 	})
 	if err != nil {
 		return fmt.Errorf("database instance failed, %s", err.Error())
@@ -486,9 +486,10 @@ func (s *Server) startMachbaseSvr() error {
 	if db == nil {
 		return errors.New("database instance failed")
 	}
-	if err := db.Startup(); err != nil {
-		return fmt.Errorf("startup database, %s", err.Error())
-	}
+	db.SetTrustUser("sys", "manager")
+	// if err := db.Startup(); err != nil {
+	// 	return fmt.Errorf("startup database, %s", err.Error())
+	// }
 	api.SetDefault(db)
 	server_api.StartAppendWorkers()
 	util.AddShutdownHook(func() {
@@ -759,21 +760,6 @@ func (s *Server) startServerFileSystem() error {
 	}
 	ssfs.SetDefault(serverFs)
 	return nil
-}
-
-func (s *Server) checkMaxOpenConnections() {
-	if db, ok := api.Default().(*machsvr.Database); ok {
-		strOrUnlimited := func(n int) string {
-			if n < 0 {
-				return "unlimited"
-			}
-			return strconv.Itoa(n)
-		}
-		maxConn, _ := db.MaxOpenConn()
-		maxQuery, _ := db.MaxOpenQuery()
-		s.log.Info("MACH MaxOpenConn:", strOrUnlimited(maxConn))
-		s.log.Info("MACH MaxOpenQuery:", strOrUnlimited(maxQuery))
-	}
 }
 
 func (s *Server) checkAndInstallLicense() error {

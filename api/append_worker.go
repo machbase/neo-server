@@ -40,6 +40,9 @@ type AppendWorkerControl struct {
 	ack       chan struct{}
 }
 
+var AppendWorkerMaxIdleTimeout = 5 * time.Second
+var AppendWorkerIdleCheckInterval = 3 * time.Second
+
 func StartAppendWorkers() {
 	appenders = make(map[string]*AppendWorker)
 	appendersFlusher = make(chan struct{})
@@ -49,11 +52,11 @@ func StartAppendWorkers() {
 		defer appendersFlusherWg.Done()
 		for {
 			select {
-			case <-time.After(15 * time.Second):
+			case <-time.After(AppendWorkerIdleCheckInterval):
 				appendersLock.Lock()
 				var deleting []string
 				for tableName, value := range appenders {
-					if !value.lastTime.IsZero() && time.Since(value.lastTime) > 30*time.Second && atomic.LoadInt32(&value.refCount) == 0 {
+					if !value.lastTime.IsZero() && time.Since(value.lastTime) > AppendWorkerMaxIdleTimeout && atomic.LoadInt32(&value.refCount) == 0 {
 						value.Stop()
 						deleting = append(deleting, tableName)
 					}

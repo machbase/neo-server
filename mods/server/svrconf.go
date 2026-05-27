@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api/machsvr"
+	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
@@ -85,7 +85,7 @@ type Config struct {
 	NoBanner       bool
 	ExperimentMode bool
 
-	MachbaseInitOption machsvr.InitOption
+	MachbaseInitOption mach.InitOption
 	MaxPoolSize        int
 	MaxOpenConn        int
 	MaxOpenConnFactor  float64

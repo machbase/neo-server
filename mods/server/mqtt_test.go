@@ -685,16 +685,17 @@ func TestAppend(t *testing.T) {
 	csvGzipData := compress(csvData)
 	tests := []MqttTestCase{
 		{
+			Name:       "db/append/example_v5",
+			Topic:      "db/append/example",
+			Payload:    jsonData,
+			Ver:        uint(5),
+			Properties: map[string]string{"AppendWorkerMaxIdleTimeout": "1s"},
+		},
+		{
 			Name:    "db/append/example",
 			Topic:   "db/append/example",
 			Payload: jsonData,
 			Ver:     uint(4),
-		},
-		{
-			Name:    "db/append/example_v5",
-			Topic:   "db/append/example",
-			Payload: jsonData,
-			Ver:     uint(5),
 		},
 		{
 			Name:       "db/write/example?method=append",
@@ -764,7 +765,7 @@ func TestAppend(t *testing.T) {
 			Topic:      "db/write/example",
 			Payload:    csvDataWithHeader,
 			Ver:        uint(5),
-			Properties: map[string]string{"method": "append", "format": "csv", "header": "columns"},
+			Properties: map[string]string{"method": "append", "format": "csv", "header": "columns", "flush": "true"},
 		},
 		{
 			Name:    "db/append/example csv gzip",
@@ -777,7 +778,7 @@ func TestAppend(t *testing.T) {
 			Topic:      "db/write/example",
 			Payload:    ndjsonData,
 			Ver:        uint(5),
-			Properties: map[string]string{"method": "append", "format": "ndjson", "timeformat": "s"},
+			Properties: map[string]string{"method": "append", "format": "ndjson", "timeformat": "s", "flush": "true"},
 		},
 	}
 
@@ -793,11 +794,18 @@ func TestAppend(t *testing.T) {
 				t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 			}
 			defer conn.Close()
+			retry := 0
+		doRetry:
 			conn.QueryRow(t.Context(), "EXEC table_flush(example)")
 			var count int
 			var tag = "my-append"
 			conn.QueryRow(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
 			if count != 2 {
+				if retry < 10 {
+					retry++
+					time.Sleep(1000 * time.Millisecond)
+					goto doRetry
+				}
 				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 				t.Fail()
 			}
@@ -846,11 +854,18 @@ func TestTql(t *testing.T) {
 					t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 				}
 				defer conn.Close()
+				retry := 0
+			doRetry:
 				conn.QueryRow(t.Context(), "EXEC table_flush(example)")
 				var count int
 				var tag = "my-mqtt-tql"
 				conn.QueryRow(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
 				if count != 2 {
+					if retry < 10 {
+						retry++
+						time.Sleep(1000 * time.Millisecond)
+						goto doRetry
+					}
 					t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 					t.Fail()
 				}

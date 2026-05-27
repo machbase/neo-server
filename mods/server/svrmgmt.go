@@ -24,6 +24,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
+	mach "github.com/machbase/neo-engine/v8"
 	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
@@ -770,7 +772,8 @@ func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*L
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if db, ok := api.Default().(*machsvr.Database); ok {
+	switch db := api.Default().(type) {
+	case *machsvr.Database:
 		if strings.ToLower(req.Cmd) == "set" {
 			if limit := int(req.MaxOpenConn); limit >= -1 {
 				db.SetMaxOpenConn(limit)
@@ -791,7 +794,13 @@ func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*L
 		rsp.RemainedOpenQuery = int32(remainsQuery)
 		rsp.Success = true
 		rsp.Reason = "success"
-	} else {
+	case *machgo.Database:
+		m, r := db.MaxOpenConns()
+		rsp.MaxOpenConn = int32(m)
+		rsp.RemainedOpenConn = int32(r)
+		rsp.Success = true
+		rsp.Reason = "success"
+	default:
 		rsp.Success = false
 		rsp.Reason = "Session limit not supported in head-only mode"
 	}
@@ -850,7 +859,7 @@ func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
 
 	rsp := &ServerInfoResponse{
 		Version: &Version{
-			Engine:         machsvr.LinkInfo(),
+			Engine:         mach.LinkInfo(),
 			Major:          int32(ver.Major),
 			Minor:          int32(ver.Minor),
 			Patch:          int32(ver.Patch),

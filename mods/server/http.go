@@ -513,6 +513,14 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 	return corsHandler
 }
 
+func (svr *httpd) issueAccessTokenUsername(username api.UserName) (string, string, string, error) {
+	realUser := username.Login
+	if username.Proxy != "" {
+		realUser = username.Proxy
+	}
+	return svr.issueAccessToken(realUser)
+}
+
 func (svr *httpd) issueAccessToken(loginName string) (accessToken string, refreshToken string, refreshTokenId string, err error) {
 	claim := NewClaim(loginName)
 	accessToken, err = SignTokenWithClaim(claim)
@@ -686,8 +694,14 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-
-	passed, reason, err := svr.db.UserAuth(ctx, req.LoginName, req.Password)
+	username, proxyed := api.ParseUserName(req.LoginName)
+	if username.Proxy != "" && !proxyed {
+		rsp.Reason = "proxy login is not allowed"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	passed, reason, err := svr.db.UserAuth(ctx, username.Login, req.Password)
 	if err != nil {
 		svr.log.Warnf("database auth failed %s", err.Error())
 		rsp.Reason = "database error for user authentication"
@@ -697,14 +711,14 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	if !passed {
-		svr.log.Tracef("'%s' login fail password mis-matched", req.LoginName)
+		svr.log.Tracef("'%s' login fail password mis-matched", username.Login)
 		rsp.Reason = reason
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 		return
 	}
 
-	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessToken(req.LoginName)
+	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessTokenUsername(username)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -715,7 +729,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	// cache username and password for web-terminal uses
 	if svr.authServer != nil {
 		svr.authServer.neoShellAccountMu.Lock()
-		svr.authServer.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
+		svr.authServer.neoShellAccount[strings.ToLower(username.Login)] = req.Password
 		svr.authServer.neoShellAccountMu.Unlock()
 	}
 
