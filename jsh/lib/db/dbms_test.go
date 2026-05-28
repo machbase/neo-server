@@ -8,9 +8,9 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
+	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
 	"github.com/machbase/neo-server/v8/test"
 	dockertest "github.com/ory/dockertest/v4"
 )
@@ -21,7 +21,8 @@ func TestMain(m *testing.M) {
 	testServer.CreateTestTables()
 
 	db := testServer.DatabaseSVR()
-	api.SetDefault(db)
+	spi.SetDefault(db)
+	spi.SetDefaultKey(testServer.DatabaseKey())
 
 	m.Run()
 

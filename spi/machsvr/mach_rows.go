@@ -9,7 +9,7 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	server_api "github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -152,7 +152,7 @@ type Rows struct {
 	candidateReturnChan chan struct{}
 }
 
-var _ server_api.QueryLimiter = (*Rows)(nil)
+var _ spi.QueryLimiter = (*Rows)(nil)
 
 // PromoteQueryLimit activates the query limit to the Rows
 func (rows *Rows) QueryLimit(ctx context.Context) bool {
@@ -185,7 +185,7 @@ func (rows *Rows) CloseAsync() error {
 func (rows *Rows) CloseSync() error {
 	var err error
 	if rows.stmt != nil {
-		server_api.FreeStmt()
+		spi.FreeStmt()
 		if rows.isPrepared {
 			err = mach.EngExecuteClean(rows.stmt)
 		} else {

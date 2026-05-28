@@ -23,14 +23,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
-	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 type ListKeyResponse struct {
@@ -658,11 +657,11 @@ type SessionsRequest struct {
 }
 
 type SessionsResponse struct {
-	Success  bool              `json:"success"`
-	Reason   string            `json:"reason"`
-	Elapse   string            `json:"elapse"`
-	Statz    *server_api.Statz `json:"statz"`
-	Sessions []*Session        `json:"sessions"`
+	Success  bool       `json:"success"`
+	Reason   string     `json:"reason"`
+	Elapse   string     `json:"elapse"`
+	Statz    *spi.Statz `json:"statz"`
+	Sessions []*Session `json:"sessions"`
 }
 
 type Session struct {
@@ -684,14 +683,14 @@ func (s *Server) Sessions(ctx context.Context, req *SessionsRequest) (*SessionsR
 	}()
 
 	if req.ResetStatz {
-		server_api.ResetQueryStatz()
+		spi.ResetQueryStatz()
 	}
 	if req.Statz {
-		rsp.Statz = server_api.StatzSnapshot()
+		rsp.Statz = spi.StatzSnapshot()
 	}
 	if req.Sessions {
 		sessions := []*Session{}
-		if db, ok := api.Default().(*machsvr.Database); ok {
+		if db, ok := spi.Default().(*machsvr.Database); ok {
 			db.ListWatcher(func(st *machsvr.ConnState) bool {
 				sessions = append(sessions, &Session{
 					Id:            st.Id,
@@ -730,7 +729,7 @@ func (s *Server) KillSession(ctx context.Context, req *KillSessionRequest) (*Kil
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if db, ok := api.Default().(*machsvr.Database); ok {
+	if db, ok := spi.Default().(*machsvr.Database); ok {
 		if err := db.KillConnection(req.Id, req.Force); err != nil {
 			rsp.Reason = err.Error()
 		} else {
@@ -772,7 +771,7 @@ func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*L
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	switch db := api.Default().(type) {
+	switch db := spi.Default().(type) {
 	case *machsvr.Database:
 		if strings.ToLower(req.Cmd) == "set" {
 			if limit := int(req.MaxOpenConn); limit >= -1 {

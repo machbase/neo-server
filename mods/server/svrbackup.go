@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 func NewBackupd(opts ...BackupdOption) *backupd {
@@ -31,7 +32,6 @@ type BackupdOption func(s *backupd)
 type backupd struct {
 	log     logging.Log
 	baseDir string
-	db      api.Database
 	cutset  string
 	backup  backupState
 	mutex   sync.Mutex
@@ -41,12 +41,6 @@ func WithBackupdBaseDir(baseDir string) BackupdOption {
 	return func(s *backupd) {
 		// baseDir, err := filepath.Abs(baseDir)
 		s.baseDir = baseDir
-	}
-}
-
-func WithBackupdDatabase(db api.Database) BackupdOption {
-	return func(s *backupd) {
-		s.db = db
 	}
 }
 
@@ -222,7 +216,7 @@ func (s *backupd) handleArchive(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -289,7 +283,7 @@ func (s *backupd) handleArchives(ctx *gin.Context) {
 	}
 
 	// mount status check
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -402,7 +396,7 @@ func (s *backupd) handleMount(ctx *gin.Context) {
 		sqlText = strings.ReplaceAll(sqlText, "\\", "\\\\")
 	}
 
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -437,7 +431,7 @@ func (s *backupd) handleUnmount(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -478,7 +472,7 @@ func (s *backupd) handleMounts(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()

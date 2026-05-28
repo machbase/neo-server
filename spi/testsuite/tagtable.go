@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -127,7 +128,7 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 	tableName := "append_tag"
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	require.NoError(t, err, "connect fail")
 	result := conn.Exec(ctx, fmt.Sprintf(`CREATE TAG TABLE %s (
 		name     varchar(200) primary key,

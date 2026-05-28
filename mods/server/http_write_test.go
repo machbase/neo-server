@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	server_api "github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -346,7 +346,7 @@ func TestWriteBinaryFormat(t *testing.T) {
 
 	// drop table
 	defer func() {
-		done := server_api.StopAppendWorker("wbin")
+		done := spi.StopAppendWorker("wbin")
 		<-done
 
 		sql := "DROP TABLE wbin"
@@ -405,7 +405,7 @@ func TestWriteBinaryFormat(t *testing.T) {
 			// flush appender to make sure data is visible to query,
 			// since the test is using method=append,
 			// the data is not immediately visible to query until the appender is flushed or closed.
-			server_api.FlushAppendWorkers("wbin")
+			spi.FlushAppendWorkers("wbin")
 
 			// flush to make sure data is visible to query
 			flush := httpServerAddress + "/db/query?q=" + url.QueryEscape("exec table_flush(wbin)")

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 func (node *Node) fmSqlSelect(args ...any) (any, error) {
@@ -249,13 +249,13 @@ func (dc *DataGenMachbase) gen(node *Node) {
 	}
 	defer conn.Close()
 
-	query := &server_api.Query{
-		Begin: func(q *server_api.Query) {
+	query := &spi.Query{
+		Begin: func(q *spi.Query) {
 			cols := q.Columns()
 			cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
-		Next: func(q *server_api.Query, nrow int64) bool {
+		Next: func(q *spi.Query, nrow int64) bool {
 			if dc.task.shouldStop() {
 				return false
 			}
@@ -273,7 +273,7 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			}
 			return !dc.task.shouldStop()
 		},
-		End: func(q *server_api.Query) {
+		End: func(q *spi.Query) {
 			dc.resultMsg = q.UserMessage()
 			if !q.IsFetch() {
 				dc.task.SetResultColumns(api.Columns{
@@ -359,29 +359,29 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		})
 		NewRecord(1, resultMsg).Tell(x.next)
 	} else {
-		ch := server_api.CommandHandler{
+		ch := spi.CommandHandler{
 			Database:        databaseProvider,
 			FallbackVerb:    "sql --",
 			SilenceUsage:    true,
 			SilenceErrors:   true,
 			OutWriter:       x.task,
 			ErrWriter:       x.task,
-			ShowTables:      func(ti *server_api.TableInfo, nrow int64) bool { return yieldTableInfo(x, ti, nrow) },
-			ShowIndexes:     func(ii *server_api.IndexInfo, nrow int64) bool { return yieldIndexesInfo(x, ii, nrow) },
-			ShowIndex:       func(ii *server_api.IndexInfo) bool { return yieldIndexInfo(x, ii) },
-			ShowLsmIndexes:  func(li *server_api.LsmIndexInfo, nrow int64) bool { return yieldShowInfoType(x, li, nrow) },
+			ShowTables:      func(ti *spi.TableInfo, nrow int64) bool { return yieldTableInfo(x, ti, nrow) },
+			ShowIndexes:     func(ii *spi.IndexInfo, nrow int64) bool { return yieldIndexesInfo(x, ii, nrow) },
+			ShowIndex:       func(ii *spi.IndexInfo) bool { return yieldIndexInfo(x, ii) },
+			ShowLsmIndexes:  func(li *spi.LsmIndexInfo, nrow int64) bool { return yieldShowInfoType(x, li, nrow) },
 			DescribeTable:   func(td *api.TableDescription) { yieldTableDescription(x, td) },
-			ShowTags:        func(tag *server_api.TagInfo, nrow int64) bool { return yieldTags(x, tag, nrow) },
-			ShowIndexGap:    func(gap *server_api.IndexGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
-			ShowTagIndexGap: func(gap *server_api.IndexGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
-			ShowRollupGap:   func(gap *server_api.RollupGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
-			ShowSessions:    func(info *server_api.SessionInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowStatements:  func(info *server_api.StatementInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowStorage:     func(info *server_api.StorageInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowTableUsage:  func(info *server_api.TableUsageInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowLicense:     func(info *server_api.LicenseInfo) bool { return yieldLicenseInfo(x, info) },
+			ShowTags:        func(tag *spi.TagInfo, nrow int64) bool { return yieldTags(x, tag, nrow) },
+			ShowIndexGap:    func(gap *spi.IndexGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
+			ShowTagIndexGap: func(gap *spi.IndexGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
+			ShowRollupGap:   func(gap *spi.RollupGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
+			ShowSessions:    func(info *spi.SessionInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
+			ShowStatements:  func(info *spi.StatementInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
+			ShowStorage:     func(info *spi.StorageInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
+			ShowTableUsage:  func(info *spi.TableUsageInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
+			ShowLicense:     func(info *spi.LicenseInfo) bool { return yieldLicenseInfo(x, info) },
 			Explain:         func(sql string, err error) { yieldExplain(x, sql, err) },
-			SqlQuery: func(q *server_api.Query, nrow int64) bool {
+			SqlQuery: func(q *spi.Query, nrow int64) bool {
 				if nrow == -1 {
 					resultMsg = q.UserMessage()
 				}
@@ -400,7 +400,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 				x.task.LogInfo("╰─➤", resultMsg, time.Since(tick).String())
 			}
 		}
-		args := server_api.ParseCommandLine(sqlText)
+		args := spi.ParseCommandLine(sqlText)
 		if !ch.IsKnownVerb(args[0]) {
 			args = append([]string{"sql", "--"}, sqlText)
 		}
@@ -425,7 +425,7 @@ func withRownum(p interface{ Columns() api.Columns }) api.Columns {
 	return append(api.Columns{api.MakeColumnRownum()}, p.Columns()...)
 }
 
-func yieldTableInfo(node *Node, info *server_api.TableInfo, nrow int64) bool {
+func yieldTableInfo(node *Node, info *spi.TableInfo, nrow int64) bool {
 	if nrow == 1 {
 		node.task.SetResultColumns(withRownum(info))
 	}
@@ -433,7 +433,7 @@ func yieldTableInfo(node *Node, info *server_api.TableInfo, nrow int64) bool {
 	return true
 }
 
-func yieldIndexesInfo(node *Node, info *server_api.IndexInfo, nrow int64) bool {
+func yieldIndexesInfo(node *Node, info *spi.IndexInfo, nrow int64) bool {
 	if nrow == 1 {
 		node.task.SetResultColumns(withRownum(info))
 	}
@@ -441,7 +441,7 @@ func yieldIndexesInfo(node *Node, info *server_api.IndexInfo, nrow int64) bool {
 	return info.Err() == nil
 }
 
-func yieldIndexInfo(node *Node, info *server_api.IndexInfo) bool {
+func yieldIndexInfo(node *Node, info *spi.IndexInfo) bool {
 	node.task.SetResultColumns(api.Columns{
 		api.MakeColumnRownum(),
 		api.MakeColumnString("TABLE_NAME"),
@@ -466,7 +466,7 @@ func yieldIndexInfo(node *Node, info *server_api.IndexInfo) bool {
 	return info.Err() == nil
 }
 
-func yieldShowInfoType[T server_api.InfoType](node *Node, nfo T, nrow int64) bool {
+func yieldShowInfoType[T spi.InfoType](node *Node, nfo T, nrow int64) bool {
 	if nrow == 1 {
 		node.task.SetResultColumns(append(api.Columns{api.MakeColumnRownum()}, nfo.Columns()...))
 	}
@@ -500,7 +500,7 @@ func yieldTableDescription(node *Node, desc *api.TableDescription) {
 	}
 }
 
-func yieldTags(node *Node, tag *server_api.TagInfo, nrow int64) bool {
+func yieldTags(node *Node, tag *spi.TagInfo, nrow int64) bool {
 	if nrow == 1 {
 		node.task.SetResultColumns(api.Columns{
 			api.MakeColumnRownum(),
@@ -535,7 +535,7 @@ func yieldTags(node *Node, tag *server_api.TagInfo, nrow int64) bool {
 	return true
 }
 
-func yieldLicenseInfo(node *Node, info *server_api.LicenseInfo) bool {
+func yieldLicenseInfo(node *Node, info *spi.LicenseInfo) bool {
 	node.task.SetResultColumns(api.Columns{
 		api.MakeColumnRownum(),
 		api.MakeColumnString("ID"),
@@ -567,7 +567,7 @@ func yieldExplain(node *Node, plan string, err error) {
 	}
 }
 
-func yieldSqlQuery(node *Node, q *server_api.Query, nrow int64) bool {
+func yieldSqlQuery(node *Node, q *spi.Query, nrow int64) bool {
 	if node.task.shouldStop() {
 		return false
 	}

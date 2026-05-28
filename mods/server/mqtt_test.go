@@ -16,6 +16,7 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -289,7 +290,7 @@ func TestMqttQuery(t *testing.T) {
 }
 
 func TestMqttQueryFailures(t *testing.T) {
-	conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	defer conn.Close()
 	conn.Exec(t.Context(), `drop table mqtt_query_exec`)
@@ -570,7 +571,7 @@ func TestMqttWrite(t *testing.T) {
 				tt.TC.Ver = ver
 				runMqttTest(t, &tt.TC)
 
-				conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
+				conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
 				require.NoError(t, err)
 				conn.QueryRow(t.Context(), "EXEC table_flush(test_mqtt)")
 				var count int
@@ -789,7 +790,7 @@ func TestAppend(t *testing.T) {
 			// - mqtt works asynchronously
 			time.Sleep(1000 * time.Millisecond)
 
-			conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
+			conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
 			if err != nil {
 				t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 			}
@@ -849,7 +850,7 @@ func TestTql(t *testing.T) {
 				// - mqtt works asynchronously
 				time.Sleep(1000 * time.Millisecond)
 
-				conn, err := mqttServer.db.Connect(t.Context(), api.WithTrustUser("sys"))
+				conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
 				if err != nil {
 					t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 				}

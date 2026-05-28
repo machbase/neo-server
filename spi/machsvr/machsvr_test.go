@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/api/machsvr"
-	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
 	"github.com/stretchr/testify/require"
 )
 

@@ -1,4 +1,4 @@
-package api
+package spi
 
 import (
 	"context"
@@ -125,7 +125,7 @@ func FlushAppendWorkers(tables ...string) {
 	}
 }
 
-func GetAppendWorker(ctx context.Context, db api.Database, tableName string) (*AppendWorker, error) {
+func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, error) {
 	appendersLock.Lock()
 	defer appendersLock.Unlock()
 
@@ -136,7 +136,7 @@ func GetAppendWorker(ctx context.Context, db api.Database, tableName string) (*A
 		return aw, nil
 	}
 
-	trustConn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	trustConn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func GetAppendWorker(ctx context.Context, db api.Database, tableName string) (*A
 		return nil, err
 	}
 
-	appendConn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	appendConn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		return nil, err
 	}

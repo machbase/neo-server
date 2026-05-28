@@ -34,7 +34,6 @@ import (
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -49,6 +48,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/spi"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -152,6 +152,15 @@ func (s *Server) Start() error {
 	}
 
 	HeadOnly = strings.HasPrefix(s.DataDir, "machbase://")
+
+	if err := s.preparePrefDir(); err != nil {
+		return err
+	}
+
+	if err := s.prepareHomeDir(); err != nil {
+		return err
+	}
+
 	if Headless {
 		if HeadOnly {
 			return fmt.Errorf("headless mode is not possible alongside head-only mode, %s", s.DataDir)
@@ -159,15 +168,7 @@ func (s *Server) Start() error {
 		return s.StartHeadless()
 	}
 
-	if err := s.preparePrefDir(); err != nil {
-		return err
-	}
-
 	if err := s.startModelService(); err != nil {
-		return err
-	}
-
-	if err := s.prepareHomeDir(); err != nil {
 		return err
 	}
 
@@ -189,11 +190,6 @@ func (s *Server) Start() error {
 		if err := s.startMachbaseSvr(); err != nil {
 			return err
 		}
-	}
-
-	// check if the server keys are exist, if not, register the keys
-	if err := s.registerServerKeys(); err != nil {
-		return err
 	}
 
 	if !s.NoBanner {
@@ -380,14 +376,6 @@ func (s *Server) writeSharedInfo(filename string, data any) error {
 }
 
 func (s *Server) StartHeadless() error {
-	if err := s.preparePrefDir(); err != nil {
-		return err
-	}
-
-	if err := s.prepareHomeDir(); err != nil {
-		return err
-	}
-
 	if err := s.startMachbaseSvr(); err != nil {
 		return err
 	}
@@ -428,7 +416,7 @@ func (s *Server) Stop() {
 
 	tql.Deinit()
 
-	if db, ok := api.Default().(*machgo.Database); ok {
+	if db, ok := spi.Default().(*machgo.Database); ok {
 		if err := db.Close(); err != nil {
 			s.log.Warnf("db close; %s", err.Error())
 		}
@@ -470,6 +458,7 @@ func (s *Server) startMachbaseSvr() error {
 	if err := mach.StartDatabase(); err != nil {
 		return fmt.Errorf("start database failed, %s", err.Error())
 	}
+
 	// create database instance
 	db, err := machgo.NewDatabase(&machgo.Config{
 		Host:               "127.0.0.1",
@@ -486,14 +475,27 @@ func (s *Server) startMachbaseSvr() error {
 	if db == nil {
 		return errors.New("database instance failed")
 	}
-	db.SetTrustUser("sys", "manager")
-	// if err := db.Startup(); err != nil {
-	// 	return fmt.Errorf("startup database, %s", err.Error())
-	// }
-	api.SetDefault(db)
-	server_api.StartAppendWorkers()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	if err != nil {
+		return fmt.Errorf("database connect failed, %s", err.Error())
+	}
+	// check if the server keys are exist, if not, register the keys
+	if err := s.registerServerKeys(ctx, conn); err != nil {
+		return err
+	}
+	conn.Close()
+
+	spi.SetDefault(db)
+	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
+		return fmt.Errorf("load server private key failed, %s", err.Error())
+	} else {
+		spi.SetDefaultKey(key)
+	}
+	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
-		server_api.StopAppendWorkers()
+		spi.StopAppendWorkers()
 	})
 	return nil
 }
@@ -511,7 +513,6 @@ func (s *Server) startMachbaseCli() error {
 		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
 		MaxOpenQuery:       s.Config.MaxOpenQuery,
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-		TrustUsers:         map[string]string{"sys": "manager"},
 	})
 	if err != nil {
 		return err
@@ -520,19 +521,27 @@ func (s *Server) startMachbaseCli() error {
 	if user != "" && password != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		ok, _, err := db.UserAuth(ctx, user, password)
+		conn, err := db.Connect(ctx, api.WithPassword(user, password))
 		if err != nil {
+			return fmt.Errorf("head-only mode user auth failed: %s", err.Error())
+		}
+		defer conn.Close()
+
+		// check if the server keys are exist, if not, register the keys
+		if err := s.registerServerKeys(ctx, conn); err != nil {
 			return err
 		}
-		if !ok {
-			return fmt.Errorf("head-only mode user auth failed")
-		}
-		db.SetTrustUser(user, password)
 	}
-	api.SetDefault(db)
-	server_api.StartAppendWorkers()
+
+	spi.SetDefault(db)
+	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
+		return fmt.Errorf("load server private key failed, %s", err.Error())
+	} else {
+		spi.SetDefaultKey(key)
+	}
+	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
-		server_api.StopAppendWorkers()
+		spi.StopAppendWorkers()
 	})
 	return nil
 }
@@ -737,10 +746,7 @@ func (s *Server) startBackupService() error {
 		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
 			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
 		} else {
-			s.bakd = NewBackupd(
-				WithBackupdBaseDir(backupDirAbs),
-				WithBackupdDatabase(api.Default()),
-			)
+			s.bakd = NewBackupd(WithBackupdBaseDir(backupDirAbs))
 		}
 	}
 	if s.bakd != nil {
@@ -768,12 +774,12 @@ func (s *Server) checkAndInstallLicense() error {
 		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+			conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 			if err != nil {
 				s.log.Error("ERR", err.Error())
 				return err
 			}
-			if _, err = server_api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
+			if _, err = spi.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 				s.log.Warn("set license fail,", err.Error())
 			} else {
 				s.log.Info("set license success")
@@ -830,7 +836,6 @@ func (s *Server) startBridgeAndSchedulerService() error {
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
 		scheduler.WithTqlLoader(tql.NewLoader()),
-		scheduler.WithDatabase(api.Default()),
 	)
 
 	s.bridgeSvc = bridge.NewService(
@@ -895,7 +900,7 @@ func (s *Server) startMqttServer() error {
 			opts = append(opts, WithMqttTcpListener(addr, tlsConf))
 		}
 	}
-	if mqttd, err := NewMqtt(api.Default(), opts...); err != nil {
+	if mqttd, err := NewMqtt(opts...); err != nil {
 		return fmt.Errorf("mqtt server, %s", err.Error())
 	} else {
 		s.mqttd = mqttd
@@ -954,7 +959,7 @@ func (s *Server) startHttpServer() error {
 		}
 		opts = append(opts, WithHttpWebDir(s.Http.WebDir))
 	}
-	if httpd, err := NewHttp(api.Default(), opts...); err != nil {
+	if httpd, err := NewHttp(opts...); err != nil {
 		return fmt.Errorf("http server, %s", err.Error())
 	} else {
 		s.httpd = httpd
@@ -1768,7 +1773,7 @@ func (s *Server) killSession(ctx context.Context, id string, force bool) error {
 	return nil
 }
 
-func (s *Server) statSession(ctx context.Context, reset bool) (*server_api.Statz, error) {
+func (s *Server) statSession(ctx context.Context, reset bool) (*spi.Statz, error) {
 	rsp, err := s.Sessions(ctx, &SessionsRequest{
 		Statz: true, Sessions: false, ResetStatz: reset,
 	})
@@ -2186,17 +2191,7 @@ func activateUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId 
 	return result.Err()
 }
 
-func (s *Server) registerServerKeys() error {
-	ctx := context.Background()
-	user := "SYS"
-	// check if server keys exist, if not create new one.
-	db := api.Default()
-	conn, err := db.Connect(ctx, api.WithTrustUser(user))
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
+func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 	// server's public key in pem
 	pubFile := s.ServerPublicKeyPath()
 	pubPemStr := ""
@@ -2205,31 +2200,32 @@ func (s *Server) registerServerKeys() error {
 	} else {
 		return fmt.Errorf("failed to read server public key: %s", err.Error())
 	}
-
+	user := "SYS"
 	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		// other error
+		return err
+	}
+	// pubkey not found, add new authkey
+	if err := registerUserAuthKey(ctx, conn, user, pubPemStr); err != nil {
+		return err
+	}
+	// get authkey info again after registration
+	nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			// other error
-			return err
-		}
-		// pubkey not found, add new authkey
-		if err := registerUserAuthKey(ctx, conn, user, pubPemStr); err != nil {
-			return err
-		}
-		// get authkey info again after registration
-		nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
-		if err != nil {
-			return err
-		}
-		// activate authkey
-		if err := activateUserAuthKey(ctx, conn, user, nfo.KeyID); err != nil {
-			return err
-		}
-		// get authkey info again after activation
-		nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
-		if err != nil {
-			return err
-		}
+		return err
+	}
+	// activate authkey
+	if err := activateUserAuthKey(ctx, conn, user, nfo.KeyID); err != nil {
+		return err
+	}
+	// get authkey info again after activation
+	nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -2379,8 +2375,7 @@ func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicK
 	}
 
 	// find the matched key from database, v$user_auth_keys.
-	db := api.Default()
-	conn, err := db.Connect(ctx, api.WithAuthKeyFile("sys", s.ServerPrivateKeyPath()))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Warnf("db server key auth fail, %s", err.Error())
 		return false, "", err
@@ -2407,7 +2402,7 @@ func (s *Server) ValidateUserPassword(user string, password string) (bool, strin
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	passed, reason, err := api.Default().UserAuth(ctx, user, password)
+	passed, reason, err := spi.Default().UserAuth(ctx, user, password)
 	if err != nil {
 		return false, "", err
 	} else if !passed {
@@ -2472,7 +2467,7 @@ func (s *Server) runSqlScripts(title string, queries []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Error("ERR", err.Error())
 		return err

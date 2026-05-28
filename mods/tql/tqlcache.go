@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
-	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 var tqlResultCache atomic.Pointer[Cache]
@@ -30,7 +30,7 @@ func StartCache(cap CacheOption) {
 		cache.cache.Start()
 	}(cache)
 
-	api.AddMetricsFunc(func(g *metric.Gather) error {
+	spi.AddMetricsFunc(func(g *metric.Gather) error {
 		cache := tqlResultCache.Load()
 		if cache == nil || cache.cache == nil {
 			return errors.New("tql cache not started")

@@ -26,7 +26,6 @@ func FetchRowsChunk(t *testing.T, db api.Database, ctx context.Context) {
 	fetchDB, err := machgo.NewDatabase(&machgo.Config{
 		Host:         host,
 		Port:         port,
-		TrustUsers:   map[string]string{"sys": "manager"},
 		MaxOpenConn:  -1,
 		MaxOpenQuery: -1,
 		FetchRows:    fetchRows,

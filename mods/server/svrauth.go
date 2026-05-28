@@ -43,6 +43,7 @@ type AuthServer interface {
 	ValidateUserOtp(user string, otp string) (bool, error)
 	GenerateOtp(user string) (string, error)
 	GenerateSnowflake() string
+	ServerPrivateKeyPath() string
 }
 
 type AuthHandler interface {

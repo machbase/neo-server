@@ -6,33 +6,33 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 var statzLog = logging.GetLog("server-statz")
 
 func startServerMetrics(s *Server) {
-	server_api.StartMetrics()
-	server_api.AddMetricsFunc(collectSysStatz)
-	server_api.AddMetricsFunc(collectMachSvrStatz)
-	server_api.AddMetricsFunc(collectMqttStatz(s))
+	spi.StartMetrics()
+	spi.AddMetricsFunc(collectSysStatz)
+	spi.AddMetricsFunc(collectMachSvrStatz)
+	spi.AddMetricsFunc(collectMqttStatz(s))
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
-	server_api.SetMetricsDestTable(s.Config.StatzOut)
+	spi.SetMetricsDestTable(s.Config.StatzOut)
 }
 
 func stopServerMetrics() {
-	server_api.StopMetrics()
+	spi.StopMetrics()
 }
 
 func collectSysStatz(g *metric.Gather) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
 		return err

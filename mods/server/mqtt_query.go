@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 )
@@ -100,15 +100,15 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		rsp.Reason = err.Error()
 		return
 	}
 	defer conn.Close()
 
-	query := &server_api.Query{
-		Begin: func(q *server_api.Query) {
+	query := &spi.Query{
+		Begin: func(q *spi.Query) {
 			if !q.IsFetch() {
 				return
 			}
@@ -117,7 +117,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *server_api.Query, nrow int64) bool {
+		Next: func(q *spi.Query, nrow int64) bool {
 			values, err := q.Columns().MakeBuffer()
 			if err != nil {
 				s.log.Error("buffer", err.Error())
@@ -134,7 +134,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 			}
 			return true
 		},
-		End: func(q *server_api.Query) {
+		End: func(q *spi.Query) {
 			if q.IsFetch() {
 				encoder.Close()
 				rsp.Success, rsp.Reason = true, "success"
@@ -192,7 +192,6 @@ func (s *mqttd) handleTql(cl *mqtt.Client, pk packets.Packet) {
 
 	buf := &bytes.Buffer{}
 	task := tql.NewTaskContext(context.TODO())
-	task.SetDatabase(s.db)
 	task.SetInputReader(bytes.NewBuffer(pk.Payload))
 	task.SetOutputWriter(buf)
 	task.SetParams(params)

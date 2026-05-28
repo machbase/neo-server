@@ -1,4 +1,4 @@
-package api
+package spi
 
 import (
 	"context"
@@ -356,7 +356,7 @@ func SetMetricsDestTable(destTable string) error {
 	destTable = strings.ToUpper(strings.TrimSpace(destTable))
 	if destTable != "" {
 		ctx := context.Background()
-		conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+		conn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return nil
@@ -503,7 +503,7 @@ func onProduct(pd metric.Product) error {
 			return
 		}
 		ctx := context.Background()
-		conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+		conn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return

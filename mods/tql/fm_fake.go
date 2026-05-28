@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 /*
@@ -58,7 +58,7 @@ type statz struct {
 }
 
 func genStatz(node *Node, gen *statz) {
-	statz := server_api.QueryStatz(gen.interval, server_api.QueryStatzFilter(gen.keyFilters))
+	statz := spi.QueryStatz(gen.interval, spi.QueryStatzFilter(gen.keyFilters))
 	if statz.Err != nil {
 		ErrorRecord(statz.Err).Tell(node.next)
 		return
@@ -80,14 +80,14 @@ func genStatz(node *Node, gen *statz) {
 }
 
 func (node *Node) fmStatz(samplingInterval string, keyFilters ...string) *statz {
-	var interval = server_api.MetricShortTerm
+	var interval = spi.MetricShortTerm
 	switch strings.ToLower(samplingInterval) {
 	case "short":
-		interval = server_api.MetricShortTerm
+		interval = spi.MetricShortTerm
 	case "mid":
-		interval = server_api.MetricMidTerm
+		interval = spi.MetricMidTerm
 	case "long":
-		interval = server_api.MetricLongTerm
+		interval = spi.MetricLongTerm
 	default:
 		if dur, err := time.ParseDuration(samplingInterval); err == nil {
 			interval = dur

@@ -32,7 +32,7 @@ func TestCollectMqttStatz(t *testing.T) {
 	})
 
 	t.Run("collects_metrics_from_broker_info", func(t *testing.T) {
-		mqttd, err := NewMqtt(nil)
+		mqttd, err := NewMqtt()
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			mqttd.Stop()

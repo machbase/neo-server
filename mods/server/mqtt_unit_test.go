@@ -47,12 +47,16 @@ func (s *mqttTestAuthServer) GenerateSnowflake() string {
 	return ""
 }
 
+func (s *mqttTestAuthServer) ServerPrivateKeyPath() string {
+	return "/path/to/private.key"
+}
+
 func TestNewMqttOptions(t *testing.T) {
 	var started bool
 	var stopped bool
 	authSvc := &mqttTestAuthServer{allow: true}
 
-	svr, err := NewMqtt(nil,
+	svr, err := NewMqtt(
 		WithMqttAuthServer(authSvc, true),
 		WithMqttMaxMessageSizeLimit(4096),
 		WithMqttOnStarted(func() { started = true }),
@@ -73,7 +77,7 @@ func TestNewMqttOptions(t *testing.T) {
 
 	t.Run("option_error", func(t *testing.T) {
 		expected := errors.New("option failure")
-		_, err := NewMqtt(nil, func(s *mqttd) error { return expected })
+		_, err := NewMqtt(func(s *mqttd) error { return expected })
 		require.ErrorIs(t, err, expected)
 	})
 }

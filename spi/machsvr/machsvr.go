@@ -2,6 +2,7 @@ package machsvr
 
 import (
 	"context"
+	"crypto"
 	"database/sql"
 	"expvar"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	server_api "github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 
 	"github.com/machbase/neo-engine/v8/native"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -411,14 +412,15 @@ func (cw *ConnWatcher) ConnState() *ConnState {
 }
 
 type Conn struct {
-	ctx         context.Context
-	username    string
-	password    string
-	isTrustUser bool
-	handle      unsafe.Pointer
-	closeOnce   sync.Once
-	closed      bool
-	db          *Database
+	ctx       context.Context
+	username  string
+	password  string
+	proxyUser string
+	key       crypto.PrivateKey
+	handle    unsafe.Pointer
+	closeOnce sync.Once
+	closed    bool
+	db        *Database
 
 	id            string
 	connectTime   time.Time
@@ -464,9 +466,6 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 		case *api.ConnectOptionPassword:
 			ret.username = v.User
 			ret.password = v.Password
-		case *api.ConnectOptionTrustUser:
-			ret.username = v.User
-			ret.isTrustUser = true
 		case *api.ConnectOptionTimeout:
 			connTimeout = v.Timeout
 		case *api.ConnectOptionStatementCache:
@@ -477,7 +476,9 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 			// currently IO metrics in CLI is ignored, so it is ignored here
 		case *api.ConnectOptionAuthKey:
 			ret.username = v.User
-			ret.isTrustUser = true
+			ret.key = v.Key
+		case *api.ConnectOptionProxyUser:
+			ret.proxyUser = v.ProxyUser
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
@@ -504,8 +505,12 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 	}
 
 	var handle unsafe.Pointer
-	if ret.isTrustUser {
-		if err := mach.EngConnectTrust(db.handle, ret.username, &handle); err != nil {
+	if ret.key != nil {
+		username := ret.username
+		if ret.proxyUser != "" {
+			username = ret.proxyUser
+		}
+		if err := mach.EngConnectTrust(db.handle, username, &handle); err != nil {
 			return nil, err
 		}
 	} else {
@@ -515,7 +520,7 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 	}
 	ret.handle = handle
 	ret.connectTime = time.Now()
-	server_api.AllocConn(time.Since(waitTime))
+	spi.AllocConn(time.Since(waitTime))
 
 	if id, err := mach.EngSessionID(ret.handle); err == nil {
 		ret.id = fmt.Sprintf("%d", id)
@@ -564,7 +569,7 @@ func (conn *Conn) CloseSync() (err error) {
 			}
 		}()
 		conn.closed = true
-		server_api.FreeConn(time.Since(conn.connectTime))
+		spi.FreeConn(time.Since(conn.connectTime))
 		err = mach.EngDisconnect(conn.handle)
 		if conn.closeCallback != nil {
 			conn.closeCallback()
@@ -622,10 +627,10 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 	if result.err = mach.EngAllocStmt(conn.handle, &stmt); result.err != nil {
 		return result
 	}
-	server_api.AllocStmt()
+	spi.AllocStmt()
 	defer func() {
 		mach.EngFreeStmt(stmt)
-		server_api.FreeStmt()
+		spi.FreeStmt()
 	}()
 	if len(params) == 0 {
 		if result.err = mach.EngDirectExecute(stmt, sqlText); result.err != nil {
@@ -663,7 +668,7 @@ func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error)
 	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
 		return nil, err
 	}
-	server_api.AllocStmt()
+	spi.AllocStmt()
 	if err := mach.EngPrepare(stmt, sqlText); err != nil {
 		mach.EngFreeStmt(stmt)
 		return nil, err
@@ -684,7 +689,7 @@ func (ps *PreparedStmt) Close() error {
 	if err := mach.EngFreeStmt(ps.stmt); err != nil {
 		return err
 	}
-	server_api.FreeStmt()
+	spi.FreeStmt()
 	return nil
 }
 
@@ -876,7 +881,7 @@ func (conn *Conn) QuerySync(ctx context.Context, sqlText string, params ...any) 
 	} else {
 		rows.columns = cols
 	}
-	server_api.AllocStmt()
+	spi.AllocStmt()
 	return rows, nil
 }
 
@@ -1006,9 +1011,9 @@ func (conn *Conn) QueryRowSync(ctx context.Context, sqlText string, params ...an
 	if row.err = mach.EngAllocStmt(conn.handle, &stmt); row.err != nil {
 		return row
 	}
-	server_api.AllocStmt()
+	spi.AllocStmt()
 	defer func() {
-		server_api.FreeStmt()
+		spi.FreeStmt()
 		err := mach.EngFreeStmt(stmt)
 		if err != nil && row.err == nil {
 			row.err = err
@@ -1249,7 +1254,7 @@ func bind(stmt unsafe.Pointer, idx int, c any) error {
 
 func init() {
 	expvar.Publish("machbase:session:raw_conns", expvar.Func(func() any { return rawConns() }))
-	server_api.RawConns = rawConns
+	spi.RawConns = rawConns
 }
 
 func rawConns() int {

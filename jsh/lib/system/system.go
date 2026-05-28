@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 //go:embed system.js
@@ -68,20 +68,20 @@ func now() time.Time {
 }
 
 func statz(samplingInterval string, keyFilters ...string) ([]map[string]any, error) {
-	var interval = api.MetricShortTerm
+	var interval = spi.MetricShortTerm
 	switch strings.ToLower(samplingInterval) {
 	case "short":
-		interval = api.MetricShortTerm
+		interval = spi.MetricShortTerm
 	case "mid":
-		interval = api.MetricMidTerm
+		interval = spi.MetricMidTerm
 	case "long":
-		interval = api.MetricLongTerm
+		interval = spi.MetricLongTerm
 	default:
 		if dur, err := time.ParseDuration(samplingInterval); err == nil {
 			interval = dur
 		}
 	}
-	stat := api.QueryStatz(interval, api.QueryStatzFilter(keyFilters))
+	stat := spi.QueryStatz(interval, spi.QueryStatzFilter(keyFilters))
 	if stat.Err != nil {
 		return nil, stat.Err
 	}

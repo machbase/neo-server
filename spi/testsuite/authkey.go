@@ -65,7 +65,9 @@ func AuthKeyConnect(t *testing.T, db api.Database, ctx context.Context) {
 			require.NoError(t, err)
 			defer authDB.Close()
 
-			authConn, err := authDB.Connect(ctx, api.WithAuthKeyFile("sys", privatePath))
+			key, err := machgo.LoadPrivateKeyFromFile(privatePath)
+			require.NoError(t, err)
+			authConn, err := authDB.Connect(ctx, api.WithAuthKey("sys", key))
 			require.NoError(t, err)
 			defer authConn.Close()
 

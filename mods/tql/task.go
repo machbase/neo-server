@@ -3,6 +3,7 @@ package tql
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/sha1"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 const (
@@ -35,6 +37,7 @@ type Task struct {
 	ctxCancel    context.CancelFunc
 	params       map[string][]string
 	db           api.Database
+	dbKey        crypto.PrivateKey
 	inputReader  io.Reader
 	outputWriter io.Writer
 	toJsonOutput bool
@@ -92,24 +95,22 @@ func NewTaskContext(ctx context.Context) *Task {
 	}
 	ret.volatileAssetsProvider = instance.vap
 	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
+	ret.db = spi.Default()
+	ret.dbKey = spi.DefaultKey()
 	context.AfterFunc(ret.ctx, func() {
 		ret.fireCircuitBreak(nil)
 	})
 	return ret
 }
 
-func (x *Task) SetDatabase(db api.Database) {
-	x.db = db
-}
-
 func (x *Task) ConnDatabase(ctx context.Context) (api.Conn, error) {
 	if x.consoleUser != "" {
 		// web login user
-		conn, err := x.db.Connect(ctx, api.WithTrustUser(x.consoleUser))
+		conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(x.consoleUser))
 		return conn, err
 	} else {
 		// request script file
-		conn, err := x.db.Connect(ctx, api.WithTrustUser("sys"))
+		conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 		return conn, err
 	}
 }

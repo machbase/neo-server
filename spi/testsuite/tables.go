@@ -11,7 +11,7 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	server_api "github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,8 +20,8 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	result := map[string]*server_api.TableInfo{}
-	server_api.ListTablesWalk(ctx, conn, true, func(ti *server_api.TableInfo) bool {
+	result := map[string]*spi.TableInfo{}
+	spi.ListTablesWalk(ctx, conn, true, func(ti *spi.TableInfo) bool {
 		require.NoError(t, err, "tables fail")
 		result[fmt.Sprintf("%s.%s.%s", ti.Database, ti.User, ti.Name)] = ti
 		return true
@@ -56,15 +56,15 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables, err := server_api.ListTables(ctx, conn, true)
+	tables, err := spi.ListTables(ctx, conn, true)
 	require.NoError(t, err, "show tables fail")
 	require.Equal(t, len(result), len(tables))
 
-	resultList, err := server_api.ListTables(ctx, conn, false)
+	resultList, err := spi.ListTables(ctx, conn, false)
 	require.NoError(t, err, "show tables fail")
 	require.NotEmpty(t, resultList, "tables empty")
 
-	result2 := map[string]*server_api.TableInfo{}
+	result2 := map[string]*spi.TableInfo{}
 	for _, v := range tables {
 		result2[fmt.Sprintf("%s.%s.%s", v.Database, v.User, v.Name)] = v
 	}
@@ -88,7 +88,7 @@ func ExistsTable(t *testing.T, db api.Database, ctx context.Context) {
 		require.False(t, exists, "table %q_not_exists exists", table_name)
 
 		// table exists and truncate
-		exists, truncated, err := server_api.TruncateTableIfExists(ctx, conn, table_name, true)
+		exists, truncated, err := spi.TruncateTableIfExists(ctx, conn, table_name, true)
 		require.NoError(t, err, "exists table %q fail", table_name)
 		require.True(t, exists, "table %q not exists", table_name)
 		require.True(t, truncated, "table %q not truncated", table_name)
@@ -100,7 +100,7 @@ func Indexes(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	ret, err := server_api.ListIndexes(ctx, conn)
+	ret, err := spi.ListIndexes(ctx, conn)
 	require.NoError(t, err, "indexes fail")
 	require.NotEmpty(t, ret, "indexes empty")
 	for _, r := range ret {
@@ -260,8 +260,8 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	var beginCalled, endCalled bool
 	var nextCalled int
 	// query - select
-	queryCtx := &server_api.Query{
-		Begin: func(q *server_api.Query) {
+	queryCtx := &spi.Query{
+		Begin: func(q *spi.Query) {
 			beginCalled = true
 			cols := q.Columns()
 			require.Equal(t, []string{"NAME", "TIME", "VALUE",
@@ -284,7 +284,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 				api.DataTypeBinary,
 			}, cols.DataTypes())
 		},
-		Next: func(q *server_api.Query, rownum int64) bool {
+		Next: func(q *spi.Query, rownum int64) bool {
 			nextCalled++
 			values, err := q.Columns().MakeBuffer()
 			require.NoError(t, err)
@@ -303,7 +303,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 			require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
 			return true
 		},
-		End: func(q *server_api.Query) {
+		End: func(q *spi.Query) {
 			endCalled = true
 			require.NoError(t, q.Err())
 			require.True(t, q.IsFetch())
@@ -319,8 +319,8 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 
 	// query - insert
 	endCalled = false
-	queryCtx = &server_api.Query{
-		End: func(q *server_api.Query) {
+	queryCtx = &spi.Query{
+		End: func(q *spi.Query) {
 			endCalled = true
 			require.False(t, q.IsFetch())
 			require.NoError(t, q.Err())
@@ -350,8 +350,8 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, result.Err(), "table_flush fail")
 
 	// tags
-	tags := []*server_api.TagInfo{}
-	server_api.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *server_api.TagInfo) bool {
+	tags := []*spi.TagInfo{}
+	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo) bool {
 		// TODO: MACHCLI-ERR-3, Communication link failure
 		require.NoError(t, tag.Err, "tags fail")
 		require.Greater(t, tag.Id, int64(0))
@@ -359,12 +359,12 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		tags = append(tags, tag)
 		return true
 	})
-	tags2, err := server_api.ListTags(ctx, conn, "TAG_DATA", "NAME")
+	tags2, err := spi.ListTags(ctx, conn, "TAG_DATA", "NAME")
 	require.NoError(t, err, "tags fail")
 	require.EqualValues(t, tags, tags2)
 
 	// tag stat
-	tagStat, err := server_api.TagStat(ctx, conn, "TAG_DATA", "insert-once")
+	tagStat, err := spi.TagStat(ctx, conn, "TAG_DATA", "insert-once")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-once", tagStat.Name)
 	require.Equal(t, int64(1), tagStat.RowCount)
@@ -372,7 +372,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, 1.23, tagStat.MaxValue)
 
 	// tag stat
-	tagStat, err = server_api.TagStat(ctx, conn, "TAG_DATA", "insert-twice")
+	tagStat, err = spi.TagStat(ctx, conn, "TAG_DATA", "insert-twice")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-twice", tagStat.Name)
 	require.Equal(t, int64(1), tagStat.RowCount)

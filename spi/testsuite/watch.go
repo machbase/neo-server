@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
 
 func WatchLogTable(t *testing.T, db api.Database, ctx context.Context) {
-	conf := server_api.WatcherConfig{
+	conf := spi.WatcherConfig{
 		ConnProvider: func() (api.Conn, error) {
 			return db.Connect(ctx, api.WithPassword("sys", "manager"))
 		},
@@ -20,7 +20,7 @@ func WatchLogTable(t *testing.T, db api.Database, ctx context.Context) {
 		TableName:  "tag_data",
 		TagNames:   []string{"tag1", "tag2"},
 	}
-	w, err := server_api.NewWatcher(ctx, conf)
+	w, err := spi.NewWatcher(ctx, conf)
 	require.NoError(t, err, "new watcher fail")
 	defer w.Close()
 
@@ -35,7 +35,7 @@ func WatchLogTable(t *testing.T, db api.Database, ctx context.Context) {
 				t.Log("Error", err.Error())
 				t.Fail()
 				return
-			} else if rec, ok := data.(server_api.WatchData); !ok {
+			} else if rec, ok := data.(spi.WatchData); !ok {
 				t.Log("Data", data)
 				t.Fail()
 				return

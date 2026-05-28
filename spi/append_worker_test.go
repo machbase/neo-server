@@ -1,4 +1,4 @@
-package api
+package spi
 
 import (
 	"context"
@@ -182,7 +182,7 @@ func TestGetAppendWorkerReusesRegisteredWorkerCaseInsensitively(t *testing.T) {
 	appenders["sensor"] = worker
 	appendersLock.Unlock()
 
-	got, err := GetAppendWorker(context.Background(), nil, "SENSOR")
+	got, err := GetAppendWorker(context.Background(), "SENSOR")
 	require.NoError(t, err)
 	require.Same(t, worker, got)
 	require.Equal(t, int32(1), atomic.LoadInt32(&got.refCount))

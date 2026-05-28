@@ -18,10 +18,10 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 func (svr *httpd) handleWrite(ctx *gin.Context) {
@@ -115,7 +115,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	var insertQuery string
 
 	if method == "append" {
-		if aw, err := server_api.GetAppendWorker(ctx, svr.db, tableName); err != nil {
+		if aw, err := spi.GetAppendWorker(ctx, tableName); err != nil {
 			errRsp(http.StatusInternalServerError, err.Error())
 			return
 		} else {
@@ -281,7 +281,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	tableType, err := server_api.QueryTableType(ctx, conn, tableName)
+	tableType, err := spi.QueryTableType(ctx, conn, tableName)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -571,7 +571,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			return
 		}
 
-		result := server_api.WriteLineProtocol(ctx, conn, dbName, desc.Columns, measurement, fields, tags, ts)
+		result := spi.WriteLineProtocol(ctx, conn, dbName, desc.Columns, measurement, fields, tags, ts)
 		if err := result.Err(); err != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(

@@ -13,14 +13,14 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/server"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -33,20 +33,19 @@ func TestMain(m *testing.M) {
 	testServer.StartServer()
 	testServer.CreateTestTables()
 
-	db := testServer.DatabaseSVR()
-	api.SetDefault(db)
-	server_api.StartAppendWorkers()
+	db := testServer.DatabaseGO()
+	spi.SetDefault(db)
+	spi.SetDefaultKey(testServer.DatabaseKey())
+	spi.StartAppendWorkers()
 
-	server_api.StartMetrics()
+	spi.StartMetrics()
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
 
 	tql.Init()
 
-	http, err := server.NewHttp(db,
-		server.WithHttpListenAddress("tcp://127.0.0.1:0"),
-	)
+	http, err := server.NewHttp(server.WithHttpListenAddress("tcp://127.0.0.1:0"))
 	if err != nil {
 		panic(err)
 	}
@@ -129,7 +128,6 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	output := &bytes.Buffer{}
 	log := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
-	task.SetDatabase(testServer.DatabaseSVR())
 	task.SetLogWriter(log)
 	task.SetOutputWriterJson(output, true)
 	task.SetVolatileAssetsProvider(memMock)
@@ -538,7 +536,7 @@ func TestDatabaseTql(t *testing.T) {
 				APPEND( table('tag_simple') )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
-				server_api.FlushAppendWorkers("tag_simple")
+				spi.FlushAppendWorkers("tag_simple")
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 				// since we are using api.AppendWorker, the success and fail count is always same as the number of records
@@ -764,8 +762,7 @@ func TestDatabaseBinaryTql(t *testing.T) {
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Contains(t, result, "1 row inserted.")
-				db := api.Default()
-				conn, _ := db.Connect(t.Context(), api.WithTrustUser("sys"))
+				conn, _ := spi.Default().Connect(t.Context(), api.WithAuthKey("sys", spi.DefaultKey()))
 				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
@@ -835,11 +832,10 @@ func TestDatabaseBinaryTql(t *testing.T) {
 				require.Contains(t, result, "append 5 rows (success 5, fail 0)")
 
 				// flush appender
-				server_api.FlushAppendWorkers("tqlbin")
+				spi.FlushAppendWorkers("tqlbin")
 
 				// flush table
-				db := api.Default()
-				conn, _ := db.Connect(t.Context(), api.WithTrustUser("sys"))
+				conn, _ := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
 				time.Sleep(3 * time.Second)
 				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()

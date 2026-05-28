@@ -11,12 +11,12 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
-	machclilib "github.com/machbase/neo-server/v8/jsh/lib/machcli"
+	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
 	"github.com/stretchr/testify/require"
 )
 
@@ -202,7 +202,7 @@ func TestDatabase(t *testing.T) {
 
 func TestNewDatabaseCoverage(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
-		db, err := machclilib.NewDatabase("{invalid")
+		db, err := machcli.NewDatabase("{invalid")
 		require.Error(t, err)
 		require.Nil(t, db)
 	})
@@ -211,7 +211,7 @@ func TestNewDatabaseCoverage(t *testing.T) {
 		cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"alternativeHost":"127.0.0.2","alternativePort":5657}`,
 			machcliTestServer.MachPort(),
 		)
-		db, err := machclilib.NewDatabase(cfg)
+		db, err := machcli.NewDatabase(cfg)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, db.Close())
@@ -229,7 +229,7 @@ func TestNewDatabaseCoverage(t *testing.T) {
 		cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"sys","password":"wrong"}`,
 			machcliTestServer.MachPort(),
 		)
-		db, err := machclilib.NewDatabase(cfg)
+		db, err := machcli.NewDatabase(cfg)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, db.Close())
@@ -286,7 +286,7 @@ func TestNormalizeTableNameCoverage(t *testing.T) {
 	cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"demo","password":"demo"}`,
 		machcliTestServer.MachPort(),
 	)
-	db, err := machclilib.NewDatabase(cfg)
+	db, err := machcli.NewDatabase(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
@@ -306,7 +306,7 @@ func TestRowsScanCoverage(t *testing.T) {
 	cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"sys","password":"manager"}`,
 		machcliTestServer.MachPort(),
 	)
-	db, err := machclilib.NewDatabase(cfg)
+	db, err := machcli.NewDatabase(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
@@ -342,7 +342,7 @@ func TestRowsScanCoverage(t *testing.T) {
 	})
 
 	require.True(t, rows.Next())
-	buffer, err := machclilib.RowsScan(rows)
+	buffer, err := machcli.RowsScan(rows)
 	require.NoError(t, err)
 	require.Len(t, buffer, 2)
 	require.Equal(t, "row-1", api.Unbox(buffer[0]))

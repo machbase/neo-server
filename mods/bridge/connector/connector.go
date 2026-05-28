@@ -11,12 +11,12 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/sqlite"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 type BridgedDatabase struct {
@@ -29,7 +29,7 @@ func (d *BridgedDatabase) Connect(ctx context.Context, options ...api.ConnectOpt
 	if c, err := d.db.Conn(ctx); err != nil {
 		return nil, err
 	} else {
-		return server_api.WrapSqlConn(c), nil
+		return spi.WrapSqlConn(c), nil
 	}
 }
 
@@ -177,7 +177,6 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 		db, err := machgo.NewDatabase(&machgo.Config{
 			Host:         host,
 			Port:         port,
-			TrustUsers:   map[string]string{},
 			MaxOpenConn:  maxOpenConn,
 			MaxOpenQuery: maxOpenQuery,
 			ConType:      conType,

@@ -9,7 +9,7 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	server_api "github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 // Appender creates a new Appender for the given table.
@@ -57,11 +57,23 @@ func (conn *Conn) AppenderSync(ctx context.Context, tableName string, opts ...ap
 
 	// make a new internal connection to avoid MACH-ERR 2118
 	// MACH-ERR 2118 Lock object was already initialized. (Do not use select and append simultaneously in single session.)
-	if queryCon, err := conn.db.Connect(ctx, api.WithTrustUser(userName)); err != nil {
-		return nil, err
+	var queryCon api.Conn
+	if conn.password != "" {
+		if conn, err := conn.db.Connect(ctx, api.WithPassword(conn.username, conn.password), api.WithProxyUser(userName)); err != nil {
+			return nil, err
+		} else {
+			queryCon = conn
+		}
 	} else {
-		defer queryCon.Close()
+		if conn, err := conn.db.Connect(ctx, api.WithAuthKey("sys", conn.key), api.WithProxyUser(userName)); err != nil {
+			return nil, err
+		} else {
+			queryCon = conn
+		}
+	}
+	defer queryCon.Close()
 
+	{
 		// table type
 		var describeTableSql = api.SqlTidy(
 			`SELECT
@@ -129,7 +141,7 @@ func (conn *Conn) AppenderSync(ctx context.Context, tableName string, opts ...ap
 		mach.EngFreeStmt(appender.stmt)
 		return nil, err
 	}
-	server_api.AllocAppender()
+	spi.AllocAppender()
 
 	colCount, err := mach.EngColumnCount(appender.stmt)
 	if err != nil {
@@ -247,7 +259,7 @@ func (ap *Appender) CloseSync() (int64, int64, error) {
 	}
 	ap.closed = true
 	var err error
-	server_api.FreeAppender()
+	spi.FreeAppender()
 	ap.successCount, ap.failCount, err = mach.EngAppendClose(ap.stmt)
 	if err != nil {
 		return ap.successCount, ap.failCount, err

@@ -2,6 +2,7 @@ package testsuite
 
 import (
 	"context"
+	"crypto"
 	_ "embed"
 	"fmt"
 	"math/rand"
@@ -17,7 +18,8 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 type TestCase func(*testing.T, api.Database, context.Context)
@@ -89,7 +91,10 @@ func DropTestTables(db api.Database) error {
 func CreateTestTables(db api.Database) error {
 	// create test tables
 	ctx := context.TODO()
-	conn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	if err != nil {
+		return err
+	}
 	defer conn.Close()
 
 	result := conn.Exec(ctx, api.SqlTidy(`
@@ -159,6 +164,7 @@ type Server struct {
 	machsvrDatabase *machsvr.Database
 	machsvrDataDir  string
 	machsvrPort     int
+	machsvrKey      crypto.PrivateKey
 	machgoDatabase  *machgo.Database
 }
 
@@ -232,12 +238,39 @@ func (s *Server) StartServer() {
 
 	ctx := context.TODO()
 
+	pair, err := machgo.GenerateAuthKeyPair()
+	if err != nil {
+		panic(err)
+	}
+
+	privPath, pubPath, err := pair.WriteFiles(homePath, "authkey_test")
+	if err != nil {
+		panic(err)
+	}
+	// just to verify the generated key file is valid
+	privKey, err := machgo.LoadPrivateKeyFromFile(privPath)
+	if err != nil {
+		panic(err)
+	}
+	s.machsvrKey = privKey
+
+	pubKeyContent, err := os.ReadFile(pubPath)
+	if err != nil {
+		panic(err)
+	}
+
 	// trace_log_level
-	conn, err := s.machsvrDatabase.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := s.machsvrDatabase.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		panic(err)
 	}
 	result := conn.Exec(ctx, "alter system set trace_log_level=1023")
+	if result.Err() != nil {
+		panic(result.Err())
+	}
+	result = conn.Exec(ctx,
+		fmt.Sprintf("alter user sys add auth key (key='%s', valid_before='2100-01-01', comment='test key')",
+			string(pubKeyContent)))
 	if result.Err() != nil {
 		panic(result.Err())
 	}
@@ -247,13 +280,14 @@ func (s *Server) StartServer() {
 	if db, err := machgo.NewDatabase(&machgo.Config{
 		Host:         "127.0.0.1",
 		Port:         s.machsvrPort,
-		TrustUsers:   map[string]string{"sys": "manager"},
 		MaxOpenConn:  -1,
 		MaxOpenQuery: -1,
 	}); err != nil {
 		panic(err)
 	} else {
 		s.machgoDatabase = db
+		spi.SetDefault(db)
+		spi.SetDefaultKey(privKey)
 	}
 }
 
@@ -304,6 +338,10 @@ func Database_machsvr(t TestingT) api.Database {
 
 func (s *Server) DatabaseSVR() api.Database {
 	return s.machsvrDatabase
+}
+
+func (s *Server) DatabaseKey() crypto.PrivateKey {
+	return s.machsvrKey
 }
 
 func (s *Server) DatabaseGO() api.Database {

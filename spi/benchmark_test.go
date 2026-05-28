@@ -1,4 +1,4 @@
-package api_test
+package spi_test
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +15,7 @@ func BenchmarkTagDataAppend(b *testing.B) {
 	db := testsuite.Database_machsvr(b)
 
 	ctx := b.Context()
-	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(b, err, "connect fail")
 	defer conn.Close()
 
@@ -47,7 +47,7 @@ func BenchmarkTagSimpleAppend(b *testing.B) {
 	db := testsuite.Database_machsvr(b)
 
 	ctx := b.Context()
-	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(b, err, "connect fail")
 	defer conn.Close()
 

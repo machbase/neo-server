@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	logging "github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -37,7 +36,6 @@ type Service struct {
 	log       logging.Log
 	crons     *cron.Cron
 	tqlLoader tql.Loader
-	db        api.Database
 	verbose   bool
 
 	models model.ScheduleProvider
@@ -54,12 +52,6 @@ func WithProvider(provider model.ScheduleProvider) Option {
 func WithTqlLoader(ldr tql.Loader) Option {
 	return func(s *Service) {
 		s.tqlLoader = ldr
-	}
-}
-
-func WithDatabase(db api.Database) Option {
-	return func(s *Service) {
-		s.db = db
 	}
 }
 

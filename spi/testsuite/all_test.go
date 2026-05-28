@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
 )
 
 var testServer *testsuite.Server
