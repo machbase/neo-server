@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"testing"
+	"time"
 )
 
 type failingProcFS struct {
@@ -124,6 +125,49 @@ func TestCreateCurrentProcessEntryFailsOnStatusWrite(t *testing.T) {
 		if len(entries) != 0 {
 			t.Fatalf("process dir should be empty after cleanup, got %d entries", len(entries))
 		}
+	}
+}
+
+func TestProcessEntryRemoveDoesNotDeleteConcurrentTmp(t *testing.T) {
+	procFS := NewVirtualFS()
+	jr := newProcTestRuntime(t, procFS, map[string]any{
+		"PWD":                "/work",
+		ControllerAddressEnv: "stub://controller",
+	})
+	if err := jr.filesystem.Mkdir("/proc/process"); err != nil {
+		t.Fatalf("Mkdir(process) error = %v", err)
+	}
+	if err := jr.filesystem.Mkdir("/proc/process/1234"); err != nil {
+		t.Fatalf("Mkdir(process/1234) error = %v", err)
+	}
+
+	entry := &procProcessEntry{
+		jr:        jr,
+		baseDir:   "/proc/process/1234",
+		pid:       1234,
+		startedAt: time.Unix(100, 0),
+	}
+	if err := entry.writeMeta(procProcessMeta{Pid: 1234, StartedAt: formatProcProcessTime(entry.startedAt)}); err != nil {
+		t.Fatalf("writeMeta() error = %v", err)
+	}
+	if err := entry.writeStatus("running"); err != nil {
+		t.Fatalf("writeStatus() error = %v", err)
+	}
+	if err := jr.filesystem.WriteFile("/proc/process/1234/.meta.json.tmp", []byte("{}")); err != nil {
+		t.Fatalf("WriteFile(.meta.json.tmp) error = %v", err)
+	}
+
+	if err := entry.remove(); err != nil {
+		t.Fatalf("remove() error = %v", err)
+	}
+	if _, err := jr.filesystem.Stat("/proc/process/1234/.meta.json.tmp"); err != nil {
+		t.Fatalf("concurrent tmp file should remain, stat error = %v", err)
+	}
+	if _, err := jr.filesystem.Stat("/proc/process/1234/meta.json"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("meta.json stat error = %v, want not exist", err)
+	}
+	if _, err := jr.filesystem.Stat("/proc/process/1234/status.json"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("status.json stat error = %v, want not exist", err)
 	}
 }
 

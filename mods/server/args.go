@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 func Main(args []string) int {
@@ -57,7 +57,7 @@ func doServe(preset string, headless bool, doNotExit bool) int {
 	booter.SetConfigFileSuffix(".conf")
 	booter.SetFallbackConfig(DefaultFallbackConfig)
 	booter.SetFallbackPname(DefaultFallbackPname)
-	booter.SetVersionString(mods.VersionString() + " " + mach.LinkInfo())
+	booter.SetVersionString(mods.VersionString() + " " + machsvr.LinkInfo())
 	booter.Startup()
 	booter.WaitSignal()
 	if doNotExit {

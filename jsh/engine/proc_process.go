@@ -13,6 +13,16 @@ import (
 	"time"
 )
 
+// procDebugLog prints a timestamped debug line to stderr when PROC_ENTRY_DEBUG=1.
+var procEntryDebug = os.Getenv("PROC_ENTRY_DEBUG") == "1"
+
+func procDebugLog(format string, args ...any) {
+	if !procEntryDebug {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[proc-entry-debug] %s %s\n", time.Now().Format("15:04:05.000000"), fmt.Sprintf(format, args...))
+}
+
 const procProcessRoot = "process"
 
 type procProcessMeta struct {
@@ -107,16 +117,21 @@ func (jr *JSRuntime) createProcProcessEntry(meta procProcessMeta) (*procProcessE
 	if err := jr.filesystem.Mkdir(entry.baseDir); err != nil {
 		return nil, err
 	}
+	procDebugLog("pid=%d Mkdir done: %s", meta.Pid, entry.baseDir)
 
 	meta.StartedAt = formatProcProcessTime(entry.startedAt)
 	if err := entry.writeMeta(meta); err != nil {
+		procDebugLog("pid=%d writeMeta failed: %v", meta.Pid, err)
 		_ = entry.remove()
 		return nil, err
 	}
+	procDebugLog("pid=%d writeMeta done", meta.Pid)
 	if err := entry.writeStatus("running"); err != nil {
+		procDebugLog("pid=%d writeStatus(running) failed: %v", meta.Pid, err)
 		_ = entry.remove()
 		return nil, err
 	}
+	procDebugLog("pid=%d writeStatus(running) done", meta.Pid)
 	return entry, nil
 }
 
@@ -135,13 +150,25 @@ func (jr *JSRuntime) cleanupStaleProcessEntries(mountPoint string) error {
 		if entryName == "" || entryName == "." || entryName == ".." || strings.Contains(entryName, "/") {
 			continue
 		}
-		if _, convErr := strconv.Atoi(entryName); convErr != nil {
+		entryPid, convErr := strconv.Atoi(entryName)
+		if convErr != nil {
 			continue
 		}
 		pidDir := pathpkg.Join(rootDir, entryName)
 		metaBytes, metaErr := jr.filesystem.ReadFile(pathpkg.Join(pidDir, "meta.json"))
 		statusBytes, statusErr := jr.filesystem.ReadFile(pathpkg.Join(pidDir, "status.json"))
 		if metaErr != nil || statusErr != nil {
+			// meta.json or status.json is missing. This can happen when the creator
+			// is still in the middle of writing the entry (Mkdir completed but
+			// WriteFile/Rename not yet done). Since the directory name IS the PID,
+			// skip the entry if that process is still alive to avoid a race where
+			// we delete files that are being actively written. Only remove if the
+			// PID is definitely gone.
+			alive := procProcessExists(entryPid)
+			procDebugLog("cleanup: pid=%d meta/status missing (metaErr=%v statusErr=%v) alive=%v", entryPid, metaErr, statusErr, alive)
+			if alive {
+				continue
+			}
 			_ = jr.removeProcessEntryDir(pidDir)
 			continue
 		}
@@ -149,10 +176,12 @@ func (jr *JSRuntime) cleanupStaleProcessEntries(mountPoint string) error {
 		var meta procProcessMeta
 		var status procProcessStatus
 		if json.Unmarshal(metaBytes, &meta) != nil || json.Unmarshal(statusBytes, &status) != nil {
+			procDebugLog("cleanup: pid=%d unmarshal failed, remove", entryPid)
 			_ = jr.removeProcessEntryDir(pidDir)
 			continue
 		}
 		if meta.Pid <= 0 || status.Pid != meta.Pid || !procProcessExists(meta.Pid) {
+			procDebugLog("cleanup: pid=%d stale (meta.Pid=%d status.Pid=%d exists=%v), remove", entryPid, meta.Pid, status.Pid, procProcessExists(meta.Pid))
 			_ = jr.removeProcessEntryDir(pidDir)
 		}
 	}
@@ -178,12 +207,45 @@ func (entry *procProcessEntry) finish(exitCode int) {
 	if exitCode != 0 {
 		state = "failed"
 	}
-	_ = entry.writeStatus(state)
-	_ = entry.remove()
+	procDebugLog("pid=%d finish(%s) start", entry.pid, state)
+	if err := entry.writeStatus(state); err != nil {
+		procDebugLog("pid=%d finish writeStatus failed: %v", entry.pid, err)
+	}
+	if err := entry.remove(); err != nil {
+		procDebugLog("pid=%d finish remove failed: %v", entry.pid, err)
+	}
+	procDebugLog("pid=%d finish done", entry.pid)
 }
 
 func (entry *procProcessEntry) remove() error {
-	return entry.jr.removeProcessEntryDir(entry.baseDir)
+	return entry.removeOwnedFiles()
+}
+
+func (entry *procProcessEntry) removeOwnedFiles() error {
+	for _, child := range []string{"meta.json", "status.json"} {
+		childPath := pathpkg.Join(entry.baseDir, child)
+		if !entry.ownsProcessEntryFile(childPath) {
+			continue
+		}
+		if err := entry.jr.filesystem.Remove(childPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (entry *procProcessEntry) ownsProcessEntryFile(name string) bool {
+	body, err := entry.jr.filesystem.ReadFile(name)
+	if err != nil {
+		return false
+	}
+	var probe struct {
+		StartedAt string `json:"started_at"`
+	}
+	if json.Unmarshal(body, &probe) != nil {
+		return false
+	}
+	return probe.StartedAt == formatProcProcessTime(entry.startedAt)
 }
 
 func (entry *procProcessEntry) writeJSONAtomic(name string, value any) error {
@@ -195,19 +257,29 @@ func (entry *procProcessEntry) writeJSONAtomic(name string, value any) error {
 
 	targetPath := pathpkg.Join(entry.baseDir, name)
 	tmpPath := pathpkg.Join(entry.baseDir, "."+name+".tmp")
+	procDebugLog("pid=%d writeJSONAtomic(%s): WriteFile %s", entry.pid, name, tmpPath)
 	if err := entry.jr.filesystem.WriteFile(tmpPath, body); err != nil {
+		procDebugLog("pid=%d writeJSONAtomic(%s): WriteFile failed: %v", entry.pid, name, err)
 		return err
 	}
-	if _, err := entry.jr.filesystem.Stat(targetPath); err == nil {
+	_, statErr := entry.jr.filesystem.Stat(targetPath)
+	procDebugLog("pid=%d writeJSONAtomic(%s): Stat(%s) err=%v", entry.pid, name, targetPath, statErr)
+	if statErr == nil {
+		procDebugLog("pid=%d writeJSONAtomic(%s): Remove %s", entry.pid, name, targetPath)
 		if err := entry.jr.filesystem.Remove(targetPath); err != nil {
+			procDebugLog("pid=%d writeJSONAtomic(%s): Remove failed: %v", entry.pid, name, err)
 			_ = entry.jr.filesystem.Remove(tmpPath)
 			return err
 		}
+		procDebugLog("pid=%d writeJSONAtomic(%s): Remove done", entry.pid, name)
 	}
+	procDebugLog("pid=%d writeJSONAtomic(%s): Rename %s -> %s", entry.pid, name, tmpPath, targetPath)
 	if err := entry.jr.filesystem.Rename(tmpPath, targetPath); err != nil {
+		procDebugLog("pid=%d writeJSONAtomic(%s): Rename FAILED: %v", entry.pid, name, err)
 		_ = entry.jr.filesystem.Remove(tmpPath)
 		return err
 	}
+	procDebugLog("pid=%d writeJSONAtomic(%s): Rename done", entry.pid, name)
 	return nil
 }
 
