@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
+	"github.com/machbase/neo-client/api"
 )
 
 func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
@@ -120,6 +121,9 @@ func Configure(c Config) error {
 	c.accessToken = rspData.AccessToken
 	c.refreshToken = rspData.RefreshToken
 
+	if username, proxyed := api.ParseUserName(c.User); username.Proxy != "" && proxyed {
+		c.User = username.Proxy
+	}
 	rpcPayload := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "service.port.list",
