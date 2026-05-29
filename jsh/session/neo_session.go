@@ -27,9 +27,10 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 }
 
 type Config struct {
-	Server   string
-	User     string
-	Password string
+	Server       string
+	User         string
+	Password     string
+	IdentityFile string
 
 	httpProto string
 	httpHost  string
@@ -293,17 +294,26 @@ func GetHttpRefreshToken() string {
 }
 
 type MachCliConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	User         string `json:"user"`
+	Password     string `json:"password"`
+	IdentityFile string `json:"identityFile,omitempty"`
 }
 
 func GetMachCliConfig() MachCliConfig {
+	password := defaultSession.Password
+	identityFile := defaultSession.IdentityFile
+	if identityFile != "" && strings.HasPrefix(password, "$otp$") {
+		// If IdentityFile is provided and password is OTP,
+		// use auth key pair for authentication and ignore the OTP password.
+		password = ""
+	}
 	return MachCliConfig{
-		Host:     defaultSession.machHost,
-		Port:     defaultSession.machPort,
-		User:     defaultSession.User,
-		Password: defaultSession.Password,
+		Host:         defaultSession.machHost,
+		Port:         defaultSession.machPort,
+		User:         defaultSession.User,
+		Password:     password,
+		IdentityFile: identityFile,
 	}
 }

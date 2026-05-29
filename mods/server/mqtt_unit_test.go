@@ -27,11 +27,11 @@ func (s *mqttTestAuthServer) ValidateClientCertificate(clientId string, certHash
 	return false, nil
 }
 
-func (s *mqttTestAuthServer) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, string, error) {
-	return false, "", nil
+func (s *mqttTestAuthServer) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error) {
+	return false, nil
 }
 
-func (s *mqttTestAuthServer) ValidateUserPassword(user string, password string) (bool, string, error) {
+func (s *mqttTestAuthServer) ValidateUserPassword(ctx context.Context, user string, password string) (bool, string, error) {
 	return false, "", nil
 }
 

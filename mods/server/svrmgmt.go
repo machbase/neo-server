@@ -747,7 +747,7 @@ type LimitSessionRequest struct {
 	Cmd          string `json:"cmd"`                    // get, set
 	MaxOpenConn  int32  `json:"maxOpenConn,omitempty"`  // set
 	MaxOpenQuery int32  `json:"maxOpenQuery,omitempty"` // set
-	MaxPoolSize  int32  `json:"maxPoolSize,omitempty"`  // set
+	MaxPoolSize  int32  `json:"maxPoolSize,omitempty"`  // set -- deprecated, machsvr async worker is removed.
 }
 
 type LimitSessionResponse struct {
@@ -758,7 +758,7 @@ type LimitSessionResponse struct {
 	RemainedOpenConn  int32  `json:"remainedOpenConn,omitempty"`  // get
 	MaxOpenQuery      int32  `json:"maxOpenQuery,omitempty"`      // get
 	RemainedOpenQuery int32  `json:"remainedOpenQuery,omitempty"` // get
-	MaxPoolSize       int32  `json:"maxPoolSize,omitempty"`       // get
+	MaxPoolSize       int32  `json:"maxPoolSize,omitempty"`       // get -- deprecated, machsvr async worker is removed.
 }
 
 func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*LimitSessionResponse, error) {
@@ -780,13 +780,9 @@ func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*L
 			if limit := int(req.MaxOpenQuery); limit >= -1 {
 				db.SetMaxOpenQuery(limit)
 			}
-			if limit := int(req.MaxPoolSize); limit >= -1 {
-				db.SetWorkerPoolSize(limit)
-			}
 		}
 		limitConn, remainsConn := db.MaxOpenConn()
 		limitQuery, remainsQuery := db.MaxOpenQuery()
-		rsp.MaxPoolSize = int32(db.WorkerPoolSize())
 		rsp.MaxOpenConn = int32(limitConn)
 		rsp.RemainedOpenConn = int32(remainsConn)
 		rsp.MaxOpenQuery = int32(limitQuery)

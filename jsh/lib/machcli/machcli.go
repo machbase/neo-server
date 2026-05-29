@@ -2,8 +2,10 @@ package machcli
 
 import (
 	"context"
+	"crypto"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/dop251/goja"
@@ -35,16 +37,18 @@ type Config struct {
 	Port            int    `json:"port"`
 	User            string `json:"user"`
 	Password        string `json:"password"`
+	IdentityFile    string `json:"identityFile,omitempty"`
 	AlternativeHost string `json:"alternativeHost,omitempty"`
 	AlternativePort int    `json:"alternativePort,omitempty"`
 }
 
 type Database struct {
-	Ctx      context.Context
-	Cancel   context.CancelFunc
-	cli      *machgo.Database
-	user     string
-	password string
+	Ctx        context.Context
+	Cancel     context.CancelFunc
+	cli        *machgo.Database
+	user       string
+	password   string
+	privateKey crypto.PrivateKey
 }
 
 func NewDatabase(data string) (*Database, error) {
@@ -77,13 +81,30 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
+	var privateKey crypto.PrivateKey
+	if obj.IdentityFile != "" {
+		if strings.HasPrefix(obj.IdentityFile, "@") {
+			// path is os filesystem
+			path := strings.TrimPrefix(obj.IdentityFile, "@")
+			if key, err := machgo.LoadPrivateKeyFromFile(path); err == nil {
+				privateKey = key
+			} else {
+				return nil, err
+			}
+		} else {
+			// path is virtual filesystem
+			// TODO: load private key from virtual filesystem
+			return nil, fmt.Errorf("loading private key from virtual filesystem is not supported yet")
+		}
+	}
 	derivedCtx, cancel := context.WithCancel(ctx)
 	return &Database{
-		Ctx:      derivedCtx,
-		Cancel:   cancel,
-		cli:      db,
-		user:     strings.ToUpper(obj.User),
-		password: obj.Password,
+		Ctx:        derivedCtx,
+		Cancel:     cancel,
+		cli:        db,
+		user:       strings.ToUpper(obj.User),
+		password:   obj.Password,
+		privateKey: privateKey,
 	}, nil
 }
 
@@ -98,7 +119,13 @@ func (db *Database) User() string {
 func (db *Database) Connect() (*machgo.Conn, error) {
 	ctx, cancel := context.WithCancel(db.Ctx)
 	defer cancel()
-	conn, err := db.cli.Connect(ctx, api.WithPassword(db.user, db.password))
+	var conn api.Conn
+	var err error
+	if db.privateKey != nil {
+		conn, err = db.cli.Connect(ctx, api.WithAuthKey("sys", db.privateKey), api.WithProxyUser(db.user))
+	} else {
+		conn, err = db.cli.Connect(ctx, api.WithPassword(db.user, db.password))
+	}
 	if err != nil {
 		return nil, err
 	}

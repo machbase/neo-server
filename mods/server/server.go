@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -17,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math/rand"
 	"net"
 	"net/url"
 	"os"
@@ -46,7 +46,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"golang.org/x/crypto/ssh"
@@ -79,8 +78,6 @@ type Server struct {
 
 	models model.Service
 
-	cachedServerPrivateKey crypto.PrivateKey
-
 	startupTime      time.Time
 	servicePorts     map[string][]*model.ServicePort
 	servicePortsLock sync.RWMutex
@@ -89,12 +86,8 @@ type Server struct {
 	prefDirPath           string
 	homeDirPath           string
 	authorizedSshKeysLock sync.RWMutex
-	genSnowflake          *snowflake.Node
-	snowflakes            []string
 
-	neoShellAddress   string
-	neoShellAccountMu sync.RWMutex
-	neoShellAccount   map[string]string
+	neoShellAddress string
 
 	// test purpose only, not set in normal execution
 	binExecutable string
@@ -114,11 +107,10 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:          *conf,
-		servicePorts:    make(map[string][]*model.ServicePort),
-		proxyMgr:        NewProxyManager(),
-		neoShellAccount: make(map[string]string),
-		rpcController:   &service.Controller{},
+		Config:        *conf,
+		servicePorts:  make(map[string][]*model.ServicePort),
+		proxyMgr:      NewProxyManager(),
+		rpcController: &service.Controller{},
 	}, nil
 }
 
@@ -145,11 +137,6 @@ func (s *Server) Start() error {
 
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
-
-	s.genSnowflake, _ = snowflake.NewNode(0)
-	for i := 0; i < 11; i++ {
-		s.snowflakes = append(s.snowflakes, s.genSnowflake.Generate().Base64())
-	}
 
 	HeadOnly = strings.HasPrefix(s.DataDir, "machbase://")
 
@@ -2102,19 +2089,15 @@ func (s *Server) ServerPublicKey() (any, error) {
 	}
 	switch p := priKey.(type) {
 	case *rsa.PrivateKey:
-		return p.PublicKey, nil
+		return &p.PublicKey, nil
 	case *ecdsa.PrivateKey:
-		return p.PublicKey, nil
+		return &p.PublicKey, nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %T", priKey)
 	}
 }
 
 func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
-	if s.cachedServerPrivateKey != nil {
-		return s.cachedServerPrivateKey, nil
-	}
-
 	buff, err := os.ReadFile(s.ServerPrivateKeyPath())
 	if err != nil {
 		return nil, err
@@ -2124,9 +2107,6 @@ func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
 	priKey, err := x509.ParseECPrivateKey(block.Bytes)
 	if err != nil {
 		return nil, err
-	}
-	if priKey != nil {
-		s.cachedServerPrivateKey = priKey
 	}
 	return priKey, nil
 }
@@ -2352,11 +2332,31 @@ func ConvertSshPublicKeyToPem(publicKey ssh.PublicKey) (string, error) {
 	return pubPemStr, nil
 }
 
-func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, string, error) {
+func (s *Server) compareUserPublicKeyWithServerKey(publicKey ssh.PublicKey) bool {
+	// check server public key first, if client public key matches with server public key.
+	skey := spi.DefaultKey()
+	// Compare server public key with client key, and allow OTP only when matched.
+	if signer, ok := skey.(crypto.Signer); ok {
+		if serverPublicKey, err := ssh.NewPublicKey(signer.Public()); err == nil &&
+			serverPublicKey.Type() == publicKey.Type() &&
+			bytes.Equal(serverPublicKey.Marshal(), publicKey.Marshal()) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error) {
+	// check server public key first, if client public key matches with server public key.
+	if s.compareUserPublicKeyWithServerKey(publicKey) {
+		s.log.Debugf("%q public key authorized with server key", user)
+		return true, nil
+	}
+	// check authorized ssh keys in file, if client public key matches with any authorized key.
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
 		s.log.Warnf("ssh %q public key", user, err.Error())
-		return false, "", err
+		return false, err
 	}
 
 	keyType := publicKey.Type()
@@ -2364,69 +2364,51 @@ func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicK
 	for _, rec := range list {
 		if rec.KeyType == keyType && rec.Key == keyStr {
 			s.log.Debugf("ssh %q public key authorized: %s %s", user, rec.KeyType, rec.Fingerprint)
-			return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
+			return true, nil
 		}
 	}
 
 	pubPemStr, err := ConvertSshPublicKeyToPem(publicKey)
 	if err != nil {
 		s.log.Warnf("ssh %q public key to pem, %s", user, err.Error())
-		return false, "", err
+		return false, err
 	}
 
 	// find the matched key from database, v$user_auth_keys.
 	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Warnf("db server key auth fail, %s", err.Error())
-		return false, "", err
+		return false, err
 	}
 	defer conn.Close()
 
 	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
 	if nfo != nil && err == nil {
 		s.log.Debugf("db %q public key authorized: %s", user, nfo.Comment)
-		return true, "", nil
+		return true, nil
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			s.log.Warnf("db %q public key not found", user)
-			return false, "", nil
+			// user's public key not found in database
+			return false, nil
 		}
 		s.log.Warnf("db %q public key, %s", user, err.Error())
-		return false, "", err
-	}
-	return false, "", nil
-}
-
-func (s *Server) ValidateUserPassword(user string, password string) (bool, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	passed, reason, err := spi.Default().UserAuth(ctx, user, password)
-	if err != nil {
-		return false, "", err
-	} else if !passed {
-		return false, reason, nil
-	} else {
-		return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
-	}
-}
-
-func (s *Server) ValidateUserOtp(user string, otp string) (bool, error) {
-	for _, n := range s.snowflakes {
-		if otp == n {
-			return true, nil
-		}
+		return false, err
 	}
 	return false, nil
 }
 
-func (s *Server) GenerateOtp(user string) (string, error) {
-	return s.snowflakes[rand.Intn(len(s.snowflakes))], nil
-}
-
-func (s *Server) GenerateSnowflake() string {
-	return s.genSnowflake.Generate().Base64()
+// it returns (isValid, reason, token)
+func (s *Server) ValidateUserPassword(ctx context.Context, user string, password string) (bool, string, error) {
+	// if password is otp that issued by ssh server
+	if strings.HasPrefix(password, "$otp$") {
+		otp := strings.TrimPrefix(password, "$otp$")
+		if spi.VerifyToken(otp, 0) {
+			return true, "one-time password authorized", nil
+		}
+	}
+	// otherwise, check password with database
+	return spi.Default().UserAuth(ctx, user, password)
 }
 
 func (s *Server) runSqlScriptFile(title string, path string) error {

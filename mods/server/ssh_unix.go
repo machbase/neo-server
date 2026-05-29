@@ -14,14 +14,13 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 const useAlternativeNoPtyShell = false
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user, shell, shellId := svr.findShell(ss)
-	svr.log.Debugf("shell open %s from %s", user, ss.RemoteAddr())
+	user, shell, cleanupSecret := svr.findAndConfigureShell(ss)
+	defer cleanupSecret()
 
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
@@ -31,8 +30,8 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 	ptyReq, winCh, isPty := ss.Pty()
 
-	if !isPty && strings.ToLower(user) == "sys" {
-		if !useAlternativeNoPtyShell {
+	if !isPty {
+		if !useAlternativeNoPtyShell || strings.ToLower(user) != "sys" {
 			io.WriteString(ss, "No PTY configured.\n")
 			ss.Exit(1)
 			return
@@ -45,41 +44,6 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 			shell.Cmd = "/bin/sh"
 			shell.Args = []string{}
 			shell.Envs = append(shell.Envs, "SHELL="+shell.Cmd)
-		}
-		// If the user is sys and the pty is not requested,
-		// we can set the TERM env to "dumb" to avoid some issues with non-pty shells.
-		//
-		// Note: If some envs are not to be set for non-pty shells, we can filter them here.
-		//
-		// filtered := []string{}
-		// for _, env := range shell.Envs {
-		// 	if strings.HasPrefix(env, "TERM") || strings.Contains(env, "TERM=") {
-		// 		continue
-		// 	}
-		// 	filtered = append(filtered, env)
-		// }
-		// shell.Envs = filtered
-	} else {
-		if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
-			// ssh context contains the password only when it provided by the client.
-			// If it contains the password, the client is web terminal.
-			// If the clients is ssh client, the password is not provided in the context for security reason.
-			secretPassword := ""
-			pass := ss.Context().Value(sshContextPasswordKey)
-			if password, ok := pass.(string); ok && password != "" {
-				secretPassword = password
-			}
-			secretEnv := []string{"NEOSHELL_USER", user}
-			if secretPassword != "" {
-				secretEnv = append(secretEnv, "NEOSHELL_PASSWORD", secretPassword)
-			}
-			cleanupSecret := svr.appendNeoShellSecretEnv(shell, secretEnv...)
-			defer cleanupSecret()
-
-			if svr.authServer.serviceController != nil {
-				shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",
-					svr.authServer.serviceController.Address()))
-			}
 		}
 	}
 

@@ -884,12 +884,8 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		if svr.authServer == nil {
 			task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
 		} else {
-			svr.authServer.neoShellAccountMu.RLock()
-			password := svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)]
-			svr.authServer.neoShellAccountMu.RUnlock()
-			task.SetConsole(claim.Subject, consoleInfo.consoleId, password)
-			// otp, _ := svr.authServer.GenerateOtp(claim.Subject)
-			// task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+			otp := spi.IssueToken()
+			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
 		}
 	}
 	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)

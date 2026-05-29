@@ -38,11 +38,8 @@ func ParseProxyLoginName(loginName string) (string, string, bool) {
 type AuthServer interface {
 	ValidateClientToken(token string) (bool, error)
 	ValidateClientCertificate(clientId string, certHash string) (bool, error)
-	ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, string, error)
-	ValidateUserPassword(user string, password string) (bool, string, error)
-	ValidateUserOtp(user string, otp string) (bool, error)
-	GenerateOtp(user string) (string, error)
-	GenerateSnowflake() string
+	ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error)
+	ValidateUserPassword(ctx context.Context, user string, password string) (bool, string, error)
 	ServerPrivateKeyPath() string
 }
 

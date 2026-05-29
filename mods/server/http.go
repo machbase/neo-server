@@ -652,11 +652,6 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 		return
 	}
 
-	// cache username and password for web-terminal uses
-	svr.authServer.neoShellAccountMu.Lock()
-	svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
-	svr.authServer.neoShellAccountMu.Unlock()
-
 	rsp.Success = true
 	rsp.Reason = "success"
 	rsp.Elapse = time.Since(tick).String()
@@ -694,7 +689,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	passed, reason, err := spi.Default().UserAuth(ctx, username.Login, req.Password)
+	passed, reason, err := svr.authServer.ValidateUserPassword(ctx, username.Login, req.Password)
 	if err != nil {
 		svr.log.Warnf("database auth failed %s", err.Error())
 		rsp.Reason = "database error for user authentication"
@@ -720,11 +715,11 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	if svr.authServer != nil {
-		svr.authServer.neoShellAccountMu.Lock()
-		svr.authServer.neoShellAccount[strings.ToLower(username.Login)] = req.Password
-		svr.authServer.neoShellAccountMu.Unlock()
-	}
+	// if svr.authServer != nil {
+	// 	svr.authServer.neoShellAccountMu.Lock()
+	// 	svr.authServer.neoShellAccount[strings.ToLower(username.Login)] = req.Password
+	// 	svr.authServer.neoShellAccountMu.Unlock()
+	// }
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
@@ -1346,12 +1341,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 	termLoginName := claim.Subject
-	svr.authServer.neoShellAccountMu.RLock()
-	termPassword := svr.authServer.neoShellAccount[strings.ToLower(termLoginName)]
-	svr.authServer.neoShellAccountMu.RUnlock()
-	if len(termPassword) == 0 {
-		termPassword = "manager"
-	}
 	termAddress := svr.authServer.neoShellAddress
 	if len(termAddress) == 0 {
 		termAddress = "127.0.0.1:5652"
@@ -1375,7 +1364,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 
-	term, err := NewWebTerm(termAddress, userShell, termLoginName, termPassword)
+	term, err := NewWebTerm(termAddress, userShell, termLoginName)
 	if err != nil {
 		svr.log.Warnf("term conn %s", err.Error())
 		ctx.String(http.StatusBadGateway, err.Error())
@@ -1580,17 +1569,22 @@ type WebTerm struct {
 	userShell string
 }
 
-func NewWebTerm(hostPort string, userShell string, user string, password string) (*WebTerm, error) {
+func NewWebTerm(hostPort string, userShell string, user string) (*WebTerm, error) {
 	var loginString string
 	if len(userShell) > 0 {
 		loginString = fmt.Sprintf("%s:%s", user, userShell)
 	} else {
 		loginString = user
 	}
+	privateKey := spi.DefaultKey()
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("NewTerm signer, %s", err.Error())
+	}
 	conn, err := ssh.Dial("tcp", hostPort, &ssh.ClientConfig{
 		User: loginString,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
+			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil },
 	})
