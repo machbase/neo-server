@@ -474,11 +474,10 @@ func (s *Server) startMachbaseSvr() error {
 	}
 	conn.Close()
 
-	spi.SetDefault(db)
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
-		spi.SetDefaultKey(key)
+		spi.SetDefault(db, key)
 	}
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
@@ -520,11 +519,10 @@ func (s *Server) startMachbaseCli() error {
 		}
 	}
 
-	spi.SetDefault(db)
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
-		spi.SetDefaultKey(key)
+		spi.SetDefault(db, key)
 	}
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {

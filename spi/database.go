@@ -17,16 +17,13 @@ import (
 var defaultDatabase api.Database
 var defaultDatabaseKey crypto.PrivateKey
 
-func SetDefault(db api.Database) {
+func SetDefault(db api.Database, key crypto.PrivateKey) {
 	defaultDatabase = db
+	defaultDatabaseKey = key
 }
 
 func Default() api.Database {
 	return defaultDatabase
-}
-
-func SetDefaultKey(key crypto.PrivateKey) {
-	defaultDatabaseKey = key
 }
 
 func DefaultKey() crypto.PrivateKey {

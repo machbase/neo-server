@@ -286,8 +286,7 @@ func (s *Server) StartServer() {
 		panic(err)
 	} else {
 		s.machgoDatabase = db
-		spi.SetDefault(db)
-		spi.SetDefaultKey(privKey)
+		spi.SetDefault(db, privKey)
 	}
 }
 

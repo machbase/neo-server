@@ -21,8 +21,7 @@ func TestMain(m *testing.M) {
 	testServer.CreateTestTables()
 
 	db := testServer.DatabaseSVR()
-	spi.SetDefault(db)
-	spi.SetDefaultKey(testServer.DatabaseKey())
+	spi.SetDefault(db, testServer.DatabaseKey())
 
 	m.Run()
 
