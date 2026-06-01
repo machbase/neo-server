@@ -247,6 +247,12 @@ func TestPackageMetadataFunctions(t *testing.T) {
 }
 
 func TestResultMessageBranches(t *testing.T) {
+	t.Run("basic_accessors", func(t *testing.T) {
+		r := &Result{err: fmt.Errorf("boom"), affectedRows: 11}
+		require.Equal(t, int64(11), r.RowsAffected())
+		require.EqualError(t, r.Err(), "boom")
+	})
+
 	t.Run("error_message", func(t *testing.T) {
 		r := &Result{err: fmt.Errorf("boom")}
 		require.Equal(t, "boom", r.Message())
@@ -289,6 +295,18 @@ func TestResultMessageBranches(t *testing.T) {
 }
 
 func TestRowBasicBranches(t *testing.T) {
+	t.Run("err_columns_and_rows_affected", func(t *testing.T) {
+		typeErr := fmt.Errorf("row failed")
+		cols := api.Columns{{Name: "A"}}
+		row := &Row{err: typeErr, columns: cols, affectedRows: 3}
+
+		require.EqualError(t, row.Err(), "row failed")
+		gotCols, err := row.Columns()
+		require.NoError(t, err)
+		require.Equal(t, cols, gotCols)
+		require.Equal(t, int64(3), row.RowsAffected())
+	})
+
 	t.Run("success_and_values", func(t *testing.T) {
 		row := &Row{ok: true, values: []any{"v"}}
 		require.True(t, row.Success())
@@ -341,6 +359,35 @@ func TestRowBasicBranches(t *testing.T) {
 }
 
 func TestRowsNonEngineBranches(t *testing.T) {
+	t.Run("close_without_stmt_releases_slot", func(t *testing.T) {
+		ch := make(chan struct{}, 1)
+		rows := &Rows{sqlText: "select 1", returnChan: ch}
+
+		require.NoError(t, rows.Close())
+		require.Equal(t, "", rows.sqlText)
+
+		select {
+		case <-ch:
+		default:
+			t.Fatal("expected Close to signal return channel")
+		}
+	})
+
+	t.Run("columns_and_error_accessors", func(t *testing.T) {
+		cols := api.Columns{{Name: "VALUE"}}
+		rows := &Rows{columns: cols, fetchError: fmt.Errorf("fetch failed")}
+
+		gotCols, err := rows.Columns()
+		require.NoError(t, err)
+		require.Equal(t, cols, gotCols)
+		require.EqualError(t, rows.Err(), "fetch failed")
+	})
+
+	t.Run("rows_affected_nil_stmt", func(t *testing.T) {
+		rows := &Rows{stmtType: mach.StmtType(513)}
+		require.Equal(t, int64(0), rows.RowsAffected())
+	})
+
 	t.Run("query_limit_without_channel", func(t *testing.T) {
 		rows := &Rows{}
 		require.True(t, rows.QueryLimit(context.Background()))
@@ -392,6 +439,16 @@ func TestRowsNonEngineBranches(t *testing.T) {
 		require.Equal(t, "no rows selected.", rows.Message())
 	})
 
+	t.Run("message_ddl_fallback", func(t *testing.T) {
+		rows := &Rows{stmtType: mach.StmtType(1), sqlText: "grant something"}
+		require.Equal(t, "executed.", rows.Message())
+	})
+
+	t.Run("message_system_altered_fallback", func(t *testing.T) {
+		rows := &Rows{stmtType: mach.StmtType(256), sqlText: "set something"}
+		require.Equal(t, "system altered.", rows.Message())
+	})
+
 	t.Run("fetch_sync_non_select", func(t *testing.T) {
 		rows := &Rows{stmtType: mach.StmtType(513)}
 		vals, next, err := rows.FetchSync()
@@ -421,6 +478,14 @@ func TestAppenderSimpleBranches(t *testing.T) {
 		require.Equal(t, api.TableTypeTag, ap.TableType())
 	})
 
+	t.Run("columns_accessor", func(t *testing.T) {
+		expect := api.Columns{{Name: "NAME"}, {Name: "TIME"}}
+		ap := &Appender{columns: expect}
+		cols, err := ap.Columns()
+		require.NoError(t, err)
+		require.Equal(t, expect, cols)
+	})
+
 	t.Run("with_input_columns_maps_index", func(t *testing.T) {
 		ap := &Appender{columns: api.Columns{{Name: "TIME"}, {Name: "VALUE"}}}
 		ap.WithInputColumns("value", "time")
@@ -435,6 +500,50 @@ func TestAppenderSimpleBranches(t *testing.T) {
 		ap := &Appender{tableName: "X", tableType: api.TableType(-1)}
 		err := ap.Append(1)
 		require.EqualError(t, err, "X can not be appended")
+	})
+
+	t.Run("append_tag_without_columns", func(t *testing.T) {
+		ap := &Appender{tableName: "TAG_DATA", tableType: api.TableTypeTag}
+		err := ap.Append("name", time.Now(), 1.23)
+		require.EqualError(t, err, api.ErrDatabaseNoColumns("TAG_DATA").Error())
+	})
+
+	t.Run("append_log_without_columns", func(t *testing.T) {
+		ap := &Appender{tableName: "LOG_DATA", tableType: api.TableTypeLog}
+		err := ap.Append(time.Now(), 1.23)
+		require.EqualError(t, err, api.ErrDatabaseNoColumns("LOG_DATA").Error())
+	})
+
+	t.Run("append_with_input_columns_length_mismatch", func(t *testing.T) {
+		ap := &Appender{
+			tableName: "TAG_DATA",
+			tableType: api.TableTypeTag,
+			columns:   api.Columns{{Name: "NAME"}, {Name: "VALUE"}},
+		}
+		ap.WithInputColumns("name")
+		err := ap.append("a", 1)
+		require.EqualError(t, err, api.ErrDatabaseLengthOfColumns("TAG_DATA", 2, 2).Error())
+	})
+
+	t.Run("append_closed_appender", func(t *testing.T) {
+		ap := &Appender{
+			tableName: "TAG_DATA",
+			tableType: api.TableTypeTag,
+			closed:    true,
+			columns:   api.Columns{{Name: "NAME"}},
+		}
+		err := ap.append("a")
+		require.ErrorIs(t, err, api.ErrDatabaseClosedAppender)
+	})
+
+	t.Run("append_without_connection", func(t *testing.T) {
+		ap := &Appender{
+			tableName: "TAG_DATA",
+			tableType: api.TableTypeTag,
+			columns:   api.Columns{{Name: "NAME"}},
+		}
+		err := ap.append("a")
+		require.ErrorIs(t, err, api.ErrDatabaseNoConnection)
 	})
 
 	t.Run("append_log_time_non_log", func(t *testing.T) {

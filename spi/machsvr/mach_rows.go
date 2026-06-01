@@ -200,6 +200,9 @@ func (rows *Rows) RowsAffected() int64 {
 	if rows.IsFetchable() {
 		return 0
 	}
+	if rows.stmt == nil {
+		return 0
+	}
 	nrow, err := mach.EngEffectRows(rows.stmt)
 	if err != nil {
 		return 0
