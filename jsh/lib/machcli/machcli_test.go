@@ -59,9 +59,9 @@ func TestDatabase(t *testing.T) {
 				}
 			`,
 			Output: []string{
-				"Created Table Message: ",
-				"Created View Message: ",
-				"Inserted rows: 1 Message: ",
+				"Created Table Message: table created.",
+				"Created View Message: view created.",
+				"Inserted rows: 1 Message: a row inserted.",
 			},
 		},
 		{

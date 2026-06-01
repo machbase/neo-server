@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 	testServer.StartServer()
 	testServer.CreateTestTables()
 
-	db := testServer.DatabaseSVR()
+	db := testServer.DatabaseGO()
 	spi.SetDefault(db, testServer.DatabaseKey())
 
 	m.Run()

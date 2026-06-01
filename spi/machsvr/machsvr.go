@@ -3,16 +3,20 @@ package machsvr
 import (
 	"context"
 	"crypto"
+	"crypto/x509"
 	"database/sql"
+	"encoding/pem"
 	"expvar"
 	"fmt"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/spi"
 
@@ -438,9 +442,9 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		case *api.ConnectOptionStatementCache:
 			// currently statement cache is only supported in prepared statements, so it is ignored here
 		case *api.ConnectOptionFetchRows:
-			// currently fetch rows in CLI is ignored, so it is ignored here
+			// currently fetch rows is ignored
 		case *api.ConnectOptionIOMetrics:
-			// currently IO metrics in CLI is ignored, so it is ignored here
+			// currently IO metrics ignored
 		case *api.ConnectOptionAuthKey:
 			ret.username = v.User
 			ret.key = v.Key
@@ -473,16 +477,46 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 
 	var handle unsafe.Pointer
 	if ret.key != nil {
+		// for auth key, we need to connect as sys user first to verify the key
+		// and get the proxy user if needed,
+		// then connect again as the real(proxy) user
+		sysConn := &Conn{
+			ctx:      ctx,
+			username: "sys",
+			db:       db,
+		}
+		if err := mach.EngConnectTrust(db.handle, "sys", &sysConn.handle); err != nil {
+			return nil, err
+		}
+		defer sysConn.Close()
+
+		pub := ret.key.(crypto.Signer).Public()
+		pubDER, err := x509.MarshalPKIXPublicKey(pub)
+		if err != nil {
+			return nil, err
+		}
+		pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+		if _, err := machgo.GetRegisteredAuthKey(ctx, sysConn, "sys", pubPEM); err != nil {
+			return nil, err
+		}
 		username := ret.username
-		if ret.proxyUser != "" {
+		if strings.ToLower(ret.username) == "sys" && ret.proxyUser != "" {
 			username = ret.proxyUser
 		}
 		if err := mach.EngConnectTrust(db.handle, username, &handle); err != nil {
 			return nil, err
 		}
 	} else {
+		// for password, we can connect directly
 		if err := mach.EngConnect(db.handle, ret.username, ret.password, &handle); err != nil {
 			return nil, err
+		}
+		if strings.ToLower(ret.username) == "sys" && ret.proxyUser != "" {
+			mach.EngDisconnect(handle)
+			// if the user is sys and proxy user is specified, we need to connect again as the proxy user
+			if err := mach.EngConnectTrust(db.handle, ret.proxyUser, &handle); err != nil {
+				return nil, err
+			}
 		}
 	}
 	ret.handle = handle
