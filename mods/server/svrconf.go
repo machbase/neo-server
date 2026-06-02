@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 func init() {
@@ -85,7 +85,7 @@ type Config struct {
 	NoBanner       bool
 	ExperimentMode bool
 
-	MachbaseInitOption mach.InitOption
+	MachbaseInitOption machsvr.InitOption
 	MaxPoolSize        int
 	MaxOpenConn        int
 	MaxOpenConnFactor  float64

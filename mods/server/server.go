@@ -33,7 +33,6 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -48,6 +47,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -122,10 +122,10 @@ func (s *Server) Executable() (string, error) {
 }
 
 func Restore(dataDir string, backupDir string) error {
-	if err := mach.Initialize(dataDir, 0, mach.OPT_SIGHANDLER_OFF); err != nil {
+	if err := machsvr.Initialize(dataDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		return err
 	}
-	if err := mach.RestoreDatabase(backupDir); err != nil {
+	if err := machsvr.RestoreDatabase(backupDir); err != nil {
 		return err
 	}
 	return nil
@@ -408,10 +408,9 @@ func (s *Server) Stop() {
 			s.log.Warnf("db close; %s", err.Error())
 		}
 	}
-	if err := mach.StopDatabase(); err != nil {
+	if err := machsvr.StopDatabase(); err != nil {
 		s.log.Warnf("db shutdown; %s", err.Error())
 	}
-	mach.Finalize()
 	s.log.Infof("shutdown.")
 }
 
@@ -431,40 +430,26 @@ func (s *Server) startMachbaseSvr() error {
 	}
 
 	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
-	if err := mach.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
+	if err := machsvr.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
 		return fmt.Errorf("initialize database failed, %s", err.Error())
 	}
-	if !mach.ExistsDatabase() {
+	if !machsvr.ExistsDatabase() {
 		s.log.Info("create database")
-		if err := mach.CreateDatabase(); err != nil {
+		if err := machsvr.CreateDatabase(); err != nil {
 			return fmt.Errorf("create database failed, %s", err.Error())
 		}
 		s.databaseCreated = true
 	}
 
-	if err := mach.StartDatabase(); err != nil {
+	// create database instance
+	sysdb, err := machsvr.StartDatabase(machsvr.DatabaseOption{})
+	if err != nil {
 		return fmt.Errorf("start database failed, %s", err.Error())
 	}
 
-	// create database instance
-	db, err := machgo.NewDatabase(&machgo.Config{
-		Host:               "127.0.0.1",
-		Port:               s.Machbase.PORT_NO,
-		MaxOpenConn:        s.Config.MaxOpenConn,
-		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
-		MaxOpenQuery:       s.Config.MaxOpenQuery,
-		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-		StatementCache:     api.StatementCacheAuto,
-	})
-	if err != nil {
-		return fmt.Errorf("database instance failed, %s", err.Error())
-	}
-	if db == nil {
-		return errors.New("database instance failed")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := sysdb.ConnectTrust(ctx, "sys")
 	if err != nil {
 		return fmt.Errorf("database connect failed, %s", err.Error())
 	}
@@ -474,6 +459,15 @@ func (s *Server) startMachbaseSvr() error {
 	}
 	conn.Close()
 
+	db, err := machgo.NewDatabase(&machgo.Config{
+		Host:               "127.0.0.1",
+		Port:               s.Machbase.PORT_NO,
+		MaxOpenConn:        s.Config.MaxOpenConn,
+		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
+		MaxOpenQuery:       s.Config.MaxOpenQuery,
+		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
+		StatementCache:     api.StatementCacheAuto,
+	})
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {

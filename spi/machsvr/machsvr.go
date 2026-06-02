@@ -100,6 +100,27 @@ func RestoreDatabase(path string) error {
 	return mach.EngRestoreDatabase(_env.handle, path)
 }
 
+func StartDatabase(opt DatabaseOption) (*Database, error) {
+	db, err := NewDatabase(DatabaseOption{})
+	if err != nil {
+		return nil, err
+	}
+	err = db.Startup()
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func StopDatabase() error {
+	if _env.database == nil {
+		return nil
+	}
+	err := _env.database.Shutdown()
+	Finalize()
+	return err
+}
+
 type DatabaseOption struct {
 	// MaxOpenConn
 	//
@@ -423,6 +444,22 @@ var _ api.Conn = (*Conn)(nil)
 func (conn *Conn) SetLatestSql(sql string) {
 	conn.latestTime = time.Now()
 	conn.latestSql = sql
+}
+
+func (db *Database) ConnectTrust(ctx context.Context, username string) (api.Conn, error) {
+	ret := &Conn{
+		ctx:        ctx,
+		db:         db,
+		returnChan: nil,
+		username:   username,
+	}
+	waitTime := time.Now()
+	if err := mach.EngConnectTrust(db.handle, username, &ret.handle); err != nil {
+		return nil, err
+	}
+	ret.connectTime = time.Now()
+	spi.AllocConn(time.Since(waitTime))
+	return ret, nil
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
