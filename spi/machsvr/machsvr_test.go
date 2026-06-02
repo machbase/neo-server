@@ -115,7 +115,7 @@ func startServer(ctx context.Context) {
 	}
 
 	// trace_log_level
-	conn, err := machsvrDB.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := machsvrDB.ConnectTrust(ctx, "sys")
 	if err != nil {
 		panic(err)
 	}
