@@ -885,7 +885,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
 		} else {
 			otp := spi.IssueToken()
-			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$"+otp)
 		}
 	}
 	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
