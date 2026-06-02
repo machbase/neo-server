@@ -15,12 +15,13 @@ import (
 )
 
 type Env struct {
-	writer      io.Writer
-	errorWriter io.Writer
-	reader      io.Reader
-	fs          fs.FS
-	execBuilder ExecBuilderFunc
-	vars        map[string]any
+	writer          io.Writer
+	errorWriter     io.Writer
+	reader          io.Reader
+	fs              fs.FS
+	execBuilder     ExecBuilderFunc
+	vars            map[string]any
+	lastRequireSpec string
 
 	aliases            map[string][]string
 	aliasCaseSensitive bool
@@ -296,6 +297,9 @@ func (env *Env) GlobalFolders() []string {
 }
 
 func (env *Env) PathResolver(base, path string) string {
+	if path != "package.json" && path != "index.js" && path != "index.json" {
+		env.lastRequireSpec = path
+	}
 	var resolved string
 	if strings.HasPrefix(path, "/") {
 		resolved = path

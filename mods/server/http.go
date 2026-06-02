@@ -29,7 +29,6 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
@@ -43,6 +42,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 	"github.com/machbase/neo-server/v8/mods/util/restclient"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/text/language"
@@ -50,10 +50,9 @@ import (
 )
 
 // Factory
-func NewHttp(db api.Database, options ...HttpOption) (*httpd, error) {
+func NewHttp(options ...HttpOption) (*httpd, error) {
 	s := &httpd{
 		log:      logging.GetLog("httpd"),
-		db:       db,
 		jwtCache: NewJwtCache(),
 		handlers: []*HandlerConfig{
 			{Prefix: "/db", Handler: "machbase"},
@@ -71,7 +70,6 @@ func NewHttp(db api.Database, options ...HttpOption) (*httpd, error) {
 
 type httpd struct {
 	log   logging.Log
-	db    api.Database
 	alive bool
 
 	listenAddresses []string
@@ -132,10 +130,6 @@ type HandlerConfig struct {
 }
 
 func (svr *httpd) Start() error {
-	if svr.db == nil {
-		return errors.New("no database instance")
-	}
-
 	svr.alive = true
 
 	if svr.debugMode {
@@ -374,7 +368,7 @@ func (svr *httpd) Router() *gin.Engine {
 	debugGroup := r.Group("/debug")
 	debugGroup.Use(svr.allowDebug)
 	debugGroup.Any("/pprof/*path", gin.WrapF(httpPprof.Index))
-	debugGroup.GET("/dashboard", gin.WrapF(server_api.DashboardHandler()))
+	debugGroup.GET("/dashboard", gin.WrapF(spi.DashboardHandler()))
 	debugGroup.GET("/statz", svr.handleStatz)
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
@@ -383,15 +377,14 @@ func (svr *httpd) Router() *gin.Engine {
 
 // for the internal processor
 func (svr *httpd) getTrustConnection(ctx *gin.Context) (api.Conn, error) {
-	// TODO handle API Token
-	return svr.db.Connect(ctx, api.WithTrustUser("sys"))
+	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 }
 
 // for the api called from web-client that authorized by JWT
 func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
 	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {
-		return svr.db.Connect(ctx, api.WithTrustUser(claim.Subject))
+		return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
 	} else {
 		return nil, errors.New("unauthorized db request")
 	}
@@ -511,6 +504,14 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 		MaxAge:          12 * time.Hour,
 	})
 	return corsHandler
+}
+
+func (svr *httpd) issueAccessTokenUsername(username api.UserName) (string, string, string, error) {
+	realUser := username.Login
+	if username.Proxy != "" {
+		realUser = username.Proxy
+	}
+	return svr.issueAccessToken(realUser)
 }
 
 func (svr *httpd) issueAccessToken(loginName string) (accessToken string, refreshToken string, refreshTokenId string, err error) {
@@ -633,7 +634,7 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := svr.db.Connect(ctx, api.WithTrustUser(claim.Subject))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -650,11 +651,6 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-
-	// cache username and password for web-terminal uses
-	svr.authServer.neoShellAccountMu.Lock()
-	svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)] = req.NewPassword
-	svr.authServer.neoShellAccountMu.Unlock()
 
 	rsp.Success = true
 	rsp.Reason = "success"
@@ -686,8 +682,14 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-
-	passed, reason, err := svr.db.UserAuth(ctx, req.LoginName, req.Password)
+	username, proxyed := api.ParseUserName(req.LoginName)
+	if username.Proxy != "" && !proxyed {
+		rsp.Reason = "proxy login is not allowed"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	passed, reason, err := svr.authServer.ValidateUserPassword(ctx, username.Login, req.Password)
 	if err != nil {
 		svr.log.Warnf("database auth failed %s", err.Error())
 		rsp.Reason = "database error for user authentication"
@@ -697,14 +699,14 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	if !passed {
-		svr.log.Tracef("'%s' login fail password mis-matched", req.LoginName)
+		svr.log.Tracef("'%s' login fail password mis-matched", username.Login)
 		rsp.Reason = reason
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 		return
 	}
 
-	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessToken(req.LoginName)
+	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessTokenUsername(username)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -713,11 +715,11 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	if svr.authServer != nil {
-		svr.authServer.neoShellAccountMu.Lock()
-		svr.authServer.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
-		svr.authServer.neoShellAccountMu.Unlock()
-	}
+	// if svr.authServer != nil {
+	// 	svr.authServer.neoShellAccountMu.Lock()
+	// 	svr.authServer.neoShellAccount[strings.ToLower(username.Login)] = req.Password
+	// 	svr.authServer.neoShellAccountMu.Unlock()
+	// }
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
@@ -880,7 +882,7 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		svr.licenseStatusLastTime = time.Now()
 		svr.licenseStatus = "Unknown"
 		if conn, err := svr.getUserConnection(ctx); err == nil {
-			if nfo, err := server_api.GetLicenseInfo(ctx, conn); err == nil {
+			if nfo, err := spi.GetLicenseInfo(ctx, conn); err == nil {
 				svr.licenseStatus = nfo.LicenseStatus
 			}
 			conn.Close()
@@ -961,7 +963,7 @@ func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
 			"reason":  "success",
 			"elapse":  time.Since(tick).String(),
 			"data": map[string]any{
-				"out": server_api.MetricsDestTable(),
+				"out": spi.MetricsDestTable(),
 			},
 		})
 	case http.MethodPost:
@@ -980,7 +982,7 @@ func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
 					"elapse":  time.Since(tick).String(),
 				})
 			} else {
-				if err := server_api.SetMetricsDestTable(out); err != nil {
+				if err := spi.SetMetricsDestTable(out); err != nil {
 					ctx.JSON(http.StatusInternalServerError, map[string]any{
 						"success": false,
 						"reason":  err.Error(),
@@ -1012,7 +1014,7 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		dur = time.Minute
 	}
 
-	stat := server_api.QueryStatzRows(dur, 1, func(key string) (bool, int) {
+	stat := spi.QueryStatzRows(dur, 1, func(key string) (bool, int) {
 		return strings.HasPrefix(key, "machbase:") ||
 			strings.HasPrefix(key, "go:") ||
 			slices.Contains(includes, key), 0
@@ -1110,10 +1112,10 @@ var tmplStatz = `
 {{ end }}`
 
 type LicenseResponse struct {
-	Success bool                    `json:"success"`
-	Reason  string                  `json:"reason"`
-	Elapse  string                  `json:"elapse"`
-	Data    *server_api.LicenseInfo `json:"data,omitempty"`
+	Success bool             `json:"success"`
+	Reason  string           `json:"reason"`
+	Elapse  string           `json:"elapse"`
+	Data    *spi.LicenseInfo `json:"data,omitempty"`
 }
 
 func (svr *httpd) handleGetLicense(ctx *gin.Context) {
@@ -1128,7 +1130,7 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := server_api.GetLicenseInfo(ctx, conn)
+	nfo, err := spi.GetLicenseInfo(ctx, conn)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -1177,7 +1179,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := server_api.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
+	nfo, err := spi.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
 	if err != nil {
 		fmt.Println("ERR", err.Error())
 		rsp.Reason = err.Error()
@@ -1339,12 +1341,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 	termLoginName := claim.Subject
-	svr.authServer.neoShellAccountMu.RLock()
-	termPassword := svr.authServer.neoShellAccount[strings.ToLower(termLoginName)]
-	svr.authServer.neoShellAccountMu.RUnlock()
-	if len(termPassword) == 0 {
-		termPassword = "manager"
-	}
 	termAddress := svr.authServer.neoShellAddress
 	if len(termAddress) == 0 {
 		termAddress = "127.0.0.1:5652"
@@ -1368,7 +1364,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 
-	term, err := NewWebTerm(termAddress, userShell, termLoginName, termPassword)
+	term, err := NewWebTerm(termAddress, userShell, termLoginName)
 	if err != nil {
 		svr.log.Warnf("term conn %s", err.Error())
 		ctx.String(http.StatusBadGateway, err.Error())
@@ -1573,17 +1569,22 @@ type WebTerm struct {
 	userShell string
 }
 
-func NewWebTerm(hostPort string, userShell string, user string, password string) (*WebTerm, error) {
+func NewWebTerm(hostPort string, userShell string, user string) (*WebTerm, error) {
 	var loginString string
 	if len(userShell) > 0 {
 		loginString = fmt.Sprintf("%s:%s", user, userShell)
 	} else {
 		loginString = user
 	}
+	privateKey := spi.DefaultKey()
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("NewTerm signer, %s", err.Error())
+	}
 	conn, err := ssh.Dial("tcp", hostPort, &ssh.ClientConfig{
 		User: loginString,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
+			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil },
 	})

@@ -13,6 +13,11 @@ if (!actor.user) {
     } else {
         actor.user = actor.user.toLowerCase();
     }
+    // If actor.user is `sys as <other>`, extract the proxy username part after "as"
+    const asIndex = actor.user.indexOf(' as ');
+    if (asIndex !== -1) {
+        actor.user = actor.user.substring(asIndex + 4).trim();
+    }
 }
 if (!actor.password) {
     actor.password = env.get('NEOSHELL_PASSWORD');

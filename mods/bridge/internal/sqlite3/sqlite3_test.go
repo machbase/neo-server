@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal/sqlite3"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,11 +37,11 @@ func TestSqlite(t *testing.T) {
 	endCalled := false
 	nextCalled := 0
 	expectNames := []string{"foo", "bar"}
-	q := api.Query{
-		Begin: func(q *api.Query) {
+	q := spi.Query{
+		Begin: func(q *spi.Query) {
 			beginCalled = true
 		},
-		Next: func(q *api.Query, rownum int64) bool {
+		Next: func(q *spi.Query, rownum int64) bool {
 			nextCalled++
 			values, _ := q.Columns().MakeBuffer()
 			q.Scan(values...)
@@ -50,7 +50,7 @@ func TestSqlite(t *testing.T) {
 			require.Equal(t, expectNames[rownum-1], *(values[1].(*string)))
 			return true
 		},
-		End: func(q *api.Query) {
+		End: func(q *spi.Query) {
 			endCalled = true
 		},
 	}

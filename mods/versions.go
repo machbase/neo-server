@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/term"
 )
 

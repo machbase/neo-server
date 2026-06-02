@@ -28,6 +28,10 @@ type EllipticCurve struct {
 	publicKey   *ecdsa.PublicKey
 }
 
+func NewEllipticCurveP256() *EllipticCurve {
+	return NewEllipticCurve(elliptic.P256())
+}
+
 func NewEllipticCurveP521() *EllipticCurve {
 	return NewEllipticCurve(elliptic.P521())
 }

@@ -15,13 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 // Execute machbase SQL query
@@ -173,8 +173,8 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	query := &server_api.Query{
-		Begin: func(q *server_api.Query) {
+	query := &spi.Query{
+		Begin: func(q *spi.Query) {
 			if !q.IsFetch() {
 				return
 			}
@@ -186,7 +186,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *server_api.Query, nrow int64) bool {
+		Next: func(q *spi.Query, nrow int64) bool {
 			values, err := q.Columns().MakeBuffer()
 			if err != nil {
 				svr.log.Error("buffer", err.Error())
@@ -203,7 +203,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			}
 			return true
 		},
-		End: func(q *server_api.Query) {
+		End: func(q *spi.Query) {
 			if q.IsFetch() {
 				encoder.Close()
 			} else {
@@ -253,8 +253,8 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 		tz, _ = util.ParseTimeLocation(timezone, time.UTC)
 	}
 
-	watch, err := server_api.NewWatcher(ctx,
-		server_api.WatcherConfig{
+	watch, err := spi.NewWatcher(ctx,
+		spi.WatcherConfig{
 			ConnProvider: func() (api.Conn, error) { return svr.getTrustConnection(ctx) },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
@@ -297,7 +297,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 			watch.Execute()
 		case data := <-watch.C:
 			switch v := data.(type) {
-			case server_api.WatchData:
+			case spi.WatchData:
 				b, _ := json.Marshal(v)
 				ctx.Writer.Write([]byte("data: "))
 				ctx.Writer.Write(b)
@@ -410,7 +410,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 
 	var sqlText string
 	var sqlParams []any
-	if tableType, err := server_api.QueryTableType(ctx, conn, tableName); err != nil {
+	if tableType, err := spi.QueryTableType(ctx, conn, tableName); err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
@@ -536,7 +536,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	server_api.ListTablesWalk(ctx, conn, showAll, func(ti *server_api.TableInfo) bool {
+	spi.ListTablesWalk(ctx, conn, showAll, func(ti *spi.TableInfo) bool {
 		if ti.Err() != nil {
 			rsp.Success, rsp.Reason = false, ti.Err().Error()
 			return false
@@ -626,7 +626,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	server_api.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *server_api.TagInfo) bool {
+	spi.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *spi.TagInfo) bool {
 		if tag.Err != nil {
 			rsp.Success, rsp.Reason = false, tag.Err.Error()
 			return false
@@ -695,7 +695,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 
-	nfo, err := server_api.TagStat(ctx, conn, table, tag)
+	nfo, err := spi.TagStat(ctx, conn, table, tag)
 	if err != nil {
 		rsp.Success, rsp.Reason = false, err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -884,16 +884,11 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		if svr.authServer == nil {
 			task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
 		} else {
-			svr.authServer.neoShellAccountMu.RLock()
-			password := svr.authServer.neoShellAccount[strings.ToLower(claim.Subject)]
-			svr.authServer.neoShellAccountMu.RUnlock()
-			task.SetConsole(claim.Subject, consoleInfo.consoleId, password)
-			// otp, _ := svr.authServer.GenerateOtp(claim.Subject)
-			// task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+			otp := spi.IssueToken()
+			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
 		}
 	}
 	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
-	task.SetDatabase(svr.db)
 	if err := task.Compile(codeReader); err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()
@@ -989,7 +984,6 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	}
 
 	task := tql.NewTaskContext(ctx)
-	task.SetDatabase(svr.db)
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
 	task.SetLogWriter(logging.GetLog(filepath.Base(path)))

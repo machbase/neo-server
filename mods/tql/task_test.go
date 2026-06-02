@@ -89,7 +89,6 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
 	task.SetConsoleLogLevel(tql.ERROR)
-	task.SetDatabase(testServer.DatabaseSVR())
 	if len(payload) > 0 {
 		task.SetInputReader(bytes.NewBuffer(payload))
 	}
@@ -2654,7 +2653,6 @@ func TestCompileErrorIsScriptErrorForSink(t *testing.T) {
 	defer cancel()
 
 	task := tql.NewTaskContext(ctx)
-	task.SetDatabase(testServer.DatabaseSVR())
 	err := task.CompileString(code)
 	require.Error(t, err)
 	require.Equal(t, "line 2, column 1: encoder 'markdown' invalid option true (bool) [statement: MARKDOWN(true)]", err.Error())

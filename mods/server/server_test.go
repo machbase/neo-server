@@ -26,6 +26,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -91,6 +92,7 @@ func TestMain(m *testing.M) {
 			"--mqtt-port", strconv.Itoa(mqttPort),
 			"--shell-port", strconv.Itoa(shellPort),
 			"--jwt-secret", "__secr3t__",
+			"--machbase-init-option", "1",
 			"--log-filename", "-",
 			"--log-level", "INFO",
 		})
@@ -133,7 +135,7 @@ func TestMain(m *testing.M) {
 
 	func(db api.Database) {
 		ctx := context.TODO()
-		conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 		if err != nil {
 			panic(err)
 		}
@@ -204,7 +206,7 @@ func TestMain(m *testing.M) {
 			}
 		}
 		conn.Exec(ctx, `EXEC table_flush(example)`)
-	}(api.Default())
+	}(spi.Default())
 
 	// run tests
 	m.Run()
@@ -253,7 +255,7 @@ func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
 	}
 	authSvc.registerJsonRpcHandlers()
 
-	httpSvc, err := NewHttp(nil, WithHttpAuthServer(authSvc, false))
+	httpSvc, err := NewHttp(WithHttpAuthServer(authSvc, false))
 	require.NoError(t, err)
 	require.Same(t, authSvc.rpcController, httpSvc.rpcController)
 

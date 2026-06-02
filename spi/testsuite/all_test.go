@@ -1,0 +1,55 @@
+package testsuite_test
+
+import (
+	_ "embed"
+	"os"
+	"runtime"
+	"testing"
+	"time"
+
+	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-server/v8/spi/testsuite"
+)
+
+var testServer *testsuite.Server
+
+func TestMain(m *testing.M) {
+	testServer = testsuite.NewServer("./testsuite_tmp")
+	testServer.StartServer()
+	code := m.Run()
+	testServer.StopServer()
+	os.Exit(code)
+}
+
+func TestAll(t *testing.T) {
+	for _, db := range []api.Database{
+		testServer.DatabaseGO(),
+	} {
+		if err := testsuite.CreateTestTables(db); err != nil {
+			t.Fatalf("ERROR: %s", err)
+		}
+		testsuite.TestAll(t, db)
+		if err := testsuite.DropTestTables(db); err != nil {
+			t.Fatalf("ERROR: %s", err)
+		}
+		if runtime.GOOS == "windows" {
+			// workaround for windows, it crash randomly when closing a connection of "drop table"
+			time.Sleep(10 * time.Second)
+		}
+	}
+}
+
+func TestColumns(t *testing.T) {
+	db := testServer.DatabaseSVR()
+	if err := testsuite.CreateTestTables(db); err != nil {
+		t.Fatalf("ERROR: %s", err)
+	}
+	testsuite.ColumnsCases(t, db, t.Context())
+	if err := testsuite.DropTestTables(db); err != nil {
+		t.Fatalf("ERROR: %s", err)
+	}
+	if runtime.GOOS == "windows" {
+		// workaround for windows, it crash randomly when closing a connection of "drop table"
+		time.Sleep(10 * time.Second)
+	}
+}

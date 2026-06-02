@@ -17,6 +17,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/pkg/sftp"
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -249,20 +250,16 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	valid, _, err := svr.authServer.ValidateUserPassword(user, password)
-	if err != nil {
+	if valid, _, err := svr.authServer.ValidateUserPassword(ctx, user, password); err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
+	} else if !valid {
+		return false
 	}
-	if valid {
-		// pass the password to the ssh session context for later use in shell environment variable.
-		// it is needed for the neo-shell/jsh to work with database connection.
-		ctx.SetValue(sshContextPasswordKey, password)
-		svr.authServer.neoShellAccountMu.Lock()
-		svr.authServer.neoShellAccount[strings.ToLower(user)] = password
-		svr.authServer.neoShellAccountMu.Unlock()
-	}
-	return valid
+	// pass the password to the ssh session context for later use in shell environment variable.
+	// it is needed for the neo-shell/jsh to work with database connection.
+	ctx.SetValue(sshContextPasswordKey, password)
+	return true
 }
 
 func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
@@ -274,29 +271,23 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	valid, _, err := svr.authServer.ValidateUserPublicKey(user, key)
-	if err != nil {
+	if valid, err := svr.authServer.ValidateUserPublicKey(ctx, user, key); err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
+	} else if !valid {
+		return false
 	}
+
 	// If public key auth is successful,
-	if valid {
-		// How to pass the password to the ssh session context for later use in shell environment variable?
-		// --> ssh client shows password prompt,
-		// because neo-shell/jsh requires password.
-		svr.authServer.neoShellAccountMu.RLock()
-		if pass, ok := svr.authServer.neoShellAccount[strings.ToLower(user)]; ok {
-			ctx.SetValue(sshContextPasswordKey, pass)
-		} else {
-			// TODO: what if the ssh client is connected without password
-			// and then web terminal is connected with password?
-			// In this case, the ssh session should be updated with the password in the context.
-			svr.log.Tracef("'%s' login with public key, but password is not found in the auth server", user)
-			valid = false // force to login with password
-		}
-		svr.authServer.neoShellAccountMu.RUnlock()
+	token := spi.IssueToken()
+	if token == "" {
+		svr.log.Warnf("issue token failed for user %s", user)
+		return false
 	}
-	return valid
+	// pass the token to the ssh session context for later use in shell environment variable.
+	// it is needed for the neo-shell/jsh to work with database connection.
+	ctx.SetValue(sshContextPasswordKey, "$otp$"+token)
+	return true
 }
 
 type SshShell struct {
@@ -389,6 +380,40 @@ func (svr *sshd) SftpHandler(sess ssh.Session) {
 	}
 }
 
+func (svr *sshd) findAndConfigureShell(ss ssh.Session) (string, *SshShell, func()) {
+	user, shell, shellId := svr.findShell(ss)
+	svr.log.Debugf("shell open %s from %s", user, ss.RemoteAddr())
+
+	if shell == nil {
+		return user, nil, func() {}
+	}
+
+	if shellId != model.SHELLID_SHELL && shellId != model.SHELLID_JSH {
+		return user, shell, func() {}
+	}
+
+	// ssh context contains the password only when it provided by the client.
+	// If it contains the password, the client is web terminal.
+	// If the clients is ssh client, the password is not provided in the context for security reason.
+	secretPassword := ""
+	pass := ss.Context().Value(sshContextPasswordKey)
+	if password, ok := pass.(string); ok && password != "" {
+		secretPassword = password
+	}
+	secretEnv := []string{"NEOSHELL_USER", user}
+	if secretPassword != "" {
+		secretEnv = append(secretEnv, "NEOSHELL_PASSWORD", secretPassword)
+	}
+	secretEnv = append(secretEnv, "NEOSHELL_IDENTITY_FILE", "@"+svr.serverKeyPath)
+	cleanupSecret := svr.appendNeoShellSecretEnv(shell, secretEnv...)
+
+	if svr.authServer.serviceController != nil {
+		shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",
+			svr.authServer.serviceController.Address()))
+	}
+	return user, shell, cleanupSecret
+}
+
 func (svr *sshd) commandHandler(ss ssh.Session) {
 	user, shell, shellId := svr.findShell(ss)
 	svr.log.Debugf("shell open %s from %s", user, ss.RemoteAddr())
@@ -400,11 +425,24 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 	}
 
 	if shellId == model.SHELLID_SHELL {
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-		svr.authServer.neoShellAccountMu.RLock()
-		pass := svr.authServer.neoShellAccount[strings.ToLower(user)]
-		svr.authServer.neoShellAccountMu.RUnlock()
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", pass))
+		// If public key auth is successful,
+		token := spi.IssueToken()
+		if token == "" {
+			svr.log.Warnf("issue token failed for user %s", user)
+			return
+		}
+
+		secretEnv := []string{
+			"NEOSHELL_USER", user,
+			"NEOSHELL_PASSWORD", "$otp$" + token,
+			"NEOSHELL_IDENTITY_FILE", "@" + svr.serverKeyPath,
+		}
+		cleanupSecret := svr.appendNeoShellSecretEnv(shell, secretEnv...)
+		defer cleanupSecret()
+		if svr.authServer.serviceController != nil {
+			shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",
+				svr.authServer.serviceController.Address()))
+		}
 	}
 
 	cmdArr := []string{shell.Cmd}

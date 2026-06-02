@@ -19,7 +19,6 @@ import (
 
 	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -31,13 +30,12 @@ import (
 
 type MqttOption func(s *mqttd) error
 
-func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
+func NewMqtt(opts ...MqttOption) (*mqttd, error) {
 	log := logging.GetLog("mqttd")
 
 	caps := mqtt.NewDefaultServerCapabilities()
 	svr := &mqttd{
 		log: log,
-		db:  db,
 		broker: mqtt.New(&mqtt.Options{
 			Logger:                 logging.Wrap(log, logFilter),
 			InlineClient:           true,
@@ -243,7 +241,6 @@ func WithMqttOnStopped(fn func()) MqttOption {
 
 type mqttd struct {
 	log               logging.Log
-	db                api.Database
 	broker            *mqtt.Server
 	authServer        AuthServer
 	authHook          *AuthHook

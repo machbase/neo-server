@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/nats-io/nats.go"
 	"github.com/tidwall/gjson"
 )
@@ -283,7 +284,6 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 		return
 	}
 	task := tql.NewTaskContext(context.TODO())
-	task.SetDatabase(ent.s.db)
 	task.SetInputReader(bytes.NewBuffer(payload))
 	task.SetOutputWriterJson(io.Discard, true)
 	task.SetLogWriter(ent.log)
@@ -324,7 +324,7 @@ func extractColumns(payload []byte) []string {
 
 func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
-		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
+		if conn, err := spi.Default().Connect(ent.ctx, api.WithAuthKey("sys", spi.DefaultKey())); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 			return
@@ -486,7 +486,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
-		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
+		if conn, err := spi.Default().Connect(ent.ctx, api.WithAuthKey("sys", spi.DefaultKey())); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 			return

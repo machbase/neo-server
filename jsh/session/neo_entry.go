@@ -12,6 +12,7 @@ import (
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
+	jshservice "github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/nyaosorg/go-readline-ny"
 	"golang.org/x/term"
 )
@@ -21,6 +22,7 @@ func NeoShellMain(flags *flag.FlagSet, executable []string, args []string) int {
 		{flag: "server", comment: "machbase-neo host", envKey: "NEOSHELL_HOST"},
 		{flag: "user", comment: "user name (default: sys)", envKey: "NEOSHELL_USER"},
 		{flag: "password", comment: "password (default: manager)", envKey: "NEOSHELL_PASSWORD"},
+		{flag: "identity-file", comment: "path to private key file for authentication (default: empty)", envKey: "NEOSHELL_IDENTITY_FILE"},
 	}
 	extConfig := &ExtConfig{
 		flags:          extFlags,
@@ -58,6 +60,9 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 	return func(conf *engine.Config, extFlags ExtFlags) error {
 		var ef *ExtFlag
 		var err error
+		if err := consumeNeoShellSecret(conf, extFlags); err != nil {
+			return err
+		}
 
 		if ef = extFlags.Get("server"); ef == nil {
 			return fmt.Errorf("server flag is not configured")
@@ -86,7 +91,6 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		if ef.value == "" {
 			return errors.New("Server is required")
 		}
-
 		if ef = extFlags.Get("user"); ef == nil {
 			return fmt.Errorf("user flag is not configured")
 		}
@@ -102,7 +106,6 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		if ef.value == "" {
 			return errors.New("User is required")
 		}
-
 		if ef = extFlags.Get("password"); ef == nil {
 			return fmt.Errorf("password flag is not configured")
 		}
@@ -119,6 +122,15 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 			return errors.New("Password is required")
 		}
 
+		if ef = extFlags.Get("identity-file"); ef != nil && ef.value == "" {
+			if envValue, ok := conf.Env["NEOSHELL_IDENTITY_FILE"].(string); ok {
+				ef.value = envValue
+				if ef.value == "" {
+					ef.value = os.Getenv("NEOSHELL_IDENTITY_FILE")
+				}
+			}
+		}
+
 		conf.Default = "/usr/bin/neo-shell.js"
 		conf.ProcRecord = true
 		if len(executables) > 0 {
@@ -130,6 +142,8 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		conf.Env["NEOSHELL_HOST"] = extFlags.Get("server").value
 		conf.Env["NEOSHELL_USER"] = extFlags.Get("user").value
 		conf.Env["NEOSHELL_PASSWORD"] = engine.SecureString(extFlags.Get("password").value)
+		conf.Env["NEOSHELL_IDENTITY_FILE"] = extFlags.Get("identity-file").value
+
 		conf.Aliases["jsh"] = "/sbin/shell.js"
 		conf.Aliases["describe"] = "show table"
 		conf.Aliases["desc"] = "show table"
@@ -137,10 +151,11 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		// configure default session before engine creation so SERVICE_CONTROLLER
 		// is available during filesystem mount setup.
 		if err := Configure(Config{
-			Server:   extFlags.Get("server").value,
-			User:     extFlags.Get("user").value,
-			Password: extFlags.Get("password").value,
-			env:      map[string]any{},
+			Server:       extFlags.Get("server").value,
+			User:         extFlags.Get("user").value,
+			Password:     extFlags.Get("password").value,
+			IdentityFile: extFlags.Get("identity-file").value,
+			env:          map[string]any{},
 		}); err != nil {
 			if err == ErrUserOrPasswordIncorrect {
 				fmt.Println("Login failed: user or password is incorrect")
@@ -156,6 +171,48 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		}
 		return nil
 	}
+}
+
+func consumeNeoShellSecret(conf *engine.Config, extFlags ExtFlags) error {
+	token := os.Getenv(jshservice.SecretRefEnv)
+	if token == "" {
+		if value, ok := conf.Env[jshservice.SecretRefEnv]; ok && value != nil {
+			token = fmt.Sprint(value)
+		}
+	}
+	if token == "" {
+		return nil
+	}
+	controller := ""
+	if value, ok := conf.Env[engine.ControllerAddressEnv]; ok && value != nil {
+		controller = fmt.Sprint(value)
+	}
+	if controller == "" {
+		controller = os.Getenv(engine.ControllerAddressEnv)
+	}
+	items, err := jshservice.ConsumeSecret(controller, token)
+	if err != nil {
+		return fmt.Errorf("Error reading neo shell secret: %w", err)
+	}
+	os.Unsetenv(jshservice.SecretRefEnv)
+	delete(conf.Env, jshservice.SecretRefEnv)
+	for _, item := range items {
+		switch item.Key {
+		case "NEOSHELL_USER":
+			if ef := extFlags.Get("user"); ef != nil {
+				ef.value = item.Value
+			}
+			conf.Env[item.Key] = item.Value
+		case "NEOSHELL_PASSWORD":
+			if ef := extFlags.Get("password"); ef != nil {
+				ef.value = item.Value
+			}
+			conf.Env[item.Key] = engine.SecureString(item.Value)
+		default:
+			conf.Env[item.Key] = item.Value
+		}
+	}
+	return nil
 }
 
 func readPassword(prompt string, defaultValue string) (string, error) {

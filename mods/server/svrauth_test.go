@@ -10,6 +10,61 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseProxyLoginName(t *testing.T) {
+	tests := []struct {
+		name          string
+		loginName     string
+		wantLoginName string
+		wantProxyUser string
+		wantIsProxy   bool
+	}{
+		{
+			name:          "normal login",
+			loginName:     "user",
+			wantLoginName: "user",
+			wantProxyUser: "",
+			wantIsProxy:   false,
+		},
+		{
+			name:          "proxy login with sys",
+			loginName:     "sys as other_user",
+			wantLoginName: "other_user",
+			wantProxyUser: "sys",
+			wantIsProxy:   true,
+		},
+		{
+			name:          "proxy login with different case",
+			loginName:     "SYS as OTHER_USER",
+			wantLoginName: "other_user",
+			wantProxyUser: "sys",
+			wantIsProxy:   true,
+		},
+		{
+			name:          "invalid proxy login",
+			loginName:     "sys as",
+			wantLoginName: "sys as",
+			wantProxyUser: "",
+			wantIsProxy:   false,
+		},
+		{
+			name:          "invalid proxy login with extra spaces",
+			loginName:     "sys   as   other_user",
+			wantLoginName: "other_user",
+			wantProxyUser: "sys",
+			wantIsProxy:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotLoginName, gotProxyUser, gotIsProxy := ParseProxyLoginName(tt.loginName)
+			require.Equal(t, tt.wantLoginName, gotLoginName)
+			require.Equal(t, tt.wantProxyUser, gotProxyUser)
+			require.Equal(t, tt.wantIsProxy, gotIsProxy)
+		})
+	}
+}
+
 func withTestJwtConfig(t *testing.T, conf *JwtConfig) {
 	t.Helper()
 	prev := jwtConf

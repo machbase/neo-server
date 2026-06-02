@@ -10,10 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 func strBool(str string, def bool) bool {
@@ -79,7 +79,7 @@ func MetricsInterceptor() gin.HandlerFunc {
 		} else {
 			m = append(m, metric.Measure{Name: "http:status_5xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		}
-		api.AddMetrics(m...)
+		spi.AddMetrics(m...)
 	}
 }
 

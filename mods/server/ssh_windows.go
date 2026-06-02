@@ -13,13 +13,12 @@ import (
 	"syscall"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util/conpty"
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user, shell, shellId := svr.findShell(ss)
-	svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
+	user, shell, cleanupSecret := svr.findAndConfigureShell(ss)
+	defer cleanupSecret()
 
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
@@ -49,23 +48,6 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	defer cpty.Close()
 
 	shell.Envs = append(shell.Envs, fmt.Sprintf("TERM=%s", ptyReq.Term))
-
-	if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_JSH {
-		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
-
-		// ssh context contains the password only when it provided by the client.
-		// If it contains the password, the client is web terminal.
-		// If the clients is ssh client, the password is not provided in the context for security reason.
-		pass := ss.Context().Value(sshContextPasswordKey)
-		if password, ok := pass.(string); ok && password != "" {
-			shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", password))
-		}
-
-		if svr.authServer.serviceController != nil {
-			shell.Args = append(shell.Args, "-e", fmt.Sprintf("SERVICE_CONTROLLER=%s",
-				svr.authServer.serviceController.Address()))
-		}
-	}
 
 	go func() {
 		for win := range winCh {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -9,6 +10,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -16,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math/rand"
 	"net"
 	"net/url"
 	"os"
@@ -31,9 +32,8 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
-	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-client/machgo"
+	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -46,8 +46,8 @@ import (
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/spi"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -78,8 +78,6 @@ type Server struct {
 
 	models model.Service
 
-	cachedServerPrivateKey crypto.PrivateKey
-
 	startupTime      time.Time
 	servicePorts     map[string][]*model.ServicePort
 	servicePortsLock sync.RWMutex
@@ -88,12 +86,8 @@ type Server struct {
 	prefDirPath           string
 	homeDirPath           string
 	authorizedSshKeysLock sync.RWMutex
-	genSnowflake          *snowflake.Node
-	snowflakes            []string
 
-	neoShellAddress   string
-	neoShellAccountMu sync.RWMutex
-	neoShellAccount   map[string]string
+	neoShellAddress string
 
 	// test purpose only, not set in normal execution
 	binExecutable string
@@ -113,11 +107,10 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:          *conf,
-		servicePorts:    make(map[string][]*model.ServicePort),
-		proxyMgr:        NewProxyManager(),
-		neoShellAccount: make(map[string]string),
-		rpcController:   &service.Controller{},
+		Config:        *conf,
+		servicePorts:  make(map[string][]*model.ServicePort),
+		proxyMgr:      NewProxyManager(),
+		rpcController: &service.Controller{},
 	}, nil
 }
 
@@ -129,10 +122,10 @@ func (s *Server) Executable() (string, error) {
 }
 
 func Restore(dataDir string, backupDir string) error {
-	if err := machsvr.Initialize(dataDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
+	if err := mach.Initialize(dataDir, 0, mach.OPT_SIGHANDLER_OFF); err != nil {
 		return err
 	}
-	if err := machsvr.RestoreDatabase(backupDir); err != nil {
+	if err := mach.RestoreDatabase(backupDir); err != nil {
 		return err
 	}
 	return nil
@@ -145,12 +138,16 @@ func (s *Server) Start() error {
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
 
-	s.genSnowflake, _ = snowflake.NewNode(0)
-	for i := 0; i < 11; i++ {
-		s.snowflakes = append(s.snowflakes, s.genSnowflake.Generate().Base64())
+	HeadOnly = strings.HasPrefix(s.DataDir, "machbase://")
+
+	if err := s.preparePrefDir(); err != nil {
+		return err
 	}
 
-	HeadOnly = strings.HasPrefix(s.DataDir, "machbase://")
+	if err := s.prepareHomeDir(); err != nil {
+		return err
+	}
+
 	if Headless {
 		if HeadOnly {
 			return fmt.Errorf("headless mode is not possible alongside head-only mode, %s", s.DataDir)
@@ -158,15 +155,7 @@ func (s *Server) Start() error {
 		return s.StartHeadless()
 	}
 
-	if err := s.preparePrefDir(); err != nil {
-		return err
-	}
-
 	if err := s.startModelService(); err != nil {
-		return err
-	}
-
-	if err := s.prepareHomeDir(); err != nil {
 		return err
 	}
 
@@ -193,8 +182,6 @@ func (s *Server) Start() error {
 	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
-
-	s.checkMaxOpenConnections()
 
 	if !HeadOnly {
 		if err := s.checkAndInstallLicense(); err != nil {
@@ -376,14 +363,6 @@ func (s *Server) writeSharedInfo(filename string, data any) error {
 }
 
 func (s *Server) StartHeadless() error {
-	if err := s.preparePrefDir(); err != nil {
-		return err
-	}
-
-	if err := s.prepareHomeDir(); err != nil {
-		return err
-	}
-
 	if err := s.startMachbaseSvr(); err != nil {
 		return err
 	}
@@ -391,8 +370,6 @@ func (s *Server) StartHeadless() error {
 	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
-
-	s.checkMaxOpenConnections()
 
 	if err := s.checkAndInstallLicense(); err != nil {
 		return err
@@ -426,16 +403,15 @@ func (s *Server) Stop() {
 
 	tql.Deinit()
 
-	if db, ok := api.Default().(*machsvr.Database); ok {
-		if err := db.Shutdown(); err != nil {
-			s.log.Warnf("db shutdown; %s", err.Error())
-		}
-		machsvr.Finalize()
-	} else if db, ok := api.Default().(*machcli.Database); ok {
+	if db, ok := spi.Default().(*machgo.Database); ok {
 		if err := db.Close(); err != nil {
 			s.log.Warnf("db close; %s", err.Error())
 		}
 	}
+	if err := mach.StopDatabase(); err != nil {
+		s.log.Warnf("db shutdown; %s", err.Error())
+	}
+	mach.Finalize()
 	s.log.Infof("shutdown.")
 }
 
@@ -455,24 +431,30 @@ func (s *Server) startMachbaseSvr() error {
 	}
 
 	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
-	if err := machsvr.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
+	if err := mach.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
 		return fmt.Errorf("initialize database failed, %s", err.Error())
 	}
-	if !machsvr.ExistsDatabase() {
+	if !mach.ExistsDatabase() {
 		s.log.Info("create database")
-		if err := machsvr.CreateDatabase(); err != nil {
+		if err := mach.CreateDatabase(); err != nil {
 			return fmt.Errorf("create database failed, %s", err.Error())
 		}
 		s.databaseCreated = true
 	}
 
+	if err := mach.StartDatabase(); err != nil {
+		return fmt.Errorf("start database failed, %s", err.Error())
+	}
+
 	// create database instance
-	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{
+	db, err := machgo.NewDatabase(&machgo.Config{
+		Host:               "127.0.0.1",
+		Port:               s.Machbase.PORT_NO,
 		MaxOpenConn:        s.Config.MaxOpenConn,
 		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
 		MaxOpenQuery:       s.Config.MaxOpenQuery,
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-		MaxWorkerPoolSize:  s.Config.MaxPoolSize,
+		StatementCache:     api.StatementCacheAuto,
 	})
 	if err != nil {
 		return fmt.Errorf("database instance failed, %s", err.Error())
@@ -480,13 +462,26 @@ func (s *Server) startMachbaseSvr() error {
 	if db == nil {
 		return errors.New("database instance failed")
 	}
-	if err := db.Startup(); err != nil {
-		return fmt.Errorf("startup database, %s", err.Error())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	if err != nil {
+		return fmt.Errorf("database connect failed, %s", err.Error())
 	}
-	api.SetDefault(db)
-	server_api.StartAppendWorkers()
+	// check if the server keys are exist, if not, register the keys
+	if err := s.registerServerKeys(ctx, conn); err != nil {
+		return err
+	}
+	conn.Close()
+
+	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
+		return fmt.Errorf("load server private key failed, %s", err.Error())
+	} else {
+		spi.SetDefault(db, key)
+	}
+	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
-		server_api.StopAppendWorkers()
+		spi.StopAppendWorkers()
 	})
 	return nil
 }
@@ -497,14 +492,13 @@ func (s *Server) startMachbaseCli() error {
 		return err
 	}
 
-	db, err := machcli.NewDatabase(&machcli.Config{
+	db, err := machgo.NewDatabase(&machgo.Config{
 		Host:               host,
 		Port:               port,
 		MaxOpenConn:        s.Config.MaxOpenConn,
 		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
 		MaxOpenQuery:       s.Config.MaxOpenQuery,
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-		TrustUsers:         map[string]string{"sys": "manager"},
 	})
 	if err != nil {
 		return err
@@ -513,19 +507,26 @@ func (s *Server) startMachbaseCli() error {
 	if user != "" && password != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		ok, _, err := db.UserAuth(ctx, user, password)
+		conn, err := db.Connect(ctx, api.WithPassword(user, password))
 		if err != nil {
+			return fmt.Errorf("head-only mode user auth failed: %s", err.Error())
+		}
+		defer conn.Close()
+
+		// check if the server keys are exist, if not, register the keys
+		if err := s.registerServerKeys(ctx, conn); err != nil {
 			return err
 		}
-		if !ok {
-			return fmt.Errorf("head-only mode user auth failed")
-		}
-		db.SetTrustUser(user, password)
 	}
-	api.SetDefault(db)
-	server_api.StartAppendWorkers()
+
+	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
+		return fmt.Errorf("load server private key failed, %s", err.Error())
+	} else {
+		spi.SetDefault(db, key)
+	}
+	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
-		server_api.StopAppendWorkers()
+		spi.StopAppendWorkers()
 	})
 	return nil
 }
@@ -730,10 +731,7 @@ func (s *Server) startBackupService() error {
 		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
 			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
 		} else {
-			s.bakd = NewBackupd(
-				WithBackupdBaseDir(backupDirAbs),
-				WithBackupdDatabase(api.Default()),
-			)
+			s.bakd = NewBackupd(WithBackupdBaseDir(backupDirAbs))
 		}
 	}
 	if s.bakd != nil {
@@ -755,33 +753,18 @@ func (s *Server) startServerFileSystem() error {
 	return nil
 }
 
-func (s *Server) checkMaxOpenConnections() {
-	if db, ok := api.Default().(*machsvr.Database); ok {
-		strOrUnlimited := func(n int) string {
-			if n < 0 {
-				return "unlimited"
-			}
-			return strconv.Itoa(n)
-		}
-		maxConn, _ := db.MaxOpenConn()
-		maxQuery, _ := db.MaxOpenQuery()
-		s.log.Info("MACH MaxOpenConn:", strOrUnlimited(maxConn))
-		s.log.Info("MACH MaxOpenQuery:", strOrUnlimited(maxQuery))
-	}
-}
-
 func (s *Server) checkAndInstallLicense() error {
 	if !s.licenseFileTime.IsZero() {
 		stat, err := os.Stat(filepath.Join(s.homeDirPath, "conf", "license.dat"))
 		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+			conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 			if err != nil {
 				s.log.Error("ERR", err.Error())
 				return err
 			}
-			if _, err = server_api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
+			if _, err = spi.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 				s.log.Warn("set license fail,", err.Error())
 			} else {
 				s.log.Info("set license success")
@@ -838,7 +821,6 @@ func (s *Server) startBridgeAndSchedulerService() error {
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
 		scheduler.WithTqlLoader(tql.NewLoader()),
-		scheduler.WithDatabase(api.Default()),
 	)
 
 	s.bridgeSvc = bridge.NewService(
@@ -903,7 +885,7 @@ func (s *Server) startMqttServer() error {
 			opts = append(opts, WithMqttTcpListener(addr, tlsConf))
 		}
 	}
-	if mqttd, err := NewMqtt(api.Default(), opts...); err != nil {
+	if mqttd, err := NewMqtt(opts...); err != nil {
 		return fmt.Errorf("mqtt server, %s", err.Error())
 	} else {
 		s.mqttd = mqttd
@@ -962,7 +944,7 @@ func (s *Server) startHttpServer() error {
 		}
 		opts = append(opts, WithHttpWebDir(s.Http.WebDir))
 	}
-	if httpd, err := NewHttp(api.Default(), opts...); err != nil {
+	if httpd, err := NewHttp(opts...); err != nil {
 		return fmt.Errorf("http server, %s", err.Error())
 	} else {
 		s.httpd = httpd
@@ -1776,7 +1758,7 @@ func (s *Server) killSession(ctx context.Context, id string, force bool) error {
 	return nil
 }
 
-func (s *Server) statSession(ctx context.Context, reset bool) (*server_api.Statz, error) {
+func (s *Server) statSession(ctx context.Context, reset bool) (*spi.Statz, error) {
 	rsp, err := s.Sessions(ctx, &SessionsRequest{
 		Statz: true, Sessions: false, ResetStatz: reset,
 	})
@@ -2105,19 +2087,15 @@ func (s *Server) ServerPublicKey() (any, error) {
 	}
 	switch p := priKey.(type) {
 	case *rsa.PrivateKey:
-		return p.PublicKey, nil
+		return &p.PublicKey, nil
 	case *ecdsa.PrivateKey:
-		return p.PublicKey, nil
+		return &p.PublicKey, nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %T", priKey)
 	}
 }
 
 func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
-	if s.cachedServerPrivateKey != nil {
-		return s.cachedServerPrivateKey, nil
-	}
-
 	buff, err := os.ReadFile(s.ServerPrivateKeyPath())
 	if err != nil {
 		return nil, err
@@ -2128,10 +2106,106 @@ func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	if priKey != nil {
-		s.cachedServerPrivateKey = priKey
-	}
 	return priKey, nil
+}
+
+type UserAuthKeyInfo struct {
+	KeyID       int
+	UserName    string
+	KeyAlgo     string
+	KeyParam    string
+	Activated   int
+	ValidAfter  string
+	ValidBefore string
+	Comment     string
+	PubKey      string
+}
+
+func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
+	row := conn.QueryRow(ctx, `SELECT
+		KEY_ID,
+		USER_NAME,
+		KEY_ALGO,
+		KEY_PARAM,
+		ACTIVATED,
+		VALID_AFTER,
+		VALID_BEFORE,
+		COMMENT,
+		PUBKEY
+	FROM
+		V$USER_AUTH_KEYS
+	WHERE
+		USER_NAME=?
+	AND PUBKEY=?`,
+		strings.ToUpper(user), strings.TrimSpace(pubPem))
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+	var nfo UserAuthKeyInfo
+	if err := row.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &nfo.Comment, &nfo.PubKey); err != nil {
+		return nil, err
+	}
+	return &nfo, nil
+}
+
+func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) error {
+	// 30 years later
+	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
+
+	// TODO: use parameterized query when supported
+	// result := conn.Exec(ctx,
+	// 	"ALTER USER SYS ADD AUTH KEY (KEY = ?, VALID_BEFORE = ?, COMMENT = ?)",
+	// 	pubPem, "2100-01-01", "machbase-neo server key")
+	result := conn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
+			user, pubPem, validBefore, "machbase-neo server key"))
+	return result.Err()
+}
+
+func activateUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId int) error {
+	result := conn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s ACTIVATE AUTH KEY ID %d", user, keyId),
+	)
+	return result.Err()
+}
+
+func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
+	// server's public key in pem
+	pubFile := s.ServerPublicKeyPath()
+	pubPemStr := ""
+	if pubBytes, err := os.ReadFile(pubFile); err == nil {
+		pubPemStr = strings.TrimSpace(string(pubBytes))
+	} else {
+		return fmt.Errorf("failed to read server public key: %s", err.Error())
+	}
+	user := "SYS"
+	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		// other error
+		return err
+	}
+	// pubkey not found, add new authkey
+	if err := registerUserAuthKey(ctx, conn, user, pubPemStr); err != nil {
+		return err
+	}
+	// get authkey info again after registration
+	nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
+	if err != nil {
+		return err
+	}
+	// activate authkey
+	if err := activateUserAuthKey(ctx, conn, user, nfo.KeyID); err != nil {
+		return err
+	}
+	// get authkey info again after activation
+	nfo, err = getUserAuthKey(ctx, conn, user, pubPemStr)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) mkKeysIfNotExists() error {
@@ -2155,7 +2229,7 @@ func (s *Server) mkKeysIfNotExists() error {
 		return nil
 	}
 
-	ec := NewEllipticCurveP521()
+	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	if err != nil {
 		return err
@@ -2239,11 +2313,48 @@ func (s *Server) ValidateClientCertificate(clientId string, certHash string) (bo
 	return hash == certHash, nil
 }
 
-func (s *Server) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error) {
+func ConvertSshPublicKeyToPem(publicKey ssh.PublicKey) (string, error) {
+	cryptoPublicKey, ok := publicKey.(ssh.CryptoPublicKey)
+	if !ok {
+		return "", fmt.Errorf("ssh public key does not expose crypto public key")
+	}
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(cryptoPublicKey.CryptoPublicKey())
+	if err != nil {
+		return "", err
+	}
+	pubPemBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyBytes,
+	})
+	pubPemStr := strings.TrimSpace(string(pubPemBytes))
+	return pubPemStr, nil
+}
+
+func (s *Server) compareUserPublicKeyWithServerKey(publicKey ssh.PublicKey) bool {
+	// check server public key first, if client public key matches with server public key.
+	skey := spi.DefaultKey()
+	// Compare server public key with client key, and allow OTP only when matched.
+	if signer, ok := skey.(crypto.Signer); ok {
+		if serverPublicKey, err := ssh.NewPublicKey(signer.Public()); err == nil &&
+			serverPublicKey.Type() == publicKey.Type() &&
+			bytes.Equal(serverPublicKey.Marshal(), publicKey.Marshal()) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error) {
+	// check server public key first, if client public key matches with server public key.
+	if s.compareUserPublicKeyWithServerKey(publicKey) {
+		s.log.Debugf("%q public key authorized with server key", user)
+		return true, nil
+	}
+	// check authorized ssh keys in file, if client public key matches with any authorized key.
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
 		s.log.Warnf("ssh %q public key", user, err.Error())
-		return false, "", err
+		return false, err
 	}
 
 	keyType := publicKey.Type()
@@ -2251,41 +2362,51 @@ func (s *Server) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bo
 	for _, rec := range list {
 		if rec.KeyType == keyType && rec.Key == keyStr {
 			s.log.Debugf("ssh %q public key authorized: %s %s", user, rec.KeyType, rec.Fingerprint)
-			return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
-		}
-	}
-	return false, "", nil
-}
-
-func (s *Server) ValidateUserPassword(user string, password string) (bool, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	passed, reason, err := api.Default().UserAuth(ctx, user, password)
-	if err != nil {
-		return false, "", err
-	} else if !passed {
-		return false, reason, nil
-	} else {
-		return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
-	}
-}
-
-func (s *Server) ValidateUserOtp(user string, otp string) (bool, error) {
-	for _, n := range s.snowflakes {
-		if otp == n {
 			return true, nil
 		}
+	}
+
+	pubPemStr, err := ConvertSshPublicKeyToPem(publicKey)
+	if err != nil {
+		s.log.Warnf("ssh %q public key to pem, %s", user, err.Error())
+		return false, err
+	}
+
+	// find the matched key from database, v$user_auth_keys.
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	if err != nil {
+		s.log.Warnf("db server key auth fail, %s", err.Error())
+		return false, err
+	}
+	defer conn.Close()
+
+	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
+	if nfo != nil && err == nil {
+		s.log.Debugf("db %q public key authorized: %s", user, nfo.Comment)
+		return true, nil
+	}
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// user's public key not found in database
+			return false, nil
+		}
+		s.log.Warnf("db %q public key, %s", user, err.Error())
+		return false, err
 	}
 	return false, nil
 }
 
-func (s *Server) GenerateOtp(user string) (string, error) {
-	return s.snowflakes[rand.Intn(len(s.snowflakes))], nil
-}
-
-func (s *Server) GenerateSnowflake() string {
-	return s.genSnowflake.Generate().Base64()
+// it returns (isValid, reason, token)
+func (s *Server) ValidateUserPassword(ctx context.Context, user string, password string) (bool, string, error) {
+	// if password is otp that issued by ssh server
+	if strings.HasPrefix(password, "$otp$") {
+		otp := strings.TrimPrefix(password, "$otp$")
+		if spi.VerifyToken(otp, 0) {
+			return true, "one-time password authorized", nil
+		}
+	}
+	// otherwise, check password with database
+	return spi.Default().UserAuth(ctx, user, password)
 }
 
 func (s *Server) runSqlScriptFile(title string, path string) error {
@@ -2326,7 +2447,7 @@ func (s *Server) runSqlScripts(title string, queries []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Error("ERR", err.Error())
 		return err

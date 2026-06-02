@@ -28,7 +28,7 @@ func TestClientTokenRSA(t *testing.T) {
 }
 
 func TestClientTokenECDSA(t *testing.T) {
-	ec := server.NewEllipticCurveP521()
+	ec := server.NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
 	require.Nil(t, err)
 	require.NotNil(t, pri)

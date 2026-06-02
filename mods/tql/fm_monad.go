@@ -2334,7 +2334,6 @@ func (sr *SubRoutine) Do(node *Node) error {
 	subTask.SetLogWriter(node.task.logWriter)
 	subTask.SetLogLevel(node.task.logLevel)
 	subTask.SetOutputWriterJson(io.Discard, true)
-	subTask.SetDatabase(node.task.db)
 	subTask.argValues = sr.inValue
 
 	reader := bytes.NewBufferString(sr.code)

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
+	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
@@ -20,17 +20,16 @@ type MachCli struct {
 	User      string
 	Pass      string
 
-	db *machcli.Database
+	db *machgo.Database
 }
 
 var _ metric.Output = (*MachCli)(nil)
 
 func (m *MachCli) openConn(ctx context.Context) (api.Conn, error) {
 	if m.db == nil {
-		if db, err := machcli.NewDatabase(&machcli.Config{
+		if db, err := machgo.NewDatabase(&machgo.Config{
 			Host:         m.Host,
 			Port:         m.Port,
-			TrustUsers:   map[string]string{m.User: m.Pass},
 			MaxOpenConn:  -1,
 			MaxOpenQuery: -1,
 		}); err != nil {
@@ -39,8 +38,7 @@ func (m *MachCli) openConn(ctx context.Context) (api.Conn, error) {
 			m.db = db
 		}
 	}
-	//db.Connect(ctx context.Context, options ...api.ConnectOption)
-	conn, err := m.db.Connect(ctx, api.WithTrustUser(m.User))
+	conn, err := m.db.Connect(ctx, api.WithPassword(m.User, m.Pass))
 	if err != nil {
 		return nil, err
 	}

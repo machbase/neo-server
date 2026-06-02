@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 type Table struct {
@@ -189,7 +189,7 @@ type appender struct {
 }
 
 func (app *appender) Open(task *Task) (err error) {
-	aw, err := server_api.GetAppendWorker(task.ctx, task.db, app.table.Name)
+	aw, err := spi.GetAppendWorker(task.ctx, app.table.Name)
 	if err != nil {
 		return
 	}

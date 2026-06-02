@@ -237,6 +237,27 @@ func TestScriptExceptionGoesToErrorWriter(t *testing.T) {
 	}
 }
 
+func TestMissingModuleErrorIncludesSpecifier(t *testing.T) {
+	var stderr bytes.Buffer
+	jr, err := engine.New(engine.Config{
+		Code:        `require("invalid_module");`,
+		ErrorWriter: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+
+	_ = jr.Run()
+
+	output := stderr.String()
+	if !strings.Contains(output, "invalid_module") {
+		t.Fatalf("stderr should contain missing module specifier, got %q", output)
+	}
+	if strings.Contains(output, "Invalid module\n") && !strings.Contains(output, "module not found") {
+		t.Fatalf("stderr still looks generic, got %q", output)
+	}
+}
+
 func TestSetTimeout(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{

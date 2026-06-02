@@ -1911,7 +1911,7 @@ mgmt server implements
 
 *Return*
 
-- `object<server_api.Statz>|error`
+- `object<spi.Statz>|error`
 
 <details>
 <summary>Request/Response JSON</summary>

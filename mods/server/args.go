@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
-	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 func Main(args []string) int {

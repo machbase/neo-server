@@ -23,12 +23,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-client/machgo"
+	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 type ListKeyResponse struct {
@@ -253,7 +254,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 		}
 		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
 	case "ec", "ecdsa":
-		ec := NewEllipticCurveP521()
+		ec := NewEllipticCurveP256()
 		pri, pub, err := ec.GenerateKeys()
 		if err != nil {
 			return nil, nil, "", err
@@ -656,11 +657,11 @@ type SessionsRequest struct {
 }
 
 type SessionsResponse struct {
-	Success  bool              `json:"success"`
-	Reason   string            `json:"reason"`
-	Elapse   string            `json:"elapse"`
-	Statz    *server_api.Statz `json:"statz"`
-	Sessions []*Session        `json:"sessions"`
+	Success  bool       `json:"success"`
+	Reason   string     `json:"reason"`
+	Elapse   string     `json:"elapse"`
+	Statz    *spi.Statz `json:"statz"`
+	Sessions []*Session `json:"sessions"`
 }
 
 type Session struct {
@@ -682,14 +683,14 @@ func (s *Server) Sessions(ctx context.Context, req *SessionsRequest) (*SessionsR
 	}()
 
 	if req.ResetStatz {
-		server_api.ResetQueryStatz()
+		spi.ResetQueryStatz()
 	}
 	if req.Statz {
-		rsp.Statz = server_api.StatzSnapshot()
+		rsp.Statz = spi.StatzSnapshot()
 	}
 	if req.Sessions {
 		sessions := []*Session{}
-		if db, ok := api.Default().(*machsvr.Database); ok {
+		if db, ok := spi.Default().(*machsvr.Database); ok {
 			db.ListWatcher(func(st *machsvr.ConnState) bool {
 				sessions = append(sessions, &Session{
 					Id:            st.Id,
@@ -728,7 +729,7 @@ func (s *Server) KillSession(ctx context.Context, req *KillSessionRequest) (*Kil
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if db, ok := api.Default().(*machsvr.Database); ok {
+	if db, ok := spi.Default().(*machsvr.Database); ok {
 		if err := db.KillConnection(req.Id, req.Force); err != nil {
 			rsp.Reason = err.Error()
 		} else {
@@ -746,7 +747,7 @@ type LimitSessionRequest struct {
 	Cmd          string `json:"cmd"`                    // get, set
 	MaxOpenConn  int32  `json:"maxOpenConn,omitempty"`  // set
 	MaxOpenQuery int32  `json:"maxOpenQuery,omitempty"` // set
-	MaxPoolSize  int32  `json:"maxPoolSize,omitempty"`  // set
+	MaxPoolSize  int32  `json:"maxPoolSize,omitempty"`  // set -- deprecated, machsvr async worker is removed.
 }
 
 type LimitSessionResponse struct {
@@ -757,7 +758,7 @@ type LimitSessionResponse struct {
 	RemainedOpenConn  int32  `json:"remainedOpenConn,omitempty"`  // get
 	MaxOpenQuery      int32  `json:"maxOpenQuery,omitempty"`      // get
 	RemainedOpenQuery int32  `json:"remainedOpenQuery,omitempty"` // get
-	MaxPoolSize       int32  `json:"maxPoolSize,omitempty"`       // get
+	MaxPoolSize       int32  `json:"maxPoolSize,omitempty"`       // get -- deprecated, machsvr async worker is removed.
 }
 
 func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*LimitSessionResponse, error) {
@@ -770,7 +771,8 @@ func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*L
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if db, ok := api.Default().(*machsvr.Database); ok {
+	switch db := spi.Default().(type) {
+	case *machsvr.Database:
 		if strings.ToLower(req.Cmd) == "set" {
 			if limit := int(req.MaxOpenConn); limit >= -1 {
 				db.SetMaxOpenConn(limit)
@@ -778,20 +780,22 @@ func (s *Server) LimitSession(ctx context.Context, req *LimitSessionRequest) (*L
 			if limit := int(req.MaxOpenQuery); limit >= -1 {
 				db.SetMaxOpenQuery(limit)
 			}
-			if limit := int(req.MaxPoolSize); limit >= -1 {
-				db.SetWorkerPoolSize(limit)
-			}
 		}
 		limitConn, remainsConn := db.MaxOpenConn()
 		limitQuery, remainsQuery := db.MaxOpenQuery()
-		rsp.MaxPoolSize = int32(db.WorkerPoolSize())
 		rsp.MaxOpenConn = int32(limitConn)
 		rsp.RemainedOpenConn = int32(remainsConn)
 		rsp.MaxOpenQuery = int32(limitQuery)
 		rsp.RemainedOpenQuery = int32(remainsQuery)
 		rsp.Success = true
 		rsp.Reason = "success"
-	} else {
+	case *machgo.Database:
+		m, r := db.MaxOpenConns()
+		rsp.MaxOpenConn = int32(m)
+		rsp.RemainedOpenConn = int32(r)
+		rsp.Success = true
+		rsp.Reason = "success"
+	default:
 		rsp.Success = false
 		rsp.Reason = "Session limit not supported in head-only mode"
 	}
@@ -850,7 +854,7 @@ func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
 
 	rsp := &ServerInfoResponse{
 		Version: &Version{
-			Engine:         machsvr.LinkInfo(),
+			Engine:         mach.LinkInfo(),
 			Major:          int32(ver.Major),
 			Minor:          int32(ver.Minor),
 			Patch:          int32(ver.Patch),

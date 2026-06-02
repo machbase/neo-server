@@ -13,10 +13,10 @@ import (
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-client/api"
-	server_api "github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 	"github.com/tidwall/gjson"
@@ -134,7 +134,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	defer cancel()
 
 	_, dbUser, tableName := api.TableName(wp.Table).Split()
-	conn, err := s.db.Connect(ctx, api.WithTrustUser(dbUser))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(dbUser))
 	if err != nil {
 		rsp.Reason = err.Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
@@ -325,6 +325,10 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	if pk.ProtocolVersion == 5 {
 		for _, p := range pk.Properties.User {
 			switch p.Key {
+			case "AppendWorkerMaxIdleTimeout":
+				if d, err := time.ParseDuration(p.Val); err == nil {
+					spi.AppendWorkerMaxIdleTimeout = d
+				}
 			case "format":
 				wp.Format = p.Val
 			case "compress":
@@ -379,7 +383,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	}
 	var appenderName = tableUser + "." + wp.Table
 	var appender api.Appender
-	if aw, err := server_api.GetAppendWorker(context.TODO(), s.db, appenderName); err != nil {
+	if aw, err := spi.GetAppendWorker(context.TODO(), appenderName); err != nil {
 		s.log.Warn(cl.Net.Remote, "fail to get append worker,", err.Error())
 		return
 	} else {
@@ -458,7 +462,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Warn(cl.Net.Remote, pk.TopicName, err.Error())
 		return
@@ -526,7 +530,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 			return
 		}
 
-		result := server_api.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
+		result := spi.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
 		if result.Err() != nil {
 			s.log.Warnf(cl.Net.Remote, "lineprotocol fail:", result.Err().Error())
 		}

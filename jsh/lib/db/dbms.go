@@ -2,15 +2,14 @@ package db
 
 import (
 	"context"
+	"crypto"
 	"fmt"
 	"strings"
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
-	"github.com/machbase/neo-server/v8/api/machcli"
-	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
@@ -42,6 +41,7 @@ type Client struct {
 	ctx              context.Context     `json:"-"`
 	rt               *goja.Runtime       `json:"-"`
 	db               api.Database        `json:"-"`
+	dbKey            crypto.PrivateKey   `json:"-"`
 	supportAppend    bool                `json:"-"`
 	BridgeName       string              `json:"bridge"`
 	Driver           string              `json:"driver"`
@@ -66,6 +66,7 @@ func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
 		BridgeName:       opts.BridgeName,
 		Driver:           opts.Driver,
 		LowerCaseColumns: opts.LowerCaseColumns,
+		supportAppend:    true,
 	}
 	if opts.BridgeName != "" {
 		if db, err := connector.New(opts.BridgeName); err == nil {
@@ -81,19 +82,11 @@ func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
 			panic(rt.NewGoError(err))
 		}
 	} else {
-		ret.db = api.Default()
+		ret.db = spi.Default()
+		ret.dbKey = spi.DefaultKey()
 		if ret.db == nil {
 			panic(rt.ToValue("dbms: no database"))
 		}
-	}
-
-	switch ret.db.(type) {
-	case *machsvr.Database:
-		ret.supportAppend = true
-	case *machcli.Database:
-		ret.supportAppend = true
-	case *machgo.Database:
-		ret.supportAppend = true
 	}
 	return ret
 }
@@ -131,7 +124,7 @@ func (c *Client) Connect(call goja.FunctionCall) *CONN {
 	var err error
 	if c.BridgeName == "" && c.Driver == "" {
 		var username = "sys"
-		conn, err = c.db.Connect(c.ctx, api.WithTrustUser(username))
+		conn, err = c.db.Connect(c.ctx, api.WithAuthKey("sys", c.dbKey), api.WithProxyUser(username))
 	} else {
 		opts := append([]api.ConnectOption{}, c.ConnectOptions...)
 		if conf.User != "" {
