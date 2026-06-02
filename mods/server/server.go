@@ -471,13 +471,6 @@ func (s *Server) startMachbaseSvr() error {
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
-		pk, ok := key.(*ecdsa.PrivateKey)
-		if !ok || pk.Curve == nil {
-			return errors.New("AUTH_KEY must be ECDSA P-256 or RSA 2048 private key")
-		} else {
-			fmt.Println("============> ", pk.Curve.Params().Name)
-			fmt.Println("============> ", pk.Curve.Params().BitSize)
-		}
 		spi.SetDefault(db, key)
 	}
 	spi.StartAppendWorkers()
