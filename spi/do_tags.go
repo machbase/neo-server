@@ -8,13 +8,13 @@ import (
 )
 
 func ListTagsSql(fullTable string, tagNameColumn string) string {
-	database, user, table := TableName(fullTable).Split()
+	database, user, table := api.TableName(fullTable).Split()
 	return fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, user, table)
 }
 
 func ListTags(ctx context.Context, conn api.Conn, fullTable string, tagNameColumn string) ([]*TagInfo, error) {
 	var tags []*TagInfo
-	database, user, table := TableName(fullTable).Split()
+	database, user, table := api.TableName(fullTable).Split()
 	rows, err := conn.Query(ctx, ListTagsSql(fullTable, tagNameColumn))
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColum
 	}
 	defer rows.Close()
 
-	database, userName, tableName := TableName(table).Split()
+	database, userName, tableName := api.TableName(table).Split()
 	for rows.Next() {
 		nfo := &TagInfo{Database: database, User: userName, Table: tableName}
 		nfo.Err = rows.Scan(&nfo.Id, &nfo.Name)
@@ -51,7 +51,7 @@ func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColum
 }
 
 func TagStatSql(fullTable string) string {
-	database, user, table := TableName(fullTable).Split()
+	database, user, table := api.TableName(fullTable).Split()
 	return api.SqlTidy(`SELECT`,
 		`NAME, ROW_COUNT,`,
 		`MIN_TIME, MAX_TIME,`,
@@ -63,7 +63,7 @@ func TagStatSql(fullTable string) string {
 }
 
 func TagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
-	database, user, table := TableName(table).Split()
+	database, user, table := api.TableName(table).Split()
 	sqlText := TagStatSql(table)
 	nfo := &TagStatInfo{
 		Database: database,

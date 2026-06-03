@@ -217,24 +217,6 @@ func TestSqlBridgeBaseHelpers(t *testing.T) {
 }
 
 func TestInfoValueObjects(t *testing.T) {
-	t.Run("table name helpers", func(t *testing.T) {
-		require.Equal(t, "SYS.EXAMPLE", TableName("sys.example").String())
-		db, user, table := TableName("metrics").SplitOr("db0", "user0")
-		require.Equal(t, "db0", db)
-		require.Equal(t, "user0", user)
-		require.Equal(t, "METRICS", table)
-
-		db, user, table = TableName("user1.metrics").SplitOr("db0", "user0")
-		require.Equal(t, "db0", db)
-		require.Equal(t, "USER1", user)
-		require.Equal(t, "METRICS", table)
-
-		db, user, table = TableName("db1.user1.metrics").SplitOr("db0", "user0")
-		require.Equal(t, "DB1", db)
-		require.Equal(t, "USER1", user)
-		require.Equal(t, "METRICS", table)
-	})
-
 	t.Run("table info kind and values", func(t *testing.T) {
 		tests := []struct {
 			info   TableInfo

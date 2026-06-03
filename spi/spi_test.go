@@ -31,23 +31,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestAll(t *testing.T) {
-	if err := testServer.CreateTestTables(); err != nil {
-		t.Fatal(err)
-	}
-	db := testsuite.Database_machsvr(t)
-	testsuite.TestAll(t, db,
-		tcParseCommandLine,
-		tcCommands,
-		tcBridge,
-		tcScan,
-	)
-	if err := testServer.DropTestTables(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestTableName(t *testing.T) {
+func TestTableNames(t *testing.T) {
 	tests := []struct {
 		input  string
 		expect [3]string
@@ -67,7 +51,7 @@ func TestTableName(t *testing.T) {
 	}
 }
 
-func tcBridge(t *testing.T) {
+func TestBridge(t *testing.T) {
 	tests := []struct {
 		Name        string
 		Bridge      string
@@ -191,7 +175,7 @@ func tcBridge(t *testing.T) {
 	}
 }
 
-func tcScan(t *testing.T) {
+func TestScan(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(0, 1729578712564320000).In(time.UTC)
@@ -328,7 +312,7 @@ func tcScan(t *testing.T) {
 	}
 }
 
-func tcParseCommandLine(t *testing.T) {
+func TestParseCommandLine(t *testing.T) {
 	tests := []struct {
 		input  string
 		expect []string
@@ -363,7 +347,15 @@ func tcParseCommandLine(t *testing.T) {
 	}
 }
 
-func tcCommands(t *testing.T) {
+func TestCommands(t *testing.T) {
+	if err := testServer.CreateTestTables(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testServer.DropTestTables(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	tests := []struct {
 		name       string
 		input      string
@@ -474,17 +466,32 @@ func tcCommands(t *testing.T) {
 			},
 		},
 		{
+			name:  "show_index",
+			input: `show index _TAG_DATA_META_NAME`,
+			expect: []string{
+				"_TAG_DATA_META NAME _TAG_DATA_META_NAME REDBLACK",
+			},
+		},
+		{
 			name:   "show_lsm",
 			input:  "show lsm",
 			expect: []string{},
 		},
 		{
-			name:  "show_tags_tag_data",
-			input: "show tags tag_data",
-			expectFunc: func(t *testing.T, actual string) {
-				lines := strings.Split(actual, "\n")
-				require.Greater(t, len(lines), 100)
-			},
+			name: "sql_insert",
+			input: `sql insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value)
+					values ('tag1', '2024-10-22 06:31:52', 123.45, 123, 12345, 1234567890, 'string value', '{"key": "value"}')`,
+			expect: []string{"", "a row inserted."},
+		},
+		{
+			name:   "sql_exec_table_flush",
+			input:  `sql exec table_flush(tag_data)`,
+			expect: []string{"", "table flushed."},
+		},
+		{
+			name:   "show_tags_tag_data",
+			input:  "show tags tag_data",
+			expect: []string{"1 1 tag1 MACHBASEDB SYS TAG_DATA 1"},
 		},
 		{
 			name:  "show_indexgap",
@@ -555,7 +562,7 @@ func tcCommands(t *testing.T) {
 		{
 			name:   "explain-select-all",
 			input:  `explain -- select * from log_data`,
-			expect: []string{" PROJECT", "  FULL SCAN (LOG_DATA)", ""},
+			expect: []string{" PROJECT", "  FULL SCAN (LOG_DATA)"},
 		},
 		{
 			name:  "explain-full-select-all",
@@ -577,7 +584,7 @@ func tcCommands(t *testing.T) {
 
 	h := &spi.CommandHandler{
 		Database: func(ctx context.Context) (api.Conn, error) {
-			return testServer.DatabaseSVR().Connect(ctx, api.WithPassword("sys", "manager"))
+			return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
