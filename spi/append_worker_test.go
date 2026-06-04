@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	clientapi "github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -20,23 +20,23 @@ func (c *appendWorkerTestConn) Close() error {
 	return nil
 }
 
-func (c *appendWorkerTestConn) Exec(context.Context, string, ...any) clientapi.Result {
+func (c *appendWorkerTestConn) Exec(context.Context, string, ...any) api.Result {
 	return nil
 }
 
-func (c *appendWorkerTestConn) Query(context.Context, string, ...any) (clientapi.Rows, error) {
+func (c *appendWorkerTestConn) Query(context.Context, string, ...any) (api.Rows, error) {
 	return nil, nil
 }
 
-func (c *appendWorkerTestConn) QueryRow(context.Context, string, ...any) clientapi.Row {
+func (c *appendWorkerTestConn) QueryRow(context.Context, string, ...any) api.Row {
 	return nil
 }
 
-func (c *appendWorkerTestConn) Prepare(context.Context, string) (clientapi.Stmt, error) {
+func (c *appendWorkerTestConn) Prepare(context.Context, string) (api.Stmt, error) {
 	return nil, nil
 }
 
-func (c *appendWorkerTestConn) Appender(context.Context, string, ...clientapi.AppenderOption) (clientapi.Appender, error) {
+func (c *appendWorkerTestConn) Appender(context.Context, string, ...api.AppenderOption) (api.Appender, error) {
 	return nil, nil
 }
 
@@ -46,8 +46,8 @@ func (c *appendWorkerTestConn) Explain(context.Context, string, bool) (string, e
 
 type appendWorkerTestAppender struct {
 	tableName  string
-	tableType  clientapi.TableType
-	columns    clientapi.Columns
+	tableType  api.TableType
+	columns    api.Columns
 	appendRows [][]any
 	closed     int32
 }
@@ -72,31 +72,31 @@ func (a *appendWorkerTestAppender) Close() (int64, int64, error) {
 	return int64(len(a.appendRows)), 0, nil
 }
 
-func (a *appendWorkerTestAppender) Columns() (clientapi.Columns, error) {
+func (a *appendWorkerTestAppender) Columns() (api.Columns, error) {
 	return a.columns, nil
 }
 
-func (a *appendWorkerTestAppender) TableType() clientapi.TableType {
+func (a *appendWorkerTestAppender) TableType() api.TableType {
 	return a.tableType
 }
 
-func (a *appendWorkerTestAppender) WithInputColumns(...string) clientapi.Appender {
+func (a *appendWorkerTestAppender) WithInputColumns(...string) api.Appender {
 	return a
 }
 
-func (a *appendWorkerTestAppender) WithInputFormats(...string) clientapi.Appender {
+func (a *appendWorkerTestAppender) WithInputFormats(...string) api.Appender {
 	return a
 }
 
-func (a *appendWorkerTestAppender) WithBatchMaxRows(int) clientapi.Appender {
+func (a *appendWorkerTestAppender) WithBatchMaxRows(int) api.Appender {
 	return a
 }
 
-func (a *appendWorkerTestAppender) WithBatchMaxBytes(int) clientapi.Appender {
+func (a *appendWorkerTestAppender) WithBatchMaxBytes(int) api.Appender {
 	return a
 }
 
-func (a *appendWorkerTestAppender) WithBatchMaxDelay(time.Duration) clientapi.Appender {
+func (a *appendWorkerTestAppender) WithBatchMaxDelay(time.Duration) api.Appender {
 	return a
 }
 
@@ -104,10 +104,10 @@ func newAppendWorkerForTest(tableName string) (*AppendWorker, *appendWorkerTestA
 	ctx, cancel := context.WithCancel(context.Background())
 	appender := &appendWorkerTestAppender{
 		tableName: tableName,
-		tableType: clientapi.TableTypeLog,
-		columns: clientapi.Columns{
-			{Name: "NAME", DataType: clientapi.DataTypeString},
-			{Name: "VALUE", DataType: clientapi.DataTypeFloat64},
+		tableType: api.TableTypeLog,
+		columns: api.Columns{
+			{Name: "NAME", DataType: api.DataTypeString},
+			{Name: "VALUE", DataType: api.DataTypeFloat64},
 		},
 	}
 	conn := &appendWorkerTestConn{}
@@ -116,7 +116,7 @@ func newAppendWorkerForTest(tableName string) (*AppendWorker, *appendWorkerTestA
 		ctxCancel: cancel,
 		conn:      conn,
 		appender:  appender,
-		tableDesc: &clientapi.TableDescription{Name: tableName},
+		tableDesc: &api.TableDescription{Name: tableName},
 		lastTime:  time.Now(),
 		log:       logging.GetLog("append-worker-test"),
 	}, appender, conn
@@ -206,7 +206,47 @@ func TestAppendWorkerAppendLogTimeRequiresLogTable(t *testing.T) {
 	require.NoError(t, worker.AppendLogTime(ts, "temperature", 3.14))
 	require.Equal(t, []interface{}{ts, "temperature", 3.14}, <-worker.appendC)
 
-	appender.tableType = clientapi.TableTypeFixed
+	appender.tableType = api.TableTypeFixed
 	err := worker.AppendLogTime(ts, "temperature", 3.14)
+	require.EqualError(t, err, "sensor is not a log table, use Append() instead")
+}
+
+func TestAppendWorkerAppenderAccessorsAndNoopOptions(t *testing.T) {
+	worker, appender, _ := newAppendWorkerForTest("sensor")
+
+	require.Equal(t, "sensor", worker.TableName())
+	require.Equal(t, api.TableTypeLog, worker.TableType())
+	columns, err := worker.Columns()
+	require.NoError(t, err)
+	require.Equal(t, []string{"NAME", "VALUE"}, columns.Names())
+	require.Same(t, worker, worker.WithInputFormats("json"))
+	require.Same(t, worker, worker.WithBatchMaxRows(100))
+	require.Same(t, worker, worker.WithBatchMaxBytes(1024))
+	require.Same(t, worker, worker.WithBatchMaxDelay(time.Second))
+
+	success, fail, err := worker.Close()
+	require.NoError(t, err)
+	require.Zero(t, success)
+	require.Zero(t, fail)
+	require.Equal(t, int32(-1), atomic.LoadInt32(&worker.refCount))
+	require.Equal(t, int32(0), atomic.LoadInt32(&appender.closed))
+}
+
+func TestAppendWorkerStartAndAppenderWithWorkerAppendLogTime(t *testing.T) {
+	worker, appender, conn := newAppendWorkerForTest("sensor")
+
+	worker.Start()
+	require.NoError(t, worker.Append("temperature", 3.14))
+	worker.Stop()
+	require.NotEmpty(t, appender.appendRows)
+	require.Equal(t, int32(1), atomic.LoadInt32(&appender.closed))
+	require.Equal(t, int32(1), atomic.LoadInt32(&conn.closed))
+
+	worker2, appender2, _ := newAppendWorkerForTest("sensor")
+	worker2.appendC = make(chan []interface{}, 1)
+	wrapped := worker2.WithInputColumns("NAME", "VALUE").(*AppenderWithWorker)
+	sts := time.Unix(10, 0)
+	appender2.tableType = api.TableTypeFixed
+	err := wrapped.AppendLogTime(sts, "tagB", 11.0)
 	require.EqualError(t, err, "sensor is not a log table, use Append() instead")
 }

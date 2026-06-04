@@ -347,7 +347,7 @@ func TestParseCommandLine(t *testing.T) {
 	}
 }
 
-func TestCommands(t *testing.T) {
+func TestDatabaseBasedCases(t *testing.T) {
 	if err := testServer.CreateTestTables(); err != nil {
 		t.Fatal(err)
 	}
@@ -356,6 +356,11 @@ func TestCommands(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+	t.Run("Commands", testCommands)
+	t.Run("Helpers", testDatabaseHelpers)
+}
+
+func testCommands(t *testing.T) {
 	tests := []struct {
 		name              string
 		input             string
@@ -703,6 +708,65 @@ func TestCommands(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCommandHandlerHelpers(t *testing.T) {
+	h := spi.NewCommandHandler()
+	require.True(t, h.SilenceUsage)
+	require.True(t, h.SilenceErrors)
+	require.Equal(t, "sql --", h.FallbackVerb)
+	require.Empty(t, h.Verbs())
+	require.False(t, h.IsKnownVerb("sql"))
+
+	h.ShowTables = func(*spi.TableInfo, int64) bool { return true }
+	h.DescribeTable = func(*api.TableDescription) {}
+	h.Explain = func(string, error) {}
+	h.SqlQuery = func(*spi.Query, int64) bool { return true }
+	require.Equal(t, []string{"show", "desc", "explain", "sql"}, h.Verbs())
+	require.True(t, h.IsKnownVerb("SHOW"))
+	require.True(t, h.IsKnownVerb("desc"))
+	require.False(t, h.IsKnownVerb("something"))
+}
+
+func testDatabaseHelpers(t *testing.T) {
+	ctx := t.Context()
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	tables, err := spi.ListTables(ctx, conn, false)
+	require.NoError(t, err)
+	require.Len(t, tables, 3)
+
+	tablesAll, err := spi.ListTables(ctx, conn, true)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(tablesAll), len(tables))
+
+	typeTag, err := spi.QueryTableType(ctx, conn, "tag_data")
+	require.NoError(t, err)
+	require.Equal(t, api.TableTypeTag, typeTag)
+
+	_, err = spi.QueryTableType(ctx, conn, "table_not_exists")
+	require.Error(t, err)
+
+	indexes, err := spi.ListIndexes(ctx, conn)
+	require.NoError(t, err)
+	require.NotEmpty(t, indexes)
+
+	tags, err := spi.ListTags(ctx, conn, "tag_data", "NAME")
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+	require.Equal(t, "tag1", tags[0].Name)
+
+	exists, truncated, err := spi.TruncateTableIfExists(ctx, conn, "table_not_exists", true)
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.False(t, truncated)
+
+	exists, truncated, err = spi.TruncateTableIfExists(ctx, conn, "log_data", false)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.False(t, truncated)
 }
 
 func printShowResult[T spi.InfoType](t *testing.T, output io.Writer) func(nfo T, nrow int64) bool {
