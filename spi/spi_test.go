@@ -357,11 +357,14 @@ func TestCommands(t *testing.T) {
 		}
 	}()
 	tests := []struct {
-		name       string
-		input      string
-		expect     []string
-		expectErr  string
-		expectFunc func(t *testing.T, actual string)
+		name              string
+		input             string
+		args              []string
+		params            []any
+		stopAfterFirstRow bool
+		expect            []string
+		expectErr         string
+		expectFunc        func(t *testing.T, actual string)
 	}{
 		{
 			name:      "wrong-command",
@@ -381,6 +384,20 @@ func TestCommands(t *testing.T) {
 		{
 			name:  "show_tables_all",
 			input: "show tables --all",
+			expect: []string{
+				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
+				"1,MACHBASEDB,SYS,LOG_DATA,15,Log,",
+				"2,MACHBASEDB,SYS,TAG_DATA,7,Tag,",
+				"3,MACHBASEDB,SYS,TAG_SIMPLE,14,Tag,",
+				"4,MACHBASEDB,SYS,_TAG_DATA_DATA_0,1,KeyValue,Data",
+				"5,MACHBASEDB,SYS,_TAG_DATA_META,2,Lookup,Meta",
+				"6,MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,8,KeyValue,Data",
+				"7,MACHBASEDB,SYS,_TAG_SIMPLE_META,9,Lookup,Meta",
+			},
+		},
+		{
+			name:  "show_tables_short_all",
+			input: "SHOW tables -a",
 			expect: []string{
 				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
 				"1,MACHBASEDB,SYS,LOG_DATA,15,Log,",
@@ -433,6 +450,25 @@ func TestCommands(t *testing.T) {
 				"TEXT_VALUE text 67108864  ",
 				"BIN_VALUE binary 67108864  ",
 				"_RID long 20  "},
+		},
+		{
+			name:  "desc_table_tag_data",
+			input: "desc tag_data",
+			expect: []string{
+				"NAME varchar 100 tag name ",
+				"TIME datetime 31 basetime ",
+				"VALUE double 17 summarized ",
+				"SHORT_VALUE short 6  ",
+				"USHORT_VALUE ushort 5  ",
+				"INT_VALUE integer 11  ",
+				"UINT_VALUE uinteger 10  ",
+				"LONG_VALUE long 20  ",
+				"ULONG_VALUE ulong 20  ",
+				"STR_VALUE varchar 400  ",
+				"JSON_VALUE json 32767  ",
+				"IPV4_VALUE ipv4 15  ",
+				"IPV6_VALUE ipv6 45  ",
+				"BIN_VALUE binary 32767  "},
 		},
 		{
 			name:  "desc_table_tag_data_all",
@@ -492,6 +528,11 @@ func TestCommands(t *testing.T) {
 			name:   "show_tags_tag_data",
 			input:  "show tags tag_data",
 			expect: []string{"1 1 tag1 MACHBASEDB SYS TAG_DATA 1"},
+		},
+		{
+			name:      "show_tags_not_tag_table",
+			input:     "show tags log_data",
+			expectErr: "table 'LOG_DATA' is not a tag table",
 		},
 		{
 			name:  "show_indexgap",
@@ -580,6 +621,30 @@ func TestCommands(t *testing.T) {
 				"no rows fetched.",
 			},
 		},
+		{
+			name:   "sql-select-row",
+			input:  `sql -- select name as NAME, value as VALUE from tag_data where name = ?`,
+			params: []any{"tag1"},
+			expect: []string{
+				"NAME,VALUE",
+				"1 tag1,123.45",
+				"a row fetched.",
+			},
+		},
+		{
+			name:      "sql_bridge_not_supported",
+			args:      []string{"sql", "--bridge", "sqlite", "select 1"},
+			expectErr: "bridge not supported",
+		},
+		{
+			name:              "sql_callback_stops_after_first_row",
+			input:             `sql -- select name as NAME from tag_data union all select name as NAME from tag_data`,
+			stopAfterFirstRow: true,
+			expectFunc: func(t *testing.T, actual string) {
+				actual = strings.TrimSuffix(actual, "\n")
+				require.Equal(t, "NAME\n1 tag1\na row fetched.", actual)
+			},
+		},
 	}
 
 	h := &spi.CommandHandler{
@@ -606,12 +671,17 @@ func TestCommands(t *testing.T) {
 	h.ShowTableUsage = printShowResult[*spi.TableUsageInfo](t, output)
 	h.ShowLicense = showLicense(t, output)
 	h.Explain = explain(t, output)
-	h.SqlQuery = sqlQuery(t, output)
+	h.SqlQuery = sqlQuery(t, output, false)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defer output.Reset()
-			err := h.Exec(t.Context(), spi.ParseCommandLine(tt.input))
+			h.SqlQuery = sqlQuery(t, output, tt.stopAfterFirstRow)
+			args := tt.args
+			if args == nil {
+				args = spi.ParseCommandLine(tt.input)
+			}
+			err := h.Exec(t.Context(), args, tt.params...)
 			if err != nil {
 				if tt.expectErr != "" {
 					require.Contains(t, err.Error(), tt.expectErr)
@@ -719,7 +789,7 @@ func explain(t *testing.T, output io.Writer) func(plan string, err error) {
 	}
 }
 
-func sqlQuery(t *testing.T, output io.Writer) func(q *spi.Query, nrow int64) bool {
+func sqlQuery(t *testing.T, output io.Writer, stopAfterFirstRow bool) func(q *spi.Query, nrow int64) bool {
 	return func(q *spi.Query, nrow int64) bool {
 		if nrow == 0 {
 			columns := q.Columns()
@@ -737,9 +807,12 @@ func sqlQuery(t *testing.T, output io.Writer) func(q *spi.Query, nrow int64) boo
 			q.Scan(buffer...)
 			line := []string{}
 			for _, c := range buffer {
-				line = append(line, fmt.Sprintf("%v", c))
+				line = append(line, fmt.Sprintf("%v", api.Unbox(c)))
 			}
 			fmt.Fprintln(output, nrow, strings.Join(line, ","))
+			if stopAfterFirstRow {
+				return false
+			}
 		} else {
 			fmt.Fprintln(output, q.UserMessage())
 		}
