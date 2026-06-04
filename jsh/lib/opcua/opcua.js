@@ -27,6 +27,9 @@ class Client {
             opt.messageSecurityMode = MessageSecurityMode.None;
         }
         this._client = _opcua.newClient(opt);
+        if (!this._client) {
+            throw new Error("failed to create OPC UA client");
+        }
     }
 
     /**
@@ -34,6 +37,9 @@ class Client {
      * @returns {any} Native close result.
      */
     close() {
+        if (!this._client) {
+            throw new Error("client not initialized");
+        }
         return this._client.close(...arguments);
     }
 
@@ -129,6 +135,11 @@ const MessageSecurityMode = _opcua.MessageSecurityMode;
 const TimestampsToReturn = _opcua.TimestampsToReturn;
 
 /**
+ * OPC UA user token type constants for authentication.
+ */
+const AuthMode = _opcua.AuthMode;
+
+/**
  * OPC UA browse direction constants.
  */
 const BrowseDirection = _opcua.BrowseDirection;
@@ -155,8 +166,10 @@ const StatusCode = _opcua.StatusCode;
 
 module.exports = {
     Client,
+    getEndpoints: _opcua.getEndpoints,
     MessageSecurityMode,
     TimestampsToReturn,
+    AuthMode,
     BrowseDirection,
     NodeClass,
     BrowseResultMask,

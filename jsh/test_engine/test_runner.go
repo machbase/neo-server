@@ -79,7 +79,8 @@ func RunTest(t *testing.T, tc TestCase) {
 		if len(tc.InputBytes) > 0 {
 			conf.Reader.(*bytes.Buffer).Write(tc.InputBytes)
 		} else if len(tc.Input) > 0 {
-			conf.Reader.(*bytes.Buffer).WriteString(strings.Join(tc.Input, "\n") + "\n")
+			conf.Reader.(*bytes.Buffer).WriteString(strings.Join(tc.Input, "\n"))
+			conf.Reader.(*bytes.Buffer).WriteString("\n")
 		}
 		if err := jr.Run(); err != nil {
 			if tc.Err == "" || !strings.Contains(err.Error(), tc.Err) {

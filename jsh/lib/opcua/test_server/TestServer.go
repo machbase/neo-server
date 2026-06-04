@@ -1,14 +1,29 @@
+//go:build ignore
+
 package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
 	"log"
+	"math/big"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/gopcua/opcua/id"
+	"github.com/gopcua/opcua/server"
 	opc_server "github.com/gopcua/opcua/server"
 	"github.com/gopcua/opcua/ua"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -58,6 +73,40 @@ func startOPCUAServer() *opc_server.Server {
 	opts = append(opts,
 		opc_server.EndPoint("localhost", port),
 	)
+
+	var certDir = os.TempDir()
+	var certFilePath = filepath.Join(certDir, "opcserver_cert.pem")
+	var keyFilePath = filepath.Join(certDir, "opcserver_key.pem")
+
+	// Generate self-signed certificate for testing if not exist
+	if _, err := os.Stat(certFilePath); os.IsNotExist(err) {
+		c, k, err := GenerateCert([]string{"localhost"}, 4096, time.Minute*60*24*365*10)
+		if err != nil {
+			log.Fatalf("Error generating certificate: %s", err)
+		}
+		err = os.WriteFile(certFilePath, c, 0600)
+		if err != nil {
+			log.Fatalf("Error writing certificate file: %s", err)
+		}
+		err = os.WriteFile(keyFilePath, k, 0600)
+		if err != nil {
+			log.Fatalf("Error writing key file: %s", err)
+		}
+	}
+
+	// Load certificate and key files and add to server options
+	func() {
+		c, err := tls.LoadX509KeyPair(certFilePath, keyFilePath)
+		if err != nil {
+			log.Fatalf("Error loading certificate and key files: %s", err)
+		}
+		pk, ok := c.PrivateKey.(*rsa.PrivateKey)
+		if !ok {
+			log.Fatalf("Private key is not RSA")
+		}
+		cert := c.Certificate[0]
+		opts = append(opts, opc_server.PrivateKey(pk), server.Certificate(cert))
+	}()
 
 	s := opc_server.New(opts...)
 
@@ -148,5 +197,88 @@ func loadAvg(m int) func() *ua.DataValue {
 			ret = loadAvg.Load15
 		}
 		return opc_server.DataValueFromValue(ret)
+	}
+}
+
+func GenerateCert(host []string, rsaBits int, validFor time.Duration) (certPEM, keyPEM []byte, err error) {
+	if len(host) == 0 {
+		return nil, nil, fmt.Errorf("missing required host parameter")
+	}
+	if rsaBits == 0 {
+		rsaBits = 2048
+	}
+
+	priv, err := rsa.GenerateKey(rand.Reader, rsaBits)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate private key: %s", err)
+	}
+
+	notBefore := time.Now()
+	notAfter := notBefore.Add(validFor)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate serial number: %s", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName: "Gopcua Server",
+		},
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
+
+		KeyUsage:              x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+	}
+
+	for _, h := range host {
+		if ip := net.ParseIP(h); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, h)
+		}
+		if uri, err := url.Parse(h); err == nil {
+			template.URIs = append(template.URIs, uri)
+		}
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create certificate: %s", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyPEM = pem.EncodeToMemory(pemBlockForKey(priv))
+	return
+}
+
+func publicKey(priv interface{}) interface{} {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &k.PublicKey
+	case *ecdsa.PrivateKey:
+		return &k.PublicKey
+	default:
+		return nil
+	}
+}
+
+func pemBlockForKey(priv interface{}) *pem.Block {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}
+	case *ecdsa.PrivateKey:
+		b, err := x509.MarshalECPrivateKey(k)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to marshal ECDSA private key: %v", err)
+			os.Exit(2)
+		}
+		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
+	default:
+		return nil
 	}
 }
