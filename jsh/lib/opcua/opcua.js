@@ -6,6 +6,14 @@
  */
 
 const _opcua = require('@jsh/opcua');
+const fs = require('fs');
+
+function toHostPathSpec(path) {
+    if (!path || path.startsWith("@")) {
+        return path;
+    }
+    return `@${fs.resolveAbsPath(path)}`;
+}
 
 /**
  * OPC UA client wrapper.
@@ -26,7 +34,21 @@ class Client {
         if (opt.messageSecurityMode === undefined) {
             opt.messageSecurityMode = MessageSecurityMode.None;
         }
+        // Support both camelCase and legacy PascalCase option keys.
+        if (opt.certificateFile === undefined && opt.CertificateFile !== undefined) {
+            opt.certificateFile = opt.CertificateFile;
+        }
+        if (opt.keyFile === undefined && opt.KeyFile !== undefined) {
+            opt.keyFile = opt.KeyFile;
+        }
+
+        opt.certificateFile = toHostPathSpec(opt.certificateFile);
+        opt.keyFile = toHostPathSpec(opt.keyFile);
+
         this._client = _opcua.newClient(opt);
+        if (!this._client) {
+            throw new Error("failed to create OPC UA client");
+        }
     }
 
     /**
@@ -34,6 +56,9 @@ class Client {
      * @returns {any} Native close result.
      */
     close() {
+        if (!this._client) {
+            throw new Error("client not initialized");
+        }
         return this._client.close(...arguments);
     }
 
@@ -129,6 +154,11 @@ const MessageSecurityMode = _opcua.MessageSecurityMode;
 const TimestampsToReturn = _opcua.TimestampsToReturn;
 
 /**
+ * OPC UA user token type constants for authentication.
+ */
+const AuthMode = _opcua.AuthMode;
+
+/**
  * OPC UA browse direction constants.
  */
 const BrowseDirection = _opcua.BrowseDirection;
@@ -155,8 +185,10 @@ const StatusCode = _opcua.StatusCode;
 
 module.exports = {
     Client,
+    getEndpoints: _opcua.getEndpoints,
     MessageSecurityMode,
     TimestampsToReturn,
+    AuthMode,
     BrowseDirection,
     NodeClass,
     BrowseResultMask,

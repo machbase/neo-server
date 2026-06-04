@@ -2,18 +2,64 @@ package opcua_test
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
 	"log"
+	"math/big"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/id"
 	opc_server "github.com/gopcua/opcua/server"
 	"github.com/gopcua/opcua/server/attrs"
 	"github.com/gopcua/opcua/ua"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
+	"github.com/stretchr/testify/require"
 )
 
+type testOPCUALogger struct{}
+
+func (testOPCUALogger) Debug(msg string, args ...any) { log.Printf("opcua-debug: "+msg, args...) }
+func (testOPCUALogger) Error(msg string, args ...any) { log.Printf("opcua-error: "+msg, args...) }
+func (testOPCUALogger) Info(msg string, args ...any)  { log.Printf("opcua-info: "+msg, args...) }
+func (testOPCUALogger) Warn(msg string, args ...any)  { log.Printf("opcua-warn: "+msg, args...) }
+
 func TestScriptOPCUA(t *testing.T) {
-	svr := startOPCUAServer()
+	opts := []opc_server.Option{
+		opc_server.EndPoint("localhost", 4840),
+		opc_server.EnableSecurity("None", ua.MessageSecurityModeNone),
+		opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSignAndEncrypt),
+		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSignAndEncrypt),
+		opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSignAndEncrypt),
+		opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSignAndEncrypt),
+		opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSignAndEncrypt),
+	}
+	opts = append(opts,
+		opc_server.EnableAuthMode(ua.UserTokenTypeAnonymous),
+		opc_server.EnableAuthMode(ua.UserTokenTypeUserName),
+		opc_server.EnableAuthMode(ua.UserTokenTypeCertificate),
+		//		server.EnableAuthWithoutEncryption(), // Dangerous and not recommended, shown for illustration only
+	)
+
+	svr := startOPCUAServer(opts...)
 	defer svr.Close()
 
 	tests := []test_engine.TestCase{
@@ -431,35 +477,259 @@ func TestScriptOPCUA(t *testing.T) {
 	}
 }
 
-func startOPCUAServer() *opc_server.Server {
-	var opts []opc_server.Option
-	port := 4840
-
-	opts = append(opts,
-		opc_server.EnableSecurity("None", ua.MessageSecurityModeNone),
+func TestSecurityPolicyModes(t *testing.T) {
+	ctx := t.Context()
+	server_opts := []opc_server.Option{
+		opc_server.EndPoint("localhost", 4841),
+		//opc_server.EnableSecurity("None", ua.MessageSecurityModeNone),
 		opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSign),
-		opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSignAndEncrypt),
+		//opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSignAndEncrypt),
 		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSign),
 		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSignAndEncrypt),
-		opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSignAndEncrypt),
+		//opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSignAndEncrypt),
 		opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSign),
 		opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSign),
-		opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSignAndEncrypt),
+		//opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSignAndEncrypt),
 		opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSign),
-		opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSignAndEncrypt),
-	)
-
-	opts = append(opts,
+		//opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSignAndEncrypt),
+	}
+	server_opts = append(server_opts,
 		opc_server.EnableAuthMode(ua.UserTokenTypeAnonymous),
 		opc_server.EnableAuthMode(ua.UserTokenTypeUserName),
 		opc_server.EnableAuthMode(ua.UserTokenTypeCertificate),
-		//		server.EnableAuthWithoutEncryption(), // Dangerous and not recommended, shown for illustration only
+		opc_server.SetLogger(testOPCUALogger{}),
+	)
+	var (
+		certDir            = t.TempDir()
+		serverCertFilePath = filepath.Join(certDir, "opcserver_cert.pem")
+		serverKeyFilePath  = filepath.Join(certDir, "opcserver_key.pem")
+		clientCertFilePath = filepath.Join(certDir, "opcclient_cert.pem")
+		clientKeyFilePath  = filepath.Join(certDir, "opcclient_key.pem")
 	)
 
-	opts = append(opts,
-		opc_server.EndPoint("localhost", port),
+	serverCertPEM, serverKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-server"}, 2048, time.Hour, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(serverCertFilePath, serverCertPEM, 0600))
+	require.NoError(t, os.WriteFile(serverKeyFilePath, serverKeyPEM, 0600))
+
+	serverCert, err := tls.LoadX509KeyPair(serverCertFilePath, serverKeyFilePath)
+	require.NoError(t, err)
+	serverPrivKey, ok := serverCert.PrivateKey.(*rsa.PrivateKey)
+	require.True(t, ok, "private key is not RSA")
+
+	clientCertPEM, clientKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-client"}, 2048, time.Hour, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(clientCertFilePath, clientCertPEM, 0600))
+	require.NoError(t, os.WriteFile(clientKeyFilePath, clientKeyPEM, 0600))
+	clientCert, err := tls.LoadX509KeyPair(clientCertFilePath, clientKeyFilePath)
+	require.NoError(t, err)
+	_ = clientCert
+
+	server_opts = append(server_opts,
+		opc_server.PrivateKey(serverPrivKey),
+		opc_server.Certificate(serverCert.Certificate[0]),
 	)
 
+	svr := startOPCUAServer(server_opts...)
+	defer svr.Close()
+
+	endpoints, err := opcua.GetEndpoints(ctx, "opc.tcp://localhost:4841") // warm up endpoint cache
+	require.NoError(t, err)
+	require.NotEmpty(t, endpoints)
+
+	certHostPath := "@" + filepath.ToSlash(clientCertFilePath)
+	keyHostPath := "@" + filepath.ToSlash(clientKeyFilePath)
+	optsCode := fmt.Sprintf(`{
+					endpoint: "opc.tcp://localhost:4841",
+					messageSecurityMode: ua.MessageSecurityMode.SignAndEncrypt,
+					securityPolicy: "Basic256",
+					authMode: ua.AuthMode.Certificate,
+					certificateFile: %q,
+					keyFile: %q
+				}`, certHostPath, keyHostPath)
+
+	tests := []test_engine.TestCase{
+		{
+			Name: "opcua-secure-endpoints",
+			Script: `
+				const ua = require("opcua");
+				try {
+					endpoints = ua.getEndpoints("opc.tcp://localhost:4841");
+					endpoints.forEach(e => console.println(e.endpoint, e.securityPolicy, e.securityMode, e.authModes));
+				} catch (e) {
+					console.println("Error:", e.message);
+				}
+			`,
+			Output: []string{
+				"opc.tcp://localhost:4841 Basic128Rsa15 Sign [Anonymous, UserName, Certificate]",
+				"opc.tcp://localhost:4841 Basic256 Sign [Anonymous, UserName, Certificate]",
+				"opc.tcp://localhost:4841 Basic256 SignAndEncrypt [Anonymous, UserName, Certificate]",
+				"opc.tcp://localhost:4841 Basic256Sha256 Sign [Anonymous, UserName, Certificate]",
+				"opc.tcp://localhost:4841 Aes128_Sha256_RsaOaep Sign [Anonymous, UserName, Certificate]",
+				"opc.tcp://localhost:4841 Aes256_Sha256_RsaPss Sign [Anonymous, UserName, Certificate]",
+			},
+		},
+		{
+			Name: "opcua-secure-read",
+			Script: `
+				const ua = require("opcua");
+				const nodeList = [
+					[
+						"ns=1;s=ro_bool",   // true
+						"ns=1;s=rw_bool",   // true
+						"ns=1;s=ro_int32",  // int32(5)
+						"ns=1;s=rw_int32",  // int32(5)
+					],
+					[
+						"ns=1;s=NoPermVariable",    // ua.StatusOK, int32(742)
+						"ns=1;s=ReadWriteVariable", // ua.StatusOK, 12.34
+						"ns=1;s=ReadOnlyVariable",  // ua.StatusOK, 9.87
+						"ns=1;s=NoAccessVariable",  // ua.StatusBadUserAccessDenied
+					]
+				];
+				var client;
+				try {
+					// create the client
+					client = new ua.Client(` + optsCode + `);
+					for ( i = 0; i < 2; i++ ) {
+						nodes = nodeList[i];
+						vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturn.Both});
+						vs.forEach((v, idx) => {
+							console.println(nodes[idx], v.statusCode, v.value, v.type);
+						})
+					}
+				} catch (e) {
+					console.println("Error:", e.message);
+				} finally {
+				 	// do not forget to close the client
+					if (client !== undefined) client.close();
+				}
+			`,
+			ExpectFunc: func(t *testing.T, got string) {
+				lines := strings.Split(strings.TrimSpace(got), "\n")
+				expected := []string{
+					"ns=1;s=ro_bool StatusGood true Boolean",
+					"ns=1;s=rw_bool StatusGood true Boolean",
+					"ns=1;s=ro_int32 StatusGood 5 Int32",
+					"ns=1;s=rw_int32 StatusGood 5 Int32",
+					"ns=1;s=NoPermVariable StatusGood 742 Int32",
+					"ns=1;s=ReadWriteVariable StatusGood 12.34 Double",
+					"ns=1;s=ReadOnlyVariable StatusGood 9.87 Double",
+					"ns=1;s=NoAccessVariable StatusBadUserAccessDenied null Null",
+				}
+				require.Equal(t, expected, lines)
+			},
+		},
+	}
+	for _, tc := range tests {
+		test_engine.RunTest(t, tc)
+	}
+}
+
+func TestSecurityPolicyModesGoDirectClient(t *testing.T) {
+	ctx := t.Context()
+	serverOpts := []opc_server.Option{
+		opc_server.EndPoint("localhost", 4842),
+		opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSignAndEncrypt),
+		opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSign),
+	}
+	serverOpts = append(serverOpts,
+		opc_server.EnableAuthMode(ua.UserTokenTypeAnonymous),
+		opc_server.EnableAuthMode(ua.UserTokenTypeUserName),
+		opc_server.EnableAuthMode(ua.UserTokenTypeCertificate),
+		opc_server.SetLogger(testOPCUALogger{}),
+	)
+
+	certDir := t.TempDir()
+	serverCertFilePath := filepath.Join(certDir, "opcserver_cert.pem")
+	serverKeyFilePath := filepath.Join(certDir, "opcserver_key.pem")
+	clientCertFilePath := filepath.Join(certDir, "opcclient_cert.pem")
+	clientKeyFilePath := filepath.Join(certDir, "opcclient_key.pem")
+
+	serverCertPEM, serverKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-server"}, 2048, time.Hour, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(serverCertFilePath, serverCertPEM, 0600))
+	require.NoError(t, os.WriteFile(serverKeyFilePath, serverKeyPEM, 0600))
+
+	serverPair, err := tls.LoadX509KeyPair(serverCertFilePath, serverKeyFilePath)
+	require.NoError(t, err)
+	serverPrivKey, ok := serverPair.PrivateKey.(*rsa.PrivateKey)
+	require.True(t, ok, "private key is not RSA")
+
+	clientCertPEM, clientKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-client"}, 2048, time.Hour, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(clientCertFilePath, clientCertPEM, 0600))
+	require.NoError(t, os.WriteFile(clientKeyFilePath, clientKeyPEM, 0600))
+
+	clientPair, err := tls.LoadX509KeyPair(clientCertFilePath, clientKeyFilePath)
+	require.NoError(t, err)
+	clientPrivKey, ok := clientPair.PrivateKey.(*rsa.PrivateKey)
+	require.True(t, ok, "client private key is not RSA")
+
+	serverOpts = append(serverOpts,
+		opc_server.PrivateKey(serverPrivKey),
+		opc_server.Certificate(serverPair.Certificate[0]),
+	)
+
+	svr := startOPCUAServer(serverOpts...)
+	defer svr.Close()
+
+	endpointURL := "opc.tcp://localhost:4842"
+	endpoints, err := opcua.GetEndpoints(ctx, endpointURL)
+	require.NoError(t, err)
+	require.NotEmpty(t, endpoints)
+
+	var selected *ua.EndpointDescription
+	for _, ep := range endpoints {
+		if ep.SecurityMode != ua.MessageSecurityModeSignAndEncrypt {
+			continue
+		}
+		if ep.SecurityPolicyURI != ua.SecurityPolicyURIPrefix+"Basic256" {
+			continue
+		}
+		for _, tok := range ep.UserIdentityTokens {
+			if tok.TokenType == ua.UserTokenTypeCertificate {
+				selected = ep
+				break
+			}
+		}
+		if selected != nil {
+			break
+		}
+	}
+	require.NotNil(t, selected, "no endpoint matched Basic256/SignAndEncrypt with certificate auth")
+
+	client, err := opcua.NewClient(endpointURL,
+		//opcua.RemoteCertificateFile(serverCertFilePath),
+		opcua.Certificate(clientPair.Certificate[0]),
+		opcua.PrivateKey(clientPrivKey),
+		//opcua.AuthCertificate(clientPair.Certificate[0]),
+		opcua.AuthPrivateKey(clientPrivKey),
+		opcua.SecurityFromEndpoint(selected, ua.UserTokenTypeCertificate),
+	)
+	require.NoError(t, err)
+	require.NoError(t, client.Connect(ctx))
+	defer client.Close(ctx)
+
+	readReq := &ua.ReadRequest{
+		TimestampsToReturn: ua.TimestampsToReturnBoth,
+		NodesToRead: []*ua.ReadValueID{{
+			NodeID:      ua.MustParseNodeID("ns=1;s=ro_bool"),
+			AttributeID: ua.AttributeIDValue,
+		}},
+	}
+	readRsp, err := client.Read(ctx, readReq)
+	require.NoError(t, err)
+	require.Len(t, readRsp.Results, 1)
+	require.Equal(t, ua.StatusOK, readRsp.Results[0].Status)
+	require.Equal(t, true, readRsp.Results[0].Value.Value())
+}
+
+func startOPCUAServer(opts ...opc_server.Option) *opc_server.Server {
 	s := opc_server.New(opts...)
 
 	root_ns, _ := s.Namespace(0)
@@ -562,4 +832,91 @@ func startOPCUAServer() *opc_server.Server {
 		log.Fatalf("Error starting server, exiting: %s", err)
 	}
 	return s
+}
+
+func generateCert(host []string, rsaBits int, validFor time.Duration, signer crypto.Signer) (certPEM, keyPEM []byte, err error) {
+	if len(host) == 0 {
+		return nil, nil, fmt.Errorf("missing required host parameter")
+	}
+	if rsaBits == 0 {
+		rsaBits = 2048
+	}
+
+	priv, err := rsa.GenerateKey(rand.Reader, rsaBits)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate private key: %s", err)
+	}
+
+	notBefore := time.Now()
+	notAfter := notBefore.Add(validFor)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate serial number: %s", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName: "Gopcua Server",
+		},
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
+
+		KeyUsage: x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment |
+			x509.KeyUsageDigitalSignature | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+	}
+
+	for _, h := range host {
+		if ip := net.ParseIP(h); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, h)
+		}
+		if uri, err := url.Parse(h); err == nil && uri.Scheme != "" {
+			template.URIs = append(template.URIs, uri)
+		}
+	}
+	if signer == nil {
+		signer = priv
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), signer)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create certificate: %s", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyPEM = pem.EncodeToMemory(pemBlockForKey(priv))
+	return
+}
+
+func publicKey(priv interface{}) interface{} {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &k.PublicKey
+	case *ecdsa.PrivateKey:
+		return &k.PublicKey
+	default:
+		return nil
+	}
+}
+
+func pemBlockForKey(priv interface{}) *pem.Block {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}
+	case *ecdsa.PrivateKey:
+		b, err := x509.MarshalECPrivateKey(k)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to marshal ECDSA private key: %v", err)
+			os.Exit(2)
+		}
+		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
+	default:
+		return nil
+	}
 }

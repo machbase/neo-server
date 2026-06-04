@@ -19,7 +19,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
-	github.com/gopcua/opcua v0.8.0
+	github.com/gopcua/opcua v0.8.1-0.20260528125848-add34eeb01b2
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/hymkor/go-multiline-ny v0.22.4

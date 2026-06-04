@@ -1,7 +1,13 @@
 package opcua
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
+	"math/big"
 	"testing"
 	"time"
 
@@ -138,7 +144,7 @@ func TestCloseNilClient(t *testing.T) {
 }
 
 func TestNewClientInvalidEndpoint(t *testing.T) {
-	client, err := NewClient(ClientOptions{
+	client, err := NewClient(t.Context(), ClientOptions{
 		Endpoint:          "opc.tcp://127.0.0.1:1",
 		ReadRetryInterval: 10 * time.Millisecond,
 	})
@@ -148,4 +154,55 @@ func TestNewClientInvalidEndpoint(t *testing.T) {
 		}
 		t.Fatal("expected NewClient to fail for an unreachable endpoint")
 	}
+}
+
+func TestLoadX509Credentials(t *testing.T) {
+	certPEM, keyPEM, err := generateRSATestCertificate(t)
+	if err != nil {
+		t.Fatalf("generateRSATestCertificate() returned error: %v", err)
+	}
+
+	privateKey, certificate, err := loadX509Credentials(string(certPEM), string(keyPEM))
+	if err != nil {
+		t.Fatalf("loadX509Credentials() returned error: %v", err)
+	}
+	if _, ok := privateKey.(*rsa.PrivateKey); !ok {
+		t.Fatalf("expected RSA private key, got %T", privateKey)
+	}
+	if certificate == nil {
+		t.Fatal("expected certificate, got nil")
+	}
+	if got, want := certificate.Subject.CommonName, "Gopcua Server"; got != want {
+		t.Fatalf("unexpected certificate common name: got %q want %q", got, want)
+	}
+}
+
+func generateRSATestCertificate(t *testing.T) ([]byte, []byte, error) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "Gopcua Server",
+		},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
+	return certPEM, keyPEM, nil
 }
