@@ -6,6 +6,14 @@
  */
 
 const _opcua = require('@jsh/opcua');
+const fs = require('fs');
+
+function toHostPathSpec(path) {
+    if (!path || path.startsWith("@")) {
+        return path;
+    }
+    return `@${fs.resolveAbsPath(path)}`;
+}
 
 /**
  * OPC UA client wrapper.
@@ -26,6 +34,17 @@ class Client {
         if (opt.messageSecurityMode === undefined) {
             opt.messageSecurityMode = MessageSecurityMode.None;
         }
+        // Support both camelCase and legacy PascalCase option keys.
+        if (opt.certificateFile === undefined && opt.CertificateFile !== undefined) {
+            opt.certificateFile = opt.CertificateFile;
+        }
+        if (opt.keyFile === undefined && opt.KeyFile !== undefined) {
+            opt.keyFile = opt.KeyFile;
+        }
+
+        opt.certificateFile = toHostPathSpec(opt.certificateFile);
+        opt.keyFile = toHostPathSpec(opt.keyFile);
+
         this._client = _opcua.newClient(opt);
         if (!this._client) {
             throw new Error("failed to create OPC UA client");
