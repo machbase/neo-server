@@ -378,10 +378,12 @@ func (c *Collector) Send(measurements ...Measure) {
 }
 
 func (c *Collector) runInputs(ts time.Time) {
+	c.Lock()
 	// there are chances that recvCh is already closed
 	// because of Stop() has been called.
 	// so we need to recover from panic.
 	defer func() {
+		c.Unlock()
 		if r := recover(); r != nil {
 			slog.Error("Recovered in runInputs", "error", r)
 		}

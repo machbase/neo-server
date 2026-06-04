@@ -93,6 +93,7 @@ func TestMain(m *testing.M) {
 			"--shell-port", strconv.Itoa(shellPort),
 			"--jwt-secret", "__secr3t__",
 			"--machbase-init-option", "1",
+			"--http-query-cypher", "alg=AES key=1234567890abcdef pad=pkcs5",
 			"--log-filename", "-",
 			"--log-level", "INFO",
 		})

@@ -2,15 +2,423 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHttpQuery(t *testing.T) {
+	tests := []struct {
+		name        string
+		sqlText     string
+		params      url.Values
+		contentType string
+		expectObj   map[string]any
+		expect      []string
+	}{
+		{
+			name:        "select_v$example",
+			sqlText:     `select (MIN(MIN_TIME)),(MAX(MAX_TIME)) from v$EXAMPLE_stat where name = 'temp'`,
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_bind_params",
+			sqlText: `select (MIN(MIN_TIME)),(MAX(MAX_TIME)) from v$EXAMPLE_stat where name = ?`,
+			params: url.Values{
+				"p": []string{`["temp"]`},
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_bind_params_csv",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`,
+			params: url.Values{
+				"p":      []string{`["temp"]`},
+				"format": []string{"csv"},
+			},
+			contentType: "text/csv; charset=utf-8",
+			expect: []string{
+				"(min(min_time)),(max(max_time))",
+				"1705291859000000000,1705291859000000000",
+			},
+		},
+		{
+			name:    "select_v$example_bind_params_csv_header_skip",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`,
+			params: url.Values{
+				"p":          []string{`["temp"]`},
+				"format":     []string{"csv"},
+				"header":     []string{"skip"},
+				"timeformat": []string{"s"},
+			},
+			contentType: "text/csv; charset=utf-8",
+			expect: []string{
+				"1705291859,1705291859",
+			},
+		},
+		{
+			name:    "select_v$example_transpose",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			params: url.Values{
+				"transpose": []string{"true"},
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
+					"types":   []any{"datetime", "datetime"},
+					"cols": []any{
+						[]any{float64(testTimeTick.UnixNano())},
+						[]any{float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_rowsFlatten",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			params: url.Values{
+				"rowsFlatten": []string{"true"},
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano()),
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_rowsArray",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			params: url.Values{
+				"rowsArray": []string{"true"},
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						map[string]any{"(min(min_time))": float64(testTimeTick.UnixNano()), "(max(max_time))": float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name: "select_between_sub_query",
+			sqlText: `SELECT
+						to_timestamp((mTime)) AS TIME,
+						SUM(SUMMVAL) / SUM(CNTMVAL) AS VALUE
+					FROM (
+						SELECT
+							TIME / (1000 * 1000 * 1000) * (1000 * 1000 * 1000) as mtime, 
+							sum(VALUE) as SUMMVAL,
+							count(VALUE) as CNTMVAL
+						FROM
+							EXAMPLE
+						WHERE
+							NAME = 'test.query'
+						AND TIME BETWEEN 1705291858000000000 and 1705291958000000000
+						GROUP BY mTime
+					)
+					GROUP BY TIME
+					ORDER by TIME LIMIT 400`,
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"TIME", "VALUE"},
+					"types":   []any{"int64", "double"},
+					"rows": []any{
+						[]any{float64(testTimeTick.Add(time.Second).UnixNano()), 1.5 * 1.0},
+						[]any{float64(testTimeTick.Add(2 * time.Second).UnixNano()), 1.5 * 2.0},
+						[]any{float64(testTimeTick.Add(3 * time.Second).UnixNano()), 1.5 * 3.0},
+						[]any{float64(testTimeTick.Add(4 * time.Second).UnixNano()), 1.5 * 4.0},
+						[]any{float64(testTimeTick.Add(5 * time.Second).UnixNano()), 1.5 * 5.0},
+						[]any{float64(testTimeTick.Add(6 * time.Second).UnixNano()), 1.5 * 6.0},
+						[]any{float64(testTimeTick.Add(7 * time.Second).UnixNano()), 1.5 * 7.0},
+						[]any{float64(testTimeTick.Add(8 * time.Second).UnixNano()), 1.5 * 8.0},
+						[]any{float64(testTimeTick.Add(9 * time.Second).UnixNano()), 1.5 * 9.0},
+						[]any{float64(testTimeTick.Add(10 * time.Second).UnixNano()), 1.5 * 10.0},
+					},
+				},
+			},
+		},
+		{
+			name:        "select_between_sub_query",
+			sqlText:     "ENC:" + util.MustEncryptString(`SELECT count(*) from example`, "AES", "1234567890abcdef"),
+			params:      url.Values{"format": []string{"box"}},
+			contentType: "text/plain",
+			expect: []string{
+				"+----------+",
+				"| COUNT(*) |",
+				"+----------+",
+				"| 11       |",
+				"+----------+",
+			},
+		},
+	}
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		t.Run("GET_"+tc.name, func(t *testing.T) {
+			var params = "q=" + url.QueryEscape(tc.sqlText) + "&" + tc.params.Encode()
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params, nil)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+
+			if tc.expectObj != nil {
+				resultObj := map[string]any{}
+				err = json.Unmarshal(result, &resultObj)
+				require.NoError(t, err)
+				delete(resultObj, "elapse")
+				require.EqualValues(t, tc.expectObj, resultObj)
+			} else {
+				lines := strings.Split(strings.TrimSpace(string(result)), "\n")
+				require.Equal(t, tc.expect, lines)
+			}
+		})
+		t.Run("POST_"+tc.name, func(t *testing.T) {
+			params := map[string]any{"q": tc.sqlText}
+			for k, v := range tc.params {
+				params[k] = v[0]
+			}
+			for k, v := range tc.params {
+				switch k {
+				case "p":
+					var bindParams []any
+					err := json.Unmarshal([]byte(v[0]), &bindParams)
+					require.NoError(t, err)
+					params[k] = bindParams
+				case "transpose", "rowsFlatten", "rowsArray":
+					params[k] = v[0] == "true"
+				default:
+					params[k] = v[0]
+				}
+			}
+			payload, _ := json.Marshal(params)
+			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewBuffer(payload))
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			req.Header.Set("Content-Type", "application/json")
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(result))
+			require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+
+			if tc.expectObj != nil {
+				resultObj := map[string]any{}
+				err = json.Unmarshal(result, &resultObj)
+				require.NoError(t, err)
+				delete(resultObj, "elapse")
+				require.EqualValues(t, tc.expectObj, resultObj)
+			} else {
+				lines := strings.Split(strings.TrimSpace(string(result)), "\n")
+				require.Equal(t, tc.expect, lines)
+			}
+		})
+		t.Run("POST_FORM_"+tc.name, func(t *testing.T) {
+			params := map[string]any{"q": tc.sqlText}
+			for k, v := range tc.params {
+				switch k {
+				case "p":
+					var bindParams []any
+					err := json.Unmarshal([]byte(v[0]), &bindParams)
+					require.NoError(t, err)
+					params[k] = bindParams
+				case "transpose", "rowsFlatten", "rowsArray":
+					params[k] = v[0] == "true"
+				default:
+					params[k] = v[0]
+				}
+			}
+			payload := url.Values{}
+			for k, v := range params {
+				switch val := v.(type) {
+				case []any:
+					jsonVal, _ := json.Marshal(val)
+					payload.Set(k, string(jsonVal))
+				case bool:
+					payload.Set(k, fmt.Sprintf("%t", val))
+				default:
+					payload.Set(k, fmt.Sprintf("%v", val))
+				}
+			}
+			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", strings.NewReader(payload.Encode()))
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(result))
+			require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+
+			if tc.expectObj != nil {
+				resultObj := map[string]any{}
+				err = json.Unmarshal(result, &resultObj)
+				require.NoError(t, err)
+				delete(resultObj, "elapse")
+				require.EqualValues(t, tc.expectObj, resultObj)
+			} else {
+				lines := strings.Split(strings.TrimSpace(string(result)), "\n")
+				require.Equal(t, tc.expect, lines)
+			}
+		})
+	}
+}
+
+func TestHttpQueryEmptySqlErrors(t *testing.T) {
+	var params = "q=" + "&" + url.Values{"format": []string{"box"}}.Encode()
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params, nil)
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
+	require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+	result, _ := io.ReadAll(rsp.Body)
+	rsp.Body.Close()
+
+	resultObj := map[string]any{}
+	err = json.Unmarshal(result, &resultObj)
+	require.NoError(t, err)
+	delete(resultObj, "elapse")
+	require.EqualValues(t, map[string]any{
+		"success": false, "reason": "empty sql",
+	}, resultObj)
+}
+
+func TestHttpQueryBindParamErrors(t *testing.T) {
+	payload := url.Values{}
+	payload.Set("q", `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`)
+	payload.Set("p", `["temp"]`)
+
+	req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", strings.NewReader(payload.Encode()))
+	//req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	result, _ := io.ReadAll(rsp.Body)
+	rsp.Body.Close()
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(result))
+	require.Equal(t, "application/json", rsp.Header.Get("Content-Type"))
+
+	resultObj := map[string]any{}
+	err = json.Unmarshal(result, &resultObj)
+	require.NoError(t, err)
+	delete(resultObj, "elapse")
+	require.EqualValues(t, map[string]any{
+		"success": true, "reason": "success",
+		"data": map[string]any{
+			"columns": []any{"(min(min_time))", "(max(max_time))"},
+			"types":   []any{"datetime", "datetime"},
+			"rows": []any{
+				[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+			},
+		},
+	}, resultObj)
+}
+
+func TestHttpQueryBindParamInvalid(t *testing.T) {
+	params := url.Values{}
+	params.Set("q", `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?`)
+	params.Set("p", `[["temp"]]`)
+
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+	// req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	result, _ := io.ReadAll(rsp.Body)
+	rsp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(result))
+
+	resultObj := map[string]any{}
+	err = json.Unmarshal(result, &resultObj)
+	require.NoError(t, err)
+	require.Equal(t, false, resultObj["success"])
+	require.Contains(t, resultObj["reason"], "bind parameter must be scalar")
+}
+
+func TestHttpQueryUnsupportedContentType(t *testing.T) {
+	payload := []byte(`{"q":"select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = ?","p":[{"name":"temp"}]}`)
+
+	req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewBuffer(payload))
+	// req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	req.Header.Set("Content-Type", "application/json")
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	result, _ := io.ReadAll(rsp.Body)
+	rsp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(result))
+
+	resultObj := map[string]any{}
+	err = json.Unmarshal(result, &resultObj)
+	require.NoError(t, err)
+	require.Equal(t, false, resultObj["success"])
+	require.Contains(t, resultObj["reason"], "bind parameter must be scalar")
+}
+
+func TestHttpQueryUnsupportedContentTypeForm(t *testing.T) {
+	payload := []byte(`{"q":"select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'"}`)
+
+	req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewBuffer(payload))
+	// req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	req.Header.Set("Content-Type", "text/plain")
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	result, _ := io.ReadAll(rsp.Body)
+	rsp.Body.Close()
+	require.Equal(t, http.StatusUnsupportedMediaType, rsp.StatusCode, string(result))
+
+	resultObj := map[string]any{}
+	err = json.Unmarshal(result, &resultObj)
+	require.NoError(t, err)
+	require.Equal(t, false, resultObj["success"])
+	require.Contains(t, resultObj["reason"], "unsupported content-type: text/plain")
+}
 
 func TestHandleTqlQueryExec(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")

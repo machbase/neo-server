@@ -29,6 +29,14 @@ func ValidateCypherKey(alg string, key string) error {
 	}
 }
 
+func MustEncryptString(plainStr string, alg string, key string) string {
+	enc, err := EncryptString(plainStr, alg, key)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
 func EncryptString(plainStr string, alg string, key string) (string, error) {
 	data := []byte(plainStr)
 	switch strings.ToUpper(alg) {

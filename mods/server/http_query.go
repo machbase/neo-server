@@ -76,7 +76,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Compress = ctx.PostForm("compress")
 			req.Rownum = strBool(ctx.PostForm("rownum"), false)
 			req.Heading = strBool(ctx.PostForm("heading"), true)
-			if h := ctx.Query("header"); h == "skip" {
+			if h := ctx.PostForm("header"); h == "skip" {
 				req.Heading = false
 			}
 			req.Precision = strInt(ctx.PostForm("precision"), -1)
@@ -86,7 +86,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		default:
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
 			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusBadRequest, rsp)
+			ctx.JSON(http.StatusUnsupportedMediaType, rsp)
 			return
 		}
 	case http.MethodGet:
