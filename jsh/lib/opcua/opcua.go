@@ -311,11 +311,15 @@ func NewClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 		if !ok {
 			return nil, fmt.Errorf("unsupported private key type %T: RSA private key required", privateKey)
 		}
-		optsArr = append(optsArr, opcua.Certificate(certificate.Raw), opcua.PrivateKey(rsaKey))
+		optsArr = append(optsArr,
+			opcua.Certificate(certificate.Raw),
+			opcua.PrivateKey(rsaKey))
 
 		if opts.AuthMode == ua.UserTokenTypeCertificate {
 			// Certificate user token requires explicit auth credentials in addition to secure channel credentials.
-			optsArr = append(optsArr, opcua.AuthCertificate(certificate.Raw), opcua.AuthPrivateKey(rsaKey))
+			optsArr = append(optsArr,
+				opcua.AuthCertificate(certificate.Raw),
+				opcua.AuthPrivateKey(rsaKey))
 		}
 	}
 

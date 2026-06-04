@@ -2,6 +2,7 @@ package opcua_test
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
@@ -28,6 +29,13 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/stretchr/testify/require"
 )
+
+type testOPCUALogger struct{}
+
+func (testOPCUALogger) Debug(msg string, args ...any) { log.Printf("opcua-debug: "+msg, args...) }
+func (testOPCUALogger) Error(msg string, args ...any) { log.Printf("opcua-error: "+msg, args...) }
+func (testOPCUALogger) Info(msg string, args ...any)  { log.Printf("opcua-info: "+msg, args...) }
+func (testOPCUALogger) Warn(msg string, args ...any)  { log.Printf("opcua-warn: "+msg, args...) }
 
 func TestScriptOPCUA(t *testing.T) {
 	opts := []opc_server.Option{
@@ -489,6 +497,7 @@ func TestSecurityPolicyModes(t *testing.T) {
 		opc_server.EnableAuthMode(ua.UserTokenTypeAnonymous),
 		opc_server.EnableAuthMode(ua.UserTokenTypeUserName),
 		opc_server.EnableAuthMode(ua.UserTokenTypeCertificate),
+		opc_server.SetLogger(testOPCUALogger{}),
 	)
 	var (
 		certDir            = t.TempDir()
@@ -498,32 +507,28 @@ func TestSecurityPolicyModes(t *testing.T) {
 		clientKeyFilePath  = filepath.Join(certDir, "opcclient_key.pem")
 	)
 
-	serverCertPEM, serverKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-server"}, 2048, time.Hour)
+	serverCertPEM, serverKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-server"}, 2048, time.Hour, nil)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(serverCertFilePath, serverCertPEM, 0600))
 	require.NoError(t, os.WriteFile(serverKeyFilePath, serverKeyPEM, 0600))
 
-	clientCertPEM, clientKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-client"}, 2048, time.Hour)
+	serverCert, err := tls.LoadX509KeyPair(serverCertFilePath, serverKeyFilePath)
+	require.NoError(t, err)
+	serverPrivKey, ok := serverCert.PrivateKey.(*rsa.PrivateKey)
+	require.True(t, ok, "private key is not RSA")
+
+	clientCertPEM, clientKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-client"}, 2048, time.Hour, nil)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(clientCertFilePath, clientCertPEM, 0600))
 	require.NoError(t, os.WriteFile(clientKeyFilePath, clientKeyPEM, 0600))
+	clientCert, err := tls.LoadX509KeyPair(clientCertFilePath, clientKeyFilePath)
+	require.NoError(t, err)
+	_ = clientCert
 
-	// Load certificate and key files and add to server options
-	func() {
-		c, err := tls.LoadX509KeyPair(serverCertFilePath, serverKeyFilePath)
-		if err != nil {
-			log.Fatalf("Error loading certificate and key files: %s", err)
-		}
-		pk, ok := c.PrivateKey.(*rsa.PrivateKey)
-		if !ok {
-			log.Fatalf("Private key is not RSA")
-		}
-		cert := c.Certificate[0]
-		// register the certificate and key with the server options
-		server_opts = append(server_opts,
-			opc_server.PrivateKey(pk),
-			opc_server.Certificate(cert))
-	}()
+	server_opts = append(server_opts,
+		opc_server.PrivateKey(serverPrivKey),
+		opc_server.Certificate(serverCert.Certificate[0]),
+	)
 
 	svr := startOPCUAServer(server_opts...)
 	defer svr.Close()
@@ -536,7 +541,7 @@ func TestSecurityPolicyModes(t *testing.T) {
 					endpoint: "opc.tcp://localhost:4841",
 					messageSecurityMode: ua.MessageSecurityMode.SignAndEncrypt,
 					securityPolicy: "Basic256",
-					authMode: ua.AuthMode.Anonymous,
+					authMode: ua.AuthMode.Certificate,
 					certificateFile: "@` + clientCertFilePath + `",
 					keyFile: "@` + clientKeyFilePath + `"
 				}`
@@ -599,9 +604,6 @@ func TestSecurityPolicyModes(t *testing.T) {
 				}
 			`,
 			ExpectFunc: func(t *testing.T, got string) {
-				if strings.Contains(got, "StatusBadTimeout") {
-					t.Skip("secure-read is flaky with in-process gopcua server (StatusBadTimeout)")
-				}
 				lines := strings.Split(strings.TrimSpace(got), "\n")
 				expected := []string{
 					"ns=1;s=ro_bool StatusGood true Boolean",
@@ -620,6 +622,109 @@ func TestSecurityPolicyModes(t *testing.T) {
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
 	}
+}
+
+func TestSecurityPolicyModesGoDirectClient(t *testing.T) {
+	ctx := t.Context()
+	serverOpts := []opc_server.Option{
+		opc_server.EndPoint("localhost", 4842),
+		opc_server.EnableSecurity("Basic128Rsa15", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Basic256", ua.MessageSecurityModeSignAndEncrypt),
+		opc_server.EnableSecurity("Basic256Sha256", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes128_Sha256_RsaOaep", ua.MessageSecurityModeSign),
+		opc_server.EnableSecurity("Aes256_Sha256_RsaPss", ua.MessageSecurityModeSign),
+	}
+	serverOpts = append(serverOpts,
+		opc_server.EnableAuthMode(ua.UserTokenTypeAnonymous),
+		opc_server.EnableAuthMode(ua.UserTokenTypeUserName),
+		opc_server.EnableAuthMode(ua.UserTokenTypeCertificate),
+		opc_server.SetLogger(testOPCUALogger{}),
+	)
+
+	certDir := t.TempDir()
+	serverCertFilePath := filepath.Join(certDir, "opcserver_cert.pem")
+	serverKeyFilePath := filepath.Join(certDir, "opcserver_key.pem")
+	clientCertFilePath := filepath.Join(certDir, "opcclient_cert.pem")
+	clientKeyFilePath := filepath.Join(certDir, "opcclient_key.pem")
+
+	serverCertPEM, serverKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-server"}, 2048, time.Hour, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(serverCertFilePath, serverCertPEM, 0600))
+	require.NoError(t, os.WriteFile(serverKeyFilePath, serverKeyPEM, 0600))
+
+	serverPair, err := tls.LoadX509KeyPair(serverCertFilePath, serverKeyFilePath)
+	require.NoError(t, err)
+	serverPrivKey, ok := serverPair.PrivateKey.(*rsa.PrivateKey)
+	require.True(t, ok, "private key is not RSA")
+
+	clientCertPEM, clientKeyPEM, err := generateCert([]string{"urn:neo:opcua:test-client"}, 2048, time.Hour, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(clientCertFilePath, clientCertPEM, 0600))
+	require.NoError(t, os.WriteFile(clientKeyFilePath, clientKeyPEM, 0600))
+
+	clientPair, err := tls.LoadX509KeyPair(clientCertFilePath, clientKeyFilePath)
+	require.NoError(t, err)
+	clientPrivKey, ok := clientPair.PrivateKey.(*rsa.PrivateKey)
+	require.True(t, ok, "client private key is not RSA")
+
+	serverOpts = append(serverOpts,
+		opc_server.PrivateKey(serverPrivKey),
+		opc_server.Certificate(serverPair.Certificate[0]),
+	)
+
+	svr := startOPCUAServer(serverOpts...)
+	defer svr.Close()
+
+	endpointURL := "opc.tcp://localhost:4842"
+	endpoints, err := opcua.GetEndpoints(ctx, endpointURL)
+	require.NoError(t, err)
+	require.NotEmpty(t, endpoints)
+
+	var selected *ua.EndpointDescription
+	for _, ep := range endpoints {
+		if ep.SecurityMode != ua.MessageSecurityModeSignAndEncrypt {
+			continue
+		}
+		if ep.SecurityPolicyURI != ua.SecurityPolicyURIPrefix+"Basic256" {
+			continue
+		}
+		for _, tok := range ep.UserIdentityTokens {
+			if tok.TokenType == ua.UserTokenTypeCertificate {
+				selected = ep
+				break
+			}
+		}
+		if selected != nil {
+			break
+		}
+	}
+	require.NotNil(t, selected, "no endpoint matched Basic256/SignAndEncrypt with certificate auth")
+
+	client, err := opcua.NewClient(endpointURL,
+		//opcua.RemoteCertificateFile(serverCertFilePath),
+		opcua.Certificate(clientPair.Certificate[0]),
+		opcua.PrivateKey(clientPrivKey),
+		//opcua.AuthCertificate(clientPair.Certificate[0]),
+		opcua.AuthPrivateKey(clientPrivKey),
+		opcua.SecurityFromEndpoint(selected, ua.UserTokenTypeCertificate),
+	)
+	require.NoError(t, err)
+	require.NoError(t, client.Connect(ctx))
+	defer client.Close(ctx)
+
+	readReq := &ua.ReadRequest{
+		TimestampsToReturn: ua.TimestampsToReturnBoth,
+		NodesToRead: []*ua.ReadValueID{{
+			NodeID:      ua.MustParseNodeID("ns=1;s=ro_bool"),
+			AttributeID: ua.AttributeIDValue,
+		}},
+	}
+	readRsp, err := client.Read(ctx, readReq)
+	require.NoError(t, err)
+	require.Len(t, readRsp.Results, 1)
+	require.Equal(t, ua.StatusOK, readRsp.Results[0].Status)
+	require.Equal(t, true, readRsp.Results[0].Value.Value())
 }
 
 func startOPCUAServer(opts ...opc_server.Option) *opc_server.Server {
@@ -727,7 +832,7 @@ func startOPCUAServer(opts ...opc_server.Option) *opc_server.Server {
 	return s
 }
 
-func generateCert(host []string, rsaBits int, validFor time.Duration) (certPEM, keyPEM []byte, err error) {
+func generateCert(host []string, rsaBits int, validFor time.Duration, signer crypto.Signer) (certPEM, keyPEM []byte, err error) {
 	if len(host) == 0 {
 		return nil, nil, fmt.Errorf("missing required host parameter")
 	}
@@ -757,7 +862,8 @@ func generateCert(host []string, rsaBits int, validFor time.Duration) (certPEM, 
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
 
-		KeyUsage:              x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
+		KeyUsage: x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment |
+			x509.KeyUsageDigitalSignature | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 	}
@@ -772,8 +878,11 @@ func generateCert(host []string, rsaBits int, validFor time.Duration) (certPEM, 
 			template.URIs = append(template.URIs, uri)
 		}
 	}
+	if signer == nil {
+		signer = priv
+	}
 
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), signer)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create certificate: %s", err)
 	}
