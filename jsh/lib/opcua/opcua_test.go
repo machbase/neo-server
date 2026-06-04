@@ -537,14 +537,16 @@ func TestSecurityPolicyModes(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, endpoints)
 
-	optsCode := `{
+	certHostPath := "@" + filepath.ToSlash(clientCertFilePath)
+	keyHostPath := "@" + filepath.ToSlash(clientKeyFilePath)
+	optsCode := fmt.Sprintf(`{
 					endpoint: "opc.tcp://localhost:4841",
 					messageSecurityMode: ua.MessageSecurityMode.SignAndEncrypt,
 					securityPolicy: "Basic256",
 					authMode: ua.AuthMode.Certificate,
-					certificateFile: "@` + clientCertFilePath + `",
-					keyFile: "@` + clientKeyFilePath + `"
-				}`
+					certificateFile: %q,
+					keyFile: %q
+				}`, certHostPath, keyHostPath)
 
 	tests := []test_engine.TestCase{
 		{
