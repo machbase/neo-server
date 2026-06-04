@@ -99,7 +99,7 @@ func ListTables(ctx context.Context, conn api.Conn, showAll bool) (ret []*TableI
 }
 
 func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (api.TableType, error) {
-	_, userName, tableName := TableName(fullTableName).Split()
+	_, userName, tableName := api.TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if r.Err() != nil {

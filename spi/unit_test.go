@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	clientapi "github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/api"
 	metricpkg "github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +19,7 @@ type stubSQLResult struct {
 }
 
 type stubConn struct {
-	execFunc func(ctx context.Context, sqlText string, params ...any) clientapi.Result
+	execFunc func(ctx context.Context, sqlText string, params ...any) api.Result
 	execSQLs []string
 	execArgs [][]any
 }
@@ -42,7 +42,7 @@ func (s *stubConn) Close() error {
 	return nil
 }
 
-func (s *stubConn) Exec(ctx context.Context, sqlText string, params ...any) clientapi.Result {
+func (s *stubConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	s.execSQLs = append(s.execSQLs, sqlText)
 	s.execArgs = append(s.execArgs, params)
 	if s.execFunc != nil {
@@ -51,19 +51,19 @@ func (s *stubConn) Exec(ctx context.Context, sqlText string, params ...any) clie
 	return &InsertResult{rowsAffected: 1, message: "a row inserted"}
 }
 
-func (s *stubConn) Query(ctx context.Context, sqlText string, params ...any) (clientapi.Rows, error) {
+func (s *stubConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *stubConn) QueryRow(ctx context.Context, sqlText string, params ...any) clientapi.Row {
+func (s *stubConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
 	return nil
 }
 
-func (s *stubConn) Prepare(ctx context.Context, query string) (clientapi.Stmt, error) {
+func (s *stubConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *stubConn) Appender(ctx context.Context, tableName string, opts ...clientapi.AppenderOption) (clientapi.Appender, error) {
+func (s *stubConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -74,25 +74,25 @@ func (s *stubConn) Explain(ctx context.Context, sqlText string, full bool) (stri
 func TestWrappedSqlResultMessage(t *testing.T) {
 	tests := []struct {
 		name    string
-		sqlType clientapi.SQLStatementType
+		sqlType api.SQLStatementType
 		rows    int64
 		err     error
 		expect  string
 	}{
-		{name: "insert zero", sqlType: clientapi.SQLStatementTypeInsert, rows: 0, expect: "no rows inserted."},
-		{name: "insert one", sqlType: clientapi.SQLStatementTypeInsert, rows: 1, expect: "a row inserted."},
-		{name: "insert many", sqlType: clientapi.SQLStatementTypeInsert, rows: 3, expect: "3 rows inserted."},
-		{name: "update zero", sqlType: clientapi.SQLStatementTypeUpdate, rows: 0, expect: "no rows updated."},
-		{name: "update one", sqlType: clientapi.SQLStatementTypeUpdate, rows: 1, expect: "a row updated."},
-		{name: "update many", sqlType: clientapi.SQLStatementTypeUpdate, rows: 4, expect: "4 rows updated."},
-		{name: "delete zero", sqlType: clientapi.SQLStatementTypeDelete, rows: 0, expect: "no rows deleted."},
-		{name: "delete one", sqlType: clientapi.SQLStatementTypeDelete, rows: 1, expect: "a row deleted."},
-		{name: "delete many", sqlType: clientapi.SQLStatementTypeDelete, rows: 2, expect: "2 rows deleted."},
-		{name: "create", sqlType: clientapi.SQLStatementTypeCreate, expect: "Created successfully."},
-		{name: "drop", sqlType: clientapi.SQLStatementTypeDrop, expect: "Dropped successfully."},
-		{name: "alter", sqlType: clientapi.SQLStatementTypeAlter, expect: "Altered successfully."},
-		{name: "select", sqlType: clientapi.SQLStatementTypeSelect, expect: "Select successfully."},
-		{name: "default", sqlType: clientapi.SQLStatementType(-1), expect: "executed."},
+		{name: "insert zero", sqlType: api.SQLStatementTypeInsert, rows: 0, expect: "no rows inserted."},
+		{name: "insert one", sqlType: api.SQLStatementTypeInsert, rows: 1, expect: "a row inserted."},
+		{name: "insert many", sqlType: api.SQLStatementTypeInsert, rows: 3, expect: "3 rows inserted."},
+		{name: "update zero", sqlType: api.SQLStatementTypeUpdate, rows: 0, expect: "no rows updated."},
+		{name: "update one", sqlType: api.SQLStatementTypeUpdate, rows: 1, expect: "a row updated."},
+		{name: "update many", sqlType: api.SQLStatementTypeUpdate, rows: 4, expect: "4 rows updated."},
+		{name: "delete zero", sqlType: api.SQLStatementTypeDelete, rows: 0, expect: "no rows deleted."},
+		{name: "delete one", sqlType: api.SQLStatementTypeDelete, rows: 1, expect: "a row deleted."},
+		{name: "delete many", sqlType: api.SQLStatementTypeDelete, rows: 2, expect: "2 rows deleted."},
+		{name: "create", sqlType: api.SQLStatementTypeCreate, expect: "Created successfully."},
+		{name: "drop", sqlType: api.SQLStatementTypeDrop, expect: "Dropped successfully."},
+		{name: "alter", sqlType: api.SQLStatementTypeAlter, expect: "Altered successfully."},
+		{name: "select", sqlType: api.SQLStatementTypeSelect, expect: "Select successfully."},
+		{name: "default", sqlType: api.SQLStatementType(-1), expect: "executed."},
 		{name: "preset error", err: errors.New("boom"), expect: "boom"},
 	}
 
@@ -133,9 +133,9 @@ func TestWrappedSqlRowHelpers(t *testing.T) {
 	t.Run("scan copies values", func(t *testing.T) {
 		row := &WrappedSqlRow{
 			values: []any{int64(7), "neo"},
-			columns: clientapi.Columns{
-				{Name: "ID", DataType: clientapi.DataTypeInt64},
-				{Name: "NAME", DataType: clientapi.DataTypeString},
+			columns: api.Columns{
+				{Name: "ID", DataType: api.DataTypeInt64},
+				{Name: "NAME", DataType: api.DataTypeString},
 			},
 		}
 		var id int64
@@ -217,39 +217,21 @@ func TestSqlBridgeBaseHelpers(t *testing.T) {
 }
 
 func TestInfoValueObjects(t *testing.T) {
-	t.Run("table name helpers", func(t *testing.T) {
-		require.Equal(t, "SYS.EXAMPLE", TableName("sys.example").String())
-		db, user, table := TableName("metrics").SplitOr("db0", "user0")
-		require.Equal(t, "db0", db)
-		require.Equal(t, "user0", user)
-		require.Equal(t, "METRICS", table)
-
-		db, user, table = TableName("user1.metrics").SplitOr("db0", "user0")
-		require.Equal(t, "db0", db)
-		require.Equal(t, "USER1", user)
-		require.Equal(t, "METRICS", table)
-
-		db, user, table = TableName("db1.user1.metrics").SplitOr("db0", "user0")
-		require.Equal(t, "DB1", db)
-		require.Equal(t, "USER1", user)
-		require.Equal(t, "METRICS", table)
-	})
-
 	t.Run("table info kind and values", func(t *testing.T) {
 		tests := []struct {
 			info   TableInfo
 			expect string
 		}{
-			{info: TableInfo{Type: clientapi.TableTypeLog, Flag: clientapi.TableFlagData}, expect: "Log Table (data)"},
-			{info: TableInfo{Type: clientapi.TableTypeFixed, Flag: clientapi.TableFlagMeta}, expect: "Fixed Table (meta)"},
-			{info: TableInfo{Type: clientapi.TableTypeTag, Flag: clientapi.TableFlagStat}, expect: "Tag Table (stat)"},
-			{info: TableInfo{Type: clientapi.TableType(-1)}, expect: "undef"},
+			{info: TableInfo{Type: api.TableTypeLog, Flag: api.TableFlagData}, expect: "Log Table (data)"},
+			{info: TableInfo{Type: api.TableTypeFixed, Flag: api.TableFlagMeta}, expect: "Fixed Table (meta)"},
+			{info: TableInfo{Type: api.TableTypeTag, Flag: api.TableFlagStat}, expect: "Tag Table (stat)"},
+			{info: TableInfo{Type: api.TableType(-1)}, expect: "undef"},
 		}
 		for _, tc := range tests {
 			require.Equal(t, tc.expect, tc.info.Kind())
 		}
 
-		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: clientapi.TableTypeLookup, Flag: clientapi.TableFlagRollup, err: errors.New("table err")}
+		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: api.TableTypeLookup, Flag: api.TableFlagRollup, err: errors.New("table err")}
 		cols := info.Columns()
 		require.Equal(t, []string{"DATABASE", "USER", "NAME", "ID", "TYPE", "FLAG"}, cols.Names())
 		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
@@ -402,12 +384,12 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 func TestWriteLineProtocol(t *testing.T) {
 	ctx := context.Background()
 	ts := time.Unix(1700000000, 0).UTC()
-	descColumns := clientapi.Columns{
-		{Name: "NAME", DataType: clientapi.DataTypeString},
-		{Name: "TIME", DataType: clientapi.DataTypeDatetime},
-		{Name: "VALUE", DataType: clientapi.DataTypeFloat64},
-		{Name: "HOST", DataType: clientapi.DataTypeString},
-		{Name: "PORT", DataType: clientapi.DataTypeInt32},
+	descColumns := api.Columns{
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "TIME", DataType: api.DataTypeDatetime},
+		{Name: "VALUE", DataType: api.DataTypeFloat64},
+		{Name: "HOST", DataType: api.DataTypeString},
+		{Name: "PORT", DataType: api.DataTypeInt32},
 	}
 
 	t.Run("insert result helpers", func(t *testing.T) {
@@ -452,7 +434,7 @@ func TestWriteLineProtocol(t *testing.T) {
 	t.Run("abort on exec error", func(t *testing.T) {
 		conn := &stubConn{}
 		callCount := 0
-		conn.execFunc = func(ctx context.Context, sqlText string, params ...any) clientapi.Result {
+		conn.execFunc = func(ctx context.Context, sqlText string, params ...any) api.Result {
 			callCount++
 			if callCount == 2 {
 				return &InsertResult{err: errors.New("exec failed")}
@@ -469,4 +451,4 @@ func TestWriteLineProtocol(t *testing.T) {
 }
 
 var _ driver.Result = stubSQLResult{}
-var _ clientapi.Conn = (*stubConn)(nil)
+var _ api.Conn = (*stubConn)(nil)

@@ -949,6 +949,7 @@ func (s *Server) startHttpServer() error {
 	util.AddShutdownHook(func() { s.httpd.Stop() })
 
 	tql.SetHttpAddresses(s.Http.Listeners)
+	tql.SetServerKeyPath(s.ServerPrivateKeyPath())
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
 	util.AddShutdownHook(func() { tql.StopCache() })
 

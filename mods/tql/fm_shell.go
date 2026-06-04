@@ -32,6 +32,7 @@ func SetHttpAddresses(addrs []string) {
 
 var _serviceControllerAddr string
 var _serviceWorkspace string
+var _serverKeyPath string
 
 func SetServiceControllerAddress(addr string) {
 	_serviceControllerAddr = addr
@@ -39,6 +40,10 @@ func SetServiceControllerAddress(addr string) {
 
 func SetServiceWorkspace(workspace string) {
 	_serviceWorkspace = workspace
+}
+
+func SetServerKeyPath(path string) {
+	_serverKeyPath = path
 }
 
 func (node *Node) fmShell(cmd0 string, args0 ...string) {
@@ -142,6 +147,7 @@ var ShellExecutable = func(serverAddr string, scriptPath string) ([]string, erro
 		"-v", "/work=" + _serviceWorkspace,
 		"-v", "/tmp=" + filepath.Dir(scriptPath),
 		"-e", "SERVICE_CONTROLLER=" + _serviceControllerAddr,
+		"-e", "NEOSHELL_IDENTITY_FILE=@" + _serverKeyPath,
 		"run",
 		"/tmp/" + filepath.Base(scriptPath),
 	}, nil
