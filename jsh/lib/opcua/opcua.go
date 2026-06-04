@@ -35,10 +35,12 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 
 	o.Set("newClient", func(opts ClientOptions) (*Client, error) {
-		return newClient(ctx, opts)
+		return NewClient(ctx, opts)
 	})
 	// getEndpoints
-	o.Set("getEndpoints", GetEndpoints)
+	o.Set("getEndpoints", func(endpoint string) ([]EndpointDescription, error) {
+		return GetEndpoints(ctx, endpoint)
+	})
 	// BrowseDirection
 	o.Set("BrowseDirection", rt.ToValue(map[string]any{
 		"Forward": ua.BrowseDirectionForward,
@@ -127,8 +129,8 @@ type EndpointDescription struct {
 	AuthModes         []string `json:"authModes"`
 }
 
-func GetEndpoints(endpoint string) ([]EndpointDescription, error) {
-	endpoints, err := opcua.GetEndpoints(context.TODO(), endpoint)
+func GetEndpoints(ctx context.Context, endpoint string) ([]EndpointDescription, error) {
+	endpoints, err := opcua.GetEndpoints(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -167,13 +169,34 @@ func GetEndpoints(endpoint string) ([]EndpointDescription, error) {
 }
 
 type ClientOptions struct {
-	Endpoint            string                 `json:"endpoint"`
-	ReadRetryInterval   time.Duration          `json:"readRetryInterval"`
+	Endpoint          string        `json:"endpoint"`
+	ReadRetryInterval time.Duration `json:"readRetryInterval"`
+	// one of "None", "Basic128Rsa15", "Basic256", "Basic256Sha256", or "auto"
+	SecurityPolicy string `json:"securityPolicy"`
+	// one of "None", "Sign", "SignAndEncrypt", or "auto"
+	SecurityMode string `json:"securityMode"`
+	// one of "Certificate", "UserName", or "Anonymous"
+	AuthMode ua.UserTokenType `json:"authMode"`
+	// Username and password required for auth_mode = "UserName"
+	Username string `json:"username"`
+	Password string `json:"password"`
+	// Path to client certificate and private key files, must be specified together.
+	// If the options are specified but the files do not exist, a self-signed
+	// certificate will be created and stored permanently at the given locations.
+	CertificateFile string `json:"certificateFile"`
+	KeyFile         string `json:"keyFile"`
+
 	MessageSecurityMode ua.MessageSecurityMode `json:"messageSecurityMode"`
-	SecurityPolicy      string                 `json:"securityPolicy"`
-	AuthMode            ua.UserTokenType       `json:"authMode"`
-	CertificateFile     string                 `json:"certificateFile"`
-	KeyFile             string                 `json:"keyFile"`
+}
+
+func DefaultClientOptions() ClientOptions {
+	return ClientOptions{
+		Endpoint:          "opc.tcp://localhost:4840",
+		ReadRetryInterval: 100 * time.Millisecond,
+		SecurityPolicy:    "auto",
+		SecurityMode:      "auto",
+		AuthMode:          ua.UserTokenTypeAnonymous,
+	}
 }
 
 type ReadRequest struct {
@@ -265,16 +288,19 @@ type WriteResult struct {
 	Error         error    `json:"error"`
 }
 
-func NewClient(opts ClientOptions) (*Client, error) {
-	return newClient(context.Background(), opts)
-}
-
-func newClient(ctx context.Context, opts ClientOptions) (*Client, error) {
+func NewClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 	if opts.ReadRetryInterval < 100*time.Millisecond {
 		opts.ReadRetryInterval = 100 * time.Millisecond
 	}
 
 	optsArr := []opcua.Option{}
+
+	if opts.MessageSecurityMode == ua.MessageSecurityModeInvalid {
+		opts.MessageSecurityMode = ua.MessageSecurityModeNone
+	}
+	if opts.AuthMode == 0 {
+		opts.AuthMode = ua.UserTokenTypeAnonymous
+	}
 
 	if opts.CertificateFile != "" && opts.KeyFile != "" {
 		privateKey, certificate, err := readX509Credentials(opts.CertificateFile, opts.KeyFile)
@@ -285,10 +311,12 @@ func newClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 		if !ok {
 			return nil, fmt.Errorf("unsupported private key type %T: RSA private key required", privateKey)
 		}
-		optsArr = append(optsArr,
-			opcua.Certificate(certificate.Raw),
-			opcua.PrivateKey(rsaKey),
-		)
+		optsArr = append(optsArr, opcua.Certificate(certificate.Raw), opcua.PrivateKey(rsaKey))
+
+		if opts.AuthMode == ua.UserTokenTypeCertificate {
+			// Certificate user token requires explicit auth credentials in addition to secure channel credentials.
+			optsArr = append(optsArr, opcua.AuthCertificate(certificate.Raw), opcua.AuthPrivateKey(rsaKey))
+		}
 	}
 
 	var serverEndpoint *ua.EndpointDescription
@@ -316,24 +344,32 @@ func newClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 		return nil, fmt.Errorf("no endpoints found at %s", opts.Endpoint)
 	} else {
 		for _, e := range endpoints {
-			if e.SecurityPolicyURI == secPolicy && (serverEndpoint == nil || e.SecurityLevel >= serverEndpoint.SecurityLevel) {
+			if e.SecurityPolicyURI != secPolicy || e.SecurityMode != opts.MessageSecurityMode {
+				continue
+			}
+
+			authMatched := false
+			for _, tok := range e.UserIdentityTokens {
+				if tok.TokenType == opts.AuthMode {
+					authMatched = true
+					break
+				}
+			}
+			if !authMatched {
+				continue
+			}
+
+			if serverEndpoint == nil || e.SecurityLevel >= serverEndpoint.SecurityLevel {
 				serverEndpoint = e
 			}
 		}
 	}
 	if serverEndpoint == nil {
-		return nil, fmt.Errorf("no matching endpoint found for security policy %q", opts.SecurityPolicy)
+		return nil, fmt.Errorf("no matching endpoint found for policy=%q mode=%s auth=%s", secPolicy, opts.MessageSecurityMode, opts.AuthMode)
 	}
 
-	optsArr = append(optsArr,
-		opcua.SecurityMode(opts.MessageSecurityMode),
-	)
+	optsArr = append(optsArr, opcua.SecurityFromEndpoint(serverEndpoint, opts.AuthMode))
 
-	if opts.AuthMode == ua.UserTokenTypeCertificate && opts.CertificateFile != "" && opts.KeyFile != "" {
-		optsArr = append(optsArr,
-			opcua.SecurityFromEndpoint(serverEndpoint, opts.AuthMode),
-		)
-	}
 	client, err := opcua.NewClient(opts.Endpoint, optsArr...)
 	if err != nil {
 		return nil, err

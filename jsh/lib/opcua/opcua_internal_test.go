@@ -144,7 +144,7 @@ func TestCloseNilClient(t *testing.T) {
 }
 
 func TestNewClientInvalidEndpoint(t *testing.T) {
-	client, err := NewClient(ClientOptions{
+	client, err := NewClient(t.Context(), ClientOptions{
 		Endpoint:          "opc.tcp://127.0.0.1:1",
 		ReadRetryInterval: 10 * time.Millisecond,
 	})
