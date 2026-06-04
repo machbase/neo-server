@@ -39,7 +39,8 @@ jobs:
           go-version: '1.26'
       - name: Setup zig
         if: matrix.os == 'linux' && matrix.arch == 'arm32'
-        uses: mlugg/setup-zig@v2
+        shell: bash
+        run: bash ./scripts/setup-zig-linux-amd64-for-arm32.sh
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Install Neo Launcher
