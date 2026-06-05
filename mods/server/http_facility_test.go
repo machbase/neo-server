@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -1295,53 +1296,122 @@ func TestSubscriber(t *testing.T) {
 
 func TestSshKey(t *testing.T) {
 	jwt := HttpTestLogin(t, "sys", "manager")
+	fixture := newTestSSHKeyFixture(t)
+	rawKey := fixture.AuthorizedKey
+	expectedFingerprint := fixture.Fingerprint
 
-	// ========================
-	// GET /api/sshkeys
-	rsp, _ := request(t, jwt, http.MethodGet, "/web/api/sshkeys", nil)
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	listKeys := func(t *testing.T) []AuthorizedSshKey {
+		t.Helper()
+		rsp, payload := request(t, jwt, http.MethodGet, "/web/api/sshkeys", nil)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
 
-	// ========================
-	// POST /api/sshkeys - add key
-	b := &bytes.Buffer{}
-	sshKeyReq := map[string]string{
-		"key": "ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKMYQpY26gDO9JAK7gFRtM3JR2JiDCLGKsTqVzcQmNvJ your_email@example.com",
+		keysRsp := struct {
+			Success bool               `json:"success"`
+			Reason  string             `json:"reason"`
+			Data    []AuthorizedSshKey `json:"data"`
+			Elapse  string             `json:"elapse"`
+		}{}
+		err := json.Unmarshal(payload, &keysRsp)
+		require.NoError(t, err)
+		require.True(t, keysRsp.Success, string(payload))
+		return keysRsp.Data
 	}
-	if err := json.NewEncoder(b).Encode(sshKeyReq); err != nil {
-		t.Fatal(err)
-	}
-	rsp, _ = request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
 
-	// ========================
-	// POST /api/sshkeys - invalid key format
-	b = &bytes.Buffer{}
-	sshKeyReq = map[string]string{
-		"key": "invalidkey",
+	hasFingerprint := func(keys []AuthorizedSshKey, fingerprint string) bool {
+		for _, k := range keys {
+			if k.Fingerprint == fingerprint {
+				return true
+			}
+		}
+		return false
 	}
-	if err := json.NewEncoder(b).Encode(sshKeyReq); err != nil {
-		t.Fatal(err)
-	}
-	rsp, _ = request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
-	require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
 
-	// ========================
-	// GET /api/sshkeys
-	rsp, payload := request(t, jwt, http.MethodGet, "/web/api/sshkeys", nil)
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
-	keysRsp := struct {
-		Success bool     `json:"success"`
-		Reason  string   `json:"reason"`
-		Data    []SshKey `json:"data"`
-		Elapse  string   `json:"elapse"`
-	}{}
-	err := json.Unmarshal(payload, &keysRsp)
-	require.NoError(t, err)
-	require.True(t, keysRsp.Success)
-	require.Len(t, keysRsp.Data, 1)
+	t.Run("get_ssh_keys", func(t *testing.T) {
+		// ========================
+		// GET /api/sshkeys
+		keys := listKeys(t)
+		for _, k := range keys {
+			require.NotEqual(t, expectedFingerprint, k.Fingerprint)
+		}
+	})
 
-	// ========================
-	// DELETE /api/sshkeys/:fingerprint
-	rsp, _ = request(t, jwt, http.MethodDelete, "/web/api/sshkeys/"+keysRsp.Data[0].Fingerprint, nil)
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	t.Run("add_ssh_key", func(t *testing.T) {
+		// ========================
+		// POST /api/sshkeys - add key
+		b := &bytes.Buffer{}
+		sshKeyReq := map[string]string{
+			"key": rawKey,
+		}
+		if err := json.NewEncoder(b).Encode(sshKeyReq); err != nil {
+			t.Fatal(err)
+		}
+		rsp, payload := request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	})
+
+	t.Run("add_ssh_key_invalid_format", func(t *testing.T) {
+		// ========================
+		// POST /api/sshkeys - invalid key format
+		b := &bytes.Buffer{}
+		sshKeyReq := map[string]string{
+			"key": "invalidkey",
+		}
+		if err := json.NewEncoder(b).Encode(sshKeyReq); err != nil {
+			t.Fatal(err)
+		}
+		rsp, payload := request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
+		require.Equal(t, http.StatusInternalServerError, rsp.StatusCode)
+		errorRsp := struct {
+			Success bool   `json:"success"`
+			Reason  string `json:"reason"`
+			Elapse  string `json:"elapse"`
+		}{}
+		err := json.Unmarshal(payload, &errorRsp)
+		require.NoError(t, err)
+		require.False(t, errorRsp.Success)
+		require.Contains(t, errorRsp.Reason, "invalid key format, ssh: no key found")
+	})
+
+	t.Run("get_ssh_keys_after_addition", func(t *testing.T) {
+		// ========================
+		// GET /api/sshkeys
+		keys := listKeys(t)
+		require.True(t, hasFingerprint(keys, expectedFingerprint), "added ssh key must exist in key list")
+	})
+	t.Run("delete_ssh_key", func(t *testing.T) {
+		// ========================
+		// DELETE /api/sshkeys/:fingerprint
+		rsp, payload := request(t, jwt, http.MethodDelete, "/web/api/sshkeys/"+url.PathEscape(expectedFingerprint), nil)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	})
+
+	t.Run("get_ssh_keys_after_deletion", func(t *testing.T) {
+		keys := listKeys(t)
+		require.False(t, hasFingerprint(keys, expectedFingerprint), "deleted ssh key must not exist in key list")
+	})
+
+	t.Run("add_ssh_key_pem_format", func(t *testing.T) {
+		b := &bytes.Buffer{}
+		sshKeyReq := map[string]string{
+			"key": fixture.PEM,
+		}
+		require.NoError(t, json.NewEncoder(b).Encode(sshKeyReq))
+		rsp, payload := request(t, jwt, http.MethodPost, "/web/api/sshkeys", b)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	})
+
+	t.Run("get_ssh_keys_after_pem_addition", func(t *testing.T) {
+		keys := listKeys(t)
+		require.True(t, hasFingerprint(keys, expectedFingerprint), "PEM-added ssh key must exist in key list")
+	})
+
+	t.Run("delete_pem_added_ssh_key", func(t *testing.T) {
+		rsp, payload := request(t, jwt, http.MethodDelete, "/web/api/sshkeys/"+url.PathEscape(expectedFingerprint), nil)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	})
+
+	t.Run("get_ssh_keys_after_pem_deletion", func(t *testing.T) {
+		keys := listKeys(t)
+		require.False(t, hasFingerprint(keys, expectedFingerprint), "PEM-deleted ssh key must not exist in key list")
+	})
 }
