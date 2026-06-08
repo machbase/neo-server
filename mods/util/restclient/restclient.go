@@ -56,11 +56,12 @@ func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("restClient RoundTrip error: %w", err)
 	}
 
-	rr := &RestResult{}
-	if err := rr.Load(rsp); err != nil {
+	if rc.result == nil {
+		rc.result = &RestResult{}
+	}
+	if err := rc.result.Load(rsp); err != nil {
 		return nil, err
 	}
-	rc.result = rr
 	return rsp, nil
 }
 
@@ -77,10 +78,9 @@ func (rc *RestClient) Do() *RestResult {
 		if contentType == "application/x-www-form-urlencoded" {
 			b := &strings.Builder{}
 			for i, line := range rc.contentLines {
-				if i == 0 || strings.HasPrefix(line, "&") {
-					b.WriteString(line)
-				} else {
-					b.WriteString(line + "\n")
+				b.WriteString(line)
+				if i != 0 && !strings.HasPrefix(line, "&") {
+					b.WriteString("\n")
 				}
 			}
 			payload = strings.NewReader(b.String())

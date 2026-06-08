@@ -322,7 +322,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.DELETE("/api/subscribers/:name", svr.handleSubscribersDel)
 			group.GET("/api/sshkeys", svr.handleSshKeys)
 			group.POST("/api/sshkeys", svr.handleSshKeysAdd)
-			group.DELETE("/api/sshkeys/:fingerprint", svr.handleSshKeysDel)
+			group.DELETE("/api/sshkeys/*fingerprint", svr.handleSshKeysDel)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)

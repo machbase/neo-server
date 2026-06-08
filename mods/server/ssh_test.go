@@ -49,6 +49,44 @@ func TestSSH(t *testing.T) {
 	}
 }
 
+func TestSSH_SshKey(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping SSH tests on Windows")
+	}
+	tests := []SSHTestCase{
+		{
+			name: "shell_ssh-key_add",
+			user: "sys",
+			cmd:  "ssh-key add ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFbw4mzq+hm/3YUh0BViE+yYOCN9Anf6M5XxpTr2ygy2Pw8OkT/9BjxR8LpMVltSvYPRsJMwOHOpBWvHcfbSMDI= your_email@example.com",
+			expect: []string{
+				"SSH key added successfully.",
+			},
+		},
+		{
+			name: "shell_ssh-key_list",
+			user: "sys",
+			cmd:  "ssh-key list",
+			expect: []string{
+				"/r/^│\\s+\\d+\\s*│\\s+your_email@example\\.com\\s+│\\s+ecdsa-sha2-nistp256\\s+│\\s+SHA256:\\+t9L1kijAK9NpQnQAS8kGvYS9PwDCGmtje/cCrb4snU\\s*│$",
+			},
+		},
+		{
+			name: "shell_ssh-key_delete",
+			user: "sys",
+			cmd:  "ssh-key del SHA256:+t9L1kijAK9NpQnQAS8kGvYS9PwDCGmtje/cCrb4snU",
+			expect: []string{
+				"SSH key deleted successfully.",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runSSHTest(t, tt)
+		})
+	}
+}
+
 func TestSSH_Bridge_SQLite(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping SSH tests on Windows")

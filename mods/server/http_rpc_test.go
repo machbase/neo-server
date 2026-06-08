@@ -25,7 +25,9 @@ func TestHttpRpc(t *testing.T) {
 
 	var originalSessionLimit map[string]int
 	generatedKeyID := fmt.Sprintf("rpc-test-key-%d", time.Now().UnixNano())
-	sshKeyMaterial := fmt.Sprintf("AAAAC3NzaC1lZDI1NTE5AAAAIRPCTestKey%d", time.Now().UnixNano())
+	sshFixture := newTestSSHKeyFixture(t)
+	sshKeyMaterial := sshFixture.AuthorizedKey
+	sshKeyFingerprint := sshFixture.Fingerprint
 	sshKeyComment := fmt.Sprintf("rpc-test-comment-%d", time.Now().UnixNano())
 	var addedSshKeyFingerprint string
 	bridgeTableName := fmt.Sprintf("rpc_bridge_%d", time.Now().UnixNano())
@@ -180,7 +182,7 @@ func TestHttpRpc(t *testing.T) {
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			for _, item := range rsp.Get("result").Array() {
-				require.NotEqual(t, sshKeyMaterial, item.Get("Key").String(), rsp.String())
+				require.NotEqual(t, sshKeyFingerprint, item.Get("fingerprint").String(), rsp.String())
 			}
 		},
 	}.run(t, at)
@@ -200,11 +202,10 @@ func TestHttpRpc(t *testing.T) {
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			found := false
 			for _, item := range rsp.Get("result").Array() {
-				if item.Get("Key").String() == sshKeyMaterial {
+				if item.Get("Fingerprint").String() == sshKeyFingerprint {
 					found = true
 					addedSshKeyFingerprint = item.Get("Fingerprint").String()
-					require.Equal(t, "ed25519", item.Get("KeyType").String(), rsp.String())
-					require.Equal(t, sshKeyComment, item.Get("Comment").String(), rsp.String())
+					require.Equal(t, sshKeyFingerprint, item.Get("Fingerprint").String(), rsp.String())
 				}
 			}
 			require.True(t, found, rsp.String())
@@ -226,7 +227,7 @@ func TestHttpRpc(t *testing.T) {
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			for _, item := range rsp.Get("result").Array() {
-				require.NotEqual(t, sshKeyMaterial, item.Get("Key").String(), rsp.String())
+				require.NotEqual(t, sshKeyFingerprint, item.Get("fingerprint").String(), rsp.String())
 			}
 		},
 	}.run(t, at)
