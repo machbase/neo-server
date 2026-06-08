@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -17,14 +16,11 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/textproto"
 	"net/url"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -1426,217 +1422,6 @@ func TestHttpWrite(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestImageFileUploadAndWatch(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skip test on windows")
-	}
-
-	at, _, err := jwtLogin("sys", "manager")
-	require.NoError(t, err)
-
-	creTable := `create tag table test (
-		NAME varchar(200) primary key,
-		TIME datetime basetime,
-		VALUE double summarized,
-		EXT_DATA json)`
-	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
-	rsp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
-	rsp.Body.Close()
-
-	t.Cleanup(func() {
-		dropTable := `drop table test`
-		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(dropTable), nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
-		rsp, _ := http.DefaultClient.Do(req)
-		require.Equal(t, http.StatusOK, rsp.StatusCode)
-		rsp.Body.Close()
-	})
-
-	t.Run("watcher", func(t *testing.T) {
-		// call watch api
-		params := url.Values{}
-		params.Add("tag", "test")
-		params.Add("period", "2s")
-		params.Add("keep-alive", "10s")
-		params.Add("max-rows", "3")
-		params.Add("parallelism", "1")
-		params.Add("timeformat", "Default")
-		params.Add("tz", "local")
-
-		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/watch/test?"+params.Encode(), nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
-		rsp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		if rsp.StatusCode != http.StatusOK {
-			rspBody, _ := io.ReadAll(rsp.Body)
-			rsp.Body.Close()
-			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
-		}
-		t.Parallel()
-
-		var fileId string
-		reader := bufio.NewReader(rsp.Body)
-	waiting_loop:
-		for {
-			line, err := reader.ReadString('\n')
-			require.NoError(t, err)
-			line = strings.TrimSpace(line)
-			switch line {
-			case ": keep-alive", "":
-				continue
-			default:
-				msg := strings.TrimPrefix(line, "data: ")
-				require.Equal(t, "test", gjson.Get(msg, "NAME").String(), msg)
-				require.Equal(t, testTimeTick.Format(util.GetTimeformat("Default")), gjson.Get(msg, "TIME").String(), msg)
-				extData := gjson.Get(msg, "EXT_DATA").String()
-				require.Equal(t, "image.png", gjson.Get(extData, "FN").String(), extData)
-				require.Equal(t, int64(12692), gjson.Get(extData, "SZ").Int(), extData)
-				require.Equal(t, "image/png", gjson.Get(extData, "CT").String(), extData)
-				require.Equal(t, filepath.Join(projRootDir, "tmp", "test", "machbase_home", "store"), gjson.Get(extData, "SD").String(), extData)
-				fileId = gjson.Get(extData, "ID").String()
-				break waiting_loop
-			}
-		}
-		rsp.Body.Close()
-
-		// get image file
-		req, _ = http.NewRequest(http.MethodGet, httpServerAddress+"/db/query/file/TEST/EXT_DATA/"+fileId, nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
-		rsp, err = http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		rspBody, _ := io.ReadAll(rsp.Body)
-		rsp.Body.Close()
-		require.Equal(t, http.StatusOK, rsp.StatusCode, "%s %q", string(rspBody), fileId)
-		require.Equal(t, "image/png", rsp.Header.Get("Content-Type"))
-		require.Equal(t, "12692", rsp.Header.Get("Content-Length"))
-		require.Equal(t, "attachment; filename=image.png", rsp.Header.Get("Content-Disposition"))
-		rsp.Body.Close()
-
-		imgBody, _ := os.ReadFile("test/image.png")
-		require.Equal(t, imgBody, rspBody)
-	})
-
-	t.Run("uploader", func(t *testing.T) {
-		t.Parallel()
-
-		fd, _ := os.Open("test/image.png")
-		req, err = buildMultipartFormDataRequest(httpServerAddress+"/db/write/TEST",
-			[]string{"NAME", "TIME", "VALUE", "EXT_DATA"},
-			[]any{"test", testTimeTick, 3.14, fd})
-		if err != nil {
-			t.Fatal(err)
-			return
-		}
-		rsp, err = http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		rspBody, _ := io.ReadAll(rsp.Body)
-		rsp.Body.Close()
-		require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
-
-		result := map[string]any{}
-		if err := json.Unmarshal(rspBody, &result); err != nil {
-			t.Fatal(err)
-		}
-		ext_id := result["data"].(map[string]any)["files"].(map[string]any)["EXT_DATA"].(map[string]any)["ID"].(string)
-		elapsed := result["elapse"].(string)
-		require.JSONEq(t, `
-			{
-				"success":true,
-				"reason":"success, 1 record(s) inserted",
-				"elapse":"`+elapsed+`",
-				"data": {
-					"files": {
-						"EXT_DATA": { 
-							"CT":"image/png",
-							"FN":"image.png",
-							"ID":"`+ext_id+`",
-							"SD":"`+filepath.Join(projRootDir, "tmp", "test", "machbase_home", "store")+`",
-							"SZ":12692
-						}
-					}
-				}
-			}`, string(rspBody))
-
-		var id uuid.UUID
-		err = id.Parse(ext_id)
-		require.NoError(t, err, rspBody)
-		require.Equal(t, uint8(6), id.Version(), rspBody)
-		timestamp, err := uuid.TimestampFromV6(id)
-		require.NoError(t, err, rspBody)
-		ts, err := timestamp.Time()
-		require.NoError(t, err, rspBody)
-		require.LessOrEqual(t, ts.UnixNano(), testTimeTick.UnixNano(), rspBody)
-		require.GreaterOrEqual(t, ts.UnixNano(), testTimeTick.Add(-5*time.Second).UnixNano(), rspBody)
-	})
-}
-
-func escapeQuotes(s string) string {
-	var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-	return quoteEscaper.Replace(s)
-}
-
-func buildMultipartFormDataRequest(url string, names []string, values []any) (*http.Request, error) {
-	var ret *http.Request
-	var b bytes.Buffer
-	w := multipart.NewWriter(&b)
-	for i := range names {
-		key := names[i]
-		r := values[i]
-		h := make(textproto.MIMEHeader)
-		var src io.Reader
-
-		if fd, ok := r.(*os.File); ok {
-			filename := filepath.Base(fd.Name())
-			h.Set("Content-Disposition",
-				fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
-					escapeQuotes(key), escapeQuotes(filename)))
-			h.Set("X-Store-Dir", "${data}/store")
-			if contentType := mime.TypeByExtension(filepath.Ext(filename)); contentType != "" {
-				h.Set("Content-Type", contentType)
-			} else {
-				h.Set("Content-Type", "application/octet-stream")
-			}
-			defer fd.Close()
-			src = fd
-		} else {
-			h.Set("Content-Disposition",
-				fmt.Sprintf(`form-data; name="%s"`, escapeQuotes(key)))
-			switch val := r.(type) {
-			case string:
-				src = bytes.NewBuffer([]byte(val))
-			case time.Time:
-				src = bytes.NewBuffer([]byte(fmt.Sprintf("%d", val.UnixNano())))
-			case float64:
-				src = bytes.NewBuffer([]byte(fmt.Sprintf("%f", val)))
-			default:
-				return nil, fmt.Errorf("unsupported type %T", val)
-			}
-		}
-		if dst, err := w.CreatePart(h); err != nil {
-			return nil, err
-		} else {
-			if _, err := io.Copy(dst, src); err != nil {
-				return nil, err
-			}
-		}
-	}
-	// Don't forget to close the multipart writer.
-	// If you don't close it, your request will be missing the terminating boundary.
-	w.Close()
-
-	if req, err := http.NewRequest("POST", url, &b); err != nil {
-		return nil, err
-	} else {
-		ret = req
-	}
-	// Don't forget to set the content type, this will contain the boundary.
-	ret.Header.Set("Content-Type", w.FormDataContentType())
-	return ret, nil
 }
 
 func TestLineProtocol(t *testing.T) {

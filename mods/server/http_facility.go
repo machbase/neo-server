@@ -14,7 +14,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
-	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func (svr *httpd) handleTimer(ctx *gin.Context) {
@@ -678,7 +677,15 @@ func (svr *httpd) handleSshKeys(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	mgmtRsp, err := svr.authServer.ListSshKey(ctx)
+	claim, ok := svr.getJwtClaim(ctx)
+	if !ok || claim == nil {
+		rsp["reason"] = "unauthorized"
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+
+	mgmtRsp, err := svr.authServer.ListSshKey(ctx, claim.Subject)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -703,6 +710,14 @@ func (svr *httpd) handleSshKeysAdd(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
+	claim, ok := svr.getJwtClaim(ctx)
+	if !ok || claim == nil {
+		rsp["reason"] = "unauthorized"
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+
 	req := struct {
 		Key string `json:"key"`
 	}{}
@@ -715,28 +730,9 @@ func (svr *httpd) handleSshKeysAdd(ctx *gin.Context) {
 		return
 	}
 
-	//parser
-	fields := util.SplitFields(req.Key, false)
-	if len(fields) < 2 {
-		rsp["reason"] = "invalid key format"
-		rsp["elapse"] = time.Since(tick).String()
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-
-	// 중복검사
-
-	mgmtRsp, err := svr.authServer.AddSshKey(ctx, &AddSshKeyRequest{
-		KeyType: fields[0], Key: fields[1], Comment: fields[2],
-	})
+	err = svr.authServer.AddAuthorizedSshKey(ctx, claim.Subject, req.Key)
 	if err != nil {
 		rsp["reason"] = err.Error()
-		rsp["elapse"] = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	}
-	if !mgmtRsp.Success {
-		rsp["reason"] = mgmtRsp.Reason
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
@@ -752,9 +748,25 @@ func (svr *httpd) handleSshKeysDel(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	fingerPrint := ctx.Param("fingerprint")
+	claim, ok := svr.getJwtClaim(ctx)
+	if !ok || claim == nil {
+		rsp["reason"] = "unauthorized"
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+
+	// fingerprint may contains slash, so trim prefix slash if exists
+	fingerPrint := strings.TrimPrefix(ctx.Param("fingerprint"), "/")
+	if fingerPrint == "" {
+		rsp["reason"] = "no fingerprint specified"
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
 
 	mgmtRsp, err := svr.authServer.DelSshKey(ctx, &DelSshKeyRequest{
+		User:        claim.Subject,
 		Fingerprint: fingerPrint,
 	})
 	if err != nil {

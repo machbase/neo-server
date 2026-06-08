@@ -1096,9 +1096,9 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("bridge.query", s.queryBridge)
 	ctl.RegisterJsonRpcHandler("bridge.result.fetch", s.fetchResultBridge)
 	ctl.RegisterJsonRpcHandler("bridge.result.close", s.closeResultBridge)
-	ctl.RegisterJsonRpcHandler("sshkey.list", s.listSSHKeys)
-	ctl.RegisterJsonRpcHandler("sshkey.add", s.addSSHKey)
-	ctl.RegisterJsonRpcHandler("sshkey.delete", s.deleteSSHKey)
+	ctl.RegisterJsonRpcHandler("sshkey.list", s.listSshKeys)
+	ctl.RegisterJsonRpcHandler("sshkey.add", s.addSshKey)
+	ctl.RegisterJsonRpcHandler("sshkey.delete", s.deleteSshKey)
 	ctl.RegisterJsonRpcHandler("key.list", s.listKeys)
 	ctl.RegisterJsonRpcHandler("key.generate", s.genKey)
 	ctl.RegisterJsonRpcHandler("key.delete", s.deleteKey)
@@ -1523,25 +1523,6 @@ func (s *Server) closeResultBridge(handle string) error {
 	return nil
 }
 
-func (s *Server) listSSHKeys() ([]*AuthorizedSshKey, error) {
-	rsp, err := s.GetAllAuthorizedSshKeys()
-	if err != nil {
-		return nil, err
-	}
-	if len(rsp) == 0 {
-		return []*AuthorizedSshKey{}, nil
-	}
-	return rsp, nil
-}
-
-func (s *Server) addSSHKey(keyType string, key string, comment string) error {
-	return s.AddAuthorizedSshKey(keyType, key, comment)
-}
-
-func (s *Server) deleteSSHKey(key string) error {
-	return s.RemoveAuthorizedSshKey(key)
-}
-
 func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 	rsp, err := s.ListKey(ctx)
 	if err != nil {
@@ -1921,46 +1902,7 @@ func (s *Server) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
 	return list, nil
 }
 
-func (s *Server) AddAuthorizedSshKey(keyType string, key string, comment string) error {
-	switch keyType {
-	case "ssh-rsa":
-	case "ecdsa-sha2-nistp256":
-	case "ed25519":
-	default:
-		return fmt.Errorf("key type '%s' is not supported", keyType)
-	}
-	if len(key) == 0 {
-		return errors.New("invalid ssh key")
-	}
-	if len(comment) == 0 {
-		return errors.New("ssh key name should not empty")
-	}
-	list, err := s.GetAllAuthorizedSshKeys()
-	if err != nil {
-		return err
-	}
-	for _, r := range list {
-		if r.Key == key {
-			return fmt.Errorf("ssh key already exists")
-		}
-	}
-
-	s.authorizedSshKeysLock.Lock()
-	defer s.authorizedSshKeysLock.Unlock()
-
-	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	_, err = file.WriteString(fmt.Sprintf("%s %s %s\n", keyType, key, comment))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Server) RemoveAuthorizedSshKey(fingerprint string) error {
+func (s *Server) RemoveAuthorizedSshKey2(fingerprint string) error {
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
 		return err
@@ -2116,6 +2058,44 @@ type UserAuthKeyInfo struct {
 	PubKey      string
 }
 
+// getUserAuthKeys returns all auth keys of the user, it returns empty slice if no auth key exists
+// if the parameter "user" is empty, it returns all auth keys of all users
+func getUserAuthKeys(ctx context.Context, conn api.Conn, user string) ([]*UserAuthKeyInfo, error) {
+	query := `SELECT
+		KEY_ID,
+		USER_NAME,
+		KEY_ALGO,
+		KEY_PARAM,
+		ACTIVATED,
+		VALID_AFTER,
+		VALID_BEFORE,
+		COMMENT,
+		PUBKEY
+	FROM
+		V$USER_AUTH_KEYS`
+	var rows api.Rows
+	var err error
+	if user == "" {
+		rows, err = conn.Query(ctx, query)
+	} else {
+		rows, err = conn.Query(ctx, query+` WHERE USER_NAME=?`, strings.ToUpper(user))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []*UserAuthKeyInfo
+	for rows.Next() {
+		var nfo UserAuthKeyInfo
+		if err := rows.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &nfo.Comment, &nfo.PubKey); err != nil {
+			return nil, err
+		}
+		list = append(list, &nfo)
+	}
+	return list, nil
+}
+
 func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
 	row := conn.QueryRow(ctx, `SELECT
 		KEY_ID,
@@ -2143,17 +2123,23 @@ func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem stri
 	return &nfo, nil
 }
 
-func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) error {
-	// 30 years later
-	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
+func dropUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId int) error {
+	result := conn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s DROP AUTH KEY ID %d", user, keyId),
+	)
+	return result.Err()
+}
 
-	// TODO: use parameterized query when supported
-	// result := conn.Exec(ctx,
-	// 	"ALTER USER SYS ADD AUTH KEY (KEY = ?, VALID_BEFORE = ?, COMMENT = ?)",
-	// 	pubPem, "2100-01-01", "machbase-neo server key")
+func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string, comment string) error {
+	// 30 years later
+	user = strings.ToUpper(user)
+	pubPem = strings.TrimSpace(pubPem)
+	comment = strings.ReplaceAll(comment, "'", "''")
+
+	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
 	result := conn.Exec(ctx,
 		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
-			user, pubPem, validBefore, "machbase-neo server key"))
+			user, pubPem, validBefore, comment))
 	return result.Err()
 }
 
@@ -2183,7 +2169,7 @@ func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 		return err
 	}
 	// pubkey not found, add new authkey
-	if err := registerUserAuthKey(ctx, conn, user, pubPemStr); err != nil {
+	if err := registerUserAuthKey(ctx, conn, user, pubPemStr, "machbase-neo server key"); err != nil {
 		return err
 	}
 	// get authkey info again after registration
@@ -2340,6 +2326,15 @@ func (s *Server) compareUserPublicKeyWithServerKey(publicKey ssh.PublicKey) bool
 }
 
 func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error) {
+	// check database user auth keys
+	db := spi.Default()
+	conn, err := db.Connect(ctx, api.WithAuthKey(user, publicKey))
+	if err == nil {
+		conn.Close()
+		s.log.Debugf("%q db auth key success", user)
+		return true, nil
+	}
+
 	// check server public key first, if client public key matches with server public key.
 	if s.compareUserPublicKeyWithServerKey(publicKey) {
 		s.log.Debugf("%q public key authorized with server key", user)
@@ -2368,7 +2363,7 @@ func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicK
 	}
 
 	// find the matched key from database, v$user_auth_keys.
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err = spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Warnf("db server key auth fail, %s", err.Error())
 		return false, err
