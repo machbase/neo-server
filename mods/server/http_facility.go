@@ -701,7 +701,16 @@ func (svr *httpd) handleSshKeys(ctx *gin.Context) {
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["data"] = mgmtRsp.SshKeys
+	keys := make([]map[string]string, 0, len(mgmtRsp.SshKeys))
+	for _, k := range mgmtRsp.SshKeys {
+		// web ui compatible key info
+		keys = append(keys, map[string]string{
+			"keyType":     k.KeyType,
+			"fingerprint": strings.TrimPrefix(k.Fingerprint, "SHA256:"),
+			"comment":     k.Comment,
+		})
+	}
+	rsp["data"] = keys
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
@@ -763,6 +772,11 @@ func (svr *httpd) handleSshKeysDel(ctx *gin.Context) {
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
+	}
+
+	// web ui compatible fingerprint, add prefix if not exists
+	if !strings.HasPrefix(fingerPrint, "SHA256:") {
+		fingerPrint = "SHA256:" + fingerPrint
 	}
 
 	mgmtRsp, err := svr.authServer.DelSshKey(ctx, &DelSshKeyRequest{
