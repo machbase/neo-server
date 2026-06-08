@@ -48,6 +48,7 @@ func main() {
 func startOPCUAServer() *opc_server.Server {
 	var opts []opc_server.Option
 	port := 4840
+	listen := "0.0.0.0"
 
 	opts = append(opts,
 		opc_server.EnableSecurity("None", ua.MessageSecurityModeNone),
@@ -71,7 +72,7 @@ func startOPCUAServer() *opc_server.Server {
 	)
 
 	opts = append(opts,
-		opc_server.EndPoint("localhost", port),
+		opc_server.EndPoint(listen, port),
 	)
 
 	var certDir = os.TempDir()

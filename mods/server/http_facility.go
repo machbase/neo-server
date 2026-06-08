@@ -756,7 +756,14 @@ func (svr *httpd) handleSshKeysDel(ctx *gin.Context) {
 		return
 	}
 
-	fingerPrint := ctx.Param("fingerprint")
+	// fingerprint may contains slash, so trim prefix slash if exists
+	fingerPrint := strings.TrimPrefix(ctx.Param("fingerprint"), "/")
+	if fingerPrint == "" {
+		rsp["reason"] = "no fingerprint specified"
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
 
 	mgmtRsp, err := svr.authServer.DelSshKey(ctx, &DelSshKeyRequest{
 		User:        claim.Subject,

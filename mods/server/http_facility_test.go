@@ -1372,6 +1372,12 @@ func TestSshKey(t *testing.T) {
 		require.Contains(t, errorRsp.Reason, "invalid key format, ssh: no key found")
 	})
 
+	t.Run("delete_ssh_key_with_slash_fingerprint_path", func(t *testing.T) {
+		fingerprintWithSlash := "SHA256:dummy/with-slash"
+		rsp, payload := request(t, jwt, http.MethodDelete, "/web/api/sshkeys/"+url.PathEscape(fingerprintWithSlash), nil)
+		require.NotEqual(t, http.StatusNotFound, rsp.StatusCode, "payload: %s", string(payload))
+	})
+
 	t.Run("get_ssh_keys_after_addition", func(t *testing.T) {
 		// ========================
 		// GET /api/sshkeys
