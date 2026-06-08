@@ -1298,7 +1298,9 @@ func TestSshKey(t *testing.T) {
 	jwt := HttpTestLogin(t, "sys", "manager")
 	fixture := newTestSSHKeyFixture(t)
 	rawKey := fixture.AuthorizedKey
-	expectedFingerprint := fixture.Fingerprint
+
+	// remove prefix for web ui compatibility
+	expectedFingerprint := strings.TrimPrefix(fixture.Fingerprint, "SHA256:")
 
 	listKeys := func(t *testing.T) []AuthorizedSshKey {
 		t.Helper()
