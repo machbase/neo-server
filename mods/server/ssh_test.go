@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -17,9 +20,6 @@ import (
 )
 
 func TestSSH(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping SSH tests on Windows")
-	}
 	tests := []SSHTestCase{
 		{
 			name: "shell_show_tables",
@@ -50,30 +50,37 @@ func TestSSH(t *testing.T) {
 }
 
 func TestSSH_SshKey(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping SSH tests on Windows")
-	}
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), crand.Reader)
+	require.NoError(t, err)
+	sshPubKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+	sshPubKeyBytes := ssh.MarshalAuthorizedKey(sshPubKey)
+	sha256Fingerprint := ssh.FingerprintSHA256(sshPubKey)
+	sshSigner, err := ssh.NewSignerFromKey(privateKey)
+	require.NoError(t, err)
+
 	tests := []SSHTestCase{
 		{
 			name: "shell_ssh-key_add",
 			user: "sys",
-			cmd:  "ssh-key add ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFbw4mzq+hm/3YUh0BViE+yYOCN9Anf6M5XxpTr2ygy2Pw8OkT/9BjxR8LpMVltSvYPRsJMwOHOpBWvHcfbSMDI= your_email@example.com",
+			cmd:  fmt.Sprintf("ssh-key add %s your_email@example.com", strings.TrimSpace(string(sshPubKeyBytes))),
 			expect: []string{
 				"SSH key added successfully.",
 			},
 		},
 		{
-			name: "shell_ssh-key_list",
-			user: "sys",
-			cmd:  "ssh-key list",
+			name:       "shell_ssh-key_list",
+			user:       "sys",
+			cmd:        "ssh-key list",
+			privateKey: sshSigner,
 			expect: []string{
-				"/r/^│\\s+\\d+\\s*│\\s+your_email@example\\.com\\s+│\\s+ecdsa-sha2-nistp256\\s+│\\s+SHA256:\\+t9L1kijAK9NpQnQAS8kGvYS9PwDCGmtje/cCrb4snU\\s*│$",
+				fmt.Sprintf("/r/^│\\s+\\d+\\s*│\\s+your_email@example\\.com\\s+│\\s+ecdsa-sha2-nistp256\\s+│\\s+%s\\s*│$", regexp.QuoteMeta(sha256Fingerprint)),
 			},
 		},
 		{
 			name: "shell_ssh-key_delete",
 			user: "sys",
-			cmd:  "ssh-key del SHA256:+t9L1kijAK9NpQnQAS8kGvYS9PwDCGmtje/cCrb4snU",
+			cmd:  fmt.Sprintf("ssh-key del %s", sha256Fingerprint),
 			expect: []string{
 				"SSH key deleted successfully.",
 			},
@@ -439,12 +446,137 @@ func sshBridgeMySqlTest(t *testing.T, dsn string) {
 	}
 }
 
+func TestSSHSession(t *testing.T) {
+	s := &SSHTestSession{
+		name:     "session_test",
+		user:     "sys",
+		password: "manager",
+	}
+	err := s.Connect()
+	require.NoError(t, err)
+
+	err = s.Run(t, "show info", []string{"runtime.os"}, 5*time.Second)
+	require.NoError(t, err)
+
+	err = s.Run(t, "desc example", []string{
+		"EXAMPLE (ID: 15, Tag Table)",
+		"┌────────┬───────┬──────────┬────────┬────────────┬───────┐",
+		"│ ROWNUM │ NAME  │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
+		"├────────┼───────┼──────────┼────────┼────────────┼───────┤",
+		"│      1 │ NAME  │ varchar  │     40 │ tag name   │       │",
+		"│      2 │ TIME  │ datetime │     31 │ basetime   │       │",
+		"│      3 │ VALUE │ double   │     17 │ summarized │       │",
+		"└────────┴───────┴──────────┴────────┴────────────┴───────┘",
+	}, 5*time.Second)
+	require.NoError(t, err)
+
+	err = s.Run(t, "exit", []string{}, 5*time.Second)
+	require.NoError(t, err)
+
+	err = s.Close()
+	require.NoError(t, err)
+}
+
+type SSHTestSession struct {
+	name       string
+	user       string
+	password   string
+	privateKey ssh.Signer
+
+	client  *ssh.Client
+	session *ssh.Session
+	stdout  lockedBuffer
+	stdin   io.WriteCloser
+}
+
+func (s *SSHTestSession) Connect() error {
+	authMethods := []ssh.AuthMethod{}
+	if s.privateKey != nil {
+		authMethods = append(authMethods, ssh.PublicKeys(s.privateKey))
+	} else {
+		authMethods = append(authMethods, ssh.Password(s.password))
+	}
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
+		User:            s.user,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("Failed to dial SSH server: %v", err)
+	}
+	s.client = client
+	if session, err := client.NewSession(); err != nil {
+		return fmt.Errorf("Failed to create SSH session: %v", err)
+	} else {
+		s.session = session
+	}
+
+	s.session.Stdout = &s.stdout
+	s.session.Stderr = &s.stdout
+
+	if stdin, err := s.session.StdinPipe(); err != nil {
+		return fmt.Errorf("Failed to get SSH stdin pipe: %v", err)
+	} else {
+		s.stdin = stdin
+	}
+	if err := s.session.RequestPty("xterm", 40, 240, ssh.TerminalModes{}); err != nil {
+		return fmt.Errorf("Failed to request PTY: %v", err)
+	}
+	if err := s.session.Shell(); err != nil {
+		return fmt.Errorf("Failed to start SSH shell: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SSHTestSession) Close() error {
+	if s.session != nil {
+		if err := s.session.Close(); err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("Failed to close SSH session: %v", err)
+		}
+	}
+	if s.client != nil {
+		if err := s.client.Close(); err != nil {
+			return fmt.Errorf("Failed to close SSH client: %v", err)
+		}
+	}
+	return nil
+}
+
+func (s *SSHTestSession) Run(t *testing.T, cmd string, expect []string, waitTimeout time.Duration) error {
+	_, err := s.stdin.Write([]byte(cmd + "\n"))
+	if err != nil {
+		return fmt.Errorf("Failed to write SSH command: %v", err)
+	}
+	if !waitForSSHOutput(&s.stdout, s.user, expect, waitTimeout) {
+		return fmt.Errorf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(s.stdout.String()))
+	}
+	rawOutput := s.stdout.String()
+	if strings.Contains(rawOutput, "panic:") {
+		t.Fatalf("Unexpected panic in SSH shell output: %s", rawOutput)
+	}
+
+	outputStr := removeTerminalControlCharacters(rawOutput)
+	if strings.TrimSpace(outputStr) == "" && len(expect) > 0 {
+		t.Fatalf("Expected SSH command %q to produce output", cmd)
+	}
+
+	for _, line := range expect {
+		require.Contains(t, outputStr, line, "Expected SSH output to contain %q, got %s", line, outputStr)
+	}
+
+	s.stdout.Clear()
+	return nil
+}
+
 type SSHTestCase struct {
-	name   string
-	user   string
-	cmd    string
-	expect []string
-	wait   time.Duration
+	name       string
+	user       string
+	cmd        string
+	privateKey ssh.Signer
+	expect     []string
+	wait       time.Duration
 }
 
 func runSSHTest(t *testing.T, tt SSHTestCase) {
@@ -457,11 +589,15 @@ func runSSHTest(t *testing.T, tt SSHTestCase) {
 	if user == "" {
 		user = "sys"
 	}
+	authMethods := []ssh.AuthMethod{}
+	if tt.privateKey != nil {
+		authMethods = append(authMethods, ssh.PublicKeys(tt.privateKey))
+	} else {
+		authMethods = append(authMethods, ssh.Password("manager"))
+	}
 	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.Password("manager"),
-		},
+		User:            user,
+		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         5 * time.Second,
 	})
@@ -532,6 +668,12 @@ func runSSHTest(t *testing.T, tt SSHTestCase) {
 type lockedBuffer struct {
 	mu  sync.Mutex
 	buf strings.Builder
+}
+
+func (b *lockedBuffer) Clear() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Reset()
 }
 
 func (b *lockedBuffer) Write(p []byte) (int, error) {

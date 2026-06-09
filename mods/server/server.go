@@ -2,17 +2,11 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/md5"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -457,6 +451,11 @@ func (s *Server) startMachbaseSvr() error {
 	if err := s.registerServerKeys(ctx, conn); err != nil {
 		return err
 	}
+	// migrate old ssh keys if exists
+	if err := s.migrateAuthorizedSshKeys(ctx, conn, "sys"); err != nil {
+		return err
+	}
+
 	conn.Close()
 
 	db, err := machgo.NewDatabase(&machgo.Config{
@@ -509,6 +508,10 @@ func (s *Server) startMachbaseCli() error {
 
 		// check if the server keys are exist, if not, register the keys
 		if err := s.registerServerKeys(ctx, conn); err != nil {
+			return err
+		}
+		// migrate old ssh keys if exists
+		if err := s.migrateAuthorizedSshKeys(ctx, conn, "sys"); err != nil {
 			return err
 		}
 	}
@@ -1849,103 +1852,6 @@ type AuthorizedSshKey struct {
 	Comment     string
 }
 
-const authorized_ssh_keys = "ssh_keys"
-
-func (s *Server) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
-	s.authorizedSshKeysLock.RLock()
-	defer s.authorizedSshKeysLock.RUnlock()
-
-	list := []*AuthorizedSshKey{}
-
-	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_RDONLY, 0600)
-	if err != nil {
-		// ignore error intended
-		return list, nil
-	}
-	defer file.Close()
-	reader := bufio.NewReader(file)
-
-	var line string
-	var parts = []string{}
-	for {
-		part, isPrefix, err := reader.ReadLine()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return list, err
-		}
-		parts = append(parts, string(part))
-		if isPrefix {
-			continue
-		}
-		line = strings.Join(parts, "")
-		parts = parts[:0]
-
-		record := strings.Fields(line)
-		if len(record) != 3 {
-			continue
-		}
-
-		switch record[0] {
-		case "ssh-rsa":
-		case "ecdsa-sha2-nistp256":
-		case "ed25519":
-		default:
-			continue
-		}
-
-		hash := md5.Sum([]byte(record[1]))
-		fingerprint := hex.EncodeToString(hash[:])
-		list = append(list, &AuthorizedSshKey{KeyType: record[0], Key: record[1], Fingerprint: fingerprint, Comment: record[2]})
-	}
-	return list, nil
-}
-
-func (s *Server) RemoveAuthorizedSshKey2(fingerprint string) error {
-	list, err := s.GetAllAuthorizedSshKeys()
-	if err != nil {
-		return err
-	}
-	found := false
-	for i, r := range list {
-		if r.Fingerprint == fingerprint {
-			head := []*AuthorizedSshKey{}
-			tail := []*AuthorizedSshKey{}
-			if i > 0 {
-				head = list[0:i]
-			}
-			if i+1 < len(list) {
-				tail = list[i+1:]
-			}
-			list = append(head, tail...)
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return errors.New("ssh key doesn't exist")
-	}
-
-	s.authorizedSshKeysLock.Lock()
-	defer s.authorizedSshKeysLock.Unlock()
-
-	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	for _, rec := range list {
-		_, err := file.WriteString(fmt.Sprintf("%s %s %s\n", rec.KeyType, rec.Key, rec.Comment))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Server) checkListenPort(address string) error {
 	if !strings.HasPrefix(address, "tcp://") {
 		return nil
@@ -2009,27 +1915,6 @@ func (s *Server) SetAuthorizedCertificate(id string, pemBytes []byte) error {
 func (s *Server) RemoveAuthorizedCertificate(id string) error {
 	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
 	return os.Remove(path)
-}
-
-func (s *Server) ServerPublicKey() (any, error) {
-	buff, err := os.ReadFile(s.ServerPublicKeyPath())
-	if err != nil {
-		return nil, err
-	}
-
-	block, _ := pem.Decode(buff)
-	priKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	switch p := priKey.(type) {
-	case *rsa.PrivateKey:
-		return &p.PublicKey, nil
-	case *ecdsa.PrivateKey:
-		return &p.PublicKey, nil
-	default:
-		return nil, fmt.Errorf("unsupported key type: %T", priKey)
-	}
 }
 
 func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
@@ -2189,6 +2074,51 @@ func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 	return nil
 }
 
+const authorized_ssh_keys = "ssh_keys"
+
+func (s *Server) migrateAuthorizedSshKeys(ctx context.Context, conn api.Conn, user string) error {
+	// migrate existing "authroized_keys/ssh_keys" to database auth keys
+	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_RDONLY, 0600)
+	if err != nil {
+		return nil
+	}
+
+	reader := bufio.NewReader(file)
+	var line string
+	var parts = []string{}
+	for {
+		part, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			continue
+		}
+		parts = append(parts, string(part))
+		if isPrefix {
+			continue
+		}
+		line = strings.Join(parts, "")
+		parts = parts[:0]
+
+		// convert ssh public key to pem format, and register to database auth keys
+		pubKey, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		if err != nil {
+			continue
+		}
+		pubPem, err := ConvertSshPublicKeyToPem(pubKey)
+		if err != nil {
+			continue
+		}
+		if err := registerUserAuthKey(ctx, conn, user, pubPem, comment); err != nil {
+			continue
+		}
+	}
+	file.Close()
+	os.Remove(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys))
+	return nil
+}
+
 func (s *Server) mkKeysIfNotExists() error {
 	priPath := s.ServerPrivateKeyPath()
 	pubPath := s.ServerPublicKeyPath()
@@ -2311,64 +2241,20 @@ func ConvertSshPublicKeyToPem(publicKey ssh.PublicKey) (string, error) {
 	return pubPemStr, nil
 }
 
-func (s *Server) compareUserPublicKeyWithServerKey(publicKey ssh.PublicKey) bool {
-	// check server public key first, if client public key matches with server public key.
-	skey := spi.DefaultKey()
-	// Compare server public key with client key, and allow OTP only when matched.
-	if signer, ok := skey.(crypto.Signer); ok {
-		if serverPublicKey, err := ssh.NewPublicKey(signer.Public()); err == nil &&
-			serverPublicKey.Type() == publicKey.Type() &&
-			bytes.Equal(serverPublicKey.Marshal(), publicKey.Marshal()) {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error) {
-	// check database user auth keys
-	db := spi.Default()
-	conn, err := db.Connect(ctx, api.WithAuthKey(user, publicKey))
-	if err == nil {
-		conn.Close()
-		s.log.Debugf("%q db auth key success", user)
-		return true, nil
-	}
-
-	// check server public key first, if client public key matches with server public key.
-	if s.compareUserPublicKeyWithServerKey(publicKey) {
-		s.log.Debugf("%q public key authorized with server key", user)
-		return true, nil
-	}
-	// check authorized ssh keys in file, if client public key matches with any authorized key.
-	list, err := s.GetAllAuthorizedSshKeys()
-	if err != nil {
-		s.log.Warnf("ssh %q public key", user, err.Error())
-		return false, err
-	}
-
-	keyType := publicKey.Type()
-	keyStr := base64.StdEncoding.EncodeToString(publicKey.Marshal())
-	for _, rec := range list {
-		if rec.KeyType == keyType && rec.Key == keyStr {
-			s.log.Debugf("ssh %q public key authorized: %s %s", user, rec.KeyType, rec.Fingerprint)
-			return true, nil
-		}
-	}
-
-	pubPemStr, err := ConvertSshPublicKeyToPem(publicKey)
-	if err != nil {
-		s.log.Warnf("ssh %q public key to pem, %s", user, err.Error())
-		return false, err
-	}
-
 	// find the matched key from database, v$user_auth_keys.
-	conn, err = spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	if err != nil {
 		s.log.Warnf("db server key auth fail, %s", err.Error())
 		return false, err
 	}
 	defer conn.Close()
+
+	pubPemStr, err := ConvertSshPublicKeyToPem(publicKey)
+	if err != nil {
+		s.log.Warnf("db %q public key to pem, %s", user, err.Error())
+		return false, err
+	}
 
 	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
 	if nfo != nil && err == nil {

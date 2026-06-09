@@ -127,7 +127,7 @@ func TestMain(m *testing.M) {
 			"-v", fmt.Sprintf("/work=%s", fileDir),
 		}
 		server.models.ShellProvider().SetDefaultShellCommand(
-			fmt.Sprintf("%q shell --server %s --user sys --password manager -v %q", binPath, httpServerAddress, fmt.Sprintf("/work=%s", fileDir)),
+			fmt.Sprintf("%q shell --server %s -v %q", binPath, httpServerAddress, fmt.Sprintf("/work=%s", fileDir)),
 		)
 		server.models.ShellProvider().SetDefaultJshCommand(
 			fmt.Sprintf("%q jsh -v %q", binPath, fmt.Sprintf("/work=%s", fileDir)),

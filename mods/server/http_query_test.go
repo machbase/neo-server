@@ -35,6 +35,21 @@ func TestHttpQuery(t *testing.T) {
 		expect      []string
 	}{
 		{
+			name:    "select_aliveness",
+			sqlText: `select 123 as VaLue`,
+			params: url.Values{
+				"format": []string{"box"},
+			},
+			contentType: "text/plain",
+			expect: []string{
+				"+-------+",
+				"| VALUE |",
+				"+-------+",
+				"| 123   |",
+				"+-------+",
+			},
+		},
+		{
 			name:        "select_v$example",
 			sqlText:     `select (MIN(MIN_TIME)),(MAX(MAX_TIME)) from v$EXAMPLE_stat where name = 'temp'`,
 			contentType: "application/json",
