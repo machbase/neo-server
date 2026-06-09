@@ -83,7 +83,11 @@ function runSqlStatements(statements) {
                 continue;
             }
             // Execute neo-shell commands
-            process.exec(fields[0].toLowerCase(), ...fields.slice(1));
+            let exitCode = process.exec(fields[0].toLowerCase(), ...fields.slice(1));
+            if (exitCode !== 0) {
+                console.println(`Script exited with code ${exitCode}: ${stmt.text}`);
+                process.exit(exitCode);
+            }
             console.println();
         }
     } catch (err) {

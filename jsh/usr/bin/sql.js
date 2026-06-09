@@ -48,6 +48,7 @@ if (showHelp || (!args.sql) || args.sql.length === 0) {
 const sqlText = args.sql.join(' ');
 let db, conn, rows;
 let tick = process.now();
+let exitCode = 0;
 try {
     db = newMachCliClient(config);
     conn = db.connect();
@@ -137,8 +138,12 @@ try {
     }
 } catch (err) {
     console.println("Error: ", err.message);
+    exitCode = 1;
 } finally {
     rows && rows.close();
     conn && conn.close();
     db && db.close();
+}
+if (exitCode !== 0) {
+    process.exit(exitCode);
 }
