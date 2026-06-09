@@ -8,8 +8,7 @@ import (
 	"github.com/machbase/neo-client/api"
 )
 
-func ListIndexesSql() string {
-	return api.SqlTidy(`
+var listIndexesSql = SqlTidy(`
 		SELECT
 			u.name as USER_NAME,
 			j.DB_NAME as DATABASE_NAME,
@@ -64,11 +63,9 @@ func ListIndexesSql() string {
 		ORDER BY
 			j.DB_NAME, j.TABLE_NAME, b.ID
 	`)
-}
 
 func ListIndexesWalk(ctx context.Context, conn api.Conn, callback func(*IndexInfo) bool) {
-	sqlText := ListIndexesSql()
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.Query(ctx, listIndexesSql)
 	if err != nil {
 		callback(&IndexInfo{err: err})
 		return
@@ -143,7 +140,7 @@ func DescribeIndex(ctx context.Context, conn api.Conn, name string) (*IndexInfo,
 }
 
 func ListIndexGapWalk(ctx context.Context, conn api.Conn, callback func(*IndexGapInfo) bool) {
-	sqlText := api.SqlTidy(`select
+	sqlText := SqlTidy(`select
 		c.id,
 		b.name as TABLE_NAME, 
 		c.name as INDEX_NAME, 
@@ -173,7 +170,7 @@ func ListIndexGapWalk(ctx context.Context, conn api.Conn, callback func(*IndexGa
 }
 
 func ListTagIndexGapWalk(ctx context.Context, conn api.Conn, callback func(*IndexGapInfo) bool) {
-	sqlText := api.SqlTidy(`SELECT
+	sqlText := SqlTidy(`SELECT
 		ID,
 		INDEX_STATE AS STATUS,
 		TABLE_END_RID - DISK_INDEX_END_RID AS DISK_GAP,

@@ -3,9 +3,7 @@ package tql
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -284,9 +282,6 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			}
 		},
 	}
-	if v, ok := node.pragma[PRAGMA_SQL_THREAD_LOCK]; ok && v != "false" && v != "0" {
-		query.SetLockOSThread(true)
-	}
 	if err := query.Execute(node.task.ctx, conn, dc.sqlText, dc.params...); err != nil {
 		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
@@ -340,7 +335,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	if len(sqlText) == 0 {
 		return nil, fmt.Errorf("f(SQL) Empty SQL text")
 	}
-	if sqlBridged && !api.DetectSQLStatementType(sqlText).IsFetch() {
+	if sqlBridged && !spi.DetectSQLStatementType(sqlText).IsFetch() {
 		conn, err := databaseProvider(x.task.ctx)
 		if err != nil {
 			return nil, err
@@ -403,15 +398,6 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		args := spi.ParseCommandLine(sqlText)
 		if !ch.IsKnownVerb(args[0]) {
 			args = append([]string{"sql", "--"}, sqlText)
-		}
-		if str, ok := x.Pragma(PRAGMA_SQL_THREAD_LOCK); ok {
-			if str == "" || str == "true" || str == "1" {
-				ch.LockOSThread = true
-			} else if rate, err := strconv.ParseFloat(str, 64); err != nil {
-				if rand.Float64() <= rate {
-					ch.LockOSThread = true
-				}
-			}
 		}
 
 		if err := ch.Exec(x.task.ctx, args, sqlParams...); err != nil {

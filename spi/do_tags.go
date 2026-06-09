@@ -50,9 +50,9 @@ func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColum
 	}
 }
 
-func TagStatSql(fullTable string) string {
-	database, user, table := api.TableName(fullTable).Split()
-	return api.SqlTidy(`SELECT`,
+func TagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
+	database, user, table := api.TableName(table).Split()
+	sqlText := SqlTidy(`SELECT`,
 		`NAME, ROW_COUNT,`,
 		`MIN_TIME, MAX_TIME,`,
 		`MIN_VALUE, MIN_VALUE_TIME, MAX_VALUE, MAX_VALUE_TIME,`,
@@ -60,11 +60,6 @@ func TagStatSql(fullTable string) string {
 		`FROM`,
 		fmt.Sprintf("%s.%s.V$%s_STAT", database, user, table),
 		`WHERE NAME = ?`)
-}
-
-func TagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
-	database, user, table := api.TableName(table).Split()
-	sqlText := TagStatSql(table)
 	nfo := &TagStatInfo{
 		Database: database,
 		User:     user,

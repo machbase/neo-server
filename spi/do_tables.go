@@ -17,7 +17,7 @@ func ifThenElse(cond bool, a, b string) string {
 }
 
 func ListTablesSql(showAll bool, descriptiveType bool) string {
-	return api.SqlTidy(
+	return SqlTidy(
 		`SELECT
 			j.DB_NAME as DATABASE_NAME,
 			u.NAME as USER_NAME,
@@ -187,7 +187,7 @@ func ListRollupGapWalk(ctx context.Context, conn api.Conn, callback func(*Rollup
 }
 
 func listRollupGapWalk_pre_8_0_60(ctx context.Context, conn api.Conn, callback func(*RollupGapInfo) bool) {
-	sqlText := api.SqlTidy(`SELECT
+	sqlText := SqlTidy(`SELECT
 		C.SOURCE_TABLE AS SRC_TABLE,
 		C.ROLLUP_TABLE,
 		B.TABLE_END_RID AS SRC_END_RID,
@@ -222,7 +222,7 @@ func listRollupGapWalk_pre_8_0_60(ctx context.Context, conn api.Conn, callback f
 }
 
 func listRollupGapWalk_since_8_0_60(ctx context.Context, conn api.Conn, callback func(*RollupGapInfo) bool) {
-	sqlText := api.SqlTidy(`SELECT
+	sqlText := SqlTidy(`SELECT
 		C.SOURCE_TABLE AS SRC_TABLE,
 		C.ROLLUP_TABLE,
 		B.TABLE_END_RID AS SRC_END_RID,
@@ -259,7 +259,7 @@ func listRollupGapWalk_since_8_0_60(ctx context.Context, conn api.Conn, callback
 }
 
 func ListStorageWalk(ctx context.Context, conn api.Conn, callback func(*StorageInfo) bool) {
-	sqlText := api.SqlTidy(`select
+	sqlText := SqlTidy(`select
 		a.table_name as TABLE_NAME,
 		a.data_size as DATA_SIZE,
 		case b.index_size 
@@ -308,7 +308,7 @@ func ListStorageWalk(ctx context.Context, conn api.Conn, callback func(*StorageI
 }
 
 func ListTableUsageWalk(ctx context.Context, conn api.Conn, callback func(*TableUsageInfo) bool) {
-	sqlText := api.SqlTidy(`SELECT
+	sqlText := SqlTidy(`SELECT
 		a.NAME as TABLE_NAME,
 		t.STORAGE_USAGE as STORAGE_USAGE
 	FROM

@@ -969,7 +969,6 @@ func (s *Server) startSshServer() error {
 		WithSshIdleTimeout(s.Shell.IdleTimeout),
 		WithSshAuthServer(s),
 		WithSshMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
-		WithSshShellProvider(s.provideShellForSsh),
 	); err != nil {
 		return err
 	} else {

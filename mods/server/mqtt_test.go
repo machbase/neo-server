@@ -508,6 +508,17 @@ func TestMqttWrite(t *testing.T) {
 		},
 		{
 			TC: MqttTestCase{
+				Name:       "mqtt-write-csv-v5-time-tz-value",
+				Topic:      "db/write/test_mqtt",
+				Properties: map[string]string{"format": "csv", "timeformat": "2006-01-02 15:04:05", "tz": "Asia/Seoul", "header": "columns"},
+				Payload:    []byte("TIME,VALUE,NAME\n2024-01-15 13:11:07,1.2345,csv4\n2024-01-15 13:11:08,2.3456,csv4"),
+			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'csv4'`,
+			ExpectCount: 2,
+			Vers:        []uint{5},
+		},
+		{
+			TC: MqttTestCase{
 				Name:    "mqtt-write-json-gzip",
 				Topic:   "db/write/test_mqtt:json:gzip",
 				Payload: compress([]byte(`[["json3", 1705291869000000000, 1.2345], ["json3", 1705291870000000000, 2.3456]]`)),
@@ -519,9 +530,9 @@ func TestMqttWrite(t *testing.T) {
 			TC: MqttTestCase{
 				Name:    "mqtt-write-csv-gzip",
 				Topic:   "db/write/test_mqtt:csv:gzip",
-				Payload: compress([]byte("csv4,1705291871000000000,1.2345\ncsv4,1705291872000000000,2.3456")),
+				Payload: compress([]byte("csv5,1705291871000000000,1.2345\ncsv5,1705291872000000000,2.3456")),
 			},
-			ExpectSql:   `select count(*) from test_mqtt where name = 'csv4'`,
+			ExpectSql:   `select count(*) from test_mqtt where name = 'csv5'`,
 			ExpectCount: 2,
 		},
 		{
@@ -535,9 +546,6 @@ func TestMqttWrite(t *testing.T) {
 		},
 	}
 
-	at, _, err := jwtLogin("sys", "manager")
-	require.NoError(t, err)
-
 	creTable := `create tag table test_mqtt (
 		name varchar(200) primary key,
 		time datetime basetime,
@@ -547,7 +555,6 @@ func TestMqttWrite(t *testing.T) {
 		-- sval short
 	) TAG_DUPLICATE_CHECK_DURATION=1;`
 	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 	rsp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rsp.StatusCode)
@@ -556,7 +563,6 @@ func TestMqttWrite(t *testing.T) {
 	defer func() {
 		dropTable := `drop table test_mqtt`
 		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(dropTable), nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 		rsp, _ := http.DefaultClient.Do(req)
 		require.Equal(t, http.StatusOK, rsp.StatusCode)
 	}()

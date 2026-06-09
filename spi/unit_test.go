@@ -74,25 +74,25 @@ func (s *stubConn) Explain(ctx context.Context, sqlText string, full bool) (stri
 func TestWrappedSqlResultMessage(t *testing.T) {
 	tests := []struct {
 		name    string
-		sqlType api.SQLStatementType
+		sqlType SQLStatementType
 		rows    int64
 		err     error
 		expect  string
 	}{
-		{name: "insert zero", sqlType: api.SQLStatementTypeInsert, rows: 0, expect: "no rows inserted."},
-		{name: "insert one", sqlType: api.SQLStatementTypeInsert, rows: 1, expect: "a row inserted."},
-		{name: "insert many", sqlType: api.SQLStatementTypeInsert, rows: 3, expect: "3 rows inserted."},
-		{name: "update zero", sqlType: api.SQLStatementTypeUpdate, rows: 0, expect: "no rows updated."},
-		{name: "update one", sqlType: api.SQLStatementTypeUpdate, rows: 1, expect: "a row updated."},
-		{name: "update many", sqlType: api.SQLStatementTypeUpdate, rows: 4, expect: "4 rows updated."},
-		{name: "delete zero", sqlType: api.SQLStatementTypeDelete, rows: 0, expect: "no rows deleted."},
-		{name: "delete one", sqlType: api.SQLStatementTypeDelete, rows: 1, expect: "a row deleted."},
-		{name: "delete many", sqlType: api.SQLStatementTypeDelete, rows: 2, expect: "2 rows deleted."},
-		{name: "create", sqlType: api.SQLStatementTypeCreate, expect: "Created successfully."},
-		{name: "drop", sqlType: api.SQLStatementTypeDrop, expect: "Dropped successfully."},
-		{name: "alter", sqlType: api.SQLStatementTypeAlter, expect: "Altered successfully."},
-		{name: "select", sqlType: api.SQLStatementTypeSelect, expect: "Select successfully."},
-		{name: "default", sqlType: api.SQLStatementType(-1), expect: "executed."},
+		{name: "insert zero", sqlType: SQLStatementTypeInsert, rows: 0, expect: "no rows inserted."},
+		{name: "insert one", sqlType: SQLStatementTypeInsert, rows: 1, expect: "a row inserted."},
+		{name: "insert many", sqlType: SQLStatementTypeInsert, rows: 3, expect: "3 rows inserted."},
+		{name: "update zero", sqlType: SQLStatementTypeUpdate, rows: 0, expect: "no rows updated."},
+		{name: "update one", sqlType: SQLStatementTypeUpdate, rows: 1, expect: "a row updated."},
+		{name: "update many", sqlType: SQLStatementTypeUpdate, rows: 4, expect: "4 rows updated."},
+		{name: "delete zero", sqlType: SQLStatementTypeDelete, rows: 0, expect: "no rows deleted."},
+		{name: "delete one", sqlType: SQLStatementTypeDelete, rows: 1, expect: "a row deleted."},
+		{name: "delete many", sqlType: SQLStatementTypeDelete, rows: 2, expect: "2 rows deleted."},
+		{name: "create", sqlType: SQLStatementTypeCreate, expect: "Created successfully."},
+		{name: "drop", sqlType: SQLStatementTypeDrop, expect: "Dropped successfully."},
+		{name: "alter", sqlType: SQLStatementTypeAlter, expect: "Altered successfully."},
+		{name: "select", sqlType: SQLStatementTypeSelect, expect: "Select successfully."},
+		{name: "default", sqlType: SQLStatementType(-1), expect: "executed."},
 		{name: "preset error", err: errors.New("boom"), expect: "boom"},
 	}
 

@@ -31,7 +31,6 @@ func TestPragma2(t *testing.T) {
 				JSON()`,
 			ExpectFunc: func(t *testing.T, task *Task) {
 				require.Equal(t, ParseLogLevel("trace"), task.logLevel)
-				require.Equal(t, true, task.nodes[0].PragmaBool(PRAGMA_SQL_THREAD_LOCK))
 			},
 		},
 		{
@@ -42,7 +41,6 @@ func TestPragma2(t *testing.T) {
 				JSON()`,
 			ExpectFunc: func(t *testing.T, task *Task) {
 				require.Equal(t, ParseLogLevel("error"), task.logLevel)
-				require.Equal(t, false, task.nodes[0].PragmaBool(PRAGMA_SQL_THREAD_LOCK))
 			},
 		},
 	}

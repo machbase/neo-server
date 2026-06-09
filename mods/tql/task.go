@@ -28,8 +28,7 @@ import (
 )
 
 const (
-	PRAGMA_LOG_LEVEL       = "log-level"
-	PRAGMA_SQL_THREAD_LOCK = "sql-thread-lock"
+	PRAGMA_LOG_LEVEL = "log-level"
 )
 
 type Task struct {

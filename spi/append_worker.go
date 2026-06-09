@@ -228,7 +228,11 @@ func (aw *AppendWorker) Stop() {
 	if success, fail, err := aw.appender.Close(); err != nil {
 		aw.log.Error("close error:", err)
 	} else {
-		aw.log.Info("close, success:", success, "fail:", fail)
+		if fail > 0 {
+			aw.log.Info("close, success:", success, "fail:", fail)
+		} else {
+			aw.log.Info("close, success:", success)
+		}
 	}
 	aw.conn.Close()
 }

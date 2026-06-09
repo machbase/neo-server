@@ -71,12 +71,6 @@ func WithSshMotdMessage(msg string) SshOption {
 	}
 }
 
-func WithSshShellProvider(provider func(user string, shellId string) *SshShell) SshOption {
-	return func(s *sshd) {
-		s.shellProvider = provider
-	}
-}
-
 type sshd struct {
 	log   logging.Log
 	alive bool
@@ -96,8 +90,6 @@ type sshd struct {
 	forwardHandler *ssh.ForwardedTCPHandler
 	childrenLock   sync.Mutex
 	children       map[int]*os.Process
-
-	shellProvider func(user string, shellId string) *SshShell
 }
 
 func (svr *sshd) Start() error {
@@ -233,10 +225,10 @@ func (svr *sshd) removeChild(child *os.Process) {
 }
 
 func (svr *sshd) shell(user string, shellId string) *SshShell {
-	if svr.shellProvider == nil {
+	if svr.authServer == nil {
 		return nil
 	}
-	return svr.shellProvider(user, shellId)
+	return svr.authServer.provideShellForSsh(user, shellId)
 }
 
 const sshContextPasswordKey = "ssh-password"

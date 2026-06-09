@@ -26,7 +26,7 @@ func (c *WrappedSqlConn) Close() error {
 
 func (c *WrappedSqlConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	r, err := c.sqlConn.ExecContext(ctx, sqlText, params...)
-	return &WrappedSqlResult{sqlType: api.DetectSQLStatementType(sqlText), sqlResult: r, err: err}
+	return &WrappedSqlResult{sqlType: DetectSQLStatementType(sqlText), sqlResult: r, err: err}
 }
 
 func (c *WrappedSqlConn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
@@ -73,7 +73,7 @@ func (c *WrappedSqlConn) Explain(ctx context.Context, sqlText string, full bool)
 }
 
 type WrappedSqlResult struct {
-	sqlType   api.SQLStatementType
+	sqlType   SQLStatementType
 	sqlResult sql.Result
 	err       error
 }
@@ -89,7 +89,7 @@ func (r *WrappedSqlResult) Message() string {
 		return r.err.Error()
 	}
 	switch r.sqlType {
-	case api.SQLStatementTypeInsert:
+	case SQLStatementTypeInsert:
 		rowsCount := r.RowsAffected()
 		switch rowsCount {
 		case 0:
@@ -99,7 +99,7 @@ func (r *WrappedSqlResult) Message() string {
 		default:
 			return fmt.Sprintf("%d rows inserted.", rowsCount)
 		}
-	case api.SQLStatementTypeUpdate:
+	case SQLStatementTypeUpdate:
 		rowsCount := r.RowsAffected()
 		switch rowsCount {
 		case 0:
@@ -109,7 +109,7 @@ func (r *WrappedSqlResult) Message() string {
 		default:
 			return fmt.Sprintf("%d rows updated.", rowsCount)
 		}
-	case api.SQLStatementTypeDelete:
+	case SQLStatementTypeDelete:
 		rowsCount := r.RowsAffected()
 		switch rowsCount {
 		case 0:
@@ -119,13 +119,13 @@ func (r *WrappedSqlResult) Message() string {
 		default:
 			return fmt.Sprintf("%d rows deleted.", rowsCount)
 		}
-	case api.SQLStatementTypeCreate:
+	case SQLStatementTypeCreate:
 		return "Created successfully."
-	case api.SQLStatementTypeDrop:
+	case SQLStatementTypeDrop:
 		return "Dropped successfully."
-	case api.SQLStatementTypeAlter:
+	case SQLStatementTypeAlter:
 		return "Altered successfully."
-	case api.SQLStatementTypeSelect:
+	case SQLStatementTypeSelect:
 		return "Select successfully."
 	default:
 		return "executed."
