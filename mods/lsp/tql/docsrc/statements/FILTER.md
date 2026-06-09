@@ -22,7 +22,7 @@ FILTER(...)
 
 ## Description
 
-TODO
+`FILTER()` applies the condition to the incoming record and passes it to the next node only if the condition is true.
 
 ## Examples
 

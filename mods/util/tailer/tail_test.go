@@ -223,9 +223,6 @@ func TestTailTruncation(t *testing.T) {
 	}
 	f.Close()
 
-	// Wait for tail to detect the truncation
-	time.Sleep(150 * time.Millisecond)
-
 	// Now write new content
 	f, err = os.OpenFile(testFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -235,24 +232,20 @@ func TestTailTruncation(t *testing.T) {
 	f.Sync() // Ensure data is written to disk
 	f.Close()
 
-	// Wait for the data to be read
-	time.Sleep(150 * time.Millisecond)
-
 	// Read the lines (should include last 2 from initial + line after truncate)
 	timeout := time.After(2 * time.Second)
 	lines := []string{}
+	foundLine3 := false
 
-	for i := 0; i < 3; i++ {
+	for len(lines) < 3 || !foundLine3 {
 		select {
 		case line := <-tail.Lines():
 			lines = append(lines, line)
-		case <-timeout:
-			if i < 3 {
-				// We expect at least the initial lines and the line after truncate
-				t.Logf("Got %d lines: %v", len(lines), lines)
-				break
+			if line == "line 3 (after truncate)" {
+				foundLine3 = true
 			}
-			t.Fatal("Timeout waiting for line after truncation")
+		case <-timeout:
+			t.Fatalf("Timeout waiting for expected lines after truncation, got %d lines: %v", len(lines), lines)
 		}
 	}
 
@@ -264,7 +257,7 @@ func TestTailTruncation(t *testing.T) {
 	// Check we got the expected lines
 	foundLine1 := false
 	foundLine2 := false
-	foundLine3 := false
+	foundLine3 = false
 
 	for _, line := range lines {
 		if line == "line 1" {

@@ -281,8 +281,8 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 		Slots: []tqlDocSlot{
 			{Name: "args", Required: false, Repeat: true, Accepts: "expression"},
 		},
-		Description: "TODO",
-		Markdown: "# FILTER\n\n## Kind\n\nstatement map\n\n## Category\n\nmap monad\n\n## Signatures\n\n```text\nFILTER(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nFILTER()\n```\n\n## Related\n\nTODO",
+		Description: "`FILTER()` applies the condition to the incoming record and passes it to the next node only if the condition is true.",
+		Markdown: "# FILTER\n\n## Kind\n\nstatement map\n\n## Category\n\nmap monad\n\n## Signatures\n\n```text\nFILTER(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\n`FILTER()` applies the condition to the incoming record and passes it to the next node only if the condition is true.\n\n## Examples\n\n### Basic\n\n```js\nFILTER()\n```\n\n## Related\n\nTODO",
 	},
 	"FILTER_CHANGED": {
 		Label: "FILTER_CHANGED",

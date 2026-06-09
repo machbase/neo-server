@@ -478,6 +478,7 @@ func (tail *Tail) checkAndRead() error {
 		}
 
 		tail.readLines()
+		tail.lastSize = tail.lastPos
 		return nil
 	}
 
@@ -495,22 +496,91 @@ func (tail *Tail) checkAndRead() error {
 		if currentSize > 0 {
 			tail.readLines()
 		}
-		tail.lastSize = currentSize
+		tail.lastSize = tail.lastPos
 		return nil
 	}
 
 	// Check if file has new content
 	if currentSize > tail.lastSize {
+		if tail.lastPos > 0 {
+			boundaryOK, err := tail.hasLineBoundaryAt(tail.lastPos)
+			if err == nil && !boundaryOK {
+				if tail.file != nil {
+					tail.file.Close()
+				}
+				if err := tail.openFile(); err != nil {
+					return err
+				}
+				if _, err := tail.file.Seek(0, io.SeekStart); err != nil {
+					return fmt.Errorf("failed to seek to start: %w", err)
+				}
+				tail.lastPos = 0
+				tail.readLines()
+				tail.lastSize = tail.lastPos
+				return nil
+			}
+		}
+
+		prevPos := tail.lastPos
+
 		// Seek to our last known position
 		if _, err := tail.file.Seek(tail.lastPos, io.SeekStart); err != nil {
 			return fmt.Errorf("failed to seek: %w", err)
 		}
 
 		tail.readLines()
-		tail.lastSize = currentSize
+
+		// If path size advanced but this handle did not, we may be reading a stale handle.
+		if tail.lastPos == prevPos && currentSize > tail.lastPos {
+			handleStat, statErr := tail.file.Stat()
+			if statErr == nil && handleStat.Size() <= tail.lastPos {
+				if tail.file != nil {
+					tail.file.Close()
+				}
+				if err := tail.openFile(); err != nil {
+					return err
+				}
+				if _, err := tail.file.Seek(0, io.SeekStart); err != nil {
+					return fmt.Errorf("failed to seek to start: %w", err)
+				}
+				tail.lastPos = 0
+				tail.readLines()
+			}
+		}
+
+		tail.lastSize = tail.lastPos
 	}
 
 	return nil
+}
+
+// hasLineBoundaryAt checks whether the byte before pos is a line boundary.
+// If not, the stored offset may no longer represent a valid append boundary.
+func (tail *Tail) hasLineBoundaryAt(pos int64) (bool, error) {
+	if pos <= 0 {
+		return true, nil
+	}
+
+	f, err := openFileShared(tail.filepath)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	if _, err := f.Seek(pos-1, io.SeekStart); err != nil {
+		return false, err
+	}
+
+	b := make([]byte, 1)
+	n, err := f.Read(b)
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	if n != 1 {
+		return false, io.EOF
+	}
+
+	return b[0] == '\n' || b[0] == '\r', nil
 }
 
 // readLines reads new lines from the file
