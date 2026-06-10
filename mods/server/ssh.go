@@ -351,8 +351,10 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
 
 func (svr *sshd) SftpHandler(sess ssh.Session) {
 	debugStream := io.Discard
+	workDir := strings.TrimPrefix(svr.authServer.FileDirs[0], "/=")
 	serverOptions := []sftp.ServerOption{
 		sftp.WithDebug(debugStream),
+		sftp.WithServerWorkingDirectory(workDir),
 	}
 	server, err := sftp.NewServer(
 		sess,
@@ -476,13 +478,13 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 
 	breakChan := make(chan bool)
 	sigChan := make(chan ssh.Signal)
-	cmdChan := make(chan int)
+	cmdChan := make(chan int, 1)
 
 	ss.Break(breakChan)
 	ss.Signals(sigChan)
 
-	var once sync.Once
-	onceClose := func() { once.Do(func() { ss.Close() }) }
+	var outputWG sync.WaitGroup
+	outputWG.Add(2)
 
 	go func() {
 		_, err := io.Copy(stdin, ss)
@@ -491,7 +493,6 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		}
 		svr.log.Infof("%s stdin  close", ss.User())
 		stdin.Close()
-		onceClose()
 	}()
 	go func() {
 		_, err := io.Copy(ss, stdout)
@@ -500,7 +501,7 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		}
 		svr.log.Infof("%s stdout close", ss.User())
 		stdout.Close()
-		onceClose()
+		outputWG.Done()
 	}()
 	go func() {
 		_, err := io.Copy(ss, stderr)
@@ -509,24 +510,22 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		}
 		svr.log.Infof("%s stderr close", ss.User())
 		stderr.Close()
-		onceClose()
+		outputWG.Done()
 	}()
 	go func() {
+		exitCode := 1
 		err = cmd.Run()
 		if err != nil {
 			svr.log.Infof("%s command fail %s", ss.User(), err.Error())
-			ss.Exit(1)
-		}
-		if cmd.ProcessState == nil {
+		} else if cmd.ProcessState == nil {
 			svr.log.Infof("%s command state error:%s", ss.User(), cmd.Err)
-			ss.Exit(1)
+		} else {
+			exitCode = cmd.ProcessState.ExitCode()
 		}
-		exitCode := cmd.ProcessState.ExitCode()
 		ss.Exit(exitCode)
 
 		cmdChan <- exitCode
 		svr.log.Infof("%s exit %d", ss.User(), exitCode)
-		onceClose()
 	}()
 
 eventLoop:
@@ -544,7 +543,8 @@ eventLoop:
 		}
 	}
 	svr.log.Infof("%s done  %+v", ss.User(), cmdArr)
-	onceClose()
+	outputWG.Wait()
+	ss.Close()
 }
 
 func NewIODebugger(log logging.Log, prefix string) io.Writer {
