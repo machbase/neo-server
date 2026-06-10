@@ -774,6 +774,9 @@ func (p *stubStreamProvider) stream(ctx context.Context, req llmRequest, onToken
 			totalOut = event.Usage.OutputTokens
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
 	return &llmResponse{
 		Content:      sb.String(),
 		InputTokens:  totalIn,
