@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
+	"path"
 	"regexp"
 	"runtime"
 	"strings"
@@ -495,9 +495,8 @@ func TestSSHSftp(t *testing.T) {
 	require.NoError(t, err)
 	defer sftpClient.Close()
 
-	baseDir := filepath.ToSlash(filepath.Join(projRootDir, "tmp", "test", "sftp"))
-	remoteDir := fmt.Sprintf("%s/%s", baseDir, t.Name())
-	remotePath := remoteDir + "/payload.txt"
+	remoteDir := path.Join("tmp", "test", "sftp", t.Name())
+	remotePath := path.Join(remoteDir, "payload.txt")
 	payload := []byte("neo sftp integration\nline-2\n")
 
 	require.NoError(t, sftpClient.MkdirAll(remoteDir))
