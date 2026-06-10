@@ -7,6 +7,7 @@ import (
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/spi"
@@ -19,6 +20,7 @@ func startServerMetrics(s *Server) {
 	spi.AddMetricsFunc(collectSysStatz)
 	spi.AddMetricsFunc(collectMachSvrStatz)
 	spi.AddMetricsFunc(collectMqttStatz(s))
+	spi.AddMetricsFunc(collectTqlCacheStatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
@@ -83,4 +85,14 @@ func collectMqttStatz(s *Server) func(g *metric.Gather) error {
 		g.Add("mqtt:inflight_dropped", float64(nfo.InflightDropped), metric.GaugeType(metric.UnitShort))
 		return nil
 	}
+}
+
+func collectTqlCacheStatz(g *metric.Gather) error {
+	stat := tql.StatCache()
+	g.Add("tql:cache:evictions", float64(stat.Evictions), metric.GaugeType(metric.UnitShort))
+	g.Add("tql:cache:insertions", float64(stat.Insertions), metric.GaugeType(metric.UnitShort))
+	g.Add("tql:cache:hits", float64(stat.Hits), metric.GaugeType(metric.UnitShort))
+	g.Add("tql:cache:misses", float64(stat.Misses), metric.GaugeType(metric.UnitShort))
+	g.Add("tql:cache:items", float64(stat.Items), metric.GaugeType(metric.UnitShort))
+	return nil
 }

@@ -1563,6 +1563,10 @@ func TestWhen(t *testing.T) {
 		for scan.Scan() {
 			notifiedValues = append(notifiedValues, scan.Text())
 		}
+		if err := scan.Err(); err != nil {
+			t.Error("failed to read request body:", err)
+			t.Fail()
+		}
 		fmt.Println(notifiedValues)
 		return &http.Response{
 			StatusCode: http.StatusOK,

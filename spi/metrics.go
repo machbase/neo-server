@@ -308,7 +308,9 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 				case *metric.OdometerValue:
 					ret.Rows[i].Values[colIdxOffset] = prd.Diff()
 				default:
-					fmt.Printf("unknown metric type:%#v\n", prd)
+					if prd != nil {
+						fmt.Printf("unknown metric type:%#v\n", prd)
+					}
 				}
 			}
 			colIdxOffset++
@@ -356,7 +358,7 @@ func SetMetricsDestTable(destTable string) error {
 	destTable = strings.ToUpper(strings.TrimSpace(destTable))
 	if destTable != "" {
 		ctx := context.Background()
-		conn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
+		conn, err := Default().Connect(ctx, api.WithAuthKey("sys", DefaultKey()))
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return nil

@@ -2,15 +2,12 @@ package tql
 
 import (
 	"crypto/sha1"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
-	"github.com/machbase/neo-server/v8/spi"
 )
 
 var tqlResultCache atomic.Pointer[Cache]
@@ -29,20 +26,6 @@ func StartCache(cap CacheOption) {
 		defer cache.closeWg.Done()
 		cache.cache.Start()
 	}(cache)
-
-	spi.AddMetricsFunc(func(g *metric.Gather) error {
-		cache := tqlResultCache.Load()
-		if cache == nil || cache.cache == nil {
-			return errors.New("tql cache not started")
-		}
-		stat := cache.cache.Metrics()
-		g.Add("tql:cache:evictions", float64(stat.Evictions), metric.GaugeType(metric.UnitShort))
-		g.Add("tql:cache:insertions", float64(stat.Insertions), metric.GaugeType(metric.UnitShort))
-		g.Add("tql:cache:hits", float64(stat.Hits), metric.GaugeType(metric.UnitShort))
-		g.Add("tql:cache:misses", float64(stat.Misses), metric.GaugeType(metric.UnitShort))
-		g.Add("tql:cache:items", float64(cache.cache.Len()), metric.GaugeType(metric.UnitShort))
-		return nil
-	})
 }
 
 func StopCache() {
@@ -50,6 +33,29 @@ func StopCache() {
 		cache.cache.Stop()
 		close(cache.closeCh)
 		cache.closeWg.Wait()
+	}
+}
+
+type CacheStat struct {
+	Evictions  uint64
+	Insertions uint64
+	Hits       uint64
+	Misses     uint64
+	Items      uint64
+}
+
+func StatCache() CacheStat {
+	cache := tqlResultCache.Load()
+	if cache == nil || cache.cache == nil {
+		return CacheStat{}
+	}
+	stat := cache.cache.Metrics()
+	return CacheStat{
+		Evictions:  stat.Evictions,
+		Insertions: stat.Insertions,
+		Hits:       stat.Hits,
+		Misses:     stat.Misses,
+		Items:      uint64(cache.cache.Len()),
 	}
 }
 
