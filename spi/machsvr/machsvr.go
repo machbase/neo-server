@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/pem"
-	"expvar"
 	"fmt"
 	"net"
 	"runtime"
@@ -1203,16 +1202,4 @@ func bind(stmt unsafe.Pointer, idx int, c any) error {
 		return api.ErrDatabaseBindType(idx, c)
 	}
 	return nil
-}
-
-func init() {
-	expvar.Publish("machbase:session:raw_conns", expvar.Func(func() any { return rawConns() }))
-	spi.RawConns = rawConns
-}
-
-func rawConns() int {
-	if _env.handle != nil {
-		return mach.EngConnectionCount(_env.handle)
-	}
-	return 0
 }

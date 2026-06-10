@@ -293,11 +293,9 @@ func TestInfoValueObjects(t *testing.T) {
 
 func TestMetricsAndWatcherHelpers(t *testing.T) {
 	t.Run("metrics snapshot and filter helpers", func(t *testing.T) {
-		oldRawConns := RawConns
 		oldMetricsDest := metricsDest
 		oldCollector := collector
 		defer func() {
-			RawConns = oldRawConns
 			metricsDest = oldMetricsDest
 			collector = oldCollector
 			metricConnsInUse.Store(0)
@@ -326,7 +324,6 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 		metricQueryHwmLimitWait.Set(33)
 		metricQueryHwmFetchElapse.Set(44)
 		queryElapseHwm.Store(999)
-		RawConns = func() int { return 7 }
 
 		ResetQueryStatz()
 		require.Zero(t, queryElapseHwm.Load())
@@ -336,7 +333,6 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 		require.Equal(t, int32(2), snapshot.ConnsInUse)
 		require.Equal(t, int32(1), snapshot.StmtsInUse)
 		require.Equal(t, int32(2), snapshot.AppendersInUse)
-		require.Equal(t, int32(7), snapshot.RawConns)
 		require.Equal(t, "select 1", snapshot.QueryHwmSql)
 		require.Equal(t, "[1]", snapshot.QueryHwmSqlArg)
 		require.Equal(t, uint64(111), snapshot.QueryHwm)

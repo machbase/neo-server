@@ -95,8 +95,6 @@ func QueryFetchTime(d time.Duration) {
 	AddMetrics(metric.Measure{Name: "session:query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
 }
 
-var RawConns func() int
-
 func ResetQueryStatz() {
 	queryElapseHwm.Store(0)
 }
@@ -133,7 +131,6 @@ type Statz struct {
 	ConnsInUse     int32  `json:"connsInUse"`
 	StmtsInUse     int32  `json:"stmtsInUse"`
 	AppendersInUse int32  `json:"appendersInUse"`
-	RawConns       int32  `json:"rawConns"`
 	ConnWaitTime   uint64 `json:"connWaitTime"`
 	ConnUseTime    uint64 `json:"connUseTime"`
 	QueryHwm       uint64 `json:"queryHwm"`
@@ -159,9 +156,6 @@ func StatzSnapshot() *Statz {
 	ret.StmtsInUse = int32(metricStmtsInUse.Load())
 	ret.Appenders = metricAppenders.Load()
 	ret.AppendersInUse = int32(metricAppendersInUse.Load())
-	if RawConns != nil {
-		ret.RawConns = int32(RawConns())
-	}
 	ret.QueryExecAvg, ret.QueryExecHwm, _ = elapseAvgMax("machbase:session:query:exec_time")
 	ret.QueryWaitAvg, ret.QueryWaitHwm, _ = elapseAvgMax("machbase:session:query:wait_time")
 	ret.QueryFetchAvg, ret.QueryFetchHwm, _ = elapseAvgMax("machbase:session:query:fetch_time")
