@@ -549,7 +549,7 @@ func (s *SSHTestSession) Run(t *testing.T, cmd string, expect []string, waitTime
 	if err != nil {
 		return fmt.Errorf("Failed to write SSH command: %v", err)
 	}
-	if !waitForSSHOutput(&s.stdout, s.user, expect, waitTimeout) {
+	if !waitForSSHOutput(&s.stdout, s.user, cmd, expect, waitTimeout) {
 		return fmt.Errorf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(s.stdout.String()))
 	}
 	rawOutput := s.stdout.String()
@@ -633,7 +633,7 @@ func runSSHTest(t *testing.T, tt SSHTestCase) {
 	if _, err := stdin.Write([]byte(tt.cmd + "\n")); err != nil {
 		t.Fatalf("Failed to write SSH command: %v", err)
 	}
-	if !waitForSSHOutput(&stdout, user, tt.expect, waitTimeout) {
+	if !waitForSSHOutput(&stdout, user, tt.cmd, tt.expect, waitTimeout) {
 		t.Fatalf("Timed out waiting for SSH output, got %s", removeTerminalControlCharacters(stdout.String()))
 	}
 	if _, err := stdin.Write([]byte("exit\n")); err != nil {
@@ -688,12 +688,12 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func waitForSSHOutput(buf *lockedBuffer, user string, expects []string, timeout time.Duration) bool {
+func waitForSSHOutput(buf *lockedBuffer, user string, cmd string, expects []string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		output := removeTerminalControlCharacters(buf.String())
 		lines := normalizeSSHOutputLines(output, user)
-		if matchExpectedOutput(lines, expects) || containsExpectedOutput(output, expects) {
+		if matchExpectedOutput(lines, expects) || containsExpectedOutput(lines, cmd, expects) {
 			return true
 		}
 		if len(expects) == 0 && isSSHOutputAtPrompt(lines, user) {
@@ -704,23 +704,49 @@ func waitForSSHOutput(buf *lockedBuffer, user string, expects []string, timeout 
 	return false
 }
 
-func containsExpectedOutput(output string, expects []string) bool {
+func containsExpectedOutput(lines []string, cmd string, expects []string) bool {
 	if len(expects) == 0 {
 		return true
 	}
 	for _, expected := range expects {
-		if strings.HasPrefix(expected, "/r/") {
-			matched, err := regexp.MatchString(expected[3:], output)
-			if err != nil || !matched {
-				return false
+		matched := false
+		for _, line := range lines {
+			if isEchoedCommandLine(line, cmd) {
+				continue
 			}
-			continue
+			if strings.HasPrefix(expected, "/r/") {
+				ok, err := regexp.MatchString(expected[3:], line)
+				if err == nil && ok {
+					matched = true
+					break
+				}
+				continue
+			}
+			if strings.Contains(line, expected) {
+				matched = true
+				break
+			}
 		}
-		if !strings.Contains(output, expected) {
+		if !matched {
 			return false
 		}
 	}
 	return true
+}
+
+func isEchoedCommandLine(line string, cmd string) bool {
+	trimmedLine := strings.TrimSpace(line)
+	trimmedCmd := strings.TrimSpace(cmd)
+	if trimmedLine == "" || trimmedCmd == "" {
+		return false
+	}
+	if trimmedLine == trimmedCmd {
+		return true
+	}
+	if strings.HasSuffix(trimmedLine, "> "+trimmedCmd) {
+		return true
+	}
+	return false
 }
 
 func isSSHOutputAtPrompt(lines []string, user string) bool {
