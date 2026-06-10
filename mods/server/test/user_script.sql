@@ -11,6 +11,8 @@ select * from table1;
 
 connect sys/manager;
 
+sql --format csv select * from table1;
+
 sql --format csv select * from user_a.table1;
 
 drop table user_a.table1;

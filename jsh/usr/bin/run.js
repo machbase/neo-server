@@ -8,6 +8,7 @@ const { switchUser } = require('@jsh/session');
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
+    stopOnError: { type: 'boolean', short: 'e', description: 'Stop executing if any statement returns a non-zero exit code', default: false },
     verbose: { type: 'boolean', short: 'v', description: 'Enable verbose output', default: false },
 }
 
@@ -50,7 +51,7 @@ if (!filename.startsWith("/") && !filename.startsWith("@")) {
 try {
     const content = fs.readFile(filename);
     const lines = splitBatchLines(content)
-    runSqlStatements(lines);
+    runSqlStatements(lines, config.stopOnError);
 } catch (err) {
     let errMsg = err.message || String(err);
     if (errMsg.includes(filename)) {
@@ -61,7 +62,7 @@ try {
     process.exit(1);
 }
 
-function runSqlStatements(statements) {
+function runSqlStatements(statements, stopOnError = false) {
     if (!statements || statements.length === 0) {
         console.println(`No SQL statements found in file '${filename}'.`);
         return;
@@ -112,7 +113,7 @@ function runSqlStatements(statements) {
                 // Execute neo-shell commands
                 exitCode = process.exec(fields[0].toLowerCase(), ...fields.slice(1));
             }
-            if (exitCode !== 0) {
+            if (exitCode !== 0 && stopOnError) {
                 console.println(`Script exited with code ${exitCode}: ${stmt.text}`);
                 process.exit(exitCode);
             }
