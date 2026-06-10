@@ -25,6 +25,7 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("getHttpAccessToken", GetHttpAccessToken)
 	exports.Set("getHttpRefreshToken", GetHttpRefreshToken)
 	exports.Set("getMachCliConfig", GetMachCliConfig)
+	exports.Set("switchUser", SwitchUser)
 }
 
 type Config struct {
@@ -320,4 +321,99 @@ func GetMachCliConfig() MachCliConfig {
 		Password:     password,
 		IdentityFile: identityFile,
 	}
+}
+
+func SwitchUser(user, password string) error {
+	if defaultSession.Server == "" {
+		return errors.New("session does not exist")
+	}
+	result, err := loginWithHttp(defaultSession.Server, user, password)
+	if err != nil {
+		return err
+	}
+	defaultSession.User = user
+	defaultSession.Password = password
+	defaultSession.accessToken = result.accessToken
+	defaultSession.refreshToken = result.refreshToken
+	return nil
+}
+
+type LoginResult struct {
+	accessToken  string
+	refreshToken string
+	httpUnix     string
+	httpProto    string
+	httpHost     string
+	httpPort     int
+}
+
+func loginWithHttp(serverAddr string, user string, password string) (*LoginResult, error) {
+	ret := &LoginResult{}
+	httpClient := http.DefaultClient
+	if strings.HasPrefix(serverAddr, "unix://") {
+		if socketPath, err := resolveUnixSocketPath(serverAddr); err != nil {
+			return nil, err
+		} else {
+			ret.httpUnix = socketPath
+		}
+		ret.httpProto = "http"
+		ret.httpHost = "unix"
+		ret.httpPort = 0
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					if strings.HasPrefix(addr, "unix:") { // e.g) addr = "unix:80"
+						var dialer net.Dialer
+						return dialer.DialContext(ctx, "unix", ret.httpUnix)
+					} else {
+						var dialer net.Dialer
+						return dialer.DialContext(ctx, network, addr)
+					}
+				},
+			},
+		}
+	} else if h, p, err := net.SplitHostPort(serverAddr); err == nil {
+		ret.httpProto = "http"
+		ret.httpHost = h
+		ret.httpPort, err = strconv.Atoi(p)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("invalid server address: %s", serverAddr)
+	}
+
+	loginPayload := map[string]string{
+		"loginName": user,
+		"password":  password,
+	}
+	b, _ := json.Marshal(loginPayload)
+	path := buildHttpURL(ret.httpProto, ret.httpHost, ret.httpPort, "/web/api/login")
+
+	loginReq, err := http.NewRequest("POST", path, bytes.NewBuffer(b))
+	if err != nil {
+		return nil, err
+	}
+	loginReq.Header.Set("Content-Type", "application/json")
+	rsp, err := httpClient.Do(loginReq)
+	if err != nil {
+		return nil, err
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode != http.StatusOK {
+		if rsp.StatusCode == http.StatusNotFound {
+			return nil, ErrUserOrPasswordIncorrect
+		}
+		return nil, fmt.Errorf("login failed with status code %d", rsp.StatusCode)
+	}
+	var rspData struct {
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+	}
+	if err := json.NewDecoder(rsp.Body).Decode(&rspData); err != nil {
+		return nil, err
+	}
+	ret.accessToken = rspData.AccessToken
+	ret.refreshToken = rspData.RefreshToken
+	return ret, nil
 }
