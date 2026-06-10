@@ -693,12 +693,34 @@ func waitForSSHOutput(buf *lockedBuffer, user string, expects []string, timeout 
 	for time.Now().Before(deadline) {
 		output := removeTerminalControlCharacters(buf.String())
 		lines := normalizeSSHOutputLines(output, user)
-		if matchExpectedOutput(lines, expects) || isSSHOutputAtPrompt(lines, user) {
+		if matchExpectedOutput(lines, expects) || containsExpectedOutput(output, expects) {
+			return true
+		}
+		if len(expects) == 0 && isSSHOutputAtPrompt(lines, user) {
 			return true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	return false
+}
+
+func containsExpectedOutput(output string, expects []string) bool {
+	if len(expects) == 0 {
+		return true
+	}
+	for _, expected := range expects {
+		if strings.HasPrefix(expected, "/r/") {
+			matched, err := regexp.MatchString(expected[3:], output)
+			if err != nil || !matched {
+				return false
+			}
+			continue
+		}
+		if !strings.Contains(output, expected) {
+			return false
+		}
+	}
+	return true
 }
 
 func isSSHOutputAtPrompt(lines []string, user string) bool {
