@@ -13,6 +13,8 @@ connect sys/manager;
 
 sql --format csv select * from table1;
 
+insert into user_a.table1 values (4);
+
 sql --format csv select * from user_a.table1;
 
 drop table user_a.table1;
