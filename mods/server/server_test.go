@@ -612,6 +612,69 @@ func TestShellShow(t *testing.T) {
 	}
 }
 
+func TestShellUser(t *testing.T) {
+	tests := []ShellTestCase{
+		{
+			name: "run_user_script",
+			args: append(shellArgs, "run", "/work/user_script.sql"),
+			expect: []string{
+				"create user user_a identified by 'password'",
+				"Created successfully.",
+				"",
+				"connect user_a/password",
+				"",
+				"create table table1 (id integer)",
+				"Created successfully.",
+				"",
+				"insert into table1 values (1)",
+				"a row inserted.",
+				"",
+				"insert into table1 values (2)",
+				"a row inserted.",
+				"",
+				"insert into table1 values (3)",
+				"a row inserted.",
+				"",
+				"select * from table1",
+				"┌────────┬────┐",
+				"│ ROWNUM │ ID │",
+				"├────────┼────┤",
+				"│      1 │  3 │",
+				"│      2 │  2 │",
+				"│      3 │  1 │",
+				"└────────┴────┘",
+				"3 rows selected.",
+				"",
+				"connect sys/manager",
+				"",
+				"sql --format csv select * from table1",
+				"Error:  MACHCLI-ERR-2025, Table TABLE1 does not exist.",
+				"",
+				"insert into user_a.table1 values (4)",
+				"a row inserted.",
+				"",
+				"sql --format csv select * from user_a.table1",
+				"ROWNUM,ID",
+				"1,4",
+				"2,3",
+				"3,2",
+				"4,1",
+				"4 rows selected.",
+				"",
+				"drop table user_a.table1",
+				"Dropped successfully.",
+				"",
+				"drop user user_a",
+				"Dropped successfully.",
+				"",
+			},
+		},
+	}
+	for _, tt := range tests {
+		runShellTestCase(t, tt)
+	}
+}
+
 func TestShellBridge(t *testing.T) {
 	if !test.SupportDockerTest() {
 		t.Skip("dockertest does not work in this environment")
@@ -1698,11 +1761,9 @@ func TestShellRun(t *testing.T) {
 func TestShellSql(t *testing.T) {
 	tests := []ShellTestCase{
 		{
-			name: "sql_invalid_query",
-			args: append(shellArgs, "sql", "SELECT * FROM non_existent_table"),
-			expect: []string{
-				"Error:  MACHCLI-ERR-2025, Table NON_EXISTENT_TABLE does not exist.",
-			},
+			name:      "sql_invalid_query",
+			args:      append(shellArgs, "sql", "SELECT * FROM non_existent_table"),
+			expectErr: "MACHCLI-ERR-2025, Table NON_EXISTENT_TABLE does not exist.",
 		},
 		{
 			name: "sql_valid_query",

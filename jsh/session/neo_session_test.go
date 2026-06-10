@@ -203,6 +203,136 @@ func TestConfigureLoginFailsNon404(t *testing.T) {
 	}
 }
 
+func TestSwitchUserUpdatesDefaultSession(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+
+	var gotLoginName string
+	var gotPassword string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode login payload: %v", err)
+		}
+		gotLoginName = payload["loginName"]
+		gotPassword = payload["password"]
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"accessToken":  "new-access-token",
+			"refreshToken": "new-refresh-token",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	defaultSession = Config{
+		Server:       strings.TrimPrefix(srv.URL, "http://"),
+		User:         "sys",
+		Password:     "manager",
+		accessToken:  "old-access-token",
+		refreshToken: "old-refresh-token",
+	}
+
+	if err := SwitchUser("demo", "secret"); err != nil {
+		t.Fatalf("SwitchUser() error = %v", err)
+	}
+	if gotLoginName != "demo" {
+		t.Fatalf("loginName = %q, want demo", gotLoginName)
+	}
+	if gotPassword != "secret" {
+		t.Fatalf("password = %q, want secret", gotPassword)
+	}
+	if defaultSession.User != "demo" {
+		t.Fatalf("defaultSession.User = %q, want demo", defaultSession.User)
+	}
+	if defaultSession.Password != "secret" {
+		t.Fatalf("defaultSession.Password = %q, want secret", defaultSession.Password)
+	}
+	if defaultSession.accessToken != "new-access-token" {
+		t.Fatalf("defaultSession.accessToken = %q, want new-access-token", defaultSession.accessToken)
+	}
+	if defaultSession.refreshToken != "new-refresh-token" {
+		t.Fatalf("defaultSession.refreshToken = %q, want new-refresh-token", defaultSession.refreshToken)
+	}
+}
+
+func TestLoginWithHttpUnixSocket(t *testing.T) {
+	socketPath := t.TempDir() + "/login.sock"
+	l, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+
+	var gotLoginName string
+	var gotPassword string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode login payload: %v", err)
+		}
+		gotLoginName = payload["loginName"]
+		gotPassword = payload["password"]
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"accessToken":  "unix-access-token",
+			"refreshToken": "unix-refresh-token",
+		})
+	})
+	srv := &http.Server{Handler: mux}
+	go srv.Serve(l) //nolint:errcheck
+	defer srv.Close()
+
+	result, err := loginWithHttp("unix://"+socketPath, "demo", "secret")
+	if err != nil {
+		t.Fatalf("loginWithHttp() error = %v", err)
+	}
+	if gotLoginName != "demo" {
+		t.Fatalf("loginName = %q, want demo", gotLoginName)
+	}
+	if gotPassword != "secret" {
+		t.Fatalf("password = %q, want secret", gotPassword)
+	}
+	if result.accessToken != "unix-access-token" {
+		t.Fatalf("accessToken = %q, want unix-access-token", result.accessToken)
+	}
+	if result.refreshToken != "unix-refresh-token" {
+		t.Fatalf("refreshToken = %q, want unix-refresh-token", result.refreshToken)
+	}
+	if result.httpProto != "http" {
+		t.Fatalf("httpProto = %q, want http", result.httpProto)
+	}
+	if result.httpHost != "unix" {
+		t.Fatalf("httpHost = %q, want unix", result.httpHost)
+	}
+	if result.httpPort != 0 {
+		t.Fatalf("httpPort = %d, want 0", result.httpPort)
+	}
+	if filepath.Clean(result.httpUnix) != filepath.Clean(socketPath) {
+		t.Fatalf("httpUnix = %q, want %q", result.httpUnix, socketPath)
+	}
+}
+
+func TestSwitchUserRequiresConfiguredSession(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+
+	defaultSession = Config{}
+
+	err := SwitchUser("demo", "secret")
+	if err == nil {
+		t.Fatal("SwitchUser() error = nil, want session does not exist")
+	}
+	if err.Error() != "session does not exist" {
+		t.Fatalf("SwitchUser() error = %v, want session does not exist", err)
+	}
+}
+
 func TestConfigureRpcFails(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, r *http.Request) {
