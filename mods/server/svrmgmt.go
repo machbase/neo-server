@@ -22,13 +22,11 @@ import (
 	"encoding/pem"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
-	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/crypto/ssh"
@@ -343,109 +341,6 @@ func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error
 	default:
 		return false, fmt.Errorf("unsupported algorithm '%T'", key)
 	}
-}
-
-type ListShellResponse struct {
-	Success bool               `json:"success"`
-	Reason  string             `json:"reason"`
-	Elapse  string             `json:"elapse"`
-	Shells  []*ShellDefinition `json:"shells"`
-}
-
-type ShellDefinition struct {
-	Id      string `json:"id"`
-	Name    string `json:"name"`
-	Command string `json:"command"`
-}
-
-func (s *Server) ListShell(context.Context) (*ListShellResponse, error) {
-	tick := time.Now()
-	rsp := &ListShellResponse{}
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
-	lst := s.models.ShellProvider().GetAllShells(false)
-	for _, define := range lst {
-		rsp.Shells = append(rsp.Shells, &ShellDefinition{
-			Id:      define.Id,
-			Name:    define.Label,
-			Command: define.Command,
-		})
-	}
-	rsp.Success, rsp.Reason = true, "success"
-	return rsp, nil
-}
-
-type AddShellRequest struct {
-	Name    string `json:"name"`
-	Command string `json:"command"`
-}
-
-type AddShellResponse struct {
-	Success bool   `json:"success"`
-	Reason  string `json:"reason"`
-	Elapse  string `json:"elapse"`
-}
-
-func (s *Server) AddShell(ctx context.Context, req *AddShellRequest) (*AddShellResponse, error) {
-	tick := time.Now()
-	rsp := &AddShellResponse{Reason: "not specified"}
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	def := &model.ShellDefinition{}
-	if len(req.Name) > 16 {
-		rsp.Reason = "name is too long, should be shorter than 16 characters"
-		return rsp, nil
-	}
-	uid, err := uuid.DefaultGenerator.NewV4()
-	if err != nil {
-		return nil, err
-	}
-	def.Id = uid.String()
-	def.Label = req.Name
-	def.Type = model.SHELL_TERM
-	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
-
-	if len(strings.TrimSpace(req.Command)) == 0 {
-		rsp.Reason = "command not specified"
-		return rsp, nil
-	} else {
-		def.Command = req.Command
-	}
-
-	if err := s.models.ShellProvider().SaveShell(def); err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-
-	rsp.Success, rsp.Reason = true, "success"
-	return rsp, nil
-}
-
-type DelShellRequest struct {
-	Id string `json:"id"`
-}
-
-type DelShellResponse struct {
-	Success bool   `json:"success"`
-	Reason  string `json:"reason"`
-	Elapse  string `json:"elapse"`
-}
-
-func (s *Server) DelShell(ctx context.Context, req *DelShellRequest) (*DelShellResponse, error) {
-	tick := time.Now()
-	rsp := &DelShellResponse{}
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
-	if err := s.models.ShellProvider().RemoveShell(req.Id); err != nil {
-		rsp.Reason = fmt.Sprintf("fail to remove %s", req.Id)
-		return rsp, nil
-	}
-	rsp.Success, rsp.Reason = true, "success"
-	return rsp, nil
 }
 
 func (s *Server) listSshKeys(ctx context.Context) ([]*AuthorizedSshKey, error) {

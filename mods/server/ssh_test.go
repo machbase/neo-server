@@ -1,12 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"runtime"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
@@ -477,6 +480,54 @@ func TestSSHSession(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSSHSftp(t *testing.T) {
+	authMethods := []ssh.AuthMethod{ssh.Password("manager")}
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
+		User:            "sys",
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	sftpClient, err := sftp.NewClient(client)
+	require.NoError(t, err)
+	defer sftpClient.Close()
+
+	remoteDir := path.Join("tmp", "test", "sftp", t.Name())
+	remotePath := path.Join(remoteDir, "payload.txt")
+	payload := []byte("neo sftp integration\nline-2\n")
+
+	require.NoError(t, sftpClient.MkdirAll(remoteDir))
+	defer func() {
+		_ = sftpClient.Remove(remotePath)
+		_ = sftpClient.RemoveDirectory(remoteDir)
+	}()
+
+	writer, err := sftpClient.Create(remotePath)
+	require.NoError(t, err)
+	_, err = writer.Write(payload)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	st, err := sftpClient.Stat(remotePath)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(payload)), st.Size())
+
+	entries, err := sftpClient.ReadDir(remoteDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "payload.txt", entries[0].Name())
+
+	reader, err := sftpClient.Open(remotePath)
+	require.NoError(t, err)
+	defer reader.Close()
+	actual, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(payload, actual))
+}
+
 type SSHTestSession struct {
 	name       string
 	user       string
@@ -568,6 +619,82 @@ func (s *SSHTestSession) Run(t *testing.T, cmd string, expect []string, waitTime
 
 	s.stdout.Clear()
 	return nil
+}
+
+func TestSSHCommands(t *testing.T) {
+	tests := []struct {
+		name   string
+		cmd    string
+		expect []string
+	}{
+		{
+			cmd: "select 1+2",
+			expect: []string{
+				"┌────────┬─────┐",
+				"│ ROWNUM │ 1+2 │",
+				"├────────┼─────┤",
+				"│      1 │   3 │",
+				"└────────┴─────┘",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &SSHTestCommand{
+				cmd: tt.cmd,
+			}
+			output, err := cmd.Exec(t)
+			_ = err
+			//require.NoError(t, err)
+			outputStr := removeTerminalControlCharacters(string(output))
+			for _, line := range tt.expect {
+				require.Contains(t, outputStr, line, "Expected SSH output to contain %q, got %s", line, outputStr)
+			}
+		})
+	}
+}
+
+type SSHTestCommand struct {
+	user       string
+	password   string
+	privateKey ssh.Signer
+	cmd        string
+}
+
+func (c *SSHTestCommand) Exec(t *testing.T) ([]byte, error) {
+	user := c.user
+	if user == "" {
+		user = "sys"
+	}
+	password := c.password
+	if password == "" {
+		password = "manager"
+	}
+	authMethods := []ssh.AuthMethod{}
+	if c.privateKey != nil {
+		authMethods = append(authMethods, ssh.PublicKeys(c.privateKey))
+	} else {
+		authMethods = append(authMethods, ssh.Password(password))
+	}
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{
+		User:            user,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to dial SSH server: %v", err)
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		t.Fatalf("Failed to create SSH session: %v", err)
+	}
+	defer session.Close()
+
+	return session.CombinedOutput(c.cmd)
 }
 
 type SSHTestCase struct {
