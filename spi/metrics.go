@@ -2,12 +2,14 @@ package spi
 
 import (
 	"context"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 	"sync/atomic"
+	"text/template"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -15,6 +17,8 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/glob"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/metric/input"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 const (
@@ -47,13 +51,41 @@ var (
 	metricQueryCount atomic.Int64
 
 	// longest query
-	metricQueryHwmSqlText       = expvar.NewString("machbase:session:query:hwm:sql_text")
-	metricQueryHwmSqlArgs       = expvar.NewString("machbase:session:query:hwm:sql_args")
-	metricQueryHwmElapse        = expvar.NewInt("machbase:session:query:hwm:elapse")
-	metricQueryHwmExecuteElapse = expvar.NewInt("machbase:session:query:hwm:exec_time")
-	metricQueryHwmLimitWait     = expvar.NewInt("machbase:session:query:hwm:wait_time")
-	metricQueryHwmFetchElapse   = expvar.NewInt("machbase:session:query:hwm:fetch_time")
+	metricQueryHwm = &SqlLaptime{}
 )
+
+func init() {
+	expvar.Publish("machbase:session:query:hwm", metricQueryHwm)
+}
+
+type SqlLaptime struct {
+	Text    string        `json:"text"`
+	Args    []any         `json:"args"`
+	Elapse  time.Duration `json:"elapse"`
+	Execute time.Duration `json:"execute"`
+	Wait    time.Duration `json:"wait"`
+	Fetch   time.Duration `json:"fetch"`
+}
+
+var _ expvar.Var = (*SqlLaptime)(nil)
+
+func (s *SqlLaptime) Reset() {
+	s.Text = ""
+	s.Args = nil
+	s.Elapse = 0
+	s.Execute = 0
+	s.Wait = 0
+	s.Fetch = 0
+}
+
+func (s *SqlLaptime) String() string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		// keep it simple to avoid potential json marshal error again
+		return fmt.Sprintf("{\"text\":%q}", err.Error())
+	}
+	return string(b)
+}
 
 func AllocConn(connWaitTime time.Duration) {
 	metricConnsInUse.Add(1)
@@ -159,12 +191,13 @@ func StatzSnapshot() *Statz {
 	ret.QueryExecAvg, ret.QueryExecHwm, _ = elapseAvgMax("machbase:session:query:exec_time")
 	ret.QueryWaitAvg, ret.QueryWaitHwm, _ = elapseAvgMax("machbase:session:query:wait_time")
 	ret.QueryFetchAvg, ret.QueryFetchHwm, _ = elapseAvgMax("machbase:session:query:fetch_time")
-	ret.QueryHwmSql = metricQueryHwmSqlText.Value()
-	ret.QueryHwmSqlArg = metricQueryHwmSqlArgs.Value()
-	ret.QueryHwm = uint64(metricQueryHwmElapse.Value())
-	ret.QueryHwmExec = uint64(metricQueryHwmExecuteElapse.Value())
-	ret.QueryHwmWait = uint64(metricQueryHwmLimitWait.Value())
-	ret.QueryHwmFetch = uint64(metricQueryHwmFetchElapse.Value())
+	hwm := *metricQueryHwm
+	ret.QueryHwmSql = hwm.Text
+	ret.QueryHwmSqlArg = fmt.Sprintf("%v", hwm.Args)
+	ret.QueryHwm = uint64(hwm.Elapse)
+	ret.QueryHwmExec = uint64(hwm.Execute)
+	ret.QueryHwmWait = uint64(hwm.Wait)
+	ret.QueryHwmFetch = uint64(hwm.Fetch)
 	return ret
 }
 
@@ -209,25 +242,20 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 	metricQueryKeys := []MetricQueryKey{}
 	expvar.Do(func(kv expvar.KeyValue) {
 		key := kv.Key
-		if _, ok := kv.Value.(*expvar.Int); ok {
-			if pass, order := filter(key); pass {
+		if pass, order := filter(key); pass {
+			switch kv.Value.(type) {
+			case *expvar.Int:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnInt64(kv.Key), valueType: "i", order: order})
-			}
-		} else if _, ok := kv.Value.(*expvar.String); ok {
-			if pass, order := filter(key); pass {
+			case *expvar.String:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "s", order: order})
-			}
-		} else if _, ok := kv.Value.(*expvar.Float); ok {
-			if pass, order := filter(key); pass {
+			case *expvar.Float:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnDouble(kv.Key), valueType: "f", order: order})
-			}
-		} else if _, ok := kv.Value.(expvar.Func); ok {
-			if pass, order := filter(key); pass {
+			case expvar.Func:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
-			}
-		} else if _, ok := kv.Value.(metric.MultiTimeSeries); ok {
-			if pass, order := filter(key); pass {
+			case metric.MultiTimeSeries:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
+			case *SqlLaptime:
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "s", order: order})
 			}
 		}
 	})
@@ -266,27 +294,28 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 	colIdxOffset := 0
 	for _, queryKey := range metricQueryKeys {
 		kv := expvar.Get(queryKey.key)
-		if val, ok := kv.(*expvar.Int); ok {
+		switch val := kv.(type) {
+		case *expvar.Int:
 			for r := 0; r < rowsCount; r++ {
 				ret.Rows[r].Values[colIdxOffset] = val.Value()
 			}
 			colIdxOffset++
-		} else if val, ok := kv.(*expvar.String); ok {
+		case *expvar.String:
 			for r := 0; r < rowsCount; r++ {
 				ret.Rows[r].Values[colIdxOffset] = val.Value()
 			}
 			colIdxOffset++
-		} else if val, ok := kv.(*expvar.Float); ok {
+		case *expvar.Float:
 			for r := 0; r < rowsCount; r++ {
 				ret.Rows[r].Values[colIdxOffset] = val.Value()
 			}
 			colIdxOffset++
-		} else if val, ok := kv.(expvar.Func); ok {
+		case expvar.Func:
 			for r := 0; r < rowsCount; r++ {
 				ret.Rows[r].Values[colIdxOffset] = val()
 			}
 			colIdxOffset++
-		} else if val, ok := kv.(metric.MultiTimeSeries); ok {
+		case metric.MultiTimeSeries:
 			tss, prds := val[0].LastN(rowsCount)
 			for i := range tss {
 				ret.Rows[i].Timestamp = tss[i]
@@ -308,6 +337,13 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 				}
 			}
 			colIdxOffset++
+		case *SqlLaptime:
+			for r := 0; r < rowsCount; r++ {
+				ret.Rows[r].Values[colIdxOffset] = val.String()
+			}
+			colIdxOffset++
+		default:
+			fmt.Printf("unknown metric type for key:%s, value:%#v\n", queryKey.key, kv)
 		}
 	}
 	return ret
@@ -543,3 +579,114 @@ func DashboardHandler() http.HandlerFunc {
 	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNames: []string{"tql:cache:*"}, FieldNames: []string{"avg"}})
 	return dash.HandleFunc
 }
+
+func HandleStatz(w http.ResponseWriter, r *http.Request) {
+	ret := map[string]any{}
+	includes := r.URL.Query()["keys"]
+	format := r.URL.Query().Get("format")
+	interval := r.URL.Query().Get("interval")
+	if interval == "" {
+		interval = "1m"
+	}
+	dur, err := time.ParseDuration(interval)
+	if err != nil {
+		dur = time.Minute
+	}
+
+	stat := QueryStatzRows(dur, 1, func(key string) (bool, int) {
+		return strings.HasPrefix(key, "machbase:") || slices.Contains(includes, key), 0
+	})
+	if stat.Err != nil {
+		http.Error(w, stat.Err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for idx, col := range stat.Cols {
+		value := stat.Rows[0].Values[idx]
+		valueType := stat.ValueTypes[idx]
+		if format == "html" {
+			if value == nil {
+				ret[col.Name] = "null"
+				continue
+			}
+			printer := message.NewPrinter(language.English)
+			switch col.DataType {
+			case api.DataTypeInt64:
+				ret[col.Name] = printer.Sprintf("%d", value)
+			case api.DataTypeFloat64:
+				switch valueType {
+				case "dur":
+					switch val := value.(type) {
+					case float64:
+						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
+					case int64:
+						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
+					default:
+						ret[col.Name] = printer.Sprintf("%v", value)
+					}
+				case "i":
+					switch val := value.(type) {
+					case float64:
+						ret[col.Name] = printer.Sprintf("%d", int64(val))
+					case int64:
+						ret[col.Name] = printer.Sprintf("%d", val)
+					default:
+						ret[col.Name] = printer.Sprintf("%v", value)
+					}
+				default:
+					ret[col.Name] = printer.Sprintf("%f", value)
+				}
+			case api.DataTypeString:
+				ret[col.Name] = value
+			default:
+				ret[col.Name] = printer.Sprintf("%v", value)
+			}
+		} else {
+			ret[col.Name] = value
+		}
+	}
+	if format == "html" {
+		tpl := template.New("statz").Funcs(template.FuncMap{
+			"isMap": func(v any) bool {
+				switch v.(type) {
+				case map[string]any, map[string]float64, map[string]string, map[string]int64:
+					return true
+				default:
+					return false
+				}
+			},
+		})
+		tpl = template.Must(tpl.Parse(tmplStatz))
+		if err := tpl.ExecuteTemplate(w, "statz", ret); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(ret); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+var tmplStatz = `
+{{- define "statz" }}
+<style>
+  table {
+    border-collapse: collapse;
+  }
+  tr:nth-child(even) {
+    background-color: #f2f2f2;
+  }
+  td {
+    border: 1px solid #ddd;
+    padding: 8px;
+  }
+</style>
+<table>
+{{- range $key, $value := . }}
+<tr>
+  <td>{{ $key }}</td>
+  <td>{{ $value }}</td>
+</tr>
+{{- end }}
+</table>
+{{ end }}`

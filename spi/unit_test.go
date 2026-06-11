@@ -303,12 +303,7 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 			metricStmtsInUse.Store(0)
 			metricAppenders.Store(0)
 			metricAppendersInUse.Store(0)
-			metricQueryHwmSqlText.Set("")
-			metricQueryHwmSqlArgs.Set("")
-			metricQueryHwmElapse.Set(0)
-			metricQueryHwmExecuteElapse.Set(0)
-			metricQueryHwmLimitWait.Set(0)
-			metricQueryHwmFetchElapse.Set(0)
+			metricQueryHwm.Reset()
 			queryElapseHwm.Store(0)
 		}()
 
@@ -317,12 +312,12 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 		metricStmtsInUse.Store(1)
 		metricAppenders.Store(4)
 		metricAppendersInUse.Store(2)
-		metricQueryHwmSqlText.Set("select 1")
-		metricQueryHwmSqlArgs.Set("[1]")
-		metricQueryHwmElapse.Set(111)
-		metricQueryHwmExecuteElapse.Set(22)
-		metricQueryHwmLimitWait.Set(33)
-		metricQueryHwmFetchElapse.Set(44)
+		metricQueryHwm.Text = "select 1"
+		metricQueryHwm.Args = []any{1}
+		metricQueryHwm.Elapse = 111
+		metricQueryHwm.Execute = 22
+		metricQueryHwm.Wait = 33
+		metricQueryHwm.Fetch = 44
 		queryElapseHwm.Store(999)
 
 		ResetQueryStatz()

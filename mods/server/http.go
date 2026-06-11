@@ -18,10 +18,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -45,8 +43,6 @@ import (
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
 
 // Factory
@@ -369,7 +365,7 @@ func (svr *httpd) Router() *gin.Engine {
 	debugGroup.Use(svr.allowDebug)
 	debugGroup.Any("/pprof/*path", gin.WrapF(httpPprof.Index))
 	debugGroup.GET("/dashboard", gin.WrapF(spi.DashboardHandler()))
-	debugGroup.GET("/statz", svr.handleStatz)
+	debugGroup.GET("/statz", gin.WrapF(spi.HandleStatz))
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
 	return r
@@ -1001,115 +997,6 @@ func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
 		ctx.String(http.StatusMethodNotAllowed, "")
 	}
 }
-func (svr *httpd) handleStatz(ctx *gin.Context) {
-	ret := map[string]any{}
-	includes := ctx.QueryArray("keys")
-	format := ctx.Query("format")
-	interval := ctx.Query("interval")
-	if interval == "" {
-		interval = "1m"
-	}
-	dur, err := time.ParseDuration(interval)
-	if err != nil {
-		dur = time.Minute
-	}
-
-	stat := spi.QueryStatzRows(dur, 1, func(key string) (bool, int) {
-		return strings.HasPrefix(key, "machbase:") ||
-			strings.HasPrefix(key, "go:") ||
-			slices.Contains(includes, key), 0
-	})
-	if stat.Err != nil {
-		ctx.String(http.StatusInternalServerError, stat.Err.Error())
-		return
-	}
-	for idx, col := range stat.Cols {
-		value := stat.Rows[0].Values[idx]
-		valueType := stat.ValueTypes[idx]
-		if format == "html" {
-			if value == nil {
-				ret[col.Name] = "null"
-				continue
-			}
-			printer := message.NewPrinter(language.English)
-			switch col.DataType {
-			case api.DataTypeInt64:
-				ret[col.Name] = printer.Sprintf("%d", value)
-			case api.DataTypeFloat64:
-				switch valueType {
-				case "dur":
-					switch val := value.(type) {
-					case float64:
-						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
-					case int64:
-						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
-					default:
-						ret[col.Name] = printer.Sprintf("%v", value)
-					}
-				case "i":
-					switch val := value.(type) {
-					case float64:
-						ret[col.Name] = printer.Sprintf("%d", int64(val))
-					case int64:
-						ret[col.Name] = printer.Sprintf("%d", val)
-					default:
-						ret[col.Name] = printer.Sprintf("%v", value)
-					}
-				default:
-					ret[col.Name] = printer.Sprintf("%f", value)
-				}
-			case api.DataTypeString:
-				ret[col.Name] = value
-			default:
-				ret[col.Name] = printer.Sprintf("%v", value)
-			}
-		} else {
-			ret[col.Name] = value
-		}
-	}
-	if format == "html" {
-		tpl := template.New("statz").Funcs(template.FuncMap{
-			"isMap": func(v any) bool {
-				switch v.(type) {
-				case map[string]any, map[string]float64, map[string]string, map[string]int64:
-					return true
-				default:
-					return false
-				}
-			},
-		})
-		tpl = template.Must(tpl.Parse(tmplStatz))
-		if err := tpl.ExecuteTemplate(ctx.Writer, "statz", ret); err != nil {
-			ctx.String(http.StatusInternalServerError, err.Error())
-		}
-	} else {
-		ctx.JSON(http.StatusOK, ret)
-	}
-}
-
-var tmplStatz = `
-{{- define "statz" }}
-<style>
-  table {
-    border-collapse: collapse;
-  }
-  tr:nth-child(even) {
-    background-color: #f2f2f2;
-  }
-  td {
-    border: 1px solid #ddd;
-    padding: 8px;
-  }
-</style>
-<table>
-{{- range $key, $value := . }}
-<tr>
-  <td>{{ $key }}</td>
-  <td>{{ $value }}</td>
-</tr>
-{{- end }}
-</table>
-{{ end }}`
 
 type LicenseResponse struct {
 	Success bool             `json:"success"`

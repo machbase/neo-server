@@ -193,12 +193,12 @@ func (m *QueryMeter) MarkFetch() {
 		queryElapseHwmLock.Lock()
 		defer queryElapseHwmLock.Unlock()
 
-		metricQueryHwmSqlText.Set(m.SqlText)
-		metricQueryHwmSqlArgs.Set(fmt.Sprintf("%v", m.SqlArgs))
-		metricQueryHwmElapse.Set(int64(m.Execute + m.LimitWait + m.Fetch))
-		metricQueryHwmLimitWait.Set(int64(m.LimitWait))
-		metricQueryHwmFetchElapse.Set(int64(m.Fetch))
-		metricQueryHwmExecuteElapse.Set(int64(m.Execute))
+		metricQueryHwm.Text = m.SqlText
+		metricQueryHwm.Args = m.SqlArgs
+		metricQueryHwm.Elapse = m.Execute + m.LimitWait + m.Fetch
+		metricQueryHwm.Execute = m.Execute
+		metricQueryHwm.Wait = m.LimitWait
+		metricQueryHwm.Fetch = m.Fetch
 	}
 }
 
