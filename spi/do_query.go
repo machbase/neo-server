@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -165,7 +163,6 @@ type QueryMeter struct {
 }
 
 func NewQueryMeter() *QueryMeter {
-	metricQueryCount.Add(1)
 	return &QueryMeter{ts: time.Now()}
 }
 
@@ -173,34 +170,12 @@ func (m *QueryMeter) MarkExecute(sqlText string, args []any) {
 	m.SqlText = sqlText
 	m.SqlArgs = args
 	m.Execute = time.Since(m.ts)
-	QueryExecTime(m.Execute)
 }
 
 func (m *QueryMeter) MarkLimitWait() {
 	m.LimitWait = time.Since(m.ts) - m.Execute
-	QueryWaitTime(m.LimitWait)
 }
 
 func (m *QueryMeter) MarkFetch() {
 	m.Fetch = time.Since(m.ts) - m.Execute - m.LimitWait
-	QueryFetchTime(m.Fetch)
-
-	elapse := int64(m.Execute + m.LimitWait + m.Fetch)
-	// update high water mark of query elapse
-	if queryElapseHwm.Load() < elapse {
-		queryElapseHwm.Store(elapse)
-
-		queryElapseHwmLock.Lock()
-		defer queryElapseHwmLock.Unlock()
-
-		metricQueryHwm.Text = m.SqlText
-		metricQueryHwm.Args = m.SqlArgs
-		metricQueryHwm.Elapse = m.Execute + m.LimitWait + m.Fetch
-		metricQueryHwm.Execute = m.Execute
-		metricQueryHwm.Wait = m.LimitWait
-		metricQueryHwm.Fetch = m.Fetch
-	}
 }
-
-var queryElapseHwmLock sync.Mutex
-var queryElapseHwm atomic.Int64

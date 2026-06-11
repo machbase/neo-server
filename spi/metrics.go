@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -16,114 +15,13 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
-	"github.com/machbase/neo-server/v8/mods/util/metric/input"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
 
-const MetricMeasurePeriod = 500 * time.Millisecond
-
-var MetricTimeFrames = []string{"2h1m", "10h5m", "30h15m"}
-
 const MetricQueryRowsMax = 120
 
 var metricLog = logging.GetLog("statz")
-
-var (
-	// session:conn
-	metricConnsInUse atomic.Int64
-
-	// session:stmt
-	metricStmts      atomic.Int64
-	metricStmtsInUse atomic.Int64
-
-	// session:appender
-	metricAppenders      atomic.Int64
-	metricAppendersInUse atomic.Int64
-
-	// session:query
-	metricQueryCount atomic.Int64
-
-	// longest query
-	metricQueryHwm = &SqlLaptime{}
-)
-
-func init() {
-	expvar.Publish("machbase:session:query:hwm", metricQueryHwm)
-}
-
-type SqlLaptime struct {
-	Text    string        `json:"text"`
-	Args    []any         `json:"args"`
-	Elapse  time.Duration `json:"elapse"`
-	Execute time.Duration `json:"execute"`
-	Wait    time.Duration `json:"wait"`
-	Fetch   time.Duration `json:"fetch"`
-}
-
-var _ expvar.Var = (*SqlLaptime)(nil)
-
-func (s *SqlLaptime) Reset() {
-	s.Text = ""
-	s.Args = nil
-	s.Elapse = 0
-	s.Execute = 0
-	s.Wait = 0
-	s.Fetch = 0
-}
-
-func (s *SqlLaptime) String() string {
-	b, err := json.Marshal(s)
-	if err != nil {
-		// keep it simple to avoid potential json marshal error again
-		return fmt.Sprintf("{\"text\":%q}", err.Error())
-	}
-	return string(b)
-}
-
-func AllocConn(connWaitTime time.Duration) {
-	metricConnsInUse.Add(1)
-	AddMetrics(metric.Measure{Name: "session:conn:wait_time", Value: float64(connWaitTime), Type: metric.HistogramType(metric.UnitDuration)})
-}
-
-func FreeConn(connUseTime time.Duration) {
-	metricConnsInUse.Add(-1)
-	AddMetrics(metric.Measure{Name: "session:conn:use_time", Value: float64(connUseTime), Type: metric.HistogramType(metric.UnitDuration)})
-}
-
-func AllocStmt() {
-	metricStmts.Add(1)
-	metricStmtsInUse.Add(1)
-}
-
-func FreeStmt() {
-	metricStmtsInUse.Add(-1)
-}
-
-func AllocAppender() {
-	metricAppenders.Add(1)
-	metricAppendersInUse.Add(1)
-}
-
-func FreeAppender() {
-	metricAppendersInUse.Add(-1)
-}
-
-func QueryExecTime(d time.Duration) {
-	AddMetrics(metric.Measure{Name: "session:query:exec_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
-}
-
-func QueryWaitTime(d time.Duration) {
-	AddMetrics(metric.Measure{Name: "session:query:wait_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
-}
-
-func QueryFetchTime(d time.Duration) {
-	AddMetrics(metric.Measure{Name: "session:query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
-}
-
-func ResetQueryStatz() {
-	queryElapseHwm.Store(0)
-}
 
 type QueryStatzResult struct {
 	Err        error
@@ -137,62 +35,13 @@ type QueryStatzRow struct {
 	Values    []any
 }
 
-func elapseAvgMax(key string) (uint64, uint64, int64) {
-	if value, ok := expvar.Get(key).(metric.MultiTimeSeries); ok && len(value) > 0 {
-		_, val := value[0].Last()
-		prd, ok := val.(*metric.HistogramValue)
-		if !ok {
-			return 0, 0, 0
-		}
-		values := prd.Values
-		return uint64(values[0]), uint64(values[len(values)-1]), int64(prd.Samples)
-	}
-	return 0, 0, 0
-}
-
 type Statz struct {
-	Conns          int64  `json:"conns"`
-	Stmts          int64  `json:"stmts"`
-	Appenders      int64  `json:"appenders"`
-	ConnsInUse     int32  `json:"connsInUse"`
-	StmtsInUse     int32  `json:"stmtsInUse"`
-	AppendersInUse int32  `json:"appendersInUse"`
-	ConnWaitTime   uint64 `json:"connWaitTime"`
-	ConnUseTime    uint64 `json:"connUseTime"`
-	QueryHwm       uint64 `json:"queryHwm"`
-	QueryHwmSql    string `json:"queryHwmSql"`
-	QueryHwmExec   uint64 `json:"queryHwmExec"`
-	QueryHwmWait   uint64 `json:"queryHwmWait"`
-	QueryHwmFetch  uint64 `json:"queryHwmFetch"`
-	QueryHwmSqlArg string `json:"queryHwmSqlArg"`
-	QueryExecHwm   uint64 `json:"queryExecHwm"`
-	QueryExecAvg   uint64 `json:"queryExecAvg"`
-	QueryWaitHwm   uint64 `json:"queryWaitHwm"`
-	QueryWaitAvg   uint64 `json:"queryWaitAvg"`
-	QueryFetchHwm  uint64 `json:"queryFetchHwm"`
-	QueryFetchAvg  uint64 `json:"queryFetchAvg"`
-}
-
-func StatzSnapshot() *Statz {
-	ret := &Statz{}
-	ret.ConnWaitTime, _, _ = elapseAvgMax("machbase:session:conn:wait_time")
-	ret.ConnUseTime, _, ret.Conns = elapseAvgMax("machbase:session:conn:use_time")
-	ret.ConnsInUse = int32(metricConnsInUse.Load())
-	ret.Stmts = metricStmts.Load()
-	ret.StmtsInUse = int32(metricStmtsInUse.Load())
-	ret.Appenders = metricAppenders.Load()
-	ret.AppendersInUse = int32(metricAppendersInUse.Load())
-	ret.QueryExecAvg, ret.QueryExecHwm, _ = elapseAvgMax("machbase:session:query:exec_time")
-	ret.QueryWaitAvg, ret.QueryWaitHwm, _ = elapseAvgMax("machbase:session:query:wait_time")
-	ret.QueryFetchAvg, ret.QueryFetchHwm, _ = elapseAvgMax("machbase:session:query:fetch_time")
-	hwm := *metricQueryHwm
-	ret.QueryHwmSql = hwm.Text
-	ret.QueryHwmSqlArg = fmt.Sprintf("%v", hwm.Args)
-	ret.QueryHwm = uint64(hwm.Elapse)
-	ret.QueryHwmExec = uint64(hwm.Execute)
-	ret.QueryHwmWait = uint64(hwm.Wait)
-	ret.QueryHwmFetch = uint64(hwm.Fetch)
-	return ret
+	QueryExecHwm  uint64 `json:"queryExecHwm"`
+	QueryExecAvg  uint64 `json:"queryExecAvg"`
+	QueryWaitHwm  uint64 `json:"queryWaitHwm"`
+	QueryWaitAvg  uint64 `json:"queryWaitAvg"`
+	QueryFetchHwm uint64 `json:"queryFetchHwm"`
+	QueryFetchAvg uint64 `json:"queryFetchAvg"`
 }
 
 func QueryStatzFilter(filters []string) func(key string) (bool, int) {
@@ -248,8 +97,6 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
 			case metric.MultiTimeSeries:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
-			case *SqlLaptime:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "s", order: order})
 			}
 		}
 	})
@@ -331,11 +178,6 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 				}
 			}
 			colIdxOffset++
-		case *SqlLaptime:
-			for r := 0; r < rowsCount; r++ {
-				ret.Rows[r].Values[colIdxOffset] = val.String()
-			}
-			colIdxOffset++
 		default:
 			fmt.Printf("unknown metric type for key:%s, value:%#v\n", queryKey.key, kv)
 		}
@@ -360,9 +202,6 @@ func StartMetrics() {
 		metric.WithPrefix(prefix),
 		metric.WithInputBuffer(50),
 	)
-	collector.AddInput(&SessionInput{})
-	collector.AddInput(&input.Runtime{})
-	collector.AddInput(&input.Netstat{})
 	collector.AddOutputFunc(onProduct)
 	collector.Start()
 }
@@ -404,7 +243,14 @@ func SetMetricsDestTable(destTable string) error {
 	return nil
 }
 
-func AddMetricsFunc(f func(*metric.Gather) error) {
+func AddInput(mi metric.Input) {
+	if collector == nil {
+		return
+	}
+	collector.AddInput(mi)
+}
+
+func AddInputFunc(f func(*metric.Gather) error) {
 	if collector == nil {
 		return
 	}
@@ -416,24 +262,6 @@ func AddMetrics(m ...metric.Measure) {
 		return
 	}
 	collector.Send(m...)
-}
-
-type SessionInput struct{}
-
-var _ metric.Input = (*SessionInput)(nil)
-
-func (si *SessionInput) Init() error {
-	return nil
-}
-
-func (si *SessionInput) Gather(g *metric.Gather) error {
-	g.Add("session:conn:in_use", float64(metricConnsInUse.Load()), metric.GaugeType(metric.UnitShort))
-	g.Add("session:stmt:in_use", float64(metricStmtsInUse.Load()), metric.GaugeType(metric.UnitShort))
-	g.Add("session:append:in_use", float64(metricAppendersInUse.Load()), metric.GaugeType(metric.UnitShort))
-	g.Add("session:stmt:count", float64(metricStmts.Load()), metric.OdometerType(metric.UnitShort))
-	g.Add("session:query:count", float64(metricQueryCount.Load()), metric.OdometerType(metric.UnitShort))
-	g.Add("session:append:count", float64(metricAppenders.Load()), metric.OdometerType(metric.UnitShort))
-	return nil
 }
 
 type MetricRec struct {
@@ -566,11 +394,11 @@ func DashboardHandler() http.HandlerFunc {
 	dash.AddChart(metric.Chart{Title: "HTTP Payload", MetricNames: []string{"http:recv_bytes", "http:send_bytes"}, Type: metric.ChartTypeLine})
 	dash.AddChart(metric.Chart{Title: "HTTP Status", MetricNames: []string{"http:status_[1-5]xx"}, Type: metric.ChartTypeBarStack})
 	dash.AddChart(metric.Chart{Title: "HTTP Latency", MetricNames: []string{"http:latency"}})
-	dash.AddChart(metric.Chart{Title: "DB Use Count", MetricNames: []string{"session:*:count"}, FieldNames: []string{"non_negative_diff"}, Type: metric.ChartTypeLine})
-	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNames: []string{"session:*:in_use"}, FieldNames: []string{"avg"}})
-	dash.AddChart(metric.Chart{Title: "DB Native Inuse", MetricNames: []string{"machsvr:*"}, FieldNames: []string{"avg"}})
-	dash.AddChart(metric.Chart{Title: "DB Wait Time", MetricNames: []string{"session:conn:wait_time"}})
-	dash.AddChart(metric.Chart{Title: "DB Use Time", MetricNames: []string{"session:conn:use_time"}})
+	dash.AddChart(metric.Chart{Title: "DB Sessions", MetricNames: []string{"sys:session:count"}, FieldNames: []string{"avg"}, Type: metric.ChartTypeLine})
+	dash.AddChart(metric.Chart{Title: "DB Execute", MetricNames: []string{"sys:execute:count"}, FieldNames: []string{"non_negative_diff"}})
+	dash.AddChart(metric.Chart{Title: "DB Execute Time", MetricNames: []string{"sys:execute:time:*"}, FieldNames: []string{"last"}})
+	dash.AddChart(metric.Chart{Title: "DB Appender", MetricNames: []string{"sys:append:data:*"}, FieldNames: []string{"non_negative_diff"}})
+	dash.AddChart(metric.Chart{Title: "DB Sys Mem", MetricNames: []string{"sys:sysmem"}, FieldNames: []string{"last"}})
 	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNames: []string{"tql:cache:*"}, FieldNames: []string{"avg"}})
 	return dash.HandleFunc
 }

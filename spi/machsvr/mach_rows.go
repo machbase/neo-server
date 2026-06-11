@@ -172,7 +172,6 @@ func (rows *Rows) QueryLimit(ctx context.Context) bool {
 func (rows *Rows) Close() error {
 	var err error
 	if rows.stmt != nil {
-		spi.FreeStmt()
 		if rows.isPrepared {
 			err = mach.EngExecuteClean(rows.stmt)
 		} else {

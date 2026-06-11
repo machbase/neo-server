@@ -17,7 +17,6 @@ import (
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/spi"
 
 	"github.com/machbase/neo-engine/v8/native"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -452,12 +451,10 @@ func (db *Database) ConnectTrust(ctx context.Context, username string) (api.Conn
 		returnChan: nil,
 		username:   username,
 	}
-	waitTime := time.Now()
 	if err := mach.EngConnectTrust(db.handle, username, &ret.handle); err != nil {
 		return nil, err
 	}
 	ret.connectTime = time.Now()
-	spi.AllocConn(time.Since(waitTime))
 	return ret, nil
 }
 
@@ -491,7 +488,6 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		}
 	}
 
-	waitTime := time.Now()
 	// control max open connections
 	if ret.returnChan != nil {
 		if connTimeout > 0 {
@@ -557,7 +553,6 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	}
 	ret.handle = handle
 	ret.connectTime = time.Now()
-	spi.AllocConn(time.Since(waitTime))
 
 	if id, err := mach.EngSessionID(ret.handle); err == nil {
 		ret.id = fmt.Sprintf("%d", id)
@@ -593,7 +588,6 @@ func (conn *Conn) Close() (err error) {
 			}
 		}()
 		conn.closed = true
-		spi.FreeConn(time.Since(conn.connectTime))
 		err = mach.EngDisconnect(conn.handle)
 		if conn.closeCallback != nil {
 			conn.closeCallback()
@@ -633,10 +627,8 @@ func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.R
 	if result.err = mach.EngAllocStmt(conn.handle, &stmt); result.err != nil {
 		return result
 	}
-	spi.AllocStmt()
 	defer func() {
 		mach.EngFreeStmt(stmt)
-		spi.FreeStmt()
 	}()
 	if len(params) == 0 {
 		if result.err = mach.EngDirectExecute(stmt, sqlText); result.err != nil {
@@ -674,7 +666,6 @@ func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error)
 	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
 		return nil, err
 	}
-	spi.AllocStmt()
 	if err := mach.EngPrepare(stmt, sqlText); err != nil {
 		mach.EngFreeStmt(stmt)
 		return nil, err
@@ -695,7 +686,6 @@ func (ps *PreparedStmt) Close() error {
 	if err := mach.EngFreeStmt(ps.stmt); err != nil {
 		return err
 	}
-	spi.FreeStmt()
 	return nil
 }
 
@@ -869,7 +859,6 @@ func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api
 	} else {
 		rows.columns = cols
 	}
-	spi.AllocStmt()
 	return rows, nil
 }
 
@@ -981,9 +970,7 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 	if row.err = mach.EngAllocStmt(conn.handle, &stmt); row.err != nil {
 		return row
 	}
-	spi.AllocStmt()
 	defer func() {
-		spi.FreeStmt()
 		err := mach.EngFreeStmt(stmt)
 		if err != nil && row.err == nil {
 			row.err = err

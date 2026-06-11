@@ -10,6 +10,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
+	"github.com/machbase/neo-server/v8/mods/util/metric/input"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -17,10 +18,12 @@ var statzLog = logging.GetLog("server-statz")
 
 func startServerMetrics(s *Server) {
 	spi.StartMetrics()
-	spi.AddMetricsFunc(collectSysStatz)
-	spi.AddMetricsFunc(collectMachSvrStatz)
-	spi.AddMetricsFunc(collectMqttStatz(s))
-	spi.AddMetricsFunc(collectTqlCacheStatz)
+	spi.AddInput(&input.Runtime{})
+	spi.AddInput(&input.Netstat{})
+	spi.AddInputFunc(collectSysStatz)
+	spi.AddInputFunc(collectMachSvrStatz)
+	spi.AddInputFunc(collectMqttStatz(s))
+	spi.AddInputFunc(collectTqlCacheStatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
@@ -40,19 +43,71 @@ func collectSysStatz(g *metric.Gather) error {
 		return err
 	}
 	defer conn.Close()
-	row := conn.QueryRow(ctx, "select sum(usage) from v$sysmem")
-	if err = row.Err(); err != nil {
-		statzLog.Error("failed to query machbase: %v", err)
+	if value, err := queryRowInt64(ctx, conn, "select sum(usage) from v$sysmem"); err != nil {
 		return err
+	} else {
+		g.Add("sys:sysmem", float64(value), metric.GaugeType(metric.UnitBytes))
 	}
-	var usageTotal int64
-	if err = row.Scan(&usageTotal); err != nil {
-		statzLog.Error("failed to scan machbase: %v", err)
+	if value, err := queryRowInt64(ctx, conn, "select value from v$sysstat where name=?", "APPEND_OPEN"); err != nil {
 		return err
+	} else {
+		g.Add("sys:append:open", float64(value), metric.OdometerType(metric.UnitShort))
 	}
-
-	g.Add("sys:sysmem", float64(usageTotal), metric.GaugeType(metric.UnitBytes))
+	if value, err := queryRowInt64(ctx, conn, "select value from v$sysstat where name=?", "APPEND_CLOSE"); err != nil {
+		return err
+	} else {
+		g.Add("sys:append:close", float64(value), metric.OdometerType(metric.UnitShort))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select value from v$sysstat where name=?", "APPEND_DATA_SUCCESS"); err != nil {
+		return err
+	} else {
+		g.Add("sys:append:data:success", float64(value), metric.OdometerType(metric.UnitShort))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select value from v$sysstat where name=?", "APPEND_DATA_FAILURE"); err != nil {
+		return err
+	} else {
+		g.Add("sys:append:data:failure", float64(value), metric.OdometerType(metric.UnitShort))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select count(*) from v$session"); err != nil {
+		return err
+	} else {
+		g.Add("sys:session:count", float64(value), metric.GaugeType(metric.UnitShort))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select count from v$systime where name=?", "EXECUTE"); err != nil {
+		return err
+	} else {
+		g.Add("sys:execute:count", float64(value), metric.OdometerType(metric.UnitShort))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select avg_msec * 1000000 from v$systime where name=?", "EXECUTE"); err != nil {
+		return err
+	} else {
+		g.Add("sys:execute:time:avg", float64(value), metric.GaugeType(metric.UnitDuration))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select min_msec * 1000000 from v$systime where name=?", "EXECUTE"); err != nil {
+		return err
+	} else {
+		g.Add("sys:execute:time:min", float64(value), metric.GaugeType(metric.UnitDuration))
+	}
+	if value, err := queryRowInt64(ctx, conn, "select max_msec * 1000000 from v$systime where name=?", "EXECUTE"); err != nil {
+		return err
+	} else {
+		g.Add("sys:execute:time:max", float64(value), metric.GaugeType(metric.UnitDuration))
+	}
 	return nil
+}
+
+func queryRowInt64(ctx context.Context, conn api.Conn, sqlText string, params ...any) (int64, error) {
+	var result int64
+	row := conn.QueryRow(ctx, sqlText, params...)
+	if err := row.Err(); err != nil {
+		statzLog.Error("failed to query machbase: %v", err)
+		return 0, err
+	}
+	if err := row.Scan(&result); err != nil {
+		statzLog.Error("failed to scan machbase: %v", err)
+		return 0, err
+	}
+	return result, nil
 }
 
 func collectMachSvrStatz(g *metric.Gather) error {

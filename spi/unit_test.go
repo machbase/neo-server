@@ -298,42 +298,7 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 		defer func() {
 			metricsDest = oldMetricsDest
 			collector = oldCollector
-			metricConnsInUse.Store(0)
-			metricStmts.Store(0)
-			metricStmtsInUse.Store(0)
-			metricAppenders.Store(0)
-			metricAppendersInUse.Store(0)
-			metricQueryHwm.Reset()
-			queryElapseHwm.Store(0)
 		}()
-
-		metricConnsInUse.Store(2)
-		metricStmts.Store(3)
-		metricStmtsInUse.Store(1)
-		metricAppenders.Store(4)
-		metricAppendersInUse.Store(2)
-		metricQueryHwm.Text = "select 1"
-		metricQueryHwm.Args = []any{1}
-		metricQueryHwm.Elapse = 111
-		metricQueryHwm.Execute = 22
-		metricQueryHwm.Wait = 33
-		metricQueryHwm.Fetch = 44
-		queryElapseHwm.Store(999)
-
-		ResetQueryStatz()
-		require.Zero(t, queryElapseHwm.Load())
-
-		snapshot := StatzSnapshot()
-		require.Equal(t, int64(3), snapshot.Stmts)
-		require.Equal(t, int32(2), snapshot.ConnsInUse)
-		require.Equal(t, int32(1), snapshot.StmtsInUse)
-		require.Equal(t, int32(2), snapshot.AppendersInUse)
-		require.Equal(t, "select 1", snapshot.QueryHwmSql)
-		require.Equal(t, "[1]", snapshot.QueryHwmSqlArg)
-		require.Equal(t, uint64(111), snapshot.QueryHwm)
-		require.Equal(t, uint64(22), snapshot.QueryHwmExec)
-		require.Equal(t, uint64(33), snapshot.QueryHwmWait)
-		require.Equal(t, uint64(44), snapshot.QueryHwmFetch)
 
 		all := QueryStatzFilter(nil)
 		pass, order := all("any")
@@ -351,13 +316,12 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 		require.False(t, pass)
 
 		collector = nil
-		AddMetricsFunc(func(*metricpkg.Gather) error { return nil })
+		AddInputFunc(func(*metricpkg.Gather) error { return nil })
 		AddMetrics(metricpkg.Measure{Name: "noop", Value: 1, Type: metricpkg.GaugeType(metricpkg.UnitShort)})
 		StopMetrics()
 
 		require.NoError(t, SetMetricsDestTable(""))
 		require.Equal(t, "", MetricsDestTable())
-		require.NoError(t, (&SessionInput{}).Init())
 		require.NoError(t, onProduct(metricpkg.Product{Name: "noop", SeriesID: SERIES_ID_FINEST, Value: badMetricValue{}}))
 	})
 

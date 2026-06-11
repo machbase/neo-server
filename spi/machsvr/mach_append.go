@@ -9,7 +9,6 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/spi"
 )
 
 // Appender creates a new Appender for the given table.
@@ -123,7 +122,6 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		mach.EngFreeStmt(appender.stmt)
 		return nil, err
 	}
-	spi.AllocAppender()
 
 	colCount, err := mach.EngColumnCount(appender.stmt)
 	if err != nil {
@@ -228,7 +226,6 @@ func (ap *Appender) Close() (int64, int64, error) {
 	}
 	ap.closed = true
 	var err error
-	spi.FreeAppender()
 	ap.successCount, ap.failCount, err = mach.EngAppendClose(ap.stmt)
 	if err != nil {
 		return ap.successCount, ap.failCount, err

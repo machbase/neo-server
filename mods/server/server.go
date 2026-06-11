@@ -1746,7 +1746,7 @@ func (s *Server) statSession(ctx context.Context, reset bool) (*spi.Statz, error
 	if !rsp.Success {
 		return nil, errors.New(rsp.Reason)
 	}
-	return rsp.Statz, nil
+	return &spi.Statz{}, nil
 }
 
 type SessionLimit struct {
