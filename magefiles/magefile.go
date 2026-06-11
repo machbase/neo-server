@@ -558,6 +558,7 @@ func InstallNeoWeb() error {
 func InstallNeoWebX(ver string) error {
 	mg.Deps(CheckTmp)
 
+	ver = strings.TrimSpace(ver)
 	url := fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver)
 	dst := "./tmp/web-ui.zip"
 	uiDir := "./mods/server/web/ui"
