@@ -68,18 +68,11 @@ func now() time.Time {
 }
 
 func statz(samplingInterval string, keyFilters ...string) ([]map[string]any, error) {
-	var interval = spi.MetricShortTerm
-	switch strings.ToLower(samplingInterval) {
-	case "short":
-		interval = spi.MetricShortTerm
-	case "mid":
-		interval = spi.MetricMidTerm
-	case "long":
-		interval = spi.MetricLongTerm
-	default:
-		if dur, err := time.ParseDuration(samplingInterval); err == nil {
-			interval = dur
-		}
+	var interval time.Duration
+	if dur, err := time.ParseDuration(samplingInterval); err == nil {
+		interval = dur
+	} else {
+		interval = time.Minute
 	}
 	stat := spi.QueryStatz(interval, spi.QueryStatzFilter(keyFilters))
 	if stat.Err != nil {

@@ -21,12 +21,6 @@ import (
 	"golang.org/x/text/message"
 )
 
-const (
-	MetricShortTerm = 1 * time.Minute
-	MetricMidTerm   = 5 * time.Minute
-	MetricLongTerm  = 15 * time.Minute
-)
-
 const MetricMeasurePeriod = 500 * time.Millisecond
 
 var MetricTimeFrames = []string{"2h1m", "10h5m", "30h15m"}
@@ -354,10 +348,11 @@ var prefix string = "machbase"
 var metricsDest string
 
 const SERIES_ID_FINEST = "METRIC_2H"
+const SERIES_ID_FINE = "METRIC_2D12H"
 
 func StartMetrics() {
 	m2h, _ := metric.NewSeriesID(SERIES_ID_FINEST, "2h | 1m", 60*time.Second, 120)
-	m2d12h, _ := metric.NewSeriesID("METRIC_2D12H", "2d12h | 30m", 30*time.Minute, 120)
+	m2d12h, _ := metric.NewSeriesID(SERIES_ID_FINE, "2d12h | 30m", 30*time.Minute, 120)
 	collector = metric.NewCollector(
 		metric.WithSamplingInterval(10*time.Second),
 		metric.WithSeries(m2h),
