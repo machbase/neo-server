@@ -759,7 +759,6 @@ type SessionsResponse struct {
 	Success  bool       `json:"success"`
 	Reason   string     `json:"reason"`
 	Elapse   string     `json:"elapse"`
-	Statz    *spi.Statz `json:"statz"`
 	Sessions []*Session `json:"sessions"`
 }
 
@@ -781,12 +780,6 @@ func (s *Server) Sessions(ctx context.Context, req *SessionsRequest) (*SessionsR
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if req.ResetStatz {
-		spi.ResetQueryStatz()
-	}
-	if req.Statz {
-		rsp.Statz = spi.StatzSnapshot()
-	}
 	if req.Sessions {
 		sessions := []*Session{}
 		if db, ok := spi.Default().(*machsvr.Database); ok {
