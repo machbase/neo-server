@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -45,7 +47,9 @@ func (node *Node) fmFake(origin any) (any, error) {
 	case *rawdata:
 		genRawData(node, gen)
 	case *statz:
-		genStatz(node, gen)
+		if err := genStatz(node, gen); err != nil {
+			ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())).Tell(node.next)
+		}
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
@@ -53,43 +57,108 @@ func (node *Node) fmFake(origin any) (any, error) {
 }
 
 type statz struct {
-	interval   time.Duration
-	keyFilters []string
+	names []string
+	g     *spi.VizSpecGenerator
+	txIdx int
 }
 
-func genStatz(node *Node, gen *statz) {
-	statz := spi.QueryStatz(gen.interval, spi.QueryStatzFilter(gen.keyFilters))
-	if statz.Err != nil {
-		ErrorRecord(statz.Err).Tell(node.next)
-		return
+func genStatz(node *Node, gen *statz) error {
+	var specs []*viz.Spec
+	for i := range gen.names {
+		spec, err := gen.g.Generate(fmt.Sprintf("chart_%d", i), gen.txIdx)
+		if err != nil {
+			return err
+		}
+		specs = append(specs, spec)
 	}
+
+	times := make([]int64, 0)
+
+	if len(specs) == 0 {
+		return errors.New("no viz spec generated")
+	}
+	if len(specs[0].Series) == 0 {
+		return errors.New("no series in viz spec")
+	}
+	series := specs[0].Series[0]
+	if len(series.Representation.Fields) == 0 || series.Representation.Fields[0] != "time" {
+		return errors.New("the first field of series should be time")
+	}
+	if len(series.Data) == 0 {
+		return errors.New("no data in series")
+	}
+	if datum, ok := series.Data[0].([]any); !ok || len(datum) < 2 {
+		return errors.New("data item should have at least 2 fields")
+	}
+	for _, datum := range series.Data {
+		item := datum.([]any)
+		if t, ok := item[0].(int64); ok {
+			times = append(times, t)
+		}
+	}
+	if len(times) == 0 {
+		return errors.New("no time data in series")
+	}
+
 	// set columns
 	cols := []*api.Column{
 		api.MakeColumnRownum(),
 		api.MakeColumnDatetime("time"),
 	}
-	cols = append(cols, statz.Cols...)
+
+	for _, spec := range specs {
+		for _, series := range spec.Series {
+			cols = append(cols, api.MakeColumnAny(series.Name))
+		}
+	}
 	node.task.SetResultColumns(cols)
-	if len(statz.Rows) == 0 {
-		return
+
+	for i, ts := range times {
+		values := []any{time.Unix(0, ts)}
+		for _, spec := range specs {
+			if len(spec.Series) == 0 {
+				values = append(values, nil)
+				continue
+			}
+			for _, series := range spec.Series {
+				item, ok := series.Data[i].([]any)
+				if !ok || len(item) < 2 {
+					values = append(values, nil)
+					continue
+				}
+				if t, ok := item[0].(int64); ok && t == ts {
+					values = append(values, item[1])
+				}
+			}
+		}
+		NewRecord(i, values).Tell(node.next)
 	}
-	// yield rows
-	for i, row := range statz.Rows {
-		NewRecord(i, append([]any{row.Timestamp}, row.Values...)).Tell(node.next)
-	}
+	return nil
 }
 
-func (node *Node) fmStatz(samplingInterval string, keyFilters ...string) *statz {
-	var interval time.Duration
-	if dur, err := time.ParseDuration(samplingInterval); err == nil {
-		interval = dur
-	} else {
-		interval = time.Minute
+func (node *Node) fmStatz(tsIdx int, names ...string) *statz {
+	g := spi.Visualizer()
+	for i, name := range names {
+		var metricNames []string
+		var fieldNames []string
+		if strings.Contains(name, "#") {
+			// support metric with tag, e.g. "cpu_usage#host=server1"
+			parts := strings.SplitN(name, "#", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			metricNames = append(metricNames, parts[0])
+			fieldNames = append(fieldNames, parts[1])
+		} else {
+			metricNames = append(metricNames, name)
+		}
+		c := metric.Chart{ID: fmt.Sprintf("chart_%d", i), MetricNames: metricNames, FieldNames: fieldNames}
+		g.AddChart(c)
 	}
-
 	ret := &statz{
-		interval:   interval,
-		keyFilters: keyFilters,
+		names: names,
+		g:     g,
+		txIdx: tsIdx,
 	}
 	return ret
 }

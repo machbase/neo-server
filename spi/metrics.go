@@ -215,6 +215,13 @@ func StopMetrics() {
 	collector = nil
 }
 
+// collectSysStatz collects system metrics and adds them to the metric gather.
+func SetCollector(c *metric.Collector) *metric.Collector {
+	old := collector
+	collector = c
+	return old
+}
+
 func MetricsDestTable() string {
 	return metricsDest
 }
@@ -426,6 +433,7 @@ func HandleStatz(w http.ResponseWriter, r *http.Request) {
 	for idx, col := range stat.Cols {
 		value := stat.Rows[0].Values[idx]
 		valueType := stat.ValueTypes[idx]
+		col.Name = strings.TrimPrefix(col.Name, "machbase:")
 		if format == "html" {
 			if value == nil {
 				ret[col.Name] = "null"

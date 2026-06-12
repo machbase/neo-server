@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/server"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/testsuite"
@@ -1742,6 +1744,74 @@ func TestTql(t *testing.T) {
 		return []string{"/bin/bash", path}, nil
 	}
 
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func mustSeriesID(t *testing.T, id, title string, period time.Duration, maxCount int) metric.SeriesID {
+	t.Helper()
+	seriesID, err := metric.NewSeriesID(id, title, period, maxCount)
+	require.NoError(t, err)
+	return seriesID
+}
+
+func TestFakeStatz(t *testing.T) {
+	seriesID := mustSeriesID(t, "CPU_USAGE", "CPU Usage", time.Second, 8)
+	collector := metric.NewCollector(
+		metric.WithSamplingInterval(time.Second),
+		metric.WithSeries(seriesID),
+	)
+	collector.Start()
+	t.Cleanup(collector.Stop)
+
+	collector.Send(metric.Measure{Name: "cpu:usage", Value: 1, Type: metric.CounterType(metric.UnitScalar)})
+	time.Sleep(1100 * time.Millisecond)
+	collector.Send(metric.Measure{Name: "cpu:usage", Value: 2, Type: metric.CounterType(metric.UnitScalar)})
+
+	org := spi.SetCollector(collector)
+	defer spi.SetCollector(org)
+
+	require.Eventually(t, func() bool {
+		mts := collector.Timeseries("cpu:usage")
+		if len(mts) == 0 {
+			return false
+		}
+		_, values := mts[0].All()
+		samples := make([]float64, 0, len(values))
+		for _, raw := range values {
+			v, ok := raw.(*metric.CounterValue)
+			if !ok || v.Samples == 0 {
+				continue
+			}
+			samples = append(samples, v.Value)
+		}
+		if len(samples) < 2 {
+			return false
+		}
+		return samples[len(samples)-2] == 1 && samples[len(samples)-1] == 2
+	}, 3*time.Second, 50*time.Millisecond)
+
+	tests := []TqlTestCase{
+		{
+			Name: "FAKE_statz",
+			Script: `
+				FAKE( statz(0, 'cpu:usage') )
+				FILTER( value(1) != NULL )
+				CSV(timeformat('15:04:05'), heading(true), precision(0))`,
+			ExpectFunc: func(t *testing.T, result string) {
+				lines := strings.Split(result, "\n")
+				require.Equal(t, "time,cpu:usage", lines[0])
+				// 2026-06-12 08:14:22,1
+				require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},1$`).MatchString(lines[1]), "line: %q", lines[1])
+				// 2026-06-12 08:14:23,2
+				require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},2$`).MatchString(lines[2]), "line: %q", lines[2])
+				require.Equal(t, "", lines[3])
+			},
+		},
+	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			runTestCase(t, tc)

@@ -2976,12 +2976,12 @@ func (x *Node) gen_csv(args ...any) (any, error) {
 
 // gen_statz
 //
-// syntax: statz(string, ...string)
+// syntax: statz(int, ...string)
 func (x *Node) gen_statz(args ...any) (any, error) {
 	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("statz", 1, len(args))
 	}
-	p0, err := convString(args, 0, "statz", "string")
+	p0, err := convInt(args, 0, "statz", "int")
 	if err != nil {
 		return nil, err
 	}

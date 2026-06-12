@@ -204,6 +204,53 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 </details>
 
+#### server.info.statz
+
+`server.info.statz(names)`
+
+*Params*
+- `names` *array<string>*
+
+*Return*
+
+- `object<ServerStatzResponse>|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "server.info.statz",
+        "params": [
+            []
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
 #### server.certificate.get
 
 `server.certificate.get()`
@@ -1215,10 +1262,10 @@ mgmt server implements
 
 #### sshkey.add
 
-`sshkey.add(keyType, key, comment)`
+`sshkey.add(typ, key, comment)`
 
 *Params*
-- `keyType` *string*
+- `typ` *string*
 - `key` *string*
 - `comment` *string*
 
@@ -1266,10 +1313,10 @@ mgmt server implements
 
 #### sshkey.delete
 
-`sshkey.delete(key)`
+`sshkey.delete(fingerprint)`
 
 *Params*
-- `key` *string*
+- `fingerprint` *string*
 
 *Return*
 
