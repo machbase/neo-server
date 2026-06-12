@@ -26,7 +26,9 @@ import (
 	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/crypto/ssh"
@@ -994,4 +996,43 @@ func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
 		"gc_pause_total_ns": mem.PauseTotalNs,
 	}
 	return rsp, nil
+}
+
+type ServerStatzResponse struct {
+	Statz []ServerStatz `json:"statz"`
+}
+
+type ServerStatz struct {
+	Name string    `json:"name"`
+	Spec *viz.Spec `json:"spec"`
+}
+
+func (s *Server) getServerStatz(names []string) (*ServerStatzResponse, error) {
+	v := spi.Visualizer()
+	ret := &ServerStatzResponse{}
+	for i, name := range names {
+		var metricNames []string
+		var fieldNames []string
+		if strings.Contains(name, "#") {
+			// support metric with tag, e.g. "cpu_usage#host=server1"
+			parts := strings.SplitN(name, "#", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			metricNames = append(metricNames, parts[0])
+			fieldNames = append(fieldNames, parts[1])
+		} else {
+			metricNames = append(metricNames, name)
+		}
+		c := metric.Chart{ID: fmt.Sprintf("chart_%d", i), MetricNames: metricNames, FieldNames: fieldNames}
+		v.AddChart(c)
+	}
+	for i := range names {
+		spec, err := v.Generate(fmt.Sprintf("chart_%d", i), 0)
+		if err != nil {
+			return nil, err
+		}
+		ret.Statz = append(ret.Statz, ServerStatz{Name: names[i], Spec: spec})
+	}
+	return ret, nil
 }

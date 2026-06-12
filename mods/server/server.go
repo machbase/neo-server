@@ -1080,6 +1080,7 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("vizspec.render", viz.RPCVizspecRender)
 	ctl.RegisterJsonRpcHandler("vizspec.export", viz.RPCVizspecExport)
 	ctl.RegisterJsonRpcHandler("server.info.get", s.getServerInfo)
+	ctl.RegisterJsonRpcHandler("server.info.statz", s.getServerStatz)
 	ctl.RegisterJsonRpcHandler("service.port.list", s.getServicePorts)
 	ctl.RegisterJsonRpcHandler("proxy.register", s.registerProxy)
 	ctl.RegisterJsonRpcHandler("proxy.unregister", s.unregisterProxy)

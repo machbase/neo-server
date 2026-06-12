@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-client/api"
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -22,7 +21,6 @@ func startServerMetrics(s *Server) {
 	spi.AddInput(&input.Runtime{})
 	spi.AddInput(&input.Netstat{})
 	spi.AddInputFunc(collectSysStatz)
-	spi.AddInputFunc(collectMachSvrStatz)
 	spi.AddInputFunc(collectMqttStatz(s))
 	spi.AddInputFunc(collectTqlCacheStatz)
 
@@ -161,14 +159,6 @@ func queryRowInt64(ctx context.Context, conn api.Conn, sqlText string, params ..
 		return 0, err
 	}
 	return result, nil
-}
-
-func collectMachSvrStatz(g *metric.Gather) error {
-	nfo := mach.Stat()
-	g.Add("machsvr:conn", float64(nfo.EngConn), metric.GaugeType(metric.UnitShort))
-	g.Add("machsvr:stmt", float64(nfo.EngStmt), metric.GaugeType(metric.UnitShort))
-	g.Add("machsvr:append", float64(nfo.EngAppend), metric.GaugeType(metric.UnitShort))
-	return nil
 }
 
 func collectMqttStatz(s *Server) func(g *metric.Gather) error {

@@ -2,10 +2,6 @@
 
 const _system = require('@jsh/system');
 
-function statz(series, ...name) {
-    return _system.statz(series, ...name);
-}
-
 function now() {
     return _system.now();
 }
@@ -28,7 +24,6 @@ function gc() {
 module.exports = {
     free_os_memory,
     gc,
-    statz,
     now,
     timeLocation,
 };
