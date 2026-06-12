@@ -187,6 +187,11 @@ class Client extends _Client {
             return this._rpcRequest('server.info.get', []);
         });
     }
+    getServerStatz(...names) {
+        return this._executeWithAuth(() => {
+            return this._rpcRequest('server.info.statz', [names]);
+        });
+    }
     getMachbasePort(callback) {
         this.getServicePorts('mach')
             .then((data) => {

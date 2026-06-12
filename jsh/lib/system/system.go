@@ -3,14 +3,12 @@ package system
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"runtime"
 	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-server/v8/spi"
 )
 
 //go:embed system.js
@@ -34,8 +32,6 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m.location("Asia/Shanghai")
 	// m.location("UTC")
 	o.Set("timeLocation", timeLocation)
-	// m.statz("1m", ...keys)
-	o.Set("statz", statz)
 }
 
 func free_os_memory() goja.Value {
@@ -65,35 +61,4 @@ func timeLocation(name string) (*time.Location, error) {
 
 func now() time.Time {
 	return time.Now()
-}
-
-func statz(samplingInterval string, keyFilters ...string) ([]map[string]any, error) {
-	var interval time.Duration
-	if dur, err := time.ParseDuration(samplingInterval); err == nil {
-		interval = dur
-	} else {
-		interval = time.Minute
-	}
-	stat := spi.QueryStatz(interval, spi.QueryStatzFilter(keyFilters))
-	if stat.Err != nil {
-		return nil, stat.Err
-	}
-	ret := []map[string]any{}
-	for _, row := range stat.Rows {
-		m := map[string]any{
-			"time":   row.Timestamp,
-			"values": row.Values,
-			"toString": func() string {
-				return fmt.Sprintf("%s %s", row.Timestamp, row.Values)
-			},
-		}
-		for i, v := range row.Values {
-			if i >= len(keyFilters) {
-				break
-			}
-			m[strings.ReplaceAll(keyFilters[i], ":", "_")] = v
-		}
-		ret = append(ret, m)
-	}
-	return ret, nil
 }

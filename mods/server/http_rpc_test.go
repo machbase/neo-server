@@ -55,6 +55,15 @@ func TestHttpRpc(t *testing.T) {
 			},
 		},
 		{
+			name:   "getServerStatz",
+			method: "server.info.statz",
+			params: []interface{}{[]string{"http:count"}},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				require.True(t, rsp.Get("result").Exists(), rsp.String())
+				require.Equal(t, "http:count", rsp.Get("result.statz.0.name").String(), rsp.String())
+			},
+		},
+		{
 			name:       "getServicePorts",
 			method:     "service.port.list",
 			params:     []interface{}{"mach"},

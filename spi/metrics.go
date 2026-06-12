@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
@@ -512,3 +513,234 @@ var tmplStatz = `
 {{- end }}
 </table>
 {{ end }}`
+
+func Visualizer() *VizSpecGenerator {
+	return NewVizSpecGenerator(collector)
+}
+
+type VizSpecGenerator struct {
+	metric.Dashboard
+	collector *metric.Collector
+}
+
+func NewVizSpecGenerator(c *metric.Collector) *VizSpecGenerator {
+	return &VizSpecGenerator{
+		Dashboard: *metric.NewDashboard(c),
+		collector: c,
+	}
+}
+
+func (g VizSpecGenerator) HandleFunc(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	tsIdxStr := r.URL.Query().Get("tsIdx")
+	var tsIdx int
+	if _, err := fmt.Sscanf(tsIdxStr, "%d", &tsIdx); err != nil {
+		tsIdx = 0
+	}
+
+	spec, err := g.Generate(id, tsIdx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(spec); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (g VizSpecGenerator) Generate(id string, tsIdx int) (*viz.Spec, error) {
+	panelOpt := g.panelByID(id)
+
+	spec := (&viz.Spec{}).Normalize()
+	spec.Domain = viz.Domain{
+		Kind:       viz.DomainKindTime,
+		Timeformat: viz.TimeformatNano,
+		TZ:         "UTC",
+	}
+	spec.Axes.X = viz.Axis{
+		ID:    "time",
+		Type:  viz.AxisTypeTime,
+		Label: "Time",
+	}
+	spec.View = viz.View{PreferredRenderer: "echarts"}
+	spec.Meta = viz.Meta{
+		Producer:    "machbase-neo",
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+
+	axisByID := map[string]struct{}{}
+	var minTime time.Time
+	var maxTime time.Time
+	var found bool
+
+	for _, metricName := range panelOpt.MetricNames {
+		ss, ok := g.getSnapshot(metricName, tsIdx)
+		if !ok || len(ss.Times) == 0 {
+			continue
+		}
+		found = true
+
+		axisID := axisIDForMetric(ss.Meta.MeasureName)
+		axisLabel := ss.Meta.MeasureName
+		if unit := string(ss.Meta.MeasureType.Unit()); unit != "" && unit != string(metric.UnitScalar) {
+			axisLabel = fmt.Sprintf("%s (%s)", ss.Meta.MeasureName, unit)
+		}
+		if _, exists := axisByID[axisID]; !exists {
+			spec.Axes.Y = append(spec.Axes.Y, viz.Axis{
+				ID:    axisID,
+				Type:  viz.AxisTypeLinear,
+				Label: axisLabel,
+				Unit:  string(ss.Meta.MeasureType.Unit()),
+			})
+			axisByID[axisID] = struct{}{}
+		}
+
+		seriesList := ss.Series(panelOpt)
+		for _, series := range seriesList {
+			vizSeries, seriesMin, seriesMax := toVizSeries(series, ss, axisID, panelOpt)
+			if len(vizSeries.Data) == 0 {
+				continue
+			}
+			spec.Series = append(spec.Series, vizSeries)
+			if minTime.IsZero() || seriesMin.Before(minTime) {
+				minTime = seriesMin
+			}
+			if maxTime.IsZero() || seriesMax.After(maxTime) {
+				maxTime = seriesMax
+			}
+		}
+	}
+
+	if !found || len(spec.Series) == 0 {
+		return nil, fmt.Errorf("no metrics found")
+	}
+
+	spec.Domain.From = minTime.UnixNano()
+	spec.Domain.To = maxTime.UnixNano()
+	if err := spec.Validate(); err != nil {
+		return nil, err
+	}
+	return spec, nil
+}
+
+func (g VizSpecGenerator) panelByID(id string) metric.Chart {
+	panels := g.Panels()
+	if len(panels) == 0 {
+		if id == "" {
+			if len(g.Charts) > 0 {
+				return g.Charts[0]
+			}
+			return metric.Chart{ID: "metrics", Title: "Metrics"}
+		}
+		return metric.Chart{ID: id, Title: id, MetricNames: []string{id}}
+	}
+	if id == "" {
+		return panels[0]
+	}
+	for _, panel := range panels {
+		if panel.ID == id {
+			return panel
+		}
+	}
+	for _, chart := range g.Charts {
+		if chart.ID == id {
+			return chart
+		}
+	}
+	return metric.Chart{ID: id, Title: id, MetricNames: []string{id}}
+}
+
+func axisIDForMetric(metricName string) string {
+	var sb strings.Builder
+	for _, r := range metricName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			sb.WriteRune(r)
+			continue
+		}
+		sb.WriteByte('_')
+	}
+	axisID := strings.Trim(sb.String(), "_")
+	if axisID == "" {
+		return "y"
+	}
+	return axisID
+}
+
+func (g VizSpecGenerator) getSnapshot(metricName string, tsIdx int) (metric.Snapshot, bool) {
+	if g.collector == nil {
+		return metric.Snapshot{}, false
+	}
+	mts := g.collector.Timeseries(metricName)
+	if mts == nil {
+		return metric.Snapshot{}, false
+	}
+	if tsIdx < 0 || tsIdx >= len(mts) {
+		return metric.Snapshot{}, false
+	}
+	ts := mts[tsIdx]
+	times, values := ts.All()
+	if len(times) == 0 {
+		return metric.Snapshot{}, true
+	}
+	meta, _ := ts.Meta().(metric.SeriesInfo)
+	return metric.Snapshot{
+		PublishName: metricName,
+		Times:       times,
+		Values:      values,
+		Interval:    ts.Interval(),
+		MaxCount:    ts.MaxCount(),
+		Meta:        meta,
+	}, true
+}
+
+func toVizSeries(series metric.Series, ss metric.Snapshot, axisID string, chartOpt metric.Chart) (viz.Series, time.Time, time.Time) {
+	data := make([]any, 0, len(series.Data))
+	var minTime time.Time
+	var maxTime time.Time
+	for _, item := range series.Data {
+		if item.Time == 0 {
+			continue
+		}
+		tm := time.UnixMilli(item.Time)
+		data = append(data, []any{tm.UnixNano(), item.Value})
+		if minTime.IsZero() || tm.Before(minTime) {
+			minTime = tm
+		}
+		if maxTime.IsZero() || tm.After(maxTime) {
+			maxTime = tm
+		}
+	}
+
+	vizSeries := viz.Series{
+		ID:   series.Name,
+		Name: series.Name,
+		Axis: axisID,
+		Representation: viz.Representation{
+			Kind:   viz.RepresentationTimeBucketValue,
+			Fields: []string{"time", "value"},
+		},
+		Source: viz.Source{
+			Kind:        viz.SourceKindSampled,
+			Resolution:  ss.Interval.String(),
+			DerivedFrom: ss.PublishName,
+		},
+		Data: data,
+		Quality: viz.Quality{
+			Sampled:         true,
+			RowCount:        len(data),
+			EstimatedPoints: int64(len(data)),
+		},
+		Style: map[string]any{
+			"preferredRenderer": "echarts",
+		},
+		Extra: map[string]any{
+			"chartType":  string(series.Type),
+			"stack":      series.Stack,
+			"smooth":     series.Smooth,
+			"showSymbol": chartOpt.ShowSymbol,
+		},
+	}
+	return vizSeries, minTime, maxTime
+}
