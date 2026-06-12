@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
@@ -92,6 +93,58 @@ func collectSysStatz(g *metric.Gather) error {
 		return err
 	} else {
 		g.Add("sys:execute:time:max", float64(value), metric.GaugeType(metric.UnitDuration))
+	}
+	if err := addRollupGapMetric(ctx, conn, g); err != nil {
+		return err
+	}
+	return nil
+}
+
+func addRollupGapMetric(ctx context.Context, conn api.Conn, g *metric.Gather) error {
+	const sqlRollupGap = `SELECT
+    R.ROLLUP_TABLE NAME,
+    SUM(S.TABLE_END_RID - R.END_RID) GAP,
+    MAX(R.LAST_ELAPSED_MSEC) MSEC
+FROM
+    M$SYS_TABLES T,
+    V$ROLLUP R,
+    V$STORAGE_TAG_TABLES S
+WHERE
+    S.TABLE_END_RID <> 0
+AND S.ID = T.ID
+AND R.SOURCE_TABLE = T.NAME
+GROUP BY NAME
+ORDER BY NAME`
+
+	var totalGap, count int64
+	var maxMsec float64
+	var msec float64
+	var name string
+	var rollups int
+	rows, err := conn.Query(ctx, sqlRollupGap)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := rows.Scan(&name, &count, &msec); err != nil {
+			statzLog.Error("failed to scan rollup gap: %v", err)
+			continue
+		}
+		name = strings.ToLower(name)
+
+		g.Add("sys:rollup:"+name+":gap", float64(count), metric.GaugeType(metric.UnitShort))
+		g.Add("sys:rollup:"+name+":last_elapse", float64(msec*1000), metric.GaugeType(metric.UnitDuration))
+		if msec > maxMsec {
+			maxMsec = msec
+		}
+		totalGap += count
+		rollups++
+	}
+	// only when there are rollup tables, add global rollup metrics
+	if rollups > 0 {
+		g.Add("sys:rollup_global:gap", float64(totalGap), metric.GaugeType(metric.UnitShort))
+		g.Add("sys:rollup_global:last_elapse", float64(maxMsec*1000), metric.GaugeType(metric.UnitDuration))
 	}
 	return nil
 }
