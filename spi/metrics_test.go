@@ -64,8 +64,19 @@ func TestVizSpecGenerator(t *testing.T) {
 		if len(mts) == 0 {
 			return false
 		}
-		times, _ := mts[0].All()
-		return len(times) >= 2
+		_, values := mts[0].All()
+		samples := make([]float64, 0, len(values))
+		for _, raw := range values {
+			v, ok := raw.(*metric.CounterValue)
+			if !ok || v.Samples == 0 {
+				continue
+			}
+			samples = append(samples, v.Value)
+		}
+		if len(samples) < 2 {
+			return false
+		}
+		return samples[len(samples)-2] == 1 && samples[len(samples)-1] == 2
 	}, 3*time.Second, 50*time.Millisecond)
 
 	gen := NewVizSpecGenerator(collector)
@@ -80,9 +91,17 @@ func TestVizSpecGenerator(t *testing.T) {
 	require.Len(t, spec.Series, 1)
 	require.Equal(t, "time-bucket-value", spec.Series[0].Representation.Kind)
 	require.Equal(t, "cpu_usage", spec.Series[0].Axis)
-	require.GreaterOrEqual(t, len(spec.Series[0].Data), 2)
-	require.Equal(t, float64(1), spec.Series[0].Data[len(spec.Series[0].Data)-2].([]any)[1])
-	require.Equal(t, float64(2), spec.Series[0].Data[len(spec.Series[0].Data)-1].([]any)[1])
+	points := make([][]any, 0, len(spec.Series[0].Data))
+	for _, raw := range spec.Series[0].Data {
+		item, ok := raw.([]any)
+		if !ok || len(item) < 2 || item[1] == nil {
+			continue
+		}
+		points = append(points, item)
+	}
+	require.GreaterOrEqual(t, len(points), 2)
+	require.Equal(t, float64(1), points[len(points)-2][1])
+	require.Equal(t, float64(2), points[len(points)-1][1])
 
 	blocks, err := viz.ToTUIBlocks(spec)
 	for _, block := range blocks {
@@ -97,9 +116,17 @@ func TestVizSpecGenerator(t *testing.T) {
 	require.Equal(t, "table", blocks[3].Type)
 	require.Len(t, blocks[2].Lines, 1)
 	require.Equal(t, "▁█", blocks[2].Lines[0])
-	require.GreaterOrEqual(t, len(blocks[3].Rows), 2)
-	firstRow := blocks[3].Rows[len(blocks[3].Rows)-2].([]any)
-	secondRow := blocks[3].Rows[len(blocks[3].Rows)-1].([]any)
+	rows := make([][]any, 0, len(blocks[3].Rows))
+	for _, raw := range blocks[3].Rows {
+		row, ok := raw.([]any)
+		if !ok || len(row) < 2 || row[1] == nil {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	require.GreaterOrEqual(t, len(rows), 2)
+	firstRow := rows[len(rows)-2]
+	secondRow := rows[len(rows)-1]
 	require.Equal(t, float64(1), firstRow[1])
 	require.Equal(t, float64(2), secondRow[1])
 }
