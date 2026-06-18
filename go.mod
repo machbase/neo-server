@@ -29,7 +29,7 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-client v1.5.2-0.20260609033403-7ead13c1995e
-	github.com/machbase/neo-engine/v8 v8.5.4
+	github.com/machbase/neo-/v8 v8.5.5
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.16.0
 	github.com/mattn/go-colorable v0.1.14
@@ -98,7 +98,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dop251/base64dec v0.0.0-20231022112746-c6c9f9a96217 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/ebit/purego v0.10.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/frankban/quicktest v1.14.6 // indirect
