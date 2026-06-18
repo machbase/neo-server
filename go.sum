@@ -288,6 +288,8 @@ github.com/machbase/neo-client v1.5.2-0.20260609033403-7ead13c1995e h1:ZSmcwuqQL
 github.com/machbase/neo-client v1.5.2-0.20260609033403-7ead13c1995e/go.mod h1:rCaZqbs86TUVDghcOW4XH9Htodk9D7t5Cu5j3aWphPU=
 github.com/machbase/neo-engine/v8 v8.5.4 h1:uGMMqSMKtv87gaISKVY8Tk5CUowc120WdnOk8qbzp28=
 github.com/machbase/neo-engine/v8 v8.5.4/go.mod h1:Z2Ey5LqiXunFTTBsPBeeuoeQEJ/Rky92flsHyo6MkfA=
+github.com/machbase/neo-engine/v8 v8.5.5 h1:myd9emXSKSGOkgzromk5zq/KCJ5ASiqsO4IJssICRA0=
+github.com/machbase/neo-engine/v8 v8.5.5/go.mod h1:b4epDziTEbSEgO2xEWBZpGcTkVT+H2/aVc+EnnfdLYw=
 github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b h1:yVScvJT9bIGaJmajia+/xz5tkOpRQ5utmpXstV2C37k=
 github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b/go.mod h1:69acURVmR+iJA1WFXOrwJntcRxLoTp9i1s/F/qhePjQ=
 github.com/magefile/mage v1.16.0 h1:2naaPmNwrMicCdLBCRDw288hcyClO9lmnm6FMpXyJ5I=
