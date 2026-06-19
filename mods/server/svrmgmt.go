@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto"
 	"errors"
+	"expvar"
 	"fmt"
 	"os"
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -1007,7 +1009,7 @@ type ServerStatz struct {
 	Spec *viz.Spec `json:"spec"`
 }
 
-func (s *Server) getServerStatz(names []string) (*ServerStatzResponse, error) {
+func statzViz(names []string) (*ServerStatzResponse, error) {
 	v := spi.Visualizer()
 	ret := &ServerStatzResponse{}
 	for i, name := range names {
@@ -1033,6 +1035,76 @@ func (s *Server) getServerStatz(names []string) (*ServerStatzResponse, error) {
 			return nil, err
 		}
 		ret.Statz = append(ret.Statz, ServerStatz{Name: names[i], Spec: spec})
+	}
+	return ret, nil
+}
+
+func statzKeys(pattern []string) []string {
+	prefix := spi.MetricsPrefix()
+	if len(prefix) > 0 {
+		prefix = prefix + ":"
+	}
+	if len(pattern) == 0 {
+		pattern = []string{prefix + "*"}
+	} else {
+		for i, p := range pattern {
+			pattern[i] = prefix + p
+		}
+	}
+	filter := spi.QueryStatzFilter(pattern...)
+	keys := make([]string, 0)
+	expvar.Do(func(kv expvar.KeyValue) {
+		if ok, _ := filter(kv.Key); !ok {
+			return
+		}
+		if !strings.HasPrefix(kv.Key, prefix) {
+			return
+		}
+		keys = append(keys, strings.TrimPrefix(kv.Key, prefix))
+	})
+	slices.Sort(keys)
+	return keys
+}
+
+type StatzQueryResult struct {
+	Columns []string `json:"columns"`
+	Types   []string `json:"types"`
+	Rows    [][]any  `json:"rows"`
+}
+
+func statzQuery(maxRows int, pattern []string) (*StatzQueryResult, error) {
+	prefix := spi.MetricsPrefix()
+	if len(prefix) > 0 {
+		prefix = prefix + ":"
+	}
+	for i, p := range pattern {
+		pattern[i] = prefix + p
+	}
+
+	statz := spi.QueryStatzRows(1*time.Minute, maxRows, spi.QueryStatzFilter(pattern...))
+	if statz.Err != nil {
+		return nil, statz.Err
+	}
+
+	ret := &StatzQueryResult{
+		Columns: make([]string, len(statz.Cols)+1),
+		Types:   make([]string, len(statz.Cols)+1),
+		Rows:    make([][]any, len(statz.Rows)),
+	}
+	ret.Columns[0] = "time"
+	ret.Types[0] = "datetime"
+	for i, c := range statz.Cols {
+		ret.Columns[i+1] = strings.TrimPrefix(c.Name, prefix)
+		if statz.ValueTypes[i] == "i" {
+			ret.Types[i+1] = "int64"
+		} else {
+			ret.Types[i+1] = c.Type.String()
+		}
+	}
+	for i, r := range statz.Rows {
+		ret.Rows[i] = make([]any, 0, len(r.Values)+1)
+		ret.Rows[i] = append(ret.Rows[i], r.Timestamp.Format(time.RFC3339))
+		ret.Rows[i] = append(ret.Rows[i], r.Values...)
 	}
 	return ret, nil
 }

@@ -300,12 +300,12 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 			collector = oldCollector
 		}()
 
-		all := QueryStatzFilter(nil)
+		all := QueryStatzFilter()
 		pass, order := all("any")
 		require.True(t, pass)
 		require.Zero(t, order)
 
-		filter := QueryStatzFilter([]string{"machbase:*", "exact:key"})
+		filter := QueryStatzFilter("machbase:*", "exact:key")
 		pass, order = filter("machbase:session:stmt")
 		require.True(t, pass)
 		require.Zero(t, order)

@@ -25,15 +25,15 @@ const MetricQueryRowsMax = 120
 var metricLog = logging.GetLog("statz")
 
 type QueryStatzResult struct {
-	Err        error
-	Cols       []*api.Column
-	Rows       []*QueryStatzRow
-	ValueTypes []string
+	Err        error            `json:"error,omitempty"`
+	Cols       []*api.Column    `json:"columns"`
+	Rows       []*QueryStatzRow `json:"rows"`
+	ValueTypes []string         `json:"types"`
 }
 
 type QueryStatzRow struct {
-	Timestamp time.Time
-	Values    []any
+	Timestamp time.Time `json:"time"`
+	Values    []any     `json:"values"`
 }
 
 type Statz struct {
@@ -45,7 +45,7 @@ type Statz struct {
 	QueryFetchAvg uint64 `json:"queryFetchAvg"`
 }
 
-func QueryStatzFilter(filters []string) func(key string) (bool, int) {
+func QueryStatzFilter(filters ...string) func(key string) (bool, int) {
 	return func(key string) (bool, int) {
 		if len(filters) == 0 {
 			return true, 0
@@ -97,7 +97,7 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 			case expvar.Func:
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
 			case metric.MultiTimeSeries:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnDouble(kv.Key), valueType: "i", order: order})
 			}
 		}
 	})
@@ -120,6 +120,8 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 
 	if rowsCount > MetricQueryRowsMax {
 		rowsCount = MetricQueryRowsMax
+	} else if rowsCount <= 0 {
+		rowsCount = 1
 	}
 
 	now := time.Now()
@@ -220,6 +222,10 @@ func SetCollector(c *metric.Collector) *metric.Collector {
 	old := collector
 	collector = c
 	return old
+}
+
+func MetricsPrefix() string {
+	return prefix
 }
 
 func MetricsDestTable() string {
@@ -430,10 +436,15 @@ func HandleStatz(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, stat.Err.Error(), http.StatusInternalServerError)
 		return
 	}
+	prefix := MetricsPrefix()
+	if prefix != "" {
+		prefix = prefix + ":"
+	}
+	// idx 0 is reserved for timestamp, so value columns start from idx 1
 	for idx, col := range stat.Cols {
 		value := stat.Rows[0].Values[idx]
 		valueType := stat.ValueTypes[idx]
-		col.Name = strings.TrimPrefix(col.Name, "machbase:")
+		col.Name = strings.TrimPrefix(col.Name, prefix)
 		if format == "html" {
 			if value == nil {
 				ret[col.Name] = "null"

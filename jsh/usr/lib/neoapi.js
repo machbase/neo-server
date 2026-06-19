@@ -192,6 +192,25 @@ class Client extends _Client {
             return this._rpcRequest('server.info.statz', [names]);
         });
     }
+    getServerStatzQuery(opt = {}) {
+        let keys = [];
+        let maxRows = 3;
+        if (opt.names === undefined || opt.names === null || opt.names === '') {
+            keys = ['*'];
+        } else if (!Array.isArray(opt.names)) {
+            keys = [opt.names];
+        } else {
+            keys = opt.names;
+        }
+        return this._executeWithAuth(() => {
+            return this._rpcRequest('server.info.query', [opt.maxRows, keys]);
+        });
+    }
+    getServerStatzKeys(names) {
+        return this._executeWithAuth(() => {
+            return this._rpcRequest('server.info.keys', [names]);
+        });
+    }
     getMachbasePort(callback) {
         this.getServicePorts('mach')
             .then((data) => {
