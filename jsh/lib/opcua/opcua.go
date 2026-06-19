@@ -298,7 +298,10 @@ func NewClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 	if opts.MessageSecurityMode == ua.MessageSecurityModeInvalid {
 		opts.MessageSecurityMode = ua.MessageSecurityModeNone
 	}
-	if opts.AuthMode == 0 {
+	if opts.Username != "" {
+		opts.AuthMode = ua.UserTokenTypeUserName
+		optsArr = append(optsArr, opcua.AuthUsername(opts.Username, opts.Password))
+	} else if opts.AuthMode == 0 {
 		opts.AuthMode = ua.UserTokenTypeAnonymous
 	}
 
