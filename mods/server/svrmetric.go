@@ -72,29 +72,30 @@ func collectSysStatz(g *metric.Gather) error {
 	} else {
 		g.Add("sys:session:count", float64(value), metric.GaugeType(metric.UnitShort))
 	}
-	if value, err := queryRowInt64(ctx, conn, "select count from v$systime where name=?", "EXECUTE"); err != nil {
+	if err := addExecuteStatz(ctx, conn, g); err != nil {
 		return err
-	} else {
-		g.Add("sys:execute:count", float64(value), metric.OdometerType(metric.UnitShort))
-	}
-	if value, err := queryRowInt64(ctx, conn, "select avg_msec * 1000000 from v$systime where name=?", "EXECUTE"); err != nil {
-		return err
-	} else {
-		g.Add("sys:execute:time:avg", float64(value), metric.GaugeType(metric.UnitDuration))
-	}
-	if value, err := queryRowInt64(ctx, conn, "select min_msec * 1000000 from v$systime where name=?", "EXECUTE"); err != nil {
-		return err
-	} else {
-		g.Add("sys:execute:time:min", float64(value), metric.GaugeType(metric.UnitDuration))
-	}
-	if value, err := queryRowInt64(ctx, conn, "select max_msec * 1000000 from v$systime where name=?", "EXECUTE"); err != nil {
-		return err
-	} else {
-		g.Add("sys:execute:time:max", float64(value), metric.GaugeType(metric.UnitDuration))
 	}
 	if err := addRollupGapMetric(ctx, conn, g); err != nil {
 		return err
 	}
+	return nil
+}
+
+func addExecuteStatz(ctx context.Context, conn api.Conn, g *metric.Gather) error {
+	var count, min, max, avg int64
+	row := conn.QueryRow(ctx, "select count, min_msec, max_msec, avg_msec from v$systime where name=?", "EXECUTE")
+	if err := row.Err(); err != nil {
+		statzLog.Error("failed to query machbase: %v", err)
+		return err
+	}
+	if err := row.Scan(&count, &min, &max, &avg); err != nil {
+		statzLog.Error("failed to scan machbase: %v", err)
+		return err
+	}
+	g.Add("sys:execute:count", float64(count), metric.OdometerType(metric.UnitShort))
+	g.Add("sys:execute:time:min", float64(min*1000000), metric.GaugeType(metric.UnitDuration))
+	g.Add("sys:execute:time:max", float64(max*1000000), metric.GaugeType(metric.UnitDuration))
+	g.Add("sys:execute:time:avg", float64(avg*1000000), metric.GaugeType(metric.UnitDuration))
 	return nil
 }
 

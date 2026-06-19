@@ -1078,7 +1078,7 @@ func statzQuery(maxRows int, pattern []string) (*StatzQueryResult, error) {
 		prefix = prefix + ":"
 	}
 	for i, p := range pattern {
-		pattern[i] = prefix + p
+		pattern[i] = prefix + strings.ToLower(p)
 	}
 
 	statz := spi.QueryStatzRows(1*time.Minute, maxRows, spi.QueryStatzFilter(pattern...))
