@@ -24,8 +24,9 @@ import (
 var Default = BuildNeoServer
 
 var Aliases = map[string]any{
-	"machbase-neo":       BuildNeoServer,
+	"machbase-neo":       BuildNeoServerDebug,
 	"machbase-neo-debug": BuildNeoServerDebug,
+	"machbase-neo-strip": BuildNeoServer,
 	"neo-shell":          BuildNeoShell,
 	"cleanpackage":       CleanPackage,
 	"buildversion":       BuildVersion,
