@@ -180,6 +180,17 @@ type ClientOptions struct {
 	// Username and password required for auth_mode = "UserName"
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// auto reconnect on connection loss, default to false (no auto reconnect)
+	AutoReconnect bool `json:"autoReconnect"`
+	// reconnect interval in seconds, default to 5 seconds if not specified
+	ReconnectInterval int `json:"reconnectInterval"`
+	// SessionTimeout sets the timeout in seconds.
+	SessionTimeout int `json:"sessionTimeout"`
+	// Lifetime sets the lifetime of the secure channel in seconds.
+	Lifetime int `json:"lifetime"`
+	// RequestTimeout sets the timeout in seconds for all requests over SecureChannel
+	RequestTimeout int `json:"requestTimeout"`
+
 	// Path to client certificate and private key files, must be specified together.
 	// If the options are specified but the files do not exist, a self-signed
 	// certificate will be created and stored permanently at the given locations.
@@ -293,7 +304,23 @@ func NewClient(ctx context.Context, opts ClientOptions) (*Client, error) {
 		opts.ReadRetryInterval = 100 * time.Millisecond
 	}
 
-	optsArr := []opcua.Option{}
+	if opts.ReconnectInterval <= 0 {
+		opts.ReconnectInterval = 5
+	}
+	optsArr := []opcua.Option{
+		opcua.AutoReconnect(opts.AutoReconnect),
+		opcua.ReconnectInterval(time.Duration(opts.ReconnectInterval) * time.Second),
+	}
+
+	if opts.SessionTimeout > 0 {
+		optsArr = append(optsArr, opcua.SessionTimeout(time.Duration(opts.SessionTimeout)*time.Second))
+	}
+	if opts.Lifetime > 0 {
+		optsArr = append(optsArr, opcua.Lifetime(time.Duration(opts.Lifetime)*time.Second))
+	}
+	if opts.RequestTimeout > 0 {
+		optsArr = append(optsArr, opcua.RequestTimeout(time.Duration(opts.RequestTimeout)*time.Second))
+	}
 
 	if opts.MessageSecurityMode == ua.MessageSecurityModeInvalid {
 		opts.MessageSecurityMode = ua.MessageSecurityModeNone
