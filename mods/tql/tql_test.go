@@ -737,7 +737,8 @@ func TestDatabaseTql(t *testing.T) {
 func TestDatabaseBinaryTql(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "create-tqlbin",
+			Name:       "create-tqlbin",
+			CtxTimeout: 15 * time.Second,
 			Script: `
 				SCRIPT("js", {
 					var ret = $.db().exec("create tag table tqlbin (name varchar(40) primary key, time datetime basetime, value binary)");
