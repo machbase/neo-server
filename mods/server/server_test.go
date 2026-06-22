@@ -899,7 +899,7 @@ scrape_configs:
 
 	promURL := "http://" + prom.GetHostPort("9090/tcp")
 
-	err := pool.Retry(t.Context(), 90*time.Second, func() error {
+	err := pool.Retry(t.Context(), 45*time.Second, func() error {
 		rsp, err := http.Get(promURL + "/-/ready")
 		if err != nil {
 			return err
@@ -912,7 +912,7 @@ scrape_configs:
 	})
 	require.NoError(t, err)
 
-	err = pool.Retry(t.Context(), 90*time.Second, func() error {
+	err = pool.Retry(t.Context(), 45*time.Second, func() error {
 		rsp, err := http.Get(promURL + "/api/v1/targets")
 		if err != nil {
 			return err
@@ -953,7 +953,7 @@ scrape_configs:
 	})
 	require.NoError(t, err)
 
-	err = pool.Retry(t.Context(), 90*time.Second, func() error {
+	err = pool.Retry(t.Context(), 45*time.Second, func() error {
 		rsp, err := http.Get(promURL + "/api/v1/query?query=up%7Bjob%3D%22machbase-neo%22%7D")
 		if err != nil {
 			return err
