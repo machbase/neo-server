@@ -8,6 +8,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/archive/zip"
 	"github.com/machbase/neo-server/v8/jsh/lib/crypto"
 	"github.com/machbase/neo-server/v8/jsh/lib/db"
+	"github.com/machbase/neo-server/v8/jsh/lib/dbus"
 	"github.com/machbase/neo-server/v8/jsh/lib/git"
 	"github.com/machbase/neo-server/v8/jsh/lib/http"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
@@ -87,6 +88,7 @@ func UserModuleFiles() map[string][]byte {
 	addUserModuleFiles(files, crypto.Files())
 	addUserModuleFiles(files, git.Files())
 	addUserModuleFiles(files, http.Files())
+	addUserModuleFiles(files, dbus.Files())
 	addUserModuleFiles(files, machcli.Files())
 	addUserModuleFiles(files, mathx.Files())
 	addUserModuleFiles(files, filter.Files())
@@ -138,6 +140,8 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/crypto", crypto.Module)
 	addFiles(crypto.Files())
 	n.RegisterNativeModule("@jsh/db", db.Module)
+	n.RegisterNativeModule("@jsh/dbus", dbus.Module)
+	addFiles(dbus.Files())
 	n.RegisterNativeModule("@jsh/git", git.ModuleWithFS(n.MountedFS()))
 	addFiles(git.Files())
 	n.RegisterNativeModule("@jsh/http", http.Module)
