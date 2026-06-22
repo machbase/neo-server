@@ -861,7 +861,20 @@ func TestPrometheusScrapeWithDocker(t *testing.T) {
 
 	pool := dockertest.NewPoolT(t, "")
 
-	target := strings.TrimPrefix(httpServerAddress, "http://")
+	// On Linux, use --network=host so Prometheus can reach services bound to 127.0.0.1.
+	// Docker containers on Linux cannot reach the host loopback via host-gateway;
+	// they can only access services bound to 0.0.0.0 through the bridge.
+	// With host network mode, the container shares the host network namespace,
+	// so 127.0.0.1 resolves directly, and incoming requests appear as 127.0.0.1
+	// which is always allowed by the allowDebug middleware.
+	httpHostPort := strings.TrimPrefix(httpServerAddress, "http://")
+	var promTargetAddr string
+	if runtime.GOOS == "linux" {
+		promTargetAddr = httpHostPort // e.g. 127.0.0.1:15654 — reachable via host network
+	} else {
+		promTargetAddr = "host.docker.internal:" + strings.Split(httpHostPort, ":")[1]
+	}
+
 	config := fmt.Sprintf(`global:
   scrape_interval: 1s
   scrape_timeout: 1s
@@ -870,11 +883,11 @@ scrape_configs:
   - job_name: machbase-neo
     metrics_path: /debug/metrics
     static_configs:
-      - targets: ["host.docker.internal:%s"]
+      - targets: ["%s"]
     authorization:
       type: Bearer
       credentials: "%s"
-`, strings.Split(target, ":")[1], token)
+`, promTargetAddr, token)
 
 	configPath := filepath.Join(t.TempDir(), "prometheus.yml")
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o644))
@@ -885,19 +898,33 @@ scrape_configs:
 		dockertest.WithMounts([]string{configPath + ":/etc/prometheus/prometheus.yml:ro"}),
 		dockertest.WithHostConfig(func(cfg *container.HostConfig) {
 			if runtime.GOOS == "linux" {
-				cfg.ExtraHosts = append(cfg.ExtraHosts, "host.docker.internal:host-gateway")
+				// Host network mode: shares host network namespace.
+				// ExtraHosts is not supported (and not needed) in this mode.
+				cfg.NetworkMode = "host"
 			}
 		}),
 	)
 
-	for _, nw := range prom.Container.NetworkSettings.Networks {
-		if nw != nil && nw.IPAddress.IsValid() {
-			httpServer.statzAllowed = append(httpServer.statzAllowed, nw.IPAddress.String())
-			break
+	// On non-Linux, Prometheus runs in its own network and we must whitelist its IP
+	// in statzAllowed so the allowDebug middleware permits scrape requests.
+	// On Linux with host network mode, source IP is 127.0.0.1 and always allowed.
+	if runtime.GOOS != "linux" {
+		for _, nw := range prom.Container.NetworkSettings.Networks {
+			if nw != nil && nw.IPAddress.IsValid() {
+				httpServer.statzAllowed = append(httpServer.statzAllowed, nw.IPAddress.String())
+				break
+			}
 		}
 	}
 
-	promURL := "http://" + prom.GetHostPort("9090/tcp")
+	// With host network mode on Linux, Prometheus binds directly to the host's port 9090.
+	// There is no Docker port mapping, so GetHostPort returns empty; use localhost directly.
+	var promURL string
+	if runtime.GOOS == "linux" {
+		promURL = "http://127.0.0.1:9090"
+	} else {
+		promURL = "http://" + prom.GetHostPort("9090/tcp")
+	}
 
 	err := pool.Retry(t.Context(), 45*time.Second, func() error {
 		rsp, err := http.Get(promURL + "/-/ready")
