@@ -4,13 +4,10 @@ import (
 	"context"
 	"crypto"
 	"errors"
-	"expvar"
 	"fmt"
 	"os"
 	"regexp"
-	"runtime"
 	"runtime/debug"
-	"slices"
 	"strings"
 	"time"
 
@@ -26,11 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/booter"
-	"github.com/machbase/neo-server/v8/jsh/viz"
-	"github.com/machbase/neo-server/v8/mods"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/crypto/ssh"
@@ -931,180 +924,4 @@ func (s *Server) HttpDebugMode(ctx context.Context, req *HttpDebugModeRequest) (
 	rsp.Success = true
 	rsp.Reason = "success"
 	return rsp, nil
-}
-
-var maxProcessors int32
-var pid int32
-var ver *mods.Version
-
-func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
-	if maxProcessors == 0 {
-		maxProcessors = int32(runtime.GOMAXPROCS(-1))
-	}
-	if ver == nil {
-		ver = mods.GetVersion()
-	}
-	if pid == 0 {
-		pid = int32(os.Getpid())
-	}
-
-	rsp := &ServerInfoResponse{
-		Version: &Version{
-			Engine:         mach.LinkInfo(),
-			Major:          int32(ver.Major),
-			Minor:          int32(ver.Minor),
-			Patch:          int32(ver.Patch),
-			GitSHA:         ver.GitSHA,
-			BuildTimestamp: mods.BuildTimestamp(),
-			BuildCompiler:  mods.BuildCompiler(),
-		},
-		Runtime: &Runtime{
-			OS:             runtime.GOOS,
-			Arch:           runtime.GOARCH,
-			Pid:            pid,
-			UptimeInSecond: int64(time.Since(s.startupTime).Seconds()),
-			Processes:      maxProcessors,
-			Goroutines:     int32(runtime.NumGoroutine()),
-		},
-	}
-
-	mem := runtime.MemStats{}
-	runtime.ReadMemStats(&mem)
-	rsp.Runtime.Mem = map[string]uint64{
-		"sys":               mem.Sys,
-		"alloc":             mem.Alloc,
-		"total_alloc":       mem.TotalAlloc,
-		"lookups":           mem.Lookups,
-		"mallocs":           mem.Mallocs,
-		"frees":             mem.Frees,
-		"lives":             mem.Mallocs - mem.Frees,
-		"heap_alloc":        mem.HeapAlloc,
-		"heap_sys":          mem.HeapSys,
-		"heap_idle":         mem.HeapIdle,
-		"heap_in_use":       mem.HeapInuse,
-		"heap_released":     mem.HeapReleased,
-		"heap_objects":      mem.HeapObjects,
-		"stack_in_use":      mem.StackInuse,
-		"stack_sys":         mem.StackSys,
-		"mspan_in_use":      mem.MSpanInuse,
-		"mspan_sys":         mem.MSpanSys,
-		"mcache_in_use":     mem.MCacheInuse,
-		"mcache_sys":        mem.MCacheSys,
-		"buck_hash_sys":     mem.BuckHashSys,
-		"gc_sys":            mem.GCSys,
-		"other_sys":         mem.OtherSys,
-		"gc_next":           mem.NextGC,
-		"gc_last":           mem.LastGC,
-		"gc_pause_total_ns": mem.PauseTotalNs,
-	}
-	return rsp, nil
-}
-
-type ServerStatzResponse struct {
-	Statz []ServerStatz `json:"statz"`
-}
-
-type ServerStatz struct {
-	Name string    `json:"name"`
-	Spec *viz.Spec `json:"spec"`
-}
-
-func statzViz(names []string) (*ServerStatzResponse, error) {
-	v := spi.Visualizer()
-	ret := &ServerStatzResponse{}
-	for i, name := range names {
-		var metricNames []string
-		var fieldNames []string
-		if strings.Contains(name, "#") {
-			// support metric with tag, e.g. "cpu_usage#host=server1"
-			parts := strings.SplitN(name, "#", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			metricNames = append(metricNames, parts[0])
-			fieldNames = append(fieldNames, parts[1])
-		} else {
-			metricNames = append(metricNames, name)
-		}
-		c := metric.Chart{ID: fmt.Sprintf("chart_%d", i), MetricNames: metricNames, FieldNames: fieldNames}
-		v.AddChart(c)
-	}
-	for i := range names {
-		spec, err := v.Generate(fmt.Sprintf("chart_%d", i), 0)
-		if err != nil {
-			return nil, err
-		}
-		ret.Statz = append(ret.Statz, ServerStatz{Name: names[i], Spec: spec})
-	}
-	return ret, nil
-}
-
-func statzKeys(pattern []string) []string {
-	prefix := spi.MetricsPrefix()
-	if len(prefix) > 0 {
-		prefix = prefix + ":"
-	}
-	if len(pattern) == 0 {
-		pattern = []string{prefix + "*"}
-	} else {
-		for i, p := range pattern {
-			pattern[i] = prefix + p
-		}
-	}
-	filter := spi.QueryStatzFilter(pattern...)
-	keys := make([]string, 0)
-	expvar.Do(func(kv expvar.KeyValue) {
-		if ok, _ := filter(kv.Key); !ok {
-			return
-		}
-		if !strings.HasPrefix(kv.Key, prefix) {
-			return
-		}
-		keys = append(keys, strings.TrimPrefix(kv.Key, prefix))
-	})
-	slices.Sort(keys)
-	return keys
-}
-
-type StatzQueryResult struct {
-	Columns []string `json:"columns"`
-	Types   []string `json:"types"`
-	Rows    [][]any  `json:"rows"`
-}
-
-func statzQuery(maxRows int, pattern []string) (*StatzQueryResult, error) {
-	prefix := spi.MetricsPrefix()
-	if len(prefix) > 0 {
-		prefix = prefix + ":"
-	}
-	for i, p := range pattern {
-		pattern[i] = prefix + strings.ToLower(p)
-	}
-
-	statz := spi.QueryStatzRows(1*time.Minute, maxRows, spi.QueryStatzFilter(pattern...))
-	if statz.Err != nil {
-		return nil, statz.Err
-	}
-
-	ret := &StatzQueryResult{
-		Columns: make([]string, len(statz.Cols)+1),
-		Types:   make([]string, len(statz.Cols)+1),
-		Rows:    make([][]any, len(statz.Rows)),
-	}
-	ret.Columns[0] = "time"
-	ret.Types[0] = "datetime"
-	for i, c := range statz.Cols {
-		ret.Columns[i+1] = strings.TrimPrefix(c.Name, prefix)
-		if statz.ValueTypes[i] == "i" {
-			ret.Types[i+1] = "int64"
-		} else {
-			ret.Types[i+1] = c.Type.String()
-		}
-	}
-	for i, r := range statz.Rows {
-		ret.Rows[i] = make([]any, 0, len(r.Values)+1)
-		ret.Rows[i] = append(ret.Rows[i], r.Timestamp.Format(time.RFC3339))
-		ret.Rows[i] = append(ret.Rows[i], r.Values...)
-	}
-	return ret, nil
 }

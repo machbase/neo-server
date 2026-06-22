@@ -63,6 +63,83 @@ func TestStatz(t *testing.T) {
 	require.GreaterOrEqual(t, len(result), 2)
 }
 
+func TestDebugMetrics(t *testing.T) {
+	prevToken := spi.PrometheusBearerToken()
+	t.Cleanup(func() {
+		spi.SetPrometheusBearerToken(prevToken)
+	})
+
+	t.Run("without fixed token", func(t *testing.T) {
+		spi.SetPrometheusBearerToken("")
+
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/debug/metrics", nil)
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer rsp.Body.Close()
+
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+		require.Contains(t, rsp.Header.Get("Content-Type"), "text/plain")
+	})
+
+	t.Run("with fixed token", func(t *testing.T) {
+		spi.SetPrometheusBearerToken("prom-fixed-token")
+
+		t.Run("rejects missing token", func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/debug/metrics", nil)
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer rsp.Body.Close()
+
+			require.Equal(t, http.StatusUnauthorized, rsp.StatusCode)
+		})
+
+		t.Run("accepts matching token", func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/debug/metrics", nil)
+			req.Header.Set("Authorization", "Bearer prom-fixed-token")
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer rsp.Body.Close()
+
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+		})
+	})
+}
+
+func TestAllowDebug(t *testing.T) {
+	svr := &httpd{log: logging.GetLog("httpd-fake")}
+
+	t.Run("allows loopback", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/debug/metrics", nil)
+		ctx.Request.RemoteAddr = "127.0.0.1:12345"
+
+		svr.allowDebug(ctx)
+
+		require.False(t, ctx.IsAborted())
+		require.Equal(t, http.StatusOK, writer.Code)
+	})
+
+	t.Run("rejects non allowed remote", func(t *testing.T) {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/debug/metrics", nil)
+		ctx.Request.RemoteAddr = "192.0.2.10:12345"
+
+		svr.allowDebug(ctx)
+
+		require.True(t, ctx.IsAborted())
+		require.Equal(t, http.StatusForbidden, writer.Code)
+	})
+
+	t.Run("allows configured remote", func(t *testing.T) {
+		svr.statzAllowed = []string{"192.0.2.10"}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/debug/metrics", nil)
+		ctx.Request.RemoteAddr = "192.0.2.10:12345"
+
+		svr.allowDebug(ctx)
+
+		require.False(t, ctx.IsAborted())
+		require.Equal(t, http.StatusOK, writer.Code)
+	})
+}
+
 func TestHandleStatzConfig(t *testing.T) {
 	prevDest := spi.MetricsDestTable()
 	t.Cleanup(func() {

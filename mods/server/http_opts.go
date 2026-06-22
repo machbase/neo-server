@@ -156,6 +156,12 @@ func WithHttpStatzAllow(remotes ...string) HttpOption {
 	}
 }
 
+func WithHttpStatzToken(token string) HttpOption {
+	return func(s *httpd) {
+		s.statzToken = token
+	}
+}
+
 func WithHttpQueryCypher(algAndKey string) HttpOption {
 	alg := ""
 	pad := "PCKCS7"

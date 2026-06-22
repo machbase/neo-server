@@ -191,6 +191,7 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 var collector *metric.Collector
 var prefix string = "machbase"
 var metricsDest string
+var prometheusBearerToken string
 
 const SERIES_ID_FINEST = "METRIC_2H"
 const SERIES_ID_FINE = "METRIC_2D12H"
@@ -230,6 +231,14 @@ func MetricsPrefix() string {
 
 func MetricsDestTable() string {
 	return metricsDest
+}
+
+func PrometheusBearerToken() string {
+	return prometheusBearerToken
+}
+
+func SetPrometheusBearerToken(token string) {
+	prometheusBearerToken = strings.TrimSpace(token)
 }
 
 func SetMetricsDestTable(destTable string) error {
@@ -506,6 +515,144 @@ func HandleStatz(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(ret); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+	}
+}
+
+func HandlePrometheusMetrics(w http.ResponseWriter, r *http.Request) {
+	if !allowPrometheusRequest(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	includes := r.URL.Query()["keys"]
+	interval := r.URL.Query().Get("interval")
+	if interval == "" {
+		interval = "1m"
+	}
+	dur, err := time.ParseDuration(interval)
+	if err != nil {
+		dur = time.Minute
+	}
+
+	stat := QueryStatzRows(dur, 1, func(key string) (bool, int) {
+		return strings.HasPrefix(key, "machbase:") || slices.Contains(includes, key), 0
+	})
+	if stat.Err != nil {
+		http.Error(w, stat.Err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var sb strings.Builder
+	seen := map[string]struct{}{}
+	tsMillis := stat.Rows[0].Timestamp.UnixMilli()
+
+	for idx, col := range stat.Cols {
+		value := stat.Rows[0].Values[idx]
+		if value == nil {
+			continue
+		}
+		metricName := sanitizePromMetricName(col.Name)
+		metricValue, ok := toPromFloat(value)
+		if !ok {
+			continue
+		}
+		if _, exists := seen[metricName]; !exists {
+			metricType := inferPromMetricType(metricName)
+			sb.WriteString("# HELP ")
+			sb.WriteString(metricName)
+			sb.WriteString(" Metric exported from machbase statz\n")
+			sb.WriteString("# TYPE ")
+			sb.WriteString(metricName)
+			sb.WriteByte(' ')
+			sb.WriteString(metricType)
+			sb.WriteByte('\n')
+			seen[metricName] = struct{}{}
+		}
+		sb.WriteString(metricName)
+		sb.WriteByte(' ')
+		sb.WriteString(fmt.Sprintf("%v", metricValue))
+		sb.WriteByte(' ')
+		sb.WriteString(fmt.Sprintf("%d", tsMillis))
+		sb.WriteByte('\n')
+	}
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = w.Write([]byte(sb.String()))
+}
+
+func allowPrometheusRequest(r *http.Request) bool {
+	token := strings.TrimSpace(prometheusBearerToken)
+	if token == "" {
+		return true
+	}
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	parts := strings.Fields(auth)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return false
+	}
+	return parts[1] == token
+}
+
+func sanitizePromMetricName(name string) string {
+	if name == "" {
+		return "neo_metric"
+	}
+	var sb strings.Builder
+	sb.Grow(len(name) + 4)
+	for i, r := range name {
+		valid := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+		if valid {
+			if i == 0 && r >= '0' && r <= '9' {
+				sb.WriteString("neo_")
+			}
+			sb.WriteRune(r)
+		} else {
+			sb.WriteByte('_')
+		}
+	}
+	ret := strings.Trim(sb.String(), "_")
+	if ret == "" {
+		return "neo_metric"
+	}
+	return strings.TrimPrefix(ret, "machbase_")
+}
+
+func inferPromMetricType(metricName string) string {
+	name := strings.ToLower(metricName)
+	if strings.HasSuffix(name, "_total") || strings.HasSuffix(name, "_count") || strings.Contains(name, "_bytes") {
+		return "counter"
+	}
+	return "gauge"
+}
+
+func toPromFloat(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case float32:
+		return float64(x), true
+	case int:
+		return float64(x), true
+	case int8:
+		return float64(x), true
+	case int16:
+		return float64(x), true
+	case int32:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	case uint:
+		return float64(x), true
+	case uint8:
+		return float64(x), true
+	case uint16:
+		return float64(x), true
+	case uint32:
+		return float64(x), true
+	case uint64:
+		return float64(x), true
+	default:
+		return 0, false
 	}
 }
 

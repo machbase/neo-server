@@ -105,6 +105,7 @@ type httpd struct {
 	pathMap map[string]string
 
 	statzAllowed []string
+	statzToken   string
 	cypherAlg    string
 	cypherKey    string
 	cypherPad    string
@@ -132,6 +133,10 @@ func (svr *httpd) Start() error {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
+	}
+
+	if svr.statzToken == "" {
+		spi.SetPrometheusBearerToken(svr.statzToken)
 	}
 
 	var connContext func(context.Context, net.Conn) context.Context
@@ -366,6 +371,7 @@ func (svr *httpd) Router() *gin.Engine {
 	debugGroup.Any("/pprof/*path", gin.WrapF(httpPprof.Index))
 	debugGroup.GET("/dashboard", gin.WrapF(spi.DashboardHandler()))
 	debugGroup.GET("/statz", gin.WrapF(spi.HandleStatz))
+	debugGroup.GET("/metrics", gin.WrapF(spi.HandlePrometheusMetrics))
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
 	return r
