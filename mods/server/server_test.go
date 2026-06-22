@@ -28,6 +28,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
+	"github.com/moby/moby/api/types/container"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -841,6 +842,155 @@ func TestShellBridge(t *testing.T) {
 		shellBridgeNatsTest(t, natsHostPort)
 	})
 
+}
+
+func TestPrometheusScrapeWithDocker(t *testing.T) {
+	if !test.SupportDockerTest() {
+		t.Skip("dockertest does not work in this environment")
+	}
+
+	prevToken := spi.PrometheusBearerToken()
+	prevAllowed := append([]string(nil), httpServer.statzAllowed...)
+	t.Cleanup(func() {
+		spi.SetPrometheusBearerToken(prevToken)
+		httpServer.statzAllowed = prevAllowed
+	})
+
+	token := "prom-scrape-token"
+	spi.SetPrometheusBearerToken(token)
+
+	pool := dockertest.NewPoolT(t, "")
+
+	target := strings.TrimPrefix(httpServerAddress, "http://")
+	config := fmt.Sprintf(`global:
+  scrape_interval: 1s
+  scrape_timeout: 1s
+
+scrape_configs:
+  - job_name: machbase-neo
+    metrics_path: /debug/metrics
+    static_configs:
+      - targets: ["host.docker.internal:%s"]
+    authorization:
+      type: Bearer
+      credentials: "%s"
+`, strings.Split(target, ":")[1], token)
+
+	configPath := filepath.Join(t.TempDir(), "prometheus.yml")
+	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o644))
+
+	repo, tag := test.PrometheusDockerImage.Resolve()
+	prom := pool.RunT(t, repo,
+		dockertest.WithTag(tag),
+		dockertest.WithMounts([]string{configPath + ":/etc/prometheus/prometheus.yml:ro"}),
+		dockertest.WithHostConfig(func(cfg *container.HostConfig) {
+			if runtime.GOOS == "linux" {
+				cfg.ExtraHosts = append(cfg.ExtraHosts, "host.docker.internal:host-gateway")
+			}
+		}),
+	)
+
+	for _, nw := range prom.Container.NetworkSettings.Networks {
+		if nw != nil && nw.IPAddress.IsValid() {
+			httpServer.statzAllowed = append(httpServer.statzAllowed, nw.IPAddress.String())
+			break
+		}
+	}
+
+	promURL := "http://" + prom.GetHostPort("9090/tcp")
+
+	err := pool.Retry(t.Context(), 90*time.Second, func() error {
+		rsp, err := http.Get(promURL + "/-/ready")
+		if err != nil {
+			return err
+		}
+		defer rsp.Body.Close()
+		if rsp.StatusCode != http.StatusOK {
+			return fmt.Errorf("prometheus not ready: %d", rsp.StatusCode)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = pool.Retry(t.Context(), 90*time.Second, func() error {
+		rsp, err := http.Get(promURL + "/api/v1/targets")
+		if err != nil {
+			return err
+		}
+		defer rsp.Body.Close()
+		body, err := io.ReadAll(rsp.Body)
+		if err != nil {
+			return err
+		}
+		var payload struct {
+			Status string `json:"status"`
+			Data   struct {
+				ActiveTargets []struct {
+					Health string `json:"health"`
+					Labels struct {
+						Job string `json:"job"`
+					} `json:"labels"`
+				} `json:"activeTargets"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		if payload.Status != "success" {
+			return fmt.Errorf("targets api failed: %s", string(body))
+		}
+		up := false
+		for _, target := range payload.Data.ActiveTargets {
+			if target.Labels.Job == "machbase-neo" && strings.EqualFold(target.Health, "up") {
+				up = true
+				break
+			}
+		}
+		if !up {
+			return fmt.Errorf("target is not up yet: %s", string(body))
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = pool.Retry(t.Context(), 90*time.Second, func() error {
+		rsp, err := http.Get(promURL + "/api/v1/query?query=up%7Bjob%3D%22machbase-neo%22%7D")
+		if err != nil {
+			return err
+		}
+		defer rsp.Body.Close()
+		body, err := io.ReadAll(rsp.Body)
+		if err != nil {
+			return err
+		}
+		var payload struct {
+			Status string `json:"status"`
+			Data   struct {
+				Result []struct {
+					Value []any `json:"value"`
+				} `json:"result"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		if payload.Status != "success" {
+			return fmt.Errorf("query api failed: %s", string(body))
+		}
+		if len(payload.Data.Result) == 0 || len(payload.Data.Result[0].Value) < 2 {
+			return fmt.Errorf("up metric not scraped yet: %s", string(body))
+		}
+		if fmt.Sprint(payload.Data.Result[0].Value[1]) != "1" {
+			return fmt.Errorf("up metric not scraped yet: %s", string(body))
+		}
+		return nil
+	})
+	if err != nil {
+		if logs, logErr := prom.Logs(t.Context()); logErr == nil {
+			t.Logf("prometheus logs:\n%s", logs)
+		}
+	}
+	require.NoError(t, err)
 }
 
 func shellBridgeSqliteTest(t *testing.T) {

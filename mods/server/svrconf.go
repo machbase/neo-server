@@ -138,6 +138,7 @@ type HttpConfig struct {
 	EnableTokenAuth bool
 	DebugMode       bool
 	AllowStatz      []string
+	StatzToken      string
 	QueryCypher     string // format: "alg=AES key=1234567890abcdef pad=pkcs5"
 	DebugLatency    string
 	WriteBufSize    int

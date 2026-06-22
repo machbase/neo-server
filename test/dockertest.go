@@ -51,6 +51,12 @@ var (
 		DefaultRepository: "nats",
 		DefaultTag:        "2.12",
 	}
+	PrometheusDockerImage = DockerImageConfig{
+		RepositoryEnvVar:  "TEST_PROMETHEUS_IMAGE_REPOSITORY",
+		TagEnvVar:         "TEST_PROMETHEUS_IMAGE_TAG",
+		DefaultRepository: "prom/prometheus",
+		DefaultTag:        "v2.53.0",
+	}
 )
 
 func SupportDockerTest() bool {

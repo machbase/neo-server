@@ -918,6 +918,7 @@ func (s *Server) startHttpServer() error {
 		WithHttpReadBufSize(s.Http.ReadBufSize),
 		WithHttpKeepAlive(s.Http.KeepAlive),
 		WithHttpStatzAllow(s.Http.AllowStatz...),
+		WithHttpStatzToken(s.Http.StatzToken),
 		WithHttpQueryCypher(s.Http.QueryCypher),
 	}
 	if s.mqttd != nil {

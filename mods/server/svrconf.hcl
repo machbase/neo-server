@@ -45,6 +45,7 @@ define VARS {
     HTTP_LINGER           = flag("--http-linger", -1)       // -1 means disable so_linger, >= 0 means set so_linger
     HTTP_KEEPALIVE        = flag("--http-keepalive", 0)     // 0 means disable, > 0 means enable and set_keepalive_period in seconds
     HTTP_ALLOW_STATZ      = flag("--http-allow-statz", "")  // allow statz for the given IP address
+    HTTP_STATZ_TOKEN      = flag("--http-statz-token", "")  // Bearer token for statz
     HTTP_QUERY_CYPHER     = flag("--http-query-cypher", "") // format: "alg=AES key=1234567890abcdef pad=pkcs5"
 
     MAX_POOL_SIZE         = flag("--max-pool-size", 0)
@@ -120,6 +121,7 @@ module "machbase.com/neo-server" {
             Linger           = VARS_HTTP_LINGER
             KeepAlive        = VARS_HTTP_KEEPALIVE
             AllowStatz       = ["${VARS_HTTP_ALLOW_STATZ}"]
+            StatzToken       = VARS_HTTP_STATZ_TOKEN
             QueryCypher      = VARS_HTTP_QUERY_CYPHER
         }
         Mqtt = {

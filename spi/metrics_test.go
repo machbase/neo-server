@@ -46,6 +46,147 @@ func TestHandleStatz(t *testing.T) {
 	})
 }
 
+func TestHandlePrometheusMetrics(t *testing.T) {
+	metricKey := "machbase:test:" + uuid.Must(uuid.NewV4()).String()
+	metricValue := expvar.NewInt(metricKey)
+	metricValue.Set(42)
+
+	prevToken := PrometheusBearerToken()
+	t.Cleanup(func() {
+		SetPrometheusBearerToken(prevToken)
+	})
+
+	t.Run("exports prometheus text format", func(t *testing.T) {
+		SetPrometheusBearerToken("")
+		req := httptest.NewRequest(http.MethodGet, "/debug/metrics?interval=not-a-duration&keys="+url.QueryEscape(metricKey), nil)
+		writer := httptest.NewRecorder()
+
+		HandlePrometheusMetrics(writer, req)
+
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Header().Get("Content-Type"), "text/plain")
+		require.Contains(t, writer.Body.String(), "# HELP test_")
+		require.Contains(t, writer.Body.String(), "# TYPE test_")
+		require.Contains(t, writer.Body.String(), "42")
+	})
+
+	t.Run("enforces bearer token when configured", func(t *testing.T) {
+		SetPrometheusBearerToken("prom-token")
+
+		t.Run("without token", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/debug/metrics?keys="+url.QueryEscape(metricKey), nil)
+			writer := httptest.NewRecorder()
+
+			HandlePrometheusMetrics(writer, req)
+
+			require.Equal(t, http.StatusUnauthorized, writer.Code)
+		})
+
+		t.Run("with wrong token", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/debug/metrics?keys="+url.QueryEscape(metricKey), nil)
+			req.Header.Set("Authorization", "Bearer wrong-token")
+			writer := httptest.NewRecorder()
+
+			HandlePrometheusMetrics(writer, req)
+
+			require.Equal(t, http.StatusUnauthorized, writer.Code)
+		})
+
+		t.Run("with matching token", func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/debug/metrics?keys="+url.QueryEscape(metricKey), nil)
+			req.Header.Set("Authorization", "Bearer prom-token")
+			writer := httptest.NewRecorder()
+
+			HandlePrometheusMetrics(writer, req)
+
+			require.Equal(t, http.StatusOK, writer.Code)
+			require.Contains(t, writer.Body.String(), "test_")
+		})
+	})
+}
+
+func TestPrometheusHelperFunctions(t *testing.T) {
+	t.Run("sanitizePromMetricName", func(t *testing.T) {
+		require.Equal(t, "neo_metric", sanitizePromMetricName(""))
+		require.Equal(t, "neo_1abc", sanitizePromMetricName("1abc"))
+		require.Equal(t, "cpu_usage", sanitizePromMetricName("machbase:cpu-usage"))
+		require.Equal(t, "neo_metric", sanitizePromMetricName("!!!"))
+	})
+
+	t.Run("inferPromMetricType", func(t *testing.T) {
+		require.Equal(t, "counter", inferPromMetricType("request_total"))
+		require.Equal(t, "counter", inferPromMetricType("request_count"))
+		require.Equal(t, "counter", inferPromMetricType("recv_bytes"))
+		require.Equal(t, "gauge", inferPromMetricType("cpu_usage"))
+	})
+
+	t.Run("toPromFloat", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			input   any
+			value   float64
+			success bool
+		}{
+			{name: "float64", input: float64(1.25), value: 1.25, success: true},
+			{name: "float32", input: float32(1.5), value: 1.5, success: true},
+			{name: "int", input: int(3), value: 3, success: true},
+			{name: "int8", input: int8(-8), value: -8, success: true},
+			{name: "int16", input: int16(-16), value: -16, success: true},
+			{name: "int32", input: int32(7), value: 7, success: true},
+			{name: "int64", input: int64(64), value: 64, success: true},
+			{name: "uint", input: uint(4), value: 4, success: true},
+			{name: "uint8", input: uint8(8), value: 8, success: true},
+			{name: "uint16", input: uint16(16), value: 16, success: true},
+			{name: "uint32", input: uint32(32), value: 32, success: true},
+			{name: "uint64", input: uint64(9), value: 9, success: true},
+			{name: "string", input: "not-number", value: 0, success: false},
+			{name: "struct", input: struct{ N int }{N: 1}, value: 0, success: false},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				f, ok := toPromFloat(tc.input)
+				require.Equal(t, tc.success, ok)
+				if tc.success {
+					require.Equal(t, tc.value, f)
+				}
+			})
+		}
+	})
+}
+
+func TestAllowPrometheusRequest(t *testing.T) {
+	prevToken := PrometheusBearerToken()
+	t.Cleanup(func() {
+		SetPrometheusBearerToken(prevToken)
+	})
+
+	t.Run("no token configured", func(t *testing.T) {
+		SetPrometheusBearerToken("")
+		req := httptest.NewRequest(http.MethodGet, "/debug/metrics", nil)
+		require.True(t, allowPrometheusRequest(req))
+	})
+
+	t.Run("token configured", func(t *testing.T) {
+		SetPrometheusBearerToken("token-123")
+
+		reqNoHeader := httptest.NewRequest(http.MethodGet, "/debug/metrics", nil)
+		require.False(t, allowPrometheusRequest(reqNoHeader))
+
+		reqWrong := httptest.NewRequest(http.MethodGet, "/debug/metrics", nil)
+		reqWrong.Header.Set("Authorization", "Bearer wrong")
+		require.False(t, allowPrometheusRequest(reqWrong))
+
+		reqCaseInsensitive := httptest.NewRequest(http.MethodGet, "/debug/metrics", nil)
+		reqCaseInsensitive.Header.Set("Authorization", "bearer token-123")
+		require.True(t, allowPrometheusRequest(reqCaseInsensitive))
+
+		reqMalformed := httptest.NewRequest(http.MethodGet, "/debug/metrics", nil)
+		reqMalformed.Header.Set("Authorization", "Bearer")
+		require.False(t, allowPrometheusRequest(reqMalformed))
+	})
+}
+
 func TestVizSpecGenerator(t *testing.T) {
 	seriesID := mustSeriesID(t, "CPU_USAGE", "CPU Usage", time.Second, 8)
 	collector := metric.NewCollector(
