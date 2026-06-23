@@ -26,11 +26,18 @@ type registeredMethod struct {
 }
 
 type functionInfo struct {
-	Name     string
-	Doc      string
-	Params   []fieldInfo
-	ParamDoc map[string]string
-	Returns  []fieldInfo
+	Name           string
+	Doc            string
+	Params         []fieldInfo
+	ParamDoc       map[string]string
+	ReturnDoc      map[string]string
+	ReturnFieldDoc map[string][]docEntry
+	Returns        []fieldInfo
+}
+
+type docEntry struct {
+	Name string
+	Desc string
 }
 
 type fieldInfo struct {
@@ -183,41 +190,101 @@ func pathBase(importPath string) string {
 
 func functionSignature(function *ast.FuncDecl) *functionInfo {
 	params := expandFields(function.Type.Params.List)
+	returns := expandResults(function.Type.Results)
 	paramNames := map[string]struct{}{}
 	for _, param := range params {
 		if param.Name != "" {
 			paramNames[param.Name] = struct{}{}
 		}
 	}
-	doc, paramDoc := splitDocAndParamDoc(function.Doc, paramNames)
+	doc, paramDoc, returnDoc, returnFieldDoc := splitDocAndParamDoc(function.Doc, paramNames, explicitReturns(returns))
 
 	return &functionInfo{
-		Name:     function.Name.Name,
-		Doc:      doc,
-		Params:   params,
-		ParamDoc: paramDoc,
-		Returns:  expandResults(function.Type.Results),
+		Name:           function.Name.Name,
+		Doc:            doc,
+		Params:         params,
+		ParamDoc:       paramDoc,
+		ReturnDoc:      returnDoc,
+		ReturnFieldDoc: returnFieldDoc,
+		Returns:        returns,
 	}
 }
 
-func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}) (string, map[string]string) {
+func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}, returns []fieldInfo) (string, map[string]string, map[string]string, map[string][]docEntry) {
 	if group == nil {
-		return "", map[string]string{}
+		return "", map[string]string{}, map[string]string{}, map[string][]docEntry{}
 	}
 	paramDoc := map[string]string{}
+	returnDoc := map[string]string{}
+	returnFieldDoc := map[string][]docEntry{}
+	returnNames := map[string]struct{}{}
+	for _, ret := range returns {
+		if ret.Name != "" {
+			returnNames[ret.Name] = struct{}{}
+		}
+	}
+	nextReturnIdx := 1
+	section := ""
+	currentReturnKey := ""
 	docLines := []string{}
 	for _, line := range strings.Split(cleanDoc(group), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
+			section = ""
+			currentReturnKey = ""
 			docLines = append(docLines, "")
 			continue
 		}
+
+		if strings.EqualFold(trimmed, "params:") {
+			section = "params"
+			currentReturnKey = ""
+			continue
+		}
+		if retKey, retDesc, ok := parseReturnHeaderLine(trimmed, returnNames, len(returns), nextReturnIdx); ok {
+			section = "return"
+			currentReturnKey = retKey
+			if retDesc != "" {
+				returnDoc[retKey] = retDesc
+			}
+			if retKey == strconv.Itoa(nextReturnIdx) {
+				nextReturnIdx++
+			}
+			continue
+		}
+
+		if section == "params" {
+			if name, desc, ok := parseSectionItem(trimmed); ok {
+				if _, exists := paramNames[name]; exists {
+					paramDoc[name] = desc
+					continue
+				}
+			}
+			docLines = append(docLines, line)
+			continue
+		}
+		if section == "return" && currentReturnKey != "" {
+			if name, desc, ok := parseSectionItem(trimmed); ok {
+				returnFieldDoc[currentReturnKey] = append(returnFieldDoc[currentReturnKey], docEntry{Name: name, Desc: desc})
+				continue
+			}
+		}
+
 		name, desc, ok := parseParamDocLine(trimmed)
 		if !ok {
 			docLines = append(docLines, line)
 			continue
 		}
 		if _, exists := paramNames[name]; !exists {
+			if key, ok := matchReturnDocKey(name, returnNames, len(returns), nextReturnIdx); ok {
+				returnDoc[key] = desc
+				currentReturnKey = key
+				section = "return"
+				if key == strconv.Itoa(nextReturnIdx) {
+					nextReturnIdx++
+				}
+				continue
+			}
 			docLines = append(docLines, line)
 			continue
 		}
@@ -231,7 +298,77 @@ func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}
 		docLines = docLines[:len(docLines)-1]
 	}
 
-	return strings.TrimSpace(strings.Join(docLines, "\n")), paramDoc
+	return strings.TrimSpace(strings.Join(docLines, "\n")), paramDoc, returnDoc, returnFieldDoc
+}
+
+func parseReturnHeaderLine(line string, returnNames map[string]struct{}, returnCount int, nextReturnIdx int) (string, string, bool) {
+	name, desc, ok := parseParamDocLine(line)
+	if !ok {
+		return "", "", false
+	}
+	key, ok := matchReturnDocKey(name, returnNames, returnCount, nextReturnIdx)
+	if !ok {
+		return "", "", false
+	}
+	return key, desc, true
+}
+
+func parseSectionItem(line string) (string, string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "- ") {
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+	}
+	if strings.HasPrefix(trimmed, "* ") {
+		trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "* "))
+	}
+	index := strings.Index(trimmed, ":")
+	if index <= 0 {
+		return "", "", false
+	}
+	name := strings.TrimSpace(trimmed[:index])
+	name = strings.Trim(name, `"'`)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", false
+	}
+	desc := strings.TrimSpace(trimmed[index+1:])
+	if desc == "" {
+		return "", "", false
+	}
+	return name, desc, true
+}
+
+func matchReturnDocKey(name string, returnNames map[string]struct{}, returnCount int, nextReturnIdx int) (string, bool) {
+	if returnCount == 0 {
+		return "", false
+	}
+	if _, ok := returnNames[name]; ok {
+		return name, true
+	}
+
+	lower := strings.ToLower(name)
+	if lower == "return" || lower == "returns" || lower == "result" {
+		if nextReturnIdx >= 1 && nextReturnIdx <= returnCount {
+			return strconv.Itoa(nextReturnIdx), true
+		}
+		return "", false
+	}
+
+	if strings.HasPrefix(lower, "return") {
+		if idx, err := strconv.Atoi(strings.TrimPrefix(lower, "return")); err == nil {
+			if idx >= 1 && idx <= returnCount {
+				return strconv.Itoa(idx), true
+			}
+		}
+	}
+	if strings.HasPrefix(lower, "result") {
+		if idx, err := strconv.Atoi(strings.TrimPrefix(lower, "result")); err == nil {
+			if idx >= 1 && idx <= returnCount {
+				return strconv.Itoa(idx), true
+			}
+		}
+	}
+	return "", false
 }
 
 func parseParamDocLine(line string) (string, string, bool) {
@@ -480,9 +617,7 @@ func renderMethod(buffer *bytes.Buffer, registration registeredMethod) {
 	}
 
 	buffer.WriteString("\n*Return*\n\n")
-	for _, line := range returnLines(returns) {
-		fmt.Fprintf(buffer, "- `%s`\n", line)
-	}
+	renderReturnLines(buffer, returns, registration.Function.ReturnDoc, registration.Function.ReturnFieldDoc)
 
 	request, response := sampleMessages(registration.Name, params, returns)
 	buffer.WriteByte('\n')
@@ -533,15 +668,59 @@ func paramNames(params []fieldInfo) []string {
 	return names
 }
 
-func returnLines(returns []fieldInfo) []string {
+func returnLines(returns []fieldInfo, docs map[string]string) []string {
 	if len(returns) == 0 {
 		return []string{"null|error"}
 	}
 	lines := make([]string, 0, len(returns))
-	for _, result := range returns {
-		lines = append(lines, jsonType(result.Expr, result.Type)+"|error")
+	for idx, result := range returns {
+		line := jsonType(result.Expr, result.Type) + "|error"
+		desc := returnDocByIndexOrName(docs, idx+1, result.Name)
+		if strings.TrimSpace(desc) != "" {
+			line += " - " + strings.TrimSpace(desc)
+		}
+		lines = append(lines, line)
 	}
 	return lines
+}
+
+func renderReturnLines(buffer *bytes.Buffer, returns []fieldInfo, docs map[string]string, fieldDocs map[string][]docEntry) {
+	lines := returnLines(returns, docs)
+	if len(lines) == 0 {
+		buffer.WriteString("- `null|error`\n")
+		return
+	}
+	for idx, line := range lines {
+		fmt.Fprintf(buffer, "- `%s`\n", line)
+		if idx >= len(returns) {
+			continue
+		}
+		key := strconv.Itoa(idx + 1)
+		entries := fieldDocs[key]
+		if returns[idx].Name != "" {
+			if namedEntries := fieldDocs[returns[idx].Name]; len(namedEntries) > 0 {
+				entries = namedEntries
+			}
+		}
+		for _, entry := range entries {
+			fmt.Fprintf(buffer, "  - `%s`: %s\n", entry.Name, entry.Desc)
+		}
+	}
+}
+
+func returnDocByIndexOrName(docs map[string]string, idx int, name string) string {
+	if docs == nil {
+		return ""
+	}
+	if name != "" {
+		if v, ok := docs[name]; ok {
+			return v
+		}
+	}
+	if v, ok := docs[strconv.Itoa(idx)]; ok {
+		return v
+	}
+	return ""
 }
 
 func sampleMessages(method string, params []fieldInfo, returns []fieldInfo) (rpcRequestEnvelope, rpcResponseEnvelope) {

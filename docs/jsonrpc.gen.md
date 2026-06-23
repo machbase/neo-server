@@ -1518,7 +1518,11 @@ The return type is map[string]string with keys "id", "certificate", "key", and "
 
 *Return*
 
-- `any|error`
+- `any|error - the generated key information`
+  - `id`: the identifier of the key pair
+  - `certificate`: the certificate of the key pair
+  - `key`: the private key of the key pair
+  - `token`: the token associated with the key pair
 
 <details>
 <summary>Request/Response JSON</summary>

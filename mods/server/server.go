@@ -1547,9 +1547,16 @@ func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 // It returns the key information including the identifier, certificate, private key, and token if successful.
 // The return type is map[string]string with keys "id", "certificate", "key", and "token".
 //
-// id: the identifier for the key pair, must be alphanumeric and can include _.@-
-// typ: the type of key to generate, must be RSA or ECDSA
-// store: whether to store the key pair in the server's key store
+// params:
+//   - id: the identifier for the key pair, must be alphanumeric and can include _.@-
+//   - typ: the type of key to generate, must be RSA or ECDSA
+//   - store: whether to store the key pair in the server's key store
+//
+// return: the generated key information
+//   - "id": the identifier of the key pair
+//   - "certificate": the certificate of the key pair
+//   - "key": the private key of the key pair
+//   - "token": the token associated with the key pair
 func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) (any, error) {
 	id = strings.ToLower(id)
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", id)
