@@ -1543,18 +1543,27 @@ func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 	return rsp.Keys, nil
 }
 
-func (s *Server) genKey(ctx context.Context, id string) (any, error) {
+// genKey generates a new key pair and returns the key information.
+// id: the identifier for the key pair, must be alphanumeric and can include _.@-
+// typ: the type of key to generate, must be RSA or ECDSA
+// store: whether to store the key pair in the server's key store
+func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) (any, error) {
 	id = strings.ToLower(id)
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", id)
 	if !pass {
 		return nil, fmt.Errorf("id contains invalid letter, use only alphnum and _.@-")
 	}
+	typ = strings.ToLower(typ)
+	if !strings.HasPrefix(typ, "rsa") && !strings.HasPrefix(typ, "ec") {
+		return nil, fmt.Errorf("type should be RSA or ECDSA")
+	}
 
 	rsp, err := s.GenKey(ctx, &GenKeyRequest{
 		Id:        id,
-		Type:      "ec",
+		Type:      typ,
 		NotBefore: time.Now().Unix(),
 		NotAfter:  time.Now().Add(10 * time.Hour * 24 * 365).Unix(),
+		NotStore:  !store,
 	})
 	if err != nil {
 		return nil, err

@@ -82,9 +82,10 @@ func (s *Server) ListKey(context.Context) (*ListKeyResponse, error) {
 
 type GenKeyRequest struct {
 	Id        string `json:"id"`
-	Type      string `json:"type"`      // rsa, ecdsa
+	Type      string `json:"type"`      // RSA, ECDSA
 	NotBefore int64  `json:"notBefore"` // unix epoch in seconds
 	NotAfter  int64  `json:"notAfter"`  // unix epoch in seconds
+	NotStore  bool   `json:"notStore"`  // if true, the generated key will not be stored in the server
 }
 
 type GenKeyResponse struct {
@@ -140,7 +141,7 @@ func (s *Server) GenKey(ctx context.Context, req *GenKeyRequest) (*GenKeyRespons
 		NotAfter:  time.Unix(req.NotAfter, 0),
 		Issuer:    ca,
 		IssuerKey: caKey,
-		Type:      req.Type,
+		Type:      strings.ToLower(req.Type),
 		Format:    "pkcs8",
 	}
 	cert, key, token, err := generateClientKey(&gen)
@@ -149,7 +150,9 @@ func (s *Server) GenKey(ctx context.Context, req *GenKeyRequest) (*GenKeyRespons
 		return rsp, nil
 	}
 
-	s.SetAuthorizedCertificate(req.Id, cert)
+	if !req.NotStore {
+		s.SetAuthorizedCertificate(req.Id, cert)
+	}
 
 	rsp.Id = req.Id
 	rsp.Token = string(token)
@@ -229,9 +232,10 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	var clientPub any
 	var clientKeyPEM []byte
 
-	switch req.Type {
-	case "rsa":
-		bitSize := 4096
+	var keyType = strings.ToLower(req.Type)
+	switch {
+	case strings.HasPrefix(keyType, "rsa"):
+		bitSize := 2048
 		key, err := rsa.GenerateKey(rand.Reader, bitSize)
 		if err != nil {
 			return nil, nil, "", err
@@ -250,7 +254,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 			keyBytes, _ = x509.MarshalPKCS8PrivateKey(clientKey)
 		}
 		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
-	case "ec", "ecdsa":
+	case strings.HasPrefix(keyType, "ec"):
 		ec := NewEllipticCurveP256()
 		pri, pub, err := ec.GenerateKeys()
 		if err != nil {
