@@ -344,6 +344,11 @@ func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error
 	}
 }
 
+// listSshKeys returns authorized SSH keys for the current user.
+//
+// params:
+//
+// return: authorized SSH key list
 func (s *Server) listSshKeys(ctx context.Context) ([]*AuthorizedSshKey, error) {
 	// typ exists for compatibility with ssh key types.
 	user := "sys"
@@ -478,6 +483,14 @@ func ConvertAuthorizedSshKeyToUserAuthInfo(k *AuthorizedSshKey) (*UserAuthKeyInf
 	}, nil
 }
 
+// addSshKey adds an authorized SSH public key.
+//
+// params:
+//   - typ: SSH key type prefix from authorized key format
+//   - key: SSH public key body
+//   - comment: key comment text
+//
+// return: null on success
 func (s *Server) addSshKey(ctx context.Context, typ string, key string, comment string) error {
 	return s.AddAuthorizedSshKey(ctx, "sys", strings.Join([]string{typ, key, comment}, " "))
 }
@@ -558,6 +571,12 @@ func (s *Server) AddAuthorizedSshKey(ctx context.Context, user string, rawKey st
 	return nil
 }
 
+// deleteSshKey removes an authorized SSH key by fingerprint.
+//
+// params:
+//   - fingerprint: SSH key fingerprint
+//
+// return: null on success
 func (s *Server) deleteSshKey(ctx context.Context, fingerprint string) error {
 	user := "sys"
 	if c, ok := ctx.(*gin.Context); ok {
@@ -637,7 +656,11 @@ type ShutdownResponse struct {
 	Elapse  string `json:"elapse"`
 }
 
-// mgmt server implements
+// Shutdown requests server shutdown from a local caller.
+//
+// params:
+//
+// return: shutdown status
 func (s *Server) Shutdown(ctx context.Context) (*ShutdownResponse, error) {
 	if ctx, ok := ctx.(*gin.Context); ok {
 		remoteAddr := ctx.RemoteIP()

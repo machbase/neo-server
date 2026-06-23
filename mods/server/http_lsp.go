@@ -30,6 +30,12 @@ func (req *lspDocumentRequest) document() base.Document {
 	}
 }
 
+// rpcLspDiagnostics returns diagnostics for a document.
+//
+// params:
+//   - req: LSP document request
+//
+// return: diagnostics payload
 func rpcLspDiagnostics(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
 	svc, err := lspLanguageService(req.Language)
 	if err != nil {
@@ -42,6 +48,12 @@ func rpcLspDiagnostics(ctx context.Context, req lspDocumentRequest) (map[string]
 	return map[string]any{"diagnostics": diagnostics}, nil
 }
 
+// rpcLspCompletion returns completion items for a document position.
+//
+// params:
+//   - req: LSP document request
+//
+// return: completion item payload
 func rpcLspCompletion(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
 	svc, err := lspLanguageService(req.Language)
 	if err != nil {
@@ -54,6 +66,12 @@ func rpcLspCompletion(ctx context.Context, req lspDocumentRequest) (map[string]a
 	return map[string]any{"items": items}, nil
 }
 
+// rpcLspHover returns hover information for a document position.
+//
+// params:
+//   - req: LSP document request
+//
+// return: hover payload
 func rpcLspHover(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
 	svc, err := lspLanguageService(req.Language)
 	if err != nil {
@@ -66,6 +84,12 @@ func rpcLspHover(ctx context.Context, req lspDocumentRequest) (map[string]any, e
 	return map[string]any{"hover": hover}, nil
 }
 
+// rpcLspSignatureHelp returns signature help for a document position.
+//
+// params:
+//   - req: LSP document request
+//
+// return: signature help payload
 func rpcLspSignatureHelp(ctx context.Context, req lspDocumentRequest) (map[string]any, error) {
 	svc, err := lspLanguageService(req.Language)
 	if err != nil {
@@ -78,6 +102,12 @@ func rpcLspSignatureHelp(ctx context.Context, req lspDocumentRequest) (map[strin
 	return map[string]any{"signatureHelp": help}, nil
 }
 
+// rpcLspMetadata returns language metadata.
+//
+// params:
+//   - req: LSP metadata request
+//
+// return: language metadata payload
 func rpcLspMetadata(req lspMetadataRequest) (map[string]any, error) {
 	metadata, err := lspMetadata(req.Language)
 	if err != nil {

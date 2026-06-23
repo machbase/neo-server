@@ -20,6 +20,12 @@ func (s *Server) cleanupServiceProxies(serviceName string) {
 	}
 }
 
+// registerProxy registers a service proxy entry.
+//
+// params:
+//   - req: proxy registration request
+//
+// return: registered proxy snapshot
 func (s *Server) registerProxy(req ProxyRegisterRequest) (ProxyEntrySnapshot, error) {
 	if s.proxyMgr == nil {
 		s.proxyMgr = NewProxyManager()
@@ -27,6 +33,12 @@ func (s *Server) registerProxy(req ProxyRegisterRequest) (ProxyEntrySnapshot, er
 	return s.proxyMgr.Register(req)
 }
 
+// unregisterProxy removes service proxy entries by filter.
+//
+// params:
+//   - req: proxy unregister request
+//
+// return: removed proxy snapshots
 func (s *Server) unregisterProxy(req ProxyUnregisterRequest) ([]ProxyEntrySnapshot, error) {
 	if s.proxyMgr == nil {
 		s.proxyMgr = NewProxyManager()
@@ -34,6 +46,12 @@ func (s *Server) unregisterProxy(req ProxyUnregisterRequest) ([]ProxyEntrySnapsh
 	return s.proxyMgr.Unregister(req)
 }
 
+// listProxies lists service proxy entries.
+//
+// params:
+//   - service: service name filter
+//
+// return: proxy snapshot list
 func (s *Server) listProxies(service string) ([]ProxyEntrySnapshot, error) {
 	if s.proxyMgr == nil {
 		return []ProxyEntrySnapshot{}, nil
@@ -41,6 +59,12 @@ func (s *Server) listProxies(service string) ([]ProxyEntrySnapshot, error) {
 	return s.proxyMgr.List(service), nil
 }
 
+// getProxy gets one service proxy entry.
+//
+// params:
+//   - req: proxy lookup request
+//
+// return: proxy snapshot
 func (s *Server) getProxy(req ProxyGetRequest) (ProxyEntrySnapshot, error) {
 	if s.proxyMgr == nil {
 		return ProxyEntrySnapshot{}, errProxyNotFound

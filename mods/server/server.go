@@ -1238,6 +1238,12 @@ func scoreMachHost(host string, ifAddrs []*util.InterfaceAddr) int {
 	return score
 }
 
+// getServicePorts returns service listener addresses.
+//
+// params:
+//   - svc: service name filter; empty string returns all services
+//
+// return: service ports sorted by service and address
 func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	s.servicePortsLock.RLock()
 	defer s.servicePortsLock.RUnlock()
@@ -1263,6 +1269,11 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	return ports, nil
 }
 
+// listShells returns registered shell definitions.
+//
+// params:
+//
+// return: shell definitions
 func (s *Server) listShells() []*model.ShellDefinition {
 	lst := s.models.ShellProvider().GetAllShells(false)
 	if lst == nil {
@@ -1271,6 +1282,13 @@ func (s *Server) listShells() []*model.ShellDefinition {
 	return lst
 }
 
+// addShell adds a user shell definition.
+//
+// params:
+//   - name: shell display name
+//   - command: shell launch command
+//
+// return: created shell identifier
 func (s *Server) addShell(name string, command string) (string, error) {
 	def := &model.ShellDefinition{}
 	if len(name) > 16 {
@@ -1297,10 +1315,22 @@ func (s *Server) addShell(name string, command string) (string, error) {
 	return def.Id, nil
 }
 
+// deleteShell removes a shell definition by identifier.
+//
+// params:
+//   - id: shell identifier
+//
+// return: null on success
 func (s *Server) deleteShell(id string) error {
 	return s.models.ShellProvider().RemoveShell(id)
 }
 
+// getBridge returns bridge configuration by name.
+//
+// params:
+//   - name: bridge name
+//
+// return: bridge information
 func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.GetBridge(ctx, &bridge.GetBridgeRequest{
@@ -1315,6 +1345,11 @@ func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
 	return rsp.Bridge, nil
 }
 
+// listBridges returns all bridge configurations.
+//
+// params:
+//
+// return: bridge list
 func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
 	ctx := context.Background()
 	if rsp, err := s.bridgeSvc.ListBridge(ctx); err != nil {
@@ -1327,6 +1362,14 @@ func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
 	}
 }
 
+// addBridge creates a bridge configuration.
+//
+// params:
+//   - name: bridge name
+//   - typ: bridge type
+//   - conn: bridge connection string
+//
+// return: null on success
 func (s *Server) addBridge(name string, typ string, conn string) error {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridge.AddBridgeRequest{
@@ -1343,6 +1386,12 @@ func (s *Server) addBridge(name string, typ string, conn string) error {
 	return nil
 }
 
+// deleteBridge removes a bridge configuration.
+//
+// params:
+//   - name: bridge name
+//
+// return: null on success
 func (s *Server) deleteBridge(name string) error {
 	ctx := context.Background()
 
@@ -1376,6 +1425,12 @@ func (s *Server) deleteBridge(name string) error {
 	return nil
 }
 
+// testBridge tests bridge connectivity.
+//
+// params:
+//   - name: bridge name
+//
+// return: true when the bridge test succeeds
 func (s *Server) testBridge(name string) (bool, error) {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridge.TestBridgeRequest{
@@ -1399,6 +1454,12 @@ type BridgeStats struct {
 	Appended uint64
 }
 
+// statsBridge returns runtime statistics for a bridge.
+//
+// params:
+//   - name: bridge name
+//
+// return: bridge statistics
 func (s *Server) statsBridge(name string) (BridgeStats, error) {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridge.StatsBridgeRequest{
@@ -1426,6 +1487,13 @@ type BridgeExecResult struct {
 	RowsAffected   int64
 }
 
+// execBridge executes a bridge SQL command.
+//
+// params:
+//   - name: bridge name
+//   - command: SQL statement for exec
+//
+// return: execution result
 func (s *Server) execBridge(name string, command string) (BridgeExecResult, error) {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
@@ -1462,6 +1530,13 @@ type BridgeQueryColumn struct {
 	Length int
 }
 
+// queryBridge executes a bridge SQL query.
+//
+// params:
+//   - name: bridge name
+//   - query: SQL query statement
+//
+// return: query handle and column metadata
 func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, error) {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
@@ -1497,6 +1572,12 @@ type BridgeQueryRow struct {
 	Values    []interface{}
 }
 
+// fetchResultBridge fetches one row from a bridge query handle.
+//
+// params:
+//   - handle: bridge query handle
+//
+// return: row data and end-of-result flag
 func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.SqlQueryResultFetch(ctx, &bridge.SqlQueryResult{
@@ -1515,6 +1596,12 @@ func (s *Server) fetchResultBridge(handle string) (BridgeQueryRow, error) {
 	return ret, nil
 }
 
+// closeResultBridge closes a bridge query handle.
+//
+// params:
+//   - handle: bridge query handle
+//
+// return: null on success
 func (s *Server) closeResultBridge(handle string) error {
 	ctx := context.Background()
 	rsp, err := s.bridgeSvc.SqlQueryResultClose(ctx, &bridge.SqlQueryResult{
@@ -1529,6 +1616,11 @@ func (s *Server) closeResultBridge(handle string) error {
 	return nil
 }
 
+// listKeys returns server-managed key pairs.
+//
+// params:
+//
+// return: key information list
 func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 	rsp, err := s.ListKey(ctx)
 	if err != nil {
@@ -1589,8 +1681,12 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) 
 	}, nil
 }
 
-// deleteKey deletes a key pair from the server's key store by its identifier.
-// id: the identifier of the key pair to delete
+// deleteKey deletes a key pair from the server key store.
+//
+// params:
+//   - id: key pair identifier
+//
+// return: null on success
 func (s *Server) deleteKey(ctx context.Context, id string) error {
 	rsp, err := s.DelKey(ctx, &DelKeyRequest{
 		Id: id,
@@ -1604,6 +1700,11 @@ func (s *Server) deleteKey(ctx context.Context, id string) error {
 	return nil
 }
 
+// getServerCertificate returns the server certificate in PEM format.
+//
+// params:
+//
+// return: server certificate PEM text
 func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
 	rsp, err := s.ServerKey(ctx)
 	if err != nil {
@@ -1615,6 +1716,11 @@ func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
 	return rsp.Certificate, nil
 }
 
+// listSchedules returns all scheduler entries.
+//
+// params:
+//
+// return: schedule list
 func (s *Server) listSchedules(ctx context.Context) ([]*scheduler.Schedule, error) {
 	rsp, err := s.schedSvc.ListSchedule(ctx)
 	if err != nil {
@@ -1626,6 +1732,15 @@ func (s *Server) listSchedules(ctx context.Context) ([]*scheduler.Schedule, erro
 	return rsp.Schedules, nil
 }
 
+// addTimerSchedule creates a timer schedule.
+//
+// params:
+//   - name: schedule name
+//   - spec: cron-like timer expression
+//   - command: task command to execute
+//   - autoStart: whether to start right after creation
+//
+// return: null on success
 func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
 	req := &scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(name),
@@ -1644,6 +1759,17 @@ func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string,
 	return nil
 }
 
+// addSubscriberSchedule creates an MQTT subscriber schedule.
+//
+// params:
+//   - name: schedule name
+//   - bridge: bridge name
+//   - command: task command to execute
+//   - autoStart: whether to start right after creation
+//   - topic: MQTT topic filter
+//   - qos: MQTT QoS level
+//
+// return: null on success
 func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge string, command string, autoStart bool, topic string, qos int) error {
 	req := scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(name),
@@ -1668,6 +1794,12 @@ func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge 
 	return nil
 }
 
+// deleteSchedule removes a schedule by name.
+//
+// params:
+//   - name: schedule name
+//
+// return: null on success
 func (s *Server) deleteSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.DelSchedule(ctx, &scheduler.DelScheduleRequest{Name: name})
@@ -1680,6 +1812,12 @@ func (s *Server) deleteSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
+// startSchedule starts a schedule.
+//
+// params:
+//   - name: schedule name
+//
+// return: null on success
 func (s *Server) startSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.StartSchedule(ctx, &scheduler.StartScheduleRequest{Name: name})
@@ -1692,6 +1830,12 @@ func (s *Server) startSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
+// stopSchedule stops a schedule.
+//
+// params:
+//   - name: schedule name
+//
+// return: null on success
 func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	name = strings.ToLower(name)
 	rsp, err := s.schedSvc.StopSchedule(ctx, &scheduler.StopScheduleRequest{Name: name})
@@ -1704,6 +1848,12 @@ func (s *Server) stopSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
+// setHttpDebug updates and returns HTTP debug settings.
+//
+// params:
+//   - m: debug setting map with enable and logLatency keys
+//
+// return: normalized debug setting map
 func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string]any, error) {
 	enableAny, hasEnable := m["enable"]
 	latencyAny, hasLatency := m["logLatency"]
@@ -1731,6 +1881,11 @@ func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string
 	return m, nil
 }
 
+// listSessions returns active server sessions.
+//
+// params:
+//
+// return: session list
 func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
 	rsp, err := s.Sessions(ctx, &SessionsRequest{
 		Statz: false, Sessions: true, ResetStatz: false,
@@ -1747,6 +1902,13 @@ func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
 	return rsp.Sessions, nil
 }
 
+// killSession terminates a session.
+//
+// params:
+//   - id: session identifier
+//   - force: whether to force termination
+//
+// return: null on success
 func (s *Server) killSession(ctx context.Context, id string, force bool) error {
 	rsp, err := s.KillSession(ctx, &KillSessionRequest{
 		Id:    id,
@@ -1761,6 +1923,12 @@ func (s *Server) killSession(ctx context.Context, id string, force bool) error {
 	return nil
 }
 
+// statSession returns session statistics.
+//
+// params:
+//   - reset: whether to reset accumulated stats
+//
+// return: session statistics
 func (s *Server) statSession(ctx context.Context, reset bool) (*spi.Statz, error) {
 	rsp, err := s.Sessions(ctx, &SessionsRequest{
 		Statz: true, Sessions: false, ResetStatz: reset,
@@ -1782,6 +1950,11 @@ type SessionLimit struct {
 	RemainedOpenQuery int
 }
 
+// getSessionLimit returns session pool limit settings.
+//
+// params:
+//
+// return: session limit information
 func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
 	rsp, err := s.LimitSession(ctx, &LimitSessionRequest{
 		Cmd: "get",
@@ -1802,6 +1975,12 @@ func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
 	return ret, nil
 }
 
+// setSessionLimit updates session pool limit settings.
+//
+// params:
+//   - m: limit setting map with MaxPoolSize, MaxOpenConn, and MaxOpenQuery keys
+//
+// return: null on success
 func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 	var limit = SessionLimit{
 		MaxPoolSize:  -1,
@@ -1839,6 +2018,12 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 	return nil
 }
 
+// splitSqlStatements splits SQL text into executable statements.
+//
+// params:
+//   - content: SQL script text
+//
+// return: parsed SQL statements
 func (s *Server) splitSqlStatements(ctx context.Context, content string) ([]*util.SqlStatement, error) {
 	statements, err := util.SplitSqlStatements(strings.NewReader(content))
 	if err != nil {

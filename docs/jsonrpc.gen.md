@@ -9,15 +9,17 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### markdown.render
 
+rpcMarkdownRender renders markdown to HTML.
+
 `markdown.render(markdown, darkMode)`
 
 *Params*
-- `markdown` *string*
-- `darkMode` *bool*
+- `markdown` *string* - markdown source text
+- `darkMode` *bool* - whether to render with dark-mode style
 
 *Return*
 
-- `string|error`
+- `string|error - rendered HTML text`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -61,14 +63,16 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### vizspec.render
 
+RPCVizspecRender normalizes and validates a vizspec payload.
+
 `vizspec.render(vizspec)`
 
 *Params*
-- `vizspec` *object*
+- `vizspec` *object* - input visualization specification
 
 *Return*
 
-- `object|error`
+- `object|error - normalized vizspec payload`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -108,15 +112,17 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### vizspec.export
 
+RPCVizspecExport exports a vizspec payload to a target format.
+
 `vizspec.export(vizspec, format)`
 
 *Params*
-- `vizspec` *object*
-- `format` *string*
+- `vizspec` *object* - input visualization specification
+- `format` *string* - export format (svg, png, echarts)
 
 *Return*
 
-- `object|error`
+- `object|error - export payload including schema, format, mimeType, and data`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -160,6 +166,8 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### server.info.get
 
+getServerInfo returns runtime and version information.
+
 `server.info.get()`
 
 *Params*
@@ -168,7 +176,7 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 *Return*
 
-- `object<ServerInfoResponse>|error`
+- `object<ServerInfoResponse>|error - server information payload`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -206,14 +214,16 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### server.info.statz
 
+statzViz builds visualization specifications for metric names.
+
 `server.info.statz(names)`
 
 *Params*
-- `names` *array<string>*
+- `names` *array<string>* - metric names
 
 *Return*
 
-- `object<ServerStatzResponse>|error`
+- `object<ServerStatzResponse>|error - visualization specifications grouped by name`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -253,15 +263,17 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### server.info.query
 
+statzQuery queries metric time-series rows.
+
 `server.info.query(maxRows, pattern)`
 
 *Params*
-- `maxRows` *int*
-- `pattern` *array<string>*
+- `maxRows` *int* - maximum row count
+- `pattern` *array<string>* - wildcard filters for metric keys
 
 *Return*
 
-- `object<StatzQueryResult>|error`
+- `object<StatzQueryResult>|error - tabular metric query result`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -302,14 +314,16 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### server.info.keys
 
+statzKeys lists available metric keys with optional patterns.
+
 `server.info.keys(pattern)`
 
 *Params*
-- `pattern` *array<string>*
+- `pattern` *array<string>* - wildcard filters for metric keys
 
 *Return*
 
-- `array<string>|error`
+- `array<string>|error - sorted metric key names`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -349,6 +363,8 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### server.certificate.get
 
+getServerCertificate returns the server certificate in PEM format.
+
 `server.certificate.get()`
 
 *Params*
@@ -357,7 +373,7 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 *Return*
 
-- `string|error`
+- `string|error - server certificate PEM text`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -395,7 +411,7 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 #### server.shutdown
 
-mgmt server implements
+Shutdown requests server shutdown from a local caller.
 
 `server.shutdown()`
 
@@ -405,7 +421,7 @@ mgmt server implements
 
 *Return*
 
-- `object<ShutdownResponse>|error`
+- `object<ShutdownResponse>|error - shutdown status`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -446,14 +462,16 @@ mgmt server implements
 
 #### service.port.list
 
+getServicePorts returns service listener addresses.
+
 `service.port.list(svc)`
 
 *Params*
-- `svc` *string*
+- `svc` *string* - service name filter; empty string returns all services
 
 *Return*
 
-- `array<object<model.ServicePort>>|error`
+- `array<object<model.ServicePort>>|error - service ports sorted by service and address`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -496,14 +514,16 @@ mgmt server implements
 
 #### proxy.register
 
+registerProxy registers a service proxy entry.
+
 `proxy.register(req)`
 
 *Params*
-- `req` *object<ProxyRegisterRequest>*
+- `req` *object<ProxyRegisterRequest>* - proxy registration request
 
 *Return*
 
-- `object<ProxyEntrySnapshot>|error`
+- `object<ProxyEntrySnapshot>|error - registered proxy snapshot`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -543,14 +563,16 @@ mgmt server implements
 
 #### proxy.unregister
 
+unregisterProxy removes service proxy entries by filter.
+
 `proxy.unregister(req)`
 
 *Params*
-- `req` *object<ProxyUnregisterRequest>*
+- `req` *object<ProxyUnregisterRequest>* - proxy unregister request
 
 *Return*
 
-- `array<object<ProxyEntrySnapshot>>|error`
+- `array<object<ProxyEntrySnapshot>>|error - removed proxy snapshots`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -590,14 +612,16 @@ mgmt server implements
 
 #### proxy.list
 
+listProxies lists service proxy entries.
+
 `proxy.list(service)`
 
 *Params*
-- `service` *string*
+- `service` *string* - service name filter
 
 *Return*
 
-- `array<object<ProxyEntrySnapshot>>|error`
+- `array<object<ProxyEntrySnapshot>>|error - proxy snapshot list`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -637,14 +661,16 @@ mgmt server implements
 
 #### proxy.get
 
+getProxy gets one service proxy entry.
+
 `proxy.get(req)`
 
 *Params*
-- `req` *object<ProxyGetRequest>*
+- `req` *object<ProxyGetRequest>* - proxy lookup request
 
 *Return*
 
-- `object<ProxyEntrySnapshot>|error`
+- `object<ProxyEntrySnapshot>|error - proxy snapshot`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -687,6 +713,8 @@ mgmt server implements
 
 #### shell.list
 
+listShells returns registered shell definitions.
+
 `shell.list()`
 
 *Params*
@@ -695,7 +723,7 @@ mgmt server implements
 
 *Return*
 
-- `array<object<model.ShellDefinition>>|error`
+- `array<object<model.ShellDefinition>>|error - shell definitions`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -733,15 +761,17 @@ mgmt server implements
 
 #### shell.add
 
+addShell adds a user shell definition.
+
 `shell.add(name, command)`
 
 *Params*
-- `name` *string*
-- `command` *string*
+- `name` *string* - shell display name
+- `command` *string* - shell launch command
 
 *Return*
 
-- `string|error`
+- `string|error - created shell identifier`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -782,10 +812,15 @@ mgmt server implements
 
 #### shell.delete
 
+deleteShell removes a shell definition by identifier.
+
+
+return: null on success
+
 `shell.delete(id)`
 
 *Params*
-- `id` *string*
+- `id` *string* - shell identifier
 
 *Return*
 
@@ -832,6 +867,8 @@ mgmt server implements
 
 #### bridge.list
 
+listBridges returns all bridge configurations.
+
 `bridge.list()`
 
 *Params*
@@ -840,7 +877,7 @@ mgmt server implements
 
 *Return*
 
-- `array<object<bridge.BridgeInfo>>|error`
+- `array<object<bridge.BridgeInfo>>|error - bridge list`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -878,14 +915,16 @@ mgmt server implements
 
 #### bridge.get
 
+getBridge returns bridge configuration by name.
+
 `bridge.get(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - bridge name
 
 *Return*
 
-- `object<bridge.BridgeInfo>|error`
+- `object<bridge.BridgeInfo>|error - bridge information`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -925,12 +964,17 @@ mgmt server implements
 
 #### bridge.add
 
+addBridge creates a bridge configuration.
+
+
+return: null on success
+
 `bridge.add(name, typ, conn)`
 
 *Params*
-- `name` *string*
-- `typ` *string*
-- `conn` *string*
+- `name` *string* - bridge name
+- `typ` *string* - bridge type
+- `conn` *string* - bridge connection string
 
 *Return*
 
@@ -976,10 +1020,15 @@ mgmt server implements
 
 #### bridge.delete
 
+deleteBridge removes a bridge configuration.
+
+
+return: null on success
+
 `bridge.delete(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - bridge name
 
 *Return*
 
@@ -1023,14 +1072,16 @@ mgmt server implements
 
 #### bridge.test
 
+testBridge tests bridge connectivity.
+
 `bridge.test(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - bridge name
 
 *Return*
 
-- `bool|error`
+- `bool|error - true when the bridge test succeeds`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1070,14 +1121,16 @@ mgmt server implements
 
 #### bridge.stats
 
+statsBridge returns runtime statistics for a bridge.
+
 `bridge.stats(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - bridge name
 
 *Return*
 
-- `object<BridgeStats>|error`
+- `object<BridgeStats>|error - bridge statistics`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1117,15 +1170,17 @@ mgmt server implements
 
 #### bridge.exec
 
+execBridge executes a bridge SQL command.
+
 `bridge.exec(name, command)`
 
 *Params*
-- `name` *string*
-- `command` *string*
+- `name` *string* - bridge name
+- `command` *string* - SQL statement for exec
 
 *Return*
 
-- `object<BridgeExecResult>|error`
+- `object<BridgeExecResult>|error - execution result`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1166,15 +1221,17 @@ mgmt server implements
 
 #### bridge.query
 
+queryBridge executes a bridge SQL query.
+
 `bridge.query(name, query)`
 
 *Params*
-- `name` *string*
-- `query` *string*
+- `name` *string* - bridge name
+- `query` *string* - SQL query statement
 
 *Return*
 
-- `object<BridgeQueryResult>|error`
+- `object<BridgeQueryResult>|error - query handle and column metadata`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1215,14 +1272,16 @@ mgmt server implements
 
 #### bridge.result.fetch
 
+fetchResultBridge fetches one row from a bridge query handle.
+
 `bridge.result.fetch(handle)`
 
 *Params*
-- `handle` *string*
+- `handle` *string* - bridge query handle
 
 *Return*
 
-- `object<BridgeQueryRow>|error`
+- `object<BridgeQueryRow>|error - row data and end-of-result flag`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1262,10 +1321,15 @@ mgmt server implements
 
 #### bridge.result.close
 
+closeResultBridge closes a bridge query handle.
+
+
+return: null on success
+
 `bridge.result.close(handle)`
 
 *Params*
-- `handle` *string*
+- `handle` *string* - bridge query handle
 
 *Return*
 
@@ -1312,6 +1376,8 @@ mgmt server implements
 
 #### sshkey.list
 
+listSshKeys returns authorized SSH keys for the current user.
+
 `sshkey.list()`
 
 *Params*
@@ -1320,7 +1386,7 @@ mgmt server implements
 
 *Return*
 
-- `array<object<AuthorizedSshKey>>|error`
+- `array<object<AuthorizedSshKey>>|error - authorized SSH key list`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1358,12 +1424,17 @@ mgmt server implements
 
 #### sshkey.add
 
+addSshKey adds an authorized SSH public key.
+
+
+return: null on success
+
 `sshkey.add(typ, key, comment)`
 
 *Params*
-- `typ` *string*
-- `key` *string*
-- `comment` *string*
+- `typ` *string* - SSH key type prefix from authorized key format
+- `key` *string* - SSH public key body
+- `comment` *string* - key comment text
 
 *Return*
 
@@ -1409,10 +1480,15 @@ mgmt server implements
 
 #### sshkey.delete
 
+deleteSshKey removes an authorized SSH key by fingerprint.
+
+
+return: null on success
+
 `sshkey.delete(fingerprint)`
 
 *Params*
-- `fingerprint` *string*
+- `fingerprint` *string* - SSH key fingerprint
 
 *Return*
 
@@ -1459,6 +1535,8 @@ mgmt server implements
 
 #### key.list
 
+listKeys returns server-managed key pairs.
+
 `key.list()`
 
 *Params*
@@ -1467,7 +1545,7 @@ mgmt server implements
 
 *Return*
 
-- `array<object<KeyInfo>>|error`
+- `array<object<KeyInfo>>|error - key information list`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1564,12 +1642,15 @@ The return type is map[string]string with keys "id", "certificate", "key", and "
 
 #### key.delete
 
-deleteKey deletes a key pair from the server's key store by its identifier.
+deleteKey deletes a key pair from the server key store.
+
+
+return: null on success
 
 `key.delete(id)`
 
 *Params*
-- `id` *string* - the identifier of the key pair to delete
+- `id` *string* - key pair identifier
 
 *Return*
 
@@ -1616,6 +1697,8 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### schedule.list
 
+listSchedules returns all scheduler entries.
+
 `schedule.list()`
 
 *Params*
@@ -1624,7 +1707,7 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 *Return*
 
-- `array<object<scheduler.Schedule>>|error`
+- `array<object<scheduler.Schedule>>|error - schedule list`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1662,13 +1745,18 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### schedule.timer.add
 
+addTimerSchedule creates a timer schedule.
+
+
+return: null on success
+
 `schedule.timer.add(name, spec, command, autoStart)`
 
 *Params*
-- `name` *string*
-- `spec` *string*
-- `command` *string*
-- `autoStart` *bool*
+- `name` *string* - schedule name
+- `spec` *string* - cron-like timer expression
+- `command` *string* - task command to execute
+- `autoStart` *bool* - whether to start right after creation
 
 *Return*
 
@@ -1715,15 +1803,20 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### schedule.subscriber.add
 
+addSubscriberSchedule creates an MQTT subscriber schedule.
+
+
+return: null on success
+
 `schedule.subscriber.add(name, bridge, command, autoStart, topic, qos)`
 
 *Params*
-- `name` *string*
-- `bridge` *string*
-- `command` *string*
-- `autoStart` *bool*
-- `topic` *string*
-- `qos` *int*
+- `name` *string* - schedule name
+- `bridge` *string* - bridge name
+- `command` *string* - task command to execute
+- `autoStart` *bool* - whether to start right after creation
+- `topic` *string* - MQTT topic filter
+- `qos` *int* - MQTT QoS level
 
 *Return*
 
@@ -1772,10 +1865,15 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### schedule.delete
 
+deleteSchedule removes a schedule by name.
+
+
+return: null on success
+
 `schedule.delete(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - schedule name
 
 *Return*
 
@@ -1819,10 +1917,15 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### schedule.start
 
+startSchedule starts a schedule.
+
+
+return: null on success
+
 `schedule.start(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - schedule name
 
 *Return*
 
@@ -1866,10 +1969,15 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### schedule.stop
 
+stopSchedule stops a schedule.
+
+
+return: null on success
+
 `schedule.stop(name)`
 
 *Params*
-- `name` *string*
+- `name` *string* - schedule name
 
 *Return*
 
@@ -1916,14 +2024,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### http.debug.set
 
+setHttpDebug updates and returns HTTP debug settings.
+
 `http.debug.set(m)`
 
 *Params*
-- `m` *object*
+- `m` *object* - debug setting map with enable and logLatency keys
 
 *Return*
 
-- `object|error`
+- `object|error - normalized debug setting map`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1966,6 +2076,8 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### session.list
 
+listSessions returns active server sessions.
+
 `session.list()`
 
 *Params*
@@ -1974,7 +2086,7 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 *Return*
 
-- `array<object<Session>>|error`
+- `array<object<Session>>|error - session list`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2012,11 +2124,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### session.kill
 
+killSession terminates a session.
+
+
+return: null on success
+
 `session.kill(id, force)`
 
 *Params*
-- `id` *string*
-- `force` *bool*
+- `id` *string* - session identifier
+- `force` *bool* - whether to force termination
 
 *Return*
 
@@ -2061,14 +2178,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### session.stat
 
+statSession returns session statistics.
+
 `session.stat(reset)`
 
 *Params*
-- `reset` *bool*
+- `reset` *bool* - whether to reset accumulated stats
 
 *Return*
 
-- `object<spi.Statz>|error`
+- `object<spi.Statz>|error - session statistics`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2108,6 +2227,8 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### session.limit.get
 
+getSessionLimit returns session pool limit settings.
+
 `session.limit.get()`
 
 *Params*
@@ -2116,7 +2237,7 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 *Return*
 
-- `object<SessionLimit>|error`
+- `object<SessionLimit>|error - session limit information`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2154,10 +2275,15 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### session.limit.set
 
+setSessionLimit updates session pool limit settings.
+
+
+return: null on success
+
 `session.limit.set(m)`
 
 *Params*
-- `m` *object*
+- `m` *object* - limit setting map with MaxPoolSize, MaxOpenConn, and MaxOpenQuery keys
 
 *Return*
 
@@ -2204,14 +2330,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### sql.split
 
+splitSqlStatements splits SQL text into executable statements.
+
 `sql.split(content)`
 
 *Params*
-- `content` *string*
+- `content` *string* - SQL script text
 
 *Return*
 
-- `array<object<util.SqlStatement>>|error`
+- `array<object<util.SqlStatement>>|error - parsed SQL statements`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2254,14 +2382,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### lsp.diagnostics
 
+rpcLspDiagnostics returns diagnostics for a document.
+
 `lsp.diagnostics(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>*
+- `req` *object<lspDocumentRequest>* - LSP document request
 
 *Return*
 
-- `object|error`
+- `object|error - diagnostics payload`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2301,14 +2431,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### lsp.completion
 
+rpcLspCompletion returns completion items for a document position.
+
 `lsp.completion(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>*
+- `req` *object<lspDocumentRequest>* - LSP document request
 
 *Return*
 
-- `object|error`
+- `object|error - completion item payload`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2348,14 +2480,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### lsp.hover
 
+rpcLspHover returns hover information for a document position.
+
 `lsp.hover(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>*
+- `req` *object<lspDocumentRequest>* - LSP document request
 
 *Return*
 
-- `object|error`
+- `object|error - hover payload`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2395,14 +2529,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### lsp.signature
 
+rpcLspSignatureHelp returns signature help for a document position.
+
 `lsp.signature(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>*
+- `req` *object<lspDocumentRequest>* - LSP document request
 
 *Return*
 
-- `object|error`
+- `object|error - signature help payload`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2442,14 +2578,16 @@ deleteKey deletes a key pair from the server's key store by its identifier.
 
 #### lsp.metadata
 
+rpcLspMetadata returns language metadata.
+
 `lsp.metadata(req)`
 
 *Params*
-- `req` *object<lspMetadataRequest>*
+- `req` *object<lspMetadataRequest>* - LSP metadata request
 
 *Return*
 
-- `object|error`
+- `object|error - language metadata payload`
 
 <details>
 <summary>Request/Response JSON</summary>
