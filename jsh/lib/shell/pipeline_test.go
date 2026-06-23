@@ -475,7 +475,7 @@ func TestPipelineInterruptForwardingHelper(t *testing.T) {
 		t.Fatalf("mount work fs: %v", err)
 	}
 
-	var output bytes.Buffer
+	var output lockedBuffer
 	env := engine.NewEnv(
 		engine.WithFilesystem(fileSystem),
 		engine.WithExecBuilder(shellTestExecBuilder),
@@ -488,15 +488,42 @@ func TestPipelineInterruptForwardingHelper(t *testing.T) {
 
 	sh := &Shell{env: env}
 
+	interruptErr := make(chan error, 1)
 	go func() {
-		// Trigger SIGINT while shell is blocked in external command wait path.
-		time.Sleep(400 * time.Millisecond)
-		if proc, err := os.FindProcess(os.Getpid()); err == nil {
-			_ = proc.Signal(os.Interrupt)
+		// Wait until child is running before sending SIGINT to avoid timing races on slower CI runners.
+		deadline := time.After(3 * time.Second)
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-deadline:
+				interruptErr <- fmt.Errorf("timed out waiting for child-ready before sending SIGINT; output:\n%s", normalizeTestNewlines(output.String()))
+				return
+			case <-ticker.C:
+				if !strings.Contains(normalizeTestNewlines(output.String()), "child-ready") {
+					continue
+				}
+
+				proc, err := os.FindProcess(os.Getpid())
+				if err != nil {
+					interruptErr <- fmt.Errorf("find self process: %w", err)
+					return
+				}
+				if err := proc.Signal(os.Interrupt); err != nil {
+					interruptErr <- fmt.Errorf("send interrupt: %w", err)
+					return
+				}
+				interruptErr <- nil
+				return
+			}
 		}
 	}()
 
 	exitCode, alive := sh.process(`@sh -c "trap 'echo child-caught; exit 0' INT; echo child-ready; while :; do sleep 1; done"`)
+	if err := <-interruptErr; err != nil {
+		t.Fatal(err)
+	}
 
 	text := normalizeTestNewlines(output.String())
 	if !strings.Contains(text, "child-ready") {
