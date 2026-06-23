@@ -1123,6 +1123,7 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("session.limit.get", s.getSessionLimit)
 	ctl.RegisterJsonRpcHandler("session.limit.set", s.setSessionLimit)
 	ctl.RegisterJsonRpcHandler("sql.split", s.splitSqlStatements)
+	ctl.RegisterJsonRpcHandler("http.split", s.splitHttpStatements)
 	ctl.RegisterJsonRpcHandler("lsp.diagnostics", rpcLspDiagnostics)
 	ctl.RegisterJsonRpcHandler("lsp.completion", rpcLspCompletion)
 	ctl.RegisterJsonRpcHandler("lsp.hover", rpcLspHover)
@@ -2023,9 +2024,34 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 // params:
 //   - content: SQL script text
 //
-// return: parsed SQL statements
+// return: parsed SQL statements array, each statement contains the following fields:
+//   - text: the original SQL statement text
+//   - beginLine: the line number where the statement starts
+//   - endLine: the line number where the statement ends
+//   - isComment: whether the statement is a comment
+//   - env: scoped environment, if any, for the statement; it MAY contain the following fields:
+//   - env.error: error message if the statement has an error
+//   - env.bridge: bridge name if the statement is executed in a bridge context
 func (s *Server) splitSqlStatements(ctx context.Context, content string) ([]*util.SqlStatement, error) {
 	statements, err := util.SplitSqlStatements(strings.NewReader(content))
+	if err != nil {
+		return nil, err
+	}
+	return statements, nil
+}
+
+// splitHttpStatements splits HTTP script text into executable statements.
+// It parses multiple HTTP statements from the given content, each statement is separated by at least three continuous '#' characters.
+//
+// params:
+//   - content: HTTP script text
+//
+// return: parsed HTTP statements array, each statement contains the following fields:
+//   - text: the original HTTP statement text
+//   - beginLine: the line number where the statement starts
+//   - endLine: the line number where the statement ends
+func (s *Server) splitHttpStatements(ctx context.Context, content string) ([]*util.HttpStatement, error) {
+	statements, err := util.SplitHttpStatements(strings.NewReader(content))
 	if err != nil {
 		return nil, err
 	}

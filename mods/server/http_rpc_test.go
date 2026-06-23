@@ -121,6 +121,47 @@ func TestHttpRpc(t *testing.T) {
 				require.False(t, result.Get("1.isComment").Bool(), rsp.String())
 			},
 		},
+		{
+			name:   "splitSql_first",
+			method: "sql.split",
+			params: []interface{}{`select * from first;`},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t, `[{"text":"select * from first;","beginLine":1,"endLine":1,"isComment":false,"env":{}}]`, result.String())
+			},
+		},
+		{
+			name:   "splitSql_second",
+			method: "sql.split",
+			params: []interface{}{"\nselect * from second;  "},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t, `[{"text":"select * from second;","beginLine":2,"endLine":2,"isComment":false,"env":{}}]`, result.String())
+			},
+		},
+		{
+			name:   "httpSplit_simple_get",
+			method: "http.split",
+			params: []interface{}{`GET /web/api/tables HTTP/1.1
+Host: localhost:8080`},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t,
+					`[{"beginLine":1, "endLine":2, "text":"GET /web/api/tables HTTP/1.1\nHost: localhost:8080\n"}]`,
+					result.String())
+			},
+		},
+		{
+			name:   "httpSplit_simple_multiple",
+			method: "http.split",
+			params: []interface{}{"\n###\nGET /abc\n###\nGET /def\n###\nGET /gih"},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t,
+					`[{"beginLine":3, "endLine":3, "text":"GET /abc\n"}, {"beginLine":5, "endLine":5, "text":"GET /def\n"}, {"beginLine":7, "endLine":7, "text":"GET /gih\n"}]`,
+					result.String())
+			},
+		},
 	}
 	for _, tc := range tests {
 		RunJsonRpcTest(t, at, tc)
