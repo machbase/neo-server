@@ -20,6 +20,12 @@ func init() {
 
 }
 
+// RPCVizspecRender normalizes and validates a vizspec payload.
+//
+// params:
+//   - vizspec: input visualization specification
+//
+// return: normalized vizspec payload
 func RPCVizspecRender(vizspec map[string]any) (map[string]any, error) {
 	if vizspec == nil {
 		return nil, fmt.Errorf("vizspec is required")
@@ -143,6 +149,13 @@ func normalizePreferredValue(value any) string {
 	}
 }
 
+// RPCVizspecExport exports a vizspec payload to a target format.
+//
+// params:
+//   - vizspec: input visualization specification
+//   - format: export format (svg, png, echarts)
+//
+// return: export payload including schema, format, mimeType, and data
 func RPCVizspecExport(vizspec map[string]any, format string) (map[string]any, error) {
 	if vizspec == nil {
 		return nil, fmt.Errorf("vizspec is required")

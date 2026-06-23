@@ -30,9 +30,12 @@ const genConfig = {
     command: 'gen',
     usage: 'key gen [options]',
     description: 'Generate new key with the given id',
+    allowNegative: true,
     options: {
         help: optionHelp,
         output: { type: 'string', short: "o", description: 'Output file for the new key and token files', default: '-' },
+        type: { type: 'string', short: "t", description: 'Type of key to generate (RSA or ECDSA)', default: 'ECDSA' },
+        store: { type: 'boolean', short: "s", description: 'Whether to store the generated key in the server', default: true },
     },
     positionals: [
         { name: 'id', description: 'The identifier for the new key' },
@@ -96,9 +99,10 @@ function doGen(config, args) {
         return;
     }
     const output = config.output;
-
+    const type = config.type.toLowerCase();
+    const store = !!config.store
     const client = new neoapi.Client(config);
-    client.genKey(name)
+    client.genKey(name, type, store)
         .then(({ certificate, key, token }) => {
             if (output && output !== '-' && output !== '') {
                 const fs = require('fs');

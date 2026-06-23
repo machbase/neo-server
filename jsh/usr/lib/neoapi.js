@@ -310,9 +310,9 @@ class Client extends _Client {
             return this._rpcRequest('key.list', []);
         });
     }
-    genKey(id) {
+    genKey(id, type, store = true) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('key.generate', [id]);
+            return this._rpcRequest('key.generate', [id, type, store]);
         });
     }
     deleteKey(id) {

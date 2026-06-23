@@ -26,6 +26,13 @@ func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplici
 	return service.BuildRpcCallParams(handler, rawParams, service.JsonRpcImplicitParamResolver(resolveImplicit))
 }
 
+// rpcMarkdownRender renders markdown to HTML.
+//
+// params:
+//   - markdown: markdown source text
+//   - darkMode: whether to render with dark-mode style
+//
+// return: rendered HTML text
 func rpcMarkdownRender(markdown string, darkMode bool) (string, error) {
 	w := &strings.Builder{}
 	conv := mdconv.New(mdconv.WithDarkMode(darkMode))

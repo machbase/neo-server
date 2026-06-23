@@ -140,7 +140,7 @@ func TestHttpRpc(t *testing.T) {
 	JsonRpcTestCase{
 		name:   "generateKey",
 		method: "key.generate",
-		params: []interface{}{generatedKeyID},
+		params: []interface{}{generatedKeyID, "ecdsa", true},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			result := rsp.Get("result")
 			require.Equal(t, generatedKeyID, result.Get("id").String(), rsp.String())

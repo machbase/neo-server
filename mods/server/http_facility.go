@@ -504,8 +504,10 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	req := struct {
 		Name      string `json:"name"`
+		Type      string `json:"type"`
 		NotBefore int64  `json:"notBefore"`
 		NotAfter  int64  `json:"notAfter"`
+		NotStore  bool   `json:"notStore"`
 	}{}
 
 	err := ctx.ShouldBind(&req)
@@ -554,12 +556,16 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 	if req.NotAfter <= req.NotBefore {
 		req.NotAfter = time.Now().Add(10 * time.Hour * 24 * 365).Unix() // 10 years
 	}
+	if req.Type == "" {
+		req.Type = "ecdsa"
+	}
 
 	genRsp, err := svr.authServer.GenKey(ctx, &GenKeyRequest{
 		Id:        name,
-		Type:      "ec",
+		Type:      req.Type,
 		NotBefore: req.NotBefore,
 		NotAfter:  req.NotAfter,
+		NotStore:  req.NotStore,
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()

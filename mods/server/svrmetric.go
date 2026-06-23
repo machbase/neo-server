@@ -209,6 +209,11 @@ var maxProcessors int32
 var pid int32
 var ver *mods.Version
 
+// getServerInfo returns runtime and version information.
+//
+// params:
+//
+// return: server information payload
 func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
 	if maxProcessors == 0 {
 		maxProcessors = int32(runtime.GOMAXPROCS(-1))
@@ -281,6 +286,12 @@ type ServerStatz struct {
 	Spec *viz.Spec `json:"spec"`
 }
 
+// statzViz builds visualization specifications for metric names.
+//
+// params:
+//   - names: metric names
+//
+// return: visualization specifications grouped by name
 func statzViz(names []string) (*ServerStatzResponse, error) {
 	v := spi.Visualizer()
 	ret := &ServerStatzResponse{}
@@ -311,6 +322,12 @@ func statzViz(names []string) (*ServerStatzResponse, error) {
 	return ret, nil
 }
 
+// statzKeys lists available metric keys with optional patterns.
+//
+// params:
+//   - pattern: wildcard filters for metric keys
+//
+// return: sorted metric key names
 func statzKeys(pattern []string) []string {
 	prefix := spi.MetricsPrefix()
 	if len(prefix) > 0 {
@@ -344,6 +361,13 @@ type StatzQueryResult struct {
 	Rows    [][]any  `json:"rows"`
 }
 
+// statzQuery queries metric time-series rows.
+//
+// params:
+//   - maxRows: maximum row count
+//   - pattern: wildcard filters for metric keys
+//
+// return: tabular metric query result
 func statzQuery(maxRows int, pattern []string) (*StatzQueryResult, error) {
 	prefix := spi.MetricsPrefix()
 	if len(prefix) > 0 {
