@@ -26,10 +26,11 @@ type registeredMethod struct {
 }
 
 type functionInfo struct {
-	Name    string
-	Doc     string
-	Params  []fieldInfo
-	Returns []fieldInfo
+	Name     string
+	Doc      string
+	Params   []fieldInfo
+	ParamDoc map[string]string
+	Returns  []fieldInfo
 }
 
 type fieldInfo struct {
@@ -181,12 +182,83 @@ func pathBase(importPath string) string {
 }
 
 func functionSignature(function *ast.FuncDecl) *functionInfo {
-	return &functionInfo{
-		Name:    function.Name.Name,
-		Doc:     cleanDoc(function.Doc),
-		Params:  expandFields(function.Type.Params.List),
-		Returns: expandResults(function.Type.Results),
+	params := expandFields(function.Type.Params.List)
+	paramNames := map[string]struct{}{}
+	for _, param := range params {
+		if param.Name != "" {
+			paramNames[param.Name] = struct{}{}
+		}
 	}
+	doc, paramDoc := splitDocAndParamDoc(function.Doc, paramNames)
+
+	return &functionInfo{
+		Name:     function.Name.Name,
+		Doc:      doc,
+		Params:   params,
+		ParamDoc: paramDoc,
+		Returns:  expandResults(function.Type.Results),
+	}
+}
+
+func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}) (string, map[string]string) {
+	if group == nil {
+		return "", map[string]string{}
+	}
+	paramDoc := map[string]string{}
+	docLines := []string{}
+	for _, line := range strings.Split(cleanDoc(group), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			docLines = append(docLines, "")
+			continue
+		}
+		name, desc, ok := parseParamDocLine(trimmed)
+		if !ok {
+			docLines = append(docLines, line)
+			continue
+		}
+		if _, exists := paramNames[name]; !exists {
+			docLines = append(docLines, line)
+			continue
+		}
+		paramDoc[name] = desc
+	}
+
+	for len(docLines) > 0 && strings.TrimSpace(docLines[0]) == "" {
+		docLines = docLines[1:]
+	}
+	for len(docLines) > 0 && strings.TrimSpace(docLines[len(docLines)-1]) == "" {
+		docLines = docLines[:len(docLines)-1]
+	}
+
+	return strings.TrimSpace(strings.Join(docLines, "\n")), paramDoc
+}
+
+func parseParamDocLine(line string) (string, string, bool) {
+	index := strings.Index(line, ":")
+	if index <= 0 {
+		return "", "", false
+	}
+	name := strings.TrimSpace(line[:index])
+	if name == "" {
+		return "", "", false
+	}
+	for i, r := range name {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return "", "", false
+			}
+			continue
+		}
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			return "", "", false
+		}
+	}
+	desc := strings.TrimSpace(line[index+1:])
+	if desc == "" {
+		return "", "", false
+	}
+	return name, desc, true
 }
 
 func cleanDoc(group *ast.CommentGroup) string {
@@ -398,7 +470,12 @@ func renderMethod(buffer *bytes.Buffer, registration registeredMethod) {
 			if name == "" {
 				name = fmt.Sprintf("param%d", index+1)
 			}
-			fmt.Fprintf(buffer, "- `%s` *%s*\n", name, jsonType(param.Expr, param.Type))
+			desc := strings.TrimSpace(registration.Function.ParamDoc[name])
+			if desc == "" {
+				fmt.Fprintf(buffer, "- `%s` *%s*\n", name, jsonType(param.Expr, param.Type))
+			} else {
+				fmt.Fprintf(buffer, "- `%s` *%s* - %s\n", name, jsonType(param.Expr, param.Type), desc)
+			}
 		}
 	}
 

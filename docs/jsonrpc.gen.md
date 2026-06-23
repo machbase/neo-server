@@ -251,6 +251,102 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 </details>
 
+#### server.info.query
+
+`server.info.query(maxRows, pattern)`
+
+*Params*
+- `maxRows` *int*
+- `pattern` *array<string>*
+
+*Return*
+
+- `object<StatzQueryResult>|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "server.info.query",
+        "params": [
+            0,
+            []
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
+#### server.info.keys
+
+`server.info.keys(pattern)`
+
+*Params*
+- `pattern` *array<string>*
+
+*Return*
+
+- `array<string>|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "server.info.keys",
+        "params": [
+            []
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": []
+    }
+}
+```
+
+</details>
+
 #### server.certificate.get
 
 `server.certificate.get()`
@@ -1409,10 +1505,16 @@ mgmt server implements
 
 #### key.generate
 
-`key.generate(id)`
+genKey generates a new key pair and returns the key information.
+It returns the key information including the identifier, certificate, private key, and token if successful.
+The return type is map[string]string with keys "id", "certificate", "key", and "token".
+
+`key.generate(id, typ, store)`
 
 *Params*
-- `id` *string*
+- `id` *string* - the identifier for the key pair, must be alphanumeric and can include _.@-
+- `typ` *string* - the type of key to generate, must be RSA or ECDSA
+- `store` *bool* - whether to store the key pair in the server's key store
 
 *Return*
 
@@ -1432,7 +1534,9 @@ mgmt server implements
         "id": 20,
         "method": "key.generate",
         "params": [
-            "string"
+            "string",
+            "string",
+            false
         ]
     }
 }
@@ -1456,10 +1560,12 @@ mgmt server implements
 
 #### key.delete
 
+deleteKey deletes a key pair from the server's key store by its identifier.
+
 `key.delete(id)`
 
 *Params*
-- `id` *string*
+- `id` *string* - the identifier of the key pair to delete
 
 *Return*
 

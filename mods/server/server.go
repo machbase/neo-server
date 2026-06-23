@@ -1544,6 +1544,9 @@ func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 }
 
 // genKey generates a new key pair and returns the key information.
+// It returns the key information including the identifier, certificate, private key, and token if successful.
+// The return type is map[string]string with keys "id", "certificate", "key", and "token".
+//
 // id: the identifier for the key pair, must be alphanumeric and can include _.@-
 // typ: the type of key to generate, must be RSA or ECDSA
 // store: whether to store the key pair in the server's key store
@@ -1579,6 +1582,8 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) 
 	}, nil
 }
 
+// deleteKey deletes a key pair from the server's key store by its identifier.
+// id: the identifier of the key pair to delete
 func (s *Server) deleteKey(ctx context.Context, id string) error {
 	rsp, err := s.DelKey(ctx, &DelKeyRequest{
 		Id: id,
