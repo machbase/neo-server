@@ -5,10 +5,14 @@ import (
 	_ "embed"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/oscillator"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/stat"
 )
@@ -123,9 +127,303 @@ func Module(_ context.Context, _ *goja.Runtime, module *goja.Object) {
 	})
 	// m.fft(times, values)
 	o.Set("fft", make_fft)
+	// m.oscillator(options)
+	o.Set("oscillator", make_oscillator)
 }
 
-func make_fft(times []any, values []any) (map[string][]float64, error) {
+type oscillatorComponent struct {
+	Amplitude   float64
+	FrequencyHz float64
+	PhaseRad    float64
+	Bias        float64
+}
+
+func make_oscillator(options map[string]any) ([][]any, error) {
+	components, err := parseOscillatorComponents(options)
+	if err != nil {
+		return nil, err
+	}
+	if len(components) == 0 {
+		return nil, fmt.Errorf("oscillator: at least one component is required")
+	}
+
+	from, to, err := parseOscillatorTimeRange(options)
+	if err != nil {
+		return nil, err
+	}
+
+	sampleCount, err := parseOscillatorSampleCount(options, from, to)
+	if err != nil {
+		return nil, err
+	}
+	if sampleCount <= 0 {
+		return nil, fmt.Errorf("oscillator: sampleCount should be positive")
+	}
+
+	period := to.Sub(from)
+	step := time.Duration(0)
+	if sampleCount > 1 {
+		step = period / time.Duration(sampleCount-1)
+	}
+
+	ret := make([][]any, sampleCount)
+	for i := 0; i < sampleCount; i++ {
+		ts := from.Add(time.Duration(i) * step)
+		elapsedFromEnd := ts.Sub(to).Seconds()
+
+		value := 0.0
+		for _, comp := range components {
+			g := oscillator.New(comp.FrequencyHz, comp.Amplitude)
+			g.Phase = comp.PhaseRad
+			g.Bias = comp.Bias
+			value += g.Eval(elapsedFromEnd)
+		}
+		if value > -1e-12 && value < 1e-12 {
+			value = 0
+		}
+
+		ret[i] = []any{ts, value}
+	}
+
+	return ret, nil
+}
+
+func parseOscillatorComponents(options map[string]any) ([]oscillatorComponent, error) {
+	raw, ok := options["components"]
+	if !ok {
+		return nil, fmt.Errorf("oscillator: components is required")
+	}
+
+	rawComponents, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("oscillator: components should be an array")
+	}
+
+	ret := make([]oscillatorComponent, 0, len(rawComponents))
+	for idx, rawComp := range rawComponents {
+		compMap, ok := rawComp.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("oscillator: %dth component should be an object", idx)
+		}
+
+		amplitudeRaw, ok := compMap["amplitude"]
+		if !ok {
+			return nil, fmt.Errorf("oscillator: %dth component amplitude is required", idx)
+		}
+		amplitude, err := numberToFloat64(amplitudeRaw)
+		if err != nil {
+			return nil, fmt.Errorf("oscillator: invalid %dth component amplitude, %v", idx, err)
+		}
+
+		freqRaw, ok := compMap["frequencyHz"]
+		if !ok {
+			return nil, fmt.Errorf("oscillator: %dth component frequencyHz is required", idx)
+		}
+		frequencyHz, err := numberToFloat64(freqRaw)
+		if err != nil {
+			return nil, fmt.Errorf("oscillator: invalid %dth component frequencyHz, %v", idx, err)
+		}
+
+		phaseRad := 0.0
+		if rawPhase, ok := compMap["phaseRad"]; ok {
+			phaseRad, err = numberToFloat64(rawPhase)
+			if err != nil {
+				return nil, fmt.Errorf("oscillator: invalid %dth component phaseRad, %v", idx, err)
+			}
+		}
+
+		bias := 0.0
+		if rawBias, ok := compMap["bias"]; ok {
+			bias, err = numberToFloat64(rawBias)
+			if err != nil {
+				return nil, fmt.Errorf("oscillator: invalid %dth component bias, %v", idx, err)
+			}
+		}
+
+		ret = append(ret, oscillatorComponent{
+			Amplitude:   amplitude,
+			FrequencyHz: frequencyHz,
+			PhaseRad:    phaseRad,
+			Bias:        bias,
+		})
+	}
+	return ret, nil
+}
+
+func parseOscillatorTimeRange(options map[string]any) (time.Time, time.Time, error) {
+	raw, ok := options["timeRange"]
+	if !ok {
+		return time.Time{}, time.Time{}, fmt.Errorf("oscillator: timeRange is required")
+	}
+	tr, ok := raw.(map[string]any)
+	if !ok {
+		return time.Time{}, time.Time{}, fmt.Errorf("oscillator: timeRange should be an object")
+	}
+
+	fromRaw, ok := tr["from"]
+	if !ok {
+		return time.Time{}, time.Time{}, fmt.Errorf("oscillator: timeRange.from is required")
+	}
+	toRaw, ok := tr["to"]
+	if !ok {
+		return time.Time{}, time.Time{}, fmt.Errorf("oscillator: timeRange.to is required")
+	}
+
+	from, err := parseOscillatorTimeValue(fromRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("oscillator: invalid timeRange.from, %v", err)
+	}
+	to, err := parseOscillatorTimeValue(toRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("oscillator: invalid timeRange.to, %v", err)
+	}
+
+	if to.Before(from) {
+		from, to = to, from
+	}
+
+	return from, to, nil
+}
+
+func parseOscillatorTimeValue(v any) (time.Time, error) {
+	if ts, err := util.ToTime(v); err == nil {
+		return ts, nil
+	}
+
+	str, ok := v.(string)
+	if !ok {
+		return time.Time{}, fmt.Errorf("unsupported time value type %T", v)
+	}
+
+	text := strings.TrimSpace(str)
+	if text == "" {
+		return time.Time{}, fmt.Errorf("empty time value")
+	}
+
+	lower := strings.ToLower(text)
+	for _, unit := range []string{"ns", "us", "ms", "s"} {
+		if strings.HasSuffix(lower, unit) {
+			numberPart := strings.TrimSpace(text[:len(text)-len(unit)])
+			epoch, err := strconv.ParseInt(numberPart, 10, 64)
+			if err != nil {
+				return time.Time{}, fmt.Errorf("invalid epoch literal %q", text)
+			}
+			switch unit {
+			case "s":
+				return time.Unix(epoch, 0), nil
+			case "ms":
+				return time.Unix(0, epoch*int64(time.Millisecond)), nil
+			case "us":
+				return time.Unix(0, epoch*int64(time.Microsecond)), nil
+			default:
+				return time.Unix(0, epoch), nil
+			}
+		}
+	}
+
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	} {
+		if ts, err := time.Parse(layout, text); err == nil {
+			return ts, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unsupported time literal %q", text)
+}
+
+func parseOscillatorSampleCount(options map[string]any, from, to time.Time) (int, error) {
+	if raw, ok := options["sample"]; ok {
+		switch v := raw.(type) {
+		case string:
+			trimmed := strings.TrimSpace(v)
+			lower := strings.ToLower(trimmed)
+			if strings.HasSuffix(lower, "hz") {
+				hzText := strings.TrimSpace(trimmed[:len(trimmed)-2])
+				hz, err := numberToFloat64(hzText)
+				if err != nil {
+					return 0, fmt.Errorf("oscillator: invalid sample Hz, %v", err)
+				}
+				if hz <= 0 {
+					return 0, fmt.Errorf("oscillator: sample Hz should be positive")
+				}
+				durationSec := to.Sub(from).Seconds()
+				count := int(durationSec*hz) + 1
+				if count < 1 {
+					count = 1
+				}
+				return count, nil
+			}
+			count, err := numberToFloat64(trimmed)
+			if err != nil {
+				return 0, fmt.Errorf("oscillator: invalid sample, %v", err)
+			}
+			return int(count), nil
+		default:
+			count, err := numberToFloat64(v)
+			if err != nil {
+				return 0, fmt.Errorf("oscillator: invalid sample, %v", err)
+			}
+			return int(count), nil
+		}
+	}
+	if raw, ok := options["sampleCount"]; ok {
+		count, err := numberToFloat64(raw)
+		if err != nil {
+			return 0, fmt.Errorf("oscillator: invalid sampleCount, %v", err)
+		}
+		return int(count), nil
+	}
+	if raw, ok := options["sampleRateHz"]; ok {
+		rate, err := numberToFloat64(raw)
+		if err != nil {
+			return 0, fmt.Errorf("oscillator: invalid sampleRateHz, %v", err)
+		}
+		if rate <= 0 {
+			return 0, fmt.Errorf("oscillator: sampleRateHz should be positive")
+		}
+		durationSec := to.Sub(from).Seconds()
+		count := int(durationSec*rate) + 1
+		if count < 1 {
+			count = 1
+		}
+		return count, nil
+	}
+	return 100, nil
+}
+
+func numberToFloat64(v any) (float64, error) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), nil
+	case int8:
+		return float64(n), nil
+	case int16:
+		return float64(n), nil
+	case int32:
+		return float64(n), nil
+	case int64:
+		return float64(n), nil
+	case uint:
+		return float64(n), nil
+	case uint8:
+		return float64(n), nil
+	case uint16:
+		return float64(n), nil
+	case uint32:
+		return float64(n), nil
+	case uint64:
+		return float64(n), nil
+	default:
+		return util.ToFloat64(v)
+	}
+}
+
+func make_fft(times []any, values []any) ([][]float64, error) {
 	ts := make([]time.Time, len(times))
 	vs := make([]float64, len(values))
 	for i, val := range times {
@@ -157,5 +455,9 @@ func make_fft(times []any, values []any) (map[string][]float64, error) {
 		}
 	}
 	xs, ys := fft.FastFourierTransform(ts, vs)
-	return map[string][]float64{"x": xs, "y": ys}, nil
+	ret := make([][]float64, len(xs))
+	for i := range xs {
+		ret[i] = []float64{xs[i], ys[i]}
+	}
+	return ret, nil
 }

@@ -105,6 +105,176 @@ func TestLinspace(t *testing.T) {
 	}
 }
 
+func TestOscillator(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "js-oscillator-single-component",
+			Script: `
+				gen = require("mathx").oscillator({
+					components: [
+						{amplitude: 1.0, frequencyHz: 0.1, phaseRad: 0},
+					],
+					timeRange: {from: 0, to: 10000000000},
+					sample: 5,
+				});
+				console.println(Array.isArray(gen[0]), gen[0].length);
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i][1].toFixed(2));
+				}
+			`,
+			Output: []string{
+				"true 2",
+				"0.00",
+				"1.00",
+				"0.00",
+				"-1.00",
+				"0.00",
+			},
+		},
+		{
+			Name: "js-oscillator-composite-components",
+			Script: `
+				gen = require("mathx").oscillator({
+					components: [
+						{amplitude: 1.0, frequencyHz: 0.1, phaseRad: 0},
+						{amplitude: 0.5, frequencyHz: 0.05, phaseRad: 0},
+					],
+					timeRange: {from: 0, to: 10000000000},
+					sample: 5,
+				});
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i][1].toFixed(2));
+				}
+			`,
+			Output: []string{
+				"0.00",
+				"0.65",
+				"-0.50",
+				"-1.35",
+				"0.00",
+			},
+		},
+		{
+			Name: "js-oscillator-sample-hz",
+			Script: `
+				gen = require("mathx").oscillator({
+					components: [
+						{amplitude: 1.0, frequencyHz: 0.1, phaseRad: 0},
+					],
+					timeRange: {from: 0, to: 10000000000},
+					sample: "2Hz",
+				});
+				console.println(gen.length);
+			`,
+			Output: []string{
+				"21",
+			},
+		},
+		{
+			Name: "js-oscillator-timeRange-formats",
+			Script: `
+				const mathx = require("mathx");
+				const cases = [
+					{from: "0s", to: "10s"},
+					{from: "0ms", to: "10000ms"},
+					{from: "0us", to: "10000000us"},
+					{from: "0ns", to: "10000000000ns"},
+					{from: "1970-01-01T00:00:00Z", to: "1970-01-01T00:00:10Z"},
+					{from: "now-10s", to: "now"},
+				];
+				for (i = 0; i < cases.length; i++) {
+					gen = mathx.oscillator({
+						components: [{amplitude: 1.0, frequencyHz: 0.1, phaseRad: 0}],
+						timeRange: cases[i],
+						sample: 5,
+					});
+					console.println(gen.length);
+					console.println(Array.isArray(gen[0]), gen[0].length);
+				}
+			`,
+			Output: []string{
+				"5",
+				"true 2",
+				"5",
+				"true 2",
+				"5",
+				"true 2",
+				"5",
+				"true 2",
+				"5",
+				"true 2",
+				"5",
+				"true 2",
+			},
+		},
+		{
+			Name: "js-oscillator-negative-validation",
+			Script: `
+				const mathx = require("mathx");
+				function hasErrorToken(fn, token) {
+					try {
+						fn();
+						console.println(false);
+					} catch (e) {
+						console.println(String(e.message).indexOf(token) >= 0);
+					}
+				}
+
+				hasErrorToken(function() {
+					mathx.oscillator({
+						components: [{amplitude: 1.0, frequencyHz: 0.1}],
+						timeRange: {from: 0, to: 10000000000},
+						sample: "2kHz",
+					});
+				}, "invalid sample Hz");
+
+				hasErrorToken(function() {
+					mathx.oscillator({
+						components: [{amplitude: 1.0, frequencyHz: 0.1}],
+						timeRange: {from: 0, to: 10000000000},
+						sample: "0Hz",
+					});
+				}, "sample Hz should be positive");
+
+				hasErrorToken(function() {
+					mathx.oscillator({
+						components: [{amplitude: 1.0, frequencyHz: 0.1}],
+						timeRange: {from: "bad-time", to: 10000000000},
+						sample: 5,
+					});
+				}, "invalid timeRange.from");
+
+				hasErrorToken(function() {
+					mathx.oscillator({
+						components: [{amplitude: 1.0, frequencyHz: 0.1}],
+						timeRange: {from: 0, to: {}},
+						sample: 5,
+					});
+				}, "invalid timeRange.to");
+
+				hasErrorToken(function() {
+					mathx.oscillator({
+						timeRange: {from: 0, to: 10000000000},
+						sample: 5,
+					});
+				}, "components is required");
+			`,
+			Output: []string{
+				"true",
+				"true",
+				"true",
+				"true",
+				"true",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
 func TestSort(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{
@@ -627,12 +797,46 @@ func TestFft(t *testing.T) {
 					],
 					[0.1, 1.1, 0.2, -1.1, 0.3, 1.2],
 				)
-				console.println(ret.x.length)
-				console.println(ret.y.length)
+				console.println(ret.length)
+				console.println(ret[0].length)
 			`,
 			Output: []string{
 				"3",
+				"2",
+			},
+		},
+		{
+			Name: "fft-time-value-pairs",
+			Script: `
+				const mathx = require("mathx")
+				ret = mathx.fft([
+					[new Date(0), 0.1],
+					[new Date(1000), 1.1],
+					[2000000000, 0.2],
+					[3000000000, -1.1],
+					[4000000000, 0.3],
+					[5000000000, 1.2],
+				])
+				console.println(ret.length)
+				console.println(ret[0].length)
+			`,
+			Output: []string{
 				"3",
+				"2",
+			},
+		},
+		{
+			Name: "fft-invalid-time-value-pair",
+			Script: `
+				const mathx = require("mathx")
+				try {
+					mathx.fft([[0], [1, 2]])
+				} catch (e) {
+					console.println(e.message)
+				}
+			`,
+			Output: []string{
+				"fft: each sample should be [time, value]",
 			},
 		},
 		{
@@ -674,10 +878,10 @@ func TestFft(t *testing.T) {
 				}
 				try{
 					result = mathx.fft(times, values);
-					for( i = 0; i < result.x.length; i++ ) {
-						if (result.x[i] > 60)
+					for( i = 0; i < result.length; i++ ) {
+						if (result[i][0] > 60)
 							break
-						$.yield(result.x[i], result.y[i])
+						$.yield(result[i][0], result[i][1])
 					}
 				} catch (e) {
 					console.error(e.message);

@@ -170,8 +170,35 @@ function linearRegression(x, y) {
     return _mathx.linearRegression(x, y);
 }
 
+function normalizeFftParams(times, values) {
+    if (hasValue(values) || !Array.isArray(times) || times.length === 0) {
+        return [times, values];
+    }
+
+    if (!Array.isArray(times[0])) {
+        return [times, values];
+    }
+
+    const normalizedTimes = new Array(times.length);
+    const normalizedValues = new Array(times.length);
+    for (let i = 0; i < times.length; i++) {
+        const sample = times[i];
+        if (!Array.isArray(sample) || sample.length < 2) {
+            throw new Error('fft: each sample should be [time, value]');
+        }
+        normalizedTimes[i] = sample[0];
+        normalizedValues[i] = sample[1];
+    }
+    return [normalizedTimes, normalizedValues];
+}
+
 function fft(times, values) {
-    return _mathx.fft(times, values);
+    const [normalizedTimes, normalizedValues] = normalizeFftParams(times, values);
+    return _mathx.fft(normalizedTimes, normalizedValues);
+}
+
+function oscillator(options) {
+    return _mathx.oscillator(options);
 }
 
 module.exports = {
@@ -194,6 +221,7 @@ module.exports = {
     meshgrid,
     mode,
     moment,
+    oscillator,
     quantile,
     quantileInterp,
     sort,

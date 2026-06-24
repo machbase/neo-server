@@ -483,10 +483,10 @@ func TestScriptFFT(t *testing.T) {
 					values.push($.values[1]);
 				}, {
 					result = m.fft(times, values);
-					for( i = 0; i < result.x.length; i++ ) {
-						if (result.x[i] > 60)
+					for( i = 0; i < result.length; i++ ) {
+						if (result[i][0] > 60)
 							break
-						$.yield(result.x[i], result.y[i])
+						$.yield(result[i][0], result[i][1])
 					}
 				})
 				CSV(precision(6))
@@ -507,10 +507,10 @@ func TestScriptFFT(t *testing.T) {
 				}, {
 					try{
 						result = m.fft(times, values);
-						for( i = 0; i < result.x.length; i++ ) {
-							if (result.x[i] > 60)
+						for( i = 0; i < result.length; i++ ) {
+							if (result[i][0] > 60)
 								break
-							$.yield(result.x[i], result.y[i])
+							$.yield(result[i][0], result[i][1])
 						}
 					} catch (e) {
 					 	console.error(e.message);
