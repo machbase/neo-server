@@ -148,10 +148,33 @@ func TestOscillator(t *testing.T) {
 			`,
 			Output: []string{
 				"0.00",
-				"0.65",
-				"-0.50",
-				"-1.35",
+				"1.35",
+				"0.50",
+				"-0.65",
 				"0.00",
+			},
+		},
+		{
+			Name: "js-oscillator-noise",
+			Script: `
+				gen = require("mathx").oscillator({
+					components: [
+						{amplitude: 1.0, frequencyHz: 0.1, phaseRad: 0},
+					],
+					timeRange: {from: 0, to: 10000000000},
+					sample: 5,
+					noise: {amplitude: 0.25, seed: 123},
+				});
+				for(i=0; i < gen.length; i++) {
+					console.println(gen[i][1].toFixed(4));
+				}
+			`,
+			Output: []string{
+				"0.0000",
+				"0.9798",
+				"0.1185",
+				"-1.0449",
+				"0.0353",
 			},
 		},
 		{

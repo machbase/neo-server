@@ -75,6 +75,10 @@ func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 			sampleValues[i] = val
 		case *float64:
 			sampleValues[i] = *val
+		case int64:
+			sampleValues[i] = float64(val)
+		case *int64:
+			sampleValues[i] = float64(*val)
 		default:
 			return nil, fmt.Errorf("f(FFT) invalid %dth sample value, but %T", i, tuple[1])
 		}

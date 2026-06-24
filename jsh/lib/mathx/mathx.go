@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/machbase/neo-server/v8/mods/nums/oscillator"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"gonum.org/v1/gonum/floats"
@@ -138,6 +140,11 @@ type oscillatorComponent struct {
 	Bias        float64
 }
 
+type oscillatorNoise struct {
+	Amplitude float64
+	Seed      int64
+}
+
 func make_oscillator(options map[string]any) ([][]any, error) {
 	components, err := parseOscillatorComponents(options)
 	if err != nil {
@@ -160,6 +167,15 @@ func make_oscillator(options map[string]any) ([][]any, error) {
 		return nil, fmt.Errorf("oscillator: sampleCount should be positive")
 	}
 
+	noise, err := parseOscillatorNoise(options)
+	if err != nil {
+		return nil, err
+	}
+	var noiseGen *opensimplex.Generator
+	if noise != nil && noise.Amplitude != 0 {
+		noiseGen = opensimplex.New(noise.Seed)
+	}
+
 	period := to.Sub(from)
 	step := time.Duration(0)
 	if sampleCount > 1 {
@@ -169,16 +185,19 @@ func make_oscillator(options map[string]any) ([][]any, error) {
 	ret := make([][]any, sampleCount)
 	for i := 0; i < sampleCount; i++ {
 		ts := from.Add(time.Duration(i) * step)
-		elapsedFromEnd := ts.Sub(to).Seconds()
+		relativeSeconds := ts.Sub(from).Seconds()
 
 		value := 0.0
 		for _, comp := range components {
 			g := oscillator.New(comp.FrequencyHz, comp.Amplitude)
 			g.Phase = comp.PhaseRad
 			g.Bias = comp.Bias
-			value += g.Eval(elapsedFromEnd)
+			value += g.Eval(relativeSeconds)
 		}
-		if value > -1e-12 && value < 1e-12 {
+		if noiseGen != nil {
+			value += noise.Amplitude * noiseGen.Eval(float64(i))
+		}
+		if math.Abs(value) < 1e-12 {
 			value = 0
 		}
 
@@ -396,6 +415,46 @@ func parseOscillatorSampleCount(options map[string]any, from, to time.Time) (int
 	return 100, nil
 }
 
+func parseOscillatorNoise(options map[string]any) (*oscillatorNoise, error) {
+	raw, ok := options["noise"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+
+	noise := &oscillatorNoise{}
+	switch v := raw.(type) {
+	case map[string]any:
+		amplitudeRaw, ok := v["amplitude"]
+		if !ok {
+			return nil, fmt.Errorf("oscillator: noise.amplitude is required")
+		}
+		amplitude, err := numberToFloat64(amplitudeRaw)
+		if err != nil {
+			return nil, fmt.Errorf("oscillator: invalid noise.amplitude, %v", err)
+		}
+		noise.Amplitude = amplitude
+
+		if seedRaw, ok := v["seed"]; ok {
+			seed, err := numberToInt64(seedRaw)
+			if err != nil {
+				return nil, fmt.Errorf("oscillator: invalid noise.seed, %v", err)
+			}
+			noise.Seed = seed
+		}
+	default:
+		amplitude, err := numberToFloat64(v)
+		if err != nil {
+			return nil, fmt.Errorf("oscillator: invalid noise, %v", err)
+		}
+		noise.Amplitude = amplitude
+	}
+
+	if noise.Amplitude == 0 {
+		return nil, nil
+	}
+	return noise, nil
+}
+
 func numberToFloat64(v any) (float64, error) {
 	switch n := v.(type) {
 	case int:
@@ -420,6 +479,37 @@ func numberToFloat64(v any) (float64, error) {
 		return float64(n), nil
 	default:
 		return util.ToFloat64(v)
+	}
+}
+
+func numberToInt64(v any) (int64, error) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), nil
+	case int8:
+		return int64(n), nil
+	case int16:
+		return int64(n), nil
+	case int32:
+		return int64(n), nil
+	case int64:
+		return n, nil
+	case uint:
+		return int64(n), nil
+	case uint8:
+		return int64(n), nil
+	case uint16:
+		return int64(n), nil
+	case uint32:
+		return int64(n), nil
+	case uint64:
+		return int64(n), nil
+	default:
+		if f, err := numberToFloat64(v); err == nil {
+			return int64(f), nil
+		} else {
+			return 0, err
+		}
 	}
 }
 
@@ -450,6 +540,10 @@ func make_fft(times []any, values []any) ([][]float64, error) {
 			vs[i] = v
 		case *float64:
 			vs[i] = *v
+		case int64:
+			vs[i] = float64(v)
+		case *int64:
+			vs[i] = float64(*v)
 		default:
 			return nil, fmt.Errorf("fft invalid %dth sample value, but %T", i, val)
 		}
