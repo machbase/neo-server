@@ -9,6 +9,7 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -250,4 +251,174 @@ func (app *appender) AddRow(values []any) error {
 		app.nrows++
 	}
 	return err
+}
+
+func (x *Node) fmSqlSink(args ...any) (*sqlSink, error) {
+	if len(args) == 0 {
+		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
+	}
+
+	ret := &sqlSink{node: x}
+	var paramStart int
+
+	switch v := args[0].(type) {
+	case string:
+		ret.databaseProvider = func(ctx context.Context) (api.Conn, error) {
+			return x.task.ConnDatabase(ctx)
+		}
+		ret.sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
+		paramStart = 1
+	case *bridgeName:
+		ret.databaseProvider = func(ctx context.Context) (api.Conn, error) {
+			db, err := connector.New(v.name)
+			if err != nil {
+				return nil, err
+			}
+			return db.Connect(ctx)
+		}
+		if len(args) < 2 {
+			return nil, ErrInvalidNumOfArgs("SQL", 2, len(args))
+		}
+		sqlText, ok := args[1].(string)
+		if !ok {
+			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
+		}
+		ret.sqlText = strings.TrimSuffix(strings.TrimSpace(sqlText), ";")
+		paramStart = 2
+	default:
+		return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
+	}
+
+	if len(ret.sqlText) == 0 {
+		return nil, fmt.Errorf("f(SQL) Empty SQL text")
+	}
+	ret.stmtType = spi.DetectSQLStatementType(ret.sqlText)
+	if err := validateSqlVerbForSink(ret.sqlText); err != nil {
+		return nil, err
+	}
+
+	ret.rawParams = make([]any, 0, len(args)-paramStart)
+	for i := paramStart; i < len(args); i++ {
+		ret.rawParams = append(ret.rawParams, args[i])
+	}
+	return ret, nil
+}
+
+type sqlSink struct {
+	node             *Node
+	databaseProvider func(ctx context.Context) (api.Conn, error)
+	sqlText          string
+	stmtType         spi.SQLStatementType
+	rawParams        []any
+
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	conn      api.Conn
+
+	affectedRows int64
+	resultMsg    string
+}
+
+func (s *sqlSink) Open(task *Task) error {
+	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
+	conn, err := s.databaseProvider(s.ctx)
+	if err != nil {
+		return err
+	}
+	s.conn = conn
+	return nil
+}
+
+func (s *sqlSink) Close() (string, error) {
+	if s.conn != nil {
+		s.conn.Close()
+	}
+	if s.ctxCancel != nil {
+		s.ctxCancel()
+	}
+	if s.affectedRows > 0 {
+		return formatSqlSinkMessage(s.stmtType, s.affectedRows), nil
+	}
+	if s.resultMsg != "" {
+		return s.resultMsg, nil
+	}
+	return "0 rows affected.", nil
+}
+
+func (s *sqlSink) AddRow(values []any) error {
+	params := make([]any, 0, len(s.rawParams))
+	for _, p := range s.rawParams {
+		switch v := p.(type) {
+		case *recordValueRef:
+			if v == nil {
+				params = append(params, nil)
+				continue
+			}
+			if v.index < 0 || v.index >= len(values) {
+				return fmt.Errorf("f(SQL) value(%d) is out of range of input tuple(len:%d)", v.index, len(values))
+			}
+			params = append(params, values[v.index])
+		default:
+			params = append(params, p)
+		}
+	}
+	result := s.conn.Exec(s.ctx, s.sqlText, params...)
+	if err := result.Err(); err != nil {
+		return err
+	}
+	s.resultMsg = result.Message()
+	if n, ok := parseRowsAffectedFromMessage(s.resultMsg); ok {
+		s.affectedRows += n
+	} else {
+		s.affectedRows++
+	}
+	return nil
+}
+
+func validateSqlVerbForSink(sqlText string) error {
+	stmtType := spi.DetectSQLStatementType(sqlText)
+	if stmtType.IsFetch() {
+		verb := strings.ToUpper(strings.Fields(sqlText)[0])
+		return fmt.Errorf("f(SQL) sink does not allow fetch verb %q", verb)
+	}
+	return nil
+}
+
+func formatSqlSinkMessage(stmtType spi.SQLStatementType, rows int64) string {
+	unit := "rows"
+	if rows == 1 {
+		unit = "row"
+	}
+	switch stmtType {
+	case spi.SQLStatementTypeInsert:
+		return fmt.Sprintf("%d %s inserted.", rows, unit)
+	case spi.SQLStatementTypeUpdate:
+		return fmt.Sprintf("%d %s updated.", rows, unit)
+	case spi.SQLStatementTypeDelete:
+		return fmt.Sprintf("%d %s deleted.", rows, unit)
+	default:
+		return fmt.Sprintf("%d %s affected.", rows, unit)
+	}
+}
+
+func parseRowsAffectedFromMessage(msg string) (int64, bool) {
+	trimmed := strings.TrimSpace(strings.ToLower(msg))
+	if trimmed == "" {
+		return 0, false
+	}
+	if strings.HasPrefix(trimmed, "a row ") {
+		return 1, true
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) < 3 {
+		return 0, false
+	}
+	if fields[1] != "row" && fields[1] != "rows" {
+		return 0, false
+	}
+	var n int64
+	if _, err := fmt.Sscan(fields[0], &n); err != nil {
+		return 0, false
+	}
+	return n, true
 }

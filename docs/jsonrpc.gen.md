@@ -2071,6 +2071,59 @@ setHttpDebug updates and returns HTTP debug settings.
 
 </details>
 
+#### http.split
+
+splitHttpStatements splits HTTP script text into executable statements.
+It parses multiple HTTP statements from the given content, each statement is separated by at least three continuous '#' characters.
+
+`http.split(content)`
+
+*Params*
+- `content` *string* - HTTP script text
+
+*Return*
+
+- `array<object<util.HttpStatement>>|error - parsed HTTP statements array, each statement contains the following fields:`
+  - `text`: the original HTTP statement text
+  - `beginLine`: the line number where the statement starts
+  - `endLine`: the line number where the statement ends
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "http.split",
+        "params": [
+            "string"
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": []
+    }
+}
+```
+
+</details>
+
 
 ### Session
 
@@ -2339,7 +2392,14 @@ splitSqlStatements splits SQL text into executable statements.
 
 *Return*
 
-- `array<object<util.SqlStatement>>|error - parsed SQL statements`
+- `array<object<util.SqlStatement>>|error - parsed SQL statements array, each statement contains the following fields:`
+  - `text`: the original SQL statement text
+  - `beginLine`: the line number where the statement starts
+  - `endLine`: the line number where the statement ends
+  - `isComment`: whether the statement is a comment
+  - `env`: scoped environment, if any, for the statement; it MAY contain the following fields:
+  - `env.error`: error message if the statement has an error
+  - `env.bridge`: bridge name if the statement is executed in a bridge context
 
 <details>
 <summary>Request/Response JSON</summary>

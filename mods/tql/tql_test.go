@@ -442,6 +442,52 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "SQL_map-select",
+			Script: `
+				FAKE(json({["tag1"]}))
+				SQL("select TIME, VALUE from tag_simple where name = ?", value(0))
+				CSV( precision(3), header(true) )
+				`,
+			ExpectCSV: []string{
+				"TIME,VALUE",
+				"1692686707380411000,0.100",
+				"1692686708380411000,0.200",
+				"\n",
+			},
+		},
+		{
+			Name: "SQL_SQL",
+			Script: `
+				SQL("select TIME, VALUE from tag_simple where name = ?", param("name"))
+				SQL("insert into tag_simple (name, time, value) values (?, ?, ?)", "tag2", value(0), value(1))
+			`,
+			Params: map[string][]string{
+				"name": {"tag1"},
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
+				require.Equal(t, "2 rows inserted.", gjson.Get(result, "data.message").String(), result)
+				require.NoError(t, flushTable(t.Context(), "tag_simple"))
+			},
+		},
+		{
+			Name: "SQL_SQL-cleanup",
+			Script: `
+				SQL("delete from tag_simple where name = ?", param("name"))
+				MARKDOWN()
+			`,
+			Params: map[string][]string{
+				"name": {"tag2"},
+			},
+			ExpectText: []string{
+				`|MESSAGE|`,
+				`|:-----|`,
+				`|2 rows deleted.|`,
+				``,
+			},
+		},
+		{
 			Name: "SQL_create-tag-table",
 			Script: `
 				SQL({create tag table if not exists tag_simple(
@@ -2333,6 +2379,37 @@ func TestBridgeSqlite(t *testing.T) {
 				CSV(heading(false))
 			`,
 			ExpectCSV: []string{"a row updated.", "\n"},
+		},
+		{
+			Name: "sqlite-source-to-sink-insert",
+			Script: `
+				SQL(bridge('sqlite'), "select 400 as id, 'delta' as name, 40 as age, 'street-400' as address union all select 500, 'echo' as name, 50 as age, 'street-500' as address")
+				SQL(bridge('sqlite'), "insert into example_sql(id,name,age,address) values(?,?,?,?)", value(0), value(1), value(2), value(3))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, "2 rows inserted.", gjson.Get(result, "data.message").String())
+			},
+		},
+		{
+			Name: "sqlite-source-to-sink-count",
+			Script: `
+				SQL(bridge('sqlite'), "select count(*) as cnt from example_sql where id in (400,500)")
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `[["2"]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "sqlite-source-to-sink-cleanup",
+			Script: `
+				SQL(bridge('sqlite'), "delete from example_sql where id in (400,500)")
+				CSV(heading(false))
+			`,
+			ExpectCSV: []string{"2 rows deleted.", "\n"},
 		},
 		{
 			Name: "sqlite-select-updated",

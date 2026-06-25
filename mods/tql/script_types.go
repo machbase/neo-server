@@ -13,6 +13,7 @@ const (
 	StatementSink
 	StatementSourceOrMap
 	StatementSourceOrSink
+	StatementSourceOrMapOrSink
 )
 
 type TQLScript struct {

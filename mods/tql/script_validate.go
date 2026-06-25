@@ -42,7 +42,7 @@ func ValidateScriptStructure(script *TQLScript) error {
 
 func isApplicableForSource(kind StatementKind) bool {
 	switch kind {
-	case StatementSource, StatementSourceOrMap, StatementSourceOrSink:
+	case StatementSource, StatementSourceOrMap, StatementSourceOrSink, StatementSourceOrMapOrSink:
 		return true
 	default:
 		return false
@@ -51,7 +51,7 @@ func isApplicableForSource(kind StatementKind) bool {
 
 func isApplicableForMap(kind StatementKind) bool {
 	switch kind {
-	case StatementMap, StatementSourceOrMap:
+	case StatementMap, StatementSourceOrMap, StatementSourceOrMapOrSink:
 		return true
 	default:
 		return false
@@ -60,7 +60,7 @@ func isApplicableForMap(kind StatementKind) bool {
 
 func isApplicableForSink(kind StatementKind) bool {
 	switch kind {
-	case StatementSink, StatementSourceOrSink:
+	case StatementSink, StatementSourceOrSink, StatementSourceOrMapOrSink:
 		return true
 	default:
 		return false

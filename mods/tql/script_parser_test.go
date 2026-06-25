@@ -60,7 +60,7 @@ func TestValidateScriptStructureInvalidSource(t *testing.T) {
 }
 
 func TestValidateScriptStructureInvalidMap(t *testing.T) {
-	script, err := ParseScript("FAKE(json({[1]}))\nSQL(`select 1`)\nCSV()", nil)
+	script, err := ParseScript("FAKE(json({[1]}))\nINSERT(table('example'))\nCSV()", nil)
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
@@ -74,6 +74,16 @@ func TestValidateScriptStructureInvalidMap(t *testing.T) {
 	}
 	if scriptErr.Kind != "invalid_map" {
 		t.Fatalf("unexpected script error kind: %s", scriptErr.Kind)
+	}
+}
+
+func TestValidateScriptStructureSqlAsMapAndSink(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))\nSQL('select 1')\nSQL('insert into example values(1)')", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if err := ValidateScriptStructure(script); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
 

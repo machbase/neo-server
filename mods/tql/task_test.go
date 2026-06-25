@@ -2599,12 +2599,12 @@ func TestDict(t *testing.T) {
 
 func TestSrcError(t *testing.T) {
 	codeLines := []string{
-		"SQL('select * from example')",
-		"SQL('select * from example')",
+		"FAKE( arrange(0, 1, 1) )",
+		"INSERT(table('example'))",
 		"JSON()",
 	}
 	resultLines := []string{}
-	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: \"SQL()\" is not applicable for MAP [statement: SQL('select * from example')]"))
+	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: \"INSERT()\" is not applicable for MAP [statement: INSERT(table('example'))]"))
 
 	codeLines = []string{
 		"MAPVALUE(0, 1)",
@@ -2612,6 +2612,12 @@ func TestSrcError(t *testing.T) {
 		"JSON()",
 	}
 	runTest(t, codeLines, resultLines, CompileErr("line 1, column 1: \"MAPVALUE()\" is not applicable for SRC [statement: MAPVALUE(0, 1)]"))
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		"SQL('select * from example')",
+	}
+	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: f(SQL) sink does not allow fetch verb \"SELECT\" [statement: SQL('select * from example')]"))
 }
 
 func TestSinkMarkdown(t *testing.T) {
