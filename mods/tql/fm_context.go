@@ -14,6 +14,10 @@ type NodeContext struct {
 	node *Node
 }
 
+type recordValueRef struct {
+	index int
+}
+
 // tql function: context()
 func (node *Node) GetContext() *NodeContext {
 	return &NodeContext{
@@ -33,28 +37,25 @@ func (node *Node) GetRecordKey() any {
 // tql function: value()
 func (node *Node) GetRecordValue(args ...any) (any, error) {
 	inflight := node.Inflight()
-	if inflight == nil || inflight.value == nil {
+	if inflight == nil {
+		if len(args) == 0 {
+			return nil, nil
+		}
+		idx, err := parseRecordValueIndex(args[0])
+		if err != nil {
+			return nil, err
+		}
+		return &recordValueRef{index: idx}, nil
+	}
+	if inflight.value == nil {
 		return nil, nil
 	}
 	if len(args) == 0 {
 		return inflight.value, nil
 	}
-	idx := 0
-	switch v := args[0].(type) {
-	case int:
-		idx = v
-	case float32:
-		idx = int(v)
-	case float64:
-		idx = int(v)
-	case string:
-		if parsed, err := strconv.ParseInt(v, 10, 32); err != nil {
-			return nil, err
-		} else {
-			idx = int(parsed)
-		}
-	default:
-		return nil, ErrWrongTypeOfArgs("value", 0, "index of value tuple ", v)
+	idx, err := parseRecordValueIndex(args[0])
+	if err != nil {
+		return nil, err
 	}
 	switch val := inflight.value.(type) {
 	case []any:
@@ -70,6 +71,25 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 		}
 	default:
 		return nil, ErrArgs("value", 0, "out of index value tuple in "+node.Name())
+	}
+}
+
+func parseRecordValueIndex(arg any) (int, error) {
+	switch v := arg.(type) {
+	case int:
+		return v, nil
+	case float32:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		if parsed, err := strconv.ParseInt(v, 10, 32); err != nil {
+			return 0, err
+		} else {
+			return int(parsed), nil
+		}
+	default:
+		return 0, ErrWrongTypeOfArgs("value", 0, "index of value tuple ", v)
 	}
 }
 

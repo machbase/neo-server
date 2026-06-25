@@ -14,7 +14,7 @@ type Definition struct {
 }
 
 var fxStatementKinds = map[string]StatementKind{
-	"SQL":             StatementSource,
+	"SQL":             StatementSourceOrMapOrSink,
 	"SQL_SELECT":      StatementSource,
 	"QUERY":           StatementSource,
 	"FAKE":            StatementSource,

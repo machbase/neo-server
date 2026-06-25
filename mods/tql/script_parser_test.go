@@ -60,7 +60,7 @@ func TestValidateScriptStructureInvalidSource(t *testing.T) {
 }
 
 func TestValidateScriptStructureInvalidMap(t *testing.T) {
-	script, err := ParseScript("FAKE(json({[1]}))\nSQL(`select 1`)\nCSV()", nil)
+	script, err := ParseScript("FAKE(json({[1]}))\nINSERT(table('example'))\nCSV()", nil)
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}

@@ -291,6 +291,10 @@ func (dc *DataGenMachbase) gen(node *Node) {
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
 func (x *Node) fmSql(args ...any) (any, error) {
+	if x.Inflight() == nil {
+		return x.fmSqlSink(args...)
+	}
+
 	if len(args) == 0 {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
