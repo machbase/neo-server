@@ -37,6 +37,10 @@ func TestStatementKindByFunctionName(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, tql.StatementSourceOrSink, kind)
 
+	kind, ok = tql.StatementKindByFunctionName("SQL()")
+	require.True(t, ok)
+	require.Equal(t, tql.StatementSourceOrMapOrSink, kind)
+
 	kind, ok = tql.StatementKindByFunctionName("customMap")
 	require.True(t, ok)
 	require.Equal(t, tql.StatementMap, kind)

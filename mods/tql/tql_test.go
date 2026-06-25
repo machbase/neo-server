@@ -2381,6 +2381,37 @@ func TestBridgeSqlite(t *testing.T) {
 			ExpectCSV: []string{"a row updated.", "\n"},
 		},
 		{
+			Name: "sqlite-source-to-sink-insert",
+			Script: `
+				SQL(bridge('sqlite'), "select 400 as id, 'delta' as name, 40 as age, 'street-400' as address union all select 500, 'echo' as name, 50 as age, 'street-500' as address")
+				SQL(bridge('sqlite'), "insert into example_sql(id,name,age,address) values(?,?,?,?)", value(0), value(1), value(2), value(3))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, "2 rows inserted.", gjson.Get(result, "data.message").String())
+			},
+		},
+		{
+			Name: "sqlite-source-to-sink-count",
+			Script: `
+				SQL(bridge('sqlite'), "select count(*) as cnt from example_sql where id in (400,500)")
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `[["2"]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "sqlite-source-to-sink-cleanup",
+			Script: `
+				SQL(bridge('sqlite'), "delete from example_sql where id in (400,500)")
+				CSV(heading(false))
+			`,
+			ExpectCSV: []string{"2 rows deleted.", "\n"},
+		},
+		{
 			Name: "sqlite-select-updated",
 			Script: `
 				SQL(bridge('sqlite'), "select * from example_sql")

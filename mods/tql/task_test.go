@@ -2612,6 +2612,12 @@ func TestSrcError(t *testing.T) {
 		"JSON()",
 	}
 	runTest(t, codeLines, resultLines, CompileErr("line 1, column 1: \"MAPVALUE()\" is not applicable for SRC [statement: MAPVALUE(0, 1)]"))
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		"SQL('select * from example')",
+	}
+	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: f(SQL) sink does not allow fetch verb \"SELECT\" [statement: SQL('select * from example')]"))
 }
 
 func TestSinkMarkdown(t *testing.T) {
