@@ -298,6 +298,121 @@ func TestOscillator(t *testing.T) {
 	}
 }
 
+func TestSeriesAndUnzip(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "series-from-oscillator",
+			Script: `
+				const mathx = require("mathx");
+				const gen = mathx.oscillator({
+					components: [{ amplitude: 1.0, frequencyHz: 0.1, phaseRad: 0 }],
+					timeRange: { from: 0, to: 10000000000 },
+					sample: 5,
+				});
+				const s = mathx.series(gen);
+				console.println(s.time.length);
+				console.println(s.value.length);
+				console.println(s.value[1].toFixed(2));
+			`,
+			Output: []string{
+				"5",
+				"5",
+				"1.00",
+			},
+		},
+		{
+			Name: "unzip-basic",
+			Script: `
+				const mathx = require("mathx");
+				const ret = mathx.unzip([[1, 10], [2, 20], [3, 30]]);
+				console.println(JSON.stringify(ret[0]));
+				console.println(JSON.stringify(ret[1]));
+			`,
+			Output: []string{
+				"[1,2,3]",
+				"[10,20,30]",
+			},
+		},
+		{
+			Name: "unzip-invalid-sample",
+			Script: `
+				const mathx = require("mathx");
+				try {
+					mathx.unzip([[1]]);
+				} catch (e) {
+					console.println(e.message);
+				}
+			`,
+			Output: []string{
+				"unzip: each sample should be [x, y]",
+			},
+		},
+		{
+			Name: "series-custom-keys",
+			Script: `
+				const mathx = require("mathx");
+				const s = mathx.series([[1, 10], [2, 20]], {xKey: "ts", yKey: "amp"});
+				console.println(JSON.stringify(s.ts));
+				console.println(JSON.stringify(s.amp));
+			`,
+			Output: []string{
+				"[1,2]",
+				"[10,20]",
+			},
+		},
+		{
+			Name: "series-duplicate-keys",
+			Script: `
+				const mathx = require("mathx");
+				try {
+					mathx.series([[1, 10]], {xKey: "v", yKey: "v"});
+				} catch (e) {
+					console.println(e.message);
+				}
+			`,
+			Output: []string{
+				"series: xKey and yKey should be different",
+			},
+		},
+		{
+			Name: "zip-basic",
+			Script: `
+				const mathx = require("mathx");
+				const z = mathx.zip([1, 2, 3], [10, 20, 30]);
+				console.println(JSON.stringify(z[1]));
+				const uz = mathx.unzip(z);
+				console.println(JSON.stringify(uz[0]));
+				console.println(JSON.stringify(uz[1]));
+			`,
+			Output: []string{
+				"[2,20]",
+				"[1,2,3]",
+				"[10,20,30]",
+			},
+		},
+		{
+			Name: "zip-length-mismatch",
+			Script: `
+				const mathx = require("mathx");
+				try {
+					mathx.zip([1, 2], [10]);
+				} catch (e) {
+					console.println(e.message);
+				}
+			`,
+			Output: []string{
+				"zip: x and y should be the same length",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			test_engine.RunTest(t, tc)
+		})
+	}
+}
+
 func TestSort(t *testing.T) {
 	tests := []test_engine.TestCase{
 		{

@@ -69,6 +69,50 @@ function meshgrid(arr1, arr2) {
     return arr;
 }
 
+function unzip(samples) {
+    if (!Array.isArray(samples)) {
+        throw new Error('unzip: samples should be an array');
+    }
+    const x = new Array(samples.length);
+    const y = new Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+        const sample = samples[i];
+        if (!Array.isArray(sample) || sample.length < 2) {
+            throw new Error('unzip: each sample should be [x, y]');
+        }
+        x[i] = sample[0];
+        y[i] = sample[1];
+    }
+    return [x, y];
+}
+
+function zip(x, y) {
+    if (!Array.isArray(x) || !Array.isArray(y)) {
+        throw new Error('zip: x and y should be arrays');
+    }
+    if (x.length !== y.length) {
+        throw new Error('zip: x and y should be the same length');
+    }
+    const samples = new Array(x.length);
+    for (let i = 0; i < x.length; i++) {
+        samples[i] = [x[i], y[i]];
+    }
+    return samples;
+}
+
+function series(samples, options) {
+    const [time, value] = unzip(samples);
+    const xKey = hasValue(options && options.xKey) ? String(options.xKey) : 'time';
+    const yKey = hasValue(options && options.yKey) ? String(options.yKey) : 'value';
+    if (xKey === yKey) {
+        throw new Error('series: xKey and yKey should be different');
+    }
+    const ret = {};
+    ret[xKey] = time;
+    ret[yKey] = value;
+    return ret;
+}
+
 function cdf(q, x, weight) {
     validateArrayLength('cdf', x, weight);
     return _mathx.cdf(q, x, weight);
@@ -224,9 +268,12 @@ module.exports = {
     oscillator,
     quantile,
     quantileInterp,
+    series,
     sort,
     stdDev,
     stdErr,
     sum,
+    unzip,
     variance,
+    zip,
 };
