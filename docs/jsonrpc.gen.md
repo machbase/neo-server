@@ -11,11 +11,14 @@ Implicit runtime parameters such as `context.Context`, `*gin.Context`, and `*Web
 
 rpcMarkdownRender renders markdown to HTML.
 
-`markdown.render(markdown, darkMode)`
+`markdown.render(markdown, darkMode, referer)`
 
 *Params*
 - `markdown` *string* - markdown source text
 - `darkMode` *bool* - whether to render with dark-mode style
+- `referer` *string* - the referer URL
+    "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
+    "http://127.0.0.1:5654/web/ui" // file is not saved
 
 *Return*
 
@@ -36,7 +39,8 @@ rpcMarkdownRender renders markdown to HTML.
         "method": "markdown.render",
         "params": [
             "string",
-            false
+            false,
+            "string"
         ]
     }
 }

@@ -226,12 +226,14 @@ func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}
 	nextReturnIdx := 1
 	section := ""
 	currentReturnKey := ""
+	currentParam := ""
 	docLines := []string{}
 	for _, line := range strings.Split(cleanDoc(group), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			section = ""
 			currentReturnKey = ""
+			currentParam = ""
 			docLines = append(docLines, "")
 			continue
 		}
@@ -239,11 +241,13 @@ func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}
 		if strings.EqualFold(trimmed, "params:") {
 			section = "params"
 			currentReturnKey = ""
+			currentParam = ""
 			continue
 		}
 		if retKey, retDesc, ok := parseReturnHeaderLine(trimmed, returnNames, len(returns), nextReturnIdx); ok {
 			section = "return"
 			currentReturnKey = retKey
+			currentParam = ""
 			if retDesc != "" {
 				returnDoc[retKey] = retDesc
 			}
@@ -257,8 +261,18 @@ func splitDocAndParamDoc(group *ast.CommentGroup, paramNames map[string]struct{}
 			if name, desc, ok := parseSectionItem(trimmed); ok {
 				if _, exists := paramNames[name]; exists {
 					paramDoc[name] = desc
+					currentParam = name
 					continue
 				}
+			}
+			// If we're already processing a parameter, append the line to its description
+			if currentParam != "" {
+				if paramDoc[currentParam] == "" {
+					paramDoc[currentParam] = line
+				} else {
+					paramDoc[currentParam] += "\n" + line
+				}
+				continue
 			}
 			docLines = append(docLines, line)
 			continue

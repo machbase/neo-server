@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"path"
 	"reflect"
 	"strings"
 
@@ -31,14 +33,37 @@ func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplici
 // params:
 //   - markdown: markdown source text
 //   - darkMode: whether to render with dark-mode style
+//   - referer: the referer URL
+//     "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
+//     "http://127.0.0.1:5654/web/ui" // file is not saved
 //
 // return: rendered HTML text
-func rpcMarkdownRender(markdown string, darkMode bool) (string, error) {
-	w := &strings.Builder{}
+func rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, error) {
+	var filePath, fileName, fileDir string
+	if u, err := url.Parse(referer); err == nil {
+		// {{ file_path }} => /web/api/tql/path/to/file.wrk
+		// {{ file_name }} => file.wrk
+		// {{ file_dir }}  => /web/api/tql/path/to
+		filePath = u.Path
+		fileName = path.Base(filePath)
+		fileDir = path.Dir(filePath)
+	}
+	// {{ file_root }} => /web/api/tql
+	fileRoot := "/web/api/tql"
+	src := []byte(markdown)
+	src = mdFileRootRegexp.ReplaceAll(src, []byte(fileRoot))
+	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
+	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
+	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
+	src = replaceHttpClient(src, true)
+
 	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
-	if err := conv.ConvertString(markdown, w); err != nil {
+	w := &strings.Builder{}
+	w.Write([]byte(`<div>`))
+	if err := conv.Convert(src, w); err != nil {
 		return "", err
 	}
+	w.Write([]byte(`</div>`))
 	return w.String(), nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -549,6 +550,14 @@ Host: localhost:8080`},
 		},
 	}.run(t, at)
 
+	readFile := func(path string) string {
+		content, err := os.ReadFile(path)
+		require.NoError(t, err)
+		// replace \r\n with \n to avoid line ending issues on Windows
+		content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+		return string(content)
+	}
+
 	tests = []JsonRpcTestCase{
 		{
 			name:   "markdownRender-light",
@@ -571,6 +580,45 @@ Host: localhost:8080`},
 				require.Contains(t, html, "Dark Mode Test")
 				require.Contains(t, html, "<li>Item 1</li>")
 				require.Contains(t, html, "<li>Item 2</li>")
+			},
+		},
+		{
+			name:   "markdownRender-http-fence",
+			method: "markdown.render",
+			params: []interface{}{"## HTTP Test\n\n```http\nGET " +
+				httpServerAddress + "/db/query?q=select * from example limit 1\n```\n", false},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Contains(t, html, "<h2")
+				require.Contains(t, html, "HTTP Test")
+				require.Contains(t, html, "<span style=\"color:#f00\">HTTP</span><span style=\"color:#f00\">/</span>1.1 200 <span style=\"color:#00f\">OK</span>")
+			},
+		},
+		{
+			name:   "markdownRender-list",
+			method: "markdown.render",
+			params: []interface{}{readFile("./test/test_markdown_list.md"), false, httpServerAddress + "/web/api/tql/sample/file.wrk"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Equal(t, readFile("./test/test_markdown_list.txt"), html)
+			},
+		},
+		{
+			name:   "markdownRender-utf8",
+			method: "markdown.render",
+			params: []interface{}{readFile("./test/test_markdown_list_utf8.md"), false, httpServerAddress + "/web/api/tql/语言/文檔.wrk"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Equal(t, readFile("./test/test_markdown_list_utf8.txt"), html)
+			},
+		},
+		{
+			name:   "markdownRender-mermaid",
+			method: "markdown.render",
+			params: []interface{}{readFile("./test/test_markdown_mermaid.md"), false, httpServerAddress + "/web/api/tql/diagram.wrk"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Equal(t, readFile("./test/test_markdown_mermaid.txt"), html)
 			},
 		},
 		{
