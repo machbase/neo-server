@@ -4,6 +4,7 @@
         "beginLine": 1,
         "endLine": 1,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -11,6 +12,7 @@
         "beginLine": 1,
         "endLine": 1,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -32,6 +34,7 @@
         "beginLine": 4,
         "endLine": 8,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -55,8 +58,9 @@
         "beginLine": 11,
         "endLine": 11,
         "isComment": false,
+        "stmtType": "select",
         "env": {
-            "error": "unknown env: bridge_bad"
+			"error": "unknown env: bridge_bad"
         }
     },
     {
@@ -80,8 +84,9 @@
         "beginLine": 15,
         "endLine": 15,
         "isComment": false,
+        "stmtType": "select",
         "env": {
-            "bridge": "postgres"
+			"bridge": "postgres"
         }
     },
     {
@@ -98,8 +103,9 @@
         "beginLine": 17,
         "endLine": 17,
         "isComment": false,
+        "stmtType": "select",
         "env": {
-            "bridge": "mysql"
+			"bridge": "mysql"
         }
     },
     {
@@ -123,8 +129,9 @@
         "beginLine": 21,
         "endLine": 22,
         "isComment": false,
+        "stmtType": "select",
         "env": {
-            "bridge": "ms-sql"
+			"bridge": "ms-sql"
         }
     },
     {
@@ -139,6 +146,7 @@
         "beginLine": 25,
         "endLine": 26,
         "isComment": false,
+        "stmtType": "wrong",
         "env": {}
     }
 ]

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 type SqlStatementEnv struct {
@@ -28,6 +29,7 @@ type SqlStatement struct {
 	BeginLine int              `json:"beginLine"`
 	EndLine   int              `json:"endLine"`
 	IsComment bool             `json:"isComment"`
+	StmtType  string           `json:"stmtType,omitempty"`
 	Env       *SqlStatementEnv `json:"env,omitempty"`
 }
 
@@ -144,11 +146,13 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 			}
 		case ";":
 			if !inString {
+				statementText := buffer.String() + ";"
 				statements = append(statements, &SqlStatement{
-					Text:      buffer.String() + ";",
+					Text:      statementText,
 					BeginLine: statementStartLine,
 					EndLine:   lineNumber,
 					IsComment: false,
+					StmtType:  detectSqlStatementType(statementText),
 					Env:       env,
 				})
 				buffer.Reset()
@@ -176,16 +180,74 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 	}
 
 	if len(strings.TrimSpace(buffer.String())) > 0 {
+		statementText := buffer.String()
 		statements = append(statements, &SqlStatement{
-			Text:      buffer.String(),
+			Text:      statementText,
 			BeginLine: statementStartLine,
 			EndLine:   lineNumber,
 			IsComment: false,
+			StmtType:  detectSqlStatementType(statementText),
 			Env:       env,
 		})
 	}
 
 	return statements, scanner.Err()
+}
+
+func detectSqlStatementType(statement string) string {
+	tokens := SplitFields(strings.TrimSpace(statement), true)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	primary := normalizeSqlKeyword(tokens[0])
+	if primary == "" {
+		return ""
+	}
+
+	if primary == "WITH" {
+		for _, token := range tokens[1:] {
+			kw := normalizeSqlKeyword(token)
+			switch kw {
+			case "SELECT", "INSERT", "UPDATE", "DELETE",
+				"MERGE", "CREATE", "ALTER", "DROP", "TRUNCATE",
+				"EXPLAIN", "SHOW", "DESC", "DESCRIBE",
+				"CALL", "EXEC", "EXECUTE", "GRANT", "REVOKE":
+				return strings.ToLower(kw)
+			}
+		}
+	}
+
+	return strings.ToLower(primary)
+}
+
+func normalizeSqlKeyword(token string) string {
+	if token == "" {
+		return ""
+	}
+
+	start := 0
+	for start < len(token) {
+		r, size := utf8.DecodeRuneInString(token[start:])
+		if unicode.IsLetter(r) {
+			break
+		}
+		start += size
+	}
+
+	end := len(token)
+	for end > start {
+		r, size := utf8.DecodeLastRuneInString(token[:end])
+		if unicode.IsLetter(r) {
+			break
+		}
+		end -= size
+	}
+
+	if start >= end {
+		return ""
+	}
+	return strings.ToUpper(token[start:end])
 }
 
 func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, error) {

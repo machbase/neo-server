@@ -4,6 +4,7 @@
         "beginLine": 1,
         "endLine": 1,
         "isComment": false,
+        "stmtType": "create",
         "env": {}
     },
     {
@@ -11,6 +12,7 @@
         "beginLine": 3,
         "endLine": 3,
         "isComment": false,
+        "stmtType": "insert",
         "env": {}
     },
     {
@@ -18,6 +20,7 @@
         "beginLine": 5,
         "endLine": 5,
         "isComment": false,
+        "stmtType": "insert",
         "env": {}
     },
     {
@@ -25,6 +28,7 @@
         "beginLine": 7,
         "endLine": 7,
         "isComment": false,
+        "stmtType": "insert",
         "env": {}
     },
     {
@@ -32,6 +36,7 @@
         "beginLine": 9,
         "endLine": 9,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -39,6 +44,7 @@
         "beginLine": 10,
         "endLine": 10,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -53,6 +59,7 @@
         "beginLine": 11,
         "endLine": 11,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -67,6 +74,7 @@
         "beginLine": 13,
         "endLine": 13,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -81,6 +89,7 @@
         "beginLine": 14,
         "endLine": 14,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     },
     {
@@ -88,6 +97,7 @@
         "beginLine": 15,
         "endLine": 15,
         "isComment": false,
+        "stmtType": "select",
         "env": {}
     }
 ]

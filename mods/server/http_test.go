@@ -1924,14 +1924,14 @@ func TestSplitSQL(t *testing.T) {
 			name:  "select_first",
 			input: `select * from first;`,
 			expects: []*util.SqlStatement{
-				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "select * from first;", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "select * from first;", StmtType: "select", Env: &util.SqlStatementEnv{}},
 			},
 		},
 		{
 			name:  "select_second",
 			input: "\nselect * from second;  ",
 			expects: []*util.SqlStatement{
-				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from second;", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from second;", StmtType: "select", Env: &util.SqlStatementEnv{}},
 			},
 		},
 	}

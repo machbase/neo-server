@@ -2091,6 +2091,7 @@ func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
 //   - beginLine: the line number where the statement starts
 //   - endLine: the line number where the statement ends
 //   - isComment: whether the statement is a comment
+//   - stmtType: lower-case SQL statement type derived from statement text (e.g. select, update, drop)
 //   - env: scoped environment, if any, for the statement; it MAY contain the following fields:
 //   - env.error: error message if the statement has an error
 //   - env.bridge: bridge name if the statement is executed in a bridge context

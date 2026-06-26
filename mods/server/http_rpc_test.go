@@ -128,7 +128,7 @@ func TestHttpRpc(t *testing.T) {
 			params: []interface{}{`select * from first;`},
 			expectFunc: func(t *testing.T, rsp gjson.Result) {
 				result := rsp.Get("result")
-				require.JSONEq(t, `[{"text":"select * from first;","beginLine":1,"endLine":1,"isComment":false,"env":{}}]`, result.String())
+				require.JSONEq(t, `[{"text":"select * from first;","beginLine":1,"endLine":1,"isComment":false,"stmtType":"select","env":{}}]`, result.String())
 			},
 		},
 		{
@@ -137,7 +137,7 @@ func TestHttpRpc(t *testing.T) {
 			params: []interface{}{"\nselect * from second;  "},
 			expectFunc: func(t *testing.T, rsp gjson.Result) {
 				result := rsp.Get("result")
-				require.JSONEq(t, `[{"text":"select * from second;","beginLine":2,"endLine":2,"isComment":false,"env":{}}]`, result.String())
+				require.JSONEq(t, `[{"text":"select * from second;","beginLine":2,"endLine":2,"isComment":false,"stmtType":"select","env":{}}]`, result.String())
 			},
 		},
 		{

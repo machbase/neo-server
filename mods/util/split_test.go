@@ -133,7 +133,7 @@ func TestStringFields(t *testing.T) {
 func TestSplitSqlStatementsSingleLine(t *testing.T) {
 	input := "SELECT 2 FROM T WHERE name = '--abc';"
 	expect := []*util.SqlStatement{
-		{BeginLine: 1, EndLine: 1, IsComment: false, Text: "SELECT 2 FROM T WHERE name = '--abc';", Env: &util.SqlStatementEnv{}},
+		{BeginLine: 1, EndLine: 1, IsComment: false, Text: "SELECT 2 FROM T WHERE name = '--abc';", StmtType: "select", Env: &util.SqlStatementEnv{}},
 	}
 	statements, err := util.SplitSqlStatements(strings.NewReader(input))
 	if err != nil {
@@ -155,14 +155,14 @@ func TestSplitSqlStatementsDoubleDashFlags(t *testing.T) {
 			name:  "explain long flag",
 			input: "explain --full select * from example;",
 			expect: []*util.SqlStatement{
-				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "explain --full select * from example;", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "explain --full select * from example;", StmtType: "explain", Env: &util.SqlStatementEnv{}},
 			},
 		},
 		{
 			name:  "show tables long flag",
 			input: "show tables --all;",
 			expect: []*util.SqlStatement{
-				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "show tables --all;", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "show tables --all;", StmtType: "show", Env: &util.SqlStatementEnv{}},
 			},
 		},
 		{
@@ -170,7 +170,7 @@ func TestSplitSqlStatementsDoubleDashFlags(t *testing.T) {
 			input: "explain --full select * from example -- comment\nwhere id = 1;",
 			expect: []*util.SqlStatement{
 				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- comment", Env: &util.SqlStatementEnv{}},
-				{BeginLine: 1, EndLine: 2, IsComment: false, Text: "explain --full select * from example where id = 1;", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 1, EndLine: 2, IsComment: false, Text: "explain --full select * from example where id = 1;", StmtType: "explain", Env: &util.SqlStatementEnv{}},
 			},
 		},
 	}
