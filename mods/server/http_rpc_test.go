@@ -182,7 +182,7 @@ Host: localhost:8080`},
 	JsonRpcTestCase{
 		name:   "generateKey",
 		method: "key.generate",
-		params: []interface{}{generatedKeyID, "ecdsa", true},
+		params: []interface{}{generatedKeyID, "ecdsa", 0, 0, true},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			result := rsp.Get("result")
 			require.Equal(t, generatedKeyID, result.Get("id").String(), rsp.String())
@@ -191,6 +191,8 @@ Host: localhost:8080`},
 			require.Contains(t, privateKey, "BEGIN ", rsp.String())
 			require.Contains(t, privateKey, "PRIVATE KEY", rsp.String())
 			require.NotEmpty(t, result.Get("token").String(), rsp.String())
+			require.NotEmpty(t, result.Get("zip").String(), rsp.String())
+			require.NotEmpty(t, result.Get("serverKey").String(), rsp.String())
 		},
 	}.run(t, at)
 	JsonRpcTestCase{

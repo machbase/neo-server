@@ -1,7 +1,9 @@
 package server
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/tls"
@@ -1643,6 +1645,10 @@ func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 // params:
 //   - id: the identifier for the key pair, must be alphanumeric and can include _.@-
 //   - typ: the type of key to generate, must be RSA or ECDSA
+//   - notBefore: the start time of the key's validity period in Unix timestamp (sec.)
+//     if not specified or 0, the current time will be used
+//   - notAfter: the end time of the key's validity period in Unix timestamp (sec.)
+//     if not specified or 0, the default period of 10 years will be used
 //   - store: whether to store the key pair in the server's key store
 //
 // return: the generated key information
@@ -1650,7 +1656,9 @@ func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 //   - "certificate": the certificate of the key pair
 //   - "key": the private key of the key pair
 //   - "token": the token associated with the key pair
-func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) (any, error) {
+//   - "serverKey": the server's certificate (if store is true)
+//   - "zip": a zip archive containing the key pair and server certificate (if store is true)
+func (s *Server) genKey(ctx context.Context, id string, typ string, notBefore int64, notAfter int64, store bool) (any, error) {
 	id = strings.ToLower(id)
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", id)
 	if !pass {
@@ -1660,12 +1668,17 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) 
 	if !strings.HasPrefix(typ, "rsa") && !strings.HasPrefix(typ, "ec") {
 		return nil, fmt.Errorf("type should be RSA or ECDSA")
 	}
-
+	if notBefore == 0 {
+		notBefore = time.Now().Unix()
+	}
+	if notAfter == 0 {
+		notAfter = notBefore + 10*365*24*60*60 // 10 years in seconds
+	}
 	rsp, err := s.GenKey(ctx, &GenKeyRequest{
 		Id:        id,
 		Type:      typ,
-		NotBefore: time.Now().Unix(),
-		NotAfter:  time.Now().Add(10 * time.Hour * 24 * 365).Unix(),
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
 		NotStore:  !store,
 	})
 	if err != nil {
@@ -1674,12 +1687,61 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, store bool) 
 	if !rsp.Success {
 		return nil, errors.New(rsp.Reason)
 	}
-	return map[string]string{
+	ret := map[string]any{
 		"id":          rsp.Id,
 		"certificate": rsp.Certificate,
 		"key":         rsp.Key,
 		"token":       rsp.Token,
-	}, nil
+	}
+	if store {
+		serverKey, err := s.ServerKey(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !serverKey.Success {
+			return nil, errors.New(serverKey.Reason)
+		}
+		buf, err := archiveGeneratedKey(id, rsp, serverKey.Certificate)
+		if err != nil {
+			return nil, err
+		}
+		ret["serverKey"] = serverKey.Certificate
+		ret["zip"] = buf
+	}
+	return ret, nil
+}
+
+func archiveGeneratedKey(name string, rsp *GenKeyResponse, serverCert string) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(buf)
+
+	var files = []struct {
+		Name, Body string
+	}{
+		{"server.pem", serverCert},
+		{name + "_cert.pem", rsp.Certificate},
+		{name + "_key.pem", rsp.Key},
+		{name + "_token.txt", rsp.Token},
+	}
+
+	for _, file := range files {
+		f, err := zipWriter.CreateHeader(&zip.FileHeader{
+			Name:     file.Name,
+			Modified: time.Now().UTC(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, err = f.Write([]byte(file.Body))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // deleteKey deletes a key pair from the server key store.

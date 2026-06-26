@@ -1591,11 +1591,15 @@ genKey generates a new key pair and returns the key information.
 It returns the key information including the identifier, certificate, private key, and token if successful.
 The return type is map[string]string with keys "id", "certificate", "key", and "token".
 
-`key.generate(id, typ, store)`
+`key.generate(id, typ, notBefore, notAfter, store)`
 
 *Params*
 - `id` *string* - the identifier for the key pair, must be alphanumeric and can include _.@-
 - `typ` *string* - the type of key to generate, must be RSA or ECDSA
+- `notBefore` *int64* - the start time of the key's validity period in Unix timestamp (sec.)
+    if not specified or 0, the current time will be used
+- `notAfter` *int64* - the end time of the key's validity period in Unix timestamp (sec.)
+    if not specified or 0, the default period of 10 years will be used
 - `store` *bool* - whether to store the key pair in the server's key store
 
 *Return*
@@ -1605,6 +1609,8 @@ The return type is map[string]string with keys "id", "certificate", "key", and "
   - `certificate`: the certificate of the key pair
   - `key`: the private key of the key pair
   - `token`: the token associated with the key pair
+  - `serverKey`: the server's certificate (if store is true)
+  - `zip`: a zip archive containing the key pair and server certificate (if store is true)
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1622,6 +1628,8 @@ The return type is map[string]string with keys "id", "certificate", "key", and "
         "params": [
             "string",
             "string",
+            0,
+            0,
             false
         ]
     }
