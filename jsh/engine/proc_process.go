@@ -275,6 +275,17 @@ func (entry *procProcessEntry) writeJSONAtomic(name string, value any) error {
 	}
 	procDebugLog("pid=%d writeJSONAtomic(%s): Rename %s -> %s", entry.pid, name, tmpPath, targetPath)
 	if err := entry.jr.filesystem.Rename(tmpPath, targetPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			procDebugLog("pid=%d writeJSONAtomic(%s): Rename source missing, fallback WriteFile %s", entry.pid, name, targetPath)
+			if writeErr := entry.jr.filesystem.WriteFile(targetPath, body); writeErr == nil {
+				procDebugLog("pid=%d writeJSONAtomic(%s): fallback WriteFile done", entry.pid, name)
+				return nil
+			} else {
+				procDebugLog("pid=%d writeJSONAtomic(%s): fallback WriteFile failed: %v", entry.pid, name, writeErr)
+				_ = entry.jr.filesystem.Remove(tmpPath)
+				return writeErr
+			}
+		}
 		procDebugLog("pid=%d writeJSONAtomic(%s): Rename FAILED: %v", entry.pid, name, err)
 		_ = entry.jr.filesystem.Remove(tmpPath)
 		return err

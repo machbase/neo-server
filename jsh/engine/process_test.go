@@ -36,12 +36,27 @@ type alwaysFailProcWriteFS struct {
 	*engine.VirtualFS
 }
 
+type dropTmpBeforeRenameFS struct {
+	*engine.VirtualFS
+}
+
 func newAlwaysFailProcWriteFS() *alwaysFailProcWriteFS {
 	return &alwaysFailProcWriteFS{VirtualFS: engine.NewVirtualFS()}
 }
 
 func (f *alwaysFailProcWriteFS) WriteFile(name string, data []byte) error {
 	return fmt.Errorf("simulated service-controller overload for %s", name)
+}
+
+func newDropTmpBeforeRenameFS() *dropTmpBeforeRenameFS {
+	return &dropTmpBeforeRenameFS{VirtualFS: engine.NewVirtualFS()}
+}
+
+func (f *dropTmpBeforeRenameFS) Rename(oldName, newName string) error {
+	if strings.HasSuffix(filepath.ToSlash(oldName), "/.meta.json.tmp") {
+		_ = f.VirtualFS.Remove(oldName)
+	}
+	return f.VirtualFS.Rename(oldName, newName)
 }
 
 func newWatchedProcFS() *watchedProcFS {
@@ -608,6 +623,54 @@ func TestProcessExecStressWithProcEntryWriteFailures(t *testing.T) {
 	close(errCh)
 	for err := range errCh {
 		t.Fatal(err)
+	}
+}
+
+func TestProcessExecHandlesMetaTmpMissingBeforeRename(t *testing.T) {
+	procFS := newDropTmpBeforeRenameFS()
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	conf := engine.Config{
+		Name: "process_proc_tmp_disappears",
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			lib.LibFSTab(),
+			{MountPoint: "/proc-race", FS: procFS},
+		},
+		Env: map[string]any{
+			"PATH":                 "/work:/sbin",
+			"PWD":                  "/work",
+			"HOME":                 "/work",
+			"LIBRARY_PATH":         "./node_modules:/lib",
+			"SERVICE_CONTROLLER":   "stub://controller",
+			"SERVICE_SHARED_MOUNT": "/proc-race",
+		},
+		ExecBuilder: helperExecBuilder(jshBinPath),
+		Reader:      &bytes.Buffer{},
+		Writer:      &out,
+		ErrorWriter: &errOut,
+	}
+	jr, err := engine.New(conf)
+	if err != nil {
+		t.Fatalf("engine.New() error = %v", err)
+	}
+	lib.Enable(jr)
+
+	exitCode, err := jr.Exec("/sbin/echo.js", "hello")
+	if err != nil {
+		t.Fatalf("jr.Exec() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("jr.Exec() exitCode = %d, want 0", exitCode)
+	}
+	if got := strings.TrimSpace(out.String()); got != "hello" {
+		t.Fatalf("stdout = %q, want %q", got, "hello")
+	}
+
+	stderr := errOut.String()
+	if strings.Contains(stderr, "warning: process entry record failed") {
+		t.Fatalf("stderr = %q, want no process entry warning", stderr)
 	}
 }
 
