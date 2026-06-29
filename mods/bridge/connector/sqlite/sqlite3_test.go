@@ -1,4 +1,4 @@
-package sqlite3_test
+package sqlite_test
 
 import (
 	"database/sql"
@@ -6,8 +6,7 @@ import (
 	"time"
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal/sqlite3"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +14,7 @@ import (
 func TestSqlite(t *testing.T) {
 	ctx := t.Context()
 
-	br := sqlite3.New("test", ":memory:")
+	br := connector.NewSqliteBridge("test", ":memory:")
 
 	err := br.BeforeRegister()
 	require.NoError(t, err)
@@ -24,7 +23,7 @@ func TestSqlite(t *testing.T) {
 	sqlConn, err := br.Connect(ctx)
 	require.NoError(t, err)
 
-	conn := internal.NewConn(sqlConn)
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	result := conn.Exec(ctx, `CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)`)
@@ -46,8 +45,22 @@ func TestSqlite(t *testing.T) {
 			values, _ := q.Columns().MakeBuffer()
 			q.Scan(values...)
 			require.Equal(t, 2, len(values))
-			require.Equal(t, int64(rownum), *(values[0].(*int64)))
-			require.Equal(t, expectNames[rownum-1], *(values[1].(*string)))
+			switch v := values[0].(type) {
+			case *int64:
+				require.Equal(t, int64(rownum), *v)
+			case int64:
+				require.Equal(t, int64(rownum), v)
+			default:
+				require.Failf(t, "unexpected id type", "%T", values[0])
+			}
+			switch v := values[1].(type) {
+			case *string:
+				require.Equal(t, expectNames[rownum-1], *v)
+			case string:
+				require.Equal(t, expectNames[rownum-1], v)
+			default:
+				require.Failf(t, "unexpected name type", "%T", values[1])
+			}
 			return true
 		},
 		End: func(q *spi.Query) {
@@ -83,7 +96,7 @@ func TestSqlite(t *testing.T) {
 func TestSqliteSupportedTypes(t *testing.T) {
 	ctx := t.Context()
 
-	br := sqlite3.New("test", ":memory:")
+	br := connector.NewSqliteBridge("test", ":memory:")
 	require.NoError(t, br.BeforeRegister())
 	defer br.AfterUnregister()
 
@@ -91,7 +104,7 @@ func TestSqliteSupportedTypes(t *testing.T) {
 	require.NoError(t, err)
 	defer sqlConn.Close()
 
-	conn := internal.NewConn(sqlConn)
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	createdAt := time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC)

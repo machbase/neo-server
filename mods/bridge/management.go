@@ -28,20 +28,21 @@ func (s *Service) ListBridge(context.Context) (*ListBridgeResponse, error) {
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if lst, err := s.models.LoadAllBridges(); err != nil {
+	lst, err := s.models.LoadAllBridges()
+	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
-	} else {
-		for _, define := range lst {
-			rsp.Bridges = append(rsp.Bridges, &BridgeInfo{
-				Name: define.Name,
-				Type: string(define.Type),
-				Path: define.Path,
-			})
-		}
-		rsp.Success, rsp.Reason = true, "success"
-		return rsp, nil
 	}
+
+	for _, define := range lst {
+		rsp.Bridges = append(rsp.Bridges, &BridgeInfo{
+			Name: define.Name,
+			Type: string(define.Type),
+			Path: define.Path,
+		})
+	}
+	rsp.Success, rsp.Reason = true, "success"
+	return rsp, nil
 }
 
 type GetBridgeRequest struct {
@@ -98,23 +99,21 @@ func (s *Service) AddBridge(ctx context.Context, req *AddBridgeRequest) (*AddBri
 	if len(req.Name) > 40 {
 		rsp.Reason = "name is too long, should be shorter than 40 characters"
 		return rsp, nil
-	} else {
-		def.Name = req.Name
 	}
+	def.Name = req.Name
 
-	if t, err := model.ParseBridgeType(req.Type); err != nil {
+	t, err := model.ParseBridgeType(req.Type)
+	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
-	} else {
-		def.Type = t
 	}
+	def.Type = t
 
 	if len(req.Path) == 0 {
 		rsp.Reason = "path is empty, it should be specified"
 		return rsp, nil
-	} else {
-		def.Path = req.Path
 	}
+	def.Path = req.Path
 
 	if err := Register(def); err != nil {
 		rsp.Reason = err.Error()
@@ -202,18 +201,7 @@ func (s *Service) TestBridge(ctx context.Context, req *TestBridgeRequest) (*Test
 		}
 		rsp.Success, rsp.Reason = true, "success"
 		return rsp, nil
-	case PythonBridge:
-		ver, err := con.Version(ctx)
-		if err != nil {
-			rsp.Reason = err.Error()
-			return rsp, nil
-		}
-		rsp.Success, rsp.Reason = true, fmt.Sprintf("%s success", ver)
-		return rsp, nil
-	case *MqttBridge:
-		rsp.Success, rsp.Reason = con.TestConnection()
-		return rsp, nil
-	case *NatsBridge:
+	case ConnectionTestBridge:
 		rsp.Success, rsp.Reason = con.TestConnection()
 		return rsp, nil
 	default:
@@ -255,18 +243,8 @@ func (s *Service) StatsBridge(ctx context.Context, req *StatsBridgeRequest) (*St
 		return rsp, nil
 	}
 	switch con := br.(type) {
-	case *MqttBridge:
-		s := con.Stats()
-		rsp.InMsgs = s.InMsgs
-		rsp.InBytes = s.InBytes
-		rsp.OutMsgs = s.OutMsgs
-		rsp.OutBytes = s.OutBytes
-		rsp.Appended = s.Appended
-		rsp.Inserted = s.Inserted
-		rsp.Success, rsp.Reason = true, "success"
-		return rsp, nil
-	case *NatsBridge:
-		s := con.Stats()
+	case StatsBridge:
+		s := con.StatsSnapshot()
 		rsp.InMsgs = s.InMsgs
 		rsp.InBytes = s.InBytes
 		rsp.OutMsgs = s.OutMsgs

@@ -5,10 +5,6 @@ import (
 	"sync"
 
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal/mssql"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal/mysql"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal/sqlite3"
 	"github.com/machbase/neo-server/v8/mods/model"
 )
 
@@ -22,39 +18,29 @@ func Register(def *model.BridgeDefinition) (err error) {
 	var br Bridge
 	switch def.Type {
 	case model.BRIDGE_SQLITE:
-		var b SqlBridge = sqlite3.New(def.Name, def.Path)
-		br = b
+		br = connector.NewSqliteBridge(def.Name, def.Path)
 	case model.BRIDGE_POSTGRES:
-		var b SqlBridge = postgres.New(def.Name, def.Path)
-		br = b
+		br = connector.NewPostgresBridge(def.Name, def.Path)
 	case model.BRIDGE_MYSQL:
-		var b SqlBridge = mysql.New(def.Name, def.Path)
-		br = b
+		br = connector.NewMySQLBridge(def.Name, def.Path)
 	case model.BRIDGE_MSSQL:
-		var b SqlBridge = mssql.New(def.Name, def.Path)
-		br = b
+		br = connector.NewMSSQLBridge(def.Name, def.Path)
 	case model.BRIDGE_MQTT:
-		var b *MqttBridge = NewMqttBridge(def.Name, def.Path)
-		br = b
+		br = NewMqttBridge(def.Name, def.Path)
 	case model.BRIDGE_NATS:
-		var b *NatsBridge = NewNatsBridge(def.Name, def.Path)
-		br = b
+		br = NewNatsBridge(def.Name, def.Path)
 	default:
 		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)
 	}
 
-	if br != nil {
-		if err = br.BeforeRegister(); err != nil {
-			return err
-		}
-		registry[def.Name] = br
-		if sqlBridge, ok := br.(SqlBridge); ok {
-			connector.SetDatabase(def.Name, sqlBridge.DB(), sqlBridge.Type(), def.Path)
-		}
-		return nil
-	} else {
-		return fmt.Errorf("unsupported bridge type %s", def.Type)
+	if err = br.BeforeRegister(); err != nil {
+		return err
 	}
+	registry[def.Name] = br
+	if sqlBridge, ok := br.(SqlBridge); ok {
+		connector.SetDatabase(def.Name, sqlBridge.DB(), sqlBridge.Type(), def.Path)
+	}
+	return nil
 }
 
 func Unregister(name string) {

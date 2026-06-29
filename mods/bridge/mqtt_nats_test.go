@@ -267,3 +267,51 @@ func TestNatsSubscribeOptions(t *testing.T) {
 	require.Equal(t, "workers", sub.queueName)
 	require.Equal(t, "events", sub.streamName)
 }
+
+func TestMqttBridgeHelperCoverage(t *testing.T) {
+	br := NewMqttBridge("mqtt_test", "")
+
+	calledConnect := 0
+	calledDisconnect := 0
+	br.connectListeners = append(br.connectListeners, func(any) { calledConnect++ })
+	br.disconnectListeners = append(br.disconnectListeners, func(any) { calledDisconnect++ })
+	br.notifyConnectListeners()
+	br.notifyDisconnectListeners()
+	require.Equal(t, 1, calledConnect)
+	require.Equal(t, 1, calledDisconnect)
+
+	sub := &MqttSubscription{writeStats: &br.WriteStats}
+	sub.AddAppended(4)
+	sub.AddInserted(5)
+	require.Equal(t, uint64(4), br.Appended)
+	require.Equal(t, uint64(5), br.Inserted)
+
+	ok, reason := br.TestConnection()
+	require.False(t, ok)
+	require.Equal(t, "not connected", reason)
+
+	br.setClient(&mqttClientStub{connected: true})
+	br.alive.Store(true)
+	ok, reason = br.TestConnection()
+	require.True(t, ok)
+	require.Equal(t, "success", reason)
+
+	snapshot := br.StatsSnapshot()
+	require.Equal(t, br.Stats().InMsgs, snapshot.InMsgs)
+	require.Equal(t, br.Stats().OutMsgs, snapshot.OutMsgs)
+	require.Equal(t, br.Stats().InBytes, snapshot.InBytes)
+	require.Equal(t, br.Stats().OutBytes, snapshot.OutBytes)
+	require.Equal(t, br.Stats().Appended, snapshot.Appended)
+	require.Equal(t, br.Stats().Inserted, snapshot.Inserted)
+}
+
+func TestNatsBridgeSnapshotCoverage(t *testing.T) {
+	br := NewNatsBridge("nats_test", "")
+	snap := br.StatsSnapshot()
+	require.Equal(t, uint64(0), snap.InMsgs)
+	require.Equal(t, uint64(0), snap.OutMsgs)
+	require.Equal(t, uint64(0), snap.InBytes)
+	require.Equal(t, uint64(0), snap.OutBytes)
+	require.Equal(t, uint64(0), snap.Appended)
+	require.Equal(t, uint64(0), snap.Inserted)
+}

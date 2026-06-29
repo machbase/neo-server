@@ -1,7 +1,6 @@
 package postgres_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -9,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal"
-	bridgePostgres "github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -47,20 +45,14 @@ func TestPostgres(t *testing.T) {
 		t.Fatalf("could not connect to postgres: %v", err)
 	}
 
-	bridge := bridgePostgres.New("pg", dsn)
+	bridge := connector.NewPostgresBridge("pg", dsn)
 	bridge.BeforeRegister()
 	defer bridge.AfterUnregister()
 
-	newConn := func(ctx context.Context) api.Conn {
-		conn, err := bridge.Connect(ctx)
-		if err != nil {
-			panic(err)
-		}
-		return internal.NewConn(conn)
-	}
-
 	ctx := t.Context()
-	conn := newConn(ctx)
+	sqlConn, err := bridge.Connect(ctx)
+	require.NoError(t, err)
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	conn.Exec(ctx, `CREATE TABLE test (id SERIAL PRIMARY KEY, name TEXT)`)
@@ -107,7 +99,7 @@ func TestPostgresDateTypes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	br := bridgePostgres.New("pg", dsn)
+	br := connector.NewPostgresBridge("pg", dsn)
 	require.NoError(t, br.BeforeRegister())
 	defer br.AfterUnregister()
 
@@ -116,7 +108,7 @@ func TestPostgresDateTypes(t *testing.T) {
 	require.NoError(t, err)
 	defer sqlConn.Close()
 
-	conn := internal.NewConn(sqlConn)
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	result := conn.Exec(ctx, `SET TIME ZONE 'UTC'`)

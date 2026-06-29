@@ -186,6 +186,18 @@ type MqttStats struct {
 	Inserted uint64
 }
 
+func (c *MqttBridge) StatsSnapshot() BridgeTrafficStats {
+	s := c.Stats()
+	return BridgeTrafficStats{
+		InMsgs:   s.InMsgs,
+		InBytes:  s.InBytes,
+		OutMsgs:  s.OutMsgs,
+		OutBytes: s.OutBytes,
+		Appended: s.Appended,
+		Inserted: s.Inserted,
+	}
+}
+
 func (c *MqttBridge) Stats() MqttStats {
 	ret := MqttStats{}
 	if c.getClient() == nil {
