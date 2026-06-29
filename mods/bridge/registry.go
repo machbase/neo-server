@@ -49,6 +49,9 @@ func Unregister(name string) {
 
 	if c, ok := registry[name]; ok {
 		delete(registry, name)
+		if _, ok := c.(SqlBridge); ok {
+			connector.UnsetDatabase(name)
+		}
 		c.AfterUnregister()
 	}
 }
