@@ -254,9 +254,9 @@ func (r *WrappedSqlRows) Columns() (api.Columns, error) {
 		ret[i] = &api.Column{
 			Name:     col.Name(),
 			DataType: scanTypeToDataType(col),
-		}
-		if nullable, ok := col.Nullable(); ok {
-			ret[i].Nullable = nullable
+			// wrapped database/sql path may report nullable=false even when NULL is returned
+			// (e.g. projection or loosely-typed columns). Use nullable-safe buffers by default.
+			Nullable: true,
 		}
 		if length, ok := col.Length(); ok {
 			if length <= math.MaxInt {
@@ -310,7 +310,7 @@ func scanTypeToDataType(col *sql.ColumnType) api.DataType {
 		return api.DataTypeString
 	case "time.Time", "sql.NullTime":
 		return api.DataTypeDatetime
-	case "[]byte", "sql.RawBytes":
+	case "[]byte", "[]uint8", "sql.RawBytes":
 		return api.DataTypeBinary
 	case "*interface {}":
 		// FIXME: SQLite binds `count(*)` field as `*interface {}`
