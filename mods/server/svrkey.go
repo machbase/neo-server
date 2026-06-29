@@ -15,6 +15,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -175,7 +176,7 @@ func GenerateServerCertificate(priKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey
 	return out.Bytes(), nil
 }
 
-func GenerateClientCertificate(subject pkix.Name, notBefore time.Time, notAfter time.Time, ca *x509.Certificate, caKey crypto.PrivateKey, pubKey crypto.PublicKey) ([]byte, error) {
+func GenerateClientCertificate(subject pkix.Name, dnsNames []string, uris []*url.URL, notBefore time.Time, notAfter time.Time, ca *x509.Certificate, caKey crypto.PrivateKey, pubKey crypto.PublicKey) ([]byte, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
@@ -187,6 +188,8 @@ func GenerateClientCertificate(subject pkix.Name, notBefore time.Time, notAfter 
 		BasicConstraintsValid: true,
 		SerialNumber:          serialNumber,
 		Subject:               subject,
+		DNSNames:              dnsNames,
+		URIs:                  uris,
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

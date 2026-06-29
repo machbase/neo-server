@@ -905,6 +905,23 @@ func TestDatabaseBinaryTql(t *testing.T) {
 				"\n",
 			},
 		},
+		// FLUSH before DROP TABLE
+		{
+			Name: "flush-before-drop",
+			Script: `
+				FAKE( once(1) )
+				DISCARD()`,
+			ExpectFunc: func(t *testing.T, result string) {
+				// flush appender workers to ensure all pending writes are done
+				spi.FlushAppendWorkers("tqlbin")
+
+				// flush table
+				conn, _ := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				time.Sleep(100 * time.Millisecond)
+				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.Close()
+			},
+		},
 		// DROP TABLE
 		{
 			Name: "drop-table",
