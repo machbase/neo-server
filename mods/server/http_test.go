@@ -42,6 +42,37 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// BenchmarkHandleQuery benchmarks the /db/query handler directly, excluding HTTP client and transport overhead.
+//
+// goos: linux
+// goarch: amd64
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// == v8.5.2 (macheng)
+// BenchmarkHandleQuery-24    	    4317	    276325 ns/op	   25009 B/op	     147 allocs/op
+// BenchmarkHandleQuery-24    	    4876	    267507 ns/op	   25218 B/op	     147 allocs/op
+// BenchmarkHandleQuery-24    	    4260	    275556 ns/op	   24547 B/op	     147 allocs/op
+//
+// == v8.5.3 (machgo)
+// BenchmarkHandleQuery-24    	     187	   6185017 ns/op	  292638 B/op	     316 allocs/op
+// BenchmarkHandleQuery-24    	     194	   6217183 ns/op	  292623 B/op	     316 allocs/op
+// BenchmarkHandleQuery-24    	     194	   6234090 ns/op	  292717 B/op	     317 allocs/op
+//
+// == v8.5.5 (machgo+pooling)
+// BenchmarkHandleQuery-24    	   12969	     98218 ns/op	   13059 B/op	     124 allocs/op
+// BenchmarkHandleQuery-24    	   12799	     92416 ns/op	   13058 B/op	     124 allocs/op
+// BenchmarkHandleQuery-24    	   12914	     97126 ns/op	   13059 B/op	     124 allocs/op
+func BenchmarkHandleQuery(b *testing.B) {
+	sql := "SELECT 1"
+	target := "/db/query?q=" + url.QueryEscape(sql) + "&tz=Asia/Seoul&timeformat=Default"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ctx, writer := newTestHTTPContext(http.MethodGet, target, nil)
+		httpServer.handleQuery(ctx)
+		require.Equal(b, http.StatusOK, writer.Code)
+	}
+}
+
 func TestStatz(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")
 	require.NoError(t, err)
