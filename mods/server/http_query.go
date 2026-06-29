@@ -166,10 +166,22 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.Transpose(req.Transpose),
 	)
 
-	conn, err := svr.getTrustConnection(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
+	var conn api.Conn
+	if pool, poolErr := spi.DefaultPool(); poolErr == nil {
+		if sqlConn, connErr := pool.Conn(ctx); connErr == nil {
+			conn = spi.WrapSqlConn(sqlConn)
+		} else {
+			svr.log.Debugf("query pooled connection unavailable, fallback to direct connect: %s", connErr.Error())
+		}
+	} else {
+		svr.log.Debugf("query pooled db unavailable, fallback to direct connect: %s", poolErr.Error())
+	}
+	if conn == nil {
+		conn, err = svr.getTrustConnection(ctx)
+		if err != nil {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
 	}
 	defer conn.Close()
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"expvar"
 	"fmt"
 	"reflect"
@@ -67,6 +68,35 @@ func TestCollectMqttStatz(t *testing.T) {
 		require.Contains(t, names, "mqtt:clients_connected")
 		require.Contains(t, names, "mqtt:inflight_dropped")
 	})
+}
+
+func TestAddDefaultPoolStatz(t *testing.T) {
+	g := &metric.Gather{}
+	stat := sql.DBStats{
+		MaxOpenConnections: 10,
+		OpenConnections:    8,
+		InUse:              3,
+		Idle:               5,
+		WaitCount:          7,
+		WaitDuration:       12 * time.Millisecond,
+		MaxIdleClosed:      1,
+		MaxIdleTimeClosed:  2,
+		MaxLifetimeClosed:  4,
+	}
+
+	addDefaultPoolStatz(g, stat)
+
+	names := gatherMeasureNames(g)
+	require.Len(t, names, 9)
+	require.Contains(t, names, "sys:pool:max_open")
+	require.Contains(t, names, "sys:pool:open")
+	require.Contains(t, names, "sys:pool:in_use")
+	require.Contains(t, names, "sys:pool:idle")
+	require.Contains(t, names, "sys:pool:wait_count")
+	require.Contains(t, names, "sys:pool:wait_duration")
+	require.Contains(t, names, "sys:pool:max_idle_closed")
+	require.Contains(t, names, "sys:pool:max_idletime_closed")
+	require.Contains(t, names, "sys:pool:max_lifetime_closed")
 }
 
 func TestStatzKeys(t *testing.T) {

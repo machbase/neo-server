@@ -1,17 +1,22 @@
 package spi
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 )
 
 var defaultDatabase api.Database
@@ -142,4 +147,35 @@ func SqlTidy(sqlTextLines ...string) string {
 		lines[i] = strings.TrimSpace(ln)
 	}
 	return strings.Join(lines, " ")
+}
+
+var (
+	defaultPoolOnce sync.Once
+	defaultPoolDB   *sql.DB
+	defaultPoolErr  error
+)
+
+// DefaultPool returns the shared SQL connection pool for the default database.
+func DefaultPool() (*sql.DB, error) {
+	defaultPoolOnce.Do(func() {
+		db := Default()
+		if db == nil {
+			defaultPoolErr = errors.New("default database is not configured")
+			return
+		}
+		defaultPoolDB, defaultPoolErr = machbase.OpenDBWithConnector(db, func(context.Context) ([]api.ConnectOption, error) {
+			key := DefaultKey()
+			if key == nil {
+				return nil, errors.New("default key is not configured")
+			}
+			return []api.ConnectOption{api.WithAuthKey("sys", key)}, nil
+		})
+	})
+	if defaultPoolErr != nil {
+		return nil, defaultPoolErr
+	}
+	if defaultPoolDB == nil {
+		return nil, errors.New("default pool is not initialized")
+	}
+	return defaultPoolDB, nil
 }
