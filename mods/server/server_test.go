@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -24,6 +27,7 @@ import (
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
@@ -31,6 +35,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 )
 
 var projRootDir string
@@ -2089,4 +2094,353 @@ INSERT INTO demo VALUES
 		require.NoError(t, err)
 		require.Empty(t, stmts)
 	})
+}
+
+type coverageResult struct {
+	err error
+}
+
+func (r *coverageResult) Err() error          { return r.err }
+func (r *coverageResult) RowsAffected() int64 { return 1 }
+func (r *coverageResult) Message() string     { return "ok" }
+
+type coverageConn struct {
+	execCount int
+}
+
+func (c *coverageConn) Close() error { return nil }
+func (c *coverageConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+	c.execCount++
+	return &coverageResult{}
+}
+func (c *coverageConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+	panic("unexpected Query")
+}
+func (c *coverageConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
+	panic("unexpected QueryRow")
+}
+func (c *coverageConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
+	panic("unexpected Prepare")
+}
+func (c *coverageConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	panic("unexpected Appender")
+}
+func (c *coverageConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
+	panic("unexpected Explain")
+}
+
+func coverageRunningServer(t *testing.T) *Server {
+	t.Helper()
+	b := booter.GetInstance("machbase.com/neo-server")
+	require.NotNil(t, b)
+	svr, ok := b.(*Server)
+	require.True(t, ok)
+	return svr
+}
+
+func TestServerCoverage_SessionWrappers(t *testing.T) {
+	svr := coverageRunningServer(t)
+	ctx := context.Background()
+
+	sessions, err := svr.listSessions(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, sessions)
+
+	statz, err := svr.statSession(ctx, false)
+	require.NoError(t, err)
+	require.NotNil(t, statz)
+
+	limit, err := svr.getSessionLimit(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, limit)
+
+	err = svr.setSessionLimit(ctx, map[string]any{
+		"MaxPoolSize":  float64(limit.MaxPoolSize),
+		"MaxOpenConn":  float64(limit.MaxOpenConn),
+		"MaxOpenQuery": float64(limit.MaxOpenQuery),
+	})
+	require.NoError(t, err)
+
+	err = svr.killSession(ctx, "definitely-not-a-session", false)
+	require.Error(t, err)
+}
+
+func TestServerCoverage_ScheduleWrappers(t *testing.T) {
+	svr := coverageRunningServer(t)
+	ctx := context.Background()
+
+	name := fmt.Sprintf("cov_timer_%d", time.Now().UnixNano())
+	err := svr.addTimerSchedule(ctx, name, "@every 1m", "definitely_not_existing_command", false)
+	require.Error(t, err)
+
+	err = svr.startSchedule(ctx, name)
+	_ = err
+
+	err = svr.stopSchedule(ctx, name)
+	_ = err
+
+	err = svr.deleteSchedule(ctx, name)
+	_ = err
+
+	_, err = svr.listSchedules(ctx)
+	require.NoError(t, err)
+}
+
+func TestServerCoverage_RunSqlScriptWrappers(t *testing.T) {
+	svr := coverageRunningServer(t)
+
+	require.NoError(t, svr.runSqlScripts("cov-empty", nil))
+	require.NoError(t, svr.runSqlScripts("cov-empty-one", []string{""}))
+	require.NoError(t, svr.runSqlScripts("cov-query", []string{"SELECT 1"}))
+
+	require.NoError(t, svr.runSqlScriptFile("cov-file", ""))
+	require.NoError(t, svr.runSqlScriptFile("cov-file", filepath.Join(t.TempDir(), "missing.sql")))
+
+	dir := t.TempDir()
+	require.NoError(t, svr.runSqlScriptFile("cov-file", dir))
+
+	scriptPath := filepath.Join(t.TempDir(), "startup.sql")
+	script := strings.Join([]string{
+		"-- comment",
+		"SELECT 1;",
+		"",
+	}, "\n")
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o644))
+	require.NoError(t, svr.runSqlScriptFile("cov-file", scriptPath))
+}
+
+func TestServerCoverage_ValidateClientCertificate(t *testing.T) {
+	svr := &Server{authorizedKeysDir: t.TempDir()}
+
+	ok, err := svr.ValidateClientCertificate("missing", "hash")
+	require.False(t, ok)
+	require.Error(t, err)
+
+	ec := NewEllipticCurveP256()
+	pri, pub, err := ec.GenerateKeys()
+	require.NoError(t, err)
+
+	certPem, err := GenerateServerCertificate(pri, pub)
+	require.NoError(t, err)
+	require.NoError(t, svr.SetAuthorizedCertificate("client-a", certPem))
+
+	cert, err := svr.AuthorizedCertificate("client-a")
+	require.NoError(t, err)
+
+	hash, err := HashCertificate(cert)
+	require.NoError(t, err)
+
+	ok, err = svr.ValidateClientCertificate("client-a", hash)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	ok, err = svr.ValidateClientCertificate("client-a", "bad-hash")
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+func TestServerCoverage_MigrateAuthorizedSshKeys(t *testing.T) {
+	svr := &Server{authorizedKeysDir: t.TempDir()}
+	conn := &coverageConn{}
+
+	err := svr.migrateAuthorizedSshKeys(context.Background(), conn, "sys")
+	require.NoError(t, err)
+
+	pri, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	pub, err := ssh.NewPublicKey(&pri.PublicKey)
+	require.NoError(t, err)
+
+	authorizedLine := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pub))) + " coverage@local"
+	filePath := filepath.Join(svr.authorizedKeysDir, authorized_ssh_keys)
+	body := strings.Join([]string{
+		authorizedLine,
+		"invalid ssh line",
+	}, "\n")
+	require.NoError(t, os.WriteFile(filePath, []byte(body), 0o600))
+
+	err = svr.migrateAuthorizedSshKeys(context.Background(), conn, "sys")
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, conn.execCount, 1)
+	_, statErr := os.Stat(filePath)
+	require.Error(t, statErr)
+	require.True(t, os.IsNotExist(statErr))
+}
+
+func TestServerCoverage_NewServerAndExecutable(t *testing.T) {
+	base := NewConfig()
+	base.DataDir = t.TempDir()
+	base.PrefDir = filepath.Join(t.TempDir(), "pref")
+
+	t.Setenv(NAVEL_ENV, "10001")
+	svr, err := NewServer(base)
+	require.NoError(t, err)
+	require.NotNil(t, svr.NavelCord)
+	require.Equal(t, 10001, svr.NavelCord.Port)
+
+	svr.binExecutable = "/tmp/fake-neo"
+	b, err := svr.Executable()
+	require.NoError(t, err)
+	require.Equal(t, "/tmp/fake-neo", b)
+}
+
+func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
+	oldHeadOnly := HeadOnly
+	oldHeadless := Headless
+	HeadOnly = false
+	Headless = false
+	t.Cleanup(func() {
+		HeadOnly = oldHeadOnly
+		Headless = oldHeadless
+	})
+
+	home := filepath.Join(t.TempDir(), "machbase_home")
+	pref := filepath.Join(t.TempDir(), "pref")
+
+	svr := &Server{
+		Config: Config{
+			DataDir: home,
+			PrefDir: pref,
+			Machbase: MachbaseConfig{
+				BIND_IP_ADDRESS: "127.0.0.1",
+				PORT_NO:         0,
+			},
+			Http:  HttpConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
+			Mqtt:  MqttConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
+			Shell: ShellConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
+		},
+		servicePorts: make(map[string][]*model.ServicePort),
+	}
+
+	require.NoError(t, svr.preparePrefDir())
+	require.DirExists(t, svr.certDirPath)
+	require.DirExists(t, svr.authorizedKeysDir)
+	require.FileExists(t, svr.ServerPrivateKeyPath())
+	require.FileExists(t, svr.ServerPublicKeyPath())
+	require.FileExists(t, svr.ServerCertificatePath())
+
+	require.NoError(t, svr.prepareHomeDir())
+	require.DirExists(t, filepath.Join(svr.homeDirPath, "conf"))
+	require.DirExists(t, filepath.Join(svr.homeDirPath, "dbs"))
+	require.DirExists(t, filepath.Join(svr.homeDirPath, "trc"))
+
+	require.NoError(t, svr.preparePorts())
+	ports, err := svr.getServicePorts("")
+	require.NoError(t, err)
+	require.NotEmpty(t, ports)
+}
+
+func TestServerCoverage_StartMachbaseCliErrorPaths(t *testing.T) {
+	t.Run("invalid_data_address", func(t *testing.T) {
+		svr := &Server{Config: Config{DataDir: "invalid-data-address"}}
+		err := svr.startMachbaseCli()
+		require.Error(t, err)
+	})
+
+	t.Run("auth_connect_failure", func(t *testing.T) {
+		svr := &Server{
+			Config: Config{DataDir: "machbase://sys:manager@127.0.0.1:1"},
+		}
+		err := svr.startMachbaseCli()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "head-only mode user auth failed")
+	})
+
+	t.Run("missing_server_private_key", func(t *testing.T) {
+		svr := &Server{
+			Config:      Config{DataDir: "machbase://127.0.0.1:5656"},
+			certDirPath: t.TempDir(),
+		}
+		err := svr.startMachbaseCli()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "load server private key failed")
+	})
+}
+
+func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
+	svr := coverageRunningServer(t)
+	ctx := context.Background()
+
+	name := fmt.Sprintf("cov_sub_%d", time.Now().UnixNano())
+	err := svr.addSubscriberSchedule(ctx,
+		name,
+		"missing-bridge",
+		"select 1",
+		false,
+		"test/topic",
+		1,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = svr.stopSchedule(context.Background(), name)
+		_ = svr.deleteSchedule(context.Background(), name)
+	})
+
+	origCreated := svr.databaseCreated
+	origCreateQueries := append([]string{}, svr.CreateDBQueries...)
+	origCreateFiles := append([]string{}, svr.CreateDBScriptFiles...)
+	origStartupQueries := append([]string{}, svr.StartupQueries...)
+	origStartupFiles := append([]string{}, svr.StartupScriptFiles...)
+	t.Cleanup(func() {
+		svr.databaseCreated = origCreated
+		svr.CreateDBQueries = origCreateQueries
+		svr.CreateDBScriptFiles = origCreateFiles
+		svr.StartupQueries = origStartupQueries
+		svr.StartupScriptFiles = origStartupFiles
+	})
+
+	scriptPath := filepath.Join(t.TempDir(), "init.sql")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("SELECT 1;\n"), 0o644))
+
+	svr.databaseCreated = true
+	svr.CreateDBQueries = []string{"SELECT 1"}
+	svr.CreateDBScriptFiles = []string{"", scriptPath}
+	svr.StartupQueries = []string{"SELECT 1"}
+	svr.StartupScriptFiles = []string{"", scriptPath}
+
+	require.NoError(t, svr.runInitScripts())
+}
+
+func TestServerCoverage_PreparePortsHeadOnlyInvalid(t *testing.T) {
+	oldHeadOnly := HeadOnly
+	HeadOnly = true
+	t.Cleanup(func() {
+		HeadOnly = oldHeadOnly
+	})
+
+	svr := &Server{
+		Config: Config{DataDir: "invalid-headonly-address"},
+	}
+	err := svr.preparePorts()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid --data address")
+}
+
+func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
+	svr := &Server{
+		Config: Config{
+			BackupDir: t.TempDir(),
+			Mqtt: MqttConfig{
+				EnableTls:      true,
+				Listeners:      []string{"tcp://127.0.0.1:0"},
+				ServerCertPath: filepath.Join(t.TempDir(), "missing-cert.pem"),
+				ServerKeyPath:  filepath.Join(t.TempDir(), "missing-key.pem"),
+			},
+		},
+		log:         logging.GetLog("server-coverage"),
+		prefDirPath: t.TempDir(),
+	}
+
+	require.NoError(t, svr.startModelService())
+	require.NotNil(t, svr.models)
+	defer svr.models.Stop()
+
+	require.NoError(t, svr.startBackupService())
+	if svr.bakd != nil {
+		defer svr.bakd.Stop()
+	}
+
+	err := svr.startMqttServer()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mqtt server")
 }

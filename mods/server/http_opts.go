@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -210,7 +211,7 @@ func WithHttpBridgeServer(handler *bridge.Service) HttpOption {
 	}
 }
 
-func WithHttpBackupService(handler *backupd) HttpOption {
+func WithHttpBackupService(handler *backup.Backupd) HttpOption {
 	return func(s *httpd) {
 		s.bakd = handler
 	}
