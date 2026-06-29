@@ -80,12 +80,13 @@ func sqliteBridgePath(t *testing.T) string {
 
 func TestServiceStartStop(t *testing.T) {
 	bridge.UnregisterAll()
+	sqlitePath := sqliteBridgePath(t) // register TempDir cleanup before UnregisterAll (LIFO fix)
 	t.Cleanup(bridge.UnregisterAll)
 
 	provider := newBridgeProviderStub(&model.BridgeDefinition{
 		Name: "bridge_start_stop",
 		Type: model.BRIDGE_SQLITE,
-		Path: sqliteBridgePath(t),
+		Path: sqlitePath,
 	})
 	svc := bridge.NewService(bridge.WithProvider(provider))
 
@@ -101,6 +102,7 @@ func TestServiceStartStop(t *testing.T) {
 
 func TestServiceSqliteLifecycle(t *testing.T) {
 	bridge.UnregisterAll()
+	sqlitePath := sqliteBridgePath(t) // register TempDir cleanup before UnregisterAll (LIFO fix)
 	t.Cleanup(bridge.UnregisterAll)
 
 	provider := newBridgeProviderStub()
@@ -111,7 +113,7 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	addRsp, err := svc.AddBridge(ctx, &bridge.AddBridgeRequest{
 		Name: name,
 		Type: "sqlite",
-		Path: sqliteBridgePath(t),
+		Path: sqlitePath,
 	})
 	require.NoError(t, err)
 	require.True(t, addRsp.Success)

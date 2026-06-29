@@ -17,15 +17,21 @@ func bridgeSqlitePath(t *testing.T) string {
 
 func TestRegistryGettersAndUnsupportedType(t *testing.T) {
 	bridge.UnregisterAll()
-	t.Cleanup(bridge.UnregisterAll)
 
 	sqliteName := "registry_sqlite"
 	mqttName := "registry_mqtt"
 
+	// Call bridgeSqlitePath (which calls t.TempDir) before t.Cleanup so that
+	// the TempDir cleanup is registered first. LIFO ordering then ensures
+	// UnregisterAll (and its db.Close) runs before the temp dir is removed.
+	// On Windows this prevents "file used by another process" errors.
+	sqlitePath := bridgeSqlitePath(t)
+	t.Cleanup(bridge.UnregisterAll)
+
 	require.NoError(t, bridge.Register(&model.BridgeDefinition{
 		Name: sqliteName,
 		Type: model.BRIDGE_SQLITE,
-		Path: bridgeSqlitePath(t),
+		Path: sqlitePath,
 	}))
 	require.NoError(t, bridge.Register(&model.BridgeDefinition{
 		Name: mqttName,
