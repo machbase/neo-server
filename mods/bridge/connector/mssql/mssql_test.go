@@ -7,8 +7,8 @@ import (
 	"time"
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal"
-	bridgeMSSQL "github.com/machbase/neo-server/v8/mods/bridge/internal/mssql"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	br := bridgeMSSQL.New("ms", dsn)
+	br := connector.NewMSSQLBridge("ms", dsn)
 	require.NoError(t, br.BeforeRegister())
 	defer br.AfterUnregister()
 
@@ -51,7 +51,7 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.NoError(t, err)
 	defer sqlConn.Close()
 
-	conn := internal.NewConn(sqlConn)
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	result := conn.Exec(ctx, `CREATE TABLE ids (

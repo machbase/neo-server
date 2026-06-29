@@ -188,6 +188,18 @@ type NatsStats struct {
 	Inserted uint64
 }
 
+func (c *NatsBridge) StatsSnapshot() BridgeTrafficStats {
+	s := c.Stats()
+	return BridgeTrafficStats{
+		InMsgs:   s.InMsgs,
+		InBytes:  s.InBytes,
+		OutMsgs:  s.OutMsgs,
+		OutBytes: s.OutBytes,
+		Appended: s.Appended,
+		Inserted: s.Inserted,
+	}
+}
+
 func (c *NatsBridge) Stats() NatsStats {
 	conn := c.getConn()
 	if conn == nil {

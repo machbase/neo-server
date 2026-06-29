@@ -30,19 +30,13 @@ type ExecRequest struct {
 }
 
 type ExecCommand struct {
-	SqlExec  *SqlRequest    `json:"sqlExec,omitempty"`
-	SqlQuery *SqlRequest    `json:"sqlQuery,omitempty"`
-	Invoke   *InvokeRequest `json:"invoke,omitempty"`
+	SqlExec  *SqlRequest `json:"sqlExec,omitempty"`
+	SqlQuery *SqlRequest `json:"sqlQuery,omitempty"`
 }
 
 type SqlRequest struct {
 	SqlText string `json:"sqlText"`
 	Params  []any  `json:"params,omitempty"`
-}
-
-type InvokeRequest struct {
-	Args  []string `json:"args"`
-	Stdin []byte   `json:"stdin,omitempty"`
 }
 
 type ExecResponse struct {
@@ -55,7 +49,6 @@ type ExecResponse struct {
 type ExecResult struct {
 	SqlExecResult  *SqlExecResult  `json:"sqlExecResult,omitempty"`
 	SqlQueryResult *SqlQueryResult `json:"sqlQueryResult,omitempty"`
-	InvokeResult   *InvokeResult   `json:"invokeResult,omitempty"`
 }
 
 type SqlExecResult struct {
@@ -73,12 +66,6 @@ type SqlQueryResultField struct {
 	Type   string `json:"type,omitempty"`
 	Size   int32  `json:"size,omitempty"`
 	Length int32  `json:"length,omitempty"`
-}
-
-type InvokeResult struct {
-	ExitCode int32  `json:"exitCode"`
-	Stdout   []byte `json:"stdout"`
-	Stderr   []byte `json:"stderr"`
 }
 
 // ////////////////////////////
@@ -99,15 +86,6 @@ func (s *Service) Exec(ctx context.Context, req *ExecRequest) (*ExecResponse, er
 			return s.execSqlBridge(br, ctx, req)
 		case req.Command.SqlQuery != nil:
 			return s.querySqlBridge(br, req)
-		default:
-			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), req.Command)
-			rsp.Elapse = time.Since(tick).String()
-			return rsp, nil
-		}
-	case PythonBridge:
-		switch {
-		case req.Command.Invoke != nil:
-			return s.execPythonBridge(br, ctx, req.Command.Invoke)
 		default:
 			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), req.Command)
 			rsp.Elapse = time.Since(tick).String()
@@ -464,30 +442,5 @@ func (s *Service) SqlQueryResultClose(ctx context.Context, cr *SqlQueryResult) (
 	rowsWrap.release()
 	rsp.Success = true
 	rsp.Reason = "success"
-	return rsp, nil
-}
-
-func (s *Service) execPythonBridge(br PythonBridge, ctx context.Context, req *InvokeRequest) (*ExecResponse, error) {
-	rsp := &ExecResponse{}
-
-	tick := time.Now()
-	defer func() {
-		if err := recover(); err != nil {
-			s.log.Error("panic recover", err)
-		}
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	exitCode, stdout, stderr, err := br.Invoke(ctx, req.Args, req.Stdin)
-	if err != nil {
-		rsp.Reason = err.Error()
-	} else {
-		rsp.Success, rsp.Reason = true, "success"
-	}
-	rsp.Result.InvokeResult = &InvokeResult{
-		ExitCode: int32(exitCode),
-		Stdout:   stdout,
-		Stderr:   stderr,
-	}
 	return rsp, nil
 }

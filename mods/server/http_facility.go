@@ -1250,9 +1250,13 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	// bridge type find
-	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridge.GetBridgeRequest{
+	execRsp, err := svr.bridgeMgmtImpl.Exec(ctx, &bridge.ExecRequest{
 		Name: req.Name,
+		Command: bridge.ExecCommand{
+			SqlExec: &bridge.SqlRequest{
+				SqlText: req.Command,
+			},
+		},
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
@@ -1260,76 +1264,16 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if !getRsp.Success {
-		rsp["reason"] = getRsp.Reason
+	if !execRsp.Success {
+		rsp["reason"] = execRsp.Reason
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-
-	brType := getRsp.Bridge.Type
-	if brType == "" {
-		rsp["reason"] = "bridge type is empty"
-		rsp["elapse"] = time.Since(tick).String()
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-
-	switch brType {
-	case "python":
-		execRsp, err := svr.bridgeMgmtImpl.Exec(ctx, &bridge.ExecRequest{
-			Name: req.Name,
-			Command: bridge.ExecCommand{
-				Invoke: &bridge.InvokeRequest{Args: []string{req.Command}},
-			},
-		})
-		result := execRsp.Result.InvokeResult
-		if result != nil && len(result.Stdout) > 0 {
-			rsp["stdout"] = string(result.Stdout)
-		}
-		if result != nil && len(result.Stderr) > 0 {
-			rsp["stderr"] = string(result.Stderr)
-		}
-		if err != nil {
-			rsp["reason"] = err.Error()
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		if !execRsp.Success {
-			rsp["reason"] = execRsp.Reason
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-	default:
-		execRsp, err := svr.bridgeMgmtImpl.Exec(ctx, &bridge.ExecRequest{
-			Name: req.Name,
-			Command: bridge.ExecCommand{
-				SqlExec: &bridge.SqlRequest{
-					SqlText: req.Command,
-				},
-			},
-		})
-		if err != nil {
-			rsp["reason"] = err.Error()
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		if !execRsp.Success {
-			rsp["reason"] = execRsp.Reason
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		result := execRsp.Result.SqlExecResult
-		if result == nil {
-			rsp["reason"] = "exec result is empty"
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
+	result := execRsp.Result.SqlExecResult
+	if result != nil {
+		rsp["lastInsertId"] = result.LastInsertedId
+		rsp["rowsAffected"] = result.RowsAffected
 	}
 
 	rsp["success"] = true
@@ -1384,7 +1328,6 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	}
 
 	rows := [][]any{}
-	rownum := 0
 	for {
 		fetch, err0 := svr.bridgeMgmtImpl.SqlQueryResultFetch(ctx, result)
 		if err0 != nil {
@@ -1398,7 +1341,6 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 		if fetch.HasNoRows {
 			break
 		}
-		rownum++
 		rows = append(rows, fetch.Values)
 	}
 

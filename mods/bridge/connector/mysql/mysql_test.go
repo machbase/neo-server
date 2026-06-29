@@ -9,8 +9,8 @@ import (
 	"time"
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/bridge/internal"
-	bridgeMySQL "github.com/machbase/neo-server/v8/mods/bridge/internal/mysql"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -48,7 +48,7 @@ func TestMySQLDateTypes(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	br := bridgeMySQL.New("my", dsn)
+	br := connector.NewMySQLBridge("my", dsn)
 	require.NoError(t, br.BeforeRegister())
 	defer br.AfterUnregister()
 
@@ -57,7 +57,7 @@ func TestMySQLDateTypes(t *testing.T) {
 	require.NoError(t, err)
 	defer sqlConn.Close()
 
-	conn := internal.NewConn(sqlConn)
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	result := conn.Exec(ctx, "SET time_zone = '+00:00'")

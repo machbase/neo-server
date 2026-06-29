@@ -203,3 +203,9 @@ func SetDatabase(name string, db *sql.DB, dbType string, dbConn string) {
 	defer databasesLock.Unlock()
 	databases[name] = &BridgedDatabase{db: db, dbType: dbType, dbConnect: dbConn}
 }
+
+func UnsetDatabase(name string) {
+	databasesLock.Lock()
+	defer databasesLock.Unlock()
+	delete(databases, name)
+}
