@@ -144,7 +144,7 @@ func TestCert(t *testing.T) {
 	require.True(t, len(cliKeyPEM) > 0)
 
 	// client cert
-	cliCertPEM, err := GenerateClientCertificate(pkix.Name{CommonName: "TheClient"}, time.Now(), time.Now().Add(time.Hour), svrCert, svrPri, cliPub)
+	cliCertPEM, err := GenerateClientCertificate(pkix.Name{CommonName: "TheClient"}, []string{"TheClient"}, nil, time.Now(), time.Now().Add(time.Hour), svrCert, svrPri, cliPub)
 	require.Nil(t, err)
 	require.NotNil(t, cliCertPEM)
 

@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"runtime/debug"
@@ -133,10 +134,17 @@ func (s *Server) GenKey(ctx context.Context, req *GenKeyRequest) (*GenKeyRespons
 	if err != nil {
 		return nil, err
 	}
+	clientURN, err := url.Parse(fmt.Sprintf("urn:machbase:neo:client:%s", req.Id))
+	if err != nil {
+		rsp.Reason = fmt.Sprintf("invalid client urn, %s", err.Error())
+		return rsp, nil
+	}
 	gen := GenCertReq{
 		Name: pkix.Name{
 			CommonName: req.Id,
 		},
+		DNSNames:  []string{req.Id},
+		URIs:      []*url.URL{clientURN},
 		NotBefore: time.Unix(req.NotBefore, 0),
 		NotAfter:  time.Unix(req.NotAfter, 0),
 		Issuer:    ca,
@@ -218,6 +226,8 @@ func (s *Server) ServerKey(ctx context.Context) (*ServerKeyResponse, error) {
 
 type GenCertReq struct {
 	pkix.Name
+	DNSNames  []string
+	URIs      []*url.URL
 	NotBefore time.Time
 	NotAfter  time.Time
 	Issuer    *x509.Certificate
@@ -276,7 +286,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 		return nil, nil, "", err
 	}
 
-	certBytes, err := GenerateClientCertificate(req.Name, req.NotBefore, req.NotAfter, req.Issuer, req.IssuerKey, clientPub)
+	certBytes, err := GenerateClientCertificate(req.Name, req.DNSNames, req.URIs, req.NotBefore, req.NotAfter, req.Issuer, req.IssuerKey, clientPub)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("client certificate: %s", err.Error())
 	}
