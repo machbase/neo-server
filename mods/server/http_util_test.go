@@ -106,6 +106,20 @@ func TestHttpLoggerWithFilterAndFileConfFallsBackWithoutFile(t *testing.T) {
 func TestHttpLoggerWithFileWrapperWritesAccessLog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logPath := filepath.Join(t.TempDir(), "wrapper-access.log")
+	origNewLogFile := httpLoggerNewLogFile
+	var createdLog logging.Log
+	httpLoggerNewLogFile = func(name string, cfg logging.LogFileConf) logging.Log {
+		createdLog = logging.NewLogFile(name, cfg)
+		return createdLog
+	}
+	t.Cleanup(func() {
+		httpLoggerNewLogFile = origNewLogFile
+		if createdLog != nil {
+			closer, ok := createdLog.(interface{ Close() error })
+			require.True(t, ok)
+			require.NoError(t, closer.Close())
+		}
+	})
 
 	router := gin.New()
 	router.Use(HttpLoggerWithFile("http-util-wrapper", logPath))
@@ -126,6 +140,20 @@ func TestHttpLoggerWithFileWrapperWritesAccessLog(t *testing.T) {
 func TestHttpLoggerWithFileConfWrapperWritesAccessLog(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logPath := filepath.Join(t.TempDir(), "wrapper-access-conf.log")
+	origNewLogFile := httpLoggerNewLogFile
+	var createdLog logging.Log
+	httpLoggerNewLogFile = func(name string, cfg logging.LogFileConf) logging.Log {
+		createdLog = logging.NewLogFile(name, cfg)
+		return createdLog
+	}
+	t.Cleanup(func() {
+		httpLoggerNewLogFile = origNewLogFile
+		if createdLog != nil {
+			closer, ok := createdLog.(interface{ Close() error })
+			require.True(t, ok)
+			require.NoError(t, closer.Close())
+		}
+	})
 
 	router := gin.New()
 	router.Use(HttpLoggerWithFileConf("http-util-wrapper-conf", logging.LogFileConf{

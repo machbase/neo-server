@@ -414,8 +414,10 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 		s := NewBackupd(WithBackupdBaseDir(baseDir))
 		w := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(w)
+		payload, err := json.Marshal(map[string]string{"path": filepath.Join(baseDir, "missing")})
+		require.NoError(t, err)
 		ctx.Params = gin.Params{{Key: "name", Value: "mount_abs"}}
-		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/backup/mounts/mount_abs", strings.NewReader(fmt.Sprintf(`{"path":"%s"}`, filepath.Join(baseDir, "missing"))))
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/backup/mounts/mount_abs", strings.NewReader(string(payload)))
 		ctx.Request.Header.Set("Content-Type", "application/json")
 		s.handleMount(ctx)
 		require.Equal(t, http.StatusOK, w.Code)

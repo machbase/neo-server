@@ -21,6 +21,11 @@ import (
 const svcName = "machbase-neo"
 
 func doService(sc *Service) {
+	if sc == nil {
+		fmt.Println("Usage: machbase-neo service [install, remove, debug, start, stop]")
+		return
+	}
+
 	inService, err := svc.IsWindowsService()
 	if err != nil {
 		fmt.Println("fail to determine if process is in service:", err.Error())

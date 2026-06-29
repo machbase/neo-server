@@ -1345,6 +1345,10 @@ func TestSshCoverage_NewIODebuggerWrite(t *testing.T) {
 }
 
 func TestServerCoverage_DoServiceUnix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only coverage test")
+	}
+
 	oldStdout := os.Stdout
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
