@@ -37,9 +37,9 @@ func TestSSH(t *testing.T) {
 			cmd:  "show tables --format csv",
 			expect: []string{
 				"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
-				"1,MACHBASEDB,SYS,EXAMPLE,15,Tag,",
-				"2,MACHBASEDB,SYS,LOG_DATA,8,Log,",
-				"3,MACHBASEDB,SYS,TAG_DATA,7,Tag,",
+				"/r/^1,MACHBASEDB,SYS,EXAMPLE,[0-9]+,Tag,$",
+				"/r/^2,MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$",
+				"/r/^3,MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$",
 			},
 		},
 		{
@@ -469,7 +469,7 @@ func TestSSHSession(t *testing.T) {
 	require.NoError(t, err)
 
 	err = s.Run(t, "desc example", []string{
-		"EXAMPLE (ID: 15, Tag Table)",
+		"EXAMPLE (ID:",
 		"┌────────┬───────┬──────────┬────────┬────────────┬───────┐",
 		"│ ROWNUM │ NAME  │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
 		"├────────┼───────┼──────────┼────────┼────────────┼───────┤",

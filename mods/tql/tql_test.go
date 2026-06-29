@@ -229,12 +229,13 @@ func TestDatabaseTql(t *testing.T) {
 				SQL("show tables;")
 				CSV(header(true))
 				`,
-			ExpectCSV: []string{
-				"DATABASE,USER,NAME,ID,TYPE,FLAG",
-				"MACHBASEDB,SYS,LOG_DATA,15,Log,",
-				"MACHBASEDB,SYS,TAG_DATA,7,Tag,",
-				"MACHBASEDB,SYS,TAG_SIMPLE,14,Tag,",
-				"\n",
+			ExpectFunc: func(t *testing.T, result string) {
+				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+				require.GreaterOrEqual(t, len(lines), 4)
+				require.Equal(t, "DATABASE,USER,NAME,ID,TYPE,FLAG", lines[0])
+				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
+				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
+				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
 			},
 		},
 		{
@@ -243,13 +244,39 @@ func TestDatabaseTql(t *testing.T) {
 				SQL("show indexes ")
 				CSV(header(true))
 				`,
-			ExpectCSV: []string{
-				"ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
-				"3,MACHBASEDB,SYS,_TAG_DATA_META,_ID,__PK_IDX__TAG_DATA_META_1,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"4,MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"10,MACHBASEDB,SYS,_TAG_SIMPLE_META,_ID,__PK_IDX__TAG_SIMPLE_META_1,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"11,MACHBASEDB,SYS,_TAG_SIMPLE_META,NAME,_TAG_SIMPLE_META_NAME,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"\n",
+			ExpectFunc: func(t *testing.T, result string) {
+				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+				require.GreaterOrEqual(t, len(lines), 5)
+				require.Equal(t, "ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
+
+				required := map[string]struct {
+					table  string
+					column string
+				}{
+					"__PK_IDX__TAG_DATA_META_1":   {table: "_TAG_DATA_META", column: "_ID"},
+					"_TAG_DATA_META_NAME":         {table: "_TAG_DATA_META", column: "NAME"},
+					"__PK_IDX__TAG_SIMPLE_META_1": {table: "_TAG_SIMPLE_META", column: "_ID"},
+					"_TAG_SIMPLE_META_NAME":       {table: "_TAG_SIMPLE_META", column: "NAME"},
+				}
+				seen := map[string]bool{}
+				for _, line := range lines[1:] {
+					fields := strings.Split(line, ",")
+					require.GreaterOrEqual(t, len(fields), 11)
+					idxName := fields[5]
+					req, ok := required[idxName]
+					if !ok {
+						continue
+					}
+					require.Equal(t, "MACHBASEDB", fields[1])
+					require.Equal(t, "SYS", fields[2])
+					require.Equal(t, req.table, fields[3])
+					require.Equal(t, req.column, fields[4])
+					require.Equal(t, "REDBLACK", fields[6])
+					seen[idxName] = true
+				}
+				for name := range required {
+					require.True(t, seen[name], "required index missing: %s", name)
+				}
 			},
 		},
 		{

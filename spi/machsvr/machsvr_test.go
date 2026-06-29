@@ -1593,6 +1593,12 @@ func testShowIndexes(t *testing.T) {
 	ret, err := spi.ListIndexes(ctx, conn)
 	require.NoError(t, err, "indexes fail")
 	require.NotEmpty(t, ret, "indexes empty")
+	required := map[string]bool{
+		"_TAG_DATA_META_NAME":         false,
+		"__PK_IDX__TAG_DATA_META_1":   false,
+		"_TAG_SIMPLE_META_NAME":       false,
+		"__PK_IDX__TAG_SIMPLE_META_1": false,
+	}
 	for _, r := range ret {
 		switch r.IndexName {
 		case "_TAG_DATA_META_NAME":
@@ -1600,25 +1606,31 @@ func testShowIndexes(t *testing.T) {
 			require.Equal(t, "_TAG_DATA_META", r.TableName)
 			require.Equal(t, "NAME", r.ColumnName)
 			require.Equal(t, "REDBLACK", r.IndexType)
+			required[r.IndexName] = true
 		case "__PK_IDX__TAG_DATA_META_1":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_DATA_META", r.TableName)
 			require.Equal(t, "_ID", r.ColumnName)
 			require.Equal(t, "REDBLACK", r.IndexType)
+			required[r.IndexName] = true
 		case "_TAG_SIMPLE_META_NAME":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_SIMPLE_META", r.TableName)
 			require.Equal(t, "NAME", r.ColumnName)
 			require.Equal(t, "REDBLACK", r.IndexType)
+			required[r.IndexName] = true
 		case "__PK_IDX__TAG_SIMPLE_META_1":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_SIMPLE_META", r.TableName)
 			require.Equal(t, "_ID", r.ColumnName)
 			require.Equal(t, "REDBLACK", r.IndexType)
+			required[r.IndexName] = true
 		default:
-			t.Logf("Unknown index: %+v", r)
-			t.Fail()
+			// Ignore additional system indexes that may be added by newer engine versions.
 		}
+	}
+	for name, seen := range required {
+		require.True(t, seen, "required index missing: %s", name)
 	}
 }
 
