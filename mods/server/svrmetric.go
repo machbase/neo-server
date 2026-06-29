@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"expvar"
 	"fmt"
@@ -30,6 +31,7 @@ func startServerMetrics(s *Server) {
 	spi.AddInput(&input.Runtime{})
 	spi.AddInput(&input.Netstat{})
 	spi.AddInputFunc(collectSysStatz)
+	spi.AddInputFunc(collectDefaultPoolStatz)
 	spi.AddInputFunc(collectMqttStatz(s))
 	spi.AddInputFunc(collectTqlCacheStatz)
 
@@ -88,6 +90,30 @@ func collectSysStatz(g *metric.Gather) error {
 		return err
 	}
 	return nil
+}
+
+func collectDefaultPoolStatz(g *metric.Gather) error {
+	db, err := spi.DefaultPool()
+	if err != nil {
+		g.Add("sys:pool:available", 0, metric.GaugeType(metric.UnitShort))
+		statzLog.Trace("default pool is unavailable: %v", err)
+		return nil
+	}
+	g.Add("sys:pool:available", 1, metric.GaugeType(metric.UnitShort))
+	addDefaultPoolStatz(g, db.Stats())
+	return nil
+}
+
+func addDefaultPoolStatz(g *metric.Gather, stat sql.DBStats) {
+	g.Add("sys:pool:max_open", float64(stat.MaxOpenConnections), metric.GaugeType(metric.UnitShort))
+	g.Add("sys:pool:open", float64(stat.OpenConnections), metric.GaugeType(metric.UnitShort))
+	g.Add("sys:pool:in_use", float64(stat.InUse), metric.GaugeType(metric.UnitShort))
+	g.Add("sys:pool:idle", float64(stat.Idle), metric.GaugeType(metric.UnitShort))
+	g.Add("sys:pool:wait_count", float64(stat.WaitCount), metric.OdometerType(metric.UnitShort))
+	g.Add("sys:pool:wait_duration", float64(stat.WaitDuration.Nanoseconds()), metric.OdometerType(metric.UnitDuration))
+	g.Add("sys:pool:max_idle_closed", float64(stat.MaxIdleClosed), metric.OdometerType(metric.UnitShort))
+	g.Add("sys:pool:max_idletime_closed", float64(stat.MaxIdleTimeClosed), metric.OdometerType(metric.UnitShort))
+	g.Add("sys:pool:max_lifetime_closed", float64(stat.MaxLifetimeClosed), metric.OdometerType(metric.UnitShort))
 }
 
 func addExecuteStatz(ctx context.Context, conn api.Conn, g *metric.Gather) error {
