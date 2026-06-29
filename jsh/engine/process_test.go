@@ -1498,11 +1498,13 @@ func startProcessExecSignalHelper(t *testing.T, signalName string) (<-chan strin
 	}
 
 	linesCh := make(chan string, 16)
+	scanErrCh := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			linesCh <- scanner.Text()
 		}
+		scanErrCh <- scanner.Err()
 		close(linesCh)
 	}()
 
@@ -1514,6 +1516,10 @@ func startProcessExecSignalHelper(t *testing.T, signalName string) (<-chan strin
 		select {
 		case line, ok := <-linesCh:
 			if !ok {
+				scanErr := <-scanErrCh
+				if scanErr != nil {
+					t.Fatalf("exec helper output scan failed before child readiness: %v\nstdout:\n%s\nstderr:\n%s", scanErr, strings.Join(lines, "\n"), stderr.String())
+				}
 				t.Fatalf("exec helper exited before child readiness\nstdout:\n%s\nstderr:\n%s", strings.Join(lines, "\n"), stderr.String())
 			}
 			lines = append(lines, line)
@@ -2106,11 +2112,13 @@ func startProcessSignalHelper(t *testing.T, signalName string, listenForSignal b
 	}
 
 	linesCh := make(chan string, 16)
+	scanErrCh := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			linesCh <- scanner.Text()
 		}
+		scanErrCh <- scanner.Err()
 		close(linesCh)
 	}()
 
@@ -2123,6 +2131,10 @@ func startProcessSignalHelper(t *testing.T, signalName string, listenForSignal b
 		select {
 		case line, ok := <-linesCh:
 			if !ok {
+				scanErr := <-scanErrCh
+				if scanErr != nil {
+					t.Fatalf("helper output scan failed before readiness for %s: %v\nstdout:\n%s\nstderr:\n%s", signalName, scanErr, strings.Join(lines, "\n"), stderr.String())
+				}
 				t.Fatalf("helper exited before readiness for %s\nstdout:\n%s\nstderr:\n%s", signalName, strings.Join(lines, "\n"), stderr.String())
 			}
 			lines = append(lines, line)

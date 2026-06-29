@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -195,4 +196,25 @@ func TestWebConsoleSend(t *testing.T) {
 
 		require.True(t, cons.closed.Load())
 	})
+}
+
+func TestWebTermCoverage_NewSetWindowSizeClose(t *testing.T) {
+	hostPort := fmt.Sprintf("127.0.0.1:%d", shellPort)
+
+	term, err := NewWebTerm(hostPort, "", "sys")
+	require.NoError(t, err)
+	require.NotNil(t, term)
+
+	err = term.SetWindowSize(32, 96)
+	require.NoError(t, err)
+	require.Equal(t, 32, term.Rows)
+	require.Equal(t, 96, term.Cols)
+
+	term.Close()
+}
+
+func TestWebTermCoverage_NewWebTermErrorPath(t *testing.T) {
+	_, err := NewWebTerm("127.0.0.1:1", "", "sys")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NewTerm dial")
 }

@@ -2254,3 +2254,87 @@ func TestHandleFiles(t *testing.T) {
 		require.Contains(t, writer.Body.String(), `"success":true`)
 	})
 }
+
+func TestHandleChangePasswordCoverage(t *testing.T) {
+	oldDB := spi.Default()
+	oldKey := spi.DefaultKey()
+	t.Cleanup(func() {
+		spi.SetDefault(oldDB, oldKey)
+	})
+
+	newHTTP := func() *httpd {
+		return &httpd{log: logging.GetLog("httpd-coverage")}
+	}
+
+	t.Run("bind error", func(t *testing.T) {
+		spi.SetDefault(&httpTestDatabase{}, oldKey)
+		svr := newHTTP()
+		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte("{"))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid password", func(t *testing.T) {
+		spi.SetDefault(&httpTestDatabase{}, oldKey)
+		svr := newHTTP()
+		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"bad'pw"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "invalid new password")
+	})
+
+	t.Run("unauthorized request", func(t *testing.T) {
+		spi.SetDefault(&httpTestDatabase{}, oldKey)
+		svr := newHTTP()
+		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusUnauthorized, w.Code)
+		require.Contains(t, w.Body.String(), "unauthorized request")
+	})
+
+	t.Run("connect error", func(t *testing.T) {
+		spi.SetDefault(&httpTestDatabase{connectErr: errors.New("connect failed")}, oldKey)
+		svr := newHTTP()
+		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "connect failed")
+	})
+
+	t.Run("exec error", func(t *testing.T) {
+		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{err: errors.New("exec failed"), message: "alter failed"}}}
+		spi.SetDefault(db, oldKey)
+		svr := newHTTP()
+		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "alter failed")
+		require.True(t, db.conn.closed)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{}}}
+		spi.SetDefault(db, oldKey)
+		svr := newHTTP()
+		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Set("jwt-claim", NewClaim("sys"))
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Contains(t, w.Body.String(), `"success":true`)
+		require.True(t, db.conn.closed)
+	})
+}

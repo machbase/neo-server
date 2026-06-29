@@ -1,4 +1,4 @@
-package server
+package backup
 
 import (
 	"context"
@@ -17,8 +17,12 @@ import (
 	"github.com/machbase/neo-server/v8/spi"
 )
 
-func NewBackupd(opts ...BackupdOption) *backupd {
-	ret := &backupd{
+var connectDefault = func(ctx context.Context) (api.Conn, error) {
+	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+}
+
+func NewBackupd(opts ...Option) *Backupd {
+	ret := &Backupd{
 		log: logging.GetLog("backupd"),
 	}
 	for _, opt := range opts {
@@ -27,9 +31,9 @@ func NewBackupd(opts ...BackupdOption) *backupd {
 	return ret
 }
 
-type BackupdOption func(s *backupd)
+type Option func(s *Backupd)
 
-type backupd struct {
+type Backupd struct {
 	log     logging.Log
 	baseDir string
 	cutset  string
@@ -37,14 +41,13 @@ type backupd struct {
 	mutex   sync.Mutex
 }
 
-func WithBackupdBaseDir(baseDir string) BackupdOption {
-	return func(s *backupd) {
-		// baseDir, err := filepath.Abs(baseDir)
+func WithBackupdBaseDir(baseDir string) Option {
+	return func(s *Backupd) {
 		s.baseDir = baseDir
 	}
 }
 
-func (s *backupd) Start() error {
+func (s *Backupd) Start() error {
 	s.log.Infof("backupd started at %s", s.baseDir)
 	if runtime.GOOS == "windows" {
 		s.cutset = "\\"
@@ -55,31 +58,28 @@ func (s *backupd) Start() error {
 	return nil
 }
 
-func (s *backupd) Stop() {
+func (s *Backupd) Stop() {
 	s.log.Infof("backupd stop")
 }
 
-func (s *backupd) HttpRouter(r gin.IRouter) {
-	// /web/api/backup/archives
-	r.GET("/archives", s.handleArchives) // returns backup list
-	// r.GET("/archives/:id", s.HttpHandler) // returns the backup detail
-	r.POST("/archive", s.handleArchive)             // backup
-	r.GET("/archive/status", s.handleArchiveStatus) // returns the backup detail
+func (s *Backupd) HttpRouter(r gin.IRouter) {
+	r.GET("/archives", s.handleArchives)
+	r.POST("/archive", s.handleArchive)
+	r.GET("/archive/status", s.handleArchiveStatus)
 
-	// /web/api/backup/mounts
-	r.GET("/mounts", s.handleMounts)           // returns mount list
-	r.POST("/mounts/:name", s.handleMount)     // mount archive dir to the database
-	r.DELETE("/mounts/:name", s.handleUnmount) // unmount
+	r.GET("/mounts", s.handleMounts)
+	r.POST("/mounts/:name", s.handleMount)
+	r.DELETE("/mounts/:name", s.handleUnmount)
 }
 
-func (s *backupd) HttpHandler(ctx *gin.Context) {
+func (s *Backupd) HttpHandler(ctx *gin.Context) {
 	s.log.Info("backup api request", ctx.Request.Method, ctx.Request.RequestURI)
-	ctx.JSON(200, gin.H{
+	ctx.JSON(http.StatusOK, gin.H{
 		"message": "pong",
 	})
 }
 
-func (s *backupd) handleArchiveStatus(ctx *gin.Context) {
+func (s *Backupd) handleArchiveStatus(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -108,10 +108,10 @@ type backupState struct {
 }
 
 type BackupArchive struct {
-	Type      string `json:"type" binding:"required"` // database, table
+	Type      string `json:"type" binding:"required"`
 	TableName string `json:"tableName"`
 	Duration  struct {
-		Type  string `json:"type" binding:"required"` // full, incremetal, time
+		Type  string `json:"type" binding:"required"`
 		After string `json:"after"`
 		From  string `json:"from"`
 		To    string `json:"to"`
@@ -119,7 +119,7 @@ type BackupArchive struct {
 	Path string `json:"path" binding:"required"`
 }
 
-func (s *backupd) handleArchive(ctx *gin.Context) {
+func (s *Backupd) handleArchive(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -149,7 +149,7 @@ func (s *backupd) handleArchive(ctx *gin.Context) {
 
 	backupDir := filepath.Dir(copyArchive.Path)
 	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
-		if err = os.MkdirAll(backupDir, 0755); err != nil {
+		if err = os.MkdirAll(backupDir, 0o755); err != nil {
 			rsp["reason"] = err.Error()
 			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
@@ -192,21 +192,21 @@ func (s *backupd) handleArchive(ctx *gin.Context) {
 			copyArchive.Duration.After = strings.ReplaceAll(copyArchive.Duration.After, "/", "\\")
 			copyArchive.Duration.After = strings.ReplaceAll(copyArchive.Duration.After, "\\", "\\\\")
 		}
-		sqlText = fmt.Sprintf("BACKUP %s AFTER '%s' INTO DISK = '%s'", backupTarget, copyArchive.Duration.After, copyArchive.Path) //after add
+		sqlText = fmt.Sprintf("BACKUP %s AFTER '%s' INTO DISK = '%s'", backupTarget, copyArchive.Duration.After, copyArchive.Path)
 	case "time":
-		fromSql := "0"
+		fromSQL := "0"
 		if copyArchive.Duration.From != "" {
-			fromSql = copyArchive.Duration.From
+			fromSQL = copyArchive.Duration.From
 		}
-		toSql := "sysdate"
+		toSQL := "sysdate"
 		if copyArchive.Duration.To != "" {
-			toSql = fmt.Sprintf("FROM_UNIXTIME(%s)", copyArchive.Duration.To)
+			toSQL = fmt.Sprintf("FROM_UNIXTIME(%s)", copyArchive.Duration.To)
 		}
 		sqlText = fmt.Sprintf(`
 		BACKUP %s FROM FROM_UNIXTIME(%s)
 				  TO %s
 				  INTO DISK = '%s'`,
-			backupTarget, fromSql, toSql, copyArchive.Path,
+			backupTarget, fromSQL, toSQL, copyArchive.Path,
 		)
 		sqlText = strings.TrimSpace(sqlText)
 	default:
@@ -216,7 +216,7 @@ func (s *backupd) handleArchive(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := connectDefault(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -232,7 +232,7 @@ func (s *backupd) handleArchive(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *backupd) backupManager(conn api.Conn, archive BackupArchive, sqlText string) {
+func (s *Backupd) backupManager(conn api.Conn, archive BackupArchive, sqlText string) {
 	go func() {
 		defer conn.Close()
 
@@ -262,13 +262,13 @@ type ArchiveInfo struct {
 	MountName string `json:"mountName,omitempty"`
 }
 
-func (s *backupd) handleArchives(ctx *gin.Context) {
+func (s *Backupd) handleArchives(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
 	dirs, err := os.ReadDir(s.baseDir)
 	if err != nil {
-		if os.IsNotExist(err) { // no backup dir exists
+		if os.IsNotExist(err) {
 			rsp["success"] = true
 			rsp["reason"] = "success"
 			rsp["data"] = []ArchiveInfo{}
@@ -282,8 +282,7 @@ func (s *backupd) handleArchives(ctx *gin.Context) {
 		return
 	}
 
-	// mount status check
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := connectDefault(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -325,7 +324,6 @@ func (s *backupd) handleArchives(ctx *gin.Context) {
 		if !dir.IsDir() {
 			continue
 		}
-		// baseDir check
 		if dir.Name() == "SYSTEM_TABLESPACE" || dir.Name() == "TAG_TABLESPACE" {
 			continue
 		}
@@ -361,7 +359,7 @@ func (s *backupd) handleArchives(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *backupd) handleMount(ctx *gin.Context) {
+func (s *Backupd) handleMount(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -392,11 +390,11 @@ func (s *backupd) handleMount(ctx *gin.Context) {
 		sqlText = fmt.Sprintf("MOUNT DATABASE '%s' TO '%s'", baseMountPath, name)
 	}
 
-	if runtime.GOOS == "windows" { // windows
+	if runtime.GOOS == "windows" {
 		sqlText = strings.ReplaceAll(sqlText, "\\", "\\\\")
 	}
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := connectDefault(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -419,7 +417,7 @@ func (s *backupd) handleMount(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *backupd) handleUnmount(ctx *gin.Context) {
+func (s *Backupd) handleUnmount(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -431,7 +429,7 @@ func (s *backupd) handleUnmount(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := connectDefault(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -468,11 +466,11 @@ type StorageMount struct {
 	Flag            int    `json:"flag"`
 }
 
-func (s *backupd) handleMounts(ctx *gin.Context) {
+func (s *Backupd) handleMounts(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := connectDefault(ctx)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()

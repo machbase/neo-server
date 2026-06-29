@@ -70,6 +70,9 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 		rsp.Reason = err.Error()
 		return
 	}
+	if req.Header == "skip" {
+		req.Heading = false
+	}
 
 	var buffer = &bytes.Buffer{}
 	var output io.Writer

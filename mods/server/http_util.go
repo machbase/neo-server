@@ -97,6 +97,8 @@ func RecoveryWithLogging(log logging.Log, recovery ...gin.RecoveryFunc) gin.Hand
 
 type HttpLoggerFilter func(req *http.Request, statusCode int, latency time.Duration) bool
 
+var httpLoggerNewLogFile = logging.NewLogFile
+
 func HttpLogger(loggingName string, debugMode func() (bool, time.Duration)) gin.HandlerFunc {
 	return HttpLoggerWithFilter(loggingName, func(req *http.Request, statusCode int, latency time.Duration) bool {
 		enabled := false
@@ -150,7 +152,7 @@ func HttpLoggerWithFileConf(loggingName string, fileConf logging.LogFileConf) gi
 
 func HttpLoggerWithFilterAndFileConf(loggingName string, filter HttpLoggerFilter, fileConf logging.LogFileConf) gin.HandlerFunc {
 	if len(fileConf.Filename) > 0 {
-		return logger(logging.NewLogFile(loggingName, fileConf), filter)
+		return logger(httpLoggerNewLogFile(loggingName, fileConf), filter)
 	} else {
 		return HttpLoggerWithFilter(loggingName, filter)
 	}

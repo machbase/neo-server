@@ -4,11 +4,17 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	crand "crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -17,6 +23,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -1261,4 +1268,105 @@ func max(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestSshCoverage_ParsePemBlock(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	rsaBytes, err := x509.MarshalPKCS8PrivateKey(rsaKey)
+	require.NoError(t, err)
+
+	key, err := parsePemBlock(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: rsaBytes})
+	require.NoError(t, err)
+	require.NotNil(t, key)
+
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	ecBytes, err := x509.MarshalECPrivateKey(ec)
+	require.NoError(t, err)
+
+	key, err = parsePemBlock(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ecBytes})
+	require.NoError(t, err)
+	require.NotNil(t, key)
+
+	_, err = parsePemBlock(&pem.Block{Type: "UNKNOWN PRIVATE KEY", Bytes: []byte("abc")})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported key type")
+}
+
+func TestSshCoverage_SignerFromPem(t *testing.T) {
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	ecBytes, err := x509.MarshalECPrivateKey(ec)
+	require.NoError(t, err)
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ecBytes})
+
+	signer, err := signerFromPem(pemBytes, nil)
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+
+	_, err = signerFromPem([]byte("not a pem"), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pem decode failed")
+
+	_, err = signerFromPem(pemBytes, []byte("wrong-password"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decrypting PEM block failed")
+}
+
+func TestSshCoverage_SignerFromPath(t *testing.T) {
+	signer, err := signerFromPath("", "")
+	require.NoError(t, err)
+	require.Nil(t, signer)
+
+	_, err = signerFromPath(filepath.Join(t.TempDir(), "missing.pem"), "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server key")
+
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	ecBytes, err := x509.MarshalECPrivateKey(ec)
+	require.NoError(t, err)
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ecBytes})
+
+	pemPath := filepath.Join(t.TempDir(), "id_ecdsa.pem")
+	require.NoError(t, os.WriteFile(pemPath, pemBytes, 0o600))
+
+	signer, err = signerFromPath(pemPath, "")
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+}
+
+func TestSshCoverage_NewIODebuggerWrite(t *testing.T) {
+	writer := NewIODebugger(logging.GetLog("ssh-coverage-test"), "in")
+	n, err := writer.Write([]byte("hello"))
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+}
+
+func TestServerCoverage_DoServiceUnix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only coverage test")
+	}
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+	})
+
+	doService(nil)
+	require.NoError(t, w.Close())
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.Contains(t, strings.ToLower(string(out)), "windows")
+}
+
+func TestSshCoverage_StopNoPanic(t *testing.T) {
+	s := &sshd{}
+	require.NotPanics(t, func() {
+		s.Stop()
+	})
 }

@@ -34,6 +34,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -55,7 +56,7 @@ type Server struct {
 	mqttd *mqttd
 	httpd *httpd
 	sshd  *sshd
-	bakd  *backupd
+	bakd  *backup.Backupd
 
 	bridgeSvc *bridge.Service
 	schedSvc  *scheduler.Service
@@ -730,7 +731,7 @@ func (s *Server) startBackupService() error {
 		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
 			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
 		} else {
-			s.bakd = NewBackupd(WithBackupdBaseDir(backupDirAbs))
+			s.bakd = backup.NewBackupd(backup.WithBackupdBaseDir(backupDirAbs))
 		}
 	}
 	if s.bakd != nil {
