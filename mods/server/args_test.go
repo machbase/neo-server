@@ -279,3 +279,22 @@ func TestDoHelp(t *testing.T) {
 	err = doHelp("tz")
 	require.Nil(t, err)
 }
+
+func TestMainReturnsErrorOnUnknownCommand(t *testing.T) {
+	rc := Main([]string{"neo", "unknown-command"})
+	require.Equal(t, 1, rc)
+}
+
+func TestMainReturnsZeroOnSimpleCommands(t *testing.T) {
+	tests := [][]string{
+		{"neo", "gen-config"},
+		{"neo", "version"},
+		{"neo", "help"},
+		{"neo", "help", "tz"},
+	}
+
+	for _, args := range tests {
+		rc := Main(args)
+		require.Equal(t, 0, rc, "args=%v", args)
+	}
+}

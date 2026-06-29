@@ -103,6 +103,55 @@ func TestHttpLoggerWithFilterAndFileConfFallsBackWithoutFile(t *testing.T) {
 	require.True(t, filterCalled)
 }
 
+func TestHttpLoggerWithFileWrapperWritesAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logPath := filepath.Join(t.TempDir(), "wrapper-access.log")
+
+	router := gin.New()
+	router.Use(HttpLoggerWithFile("http-util-wrapper", logPath))
+	router.GET("/logging/wrapper", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/logging/wrapper?from=wrapper", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body, err := osReadFileWithRetry(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/logging/wrapper?from=wrapper")
+}
+
+func TestHttpLoggerWithFileConfWrapperWritesAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logPath := filepath.Join(t.TempDir(), "wrapper-access-conf.log")
+
+	router := gin.New()
+	router.Use(HttpLoggerWithFileConf("http-util-wrapper-conf", logging.LogFileConf{
+		Filename:             logPath,
+		Level:                "DEBUG",
+		MaxSize:              1,
+		MaxBackups:           1,
+		MaxAge:               1,
+		Append:               true,
+		PrefixWidth:          12,
+		EnableSourceLocation: false,
+	}))
+	router.GET("/logging/wrapper-conf", func(c *gin.Context) {
+		c.String(http.StatusAccepted, "accepted")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/logging/wrapper-conf", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	body, err := osReadFileWithRetry(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/logging/wrapper-conf")
+}
+
 func TestWithHttpWebDirSetsWrappedAssets(t *testing.T) {
 	tempDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "index.html"), []byte("index page"), 0o644))

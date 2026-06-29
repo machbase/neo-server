@@ -38,6 +38,14 @@ func TestNewEllipticCurveP256(t *testing.T) {
 	require.Equal(t, 256, pri.Curve.Params().BitSize)
 }
 
+func TestNewEllipticCurveP521(t *testing.T) {
+	ec := NewEllipticCurveP521()
+	pri, _, err := ec.GenerateKeys()
+	require.Nil(t, err)
+	require.NotNil(t, pri)
+	require.Equal(t, 521, pri.Curve.Params().BitSize)
+}
+
 func TestKeyEncodeDecode(t *testing.T) {
 	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
