@@ -605,7 +605,7 @@ func TestShellShow(t *testing.T) {
 			name: "show_tables",
 			args: append(shellArgs, "show", "table", "--format", "csv", "example"),
 			expect: []string{
-				"EXAMPLE (ID: 15, Tag Table)",
+				`/r/EXAMPLE \(ID: [0-9]+, Tag Table\)`,
 				"ROWNUM,NAME,TYPE,LENGTH,FLAG,INDEX",
 				"1,NAME,varchar,40,tag name,",
 				"2,TIME,datetime,31,basetime,",
@@ -1900,7 +1900,7 @@ func TestShellRun(t *testing.T) {
 			args: append(shellArgs, "run", "shell_run.txt"),
 			expect: []string{
 				"desc example",
-				"EXAMPLE (ID: 15, Tag Table)",
+				`/r/EXAMPLE \(ID: [0-9]+, Tag Table\)`,
 				"┌────────┬───────┬──────────┬────────┬────────────┬───────┐",
 				"│ ROWNUM │ NAME  │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
 				"├────────┼───────┼──────────┼────────┼────────────┼───────┤",

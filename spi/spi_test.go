@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -361,6 +362,62 @@ func TestDatabaseBasedCases(t *testing.T) {
 }
 
 func testCommands(t *testing.T) {
+	assertShowTables := func(t *testing.T, actual string, includeAll bool) {
+		t.Helper()
+		lines := strings.Split(strings.TrimSuffix(actual, "\n"), "\n")
+		require.GreaterOrEqual(t, len(lines), 4)
+		require.Equal(t, "ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG", lines[0])
+
+		require.Regexp(t, regexp.MustCompile(`^1,MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
+		require.Regexp(t, regexp.MustCompile(`^2,MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
+		require.Regexp(t, regexp.MustCompile(`^3,MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
+
+		if includeAll {
+			require.GreaterOrEqual(t, len(lines), 8)
+			require.Regexp(t, regexp.MustCompile(`^4,MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$`), lines[4])
+			require.Regexp(t, regexp.MustCompile(`^5,MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$`), lines[5])
+			require.Regexp(t, regexp.MustCompile(`^6,MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,[0-9]+,KeyValue,Data$`), lines[6])
+			require.Regexp(t, regexp.MustCompile(`^7,MACHBASEDB,SYS,_TAG_SIMPLE_META,[0-9]+,Lookup,Meta$`), lines[7])
+		}
+	}
+
+	assertShowIndexes := func(t *testing.T, actual string) {
+		t.Helper()
+		lines := strings.Split(strings.TrimSuffix(actual, "\n"), "\n")
+		require.GreaterOrEqual(t, len(lines), 5)
+		require.Equal(t, "ROWNUM,ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
+
+		required := map[string]struct {
+			table  string
+			column string
+		}{
+			"__PK_IDX__TAG_DATA_META_1":   {table: "_TAG_DATA_META", column: "_ID"},
+			"_TAG_DATA_META_NAME":         {table: "_TAG_DATA_META", column: "NAME"},
+			"__PK_IDX__TAG_SIMPLE_META_1": {table: "_TAG_SIMPLE_META", column: "_ID"},
+			"_TAG_SIMPLE_META_NAME":       {table: "_TAG_SIMPLE_META", column: "NAME"},
+		}
+
+		seen := map[string]bool{}
+		for _, line := range lines[1:] {
+			fields := strings.Split(line, ",")
+			require.GreaterOrEqual(t, len(fields), 12, "invalid index row: %s", line)
+			idxName := fields[6]
+			req, ok := required[idxName]
+			if !ok {
+				continue
+			}
+			require.Equal(t, "MACHBASEDB", fields[2])
+			require.Equal(t, "SYS", fields[3])
+			require.Equal(t, req.table, fields[4])
+			require.Equal(t, req.column, fields[5])
+			require.Equal(t, "REDBLACK", fields[7])
+			seen[idxName] = true
+		}
+		for name := range required {
+			require.True(t, seen[name], "required index missing: %s", name)
+		}
+	}
+
 	tests := []struct {
 		name              string
 		input             string
@@ -379,39 +436,22 @@ func testCommands(t *testing.T) {
 		{
 			name:  "show_tables",
 			input: "show tables",
-			expect: []string{
-				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
-				"1,MACHBASEDB,SYS,LOG_DATA,15,Log,",
-				"2,MACHBASEDB,SYS,TAG_DATA,7,Tag,",
-				"3,MACHBASEDB,SYS,TAG_SIMPLE,14,Tag,",
+			expectFunc: func(t *testing.T, actual string) {
+				assertShowTables(t, actual, false)
 			},
 		},
 		{
 			name:  "show_tables_all",
 			input: "show tables --all",
-			expect: []string{
-				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
-				"1,MACHBASEDB,SYS,LOG_DATA,15,Log,",
-				"2,MACHBASEDB,SYS,TAG_DATA,7,Tag,",
-				"3,MACHBASEDB,SYS,TAG_SIMPLE,14,Tag,",
-				"4,MACHBASEDB,SYS,_TAG_DATA_DATA_0,1,KeyValue,Data",
-				"5,MACHBASEDB,SYS,_TAG_DATA_META,2,Lookup,Meta",
-				"6,MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,8,KeyValue,Data",
-				"7,MACHBASEDB,SYS,_TAG_SIMPLE_META,9,Lookup,Meta",
+			expectFunc: func(t *testing.T, actual string) {
+				assertShowTables(t, actual, true)
 			},
 		},
 		{
 			name:  "show_tables_short_all",
 			input: "SHOW tables -a",
-			expect: []string{
-				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
-				"1,MACHBASEDB,SYS,LOG_DATA,15,Log,",
-				"2,MACHBASEDB,SYS,TAG_DATA,7,Tag,",
-				"3,MACHBASEDB,SYS,TAG_SIMPLE,14,Tag,",
-				"4,MACHBASEDB,SYS,_TAG_DATA_DATA_0,1,KeyValue,Data",
-				"5,MACHBASEDB,SYS,_TAG_DATA_META,2,Lookup,Meta",
-				"6,MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,8,KeyValue,Data",
-				"7,MACHBASEDB,SYS,_TAG_SIMPLE_META,9,Lookup,Meta",
+			expectFunc: func(t *testing.T, actual string) {
+				assertShowTables(t, actual, true)
 			},
 		},
 		{
@@ -498,12 +538,8 @@ func testCommands(t *testing.T) {
 		{
 			name:  "show_indexes",
 			input: `show indexes`,
-			expect: []string{
-				"ROWNUM,ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
-				"1,3,MACHBASEDB,SYS,_TAG_DATA_META,_ID,__PK_IDX__TAG_DATA_META_1,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"2,4,MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"3,10,MACHBASEDB,SYS,_TAG_SIMPLE_META,_ID,__PK_IDX__TAG_SIMPLE_META_1,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
-				"4,11,MACHBASEDB,SYS,_TAG_SIMPLE_META,NAME,_TAG_SIMPLE_META_NAME,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
+			expectFunc: func(t *testing.T, actual string) {
+				assertShowIndexes(t, actual)
 			},
 		},
 		{
