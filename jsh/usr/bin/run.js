@@ -100,9 +100,14 @@ function runSqlStatements(statements, stopOnError = false) {
                     const user = connection.substring(0, slashIdx);
                     const password = connection.substring(slashIdx + 1);
                     try {
-                        switchUser(user, password);
-                        process.env.set('NEOSHELL_USER', user);
-                        process.env.set('NEOSHELL_PASSWORD', password);
+                        let ret = switchUser(user, password);
+                        if (ret !== undefined) {
+                            console.println("Fail: failed to switch user:", ret);
+                            exitCode = 1;
+                        } else {
+                            process.env.set('NEOSHELL_USER', user);
+                            process.env.set('NEOSHELL_PASSWORD', password);
+                        }
                     } catch (err) {
                         console.println("Error: failed to switch user");
                         console.println(err.message);
