@@ -5,6 +5,11 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
+	"io"
+	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -151,10 +156,16 @@ func TestWrappedSqlRowHelpers(t *testing.T) {
 }
 
 func TestWrappedSqlRowsHelpers(t *testing.T) {
-	rows := &WrappedSqlRows{}
+	rows := &WrappedSqlRows{sqlType: SQLStatementTypeSelect}
 	require.True(t, rows.IsFetchable())
 	require.Equal(t, int64(0), rows.RowsAffected())
-	require.Equal(t, "success", rows.Message())
+	require.Equal(t, "no rows selected.", rows.Message())
+
+	rows.sqlType = SQLStatementTypeInsert
+	rows.rowCount = 2
+	require.False(t, rows.IsFetchable())
+	require.Equal(t, int64(2), rows.RowsAffected())
+	require.Equal(t, "2 rows inserted.", rows.Message())
 }
 
 func TestSqlBridgeBaseHelpers(t *testing.T) {
@@ -337,7 +348,7 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 }
 
 func TestWriteLineProtocol(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	ts := time.Unix(1700000000, 0).UTC()
 	descColumns := api.Columns{
 		{Name: "NAME", DataType: api.DataTypeString},
@@ -402,6 +413,253 @@ func TestWriteLineProtocol(t *testing.T) {
 		require.Equal(t, int64(1), result.RowsAffected())
 		require.Equal(t, "batch inserts aborted - INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)", result.Message())
 		require.Len(t, conn.execSQLs, 2)
+	})
+}
+
+type sqlWrapDriverScenario struct {
+	execResults map[string]int64
+	queryRows   map[string]*sqlWrapRowsData
+	queryErrs   map[string]error
+}
+
+type sqlWrapRowsData struct {
+	cols []sqlWrapColMeta
+	rows [][]driver.Value
+}
+
+type sqlWrapColMeta struct {
+	name     string
+	dbType   string
+	scanType reflect.Type
+	length   *int64
+	nullable *bool
+}
+
+type sqlWrapTestDriver struct{}
+
+type sqlWrapTestConn struct {
+	scenario *sqlWrapDriverScenario
+}
+
+type sqlWrapTestRows struct {
+	idx  int
+	data *sqlWrapRowsData
+}
+
+var sqlWrapScenarioStore sync.Map
+var sqlWrapDriverSeq uint64
+
+func (d *sqlWrapTestDriver) Open(name string) (driver.Conn, error) {
+	v, ok := sqlWrapScenarioStore.Load(name)
+	if !ok {
+		return nil, fmt.Errorf("scenario %s not found", name)
+	}
+	return &sqlWrapTestConn{scenario: v.(*sqlWrapDriverScenario)}, nil
+}
+
+func (c *sqlWrapTestConn) Prepare(query string) (driver.Stmt, error) {
+	return nil, errors.New("prepare not supported")
+}
+
+func (c *sqlWrapTestConn) Close() error {
+	return nil
+}
+
+func (c *sqlWrapTestConn) Begin() (driver.Tx, error) {
+	return nil, errors.New("tx not supported")
+}
+
+func (c *sqlWrapTestConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	if n, ok := c.scenario.execResults[query]; ok {
+		return driver.RowsAffected(n), nil
+	}
+	return driver.RowsAffected(0), nil
+}
+
+func (c *sqlWrapTestConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if err, ok := c.scenario.queryErrs[query]; ok {
+		return nil, err
+	}
+	if rows, ok := c.scenario.queryRows[query]; ok {
+		return &sqlWrapTestRows{data: rows}, nil
+	}
+	return &sqlWrapTestRows{data: &sqlWrapRowsData{}}, nil
+}
+
+func (r *sqlWrapTestRows) Columns() []string {
+	ret := make([]string, len(r.data.cols))
+	for i, col := range r.data.cols {
+		ret[i] = col.name
+	}
+	return ret
+}
+
+func (r *sqlWrapTestRows) Close() error {
+	return nil
+}
+
+func (r *sqlWrapTestRows) Next(dest []driver.Value) error {
+	if r.idx >= len(r.data.rows) {
+		return io.EOF
+	}
+	copy(dest, r.data.rows[r.idx])
+	r.idx++
+	return nil
+}
+
+func (r *sqlWrapTestRows) ColumnTypeDatabaseTypeName(index int) string {
+	if index < 0 || index >= len(r.data.cols) {
+		return ""
+	}
+	return r.data.cols[index].dbType
+}
+
+func (r *sqlWrapTestRows) ColumnTypeScanType(index int) reflect.Type {
+	if index < 0 || index >= len(r.data.cols) {
+		return reflect.TypeOf(new(any)).Elem()
+	}
+	if r.data.cols[index].scanType == nil {
+		return reflect.TypeOf(new(any)).Elem()
+	}
+	return r.data.cols[index].scanType
+}
+
+func (r *sqlWrapTestRows) ColumnTypeNullable(index int) (nullable, ok bool) {
+	if index < 0 || index >= len(r.data.cols) {
+		return false, false
+	}
+	if r.data.cols[index].nullable == nil {
+		return false, false
+	}
+	return *r.data.cols[index].nullable, true
+}
+
+func (r *sqlWrapTestRows) ColumnTypeLength(index int) (length int64, ok bool) {
+	if index < 0 || index >= len(r.data.cols) {
+		return 0, false
+	}
+	if r.data.cols[index].length == nil {
+		return 0, false
+	}
+	return *r.data.cols[index].length, true
+}
+
+func newSQLWrapTestConn(t *testing.T, scenario *sqlWrapDriverScenario) *sql.Conn {
+	t.Helper()
+	id := atomic.AddUint64(&sqlWrapDriverSeq, 1)
+	driverName := fmt.Sprintf("spi_sql_wrap_test_driver_%d", id)
+	dsn := fmt.Sprintf("spi_sql_wrap_test_dsn_%d", id)
+	sql.Register(driverName, &sqlWrapTestDriver{})
+	sqlWrapScenarioStore.Store(dsn, scenario)
+	t.Cleanup(func() {
+		sqlWrapScenarioStore.Delete(dsn)
+	})
+	db, err := sql.Open(driverName, dsn)
+	require.NoError(t, err)
+	conn, err := db.Conn(t.Context())
+	require.NoError(t, err)
+	return conn
+}
+
+func TestWrappedSqlConnBridgePaths(t *testing.T) {
+	trueVal := true
+	falseVal := false
+	strLen := int64(40)
+	scenario := &sqlWrapDriverScenario{
+		execResults: map[string]int64{
+			"insert into t values (1)": 3,
+		},
+		queryRows: map[string]*sqlWrapRowsData{
+			"select id, name, nick from t": {
+				cols: []sqlWrapColMeta{
+					{name: "ID", dbType: "INTEGER", scanType: reflect.TypeOf(sql.NullInt64{}), nullable: &falseVal},
+					{name: "NAME", dbType: "VARCHAR", scanType: reflect.TypeOf(sql.NullString{}), length: &strLen, nullable: &trueVal},
+					{name: "NICK", dbType: "TEXT", scanType: reflect.TypeOf(sql.NullString{}), nullable: nil},
+				},
+				rows: [][]driver.Value{{int64(1), "neo", "n1"}},
+			},
+			"select one from t": {
+				cols: []sqlWrapColMeta{{name: "ONE", dbType: "INTEGER", scanType: reflect.TypeOf(sql.NullInt64{}), nullable: &falseVal}},
+				rows: [][]driver.Value{{int64(1)}},
+			},
+			"select empty from t": {
+				cols: []sqlWrapColMeta{{name: "ID", dbType: "INTEGER", scanType: reflect.TypeOf(sql.NullInt64{}), nullable: &falseVal}},
+				rows: [][]driver.Value{},
+			},
+		},
+		queryErrs: map[string]error{
+			"select broken": errors.New("query broken"),
+		},
+	}
+
+	wrapped := WrapSqlConn(newSQLWrapTestConn(t, scenario))
+
+	t.Run("exec and non-fetch query path", func(t *testing.T) {
+		result := wrapped.Exec(t.Context(), "insert into t values (1)")
+		require.NoError(t, result.Err())
+		require.Equal(t, int64(3), result.RowsAffected())
+		require.Equal(t, "3 rows inserted.", result.Message())
+
+		rows, err := wrapped.Query(t.Context(), "insert into t values (1)")
+		require.NoError(t, err)
+		require.False(t, rows.IsFetchable())
+		require.Equal(t, int64(3), rows.RowsAffected())
+		require.Equal(t, "3 rows inserted.", rows.Message())
+		cols, err := rows.Columns()
+		require.NoError(t, err)
+		require.Nil(t, cols)
+		require.False(t, rows.Next())
+		require.NoError(t, rows.Scan())
+		require.NoError(t, rows.Err())
+		require.NoError(t, rows.Close())
+	})
+
+	t.Run("fetch query columns nullable and select flow", func(t *testing.T) {
+		rows, err := wrapped.Query(t.Context(), "select id, name, nick from t")
+		require.NoError(t, err)
+		require.True(t, rows.IsFetchable())
+
+		cols, err := rows.Columns()
+		require.NoError(t, err)
+		require.Len(t, cols, 3)
+		require.False(t, cols[0].Nullable)
+		require.True(t, cols[1].Nullable)
+		require.False(t, cols[2].Nullable)
+		require.Equal(t, 40, cols[1].Length)
+
+		buf, err := cols.MakeBuffer()
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		require.NoError(t, rows.Scan(buf...))
+		require.False(t, rows.Next())
+		require.Equal(t, int64(1), rows.RowsAffected())
+		require.Equal(t, "a row selected.", rows.Message())
+		require.NoError(t, rows.Err())
+		require.NoError(t, rows.Close())
+	})
+
+	t.Run("query row paths", func(t *testing.T) {
+		row := wrapped.QueryRow(t.Context(), "select one from t")
+		require.NoError(t, row.Err())
+		var one int64
+		require.NoError(t, row.Scan(&one))
+		require.Equal(t, int64(1), one)
+
+		emptyRow := wrapped.QueryRow(t.Context(), "select empty from t")
+		require.ErrorIs(t, emptyRow.Err(), sql.ErrNoRows)
+
+		errRow := wrapped.QueryRow(t.Context(), "select broken")
+		require.EqualError(t, errRow.Err(), "query broken")
+	})
+
+	t.Run("not implemented methods and close", func(t *testing.T) {
+		require.PanicsWithValue(t, "not implemented", func() {
+			_, _ = wrapped.Prepare(t.Context(), "select 1")
+		})
+		_, appErr := wrapped.Appender(t.Context(), "t")
+		require.ErrorContains(t, appErr, "not implemented")
+		_, expErr := wrapped.Explain(t.Context(), "select 1", false)
+		require.ErrorContains(t, expErr, "not implemented")
 	})
 }
 

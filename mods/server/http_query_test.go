@@ -323,6 +323,86 @@ func TestHttpQuery(t *testing.T) {
 	}
 }
 
+func TestHttpQueryMutation(t *testing.T) {
+	mutationTable := fmt.Sprintf("HTTP_QUERY_MUT_%d", time.Now().UnixNano())
+	baseTime := testTimeTick.UnixNano() + 123456789
+
+	execMutation := func(t *testing.T, name string, sqlText string, expectedReason string) {
+		t.Helper()
+
+		params := map[string]any{"q": sqlText}
+		payload, _ := json.Marshal(params)
+		req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewBuffer(payload))
+		req.Header.Set("Content-Type", "application/json")
+
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		result, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.Equal(t, http.StatusOK, rsp.StatusCode, "%s: %s", name, string(result))
+		require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"), "%s", name)
+
+		resultObj := map[string]any{}
+		err = json.Unmarshal(result, &resultObj)
+		require.NoError(t, err, "%s", name)
+
+		require.Len(t, resultObj, 3, "%s", name)
+		require.Contains(t, resultObj, "success", "%s", name)
+		require.Contains(t, resultObj, "reason", "%s", name)
+		require.Contains(t, resultObj, "elapse", "%s", name)
+		require.NotContains(t, resultObj, "data", "%s", name)
+		require.EqualValues(t, map[string]any{
+			"success": true,
+			"reason":  expectedReason,
+		}, map[string]any{
+			"success": resultObj["success"],
+			"reason":  resultObj["reason"],
+		}, "%s", name)
+	}
+
+	t.Run("mutation_create_table", func(t *testing.T) {
+		execMutation(t,
+			"mutation_create_table",
+			fmt.Sprintf(`CREATE TAG TABLE IF NOT EXISTS %s (name varchar(40) primary key, time datetime basetime, value double summarized)`, mutationTable),
+			"Created successfully.")
+	})
+
+	t.Run("mutation_insert_data_1", func(t *testing.T) {
+		execMutation(t,
+			"mutation_insert_data_1",
+			fmt.Sprintf(`INSERT INTO %s VALUES('http-query-mutation', %d, 3.14)`, mutationTable, baseTime),
+			"a row inserted.")
+	})
+
+	t.Run("mutation_insert_data_2", func(t *testing.T) {
+		execMutation(t,
+			"mutation_insert_data_2",
+			fmt.Sprintf(`INSERT INTO %s VALUES('http-query-mutation', %d, 6.28)`, mutationTable, baseTime+1),
+			"a row inserted.")
+	})
+
+	t.Run("mutation_insert_data_3", func(t *testing.T) {
+		execMutation(t,
+			"mutation_insert_data_3",
+			fmt.Sprintf(`INSERT INTO %s VALUES('http-query-mutation', %d, 9.42)`, mutationTable, baseTime+2),
+			"a row inserted.")
+	})
+
+	t.Run("mutation_delete_data", func(t *testing.T) {
+		execMutation(t,
+			"mutation_delete_data",
+			fmt.Sprintf(`DELETE FROM %s WHERE name='http-query-mutation'`, mutationTable),
+			"3 rows deleted.")
+	})
+
+	t.Run("mutation_drop_table", func(t *testing.T) {
+		execMutation(t,
+			"mutation_drop_table",
+			fmt.Sprintf(`DROP TABLE %s`, mutationTable),
+			"Dropped successfully.")
+	})
+}
+
 func TestHttpQueryEmptySqlErrors(t *testing.T) {
 	var params = "q=" + "&" + url.Values{"format": []string{"box"}}.Encode()
 	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params, nil)
