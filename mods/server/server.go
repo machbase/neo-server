@@ -474,6 +474,11 @@ func (s *Server) startMachbaseSvr() error {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
 		spi.SetDefault(db, key)
+		spi.SetDefaultPoolConfig(
+			s.Config.MaxOpenConn,
+			s.Config.MaxIdleConn,
+			s.Config.ConnMaxLifetime,
+			s.Config.ConnMaxIdleTime)
 	}
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {

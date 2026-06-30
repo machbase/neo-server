@@ -86,11 +86,14 @@ type Config struct {
 	ExperimentMode bool
 
 	MachbaseInitOption machsvr.InitOption
-	MaxPoolSize        int
+	MaxPoolSize        int // deprecated
 	MaxOpenConn        int
-	MaxOpenConnFactor  float64
-	MaxOpenQuery       int
-	MaxOpenQueryFactor float64
+	MaxIdleConn        int
+	ConnMaxLifetime    time.Duration
+	ConnMaxIdleTime    time.Duration
+	MaxOpenConnFactor  float64 // deprecated
+	MaxOpenQuery       int     // deprecated
+	MaxOpenQueryFactor float64 // deprecated
 	StatzOut           string
 }
 

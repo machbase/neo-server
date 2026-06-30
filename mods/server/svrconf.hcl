@@ -48,11 +48,15 @@ define VARS {
     HTTP_STATZ_TOKEN      = flag("--http-statz-token", "")  // Bearer token for statz
     HTTP_QUERY_CYPHER     = flag("--http-query-cypher", "") // format: "alg=AES key=1234567890abcdef pad=pkcs5"
 
-    MAX_POOL_SIZE         = flag("--max-pool-size", 0)
     MAX_OPEN_CONN         = flag("--max-open-conn", -1)
-    MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 2.0)
-    MAX_OPEN_QUERY        = flag("--max-open-query", 0)
-    MAX_OPEN_QUERY_FACTOR = flag("--max-open-query-factor", 2.0)
+    MAX_IDLE_CONN         = flag("--max-idle-conn", 2)
+    CONN_MAX_LIFETIME     = flag("--conn-max-lifetime", "10m")
+    CONN_MAX_IDLETIME     = flag("--conn-max-idletime", "1m")
+
+    MAX_POOL_SIZE         = flag("--max-pool-size", 0)           // deprecated
+    MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 2.0)  // deprecated
+    MAX_OPEN_QUERY        = flag("--max-open-query", 0)          // deprecated
+    MAX_OPEN_QUERY_FACTOR = flag("--max-open-query-factor", 2.0) // deprecated
 
     EXPERIMENT_MODE       = flag("--experiment", false)
     MACHBASE_INIT_OPTION  = flag("--machbase-init-option", 2)
@@ -95,6 +99,9 @@ module "machbase.com/neo-server" {
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
         MaxPoolSize          = VARS_MAX_POOL_SIZE
         MaxOpenConn          = VARS_MAX_OPEN_CONN
+        MaxIdleConn          = VARS_MAX_IDLE_CONN
+        ConnMaxLifetime      = VARS_CONN_MAX_LIFETIME
+        ConnMaxIdleTime      = VARS_CONN_MAX_IDLETIME
         MaxOpenConnFactor    = VARS_MAX_OPEN_CONN_FACTOR
         MaxOpenQuery         = VARS_MAX_OPEN_QUERY
         MaxOpenQueryFactor   = VARS_MAX_OPEN_QUERY_FACTOR

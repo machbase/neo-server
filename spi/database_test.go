@@ -79,6 +79,14 @@ func resetDefaultPoolForTest(t *testing.T) {
 	defaultPoolErr = nil
 }
 
+func resetDefaultPoolConfigForTest(t *testing.T) {
+	t.Helper()
+	maxOpenConn = 20
+	maxIdleConn = 2
+	connMaxLifetime = 10 * time.Minute
+	connMaxIdleTime = 1 * time.Minute
+}
+
 func setDefaultForTest(t *testing.T, db api.Database, key crypto.PrivateKey) {
 	t.Helper()
 	defaultDatabase = db
@@ -170,6 +178,7 @@ func TestDefaultPoolSuccessAndCachedInstance(t *testing.T) {
 		defaultDatabase = oldDB
 		defaultDatabaseKey = oldKey
 		resetDefaultPoolForTest(t)
+		resetDefaultPoolConfigForTest(t)
 	})
 
 	stubDB := &poolStubDatabase{}
@@ -192,6 +201,42 @@ func TestDefaultPoolSuccessAndCachedInstance(t *testing.T) {
 	pool2, err := DefaultPool()
 	require.NoError(t, err)
 	require.Same(t, pool1, pool2)
+}
+
+func TestDefaultPoolUsesConfiguredPoolSettings(t *testing.T) {
+	oldDB := defaultDatabase
+	oldKey := defaultDatabaseKey
+	t.Cleanup(func() {
+		defaultDatabase = oldDB
+		defaultDatabaseKey = oldKey
+		resetDefaultPoolForTest(t)
+		resetDefaultPoolConfigForTest(t)
+	})
+
+	stubDB := &poolStubDatabase{}
+	setDefaultForTest(t, stubDB, newTestAuthKey(t))
+	resetDefaultPoolForTest(t)
+
+	wantMaxOpen := 31
+	wantMaxIdle := 7
+	wantConnMaxLifetime := 3 * time.Minute
+	wantConnMaxIdleTime := 45 * time.Second
+	SetDefaultPoolConfig(wantMaxOpen, wantMaxIdle, wantConnMaxLifetime, wantConnMaxIdleTime)
+
+	pool, err := DefaultPool()
+	require.NoError(t, err)
+	require.NotNil(t, pool)
+	t.Cleanup(func() {
+		require.NoError(t, pool.Close())
+	})
+
+	stats := pool.Stats()
+	require.Equal(t, wantMaxOpen, stats.MaxOpenConnections)
+	require.Equal(t, wantMaxOpen, maxOpenConn)
+	require.Equal(t, wantMaxIdle, maxIdleConn)
+	require.Equal(t, wantConnMaxLifetime, connMaxLifetime)
+	require.Equal(t, wantConnMaxIdleTime, connMaxIdleTime)
+	require.GreaterOrEqual(t, stubDB.connectCount, 1)
 }
 
 func TestDefaultPoolErrorIsCachedByOnce(t *testing.T) {
