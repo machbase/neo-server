@@ -34,8 +34,24 @@ func (c *WrappedSqlConn) Prepare(ctx context.Context, sqlText string) (api.Stmt,
 }
 
 func (c *WrappedSqlConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+	sqlType := DetectSQLStatementType(sqlText)
+	if !sqlType.IsFetch() {
+		result, err := c.sqlConn.ExecContext(ctx, sqlText, params...)
+		if err != nil {
+			return nil, err
+		}
+		rows := &WrappedSqlRows{sqlType: sqlType}
+		if result != nil {
+			if affected, err := result.RowsAffected(); err != nil {
+				return nil, err
+			} else {
+				rows.rowCount = affected
+			}
+		}
+		return rows, nil
+	}
 	r, err := c.sqlConn.QueryContext(ctx, sqlText, params...)
-	return &WrappedSqlRows{sqlRows: r}, err
+	return &WrappedSqlRows{sqlRows: r, sqlType: sqlType}, err
 }
 
 func (c *WrappedSqlConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
@@ -180,16 +196,29 @@ func (r *WrappedSqlRow) Columns() (api.Columns, error) {
 }
 
 type WrappedSqlRows struct {
-	sqlRows *sql.Rows
+	sqlRows  *sql.Rows
+	sqlType  SQLStatementType
+	rowCount int64
+	err      error
 }
 
 var _ api.Rows = (*WrappedSqlRows)(nil)
 
 func (r *WrappedSqlRows) Next() bool {
-	return r.sqlRows.Next()
+	if r.sqlRows == nil {
+		return false
+	}
+	if !r.sqlRows.Next() {
+		return false
+	}
+	r.rowCount++
+	return true
 }
 
 func (r *WrappedSqlRows) Scan(values ...any) error {
+	if r.sqlRows == nil {
+		return nil
+	}
 	if err := r.sqlRows.Scan(values...); err != nil {
 		return err
 	}
@@ -244,19 +273,24 @@ func (r *WrappedSqlRows) Scan(values ...any) error {
 }
 
 func (r *WrappedSqlRows) Close() error {
+	if r.sqlRows == nil {
+		return nil
+	}
 	return r.sqlRows.Close()
 }
 
 func (r *WrappedSqlRows) Columns() (api.Columns, error) {
+	if r.sqlRows == nil {
+		return nil, nil
+	}
 	cols, err := r.sqlRows.ColumnTypes()
 	ret := make([]*api.Column, len(cols))
 	for i, col := range cols {
+		nullable, ok := col.Nullable()
 		ret[i] = &api.Column{
 			Name:     col.Name(),
 			DataType: scanTypeToDataType(col),
-			// wrapped database/sql path may report nullable=false even when NULL is returned
-			// (e.g. projection or loosely-typed columns). Use nullable-safe buffers by default.
-			Nullable: true,
+			Nullable: ok && nullable,
 		}
 		if length, ok := col.Length(); ok {
 			if length <= math.MaxInt {
@@ -270,19 +304,70 @@ func (r *WrappedSqlRows) Columns() (api.Columns, error) {
 }
 
 func (r *WrappedSqlRows) IsFetchable() bool {
-	return true
+	return r.sqlType.IsFetch()
 }
 
 func (r *WrappedSqlRows) RowsAffected() int64 {
-	return 0
+	return r.rowCount
 }
 
 func (r *WrappedSqlRows) Message() string {
-	// TODO: implement
-	return "success"
+	rowsCount := r.RowsAffected()
+	switch r.sqlType {
+	case SQLStatementTypeSelect, SQLStatementTypeDescribe:
+		switch rowsCount {
+		case 0:
+			return "no rows selected."
+		case 1:
+			return "a row selected."
+		default:
+			return fmt.Sprintf("%d rows selected.", rowsCount)
+		}
+	case SQLStatementTypeInsert:
+		switch rowsCount {
+		case 0:
+			return "no rows inserted."
+		case 1:
+			return "a row inserted."
+		default:
+			return fmt.Sprintf("%d rows inserted.", rowsCount)
+		}
+	case SQLStatementTypeUpdate:
+		switch rowsCount {
+		case 0:
+			return "no rows updated."
+		case 1:
+			return "a row updated."
+		default:
+			return fmt.Sprintf("%d rows updated.", rowsCount)
+		}
+	case SQLStatementTypeDelete:
+		switch rowsCount {
+		case 0:
+			return "no rows deleted."
+		case 1:
+			return "a row deleted."
+		default:
+			return fmt.Sprintf("%d rows deleted.", rowsCount)
+		}
+	case SQLStatementTypeCreate:
+		return "Created successfully."
+	case SQLStatementTypeDrop:
+		return "Dropped successfully."
+	case SQLStatementTypeAlter:
+		return "Altered successfully."
+	default:
+		return "executed."
+	}
 }
 
 func (r *WrappedSqlRows) Err() error {
+	if r.err != nil {
+		return r.err
+	}
+	if r.sqlRows == nil {
+		return nil
+	}
 	return r.sqlRows.Err()
 }
 

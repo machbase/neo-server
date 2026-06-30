@@ -151,10 +151,16 @@ func TestWrappedSqlRowHelpers(t *testing.T) {
 }
 
 func TestWrappedSqlRowsHelpers(t *testing.T) {
-	rows := &WrappedSqlRows{}
+	rows := &WrappedSqlRows{sqlType: SQLStatementTypeSelect}
 	require.True(t, rows.IsFetchable())
 	require.Equal(t, int64(0), rows.RowsAffected())
-	require.Equal(t, "success", rows.Message())
+	require.Equal(t, "no rows selected.", rows.Message())
+
+	rows.sqlType = SQLStatementTypeInsert
+	rows.rowCount = 2
+	require.False(t, rows.IsFetchable())
+	require.Equal(t, int64(2), rows.RowsAffected())
+	require.Equal(t, "2 rows inserted.", rows.Message())
 }
 
 func TestSqlBridgeBaseHelpers(t *testing.T) {

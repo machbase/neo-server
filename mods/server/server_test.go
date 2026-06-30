@@ -619,29 +619,73 @@ func TestShellShow(t *testing.T) {
 }
 
 func TestShellUser(t *testing.T) {
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 10)
+	if len(suffix) > 8 {
+		suffix = suffix[len(suffix)-8:]
+	}
+	userName := "user_a_" + suffix
+	tableName := "neo_scope_t1_ua_" + suffix
+
+	scriptFile, err := os.CreateTemp(filepath.Join(projRootDir, "mods", "server", "test"), "user_script_*.sql")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Remove(scriptFile.Name())
+	})
+
+	scriptText := strings.Join([]string{
+		fmt.Sprintf("create user %s identified by 'password';", userName),
+		"",
+		fmt.Sprintf("connect %s/password;", userName),
+		"",
+		fmt.Sprintf("create table %s (id integer);", tableName),
+		fmt.Sprintf("insert into %s values (1);", tableName),
+		fmt.Sprintf("insert into %s values (2);", tableName),
+		fmt.Sprintf("insert into %s values (3);", tableName),
+		"",
+		fmt.Sprintf("select * from %s;", tableName),
+		"",
+		"connect sys/manager;",
+		"",
+		fmt.Sprintf("sql --format csv select * from %s;", tableName),
+		"",
+		fmt.Sprintf("insert into %s.%s values (4);", userName, tableName),
+		"",
+		fmt.Sprintf("sql --format csv select * from %s.%s;", userName, tableName),
+		"",
+		fmt.Sprintf("drop table %s.%s;", userName, tableName),
+		fmt.Sprintf("drop user %s;", userName),
+		"",
+	}, "\n")
+	_, err = scriptFile.WriteString(scriptText)
+	require.NoError(t, err)
+	require.NoError(t, scriptFile.Close())
+
+	scriptPath := "/work/" + filepath.Base(scriptFile.Name())
+	upperTableName := strings.ToUpper(tableName)
+
 	tests := []ShellTestCase{
 		{
 			name: "run_user_script",
-			args: append(shellArgs, "run", "/work/user_script.sql"),
+			args: append(shellArgs, "run", scriptPath),
 			expect: []string{
-				"create user user_a identified by 'password'",
+				fmt.Sprintf("create user %s identified by 'password'", userName),
 				"Created successfully.",
 				"",
-				"connect user_a/password",
+				fmt.Sprintf("connect %s/password", userName),
 				"",
-				"create table neo_scope_t1_ua (id integer)",
+				fmt.Sprintf("create table %s (id integer)", tableName),
 				"Created successfully.",
 				"",
-				"insert into neo_scope_t1_ua values (1)",
+				fmt.Sprintf("insert into %s values (1)", tableName),
 				"a row inserted.",
 				"",
-				"insert into neo_scope_t1_ua values (2)",
+				fmt.Sprintf("insert into %s values (2)", tableName),
 				"a row inserted.",
 				"",
-				"insert into neo_scope_t1_ua values (3)",
+				fmt.Sprintf("insert into %s values (3)", tableName),
 				"a row inserted.",
 				"",
-				"select * from neo_scope_t1_ua",
+				fmt.Sprintf("select * from %s", tableName),
 				"┌────────┬────┐",
 				"│ ROWNUM │ ID │",
 				"├────────┼────┤",
@@ -653,13 +697,13 @@ func TestShellUser(t *testing.T) {
 				"",
 				"connect sys/manager",
 				"",
-				"sql --format csv select * from neo_scope_t1_ua",
-				"Error:  MACHCLI-ERR-2025, Table NEO_SCOPE_T1_UA does not exist.",
+				fmt.Sprintf("sql --format csv select * from %s", tableName),
+				fmt.Sprintf("Error:  MACHCLI-ERR-2025, Table %s does not exist.", upperTableName),
 				"",
-				"insert into user_a.neo_scope_t1_ua values (4)",
+				fmt.Sprintf("insert into %s.%s values (4)", userName, tableName),
 				"a row inserted.",
 				"",
-				"sql --format csv select * from user_a.neo_scope_t1_ua",
+				fmt.Sprintf("sql --format csv select * from %s.%s", userName, tableName),
 				"ROWNUM,ID",
 				"1,4",
 				"2,3",
@@ -667,10 +711,10 @@ func TestShellUser(t *testing.T) {
 				"4,1",
 				"4 rows selected.",
 				"",
-				"drop table user_a.neo_scope_t1_ua",
+				fmt.Sprintf("drop table %s.%s", userName, tableName),
 				"Dropped successfully.",
 				"",
-				"drop user user_a",
+				fmt.Sprintf("drop user %s", userName),
 				"Dropped successfully.",
 				"",
 			},
