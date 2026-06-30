@@ -153,7 +153,18 @@ var (
 	defaultPoolOnce sync.Once
 	defaultPoolDB   *sql.DB
 	defaultPoolErr  error
+	maxOpenConn     = 20
+	maxIdleConn     = 2
+	connMaxLifetime = 10 * time.Minute
+	connMaxIdleTime = 1 * time.Minute
 )
+
+func SetDefaultPoolConfig(maxOpen, maxIdle int, maxLifetime, maxIdleTime time.Duration) {
+	maxOpenConn = maxOpen
+	maxIdleConn = maxIdle
+	connMaxLifetime = maxLifetime
+	connMaxIdleTime = maxIdleTime
+}
 
 // DefaultPool returns the shared SQL connection pool for the default database.
 func DefaultPool() (*sql.DB, error) {
@@ -170,10 +181,10 @@ func DefaultPool() (*sql.DB, error) {
 			}
 			return []api.ConnectOption{api.WithAuthKey("sys", key)}, nil
 		})
-		defaultPoolDB.SetMaxOpenConns(20)
-		defaultPoolDB.SetMaxIdleConns(2)
-		defaultPoolDB.SetConnMaxLifetime(10 * time.Minute)
-		defaultPoolDB.SetConnMaxIdleTime(1 * time.Minute)
+		defaultPoolDB.SetMaxOpenConns(maxOpenConn)
+		defaultPoolDB.SetMaxIdleConns(maxIdleConn)
+		defaultPoolDB.SetConnMaxLifetime(connMaxLifetime)
+		defaultPoolDB.SetConnMaxIdleTime(connMaxIdleTime)
 		defaultPoolErr = defaultPoolDB.Ping()
 	})
 	if defaultPoolErr != nil {
