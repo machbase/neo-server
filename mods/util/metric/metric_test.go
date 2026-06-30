@@ -58,3 +58,25 @@ func TestMetric(t *testing.T) {
 	require.Equal(t, "counter", pd.Type)
 	c.Stop()
 }
+
+func TestCollectorSendNonBlockingWhenBufferFull(t *testing.T) {
+	c := NewCollector(WithInputBuffer(1))
+
+	// Fill the channel without starting collector so recvCh remains full.
+	c.Send(Measure{Name: "m1", Value: 1, Type: GaugeType(UnitShort)})
+
+	done := make(chan struct{})
+	go func() {
+		c.Send(Measure{Name: "m2", Value: 2, Type: GaugeType(UnitShort)})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// pass
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Collector.Send blocked when recvCh was full")
+	}
+
+	require.Equal(t, uint64(1), c.DroppedCount())
+}

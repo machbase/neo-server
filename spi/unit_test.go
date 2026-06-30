@@ -171,6 +171,11 @@ func TestWrappedSqlRowsHelpers(t *testing.T) {
 func TestSqlBridgeBaseHelpers(t *testing.T) {
 	base := &SqlBridgeBase{}
 
+	t.Run("conn wrapper", func(t *testing.T) {
+		wrapped := base.Conn(nil)
+		require.NotNil(t, wrapped)
+	})
+
 	newScanTypeTests := []struct {
 		reflectType      string
 		databaseTypeName string
@@ -423,8 +428,9 @@ type sqlWrapDriverScenario struct {
 }
 
 type sqlWrapRowsData struct {
-	cols []sqlWrapColMeta
-	rows [][]driver.Value
+	cols    []sqlWrapColMeta
+	rows    [][]driver.Value
+	nextErr error
 }
 
 type sqlWrapColMeta struct {
@@ -500,6 +506,9 @@ func (r *sqlWrapTestRows) Close() error {
 
 func (r *sqlWrapTestRows) Next(dest []driver.Value) error {
 	if r.idx >= len(r.data.rows) {
+		if r.data.nextErr != nil {
+			return r.data.nextErr
+		}
 		return io.EOF
 	}
 	copy(dest, r.data.rows[r.idx])
@@ -652,6 +661,51 @@ func TestWrappedSqlConnBridgePaths(t *testing.T) {
 		require.EqualError(t, errRow.Err(), "query broken")
 	})
 
+	t.Run("scan type mapping and rows err path", func(t *testing.T) {
+		mapScenario := &sqlWrapDriverScenario{
+			queryRows: map[string]*sqlWrapRowsData{
+				"select mapping": {
+					cols: []sqlWrapColMeta{
+						{name: "V", dbType: "VARCHAR", scanType: reflect.TypeOf(sql.NullString{})},
+						{name: "B", dbType: "BOOLEAN", scanType: reflect.TypeOf(sql.NullBool{})},
+						{name: "I8", dbType: "TINYINT", scanType: reflect.TypeOf(sql.NullByte{})},
+						{name: "I32", dbType: "INTEGER", scanType: reflect.TypeOf(sql.NullInt32{})},
+						{name: "F32", dbType: "FLOAT", scanType: reflect.TypeOf(float32(0))},
+						{name: "DT", dbType: "DATETIME", scanType: reflect.TypeOf(sql.NullTime{})},
+						{name: "BIN", dbType: "BLOB", scanType: reflect.TypeOf([]byte{})},
+						{name: "X", dbType: "OTHER", scanType: reflect.TypeOf(new(any)).Elem()},
+					},
+					rows: [][]driver.Value{{"s", true, int64(1), int64(2), float64(1.2), time.Unix(0, 0), []byte{0x01}, "x"}},
+				},
+				"select with err": {
+					cols:    []sqlWrapColMeta{{name: "ID", dbType: "INTEGER", scanType: reflect.TypeOf(sql.NullInt64{})}},
+					rows:    [][]driver.Value{},
+					nextErr: errors.New("rows failed"),
+				},
+			},
+		}
+		mapped := WrapSqlConn(newSQLWrapTestConn(t, mapScenario))
+
+		rows, err := mapped.Query(t.Context(), "select mapping")
+		require.NoError(t, err)
+		cols, err := rows.Columns()
+		require.NoError(t, err)
+		require.Equal(t, api.DataTypeString, cols[0].DataType)
+		require.Equal(t, api.DataTypeBoolean, cols[1].DataType)
+		require.Equal(t, api.DataTypeInt16, cols[2].DataType)
+		require.Equal(t, api.DataTypeInt32, cols[3].DataType)
+		require.Equal(t, api.DataTypeFloat32, cols[4].DataType)
+		require.Equal(t, api.DataTypeDatetime, cols[5].DataType)
+		require.Equal(t, api.DataTypeBinary, cols[6].DataType)
+		require.Equal(t, api.DataTypeAny, cols[7].DataType)
+		require.NoError(t, rows.Close())
+
+		errRows, err := mapped.Query(t.Context(), "select with err")
+		require.NoError(t, err)
+		require.False(t, errRows.Next())
+		require.EqualError(t, errRows.Err(), "rows failed")
+	})
+
 	t.Run("not implemented methods and close", func(t *testing.T) {
 		require.PanicsWithValue(t, "not implemented", func() {
 			_, _ = wrapped.Prepare(t.Context(), "select 1")
@@ -660,6 +714,37 @@ func TestWrappedSqlConnBridgePaths(t *testing.T) {
 		require.ErrorContains(t, appErr, "not implemented")
 		_, expErr := wrapped.Explain(t.Context(), "select 1", false)
 		require.ErrorContains(t, expErr, "not implemented")
+	})
+}
+
+func TestWrappedSqlRowsMessageAndErrBranches(t *testing.T) {
+	tests := []struct {
+		name    string
+		sqlType SQLStatementType
+		rows    int64
+		expect  string
+	}{
+		{name: "select many", sqlType: SQLStatementTypeSelect, rows: 3, expect: "3 rows selected."},
+		{name: "describe one", sqlType: SQLStatementTypeDescribe, rows: 1, expect: "a row selected."},
+		{name: "update zero", sqlType: SQLStatementTypeUpdate, rows: 0, expect: "no rows updated."},
+		{name: "update one", sqlType: SQLStatementTypeUpdate, rows: 1, expect: "a row updated."},
+		{name: "delete many", sqlType: SQLStatementTypeDelete, rows: 5, expect: "5 rows deleted."},
+		{name: "create", sqlType: SQLStatementTypeCreate, rows: 0, expect: "Created successfully."},
+		{name: "drop", sqlType: SQLStatementTypeDrop, rows: 0, expect: "Dropped successfully."},
+		{name: "alter", sqlType: SQLStatementTypeAlter, rows: 0, expect: "Altered successfully."},
+		{name: "other", sqlType: SQLStatementTypeOther, rows: 0, expect: "executed."},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := &WrappedSqlRows{sqlType: tc.sqlType, rowCount: tc.rows}
+			require.Equal(t, tc.expect, rows.Message())
+		})
+	}
+
+	t.Run("err priority", func(t *testing.T) {
+		rows := &WrappedSqlRows{err: errors.New("preset")}
+		require.EqualError(t, rows.Err(), "preset")
 	})
 }
 

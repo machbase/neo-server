@@ -170,6 +170,11 @@ func DefaultPool() (*sql.DB, error) {
 			}
 			return []api.ConnectOption{api.WithAuthKey("sys", key)}, nil
 		})
+		defaultPoolDB.SetMaxOpenConns(20)
+		defaultPoolDB.SetMaxIdleConns(2)
+		defaultPoolDB.SetConnMaxLifetime(10 * time.Minute)
+		defaultPoolDB.SetConnMaxIdleTime(1 * time.Minute)
+		defaultPoolErr = defaultPoolDB.Ping()
 	})
 	if defaultPoolErr != nil {
 		return nil, defaultPoolErr
