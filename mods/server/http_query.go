@@ -166,23 +166,25 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.Transpose(req.Transpose),
 	)
 
-	var conn api.Conn
-	if pool, poolErr := spi.DefaultPool(); poolErr == nil {
-		if sqlConn, connErr := pool.Conn(ctx); connErr == nil {
-			conn = spi.WrapSqlConn(sqlConn)
-		} else {
-			svr.log.Debugf("query pooled connection unavailable, fallback to direct connect: %s", connErr.Error())
-		}
-	} else {
-		svr.log.Debugf("query pooled db unavailable, fallback to direct connect: %s", poolErr.Error())
+	pool, poolErr := spi.DefaultPool()
+	if poolErr != nil {
+		svr.log.Warnf("query pooled db unavailable: %s", poolErr.Error())
+		rsp.Reason = "service unavailable"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.Header("Retry-After", "1")
+		ctx.JSON(http.StatusServiceUnavailable, rsp)
+		return
 	}
-	if conn == nil {
-		conn, err = svr.getTrustConnection(ctx)
-		if err != nil {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			return
-		}
+	sqlConn, connErr := pool.Conn(ctx)
+	if connErr != nil {
+		svr.log.Warnf("query pooled connection unavailable: %s", connErr.Error())
+		rsp.Reason = "service unavailable"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.Header("Retry-After", "1")
+		ctx.JSON(http.StatusServiceUnavailable, rsp)
+		return
 	}
+	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	query := &spi.Query{

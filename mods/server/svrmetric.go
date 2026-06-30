@@ -95,11 +95,9 @@ func collectSysStatz(g *metric.Gather) error {
 func collectDefaultPoolStatz(g *metric.Gather) error {
 	db, err := spi.DefaultPool()
 	if err != nil {
-		g.Add("sys:pool:available", 0, metric.GaugeType(metric.UnitShort))
 		statzLog.Trace("default pool is unavailable: %v", err)
 		return nil
 	}
-	g.Add("sys:pool:available", 1, metric.GaugeType(metric.UnitShort))
 	addDefaultPoolStatz(g, db.Stats())
 	return nil
 }

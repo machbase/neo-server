@@ -21,7 +21,7 @@ type poolStubDatabase struct {
 
 func (s *poolStubDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 	s.connectCount++
-	return &stubConn{}, nil
+	return &poolStubConn{}, nil
 }
 
 func (s *poolStubDatabase) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
@@ -31,6 +31,46 @@ func (s *poolStubDatabase) UserAuth(ctx context.Context, user string, password s
 func (s *poolStubDatabase) Ping(ctx context.Context) (time.Duration, error) {
 	return 0, nil
 }
+
+type poolStubConn struct{}
+
+func (c *poolStubConn) Close() error { return nil }
+
+func (c *poolStubConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+	return &InsertResult{rowsAffected: 1, message: "a row inserted."}
+}
+
+func (c *poolStubConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+	// DefaultPool() validates connector availability via database/sql Ping() -> SELECT 1.
+	return &poolStubRows{}, nil
+}
+
+func (c *poolStubConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
+	return &WrappedSqlRow{err: api.ErrNotImplemented("QueryRow")}
+}
+
+func (c *poolStubConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
+	return nil, api.ErrNotImplemented("Prepare")
+}
+
+func (c *poolStubConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	return nil, api.ErrNotImplemented("Appender")
+}
+
+func (c *poolStubConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
+	return "", api.ErrNotImplemented("Explain")
+}
+
+type poolStubRows struct{}
+
+func (r *poolStubRows) Next() bool                    { return false }
+func (r *poolStubRows) Scan(cols ...any) error        { return nil }
+func (r *poolStubRows) Close() error                  { return nil }
+func (r *poolStubRows) Err() error                    { return nil }
+func (r *poolStubRows) IsFetchable() bool             { return true }
+func (r *poolStubRows) RowsAffected() int64           { return 0 }
+func (r *poolStubRows) Message() string               { return "success" }
+func (r *poolStubRows) Columns() (api.Columns, error) { return api.Columns{}, nil }
 
 func resetDefaultPoolForTest(t *testing.T) {
 	t.Helper()
@@ -117,15 +157,8 @@ func TestDefaultPoolConnectFailsWhenKeyMissing(t *testing.T) {
 	resetDefaultPoolForTest(t)
 
 	pool, err := DefaultPool()
-	require.NoError(t, err)
-	require.NotNil(t, pool)
-	t.Cleanup(func() {
-		require.NoError(t, pool.Close())
-	})
-
-	conn, err := pool.Conn(context.Background())
 	require.Error(t, err)
-	require.Nil(t, conn)
+	require.Nil(t, pool)
 	require.ErrorContains(t, err, "default key is not configured")
 	require.Equal(t, 0, stubDB.connectCount)
 }
@@ -154,7 +187,7 @@ func TestDefaultPoolSuccessAndCachedInstance(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.NoError(t, conn.Close())
-	require.Equal(t, 1, stubDB.connectCount)
+	require.GreaterOrEqual(t, stubDB.connectCount, 1)
 
 	pool2, err := DefaultPool()
 	require.NoError(t, err)

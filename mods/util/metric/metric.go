@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -87,6 +88,9 @@ type Collector struct {
 	// a channel to which measurements can be sent.
 	C chan<- *Gather
 
+	// droppedCount tracks how many gathers were dropped due to channel backpressure.
+	droppedCount uint64
+
 	// time series configuration
 	series       []SeriesID
 	expvarPrefix string
@@ -109,7 +113,7 @@ func NewCollector(opts ...CollectorOption) *Collector {
 		opt(c)
 	}
 	if c.recvChSize <= 0 {
-		c.recvChSize = 100
+		c.recvChSize = 10000
 	}
 	c.recvCh = make(chan *Gather, c.recvChSize)
 	c.C = c.recvCh
@@ -374,7 +378,28 @@ func (c *Collector) Send(measurements ...Measure) {
 		measures: measurements,
 		ts:       nowFunc(),
 	}
-	c.recvCh <- g
+	if !c.enqueue(g) {
+		atomic.AddUint64(&c.droppedCount, 1)
+	}
+}
+
+func (c *Collector) DroppedCount() uint64 {
+	return atomic.LoadUint64(&c.droppedCount)
+}
+
+// enqueue sends gather data to recvCh without blocking request goroutines.
+func (c *Collector) enqueue(g *Gather) (ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			ok = false
+		}
+	}()
+	select {
+	case c.recvCh <- g:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Collector) runInputs(ts time.Time) {
@@ -396,9 +421,13 @@ func (c *Collector) runInputs(ts time.Time) {
 			continue
 		}
 		gather.ts = ts
-		c.recvCh <- gather
+		if !c.enqueue(gather) {
+			atomic.AddUint64(&c.droppedCount, 1)
+		}
 	}
-	c.recvCh <- &Gather{noop: true, ts: ts}
+	if !c.enqueue(&Gather{noop: true, ts: ts}) {
+		atomic.AddUint64(&c.droppedCount, 1)
+	}
 }
 
 func (c *Collector) receive(m *Gather) {
