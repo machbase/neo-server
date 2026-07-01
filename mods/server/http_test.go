@@ -73,6 +73,51 @@ func BenchmarkHandleQuery(b *testing.B) {
 	}
 }
 
+// goos: linux
+// goarch: amd64
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+//
+// v8.5.5 (machgo+pooling)
+// == db.SetMaxOpenConns(200) db.SetMaxIdleConns(2)
+// BenchmarkHTTPQueryParallel-24    	   11654	     97116 ns/op	   81587 B/op	     224 allocs/op
+//
+// == db.SetMaxOpenConns(200) db.SetMaxIdleConns(200)
+// BenchmarkHTTPQueryParallel-24    	   99537	     11865 ns/op	   19512 B/op	     175 allocs/op
+func BenchmarkHTTPQueryParallel(b *testing.B) {
+	db, _ := spi.DefaultPool()
+	db.SetMaxOpenConns(200)
+	db.SetMaxIdleConns(2)
+	sql := "SELECT 1"
+	target := httpServerAddress + "/db/query?q=" + url.QueryEscape(sql) + "&tz=Asia/Seoul&timeformat=Default"
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 200,
+			MaxConnsPerHost:     0,
+		},
+	}
+
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			req, err := http.NewRequest(http.MethodGet, target, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			rsp, err := client.Do(req)
+			if err != nil {
+				b.Fatal(err)
+			}
+			io.Copy(io.Discard, rsp.Body)
+			rsp.Body.Close()
+			if rsp.StatusCode != http.StatusOK {
+				b.Fatalf("unexpected status: %d", rsp.StatusCode)
+			}
+		}
+	})
+}
+
 func TestStatz(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")
 	require.NoError(t, err)

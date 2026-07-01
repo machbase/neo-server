@@ -76,9 +76,13 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	default:
 	}
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := getPoolConn(ctx)
 	if err != nil {
-		errRsp(http.StatusUnauthorized, err.Error())
+		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
+		rsp.Reason = "service unavailable"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.Header("Retry-After", "1")
+		ctx.JSON(http.StatusServiceUnavailable, rsp)
 		return
 	}
 	defer conn.Close()
@@ -135,13 +139,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			opts.ColumnTypes(colTypes...),
 		)
 	} else { // insert
-		if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
-			errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
-			return
-		} else {
-			desc = tableDesc
-		}
-
 		var columnNames []string
 		var columnTypes []api.DataType
 		if format == "json" {
@@ -477,7 +474,7 @@ func (svr *httpd) handleLineProtocol(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleLineWrite(ctx *gin.Context) {
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := getPoolConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
