@@ -139,13 +139,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			opts.ColumnTypes(colTypes...),
 		)
 	} else { // insert
-		if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
-			errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
-			return
-		} else {
-			desc = tableDesc
-		}
-
 		var columnNames []string
 		var columnTypes []api.DataType
 		if format == "json" {
