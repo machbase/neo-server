@@ -95,6 +95,7 @@ func (w *Watcher) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 	if tableType, err := QueryTableType(ctx, conn, w.TableName); err != nil {
 		return err
 	} else if tableType != api.TableTypeTag && tableType != api.TableTypeLog {

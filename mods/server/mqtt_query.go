@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -103,7 +102,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := getPoolConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return

@@ -536,6 +536,19 @@ func (s *Server) startMachbaseCli() error {
 	return nil
 }
 
+func getPoolConn(ctx context.Context) (api.Conn, error) {
+	pool, poolErr := spi.DefaultPool()
+	if poolErr != nil {
+		return nil, poolErr
+	}
+	sqlConn, connErr := pool.Conn(ctx)
+	if connErr != nil {
+		return nil, connErr
+	}
+	conn := spi.WrapSqlConn(sqlConn)
+	return conn, nil
+}
+
 func (s *Server) AddServicePort(svc string, addr string) error {
 	svc = strings.ToLower(svc)
 	if strings.HasPrefix(addr, "tcp://") {

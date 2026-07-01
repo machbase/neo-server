@@ -165,26 +165,15 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.RowsArray(req.RowsArray),
 		opts.Transpose(req.Transpose),
 	)
-
-	pool, poolErr := spi.DefaultPool()
-	if poolErr != nil {
-		svr.log.Warnf("query pooled db unavailable: %s", poolErr.Error())
+	conn, err := getPoolConn(ctx)
+	if err != nil {
+		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
 		rsp.Reason = "service unavailable"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.Header("Retry-After", "1")
 		ctx.JSON(http.StatusServiceUnavailable, rsp)
 		return
 	}
-	sqlConn, connErr := pool.Conn(ctx)
-	if connErr != nil {
-		svr.log.Warnf("query pooled connection unavailable: %s", connErr.Error())
-		rsp.Reason = "service unavailable"
-		rsp.Elapse = time.Since(tick).String()
-		ctx.Header("Retry-After", "1")
-		ctx.JSON(http.StatusServiceUnavailable, rsp)
-		return
-	}
-	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	query := &spi.Query{
@@ -269,7 +258,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 
 	watch, err := spi.NewWatcher(ctx,
 		spi.WatcherConfig{
-			ConnProvider: func() (api.Conn, error) { return svr.getTrustConnection(ctx) },
+			ConnProvider: func() (api.Conn, error) { return getPoolConn(ctx) },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
 			Timeformat:   timeformat,
@@ -413,7 +402,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 	}
 	ts, _ := uidTs.Time()
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := getPoolConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
