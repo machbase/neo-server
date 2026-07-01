@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 )
 
 func WrapSqlConn(sqlConn *sql.Conn) api.Conn {
@@ -85,7 +86,19 @@ func (c *WrappedSqlConn) Appender(ctx context.Context, tableName string, opts ..
 }
 
 func (c *WrappedSqlConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	return "", api.ErrNotImplemented("Explain")
+	var ret string
+	var err error
+
+	c.sqlConn.Raw(func(driverConn any) error {
+		conn, isMachbase := driverConn.(*machbase.Conn)
+		if !isMachbase {
+			err = api.ErrNotImplemented("Explain")
+			return nil
+		}
+		ret, err = conn.Explain(ctx, sqlText, full)
+		return nil
+	})
+	return ret, err
 }
 
 type WrappedSqlResult struct {
@@ -184,6 +197,10 @@ func (r *WrappedSqlRow) Scan(values ...any) error {
 		return api.ErrDatabaseScanIndex(len(values), len(r.values))
 	}
 	for i := range values {
+		if r.values[i] == nil {
+			values[i] = nil
+			continue
+		}
 		if err := api.Scan(r.values[i], values[i]); err != nil {
 			return err
 		}

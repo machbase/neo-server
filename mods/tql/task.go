@@ -109,7 +109,16 @@ func (x *Task) ConnDatabase(ctx context.Context) (api.Conn, error) {
 		return conn, err
 	} else {
 		// request script file
-		conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+		pool, err := spi.DefaultPool()
+		if err != nil {
+			return nil, err
+		}
+		sqlConn, err := pool.Conn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		conn := spi.WrapSqlConn(sqlConn)
+		//conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 		return conn, err
 	}
 }
