@@ -400,6 +400,9 @@ func (s *Server) Stop() {
 
 	tql.Deinit()
 
+	if pool, _ := spi.DefaultPool(); pool != nil {
+		pool.Close()
+	}
 	if db, ok := spi.Default().(*machgo.Database); ok {
 		if err := db.Close(); err != nil {
 			s.log.Warnf("db close; %s", err.Error())
@@ -462,13 +465,9 @@ func (s *Server) startMachbaseSvr() error {
 	conn.Close()
 
 	db, err := machgo.NewDatabase(&machgo.Config{
-		Host:               "127.0.0.1",
-		Port:               s.Machbase.PORT_NO,
-		MaxOpenConn:        s.Config.MaxOpenConn,
-		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
-		MaxOpenQuery:       s.Config.MaxOpenQuery,
-		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-		StatementCache:     api.StatementCacheAuto,
+		Host:           "127.0.0.1",
+		Port:           s.Machbase.PORT_NO,
+		StatementCache: api.StatementCacheAuto,
 	})
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
@@ -494,12 +493,8 @@ func (s *Server) startMachbaseCli() error {
 	}
 
 	db, err := machgo.NewDatabase(&machgo.Config{
-		Host:               host,
-		Port:               port,
-		MaxOpenConn:        s.Config.MaxOpenConn,
-		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
-		MaxOpenQuery:       s.Config.MaxOpenQuery,
-		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
+		Host: host,
+		Port: port,
 	})
 	if err != nil {
 		return err
@@ -2095,25 +2090,55 @@ func (s *Server) killSession(ctx context.Context, id string, force bool) error {
 //   - reset: whether to reset accumulated stats
 //
 // return: session statistics
-func (s *Server) statSession(ctx context.Context, reset bool) (*spi.Statz, error) {
-	rsp, err := s.Sessions(ctx, &SessionsRequest{
-		Statz: true, Sessions: false, ResetStatz: reset,
-	})
+func (s *Server) statSession(ctx context.Context, reset bool) (*SessionStats, error) {
+	pool, err := spi.DefaultPool()
 	if err != nil {
 		return nil, err
 	}
-	if !rsp.Success {
-		return nil, errors.New(rsp.Reason)
+	if pool == nil {
+		return nil, fmt.Errorf("session pool not available")
 	}
-	return &spi.Statz{}, nil
+	stat := pool.Stats()
+	waitAvg := time.Duration(0)
+	if stat.WaitCount > 0 {
+		waitAvg = stat.WaitDuration / time.Duration(stat.WaitCount)
+	}
+	ret := &SessionStats{
+		MaxOpenConnections: stat.MaxOpenConnections,
+		OpenConnections:    stat.OpenConnections,
+		InUse:              stat.InUse,
+		Idle:               stat.Idle,
+		WaitCount:          stat.WaitCount,
+		WaitAvgDuration:    waitAvg.String(),
+		MaxIdleClosed:      stat.MaxIdleClosed,
+		MaxIdleTimeClosed:  stat.MaxIdleTimeClosed,
+		MaxLifetimeClosed:  stat.MaxLifetimeClosed,
+	}
+	return ret, nil
+}
+
+type SessionStats struct {
+	// Maximum number of open connections to the database.
+	MaxOpenConnections int `json:"maxOpenConnections"`
+
+	// Pool Status
+	OpenConnections int `json:"openConnections"` // The number of established connections both in use and idle.
+	InUse           int `json:"inUse"`           // The number of connections currently in use.
+	Idle            int `json:"idle"`            // The number of idle connections.
+
+	// Counters
+	WaitCount         int64  `json:"waitCount"`         // The total number of connections waited for.
+	WaitAvgDuration   string `json:"waitAvgDuration"`   // The average time blocked waiting for a new connection.
+	MaxIdleClosed     int64  `json:"maxIdleClosed"`     // The total number of connections closed due to SetMaxIdleConns.
+	MaxIdleTimeClosed int64  `json:"maxIdleTimeClosed"` // The total number of connections closed due to SetConnMaxIdleTime.
+	MaxLifetimeClosed int64  `json:"maxLifetimeClosed"` // The total number of connections closed due to SetConnMaxLifetime.
 }
 
 type SessionLimit struct {
-	MaxPoolSize       int
-	MaxOpenConn       int
-	RemainedOpenConn  int
-	MaxOpenQuery      int
-	RemainedOpenQuery int
+	MaxOpenConn     int    `json:"maxOpenConn"`
+	MaxIdleConn     int    `json:"maxIdleConn"`
+	ConnMaxIdleTime string `json:"connMaxIdleTime"`
+	ConnMaxLifetime string `json:"connMaxLifetime"`
 }
 
 // getSessionLimit returns session pool limit settings.
@@ -2122,21 +2147,12 @@ type SessionLimit struct {
 //
 // return: session limit information
 func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
-	rsp, err := s.LimitSession(ctx, &LimitSessionRequest{
-		Cmd: "get",
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !rsp.Success {
-		return nil, errors.New(rsp.Reason)
-	}
-	ret := &SessionLimit{
-		MaxPoolSize:       int(rsp.MaxPoolSize),
-		MaxOpenConn:       int(rsp.MaxOpenConn),
-		RemainedOpenConn:  int(rsp.RemainedOpenConn),
-		MaxOpenQuery:      int(rsp.MaxOpenQuery),
-		RemainedOpenQuery: int(rsp.RemainedOpenQuery),
+	ret := &SessionLimit{}
+	if pool, err := spi.DefaultPool(); err == nil && pool != nil {
+		ret.MaxOpenConn = s.MaxOpenConn
+		ret.MaxIdleConn = s.MaxIdleConn
+		ret.ConnMaxIdleTime = s.ConnMaxIdleTime.String()
+		ret.ConnMaxLifetime = s.ConnMaxLifetime.String()
 	}
 	return ret, nil
 }
@@ -2144,42 +2160,48 @@ func (s *Server) getSessionLimit(ctx context.Context) (*SessionLimit, error) {
 // setSessionLimit updates session pool limit settings.
 //
 // params:
-//   - m: limit setting map with MaxPoolSize, MaxOpenConn, and MaxOpenQuery keys
+//   - m: limit setting map with the following keys:
+//   - m.maxOpenConn: maximum number of open connections
+//   - m.maxIdleConn: maximum number of idle connections
+//   - m.connMaxIdleTime: maximum idle time for connections (duration string)
+//   - m.connMaxLifetime: maximum lifetime for connections (duration string)
 //
 // return: null on success
 func (s *Server) setSessionLimit(ctx context.Context, m map[string]any) error {
-	var limit = SessionLimit{
-		MaxPoolSize:  -1,
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
-	}
-	if v, ok := m["MaxPoolSize"]; ok {
-		if vi, ok := v.(float64); ok {
-			limit.MaxPoolSize = int(vi)
-		}
-	}
-	if v, ok := m["MaxOpenConn"]; ok {
-		if vi, ok := v.(float64); ok {
-			limit.MaxOpenConn = int(vi)
-		}
-	}
-	if v, ok := m["MaxOpenQuery"]; ok {
-		if vi, ok := v.(float64); ok {
-			limit.MaxOpenQuery = int(vi)
-		}
-	}
-
-	rsp, err := s.LimitSession(ctx, &LimitSessionRequest{
-		Cmd:          "set",
-		MaxPoolSize:  int32(limit.MaxPoolSize),
-		MaxOpenConn:  int32(limit.MaxOpenConn),
-		MaxOpenQuery: int32(limit.MaxOpenQuery),
-	})
+	pool, err := spi.DefaultPool()
 	if err != nil {
 		return err
 	}
-	if !rsp.Success {
-		return errors.New(rsp.Reason)
+	if pool == nil {
+		return fmt.Errorf("session pool not available")
+	}
+	if v, ok := m["maxOpenConn"]; ok {
+		if vi, ok := v.(float64); ok {
+			s.MaxOpenConn = int(vi)
+			pool.SetMaxOpenConns(int(vi))
+		}
+	}
+	if v, ok := m["maxIdleConn"]; ok {
+		if vi, ok := v.(float64); ok {
+			s.MaxIdleConn = int(vi)
+			pool.SetMaxIdleConns(int(vi))
+		}
+	}
+	if v, ok := m["connMaxIdleTime"]; ok {
+		if vi, ok := v.(string); ok {
+			if d, err := time.ParseDuration(vi); err == nil {
+				s.ConnMaxIdleTime = d
+				pool.SetConnMaxIdleTime(d)
+			}
+		}
+	}
+	if v, ok := m["connMaxLifetime"]; ok {
+		if vi, ok := v.(string); ok {
+			if d, err := time.ParseDuration(vi); err == nil {
+				s.ConnMaxLifetime = d
+				pool.SetConnMaxLifetime(d)
+			}
+		}
 	}
 	return nil
 }

@@ -24,11 +24,9 @@ func FetchRowsChunk(t *testing.T, db api.Database, ctx context.Context) {
 	const totalRows = 10000
 
 	fetchDB, err := machgo.NewDatabase(&machgo.Config{
-		Host:         host,
-		Port:         port,
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
-		FetchRows:    fetchRows,
+		Host:      host,
+		Port:      port,
+		FetchRows: fetchRows,
 	})
 	require.NoError(t, err)
 	defer fetchDB.Close()

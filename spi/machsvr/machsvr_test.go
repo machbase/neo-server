@@ -133,10 +133,8 @@ func startServer(ctx context.Context) {
 
 	// machgo database
 	if db, err := machgo.NewDatabase(&machgo.Config{
-		Host:         "127.0.0.1",
-		Port:         machsvrPort,
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
+		Host: "127.0.0.1",
+		Port: machsvrPort,
 	}); err != nil {
 		panic(err)
 	} else {
@@ -795,10 +793,8 @@ func TestUserAuthWithKey(t *testing.T) {
 			require.Greater(t, keyID, 0)
 
 			authDB, err := machgo.NewDatabase(&machgo.Config{
-				Host:         host,
-				Port:         port,
-				MaxOpenConn:  1,
-				MaxOpenQuery: 1,
+				Host: host,
+				Port: port,
 			})
 			require.NoError(t, err)
 			defer authDB.Close()

@@ -57,10 +57,8 @@ func AuthKeyConnect(t *testing.T, db api.Database, ctx context.Context) {
 			require.Greater(t, keyID, 0)
 
 			authDB, err := machgo.NewDatabase(&machgo.Config{
-				Host:         host,
-				Port:         port,
-				MaxOpenConn:  1,
-				MaxOpenQuery: 1,
+				Host: host,
+				Port: port,
 			})
 			require.NoError(t, err)
 			defer authDB.Close()
