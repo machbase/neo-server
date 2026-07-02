@@ -2206,7 +2206,12 @@ func TestServerCoverage_ScheduleWrappers(t *testing.T) {
 	ctx := context.Background()
 
 	name := fmt.Sprintf("cov_timer_%d", time.Now().UnixNano())
-	err := svr.addTimerSchedule(ctx, name, "@every 1m", "definitely_not_existing_command", false)
+	err := svr.addTimerSchedule(ctx, addTimerScheduleRequest{
+		Name:      name,
+		Spec:      "@every 1m",
+		Command:   "definitely_not_existing_command",
+		AutoStart: false,
+	})
 	require.Error(t, err)
 
 	err = svr.startSchedule(ctx, name)
@@ -2398,15 +2403,22 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	ctx := context.Background()
 
 	name := fmt.Sprintf("cov_sub_%d", time.Now().UnixNano())
-	err := svr.addSubscriberSchedule(ctx,
-		name,
-		"missing-bridge",
-		"select 1",
-		false,
-		"test/topic",
-		1,
-	)
+	err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
+		Name:      name,
+		Bridge:    "missing-bridge",
+		Command:   "select 1",
+		AutoStart: false,
+		Mqtt: &addSubscriberScheduleMqttOption{
+			Topic: "test/topic",
+			QoS:   1,
+		},
+	})
 	require.NoError(t, err)
+	legacyDef, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+	require.NoError(t, err)
+	require.Equal(t, model.SCHEDULE_SUBSCRIBER, legacyDef.Type)
+	require.Equal(t, "test/topic", legacyDef.Topic)
+	require.Equal(t, 1, legacyDef.QoS)
 	t.Cleanup(func() {
 		_ = svr.stopSchedule(context.Background(), name)
 		_ = svr.deleteSchedule(context.Background(), name)
@@ -2435,6 +2447,64 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	svr.StartupScriptFiles = []string{"", scriptPath}
 
 	require.NoError(t, svr.runInitScripts())
+}
+
+func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
+	svr := coverageRunningServer(t)
+	ctx := context.Background()
+
+	t.Run("nats_only", func(t *testing.T) {
+		name := fmt.Sprintf("cov_sub_v2_nats_%d", time.Now().UnixNano())
+		err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
+			Name:      name,
+			Bridge:    "missing-bridge",
+			Command:   "select 1",
+			AutoStart: false,
+			Nats: &addSubscriberScheduleNatsOption{
+				Subject:    "subject.>",
+				QueueName:  "workers",
+				StreamName: "orders",
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = svr.stopSchedule(context.Background(), name)
+			_ = svr.deleteSchedule(context.Background(), name)
+		})
+
+		def, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+		require.NoError(t, err)
+		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
+		require.Equal(t, "subject.>", def.Topic)
+		require.Equal(t, "workers", def.QueueName)
+		require.Equal(t, "orders", def.StreamName)
+	})
+
+	t.Run("mqtt_only", func(t *testing.T) {
+		name := fmt.Sprintf("cov_sub_v2_mqtt_%d", time.Now().UnixNano())
+		err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
+			Name:      name,
+			Bridge:    "missing-bridge",
+			Command:   "select 1",
+			AutoStart: true,
+			Mqtt: &addSubscriberScheduleMqttOption{
+				Topic: "factory/#",
+				QoS:   2,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = svr.stopSchedule(context.Background(), name)
+			_ = svr.deleteSchedule(context.Background(), name)
+		})
+
+		def, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+		require.NoError(t, err)
+		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
+		require.Equal(t, true, def.AutoStart)
+		require.Equal(t, "factory/#", def.Topic)
+		require.Equal(t, 2, def.QoS)
+	})
 }
 
 func TestServerCoverage_PreparePortsHeadOnlyInvalid(t *testing.T) {

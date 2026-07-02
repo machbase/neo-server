@@ -342,11 +342,23 @@ class Client extends _Client {
 
         return this._executeWithAuth(() => {
             if (type === 'SUBSCRIBER') {
-                return this._rpcRequest('schedule.subscriber.add',
-                    [name, bridge, task, true, topic, qos]);
+                return this._rpcRequest('schedule.subscriber.add', [{
+                    name,
+                    bridge,
+                    command: task,
+                    autoStart: !!autostart,
+                    mqtt: {
+                        topic,
+                        qos,
+                    },
+                }]);
             } else if (type === 'TIMER') {
-                return this._rpcRequest('schedule.timer.add',
-                    [name, spec, task, autostart]);
+                return this._rpcRequest('schedule.timer.add', [{
+                    name,
+                    spec,
+                    command: task,
+                    autoStart: !!autostart,
+                }]);
             } else {
                 throw new Error(`Unsupported schedule type: ${type}`);
             }
