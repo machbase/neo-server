@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ type registeredMethod struct {
 	Name       string
 	Handler    string
 	Function   *functionInfo
+	Package    *packageInfo
 	SourceFile string
 }
 
@@ -51,6 +53,25 @@ type packageInfo struct {
 	Imports   map[string]string
 	Functions map[string]*functionInfo
 	Methods   map[string]*functionInfo
+	Structs   map[string]*structInfo
+}
+
+type structInfo struct {
+	Name   string
+	Fields []structFieldInfo
+}
+
+type structFieldInfo struct {
+	Name     string
+	Type     string
+	Expr     ast.Expr
+	Optional bool
+}
+
+type schemaEntry struct {
+	Path     string
+	Type     string
+	Optional bool
 }
 
 type rpcRequestEnvelope struct {
@@ -140,6 +161,7 @@ func parsePackage(dir string) (*packageInfo, error) {
 		Imports:   map[string]string{},
 		Functions: map[string]*functionInfo{},
 		Methods:   map[string]*functionInfo{},
+		Structs:   map[string]*structInfo{},
 	}
 
 	for _, file := range parsedPackage.Files {
@@ -152,6 +174,21 @@ func parsePackage(dir string) (*packageInfo, error) {
 		}
 
 		for _, declaration := range file.Decls {
+			gen, ok := declaration.(*ast.GenDecl)
+			if ok && gen.Tok == token.TYPE {
+				for _, spec := range gen.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					st, ok := typeSpec.Type.(*ast.StructType)
+					if !ok {
+						continue
+					}
+					info.Structs[typeSpec.Name.Name] = parseStructInfo(typeSpec.Name.Name, st)
+				}
+			}
+
 			function, ok := declaration.(*ast.FuncDecl)
 			if !ok {
 				continue
@@ -170,6 +207,66 @@ func parsePackage(dir string) (*packageInfo, error) {
 		}
 	}
 	return info, nil
+}
+
+func parseStructInfo(name string, st *ast.StructType) *structInfo {
+	ret := &structInfo{Name: name}
+	if st == nil || st.Fields == nil {
+		return ret
+	}
+	for _, field := range st.Fields.List {
+		if len(field.Names) == 0 {
+			continue
+		}
+		for _, fieldName := range field.Names {
+			jsonName, optional, skip := jsonFieldName(fieldName.Name, field.Tag)
+			if skip {
+				continue
+			}
+			ret.Fields = append(ret.Fields, structFieldInfo{
+				Name:     jsonName,
+				Type:     renderExpr(field.Type),
+				Expr:     field.Type,
+				Optional: optional || isPointerExpr(field.Type),
+			})
+		}
+	}
+	return ret
+}
+
+func jsonFieldName(defaultName string, tag *ast.BasicLit) (string, bool, bool) {
+	if tag == nil {
+		return defaultName, false, false
+	}
+	tagValue, err := strconv.Unquote(tag.Value)
+	if err != nil {
+		return defaultName, false, false
+	}
+	jsonTag := reflect.StructTag(tagValue).Get("json")
+	if jsonTag == "" {
+		return defaultName, false, false
+	}
+	parts := strings.Split(jsonTag, ",")
+	name := strings.TrimSpace(parts[0])
+	if name == "-" {
+		return "", false, true
+	}
+	if name == "" {
+		name = defaultName
+	}
+	optional := false
+	for _, part := range parts[1:] {
+		if strings.TrimSpace(part) == "omitempty" {
+			optional = true
+			break
+		}
+	}
+	return name, optional, false
+}
+
+func isPointerExpr(expr ast.Expr) bool {
+	_, ok := expr.(*ast.StarExpr)
+	return ok
 }
 
 func importAlias(importSpec *ast.ImportSpec, importPath string) string {
@@ -486,7 +583,7 @@ func collectRegistrations(path string, serverPackage *packageInfo, moduleRoot st
 			firstErr = fmt.Errorf("unquote json-rpc method at %s: %w", fileSet.Position(methodLiteral.Pos()), err)
 			return false
 		}
-		handlerName, function, err := resolveHandler(call.Args[1], serverPackage, importedPackages, moduleRoot)
+		handlerName, function, ownerPackage, err := resolveHandler(call.Args[1], serverPackage, importedPackages, moduleRoot)
 		if err != nil {
 			firstErr = fmt.Errorf("resolve handler for %s: %w", methodName, err)
 			return false
@@ -495,6 +592,7 @@ func collectRegistrations(path string, serverPackage *packageInfo, moduleRoot st
 			Name:       methodName,
 			Handler:    handlerName,
 			Function:   function,
+			Package:    ownerPackage,
 			SourceFile: path,
 		})
 		return true
@@ -510,39 +608,39 @@ func isRegisterJsonRpcHandlerCall(call *ast.CallExpr) bool {
 	return ok && selector.Sel.Name == "RegisterJsonRpcHandler"
 }
 
-func resolveHandler(expr ast.Expr, serverPackage *packageInfo, importedPackages map[string]*packageInfo, moduleRoot string) (string, *functionInfo, error) {
+func resolveHandler(expr ast.Expr, serverPackage *packageInfo, importedPackages map[string]*packageInfo, moduleRoot string) (string, *functionInfo, *packageInfo, error) {
 	switch handler := expr.(type) {
 	case *ast.Ident:
 		fn := serverPackage.Functions[handler.Name]
 		if fn == nil {
-			return handler.Name, nil, fmt.Errorf("function %s not found", handler.Name)
+			return handler.Name, nil, nil, fmt.Errorf("function %s not found", handler.Name)
 		}
-		return handler.Name, fn, nil
+		return handler.Name, fn, serverPackage, nil
 	case *ast.SelectorExpr:
 		owner := renderExpr(handler.X)
 		if owner == "s" {
 			key := "Server." + handler.Sel.Name
 			fn := serverPackage.Methods[key]
 			if fn == nil {
-				return key, nil, fmt.Errorf("method %s not found", key)
+				return key, nil, nil, fmt.Errorf("method %s not found", key)
 			}
-			return key, fn, nil
+			return key, fn, serverPackage, nil
 		}
 		importPath, ok := serverPackage.Imports[owner]
 		if !ok {
-			return owner + "." + handler.Sel.Name, nil, fmt.Errorf("import alias %s not found", owner)
+			return owner + "." + handler.Sel.Name, nil, nil, fmt.Errorf("import alias %s not found", owner)
 		}
 		pkg, err := loadImportedPackage(importPath, importedPackages, moduleRoot)
 		if err != nil {
-			return owner + "." + handler.Sel.Name, nil, err
+			return owner + "." + handler.Sel.Name, nil, nil, err
 		}
 		fn := pkg.Functions[handler.Sel.Name]
 		if fn == nil {
-			return owner + "." + handler.Sel.Name, nil, fmt.Errorf("function %s not found in %s", handler.Sel.Name, importPath)
+			return owner + "." + handler.Sel.Name, nil, nil, fmt.Errorf("function %s not found in %s", handler.Sel.Name, importPath)
 		}
-		return owner + "." + handler.Sel.Name, fn, nil
+		return owner + "." + handler.Sel.Name, fn, pkg, nil
 	default:
-		return renderExpr(expr), nil, fmt.Errorf("unsupported handler expression %s", renderExpr(expr))
+		return renderExpr(expr), nil, nil, fmt.Errorf("unsupported handler expression %s", renderExpr(expr))
 	}
 }
 
@@ -621,11 +719,23 @@ func renderMethod(buffer *bytes.Buffer, registration registeredMethod) {
 			if name == "" {
 				name = fmt.Sprintf("param%d", index+1)
 			}
+			entries := paramSchemaEntries(name, param, registration.Package)
+			paramType := jsonType(param.Expr, param.Type)
+			if len(entries) > 0 {
+				paramType = "object"
+			}
 			desc := strings.TrimSpace(registration.Function.ParamDoc[name])
 			if desc == "" {
-				fmt.Fprintf(buffer, "- `%s` *%s*\n", name, jsonType(param.Expr, param.Type))
+				fmt.Fprintf(buffer, "- `%s` *%s*\n", name, paramType)
 			} else {
-				fmt.Fprintf(buffer, "- `%s` *%s* - %s\n", name, jsonType(param.Expr, param.Type), desc)
+				fmt.Fprintf(buffer, "- `%s` *%s* - %s\n", name, paramType, desc)
+			}
+			for _, entry := range entries {
+				typ := entry.Type
+				if entry.Optional {
+					typ += ", optional"
+				}
+				fmt.Fprintf(buffer, "  - `%s` *%s*\n", entry.Path, typ)
 			}
 		}
 	}
@@ -633,7 +743,7 @@ func renderMethod(buffer *bytes.Buffer, registration registeredMethod) {
 	buffer.WriteString("\n*Return*\n\n")
 	renderReturnLines(buffer, returns, registration.Function.ReturnDoc, registration.Function.ReturnFieldDoc)
 
-	request, response := sampleMessages(registration.Name, params, returns)
+	request, response := sampleMessages(registration.Name, params, returns, registration.Package)
 	buffer.WriteByte('\n')
 	writeRequestResponseJSON(buffer, request, response)
 	buffer.WriteByte('\n')
@@ -680,6 +790,63 @@ func paramNames(params []fieldInfo) []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+func paramSchemaEntries(paramName string, param fieldInfo, pkg *packageInfo) []schemaEntry {
+	if pkg == nil {
+		return nil
+	}
+	entries := []schemaEntry{}
+	collectSchemaEntries(&entries, pkg, param.Expr, paramName, map[string]bool{})
+	return entries
+}
+
+func collectSchemaEntries(entries *[]schemaEntry, pkg *packageInfo, expr ast.Expr, prefix string, visited map[string]bool) {
+	structName, structInfo, ok := resolveStructType(pkg, expr)
+	if !ok || structInfo == nil {
+		return
+	}
+	if visited[structName] {
+		return
+	}
+	visited[structName] = true
+	for _, field := range structInfo.Fields {
+		path := prefix + "." + field.Name
+		fieldType := jsonType(field.Expr, field.Type)
+		if isStructLikeField(pkg, field.Expr) {
+			fieldType = "object"
+		}
+		*entries = append(*entries, schemaEntry{
+			Path:     path,
+			Type:     fieldType,
+			Optional: field.Optional,
+		})
+		collectSchemaEntries(entries, pkg, field.Expr, path, visited)
+	}
+	delete(visited, structName)
+}
+
+func isStructLikeField(pkg *packageInfo, expr ast.Expr) bool {
+	_, _, ok := resolveStructType(pkg, expr)
+	return ok
+}
+
+func resolveStructType(pkg *packageInfo, expr ast.Expr) (string, *structInfo, bool) {
+	if pkg == nil {
+		return "", nil, false
+	}
+	switch typed := expr.(type) {
+	case *ast.StarExpr:
+		return resolveStructType(pkg, typed.X)
+	case *ast.Ident:
+		st, ok := pkg.Structs[typed.Name]
+		if !ok {
+			return "", nil, false
+		}
+		return pkg.Name + "." + typed.Name, st, true
+	default:
+		return "", nil, false
+	}
 }
 
 func returnLines(returns []fieldInfo, docs map[string]string) []string {
@@ -737,10 +904,10 @@ func returnDocByIndexOrName(docs map[string]string, idx int, name string) string
 	return ""
 }
 
-func sampleMessages(method string, params []fieldInfo, returns []fieldInfo) (rpcRequestEnvelope, rpcResponseEnvelope) {
+func sampleMessages(method string, params []fieldInfo, returns []fieldInfo, pkg *packageInfo) (rpcRequestEnvelope, rpcResponseEnvelope) {
 	sampleParams := make([]any, 0, len(params))
 	for _, param := range params {
-		sampleParams = append(sampleParams, sampleValue(param.Expr, param.Type))
+		sampleParams = append(sampleParams, sampleParamValue(param.Expr, param.Type, pkg, map[string]bool{}))
 	}
 	request := rpcRequestEnvelope{
 		Type:    "rpc_req",
@@ -762,6 +929,33 @@ func sampleMessages(method string, params []fieldInfo, returns []fieldInfo) (rpc
 		},
 	}
 	return request, response
+}
+
+func sampleParamValue(expr ast.Expr, fallback string, pkg *packageInfo, visited map[string]bool) any {
+	if pkg != nil {
+		if structName, st, ok := resolveStructType(pkg, expr); ok {
+			if visited[structName] {
+				return map[string]any{}
+			}
+			visited[structName] = true
+			obj := map[string]any{}
+			for _, field := range st.Fields {
+				obj[field.Name] = sampleParamValue(field.Expr, field.Type, pkg, visited)
+			}
+			delete(visited, structName)
+			return obj
+		}
+	}
+	switch typed := expr.(type) {
+	case *ast.StarExpr:
+		return sampleParamValue(typed.X, renderExpr(typed.X), pkg, visited)
+	case *ast.ArrayType:
+		return []any{}
+	case *ast.MapType:
+		return map[string]any{}
+	default:
+		return sampleValue(expr, fallback)
+	}
 }
 
 func sampleReturnValue(returns []fieldInfo) any {

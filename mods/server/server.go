@@ -1819,24 +1819,28 @@ func (s *Server) listSchedules(ctx context.Context) ([]*scheduler.Schedule, erro
 	return rsp.Schedules, nil
 }
 
+type addTimerScheduleRequest struct {
+	Name      string `json:"name"`
+	Spec      string `json:"spec"`
+	Command   string `json:"command"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+}
+
 // addTimerSchedule creates a timer schedule.
 //
 // params:
-//   - name: schedule name
-//   - spec: cron-like timer expression
-//   - command: task command to execute
-//   - autoStart: whether to start right after creation
+//   - req: timer schedule request
 //
 // return: null on success
-func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string, command string, autoStart bool) error {
-	req := &scheduler.AddScheduleRequest{
-		Name:      strings.ToLower(name),
+func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleRequest) error {
+	scheduleReq := &scheduler.AddScheduleRequest{
+		Name:      strings.ToLower(req.Name),
 		Type:      "TIMER",
-		AutoStart: autoStart,
-		Schedule:  spec,
-		Task:      command,
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
 	}
-	rsp, err := s.schedSvc.AddSchedule(ctx, req)
+	rsp, err := s.schedSvc.AddSchedule(ctx, scheduleReq)
 	if err != nil {
 		return err
 	}
@@ -1846,32 +1850,35 @@ func (s *Server) addTimerSchedule(ctx context.Context, name string, spec string,
 	return nil
 }
 
-// addSubscriberSchedule creates an MQTT subscriber schedule.
+// addSubscriberSchedule creates a subscriber schedule using a structured payload.
 //
 // params:
-//   - name: schedule name
-//   - bridge: bridge name
-//   - command: task command to execute
-//   - autoStart: whether to start right after creation
-//   - topic: MQTT topic filter
-//   - qos: MQTT QoS level
+//   - req: subscriber schedule request with protocol-specific options
 //
 // return: null on success
-func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge string, command string, autoStart bool, topic string, qos int) error {
-	req := scheduler.AddScheduleRequest{
-		Name:      strings.ToLower(name),
+func (s *Server) addSubscriberSchedule(ctx context.Context, req addSubscriberScheduleRequest) error {
+	scheduleReq := scheduler.AddScheduleRequest{
+		Name:      strings.ToLower(req.Name),
 		Type:      "SUBSCRIBER",
-		AutoStart: autoStart,
-		Task:      command,
-		Bridge:    bridge,
-		Opt: scheduler.AddScheduleOption{
-			Mqtt: &scheduler.MqttOption{
-				Topic: topic,
-				QoS:   int32(qos),
-			},
-		},
+		AutoStart: req.AutoStart,
+		Task:      req.Command,
+		Bridge:    req.Bridge,
 	}
-	rsp, err := s.schedSvc.AddSchedule(ctx, &req)
+	if req.Mqtt != nil {
+		scheduleReq.Opt.Mqtt = &scheduler.MqttOption{
+			Topic: req.Mqtt.Topic,
+			QoS:   int32(req.Mqtt.QoS),
+		}
+	}
+	if req.Nats != nil {
+		scheduleReq.Opt.Nats = &scheduler.NatsOption{
+			Subject:    req.Nats.Subject,
+			QueueName:  req.Nats.QueueName,
+			StreamName: req.Nats.StreamName,
+		}
+	}
+
+	rsp, err := s.schedSvc.AddSchedule(ctx, &scheduleReq)
 	if err != nil {
 		return err
 	}
@@ -1879,6 +1886,26 @@ func (s *Server) addSubscriberSchedule(ctx context.Context, name string, bridge 
 		return errors.New(rsp.Reason)
 	}
 	return nil
+}
+
+type addSubscriberScheduleMqttOption struct {
+	Topic string `json:"topic"`
+	QoS   int    `json:"qos,omitempty"`
+}
+
+type addSubscriberScheduleNatsOption struct {
+	Subject    string `json:"subject"`
+	QueueName  string `json:"queueName,omitempty"`
+	StreamName string `json:"streamName,omitempty"`
+}
+
+type addSubscriberScheduleRequest struct {
+	Name      string                           `json:"name"`
+	Bridge    string                           `json:"bridge"`
+	Command   string                           `json:"command"`
+	AutoStart bool                             `json:"autoStart,omitempty"`
+	Mqtt      *addSubscriberScheduleMqttOption `json:"mqtt,omitempty"`
+	Nats      *addSubscriberScheduleNatsOption `json:"nats,omitempty"`
 }
 
 // deleteSchedule removes a schedule by name.

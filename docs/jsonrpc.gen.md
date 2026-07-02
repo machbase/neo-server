@@ -523,7 +523,12 @@ registerProxy registers a service proxy entry.
 `proxy.register(req)`
 
 *Params*
-- `req` *object<ProxyRegisterRequest>* - proxy registration request
+- `req` *object* - proxy registration request
+  - `req.service` *string*
+  - `req.prefix` *string*
+  - `req.target` *string*
+  - `req.strip_prefix` *string, optional*
+  - `req.health_path` *string, optional*
 
 *Return*
 
@@ -543,7 +548,13 @@ registerProxy registers a service proxy entry.
         "id": 20,
         "method": "proxy.register",
         "params": [
-            {}
+            {
+                "health_path": "string",
+                "prefix": "string",
+                "service": "string",
+                "strip_prefix": "string",
+                "target": "string"
+            }
         ]
     }
 }
@@ -572,7 +583,9 @@ unregisterProxy removes service proxy entries by filter.
 `proxy.unregister(req)`
 
 *Params*
-- `req` *object<ProxyUnregisterRequest>* - proxy unregister request
+- `req` *object* - proxy unregister request
+  - `req.service` *string*
+  - `req.prefix` *string, optional*
 
 *Return*
 
@@ -592,7 +605,10 @@ unregisterProxy removes service proxy entries by filter.
         "id": 20,
         "method": "proxy.unregister",
         "params": [
-            {}
+            {
+                "prefix": "string",
+                "service": "string"
+            }
         ]
     }
 }
@@ -670,7 +686,9 @@ getProxy gets one service proxy entry.
 `proxy.get(req)`
 
 *Params*
-- `req` *object<ProxyGetRequest>* - proxy lookup request
+- `req` *object* - proxy lookup request
+  - `req.service` *string*
+  - `req.prefix` *string*
 
 *Return*
 
@@ -690,7 +708,10 @@ getProxy gets one service proxy entry.
         "id": 20,
         "method": "proxy.get",
         "params": [
-            {}
+            {
+                "prefix": "string",
+                "service": "string"
+            }
         ]
     }
 }
@@ -1762,13 +1783,14 @@ addTimerSchedule creates a timer schedule.
 
 return: null on success
 
-`schedule.timer.add(name, spec, command, autoStart)`
+`schedule.timer.add(req)`
 
 *Params*
-- `name` *string* - schedule name
-- `spec` *string* - cron-like timer expression
-- `command` *string* - task command to execute
-- `autoStart` *bool* - whether to start right after creation
+- `req` *object* - timer schedule request
+  - `req.name` *string*
+  - `req.spec` *string*
+  - `req.command` *string*
+  - `req.autoStart` *bool, optional*
 
 *Return*
 
@@ -1788,10 +1810,12 @@ return: null on success
         "id": 20,
         "method": "schedule.timer.add",
         "params": [
-            "string",
-            "string",
-            "string",
-            false
+            {
+                "autoStart": false,
+                "command": "string",
+                "name": "string",
+                "spec": "string"
+            }
         ]
     }
 }
@@ -1815,20 +1839,26 @@ return: null on success
 
 #### schedule.subscriber.add
 
-addSubscriberSchedule creates an MQTT subscriber schedule.
+addSubscriberSchedule creates a subscriber schedule using a structured payload.
 
 
 return: null on success
 
-`schedule.subscriber.add(name, bridge, command, autoStart, topic, qos)`
+`schedule.subscriber.add(req)`
 
 *Params*
-- `name` *string* - schedule name
-- `bridge` *string* - bridge name
-- `command` *string* - task command to execute
-- `autoStart` *bool* - whether to start right after creation
-- `topic` *string* - MQTT topic filter
-- `qos` *int* - MQTT QoS level
+- `req` *object* - subscriber schedule request with protocol-specific options
+  - `req.name` *string*
+  - `req.bridge` *string*
+  - `req.command` *string*
+  - `req.autoStart` *bool, optional*
+  - `req.mqtt` *object, optional*
+  - `req.mqtt.topic` *string*
+  - `req.mqtt.qos` *int, optional*
+  - `req.nats` *object, optional*
+  - `req.nats.subject` *string*
+  - `req.nats.queueName` *string, optional*
+  - `req.nats.streamName` *string, optional*
 
 *Return*
 
@@ -1848,12 +1878,21 @@ return: null on success
         "id": 20,
         "method": "schedule.subscriber.add",
         "params": [
-            "string",
-            "string",
-            "string",
-            false,
-            "string",
-            0
+            {
+                "autoStart": false,
+                "bridge": "string",
+                "command": "string",
+                "mqtt": {
+                    "qos": 0,
+                    "topic": "string"
+                },
+                "name": "string",
+                "nats": {
+                    "queueName": "string",
+                    "streamName": "string",
+                    "subject": "string"
+                }
+            }
         ]
     }
 }
@@ -2409,6 +2448,7 @@ splitSqlStatements splits SQL text into executable statements.
   - `beginLine`: the line number where the statement starts
   - `endLine`: the line number where the statement ends
   - `isComment`: whether the statement is a comment
+  - `stmtType`: lower-case SQL statement type derived from statement text (e.g. select, update, drop)
   - `env`: scoped environment, if any, for the statement; it MAY contain the following fields:
   - `env.error`: error message if the statement has an error
   - `env.bridge`: bridge name if the statement is executed in a bridge context
@@ -2459,7 +2499,11 @@ rpcLspDiagnostics returns diagnostics for a document.
 `lsp.diagnostics(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>* - LSP document request
+- `req` *object* - LSP document request
+  - `req.language` *string*
+  - `req.uri` *string*
+  - `req.text` *string*
+  - `req.position` *object<base.Position>*
 
 *Return*
 
@@ -2479,7 +2523,12 @@ rpcLspDiagnostics returns diagnostics for a document.
         "id": 20,
         "method": "lsp.diagnostics",
         "params": [
-            {}
+            {
+                "language": "string",
+                "position": {},
+                "text": "string",
+                "uri": "string"
+            }
         ]
     }
 }
@@ -2508,7 +2557,11 @@ rpcLspCompletion returns completion items for a document position.
 `lsp.completion(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>* - LSP document request
+- `req` *object* - LSP document request
+  - `req.language` *string*
+  - `req.uri` *string*
+  - `req.text` *string*
+  - `req.position` *object<base.Position>*
 
 *Return*
 
@@ -2528,7 +2581,12 @@ rpcLspCompletion returns completion items for a document position.
         "id": 20,
         "method": "lsp.completion",
         "params": [
-            {}
+            {
+                "language": "string",
+                "position": {},
+                "text": "string",
+                "uri": "string"
+            }
         ]
     }
 }
@@ -2557,7 +2615,11 @@ rpcLspHover returns hover information for a document position.
 `lsp.hover(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>* - LSP document request
+- `req` *object* - LSP document request
+  - `req.language` *string*
+  - `req.uri` *string*
+  - `req.text` *string*
+  - `req.position` *object<base.Position>*
 
 *Return*
 
@@ -2577,7 +2639,12 @@ rpcLspHover returns hover information for a document position.
         "id": 20,
         "method": "lsp.hover",
         "params": [
-            {}
+            {
+                "language": "string",
+                "position": {},
+                "text": "string",
+                "uri": "string"
+            }
         ]
     }
 }
@@ -2606,7 +2673,11 @@ rpcLspSignatureHelp returns signature help for a document position.
 `lsp.signature(req)`
 
 *Params*
-- `req` *object<lspDocumentRequest>* - LSP document request
+- `req` *object* - LSP document request
+  - `req.language` *string*
+  - `req.uri` *string*
+  - `req.text` *string*
+  - `req.position` *object<base.Position>*
 
 *Return*
 
@@ -2626,7 +2697,12 @@ rpcLspSignatureHelp returns signature help for a document position.
         "id": 20,
         "method": "lsp.signature",
         "params": [
-            {}
+            {
+                "language": "string",
+                "position": {},
+                "text": "string",
+                "uri": "string"
+            }
         ]
     }
 }
@@ -2655,7 +2731,8 @@ rpcLspMetadata returns language metadata.
 `lsp.metadata(req)`
 
 *Params*
-- `req` *object<lspMetadataRequest>* - LSP metadata request
+- `req` *object* - LSP metadata request
+  - `req.language` *string*
 
 *Return*
 
@@ -2675,7 +2752,9 @@ rpcLspMetadata returns language metadata.
         "id": 20,
         "method": "lsp.metadata",
         "params": [
-            {}
+            {
+                "language": "string"
+            }
         ]
     }
 }
