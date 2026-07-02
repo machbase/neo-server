@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"go/ast"
+	"go/parser"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -288,4 +293,258 @@ func TestSplitDocAndParamDocEmptyComment(t *testing.T) {
 	require.Empty(t, paramDoc)
 	require.Empty(t, returnDoc)
 	require.Empty(t, returnFieldDoc)
+}
+
+func TestDocgenHelpers(t *testing.T) {
+	current, err := currentDir()
+	require.NoError(t, err)
+	require.NotEmpty(t, current)
+
+	require.Equal(t, "jsonrpc.gen.md", pathBase("/tmp/jsonrpc.gen.md"))
+	require.Equal(t, "neo", pathBase("github.com/machbase/neo-server/v8/neo"))
+
+	importSpec := &ast.ImportSpec{Path: &ast.BasicLit{Value: `"github.com/machbase/neo-server/v8/mods/scheduler"`}}
+	require.Equal(t, "scheduler", importAlias(importSpec, "github.com/machbase/neo-server/v8/mods/scheduler"))
+	importSpec.Name = &ast.Ident{Name: "sched"}
+	require.Equal(t, "sched", importAlias(importSpec, "github.com/machbase/neo-server/v8/mods/scheduler"))
+
+	require.Equal(t, "Server", normalizeReceiverType(&ast.Ident{Name: "Server"}))
+	require.Equal(t, "Server", normalizeReceiverType(&ast.StarExpr{X: &ast.Ident{Name: "Server"}}))
+
+	quoted := &ast.BasicLit{Value: "`json:\"name,omitempty\"`"}
+	name, optional, skip := jsonFieldName("Name", quoted)
+	require.False(t, skip)
+	require.Equal(t, "name", name)
+	require.True(t, optional)
+
+	name, optional, skip = jsonFieldName("Name", &ast.BasicLit{Value: "`json:\"-\"`"})
+	require.True(t, skip)
+	require.False(t, optional)
+	require.Empty(t, name)
+
+	name, optional, skip = jsonFieldName("Name", nil)
+	require.False(t, skip)
+	require.False(t, optional)
+	require.Equal(t, "Name", name)
+
+	require.True(t, isPointerExpr(&ast.StarExpr{X: &ast.Ident{Name: "Meta"}}))
+	require.False(t, isPointerExpr(&ast.Ident{Name: "Meta"}))
+
+	require.True(t, isImplicitParam("context.Context"))
+	require.True(t, isImplicitParam("json.RawMessage"))
+	require.False(t, isImplicitParam("string"))
+
+	retKey, retDesc, ok := parseReturnHeaderLine("return: result description", map[string]struct{}{}, 1, 1)
+	require.True(t, ok)
+	require.Equal(t, "1", retKey)
+	require.Equal(t, "result description", retDesc)
+
+	var desc string
+	name, desc, ok = parseSectionItem("- field: field description")
+	require.True(t, ok)
+	require.Equal(t, "field", name)
+	require.Equal(t, "field description", desc)
+
+	retKey, ok = matchReturnDocKey("result", map[string]struct{}{}, 2, 1)
+	require.True(t, ok)
+	require.Equal(t, "1", retKey)
+	retKey, ok = matchReturnDocKey("return2", map[string]struct{}{}, 3, 1)
+	require.True(t, ok)
+	require.Equal(t, "2", retKey)
+
+	params := []fieldInfo{{Name: "first"}, {Name: "second"}}
+	require.Equal(t, []string{"first", "second"}, paramNames(params))
+
+	returns := []fieldInfo{{Name: "value", Type: "string"}, {Name: "err", Type: "error"}}
+	filtered := explicitReturns(returns)
+	require.Len(t, filtered, 1)
+	require.Equal(t, "value", filtered[0].Name)
+	require.True(t, isImplicitParam("context.Context"))
+
+	ident := func(expr string) ast.Expr {
+		parsed, err := parser.ParseExpr(expr)
+		require.NoError(t, err)
+		return parsed
+	}
+	require.Equal(t, "string", jsonType(ident("string"), ""))
+	require.Equal(t, "bool", jsonType(ident("bool"), ""))
+	require.Equal(t, "int", jsonType(ident("int"), ""))
+	require.Equal(t, "any", jsonType(ident("any"), ""))
+	require.Equal(t, "array<string>", jsonType(ident("[]string"), ""))
+	require.Equal(t, "object", jsonType(ident("map[string]any"), ""))
+	require.Equal(t, "object<example.Type>", jsonType(ident("example.Type"), ""))
+
+	require.Equal(t, "string", sampleValue(ident("string"), ""))
+}
+
+func TestDocgenEndToEndRenderAndResolution(t *testing.T) {
+	tmp := t.TempDir()
+	moduleRoot := filepath.Join(tmp)
+	hostDir := filepath.Join(moduleRoot, "docgentesthost")
+	depDir := filepath.Join(moduleRoot, "testpkg")
+	require.NoError(t, os.MkdirAll(hostDir, 0o755))
+	require.NoError(t, os.MkdirAll(depDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(depDir, "dep.go"), []byte(`package testpkg
+
+type Payload struct {
+	Name string `+"`json:\"name\"`"+`
+}
+
+func Add(name string) error {
+	return nil
+}
+`), 0o644))
+
+	require.NoError(t, os.WriteFile(filepath.Join(hostDir, "host.go"), []byte(`package docgentesthost
+
+import (
+	"context"
+	tp "github.com/machbase/neo-server/v8/testpkg"
+)
+
+type Meta struct {
+	Count int `+"`json:\"count\"`"+`
+}
+
+type Request struct {
+	Name string `+"`json:\"name\"`"+`
+	Meta *Meta `+"`json:\"meta,omitempty\"`"+`
+	Tags []string `+"`json:\"tags,omitempty\"`"+`
+	Opts map[string]any `+"`json:\"opts,omitempty\"`"+`
+}
+
+type Response struct {
+	ID string `+"`json:\"id\"`"+`
+	Meta *Meta `+"`json:\"meta,omitempty\"`"+`
+}
+
+type Server struct{}
+
+// Handle processes a request.
+//
+// params:
+// - req: request payload
+//
+// return: response payload
+// - id: response identifier
+func (s *Server) Handle(ctx context.Context, req Request) (Response, error) {
+	return Response{ID: req.Name}, nil
+}
+
+func (s *Server) Ping(ctx context.Context) error {
+	return nil
+}
+
+func register(ctl interface{ RegisterJsonRpcHandler(string, any) }, s *Server) {
+	ctl.RegisterJsonRpcHandler("local.handle", s.Handle)
+	ctl.RegisterJsonRpcHandler("local.ping", s.Ping)
+	ctl.RegisterJsonRpcHandler("dep.add", tp.Add)
+}
+`), 0o644))
+
+	serverPkg, err := parsePackage(hostDir)
+	require.NoError(t, err)
+	require.Equal(t, "docgentesthost", serverPkg.Name)
+	require.Contains(t, serverPkg.Structs, "Request")
+	require.Contains(t, serverPkg.Methods, "Server.Handle")
+
+	depPkg, err := loadImportedPackage("github.com/machbase/neo-server/v8/testpkg", map[string]*packageInfo{}, moduleRoot)
+	require.NoError(t, err)
+	require.Equal(t, "testpkg", depPkg.Name)
+	require.Contains(t, depPkg.Functions, "Add")
+
+	regs, err := collectRegistrations(filepath.Join(hostDir, "host.go"), serverPkg, moduleRoot)
+	require.NoError(t, err)
+	require.Len(t, regs, 3)
+
+	md, err := renderMarkdown(regs)
+	require.NoError(t, err)
+	output := string(md)
+	require.Contains(t, output, "#### local.handle")
+	require.Contains(t, output, "`local.handle(req)`")
+	require.Contains(t, output, "req.meta.count")
+	require.Contains(t, output, "req.opts")
+	require.Contains(t, output, "#### dep.add")
+	require.Contains(t, output, "`dep.add(name)`")
+	require.Contains(t, output, "response payload")
+
+	request, response := sampleMessages("local.handle", explicitParams(serverPkg.Methods["Server.Handle"].Params), explicitReturns(serverPkg.Methods["Server.Handle"].Returns), serverPkg)
+	require.Equal(t, "local.handle", request.RPC.Method)
+	require.NotEmpty(t, request.RPC.Params)
+	require.IsType(t, map[string]any{}, request.RPC.Params[0])
+	require.NotNil(t, response.RPC.Result)
+
+	encodedReq, err := json.Marshal(request)
+	require.NoError(t, err)
+	require.Contains(t, string(encodedReq), "\"meta\"")
+
+	writeJSONBuffer := &bytes.Buffer{}
+	writeJSON(writeJSONBuffer, map[string]any{"ok": true})
+	require.Contains(t, writeJSONBuffer.String(), "```json")
+
+	respBuf := &bytes.Buffer{}
+	writeRequestResponseJSON(respBuf, request, response)
+	require.Contains(t, respBuf.String(), "Request/Response JSON")
+
+	entries := paramSchemaEntries("req", serverPkg.Methods["Server.Handle"].Params[1], serverPkg)
+	require.NotEmpty(t, entries)
+	require.Contains(t, entries[0].Path, "req.")
+
+	structName, st, ok := resolveStructType(serverPkg, serverPkg.Methods["Server.Handle"].Params[1].Expr)
+	require.True(t, ok)
+	require.Contains(t, structName, "Request")
+	require.NotNil(t, st)
+
+	require.True(t, isStructLikeField(serverPkg, serverPkg.Methods["Server.Handle"].Params[1].Expr))
+
+	titleCases := map[string]string{
+		"service.port.list": "Service Port List",
+		"lsp":               "Lsp",
+		"":                  "RPC",
+	}
+	for input, want := range titleCases {
+		require.Equal(t, want, title(input))
+	}
+
+	require.Equal(t, "Hello", upperFirst("hello"))
+	require.Equal(t, "", upperFirst(""))
+}
+
+func TestDocgenReturnRenderingHelpers(t *testing.T) {
+	docs := map[string]string{
+		"value": "named return",
+		"1":     "first return",
+		"2":     "second return",
+	}
+	fields := map[string][]docEntry{
+		"1": {
+			{Name: "id", Desc: "identifier"},
+		},
+		"value": {
+			{Name: "count", Desc: "value count"},
+		},
+	}
+	returns := []fieldInfo{
+		{Name: "value", Type: "string"},
+		{Name: "other", Type: "int"},
+	}
+
+	require.Equal(t, []string{"string|error - named return", "int|error - second return"}, returnLines(returns, docs))
+	require.Equal(t, "first return", returnDocByIndexOrName(docs, 1, ""))
+	require.Equal(t, "named return", returnDocByIndexOrName(docs, 1, "value"))
+	require.Equal(t, "", returnDocByIndexOrName(nil, 1, "value"))
+
+	buf := &bytes.Buffer{}
+	renderReturnLines(buf, returns, docs, fields)
+	output := buf.String()
+	require.Contains(t, output, "`string|error - named return`")
+	require.Contains(t, output, "`count`: value count")
+
+	require.Nil(t, sampleReturnValue(nil))
+	require.Equal(t, "string", sampleValue(&ast.Ident{Name: "string"}, ""))
+	require.Equal(t, map[string]any{}, sampleValue(&ast.MapType{}, ""))
+	request, response := sampleMessages("demo.method", []fieldInfo{{Expr: &ast.Ident{Name: "string"}, Type: "string"}}, []fieldInfo{{Expr: &ast.Ident{Name: "string"}, Type: "string"}}, nil)
+	require.Equal(t, "demo.method", request.RPC.Method)
+	require.NotNil(t, response.RPC.Result)
 }
