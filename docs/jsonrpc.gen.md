@@ -181,6 +181,25 @@ getServerInfo returns runtime and version information.
 *Return*
 
 - `object<ServerInfoResponse>|error - server information payload`
+  - `success` *bool*
+  - `reason` *string*
+  - `elapse` *string*
+  - `version` *object, optional*
+  - `version.major` *int32*
+  - `version.minor` *int32*
+  - `version.patch` *int32*
+  - `version.gitSHA` *string*
+  - `version.buildTimestamp` *string*
+  - `version.buildCompiler` *string*
+  - `version.engine` *string*
+  - `runtime` *object, optional*
+  - `runtime.OS` *string, optional*
+  - `runtime.arch` *string, optional*
+  - `runtime.pid` *int32, optional*
+  - `runtime.uptimeInSecond` *int64, optional*
+  - `runtime.processes` *int32, optional*
+  - `runtime.goroutines` *int32, optional*
+  - `runtime.mem` *object, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -228,6 +247,16 @@ statzViz builds visualization specifications for metric names.
 *Return*
 
 - `object<ServerStatzResponse>|error - visualization specifications grouped by name`
+  - `statz` *array<object<ServerStatz>>*
+  - `statz.[].name` *string*
+  - `statz.[].spec` *object, optional*
+  - `statz.[].spec.version` *int*
+  - `statz.[].spec.domain` *object<Domain>, optional*
+  - `statz.[].spec.axes` *object<Axes>, optional*
+  - `statz.[].spec.series` *array<object<Series>>, optional*
+  - `statz.[].spec.annotations` *array<object<Annotation>>, optional*
+  - `statz.[].spec.view` *object<View>, optional*
+  - `statz.[].spec.meta` *object<Meta>, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -278,6 +307,9 @@ statzQuery queries metric time-series rows.
 *Return*
 
 - `object<StatzQueryResult>|error - tabular metric query result`
+  - `columns` *array<string>*
+  - `types` *array<string>*
+  - `rows` *array<array<any>>*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -426,6 +458,9 @@ Shutdown requests server shutdown from a local caller.
 *Return*
 
 - `object<ShutdownResponse>|error - shutdown status`
+  - `success` *bool*
+  - `reason` *string*
+  - `elapse` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -476,6 +511,8 @@ getServicePorts returns service listener addresses.
 *Return*
 
 - `array<object<model.ServicePort>>|error - service ports sorted by service and address`
+  - `[].Service` *string*
+  - `[].Address` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -533,6 +570,13 @@ registerProxy registers a service proxy entry.
 *Return*
 
 - `object<ProxyEntrySnapshot>|error - registered proxy snapshot`
+  - `service` *string*
+  - `prefix` *string*
+  - `target` *string*
+  - `strip_prefix` *string, optional*
+  - `health_path` *string, optional*
+  - `registered_at` *object<time.Time>*
+  - `updated_at` *object<time.Time>*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -590,6 +634,13 @@ unregisterProxy removes service proxy entries by filter.
 *Return*
 
 - `array<object<ProxyEntrySnapshot>>|error - removed proxy snapshots`
+  - `[].service` *string*
+  - `[].prefix` *string*
+  - `[].target` *string*
+  - `[].strip_prefix` *string, optional*
+  - `[].health_path` *string, optional*
+  - `[].registered_at` *object<time.Time>*
+  - `[].updated_at` *object<time.Time>*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -642,6 +693,13 @@ listProxies lists service proxy entries.
 *Return*
 
 - `array<object<ProxyEntrySnapshot>>|error - proxy snapshot list`
+  - `[].service` *string*
+  - `[].prefix` *string*
+  - `[].target` *string*
+  - `[].strip_prefix` *string, optional*
+  - `[].health_path` *string, optional*
+  - `[].registered_at` *object<time.Time>*
+  - `[].updated_at` *object<time.Time>*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -693,6 +751,13 @@ getProxy gets one service proxy entry.
 *Return*
 
 - `object<ProxyEntrySnapshot>|error - proxy snapshot`
+  - `service` *string*
+  - `prefix` *string*
+  - `target` *string*
+  - `strip_prefix` *string, optional*
+  - `health_path` *string, optional*
+  - `registered_at` *object<time.Time>*
+  - `updated_at` *object<time.Time>*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -749,6 +814,13 @@ listShells returns registered shell definitions.
 *Return*
 
 - `array<object<model.ShellDefinition>>|error - shell definitions`
+  - `[].id` *string*
+  - `[].type` *string*
+  - `[].icon` *string, optional*
+  - `[].label` *string*
+  - `[].theme` *string, optional*
+  - `[].command` *string, optional*
+  - `[].attributes` *object<ShellAttributes>, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -835,6 +907,133 @@ addShell adds a user shell definition.
 
 </details>
 
+#### shell.copy
+
+copyShell copies a shell definition by identifier.
+
+`shell.copy(srcId)`
+
+*Params*
+- `srcId` *string* - source shell identifier
+
+*Return*
+
+- `object<model.ShellDefinition>|error - copied shell definition`
+  - `id` *string*
+  - `type` *string*
+  - `icon` *string, optional*
+  - `label` *string*
+  - `theme` *string, optional*
+  - `command` *string, optional*
+  - `attributes` *object<ShellAttributes>, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "shell.copy",
+        "params": [
+            "string"
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
+#### shell.update
+
+updateShell updates a shell definition.
+
+`shell.update(shell)`
+
+*Params*
+- `shell` *object* - shell definition
+  - `shell.id` *string*
+  - `shell.type` *string*
+  - `shell.icon` *string, optional*
+  - `shell.label` *string*
+  - `shell.theme` *string, optional*
+  - `shell.command` *string, optional*
+  - `shell.attributes` *object<ShellAttributes>, optional*
+
+*Return*
+
+- `object<model.ShellDefinition>|error - updated shell definition`
+  - `id` *string*
+  - `type` *string*
+  - `icon` *string, optional*
+  - `label` *string*
+  - `theme` *string, optional*
+  - `command` *string, optional*
+  - `attributes` *object<ShellAttributes>, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "shell.update",
+        "params": [
+            {
+                "attributes": {},
+                "command": "string",
+                "icon": "string",
+                "id": "string",
+                "label": "string",
+                "theme": "string",
+                "type": "string"
+            }
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
 #### shell.delete
 
 deleteShell removes a shell definition by identifier.
@@ -903,6 +1102,9 @@ listBridges returns all bridge configurations.
 *Return*
 
 - `array<object<bridge.BridgeInfo>>|error - bridge list`
+  - `[].name` *string*
+  - `[].type` *string*
+  - `[].path` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -950,6 +1152,9 @@ getBridge returns bridge configuration by name.
 *Return*
 
 - `object<bridge.BridgeInfo>|error - bridge information`
+  - `name` *string*
+  - `type` *string*
+  - `path` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1156,6 +1361,12 @@ statsBridge returns runtime statistics for a bridge.
 *Return*
 
 - `object<BridgeStats>|error - bridge statistics`
+  - `InMsgs` *uint64*
+  - `InBytes` *uint64*
+  - `OutMsgs` *uint64*
+  - `OutBytes` *uint64*
+  - `Inserted` *uint64*
+  - `Appended` *uint64*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1206,6 +1417,9 @@ execBridge executes a bridge SQL command.
 *Return*
 
 - `object<BridgeExecResult>|error - execution result`
+  - `Reason` *string*
+  - `LastInsertedId` *int64*
+  - `RowsAffected` *int64*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1257,6 +1471,12 @@ queryBridge executes a bridge SQL query.
 *Return*
 
 - `object<BridgeQueryResult>|error - query handle and column metadata`
+  - `Handle` *string*
+  - `Columns` *array<object<BridgeQueryColumn>>*
+  - `Columns.[].Name` *string*
+  - `Columns.[].Type` *string*
+  - `Columns.[].Size` *int*
+  - `Columns.[].Length` *int*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1307,6 +1527,8 @@ fetchResultBridge fetches one row from a bridge query handle.
 *Return*
 
 - `object<BridgeQueryRow>|error - row data and end-of-result flag`
+  - `HasNoRows` *bool*
+  - `Values` *array<any>*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1412,6 +1634,10 @@ listSshKeys returns authorized SSH keys for the current user.
 *Return*
 
 - `array<object<AuthorizedSshKey>>|error - authorized SSH key list`
+  - `[].KeyType` *string*
+  - `[].Key` *string*
+  - `[].Fingerprint` *string*
+  - `[].Comment` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1571,6 +1797,10 @@ listKeys returns server-managed key pairs.
 *Return*
 
 - `array<object<KeyInfo>>|error - key information list`
+  - `[].idx` *int*
+  - `[].id` *string*
+  - `[].notBefore` *int64*
+  - `[].notAfter` *int64*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1741,6 +1971,15 @@ listSchedules returns all scheduler entries.
 *Return*
 
 - `array<object<scheduler.Schedule>>|error - schedule list`
+  - `[].name` *string, optional*
+  - `[].type` *string, optional*
+  - `[].autoStart` *bool, optional*
+  - `[].state` *string, optional*
+  - `[].task` *string, optional*
+  - `[].schedule` *string, optional*
+  - `[].bridge` *string, optional*
+  - `[].topic` *string, optional*
+  - `[].QoS` *int32, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2135,6 +2374,9 @@ It parses multiple HTTP statements from the given content, each statement is sep
 *Return*
 
 - `array<object<util.HttpStatement>>|error - parsed HTTP statements array, each statement contains the following fields:`
+  - `[].text` *string*
+  - `[].beginLine` *int*
+  - `[].endLine` *int*
   - `text`: the original HTTP statement text
   - `beginLine`: the line number where the statement starts
   - `endLine`: the line number where the statement ends
@@ -2191,6 +2433,10 @@ listSessions returns active server sessions.
 *Return*
 
 - `array<object<Session>>|error - session list`
+  - `[].id` *string*
+  - `[].creTime` *int64*
+  - `[].latestSqlTime` *int64*
+  - `[].latestSql` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2292,6 +2538,12 @@ statSession returns session statistics.
 *Return*
 
 - `object<spi.Statz>|error - session statistics`
+  - `queryExecHwm` *uint64*
+  - `queryExecAvg` *uint64*
+  - `queryWaitHwm` *uint64*
+  - `queryWaitAvg` *uint64*
+  - `queryFetchHwm` *uint64*
+  - `queryFetchAvg` *uint64*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2342,6 +2594,11 @@ getSessionLimit returns session pool limit settings.
 *Return*
 
 - `object<SessionLimit>|error - session limit information`
+  - `MaxPoolSize` *int*
+  - `MaxOpenConn` *int*
+  - `RemainedOpenConn` *int*
+  - `MaxOpenQuery` *int*
+  - `RemainedOpenQuery` *int*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2444,6 +2701,12 @@ splitSqlStatements splits SQL text into executable statements.
 *Return*
 
 - `array<object<util.SqlStatement>>|error - parsed SQL statements array, each statement contains the following fields:`
+  - `[].text` *string*
+  - `[].beginLine` *int*
+  - `[].endLine` *int*
+  - `[].isComment` *bool*
+  - `[].stmtType` *string, optional*
+  - `[].env` *object<SqlStatementEnv>, optional*
   - `text`: the original SQL statement text
   - `beginLine`: the line number where the statement starts
   - `endLine`: the line number where the statement ends
@@ -2503,7 +2766,9 @@ rpcLspDiagnostics returns diagnostics for a document.
   - `req.language` *string*
   - `req.uri` *string*
   - `req.text` *string*
-  - `req.position` *object<base.Position>*
+  - `req.position` *object*
+  - `req.position.line` *int*
+  - `req.position.column` *int*
 
 *Return*
 
@@ -2525,7 +2790,10 @@ rpcLspDiagnostics returns diagnostics for a document.
         "params": [
             {
                 "language": "string",
-                "position": {},
+                "position": {
+                    "column": 0,
+                    "line": 0
+                },
                 "text": "string",
                 "uri": "string"
             }
@@ -2561,7 +2829,9 @@ rpcLspCompletion returns completion items for a document position.
   - `req.language` *string*
   - `req.uri` *string*
   - `req.text` *string*
-  - `req.position` *object<base.Position>*
+  - `req.position` *object*
+  - `req.position.line` *int*
+  - `req.position.column` *int*
 
 *Return*
 
@@ -2583,7 +2853,10 @@ rpcLspCompletion returns completion items for a document position.
         "params": [
             {
                 "language": "string",
-                "position": {},
+                "position": {
+                    "column": 0,
+                    "line": 0
+                },
                 "text": "string",
                 "uri": "string"
             }
@@ -2619,7 +2892,9 @@ rpcLspHover returns hover information for a document position.
   - `req.language` *string*
   - `req.uri` *string*
   - `req.text` *string*
-  - `req.position` *object<base.Position>*
+  - `req.position` *object*
+  - `req.position.line` *int*
+  - `req.position.column` *int*
 
 *Return*
 
@@ -2641,7 +2916,10 @@ rpcLspHover returns hover information for a document position.
         "params": [
             {
                 "language": "string",
-                "position": {},
+                "position": {
+                    "column": 0,
+                    "line": 0
+                },
                 "text": "string",
                 "uri": "string"
             }
@@ -2677,7 +2955,9 @@ rpcLspSignatureHelp returns signature help for a document position.
   - `req.language` *string*
   - `req.uri` *string*
   - `req.text` *string*
-  - `req.position` *object<base.Position>*
+  - `req.position` *object*
+  - `req.position.line` *int*
+  - `req.position.column` *int*
 
 *Return*
 
@@ -2699,7 +2979,10 @@ rpcLspSignatureHelp returns signature help for a document position.
         "params": [
             {
                 "language": "string",
-                "position": {},
+                "position": {
+                    "column": 0,
+                    "line": 0
+                },
                 "text": "string",
                 "uri": "string"
             }

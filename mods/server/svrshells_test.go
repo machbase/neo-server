@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -156,5 +158,88 @@ func TestProvideShellForSsh(t *testing.T) {
 		require.NotNil(t, shell)
 		require.Equal(t, "/bin/sh", shell.Cmd)
 		require.Empty(t, shell.Args)
+	})
+}
+
+func TestShellManagementRpcHandlers(t *testing.T) {
+	svr := newShellTestServer(t)
+
+	exePath, err := os.Executable()
+	require.NoError(t, err)
+
+	command := fmt.Sprintf("%q --help", exePath)
+
+	t.Run("add_and_copy_shell", func(t *testing.T) {
+		addedID, err := svr.addShell("my-shell", command)
+		require.NoError(t, err)
+		require.NotEmpty(t, addedID)
+
+		addedShell, err := svr.models.ShellProvider().GetShell(addedID)
+		require.NoError(t, err)
+		require.NotNil(t, addedShell)
+		require.Equal(t, "my-shell", addedShell.Label)
+		require.Equal(t, command, addedShell.Command)
+
+		copiedShell, err := svr.copyShell(addedID)
+		require.NoError(t, err)
+		require.NotNil(t, copiedShell)
+		require.NotEqual(t, addedID, copiedShell.Id)
+		require.Equal(t, "CUSTOM SHELL", copiedShell.Label)
+		require.Equal(t, command, copiedShell.Command)
+		require.NotNil(t, copiedShell.Attributes)
+		require.True(t, copiedShell.Attributes.Removable)
+		require.True(t, copiedShell.Attributes.Editable)
+		require.True(t, copiedShell.Attributes.Cloneable)
+
+		persistedCopiedShell, err := svr.models.ShellProvider().GetShell(copiedShell.Id)
+		require.NoError(t, err)
+		require.NotNil(t, persistedCopiedShell)
+		require.Equal(t, copiedShell.Id, persistedCopiedShell.Id)
+	})
+
+	t.Run("copy_shell_validation", func(t *testing.T) {
+		_, err := svr.copyShell("")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "source shell id not specified")
+
+		_, err = svr.copyShell("missing-shell")
+		require.Error(t, err)
+		require.Contains(t, strings.ToLower(err.Error()), "not found")
+	})
+
+	t.Run("update_shell", func(t *testing.T) {
+		id, err := svr.addShell("old-name", command)
+		require.NoError(t, err)
+
+		shell, err := svr.models.ShellProvider().GetShell(id)
+		require.NoError(t, err)
+		require.NotNil(t, shell)
+
+		shell.Label = "new-name"
+		shell.Command = command
+		updated, err := svr.updateShell(shell)
+		require.NoError(t, err)
+		require.NotNil(t, updated)
+		require.Equal(t, "new-name", updated.Label)
+
+		persisted, err := svr.models.ShellProvider().GetShell(id)
+		require.NoError(t, err)
+		require.NotNil(t, persisted)
+		require.Equal(t, "new-name", persisted.Label)
+		require.Equal(t, command, persisted.Command)
+	})
+
+	t.Run("update_shell_validation", func(t *testing.T) {
+		_, err := svr.updateShell(nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "shell definition not specified")
+
+		_, err = svr.updateShell(&model.ShellDefinition{Label: strings.Repeat("a", 17), Command: command})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "name is too long")
+
+		_, err = svr.updateShell(&model.ShellDefinition{Label: "ok-name", Command: "   "})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "command not specified")
 	})
 }
