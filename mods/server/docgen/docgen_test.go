@@ -410,6 +410,7 @@ type Meta struct {
 type Request struct {
 	Name string `+"`json:\"name\"`"+`
 	Meta *Meta `+"`json:\"meta,omitempty\"`"+`
+	Ext *tp.Payload `+"`json:\"ext,omitempty\"`"+`
 	Tags []string `+"`json:\"tags,omitempty\"`"+`
 	Opts map[string]any `+"`json:\"opts,omitempty\"`"+`
 }
@@ -458,18 +459,22 @@ func register(ctl interface{ RegisterJsonRpcHandler(string, any) }, s *Server) {
 	require.NoError(t, err)
 	require.Len(t, regs, 3)
 
-	md, err := renderMarkdown(regs)
+	md, err := renderMarkdown(regs, moduleRoot)
 	require.NoError(t, err)
 	output := string(md)
 	require.Contains(t, output, "#### local.handle")
 	require.Contains(t, output, "`local.handle(req)`")
 	require.Contains(t, output, "req.meta.count")
+	require.Contains(t, output, "req.ext.name")
 	require.Contains(t, output, "req.opts")
+	require.Contains(t, output, "`id` *string*")
+	require.Contains(t, output, "`meta` *object, optional*")
+	require.Contains(t, output, "`meta.count` *int*")
 	require.Contains(t, output, "#### dep.add")
 	require.Contains(t, output, "`dep.add(name)`")
 	require.Contains(t, output, "response payload")
 
-	request, response := sampleMessages("local.handle", explicitParams(serverPkg.Methods["Server.Handle"].Params), explicitReturns(serverPkg.Methods["Server.Handle"].Returns), serverPkg)
+	request, response := sampleMessages("local.handle", explicitParams(serverPkg.Methods["Server.Handle"].Params), explicitReturns(serverPkg.Methods["Server.Handle"].Returns), serverPkg, moduleRoot, map[string]*packageInfo{})
 	require.Equal(t, "local.handle", request.RPC.Method)
 	require.NotEmpty(t, request.RPC.Params)
 	require.IsType(t, map[string]any{}, request.RPC.Params[0])
@@ -478,6 +483,7 @@ func register(ctl interface{ RegisterJsonRpcHandler(string, any) }, s *Server) {
 	encodedReq, err := json.Marshal(request)
 	require.NoError(t, err)
 	require.Contains(t, string(encodedReq), "\"meta\"")
+	require.Contains(t, string(encodedReq), "\"ext\"")
 
 	writeJSONBuffer := &bytes.Buffer{}
 	writeJSON(writeJSONBuffer, map[string]any{"ok": true})
@@ -487,16 +493,24 @@ func register(ctl interface{ RegisterJsonRpcHandler(string, any) }, s *Server) {
 	writeRequestResponseJSON(respBuf, request, response)
 	require.Contains(t, respBuf.String(), "Request/Response JSON")
 
-	entries := paramSchemaEntries("req", serverPkg.Methods["Server.Handle"].Params[1], serverPkg)
+	entries := paramSchemaEntries("req", serverPkg.Methods["Server.Handle"].Params[1], serverPkg, moduleRoot, map[string]*packageInfo{})
 	require.NotEmpty(t, entries)
 	require.Contains(t, entries[0].Path, "req.")
 
-	structName, st, ok := resolveStructType(serverPkg, serverPkg.Methods["Server.Handle"].Params[1].Expr)
+	structName, st, ok := resolveStructType(serverPkg, serverPkg.Methods["Server.Handle"].Params[1].Expr, moduleRoot, map[string]*packageInfo{})
 	require.True(t, ok)
 	require.Contains(t, structName, "Request")
 	require.NotNil(t, st)
 
-	require.True(t, isStructLikeField(serverPkg, serverPkg.Methods["Server.Handle"].Params[1].Expr))
+	extFieldExpr := st.Fields[2].Expr
+	importedStructName, importedStruct, importedOk := resolveStructType(serverPkg, extFieldExpr, moduleRoot, map[string]*packageInfo{})
+	require.True(t, importedOk)
+	require.Equal(t, "testpkg.Payload", importedStructName)
+	require.NotNil(t, importedStruct)
+	require.NotEmpty(t, importedStruct.Fields)
+	require.Equal(t, "name", importedStruct.Fields[0].Name)
+
+	require.True(t, isStructLikeField(serverPkg, serverPkg.Methods["Server.Handle"].Params[1].Expr, moduleRoot, map[string]*packageInfo{}))
 
 	titleCases := map[string]string{
 		"service.port.list": "Service Port List",
@@ -536,7 +550,7 @@ func TestDocgenReturnRenderingHelpers(t *testing.T) {
 	require.Equal(t, "", returnDocByIndexOrName(nil, 1, "value"))
 
 	buf := &bytes.Buffer{}
-	renderReturnLines(buf, returns, docs, fields)
+	renderReturnLines(buf, returns, docs, fields, nil, "", nil)
 	output := buf.String()
 	require.Contains(t, output, "`string|error - named return`")
 	require.Contains(t, output, "`count`: value count")
@@ -544,7 +558,7 @@ func TestDocgenReturnRenderingHelpers(t *testing.T) {
 	require.Nil(t, sampleReturnValue(nil))
 	require.Equal(t, "string", sampleValue(&ast.Ident{Name: "string"}, ""))
 	require.Equal(t, map[string]any{}, sampleValue(&ast.MapType{}, ""))
-	request, response := sampleMessages("demo.method", []fieldInfo{{Expr: &ast.Ident{Name: "string"}, Type: "string"}}, []fieldInfo{{Expr: &ast.Ident{Name: "string"}, Type: "string"}}, nil)
+	request, response := sampleMessages("demo.method", []fieldInfo{{Expr: &ast.Ident{Name: "string"}, Type: "string"}}, []fieldInfo{{Expr: &ast.Ident{Name: "string"}, Type: "string"}}, nil, "", nil)
 	require.Equal(t, "demo.method", request.RPC.Method)
 	require.NotNil(t, response.RPC.Result)
 }

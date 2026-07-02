@@ -1117,6 +1117,8 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("proxy.get", s.getProxy)
 	ctl.RegisterJsonRpcHandler("shell.list", s.listShells)
 	ctl.RegisterJsonRpcHandler("shell.add", s.addShell)
+	ctl.RegisterJsonRpcHandler("shell.copy", s.copyShell)
+	ctl.RegisterJsonRpcHandler("shell.update", s.updateShell)
 	ctl.RegisterJsonRpcHandler("shell.delete", s.deleteShell)
 	ctl.RegisterJsonRpcHandler("bridge.list", s.listBridges)
 	ctl.RegisterJsonRpcHandler("bridge.get", s.getBridge)
@@ -1307,6 +1309,56 @@ func (s *Server) listShells() []*model.ShellDefinition {
 		return []*model.ShellDefinition{}
 	}
 	return lst
+}
+
+// copyShell copies a shell definition by identifier.
+//
+// params:
+//   - srcId: source shell identifier
+//
+// return: copied shell definition
+func (s *Server) copyShell(srcId string) (*model.ShellDefinition, error) {
+	if srcId == "" {
+		return nil, fmt.Errorf("source shell id not specified")
+	}
+	provider := s.models.ShellProvider()
+	if provider == nil {
+		return nil, fmt.Errorf("shell provider not available")
+	}
+	shell, err := provider.CopyShell(srcId)
+	if err != nil {
+		return nil, err
+	}
+	if shell == nil {
+		return nil, fmt.Errorf("source shell not found")
+	}
+	return shell, nil
+}
+
+// updateShell updates a shell definition.
+//
+// params:
+//   - shell: shell definition
+//
+// return: updated shell definition
+func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefinition, error) {
+	if shell == nil {
+		return nil, fmt.Errorf("shell definition not specified")
+	}
+	if len(shell.Label) > 16 {
+		return nil, fmt.Errorf("name is too long, should be shorter than 16 characters")
+	}
+	if len(strings.TrimSpace(shell.Command)) == 0 {
+		return nil, fmt.Errorf("command not specified")
+	}
+	provider := s.models.ShellProvider()
+	if provider == nil {
+		return nil, fmt.Errorf("shell provider not available")
+	}
+	if err := provider.SaveShell(shell); err != nil {
+		return nil, err
+	}
+	return shell, nil
 }
 
 // addShell adds a user shell definition.

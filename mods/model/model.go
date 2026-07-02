@@ -255,6 +255,10 @@ func (s *svr) CopyShell(id string) (*ShellDefinition, error) {
 		if err != nil {
 			return nil, err
 		}
+		if d == nil {
+			s.log.Warnf("shell def not found '%s'", id)
+			return nil, fmt.Errorf("shell definition not found '%s'", id)
+		}
 		ret = d.Clone()
 	}
 	if ret == nil {
