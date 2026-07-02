@@ -119,8 +119,6 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 		var port int
 		var user string = "sys"
 		var password string = "manager"
-		var maxOpenConn = -1
-		var maxOpenQuery = -1
 		var conType = 1
 		if strings.Contains(dataSource, "SERVER=") {
 			// input := `SERVER=value1;UID=value2;PWD=value3;CONNTYPE=1;PORT_NO=1234`
@@ -160,14 +158,6 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 					user = pair.Value
 				case "password":
 					password = pair.Value
-				case "maxopenconn":
-					if p, err := strconv.Atoi(pair.Value); err == nil {
-						maxOpenConn = p
-					}
-				case "maxopenquery":
-					if p, err := strconv.Atoi(pair.Value); err == nil {
-						maxOpenQuery = p
-					}
 				}
 			}
 		}
@@ -175,11 +165,9 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 			opts = append(opts, api.WithPassword(user, password))
 		}
 		db, err := machgo.NewDatabase(&machgo.Config{
-			Host:         host,
-			Port:         port,
-			MaxOpenConn:  maxOpenConn,
-			MaxOpenQuery: maxOpenQuery,
-			ConType:      conType,
+			Host:    host,
+			Port:    port,
+			ConType: conType,
 		})
 		if err != nil {
 			return nil, nil, err

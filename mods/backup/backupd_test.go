@@ -129,10 +129,8 @@ func setupDefaultSPI() error {
 	}
 
 	testMachgoDB, err = machgo.NewDatabase(&machgo.Config{
-		Host:         "127.0.0.1",
-		Port:         port,
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
+		Host: "127.0.0.1",
+		Port: port,
 	})
 	if err != nil {
 		return err

@@ -278,10 +278,8 @@ func (s *Server) StartServer() {
 
 	// machgo database
 	if db, err := machgo.NewDatabase(&machgo.Config{
-		Host:         "127.0.0.1",
-		Port:         s.machsvrPort,
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
+		Host: "127.0.0.1",
+		Port: s.machsvrPort,
 	}); err != nil {
 		panic(err)
 	} else {

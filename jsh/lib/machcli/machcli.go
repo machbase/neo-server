@@ -66,10 +66,8 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 		return nil, err
 	}
 	conf := &machgo.Config{
-		Host:         obj.Host,
-		Port:         obj.Port,
-		MaxOpenConn:  -1,
-		MaxOpenQuery: -1,
+		Host: obj.Host,
+		Port: obj.Port,
 	}
 	if obj.AlternativeHost != "" {
 		conf.AlternativeHost = obj.AlternativeHost

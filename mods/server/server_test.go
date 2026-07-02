@@ -2191,9 +2191,10 @@ func TestServerCoverage_SessionWrappers(t *testing.T) {
 	require.NotNil(t, limit)
 
 	err = svr.setSessionLimit(ctx, map[string]any{
-		"MaxPoolSize":  float64(limit.MaxPoolSize),
-		"MaxOpenConn":  float64(limit.MaxOpenConn),
-		"MaxOpenQuery": float64(limit.MaxOpenQuery),
+		"maxOpenConn": float64(limit.MaxOpenConn),
+		"maxIdleConn": float64(limit.MaxIdleConn),
+		"maxLifetime": limit.ConnMaxLifetime,
+		"maxIdleTime": limit.ConnMaxIdleTime,
 	})
 	require.NoError(t, err)
 

@@ -2537,13 +2537,16 @@ statSession returns session statistics.
 
 *Return*
 
-- `object<spi.Statz>|error - session statistics`
-  - `queryExecHwm` *uint64*
-  - `queryExecAvg` *uint64*
-  - `queryWaitHwm` *uint64*
-  - `queryWaitAvg` *uint64*
-  - `queryFetchHwm` *uint64*
-  - `queryFetchAvg` *uint64*
+- `object<SessionStats>|error - session statistics`
+  - `maxOpenConnections` *int*
+  - `openConnections` *int*
+  - `inUse` *int*
+  - `idle` *int*
+  - `waitCount` *int64*
+  - `waitAvgDuration` *string*
+  - `maxIdleClosed` *int64*
+  - `maxIdleTimeClosed` *int64*
+  - `maxLifetimeClosed` *int64*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2594,11 +2597,10 @@ getSessionLimit returns session pool limit settings.
 *Return*
 
 - `object<SessionLimit>|error - session limit information`
-  - `MaxPoolSize` *int*
-  - `MaxOpenConn` *int*
-  - `RemainedOpenConn` *int*
-  - `MaxOpenQuery` *int*
-  - `RemainedOpenQuery` *int*
+  - `maxOpenConn` *int*
+  - `maxIdleConn` *int*
+  - `connMaxIdleTime` *string*
+  - `connMaxLifetime` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2644,7 +2646,11 @@ return: null on success
 `session.limit.set(m)`
 
 *Params*
-- `m` *object* - limit setting map with MaxPoolSize, MaxOpenConn, and MaxOpenQuery keys
+- `m` *object* - limit setting map with the following keys:
+  - m.maxOpenConn: maximum number of open connections
+  - m.maxIdleConn: maximum number of idle connections
+  - m.connMaxIdleTime: maximum idle time for connections (duration string)
+  - m.connMaxLifetime: maximum lifetime for connections (duration string)
 
 *Return*
 

@@ -24,7 +24,7 @@ func TestHttpRpc(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, at)
 
-	var originalSessionLimit map[string]int
+	var originalSessionLimit map[string]any
 	generatedKeyID := fmt.Sprintf("rpc-test-key-%d", time.Now().UnixNano())
 	sshFixture := newTestSSHKeyFixture(t)
 	sshKeyMaterial := sshFixture.AuthorizedKey
@@ -86,22 +86,15 @@ func TestHttpRpc(t *testing.T) {
 			params: []interface{}{},
 			expectFunc: func(t *testing.T, rsp gjson.Result) {
 				result := rsp.Get("result")
-				require.True(t, result.Get("MaxPoolSize").Exists(), rsp.String())
-				require.True(t, result.Get("MaxOpenConn").Exists(), rsp.String())
-				require.True(t, result.Get("RemainedOpenConn").Exists(), rsp.String())
-				require.True(t, result.Get("MaxOpenQuery").Exists(), rsp.String())
-				require.True(t, result.Get("RemainedOpenQuery").Exists(), rsp.String())
-				require.GreaterOrEqual(t, int(result.Get("MaxPoolSize").Int()), -1, rsp.String())
-				require.GreaterOrEqual(t, int(result.Get("MaxOpenConn").Int()), -1, rsp.String())
-				require.GreaterOrEqual(t, int(result.Get("RemainedOpenConn").Int()), -1, rsp.String())
-				require.GreaterOrEqual(t, int(result.Get("MaxOpenQuery").Int()), -1, rsp.String())
-				require.GreaterOrEqual(t, int(result.Get("RemainedOpenQuery").Int()), -1, rsp.String())
-				originalSessionLimit = map[string]int{
-					"MaxPoolSize":       int(result.Get("MaxPoolSize").Int()),
-					"MaxOpenConn":       int(result.Get("MaxOpenConn").Int()),
-					"RemainedOpenConn":  int(result.Get("RemainedOpenConn").Int()),
-					"MaxOpenQuery":      int(result.Get("MaxOpenQuery").Int()),
-					"RemainedOpenQuery": int(result.Get("RemainedOpenQuery").Int()),
+				require.True(t, result.Get("maxOpenConn").Exists(), rsp.String())
+				require.True(t, result.Get("maxIdleConn").Exists(), rsp.String())
+				require.True(t, result.Get("connMaxIdleTime").Exists(), rsp.String())
+				require.True(t, result.Get("connMaxLifetime").Exists(), rsp.String())
+				originalSessionLimit = map[string]any{
+					"maxOpenConn":     int(result.Get("maxOpenConn").Int()),
+					"maxIdleConn":     int(result.Get("maxIdleConn").Int()),
+					"connMaxIdleTime": result.Get("connMaxIdleTime").String(),
+					"connMaxLifetime": result.Get("connMaxLifetime").String(),
 				}
 			},
 		},

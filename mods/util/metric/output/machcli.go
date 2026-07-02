@@ -28,10 +28,8 @@ var _ metric.Output = (*MachCli)(nil)
 func (m *MachCli) openConn(ctx context.Context) (api.Conn, error) {
 	if m.db == nil {
 		if db, err := machgo.NewDatabase(&machgo.Config{
-			Host:         m.Host,
-			Port:         m.Port,
-			MaxOpenConn:  -1,
-			MaxOpenQuery: -1,
+			Host: m.Host,
+			Port: m.Port,
 		}); err != nil {
 			return nil, err
 		} else {
