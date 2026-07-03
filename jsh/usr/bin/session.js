@@ -75,7 +75,7 @@ const setLimitConfig = {
         help: optionHelp,
         maxOpenConn: { type: 'integer', description: 'Maximum number of open connections to the database' },
         maxIdleConn: { type: 'integer', description: 'Maximum number of idle connections to the database' },
-        connMaxIdleTime: { type: 'string', description: 'Maximum idle time for a connection (e.g., "30s", "5m")' },
+        connMaxIdletime: { type: 'string', description: 'Maximum idle time for a connection (e.g., "30s", "5m")' },
         connMaxLifetime: { type: 'string', description: 'Maximum lifetime for a connection (e.g., "1h", "24h")' },
     }
 }
@@ -202,7 +202,7 @@ function doStat(config, args) {
             box.setColumnConfigs([
                 { align: pretty.Align.left, alignHeader: pretty.Align.left },
                 { align: pretty.Align.right, alignHeader: pretty.Align.left }]);
-            box.append(["MAX OPEN CONN", pretty.Ints(statz.maxOpenConnections)]);
+            // box.append(["MAX OPEN CONN", pretty.Ints(statz.maxOpenConnections)]);
             box.append(["OPEN CONN", pretty.Ints(statz.openConnections)]);
             box.append(["IDLE", pretty.Ints(statz.idle)]);
             box.append(["IN USE", pretty.Ints(statz.inUse)]);
@@ -228,15 +228,21 @@ function doLimit(config, args) {
                 { align: pretty.Align.left, alignHeader: pretty.Align.left },
                 { align: pretty.Align.right, alignHeader: pretty.Align.left }]);
             const numberOrUnlimited = (v) => {
-                if (v < 0) {
+                if (v <= 0) {
                     return 'unlimited';
                 }
                 return pretty.Ints(v);
             }
-            box.append(["MAX OPEN CONN", numberOrUnlimited(limits.maxOpenConn)]);
-            box.append(["MAX IDLE CONN", numberOrUnlimited(limits.maxIdleConn)]);
-            box.append(["CONN MAX IDLE TIME", pretty.Durations(limits.connMaxIdleTime)]);
-            box.append(["CONN MAX LIFETIME", pretty.Durations(limits.connMaxLifetime)]);
+            const durationOrUnlimited = (v) => {
+                if (v === '0ns' || v === '0s') {
+                    return 'unlimited';
+                }
+                return v;
+            }
+            box.append(["--max-open-conn", numberOrUnlimited(limits.maxOpenConn)]);
+            box.append(["--max-idle-conn", numberOrUnlimited(limits.maxIdleConn)]);
+            box.append(["--conn-max-idletime", durationOrUnlimited(limits.connMaxIdleTime)]);
+            box.append(["--conn-max-lifetime", durationOrUnlimited(limits.connMaxLifetime)]);
             console.println(box.render());
         })
         .catch((err) => {
@@ -252,8 +258,8 @@ function doSetLimit(config, args) {
     if (config.maxIdleConn !== undefined) {
         limits.maxIdleConn = config.maxIdleConn;
     }
-    if (config.connMaxIdleTime !== undefined) {
-        limits.connMaxIdleTime = config.connMaxIdleTime;
+    if (config.connMaxIdletime !== undefined) {
+        limits.connMaxIdleTime = config.connMaxIdletime;
     }
     if (config.connMaxLifetime !== undefined) {
         limits.connMaxLifetime = config.connMaxLifetime;
