@@ -580,7 +580,7 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 		return
 	}
 
-	serverRsp, err := svr.authServer.ServerKey(ctx)
+	serverRsp, err := svr.authServer.ServerKey(ctx, nil)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
