@@ -101,6 +101,9 @@ func (req *QueryRequest) DecodeQuery(ctx *gin.Context) error {
 	req.Transpose = strBool(ctx.Query("transpose"), req.Transpose)
 	req.RowsFlatten = strBool(ctx.Query("rowsFlatten"), req.RowsFlatten)
 	req.RowsArray = strBool(ctx.Query("rowsArray"), req.RowsArray)
+	req.BoxStyle = strString(ctx.Query("boxStyle"), req.BoxStyle)
+	req.BoxSeparateColumns = strBool(ctx.Query("boxSeparateColumns"), req.BoxSeparateColumns)
+	req.BoxDrawBorder = strBool(ctx.Query("boxDrawBorder"), req.BoxDrawBorder)
 	return nil
 }
 
@@ -125,6 +128,9 @@ func (req *QueryRequest) DecodePostForm(ctx *gin.Context) error {
 	req.Transpose = strBool(ctx.PostForm("transpose"), req.Transpose)
 	req.RowsFlatten = strBool(ctx.PostForm("rowsFlatten"), req.RowsFlatten)
 	req.RowsArray = strBool(ctx.PostForm("rowsArray"), req.RowsArray)
+	req.BoxStyle = strString(ctx.PostForm("boxStyle"), req.BoxStyle)
+	req.BoxSeparateColumns = strBool(ctx.PostForm("boxSeparateColumns"), req.BoxSeparateColumns)
+	req.BoxDrawBorder = strBool(ctx.PostForm("boxDrawBorder"), req.BoxDrawBorder)
 	return nil
 }
 
