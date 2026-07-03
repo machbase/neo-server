@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	_ "github.com/machbase/neo-client/machbase"
+	"github.com/machbase/neo-client/machgo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -434,4 +436,58 @@ func TestMachbaseSQLCompatibilityAdvanced(t *testing.T) {
 		require.NoError(t, conn1.Close())
 		require.Equal(t, 1, db.Stats().MaxOpenConnections)
 	})
+}
+
+func TestStatementCacheBehavior(t *testing.T) {
+	conf := &machgo.Config{
+		Host: "127.0.0.1",
+		Port: testServer.MachPort(),
+	}
+
+	mdb, err := machgo.NewDatabase(conf)
+	if err != nil {
+		panic(err)
+	}
+
+	// Connection A: statement reuse enabled
+	conn, err := mdb.Connect(
+		t.Context(),
+		api.WithPassword("sys", "manager"),
+		api.WithStatementCache(api.StatementCacheAuto),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	sqlCreateTable := "create tag table if not exists stmtcache (name varchar(80) primary key, time datetime basetime, value double)"
+	sqlInsert := "insert into stmtcache values (?, ?, ?)"
+
+	// create table
+	result := conn.Exec(t.Context(), sqlCreateTable)
+	if err := result.Err(); err != nil {
+		panic(err)
+	}
+
+	// insert data, statement cached
+	result = conn.Exec(t.Context(), sqlInsert, "Alice", "2024-06-01 00:00:00", 123.45)
+	if err := result.Err(); err != nil {
+		panic(err)
+	}
+
+	// drop table
+	result = conn.Exec(t.Context(), "drop table stmtcache")
+	if err := result.Err(); err != nil {
+		panic(err)
+	}
+
+	// re-create table
+	result = conn.Exec(t.Context(), sqlCreateTable)
+	if err := result.Err(); err != nil {
+		panic(err)
+	}
+
+	// insert data again
+	result = conn.Exec(t.Context(), sqlInsert, "Bob", "2024-06-02 00:00:00", 678.90)
+	require.Contains(t, result.Err().Error(), "structure was modified", "Expected error due to statement cache invalidation after table drop")
 }
