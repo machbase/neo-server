@@ -1765,7 +1765,7 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, notBefore in
 		"token":       rsp.Token,
 	}
 	if store {
-		serverKey, err := s.ServerKey(ctx)
+		serverKey, err := s.ServerKey(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1834,13 +1834,14 @@ func (s *Server) deleteKey(ctx context.Context, id string) error {
 	return nil
 }
 
-// getServerCertificate returns the server certificate in PEM format.
+// getServerCertificate returns the server certificate in the specified format.
 //
 // params:
+//   - format: certificate format, either "pem" or "der" (default is "pem")
 //
-// return: server certificate PEM text
-func (s *Server) getServerCertificate(ctx context.Context) (string, error) {
-	rsp, err := s.ServerKey(ctx)
+// return: server certificate text in PEM format, or base64 encoded binary DER format if requested
+func (s *Server) getServerCertificate(ctx context.Context, format string) (string, error) {
+	rsp, err := s.ServerKey(ctx, &ServerKeyRequest{Format: format})
 	if err != nil {
 		return "", err
 	}

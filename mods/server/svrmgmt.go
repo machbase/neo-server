@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -199,27 +200,63 @@ func (s *Server) DelKey(ctx context.Context, req *DelKeyRequest) (*DelKeyRespons
 	return rsp, nil
 }
 
+type ServerKeyRequest struct {
+	Format string `json:"format,omitempty"` // PEM, DER, CER
+}
+
 type ServerKeyResponse struct {
 	Success     bool   `json:"success"`
 	Reason      string `json:"reason"`
 	Elapse      string `json:"elapse"`
+	Format      string `json:"format,omitempty"`
 	Certificate string `json:"certificate"`
 }
 
-func (s *Server) ServerKey(ctx context.Context) (*ServerKeyResponse, error) {
+func (s *Server) ServerKey(ctx context.Context, req *ServerKeyRequest) (*ServerKeyResponse, error) {
 	tick := time.Now()
 	rsp := &ServerKeyResponse{Reason: "unspecified"}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
+
+	if req == nil {
+		req = &ServerKeyRequest{Format: "pem"}
+	}
+
+	format := strings.ToLower(strings.TrimSpace(req.Format))
+	if format == "" {
+		format = "pem"
+	}
+	rsp.Format = strings.ToUpper(format)
+
 	path := s.ServerCertificatePath()
 	b, err := os.ReadFile(path)
 	if err != nil {
 		rsp.Reason = err.Error()
-	} else {
+		return rsp, nil
+	}
+
+	if format == "pem" {
 		rsp.Success = true
 		rsp.Reason = "success"
 		rsp.Certificate = string(b)
+		return rsp, nil
+	}
+
+	block, _ := pem.Decode(b)
+	if block == nil {
+		rsp.Reason = "invalid PEM certificate"
+		return rsp, nil
+	}
+
+	switch format {
+	case "der", "cer":
+		// DER/CER are binary encodings; return base64 for JSON-safe transport.
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Certificate = base64.StdEncoding.EncodeToString(block.Bytes)
+	default:
+		rsp.Reason = "unsupported format, use PEM, DER, or CER"
 	}
 	return rsp, nil
 }

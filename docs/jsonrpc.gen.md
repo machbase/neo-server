@@ -399,17 +399,16 @@ statzKeys lists available metric keys with optional patterns.
 
 #### server.certificate.get
 
-getServerCertificate returns the server certificate in PEM format.
+getServerCertificate returns the server certificate in the specified format.
 
-`server.certificate.get()`
+`server.certificate.get(format)`
 
 *Params*
-
-- none
+- `format` *string* - certificate format, either "pem" or "der" (default is "pem")
 
 *Return*
 
-- `string|error - server certificate PEM text`
+- `string|error - server certificate text in PEM format, or base64 encoded binary DER format if requested`
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -424,7 +423,9 @@ getServerCertificate returns the server certificate in PEM format.
         "jsonrpc": "2.0",
         "id": 20,
         "method": "server.certificate.get",
-        "params": []
+        "params": [
+            "string"
+        ]
     }
 }
 ```

@@ -8,10 +8,13 @@ import (
 	crand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -285,4 +288,54 @@ func TestSessionRPCDefaultDatabaseBranches(t *testing.T) {
 	require.NotNil(t, limitRsp)
 	require.False(t, limitRsp.Success)
 	require.Contains(t, limitRsp.Reason, "not supported")
+}
+
+func TestServerKeyFormatCases(t *testing.T) {
+	tmpDir := t.TempDir()
+	svr := &Server{certDirPath: tmpDir}
+
+	ec := NewEllipticCurveP256()
+	pri, pub, err := ec.GenerateKeys()
+	require.NoError(t, err)
+
+	certPEM, err := GenerateServerCertificate(pri, pub)
+	require.NoError(t, err)
+
+	certPath := filepath.Join(tmpDir, "machbase_cert.pem")
+	err = os.WriteFile(certPath, certPEM, 0o644)
+	require.NoError(t, err)
+
+	block, _ := pem.Decode(certPEM)
+	require.NotNil(t, block)
+	expectedDERBase64 := base64.StdEncoding.EncodeToString(block.Bytes)
+
+	t.Run("pem", func(t *testing.T) {
+		rsp, err := svr.ServerKey(context.Background(), &ServerKeyRequest{Format: "pem"})
+		require.NoError(t, err)
+		require.NotNil(t, rsp)
+		require.True(t, rsp.Success)
+		require.Equal(t, "success", rsp.Reason)
+		require.Equal(t, "PEM", rsp.Format)
+		require.Equal(t, string(certPEM), rsp.Certificate)
+	})
+
+	t.Run("der", func(t *testing.T) {
+		rsp, err := svr.ServerKey(context.Background(), &ServerKeyRequest{Format: "der"})
+		require.NoError(t, err)
+		require.NotNil(t, rsp)
+		require.True(t, rsp.Success)
+		require.Equal(t, "success", rsp.Reason)
+		require.Equal(t, "DER", rsp.Format)
+		require.Equal(t, expectedDERBase64, rsp.Certificate)
+	})
+
+	t.Run("wrong format", func(t *testing.T) {
+		rsp, err := svr.ServerKey(context.Background(), &ServerKeyRequest{Format: "xxx"})
+		require.NoError(t, err)
+		require.NotNil(t, rsp)
+		require.False(t, rsp.Success)
+		require.Equal(t, "XXX", rsp.Format)
+		require.Contains(t, rsp.Reason, "unsupported format")
+		require.Empty(t, rsp.Certificate)
+	})
 }
