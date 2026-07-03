@@ -14,7 +14,18 @@ function generateAuthKeyPair(type = 'ecdsa') {
 
 /**
  * Generate an X.509 certificate.
- * @param {{newKey?: string, days: number, cn?: string, o?: string[], ou?: string[], l?: string[], st?: string[], c?: string[], dns?: string[], uri?: string[], san?: string[]}} request
+ * @param {{
+ *   days: number,
+ *   cn?: string,
+ *   o?: string[],
+ *   ou?: string[],
+ *   l?: string[],
+ *   st?: string[],
+ *   c?: string[],
+ *   dns?: string[],
+ *   uri?: string[],
+ *   san?: string[]
+ * }} request certificate request: validity days, subject fields, DNS names, URIs, and SAN values
  * @param {string} publicKey PEM-encoded public key
  * @param {string} signerPrivateKey PEM-encoded private key used to sign the certificate
  * @returns {string} PEM-encoded certificate

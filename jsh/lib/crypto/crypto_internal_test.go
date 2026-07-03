@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -220,7 +221,7 @@ func TestGenerateX509CertificateErrors(t *testing.T) {
 	})
 
 	t.Run("signer does not match public key algorithm", func(t *testing.T) {
-		x25519Key, err := ecdh.X25519().GenerateKey(nil)
+		x25519Key, err := ecdh.X25519().GenerateKey(rand.Reader)
 		if err != nil {
 			t.Fatalf("generate X25519 key: %v", err)
 		}
