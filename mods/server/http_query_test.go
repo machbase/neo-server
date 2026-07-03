@@ -340,7 +340,7 @@ func TestHttpQueryMutation(t *testing.T) {
 		result, _ := io.ReadAll(rsp.Body)
 		rsp.Body.Close()
 		require.Equal(t, http.StatusOK, rsp.StatusCode, "%s: %s", name, string(result))
-		require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"), "%s", name)
+		require.Equal(t, "application/json", rsp.Header.Get("Content-Type"), "%s", name)
 
 		resultObj := map[string]any{}
 		err = json.Unmarshal(result, &resultObj)
@@ -418,7 +418,7 @@ func TestHttpQueryEmptySqlErrors(t *testing.T) {
 	require.NoError(t, err)
 	delete(resultObj, "elapse")
 	require.EqualValues(t, map[string]any{
-		"success": false, "reason": "empty sql",
+		"success": false, "reason": "sql text is empty",
 	}, resultObj)
 }
 

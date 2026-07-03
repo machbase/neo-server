@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-server/v8/mods/codec"
-	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -24,65 +21,29 @@ import (
 	"github.com/machbase/neo-server/v8/spi"
 )
 
-// Execute machbase SQL query
-//
-// @Summary     Execute query
-// @Description execute query
-// @Param       q           query   string true "sql query text" default(select * from example limit 3)
-// @Param       p           query   string false "sql bind parameters as JSON array"
-// @Success     200  {object}  msg.QueryResponse
-// @Failure     400  {object}  msg.QueryResponse
-// @Failure     500  {object}  msg.QueryResponse
-// @Router      /db/query [get]
 func (svr *httpd) handleQuery(ctx *gin.Context) {
-	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
+	req := NewQueryRequest()
+	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 
-	var err error
-	req := &QueryRequest{Precision: -1}
 	switch ctx.Request.Method {
 	case http.MethodPost:
 		contentType := ctx.ContentType()
 		switch contentType {
 		case "application/json":
-			req.Timeformat = "ns"
-			req.TimeLocation = "UTC"
-			req.Format = "json"
-			req.BinaryFormat = "base64"
-			req.Rownum = false
-			req.Heading = true
-			req.Precision = -1
-			if err = decodeQueryRequestJSON(ctx.Request.Body, req); err != nil {
+			if err := req.DecodeJSON(ctx.Request.Body); err != nil {
 				rsp.Reason = err.Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
-			}
-			if req.Header == "skip" {
-				req.Heading = false
 			}
 		case "application/x-www-form-urlencoded":
-			req.SqlText = ctx.PostForm("q")
-			if req.Params, err = parseQueryParams(ctx.PostForm("p")); err != nil {
+			if err := req.DecodePostForm(ctx); err != nil {
 				rsp.Reason = err.Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
-			req.Timeformat = strString(ctx.PostForm("timeformat"), "ns")
-			req.TimeLocation = strString(ctx.PostForm("tz"), "UTC")
-			req.Format = strString(ctx.PostForm("format"), "json")
-			req.BinaryFormat = strString(ctx.PostForm("binaryformat"), "base64")
-			req.Compress = ctx.PostForm("compress")
-			req.Rownum = strBool(ctx.PostForm("rownum"), false)
-			req.Heading = strBool(ctx.PostForm("heading"), true)
-			if h := ctx.PostForm("header"); h == "skip" {
-				req.Heading = false
-			}
-			req.Precision = strInt(ctx.PostForm("precision"), -1)
-			req.Transpose = strBool(ctx.PostForm("transpose"), false)
-			req.RowsFlatten = strBool(ctx.PostForm("rowsFlatten"), false)
-			req.RowsArray = strBool(ctx.PostForm("rowsArray"), false)
 		default:
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
 			rsp.Elapse = time.Since(tick).String()
@@ -90,140 +51,60 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			return
 		}
 	case http.MethodGet:
-		req.SqlText = ctx.Query("q")
-		if req.Params, err = parseQueryParams(ctx.Query("p")); err != nil {
+		if err := req.DecodeQuery(ctx); err != nil {
 			rsp.Reason = err.Error()
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
 		}
-		req.Timeformat = strString(ctx.Query("timeformat"), "ns")
-		req.TimeLocation = strString(ctx.Query("tz"), "UTC")
-		req.Format = strString(ctx.Query("format"), "json")
-		req.BinaryFormat = ctx.Query("binaryformat")
-		req.Compress = ctx.Query("compress")
-		req.Rownum = strBool(ctx.Query("rownum"), false)
-		req.Heading = strBool(ctx.Query("heading"), true)
-		if h := ctx.Query("header"); h == "skip" {
-			req.Heading = false
-		}
-		req.Precision = strInt(ctx.Query("precision"), -1)
-		req.Transpose = strBool(ctx.Query("transpose"), false)
-		req.RowsFlatten = strBool(ctx.Query("rowsFlatten"), false)
-		req.RowsArray = strBool(ctx.Query("rowsArray"), false)
 	}
 
 	// golang json decoder case-insensitive for struct field names,
 	// as result, it accepts both "q" and "Q" into req.SqlText
 	if svr.cypherAlg != "" && svr.cypherKey != "" && strings.HasPrefix(req.SqlText, "ENC:") {
 		cypherQ := strings.TrimPrefix(req.SqlText, "ENC:")
-		req.SqlText, err = util.DecryptString(cypherQ, svr.cypherAlg, svr.cypherKey, svr.cypherPad)
-		if err != nil {
+		if sqlText, err := util.DecryptString(cypherQ, svr.cypherAlg, svr.cypherKey, svr.cypherPad); err != nil {
 			rsp.Reason = "decrypt sql fail, " + err.Error()
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
+		} else {
+			req.SqlText = sqlText
 		}
 	}
-	if len(req.SqlText) == 0 {
-		rsp.Reason = "empty sql"
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
+
+	statusCode := http.StatusOK
+	hook := &QueryHook{
+		SetContentType: func(contentType string) {
+			ctx.Writer.Header().Set("Content-Type", contentType)
+		},
+		SetContentEncoding: func(contentEncoding string) {
+			ctx.Writer.Header().Set("Content-Encoding", contentEncoding)
+		},
+		SetStatusCode: func(code int) {
+			statusCode = code
+		},
+		SetUserMessage: func(message string) {
+			rsp.Reason = message
+		},
 	}
 
-	timeLocation, err := util.ParseTimeLocation(req.TimeLocation, time.UTC)
-	if err != nil {
+	if err := req.Execute(ctx, ctx.Writer, hook); err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusBadRequest, rsp)
+		ctx.JSON(statusCode, rsp)
 		return
 	}
-
-	var output io.Writer
-	switch req.Compress {
-	case "gzip":
-		output = gzip.NewWriter(ctx.Writer)
-	default:
-		req.Compress = ""
-		output = ctx.Writer
-	}
-
-	encoder := codec.NewEncoder(req.Format,
-		opts.OutputStream(output),
-		opts.Timeformat(req.Timeformat),
-		opts.Binaryformat(req.BinaryFormat),
-		opts.Precision(req.Precision),
-		opts.Rownum(req.Rownum),
-		opts.Header(req.Heading),
-		opts.TimeLocation(timeLocation),
-		opts.Delimiter(","),
-		opts.BoxStyle("default"),
-		opts.BoxSeparateColumns(true),
-		opts.BoxDrawBorder(true),
-		opts.RowsFlatten(req.RowsFlatten),
-		opts.RowsArray(req.RowsArray),
-		opts.Transpose(req.Transpose),
-	)
-	conn, err := getPoolConn(ctx)
-	if err != nil {
-		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
-		rsp.Reason = "service unavailable"
+	// If sql is not SELECT, the response is not written,
+	// so we need to write the response here
+	// The reason has been set by hook.SetUserMessage
+	if !ctx.Writer.Written() {
+		rsp.Success = true
 		rsp.Elapse = time.Since(tick).String()
-		ctx.Header("Retry-After", "1")
-		ctx.JSON(http.StatusServiceUnavailable, rsp)
-		return
-	}
-	defer conn.Close()
-
-	query := &spi.Query{
-		Begin: func(q *spi.Query) {
-			if !q.IsFetch() {
-				return
-			}
-			cols := q.Columns()
-			ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
-			if len(req.Compress) > 0 {
-				ctx.Writer.Header().Set("Content-Encoding", req.Compress)
-			}
-			codec.SetEncoderColumns(encoder, cols)
-			encoder.Open()
-		},
-		Next: func(q *spi.Query, nrow int64) bool {
-			values, err := q.Columns().MakeBuffer()
-			if err != nil {
-				svr.log.Error("buffer", err.Error())
-				return false
-			}
-			if err := q.Scan(values...); err != nil {
-				svr.log.Error("scan", err.Error())
-				return false
-			}
-			if err := encoder.AddRow(values); err != nil {
-				// report error to client?
-				svr.log.Error("render", err.Error())
-				return false
-			}
-			return true
-		},
-		End: func(q *spi.Query) {
-			if q.IsFetch() {
-				encoder.Close()
-			} else {
-				rsp.Success, rsp.Reason = true, q.UserMessage()
-				rsp.Elapse = time.Since(tick).String()
-				ctx.JSON(http.StatusOK, rsp)
-			}
-		},
-	}
-
-	if err := query.Execute(ctx, conn, req.SqlText, req.Params...); err != nil {
-		svr.log.Error("query fail", err.Error())
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
+		ctx.JSON(statusCode, rsp)
 	}
 }
+
 func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 	tick := time.Now()
 	defer func() {
