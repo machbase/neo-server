@@ -133,8 +133,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, dbUser, tableName := api.TableName(wp.Table).Split()
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(dbUser))
+	conn, err := getPoolConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
@@ -235,7 +234,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 				columnTypes = append(columnTypes, _type.DataType())
 			}
 			valueHolder := strings.Join(_hold, ",")
-			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, strings.Join(columnNames, ","), valueHolder)
 		}
 		inputStream = bytes.NewBuffer(bs)
 	}
@@ -294,7 +293,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 			for i := range _hold {
 				_hold[i] = "?"
 			}
-			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, strings.Join(cols, ","), strings.Join(_hold, ","))
 		}
 		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
 			rsp.Reason = result.Err().Error()
