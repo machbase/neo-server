@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -70,5 +71,58 @@ func TestNormalizeQueryParamValue(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
+	}
+}
+
+func TestSqlRowsScanTypes(t *testing.T) {
+	dsn := "server=127.0.0.1:15656;user=sys;password=manager;fetch_rows=100"
+	db, err := sql.Open("machbase", dsn)
+	require.NoError(t, err)
+	defer db.Close()
+
+	conn, err := db.Conn(t.Context())
+	require.NoError(t, err)
+	defer conn.Close()
+
+	rows, err := conn.QueryContext(t.Context(), "select * from TAG_DATA")
+	require.NoError(t, err)
+	defer rows.Close()
+
+	columnTypes, err := rows.ColumnTypes()
+	require.NoError(t, err)
+	expects := []struct {
+		name         string
+		databaseType string
+		scanType     string
+		nullable     bool
+		length       int64
+		decimalSize  int64
+	}{
+		{name: "NAME", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 100},                //
+		{name: "TIME", databaseType: "DATETIME", scanType: "time.Time", nullable: true, length: 8},              // length??
+		{name: "VALUE", databaseType: "DOUBLE", scanType: "float64", nullable: true, length: 8, decimalSize: 8}, //
+		{name: "SHORT_VALUE", databaseType: "SHORT", scanType: "int16", nullable: true, length: 2},              //
+		{name: "USHORT_VALUE", databaseType: "USHORT", scanType: "uint16", nullable: true, length: 2},           //
+		{name: "INT_VALUE", databaseType: "INTEGER", scanType: "int32", nullable: true, length: 4},              //
+		{name: "UINT_VALUE", databaseType: "UINTEGER", scanType: "uint32", nullable: true, length: 4},           //
+		{name: "LONG_VALUE", databaseType: "LONG", scanType: "int64", nullable: true, length: 8},                //
+		{name: "ULONG_VALUE", databaseType: "ULONG", scanType: "uint64", nullable: true, length: 8},             //
+		{name: "STR_VALUE", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 400},           //
+		{name: "JSON_VALUE", databaseType: "JSON", scanType: "api.JSONString", nullable: true, length: 32767},   //
+		{name: "IPV4_VALUE", databaseType: "IPV4", scanType: "net.IP", nullable: true, length: 5},               //
+		{name: "IPV6_VALUE", databaseType: "IPV6", scanType: "net.IP", nullable: true, length: 17},              //
+		{name: "BIN_VALUE", databaseType: "BINARY", scanType: "[]uint8", nullable: true, length: 32767},         //
+	}
+	require.Equal(t, len(expects), len(columnTypes))
+	for i, ct := range columnTypes {
+		nullable, _ := ct.Nullable()
+		length, _ := ct.Length()
+		decimalSize, _, _ := ct.DecimalSize()
+		require.Equal(t, expects[i].name, ct.Name(), "column %s", ct.Name())
+		require.Equal(t, expects[i].databaseType, ct.DatabaseTypeName(), "column %s", ct.Name())
+		require.Equal(t, expects[i].scanType, ct.ScanType().String(), "column %s", ct.Name())
+		require.Equal(t, expects[i].nullable, nullable, "column %s", ct.Name())
+		require.Equal(t, expects[i].length, length, "column %s", ct.Name())
+		require.Equal(t, expects[i].decimalSize, decimalSize, "column %s", ct.Name())
 	}
 }

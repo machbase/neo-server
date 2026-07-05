@@ -199,6 +199,12 @@ func (ex *Exporter) AddRow(source []any) error {
 			} else {
 				ex.values[i] = nil
 			}
+		case *sql.Null[api.JSONString]:
+			if v.Valid {
+				ex.values[i] = string(v.V)
+			} else {
+				ex.values[i] = nil
+			}
 		default:
 			ex.values[i] = field
 		}

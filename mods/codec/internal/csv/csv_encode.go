@@ -221,12 +221,20 @@ func (ex *Exporter) AddRow(values []any) error {
 			} else {
 				r = ex.nullAlternative
 			}
+		case *sql.Null[api.JSONString]:
+			if sqlVal.Valid {
+				r = string(sqlVal.V)
+			} else {
+				r = ex.nullAlternative
+			}
 		}
 		switch v := api.Unbox(r).(type) {
 		case string:
 			cols[i] = v
 		case time.Time:
 			cols[i] = ex.timeformat.Format(v)
+		case api.JSONString:
+			cols[i] = string(v)
 		case float64:
 			cols[i] = internal.FormatPrecisionFloat64(v, ex.precision, false)
 		case float32:

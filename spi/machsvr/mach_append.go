@@ -149,12 +149,22 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 			mach.EngFreeStmt(appender.stmt)
 			return nil, mach.ErrDatabaseWrap("MachColumnInfo data type %s", err)
 		}
-		if appender.columns[i].DataType != dataType {
+		switch {
+		case appender.columns[i].DataType == dataType:
+			dataTypesString[i] = string(dataType)
+		case appender.columns[i].DataType == api.DataTypeJSON && dataType == api.DataTypeString:
+			dataTypesString[i] = string(dataType)
+		case appender.columns[i].DataType == api.DataTypeUInt16 && dataType == api.DataTypeInt16:
+			dataTypesString[i] = string(api.DataTypeUInt16)
+		case appender.columns[i].DataType == api.DataTypeUInt32 && dataType == api.DataTypeInt32:
+			dataTypesString[i] = string(api.DataTypeUInt32)
+		case appender.columns[i].DataType == api.DataTypeUInt64 && dataType == api.DataTypeInt64:
+			dataTypesString[i] = string(api.DataTypeUInt64)
+		default:
 			mach.EngAppendClose(appender.stmt)
 			mach.EngFreeStmt(appender.stmt)
 			return nil, fmt.Errorf("MachColumnInfo data type mismatch %s %d", appender.columns[i].DataType, columnRawType)
 		}
-		dataTypesString[i] = string(dataType)
 	}
 	appender.buffer = mach.EngMakeAppendBuffer(appender.stmt, appender.columns.Names(), dataTypesString)
 	return appender, nil

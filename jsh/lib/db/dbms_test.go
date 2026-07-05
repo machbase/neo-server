@@ -58,7 +58,7 @@ func TestDBMS(t *testing.T) {
 			`,
 			Output: []string{
 				`cols.names: ["NAME","TIME","VALUE","SHORT_VALUE","USHORT_VALUE","INT_VALUE","UINT_VALUE","LONG_VALUE","ULONG_VALUE","STR_VALUE","JSON_VALUE","IPV4_VALUE","IPV6_VALUE","BIN_VALUE"]`,
-				`cols.types: ["string","datetime","double","int16","int16","int32","int32","int64","int64","string","string","ipv4","ipv6","binary"]`,
+				`cols.types: ["string","datetime","double","int16","uint16","int32","uint32","int64","uint64","string","json","ipv4","ipv6","binary"]`,
 				"rows: 0",
 			},
 		},

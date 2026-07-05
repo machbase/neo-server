@@ -272,6 +272,12 @@ func (r *WrappedSqlRows) Scan(values ...any) error {
 			} else {
 				values[i] = nil
 			}
+		case *sql.Null[api.JSONString]:
+			if v.Valid {
+				values[i] = v.V
+			} else {
+				values[i] = nil
+			}
 		case *sql.NullBool:
 			if v.Valid {
 				values[i] = v.Bool
@@ -392,6 +398,8 @@ func scanTypeToDataType(col *sql.ColumnType) api.DataType {
 	switch col.DatabaseTypeName() {
 	case "VARCHAR", "TEXT", "NCHAR", "NVARCHAR":
 		return api.DataTypeString
+	case "JSON":
+		return api.DataTypeJSON
 	}
 	switch col.ScanType().String() {
 	case "bool", "sql.NullBool":

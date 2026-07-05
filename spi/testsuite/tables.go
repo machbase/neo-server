@@ -2,6 +2,7 @@ package testsuite
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"net"
@@ -264,10 +265,19 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 			return *v
 		case *driver.Value:
 			return *v
+		case *api.JSONString:
+			return *v
+		case *sql.Null[api.JSONString]:
+			if v.Valid {
+				return v.V
+			} else {
+				return nil
+			}
 		default:
 			return val
 		}
 	}
+	_ = unbox
 
 	var beginCalled, endCalled bool
 	var nextCalled int
@@ -284,13 +294,13 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 				api.DataTypeDatetime,
 				api.DataTypeFloat64,
 				api.DataTypeInt16,
-				api.DataTypeInt16,
+				api.DataTypeUInt16,
 				api.DataTypeInt32,
-				api.DataTypeInt32,
+				api.DataTypeUInt32,
 				api.DataTypeInt64,
-				api.DataTypeInt64,
+				api.DataTypeUInt64,
 				api.DataTypeString,
-				api.DataTypeString,
+				api.DataTypeJSON,
 				api.DataTypeIPv4,
 				api.DataTypeIPv6,
 				api.DataTypeBinary,
@@ -302,17 +312,17 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 			require.NoError(t, err)
 			err = q.Scan(values...)
 			require.NoError(t, err)
-			require.Equal(t, "insert-once", unbox(values[0]))
-			require.Equal(t, now, unbox(values[1]))
-			require.Equal(t, 1.23, unbox(values[2]))
-			require.Equal(t, int16(1), unbox(values[3]))
-			require.Equal(t, nil, unbox(values[4]))
-			require.Equal(t, int32(2), unbox(values[5]))
-			require.Equal(t, nil, unbox(values[6]))
-			require.Equal(t, int64(3), unbox(values[7]))
-			require.Equal(t, nil, unbox(values[8]))
-			require.Equal(t, "str1", unbox(values[9]))
-			require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
+			require.Equal(t, "insert-once", api.Unbox(values[0]))
+			require.Equal(t, now, api.Unbox(values[1]))
+			require.Equal(t, 1.23, api.Unbox(values[2]))
+			require.Equal(t, int16(1), api.Unbox(values[3]))
+			require.Equal(t, nil, api.Unbox(values[4]))
+			require.Equal(t, int32(2), api.Unbox(values[5]))
+			require.Equal(t, nil, api.Unbox(values[6]))
+			require.Equal(t, int64(3), api.Unbox(values[7]))
+			require.Equal(t, nil, api.Unbox(values[8]))
+			require.Equal(t, "str1", api.Unbox(values[9]))
+			require.Equal(t, api.JSONString(`{"key1": "value1"}`), api.Unbox(values[10]))
 			return true
 		},
 		End: func(q *spi.Query) {
