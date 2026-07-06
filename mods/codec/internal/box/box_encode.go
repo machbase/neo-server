@@ -1,6 +1,7 @@
 package box
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"net"
@@ -172,12 +173,14 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
+const strNULL = "NULL"
+
 func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
 	for i, r := range values {
 		if r == nil {
-			cols[i] = "NULL"
+			cols[i] = strNULL
 			continue
 		}
 		switch v := r.(type) {
@@ -225,6 +228,12 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
+		case *sql.NullInt32:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int32), 10)
+			} else {
+				cols[i] = strNULL
+			}
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

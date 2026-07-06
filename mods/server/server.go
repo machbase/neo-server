@@ -536,6 +536,18 @@ func (s *Server) startMachbaseCli() error {
 	return nil
 }
 
+func getPoolSqlConn(ctx context.Context) (*sql.Conn, error) {
+	pool, poolErr := spi.DefaultPool()
+	if poolErr != nil {
+		return nil, poolErr
+	}
+	sqlConn, connErr := pool.Conn(ctx)
+	if connErr != nil {
+		return nil, connErr
+	}
+	return sqlConn, nil
+}
+
 func getPoolConn(ctx context.Context) (api.Conn, error) {
 	pool, poolErr := spi.DefaultPool()
 	if poolErr != nil {
