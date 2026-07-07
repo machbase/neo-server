@@ -20,67 +20,47 @@ func TestSqlite(t *testing.T) {
 	require.NoError(t, err)
 	defer br.AfterUnregister()
 
-	sqlConn, err := br.Connect(ctx)
+	conn, err := br.Connect(ctx)
 	require.NoError(t, err)
 
-	conn := spi.WrapSqlConn(sqlConn)
-	defer conn.Close()
+	result, err := conn.ExecContext(ctx, `CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)`)
+	require.NoError(t, err)
+	rowsAffected, err := result.RowsAffected()
+	require.NoError(t, err)
+	require.Equal(t, int64(0), rowsAffected)
 
-	result := conn.Exec(ctx, `CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)`)
-	require.NoError(t, result.Err())
+	result, err = conn.ExecContext(ctx, `INSERT INTO test VALUES (?, ?)`, 1, "foo")
+	require.NoError(t, err)
+	rowsAffected, err = result.RowsAffected()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), rowsAffected)
+	result, err = conn.ExecContext(ctx, `INSERT INTO test VALUES (?, ?)`, 2, "bar")
+	require.NoError(t, err)
+	rowsAffected, err = result.RowsAffected()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), rowsAffected)
 
-	conn.Exec(ctx, `INSERT INTO test VALUES (?, ?)`, 1, "foo")
-	conn.Exec(ctx, `INSERT INTO test VALUES (?, ?)`, 2, "bar")
-
-	beginCalled := false
-	endCalled := false
-	nextCalled := 0
 	expectNames := []string{"foo", "bar"}
-	q := spi.Query{
-		Begin: func(q *spi.Query) {
-			beginCalled = true
-		},
-		Next: func(q *spi.Query, rownum int64) bool {
-			nextCalled++
-			values, _ := q.Columns().MakeBuffer()
-			q.Scan(values...)
-			require.Equal(t, 2, len(values))
-			switch v := values[0].(type) {
-			case *int64:
-				require.Equal(t, int64(rownum), *v)
-			case int64:
-				require.Equal(t, int64(rownum), v)
-			default:
-				require.Failf(t, "unexpected id type", "%T", values[0])
-			}
-			switch v := values[1].(type) {
-			case *string:
-				require.Equal(t, expectNames[rownum-1], *v)
-			case string:
-				require.Equal(t, expectNames[rownum-1], v)
-			default:
-				require.Failf(t, "unexpected name type", "%T", values[1])
-			}
-			return true
-		},
-		End: func(q *spi.Query) {
-			endCalled = true
-		},
-	}
-	err = q.Execute(ctx, conn, `SELECT * FROM test order by id`)
+	rows, err := conn.QueryContext(ctx, `SELECT * FROM test order by id`)
 	require.NoError(t, err)
-	require.True(t, beginCalled)
-	require.True(t, endCalled)
-	require.Equal(t, 2, nextCalled)
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var name string
+		err = rows.Scan(&id, &name)
+		require.NoError(t, err)
+		require.Equal(t, int64(id), id)
+		require.Equal(t, expectNames[id-1], name)
+	}
 
-	row := conn.QueryRow(ctx, `select count(*) from test`)
+	row := conn.QueryRowContext(ctx, `select count(*) from test`)
 	require.NoError(t, row.Err())
 	var count int64
 	err = row.Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), count)
 
-	rows, err := conn.Query(ctx, `select * from test where id = ?`, 1)
+	rows, err = conn.QueryContext(ctx, `select * from test where id = ?`, 1)
 	require.NoError(t, err)
 	defer rows.Close()
 	for rows.Next() {
