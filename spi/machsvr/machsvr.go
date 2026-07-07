@@ -418,15 +418,16 @@ func (cw *ConnWatcher) ConnState() *ConnState {
 }
 
 type Conn struct {
-	ctx       context.Context
-	username  string
-	password  string
-	proxyUser string
-	key       crypto.PrivateKey
-	handle    unsafe.Pointer
-	closeOnce sync.Once
-	closed    bool
-	db        *Database
+	ctx          context.Context
+	username     string
+	password     string
+	proxyUser    string
+	key          crypto.PrivateKey
+	handle       unsafe.Pointer
+	closeOnce    sync.Once
+	closed       bool
+	db           *Database
+	timeLocation *time.Location
 
 	id            string
 	connectTime   time.Time
@@ -446,10 +447,11 @@ func (conn *Conn) SetLatestSql(sql string) {
 
 func (db *Database) ConnectTrust(ctx context.Context, username string) (api.Conn, error) {
 	ret := &Conn{
-		ctx:        ctx,
-		db:         db,
-		returnChan: nil,
-		username:   username,
+		ctx:          ctx,
+		db:           db,
+		returnChan:   nil,
+		username:     username,
+		timeLocation: time.UTC,
 	}
 	if err := mach.EngConnectTrust(db.handle, username, &ret.handle); err != nil {
 		return nil, err
@@ -483,9 +485,14 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			ret.key = v.Key
 		case *api.ConnectOptionProxyUser:
 			ret.proxyUser = v.ProxyUser
+		case *api.ConnectOptionTimeLocation:
+			ret.timeLocation = v.Location
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
+	}
+	if ret.timeLocation == nil {
+		ret.timeLocation = time.UTC
 	}
 
 	// control max open connections
@@ -670,7 +677,7 @@ func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error)
 		mach.EngFreeStmt(stmt)
 		return nil, err
 	}
-	return &PreparedStmt{stmt: stmt, sqlText: sqlText}, nil
+	return &PreparedStmt{stmt: stmt, sqlText: sqlText, timeLocation: conn.timeLocation}, nil
 }
 
 type PreparedStmt struct {
@@ -679,6 +686,7 @@ type PreparedStmt struct {
 
 	stmtType     mach.StmtType
 	affectedRows int64
+	timeLocation *time.Location
 	columns      api.Columns
 }
 
@@ -719,18 +727,19 @@ func (ps *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, err
 		return nil, err
 	}
 	rows := &Rows{
-		stmt:       ps.stmt,
-		stmtType:   ps.stmtType,
-		sqlText:    ps.sqlText,
-		columns:    ps.columns,
-		isPrepared: true,
+		stmt:         ps.stmt,
+		stmtType:     ps.stmtType,
+		sqlText:      ps.sqlText,
+		columns:      ps.columns,
+		isPrepared:   true,
+		timeLocation: ps.timeLocation,
 	}
 	return rows, nil
 }
 
 func (ps *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
 	defer mach.EngExecuteClean(ps.stmt)
-	var row = &Row{}
+	var row = &Row{timeLocation: ps.timeLocation}
 	for i, p := range params {
 		if row.err = bind(ps.stmt, i, p); row.err != nil {
 			return row
@@ -772,7 +781,7 @@ func (ps *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
 				return row
 			}
 			isNull := false
-			row.err = readColumnData(ps.stmt, rawType, i, row.values[i], &isNull)
+			row.err = readColumnData(ps.stmt, rawType, i, row.values[i], &isNull, row.timeLocation)
 			if row.err != nil {
 				return row
 			}
@@ -828,6 +837,7 @@ func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api
 	rows := &Rows{
 		sqlText:             sqlText,
 		candidateReturnChan: conn.db.maxQueryChan,
+		timeLocation:        conn.timeLocation,
 	}
 	if err := mach.EngAllocStmt(conn.handle, &rows.stmt); err != nil {
 		return nil, err
@@ -965,7 +975,7 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 //	row.Scan(&cnt)
 func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
 	conn.SetLatestSql(sqlText)
-	var row = &Row{}
+	var row = &Row{timeLocation: conn.timeLocation}
 	var stmt unsafe.Pointer
 	if row.err = mach.EngAllocStmt(conn.handle, &stmt); row.err != nil {
 		return row
@@ -1037,7 +1047,7 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 			return row
 		}
 		isNull := false
-		row.err = readColumnData(stmt, rawType, i, row.values[i], &isNull)
+		row.err = readColumnData(stmt, rawType, i, row.values[i], &isNull, row.timeLocation)
 		if row.err != nil {
 			return row
 		}
