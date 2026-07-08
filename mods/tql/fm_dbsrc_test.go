@@ -58,7 +58,7 @@ func TestTqlSqlShow(t *testing.T) {
 				CSV(header(true))
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "NAME,VALUE"))
+				require.True(t, strings.HasPrefix(result, "NAME,VALUE"), result)
 			},
 		},
 		{
@@ -458,7 +458,6 @@ func TestTqlSqlShowSessions(t *testing.T) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
 				require.Equal(t, "ID,USER_ID,USER_NAME,TYPE,LOGIN_TIME,MAX_QPX_MEM,STMT_COUNT", lines[0])
-				// 4,1,SYS,,-6795364578871345152,268435456,NULL
 				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,[A-Z]+,.*,[-0-9]+,[0-9]+,.+$`), lines[1])
 			},
 		},

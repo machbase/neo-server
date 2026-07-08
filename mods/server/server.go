@@ -180,6 +180,8 @@ func (s *Server) Start() error {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
+	spi.SetDefaultServerInfo(s.getServerInfoMap)
+
 	if !HeadOnly {
 		if err := s.checkAndInstallLicense(); err != nil {
 			return err
@@ -1001,36 +1003,8 @@ func (s *Server) startHttpServer() error {
 	}
 	util.AddShutdownHook(func() { s.httpd.Stop() })
 
-	nfo := map[string]any{}
-	if sinfo, err := s.getServerInfo(); err != nil {
-		nfo["error"] = err.Error()
-	} else {
-		if v := sinfo.Version; v != nil {
-			nfo["version.major"] = v.Major
-			nfo["version.minor"] = v.Minor
-			nfo["version.patch"] = v.Patch
-			nfo["version.gitSHA"] = v.GitSHA
-			nfo["version.buildTimestamp"] = v.BuildTimestamp
-			nfo["version.buildCompiler"] = v.BuildCompiler
-			nfo["version.engine"] = v.Engine
-		}
-		if r := sinfo.Runtime; r != nil {
-			nfo["runtime.os"] = r.OS
-			nfo["runtime.arch"] = r.Arch
-			nfo["runtime.pid"] = r.Pid
-			nfo["runtime.uptimeInSecond"] = r.UptimeInSecond
-			nfo["runtime.processes"] = r.Processes
-			nfo["runtime.goroutines"] = r.Goroutines
-			if r.Mem != nil {
-				for k, v := range r.Mem {
-					nfo[fmt.Sprintf("runtime.mem.%s", k)] = v
-				}
-			}
-		}
-	}
 	tql.SetHttpAddresses(s.Http.Listeners)
 	tql.SetServerKeyPath(s.ServerPrivateKeyPath())
-	tql.SetServerInfo(nfo)
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
 	util.AddShutdownHook(func() { tql.StopCache() })
 

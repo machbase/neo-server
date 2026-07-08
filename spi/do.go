@@ -1,6 +1,8 @@
 package spi
 
 import (
+	"context"
+	"slices"
 	"time"
 
 	"github.com/machbase/neo-client/api"
@@ -10,6 +12,54 @@ type InfoType interface {
 	Columns() api.Columns
 	Values() []interface{}
 	Err() error
+}
+
+var serverInfoProvider func() map[string]any
+
+func SetDefaultServerInfo(provider func() map[string]any) {
+	serverInfoProvider = provider
+}
+
+type ServerInfo struct {
+	Name  string `json:"name"`
+	Value any    `json:"value"`
+	err   error
+}
+
+func (si ServerInfo) Columns() api.Columns {
+	return api.Columns{
+		api.MakeColumnString("NAME"),
+		api.MakeColumnAny("VALUE"),
+	}
+}
+
+func (si ServerInfo) Values() []interface{} {
+	return []interface{}{si.Name, si.Value}
+}
+
+func (si ServerInfo) Err() error {
+	return si.err
+}
+
+func ListServerInfoWalk(ctx context.Context, callback func(*ServerInfo) bool) {
+	if serverInfoProvider == nil {
+		rec := &ServerInfo{Name: "error", Value: "server info provider is not set"}
+		callback(rec)
+		return
+	}
+	serverInfo := serverInfoProvider()
+	keys := make([]string, 0, len(serverInfo))
+	for k := range serverInfo {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		v := serverInfo[k]
+		rec := &ServerInfo{Name: k, Value: v}
+		if !callback(rec) {
+			return
+		}
+	}
 }
 
 type TableInfo struct {

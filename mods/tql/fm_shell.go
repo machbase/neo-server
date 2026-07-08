@@ -33,7 +33,6 @@ func SetHttpAddresses(addrs []string) {
 var _serviceControllerAddr string
 var _serviceWorkspace string
 var _serverKeyPath string
-var _serverInfo map[string]any
 
 func SetServiceControllerAddress(addr string) {
 	_serviceControllerAddr = addr
@@ -45,10 +44,6 @@ func SetServiceWorkspace(workspace string) {
 
 func SetServerKeyPath(path string) {
 	_serverKeyPath = path
-}
-
-func SetServerInfo(nfo map[string]any) {
-	_serverInfo = nfo
 }
 
 func (node *Node) fmShell(cmd0 string, args0 ...string) {

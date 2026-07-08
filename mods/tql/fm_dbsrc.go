@@ -713,31 +713,33 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 }
 
 func sqlShowInfo(node *Node) string {
-	node.task.SetResultColumns(api.Columns{
-		api.MakeColumnRownum(),
-		api.MakeColumnString("NAME"),
-		api.MakeColumnAny("VALUE"),
-	})
-	// key ordering
-	keys := []string{}
-	for k := range _serverInfo {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	// yield records
 	nrow := int64(0)
-	for _, k := range keys {
-		v := _serverInfo[k]
-		NewRecord(nrow, []any{k, v}).Tell(node.next)
+	spi.ListServerInfoWalk(node.task.ctx, func(nfo *spi.ServerInfo) bool {
+		if err := nfo.Err(); err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return false
+		}
 		nrow++
-	}
+		if node.task.shouldStop() {
+			return false
+		}
+		yieldShowInfoType(node, nfo, nrow)
+		return true
+	})
 	return ""
 }
 
 func sqlShowTables(node *Node, conn api.Conn, all bool) string {
 	nrow := int64(0)
 	spi.ListTablesWalk(node.task.ctx, conn, all, func(tableInfo *spi.TableInfo) bool {
+		if err := tableInfo.Err(); err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return false
+		}
 		nrow++
+		if node.task.shouldStop() {
+			return false
+		}
 		return yieldTableInfo(node, tableInfo, nrow)
 	})
 	return ""
@@ -756,7 +758,14 @@ func sqlShowTable(node *Node, conn api.Conn, tableName string, all bool) string 
 func sqlShowIndexes(node *Node, conn api.Conn) string {
 	nrow := int64(0)
 	spi.ListIndexesWalk(node.task.ctx, conn, func(indexInfo *spi.IndexInfo) bool {
+		if err := indexInfo.Err(); err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return false
+		}
 		nrow++
+		if node.task.shouldStop() {
+			return false
+		}
 		return yieldIndexesInfo(node, indexInfo, nrow)
 	})
 	return ""
@@ -775,7 +784,14 @@ func sqlShowIndex(node *Node, conn api.Conn, indexName string) string {
 func sqlShowLsmIndexes(node *Node, conn api.Conn) string {
 	rownum := int64(0)
 	spi.ListLsmIndexesWalk(node.task.ctx, conn, func(indexInfo *spi.LsmIndexInfo) bool {
+		if err := indexInfo.Err(); err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return false
+		}
 		rownum++
+		if node.task.shouldStop() {
+			return false
+		}
 		return yieldShowInfoType(node, indexInfo, rownum)
 	})
 	return ""
@@ -824,6 +840,9 @@ func sqlShowIndexGap(node *Node, conn api.Conn) string {
 			return false
 		}
 		nrow++
+		if node.task.shouldStop() {
+			return false
+		}
 		return yieldShowInfoType(node, gapInfo, nrow)
 	})
 	return ""
@@ -836,6 +855,9 @@ func sqlShowTagIndexGap(node *Node, conn api.Conn) string {
 			return false
 		}
 		nrow++
+		if node.task.shouldStop() {
+			return false
+		}
 		return yieldShowInfoType(node, gapInfo, nrow)
 	})
 	return ""

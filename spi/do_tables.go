@@ -369,7 +369,7 @@ func ListStatementsWalk(ctx context.Context, conn api.Conn, callback func(*State
 }
 
 func ListSessionsWalk(ctx context.Context, conn api.Conn, callback func(*SessionInfo) bool) {
-	rows, err := conn.Query(ctx, `SELECT ID, USER_ID, USER_NAME, MAX_QPX_MEM FROM V$SESSION`)
+	rows, err := conn.Query(ctx, `SELECT ID, USER_ID, USER_NAME, LOGIN_TIME, MAX_QPX_MEM FROM V$SESSION`)
 	if err != nil {
 		callback(&SessionInfo{err: err})
 		return
@@ -381,7 +381,7 @@ func ListSessionsWalk(ctx context.Context, conn api.Conn, callback func(*Session
 	}()
 	for rows.Next() {
 		rec := &SessionInfo{}
-		rec.err = rows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.MaxQPXMem)
+		rec.err = rows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.LoginTime, &rec.MaxQPXMem)
 		if !callback(rec) {
 			return
 		}
