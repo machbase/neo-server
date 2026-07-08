@@ -257,17 +257,35 @@ func (ex *Exporter) AddRow(values []any) error {
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
+		case uint16:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(uint64(v), 10)
+			}
 		case int32:
 			if treatIntValueAsFloat {
 				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
+		case uint32:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(uint64(v), 10)
+			}
 		case int64:
 			if treatIntValueAsFloat {
 				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(v, 10)
+			}
+		case uint64:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(v, 10)
 			}
 		case bool:
 			cols[i] = strconv.FormatBool(v)
