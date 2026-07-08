@@ -62,7 +62,7 @@ func (c *WrappedSqlConn) QueryRow(ctx context.Context, sqlText string, params ..
 	}
 	defer r.Close()
 
-	ret := &WrappedSqlRow{}
+	ret := &WrappedSqlRow{timeLocation: time.UTC}
 	rows := &WrappedSqlRows{sqlRows: r}
 	ret.columns, ret.columnsErr = rows.Columns()
 	if ret.columnsErr != nil {
@@ -168,10 +168,11 @@ func (r *WrappedSqlResult) RowsAffected() int64 {
 }
 
 type WrappedSqlRow struct {
-	err        error
-	values     []any
-	columns    api.Columns
-	columnsErr error
+	err          error
+	values       []any
+	columns      api.Columns
+	columnsErr   error
+	timeLocation *time.Location
 }
 
 var _ api.Row = (*WrappedSqlRow)(nil)
@@ -201,7 +202,7 @@ func (r *WrappedSqlRow) Scan(values ...any) error {
 			values[i] = nil
 			continue
 		}
-		if err := api.Scan(r.values[i], values[i]); err != nil {
+		if err := api.Scan(r.values[i], values[i], r.timeLocation); err != nil {
 			return err
 		}
 	}
@@ -312,7 +313,7 @@ func (r *WrappedSqlRows) Columns() (api.Columns, error) {
 		nullable, ok := col.Nullable()
 		ret[i] = &api.Column{
 			Name:     col.Name(),
-			DataType: scanTypeToDataType(col),
+			DataType: SqlColumnTypeToDataType(col),
 			Nullable: ok && nullable,
 		}
 		if length, ok := col.Length(); ok {
@@ -394,7 +395,7 @@ func (r *WrappedSqlRows) Err() error {
 	return r.sqlRows.Err()
 }
 
-func scanTypeToDataType(col *sql.ColumnType) api.DataType {
+func SqlColumnTypeToDataType(col *sql.ColumnType) api.DataType {
 	switch col.DatabaseTypeName() {
 	case "VARCHAR", "TEXT", "NCHAR", "NVARCHAR":
 		return api.DataTypeString

@@ -443,19 +443,10 @@ func (si *SessionInfo) Columns() api.Columns {
 }
 
 func (si *SessionInfo) Values() []interface{} {
-	typ := ""
-	var qpxMem any
-	var stmtCount any
-	var loginTime any
 	if si.IsNeo {
-		typ = "neo"
-		stmtCount = si.StmtCount
+		return []any{si.ID, si.UserID, si.UserName, "neo", nil, nil, si.StmtCount}
 	} else {
-		loginTime = si.LoginTime
-		qpxMem = si.MaxQPXMem
-	}
-	return []interface{}{
-		si.ID, si.UserID, si.UserName, typ, loginTime, qpxMem, stmtCount,
+		return []any{si.ID, si.UserID, si.UserName, "CLI", si.LoginTime, si.MaxQPXMem, nil}
 	}
 }
 

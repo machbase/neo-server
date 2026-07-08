@@ -909,6 +909,11 @@ const (
 	ColumnRawTypeIPv6         = 7
 	ColumnRawTypeString       = 8
 	ColumnRawTypeBinary       = 9
+	ColumnRawTypeUInt16       = 10
+	ColumnRawTypeUInt32       = 11
+	ColumnRawTypeUInt64       = 12
+	ColumnRawTypeText         = 13
+	ColumnRawTypeJSON         = 14
 )
 
 func columnRawTypeToDataType(rawType int) (api.DataType, error) {
@@ -933,6 +938,16 @@ func columnRawTypeToDataType(rawType int) (api.DataType, error) {
 		return api.DataTypeString, nil
 	case ColumnRawTypeBinary:
 		return api.DataTypeBinary, nil
+	case ColumnRawTypeUInt16:
+		return api.DataTypeUInt16, nil
+	case ColumnRawTypeUInt32:
+		return api.DataTypeUInt32, nil
+	case ColumnRawTypeUInt64:
+		return api.DataTypeUInt64, nil
+	case ColumnRawTypeText:
+		return api.DataTypeString, nil
+	case ColumnRawTypeJSON:
+		return api.DataTypeString, nil
 	default:
 		return "", api.ErrDatabaseUnsupportedType("ColumnType", rawType)
 	}
@@ -942,10 +957,16 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 	switch typ {
 	case api.DataTypeInt16:
 		return ColumnRawTypeInt16, nil
+	case api.DataTypeUInt16:
+		return ColumnRawTypeUInt16, nil
 	case api.DataTypeInt32:
 		return ColumnRawTypeInt32, nil
+	case api.DataTypeUInt32:
+		return ColumnRawTypeUInt32, nil
 	case api.DataTypeInt64:
 		return ColumnRawTypeInt64, nil
+	case api.DataTypeUInt64:
+		return ColumnRawTypeUInt64, nil
 	case api.DataTypeDatetime:
 		return ColumnRawTypeDatetime, nil
 	case api.DataTypeFloat32:

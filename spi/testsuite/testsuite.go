@@ -284,6 +284,13 @@ func (s *Server) StartServer() {
 		panic(err)
 	} else {
 		s.machgoDatabase = db
+		spi.SetDefaultDSN(map[string]string{
+			"host":            "127.0.0.1",
+			"port":            fmt.Sprintf("%d", s.machsvrPort),
+			"statement_cache": "auto",
+			"user":            "sys",
+			"auth_key_file":   privPath,
+		})
 		spi.SetDefault(db, privKey)
 	}
 }

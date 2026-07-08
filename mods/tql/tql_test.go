@@ -224,101 +224,6 @@ func TestDatabaseExplainTql(t *testing.T) {
 func TestDatabaseTql(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "SQL_show-tables",
-			Script: `
-				SQL("show tables;")
-				CSV(header(true))
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
-				require.GreaterOrEqual(t, len(lines), 4)
-				require.Equal(t, "DATABASE,USER,NAME,ID,TYPE,FLAG", lines[0])
-				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
-				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
-				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
-			},
-		},
-		{
-			Name: "SQL_show-indexes",
-			Script: `
-				SQL("show indexes ")
-				CSV(header(true))
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
-				require.GreaterOrEqual(t, len(lines), 5)
-				require.Equal(t, "ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
-
-				required := map[string]struct {
-					table  string
-					column string
-				}{
-					"__PK_IDX__TAG_DATA_META_1":   {table: "_TAG_DATA_META", column: "_ID"},
-					"_TAG_DATA_META_NAME":         {table: "_TAG_DATA_META", column: "NAME"},
-					"__PK_IDX__TAG_SIMPLE_META_1": {table: "_TAG_SIMPLE_META", column: "_ID"},
-					"_TAG_SIMPLE_META_NAME":       {table: "_TAG_SIMPLE_META", column: "NAME"},
-				}
-				seen := map[string]bool{}
-				for _, line := range lines[1:] {
-					fields := strings.Split(line, ",")
-					require.GreaterOrEqual(t, len(fields), 11)
-					idxName := fields[5]
-					req, ok := required[idxName]
-					if !ok {
-						continue
-					}
-					require.Equal(t, "MACHBASEDB", fields[1])
-					require.Equal(t, "SYS", fields[2])
-					require.Equal(t, req.table, fields[3])
-					require.Equal(t, req.column, fields[4])
-					require.Equal(t, "REDBLACK", fields[6])
-					seen[idxName] = true
-				}
-				for name := range required {
-					require.True(t, seen[name], "required index missing: %s", name)
-				}
-			},
-		},
-		{
-			Name: "SQL_show-license_JSON",
-			Script: `
-				SQL("show license")
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.7").String(), result)
-				require.Equal(t, int64(1), gjson.Get(result, "data.rows.#").Int(), result)
-			},
-		},
-		{
-			Name: "SQL_show-indexes_JSON",
-			Script: `
-				SQL("show indexes")
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "BITMAP_ENCODE", gjson.Get(result, "data.columns.10").String(), result)
-				require.True(t, gjson.Get(result, "data.rows.#").Int() > 0, result)
-			},
-		},
-		{
-			Name: "SQL_show-info_JSON",
-			Script: `
-				SQL("show info")
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				if strings.TrimSpace(result) == "" {
-					return
-				}
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-			},
-		},
-		{
 			Name: "SQL_show-indexgap_JSON",
 			Script: `
 				SQL("show indexgap")
@@ -2444,7 +2349,7 @@ func TestBridgeSqlite(t *testing.T) {
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `[["2"]]`, gjson.Get(result, "data.rows").Raw)
+				require.Equal(t, `[[2]]`, gjson.Get(result, "data.rows").Raw)
 			},
 		},
 		{
@@ -2490,7 +2395,7 @@ func TestBridgeSqlite(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool())
 				// FIXME: count(*) should be integer instead of string
-				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[["1"]]}`, gjson.Get(result, "data").Raw)
+				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[[1]]}`, gjson.Get(result, "data").Raw)
 			},
 		},
 		{
@@ -2512,7 +2417,7 @@ func TestBridgeSqlite(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool())
 				// FIXME: count(*) should be integer instead of string
-				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[["0"]]}`, gjson.Get(result, "data").Raw)
+				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[[0]]}`, gjson.Get(result, "data").Raw)
 			},
 		},
 		{

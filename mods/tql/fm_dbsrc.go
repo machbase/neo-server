@@ -2,8 +2,10 @@ package tql
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -240,53 +242,75 @@ type DataGenMachbase struct {
 }
 
 func (dc *DataGenMachbase) gen(node *Node) {
-	conn, err := dc.task.ConnDatabase(node.task.ctx)
+	dbm, err := dc.task.SqlDatabase()
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	conn, err := dbm.Conn(node.task.ctx)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	defer conn.Close()
 
-	query := &spi.Query{
-		Begin: func(q *spi.Query) {
-			cols := q.Columns()
-			cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
-			dc.task.SetResultColumns(cols)
-		},
-		Next: func(q *spi.Query, nrow int64) bool {
-			if dc.task.shouldStop() {
-				return false
-			}
-			values, err := q.Columns().MakeBuffer()
+	stmtType := spi.DetectSQLStatementType(dc.sqlText)
+	if !stmtType.IsFetch() {
+		dc.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			api.MakeColumnString("MESSAGE"),
+		})
+		result, err := conn.ExecContext(node.task.ctx, dc.sqlText, dc.params...)
+		if err != nil {
+			ErrorRecord(err).Tell(node.next)
+		} else {
+			nrows, err := result.RowsAffected()
 			if err != nil {
 				ErrorRecord(err).Tell(node.next)
-				return false
+			} else {
+				dc.resultMsg = spi.MakeUserMessage(stmtType, nrows)
+				NewRecord(1, dc.resultMsg).Tell(node.next)
 			}
-			if err = q.Scan(values...); err != nil {
-				ErrorRecord(err).Tell(node.next)
-				return false
-			}
-			if len(values) > 0 {
-				NewRecord(nrow, values).Tell(node.next)
-			}
-			return !dc.task.shouldStop()
-		},
-		End: func(q *spi.Query) {
-			dc.resultMsg = q.UserMessage()
-			if !q.IsFetch() {
-				dc.task.SetResultColumns(api.Columns{
-					api.MakeColumnRownum(),
-					api.MakeColumnString("MESSAGE"),
-				})
-				NewRecord(1, q.UserMessage()).Tell(node.next)
-			}
-		},
+		}
+		return
 	}
-	if err := query.Execute(node.task.ctx, conn, dc.sqlText, dc.params...); err != nil {
-		dc.resultMsg = err.Error()
+
+	rows, err := conn.QueryContext(node.task.ctx, dc.sqlText, dc.params...)
+	if err != nil {
 		ErrorRecord(err).Tell(node.next)
+		return
 	}
+	defer rows.Close()
+
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	cols := make([]*api.Column, len(columnTypes)+1)
+	cols[0] = api.MakeColumnRownum()
+	for i, col := range columnTypes {
+		cols[i+1] = &api.Column{Name: col.Name(), DataType: spi.SqlColumnTypeToDataType(col)}
+	}
+	dc.task.SetResultColumns(cols)
+
+	nrow := int64(0)
+	for rows.Next() {
+		nrow++
+		if dc.task.shouldStop() {
+			break
+		}
+		values := spi.MakeBuffer(columnTypes)
+		if err = rows.Scan(values...); err != nil {
+			ErrorRecord(err).Tell(node.next)
+			break
+		}
+		NewRecord(nrow, values).Tell(node.next)
+	}
+	dc.resultMsg = spi.MakeUserMessage(stmtType, nrow)
 }
+
+type DatabaseProvider func() (*sql.DB, error)
 
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
@@ -299,28 +323,22 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
 	tick := time.Now()
-	var databaseProvider func(ctx context.Context) (api.Conn, error)
+	var databaseProvider DatabaseProvider
 	var sqlText string
 	var sqlParams []any
-	var sqlBridged bool
 	var prompt string
 	var resultMsg string
 
 	switch v := args[0].(type) {
 	case string:
-		databaseProvider = func(ctx context.Context) (api.Conn, error) {
-			return x.task.ConnDatabase(ctx)
+		databaseProvider = func() (*sql.DB, error) {
+			return x.task.SqlDatabase()
 		}
 		sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
 		sqlParams = args[1:]
 	case *bridgeName:
-		sqlBridged = true
-		databaseProvider = func(ctx context.Context) (api.Conn, error) {
-			db, err := connector.New(v.name)
-			if err != nil {
-				return nil, err
-			}
-			return db.Connect(ctx)
+		databaseProvider = func() (*sql.DB, error) {
+			return connector.Database(v.name)
 		}
 		if str, ok := args[1].(string); ok {
 			sqlText = strings.TrimSuffix(strings.TrimSpace(str), ";")
@@ -339,76 +357,618 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	if len(sqlText) == 0 {
 		return nil, fmt.Errorf("f(SQL) Empty SQL text")
 	}
-	if sqlBridged && !spi.DetectSQLStatementType(sqlText).IsFetch() {
-		conn, err := databaseProvider(x.task.ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-		result := conn.Exec(x.task.ctx, sqlText, sqlParams...)
-		if err := result.Err(); err != nil {
-			resultMsg = err.Error()
-			ErrorRecord(err).Tell(x.next)
-			return nil, nil
-		}
-		resultMsg = result.Message()
-		x.task.SetResultColumns(api.Columns{
+
+	dbm, err := databaseProvider()
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dbm.Conn(x.task.ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	stmtType := spi.DetectSQLStatementType(sqlText)
+	x.task.LogInfo("╭─", prompt, sqlText)
+	switch {
+	case stmtType == spi.SQLStatementTypeShow:
+		resultMsg = sqlShow(x, databaseProvider, sqlText)
+	case stmtType == spi.SQLStatementTypeDescribe:
+		sqlText = strings.TrimPrefix(strings.TrimSpace(strings.ToUpper(sqlText)), "DESCRIBE")
+		sqlText = strings.TrimPrefix(strings.TrimSpace(sqlText), "DESC")
+		sqlText = "SHOW TABLE " + sqlText
+		resultMsg = sqlShow(x, databaseProvider, sqlText)
+	case stmtType == spi.SQLStatementTypeExplain:
+		resultMsg = sqlExplain(x, databaseProvider, sqlText)
+	case stmtType.IsFetch():
+		resultMsg = sqlQuery(x, stmtType, databaseProvider, sqlText, sqlParams...)
+	default:
+		resultMsg = sqlExec(x, stmtType, databaseProvider, sqlText, sqlParams...)
+	}
+	x.task.LogInfo("╰─➤", resultMsg, time.Since(tick).String())
+	return nil, nil
+}
+
+func sqlExec(node *Node, stmtType spi.SQLStatementType, dbProvider DatabaseProvider, sqlText string, sqlParams ...any) string {
+	var userMsg string
+	dbm, err := dbProvider()
+	if err != nil {
+		userMsg = err.Error()
+		ErrorRecord(err).Tell(node.next)
+		return userMsg
+	}
+	conn, err := dbm.Conn(node.task.ctx)
+	if err != nil {
+		userMsg = err.Error()
+		ErrorRecord(err).Tell(node.next)
+		return userMsg
+	}
+	defer conn.Close()
+
+	result, err := conn.ExecContext(node.task.ctx, sqlText, sqlParams...)
+	if err != nil {
+		userMsg = err.Error()
+		ErrorRecord(err).Tell(node.next)
+	} else {
+		nrows, _ := result.RowsAffected()
+		userMsg = spi.MakeUserMessage(stmtType, nrows)
+		node.task.SetResultColumns(api.Columns{
 			api.MakeColumnRownum(),
 			api.MakeColumnString("MESSAGE"),
 		})
-		NewRecord(1, resultMsg).Tell(x.next)
-	} else {
-		ch := spi.CommandHandler{
-			Database:        databaseProvider,
-			FallbackVerb:    "sql --",
-			SilenceUsage:    true,
-			SilenceErrors:   true,
-			OutWriter:       x.task,
-			ErrWriter:       x.task,
-			ShowTables:      func(ti *spi.TableInfo, nrow int64) bool { return yieldTableInfo(x, ti, nrow) },
-			ShowIndexes:     func(ii *spi.IndexInfo, nrow int64) bool { return yieldIndexesInfo(x, ii, nrow) },
-			ShowIndex:       func(ii *spi.IndexInfo) bool { return yieldIndexInfo(x, ii) },
-			ShowLsmIndexes:  func(li *spi.LsmIndexInfo, nrow int64) bool { return yieldShowInfoType(x, li, nrow) },
-			DescribeTable:   func(td *api.TableDescription) { yieldTableDescription(x, td) },
-			ShowTags:        func(tag *spi.TagInfo, nrow int64) bool { return yieldTags(x, tag, nrow) },
-			ShowIndexGap:    func(gap *spi.IndexGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
-			ShowTagIndexGap: func(gap *spi.IndexGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
-			ShowRollupGap:   func(gap *spi.RollupGapInfo, nrow int64) bool { return yieldShowInfoType(x, gap, nrow) },
-			ShowSessions:    func(info *spi.SessionInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowStatements:  func(info *spi.StatementInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowStorage:     func(info *spi.StorageInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowTableUsage:  func(info *spi.TableUsageInfo, nrow int64) bool { return yieldShowInfoType(x, info, nrow) },
-			ShowLicense:     func(info *spi.LicenseInfo) bool { return yieldLicenseInfo(x, info) },
-			Explain:         func(sql string, err error) { yieldExplain(x, sql, err) },
-			SqlQuery: func(q *spi.Query, nrow int64) bool {
-				if nrow == -1 {
-					resultMsg = q.UserMessage()
-				}
-				return yieldSqlQuery(x, q, nrow)
-			},
-		}
-		ch.PreExecute = func(args []string) {
-			x.task.LogInfo("╭─", prompt, sqlText)
-		}
-		ch.PostExecute = func(args []string, message string, err error) {
-			if err != nil {
-				// Log level must match the SQL statement logging level
-				// to keep error messages coupled with their queries
-				x.task.LogInfo("╰─➤", err.Error())
-			} else {
-				x.task.LogInfo("╰─➤", resultMsg, time.Since(tick).String())
-			}
-		}
-		args := spi.ParseCommandLine(sqlText)
-		if !ch.IsKnownVerb(args[0]) {
-			args = append([]string{"sql", "--"}, sqlText)
-		}
+		NewRecord(1, userMsg).Tell(node.next)
+	}
+	return userMsg
+}
 
-		if err := ch.Exec(x.task.ctx, args, sqlParams...); err != nil {
-			return nil, err
+func sqlQuery(node *Node, stmtType spi.SQLStatementType, dbProvider DatabaseProvider, sqlText string, sqlParams ...any) string {
+	var userMsg string
+	dbm, err := dbProvider()
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	conn, err := dbm.Conn(node.task.ctx)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	defer conn.Close()
+
+	rows, err := conn.QueryContext(node.task.ctx, sqlText, sqlParams...)
+	if err != nil {
+		userMsg = err.Error()
+		ErrorRecord(err).Tell(node.next)
+	} else {
+		defer rows.Close()
+		columnTypes, err := rows.ColumnTypes()
+		if err != nil {
+			userMsg = err.Error()
+			ErrorRecord(err).Tell(node.next)
+		} else {
+			cols := make([]*api.Column, len(columnTypes)+1)
+			cols[0] = api.MakeColumnRownum()
+			for i, col := range columnTypes {
+				cols[i+1] = &api.Column{Name: col.Name(), DataType: spi.SqlColumnTypeToDataType(col)}
+			}
+			node.task.SetResultColumns(cols)
+			nrow := int64(0)
+			for rows.Next() {
+				nrow++
+				if node.task.shouldStop() {
+					userMsg = spi.MakeUserMessage(stmtType, nrow) + ", cancelled"
+					break
+				}
+				values := spi.MakeBuffer(columnTypes)
+				if err := rows.Scan(values...); err != nil {
+					userMsg = err.Error()
+					ErrorRecord(err).Tell(node.next)
+					break
+				}
+				NewRecord(nrow, values).Tell(node.next)
+			}
+			userMsg = spi.MakeUserMessage(stmtType, nrow)
 		}
 	}
-	return nil, nil
+	return userMsg
+}
+
+type Explainer interface {
+	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
+
+func sqlExplain(node *Node, dbProvider DatabaseProvider, sqlText string) string {
+	explainTokens, explainSqlText, err := splitExplainSQLText(sqlText)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	dbm, err := dbProvider()
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	conn, err := dbm.Conn(node.task.ctx)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	defer conn.Close()
+	resultMsg := ""
+	conn.Raw(func(driverConn any) error {
+		if c, ok := driverConn.(Explainer); ok {
+			// Use the Explainer interface if available
+			plan, err := c.Explain(node.task.ctx, explainSqlText, explainHasFullFlag(explainTokens))
+			if err != nil {
+				ErrorRecord(err).Tell(node.next)
+				resultMsg = err.Error()
+			} else {
+				node.task.SetResultColumns(api.Columns{
+					api.MakeColumnRownum(),
+					api.MakeColumnString("PLAN"),
+				})
+				for n, line := range strings.Split(plan, "\n") {
+					NewRecord(n, []any{line}).Tell(node.next)
+				}
+				resultMsg = "plan generated."
+			}
+		} else {
+			err := fmt.Errorf("database driver does not support Explain interface")
+			ErrorRecord(err).Tell(node.next)
+			resultMsg = err.Error()
+		}
+		return nil
+	})
+	return resultMsg
+}
+
+func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(text), ";")
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		err := fmt.Errorf("f(SQL) Empty SQL text")
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	if !strings.EqualFold(fields[0], "show") {
+		err := fmt.Errorf("f(SQL) invalid SHOW statement")
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+
+	showAll := false
+	command := ""
+	args := make([]string, 0, len(fields)-1)
+	for _, raw := range fields[1:] {
+		switch strings.ToLower(raw) {
+		case "-a", "--all":
+			showAll = true
+		default:
+			if strings.HasPrefix(raw, "-") {
+				err := fmt.Errorf("f(SQL) unsupported show option %q", raw)
+				ErrorRecord(err).Tell(node.next)
+				return err.Error()
+			}
+			if command == "" {
+				command = strings.ToLower(raw)
+			} else {
+				args = append(args, raw)
+			}
+		}
+	}
+
+	if command == "" {
+		err := fmt.Errorf("f(SQL) missing show command")
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+
+	validateArgs := func(want string, exact int) error {
+		if len(args) != exact {
+			return fmt.Errorf("f(SQL) show %s expects %d argument(s), got %d", want, exact, len(args))
+		}
+		return nil
+	}
+	validateNoAll := func() error {
+		if showAll {
+			return fmt.Errorf("f(SQL) show %s does not support -a/--all", command)
+		}
+		return nil
+	}
+
+	dbm, err := dbProvider()
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	conn, err := dbm.Conn(node.task.ctx)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	defer conn.Close()
+	apiConn := spi.WrapSqlConn(conn)
+
+	switch command {
+	case "info":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowInfo(node)
+		}
+	case "tables":
+		err = validateArgs(command, 0)
+		if err == nil {
+			return sqlShowTables(node, apiConn, showAll)
+		}
+	case "table":
+		err = validateArgs(command, 1)
+		if err == nil {
+			return sqlShowTable(node, apiConn, args[0], showAll)
+		}
+	case "indexes":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowIndexes(node, apiConn)
+		}
+	case "index":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 1)
+		}
+		if err == nil {
+			return sqlShowIndex(node, apiConn, args[0])
+		}
+	case "lsm":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowLsmIndexes(node, apiConn)
+		}
+	case "tags":
+		err = validateNoAll()
+		if err == nil && len(args) < 1 {
+			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
+		}
+		if err == nil {
+			return sqlShowTags(node, apiConn, args[0], args[1:]...)
+		}
+	case "indexgap":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowIndexGap(node, apiConn)
+		}
+	case "tagindexgap":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowTagIndexGap(node, apiConn)
+		}
+	case "rollupgap":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowRollupgap(node, apiConn)
+		}
+	case "sessions":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowSessions(node, apiConn)
+		}
+	case "statements":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowStatements(node, apiConn)
+		}
+	case "storage":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowStorage(node, apiConn)
+		}
+	case "table-usage":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowTableUsage(node, apiConn)
+		}
+	case "license":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return sqlShowLicense(node, apiConn)
+		}
+	default:
+		err = fmt.Errorf("f(SQL) unsupported show command %q", command)
+	}
+
+	ErrorRecord(err).Tell(node.next)
+	return err.Error()
+}
+
+func sqlShowInfo(node *Node) string {
+	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnRownum(),
+		api.MakeColumnString("NAME"),
+		api.MakeColumnAny("VALUE"),
+	})
+	// key ordering
+	keys := []string{}
+	for k := range _serverInfo {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	// yield records
+	nrow := int64(0)
+	for _, k := range keys {
+		v := _serverInfo[k]
+		NewRecord(nrow, []any{k, v}).Tell(node.next)
+		nrow++
+	}
+	return ""
+}
+
+func sqlShowTables(node *Node, conn api.Conn, all bool) string {
+	nrow := int64(0)
+	spi.ListTablesWalk(node.task.ctx, conn, all, func(tableInfo *spi.TableInfo) bool {
+		nrow++
+		return yieldTableInfo(node, tableInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowTable(node *Node, conn api.Conn, tableName string, all bool) string {
+	desc, err := api.DescribeTable(node.task.ctx, conn, tableName, all)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	yieldTableDescription(node, desc)
+	return ""
+}
+
+func sqlShowIndexes(node *Node, conn api.Conn) string {
+	nrow := int64(0)
+	spi.ListIndexesWalk(node.task.ctx, conn, func(indexInfo *spi.IndexInfo) bool {
+		nrow++
+		return yieldIndexesInfo(node, indexInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowIndex(node *Node, conn api.Conn, indexName string) string {
+	di, err := spi.DescribeIndex(node.task.ctx, conn, indexName)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	yieldIndexInfo(node, di)
+	return ""
+}
+
+func sqlShowLsmIndexes(node *Node, conn api.Conn) string {
+	rownum := int64(0)
+	spi.ListLsmIndexesWalk(node.task.ctx, conn, func(indexInfo *spi.LsmIndexInfo) bool {
+		rownum++
+		return yieldShowInfoType(node, indexInfo, rownum)
+	})
+	return ""
+}
+
+func sqlShowTags(node *Node, conn api.Conn, tableName string, tagNames ...string) string {
+	tableName = strings.ToUpper(tableName)
+	desc, err := api.DescribeTable(node.task.ctx, conn, tableName, false)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	if desc.Type != api.TableTypeTag {
+		err := fmt.Errorf("f(SQL) table %q is not a tag table", tableName)
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	nrow := int64(0)
+	spi.ListTagsWalk(node.task.ctx, conn, tableName, desc.TagNameColumn, func(tagInfo *spi.TagInfo) bool {
+		if err = tagInfo.Err; err != nil {
+			return false
+		}
+		if len(tagNames) > 0 {
+			if !slices.Contains(tagNames, tagInfo.Name) {
+				return true // skip this tag
+			}
+		}
+		tagInfo.Summarized = desc.Summarized
+		if stat, err := spi.TagStat(node.task.ctx, conn, tableName, tagInfo.Name); err != nil {
+			// some tags may not have stat
+			// the err may be 'no rows in result set'
+			// ignore the error, for processing the next tag
+		} else {
+			tagInfo.Stat = stat
+		}
+		nrow++
+		return yieldTags(node, tagInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowIndexGap(node *Node, conn api.Conn) string {
+	nrow := int64(0)
+	spi.ListIndexGapWalk(node.task.ctx, conn, func(gapInfo *spi.IndexGapInfo) bool {
+		if err := gapInfo.Err(); err != nil {
+			return false
+		}
+		nrow++
+		return yieldShowInfoType(node, gapInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowTagIndexGap(node *Node, conn api.Conn) string {
+	nrow := int64(0)
+	spi.ListTagIndexGapWalk(node.task.ctx, conn, func(gapInfo *spi.IndexGapInfo) bool {
+		if err := gapInfo.Err(); err != nil {
+			return false
+		}
+		nrow++
+		return yieldShowInfoType(node, gapInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowRollupgap(node *Node, conn api.Conn) string {
+	nrow := int64(0)
+	spi.ListRollupGapWalk(node.task.ctx, conn, func(gapInfo *spi.RollupGapInfo) bool {
+		if err := gapInfo.Err(); err != nil {
+			return false
+		}
+		nrow++
+		return yieldShowInfoType(node, gapInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowSessions(node *Node, conn api.Conn) string {
+	nrow := int64(0)
+	spi.ListSessionsWalk(node.task.ctx, conn, func(sessionInfo *spi.SessionInfo) bool {
+		if err := sessionInfo.Err(); err != nil {
+			return false
+		}
+		nrow++
+		return yieldShowInfoType(node, sessionInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowStatements(node *Node, conn api.Conn) string {
+	nrow := int64(0)
+	spi.ListStatementsWalk(node.task.ctx, conn, func(stmtInfo *spi.StatementInfo) bool {
+		if err := stmtInfo.Err(); err != nil {
+			return false
+		}
+		nrow++
+		return yieldShowInfoType(node, stmtInfo, nrow)
+	})
+	return ""
+}
+
+func sqlShowStorage(node *Node, conn api.Conn) string {
+	rownum := int64(0)
+	spi.ListStorageWalk(node.task.ctx, conn, func(storageInfo *spi.StorageInfo) bool {
+		if err := storageInfo.Err(); err != nil {
+			return false
+		}
+		rownum++
+		return yieldShowInfoType(node, storageInfo, rownum)
+	})
+	return ""
+}
+
+func sqlShowTableUsage(node *Node, conn api.Conn) string {
+	rownum := int64(0)
+	spi.ListTableUsageWalk(node.task.ctx, conn, func(tableUsageInfo *spi.TableUsageInfo) bool {
+		if err := tableUsageInfo.Err(); err != nil {
+			return false
+		}
+		rownum++
+		return yieldShowInfoType(node, tableUsageInfo, rownum)
+	})
+	return ""
+}
+
+func sqlShowLicense(node *Node, conn api.Conn) string {
+	licenseInfo, err := spi.GetLicenseInfo(node.task.ctx, conn)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return err.Error()
+	}
+	yieldLicenseInfo(node, licenseInfo)
+	return ""
+}
+
+func splitExplainSQLText(sqlText string) ([]string, string, error) {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(sqlText), ";")
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return nil, "", fmt.Errorf("f(SQL) Empty SQL text")
+	}
+	if !strings.EqualFold(fields[0], "explain") {
+		return nil, trimmed, nil
+	}
+
+	tokens := make([]string, 0, len(fields))
+	start := -1
+	for i := 1; i < len(fields); i++ {
+		tok := fields[i]
+		if tok == "--" {
+			if i+1 >= len(fields) {
+				return nil, "", fmt.Errorf("f(SQL) missing statement after explain options")
+			}
+			start = i + 1
+			break
+		}
+		if isSQLStatementStart(tok) {
+			start = i
+			break
+		}
+		tokens = append(tokens, tok)
+	}
+	if start == -1 {
+		return nil, "", fmt.Errorf("f(SQL) missing statement after explain options")
+	}
+	return tokens, strings.Join(fields[start:], " "), nil
+}
+
+func explainHasFullFlag(tokens []string) bool {
+	for _, tok := range tokens {
+		if strings.EqualFold(tok, "full") || tok == "--full" || tok == "-f" {
+			return true
+		}
+	}
+	return false
+}
+
+func isSQLStatementStart(tok string) bool {
+	switch spi.DetectSQLStatementType(tok) {
+	case spi.SQLStatementTypeSelect,
+		spi.SQLStatementTypeInsert,
+		spi.SQLStatementTypeUpdate,
+		spi.SQLStatementTypeDelete,
+		spi.SQLStatementTypeCreate,
+		spi.SQLStatementTypeDrop,
+		spi.SQLStatementTypeAlter,
+		spi.SQLStatementTypeDescribe,
+		spi.SQLStatementTypeCommonTableExpression,
+		spi.SQLStatementTypeShow:
+		return true
+	default:
+		return false
+	}
 }
 
 func withRownum(p interface{ Columns() api.Columns }) api.Columns {
@@ -541,20 +1101,6 @@ func yieldLicenseInfo(node *Node, info *spi.LicenseInfo) bool {
 		info.Id, info.Type, info.Customer, info.Project, info.CountryCode, info.InstallDate, info.IssueDate, info.LicenseStatus,
 	}).Tell(node.next)
 	return true
-}
-
-func yieldExplain(node *Node, plan string, err error) {
-	if err != nil {
-		ErrorRecord(err).Tell(node.next)
-		return
-	}
-	node.task.SetResultColumns(api.Columns{
-		api.MakeColumnRownum(),
-		api.MakeColumnString("PLAN"),
-	})
-	for n, line := range strings.Split(plan, "\n") {
-		NewRecord(n, []any{line}).Tell(node.next)
-	}
 }
 
 func yieldSqlQuery(node *Node, q *spi.Query, nrow int64) bool {

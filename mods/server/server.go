@@ -472,6 +472,14 @@ func (s *Server) startMachbaseSvr() error {
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
+		pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
+		spi.SetDefaultDSN(map[string]string{
+			"host":            "127.0.0.1",
+			"port":            fmt.Sprintf("%d", s.Machbase.PORT_NO),
+			"statement_cache": "auto",
+			"user":            "sys",
+			"auth_key_pem":    string(pem),
+		})
 		spi.SetDefault(db, key)
 		spi.SetDefaultPoolConfig(
 			s.Config.MaxOpenConn,
@@ -522,6 +530,14 @@ func (s *Server) startMachbaseCli() error {
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
+		pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
+		spi.SetDefaultDSN(map[string]string{
+			"host":            host,
+			"port":            fmt.Sprintf("%d", port),
+			"statement_cache": "auto",
+			"user":            user,
+			"auth_key_pem":    string(pem),
+		})
 		spi.SetDefault(db, key)
 		spi.SetDefaultPoolConfig(
 			s.Config.MaxOpenConn,
@@ -985,8 +1001,36 @@ func (s *Server) startHttpServer() error {
 	}
 	util.AddShutdownHook(func() { s.httpd.Stop() })
 
+	nfo := map[string]any{}
+	if sinfo, err := s.getServerInfo(); err != nil {
+		nfo["error"] = err.Error()
+	} else {
+		if v := sinfo.Version; v != nil {
+			nfo["version.major"] = v.Major
+			nfo["version.minor"] = v.Minor
+			nfo["version.patch"] = v.Patch
+			nfo["version.gitSHA"] = v.GitSHA
+			nfo["version.buildTimestamp"] = v.BuildTimestamp
+			nfo["version.buildCompiler"] = v.BuildCompiler
+			nfo["version.engine"] = v.Engine
+		}
+		if r := sinfo.Runtime; r != nil {
+			nfo["runtime.os"] = r.OS
+			nfo["runtime.arch"] = r.Arch
+			nfo["runtime.pid"] = r.Pid
+			nfo["runtime.uptimeInSecond"] = r.UptimeInSecond
+			nfo["runtime.processes"] = r.Processes
+			nfo["runtime.goroutines"] = r.Goroutines
+			if r.Mem != nil {
+				for k, v := range r.Mem {
+					nfo[fmt.Sprintf("runtime.mem.%s", k)] = v
+				}
+			}
+		}
+	}
 	tql.SetHttpAddresses(s.Http.Listeners)
 	tql.SetServerKeyPath(s.ServerPrivateKeyPath())
+	tql.SetServerInfo(nfo)
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
 	util.AddShutdownHook(func() { tql.StopCache() })
 

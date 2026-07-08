@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -346,9 +345,9 @@ type QueryResponse struct {
 }
 
 type QueryData struct {
-	Columns []string       `json:"columns,omitempty"`
-	Types   []api.DataType `json:"types,omitempty"`
-	Rows    [][]any        `json:"rows"`
+	Columns []string `json:"columns,omitempty"`
+	Types   []string `json:"types,omitempty"`
+	Rows    [][]any  `json:"rows"`
 }
 
 type WriteRequest struct {

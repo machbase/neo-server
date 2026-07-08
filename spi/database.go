@@ -23,6 +23,32 @@ import (
 
 var defaultDatabase api.Database
 var defaultDatabaseKey crypto.PrivateKey
+var defaultDSN map[string]string
+
+func SetDefaultDSN(dsn map[string]string) {
+	defaultDSN = dsn
+}
+
+func DefaultDSN(overrides map[string]string) string {
+	result := make(map[string]string)
+	for k, v := range defaultDSN {
+		result[k] = v
+	}
+	for k, v := range overrides {
+		result[k] = v
+	}
+	if _, ok := result["auth_key_pem"]; ok {
+		delete(result, "auth_key_file")
+	}
+	parts := make([]string, 0, len(result))
+	for k, v := range result {
+		if strings.ContainsAny(v, " ;\n\r\t") {
+			v = fmt.Sprintf("\"%s\"", v)
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	return strings.Join(parts, ";")
+}
 
 func SetDefault(db api.Database, key crypto.PrivateKey) {
 	defaultDatabase = db
@@ -109,7 +135,38 @@ const (
 	SQLStatementTypeAlter
 	SQLStatementTypeDescribe
 	SQLStatementTypeCommonTableExpression
+	SQLStatementTypeExplain
+	SQLStatementTypeShow
 )
+
+func (st SQLStatementType) String() string {
+	switch st {
+	case SQLStatementTypeSelect:
+		return "SELECT"
+	case SQLStatementTypeInsert:
+		return "INSERT"
+	case SQLStatementTypeUpdate:
+		return "UPDATE"
+	case SQLStatementTypeDelete:
+		return "DELETE"
+	case SQLStatementTypeCreate:
+		return "CREATE"
+	case SQLStatementTypeDrop:
+		return "DROP"
+	case SQLStatementTypeAlter:
+		return "ALTER"
+	case SQLStatementTypeDescribe:
+		return "DESCRIBE"
+	case SQLStatementTypeCommonTableExpression:
+		return "CTE"
+	case SQLStatementTypeExplain:
+		return "EXPLAIN"
+	case SQLStatementTypeShow:
+		return "SHOW"
+	default:
+		return "OTHER"
+	}
+}
 
 func DetectSQLStatementType(sqlText string) SQLStatementType {
 	toks := strings.Fields(sqlText)
@@ -132,10 +189,14 @@ func DetectSQLStatementType(sqlText string) SQLStatementType {
 		return SQLStatementTypeDrop
 	case "ALTER":
 		return SQLStatementTypeAlter
-	case "DESCRIBE":
+	case "DESCRIBE", "DESC":
 		return SQLStatementTypeDescribe
 	case "WITH":
 		return SQLStatementTypeCommonTableExpression
+	case "SHOW":
+		return SQLStatementTypeShow
+	case "EXPLAIN":
+		return SQLStatementTypeExplain
 	default:
 		return SQLStatementTypeOther
 	}
@@ -269,7 +330,13 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 		case "time.Time":
 			buffer[i] = new(time.Time)
 		case "string":
-			buffer[i] = new(string)
+			// Issue machbase/neo#1408
+			// can not use string type directly
+			if nullable, ok := colType.Nullable(); ok && nullable {
+				buffer[i] = new(sql.NullString)
+			} else {
+				buffer[i] = new(string)
+			}
 		case "[]uint8":
 			buffer[i] = new([]byte)
 		case "net.IP":
@@ -280,9 +347,21 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			} else {
 				buffer[i] = new(api.JSONString)
 			}
+		case "sql.NullInt16":
+			buffer[i] = new(sql.NullInt16)
+		case "sql.NullInt32":
+			buffer[i] = new(sql.NullInt32)
+		case "sql.NullInt64":
+			buffer[i] = new(sql.NullInt64)
+		case "sql.NullFloat64":
+			buffer[i] = new(sql.NullFloat64)
+		case "sql.NullString":
+			buffer[i] = new(sql.NullString)
+		case "sql.NullBool":
+			buffer[i] = new(sql.NullBool)
+		case "sql.NullTime":
+			buffer[i] = new(sql.NullTime)
 		default:
-			xx := colType.ScanType().String()
-			_ = xx
 			switch colType.DatabaseTypeName() {
 			case "INT", "BIGINT", "SMALLINT", "TINYINT":
 				buffer[i] = new(sql.NullInt64)
@@ -303,42 +382,30 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 }
 
 func MakeUserMessage(smtType SQLStatementType, rowsCount int64) string {
+	rowsObj := ""
+	switch rowsCount {
+	case 0:
+		rowsObj = "no rows"
+	case 1:
+		rowsObj = "a row"
+	default:
+		rowsObj = fmt.Sprintf("%d rows", rowsCount)
+	}
 	switch smtType {
+	case SQLStatementTypeSelect, SQLStatementTypeDescribe, SQLStatementTypeCommonTableExpression:
+		return fmt.Sprintf("%s selected.", rowsObj)
 	case SQLStatementTypeInsert:
-		switch rowsCount {
-		case 0:
-			return "no rows inserted."
-		case 1:
-			return "a row inserted."
-		default:
-			return fmt.Sprintf("%d rows inserted.", rowsCount)
-		}
+		return fmt.Sprintf("%s inserted.", rowsObj)
 	case SQLStatementTypeUpdate:
-		switch rowsCount {
-		case 0:
-			return "no rows updated."
-		case 1:
-			return "a row updated."
-		default:
-			return fmt.Sprintf("%d rows updated.", rowsCount)
-		}
+		return fmt.Sprintf("%s updated.", rowsObj)
 	case SQLStatementTypeDelete:
-		switch rowsCount {
-		case 0:
-			return "no rows deleted."
-		case 1:
-			return "a row deleted."
-		default:
-			return fmt.Sprintf("%d rows deleted.", rowsCount)
-		}
+		return fmt.Sprintf("%s deleted.", rowsObj)
 	case SQLStatementTypeCreate:
 		return "Created successfully."
 	case SQLStatementTypeDrop:
 		return "Dropped successfully."
 	case SQLStatementTypeAlter:
 		return "Altered successfully."
-	case SQLStatementTypeSelect:
-		return "Select successfully."
 	default:
 		return "executed."
 	}
