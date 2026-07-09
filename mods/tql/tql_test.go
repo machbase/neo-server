@@ -235,7 +235,7 @@ func TestDatabaseTql(t *testing.T) {
 				}
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.1").String(), result)
+				require.Equal(t, "TABLE", gjson.Get(result, "data.columns.1").String(), result)
 			},
 		},
 		{

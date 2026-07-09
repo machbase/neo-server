@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -42,6 +43,7 @@ func TestTqlSqlExplain(t *testing.T) {
 }
 
 func TestTqlSqlShow(t *testing.T) {
+	spi.SetDefaultServerInfo(func() map[string]any { return map[string]any{"purpose": "test"} })
 	tests := []TqlTestCase{
 		{
 			Name: "SQL_show_wrong",
@@ -57,8 +59,10 @@ func TestTqlSqlShow(t *testing.T) {
 				SQL('show info')
 				CSV(header(true))
 			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "NAME,VALUE"), result)
+			ExpectCSV: []string{
+				"NAME,VALUE",
+				"purpose,test",
+				"", "",
 			},
 		},
 		{
@@ -325,8 +329,9 @@ func TestTqlSqlShowIndexGap(t *testing.T) {
 				SQL('show indexgap')
 				CSV(header(true))
 			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "", result)
+			ExpectCSV: []string{
+				"ID,TABLE,INDEX,GAP",
+				"", "",
 			},
 		},
 	}
@@ -346,10 +351,9 @@ func TestTqlSqlShowLsm(t *testing.T) {
 				SQL('show lsm')
 				CSV(header(true))
 			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
-				require.GreaterOrEqual(t, len(lines), 1)
-				require.Equal(t, "", lines[0])
+			ExpectCSV: []string{
+				"TABLE_NAME,INDEX_NAME,LEVEL,COUNT",
+				"", "",
 			},
 		},
 	}

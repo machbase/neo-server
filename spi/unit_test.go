@@ -256,10 +256,6 @@ func TestInfoValueObjects(t *testing.T) {
 
 	t.Run("misc info values", func(t *testing.T) {
 		now := time.Unix(1700000000, 0).UTC()
-		license := &LicenseInfo{Id: "id", Type: "dev", Customer: "cust", Project: "proj", CountryCode: "KR", InstallDate: "20240101", IssueDate: "20240102", LicenseStatus: "active"}
-		require.Len(t, license.Columns(), 8)
-		require.Equal(t, []any{"ID", "id", "TYPE", "dev", "CUSTOMER", "cust", "PROJECT", "proj", "COUNTRY_CODE", "KR", "INSTALL_DATE", "20240101", "ISSUE_DATE", "20240102", "LICENSE_STATUS", "active"}, license.Values())
-
 		tag := &TagInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", Id: 2, Summarized: true}
 		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(2), true}, tag.Values())
 

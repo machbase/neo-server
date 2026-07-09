@@ -8,6 +8,49 @@ import (
 	"github.com/machbase/neo-client/api"
 )
 
+type IndexInfo struct {
+	Id             int64  `json:"id"`
+	Database       string `json:"database"`
+	DatabaseId     int64  `json:"database_id,omitempty"`
+	User           string `json:"user"`
+	TableName      string `json:"table_name"`
+	ColumnName     string `json:"column_name"`
+	IndexName      string `json:"index_name"`
+	IndexType      string `json:"index_type"`
+	KeyCompress    string `json:"key_compress"`
+	MaxLevel       int64  `json:"max_level"`
+	PartValueCount int64  `json:"part_value_count"`
+	BitMapEncode   string `json:"bitmap_encode"`
+	err            error  `json:"-"`
+}
+
+func (ii *IndexInfo) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "COLUMN_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_TYPE", DataType: api.DataTypeString},
+		{Name: "KEY_COMPRESS", DataType: api.DataTypeString},
+		{Name: "MAX_LEVEL", DataType: api.DataTypeInt64},
+		{Name: "PART_VALUE_COUNT", DataType: api.DataTypeInt64},
+		{Name: "BITMAP_ENCODE", DataType: api.DataTypeString},
+	}
+}
+
+func (ii *IndexInfo) Values() []interface{} {
+	return []interface{}{
+		ii.Id, ii.Database, ii.User, ii.TableName, ii.ColumnName, ii.IndexName,
+		ii.IndexType, ii.KeyCompress, ii.MaxLevel, ii.PartValueCount, ii.BitMapEncode,
+	}
+}
+
+func (ii *IndexInfo) Err() error {
+	return ii.err
+}
+
 var listIndexesSql = SqlTidy(`
 		SELECT
 			u.name as USER_NAME,
@@ -137,6 +180,74 @@ func DescribeIndex(ctx context.Context, conn api.Conn, name string) (*IndexInfo,
 		&nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType,
 		&nfo.KeyCompress, &nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
 	return nfo, nfo.err
+}
+
+type IndexGapInfo struct {
+	ID         int64  `json:"id"`         // indexgap, tagindexgap
+	TableName  string `json:"table_name"` // indexgap
+	IndexName  string `json:"index_name"` // indexgap
+	Gap        int64  `json:"gap"`        // indexgap
+	IsTagIndex bool   `json:"is_tag_index"`
+	Status     string `json:"status"`     // tagindexgap
+	DiskGap    int64  `json:"disk_gap"`   // tagindexgap
+	MemoryGap  int64  `json:"memory_gap"` // tagindexgap
+	err        error  `json:"-"`
+}
+
+func (igi *IndexGapInfo) Columns() api.Columns {
+	if igi.IsTagIndex {
+		return api.Columns{
+			{Name: "ID", DataType: api.DataTypeInt64},
+			{Name: "STATUS", DataType: api.DataTypeString},
+			{Name: "DISK_GAP", DataType: api.DataTypeInt64},
+			{Name: "MEMORY_GAP", DataType: api.DataTypeInt64},
+		}
+	} else {
+		return api.Columns{
+			{Name: "ID", DataType: api.DataTypeInt64},
+			{Name: "TABLE", DataType: api.DataTypeString},
+			{Name: "INDEX", DataType: api.DataTypeString},
+			{Name: "GAP", DataType: api.DataTypeInt64},
+		}
+	}
+}
+
+func (igi *IndexGapInfo) Values() []interface{} {
+	if igi.IsTagIndex {
+		return []interface{}{
+			igi.ID, igi.Status, igi.DiskGap, igi.MemoryGap,
+		}
+	} else {
+		return []interface{}{
+			igi.ID, igi.TableName, igi.IndexName, igi.Gap,
+		}
+	}
+}
+
+func (igi *IndexGapInfo) Err() error {
+	return igi.err
+}
+
+func ListIndexGap(ctx context.Context, conn api.Conn) ([]*IndexGapInfo, error) {
+	var ret []*IndexGapInfo
+	ListIndexGapWalk(ctx, conn, func(igi *IndexGapInfo) bool {
+		if igi.err == nil && igi != nil {
+			ret = append(ret, igi)
+		}
+		return igi.err == nil
+	})
+	return ret, nil
+}
+
+func ListTagIndexGap(ctx context.Context, conn api.Conn) ([]*IndexGapInfo, error) {
+	var ret []*IndexGapInfo
+	ListTagIndexGapWalk(ctx, conn, func(igi *IndexGapInfo) bool {
+		if igi.err == nil && igi != nil {
+			ret = append(ret, igi)
+		}
+		return igi.err == nil
+	})
+	return ret, nil
 }
 
 func ListIndexGapWalk(ctx context.Context, conn api.Conn, callback func(*IndexGapInfo) bool) {
