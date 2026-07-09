@@ -52,17 +52,6 @@ func (ti *TableInfo) Err() error {
 	return ti.err
 }
 
-func (ti *TableInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "FLAG", DataType: api.DataTypeString},
-	}
-}
-
 func (ti *TableInfo) Values() []interface{} {
 	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
 }
@@ -145,17 +134,6 @@ func ListTablesWalk(ctx context.Context, conn api.Conn, showAll bool, callback f
 	}
 }
 
-func ListTables(ctx context.Context, conn api.Conn, showAll bool) (ret []*TableInfo, cause error) {
-	ListTablesWalk(ctx, conn, showAll, func(ti *TableInfo) bool {
-		if ti.err == nil && ti != nil {
-			ret = append(ret, ti)
-		}
-		cause = ti.err
-		return ti.err == nil
-	})
-	return
-}
-
 func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (api.TableType, error) {
 	_, userName, tableName := api.TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
@@ -214,25 +192,6 @@ type LsmIndexInfo struct {
 	err       error  `json:"-"`
 }
 
-func (li *LsmIndexInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_NAME", DataType: api.DataTypeString},
-		{Name: "LEVEL", DataType: api.DataTypeInt64},
-		{Name: "COUNT", DataType: api.DataTypeInt64},
-	}
-}
-
-func (li *LsmIndexInfo) Values() []interface{} {
-	return []interface{}{
-		li.TableName, li.IndexName, li.Level, li.Count,
-	}
-}
-
-func (li *LsmIndexInfo) Err() error {
-	return li.err
-}
-
 func ListLsmIndexesInfo(ctx context.Context, conn api.Conn) ([]*LsmIndexInfo, error) {
 	sqlText := `select 
 		b.name as TABLE_NAME,
@@ -263,34 +222,6 @@ func ListLsmIndexesInfo(ctx context.Context, conn api.Conn) ([]*LsmIndexInfo, er
 	return result, nil
 }
 
-func ListLsmIndexesWalk(ctx context.Context, conn api.Conn, callback func(*LsmIndexInfo) bool) {
-	sqlText := `select 
-		b.name as TABLE_NAME,
-		c.name as INDEX_NAME,
-		a.level as LEVEL,
-		a.end_rid - a.begin_rid as COUNT
-	from
-		v$storage_dc_lsmindex_levels a,
-		m$sys_tables b, m$sys_indexes c
-	where
-		c.id = a.index_id 
-	and b.id = a.table_id
-	order by 1, 2, 3`
-	rows, err := conn.Query(ctx, sqlText)
-	if err != nil {
-		callback(&LsmIndexInfo{err: err})
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		rec := &LsmIndexInfo{}
-		rec.err = rows.Scan(&rec.TableName, &rec.IndexName, &rec.Level, &rec.Count)
-		if !callback(rec) {
-			return
-		}
-	}
-}
-
 type RollupGapInfo struct {
 	SrcTable     string        `json:"src_table"`
 	RollupTable  string        `json:"rollup_table"`
@@ -299,17 +230,6 @@ type RollupGapInfo struct {
 	Gap          int64         `json:"gap"`
 	LastElapsed  time.Duration `json:"last_time"`
 	err          error         `json:"-"`
-}
-
-func (rgi *RollupGapInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "SRC_TABLE", DataType: api.DataTypeString},
-		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
-		{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
-		{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
-		{Name: "GAP", DataType: api.DataTypeInt64},
-		{Name: "LAST_TIME", DataType: api.DataTypeInt64},
-	}
 }
 
 func (rgi *RollupGapInfo) Values() []interface{} {
@@ -423,15 +343,6 @@ type StorageInfo struct {
 	err       error  `json:"-"`
 }
 
-func (si *StorageInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
-		{Name: "INDEX_SIZE", DataType: api.DataTypeInt64},
-		{Name: "TOTAL_SIZE", DataType: api.DataTypeInt64},
-	}
-}
-
 func (si *StorageInfo) Values() []interface{} {
 	return []interface{}{
 		si.TableName, si.DataSize, si.IndexSize, si.TotalSize,
@@ -508,13 +419,6 @@ type TableUsageInfo struct {
 	err          error  `json:"-"`
 }
 
-func (tui *TableUsageInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
-	}
-}
-
 func (tui *TableUsageInfo) Values() []interface{} {
 	return []interface{}{
 		tui.TableName, tui.StorageUsage,
@@ -575,19 +479,6 @@ type StatementInfo struct {
 	AppendSuccessCount int64  `json:"append_success_count"` // v$neo_stmt
 	AppendFailureCount int64  `json:"append_failure_count"` // v$neo_stmt
 	err                error  `json:"-"`
-}
-
-func (si *StatementInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
-		{Name: "STATE", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "RECORD_SIZE", DataType: api.DataTypeInt64},
-		{Name: "APPEND_SUCCESS_CNT", DataType: api.DataTypeInt64},
-		{Name: "APPEND_FAILURE_CNT", DataType: api.DataTypeInt64},
-		{Name: "QUERY", DataType: api.DataTypeString},
-	}
 }
 
 func (si *StatementInfo) Values() []interface{} {
@@ -664,18 +555,6 @@ type SessionInfo struct {
 	IsNeo     bool      `json:"is_neo"`      // v$neo_session
 	StmtCount int64     `json:"stmt_count"`  // v$neo_session
 	err       error     `json:"-"`
-}
-
-func (si *SessionInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "USER_ID", DataType: api.DataTypeInt64},
-		{Name: "USER_NAME", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "LOGIN_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_QPX_MEM", DataType: api.DataTypeInt64},
-		{Name: "STMT_COUNT", DataType: api.DataTypeInt64},
-	}
 }
 
 func (si *SessionInfo) Values() []interface{} {

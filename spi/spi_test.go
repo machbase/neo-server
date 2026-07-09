@@ -325,12 +325,22 @@ func testDatabaseHelpers(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	tables, err := spi.ListTables(ctx, conn, false)
-	require.NoError(t, err)
+	tablesSet := spi.QueryTables(ctx, conn, false)
+	require.NoError(t, tablesSet.Err())
+	tables := []string{}
+	tablesSet.Iter(func(values []any) bool {
+		tables = append(tables, values[2].(string))
+		return true
+	})
 	require.GreaterOrEqual(t, len(tables), 3)
 
-	tablesAll, err := spi.ListTables(ctx, conn, true)
-	require.NoError(t, err)
+	tablesAllSet := spi.QueryTables(ctx, conn, true)
+	require.NoError(t, tablesAllSet.Err())
+	tablesAll := []string{}
+	tablesAllSet.Iter(func(values []any) bool {
+		tablesAll = append(tablesAll, values[2].(string))
+		return true
+	})
 	require.GreaterOrEqual(t, len(tablesAll), len(tables))
 
 	typeTag, err := spi.QueryTableType(ctx, conn, "tag_data")

@@ -107,7 +107,15 @@ func (ti *TablesResultSet) Iter(callback func(values []interface{}) bool) {
 }
 
 func QueryTables(ctx context.Context, conn api.Conn, showAll bool) *TablesResultSet {
-	list, err := ListTables(ctx, conn, showAll)
+	var list = []*TableInfo{}
+	var err error
+	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo) bool {
+		if err = t.Err(); err != nil {
+			return false
+		}
+		list = append(list, t)
+		return true
+	})
 	return &TablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 

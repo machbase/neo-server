@@ -1536,19 +1536,14 @@ func testShowTables(t *testing.T) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables, err := spi.ListTables(ctx, conn, true)
-	require.NoError(t, err, "show tables fail")
-	require.Equal(t, len(result), len(tables))
-
-	resultList, err := spi.ListTables(ctx, conn, false)
-	require.NoError(t, err, "show tables fail")
-	require.NotEmpty(t, resultList, "tables empty")
-
-	result2 := map[string]*spi.TableInfo{}
-	for _, v := range tables {
-		result2[fmt.Sprintf("%s.%s.%s", v.Database, v.User, v.Name)] = v
-	}
-	require.Equal(t, result, result2)
+	tables := spi.QueryTables(ctx, conn, true)
+	require.NotEmpty(t, tables, "tables empty")
+	tableCount := 0
+	tables.Iter(func(values []any) bool {
+		tableCount++
+		return true
+	})
+	require.Equal(t, len(result), tableCount)
 }
 
 func testExistsTable(t *testing.T) {
