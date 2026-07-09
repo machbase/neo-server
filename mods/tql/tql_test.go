@@ -259,7 +259,7 @@ func TestDatabaseTql(t *testing.T) {
 			ExpectCSV: []string{
 				"COLUMN,TYPE,LENGTH,FLAG,INDEX",
 				"NAME,varchar,100,tag name,",
-				"TIME,datetime,31,basetime,",
+				"TIME,datetime,31,base time,",
 				"VALUE,double,17,summarized,",
 				"SHORT_VALUE,short,6,,",
 				"USHORT_VALUE,ushort,5,,",

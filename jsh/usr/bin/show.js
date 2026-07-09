@@ -541,6 +541,10 @@ function describeTable(conn, names, config) {
             let colType = machcli.stringColumnType(col.TYPE);
             let colWidth = machcli.columnWidth(col.TYPE, col.LENGTH);
             let colFlag = machcli.stringColumnFlag(col.FLAG);
+            // workaround for base distance column
+            if (colFlag == 'base time' && colType != 'datetime') {
+                colFlag = 'base distance';
+            }
             let colIndexes = [];
             for (let idxDesc of indexes) {
                 for (let indexedCol of idxDesc.cols) {

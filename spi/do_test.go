@@ -102,7 +102,7 @@ func TestQueryResultSet(t *testing.T) {
 			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
 			expects: [][]any{
 				{"NAME", "varchar", 80, "tag name", ""},
-				{"TIME", "datetime", 31, "basetime", ""},
+				{"TIME", "datetime", 31, "base time", ""},
 				{"VALUE", "double", 17, "", ""},
 			},
 		},
