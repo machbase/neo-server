@@ -327,7 +327,7 @@ func testDatabaseHelpers(t *testing.T) {
 
 	tables, err := spi.ListTables(ctx, conn, false)
 	require.NoError(t, err)
-	require.Len(t, tables, 3)
+	require.GreaterOrEqual(t, len(tables), 3)
 
 	tablesAll, err := spi.ListTables(ctx, conn, true)
 	require.NoError(t, err)

@@ -17,6 +17,22 @@ type ResultSet interface {
 	Message() string
 }
 
+type ResultSetBase struct {
+	err error
+	msg string
+}
+
+func (rs *ResultSetBase) Err() error {
+	return rs.err
+}
+
+func (rs *ResultSetBase) Message() string {
+	if rs.err != nil {
+		return rs.err.Error()
+	}
+	return rs.msg
+}
+
 var serverInfoProvider func() map[string]any
 
 func SetDefaultServerInfo(provider func() map[string]any) {
@@ -24,23 +40,12 @@ func SetDefaultServerInfo(provider func() map[string]any) {
 }
 
 type ServerInfoResultSet struct {
+	ResultSetBase
 	keys []string
 	data map[string]any
-	err  error
 }
 
 var _ ResultSet = (*ServerInfoResultSet)(nil)
-
-func (si *ServerInfoResultSet) Err() error {
-	return si.err
-}
-
-func (si *ServerInfoResultSet) Message() string {
-	if si.err != nil {
-		return si.err.Error()
-	}
-	return ""
-}
 
 func (si *ServerInfoResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -64,7 +69,7 @@ func (si *ServerInfoResultSet) Iter(callback func(values []interface{}) bool) {
 
 func QueryServerInfo() *ServerInfoResultSet {
 	if serverInfoProvider == nil {
-		return &ServerInfoResultSet{err: errors.New("server info provider is not set")}
+		return &ServerInfoResultSet{ResultSetBase: ResultSetBase{err: errors.New("server info provider is not set")}}
 	}
 	serverInfo := serverInfoProvider()
 	keys := make([]string, 0, len(serverInfo))
@@ -76,15 +81,11 @@ func QueryServerInfo() *ServerInfoResultSet {
 }
 
 type TablesResultSet struct {
+	ResultSetBase
 	list []*TableInfo
-	err  error
 }
 
 var _ ResultSet = (*TablesResultSet)(nil)
-
-func (ti *TablesResultSet) Err() error {
-	return ti.err
-}
 
 func (ti *TablesResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -105,27 +106,27 @@ func (ti *TablesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (ti *TablesResultSet) Message() string {
-	if ti.err != nil {
-		return ti.err.Error()
-	}
-	return ""
-}
-
 func QueryTables(ctx context.Context, conn api.Conn, showAll bool) *TablesResultSet {
 	list, err := ListTables(ctx, conn, showAll)
-	return &TablesResultSet{list: list, err: err}
+	return &TablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type TableResultSet struct {
+	ResultSetBase
 	desc *api.TableDescription
-	err  error
 }
 
 var _ ResultSet = (*TableResultSet)(nil)
 
 func (tr *TableResultSet) Err() error {
 	return tr.err
+}
+
+func (tr *TableResultSet) Message() string {
+	if tr.err != nil {
+		return tr.err.Error()
+	}
+	return ""
 }
 
 func (tr *TableResultSet) Columns() api.Columns {
@@ -158,28 +159,17 @@ func (tr *TableResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (tr *TableResultSet) Message() string {
-	if tr.err != nil {
-		return tr.err.Error()
-	}
-	return ""
-}
-
 func QueryTable(ctx context.Context, conn api.Conn, tableName string, all bool) *TableResultSet {
 	desc, err := api.DescribeTable(ctx, conn, tableName, all)
-	return &TableResultSet{desc: desc, err: err}
+	return &TableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
 }
 
 type IndexesResultSet struct {
+	ResultSetBase
 	list []*IndexInfo
-	err  error
 }
 
 var _ ResultSet = (*IndexesResultSet)(nil)
-
-func (ii *IndexesResultSet) Err() error {
-	return ii.err
-}
 
 func (ii *IndexesResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -209,28 +199,17 @@ func (ii *IndexesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (ii *IndexesResultSet) Message() string {
-	if ii.err != nil {
-		return ii.err.Error()
-	}
-	return ""
-}
-
 func QueryIndexes(ctx context.Context, conn api.Conn) *IndexesResultSet {
 	list, err := ListIndexes(ctx, conn)
-	return &IndexesResultSet{list: list, err: err}
+	return &IndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type QueryIndexResultSet struct {
+	ResultSetBase
 	desc *IndexInfo
-	err  error
 }
 
 var _ ResultSet = (*QueryIndexResultSet)(nil)
-
-func (qir *QueryIndexResultSet) Err() error {
-	return qir.err
-}
 
 func (qir *QueryIndexResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -264,28 +243,17 @@ func (qir *QueryIndexResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (qir *QueryIndexResultSet) Message() string {
-	if qir.err != nil {
-		return qir.err.Error()
-	}
-	return ""
-}
-
 func QueryIndex(ctx context.Context, conn api.Conn, indexName string) *QueryIndexResultSet {
 	idx, err := DescribeIndex(ctx, conn, indexName)
-	return &QueryIndexResultSet{desc: idx, err: err}
+	return &QueryIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
 }
 
 type LsmIndexesResultSet struct {
+	ResultSetBase
 	list []*LsmIndexInfo
-	err  error
 }
 
 var _ ResultSet = (*LsmIndexesResultSet)(nil)
-
-func (li *LsmIndexesResultSet) Err() error {
-	return li.err
-}
 
 func (li *LsmIndexesResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -307,20 +275,13 @@ func (li *LsmIndexesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (li *LsmIndexesResultSet) Message() string {
-	if li.err != nil {
-		return li.err.Error()
-	}
-	return ""
-}
-
 func QueryLsmIndexes(ctx context.Context, conn api.Conn) *LsmIndexesResultSet {
 	list, err := ListLsmIndexesInfo(ctx, conn)
-	return &LsmIndexesResultSet{list: list, err: err}
+	return &LsmIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type LicenseResultSet struct {
-	err error
+	ResultSetBase
 	lic *LicenseInfo
 }
 
@@ -339,14 +300,6 @@ func (li *LicenseResultSet) Columns() api.Columns {
 	}
 }
 
-func (li *LicenseResultSet) Err() error {
-	return li.err
-}
-
-func (li *LicenseResultSet) Message() string {
-	return ""
-}
-
 func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
 	callback([]interface{}{
 		li.lic.Id, li.lic.Type, li.lic.Customer, li.lic.Project, li.lic.CountryCode,
@@ -356,15 +309,15 @@ func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
 
 func QueryLicense(ctx context.Context, conn api.Conn) *LicenseResultSet {
 	licenseInfo, err := GetLicenseInfo(ctx, conn)
-	return &LicenseResultSet{lic: licenseInfo, err: err}
+	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
 }
 
 type TagsResultSet struct {
+	ResultSetBase
 	conn      api.Conn
 	tableName string
 	tagNames  []string
 	desc      *api.TableDescription
-	err       error
 }
 
 var _ ResultSet = (*TagsResultSet)(nil)
@@ -382,14 +335,6 @@ func (tr *TagsResultSet) Columns() api.Columns {
 		{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
 		{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
 	}
-}
-
-func (tr *TagsResultSet) Err() error {
-	return tr.err
-}
-
-func (tr *TagsResultSet) Message() string {
-	return ""
 }
 
 func (tr *TagsResultSet) Iter(callback func(values []interface{}) bool) {
@@ -440,25 +385,21 @@ func QueryTags(ctx context.Context, conn api.Conn, tableName string, tagNames ..
 	tableName = strings.ToUpper(tableName)
 	desc, err := api.DescribeTable(ctx, conn, tableName, false)
 	if err != nil {
-		return &TagsResultSet{err: err}
+		return &TagsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
 	if desc.Type != api.TableTypeTag {
 		err := fmt.Errorf("f(SQL) table %q is not a tag table", tableName)
-		return &TagsResultSet{err: err}
+		return &TagsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
-	return &TagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, desc: desc, err: nil}
+	return &TagsResultSet{ResultSetBase: ResultSetBase{err: nil}, conn: conn, tableName: tableName, tagNames: tagNames, desc: desc}
 }
 
 type IndexGapResultSet struct {
+	ResultSetBase
 	list []*IndexGapInfo
-	err  error
 }
 
 var _ ResultSet = (*IndexGapResultSet)(nil)
-
-func (igi *IndexGapResultSet) Err() error {
-	return igi.err
-}
 
 func (igi *IndexGapResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -480,28 +421,17 @@ func (igi *IndexGapResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (igi *IndexGapResultSet) Message() string {
-	if igi.err != nil {
-		return igi.err.Error()
-	}
-	return ""
-}
-
 func QueryIndexGap(ctx context.Context, conn api.Conn) *IndexGapResultSet {
 	list, err := ListIndexGap(ctx, conn)
-	return &IndexGapResultSet{list: list, err: err}
+	return &IndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type TagIndexGapResultSet struct {
+	ResultSetBase
 	list []*IndexGapInfo
-	err  error
 }
 
 var _ ResultSet = (*TagIndexGapResultSet)(nil)
-
-func (tigi *TagIndexGapResultSet) Err() error {
-	return tigi.err
-}
 
 func (tigi *TagIndexGapResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -523,28 +453,17 @@ func (tigi *TagIndexGapResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func (tigi *TagIndexGapResultSet) Message() string {
-	if tigi.err != nil {
-		return tigi.err.Error()
-	}
-	return ""
-}
-
 func QueryTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
 	list, err := ListTagIndexGap(ctx, conn)
-	return &TagIndexGapResultSet{list: list, err: err}
+	return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type RollupGapResultSet struct {
+	ResultSetBase
 	list []*RollupGapInfo
-	err  error
 }
 
 var _ ResultSet = (*RollupGapResultSet)(nil)
-
-func (rgi *RollupGapResultSet) Err() error {
-	return rgi.err
-}
 
 func (rgi *RollupGapResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -568,28 +487,17 @@ func (rgi *RollupGapResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (rgi *RollupGapResultSet) Message() string {
-	if rgi.err != nil {
-		return rgi.err.Error()
-	}
-	return ""
-}
-
 func QueryRollupGap(ctx context.Context, conn api.Conn) *RollupGapResultSet {
 	list, err := ListRollupGap(ctx, conn)
-	return &RollupGapResultSet{list: list, err: err}
+	return &RollupGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type StorageResultSet struct {
+	ResultSetBase
 	list []*StorageInfo
-	err  error
 }
 
 var _ ResultSet = (*StorageResultSet)(nil)
-
-func (sui *StorageResultSet) Err() error {
-	return sui.err
-}
 
 func (sui *StorageResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -608,28 +516,17 @@ func (sui *StorageResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (sui *StorageResultSet) Message() string {
-	if sui.err != nil {
-		return sui.err.Error()
-	}
-	return ""
-}
-
 func QueryStorage(ctx context.Context, conn api.Conn) *StorageResultSet {
 	list, err := ListStorage(ctx, conn)
-	return &StorageResultSet{list: list, err: err}
+	return &StorageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type TableUsageResultSet struct {
+	ResultSetBase
 	list []*TableUsageInfo
-	err  error
 }
 
 var _ ResultSet = (*TableUsageResultSet)(nil)
-
-func (tui *TableUsageResultSet) Err() error {
-	return tui.err
-}
 
 func (tui *TableUsageResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -646,28 +543,17 @@ func (tui *TableUsageResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (tui *TableUsageResultSet) Message() string {
-	if tui.err != nil {
-		return tui.err.Error()
-	}
-	return ""
-}
-
 func QueryTableUsage(ctx context.Context, conn api.Conn) *TableUsageResultSet {
 	list, err := ListTableUsage(ctx, conn)
-	return &TableUsageResultSet{list: list, err: err}
+	return &TableUsageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type StatementsResultSet struct {
+	ResultSetBase
 	list []*StatementInfo
-	err  error
 }
 
 var _ ResultSet = (*StatementsResultSet)(nil)
-
-func (sri *StatementsResultSet) Err() error {
-	return sri.err
-}
 
 func (sri *StatementsResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -690,28 +576,17 @@ func (sri *StatementsResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (sri *StatementsResultSet) Message() string {
-	if sri.err != nil {
-		return sri.err.Error()
-	}
-	return ""
-}
-
 func QueryStatements(ctx context.Context, conn api.Conn) *StatementsResultSet {
 	list, err := ListStatements(ctx, conn)
-	return &StatementsResultSet{list: list, err: err}
+	return &StatementsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
 type SessionsResultSet struct {
+	ResultSetBase
 	list []*SessionInfo
-	err  error
 }
 
 var _ ResultSet = (*SessionsResultSet)(nil)
-
-func (sri *SessionsResultSet) Err() error {
-	return sri.err
-}
 
 func (sri *SessionsResultSet) Columns() api.Columns {
 	return api.Columns{
@@ -733,14 +608,7 @@ func (sri *SessionsResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func (sri *SessionsResultSet) Message() string {
-	if sri.err != nil {
-		return sri.err.Error()
-	}
-	return ""
-}
-
 func QuerySessions(ctx context.Context, conn api.Conn) *SessionsResultSet {
 	list, err := ListSessions(ctx, conn)
-	return &SessionsResultSet{list: list, err: err}
+	return &SessionsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
