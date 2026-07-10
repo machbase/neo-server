@@ -19,17 +19,6 @@ type TagInfo struct {
 	Stat       *TagStatInfo `json:"stat,omitempty"`
 }
 
-func (ti *TagInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "TABLE", DataType: api.DataTypeString},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "SUMMARIZED", DataType: api.DataTypeBoolean},
-	}
-}
-
 func (ti *TagInfo) Values() []interface{} {
 	return []interface{}{
 		ti.Database, ti.User, ti.Table, ti.Name, ti.Id, ti.Summarized,
@@ -49,23 +38,6 @@ type TagStatInfo struct {
 	MaxValue      float64   `json:"max_value"`
 	MaxValueTime  time.Time `json:"max_value_time"`
 	RecentRowTime time.Time `json:"recent_row_time"`
-}
-
-func (tsi *TagStatInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "TABLE", DataType: api.DataTypeString},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
-		{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MIN_VALUE", DataType: api.DataTypeFloat64},
-		{Name: "MIN_VALUE_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
-		{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
-		{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
-	}
 }
 
 func (tsi *TagStatInfo) Values() []interface{} {

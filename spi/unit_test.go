@@ -258,7 +258,6 @@ func TestInfoValueObjects(t *testing.T) {
 		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(2), true}, tag.Values())
 
 		tagStat := &TagStatInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", RowCount: 3, MinTime: now, MaxTime: now, MinValue: 1.2, MinValueTime: now, MaxValue: 3.4, MaxValueTime: now, RecentRowTime: now}
-		require.Len(t, tagStat.Columns(), 12)
 		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(3), now, now, 1.2, now, 3.4, now, now}, tagStat.Values())
 
 		nonTagIndexGap := &IndexGapInfo{ID: 1, TableName: "T", IndexName: "IDX", Gap: 2, err: errors.New("gap err")}

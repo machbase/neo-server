@@ -10,7 +10,6 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/spi"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -154,8 +153,6 @@ type Rows struct {
 	returnChan          chan struct{}
 	candidateReturnChan chan struct{}
 }
-
-var _ spi.QueryLimiter = (*Rows)(nil)
 
 // PromoteQueryLimit activates the query limit to the Rows
 func (rows *Rows) QueryLimit(ctx context.Context) bool {

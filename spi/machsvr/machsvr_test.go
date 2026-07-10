@@ -1130,77 +1130,55 @@ func testInsertAndQuery(t *testing.T) {
 		}
 	}
 
-	var beginCalled, endCalled bool
-	var nextCalled int
 	// query - select
-	queryCtx := &spi.Query{
-		Begin: func(q *spi.Query) {
-			beginCalled = true
-			cols := q.Columns()
-			require.Equal(t, []string{"NAME", "TIME", "VALUE",
-				"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
-				"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
-			require.Equal(t, []api.DataType{
-				api.DataTypeString,
-				api.DataTypeDatetime,
-				api.DataTypeFloat64,
-				api.DataTypeInt16,
-				api.DataTypeUInt16,
-				api.DataTypeInt32,
-				api.DataTypeUInt32,
-				api.DataTypeInt64,
-				api.DataTypeUInt64,
-				api.DataTypeString,
-				api.DataTypeString,
-				api.DataTypeIPv4,
-				api.DataTypeIPv6,
-				api.DataTypeBinary,
-			}, cols.DataTypes())
-		},
-		Next: func(q *spi.Query, rownum int64) bool {
-			nextCalled++
-			values, err := q.Columns().MakeBuffer()
-			require.NoError(t, err)
-			err = q.Scan(values...)
-			require.NoError(t, err)
-			require.Equal(t, "insert-once", unbox(values[0]))
-			require.Equal(t, now, unbox(values[1]))
-			require.Equal(t, 1.23, unbox(values[2]))
-			require.Equal(t, int16(1), unbox(values[3]))
-			require.Equal(t, nil, unbox(values[4]))
-			require.Equal(t, int32(2), unbox(values[5]))
-			require.Equal(t, nil, unbox(values[6]))
-			require.Equal(t, int64(3), unbox(values[7]))
-			require.Equal(t, nil, unbox(values[8]))
-			require.Equal(t, "str1", unbox(values[9]))
-			require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
-			return true
-		},
-		End: func(q *spi.Query) {
-			endCalled = true
-			require.NoError(t, q.Err())
-			require.True(t, q.IsFetch())
-			require.Equal(t, "a row fetched.", q.UserMessage())
-			require.Equal(t, int64(1), q.RowNum())
-		},
-	}
-	err = queryCtx.Execute(ctx, conn, `select * from tag_data where name = ?`, "insert-once")
+	rows, err = conn.Query(ctx, `select * from tag_data where name = ?`, "insert-once")
 	require.NoError(t, err, "query fail")
-	require.True(t, beginCalled)
-	require.True(t, endCalled)
+	cols, err := rows.Columns()
+	require.NoError(t, err, "columns fail")
+	require.Equal(t, []string{"NAME", "TIME", "VALUE",
+		"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
+		"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
+	require.Equal(t, []api.DataType{
+		api.DataTypeString,
+		api.DataTypeDatetime,
+		api.DataTypeFloat64,
+		api.DataTypeInt16,
+		api.DataTypeUInt16,
+		api.DataTypeInt32,
+		api.DataTypeUInt32,
+		api.DataTypeInt64,
+		api.DataTypeUInt64,
+		api.DataTypeString,
+		api.DataTypeString,
+		api.DataTypeIPv4,
+		api.DataTypeIPv6,
+		api.DataTypeBinary,
+	}, cols.DataTypes())
+
+	var nextCalled int
+	for rows.Next() {
+		nextCalled++
+		values, err := cols.MakeBuffer()
+		require.NoError(t, err)
+		err = rows.Scan(values...)
+		require.NoError(t, err)
+		require.Equal(t, "insert-once", unbox(values[0]))
+		require.Equal(t, now, unbox(values[1]))
+		require.Equal(t, 1.23, unbox(values[2]))
+		require.Equal(t, int16(1), unbox(values[3]))
+		require.Equal(t, nil, unbox(values[4]))
+		require.Equal(t, int32(2), unbox(values[5]))
+		require.Equal(t, nil, unbox(values[6]))
+		require.Equal(t, int64(3), unbox(values[7]))
+		require.Equal(t, nil, unbox(values[8]))
+		require.Equal(t, "str1", unbox(values[9]))
+		require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
+	}
 	require.Equal(t, 1, nextCalled)
 
 	// query - insert
-	endCalled = false
-	queryCtx = &spi.Query{
-		End: func(q *spi.Query) {
-			endCalled = true
-			require.False(t, q.IsFetch())
-			require.NoError(t, q.Err())
-			require.Equal(t, "a row inserted.", q.UserMessage())
-		},
-	}
-	err = queryCtx.Execute(ctx, conn, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
+
+	result = conn.Exec(ctx, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
 		`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
 		`?, ?, `+ // long_value, ulong_value
 		`?, ?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value, bin_value
@@ -1216,8 +1194,8 @@ func testInsertAndQuery(t *testing.T) {
 		nil,                      // ipv6_value
 		[]byte{0x01, 0x02, 0x03}, // bin_value
 	)
-	require.NoError(t, err, "query-insert fail")
-	require.True(t, endCalled)
+	require.NoError(t, result.Err(), "query-insert fail")
+	require.Equal(t, "a row inserted.", result.Message())
 
 	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
 	require.NoError(t, result.Err(), "table_flush fail")

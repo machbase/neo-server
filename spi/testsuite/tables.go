@@ -2,10 +2,7 @@ package testsuite
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"fmt"
-	"net"
 	"sync"
 	"testing"
 	"time"
@@ -228,123 +225,57 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	err = rows.Close()
 	require.NoError(t, err, "close fail")
 
-	var unbox = func(val any) any {
-		switch v := val.(type) {
-		case *int:
-			return *v
-		case *uint:
-			return *v
-		case *int16:
-			return *v
-		case *uint16:
-			return *v
-		case *int32:
-			return *v
-		case *uint32:
-			return *v
-		case *int64:
-			return *v
-		case *uint64:
-			return *v
-		case *float64:
-			return *v
-		case *float32:
-			return *v
-		case *string:
-			return *v
-		case *time.Time:
-			return *v
-		case *[]byte:
-			return *v
-		case *net.IP:
-			return *v
-		case *driver.Value:
-			return *v
-		case *api.JSONString:
-			return *v
-		case *sql.Null[api.JSONString]:
-			if v.Valid {
-				return v.V
-			} else {
-				return nil
-			}
-		default:
-			return val
-		}
-	}
-	_ = unbox
-
-	var beginCalled, endCalled bool
-	var nextCalled int
 	// query - select
-	queryCtx := &spi.Query{
-		Begin: func(q *spi.Query) {
-			beginCalled = true
-			cols := q.Columns()
-			require.Equal(t, []string{"NAME", "TIME", "VALUE",
-				"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
-				"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
-			require.Equal(t, []api.DataType{
-				api.DataTypeString,
-				api.DataTypeDatetime,
-				api.DataTypeFloat64,
-				api.DataTypeInt16,
-				api.DataTypeUInt16,
-				api.DataTypeInt32,
-				api.DataTypeUInt32,
-				api.DataTypeInt64,
-				api.DataTypeUInt64,
-				api.DataTypeString,
-				api.DataTypeJSON,
-				api.DataTypeIPv4,
-				api.DataTypeIPv6,
-				api.DataTypeBinary,
-			}, cols.DataTypes())
-		},
-		Next: func(q *spi.Query, rownum int64) bool {
-			nextCalled++
-			values, err := q.Columns().MakeBuffer()
-			require.NoError(t, err)
-			err = q.Scan(values...)
-			require.NoError(t, err)
-			require.Equal(t, "insert-once", api.Unbox(values[0]))
-			require.Equal(t, now, api.Unbox(values[1]))
-			require.Equal(t, 1.23, api.Unbox(values[2]))
-			require.Equal(t, int16(1), api.Unbox(values[3]))
-			require.Equal(t, nil, api.Unbox(values[4]))
-			require.Equal(t, int32(2), api.Unbox(values[5]))
-			require.Equal(t, nil, api.Unbox(values[6]))
-			require.Equal(t, int64(3), api.Unbox(values[7]))
-			require.Equal(t, nil, api.Unbox(values[8]))
-			require.Equal(t, "str1", api.Unbox(values[9]))
-			require.Equal(t, api.JSONString(`{"key1": "value1"}`), api.Unbox(values[10]))
-			return true
-		},
-		End: func(q *spi.Query) {
-			endCalled = true
-			require.NoError(t, q.Err())
-			require.True(t, q.IsFetch())
-			require.Equal(t, "a row fetched.", q.UserMessage())
-			require.Equal(t, int64(1), q.RowNum())
-		},
+	rows, err = conn.Query(ctx, `select * from tag_data where name = ?`, "insert-once")
+	require.NoError(t, err, "select fail")
+
+	cols, err := rows.Columns()
+	require.NoError(t, err, "columns fail")
+	require.Equal(t, []string{"NAME", "TIME", "VALUE",
+		"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
+		"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
+	require.Equal(t, []api.DataType{
+		api.DataTypeString,
+		api.DataTypeDatetime,
+		api.DataTypeFloat64,
+		api.DataTypeInt16,
+		api.DataTypeUInt16,
+		api.DataTypeInt32,
+		api.DataTypeUInt32,
+		api.DataTypeInt64,
+		api.DataTypeUInt64,
+		api.DataTypeString,
+		api.DataTypeJSON,
+		api.DataTypeIPv4,
+		api.DataTypeIPv6,
+		api.DataTypeBinary,
+	}, cols.DataTypes())
+
+	var nextCalled int
+	for rows.Next() {
+		nextCalled++
+		values, err := cols.MakeBuffer()
+		require.NoError(t, err)
+		err = rows.Scan(values...)
+		require.NoError(t, err)
+		require.Equal(t, "insert-once", api.Unbox(values[0]))
+		require.Equal(t, now, api.Unbox(values[1]))
+		require.Equal(t, 1.23, api.Unbox(values[2]))
+		require.Equal(t, int16(1), api.Unbox(values[3]))
+		require.Equal(t, nil, api.Unbox(values[4]))
+		require.Equal(t, int32(2), api.Unbox(values[5]))
+		require.Equal(t, nil, api.Unbox(values[6]))
+		require.Equal(t, int64(3), api.Unbox(values[7]))
+		require.Equal(t, nil, api.Unbox(values[8]))
+		require.Equal(t, "str1", api.Unbox(values[9]))
+		require.Equal(t, api.JSONString(`{"key1": "value1"}`), api.Unbox(values[10]))
 	}
-	err = queryCtx.Execute(ctx, conn, `select * from tag_data where name = ?`, "insert-once")
-	require.NoError(t, err, "query fail")
-	require.True(t, beginCalled)
-	require.True(t, endCalled)
+	require.NoError(t, rows.Err())
+	require.Equal(t, "a row selected.", rows.Message())
 	require.Equal(t, 1, nextCalled)
 
 	// query - insert
-	endCalled = false
-	queryCtx = &spi.Query{
-		End: func(q *spi.Query) {
-			endCalled = true
-			require.False(t, q.IsFetch())
-			require.NoError(t, q.Err())
-			require.Equal(t, "a row inserted.", q.UserMessage())
-		},
-	}
-	err = queryCtx.Execute(ctx, conn, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
+	result = conn.Exec(ctx, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
 		`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
 		`?, ?, `+ // long_value, ulong_value
 		`?, ?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value, bin_value
@@ -360,8 +291,8 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		nil,                      // ipv6_value
 		[]byte{0x01, 0x02, 0x03}, // bin_value
 	)
-	require.NoError(t, err, "query-insert fail")
-	require.True(t, endCalled)
+	require.NoError(t, result.Err())
+	require.Equal(t, "a row inserted.", result.Message())
 
 	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
 	require.NoError(t, result.Err(), "table_flush fail")
