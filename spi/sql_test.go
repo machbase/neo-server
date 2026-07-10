@@ -789,6 +789,7 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 }
 
 // Issue machbase/neo#1403
+// Issue machbase/neo#1410
 func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	conf := &machgo.Config{
 		Host: "127.0.0.1",
@@ -869,62 +870,58 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	}
 	require.Equal(t, 1, count)
 
-	result = sysConn.Exec(t.Context(), "create index idx_data_value on david.data(value)")
-	if err := result.Err(); err != nil {
-		panic(err)
-	}
-	// Issue machbase/neo#1410 bug silently ignore the index creation if the index name is not prefixed with the user name.
-	//
-	// It should work with 'create index david.idx_data_value....'
-	//
-	// result = sysConn.Exec(t.Context(), "create index david.idx_data_value on david.data(value)")
-	// if err := result.Err(); err != nil {
-	// 	panic(err)
-	// }
-
-	rows, err := userConn.Query(t.Context(), "select name, type from m$sys_indexes")
-	if err != nil {
-		panic(err)
-	}
-	defer rows.Close()
-
-	expects := []struct {
-		indexName string
-		found     bool
-	}{
-		{"_DATA_META_NAME", false},
-		{"_DATA_META__LAST_UPDATE_TIME", false},
-		{"__PK_IDX__DATA_META", false},
-		{"IDX_DATA_VALUE", false},
-	}
-	nrow := 0
-	for rows.Next() {
-		var indexName string
-		var indexType int
-		if err := rows.Scan(&indexName, &indexType); err != nil {
+	for _, indexName := range []string{"idx_data_value" /*, "david.idx_data_value"*/} {
+		result = sysConn.Exec(t.Context(), fmt.Sprintf("create index %s on david.data(value)", indexName))
+		if err := result.Err(); err != nil {
 			panic(err)
 		}
-		found := false
-		for i := range expects {
-			if strings.Contains(indexName, expects[i].indexName) {
-				found = true
-				expects[i].found = true
-				break
-			}
-		}
-		if !found {
-			t.Logf("unexpected index: %s", indexName)
-			t.Fail()
-		}
-		nrow++
-	}
-	require.NoError(t, rows.Err())
-	for _, expect := range expects {
-		require.True(t, expect.found, fmt.Sprintf("index %s not found in m$sys_indexes", expect.indexName))
-	}
+		time.Sleep(3 * time.Second)
 
-	result = sysConn.Exec(t.Context(), "drop index david.idx_data_value")
-	if err := result.Err(); err != nil {
-		panic(err)
+		rows, err := userConn.Query(t.Context(), "select name, type from m$sys_indexes")
+		if err != nil {
+			panic(err)
+		}
+
+		expects := []struct {
+			indexName string
+			found     bool
+		}{
+			{"_DATA_META_NAME", false},
+			{"_DATA_META__LAST_UPDATE_TIME", false},
+			{"__PK_IDX__DATA_META", false},
+			{"IDX_DATA_VALUE", false},
+		}
+		nrow := 0
+		for rows.Next() {
+			var foundIndexName string
+			var indexType int
+			if err := rows.Scan(&foundIndexName, &indexType); err != nil {
+				panic(err)
+			}
+			found := false
+			for i := range expects {
+				if strings.Contains(foundIndexName, expects[i].indexName) {
+					found = true
+					expects[i].found = true
+					break
+				}
+			}
+			if !found {
+				t.Logf("unexpected index: %s", foundIndexName)
+				t.Fail()
+			}
+			nrow++
+		}
+		require.NoError(t, rows.Err())
+		rows.Close()
+
+		for _, expect := range expects {
+			require.True(t, expect.found, fmt.Sprintf("%s not found in m$sys_indexes (created %s)", expect.indexName, indexName))
+		}
+
+		result = sysConn.Exec(t.Context(), fmt.Sprintf("drop index %s", indexName))
+		if err := result.Err(); err != nil {
+			panic(err)
+		}
 	}
 }
