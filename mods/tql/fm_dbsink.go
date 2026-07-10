@@ -336,13 +336,14 @@ func (s *sqlSink) Close() (string, error) {
 	if s.ctxCancel != nil {
 		s.ctxCancel()
 	}
-	if s.affectedRows > 0 {
-		return formatSqlSinkMessage(s.stmtType, s.affectedRows), nil
-	}
-	if s.resultMsg != "" {
-		return s.resultMsg, nil
-	}
-	return "0 rows affected.", nil
+	return spi.MakeUserMessage(s.stmtType, s.affectedRows), nil
+	// if s.affectedRows > 0 {
+	// 	return formatSqlSinkMessage(s.stmtType, s.affectedRows), nil
+	// }
+	// if s.resultMsg != "" {
+	// 	return s.resultMsg, nil
+	// }
+	// return "0 rows affected.", nil
 }
 
 func (s *sqlSink) AddRow(values []any) error {
@@ -382,23 +383,6 @@ func validateSqlVerbForSink(sqlText string) error {
 		return fmt.Errorf("f(SQL) sink does not allow fetch verb %q", verb)
 	}
 	return nil
-}
-
-func formatSqlSinkMessage(stmtType spi.SQLStatementType, rows int64) string {
-	unit := "rows"
-	if rows == 1 {
-		unit = "row"
-	}
-	switch stmtType {
-	case spi.SQLStatementTypeInsert:
-		return fmt.Sprintf("%d %s inserted.", rows, unit)
-	case spi.SQLStatementTypeUpdate:
-		return fmt.Sprintf("%d %s updated.", rows, unit)
-	case spi.SQLStatementTypeDelete:
-		return fmt.Sprintf("%d %s deleted.", rows, unit)
-	default:
-		return fmt.Sprintf("%d %s affected.", rows, unit)
-	}
 }
 
 func parseRowsAffectedFromMessage(msg string) (int64, bool) {

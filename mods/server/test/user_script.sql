@@ -11,6 +11,8 @@ select * from neo_scope_t1_ua;
 
 connect sys/manager;
 
+env NEOSHELL_USER;
+
 sql --format csv select * from neo_scope_t1_ua;
 
 insert into user_a.neo_scope_t1_ua values (4);

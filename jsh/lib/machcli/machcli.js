@@ -337,7 +337,7 @@ const ColumnFlag = {
 function stringColumnFlag(flag) {
     let flags = [];
     if (flag & ColumnFlag.Basetime) {
-        flags.push("basetime");
+        flags.push("base time");
     }
     if (flag & ColumnFlag.Summarized) {
         flags.push("summarized");

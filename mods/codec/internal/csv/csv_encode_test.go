@@ -208,8 +208,18 @@ type flushBuffer struct {
 	flushed bool
 }
 
+type closeableBuffer struct {
+	bytes.Buffer
+	closed bool
+}
+
 func (f *flushBuffer) Flush() error {
 	f.flushed = true
+	return nil
+}
+
+func (f *closeableBuffer) Close() error {
+	f.closed = true
 	return nil
 }
 
@@ -431,4 +441,114 @@ func TestCsvEncoderFloatFormattingMatchesJSON(t *testing.T) {
 		"",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), w.String())
+}
+
+func TestCsvEncoderSetTimeLocation(t *testing.T) {
+	enc := csv.NewEncoder()
+	w := &bytes.Buffer{}
+	enc.SetOutputStream(w)
+	enc.SetColumns("ts")
+	enc.SetHeader(true)
+	enc.SetTimeformat("KITCHEN")
+	enc.SetTimeLocation(time.FixedZone("KST", 9*3600))
+	require.NoError(t, enc.Open())
+
+	ts := time.Unix(1691800174, 0).UTC()
+	require.NoError(t, enc.AddRow([]any{ts}))
+	enc.Close()
+
+	expects := []string{
+		"ts",
+		"9:29:34AM",
+		"",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
+}
+
+func TestCsvEncoderCloseCallsOutputCloser(t *testing.T) {
+	enc := csv.NewEncoder()
+	w := &closeableBuffer{}
+	enc.SetOutputStream(w)
+	require.NoError(t, enc.Open())
+
+	enc.Close()
+	enc.Close()
+
+	require.True(t, w.closed)
+}
+
+func TestCsvEncoderAdditionalTypeBranches(t *testing.T) {
+	t.Run("json null and scalar types", func(t *testing.T) {
+		enc := csv.NewEncoder()
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetColumns("json_null_valid", "json_null_invalid", "json_scalar", "u16", "u32", "u64", "u8", "ptr_bin", "unknown")
+		enc.SetHeader(true)
+		require.NoError(t, enc.Open())
+
+		ptrBin := []byte{0x0a, 0x0b}
+		require.NoError(t, enc.AddRow([]any{
+			&sql.Null[api.JSONString]{V: api.JSONString(`{"a":1}`), Valid: true},
+			&sql.Null[api.JSONString]{Valid: false},
+			api.JSONString(`{"b":2}`),
+			uint16(16),
+			uint32(32),
+			uint64(64),
+			uint8(8),
+			&ptrBin,
+			struct{}{},
+		}))
+		enc.Close()
+
+		expects := []string{
+			"json_null_valid,json_null_invalid,json_scalar,u16,u32,u64,u8,ptr_bin,unknown",
+			`"{""a"":1}",NULL,"{""b"":2}",16,32,64,8,0x0a0b,struct {}`,
+			"",
+			"",
+		}
+		require.Equal(t, strings.Join(expects, "\n"), w.String())
+	})
+
+	t.Run("uint treats as float when column type is float", func(t *testing.T) {
+		enc := csv.NewEncoder()
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetPrecision(2)
+		enc.SetColumns("u16", "u32", "u64")
+		enc.SetColumnTypes(api.DataTypeFloat64, api.DataTypeFloat32, api.DataTypeFloat64)
+		enc.SetHeader(true)
+		require.NoError(t, enc.Open())
+
+		require.NoError(t, enc.AddRow([]any{uint16(16), uint32(32), uint64(64)}))
+		enc.Close()
+
+		expects := []string{
+			"u16,u32,u64",
+			"16.00,32.00,64.00",
+			"",
+			"",
+		}
+		require.Equal(t, strings.Join(expects, "\n"), w.String())
+	})
+
+	t.Run("recover from panic on nil binary pointer", func(t *testing.T) {
+		enc := csv.NewEncoder()
+		w := &bytes.Buffer{}
+		enc.SetOutputStream(w)
+		enc.SetColumns("bin")
+		enc.SetHeader(true)
+		require.NoError(t, enc.Open())
+
+		var nilPtr *[]uint8
+		require.NoError(t, enc.AddRow([]any{nilPtr}))
+		enc.Close()
+
+		expects := []string{
+			"bin",
+			"",
+			"",
+		}
+		require.Equal(t, strings.Join(expects, "\n"), w.String())
+	})
 }

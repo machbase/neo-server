@@ -474,7 +474,7 @@ func TestSSHSession(t *testing.T) {
 		"│ ROWNUM │ NAME  │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
 		"├────────┼───────┼──────────┼────────┼────────────┼───────┤",
 		"│      1 │ NAME  │ varchar  │     40 │ tag name   │       │",
-		"│      2 │ TIME  │ datetime │     31 │ basetime   │       │",
+		"│      2 │ TIME  │ datetime │     31 │ base time  │       │",
 		"│      3 │ VALUE │ double   │     17 │ summarized │       │",
 		"└────────┴───────┴──────────┴────────┴────────────┴───────┘",
 	}, 5*time.Second)

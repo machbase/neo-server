@@ -50,7 +50,7 @@ func WatchLogTable(t *testing.T, db api.Database, ctx context.Context) {
 				require.Less(t, int32(0), rec["INT_VALUE"], "INT_VALUE")
 				require.Equal(t, int64(2), rec["LONG_VALUE"], "LONG_VALUE")
 				require.Equal(t, "str1", rec["STR_VALUE"], "STR_VALUE")
-				require.Equal(t, `{"key1":"value1"}`, rec["JSON_VALUE"], "JSON_VALUE")
+				require.Equal(t, api.JSONString(`{"key1":"value1"}`), rec["JSON_VALUE"], "JSON_VALUE")
 			}
 		case <-tick.C:
 			tickCount++

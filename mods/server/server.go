@@ -119,11 +119,37 @@ func (s *Server) Executable() (string, error) {
 }
 
 func Restore(dataDir string, backupDir string) error {
+	stat, err := os.Stat(dataDir)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("machbase home directory '%s' does not exist", dataDir)
+	}
+	if stat.IsDir() == false {
+		return fmt.Errorf("machbase home '%s' is not a directory", dataDir)
+	}
+	stat, err = os.Stat(filepath.Join(dataDir, "dbs"))
+	if os.IsNotExist(err) {
+		fmt.Printf("dbs directory does not exist, creating '%s'...\n", filepath.Join(dataDir, "dbs"))
+		if err := os.MkdirAll(filepath.Join(dataDir, "dbs"), 0755); err != nil {
+			return fmt.Errorf("failed to create dbs directory: %v", err)
+		}
+		fmt.Printf("dbs directory created.\n")
+	} else if stat.IsDir() == false {
+		return fmt.Errorf("dbs path exists but is not a directory, '%s'", filepath.Join(dataDir, "dbs"))
+	}
+
+	if lst, err := os.ReadDir(filepath.Join(dataDir, "dbs")); err != nil {
+		return fmt.Errorf("failed to read dbs directory: %v", err)
+	} else if len(lst) != 0 {
+		return fmt.Errorf("dbs directory is not empty, '%s'", filepath.Join(dataDir, "dbs"))
+	}
+
 	if err := machsvr.Initialize(dataDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		return err
 	}
 	if err := machsvr.RestoreDatabase(backupDir); err != nil {
 		return err
+	} else {
+		fmt.Printf("restore completed from '%s' to '%s'\n", backupDir, dataDir)
 	}
 	return nil
 }
@@ -179,6 +205,8 @@ func (s *Server) Start() error {
 	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
+
+	spi.SetDefaultServerInfo(s.getServerInfoMap)
 
 	if !HeadOnly {
 		if err := s.checkAndInstallLicense(); err != nil {
@@ -472,6 +500,14 @@ func (s *Server) startMachbaseSvr() error {
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
+		pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
+		spi.SetDefaultDSN(map[string]string{
+			"host":            "127.0.0.1",
+			"port":            fmt.Sprintf("%d", s.Machbase.PORT_NO),
+			"statement_cache": "auto",
+			"user":            "sys",
+			"auth_key_pem":    string(pem),
+		})
 		spi.SetDefault(db, key)
 		spi.SetDefaultPoolConfig(
 			s.Config.MaxOpenConn,
@@ -522,6 +558,14 @@ func (s *Server) startMachbaseCli() error {
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
+		pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
+		spi.SetDefaultDSN(map[string]string{
+			"host":            host,
+			"port":            fmt.Sprintf("%d", port),
+			"statement_cache": "auto",
+			"user":            user,
+			"auth_key_pem":    string(pem),
+		})
 		spi.SetDefault(db, key)
 		spi.SetDefaultPoolConfig(
 			s.Config.MaxOpenConn,
@@ -534,6 +578,18 @@ func (s *Server) startMachbaseCli() error {
 		spi.StopAppendWorkers()
 	})
 	return nil
+}
+
+func getPoolSqlConn(ctx context.Context) (*sql.Conn, error) {
+	pool, poolErr := spi.DefaultPool()
+	if poolErr != nil {
+		return nil, poolErr
+	}
+	sqlConn, connErr := pool.Conn(ctx)
+	if connErr != nil {
+		return nil, connErr
+	}
+	return sqlConn, nil
 }
 
 func getPoolConn(ctx context.Context) (api.Conn, error) {

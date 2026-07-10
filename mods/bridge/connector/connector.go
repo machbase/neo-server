@@ -56,6 +56,58 @@ func init() {
 	})
 }
 
+func Conn(ctx context.Context, name string) (*sql.Conn, error) {
+	db, err := Database(name)
+	if err != nil {
+		return nil, err
+	}
+	return db.Conn(ctx)
+}
+
+func Database(name string) (*sql.DB, error) {
+	var db *sql.DB
+	var dbConn string
+	var dbType string
+	var err error
+
+	databasesLock.RLock()
+	if dbm, ok := databases[name]; ok {
+		databasesLock.RUnlock()
+		return dbm.db, nil
+	}
+	databasesLock.RUnlock()
+
+	databasesLock.Lock()
+	defer databasesLock.Unlock()
+	if strings.HasPrefix(name, "sqlite,") {
+		dbType = "sqlite"
+		dbConn = strings.TrimPrefix(name, "sqlite,")
+		db, err = sqlite.Connect(dbConn)
+	} else if strings.HasPrefix(name, "mssql,") {
+		dbType = "mssql"
+		dbConn = strings.TrimPrefix(name, "mssql,")
+		db, err = mssql.Connect(dbConn)
+	} else if strings.HasPrefix(name, "postgres,") {
+		dbType = "postgres"
+		dbConn = strings.TrimPrefix(name, "postgres,")
+		db, err = postgres.Connect(dbConn)
+	} else if strings.HasPrefix(name, "mysql,") {
+		dbType = "mysql"
+		dbConn = strings.TrimPrefix(name, "mysql,")
+		db, err = mysql.Connect(dbConn)
+	} else {
+		return nil, fmt.Errorf("unknown database type: %s", name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if db != nil {
+		ret := &BridgedDatabase{db: db, dbType: dbType, dbConnect: dbConn}
+		databases[name] = ret
+	}
+	return db, nil
+}
+
 func New(name string) (api.Database, error) {
 	var db *sql.DB
 	var dbType string

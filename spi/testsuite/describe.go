@@ -20,13 +20,13 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		{Name: "TIME", Type: api.ColumnTypeDatetime, DataType: api.DataTypeDatetime},
 		{Name: "VALUE", Type: api.ColumnTypeDouble, DataType: api.DataTypeFloat64},
 		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, DataType: api.DataTypeInt16},
-		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, DataType: api.DataTypeInt16},
+		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, DataType: api.DataTypeUInt16},
 		{Name: "INT_VALUE", Type: api.ColumnTypeInteger, DataType: api.DataTypeInt32},
-		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, DataType: api.DataTypeInt32},
+		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, DataType: api.DataTypeUInt32},
 		{Name: "LONG_VALUE", Type: api.ColumnTypeLong, DataType: api.DataTypeInt64},
-		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, DataType: api.DataTypeInt64},
+		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, DataType: api.DataTypeUInt64},
 		{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, DataType: api.DataTypeString},
-		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, DataType: api.DataTypeString},
+		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, DataType: api.DataTypeJSON},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, DataType: api.DataTypeIPv6},
 		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, DataType: api.DataTypeBinary},
@@ -38,13 +38,13 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		{"name": "TIME", "type": "datetime", "data_type": "datetime", "length": 8, "flag": api.ColumnFlagBasetime},
 		{"name": "VALUE", "type": "double", "data_type": "double", "length": 8, "flag": api.ColumnFlagSummarized},
 		{"name": "SHORT_VALUE", "type": "short", "data_type": "int16", "length": 2},
-		{"name": "USHORT_VALUE", "type": "ushort", "data_type": "int16", "length": 2},
+		{"name": "USHORT_VALUE", "type": "ushort", "data_type": "uint16", "length": 2},
 		{"name": "INT_VALUE", "type": "integer", "data_type": "int32", "length": 4},
-		{"name": "UINT_VALUE", "type": "uinteger", "data_type": "int32", "length": 4},
+		{"name": "UINT_VALUE", "type": "uinteger", "data_type": "uint32", "length": 4},
 		{"name": "LONG_VALUE", "type": "long", "data_type": "int64", "length": 8},
-		{"name": "ULONG_VALUE", "type": "ulong", "data_type": "int64", "length": 8},
+		{"name": "ULONG_VALUE", "type": "ulong", "data_type": "uint64", "length": 8},
 		{"name": "STR_VALUE", "type": "varchar", "data_type": "string", "length": 400},
-		{"name": "JSON_VALUE", "type": "json", "data_type": "string", "length": 32767},
+		{"name": "JSON_VALUE", "type": "json", "data_type": "json", "length": 32767},
 		{"name": "IPV4_VALUE", "type": "ipv4", "data_type": "ipv4", "length": 5},
 		{"name": "IPV6_VALUE", "type": "ipv6", "data_type": "ipv6", "length": 17},
 		{"name": "BIN_VALUE", "type": "binary", "data_type": "binary", "length": 32767},
@@ -63,9 +63,9 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		require.Equal(t, len(expect), len(desc.Columns))
 
 		for i, e := range expect {
-			require.Equal(t, e.Name, desc.Columns[i].Name)
-			require.Equal(t, e.Type, desc.Columns[i].Type)
-			require.Equal(t, e.DataType, desc.Columns[i].DataType)
+			require.Equal(t, e.Name, desc.Columns[i].Name, "column %d: name=%s", i, e.Name)
+			require.Equal(t, e.Type, desc.Columns[i].Type, "column %d: name=%s", i, e.Name)
+			require.Equal(t, e.DataType, desc.Columns[i].DataType, "column %d: name=%s", i, e.Name)
 		}
 
 		if table_name != "tag_data" {

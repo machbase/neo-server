@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
-	"github.com/machbase/neo-server/v8/spi"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -60,10 +60,11 @@ func (r *Result) Message() string {
 }
 
 type Row struct {
-	ok      bool
-	err     error
-	columns api.Columns
-	values  []any
+	ok           bool
+	err          error
+	columns      api.Columns
+	values       []any
+	timeLocation *time.Location
 
 	affectedRows int64
 	stmtType     mach.StmtType
@@ -133,7 +134,7 @@ func (row *Row) Scan(cols ...any) error {
 		var isNull = row.values[i] == nil
 		if isNull {
 			cols[i] = nil
-		} else if row.err = api.Scan(row.values[i], cols[i]); row.err != nil {
+		} else if row.err = api.Scan(row.values[i], cols[i], row.timeLocation); row.err != nil {
 			return row.err
 		}
 	}
@@ -147,12 +148,11 @@ type Rows struct {
 	columns    api.Columns
 	fetchError error
 
+	timeLocation        *time.Location
 	isPrepared          bool
 	returnChan          chan struct{}
 	candidateReturnChan chan struct{}
 }
-
-var _ spi.QueryLimiter = (*Rows)(nil)
 
 // PromoteQueryLimit activates the query limit to the Rows
 func (rows *Rows) QueryLimit(ctx context.Context) bool {
@@ -301,7 +301,7 @@ func (rows *Rows) FetchSync() ([]any, bool, error) {
 			return values, next, err
 		}
 		isNull := false
-		if err = readColumnData(rows.stmt, rawType, i, values[i], &isNull); err != nil {
+		if err = readColumnData(rows.stmt, rawType, i, values[i], &isNull, rows.timeLocation); err != nil {
 			return nil, next, err
 		}
 		if isNull {
@@ -357,7 +357,7 @@ func (rows *Rows) Scan(cols ...any) error {
 			return err
 		}
 		isNull := false
-		if err := readColumnData(rows.stmt, rawType, i, cols[i], &isNull); err != nil {
+		if err := readColumnData(rows.stmt, rawType, i, cols[i], &isNull, rows.timeLocation); err != nil {
 			return err
 		}
 		if isNull {
@@ -367,7 +367,7 @@ func (rows *Rows) Scan(cols ...any) error {
 	return nil
 }
 
-func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *bool) error {
+func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *bool, loc *time.Location) error {
 	if dst == nil {
 		return nil
 	}
@@ -379,7 +379,17 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
+		}
+	case ColumnRawTypeUInt16:
+		nv, nonNull, err := mach.EngColumnDataInt16(stmt, idx)
+		if err != nil {
+			return api.ErrDatabaseScanTypeName("uint16", err)
+		}
+		v := uint16(nv)
+		*isNull = !nonNull
+		if nonNull {
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeInt32:
 		v, nonNull, err := mach.EngColumnDataInt32(stmt, idx)
@@ -388,7 +398,17 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
+		}
+	case ColumnRawTypeUInt32:
+		nv, nonNull, err := mach.EngColumnDataInt32(stmt, idx)
+		if err != nil {
+			return api.ErrDatabaseScanTypeName("uint32", err)
+		}
+		v := uint32(nv)
+		*isNull = !nonNull
+		if nonNull {
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeInt64:
 		v, nonNull, err := mach.EngColumnDataInt64(stmt, idx)
@@ -397,7 +417,17 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
+		}
+	case ColumnRawTypeUInt64:
+		nv, nonNull, err := mach.EngColumnDataInt64(stmt, idx)
+		if err != nil {
+			return api.ErrDatabaseScanTypeName("uint64", err)
+		}
+		v := uint64(nv)
+		*isNull = !nonNull
+		if nonNull {
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeDatetime:
 		v, nonNull, err := mach.EngColumnDataDateTime(stmt, idx)
@@ -406,7 +436,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeFloat32:
 		v, nonNull, err := mach.EngColumnDataFloat32(stmt, idx)
@@ -415,7 +445,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeFloat64:
 		v, nonNull, err := mach.EngColumnDataFloat64(stmt, idx)
@@ -424,7 +454,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeIPv4:
 		v, nonNull, err := mach.EngColumnDataIPv4(stmt, idx)
@@ -433,7 +463,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeIPv6:
 		v, nonNull, err := mach.EngColumnDataIPv6(stmt, idx)
@@ -442,7 +472,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeString:
 		v, nonNull, err := mach.EngColumnDataString(stmt, idx)
@@ -451,7 +481,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeBinary:
 		v, nonNull, err := mach.EngColumnDataBinary(stmt, idx)
@@ -460,7 +490,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst)
+			return api.Scan(v, dst, loc)
 		}
 	default:
 		return api.ErrDatabaseScanUnsupportedType(dst)

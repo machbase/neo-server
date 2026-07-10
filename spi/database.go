@@ -10,6 +10,8 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +23,32 @@ import (
 
 var defaultDatabase api.Database
 var defaultDatabaseKey crypto.PrivateKey
+var defaultDSN map[string]string
+
+func SetDefaultDSN(dsn map[string]string) {
+	defaultDSN = dsn
+}
+
+func DefaultDSN(overrides map[string]string) string {
+	result := make(map[string]string)
+	for k, v := range defaultDSN {
+		result[k] = v
+	}
+	for k, v := range overrides {
+		result[k] = v
+	}
+	if _, ok := result["auth_key_pem"]; ok {
+		delete(result, "auth_key_file")
+	}
+	parts := make([]string, 0, len(result))
+	for k, v := range result {
+		if strings.ContainsAny(v, " ;\n\r\t") {
+			v = fmt.Sprintf("\"%s\"", v)
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	return strings.Join(parts, ";")
+}
 
 func SetDefault(db api.Database, key crypto.PrivateKey) {
 	defaultDatabase = db
@@ -106,7 +134,39 @@ const (
 	SQLStatementTypeDrop
 	SQLStatementTypeAlter
 	SQLStatementTypeDescribe
+	SQLStatementTypeCommonTableExpression
+	SQLStatementTypeExplain
+	SQLStatementTypeShow
 )
+
+func (st SQLStatementType) String() string {
+	switch st {
+	case SQLStatementTypeSelect:
+		return "SELECT"
+	case SQLStatementTypeInsert:
+		return "INSERT"
+	case SQLStatementTypeUpdate:
+		return "UPDATE"
+	case SQLStatementTypeDelete:
+		return "DELETE"
+	case SQLStatementTypeCreate:
+		return "CREATE"
+	case SQLStatementTypeDrop:
+		return "DROP"
+	case SQLStatementTypeAlter:
+		return "ALTER"
+	case SQLStatementTypeDescribe:
+		return "DESCRIBE"
+	case SQLStatementTypeCommonTableExpression:
+		return "CTE"
+	case SQLStatementTypeExplain:
+		return "EXPLAIN"
+	case SQLStatementTypeShow:
+		return "SHOW"
+	default:
+		return "OTHER"
+	}
+}
 
 func DetectSQLStatementType(sqlText string) SQLStatementType {
 	toks := strings.Fields(sqlText)
@@ -129,15 +189,21 @@ func DetectSQLStatementType(sqlText string) SQLStatementType {
 		return SQLStatementTypeDrop
 	case "ALTER":
 		return SQLStatementTypeAlter
-	case "DESCRIBE":
+	case "DESCRIBE", "DESC":
 		return SQLStatementTypeDescribe
+	case "WITH":
+		return SQLStatementTypeCommonTableExpression
+	case "SHOW":
+		return SQLStatementTypeShow
+	case "EXPLAIN":
+		return SQLStatementTypeExplain
 	default:
 		return SQLStatementTypeOther
 	}
 }
 
 func (st SQLStatementType) IsFetch() bool {
-	return st == SQLStatementTypeSelect || st == SQLStatementTypeDescribe
+	return st == SQLStatementTypeSelect || st == SQLStatementTypeDescribe || st == SQLStatementTypeCommonTableExpression
 }
 
 func SqlTidy(sqlTextLines ...string) string {
@@ -194,4 +260,153 @@ func DefaultPool() (*sql.DB, error) {
 		return nil, errors.New("default pool is not initialized")
 	}
 	return defaultPoolDB, nil
+}
+
+func ColumnTypesToDataTypes(columnTypes []*sql.ColumnType) []api.DataType {
+	var dataTypes = make([]api.DataType, len(columnTypes))
+	for i, colType := range columnTypes {
+		switch dbType := colType.DatabaseTypeName(); dbType {
+		case "SHORT", "INT16":
+			dataTypes[i] = api.DataTypeInt16
+		case "USHORT", "UINT16":
+			dataTypes[i] = api.DataTypeUInt16
+		case "INT", "INTEGER", "INT32":
+			dataTypes[i] = api.DataTypeInt32
+		case "UINT", "UINTEGER", "UINT32":
+			dataTypes[i] = api.DataTypeUInt32
+		case "LONG", "INT64":
+			dataTypes[i] = api.DataTypeInt64
+		case "ULONG", "UINT64":
+			dataTypes[i] = api.DataTypeUInt64
+		case "FLOAT":
+			dataTypes[i] = api.DataTypeFloat32
+		case "DOUBLE":
+			dataTypes[i] = api.DataTypeFloat64
+		case "VARCHAR":
+			dataTypes[i] = api.DataTypeString
+		case "DATETIME":
+			dataTypes[i] = api.DataTypeDatetime
+		case "BINARY":
+			dataTypes[i] = api.DataTypeBinary
+		case "JSON":
+			dataTypes[i] = api.DataTypeJSON
+		case "IPV4":
+			dataTypes[i] = api.DataTypeIPv4
+		case "IPV6":
+			dataTypes[i] = api.DataTypeIPv6
+		default:
+			dataTypes[i] = api.DataType(dbType)
+		}
+	}
+	return dataTypes
+}
+
+func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
+	buffer := make([]interface{}, len(columnTypes))
+	for i, colType := range columnTypes {
+		switch colType.ScanType().String() {
+		case "int16":
+			if nullable, ok := colType.Nullable(); ok && nullable {
+				buffer[i] = new(sql.NullInt16)
+			} else {
+				buffer[i] = new(int16)
+			}
+		case "uint16":
+			buffer[i] = new(uint16)
+		case "int32":
+			if nullable, ok := colType.Nullable(); ok && nullable {
+				buffer[i] = new(sql.NullInt32)
+			} else {
+				buffer[i] = new(int32)
+			}
+		case "uint32":
+			buffer[i] = new(uint32)
+		case "int64":
+			buffer[i] = new(int64)
+		case "float32":
+			buffer[i] = new(float32)
+		case "float64":
+			buffer[i] = new(float64)
+		case "time.Time":
+			buffer[i] = new(time.Time)
+		case "string":
+			// Issue machbase/neo#1408
+			// can not use string type directly
+			if nullable, ok := colType.Nullable(); ok && nullable {
+				buffer[i] = new(sql.NullString)
+			} else {
+				buffer[i] = new(string)
+			}
+		case "[]uint8":
+			buffer[i] = new([]byte)
+		case "net.IP":
+			buffer[i] = new(net.IP)
+		case "api.JSONString":
+			if nullable, ok := colType.Nullable(); ok && nullable {
+				buffer[i] = new(sql.Null[api.JSONString])
+			} else {
+				buffer[i] = new(api.JSONString)
+			}
+		case "sql.NullInt16":
+			buffer[i] = new(sql.NullInt16)
+		case "sql.NullInt32":
+			buffer[i] = new(sql.NullInt32)
+		case "sql.NullInt64":
+			buffer[i] = new(sql.NullInt64)
+		case "sql.NullFloat64":
+			buffer[i] = new(sql.NullFloat64)
+		case "sql.NullString":
+			buffer[i] = new(sql.NullString)
+		case "sql.NullBool":
+			buffer[i] = new(sql.NullBool)
+		case "sql.NullTime":
+			buffer[i] = new(sql.NullTime)
+		default:
+			switch colType.DatabaseTypeName() {
+			case "INT", "BIGINT", "SMALLINT", "TINYINT":
+				buffer[i] = new(sql.NullInt64)
+			case "FLOAT", "DOUBLE", "REAL":
+				buffer[i] = new(sql.NullFloat64)
+			case "VARCHAR", "TEXT", "CHAR":
+				buffer[i] = new(sql.NullString)
+			case "BOOLEAN":
+				buffer[i] = new(sql.NullBool)
+			case "DATE", "DATETIME", "TIMESTAMP":
+				buffer[i] = new(sql.NullTime)
+			default:
+				buffer[i] = new(interface{})
+			}
+		}
+	}
+	return buffer
+}
+
+func MakeUserMessage(smtType SQLStatementType, rowsCount int64) string {
+	rowsObj := ""
+	switch rowsCount {
+	case 0:
+		rowsObj = "no rows"
+	case 1:
+		rowsObj = "a row"
+	default:
+		rowsObj = fmt.Sprintf("%d rows", rowsCount)
+	}
+	switch smtType {
+	case SQLStatementTypeSelect, SQLStatementTypeDescribe, SQLStatementTypeCommonTableExpression:
+		return fmt.Sprintf("%s selected.", rowsObj)
+	case SQLStatementTypeInsert:
+		return fmt.Sprintf("%s inserted.", rowsObj)
+	case SQLStatementTypeUpdate:
+		return fmt.Sprintf("%s updated.", rowsObj)
+	case SQLStatementTypeDelete:
+		return fmt.Sprintf("%s deleted.", rowsObj)
+	case SQLStatementTypeCreate:
+		return "Created successfully."
+	case SQLStatementTypeDrop:
+		return "Dropped successfully."
+	case SQLStatementTypeAlter:
+		return "Altered successfully."
+	default:
+		return "executed."
+	}
 }

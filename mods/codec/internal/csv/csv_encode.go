@@ -221,12 +221,20 @@ func (ex *Exporter) AddRow(values []any) error {
 			} else {
 				r = ex.nullAlternative
 			}
+		case *sql.Null[api.JSONString]:
+			if sqlVal.Valid {
+				r = string(sqlVal.V)
+			} else {
+				r = ex.nullAlternative
+			}
 		}
 		switch v := api.Unbox(r).(type) {
 		case string:
 			cols[i] = v
 		case time.Time:
 			cols[i] = ex.timeformat.Format(v)
+		case api.JSONString:
+			cols[i] = string(v)
 		case float64:
 			cols[i] = internal.FormatPrecisionFloat64(v, ex.precision, false)
 		case float32:
@@ -249,17 +257,35 @@ func (ex *Exporter) AddRow(values []any) error {
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
+		case uint16:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(uint64(v), 10)
+			}
 		case int32:
 			if treatIntValueAsFloat {
 				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(int64(v), 10)
 			}
+		case uint32:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(uint64(v), 10)
+			}
 		case int64:
 			if treatIntValueAsFloat {
 				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
 			} else {
 				cols[i] = strconv.FormatInt(v, 10)
+			}
+		case uint64:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(v, 10)
 			}
 		case bool:
 			cols[i] = strconv.FormatBool(v)

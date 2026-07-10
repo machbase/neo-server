@@ -912,13 +912,13 @@ func testDescribeTable(t *testing.T) {
 		{Name: "TIME", Type: api.ColumnTypeDatetime, DataType: api.DataTypeDatetime},
 		{Name: "VALUE", Type: api.ColumnTypeDouble, DataType: api.DataTypeFloat64},
 		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, DataType: api.DataTypeInt16},
-		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, DataType: api.DataTypeInt16},
+		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, DataType: api.DataTypeUInt16},
 		{Name: "INT_VALUE", Type: api.ColumnTypeInteger, DataType: api.DataTypeInt32},
-		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, DataType: api.DataTypeInt32},
+		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, DataType: api.DataTypeUInt32},
 		{Name: "LONG_VALUE", Type: api.ColumnTypeLong, DataType: api.DataTypeInt64},
-		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, DataType: api.DataTypeInt64},
+		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, DataType: api.DataTypeUInt64},
 		{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, DataType: api.DataTypeString},
-		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, DataType: api.DataTypeString},
+		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, DataType: api.DataTypeJSON},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, DataType: api.DataTypeIPv6},
 		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, DataType: api.DataTypeBinary},
@@ -930,13 +930,13 @@ func testDescribeTable(t *testing.T) {
 		{"name": "TIME", "type": "datetime", "data_type": "datetime", "length": 8, "flag": api.ColumnFlagBasetime},
 		{"name": "VALUE", "type": "double", "data_type": "double", "length": 8, "flag": api.ColumnFlagSummarized},
 		{"name": "SHORT_VALUE", "type": "short", "data_type": "int16", "length": 2},
-		{"name": "USHORT_VALUE", "type": "ushort", "data_type": "int16", "length": 2},
+		{"name": "USHORT_VALUE", "type": "ushort", "data_type": "uint16", "length": 2},
 		{"name": "INT_VALUE", "type": "integer", "data_type": "int32", "length": 4},
-		{"name": "UINT_VALUE", "type": "uinteger", "data_type": "int32", "length": 4},
+		{"name": "UINT_VALUE", "type": "uinteger", "data_type": "uint32", "length": 4},
 		{"name": "LONG_VALUE", "type": "long", "data_type": "int64", "length": 8},
-		{"name": "ULONG_VALUE", "type": "ulong", "data_type": "int64", "length": 8},
+		{"name": "ULONG_VALUE", "type": "ulong", "data_type": "uint64", "length": 8},
 		{"name": "STR_VALUE", "type": "varchar", "data_type": "string", "length": 400},
-		{"name": "JSON_VALUE", "type": "json", "data_type": "string", "length": 32767},
+		{"name": "JSON_VALUE", "type": "json", "data_type": "json", "length": 32767},
 		{"name": "IPV4_VALUE", "type": "ipv4", "data_type": "ipv4", "length": 5},
 		{"name": "IPV6_VALUE", "type": "ipv6", "data_type": "ipv6", "length": 17},
 		{"name": "BIN_VALUE", "type": "binary", "data_type": "binary", "length": 32767},
@@ -1130,77 +1130,55 @@ func testInsertAndQuery(t *testing.T) {
 		}
 	}
 
-	var beginCalled, endCalled bool
-	var nextCalled int
 	// query - select
-	queryCtx := &spi.Query{
-		Begin: func(q *spi.Query) {
-			beginCalled = true
-			cols := q.Columns()
-			require.Equal(t, []string{"NAME", "TIME", "VALUE",
-				"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
-				"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
-			require.Equal(t, []api.DataType{
-				api.DataTypeString,
-				api.DataTypeDatetime,
-				api.DataTypeFloat64,
-				api.DataTypeInt16,
-				api.DataTypeInt16,
-				api.DataTypeInt32,
-				api.DataTypeInt32,
-				api.DataTypeInt64,
-				api.DataTypeInt64,
-				api.DataTypeString,
-				api.DataTypeString,
-				api.DataTypeIPv4,
-				api.DataTypeIPv6,
-				api.DataTypeBinary,
-			}, cols.DataTypes())
-		},
-		Next: func(q *spi.Query, rownum int64) bool {
-			nextCalled++
-			values, err := q.Columns().MakeBuffer()
-			require.NoError(t, err)
-			err = q.Scan(values...)
-			require.NoError(t, err)
-			require.Equal(t, "insert-once", unbox(values[0]))
-			require.Equal(t, now, unbox(values[1]))
-			require.Equal(t, 1.23, unbox(values[2]))
-			require.Equal(t, int16(1), unbox(values[3]))
-			require.Equal(t, nil, unbox(values[4]))
-			require.Equal(t, int32(2), unbox(values[5]))
-			require.Equal(t, nil, unbox(values[6]))
-			require.Equal(t, int64(3), unbox(values[7]))
-			require.Equal(t, nil, unbox(values[8]))
-			require.Equal(t, "str1", unbox(values[9]))
-			require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
-			return true
-		},
-		End: func(q *spi.Query) {
-			endCalled = true
-			require.NoError(t, q.Err())
-			require.True(t, q.IsFetch())
-			require.Equal(t, "a row fetched.", q.UserMessage())
-			require.Equal(t, int64(1), q.RowNum())
-		},
-	}
-	err = queryCtx.Execute(ctx, conn, `select * from tag_data where name = ?`, "insert-once")
+	rows, err = conn.Query(ctx, `select * from tag_data where name = ?`, "insert-once")
 	require.NoError(t, err, "query fail")
-	require.True(t, beginCalled)
-	require.True(t, endCalled)
+	cols, err := rows.Columns()
+	require.NoError(t, err, "columns fail")
+	require.Equal(t, []string{"NAME", "TIME", "VALUE",
+		"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
+		"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
+	require.Equal(t, []api.DataType{
+		api.DataTypeString,
+		api.DataTypeDatetime,
+		api.DataTypeFloat64,
+		api.DataTypeInt16,
+		api.DataTypeUInt16,
+		api.DataTypeInt32,
+		api.DataTypeUInt32,
+		api.DataTypeInt64,
+		api.DataTypeUInt64,
+		api.DataTypeString,
+		api.DataTypeString,
+		api.DataTypeIPv4,
+		api.DataTypeIPv6,
+		api.DataTypeBinary,
+	}, cols.DataTypes())
+
+	var nextCalled int
+	for rows.Next() {
+		nextCalled++
+		values, err := cols.MakeBuffer()
+		require.NoError(t, err)
+		err = rows.Scan(values...)
+		require.NoError(t, err)
+		require.Equal(t, "insert-once", unbox(values[0]))
+		require.Equal(t, now, unbox(values[1]))
+		require.Equal(t, 1.23, unbox(values[2]))
+		require.Equal(t, int16(1), unbox(values[3]))
+		require.Equal(t, nil, unbox(values[4]))
+		require.Equal(t, int32(2), unbox(values[5]))
+		require.Equal(t, nil, unbox(values[6]))
+		require.Equal(t, int64(3), unbox(values[7]))
+		require.Equal(t, nil, unbox(values[8]))
+		require.Equal(t, "str1", unbox(values[9]))
+		require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
+	}
 	require.Equal(t, 1, nextCalled)
 
 	// query - insert
-	endCalled = false
-	queryCtx = &spi.Query{
-		End: func(q *spi.Query) {
-			endCalled = true
-			require.False(t, q.IsFetch())
-			require.NoError(t, q.Err())
-			require.Equal(t, "a row inserted.", q.UserMessage())
-		},
-	}
-	err = queryCtx.Execute(ctx, conn, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
+
+	result = conn.Exec(ctx, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
 		`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
 		`?, ?, `+ // long_value, ulong_value
 		`?, ?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value, bin_value
@@ -1216,8 +1194,8 @@ func testInsertAndQuery(t *testing.T) {
 		nil,                      // ipv6_value
 		[]byte{0x01, 0x02, 0x03}, // bin_value
 	)
-	require.NoError(t, err, "query-insert fail")
-	require.True(t, endCalled)
+	require.NoError(t, result.Err(), "query-insert fail")
+	require.Equal(t, "a row inserted.", result.Message())
 
 	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
 	require.NoError(t, result.Err(), "table_flush fail")
@@ -1536,19 +1514,14 @@ func testShowTables(t *testing.T) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables, err := spi.ListTables(ctx, conn, true)
-	require.NoError(t, err, "show tables fail")
-	require.Equal(t, len(result), len(tables))
-
-	resultList, err := spi.ListTables(ctx, conn, false)
-	require.NoError(t, err, "show tables fail")
-	require.NotEmpty(t, resultList, "tables empty")
-
-	result2 := map[string]*spi.TableInfo{}
-	for _, v := range tables {
-		result2[fmt.Sprintf("%s.%s.%s", v.Database, v.User, v.Name)] = v
-	}
-	require.Equal(t, result, result2)
+	tables := spi.QueryTables(ctx, conn, true)
+	require.NotEmpty(t, tables, "tables empty")
+	tableCount := 0
+	tables.Iter(func(values []any) bool {
+		tableCount++
+		return true
+	})
+	require.Equal(t, len(result), tableCount)
 }
 
 func testExistsTable(t *testing.T) {
@@ -1687,11 +1660,11 @@ func testColumns(t *testing.T) {
 	}{
 		{"TIME", "datetime", 8, 0},
 		{"SHORT_VALUE", "int16", 2, 0},
-		{"USHORT_VALUE", "int16", 2, 0},
+		{"USHORT_VALUE", "uint16", 2, 0},
 		{"INT_VALUE", "int32", 4, 0},
-		{"UINT_VALUE", "int32", 4, 0},
+		{"UINT_VALUE", "uint32", 4, 0},
 		{"LONG_VALUE", "int64", 8, 0},
-		{"ULONG_VALUE", "int64", 8, 0},
+		{"ULONG_VALUE", "uint64", 8, 0},
 		{"DOUBLE_VALUE", "double", 8, 0},
 		{"FLOAT_VALUE", "float", 4, 0},
 		{"STR_VALUE", "string", 20, 0},
@@ -1896,7 +1869,7 @@ func testWatchLogTable(t *testing.T) {
 				require.Less(t, int32(0), rec["INT_VALUE"], "INT_VALUE")
 				require.Equal(t, int64(2), rec["LONG_VALUE"], "LONG_VALUE")
 				require.Equal(t, "str1", rec["STR_VALUE"], "STR_VALUE")
-				require.Equal(t, `{"key1":"value1"}`, rec["JSON_VALUE"], "JSON_VALUE")
+				require.Equal(t, api.JSONString(`{"key1":"value1"}`), rec["JSON_VALUE"], "JSON_VALUE")
 			}
 		case <-tick.C:
 			tickCount++
@@ -1934,15 +1907,15 @@ func testAppendLogTable(t *testing.T) {
 		{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
-		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeInt16},
+		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeUInt16},
 		{Name: "INT_VALUE", Type: api.ColumnTypeInteger, Length: 4, DataType: api.DataTypeInt32},
-		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeInt32},
+		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeUInt32},
 		{Name: "LONG_VALUE", Type: api.ColumnTypeLong, Length: 8, DataType: api.DataTypeInt64},
-		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeInt64},
+		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeUInt64},
 		{Name: "DOUBLE_VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
 		{Name: "FLOAT_VALUE", Type: api.ColumnTypeFloat, Length: 4, DataType: api.DataTypeFloat32},
 		{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, Length: 400, DataType: api.DataTypeString},
-		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeString},
+		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeJSON},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
 		{Name: "TEXT_VALUE", Type: api.ColumnTypeText, Length: 67108864, DataType: api.DataTypeString},
@@ -2021,13 +1994,13 @@ func testAppendTagTable(t *testing.T) {
 		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 		{Name: "VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
 		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
-		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeInt16},
+		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeUInt16},
 		{Name: "INT_VALUE", Type: api.ColumnTypeInteger, Length: 4, DataType: api.DataTypeInt32},
-		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeInt32},
+		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeUInt32},
 		{Name: "LONG_VALUE", Type: api.ColumnTypeLong, Length: 8, DataType: api.DataTypeInt64},
-		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeInt64},
+		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeUInt64},
 		{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, Length: 400, DataType: api.DataTypeString},
-		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeString},
+		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeJSON},
 		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
 		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
 		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 32767, DataType: api.DataTypeBinary},

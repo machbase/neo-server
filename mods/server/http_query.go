@@ -403,12 +403,12 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	rsp := &QueryResponse{Success: true, Reason: "success"}
 	data := &QueryData{
 		Columns: []string{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
-		Types: []api.DataType{
-			api.DataTypeInt32,  // rownum
-			api.DataTypeString, // db
-			api.DataTypeString, // user
-			api.DataTypeString, // name
-			api.DataTypeString, // type
+		Types: []string{
+			string(api.DataTypeInt32),  // rownum
+			string(api.DataTypeString), // db
+			string(api.DataTypeString), // user
+			string(api.DataTypeString), // name
+			string(api.DataTypeString), // type
 		},
 	}
 
@@ -476,9 +476,9 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	rsp := &QueryResponse{Success: true, Reason: "success"}
 	data := &QueryData{
 		Columns: []string{"ROWNUM", "NAME"},
-		Types: []api.DataType{
-			api.DataTypeInt32,  // rownum
-			api.DataTypeString, // name
+		Types: []string{
+			string(api.DataTypeInt32),  // rownum
+			string(api.DataTypeString), // name
 		},
 		Rows: [][]any{},
 	}
@@ -591,17 +591,17 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		Columns: []string{
 			"ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
 			"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"},
-		Types: []api.DataType{
-			api.DataTypeInt32,    // rownum
-			api.DataTypeString,   // name
-			api.DataTypeInt64,    // row_count
-			api.DataTypeDatetime, // min_time
-			api.DataTypeDatetime, // max_time
-			api.DataTypeFloat64,  // min_value
-			api.DataTypeDatetime, // min_value_time
-			api.DataTypeFloat64,  // max_value
-			api.DataTypeDatetime, // max_value_time
-			api.DataTypeDatetime, // recent_row_time
+		Types: []string{
+			string(api.DataTypeInt32),    // rownum
+			string(api.DataTypeString),   // name
+			string(api.DataTypeInt64),    // row_count
+			string(api.DataTypeDatetime), // min_time
+			string(api.DataTypeDatetime), // max_time
+			string(api.DataTypeFloat64),  // min_value
+			string(api.DataTypeDatetime), // min_value_time
+			string(api.DataTypeFloat64),  // max_value
+			string(api.DataTypeDatetime), // max_value_time
+			string(api.DataTypeDatetime), // recent_row_time
 		},
 		Rows: [][]any{},
 	}

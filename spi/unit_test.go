@@ -248,23 +248,16 @@ func TestInfoValueObjects(t *testing.T) {
 		}
 
 		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: api.TableTypeLookup, Flag: api.TableFlagRollup, err: errors.New("table err")}
-		cols := info.Columns()
-		require.Equal(t, []string{"DATABASE", "USER", "NAME", "ID", "TYPE", "FLAG"}, cols.Names())
 		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
 		require.EqualError(t, info.Err(), "table err")
 	})
 
 	t.Run("misc info values", func(t *testing.T) {
 		now := time.Unix(1700000000, 0).UTC()
-		license := &LicenseInfo{Id: "id", Type: "dev", Customer: "cust", Project: "proj", CountryCode: "KR", InstallDate: "20240101", IssueDate: "20240102", LicenseStatus: "active"}
-		require.Len(t, license.Columns(), 8)
-		require.Equal(t, []any{"ID", "id", "TYPE", "dev", "CUSTOMER", "cust", "PROJECT", "proj", "COUNTRY_CODE", "KR", "INSTALL_DATE", "20240101", "ISSUE_DATE", "20240102", "LICENSE_STATUS", "active"}, license.Values())
-
 		tag := &TagInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", Id: 2, Summarized: true}
 		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(2), true}, tag.Values())
 
 		tagStat := &TagStatInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", RowCount: 3, MinTime: now, MaxTime: now, MinValue: 1.2, MinValueTime: now, MaxValue: 3.4, MaxValueTime: now, RecentRowTime: now}
-		require.Len(t, tagStat.Columns(), 12)
 		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(3), now, now, 1.2, now, 3.4, now, now}, tagStat.Values())
 
 		nonTagIndexGap := &IndexGapInfo{ID: 1, TableName: "T", IndexName: "IDX", Gap: 2, err: errors.New("gap err")}
@@ -299,7 +292,7 @@ func TestInfoValueObjects(t *testing.T) {
 
 		now := time.Unix(1700000000, 0).UTC()
 		sess := &SessionInfo{ID: 1, UserID: 2, UserName: "sys", LoginTime: now, MaxQPXMem: 64}
-		require.Equal(t, []any{int64(1), int64(2), "sys", "", now, int64(64), nil}, sess.Values())
+		require.Equal(t, []any{int64(1), int64(2), "sys", "CLI", now, int64(64), nil}, sess.Values())
 
 		sessNeo := &SessionInfo{ID: 3, UserID: 4, UserName: "neo", IsNeo: true, StmtCount: 7, err: errors.New("session err")}
 		require.Equal(t, []any{int64(3), int64(4), "neo", "neo", nil, nil, int64(7)}, sessNeo.Values())

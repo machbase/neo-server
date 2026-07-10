@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/sha1"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,6 +101,26 @@ func NewTaskContext(ctx context.Context) *Task {
 		ret.fireCircuitBreak(nil)
 	})
 	return ret
+}
+
+func (x *Task) SqlDatabase() (*sql.DB, error) {
+	if x.consoleUser != "" {
+		conf := spi.DefaultDSN(map[string]string{"user": fmt.Sprintf("sys as %s", x.consoleUser)})
+		db, err := sql.Open("machbase", conf)
+		if err != nil {
+			return nil, err
+		}
+		x.AddShouldStopListener(func() {
+			db.Close()
+		})
+		return db, nil
+	} else {
+		pool, err := spi.DefaultPool()
+		if err != nil {
+			return nil, err
+		}
+		return pool, nil
+	}
 }
 
 func (x *Task) ConnDatabase(ctx context.Context) (api.Conn, error) {

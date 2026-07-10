@@ -11,6 +11,17 @@ import (
 	"github.com/machbase/neo-client/api"
 )
 
+type LicenseInfo struct {
+	Id            string `json:"id"`
+	Type          string `json:"type"`
+	Customer      string `json:"customer"`
+	Project       string `json:"project"`
+	CountryCode   string `json:"countryCode"`
+	InstallDate   string `json:"installDate"`
+	IssueDate     string `json:"issueDate"`
+	LicenseStatus string `json:"licenseStatus,omitempty"`
+}
+
 func GetLicenseInfo(ctx context.Context, conn api.Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	var violateStatus int

@@ -1,61 +1,93 @@
 package spi
 
 import (
-	"time"
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/machbase/neo-client/api"
 )
 
-type InfoType interface {
+type ResultSet interface {
 	Columns() api.Columns
-	Values() []interface{}
 	Err() error
+	Iter(func(values []interface{}) bool)
+	Message() string
 }
 
-type TableInfo struct {
-	Database string        `json:"database"`       // M$SYS_TABLES.DATABASE_ID
-	User     string        `json:"user"`           // M$SYS_USERS.NAME
-	Name     string        `json:"name"`           // M$SYS_TABLES.NAME
-	Id       int64         `json:"id"`             // M$SYS_TABLES.ID
-	Type     api.TableType `json:"type"`           // M$SYS_TABLES.TYPE
-	Flag     api.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
-	err      error         `json:"-"`
+type ResultSetBase struct {
+	err error
+	msg string
 }
 
-func (ti *TableInfo) Kind() string {
-	desc := "undef"
-	switch ti.Type {
-	case api.TableTypeLog:
-		desc = "Log Table"
-	case api.TableTypeFixed:
-		desc = "Fixed Table"
-	case api.TableTypeVolatile:
-		desc = "Volatile Table"
-	case api.TableTypeLookup:
-		desc = "Lookup Table"
-	case api.TableTypeKeyValue:
-		desc = "KeyValue Table"
-	case api.TableTypeTag:
-		desc = "Tag Table"
+func (rs *ResultSetBase) Err() error {
+	return rs.err
+}
+
+func (rs *ResultSetBase) Message() string {
+	if rs.err != nil {
+		return rs.err.Error()
 	}
-	switch ti.Flag {
-	case api.TableFlagData:
-		desc += " (data)"
-	case api.TableFlagRollup:
-		desc += " (rollup)"
-	case api.TableFlagMeta:
-		desc += " (meta)"
-	case api.TableFlagStat:
-		desc += " (stat)"
+	return rs.msg
+}
+
+var serverInfoProvider func() map[string]any
+
+func SetDefaultServerInfo(provider func() map[string]any) {
+	serverInfoProvider = provider
+}
+
+type ServerInfoResultSet struct {
+	ResultSetBase
+	keys []string
+	data map[string]any
+}
+
+var _ ResultSet = (*ServerInfoResultSet)(nil)
+
+func (si *ServerInfoResultSet) Columns() api.Columns {
+	return api.Columns{
+		api.MakeColumnString("NAME"),
+		api.MakeColumnAny("VALUE"),
 	}
-	return desc
 }
 
-func (ti *TableInfo) Err() error {
-	return ti.err
+func (si *ServerInfoResultSet) Iter(callback func(values []interface{}) bool) {
+	if si.err != nil {
+		return
+	}
+
+	for _, k := range si.keys {
+		v := si.data[k]
+		if !callback([]interface{}{k, v}) {
+			return
+		}
+	}
 }
 
-func (ti *TableInfo) Columns() api.Columns {
+func QueryServerInfo() *ServerInfoResultSet {
+	if serverInfoProvider == nil {
+		return &ServerInfoResultSet{ResultSetBase: ResultSetBase{err: errors.New("server info provider is not set")}}
+	}
+	serverInfo := serverInfoProvider()
+	keys := make([]string, 0, len(serverInfo))
+	for k := range serverInfo {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return &ServerInfoResultSet{keys: keys, data: serverInfo}
+}
+
+type TablesResultSet struct {
+	ResultSetBase
+	list []*TableInfo
+}
+
+var _ ResultSet = (*TablesResultSet)(nil)
+
+func (ti *TablesResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "DATABASE", DataType: api.DataTypeString},
 		{Name: "USER", DataType: api.DataTypeString},
@@ -66,27 +98,88 @@ func (ti *TableInfo) Columns() api.Columns {
 	}
 }
 
-func (ti *TableInfo) Values() []interface{} {
-	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
+func (ti *TablesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range ti.list {
+		if !callback([]interface{}{t.Database, t.User, t.Name, t.Id, t.Type.ShortString(), t.Flag.String()}) {
+			return
+		}
+	}
 }
 
-type IndexInfo struct {
-	Id             int64  `json:"id"`
-	Database       string `json:"database"`
-	DatabaseId     int64  `json:"database_id,omitempty"`
-	User           string `json:"user"`
-	TableName      string `json:"table_name"`
-	ColumnName     string `json:"column_name"`
-	IndexName      string `json:"index_name"`
-	IndexType      string `json:"index_type"`
-	KeyCompress    string `json:"key_compress"`
-	MaxLevel       int64  `json:"max_level"`
-	PartValueCount int64  `json:"part_value_count"`
-	BitMapEncode   string `json:"bitmap_encode"`
-	err            error  `json:"-"`
+func QueryTables(ctx context.Context, conn api.Conn, showAll bool) *TablesResultSet {
+	var list = []*TableInfo{}
+	var err error
+	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo) bool {
+		if err = t.Err(); err != nil {
+			return false
+		}
+		list = append(list, t)
+		return true
+	})
+	return &TablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-func (ii *IndexInfo) Columns() api.Columns {
+type TableResultSet struct {
+	ResultSetBase
+	desc *api.TableDescription
+}
+
+var _ ResultSet = (*TableResultSet)(nil)
+
+func (tr *TableResultSet) Err() error {
+	return tr.err
+}
+
+func (tr *TableResultSet) Message() string {
+	if tr.err != nil {
+		return tr.err.Error()
+	}
+	return ""
+}
+
+func (tr *TableResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "COLUMN", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "LENGTH", DataType: api.DataTypeInt32},
+		{Name: "FLAG", DataType: api.DataTypeString},
+		{Name: "INDEX", DataType: api.DataTypeString},
+	}
+}
+
+func (tr *TableResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, col := range tr.desc.Columns {
+		indexes := []string{}
+		for _, idxDesc := range tr.desc.Indexes {
+			for _, colName := range idxDesc.Cols {
+				if colName == col.Name {
+					indexes = append(indexes, idxDesc.Name)
+					break
+				}
+			}
+		}
+		values := []any{
+			col.Name, col.Type.String(), col.Width(), col.Flag.String(), strings.Join(indexes, ","),
+		}
+		if !callback(values) {
+			return
+		}
+	}
+}
+
+func QueryTable(ctx context.Context, conn api.Conn, tableName string, all bool) *TableResultSet {
+	desc, err := api.DescribeTable(ctx, conn, tableName, all)
+	return &TableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
+}
+
+type IndexesResultSet struct {
+	ResultSetBase
+	list []*IndexInfo
+}
+
+var _ ResultSet = (*IndexesResultSet)(nil)
+
+func (ii *IndexesResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "DATABASE", DataType: api.DataTypeString},
@@ -102,26 +195,75 @@ func (ii *IndexInfo) Columns() api.Columns {
 	}
 }
 
-func (ii *IndexInfo) Values() []interface{} {
-	return []interface{}{
-		ii.Id, ii.Database, ii.User, ii.TableName, ii.ColumnName, ii.IndexName,
-		ii.IndexType, ii.KeyCompress, ii.MaxLevel, ii.PartValueCount, ii.BitMapEncode,
+func (ii *IndexesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range ii.list {
+		cont := callback([]interface{}{
+			idx.Id, idx.Database, idx.User, idx.TableName, idx.ColumnName, idx.IndexName,
+			idx.IndexType, idx.KeyCompress, idx.MaxLevel, idx.PartValueCount, idx.BitMapEncode,
+		})
+		if !cont {
+			return
+		}
 	}
 }
 
-func (ii *IndexInfo) Err() error {
-	return ii.err
+func QueryIndexes(ctx context.Context, conn api.Conn) *IndexesResultSet {
+	list, err := ListIndexes(ctx, conn)
+	return &IndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type LsmIndexInfo struct {
-	TableName string `json:"table_name"`
-	IndexName string `json:"index_name"`
-	Level     int64  `json:"level"`
-	Count     int64  `json:"count"`
-	err       error  `json:"-"`
+type QueryIndexResultSet struct {
+	ResultSetBase
+	desc *IndexInfo
 }
 
-func (li *LsmIndexInfo) Columns() api.Columns {
+var _ ResultSet = (*QueryIndexResultSet)(nil)
+
+func (qir *QueryIndexResultSet) Columns() api.Columns {
+	return api.Columns{
+		api.MakeColumnString("TABLE_NAME"),
+		api.MakeColumnString("COLUMN_NAME"),
+		api.MakeColumnString("INDEX_NAME"),
+		api.MakeColumnString("INDEX_TYPE"),
+		api.MakeColumnString("KEY_COMPRESS"),
+		api.MakeColumnInt64("MAX_LEVEL"),
+		api.MakeColumnInt64("PART_VALUE_COUNT"),
+		api.MakeColumnString("BITMAP_ENCODE"),
+	}
+}
+
+func (qir *QueryIndexResultSet) Iter(callback func(values []interface{}) bool) {
+	if qir.desc == nil {
+		return
+	}
+	cont := callback([]interface{}{
+		qir.desc.TableName,
+		qir.desc.ColumnName,
+		qir.desc.IndexName,
+		qir.desc.IndexType,
+		qir.desc.KeyCompress,
+		qir.desc.MaxLevel,
+		qir.desc.PartValueCount,
+		qir.desc.BitMapEncode,
+	})
+	if !cont {
+		return
+	}
+}
+
+func QueryIndex(ctx context.Context, conn api.Conn, indexName string) *QueryIndexResultSet {
+	idx, err := DescribeIndex(ctx, conn, indexName)
+	return &QueryIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
+}
+
+type LsmIndexesResultSet struct {
+	ResultSetBase
+	list []*LsmIndexInfo
+}
+
+var _ ResultSet = (*LsmIndexesResultSet)(nil)
+
+func (li *LsmIndexesResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "INDEX_NAME", DataType: api.DataTypeString},
@@ -130,28 +272,30 @@ func (li *LsmIndexInfo) Columns() api.Columns {
 	}
 }
 
-func (li *LsmIndexInfo) Values() []interface{} {
-	return []interface{}{
-		li.TableName, li.IndexName, li.Level, li.Count,
+func (li *LsmIndexesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range li.list {
+		cont := callback([]interface{}{
+			idx.TableName, idx.IndexName, idx.Level, idx.Count,
+		})
+		if !cont {
+			return
+		}
 	}
 }
 
-func (li *LsmIndexInfo) Err() error {
-	return li.err
+func QueryLsmIndexes(ctx context.Context, conn api.Conn) *LsmIndexesResultSet {
+	list, err := ListLsmIndexesInfo(ctx, conn)
+	return &LsmIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type LicenseInfo struct {
-	Id            string `json:"id"`
-	Type          string `json:"type"`
-	Customer      string `json:"customer"`
-	Project       string `json:"project"`
-	CountryCode   string `json:"countryCode"`
-	InstallDate   string `json:"installDate"`
-	IssueDate     string `json:"issueDate"`
-	LicenseStatus string `json:"licenseStatus,omitempty"`
+type LicenseResultSet struct {
+	ResultSetBase
+	lic *LicenseInfo
 }
 
-func (li *LicenseInfo) Columns() api.Columns {
+var _ ResultSet = (*LicenseResultSet)(nil)
+
+func (li *LicenseResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "ID", DataType: api.DataTypeString},
 		{Name: "TYPE", DataType: api.DataTypeString},
@@ -160,148 +304,176 @@ func (li *LicenseInfo) Columns() api.Columns {
 		{Name: "COUNTRY_CODE", DataType: api.DataTypeString},
 		{Name: "INSTALL_DATE", DataType: api.DataTypeString},
 		{Name: "ISSUE_DATE", DataType: api.DataTypeString},
-		{Name: "LICENSE_STATUS", DataType: api.DataTypeString},
+		{Name: "STATUS", DataType: api.DataTypeString},
 	}
 }
 
-func (li *LicenseInfo) Values() []interface{} {
-	return []interface{}{
-		"ID", li.Id,
-		"TYPE", li.Type,
-		"CUSTOMER", li.Customer,
-		"PROJECT", li.Project,
-		"COUNTRY_CODE", li.CountryCode,
-		"INSTALL_DATE", li.InstallDate,
-		"ISSUE_DATE", li.IssueDate,
-		"LICENSE_STATUS", li.LicenseStatus,
-	}
+func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
+	callback([]interface{}{
+		li.lic.Id, li.lic.Type, li.lic.Customer, li.lic.Project, li.lic.CountryCode,
+		li.lic.InstallDate, li.lic.IssueDate, li.lic.LicenseStatus,
+	})
 }
 
-type TagInfo struct {
-	Database   string       `json:"database"`
-	User       string       `json:"user"`
-	Table      string       `json:"table"`
-	Name       string       `json:"name"`
-	Id         int64        `json:"id"`
-	Err        error        `json:"-"`
-	Summarized bool         `json:"summarized"`
-	Stat       *TagStatInfo `json:"stat,omitempty"`
+func QueryLicense(ctx context.Context, conn api.Conn) *LicenseResultSet {
+	licenseInfo, err := GetLicenseInfo(ctx, conn)
+	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
 }
 
-func (ti *TagInfo) Columns() api.Columns {
+type TagsResultSet struct {
+	ResultSetBase
+	conn      api.Conn
+	tableName string
+	tagNames  []string
+	desc      *api.TableDescription
+}
+
+var _ ResultSet = (*TagsResultSet)(nil)
+
+func (tr *TagsResultSet) Columns() api.Columns {
 	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "TABLE", DataType: api.DataTypeString},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "SUMMARIZED", DataType: api.DataTypeBoolean},
-	}
-}
-
-func (ti *TagInfo) Values() []interface{} {
-	return []interface{}{
-		ti.Database, ti.User, ti.Table, ti.Name, ti.Id, ti.Summarized,
-	}
-}
-
-type TagStatInfo struct {
-	Database      string    `json:"database"`
-	User          string    `json:"user"`
-	Table         string    `json:"table"`
-	Name          string    `json:"name"`
-	RowCount      int64     `json:"row_count"`
-	MinTime       time.Time `json:"min_time"`
-	MaxTime       time.Time `json:"max_time"`
-	MinValue      float64   `json:"min_value"`
-	MinValueTime  time.Time `json:"min_value_time"`
-	MaxValue      float64   `json:"max_value"`
-	MaxValueTime  time.Time `json:"max_value_time"`
-	RecentRowTime time.Time `json:"recent_row_time"`
-}
-
-func (tsi *TagStatInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "TABLE", DataType: api.DataTypeString},
+		{Name: "_ID", DataType: api.DataTypeInt64},
 		{Name: "NAME", DataType: api.DataTypeString},
 		{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
 		{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
 		{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
+		{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
 		{Name: "MIN_VALUE", DataType: api.DataTypeFloat64},
 		{Name: "MIN_VALUE_TIME", DataType: api.DataTypeDatetime},
 		{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
 		{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
-		{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
 	}
 }
 
-func (tsi *TagStatInfo) Values() []interface{} {
-	return []interface{}{
-		tsi.Database, tsi.User, tsi.Table, tsi.Name, tsi.RowCount,
-		tsi.MinTime, tsi.MaxTime, tsi.MinValue, tsi.MinValueTime,
-		tsi.MaxValue, tsi.MaxValueTime, tsi.RecentRowTime,
+func (tr *TagsResultSet) Iter(callback func(values []interface{}) bool) {
+	ctx := context.Background()
+	ListTagsWalk(ctx, tr.conn, tr.tableName, tr.desc.TagNameColumn, func(tagInfo *TagInfo) bool {
+		if tagInfo.Err != nil {
+			return false
+		}
+		if len(tr.tagNames) > 0 {
+			if !slices.Contains(tr.tagNames, tagInfo.Name) {
+				return true // skip this tag
+			}
+		}
+		tagInfo.Summarized = tr.desc.Summarized
+		if stat, err := TagStat(ctx, tr.conn, tr.tableName, tagInfo.Name); err != nil {
+			// some tags may not have stat
+			// the err may be 'no rows in result set'
+			// ignore the error, for processing the next tag
+		} else {
+			tagInfo.Stat = stat
+		}
+
+		var values []any
+		if tagInfo.Stat != nil {
+			if tagInfo.Summarized {
+				values = []any{tagInfo.Id, tagInfo.Name, tagInfo.Stat.RowCount,
+					tagInfo.Stat.MinTime, tagInfo.Stat.MaxTime, tagInfo.Stat.RecentRowTime,
+					tagInfo.Stat.MinValue, tagInfo.Stat.MinValueTime,
+					tagInfo.Stat.MaxValue, tagInfo.Stat.MaxValueTime}
+			} else {
+				values = []any{tagInfo.Id, tagInfo.Name, tagInfo.Stat.RowCount,
+					tagInfo.Stat.MinTime, tagInfo.Stat.MaxTime, tagInfo.Stat.RecentRowTime,
+					nil, nil, nil, nil}
+			}
+		} else {
+			values = []any{tagInfo.Id, tagInfo.Name, nil,
+				nil, nil, nil,
+				nil, nil, nil, nil}
+		}
+		if !callback(values) {
+			return false
+		}
+		return true
+	})
+}
+
+func QueryTags(ctx context.Context, conn api.Conn, tableName string, tagNames ...string) *TagsResultSet {
+	tableName = strings.ToUpper(tableName)
+	desc, err := api.DescribeTable(ctx, conn, tableName, false)
+	if err != nil {
+		return &TagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	if desc.Type != api.TableTypeTag {
+		err := fmt.Errorf("f(SQL) table %q is not a tag table", tableName)
+		return &TagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	return &TagsResultSet{ResultSetBase: ResultSetBase{err: nil}, conn: conn, tableName: tableName, tagNames: tagNames, desc: desc}
+}
+
+type IndexGapResultSet struct {
+	ResultSetBase
+	list []*IndexGapInfo
+}
+
+var _ ResultSet = (*IndexGapResultSet)(nil)
+
+func (igi *IndexGapResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "TABLE", DataType: api.DataTypeString},
+		{Name: "INDEX", DataType: api.DataTypeString},
+		{Name: "GAP", DataType: api.DataTypeInt64},
 	}
 }
 
-type IndexGapInfo struct {
-	ID         int64  `json:"id"`         // indexgap, tagindexgap
-	TableName  string `json:"table_name"` // indexgap
-	IndexName  string `json:"index_name"` // indexgap
-	Gap        int64  `json:"gap"`        // indexgap
-	IsTagIndex bool   `json:"is_tag_index"`
-	Status     string `json:"status"`     // tagindexgap
-	DiskGap    int64  `json:"disk_gap"`   // tagindexgap
-	MemoryGap  int64  `json:"memory_gap"` // tagindexgap
-	err        error  `json:"-"`
-}
-
-func (igi *IndexGapInfo) Columns() api.Columns {
-	if igi.IsTagIndex {
-		return api.Columns{
-			{Name: "ID", DataType: api.DataTypeInt64},
-			{Name: "STATUS", DataType: api.DataTypeString},
-			{Name: "DISK_GAP", DataType: api.DataTypeInt64},
-			{Name: "MEMORY_GAP", DataType: api.DataTypeInt64},
-		}
-	} else {
-		return api.Columns{
-			{Name: "ID", DataType: api.DataTypeInt64},
-			{Name: "TABLE", DataType: api.DataTypeString},
-			{Name: "INDEX", DataType: api.DataTypeString},
-			{Name: "GAP", DataType: api.DataTypeInt64},
+func (igi *IndexGapResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range igi.list {
+		cont := callback([]interface{}{
+			idx.ID, idx.TableName, idx.IndexName, idx.Gap,
+		})
+		if !cont {
+			return
 		}
 	}
 }
 
-func (igi *IndexGapInfo) Values() []interface{} {
-	if igi.IsTagIndex {
-		return []interface{}{
-			igi.ID, igi.Status, igi.DiskGap, igi.MemoryGap,
-		}
-	} else {
-		return []interface{}{
-			igi.ID, igi.TableName, igi.IndexName, igi.Gap,
+func QueryIndexGap(ctx context.Context, conn api.Conn) *IndexGapResultSet {
+	list, err := ListIndexGap(ctx, conn)
+	return &IndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}
+
+type TagIndexGapResultSet struct {
+	ResultSetBase
+	list []*IndexGapInfo
+}
+
+var _ ResultSet = (*TagIndexGapResultSet)(nil)
+
+func (tigi *TagIndexGapResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "STATUS", DataType: api.DataTypeString},
+		{Name: "DISK_GAP", DataType: api.DataTypeInt64},
+		{Name: "MEMORY_GAP", DataType: api.DataTypeInt64},
+	}
+}
+
+func (tigi *TagIndexGapResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range tigi.list {
+		cont := callback([]interface{}{
+			idx.ID, idx.Status, idx.DiskGap, idx.MemoryGap,
+		})
+		if !cont {
+			return
 		}
 	}
 }
 
-func (igi *IndexGapInfo) Err() error {
-	return igi.err
+func QueryTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
+	list, err := ListTagIndexGap(ctx, conn)
+	return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type RollupGapInfo struct {
-	SrcTable     string        `json:"src_table"`
-	RollupTable  string        `json:"rollup_table"`
-	SrcEndRID    int64         `json:"src_end_rid"`
-	RollupEndRID int64         `json:"rollup_end_rid"`
-	Gap          int64         `json:"gap"`
-	LastElapsed  time.Duration `json:"last_time"`
-	err          error         `json:"-"`
+type RollupGapResultSet struct {
+	ResultSetBase
+	list []*RollupGapInfo
 }
 
-func (rgi *RollupGapInfo) Columns() api.Columns {
+var _ ResultSet = (*RollupGapResultSet)(nil)
+
+func (rgi *RollupGapResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "SRC_TABLE", DataType: api.DataTypeString},
 		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
@@ -312,25 +484,30 @@ func (rgi *RollupGapInfo) Columns() api.Columns {
 	}
 }
 
-func (rgi *RollupGapInfo) Values() []interface{} {
-	return []interface{}{
-		rgi.SrcTable, rgi.RollupTable, rgi.SrcEndRID, rgi.RollupEndRID, rgi.Gap, rgi.LastElapsed,
+func (rgi *RollupGapResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range rgi.list {
+		cont := callback([]interface{}{
+			idx.SrcTable, idx.RollupTable, idx.SrcEndRID, idx.RollupEndRID, idx.Gap, idx.LastElapsed,
+		})
+		if !cont {
+			return
+		}
 	}
 }
 
-func (rgi *RollupGapInfo) Err() error {
-	return rgi.err
+func QueryRollupGap(ctx context.Context, conn api.Conn) *RollupGapResultSet {
+	list, err := ListRollupGap(ctx, conn)
+	return &RollupGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type StorageInfo struct {
-	TableName string `json:"table_name"`
-	DataSize  int64  `json:"data_size"`
-	IndexSize int64  `json:"index_size"`
-	TotalSize int64  `json:"total_size"`
-	err       error  `json:"-"`
+type StorageResultSet struct {
+	ResultSetBase
+	list []*StorageInfo
 }
 
-func (si *StorageInfo) Columns() api.Columns {
+var _ ResultSet = (*StorageResultSet)(nil)
+
+func (sui *StorageResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
@@ -339,52 +516,54 @@ func (si *StorageInfo) Columns() api.Columns {
 	}
 }
 
-func (si *StorageInfo) Values() []interface{} {
-	return []interface{}{
-		si.TableName, si.DataSize, si.IndexSize, si.TotalSize,
+func (sui *StorageResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range sui.list {
+		if !callback([]interface{}{t.TableName, t.DataSize, t.IndexSize, t.TotalSize}) {
+			return
+		}
 	}
 }
 
-func (si *StorageInfo) Err() error {
-	return si.err
+func QueryStorage(ctx context.Context, conn api.Conn) *StorageResultSet {
+	list, err := ListStorage(ctx, conn)
+	return &StorageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type TableUsageInfo struct {
-	TableName    string `json:"table_name"`
-	StorageUsage int64  `json:"storage_usage"`
-	err          error  `json:"-"`
+type TableUsageResultSet struct {
+	ResultSetBase
+	list []*TableUsageInfo
 }
 
-func (tui *TableUsageInfo) Columns() api.Columns {
+var _ ResultSet = (*TableUsageResultSet)(nil)
+
+func (tui *TableUsageResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
 	}
 }
 
-func (tui *TableUsageInfo) Values() []interface{} {
-	return []interface{}{
-		tui.TableName, tui.StorageUsage,
+func (tui *TableUsageResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range tui.list {
+		if !callback([]interface{}{t.TableName, t.StorageUsage}) {
+			return
+		}
 	}
 }
 
-func (tui *TableUsageInfo) Err() error {
-	return tui.err
+func QueryTableUsage(ctx context.Context, conn api.Conn) *TableUsageResultSet {
+	list, err := ListTableUsage(ctx, conn)
+	return &TableUsageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type StatementInfo struct {
-	ID                 int64  `json:"id"`                   // v$stmt, v$neo_stmt
-	SessionID          int64  `json:"session_id"`           // v$stmt, v$neo_stmt
-	State              string `json:"state"`                // v$stmt, v$neo_stmt
-	Query              string `json:"query"`                // v$stmt, v$neo_stmt
-	RecordSize         int64  `json:"record_size"`          // v$stmt
-	IsNeo              bool   `json:"is_neo"`               // v$neo_stmt
-	AppendSuccessCount int64  `json:"append_success_count"` // v$neo_stmt
-	AppendFailureCount int64  `json:"append_failure_count"` // v$neo_stmt
-	err                error  `json:"-"`
+type StatementsResultSet struct {
+	ResultSetBase
+	list []*StatementInfo
 }
 
-func (si *StatementInfo) Columns() api.Columns {
+var _ ResultSet = (*StatementsResultSet)(nil)
+
+func (sri *StatementsResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
@@ -397,40 +576,27 @@ func (si *StatementInfo) Columns() api.Columns {
 	}
 }
 
-func (si *StatementInfo) Values() []interface{} {
-	var typ string
-	var recordSize any
-	var appendSuccessCount any
-	var appendFailureCount any
-	if si.IsNeo {
-		typ = "neo"
-		appendSuccessCount = si.AppendSuccessCount
-		appendFailureCount = si.AppendFailureCount
-	} else {
-		typ = ""
-		recordSize = si.RecordSize
-	}
-	return []interface{}{
-		si.ID, si.SessionID, si.State, typ, recordSize, appendSuccessCount, appendFailureCount, si.Query,
+func (sri *StatementsResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, s := range sri.list {
+		if !callback(s.Values()) {
+			return
+		}
 	}
 }
 
-func (si *StatementInfo) Err() error {
-	return si.err
+func QueryStatements(ctx context.Context, conn api.Conn) *StatementsResultSet {
+	list, err := ListStatements(ctx, conn)
+	return &StatementsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type SessionInfo struct {
-	ID        int64     `json:"id"`          // v$session, v$neo_session
-	UserID    int64     `json:"user_id"`     // v$session, v$neo_session
-	UserName  string    `json:"user_name"`   // v$session, v$neo_session
-	LoginTime time.Time `json:"login_time"`  // v$session
-	MaxQPXMem int64     `json:"max_qpx_mem"` // v$session
-	IsNeo     bool      `json:"is_neo"`      // v$neo_session
-	StmtCount int64     `json:"stmt_count"`  // v$neo_session
-	err       error     `json:"-"`
+type SessionsResultSet struct {
+	ResultSetBase
+	list []*SessionInfo
 }
 
-func (si *SessionInfo) Columns() api.Columns {
+var _ ResultSet = (*SessionsResultSet)(nil)
+
+func (sri *SessionsResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "USER_ID", DataType: api.DataTypeInt64},
@@ -442,23 +608,15 @@ func (si *SessionInfo) Columns() api.Columns {
 	}
 }
 
-func (si *SessionInfo) Values() []interface{} {
-	typ := ""
-	var qpxMem any
-	var stmtCount any
-	var loginTime any
-	if si.IsNeo {
-		typ = "neo"
-		stmtCount = si.StmtCount
-	} else {
-		loginTime = si.LoginTime
-		qpxMem = si.MaxQPXMem
-	}
-	return []interface{}{
-		si.ID, si.UserID, si.UserName, typ, loginTime, qpxMem, stmtCount,
+func (sri *SessionsResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, s := range sri.list {
+		if !callback(s.Values()) {
+			return
+		}
 	}
 }
 
-func (si *SessionInfo) Err() error {
-	return si.err
+func QuerySessions(ctx context.Context, conn api.Conn) *SessionsResultSet {
+	list, err := ListSessions(ctx, conn)
+	return &SessionsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }

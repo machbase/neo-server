@@ -3,9 +3,50 @@ package spi
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/machbase/neo-client/api"
 )
+
+type TagInfo struct {
+	Database   string       `json:"database"`
+	User       string       `json:"user"`
+	Table      string       `json:"table"`
+	Name       string       `json:"name"`
+	Id         int64        `json:"id"`
+	Err        error        `json:"-"`
+	Summarized bool         `json:"summarized"`
+	Stat       *TagStatInfo `json:"stat,omitempty"`
+}
+
+func (ti *TagInfo) Values() []interface{} {
+	return []interface{}{
+		ti.Database, ti.User, ti.Table, ti.Name, ti.Id, ti.Summarized,
+	}
+}
+
+type TagStatInfo struct {
+	Database      string    `json:"database"`
+	User          string    `json:"user"`
+	Table         string    `json:"table"`
+	Name          string    `json:"name"`
+	RowCount      int64     `json:"row_count"`
+	MinTime       time.Time `json:"min_time"`
+	MaxTime       time.Time `json:"max_time"`
+	MinValue      float64   `json:"min_value"`
+	MinValueTime  time.Time `json:"min_value_time"`
+	MaxValue      float64   `json:"max_value"`
+	MaxValueTime  time.Time `json:"max_value_time"`
+	RecentRowTime time.Time `json:"recent_row_time"`
+}
+
+func (tsi *TagStatInfo) Values() []interface{} {
+	return []interface{}{
+		tsi.Database, tsi.User, tsi.Table, tsi.Name, tsi.RowCount,
+		tsi.MinTime, tsi.MaxTime, tsi.MinValue, tsi.MinValueTime,
+		tsi.MaxValue, tsi.MaxValueTime, tsi.RecentRowTime,
+	}
+}
 
 func ListTagsSql(fullTable string, tagNameColumn string) string {
 	database, user, table := api.TableName(fullTable).Split()

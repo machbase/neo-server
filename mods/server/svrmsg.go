@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 type QueryRequest struct {
@@ -186,7 +186,7 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		opts.RowsArray(req.RowsArray),
 		opts.Transpose(req.Transpose),
 	)
-	conn, err := getPoolConn(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		if hook.SetStatusCode != nil {
 			hook.SetStatusCode(http.StatusServiceUnavailable)
@@ -195,14 +195,7 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 	}
 	defer conn.Close()
 
-	rows, err := conn.Query(ctx, req.SqlText, req.Params...)
-	if err != nil {
-		if hook.SetStatusCode != nil {
-			hook.SetStatusCode(http.StatusInternalServerError)
-		}
-		return err
-	}
-	defer rows.Close()
+	stmtType := spi.DetectSQLStatementType(req.SqlText)
 
 	if hook.SetContentType != nil {
 		hook.SetContentType(encoder.ContentType())
@@ -211,38 +204,60 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		hook.SetContentEncoding(req.Compress)
 	}
 
-	if !rows.IsFetchable() {
-		if hook.SetStatusCode != nil {
-			hook.SetStatusCode(http.StatusOK)
-		}
-		if hook.SetUserMessage != nil {
-			hook.SetUserMessage(rows.Message())
-		}
-		return nil
-	}
-
-	var columns api.Columns
-	if cols, err := rows.Columns(); err != nil {
-		if hook.SetStatusCode != nil {
-			hook.SetStatusCode(http.StatusInternalServerError)
-		}
-		return err
-	} else {
-		columns = cols
-		codec.SetEncoderColumns(encoder, cols)
-	}
-
-	encoder.Open()
-	defer encoder.Close()
-
-	for rows.Next() {
-		values, err := columns.MakeBuffer()
+	if !stmtType.IsFetch() {
+		result, err := conn.ExecContext(ctx, req.SqlText, req.Params...)
 		if err != nil {
 			if hook.SetStatusCode != nil {
 				hook.SetStatusCode(http.StatusInternalServerError)
 			}
 			return err
 		}
+		if hook.SetStatusCode != nil {
+			hook.SetStatusCode(http.StatusOK)
+		}
+		if hook.SetUserMessage != nil {
+			rows, _ := result.RowsAffected()
+			hook.SetUserMessage(spi.MakeUserMessage(stmtType, rows))
+		}
+		return nil
+	}
+
+	rows, err := conn.QueryContext(ctx, req.SqlText, req.Params...)
+	if err != nil {
+		if hook.SetStatusCode != nil {
+			hook.SetStatusCode(http.StatusInternalServerError)
+		}
+		return err
+	}
+	defer rows.Close()
+
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		if hook.SetStatusCode != nil {
+			hook.SetStatusCode(http.StatusInternalServerError)
+		}
+		return err
+	}
+	columnNames, err := rows.Columns()
+	if err != nil {
+		if hook.SetStatusCode != nil {
+			hook.SetStatusCode(http.StatusInternalServerError)
+		}
+		return err
+	}
+	if enc, ok := encoder.(opts.CanSetColumns); ok {
+		enc.SetColumns(columnNames...)
+	}
+	if enc, ok := encoder.(opts.CanSetColumnTypes); ok {
+		enc.SetColumnTypes(spi.ColumnTypesToDataTypes(columnTypes)...)
+	}
+
+	encoder.Open()
+	defer encoder.Close()
+
+	nrows := int64(0)
+	for rows.Next() {
+		values := spi.MakeBuffer(columnTypes)
 		if err := rows.Scan(values...); err != nil {
 			if hook.SetStatusCode != nil {
 				hook.SetStatusCode(http.StatusInternalServerError)
@@ -255,12 +270,13 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 			}
 			return err
 		}
+		nrows++
 	}
 	if hook.SetStatusCode != nil {
 		hook.SetStatusCode(http.StatusOK)
 	}
 	if hook.SetUserMessage != nil {
-		hook.SetUserMessage(rows.Message())
+		hook.SetUserMessage(spi.MakeUserMessage(stmtType, nrows))
 	}
 	return nil
 }
@@ -329,9 +345,9 @@ type QueryResponse struct {
 }
 
 type QueryData struct {
-	Columns []string       `json:"columns,omitempty"`
-	Types   []api.DataType `json:"types,omitempty"`
-	Rows    [][]any        `json:"rows"`
+	Columns []string `json:"columns,omitempty"`
+	Types   []string `json:"types,omitempty"`
+	Rows    [][]any  `json:"rows"`
 }
 
 type WriteRequest struct {

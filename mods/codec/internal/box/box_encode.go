@@ -1,6 +1,7 @@
 package box
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"net"
@@ -172,12 +173,14 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
+const strNULL = "NULL"
+
 func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
 	for i, r := range values {
 		if r == nil {
-			cols[i] = "NULL"
+			cols[i] = strNULL
 			continue
 		}
 		switch v := r.(type) {
@@ -225,6 +228,66 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
+		case *sql.NullInt32:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int32), 10)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.NullString:
+			if v.Valid {
+				cols[i] = v.String
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.NullTime:
+			if v.Valid {
+				cols[i] = ex.timeformatter.Format(v.Time)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				cols[i] = strconv.FormatFloat(v.Float64, 'f', ex.precision, 64)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(v.Int64, 10)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.NullInt16:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int16), 10)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.Null[float32]:
+			if v.Valid {
+				cols[i] = strconv.FormatFloat(float64(v.V), 'f', ex.precision, 32)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.Null[float64]:
+			if v.Valid {
+				cols[i] = strconv.FormatFloat(v.V, 'f', ex.precision, 64)
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.Null[net.IP]:
+			if v.Valid {
+				cols[i] = v.V.String()
+			} else {
+				cols[i] = strNULL
+			}
+		case *sql.Null[api.JSONString]:
+			if v.Valid {
+				cols[i] = string(v.V)
+			} else {
+				cols[i] = strNULL
+			}
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}
