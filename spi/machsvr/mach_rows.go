@@ -382,11 +382,10 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeUInt16:
-		nv, nonNull, err := mach.EngColumnDataInt16(stmt, idx)
+		v, nonNull, err := mach.EngColumnDataUInt16(stmt, idx)
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("uint16", err)
 		}
-		v := uint16(nv)
 		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst, loc)
@@ -401,11 +400,10 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeUInt32:
-		nv, nonNull, err := mach.EngColumnDataInt32(stmt, idx)
+		v, nonNull, err := mach.EngColumnDataUInt32(stmt, idx)
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("uint32", err)
 		}
-		v := uint32(nv)
 		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst, loc)
@@ -420,11 +418,10 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 			return api.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeUInt64:
-		nv, nonNull, err := mach.EngColumnDataInt64(stmt, idx)
+		v, nonNull, err := mach.EngColumnDataUInt64(stmt, idx)
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("uint64", err)
 		}
-		v := uint64(nv)
 		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst, loc)
