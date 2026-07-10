@@ -28,8 +28,17 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("NewDatabase", func(data string) (*Database, error) {
 		return newDatabase(ctx, data)
 	})
-	exports.Set("Unbox", api.Unbox)
+	exports.Set("Unbox", Unbox)
 	exports.Set("RowsScan", RowsScan)
+}
+
+func Unbox(value any) any {
+	v := api.Unbox(value)
+	switch v := v.(type) {
+	case api.JSONString:
+		return string(v)
+	}
+	return v
 }
 
 type Config struct {

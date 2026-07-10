@@ -43,13 +43,13 @@ func TestDatabase(t *testing.T) {
 				try {
 					db = new Client(conf);
 					conn = db.connect();
-					result = conn.exec("CREATE TAG TABLE IF NOT EXISTS TAG (NAME VARCHAR(100) primary key, TIME DATETIME basetime, VALUE DOUBLE)");
+					result = conn.exec("CREATE TAG TABLE IF NOT EXISTS TAG (NAME VARCHAR(100) primary key, TIME DATETIME basetime, VALUE DOUBLE, JSON_VALUE JSON)");
 					console.println("Created Table Message:", result.message);
 
 					result = conn.exec("CREATE VIEW TAGVIEW as select * from TAG where name='jsh'");
 					console.println("Created View Message:", result.message);
 
-					result = conn.exec("INSERT INTO TAG values(?, ?, ?)", 'jsh', tick, 123);
+					result = conn.exec("INSERT INTO TAG values(?, ?, ?, ?)", 'jsh', tick, 123, '{"key": "value"}');
 					console.println("Inserted rows:", result.rowsAffected, "Message:", result.message);
 				} catch(err) {
 					console.println("Error: ", err.message);
@@ -96,7 +96,7 @@ func TestDatabase(t *testing.T) {
 					conn = db.connect();
 					appender = conn.append("TAG");
 					for (let i = 0; i < 99; i++) {
-						appender.append('jsh', now(), 123 + i);
+						appender.append('jsh', now(), 123 + i, '{"append":${i}}');
 					}
 					appender.flush();
 					result = appender.close();
@@ -143,7 +143,7 @@ func TestDatabase(t *testing.T) {
 					conn = db.connect();
 					rows = conn.query("SELECT * from TAG order by time limit ?", 1);
 					for (const row of rows) {
-						console.println("NAME:", row.NAME, "TIME:", row.TIME, "VALUE:", row.VALUE);
+						console.println("NAME:", row.NAME, "TIME:", row.TIME, "VALUE:", row.VALUE, "JSON_VALUE:", typeof row.JSON_VALUE);
 					}
 					console.println(rows.message());
 				} catch(err) {
@@ -155,7 +155,7 @@ func TestDatabase(t *testing.T) {
 				}
 			`,
 			Output: []string{
-				fmt.Sprintf("NAME: jsh TIME: %s VALUE: 123", tick.Local().Format(time.DateTime)),
+				fmt.Sprintf("NAME: jsh TIME: %s VALUE: 123 JSON_VALUE: string", tick.Local().Format(time.DateTime)),
 				"a row selected.",
 			},
 		},
