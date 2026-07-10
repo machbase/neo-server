@@ -23,6 +23,10 @@ func (m MockPLCService) Add(left, right int32) (int32, *godbus.Error) {
 	return left + right, nil
 }
 
+func (m MockPLCService) AddUint16(left, right uint16) (uint16, *godbus.Error) {
+	return left + right, nil
+}
+
 func emitTemperatureChanged(t *testing.T, conn *godbus.Conn, value float64) {
 	t.Helper()
 	go func() {
@@ -159,8 +163,10 @@ func TestScriptDBus(t *testing.T) {
 					const plc = conn.object("com.plc.manufacture.Service", "/com/plc/device0");
 					const temp = plc.call("com.plc.manufacture.Interval.GetTemperature");
 					const sum = plc.call("com.plc.manufacture.Interval.Add", 7, 5);
+					const sumU16 = plc.call("com.plc.manufacture.Interval.AddUint16", "uint16:7", "uint16:5");
 					console.println("temperature:", temp.body[0]);
 					console.println("sum:", sum.body[0]);
+					console.println("sum-u16:", sumU16.body[0]);
 					console.println("bus:", dbus.BusType.Session);
 				} catch (e) {
 					console.println("Error:", e.message);
@@ -171,6 +177,7 @@ func TestScriptDBus(t *testing.T) {
 			Output: []string{
 				"temperature: 25.4",
 				"sum: 12",
+				"sum-u16: 12",
 				"bus: session",
 			},
 		},
@@ -337,6 +344,14 @@ func TestScriptDBus(t *testing.T) {
 						failed = true;
 					}
 					console.println("invalid bus type:", failed);
+					failed = false;
+					try {
+						const plc = conn.object("com.plc.manufacture.Service", "/com/plc/device0");
+						plc.call("com.plc.manufacture.Interval.AddUint16", "uint16:not-a-number", "uint16:5");
+					} catch (e) {
+						failed = true;
+					}
+					console.println("invalid typed arg:", failed);
 				} finally {
 					if (conn !== undefined) conn.close();
 				}
@@ -344,6 +359,7 @@ func TestScriptDBus(t *testing.T) {
 			Output: []string{
 				"missing destination: true",
 				"invalid bus type: true",
+				"invalid typed arg: true",
 			},
 		},
 		{

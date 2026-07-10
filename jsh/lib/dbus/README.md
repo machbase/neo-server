@@ -65,6 +65,27 @@ Request:
 }
 ```
 
+Typed args for strict DBus method signatures:
+
+- JavaScript numbers can be ambiguous for strict integer DBus types.
+- When an exact DBus type is required, pass each argument as a string in `"type:value"` format.
+- Examples: `"uint16:123"`, `"int32:-7"`, `"bool:true"`, `"objectpath:/org/freedesktop/DBus"`.
+
+Supported `type:value` hints:
+
+- `byte`, `uint8`, `uint16`, `uint32`, `uint64`
+- `int16`, `int32`, `int64`
+- `float32`, `float64`, `double`
+- `bool`, `string`
+- `objectpath`, `path`
+- `signature`
+
+Behavior notes:
+
+- Strings without a type prefix are passed as plain strings.
+- Unknown type prefixes (for example, `"custom:123"`) are passed as-is.
+- If parsing fails for a recognized type, the call throws an error.
+
 Response:
 
 ```js

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -244,7 +245,11 @@ func (c *Connection) Call(request CallRequest) (*CallResult, error) {
 	if err := c.validateCallRequest(request); err != nil {
 		return nil, err
 	}
-	call := c.conn.Object(request.Destination, godbus.ObjectPath(request.Path)).CallWithContext(c.ctx, request.Method, request.Flags, request.Args...)
+	args, err := convertCallArgs(request.Args)
+	if err != nil {
+		return nil, err
+	}
+	call := c.conn.Object(request.Destination, godbus.ObjectPath(request.Path)).CallWithContext(c.ctx, request.Method, request.Flags, args...)
 	if call.Err != nil {
 		return nil, call.Err
 	}
@@ -745,5 +750,125 @@ func normalizeValue(value any) any {
 		return ret
 	default:
 		return value
+	}
+}
+
+func convertCallArgs(args []any) ([]any, error) {
+	if len(args) == 0 {
+		return args, nil
+	}
+
+	ret := make([]any, len(args))
+	for i, arg := range args {
+		converted, err := convertCallArg(arg)
+		if err != nil {
+			return nil, fmt.Errorf("invalid args[%d]: %w", i, err)
+		}
+		ret[i] = converted
+	}
+	return ret, nil
+}
+
+func convertCallArg(arg any) (any, error) {
+	value, ok := arg.(string)
+	if !ok {
+		return arg, nil
+	}
+	typedValue, parsed, err := parseTypedCallArg(value)
+	if err != nil {
+		return nil, err
+	}
+	if parsed {
+		return typedValue, nil
+	}
+	return arg, nil
+}
+
+func parseTypedCallArg(value string) (any, bool, error) {
+	idx := strings.Index(value, ":")
+	if idx <= 0 {
+		return nil, false, nil
+	}
+
+	typeName := strings.ToLower(strings.TrimSpace(value[:idx]))
+	rawValue := strings.TrimSpace(value[idx+1:])
+
+	switch typeName {
+	case "string":
+		return rawValue, true, nil
+	case "bool":
+		v, err := strconv.ParseBool(rawValue)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid bool value %q", rawValue)
+		}
+		return v, true, nil
+	case "byte", "uint8":
+		v, err := strconv.ParseUint(rawValue, 10, 8)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid %s value %q", typeName, rawValue)
+		}
+		return uint8(v), true, nil
+	case "uint16":
+		v, err := strconv.ParseUint(rawValue, 10, 16)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid uint16 value %q", rawValue)
+		}
+		return uint16(v), true, nil
+	case "uint32":
+		v, err := strconv.ParseUint(rawValue, 10, 32)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid uint32 value %q", rawValue)
+		}
+		return uint32(v), true, nil
+	case "uint64":
+		v, err := strconv.ParseUint(rawValue, 10, 64)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid uint64 value %q", rawValue)
+		}
+		return v, true, nil
+	case "int16":
+		v, err := strconv.ParseInt(rawValue, 10, 16)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid int16 value %q", rawValue)
+		}
+		return int16(v), true, nil
+	case "int32":
+		v, err := strconv.ParseInt(rawValue, 10, 32)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid int32 value %q", rawValue)
+		}
+		return int32(v), true, nil
+	case "int64":
+		v, err := strconv.ParseInt(rawValue, 10, 64)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid int64 value %q", rawValue)
+		}
+		return v, true, nil
+	case "float32":
+		v, err := strconv.ParseFloat(rawValue, 32)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid float32 value %q", rawValue)
+		}
+		return float32(v), true, nil
+	case "float64", "double":
+		v, err := strconv.ParseFloat(rawValue, 64)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid float64 value %q", rawValue)
+		}
+		return v, true, nil
+	case "objectpath", "path":
+		path := godbus.ObjectPath(rawValue)
+		if !path.IsValid() {
+			return nil, false, fmt.Errorf("invalid object path: %q", rawValue)
+		}
+		return path, true, nil
+	case "signature":
+		sig, err := godbus.ParseSignature(rawValue)
+		if err != nil {
+			return nil, false, fmt.Errorf("invalid signature value %q", rawValue)
+		}
+		return sig, true, nil
+	default:
+		return nil, false, nil
 	}
 }
