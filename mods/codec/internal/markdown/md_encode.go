@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -188,9 +189,11 @@ func (ex *Exporter) AddRow(values []any) error {
 	}
 	var cols = make([]string, len(values))
 
+	var nullAlt string = "NULL"
+
 	for i, r := range values {
 		if r == nil {
-			cols[i] = "NULL"
+			cols[i] = nullAlt
 			continue
 		}
 		switch v := r.(type) {
@@ -228,20 +231,68 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *int16:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
+		case *uint16:
+			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int16:
+			cols[i] = strconv.FormatInt(int64(v), 10)
+		case uint16:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *int32:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
+		case *uint32:
+			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int32:
+			cols[i] = strconv.FormatInt(int64(v), 10)
+		case uint32:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *int64:
 			cols[i] = strconv.FormatInt(*v, 10)
+		case *uint64:
+			cols[i] = strconv.FormatUint(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
+		case uint64:
+			cols[i] = strconv.FormatUint(v, 10)
 		case *net.IP:
 			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
+		case *sql.NullInt16:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int16), 10)
+			} else {
+				cols[i] = nullAlt
+			}
+		case *sql.NullInt32:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int32), 10)
+			} else {
+				cols[i] = nullAlt
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(v.Int64, 10)
+			} else {
+				cols[i] = nullAlt
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				cols[i] = ex.encodeFloat64(v.Float64)
+			} else {
+				cols[i] = nullAlt
+			}
+		case *sql.NullString:
+			if v.Valid {
+				cols[i] = v.String
+			} else {
+				cols[i] = nullAlt
+			}
+		case *sql.Null[api.JSONString]:
+			if v.Valid {
+				cols[i] = string(v.V)
+			} else {
+				cols[i] = nullAlt
+			}
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

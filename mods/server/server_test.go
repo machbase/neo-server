@@ -1588,7 +1588,7 @@ func shellBridgeMySqlTest(t *testing.T, dsn string) {
 				"/r/^┌.*┐$",
 				"/r/^│ ROWNUM │ ID │ EVENT_BIGINT │ EVENT_INT │ EVENT_SMALLINT │ EVENT_DOUBLE │ EVENT_VARCHAR │ EVENT_CHAR │ EVENT_TEXT │ EVENT_BLOB_B64 │ EVENT_DATE │ EVENT_DATETIME\\s+│ EVENT_TIMESTAMP\\s+│$",
 				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+123456\\s+│\\s+12\\s+│\\s+3\\.5\\s+│ my-varchar\\s+│ ABCD\\s+│ my-text\\s+│ QVFJRA==\\s+│ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+				"/r/^│\\s+1 │\\s+1 │\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+123456\\s+│\\s+12\\s+│\\s+3\\.5\\s+│ my-varchar\\s+│ ABCD\\s+│ my-text\\s+│ AQID\\s+│ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
 				"/r/^└.*┘$",
 			},
 		},

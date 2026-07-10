@@ -401,6 +401,10 @@ func SqlColumnTypeToDataType(col *sql.ColumnType) api.DataType {
 		return api.DataTypeString
 	case "JSON":
 		return api.DataTypeJSON
+	case "IPV4":
+		return api.DataTypeIPv4
+	case "IPV6":
+		return api.DataTypeIPv6
 	}
 	switch col.ScanType().String() {
 	case "bool", "sql.NullBool":
@@ -409,10 +413,16 @@ func SqlColumnTypeToDataType(col *sql.ColumnType) api.DataType {
 		return api.DataTypeInt16
 	case "int16", "sql.NullInt16":
 		return api.DataTypeInt16
+	case "uint16":
+		return api.DataTypeUInt16
 	case "int32", "sql.NullInt32":
 		return api.DataTypeInt32
+	case "uint32":
+		return api.DataTypeUInt32
 	case "int64", "sql.NullInt64":
 		return api.DataTypeInt64
+	case "uint64":
+		return api.DataTypeUInt64
 	case "float32":
 		return api.DataTypeFloat32
 	case "float64", "sql.NullFloat64":

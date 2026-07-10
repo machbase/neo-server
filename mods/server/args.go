@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/alecthomas/kong"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -184,20 +183,44 @@ func parseServe(cli *NeoCommand) (*NeoCommand, error) {
 }
 
 type RestoreCmd struct {
-	Help      bool   `kong:"-"`
-	DataDir   string `name:"data"`
-	BackupDir string `arg:"" name:"path"`
+	DataDir   string
+	BackupDir string
 }
 
 func parseRestore(cli *NeoCommand) (*NeoCommand, error) {
-	parser, err := kong.New(&cli.Restore, kong.HelpOptions{Compact: true})
-	if err != nil {
-		return nil, err
+	backupArgs := []string{}
+	for i := 0; i < len(cli.args); i++ {
+		s := cli.args[i]
+		if strings.HasPrefix(s, "--data=") {
+			dataDir := strings.TrimPrefix(s, "--data=")
+			if dataDir == "" {
+				return nil, errors.New("flag '--data' requires a value")
+			}
+			cli.Restore.DataDir = dataDir
+			continue
+		}
+		if s == "--data" {
+			if i+1 >= len(cli.args) || strings.HasPrefix(cli.args[i+1], "-") {
+				return nil, errors.New("flag '--data' requires a value")
+			}
+			cli.Restore.DataDir = cli.args[i+1]
+			i++
+			continue
+		}
+		if strings.HasPrefix(s, "-") {
+			return nil, fmt.Errorf("unknown flag '%s'", s)
+		}
+		backupArgs = append(backupArgs, s)
 	}
-	_, err = parser.Parse(cli.args)
-	if err != nil {
-		return nil, err
+
+	if len(backupArgs) == 0 {
+		return nil, errors.New("missing required argument '<backup_dir>'")
 	}
+	if len(backupArgs) > 1 {
+		return nil, fmt.Errorf("too many restore arguments: %v", backupArgs[1:])
+	}
+	cli.Restore.BackupDir = backupArgs[0]
+
 	if cli.Restore.DataDir == "" {
 		if ep, err := os.Executable(); err != nil {
 			return nil, err

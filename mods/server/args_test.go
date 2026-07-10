@@ -217,6 +217,17 @@ func TestParseRestore(t *testing.T) {
 		require.Equal(t, "/tmp/backup", parsed.Restore.BackupDir)
 	})
 
+	t.Run("explicit data dir with equals", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"--data=/tmp/data", "/tmp/backup"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.NoError(t, err)
+		require.Same(t, cli, parsed)
+		require.Equal(t, "/tmp/data", parsed.Restore.DataDir)
+		require.Equal(t, "/tmp/backup", parsed.Restore.BackupDir)
+	})
+
 	t.Run("default data dir uses executable directory", func(t *testing.T) {
 		cli := &NeoCommand{args: []string{"/tmp/backup"}}
 
@@ -237,6 +248,36 @@ func TestParseRestore(t *testing.T) {
 
 		require.Error(t, err)
 		require.Nil(t, parsed)
+	})
+
+	t.Run("missing data value returns error", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"--data", "/tmp/backup", "--data"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.Error(t, err)
+		require.Nil(t, parsed)
+		require.Contains(t, err.Error(), "requires a value")
+	})
+
+	t.Run("unknown flag returns error", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"--data", "/tmp/data", "--verbose", "/tmp/backup"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.Error(t, err)
+		require.Nil(t, parsed)
+		require.Contains(t, err.Error(), "unknown flag")
+	})
+
+	t.Run("too many positional args returns error", func(t *testing.T) {
+		cli := &NeoCommand{args: []string{"--data", "/tmp/data", "/tmp/backup1", "/tmp/backup2"}}
+
+		parsed, err := parseRestore(cli)
+
+		require.Error(t, err)
+		require.Nil(t, parsed)
+		require.Contains(t, err.Error(), "too many restore arguments")
 	})
 }
 

@@ -323,6 +323,8 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			buffer[i] = new(uint32)
 		case "int64":
 			buffer[i] = new(int64)
+		case "uint64":
+			buffer[i] = new(uint64)
 		case "float32":
 			buffer[i] = new(float32)
 		case "float64":

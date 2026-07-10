@@ -42,6 +42,107 @@ func TestTqlSqlExplain(t *testing.T) {
 	}
 }
 
+func TestTqlSql(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "SQL_sink",
+			Script: `
+				SCRIPT({
+					const dt = new Date('2026-07-10T17:10:20');
+					$.yield(
+						'sql_test', dt, 3.142, 			// name, time, value
+						-123, 123,						// short, ushort
+						-1234, 1234,					// int, uint
+						-12345, 12345,					// long, ulong
+						'STR', '{"json":true}',			// str, json
+						'192.168.0.1', '2001:db8::1',	// ipv4, ipv6
+						new Uint8Array([1,2,3]) 		// bin
+				)})
+				SQL('insert into tag_data (name,time,value, '+
+					'short_value,ushort_value,int_value,uint_value, '+
+					'long_value,ulong_value,str_value,json_value,ipv4_value,ipv6_value,bin_value) '+
+					'values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+						value(0), value(1), value(2),
+						value(3), value(4), value(5), value(6),
+						value(7), value(8), value(9), value(10), value(11), value(12), value(13)
+				)
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, gjson.Get(result, "data.message").String(), "a row inserted.")
+			},
+		},
+		{
+			Name: "SQL_FLUSH",
+			Script: `
+				FAKE(once(1))
+				SQL('exec table_flush(tag_data)')
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, gjson.Get(result, "data.message").String(), "executed.")
+			},
+		},
+		{
+			Name: "SQL_csv",
+			Script: `
+				SQL('select * from tag_data where name = ?', 'sql_test')
+				CSV(header(true), timeformat('default'), tz('Local'))
+			`,
+			ExpectCSV: []string{
+				"NAME,TIME,VALUE,SHORT_VALUE,USHORT_VALUE,INT_VALUE,UINT_VALUE,LONG_VALUE,ULONG_VALUE,STR_VALUE,JSON_VALUE,IPV4_VALUE,IPV6_VALUE,BIN_VALUE",
+				`sql_test,2026-07-10 17:10:20,3.142,-123,123,-1234,1234,-12345,12345,STR,"{""json"":true}",192.168.0.1,2001:db8::1,0x010203`,
+				"", "",
+			},
+		},
+		{
+			Name: "SQL_markdown",
+			Script: `
+				SQL('select * from tag_data where name = ?', 'sql_test')
+				MARKDOWN(timeformat('default'), tz('Local'))
+			`,
+			ExpectText: []string{
+				"|NAME|TIME|VALUE|SHORT_VALUE|USHORT_VALUE|INT_VALUE|UINT_VALUE|LONG_VALUE|ULONG_VALUE|STR_VALUE|JSON_VALUE|IPV4_VALUE|IPV6_VALUE|BIN_VALUE|",
+				"|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|",
+				`|sql_test|2026-07-10 17:10:20|3.142000|-123|123|-1234|1234|-12345|12345|STR|{"json":true}|192.168.0.1|2001:db8::1|0x010203|`,
+				"",
+			},
+		},
+		{
+			Name: "SQL_json",
+			Script: `
+				SQL('select * from tag_data where name = ?', 'sql_test')
+				JSON(timeformat('default'), tz('Local'))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, gjson.Get(result, "reason").String(), "success")
+				columns := gjson.Get(result, "data.columns").String()
+				require.Equal(t, `["NAME","TIME","VALUE","SHORT_VALUE","USHORT_VALUE","INT_VALUE","UINT_VALUE","LONG_VALUE","ULONG_VALUE","STR_VALUE","JSON_VALUE","IPV4_VALUE","IPV6_VALUE","BIN_VALUE"]`, columns)
+				types := gjson.Get(result, "data.types").String()
+				require.Equal(t, `["string","datetime","double","int16","uint16","int32","uint32","int64","uint64","string","json","ipv4","ipv6","binary"]`, types)
+				values := gjson.Get(result, "data.rows").String()
+				require.Equal(t, `[["sql_test","2026-07-10 17:10:20",3.142,-123,123,-1234,1234,-12345,12345,"STR","{\"json\":true}","192.168.0.1","2001:db8::1","0x010203"]]`, values)
+			},
+		},
+		{
+			Name: "SQL_ndjson",
+			Script: `
+				SQL('select * from tag_data where name = ?', 'sql_test')
+				NDJSON(timeformat('default'), tz('Local'))
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, `{"NAME":"sql_test","TIME":"2026-07-10 17:10:20","VALUE":3.142,"SHORT_VALUE":-123,"USHORT_VALUE":123,"INT_VALUE":-1234,"UINT_VALUE":1234,"LONG_VALUE":-12345,"ULONG_VALUE":12345,"STR_VALUE":"STR","JSON_VALUE":"{\"json\":true}","IPV4_VALUE":"192.168.0.1","IPV6_VALUE":"2001:db8::1","BIN_VALUE":"0x010203"}`+"\n\n", result)
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestTqlSqlShow(t *testing.T) {
 	spi.SetDefaultServerInfo(func() map[string]any { return map[string]any{"purpose": "test"} })
 	tests := []TqlTestCase{
@@ -406,8 +507,18 @@ func TestTqlSqlShowTags(t *testing.T) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
 				require.Equal(t, "_ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME", lines[0])
-				require.Contains(t, lines[1], "show_test")
-				require.Contains(t, lines[1], "1.234")
+				hasTag := false
+				hasValue := false
+				for _, line := range lines[1:] {
+					if strings.Contains(line, "show_test") {
+						hasTag = true
+					}
+					if strings.Contains(line, "1.234") {
+						hasValue = true
+					}
+				}
+				require.True(t, hasTag, "expected to find tag 'show_test' in output")
+				require.True(t, hasValue, "expected to find value '1.234' in output")
 			},
 		},
 		{
