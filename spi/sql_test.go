@@ -870,7 +870,7 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	}
 	require.Equal(t, 1, count)
 
-	for _, indexName := range []string{"idx_data_value" /*, "david.idx_data_value"*/} {
+	for _, indexName := range []string{"idx_data_value", "david.idx_data_value"} {
 		result = sysConn.Exec(t.Context(), fmt.Sprintf("create index %s on david.data(value)", indexName))
 		if err := result.Err(); err != nil {
 			panic(err)
