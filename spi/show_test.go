@@ -169,14 +169,15 @@ func TestShowUsers(t *testing.T) {
 	}
 }
 
-func TestQueryResultSet(t *testing.T) {
+func TestShowTables(t *testing.T) {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
-	db, err := sql.Open("machbase", dsn)
-	require.NoError(t, err)
+	db, _ := sql.Open("machbase", dsn)
 	defer db.Close()
-	dbConn, err := db.Conn(t.Context())
-	require.NoError(t, err)
+	dbConn, _ := db.Conn(t.Context())
 	defer dbConn.Close()
+	// Wrap the sql.Conn with spi.Conn
+	conn := spi.WrapSqlConn(dbConn)
+
 	// Create a test table for the tests
 	dbConn.ExecContext(t.Context(), "CREATE TAG TABLE RS_DATA(NAME VARCHAR(80) PRIMARY KEY, TIME DATETIME basetime, VALUE DOUBLE summarized) with rollup tag_partition_count = 1")
 	defer dbConn.ExecContext(t.Context(), "DROP TAG TABLE RS_DATA CASCADE")
@@ -191,29 +192,19 @@ func TestQueryResultSet(t *testing.T) {
 	}
 	_ = parseTime
 
-	// Wrap the sql.Conn with spi.Conn
-	conn := spi.WrapSqlConn(dbConn)
-
-	tests := []struct {
-		name       string
-		fn         func() spi.ResultSet
-		message    string
-		columns    []string
-		expects    [][]any
-		expectFunc func([][]any)
-	}{
+	tests := []ResultSetTestCase{
 		{
-			name:    "QueryTables",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTables(t.Context(), conn, false)) },
-			columns: []string{"DATABASE", "USER", "NAME", "ID", "TYPE", "FLAG"},
+			name:    "ShowTables",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), conn, false)) },
+			columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
 			expects: [][]any{
 				{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},
 			},
 		},
 		{
-			name:    "QueryTables_all",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTables(t.Context(), conn, true)) },
-			columns: []string{"DATABASE", "USER", "NAME", "ID", "TYPE", "FLAG"},
+			name:    "ShowTables_all",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), conn, true)) },
+			columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
 			expects: [][]any{
 				{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},
 				{"MACHBASEDB", "SYS", "_RS_DATA_DATA_0", int64(1), "KeyValue", "Data"},
@@ -356,41 +347,81 @@ func TestQueryResultSet(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rs := tt.fn()
-			require.NoError(t, rs.Err())
-			require.Equal(t, tt.columns, rs.Columns().Names())
-			values := make([][]interface{}, 0)
-			rs.Iter(func(row []interface{}) bool {
-				values = append(values, row)
-				return true
-			})
-			actual := strings.Builder{}
-			for _, row := range values {
-				actual.WriteString("{")
-				for _, col := range row {
-					if col == nil {
-						actual.WriteString("nil,")
-						continue
-					}
-					switch v := col.(type) {
-					case string:
-						actual.WriteString(fmt.Sprintf("%q,", v))
-					case int64:
-						actual.WriteString(fmt.Sprintf("int64(%d),", v))
-					case time.Time:
-						actual.WriteString(fmt.Sprintf("parseTime(%q),", v.In(time.Local).Format("2006-01-02 15:04:05")))
-					default:
-						actual.WriteString(fmt.Sprintf("%v,", v))
-					}
-				}
-				actual.WriteString("},\n")
-			}
-			if tt.expectFunc != nil {
-				tt.expectFunc(values)
-			} else {
-				require.Equal(t, tt.expects, values, actual.String())
-			}
-			require.Equal(t, rs.Message(), tt.message)
+			runResultSetTestCases(t, tt)
 		})
 	}
 }
+
+// func TestQueryResultSet(t *testing.T) {
+// 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
+// 	db, err := sql.Open("machbase", dsn)
+// 	require.NoError(t, err)
+// 	defer db.Close()
+// 	dbConn, err := db.Conn(t.Context())
+// 	require.NoError(t, err)
+// 	defer dbConn.Close()
+// 	// Create a test table for the tests
+// 	dbConn.ExecContext(t.Context(), "CREATE TAG TABLE RS_DATA(NAME VARCHAR(80) PRIMARY KEY, TIME DATETIME basetime, VALUE DOUBLE summarized) with rollup tag_partition_count = 1")
+// 	defer dbConn.ExecContext(t.Context(), "DROP TAG TABLE RS_DATA CASCADE")
+// 	dbConn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-01 00:00:00', 1.0)")
+// 	dbConn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-02 00:00:00', 2.0)")
+// 	dbConn.ExecContext(t.Context(), "exec table_flush('RS_DATA')")
+
+// 	parseTime := func(str string) time.Time {
+// 		tm, err := time.ParseInLocation("2006-01-02 15:04:05", str, time.Local)
+// 		require.NoError(t, err)
+// 		return tm.In(time.UTC)
+// 	}
+// 	_ = parseTime
+
+// 	// Wrap the sql.Conn with spi.Conn
+// 	conn := spi.WrapSqlConn(dbConn)
+
+// 	tests := []struct {
+// 		name       string
+// 		fn         func() spi.ResultSet
+// 		message    string
+// 		columns    []string
+// 		expects    [][]any
+// 		expectFunc func([][]any)
+// 	}{}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			rs := tt.fn()
+// 			require.NoError(t, rs.Err())
+// 			require.Equal(t, tt.columns, rs.Columns().Names())
+// 			values := make([][]interface{}, 0)
+// 			rs.Iter(func(row []interface{}) bool {
+// 				values = append(values, row)
+// 				return true
+// 			})
+// 			actual := strings.Builder{}
+// 			for _, row := range values {
+// 				actual.WriteString("{")
+// 				for _, col := range row {
+// 					if col == nil {
+// 						actual.WriteString("nil,")
+// 						continue
+// 					}
+// 					switch v := col.(type) {
+// 					case string:
+// 						actual.WriteString(fmt.Sprintf("%q,", v))
+// 					case int64:
+// 						actual.WriteString(fmt.Sprintf("int64(%d),", v))
+// 					case time.Time:
+// 						actual.WriteString(fmt.Sprintf("parseTime(%q),", v.In(time.Local).Format("2006-01-02 15:04:05")))
+// 					default:
+// 						actual.WriteString(fmt.Sprintf("%v,", v))
+// 					}
+// 				}
+// 				actual.WriteString("},\n")
+// 			}
+// 			if tt.expectFunc != nil {
+// 				tt.expectFunc(values)
+// 			} else {
+// 				require.Equal(t, tt.expects, values, actual.String())
+// 			}
+// 			require.Equal(t, rs.Message(), tt.message)
+// 		})
+// 	}
+// }

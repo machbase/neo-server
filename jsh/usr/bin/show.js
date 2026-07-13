@@ -343,60 +343,7 @@ function showUsers(config, args) {
 }
 
 function showTables(config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`SELECT
-    j.DB_NAME as DATABASE_NAME,
-    u.NAME as USER_NAME,
-    j.NAME as TABLE_NAME,
-    j.ID as TABLE_ID,
-    j.TYPE as TABLE_TYPE,
-    j.FLAG as TABLE_FLAG
-FROM
-    M$SYS_USERS u,
-    (
-        select
-            a.ID as ID,
-            a.NAME as NAME,
-            a.USER_ID as USER_ID,
-            a.TYPE as TYPE,
-            a.FLAG as FLAG,
-            case a.DATABASE_ID
-                when -1 then 'MACHBASEDB'
-                else d.MOUNTDB
-            end as DB_NAME
-        from
-            M$SYS_TABLES a
-        left join
-            V$STORAGE_MOUNT_DATABASES d
-        on
-            a.DATABASE_ID = d.BACKUP_TBSID
-    ) as j
-WHERE
-    u.USER_ID = j.USER_ID
-    ${config.all ? '' : "AND SUBSTR(j.NAME, 1, 1) <> '_'"}
-ORDER BY
-    j.DB_NAME, j.USER_ID, j.NAME`);
-
-        let box = pretty.Table(config);
-        box.appendHeader(["DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"]);
-        for (const row of rows) {
-            box.append([
-                row.DATABASE_NAME, row.USER_NAME, row.TABLE_NAME, row.TABLE_ID,
-                machcli.stringTableType(row.TABLE_TYPE),
-                machcli.stringTableFlag(row.TABLE_FLAG)
-            ]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        rows && rows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    _show(`tables ${config.all ? '--all' : ''}`, config);
 }
 
 function showTable(config, args) {

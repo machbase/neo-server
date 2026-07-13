@@ -183,3 +183,42 @@ func ShowUsers(ctx context.Context, conn api.Conn) *ShowUsersResultSet {
 	}
 	return &ShowUsersResultSet{data: users}
 }
+
+type ShowTablesResultSet struct {
+	ResultSetBase
+	list []*TableInfo
+}
+
+var _ ResultSet = (*ShowTablesResultSet)(nil)
+
+func (ti *ShowTablesResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "DATABASE_NAME", DataType: api.DataTypeString},
+		{Name: "USER_NAME", DataType: api.DataTypeString},
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "TABLE_ID", DataType: api.DataTypeInt64},
+		{Name: "TABLE_TYPE", DataType: api.DataTypeString},
+		{Name: "TABLE_FLAG", DataType: api.DataTypeString},
+	}
+}
+
+func (ti *ShowTablesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range ti.list {
+		if !callback([]interface{}{t.Database, t.User, t.Name, t.Id, t.Type.ShortString(), t.Flag.String()}) {
+			return
+		}
+	}
+}
+
+func ShowTables(ctx context.Context, conn api.Conn, showAll bool) *ShowTablesResultSet {
+	var list = []*TableInfo{}
+	var err error
+	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo) bool {
+		if err = t.Err(); err != nil {
+			return false
+		}
+		list = append(list, t)
+		return true
+	})
+	return &ShowTablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}

@@ -54,7 +54,7 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables := spi.QueryTables(ctx, conn, true)
+	tables := spi.ShowTables(ctx, conn, true)
 	require.NoError(t, tables.Err(), "show tables fail")
 	tablesCount := 0
 	tables.Iter(func(values []any) bool {

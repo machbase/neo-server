@@ -32,45 +32,6 @@ func (rs *ResultSetBase) Message() string {
 	return rs.msg
 }
 
-type TablesResultSet struct {
-	ResultSetBase
-	list []*TableInfo
-}
-
-var _ ResultSet = (*TablesResultSet)(nil)
-
-func (ti *TablesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "FLAG", DataType: api.DataTypeString},
-	}
-}
-
-func (ti *TablesResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, t := range ti.list {
-		if !callback([]interface{}{t.Database, t.User, t.Name, t.Id, t.Type.ShortString(), t.Flag.String()}) {
-			return
-		}
-	}
-}
-
-func QueryTables(ctx context.Context, conn api.Conn, showAll bool) *TablesResultSet {
-	var list = []*TableInfo{}
-	var err error
-	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo) bool {
-		if err = t.Err(); err != nil {
-			return false
-		}
-		list = append(list, t)
-		return true
-	})
-	return &TablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
 type TableResultSet struct {
 	ResultSetBase
 	desc *api.TableDescription

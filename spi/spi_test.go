@@ -325,7 +325,7 @@ func testDatabaseHelpers(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	tablesSet := spi.QueryTables(ctx, conn, false)
+	tablesSet := spi.ShowTables(ctx, conn, false)
 	require.NoError(t, tablesSet.Err())
 	tables := []string{}
 	tablesSet.Iter(func(values []any) bool {
@@ -334,7 +334,7 @@ func testDatabaseHelpers(t *testing.T) {
 	})
 	require.GreaterOrEqual(t, len(tables), 3)
 
-	tablesAllSet := spi.QueryTables(ctx, conn, true)
+	tablesAllSet := spi.ShowTables(ctx, conn, true)
 	require.NoError(t, tablesAllSet.Err())
 	tablesAll := []string{}
 	tablesAllSet.Iter(func(values []any) bool {

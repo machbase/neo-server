@@ -1514,7 +1514,7 @@ func testShowTables(t *testing.T) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables := spi.QueryTables(ctx, conn, true)
+	tables := spi.ShowTables(ctx, conn, true)
 	require.NotEmpty(t, tables, "tables empty")
 	tableCount := 0
 	tables.Iter(func(values []any) bool {
