@@ -144,7 +144,7 @@ func TestTqlSql(t *testing.T) {
 }
 
 func TestTqlSqlShow(t *testing.T) {
-	spi.SetDefaultServerInfo(func() map[string]any { return map[string]any{"purpose": "test"} })
+	spi.SetServerInfoProvider(func() map[string]any { return map[string]any{"purpose": "test"} })
 	tests := []TqlTestCase{
 		{
 			Name: "SQL_show_wrong",

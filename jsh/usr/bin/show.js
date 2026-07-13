@@ -298,6 +298,20 @@ parseAndRun(process.argv.slice(2), defaultConfig, [
     tagstatConfig,
 ]);
 
+function renderResultSet(rsp, config) {
+    if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
+        console.println('No server info available');
+        return;
+    }
+    const nfo = rsp.data.rows[0];
+    let box = pretty.Table(config);
+    box.appendHeader(rsp.data.columns);
+    for (const row of rsp.data.rows) {
+        box.appendRow(row);
+    }
+    console.println(box.render());
+}
+
 function showInfo(config, args) {
     const client = new neoapi.Client(config);
     client.executeTql(`
@@ -305,17 +319,7 @@ function showInfo(config, args) {
             JSON()
         `)
         .then((rsp) => {
-            if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
-                console.println('No server info available');
-                return;
-            }
-            const nfo = rsp.data.rows[0];
-            let box = pretty.Table(config);
-            box.appendHeader(rsp.data.columns);
-            for (const row of rsp.data.rows) {
-                box.appendRow(row);
-            }
-            console.println(box.render());
+            renderResultSet(rsp, config);
         })
         .catch((err) => {
             console.println('Error:', err.message);
@@ -324,15 +328,12 @@ function showInfo(config, args) {
 
 function showPorts(config, args) {
     const client = new neoapi.Client(config);
-    const service = args.service ? args.service : '';
-    client.getServicePorts(service)
-        .then((data) => {
-            let box = pretty.Table(config);
-            box.appendHeader(['PORT', 'ADDRESS']);
-            for (const s of data) {
-                box.append([s.Service, s.Address]);
-            }
-            console.println(box.render());
+    client.executeTql(`
+            SQL('show ports ${args.service ? args.service : ''}')
+            JSON()
+        `)
+        .then((rsp) => {
+            renderResultSet(rsp, config);
         })
         .catch((err) => {
             console.println('Error:', err.message);

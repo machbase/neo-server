@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
@@ -60,7 +61,7 @@ func runResultSetTestCases(t *testing.T, tc ResultSetTestCase) {
 }
 
 func TestShowInfo(t *testing.T) {
-	spi.SetDefaultServerInfo(func() map[string]any {
+	spi.SetServerInfoProvider(func() map[string]any {
 		return map[string]any{
 			"Name":    "test",
 			"Version": "1.0.0",
@@ -74,6 +75,29 @@ func TestShowInfo(t *testing.T) {
 			expects: [][]any{
 				{"Name", "test"},
 				{"Version", "1.0.0"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
+func TestShowPorts(t *testing.T) {
+	spi.SetServerPortsProvider(func(string) ([]*model.ServicePort, error) {
+		return []*model.ServicePort{
+			{Service: "servicectl", Address: "tcp://127.0.0.1:40257"},
+		}, nil
+	})
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowPorts",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowPorts("")) },
+			columns: []string{"PORT", "ADDRESS"},
+			expects: [][]any{
+				{"servicectl", "tcp://127.0.0.1:40257"},
 			},
 		},
 	}

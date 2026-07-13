@@ -597,6 +597,19 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 		if err == nil {
 			return yieldResultSet(node, spi.ShowInfo())
 		}
+	case "ports":
+		err = validateNoAll()
+		portType := ""
+		if err == nil {
+			if len(args) > 1 {
+				err = fmt.Errorf("f(SQL) show ports expects at most 1 argument, got %d", len(args))
+			} else if len(args) == 1 {
+				portType = args[0]
+			}
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowPorts(portType))
+		}
 	case "tables":
 		err = validateArgs(command, 0)
 		if err == nil {
