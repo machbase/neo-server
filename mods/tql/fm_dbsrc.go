@@ -716,7 +716,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryStatements(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowStatements(node.task.ctx, apiConn))
 		}
 	case "storage":
 		err = validateNoAll()

@@ -383,36 +383,3 @@ func QueryTableUsage(ctx context.Context, conn api.Conn) *TableUsageResultSet {
 	list, err := ListTableUsage(ctx, conn)
 	return &TableUsageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
-
-type StatementsResultSet struct {
-	ResultSetBase
-	list []*StatementInfo
-}
-
-var _ ResultSet = (*StatementsResultSet)(nil)
-
-func (sri *StatementsResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
-		{Name: "STATE", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "RECORD_SIZE", DataType: api.DataTypeInt64},
-		{Name: "APPEND_SUCCESS_CNT", DataType: api.DataTypeInt64},
-		{Name: "APPEND_FAILURE_CNT", DataType: api.DataTypeInt64},
-		{Name: "QUERY", DataType: api.DataTypeString},
-	}
-}
-
-func (sri *StatementsResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, s := range sri.list {
-		if !callback(s.Values()) {
-			return
-		}
-	}
-}
-
-func QueryStatements(ctx context.Context, conn api.Conn) *StatementsResultSet {
-	list, err := ListStatements(ctx, conn)
-	return &StatementsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}

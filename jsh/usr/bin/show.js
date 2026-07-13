@@ -366,6 +366,10 @@ function showSessions(config, args) {
 }
 
 function showStatements(config, args) {
+    _show('statements', config);
+}
+
+function showStatements_old(config, args) {
     let db, conn, stmtRows, neoRows;
     try {
         db = newMachCliClient(config);

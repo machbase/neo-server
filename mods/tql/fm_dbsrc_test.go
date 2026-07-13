@@ -663,9 +663,8 @@ func TestTqlSqlShowStatements(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "ID,SESSION_ID,STATE,TYPE,RECORD_SIZE,APPEND_SUCCESS_CNT,APPEND_FAILURE_CNT,QUERY", lines[0])
-				// 32,4,Fetch prepared,,32851,NULL,NULL,"SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT"
-				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,.+,.*,[0-9]+,.+,.+,.+$`), lines[1])
+				require.Equal(t, "ID,SESSION_ID,STATE,RECORD_SIZE,QUERY", lines[0])
+				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,.+,[0-9]+,.+$`), lines[1])
 			},
 		},
 	}

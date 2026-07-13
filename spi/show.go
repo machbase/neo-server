@@ -455,3 +455,63 @@ func ShowSessions(ctx context.Context, conn api.Conn) *ShowSessionsResultSet {
 	}()
 	return ret
 }
+
+type ShowStatementsResultSet struct {
+	ResultSetBase
+	list []*StatementInfo
+}
+
+type StatementInfo struct {
+	ID         int64  `json:"id"`
+	SessionID  int64  `json:"session_id"`
+	State      string `json:"state"`
+	Query      string `json:"query"`
+	RecordSize int64  `json:"record_size"`
+}
+
+func (si *StatementInfo) Values() []interface{} {
+	var recordSize any
+	recordSize = si.RecordSize
+	return []interface{}{
+		si.ID, si.SessionID, si.State, recordSize, si.Query,
+	}
+}
+
+var _ ResultSet = (*ShowStatementsResultSet)(nil)
+
+func (sri *ShowStatementsResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
+		{Name: "STATE", DataType: api.DataTypeString},
+		{Name: "RECORD_SIZE", DataType: api.DataTypeInt64},
+		{Name: "QUERY", DataType: api.DataTypeString},
+	}
+}
+
+func (sri *ShowStatementsResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, s := range sri.list {
+		if !callback(s.Values()) {
+			return
+		}
+	}
+}
+
+func ShowStatements(ctx context.Context, conn api.Conn) *ShowStatementsResultSet {
+	stmtRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
+	if err != nil {
+		return &ShowStatementsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer stmtRows.Close()
+
+	list := []*StatementInfo{}
+	for stmtRows.Next() {
+		rec := &StatementInfo{}
+		err = stmtRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.RecordSize, &rec.Query)
+		if err != nil {
+			return &ShowStatementsResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	return &ShowStatementsResultSet{list: list}
+}

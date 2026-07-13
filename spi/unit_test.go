@@ -281,15 +281,6 @@ func TestInfoValueObjects(t *testing.T) {
 		require.Equal(t, []any{"T", int64(40)}, usage.Values())
 		require.EqualError(t, usage.Err(), "usage err")
 	})
-
-	t.Run("statement and session branch values", func(t *testing.T) {
-		stmt := &StatementInfo{ID: 1, SessionID: 2, State: "RUN", Query: "select 1", RecordSize: 128}
-		require.Equal(t, []any{int64(1), int64(2), "RUN", "", int64(128), nil, nil, "select 1"}, stmt.Values())
-
-		stmtNeo := &StatementInfo{ID: 3, SessionID: 4, State: "APPEND", Query: "insert", IsNeo: true, AppendSuccessCount: 5, AppendFailureCount: 6, err: errors.New("stmt err")}
-		require.Equal(t, []any{int64(3), int64(4), "APPEND", "neo", nil, int64(5), int64(6), "insert"}, stmtNeo.Values())
-		require.EqualError(t, stmtNeo.Err(), "stmt err")
-	})
 }
 
 func TestMetricsAndWatcherHelpers(t *testing.T) {

@@ -267,6 +267,30 @@ func TestShowSessions(t *testing.T) {
 	}
 }
 
+func TestShowStatements(t *testing.T) {
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
+
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowStatements",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowStatements(t.Context(), fixture.conn)) },
+			columns: []string{"ID", "SESSION_ID", "STATE", "RECORD_SIZE", "QUERY"},
+			expectFunc: func(values [][]any) {
+				row := values[0]
+				require.GreaterOrEqual(t, row[0], int64(0)) // ID
+				require.NotEmpty(t, row[2])                 // STATE
+				require.NotEmpty(t, row[4])                 // QUERY
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
 func TestShowTables(t *testing.T) {
 	fixture := newShowDatabase(t.Context())
 	defer fixture.Close()
@@ -435,18 +459,6 @@ func TestShowTables(t *testing.T) {
 					require.Contains(t, names, row[0])
 					require.GreaterOrEqual(t, row[1], int64(0))
 				}
-			},
-		},
-		{
-			name:    "QueryStatements",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryStatements(t.Context(), conn)) },
-			columns: []string{"ID", "SESSION_ID", "STATE", "TYPE", "RECORD_SIZE", "APPEND_SUCCESS_CNT", "APPEND_FAILURE_CNT", "QUERY"},
-			expectFunc: func(values [][]any) {
-				// {int64(20), int64(2), "Fetch prepared", "", int64(32851), nil, nil, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT"},
-				row := values[0]
-				require.Greater(t, row[0], int64(0)) // ID
-				require.NotEmpty(t, row[2])          // STATE
-				require.NotEmpty(t, row[7])          // QUERY
 			},
 		},
 	}
