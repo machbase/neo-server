@@ -11,13 +11,80 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestQueryResultSet(t *testing.T) {
+type ResultSetTestCase struct {
+	name       string
+	fn         func() spi.ResultSet
+	message    string
+	columns    []string
+	expects    [][]any
+	expectFunc func([][]any)
+}
+
+func runResultSetTestCases(t *testing.T, tc ResultSetTestCase) {
+	t.Helper()
+	rs := tc.fn()
+	require.NoError(t, rs.Err())
+	require.Equal(t, tc.columns, rs.Columns().Names())
+	values := make([][]interface{}, 0)
+	rs.Iter(func(row []interface{}) bool {
+		values = append(values, row)
+		return true
+	})
+	actual := strings.Builder{}
+	for _, row := range values {
+		actual.WriteString("{")
+		for _, col := range row {
+			if col == nil {
+				actual.WriteString("nil,")
+				continue
+			}
+			switch v := col.(type) {
+			case string:
+				actual.WriteString(fmt.Sprintf("%q,", v))
+			case int64:
+				actual.WriteString(fmt.Sprintf("int64(%d),", v))
+			case time.Time:
+				actual.WriteString(fmt.Sprintf("parseTime(%q),", v.In(time.Local).Format("2006-01-02 15:04:05")))
+			default:
+				actual.WriteString(fmt.Sprintf("%v,", v))
+			}
+		}
+		actual.WriteString("},\n")
+	}
+	if tc.expectFunc != nil {
+		tc.expectFunc(values)
+	} else {
+		require.Equal(t, tc.expects, values, actual.String())
+	}
+	require.Equal(t, rs.Message(), tc.message)
+}
+
+func TestShowInfo(t *testing.T) {
 	spi.SetDefaultServerInfo(func() map[string]any {
 		return map[string]any{
 			"Name":    "test",
 			"Version": "1.0.0",
 		}
 	})
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowInfo",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowInfo()) },
+			columns: []string{"NAME", "VALUE"},
+			expects: [][]any{
+				{"Name", "test"},
+				{"Version", "1.0.0"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
+func TestQueryResultSet(t *testing.T) {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
 	db, err := sql.Open("machbase", dsn)
 	require.NoError(t, err)
@@ -50,15 +117,6 @@ func TestQueryResultSet(t *testing.T) {
 		expects    [][]any
 		expectFunc func([][]any)
 	}{
-		{
-			name:    "QueryServerInfo",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryServerInfo()) },
-			columns: []string{"NAME", "VALUE"},
-			expects: [][]any{
-				{"Name", "test"},
-				{"Version", "1.0.0"},
-			},
-		},
 		{
 			name:    "QueryLicense",
 			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryLicense(t.Context(), conn)) },

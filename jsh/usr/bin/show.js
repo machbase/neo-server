@@ -300,32 +300,21 @@ parseAndRun(process.argv.slice(2), defaultConfig, [
 
 function showInfo(config, args) {
     const client = new neoapi.Client(config);
-    client.getServerInfo()
-        .then((nfo) => {
+    client.executeTql(`
+            SQL('show info')
+            JSON()
+        `)
+        .then((rsp) => {
+            if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
+                console.println('No server info available');
+                return;
+            }
+            const nfo = rsp.data.rows[0];
             let box = pretty.Table(config);
-            box.appendHeader(['NAME', 'VALUE']);
-            box.appendRow(box.row('build.version', `v${nfo.version.major || 0}.${nfo.version.minor || 0}.${nfo.version.patch || 0}`));
-            box.appendRow(box.row('build.hash', nfo.version.gitSHA));
-            box.appendRow(box.row('build.timestamp', nfo.version.buildTimestamp));
-            box.appendRow(box.row('build.engine', nfo.version.engine));
-
-            box.appendRow(box.row('runtime.os', nfo.runtime.OS));
-            box.appendRow(box.row('runtime.arch', nfo.runtime.arch));
-            box.appendRow(box.row('runtime.pid', nfo.runtime.pid));
-            box.appendRow(box.row('runtime.uptime', pretty.Durations(nfo.runtime.uptimeInSecond * 1e9)));
-            box.appendRow(box.row('runtime.processes', nfo.runtime.processes));
-            box.appendRow(box.row('runtime.goroutines', nfo.runtime.goroutines));
-
-            box.appendRow(box.row('mem.malloc', pretty.Ints(nfo.runtime.mem.mallocs)));
-            box.appendRow(box.row('mem.frees', pretty.Ints(nfo.runtime.mem.frees)));
-            box.appendRow(box.row('mem.lives', pretty.Ints(nfo.runtime.mem.lives)));
-
-            box.appendRow(box.row('mem.sys', pretty.Bytes(nfo.runtime.mem.sys)));
-            box.appendRow(box.row('mem.heap_sys', pretty.Bytes(nfo.runtime.mem.heap_sys)));
-            box.appendRow(box.row('mem.heap_alloc', pretty.Bytes(nfo.runtime.mem.heap_alloc)));
-            box.appendRow(box.row('mem.heap_in_use', pretty.Bytes(nfo.runtime.mem.heap_in_use)));
-            box.appendRow(box.row('mem.stack_sys', pretty.Bytes(nfo.runtime.mem.stack_sys)));
-            box.appendRow(box.row('mem.stack_in_use', pretty.Bytes(nfo.runtime.mem.stack_in_use)));
+            box.appendHeader(rsp.data.columns);
+            for (const row of rsp.data.rows) {
+                box.appendRow(row);
+            }
             console.println(box.render());
         })
         .catch((err) => {

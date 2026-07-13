@@ -595,7 +595,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryServerInfo())
+			return yieldResultSet(node, spi.ShowInfo())
 		}
 	case "tables":
 		err = validateArgs(command, 0)

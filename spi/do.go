@@ -2,7 +2,6 @@ package spi
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -31,53 +30,6 @@ func (rs *ResultSetBase) Message() string {
 		return rs.err.Error()
 	}
 	return rs.msg
-}
-
-var serverInfoProvider func() map[string]any
-
-func SetDefaultServerInfo(provider func() map[string]any) {
-	serverInfoProvider = provider
-}
-
-type ServerInfoResultSet struct {
-	ResultSetBase
-	keys []string
-	data map[string]any
-}
-
-var _ ResultSet = (*ServerInfoResultSet)(nil)
-
-func (si *ServerInfoResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnString("NAME"),
-		api.MakeColumnAny("VALUE"),
-	}
-}
-
-func (si *ServerInfoResultSet) Iter(callback func(values []interface{}) bool) {
-	if si.err != nil {
-		return
-	}
-
-	for _, k := range si.keys {
-		v := si.data[k]
-		if !callback([]interface{}{k, v}) {
-			return
-		}
-	}
-}
-
-func QueryServerInfo() *ServerInfoResultSet {
-	if serverInfoProvider == nil {
-		return &ServerInfoResultSet{ResultSetBase: ResultSetBase{err: errors.New("server info provider is not set")}}
-	}
-	serverInfo := serverInfoProvider()
-	keys := make([]string, 0, len(serverInfo))
-	for k := range serverInfo {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return &ServerInfoResultSet{keys: keys, data: serverInfo}
 }
 
 type TablesResultSet struct {
