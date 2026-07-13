@@ -275,3 +275,95 @@ func ShowTable(ctx context.Context, conn api.Conn, tableName string, all bool) *
 	desc, err := api.DescribeTable(ctx, conn, tableName, all)
 	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
 }
+
+type ShowMetaTablesResultSet struct {
+	ResultSetBase
+	list []*TableInfo
+}
+
+type MetaTableInfo struct {
+	Id   int64         `json:"id"`
+	Name string        `json:"name"`
+	Type api.TableType `json:"type"`
+}
+
+var _ ResultSet = (*ShowMetaTablesResultSet)(nil)
+
+func (ti *ShowMetaTablesResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+	}
+}
+
+func (ti *ShowMetaTablesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range ti.list {
+		if !callback([]interface{}{t.Id, t.Name, t.Type.ShortString()}) {
+			return
+		}
+	}
+}
+
+func ShowMetaTables(ctx context.Context, conn api.Conn) *ShowMetaTablesResultSet {
+	var list = []*TableInfo{}
+	var err error
+	rows, err := conn.Query(ctx, "SELECT ID, NAME, TYPE FROM M$TABLES ORDER BY ID")
+	if err != nil {
+		return &ShowMetaTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	for rows.Next() {
+		var t TableInfo
+		if err = rows.Scan(&t.Id, &t.Name, &t.Type); err != nil {
+			return &ShowMetaTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, &t)
+	}
+	return &ShowMetaTablesResultSet{list: list}
+}
+
+type ShowVirtualTablesResultSet struct {
+	ResultSetBase
+	list []*TableInfo
+}
+
+type VirtualTableInfo struct {
+	Id   int64         `json:"id"`
+	Name string        `json:"name"`
+	Type api.TableType `json:"type"`
+}
+
+var _ ResultSet = (*ShowVirtualTablesResultSet)(nil)
+
+func (ti *ShowVirtualTablesResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+	}
+}
+
+func (ti *ShowVirtualTablesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range ti.list {
+		if !callback([]interface{}{t.Id, t.Name, t.Type.ShortString()}) {
+			return
+		}
+	}
+}
+
+func ShowVirtualTables(ctx context.Context, conn api.Conn) *ShowVirtualTablesResultSet {
+	var list = []*TableInfo{}
+	var err error
+	rows, err := conn.Query(ctx, "SELECT ID, NAME, TYPE FROM V$TABLES ORDER BY ID")
+	if err != nil {
+		return &ShowVirtualTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	for rows.Next() {
+		var t TableInfo
+		if err = rows.Scan(&t.Id, &t.Name, &t.Type); err != nil {
+			return &ShowVirtualTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, &t)
+	}
+	return &ShowVirtualTablesResultSet{list: list}
+}

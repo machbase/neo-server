@@ -298,20 +298,6 @@ parseAndRun(process.argv.slice(2), defaultConfig, [
     tagstatConfig,
 ]);
 
-function renderResultSet(rsp, config) {
-    if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
-        console.println('No server info available');
-        return;
-    }
-    const nfo = rsp.data.rows[0];
-    let box = pretty.Table(config);
-    box.appendHeader(rsp.data.columns);
-    for (const row of rsp.data.rows) {
-        box.appendRow(row);
-    }
-    console.println(box.render());
-}
-
 function _show(line, config) {
     const client = new neoapi.Client(config);
     client.executeTql(`
@@ -319,7 +305,23 @@ function _show(line, config) {
             JSON()
         `)
         .then((rsp) => {
-            renderResultSet(rsp, config);
+            if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
+                console.println('No server info available');
+                return;
+            }
+            const nfo = rsp.data.rows[0];
+            let box = pretty.Table(config);
+            box.appendHeader(rsp.data.columns);
+            box.setColumnTypes(rsp.data.types);
+            let cfgs = [];
+            for (const typ of rsp.data.types) {
+                cfgs.push({});
+            }
+            box.setColumnConfigs(cfgs);
+            for (const row of rsp.data.rows) {
+                box.appendRow(row);
+            }
+            console.println(box.render());
         })
         .catch((err) => {
             console.println('Error:', err.message);
@@ -352,36 +354,11 @@ function showTable(config, args) {
 
 
 function showMetaTables(config, args) {
-    showMVTables('M$TABLES', config, args);
+    _show(`meta-tables`, config);
 }
 
 function showVirtualTables(config, args) {
-    showMVTables('V$TABLES', config, args);
-}
-
-function showMVTables(tableName, config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`SELECT NAME, TYPE, FLAG, ID FROM ${tableName} ORDER BY ID`);
-
-        let box = pretty.Table(config);
-        box.appendHeader(["ID", "NAME", "TYPE"]);
-        for (const row of rows) {
-            box.append([
-                row.ID,
-                row.NAME,
-                machcli.stringTableDescription(row.TYPE, row.FLAG),
-            ]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        conn && conn.close();
-        db && db.close();
-    }
+    _show(`virtual-tables`, config);
 }
 
 function showSessions(config, args) {

@@ -1,12 +1,14 @@
 package spi_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
@@ -85,20 +87,44 @@ func TestShowInfo(t *testing.T) {
 	}
 }
 
-func TestShowLicense(t *testing.T) {
+type ShowFixture struct {
+	db     *sql.DB
+	dbConn *sql.Conn
+	conn   api.Conn
+}
+
+func (sf *ShowFixture) Close() {
+	if sf.conn != nil {
+		sf.conn.Close()
+	}
+	if sf.db != nil {
+		sf.db.Close()
+	}
+	if sf.dbConn != nil {
+		sf.dbConn.Close()
+	}
+}
+
+func newShowDatabase(ctx context.Context) *ShowFixture {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
 	db, _ := sql.Open("machbase", dsn)
-	defer db.Close()
-	dbConn, _ := db.Conn(t.Context())
-	defer dbConn.Close()
-
+	dbConn, _ := db.Conn(ctx)
 	// Wrap the sql.Conn with spi.Conn
 	conn := spi.WrapSqlConn(dbConn)
+	return &ShowFixture{
+		db:     db,
+		dbConn: dbConn,
+		conn:   conn,
+	}
+}
 
+func TestShowLicense(t *testing.T) {
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowLicense",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), fixture.conn)) },
 			columns: []string{"ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", "ISSUE_DATE", "STATUS"},
 			expectFunc: func(values [][]any) {
 				row := values[0]
@@ -144,18 +170,12 @@ func TestShowPorts(t *testing.T) {
 }
 
 func TestShowUsers(t *testing.T) {
-	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
-	db, _ := sql.Open("machbase", dsn)
-	defer db.Close()
-	dbConn, _ := db.Conn(t.Context())
-	defer dbConn.Close()
-	// Wrap the sql.Conn with spi.Conn
-	conn := spi.WrapSqlConn(dbConn)
-
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowUsers",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.conn)) },
 			columns: []string{"USER_ID", "NAME"},
 			expects: [][]any{
 				{int64(1), "SYS"},
@@ -169,14 +189,61 @@ func TestShowUsers(t *testing.T) {
 	}
 }
 
+func TestShowMetaTables(t *testing.T) {
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowMetaTables",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowMetaTables(t.Context(), fixture.conn)) },
+			columns: []string{"ID", "NAME", "TYPE"},
+			expectFunc: func(values [][]any) {
+				require.GreaterOrEqual(t, len(values), 1)
+				for _, row := range values {
+					require.GreaterOrEqual(t, row[0], int64(1)) // ID
+					require.NotEmpty(t, row[1])                 // NAME
+					require.Equal(t, row[2], "Fixed")           // TYPE
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
+func TestShowVirtualTables(t *testing.T) {
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowVirtualTables",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowVirtualTables(t.Context(), fixture.conn)) },
+			columns: []string{"ID", "NAME", "TYPE"},
+			expectFunc: func(values [][]any) {
+				require.GreaterOrEqual(t, len(values), 1)
+				for _, row := range values {
+					require.GreaterOrEqual(t, row[0], int64(1))                    // ID
+					require.NotEmpty(t, row[1])                                    // NAME
+					require.True(t, row[2] == "Fixed" || row[2] == "Fixed (stat)") // TYPE : "Fixed" or "Fixed (stat)"
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
 func TestShowTables(t *testing.T) {
-	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
-	db, _ := sql.Open("machbase", dsn)
-	defer db.Close()
-	dbConn, _ := db.Conn(t.Context())
-	defer dbConn.Close()
-	// Wrap the sql.Conn with spi.Conn
-	conn := spi.WrapSqlConn(dbConn)
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
+	dbConn := fixture.dbConn
+	conn := fixture.conn
 
 	// Create a test table for the tests
 	dbConn.ExecContext(t.Context(), "CREATE TAG TABLE RS_DATA(NAME VARCHAR(80) PRIMARY KEY, TIME DATETIME basetime, VALUE DOUBLE summarized) with rollup tag_partition_count = 1")
@@ -376,77 +443,3 @@ func TestShowTables(t *testing.T) {
 		})
 	}
 }
-
-// func TestQueryResultSet(t *testing.T) {
-// 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
-// 	db, err := sql.Open("machbase", dsn)
-// 	require.NoError(t, err)
-// 	defer db.Close()
-// 	dbConn, err := db.Conn(t.Context())
-// 	require.NoError(t, err)
-// 	defer dbConn.Close()
-// 	// Create a test table for the tests
-// 	dbConn.ExecContext(t.Context(), "CREATE TAG TABLE RS_DATA(NAME VARCHAR(80) PRIMARY KEY, TIME DATETIME basetime, VALUE DOUBLE summarized) with rollup tag_partition_count = 1")
-// 	defer dbConn.ExecContext(t.Context(), "DROP TAG TABLE RS_DATA CASCADE")
-// 	dbConn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-01 00:00:00', 1.0)")
-// 	dbConn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-02 00:00:00', 2.0)")
-// 	dbConn.ExecContext(t.Context(), "exec table_flush('RS_DATA')")
-
-// 	parseTime := func(str string) time.Time {
-// 		tm, err := time.ParseInLocation("2006-01-02 15:04:05", str, time.Local)
-// 		require.NoError(t, err)
-// 		return tm.In(time.UTC)
-// 	}
-// 	_ = parseTime
-
-// 	// Wrap the sql.Conn with spi.Conn
-// 	conn := spi.WrapSqlConn(dbConn)
-
-// 	tests := []struct {
-// 		name       string
-// 		fn         func() spi.ResultSet
-// 		message    string
-// 		columns    []string
-// 		expects    [][]any
-// 		expectFunc func([][]any)
-// 	}{}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			rs := tt.fn()
-// 			require.NoError(t, rs.Err())
-// 			require.Equal(t, tt.columns, rs.Columns().Names())
-// 			values := make([][]interface{}, 0)
-// 			rs.Iter(func(row []interface{}) bool {
-// 				values = append(values, row)
-// 				return true
-// 			})
-// 			actual := strings.Builder{}
-// 			for _, row := range values {
-// 				actual.WriteString("{")
-// 				for _, col := range row {
-// 					if col == nil {
-// 						actual.WriteString("nil,")
-// 						continue
-// 					}
-// 					switch v := col.(type) {
-// 					case string:
-// 						actual.WriteString(fmt.Sprintf("%q,", v))
-// 					case int64:
-// 						actual.WriteString(fmt.Sprintf("int64(%d),", v))
-// 					case time.Time:
-// 						actual.WriteString(fmt.Sprintf("parseTime(%q),", v.In(time.Local).Format("2006-01-02 15:04:05")))
-// 					default:
-// 						actual.WriteString(fmt.Sprintf("%v,", v))
-// 					}
-// 				}
-// 				actual.WriteString("},\n")
-// 			}
-// 			if tt.expectFunc != nil {
-// 				tt.expectFunc(values)
-// 			} else {
-// 				require.Equal(t, tt.expects, values, actual.String())
-// 			}
-// 			require.Equal(t, rs.Message(), tt.message)
-// 		})
-// 	}
-// }

@@ -631,6 +631,16 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 		if err == nil {
 			return yieldResultSet(node, spi.ShowTables(node.task.ctx, apiConn, showAll))
 		}
+	case "meta-tables":
+		err = validateArgs(command, 0)
+		if err == nil {
+			return yieldResultSet(node, spi.ShowMetaTables(node.task.ctx, apiConn))
+		}
+	case "virtual-tables":
+		err = validateArgs(command, 0)
+		if err == nil {
+			return yieldResultSet(node, spi.ShowVirtualTables(node.task.ctx, apiConn))
+		}
 	case "table":
 		err = validateArgs(command, 1)
 		if err == nil {
