@@ -555,3 +555,49 @@ func ShowIndexes(ctx context.Context, conn api.Conn) *ShowIndexesResultSet {
 	list, err := ListIndexes(ctx, conn)
 	return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
+
+type ShowIndexResultSet struct {
+	ResultSetBase
+	desc *IndexInfo
+}
+
+var _ ResultSet = (*ShowIndexResultSet)(nil)
+
+func (qir *ShowIndexResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "TABLE", DataType: api.DataTypeString},
+		{Name: "COLUMN", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_TYPE", DataType: api.DataTypeString},
+		{Name: "KEY_COMPRESS", DataType: api.DataTypeString},
+		{Name: "MAX_LEVEL", DataType: api.DataTypeInt64},
+		{Name: "PART_VALUE_COUNT", DataType: api.DataTypeInt64},
+		{Name: "BITMAP_ENCODE", DataType: api.DataTypeString},
+	}
+}
+
+func (qir *ShowIndexResultSet) Iter(callback func(values []interface{}) bool) {
+	if qir.desc == nil {
+		return
+	}
+	cont := callback([]interface{}{
+		qir.desc.Id,
+		qir.desc.TableName,
+		qir.desc.ColumnName,
+		qir.desc.IndexName,
+		qir.desc.IndexType,
+		qir.desc.KeyCompress,
+		qir.desc.MaxLevel,
+		qir.desc.PartValueCount,
+		qir.desc.BitMapEncode,
+	})
+	if !cont {
+		return
+	}
+}
+
+func ShowIndex(ctx context.Context, conn api.Conn, indexName string) *ShowIndexResultSet {
+	idx, err := DescribeIndex(ctx, conn, indexName)
+	return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
+}

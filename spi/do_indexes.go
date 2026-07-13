@@ -24,33 +24,6 @@ type IndexInfo struct {
 	err            error  `json:"-"`
 }
 
-func (ii *IndexInfo) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "COLUMN_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_TYPE", DataType: api.DataTypeString},
-		{Name: "KEY_COMPRESS", DataType: api.DataTypeString},
-		{Name: "MAX_LEVEL", DataType: api.DataTypeInt64},
-		{Name: "PART_VALUE_COUNT", DataType: api.DataTypeInt64},
-		{Name: "BITMAP_ENCODE", DataType: api.DataTypeString},
-	}
-}
-
-func (ii *IndexInfo) Values() []interface{} {
-	return []interface{}{
-		ii.Id, ii.Database, ii.User, ii.TableName, ii.ColumnName, ii.IndexName,
-		ii.IndexType, ii.KeyCompress, ii.MaxLevel, ii.PartValueCount, ii.BitMapEncode,
-	}
-}
-
-func (ii *IndexInfo) Err() error {
-	return ii.err
-}
-
 var listIndexesSql = SqlTidy(`
 		SELECT
 			u.name as USER_NAME,

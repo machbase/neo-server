@@ -660,7 +660,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 1)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryIndex(node.task.ctx, apiConn, args[0]))
+			return yieldResultSet(node, spi.ShowIndex(node.task.ctx, apiConn, args[0]))
 		}
 	case "lsm":
 		err = validateNoAll()

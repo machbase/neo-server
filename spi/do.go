@@ -32,50 +32,6 @@ func (rs *ResultSetBase) Message() string {
 	return rs.msg
 }
 
-type QueryIndexResultSet struct {
-	ResultSetBase
-	desc *IndexInfo
-}
-
-var _ ResultSet = (*QueryIndexResultSet)(nil)
-
-func (qir *QueryIndexResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnString("TABLE_NAME"),
-		api.MakeColumnString("COLUMN_NAME"),
-		api.MakeColumnString("INDEX_NAME"),
-		api.MakeColumnString("INDEX_TYPE"),
-		api.MakeColumnString("KEY_COMPRESS"),
-		api.MakeColumnInt64("MAX_LEVEL"),
-		api.MakeColumnInt64("PART_VALUE_COUNT"),
-		api.MakeColumnString("BITMAP_ENCODE"),
-	}
-}
-
-func (qir *QueryIndexResultSet) Iter(callback func(values []interface{}) bool) {
-	if qir.desc == nil {
-		return
-	}
-	cont := callback([]interface{}{
-		qir.desc.TableName,
-		qir.desc.ColumnName,
-		qir.desc.IndexName,
-		qir.desc.IndexType,
-		qir.desc.KeyCompress,
-		qir.desc.MaxLevel,
-		qir.desc.PartValueCount,
-		qir.desc.BitMapEncode,
-	})
-	if !cont {
-		return
-	}
-}
-
-func QueryIndex(ctx context.Context, conn api.Conn, indexName string) *QueryIndexResultSet {
-	idx, err := DescribeIndex(ctx, conn, indexName)
-	return &QueryIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
-}
-
 type LsmIndexesResultSet struct {
 	ResultSetBase
 	list []*LsmIndexInfo

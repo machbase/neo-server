@@ -379,11 +379,11 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			name:    "QueryIndex",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryIndex(t.Context(), conn, "_RS_DATA_META_NAME")) },
-			columns: []string{"TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"},
+			name:    "ShowIndex",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowIndex(t.Context(), conn, "_RS_DATA_META_NAME")) },
+			columns: []string{"ID", "TABLE", "COLUMN", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"},
 			expects: [][]any{
-				{"_RS_DATA_META", "NAME", "_RS_DATA_META_NAME", "REDBLACK", "UNCOMPRESSED", int64(0), int64(100000), "EQUAL"},
+				{int64(0), "_RS_DATA_META", "NAME", "_RS_DATA_META_NAME", "REDBLACK", "UNCOMPRESSED", int64(0), int64(100000), "EQUAL"},
 			},
 		},
 		{
