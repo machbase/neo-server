@@ -272,14 +272,6 @@ func TestInfoValueObjects(t *testing.T) {
 		rollup := &RollupGapInfo{SrcTable: "SRC", RollupTable: "ROLL", SrcEndRID: 1, RollupEndRID: 2, Gap: 3, LastElapsed: time.Second, err: errors.New("rollup err")}
 		require.Equal(t, []any{"SRC", "ROLL", int64(1), int64(2), int64(3), time.Second}, rollup.Values())
 		require.EqualError(t, rollup.Err(), "rollup err")
-
-		storage := &StorageInfo{TableName: "T", DataSize: 10, IndexSize: 20, TotalSize: 30, err: errors.New("storage err")}
-		require.Equal(t, []any{"T", int64(10), int64(20), int64(30)}, storage.Values())
-		require.EqualError(t, storage.Err(), "storage err")
-
-		usage := &TableUsageInfo{TableName: "T", StorageUsage: 40, err: errors.New("usage err")}
-		require.Equal(t, []any{"T", int64(40)}, usage.Values())
-		require.EqualError(t, usage.Err(), "usage err")
 	})
 }
 

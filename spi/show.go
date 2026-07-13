@@ -601,3 +601,145 @@ func ShowIndex(ctx context.Context, conn api.Conn, indexName string) *ShowIndexR
 	idx, err := DescribeIndex(ctx, conn, indexName)
 	return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
 }
+
+type ShowStorageResultSet struct {
+	ResultSetBase
+	list []*StorageInfo
+}
+
+type StorageInfo struct {
+	TableName string `json:"table_name"`
+	DataSize  int64  `json:"data_size"`
+	IndexSize int64  `json:"index_size"`
+	TotalSize int64  `json:"total_size"`
+}
+
+var _ ResultSet = (*ShowStorageResultSet)(nil)
+
+func (sui *ShowStorageResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
+		{Name: "INDEX_SIZE", DataType: api.DataTypeInt64},
+		{Name: "TOTAL_SIZE", DataType: api.DataTypeInt64},
+	}
+}
+
+func (sui *ShowStorageResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range sui.list {
+		if !callback([]interface{}{t.TableName, t.DataSize, t.IndexSize, t.TotalSize}) {
+			return
+		}
+	}
+}
+
+func ShowStorage(ctx context.Context, conn api.Conn) *ShowStorageResultSet {
+	sqlText := SqlTidy(`select
+		a.table_name as TABLE_NAME,
+		a.data_size as DATA_SIZE,
+		case b.index_size 
+			when b.index_size then b.index_size 
+			else 0 end 
+		as INDEX_SIZE,
+		case a.data_size + b.index_size 
+			when a.data_size + b.index_size then a.data_size + b.index_size 
+			else a.data_size end 
+		as TOTAL_SIZE
+	from
+		(select
+			a.name as table_name,
+			sum(b.storage_usage) as data_size
+		from
+			m$sys_tables a,
+			v$storage_tables b
+		where a.id = b.id
+		group by a.name
+		) as a LEFT OUTER JOIN
+		(select
+			a.name,
+			sum(b.disk_file_size) as index_size
+		from
+			m$sys_tables a,
+			v$storage_dc_table_indexes b
+		where a.id = b.table_id
+		group by a.name) as b
+	on a.table_name = b.name
+	order by a.table_name`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	list := []*StorageInfo{}
+	for rows.Next() {
+		rec := &StorageInfo{}
+		err = rows.Scan(&rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
+		if err != nil {
+			return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	err = rows.Err()
+	return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}
+
+type ShowTableUsageResultSet struct {
+	ResultSetBase
+	list []*TableUsageInfo
+}
+
+type TableUsageInfo struct {
+	TableName    string `json:"table_name"`
+	StorageUsage int64  `json:"storage_usage"`
+}
+
+var _ ResultSet = (*ShowTableUsageResultSet)(nil)
+
+func (tui *ShowTableUsageResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
+	}
+}
+
+func (tui *ShowTableUsageResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, t := range tui.list {
+		if !callback([]interface{}{t.TableName, t.StorageUsage}) {
+			return
+		}
+	}
+}
+
+func ShowTableUsage(ctx context.Context, conn api.Conn) *ShowTableUsageResultSet {
+	sqlText := SqlTidy(`SELECT
+		a.NAME as TABLE_NAME,
+		t.STORAGE_USAGE as STORAGE_USAGE
+	FROM
+		M$SYS_TABLES a,
+		M$SYS_USERS u,
+		V$STORAGE_TABLES t
+	WHERE
+		a.user_id = u.user_id
+	AND t.ID = a.id
+	ORDER BY a.NAME`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	list := []*TableUsageInfo{}
+	for rows.Next() {
+		rec := &TableUsageInfo{}
+		err = rows.Scan(&rec.TableName, &rec.StorageUsage)
+		if err != nil {
+			return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	err = rows.Err()
+	return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}

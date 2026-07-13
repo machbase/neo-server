@@ -724,7 +724,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryStorage(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowStorage(node.task.ctx, apiConn))
 		}
 	case "table-usage":
 		err = validateNoAll()
@@ -732,7 +732,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryTableUsage(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowTableUsage(node.task.ctx, apiConn))
 		}
 	default:
 		err = fmt.Errorf("f(SQL) unsupported show command %q", command)

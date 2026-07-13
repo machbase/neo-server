@@ -387,6 +387,34 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
+			name:    "ShowStorage",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowStorage(t.Context(), conn)) },
+			columns: []string{"TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"},
+			expectFunc: func(values [][]any) {
+				names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
+				require.Equal(t, len(names), len(values))
+				for _, row := range values {
+					require.Contains(t, names, row[0])
+					require.GreaterOrEqual(t, row[1], int64(0))
+					require.GreaterOrEqual(t, row[2], int64(0))
+					require.GreaterOrEqual(t, row[3], int64(0))
+				}
+			},
+		},
+		{
+			name:    "ShowTableUsage",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTableUsage(t.Context(), conn)) },
+			columns: []string{"TABLE_NAME", "STORAGE_USAGE"},
+			expectFunc: func(values [][]any) {
+				names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
+				require.Equal(t, len(names), len(values))
+				for _, row := range values {
+					require.Contains(t, names, row[0])
+					require.GreaterOrEqual(t, row[1], int64(0))
+				}
+			},
+		},
+		{
 			name:    "QueryLsmIndexes",
 			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryLsmIndexes(t.Context(), conn)) },
 			columns: []string{"TABLE_NAME", "INDEX_NAME", "LEVEL", "COUNT"},
@@ -431,34 +459,6 @@ func TestShowTables(t *testing.T) {
 
 				require.Equal(t, "_RS_DATA_ROLLUP_SEC", values[2][0]) // src table
 				require.Equal(t, "_RS_DATA_ROLLUP_MIN", values[2][1]) // rollup table
-			},
-		},
-		{
-			name:    "QueryStorage",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryStorage(t.Context(), conn)) },
-			columns: []string{"TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"},
-			expectFunc: func(values [][]any) {
-				names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
-				require.Equal(t, len(names), len(values))
-				for _, row := range values {
-					require.Contains(t, names, row[0])
-					require.GreaterOrEqual(t, row[1], int64(0))
-					require.GreaterOrEqual(t, row[2], int64(0))
-					require.GreaterOrEqual(t, row[3], int64(0))
-				}
-			},
-		},
-		{
-			name:    "QueryTableUsage",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTableUsage(t.Context(), conn)) },
-			columns: []string{"TABLE_NAME", "STORAGE_USAGE"},
-			expectFunc: func(values [][]any) {
-				names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
-				require.Equal(t, len(names), len(values))
-				for _, row := range values {
-					require.Contains(t, names, row[0])
-					require.GreaterOrEqual(t, row[1], int64(0))
-				}
 			},
 		},
 	}

@@ -314,13 +314,26 @@ function _show(line, config) {
             box.appendHeader(rsp.data.columns);
             box.setColumnTypes(rsp.data.types);
             let cfgs = [];
-            for (const typ of rsp.data.types) {
-                cfgs.push({});
-            }
+            let fmts = [];
+            rsp.data.columns.forEach((col) => {
+                if (config.columns && config.columns[col]) {
+                    let c = config.columns[col];
+                    cfgs.push({ align: c.align, alignHeader: c.alignHeader });
+                    if (c.formatter) {
+                        fmts.push(c.formatter);
+                    } else {
+                        fmts.push((v) => v);
+                    }
+                } else {
+                    cfgs.push({});
+                    fmts.push((v) => v);
+                }
+            });
             box.setColumnConfigs(cfgs);
-            for (const row of rsp.data.rows) {
-                box.appendRow(row);
-            }
+            rsp.data.rows.forEach((row) => {
+                let values = row.map((v, j) => fmts[j](v));
+                box.appendRow(values);
+            });
             console.println(box.render());
         })
         .catch((err) => {
@@ -377,43 +390,22 @@ function showIndex(config, args) {
     _show('index ' + args.index, config);
 }
 
+function showStorage(config, args) {
+    config.columns = {
+        'TABLE_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'DATA_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) },
+        'INDEX_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) },
+        'TOTAL_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) }
+    };
+    _show('storage', config);
+}
+
 function showTableUsage(config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`SELECT
-            a.NAME as TABLE_NAME,
-            t.STORAGE_USAGE as STORAGE_USAGE
-        FROM
-            M$SYS_TABLES a,
-            M$SYS_USERS u,
-            V$STORAGE_TABLES t
-        WHERE
-            a.user_id = u.user_id
-        AND t.ID = a.id
-        ORDER BY a.NAME`);
-
-        let box = pretty.Table(config);
-        box.appendHeader(["TABLE_NAME", "STORAGE_USAGE"]);
-        box.setColumnConfigs([
-            { align: pretty.Align.left, alignHeader: pretty.Align.left },
-            { align: pretty.Align.right, alignHeader: pretty.Align.left }]);
-
-        for (const row of rows) {
-            box.append([
-                row.TABLE_NAME,
-                pretty.Bytes(row.STORAGE_USAGE),
-            ]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        rows && rows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    config.columns = {
+        'TABLE_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'STORAGE_USAGE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) }
+    };
+    _show('table-usage', config);
 }
 
 function showLsm(config, args) {
