@@ -369,9 +369,9 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			name:    "QueryIndexes",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryIndexes(t.Context(), conn)) },
-			columns: []string{"ID", "DATABASE", "USER", "TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"},
+			name:    "ShowIndexes",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowIndexes(t.Context(), conn)) },
+			columns: []string{"ID", "DATABASE", "USER", "TABLE", "COLUMN", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"},
 			expects: [][]any{
 				{int64(6), "MACHBASEDB", "SYS", "_RS_DATA_META", "_ID", "__PK_IDX__RS_DATA_META_1", "REDBLACK", "UNCOMPRESS", int64(0), int64(100000), "EQUAL"},
 				{int64(7), "MACHBASEDB", "SYS", "_RS_DATA_META", "NAME", "_RS_DATA_META_NAME", "REDBLACK", "UNCOMPRESS", int64(0), int64(100000), "EQUAL"},

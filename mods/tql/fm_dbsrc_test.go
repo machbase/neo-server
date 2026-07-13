@@ -427,7 +427,7 @@ func TestTqlSqlShowIndexes(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 5)
-				require.Equal(t, "ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
+				require.Equal(t, "ID,DATABASE,USER,TABLE,COLUMN,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
 
 				required := map[string]struct {
 					table  string

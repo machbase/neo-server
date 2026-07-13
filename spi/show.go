@@ -515,3 +515,43 @@ func ShowStatements(ctx context.Context, conn api.Conn) *ShowStatementsResultSet
 	}
 	return &ShowStatementsResultSet{list: list}
 }
+
+type ShowIndexesResultSet struct {
+	ResultSetBase
+	list []*IndexInfo
+}
+
+var _ ResultSet = (*ShowIndexesResultSet)(nil)
+
+func (ii *ShowIndexesResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "TABLE", DataType: api.DataTypeString},
+		{Name: "COLUMN", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_TYPE", DataType: api.DataTypeString},
+		{Name: "KEY_COMPRESS", DataType: api.DataTypeString},
+		{Name: "MAX_LEVEL", DataType: api.DataTypeInt64},
+		{Name: "PART_VALUE_COUNT", DataType: api.DataTypeInt64},
+		{Name: "BITMAP_ENCODE", DataType: api.DataTypeString},
+	}
+}
+
+func (ii *ShowIndexesResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range ii.list {
+		cont := callback([]interface{}{
+			idx.Id, idx.Database, idx.User, idx.TableName, idx.ColumnName, idx.IndexName,
+			idx.IndexType, idx.KeyCompress, idx.MaxLevel, idx.PartValueCount, idx.BitMapEncode,
+		})
+		if !cont {
+			return
+		}
+	}
+}
+
+func ShowIndexes(ctx context.Context, conn api.Conn) *ShowIndexesResultSet {
+	list, err := ListIndexes(ctx, conn)
+	return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}
