@@ -289,14 +289,6 @@ func TestInfoValueObjects(t *testing.T) {
 		stmtNeo := &StatementInfo{ID: 3, SessionID: 4, State: "APPEND", Query: "insert", IsNeo: true, AppendSuccessCount: 5, AppendFailureCount: 6, err: errors.New("stmt err")}
 		require.Equal(t, []any{int64(3), int64(4), "APPEND", "neo", nil, int64(5), int64(6), "insert"}, stmtNeo.Values())
 		require.EqualError(t, stmtNeo.Err(), "stmt err")
-
-		now := time.Unix(1700000000, 0).UTC()
-		sess := &SessionInfo{ID: 1, UserID: 2, UserName: "sys", LoginTime: now, MaxQPXMem: 64}
-		require.Equal(t, []any{int64(1), int64(2), "sys", "CLI", now, int64(64), nil}, sess.Values())
-
-		sessNeo := &SessionInfo{ID: 3, UserID: 4, UserName: "neo", IsNeo: true, StmtCount: 7, err: errors.New("session err")}
-		require.Equal(t, []any{int64(3), int64(4), "neo", "neo", nil, nil, int64(7)}, sessNeo.Values())
-		require.EqualError(t, sessNeo.Err(), "session err")
 	})
 }
 

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 var serverInfoProvider func() map[string]any
@@ -366,4 +368,90 @@ func ShowVirtualTables(ctx context.Context, conn api.Conn) *ShowVirtualTablesRes
 		list = append(list, &t)
 	}
 	return &ShowVirtualTablesResultSet{list: list}
+}
+
+type ShowSessionsResultSet struct {
+	ResultSetBase
+	rows [][]any
+}
+
+var _ ResultSet = (*ShowSessionsResultSet)(nil)
+
+func (sri *ShowSessionsResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "USER_NAME", DataType: api.DataTypeString},
+		{Name: "USER_ID", DataType: api.DataTypeInt64},
+		{Name: "LOGIN_TIME", DataType: api.DataTypeDatetime},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "USER_IP", DataType: api.DataTypeString},
+		{Name: "MAX_QPX_MEM", DataType: api.DataTypeInt64},
+	}
+}
+
+func (sri *ShowSessionsResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, row := range sri.rows {
+		if !callback(row) {
+			return
+		}
+	}
+}
+
+func ShowSessions(ctx context.Context, conn api.Conn) *ShowSessionsResultSet {
+	ret := &ShowSessionsResultSet{}
+	func() {
+		rows, err := conn.Query(ctx, "SELECT ID, USER_ID, LOGIN_TIME, CLIENT_TYPE, USER_NAME, USER_IP, MAX_QPX_MEM FROM V$SESSION")
+		if err != nil {
+			ret.err = err
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			var userId int64
+			var loginTime time.Time
+			var clientType string
+			var userName string
+			var userIp string
+			var maxQpxMem int64
+			if err := rows.Scan(&id, &userId, &loginTime, &clientType, &userName, &userIp, &maxQpxMem); err != nil {
+				ret.err = err
+				return
+			}
+			row := []any{id, userName, userId, loginTime, clientType, userIp, util.HumanizeByteCount(maxQpxMem)}
+			ret.rows = append(ret.rows, row)
+		}
+		if err := rows.Err(); err != nil {
+			ret.err = err
+			return
+		}
+	}()
+	if ret.err != nil {
+		return ret
+	}
+	func() {
+		rows, err := conn.Query(ctx, "SELECT ID, USER_ID, USER_NAME FROM V$NEO_SESSION")
+		if err != nil {
+			ret.err = err
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var id int64
+			var userId int64
+			var userName string
+			if err := rows.Scan(&id, &userId, &userName); err != nil {
+				ret.err = err
+				return
+			}
+			row := []any{id, userName, userId, nil, "neo", nil, nil}
+			ret.rows = append(ret.rows, row)
+		}
+		if err := rows.Err(); err != nil {
+			ret.err = err
+			return
+		}
+	}()
+	return ret
 }

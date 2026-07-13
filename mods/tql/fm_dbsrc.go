@@ -708,7 +708,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QuerySessions(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowSessions(node.task.ctx, apiConn))
 		}
 	case "statements":
 		err = validateNoAll()

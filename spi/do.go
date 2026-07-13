@@ -416,35 +416,3 @@ func QueryStatements(ctx context.Context, conn api.Conn) *StatementsResultSet {
 	list, err := ListStatements(ctx, conn)
 	return &StatementsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
-
-type SessionsResultSet struct {
-	ResultSetBase
-	list []*SessionInfo
-}
-
-var _ ResultSet = (*SessionsResultSet)(nil)
-
-func (sri *SessionsResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "USER_ID", DataType: api.DataTypeInt64},
-		{Name: "USER_NAME", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "LOGIN_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_QPX_MEM", DataType: api.DataTypeInt64},
-		{Name: "STMT_COUNT", DataType: api.DataTypeInt64},
-	}
-}
-
-func (sri *SessionsResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, s := range sri.list {
-		if !callback(s.Values()) {
-			return
-		}
-	}
-}
-
-func QuerySessions(ctx context.Context, conn api.Conn) *SessionsResultSet {
-	list, err := ListSessions(ctx, conn)
-	return &SessionsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}

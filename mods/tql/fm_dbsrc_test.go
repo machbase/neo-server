@@ -640,8 +640,8 @@ func TestTqlSqlShowSessions(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "ID,USER_ID,USER_NAME,TYPE,LOGIN_TIME,MAX_QPX_MEM,STMT_COUNT", lines[0])
-				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,[A-Z]+,.*,[-0-9]+,[0-9]+,.+$`), lines[1])
+				require.Equal(t, "ID,USER_NAME,USER_ID,LOGIN_TIME,TYPE,USER_IP,MAX_QPX_MEM", lines[0])
+				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[A-Z]+,[0-9]+,[0-9]+,CLI,127.0.0.1,[0-9]+([.][0-9]+)?[KMG]?B$`), lines[1])
 			},
 		},
 	}

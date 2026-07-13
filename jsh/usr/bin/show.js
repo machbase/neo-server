@@ -302,7 +302,7 @@ function _show(line, config) {
     const client = new neoapi.Client(config);
     client.executeTql(`
             SQL('show ${line}')
-            JSON()
+            JSON(timeformat('DATETIME'), tz('Local'))
         `)
         .then((rsp) => {
             if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
@@ -362,51 +362,7 @@ function showVirtualTables(config, args) {
 }
 
 function showSessions(config, args) {
-    let box = pretty.Table(config);
-    box.setTimeformat('DATETIME');
-    box.appendHeader(["ID", "USER_NAME", "USER_ID", "LOGIN_TIME", "TYPE", "USER_IP", "MAX_QPX_MEM", "STMT_COUNT"]);
-
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`SELECT ID, USER_ID, LOGIN_TIME, CLIENT_TYPE, USER_NAME, USER_IP, MAX_QPX_MEM FROM V$SESSION`);
-
-        for (const row of rows) {
-            box.append([
-                row.ID,
-                row.USER_NAME,
-                row.USER_ID,
-                row.LOGIN_TIME,
-                row.CLIENT_TYPE,
-                row.USER_IP,
-                pretty.Bytes(row.MAX_QPX_MEM),
-                "",
-            ]);
-        }
-        rows && rows.close();
-
-        rows = conn.query(`SELECT ID, USER_ID, USER_NAME, STMT_COUNT FROM V$NEO_SESSION`);
-        for (const row of rows) {
-            box.append([
-                row.ID,
-                row.USER_NAME,
-                row.USER_ID,
-                "",  // LOGIN_TIME
-                "neo",  // TYPE
-                "", // USER_IP
-                "", // MAX_QPX_MEM
-                row.STMT_COUNT
-            ]);
-        }
-        rows && rows.close();
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        conn && conn.close();
-        db && db.close();
-    }
-    console.println(box.render());
+    _show('sessions', config);
 }
 
 function showStatements(config, args) {

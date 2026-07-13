@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -239,6 +240,33 @@ func TestShowVirtualTables(t *testing.T) {
 	}
 }
 
+func TestShowSessions(t *testing.T) {
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
+	tests := []ResultSetTestCase{
+		{
+			name:    "QuerySessions",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowSessions(t.Context(), fixture.conn)) },
+			columns: []string{"ID", "USER_NAME", "USER_ID", "LOGIN_TIME", "TYPE", "USER_IP", "MAX_QPX_MEM"},
+			expectFunc: func(values [][]any) {
+				row := values[0]
+				require.Greater(t, row[0], int64(0))                                   // ID
+				require.Equal(t, "SYS", row[1])                                        // USER_NAME
+				require.GreaterOrEqual(t, row[2], int64(0))                            // USER_ID
+				require.Greater(t, row[3], time.Time{})                                // LOGIN_TIME
+				require.Equal(t, "CLI", row[4])                                        // TYPE
+				require.Equal(t, "127.0.0.1", row[5])                                  // USER_IP
+				require.Regexp(t, regexp.MustCompile(`^\d+(\.\d+)?[KMGT]?B$`), row[6]) // MAX_QPX_MEM
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
 func TestShowTables(t *testing.T) {
 	fixture := newShowDatabase(t.Context())
 	defer fixture.Close()
@@ -419,21 +447,6 @@ func TestShowTables(t *testing.T) {
 				require.Greater(t, row[0], int64(0)) // ID
 				require.NotEmpty(t, row[2])          // STATE
 				require.NotEmpty(t, row[7])          // QUERY
-			},
-		},
-		{
-			name:    "QuerySessions",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QuerySessions(t.Context(), conn)) },
-			columns: []string{"ID", "USER_ID", "USER_NAME", "TYPE", "LOGIN_TIME", "MAX_QPX_MEM", "STMT_COUNT"},
-			expectFunc: func(values [][]any) {
-				row := values[0]
-				require.Greater(t, row[0], int64(0))        // ID
-				require.GreaterOrEqual(t, row[1], int64(0)) // USER_ID
-				require.Equal(t, "SYS", row[2])
-				require.Equal(t, "CLI", row[3])
-				require.NotEmpty(t, row[4])
-				require.Equal(t, int64(268435456), row[5])
-				require.Nil(t, row[6])
 			},
 		},
 	}
