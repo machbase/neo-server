@@ -131,3 +131,55 @@ func ShowPorts(portType string) *ShowPortsResultSet {
 	}
 	return &ShowPortsResultSet{data: serverInfo}
 }
+
+type ShowUsersResultSet struct {
+	ResultSetBase
+	data []*UserInfo
+}
+
+type UserInfo struct {
+	UserId int64  `json:"user_id"`
+	Name   string `json:"name"`
+}
+
+var _ ResultSet = (*ShowUsersResultSet)(nil)
+
+func (si *ShowUsersResultSet) Columns() api.Columns {
+	return api.Columns{
+		api.MakeColumnInt64("USER_ID"),
+		api.MakeColumnString("NAME"),
+	}
+}
+
+func (si *ShowUsersResultSet) Iter(callback func(values []interface{}) bool) {
+	if si.err != nil {
+		return
+	}
+
+	for _, u := range si.data {
+		if !callback([]interface{}{u.UserId, u.Name}) {
+			return
+		}
+	}
+}
+
+func ShowUsers(ctx context.Context, conn api.Conn) *ShowUsersResultSet {
+	rows, err := conn.Query(ctx, "SELECT USER_ID, NAME FROM M$SYS_USERS ORDER BY USER_ID")
+	if err != nil {
+		return &ShowUsersResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	var users []*UserInfo
+	for rows.Next() {
+		var u UserInfo
+		if err := rows.Scan(&u.UserId, &u.Name); err != nil {
+			return &ShowUsersResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return &ShowUsersResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	return &ShowUsersResultSet{data: users}
+}

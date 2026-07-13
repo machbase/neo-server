@@ -618,6 +618,14 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 		if err == nil {
 			return yieldResultSet(node, spi.ShowPorts(portType))
 		}
+	case "users":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowUsers(node.task.ctx, apiConn))
+		}
 	case "tables":
 		err = validateArgs(command, 0)
 		if err == nil {

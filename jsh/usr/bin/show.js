@@ -312,10 +312,10 @@ function renderResultSet(rsp, config) {
     console.println(box.render());
 }
 
-function showInfo(config, args) {
+function _show(line, config) {
     const client = new neoapi.Client(config);
     client.executeTql(`
-            SQL('show info')
+            SQL('show ${line}')
             JSON()
         `)
         .then((rsp) => {
@@ -324,57 +324,22 @@ function showInfo(config, args) {
         .catch((err) => {
             console.println('Error:', err.message);
         });
+}
+
+function showInfo(config, args) {
+    _show('info', config);
 }
 
 function showLicense(config, args) {
-    const client = new neoapi.Client(config);
-    client.executeTql(`
-            SQL('show license')
-            JSON()
-        `)
-        .then((rsp) => {
-            renderResultSet(rsp, config);
-        })
-        .catch((err) => {
-            console.println('Error:', err.message);
-        });
+    _show('license', config);
 }
 
 function showPorts(config, args) {
-    const client = new neoapi.Client(config);
-    client.executeTql(`
-            SQL('show ports ${args.service ? args.service : ''}')
-            JSON()
-        `)
-        .then((rsp) => {
-            renderResultSet(rsp, config);
-        })
-        .catch((err) => {
-            console.println('Error:', err.message);
-        });
+    _show(`ports ${args.service ? args.service : ''}`, config);
 }
 
 function showUsers(config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query("SELECT USER_ID, NAME FROM M$SYS_USERS");
-
-        let box = pretty.Table(config);
-
-        box.appendHeader(["USER_ID", "NAME"]);
-        for (const row of rows) {
-            box.append([row.USER_ID, row.NAME]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        rows && rows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    _show('users', config);
 }
 
 function showTables(config, args) {

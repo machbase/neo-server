@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -178,6 +179,73 @@ func TestTqlSqlShow(t *testing.T) {
 				require.Equal(t, "ID,TYPE,CUSTOMER,PROJECT,COUNTRY_CODE,INSTALL_DATE,ISSUE_DATE,STATUS", lines[0])
 				// "00000000,COMMUNITY,NONE,NONE,KR,2026-07-08 10:15:59,20991231,Valid",
 				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[A-Z]+,[A-Z0-9]+,[A-Z0-9]+,[A-Z]{2},[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]{8},[A-Za-z]+$`), lines[1])
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestTqlSqlShowPorts(t *testing.T) {
+	spi.SetServerPortsProvider(func(svc string) ([]*model.ServicePort, error) {
+		ret := []*model.ServicePort{}
+		if svc == "" || svc == "http" {
+			ret = append(ret, &model.ServicePort{Service: "http", Address: "tcp://127.0.0.1:5654"})
+		}
+		if svc == "" || svc == "mqtt" {
+			ret = append(ret, &model.ServicePort{Service: "mqtt", Address: "tcp://127.0.0.1:1883"})
+		}
+		return ret, nil
+	})
+	tests := []TqlTestCase{
+		{
+			Name: "SQL_show_ports",
+			Script: `
+				SQL('show ports')
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"PORT,ADDRESS",
+				"http,tcp://127.0.0.1:5654",
+				"mqtt,tcp://127.0.0.1:1883",
+				"", "",
+			},
+		},
+		{
+			Name: "SQL_show_ports_mqtt",
+			Script: `
+				SQL('show ports mqtt')
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"PORT,ADDRESS",
+				"mqtt,tcp://127.0.0.1:1883",
+				"", "",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestTqlSqlShowUsers(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "SQL_show_users",
+			Script: `
+				SQL('show users')
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"USER_ID,NAME",
+				"1,SYS",
+				"", "",
 			},
 		},
 	}

@@ -143,6 +143,32 @@ func TestShowPorts(t *testing.T) {
 	}
 }
 
+func TestShowUsers(t *testing.T) {
+	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
+	db, _ := sql.Open("machbase", dsn)
+	defer db.Close()
+	dbConn, _ := db.Conn(t.Context())
+	defer dbConn.Close()
+	// Wrap the sql.Conn with spi.Conn
+	conn := spi.WrapSqlConn(dbConn)
+
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowUsers",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), conn)) },
+			columns: []string{"USER_ID", "NAME"},
+			expects: [][]any{
+				{int64(1), "SYS"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
 func TestQueryResultSet(t *testing.T) {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
 	db, err := sql.Open("machbase", dsn)
