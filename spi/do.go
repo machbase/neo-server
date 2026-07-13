@@ -32,59 +32,6 @@ func (rs *ResultSetBase) Message() string {
 	return rs.msg
 }
 
-type TableResultSet struct {
-	ResultSetBase
-	desc *api.TableDescription
-}
-
-var _ ResultSet = (*TableResultSet)(nil)
-
-func (tr *TableResultSet) Err() error {
-	return tr.err
-}
-
-func (tr *TableResultSet) Message() string {
-	if tr.err != nil {
-		return tr.err.Error()
-	}
-	return ""
-}
-
-func (tr *TableResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "COLUMN", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "LENGTH", DataType: api.DataTypeInt32},
-		{Name: "FLAG", DataType: api.DataTypeString},
-		{Name: "INDEX", DataType: api.DataTypeString},
-	}
-}
-
-func (tr *TableResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, col := range tr.desc.Columns {
-		indexes := []string{}
-		for _, idxDesc := range tr.desc.Indexes {
-			for _, colName := range idxDesc.Cols {
-				if colName == col.Name {
-					indexes = append(indexes, idxDesc.Name)
-					break
-				}
-			}
-		}
-		values := []any{
-			col.Name, col.Type.String(), col.Width(), col.Flag.String(), strings.Join(indexes, ","),
-		}
-		if !callback(values) {
-			return
-		}
-	}
-}
-
-func QueryTable(ctx context.Context, conn api.Conn, tableName string, all bool) *TableResultSet {
-	desc, err := api.DescribeTable(ctx, conn, tableName, all)
-	return &TableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
-}
-
 type IndexesResultSet struct {
 	ResultSetBase
 	list []*IndexInfo

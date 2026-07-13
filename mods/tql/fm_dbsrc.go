@@ -634,7 +634,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 	case "table":
 		err = validateArgs(command, 1)
 		if err == nil {
-			return yieldResultSet(node, spi.QueryTable(node.task.ctx, apiConn, args[0], showAll))
+			return yieldResultSet(node, spi.ShowTable(node.task.ctx, apiConn, args[0], showAll))
 		}
 	case "indexes":
 		err = validateNoAll()

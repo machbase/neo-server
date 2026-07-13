@@ -469,14 +469,13 @@ func TestSSHSession(t *testing.T) {
 	require.NoError(t, err)
 
 	err = s.Run(t, "desc example", []string{
-		"EXAMPLE (ID:",
-		"┌────────┬───────┬──────────┬────────┬────────────┬───────┐",
-		"│ ROWNUM │ NAME  │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
-		"├────────┼───────┼──────────┼────────┼────────────┼───────┤",
-		"│      1 │ NAME  │ varchar  │     40 │ tag name   │       │",
-		"│      2 │ TIME  │ datetime │     31 │ base time  │       │",
-		"│      3 │ VALUE │ double   │     17 │ summarized │       │",
-		"└────────┴───────┴──────────┴────────┴────────────┴───────┘",
+		"┌────────┬────────┬──────────┬────────┬────────────┬───────┐",
+		"│ ROWNUM │ COLUMN │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
+		"├────────┼────────┼──────────┼────────┼────────────┼───────┤",
+		"│      1 │ NAME   │ varchar  │     40 │ tag name   │       │",
+		"│      2 │ TIME   │ datetime │     31 │ base time  │       │",
+		"│      3 │ VALUE  │ double   │     17 │ summarized │       │",
+		"└────────┴────────┴──────────┴────────┴────────────┴───────┘",
 	}, 5*time.Second)
 	require.NoError(t, err)
 

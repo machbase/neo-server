@@ -222,3 +222,56 @@ func ShowTables(ctx context.Context, conn api.Conn, showAll bool) *ShowTablesRes
 	})
 	return &ShowTablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
+
+type ShowTableResultSet struct {
+	ResultSetBase
+	desc *api.TableDescription
+}
+
+var _ ResultSet = (*ShowTableResultSet)(nil)
+
+func (tr *ShowTableResultSet) Err() error {
+	return tr.err
+}
+
+func (tr *ShowTableResultSet) Message() string {
+	if tr.err != nil {
+		return tr.err.Error()
+	}
+	return ""
+}
+
+func (tr *ShowTableResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "COLUMN", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "LENGTH", DataType: api.DataTypeInt32},
+		{Name: "FLAG", DataType: api.DataTypeString},
+		{Name: "INDEX", DataType: api.DataTypeString},
+	}
+}
+
+func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, col := range tr.desc.Columns {
+		indexes := []string{}
+		for _, idxDesc := range tr.desc.Indexes {
+			for _, colName := range idxDesc.Cols {
+				if colName == col.Name {
+					indexes = append(indexes, idxDesc.Name)
+					break
+				}
+			}
+		}
+		values := []any{
+			col.Name, col.Type.String(), col.Width(), col.Flag.String(), strings.Join(indexes, ","),
+		}
+		if !callback(values) {
+			return
+		}
+	}
+}
+
+func ShowTable(ctx context.Context, conn api.Conn, tableName string, all bool) *ShowTableResultSet {
+	desc, err := api.DescribeTable(ctx, conn, tableName, all)
+	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
+}

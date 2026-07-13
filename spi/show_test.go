@@ -215,13 +215,38 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			name:    "QueryTable",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTable(t.Context(), conn, "RS_DATA", false)) },
+			name:    "ShowTable",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "RS_DATA", false)) },
 			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
 			expects: [][]any{
 				{"NAME", "varchar", 80, "tag name", ""},
 				{"TIME", "datetime", 31, "base time", ""},
 				{"VALUE", "double", 17, "", ""},
+			},
+		},
+		{
+			name:    "ShowTable_all",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "RS_DATA", true)) },
+			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
+			expects: [][]any{
+				{"NAME", "varchar", 80, "tag name", ""},
+				{"TIME", "datetime", 31, "base time", ""},
+				{"VALUE", "double", 17, "", ""},
+				{"_RID", "long", 20, "", ""},
+			},
+		},
+		{
+			name:    "ShowTable_meta",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "M$SYS_TABLES", false)) },
+			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
+			expects: [][]any{
+				{"NAME", "varchar", 100, "", ""},
+				{"TYPE", "integer", 11, "", ""},
+				{"DATABASE_ID", "long", 20, "", ""},
+				{"ID", "long", 20, "", ""},
+				{"USER_ID", "integer", 11, "", ""},
+				{"COLCOUNT", "integer", 11, "", ""},
+				{"FLAG", "integer", 11, "", ""},
 			},
 		},
 		{
