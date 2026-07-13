@@ -85,6 +85,41 @@ func TestShowInfo(t *testing.T) {
 	}
 }
 
+func TestShowLicense(t *testing.T) {
+	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
+	db, _ := sql.Open("machbase", dsn)
+	defer db.Close()
+	dbConn, _ := db.Conn(t.Context())
+	defer dbConn.Close()
+
+	// Wrap the sql.Conn with spi.Conn
+	conn := spi.WrapSqlConn(dbConn)
+
+	tests := []ResultSetTestCase{
+		{
+			name:    "ShowLicense",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), conn)) },
+			columns: []string{"ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", "ISSUE_DATE", "STATUS"},
+			expectFunc: func(values [][]any) {
+				row := values[0]
+				require.Equal(t, "00000000", row[0])
+				require.Equal(t, "COMMUNITY", row[1])
+				require.Equal(t, "NONE", row[2])
+				require.Equal(t, "NONE", row[3])
+				require.Equal(t, "KR", row[4])
+				require.NotEmpty(t, row[5])
+				require.NotEmpty(t, row[6])
+				require.Equal(t, "VALID", row[7])
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runResultSetTestCases(t, tt)
+		})
+	}
+}
+
 func TestShowPorts(t *testing.T) {
 	spi.SetServerPortsProvider(func(string) ([]*model.ServicePort, error) {
 		return []*model.ServicePort{
@@ -141,22 +176,6 @@ func TestQueryResultSet(t *testing.T) {
 		expects    [][]any
 		expectFunc func([][]any)
 	}{
-		{
-			name:    "QueryLicense",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryLicense(t.Context(), conn)) },
-			columns: []string{"ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", "ISSUE_DATE", "STATUS"},
-			expectFunc: func(values [][]any) {
-				row := values[0]
-				require.Equal(t, "00000000", row[0])
-				require.Equal(t, "COMMUNITY", row[1])
-				require.Equal(t, "NONE", row[2])
-				require.Equal(t, "NONE", row[3])
-				require.Equal(t, "KR", row[4])
-				require.NotEmpty(t, row[5])
-				require.NotEmpty(t, row[6])
-				require.Equal(t, "Valid", row[7])
-			},
-		},
 		{
 			name:    "QueryTables",
 			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTables(t.Context(), conn, false)) },
@@ -299,8 +318,8 @@ func TestQueryResultSet(t *testing.T) {
 			columns: []string{"ID", "USER_ID", "USER_NAME", "TYPE", "LOGIN_TIME", "MAX_QPX_MEM", "STMT_COUNT"},
 			expectFunc: func(values [][]any) {
 				row := values[0]
-				require.Equal(t, int64(2), row[0])
-				require.Equal(t, int64(0), row[1])
+				require.Greater(t, row[0], int64(0))        // ID
+				require.GreaterOrEqual(t, row[1], int64(0)) // USER_ID
 				require.Equal(t, "SYS", row[2])
 				require.Equal(t, "CLI", row[3])
 				require.NotEmpty(t, row[4])

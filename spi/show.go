@@ -1,8 +1,10 @@
 package spi
 
 import (
+	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -53,6 +55,38 @@ func ShowInfo() *ShowInfoResultSet {
 	}
 	slices.Sort(keys)
 	return &ShowInfoResultSet{keys: keys, data: serverInfo}
+}
+
+type LicenseResultSet struct {
+	ResultSetBase
+	lic *LicenseInfo
+}
+
+var _ ResultSet = (*LicenseResultSet)(nil)
+
+func (li *LicenseResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeString},
+		{Name: "TYPE", DataType: api.DataTypeString},
+		{Name: "CUSTOMER", DataType: api.DataTypeString},
+		{Name: "PROJECT", DataType: api.DataTypeString},
+		{Name: "COUNTRY_CODE", DataType: api.DataTypeString},
+		{Name: "INSTALL_DATE", DataType: api.DataTypeString},
+		{Name: "ISSUE_DATE", DataType: api.DataTypeString},
+		{Name: "STATUS", DataType: api.DataTypeString},
+	}
+}
+
+func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
+	callback([]interface{}{
+		li.lic.Id, li.lic.Type, li.lic.Customer, li.lic.Project, li.lic.CountryCode,
+		li.lic.InstallDate, li.lic.IssueDate, strings.ToUpper(li.lic.LicenseStatus),
+	})
+}
+
+func ShowLicense(ctx context.Context, conn api.Conn) *LicenseResultSet {
+	licenseInfo, err := GetLicenseInfo(ctx, conn)
+	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
 }
 
 var serverPortsProvider func(string) ([]*model.ServicePort, error)

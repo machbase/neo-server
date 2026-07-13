@@ -84,7 +84,8 @@ class _Client {
                 port: this.options.port,
                 path: '/db/tql',
                 headers: {
-                    'Content-Type': 'text/plain'
+                    'Content-Type': 'text/plain',
+                    'Authorization': `Bearer ${getHttpAccessToken()}`
                 }
             });
             req.on('response', (res) => {

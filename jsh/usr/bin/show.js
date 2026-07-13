@@ -326,6 +326,20 @@ function showInfo(config, args) {
         });
 }
 
+function showLicense(config, args) {
+    const client = new neoapi.Client(config);
+    client.executeTql(`
+            SQL('show license')
+            JSON()
+        `)
+        .then((rsp) => {
+            renderResultSet(rsp, config);
+        })
+        .catch((err) => {
+            console.println('Error:', err.message);
+        });
+}
+
 function showPorts(config, args) {
     const client = new neoapi.Client(config);
     client.executeTql(`
@@ -338,29 +352,6 @@ function showPorts(config, args) {
         .catch((err) => {
             console.println('Error:', err.message);
         });
-}
-
-function showLicense(config, args) {
-    let db, conn, row;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        row = conn.queryRow("SELECT " +
-            "ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG " +
-            "FROM V$LICENSE_INFO");
-
-        let box = pretty.Table(config);
-        box.appendHeader(["ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", " ISSUE_DATE", "STATUS"]);
-        box.append([
-            row.ID, row.TYPE, row.CUSTOMER, row.PROJECT, row.COUNTRY_CODE,
-            row.INSTALL_DATE, row.ISSUE_DATE, row.VIOLATE_STATUS === 0 ? "VALID" : "INVALID"]);
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        conn && conn.close();
-        db && db.close();
-    }
 }
 
 function showUsers(config, args) {

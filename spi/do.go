@@ -240,38 +240,6 @@ func QueryLsmIndexes(ctx context.Context, conn api.Conn) *LsmIndexesResultSet {
 	return &LsmIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
-type LicenseResultSet struct {
-	ResultSetBase
-	lic *LicenseInfo
-}
-
-var _ ResultSet = (*LicenseResultSet)(nil)
-
-func (li *LicenseResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "CUSTOMER", DataType: api.DataTypeString},
-		{Name: "PROJECT", DataType: api.DataTypeString},
-		{Name: "COUNTRY_CODE", DataType: api.DataTypeString},
-		{Name: "INSTALL_DATE", DataType: api.DataTypeString},
-		{Name: "ISSUE_DATE", DataType: api.DataTypeString},
-		{Name: "STATUS", DataType: api.DataTypeString},
-	}
-}
-
-func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
-	callback([]interface{}{
-		li.lic.Id, li.lic.Type, li.lic.Customer, li.lic.Project, li.lic.CountryCode,
-		li.lic.InstallDate, li.lic.IssueDate, li.lic.LicenseStatus,
-	})
-}
-
-func QueryLicense(ctx context.Context, conn api.Conn) *LicenseResultSet {
-	licenseInfo, err := GetLicenseInfo(ctx, conn)
-	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
-}
-
 type TagsResultSet struct {
 	ResultSetBase
 	conn      api.Conn

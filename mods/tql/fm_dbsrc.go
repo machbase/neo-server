@@ -597,6 +597,14 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 		if err == nil {
 			return yieldResultSet(node, spi.ShowInfo())
 		}
+	case "license":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowLicense(node.task.ctx, apiConn))
+		}
 	case "ports":
 		err = validateNoAll()
 		portType := ""
@@ -707,14 +715,6 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 		}
 		if err == nil {
 			return yieldResultSet(node, spi.QueryTableUsage(node.task.ctx, apiConn))
-		}
-	case "license":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryLicense(node.task.ctx, apiConn))
 		}
 	default:
 		err = fmt.Errorf("f(SQL) unsupported show command %q", command)
