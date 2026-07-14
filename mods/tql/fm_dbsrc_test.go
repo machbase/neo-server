@@ -574,7 +574,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "_ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME", lines[0])
+				require.Equal(t, "ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME", lines[0])
 				hasTag := false
 				hasValue := false
 				for _, line := range lines[1:] {
@@ -595,7 +595,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 				SQL('show tags log_data')
 				CSV(header(true))
 			`,
-			ExpectErr: `f(SQL) table "LOG_DATA" is not a tag table`,
+			ExpectErr: `table 'LOG_DATA' is not a tag table`,
 		},
 		{
 			Name: "SQL_show_tagindexgap",
@@ -618,7 +618,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 1)
-				// TODO: The expected output format for "show rollupgap" is not clear. Adjust the test as needed.
+				require.Equal(t, "USER_NAME,ROLLUP_NAME,SRC_TABLE,ROLLUP_TABLE,SRC_END_RID,ROLLUP_END_RID,GAP,RUN_STATE,LAST_ELAPSED_MSEC,LAST_WAKEUP_TIME,NEXT_WAKEUP_TIME", lines[0])
 			},
 		},
 	}

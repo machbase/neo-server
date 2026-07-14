@@ -3,6 +3,7 @@ package spi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -11,6 +12,29 @@ import (
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
+
+type ResultSet interface {
+	Columns() api.Columns
+	Err() error
+	Iter(func(values []interface{}) bool)
+	Message() string
+}
+
+type ResultSetBase struct {
+	err error
+	msg string
+}
+
+func (rs *ResultSetBase) Err() error {
+	return rs.err
+}
+
+func (rs *ResultSetBase) Message() string {
+	if rs.err != nil {
+		return rs.err.Error()
+	}
+	return rs.msg
+}
 
 var serverInfoProvider func() map[string]any
 
@@ -1043,4 +1067,169 @@ func ShowRollupGap(ctx context.Context, conn api.Conn) *ShowRollupGapResultSet {
 	}
 	err = rows.Err()
 	return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}
+
+type ShowTagsResultSet struct {
+	ResultSetBase
+	conn      api.Conn
+	tableName string
+	tagNames  []string
+	desc      *api.TableDescription
+}
+
+var _ ResultSet = (*ShowTagsResultSet)(nil)
+
+func (tr *ShowTagsResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "NAME", DataType: api.DataTypeString},
+		{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
+		{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
+		{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MIN_VALUE", DataType: api.DataTypeFloat64},
+		{Name: "MIN_VALUE_TIME", DataType: api.DataTypeDatetime},
+		{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
+		{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
+	}
+}
+
+func (tr *ShowTagsResultSet) Iter(callback func(values []interface{}) bool) {
+	ctx := context.Background()
+	ListTagsWalk(ctx, tr.conn, tr.tableName, tr.desc.TagNameColumn, func(tagInfo *TagInfo, err error) bool {
+		if err != nil {
+			return false
+		}
+		if len(tr.tagNames) > 0 {
+			if !slices.Contains(tr.tagNames, tagInfo.Name) {
+				return true // skip this tag
+			}
+		}
+		tagInfo.Summarized = tr.desc.Summarized
+		if stat, err := QueryTagStat(ctx, tr.conn, tr.tableName, tagInfo.Name); err != nil {
+			// some tags may not have stat
+			// the err may be 'no rows in result set'
+			// ignore the error, for processing the next tag
+		} else {
+			tagInfo.Stat = stat
+		}
+
+		var values []any
+		if tagInfo.Stat != nil {
+			if tagInfo.Summarized {
+				values = []any{tagInfo.Id, tagInfo.Name, tagInfo.Stat.RowCount,
+					tagInfo.Stat.MinTime, tagInfo.Stat.MaxTime, tagInfo.Stat.RecentRowTime,
+					tagInfo.Stat.MinValue, tagInfo.Stat.MinValueTime,
+					tagInfo.Stat.MaxValue, tagInfo.Stat.MaxValueTime}
+			} else {
+				values = []any{tagInfo.Id, tagInfo.Name, tagInfo.Stat.RowCount,
+					tagInfo.Stat.MinTime, tagInfo.Stat.MaxTime, tagInfo.Stat.RecentRowTime,
+					nil, nil, nil, nil}
+			}
+		} else {
+			values = []any{tagInfo.Id, tagInfo.Name, nil,
+				nil, nil, nil,
+				nil, nil, nil, nil}
+		}
+		if !callback(values) {
+			return false
+		}
+		return true
+	})
+}
+
+func ShowTags(ctx context.Context, conn api.Conn, tableName string, tagNames ...string) *ShowTagsResultSet {
+	tableName = strings.ToUpper(tableName)
+	desc, err := api.DescribeTable(ctx, conn, tableName, false)
+	if err != nil {
+		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	if desc.Type != api.TableTypeTag {
+		err := fmt.Errorf("table '%s' is not a tag table", tableName)
+		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	return &ShowTagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, desc: desc}
+}
+
+type TagInfo struct {
+	Database   string       `json:"database"`
+	User       string       `json:"user"`
+	Table      string       `json:"table"`
+	Name       string       `json:"name"`
+	Id         int64        `json:"id"`
+	Summarized bool         `json:"summarized"`
+	Stat       *TagStatInfo `json:"stat,omitempty"`
+}
+
+func (ti *TagInfo) Values() []interface{} {
+	return []interface{}{
+		ti.Database, ti.User, ti.Table, ti.Name, ti.Id, ti.Summarized,
+	}
+}
+
+type TagStatInfo struct {
+	Database      string    `json:"database"`
+	User          string    `json:"user"`
+	Table         string    `json:"table"`
+	Name          string    `json:"name"`
+	RowCount      int64     `json:"row_count"`
+	MinTime       time.Time `json:"min_time"`
+	MaxTime       time.Time `json:"max_time"`
+	MinValue      float64   `json:"min_value"`
+	MinValueTime  time.Time `json:"min_value_time"`
+	MaxValue      float64   `json:"max_value"`
+	MaxValueTime  time.Time `json:"max_value_time"`
+	RecentRowTime time.Time `json:"recent_row_time"`
+}
+
+func (tsi *TagStatInfo) Values() []interface{} {
+	return []interface{}{
+		tsi.Database, tsi.User, tsi.Table, tsi.Name, tsi.RowCount,
+		tsi.MinTime, tsi.MaxTime, tsi.MinValue, tsi.MinValueTime,
+		tsi.MaxValue, tsi.MaxValueTime, tsi.RecentRowTime,
+	}
+}
+
+func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColumn string, callback func(*TagInfo, error) bool) {
+	database, userName, tableName := api.TableName(table).Split()
+	rows, err := conn.Query(ctx, fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, userName, tableName))
+	if err != nil {
+		callback(nil, err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		nfo := &TagInfo{Database: database, User: userName, Table: tableName}
+		err = rows.Scan(&nfo.Id, &nfo.Name)
+		if !callback(nfo, err) {
+			return
+		}
+	}
+}
+
+func QueryTagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
+	database, user, table := api.TableName(table).Split()
+	sqlText := SqlTidy(`SELECT`,
+		`NAME, ROW_COUNT,`,
+		`MIN_TIME, MAX_TIME,`,
+		`MIN_VALUE, MIN_VALUE_TIME, MAX_VALUE, MAX_VALUE_TIME,`,
+		`RECENT_ROW_TIME`,
+		`FROM`,
+		fmt.Sprintf("%s.%s.V$%s_STAT", database, user, table),
+		`WHERE NAME = ?`)
+	nfo := &TagStatInfo{
+		Database: database,
+		User:     user,
+		Table:    table,
+	}
+	row := conn.QueryRow(ctx, sqlText, tag)
+	if err := row.Err(); err != nil {
+		return nil, row.Err()
+	}
+	err := row.Scan(
+		&nfo.Name, &nfo.RowCount,
+		&nfo.MinTime, &nfo.MaxTime,
+		&nfo.MinValue, &nfo.MinValueTime, &nfo.MaxValue, &nfo.MaxValueTime,
+		&nfo.RecentRowTime)
+	return nfo, err
 }

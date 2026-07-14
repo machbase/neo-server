@@ -676,7 +676,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryTags(node.task.ctx, apiConn, args[0], args[1:]...))
+			return yieldResultSet(node, spi.ShowTags(node.task.ctx, apiConn, args[0], args[1:]...))
 		}
 	case "indexgap":
 		err = validateNoAll()

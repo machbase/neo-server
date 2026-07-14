@@ -299,10 +299,12 @@ parseAndRun(process.argv.slice(2), defaultConfig, [
 ]);
 
 function _show(line, config) {
+    const timeformat = config.timeformat || 'DATETIME';
+    const tz = config.tz || 'Local';
     const client = new neoapi.Client(config);
     client.executeTql(`
             SQL('show ${line}')
-            JSON(timeformat('DATETIME'), tz('Local'))
+            JSON(timeformat('${timeformat}'), tz('${tz}'))
         `)
         .then((rsp) => {
             if (!rsp || !rsp.data || !rsp.data.rows) {
@@ -452,12 +454,19 @@ function showRollupGap(config, args) {
         if (dur === '0ns') dur = '0ms'; // since last_elapased_msec is in milliseconds
         return dur;
     }
-    const lasttimeFormatter = (v) => {
+    let lasttimeFormatter = (v) => {
         if (!v) return '';
         let d = new Date(v);
         if (d.getTime() == 0) return '';
         return d
     }
+    if (config.timeformat) {
+        let tf = config.timeformat.toUpperCase();
+        if (tf !== 'DEFAULT' && tf !== 'DATETIME') {
+            lasttimeFormatter = (v) => { return v; }
+        }
+    }
+
     config.columns = {
         'USER_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left, hidden: !config.long }, // USER_NAME
         'ROLLUP_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left }, // ROLLUP_NAME
@@ -468,8 +477,8 @@ function showRollupGap(config, args) {
         'GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) }, // GAP
         'RUN_STATE': { align: pretty.Align.left, alignHeader: pretty.Align.left, hidden: !config.long },  // STATE
         'LAST_ELAPSED_MSEC': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: elapsedFormatter }, // LAST_ELAPSED_MSEC
-        'LAST_WAKEUP_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left, hidden: !config.long, formatter: lasttimeFormatter },  // LAST_WAKEUP_TIME
-        'NEXT_WAKEUP_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left, hidden: !config.long, formatter: lasttimeFormatter },  // NEXT_WAKEUP_TIME
+        'LAST_WAKEUP_TIME': { align: pretty.Align.right, alignHeader: pretty.Align.left, hidden: !config.long, formatter: lasttimeFormatter },  // LAST_WAKEUP_TIME
+        'NEXT_WAKEUP_TIME': { align: pretty.Align.right, alignHeader: pretty.Align.left, hidden: !config.long, formatter: lasttimeFormatter },  // NEXT_WAKEUP_TIME
     };
     _show('rollupgap', config);
 }
@@ -479,146 +488,11 @@ function showTagStat(config, args) {
 }
 
 function showTags(config, args) {
-    if (!args || !args.table || args.table.trim() === '') {
-        console.println('Error: table name is required');
-        process.exit(1);
-    }
-    const tableName = args.table;
-    const tags = args.tag && args.tag.length > 0 ? args.tag : [];
-
-    let db, conn, tagsRows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-
-        let names = db.normalizeTableName(tableName);
-
-        let dbId = machcli.queryDatabaseId(conn, names[0]);
-        let tableType = machcli.queryTableType(conn, names);
-        if (tableType !== machcli.TABLE_TYPE_TAG) {
-            console.println(`Error: table '${tableName}' is not a tag table`);
-            process.exit(1);
-        }
-        let meta = {
-            hasSummarized: false,
-            tagNameColumn: 'NAME'
-        };
-
-        let result = conn.queryRow(`SELECT
-                j.ID as TABLE_ID,
-                j.TYPE as TABLE_TYPE,
-                j.FLAG as TABLE_FLAG,
-                j.COLCOUNT as TABLE_COLCOUNT,
-                c.NAME as TAG_COLUMN_NAME
-            FROM
-                M$SYS_USERS u,
-                M$SYS_TABLES j,
-                M$SYS_COLUMNS c
-            WHERE
-                u.NAME = ?
-            AND j.USER_ID = u.USER_ID
-            AND j.DATABASE_ID = ?
-            AND j.NAME = ?
-            AND c.DATABASE_ID = ?
-            AND c.TABLE_ID = j.ID
-            AND c.FLAG = ?`, names[1], dbId, names[2], dbId, machcli.ColumnFlag.TagName);
-
-        if (result) {
-            if ((result.TABLE_FLAG & machcli.TABLE_FLAG_SUMMARIZED) !== 0) {
-                meta.hasSummarized = true;
-            }
-            meta.tagNameColumn = result.TAG_COLUMN_NAME;
-        }
-
-        let box = pretty.Table(config);
-        box.setStringEscape(true);
-        if (meta.hasSummarized) {
-            box.appendHeader(["_ID", meta.tagNameColumn, "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"]);
-            box.setColumnConfigs([
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // _ID
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // tag name
-                { align: pretty.Align.right, alignHeader: pretty.Align.left }, // ROW_COUNT
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_TIME
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MAX_TIME
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // RECENT_ROW_TIME
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_VALUE
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_VALUE_TIME
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MAX_VALUE
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }]); // MAX_VALUE_TIME
-        } else {
-            box.appendHeader(["_ID", meta.tagNameColumn, "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME"]);
-            box.setColumnConfigs([
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // _ID
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // tag name
-                { align: pretty.Align.right, alignHeader: pretty.Align.left }, // ROW_COUNT
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MIN_TIME
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }, // MAX_TIME
-                { align: pretty.Align.left, alignHeader: pretty.Align.left }]); // RECENT_ROW_TIME
-        }
-
-        if (tags.length > 0) {
-            tagsRows = conn.query(`SELECT _ID, ${meta.tagNameColumn} FROM ${names[0]}.${names[1]}._${names[2]}_META WHERE ${meta.tagNameColumn} IN (${tags.map(() => '?').join(',')})`, ...tags);
-        } else {
-            tagsRows = conn.query(`SELECT _ID, ${meta.tagNameColumn} FROM ${names[0]}.${names[1]}._${names[2]}_META`);
-        }
-        for (const row of tagsRows) {
-            const tagName = row[meta.tagNameColumn];
-            try {
-                let stat = conn.queryRow(`SELECT
-                    NAME, ROW_COUNT,
-                    MIN_TIME, MAX_TIME,
-                    MIN_VALUE, MIN_VALUE_TIME, MAX_VALUE, MAX_VALUE_TIME,
-                    RECENT_ROW_TIME
-                FROM
-                    ${names[0]}.${names[1]}.V$${names[2]}_STAT
-                WHERE NAME = ?`, tagName);
-
-                if (meta.hasSummarized) {
-                    box.append([
-                        row._ID,
-                        stat.NAME,
-                        pretty.Ints(stat.ROW_COUNT),
-                        stat.MIN_TIME,
-                        stat.MAX_TIME,
-                        stat.RECENT_ROW_TIME,
-                        stat.MIN_VALUE,
-                        stat.MIN_VALUE_TIME,
-                        stat.MAX_VALUE,
-                        stat.MAX_VALUE_TIME
-                    ]);
-                } else {
-                    box.append([
-                        row._ID,
-                        stat.NAME,
-                        pretty.Ints(stat.ROW_COUNT),
-                        stat.MIN_TIME,
-                        stat.MAX_TIME,
-                        stat.RECENT_ROW_TIME,
-                    ]);
-                }
-            } catch (err) {
-                err && console.error("Debug: showTagStat:", err.message);
-                // in case of no stats available for the tag
-                // for example, the tag name is not a printable string, most likely broken data
-                box.append([row._ID, row.NAME, null, null, null, null, null, null, null, null]);
-            }
-            if (box.requirePageRender()) {
-                // render page
-                console.println(box.render());
-                // wait for user input to continue if pause is enabled
-                if (!box.pauseAndWait()) {
-                    break;
-                }
-            }
-        }
-        if (box.length() > 0) {
-            console.println(box.render());
-        }
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        tagsRows && tagsRows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    config.columns = {
+        'ROW_COUNT': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
+        'MIN_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'MAX_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'RECENT_ROW_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+    };
+    _show(`tags ${args.table} ${args.tag && args.tag.length > 0 ? args.tag.join(' ') : ''}`, config);
 }

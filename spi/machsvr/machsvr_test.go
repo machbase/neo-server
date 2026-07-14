@@ -1202,20 +1202,26 @@ func testInsertAndQuery(t *testing.T) {
 
 	// tags
 	tags := []*spi.TagInfo{}
-	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo) bool {
-		// TODO: MACHCLI-ERR-3, Communication link failure
-		require.NoError(t, tag.Err, "tags fail")
+	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo, err error) bool {
+		require.NoError(t, err, "tags fail")
 		require.Greater(t, tag.Id, int64(0))
 		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
 		tags = append(tags, tag)
 		return true
 	})
-	tags2, err := spi.ListTags(ctx, conn, "TAG_DATA", "NAME")
+	tags2 := []*spi.TagInfo{}
+	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo, err error) bool {
+		require.NoError(t, err, "tags fail")
+		require.Greater(t, tag.Id, int64(0))
+		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
+		tags2 = append(tags2, tag)
+		return true
+	})
 	require.NoError(t, err, "tags fail")
 	require.EqualValues(t, tags, tags2)
 
 	// tag stat
-	tagStat, err := spi.TagStat(ctx, conn, "TAG_DATA", "insert-once")
+	tagStat, err := spi.QueryTagStat(ctx, conn, "TAG_DATA", "insert-once")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-once", tagStat.Name)
 	require.Equal(t, int64(1), tagStat.RowCount)
@@ -1223,7 +1229,7 @@ func testInsertAndQuery(t *testing.T) {
 	require.Equal(t, 1.23, tagStat.MaxValue)
 
 	// tag stat
-	tagStat, err = spi.TagStat(ctx, conn, "TAG_DATA", "insert-twice")
+	tagStat, err = spi.QueryTagStat(ctx, conn, "TAG_DATA", "insert-twice")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-twice", tagStat.Name)
 	require.Equal(t, int64(1), tagStat.RowCount)
