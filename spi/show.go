@@ -715,6 +715,8 @@ type ShowTableUsageResultSet struct {
 }
 
 type TableUsageInfo struct {
+	DatabaseName string `json:"database_name"`
+	UserName     string `json:"user_name"`
 	TableName    string `json:"table_name"`
 	StorageUsage int64  `json:"storage_usage"`
 }
@@ -723,31 +725,57 @@ var _ ResultSet = (*ShowTableUsageResultSet)(nil)
 
 func (tui *ShowTableUsageResultSet) Columns() api.Columns {
 	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
+		{Name: "TABLE", DataType: api.DataTypeString},
 		{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
 	}
 }
 
 func (tui *ShowTableUsageResultSet) Iter(callback func(values []interface{}) bool) {
 	for _, t := range tui.list {
-		if !callback([]interface{}{t.TableName, t.StorageUsage}) {
+		if !callback([]interface{}{t.DatabaseName, t.UserName, t.TableName, t.StorageUsage}) {
 			return
 		}
 	}
 }
 
 func ShowTableUsage(ctx context.Context, conn api.Conn) *ShowTableUsageResultSet {
-	sqlText := SqlTidy(`SELECT
-		a.NAME as TABLE_NAME,
-		t.STORAGE_USAGE as STORAGE_USAGE
-	FROM
-		M$SYS_TABLES a,
-		M$SYS_USERS u,
-		V$STORAGE_TABLES t
-	WHERE
-		a.user_id = u.user_id
-	AND t.ID = a.id
-	ORDER BY a.NAME`)
+	sqlText := SqlTidy(`
+		SELECT
+			j.DATABASE_NAME as DATABASE_NAME,
+			u.NAME as USER_NAME,
+			j.NAME as TABLE_NAME,
+			s.STORAGE_USAGE
+		FROM
+			M$SYS_USERS u,
+			V$STORAGE_TABLES s,
+			(
+				SELECT
+					a.ID as ID,
+					a.NAME as NAME,
+					a.USER_ID as USER_ID,
+					a.DATABASE_ID,
+					case a.DATABASE_ID
+						when -1 then 'MACHBASEDB'
+						else d.MOUNTDB
+					end as DATABASE_NAME,
+					case a.DATABASE_ID
+						when -1 then 'Normal'
+						else 'Mounted'
+					end as STATUS
+				FROM
+					M$SYS_TABLES a
+				LEFT JOIN
+					V$STORAGE_MOUNT_DATABASES d
+				ON a.DATABASE_ID = d.BACKUP_TBSID
+			) j
+		WHERE
+			u.USER_ID = j.USER_ID
+		AND s.ID = j.ID
+		AND s.STATUS = j.STATUS
+		ORDER BY j.DATABASE_ID, u.USER_ID, s.ID
+	`)
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
@@ -758,7 +786,7 @@ func ShowTableUsage(ctx context.Context, conn api.Conn) *ShowTableUsageResultSet
 	list := []*TableUsageInfo{}
 	for rows.Next() {
 		rec := &TableUsageInfo{}
-		err = rows.Scan(&rec.TableName, &rec.StorageUsage)
+		err = rows.Scan(&rec.DatabaseName, &rec.UserName, &rec.TableName, &rec.StorageUsage)
 		if err != nil {
 			return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}}
 		}

@@ -322,18 +322,19 @@ func TestDatabaseTql(t *testing.T) {
 				SQL("show table-usage")
 				CSV(header(true))`,
 			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "TABLE_NAME,STORAGE_USAGE"), result)
+				require.True(t, strings.HasPrefix(result, "DATABASE,USER,TABLE,STORAGE_USAGE"), result)
+				require.Contains(t, result, "TAG_DATA,")
 			},
 		},
-		// {
-		// 	Name: "SQL_show_lsm",
-		// 	Script: `
-		// 		SQL("show lsm")
-		// 		CSV(header(true))`,
-		// 	ExpectFunc: func(t *testing.T, result string) {
-		// 		require.True(t, strings.HasPrefix(result, "TABLE_NAME,INDEX_NAME,LEVEL,COUNT"), result)
-		// 	},
-		// },
+		{
+			Name: "SQL_show_lsm",
+			Script: `
+				SQL("show lsm")
+				CSV(header(true))`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, strings.HasPrefix(result, "TABLE_NAME,INDEX_NAME,LEVEL,COUNT"), result)
+			},
+		},
 		{
 			Name: "SQL_explain-json-select",
 			Script: `
