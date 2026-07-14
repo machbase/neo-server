@@ -206,8 +206,8 @@ func (s *Server) Start() error {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
-	spi.SetDefaultServerInfo(s.getServerInfoMap)
-
+	spi.SetServerInfoProvider(s.getServerInfoMap)
+	spi.SetServerPortsProvider(s.getServicePorts)
 	if !HeadOnly {
 		if err := s.checkAndInstallLicense(); err != nil {
 			return err

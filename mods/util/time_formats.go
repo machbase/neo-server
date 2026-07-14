@@ -32,6 +32,7 @@ var _timeformats = map[string]string{
 	"RFC1123Z":    "Mon, 02 Jan 2006 15:04:05 -0700", // RFC1123 with numeric zone
 	"RFC3339":     "2006-01-02T15:04:05Z07:00",
 	"RFC3339NANO": "2006-01-02T15:04:05.999999999Z07:00",
+	"DATETIME":    "2006-01-02 15:04:05",
 	"KITCHEN":     "3:04:05PM",
 	"STAMP":       "Jan _2 15:04:05",
 	"STAMPMILLI":  "Jan _2 15:04:05.000",
@@ -76,6 +77,7 @@ func HelpTimeformats() string {
       RFC1123Z       Mon, 02 Jan 2006 15:04:05 -0700
       RFC3339        2006-01-02T15:04:05Z07:00
       RFC3339Nano    2006-01-02T15:04:05.999999999Z07:00
+      DateTime       2006-01-02 15:04:05
       Kitchen        3:04:05PM
       Stamp          Jan _2 15:04:05
       StampMilli     Jan _2 15:04:05.000

@@ -75,6 +75,41 @@ class _Client {
         });
     }
 
+    executeTql(tql, options = {}) {
+        return new Promise((resolve, reject) => {
+            const req = http.request({
+                method: 'POST',
+                protocol: this.options.protocol,
+                host: this.options.host,
+                port: this.options.port,
+                path: '/db/tql',
+                headers: {
+                    'Content-Type': 'text/plain',
+                    'Authorization': `Bearer ${getHttpAccessToken()}`
+                }
+            });
+            req.on('response', (res) => {
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                    reject(new Error(res.statusMessage));
+                    return;
+                }
+                switch (res.headers['Content-Type']) {
+                    case 'application/json':
+                        resolve(res.json());
+                        break;
+                    default:
+                        resolve(res.text());
+                        break;
+                }
+                resolve(res);
+            });
+            req.on('error', (err) => {
+                reject(err);
+            });
+            req.write(tql);
+            req.end();
+        });
+    }
     /**
      * Executes an authenticated request.
      * Automatically handles login and relogin on 401 errors.

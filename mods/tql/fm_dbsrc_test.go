@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -144,7 +145,7 @@ func TestTqlSql(t *testing.T) {
 }
 
 func TestTqlSqlShow(t *testing.T) {
-	spi.SetDefaultServerInfo(func() map[string]any { return map[string]any{"purpose": "test"} })
+	spi.SetServerInfoProvider(func() map[string]any { return map[string]any{"purpose": "test"} })
 	tests := []TqlTestCase{
 		{
 			Name: "SQL_show_wrong",
@@ -188,6 +189,73 @@ func TestTqlSqlShow(t *testing.T) {
 	}
 }
 
+func TestTqlSqlShowPorts(t *testing.T) {
+	spi.SetServerPortsProvider(func(svc string) ([]*model.ServicePort, error) {
+		ret := []*model.ServicePort{}
+		if svc == "" || svc == "http" {
+			ret = append(ret, &model.ServicePort{Service: "http", Address: "tcp://127.0.0.1:5654"})
+		}
+		if svc == "" || svc == "mqtt" {
+			ret = append(ret, &model.ServicePort{Service: "mqtt", Address: "tcp://127.0.0.1:1883"})
+		}
+		return ret, nil
+	})
+	tests := []TqlTestCase{
+		{
+			Name: "SQL_show_ports",
+			Script: `
+				SQL('show ports')
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"PORT,ADDRESS",
+				"http,tcp://127.0.0.1:5654",
+				"mqtt,tcp://127.0.0.1:1883",
+				"", "",
+			},
+		},
+		{
+			Name: "SQL_show_ports_mqtt",
+			Script: `
+				SQL('show ports mqtt')
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"PORT,ADDRESS",
+				"mqtt,tcp://127.0.0.1:1883",
+				"", "",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestTqlSqlShowUsers(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "SQL_show_users",
+			Script: `
+				SQL('show users')
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				"USER_ID,NAME",
+				"1,SYS",
+				"", "",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestTqlSqlShowTables(t *testing.T) {
 	tests := []TqlTestCase{
 		{
@@ -199,7 +267,7 @@ func TestTqlSqlShowTables(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 4)
-				require.Equal(t, "DATABASE,USER,NAME,ID,TYPE,FLAG", lines[0])
+				require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
 				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
 				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
 				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
@@ -214,7 +282,7 @@ func TestTqlSqlShowTables(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 4)
-				require.Equal(t, "DATABASE,USER,NAME,ID,TYPE,FLAG", lines[0])
+				require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
 				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
 				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
 				require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
@@ -359,7 +427,7 @@ func TestTqlSqlShowIndexes(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 5)
-				require.Equal(t, "ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
+				require.Equal(t, "ID,DATABASE,USER,TABLE,COLUMN,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
 
 				required := map[string]struct {
 					table  string
@@ -408,8 +476,8 @@ func TestTqlSqlShowIndex(t *testing.T) {
 				CSV(header(true))
 			`,
 			ExpectCSV: []string{
-				"TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
-				"_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESSED,0,100000,EQUAL",
+				"ID,TABLE,COLUMN,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
+				"0,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESSED,0,100000,EQUAL",
 				"", "",
 			},
 		},
@@ -431,7 +499,7 @@ func TestTqlSqlShowIndexGap(t *testing.T) {
 				CSV(header(true))
 			`,
 			ExpectCSV: []string{
-				"ID,TABLE,INDEX,GAP",
+				"INDEX_ID,TABLE_NAME,INDEX_NAME,GAP",
 				"", "",
 			},
 		},
@@ -506,7 +574,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "_ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME", lines[0])
+				require.Equal(t, "ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME", lines[0])
 				hasTag := false
 				hasValue := false
 				for _, line := range lines[1:] {
@@ -527,7 +595,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 				SQL('show tags log_data')
 				CSV(header(true))
 			`,
-			ExpectErr: `f(SQL) table "LOG_DATA" is not a tag table`,
+			ExpectErr: `table 'LOG_DATA' is not a tag table`,
 		},
 		{
 			Name: "SQL_show_tagindexgap",
@@ -538,7 +606,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 1)
-				require.Equal(t, "ID,STATUS,DISK_GAP,MEMORY_GAP", lines[0])
+				require.Equal(t, "TABLE_ID,TABLE_NAME,STATUS,DISK_GAP,MEMORY_GAP", lines[0])
 			},
 		},
 		{
@@ -550,7 +618,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 1)
-				// TODO: The expected output format for "show rollupgap" is not clear. Adjust the test as needed.
+				require.Equal(t, "USER_NAME,ROLLUP_NAME,SRC_TABLE,ROLLUP_TABLE,SRC_END_RID,ROLLUP_END_RID,GAP,RUN_STATE,LAST_ELAPSED_MSEC,LAST_WAKEUP_TIME,NEXT_WAKEUP_TIME", lines[0])
 			},
 		},
 	}
@@ -572,8 +640,8 @@ func TestTqlSqlShowSessions(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "ID,USER_ID,USER_NAME,TYPE,LOGIN_TIME,MAX_QPX_MEM,STMT_COUNT", lines[0])
-				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,[A-Z]+,.*,[-0-9]+,[0-9]+,.+$`), lines[1])
+				require.Equal(t, "ID,USER_NAME,USER_ID,LOGIN_TIME,TYPE,USER_IP,MAX_QPX_MEM", lines[0])
+				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[A-Z]+,[0-9]+,[0-9]+,CLI,127.0.0.1,[0-9]+([.][0-9]+)?[KMG]?B$`), lines[1])
 			},
 		},
 	}
@@ -595,9 +663,8 @@ func TestTqlSqlShowStatements(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "ID,SESSION_ID,STATE,TYPE,RECORD_SIZE,APPEND_SUCCESS_CNT,APPEND_FAILURE_CNT,QUERY", lines[0])
-				// 32,4,Fetch prepared,,32851,NULL,NULL,"SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT"
-				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,.+,.*,[0-9]+,.+,.+,.+$`), lines[1])
+				require.Equal(t, "ID,SESSION_ID,STATE,RECORD_SIZE,QUERY", lines[0])
+				require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,.+,[0-9]+,.+$`), lines[1])
 			},
 		},
 	}

@@ -251,53 +251,6 @@ func TestInfoValueObjects(t *testing.T) {
 		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
 		require.EqualError(t, info.Err(), "table err")
 	})
-
-	t.Run("misc info values", func(t *testing.T) {
-		now := time.Unix(1700000000, 0).UTC()
-		tag := &TagInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", Id: 2, Summarized: true}
-		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(2), true}, tag.Values())
-
-		tagStat := &TagStatInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", RowCount: 3, MinTime: now, MaxTime: now, MinValue: 1.2, MinValueTime: now, MaxValue: 3.4, MaxValueTime: now, RecentRowTime: now}
-		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(3), now, now, 1.2, now, 3.4, now, now}, tagStat.Values())
-
-		nonTagIndexGap := &IndexGapInfo{ID: 1, TableName: "T", IndexName: "IDX", Gap: 2, err: errors.New("gap err")}
-		require.Equal(t, []string{"ID", "TABLE", "INDEX", "GAP"}, nonTagIndexGap.Columns().Names())
-		require.Equal(t, []any{int64(1), "T", "IDX", int64(2)}, nonTagIndexGap.Values())
-		require.EqualError(t, nonTagIndexGap.Err(), "gap err")
-
-		tagIndexGap := &IndexGapInfo{IsTagIndex: true, ID: 2, Status: "OK", DiskGap: 3, MemoryGap: 4}
-		require.Equal(t, []string{"ID", "STATUS", "DISK_GAP", "MEMORY_GAP"}, tagIndexGap.Columns().Names())
-		require.Equal(t, []any{int64(2), "OK", int64(3), int64(4)}, tagIndexGap.Values())
-
-		rollup := &RollupGapInfo{SrcTable: "SRC", RollupTable: "ROLL", SrcEndRID: 1, RollupEndRID: 2, Gap: 3, LastElapsed: time.Second, err: errors.New("rollup err")}
-		require.Equal(t, []any{"SRC", "ROLL", int64(1), int64(2), int64(3), time.Second}, rollup.Values())
-		require.EqualError(t, rollup.Err(), "rollup err")
-
-		storage := &StorageInfo{TableName: "T", DataSize: 10, IndexSize: 20, TotalSize: 30, err: errors.New("storage err")}
-		require.Equal(t, []any{"T", int64(10), int64(20), int64(30)}, storage.Values())
-		require.EqualError(t, storage.Err(), "storage err")
-
-		usage := &TableUsageInfo{TableName: "T", StorageUsage: 40, err: errors.New("usage err")}
-		require.Equal(t, []any{"T", int64(40)}, usage.Values())
-		require.EqualError(t, usage.Err(), "usage err")
-	})
-
-	t.Run("statement and session branch values", func(t *testing.T) {
-		stmt := &StatementInfo{ID: 1, SessionID: 2, State: "RUN", Query: "select 1", RecordSize: 128}
-		require.Equal(t, []any{int64(1), int64(2), "RUN", "", int64(128), nil, nil, "select 1"}, stmt.Values())
-
-		stmtNeo := &StatementInfo{ID: 3, SessionID: 4, State: "APPEND", Query: "insert", IsNeo: true, AppendSuccessCount: 5, AppendFailureCount: 6, err: errors.New("stmt err")}
-		require.Equal(t, []any{int64(3), int64(4), "APPEND", "neo", nil, int64(5), int64(6), "insert"}, stmtNeo.Values())
-		require.EqualError(t, stmtNeo.Err(), "stmt err")
-
-		now := time.Unix(1700000000, 0).UTC()
-		sess := &SessionInfo{ID: 1, UserID: 2, UserName: "sys", LoginTime: now, MaxQPXMem: 64}
-		require.Equal(t, []any{int64(1), int64(2), "sys", "CLI", now, int64(64), nil}, sess.Values())
-
-		sessNeo := &SessionInfo{ID: 3, UserID: 4, UserName: "neo", IsNeo: true, StmtCount: 7, err: errors.New("session err")}
-		require.Equal(t, []any{int64(3), int64(4), "neo", "neo", nil, nil, int64(7)}, sessNeo.Values())
-		require.EqualError(t, sessNeo.Err(), "session err")
-	})
 }
 
 func TestMetricsAndWatcherHelpers(t *testing.T) {

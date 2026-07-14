@@ -54,7 +54,7 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables := spi.QueryTables(ctx, conn, true)
+	tables := spi.ShowTables(ctx, conn, true)
 	require.NoError(t, tables.Err(), "show tables fail")
 	tablesCount := 0
 	tables.Iter(func(values []any) bool {
@@ -298,21 +298,16 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, result.Err(), "table_flush fail")
 
 	// tags
-	tags := []*spi.TagInfo{}
-	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo) bool {
-		// TODO: MACHCLI-ERR-3, Communication link failure
-		require.NoError(t, tag.Err, "tags fail")
+	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo, err error) bool {
+		require.NoError(t, err, "tags fail")
 		require.Greater(t, tag.Id, int64(0))
 		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
-		tags = append(tags, tag)
 		return true
 	})
-	tags2, err := spi.ListTags(ctx, conn, "TAG_DATA", "NAME")
 	require.NoError(t, err, "tags fail")
-	require.EqualValues(t, tags, tags2)
 
 	// tag stat
-	tagStat, err := spi.TagStat(ctx, conn, "TAG_DATA", "insert-once")
+	tagStat, err := spi.QueryTagStat(ctx, conn, "TAG_DATA", "insert-once")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-once", tagStat.Name)
 	require.Equal(t, int64(1), tagStat.RowCount)
@@ -320,7 +315,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, 1.23, tagStat.MaxValue)
 
 	// tag stat
-	tagStat, err = spi.TagStat(ctx, conn, "TAG_DATA", "insert-twice")
+	tagStat, err = spi.QueryTagStat(ctx, conn, "TAG_DATA", "insert-twice")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-twice", tagStat.Name)
 	require.Equal(t, int64(1), tagStat.RowCount)

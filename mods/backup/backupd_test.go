@@ -392,10 +392,16 @@ func TestBackupdHandleArchiveConnectPaths(t *testing.T) {
 }
 
 func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
+	origConnector := connectDefault
+	t.Cleanup(func() { connectDefault = origConnector })
+
 	t.Run("archives with existing base dir returns data", func(t *testing.T) {
 		baseDir := newBackupWorkDir(t)
 		require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "archive1"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(baseDir, "archive1", "backup.dat"), []byte("x"), 0o644))
+		connectDefault = func(context.Context) (api.Conn, error) {
+			return &fakeConn{rows: &fakeRows{}}, nil
+		}
 
 		s := NewBackupd(WithBackupdBaseDir(baseDir))
 		w := httptest.NewRecorder()
@@ -405,26 +411,42 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		body := decodeJSONBody(t, w)
 		require.Equal(t, true, body["success"])
+		data := body["data"].([]any)
+		elm1 := data[0].(map[string]any)
+		require.Equal(t, "archive1", elm1["path"])
+		require.Equal(t, false, elm1["isMount"], body)
 	})
 
 	t.Run("mount with absolute path succeeds", func(t *testing.T) {
 		baseDir := newBackupWorkDir(t)
+		absPath := filepath.Join(baseDir, "missing")
+		capturedSQL := ""
+		connectDefault = func(context.Context) (api.Conn, error) {
+			return &fakeConn{execResult: &fakeResult{}, onExec: func(sqlText string) { capturedSQL = sqlText }}, nil
+		}
 		s := NewBackupd(WithBackupdBaseDir(baseDir))
 		w := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(w)
-		payload, err := json.Marshal(map[string]string{"path": filepath.Join(baseDir, "missing")})
+		payload, err := json.Marshal(map[string]string{"path": absPath})
 		require.NoError(t, err)
 		ctx.Params = gin.Params{{Key: "name", Value: "mount_abs"}}
 		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/backup/mounts/mount_abs", strings.NewReader(string(payload)))
 		ctx.Request.Header.Set("Content-Type", "application/json")
 		s.handleMount(ctx)
-		require.Equal(t, http.StatusOK, w.Code)
+		require.Equal(t, http.StatusOK, w.Code, "response: %s", w.Body.String())
 		body := decodeJSONBody(t, w)
 		require.Equal(t, true, body["success"])
+		require.Contains(t, capturedSQL, "MOUNT DATABASE")
+		require.Contains(t, capturedSQL, sqlPath(absPath))
 	})
 
 	t.Run("mount with relative path succeeds", func(t *testing.T) {
-		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
+		baseDir := newBackupWorkDir(t)
+		capturedSQL := ""
+		connectDefault = func(context.Context) (api.Conn, error) {
+			return &fakeConn{execResult: &fakeResult{}, onExec: func(sqlText string) { capturedSQL = sqlText }}, nil
+		}
+		s := NewBackupd(WithBackupdBaseDir(baseDir))
 		w := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Params = gin.Params{{Key: "name", Value: "mount_rel"}}
@@ -434,9 +456,15 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		body := decodeJSONBody(t, w)
 		require.Equal(t, true, body["success"])
+		require.Contains(t, capturedSQL, "MOUNT DATABASE")
+		require.Contains(t, capturedSQL, sqlPath(filepath.Join(baseDir, "rel", "path")))
 	})
 
 	t.Run("unmount with unknown mount succeeds", func(t *testing.T) {
+		capturedSQL := ""
+		connectDefault = func(context.Context) (api.Conn, error) {
+			return &fakeConn{execResult: &fakeResult{}, onExec: func(sqlText string) { capturedSQL = sqlText }}, nil
+		}
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
 		w := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(w)
@@ -446,9 +474,13 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Code)
 		body := decodeJSONBody(t, w)
 		require.Equal(t, true, body["success"])
+		require.Equal(t, "UNMOUNT DATABASE 'mount_a'", capturedSQL)
 	})
 
 	t.Run("mounts list succeeds", func(t *testing.T) {
+		connectDefault = func(context.Context) (api.Conn, error) {
+			return &fakeConn{rows: &fakeRows{}}, nil
+		}
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
 		w := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(w)
@@ -927,11 +959,15 @@ type fakeConn struct {
 	queryErr   error
 	rows       api.Rows
 	execResult api.Result
+	onExec     func(sqlText string)
 }
 
 func (c *fakeConn) Close() error { return nil }
 
-func (c *fakeConn) Exec(context.Context, string, ...any) api.Result {
+func (c *fakeConn) Exec(_ context.Context, sqlText string, _ ...any) api.Result {
+	if c.onExec != nil {
+		c.onExec(sqlText)
+	}
 	if c.execResult != nil {
 		return c.execResult
 	}

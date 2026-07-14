@@ -595,105 +595,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryServerInfo())
-		}
-	case "tables":
-		err = validateArgs(command, 0)
-		if err == nil {
-			return yieldResultSet(node, spi.QueryTables(node.task.ctx, apiConn, showAll))
-		}
-	case "table":
-		err = validateArgs(command, 1)
-		if err == nil {
-			return yieldResultSet(node, spi.QueryTable(node.task.ctx, apiConn, args[0], showAll))
-		}
-	case "indexes":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryIndexes(node.task.ctx, apiConn))
-		}
-	case "index":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 1)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryIndex(node.task.ctx, apiConn, args[0]))
-		}
-	case "lsm":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryLsmIndexes(node.task.ctx, apiConn))
-		}
-	case "tags":
-		err = validateNoAll()
-		if err == nil && len(args) < 1 {
-			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryTags(node.task.ctx, apiConn, args[0], args[1:]...))
-		}
-	case "indexgap":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryIndexGap(node.task.ctx, apiConn))
-		}
-	case "tagindexgap":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryTagIndexGap(node.task.ctx, apiConn))
-		}
-	case "rollupgap":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryRollupGap(node.task.ctx, apiConn))
-		}
-	case "sessions":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QuerySessions(node.task.ctx, apiConn))
-		}
-	case "statements":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryStatements(node.task.ctx, apiConn))
-		}
-	case "storage":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryStorage(node.task.ctx, apiConn))
-		}
-	case "table-usage":
-		err = validateNoAll()
-		if err == nil {
-			err = validateArgs(command, 0)
-		}
-		if err == nil {
-			return yieldResultSet(node, spi.QueryTableUsage(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowInfo())
 		}
 	case "license":
 		err = validateNoAll()
@@ -701,7 +603,136 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryLicense(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowLicense(node.task.ctx, apiConn))
+		}
+	case "ports":
+		err = validateNoAll()
+		portType := ""
+		if err == nil {
+			if len(args) > 1 {
+				err = fmt.Errorf("f(SQL) show ports expects at most 1 argument, got %d", len(args))
+			} else if len(args) == 1 {
+				portType = args[0]
+			}
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowPorts(portType))
+		}
+	case "users":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowUsers(node.task.ctx, apiConn))
+		}
+	case "tables":
+		err = validateArgs(command, 0)
+		if err == nil {
+			return yieldResultSet(node, spi.ShowTables(node.task.ctx, apiConn, showAll))
+		}
+	case "meta-tables":
+		err = validateArgs(command, 0)
+		if err == nil {
+			return yieldResultSet(node, spi.ShowMetaTables(node.task.ctx, apiConn))
+		}
+	case "virtual-tables":
+		err = validateArgs(command, 0)
+		if err == nil {
+			return yieldResultSet(node, spi.ShowVirtualTables(node.task.ctx, apiConn))
+		}
+	case "table":
+		err = validateArgs(command, 1)
+		if err == nil {
+			return yieldResultSet(node, spi.ShowTable(node.task.ctx, apiConn, args[0], showAll))
+		}
+	case "indexes":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowIndexes(node.task.ctx, apiConn))
+		}
+	case "index":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 1)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowIndex(node.task.ctx, apiConn, args[0]))
+		}
+	case "lsm":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowLsm(node.task.ctx, apiConn))
+		}
+	case "tags":
+		err = validateNoAll()
+		if err == nil && len(args) < 1 {
+			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowTags(node.task.ctx, apiConn, args[0], args[1:]...))
+		}
+	case "indexgap":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowIndexGap(node.task.ctx, apiConn))
+		}
+	case "tagindexgap":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowTagIndexGap(node.task.ctx, apiConn))
+		}
+	case "rollupgap":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowRollupGap(node.task.ctx, apiConn))
+		}
+	case "sessions":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowSessions(node.task.ctx, apiConn))
+		}
+	case "statements":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowStatements(node.task.ctx, apiConn))
+		}
+	case "storage":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowStorage(node.task.ctx, apiConn))
+		}
+	case "table-usage":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowTableUsage(node.task.ctx, apiConn))
 		}
 	default:
 		err = fmt.Errorf("f(SQL) unsupported show command %q", command)

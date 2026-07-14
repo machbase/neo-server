@@ -239,25 +239,28 @@ func (s *Server) getServerInfoMap() map[string]any {
 		nfo["error"] = err.Error()
 	} else {
 		if v := sinfo.Version; v != nil {
-			nfo["version.major"] = v.Major
-			nfo["version.minor"] = v.Minor
-			nfo["version.patch"] = v.Patch
-			nfo["version.gitSHA"] = v.GitSHA
-			nfo["version.buildTimestamp"] = v.BuildTimestamp
-			nfo["version.buildCompiler"] = v.BuildCompiler
-			nfo["version.engine"] = v.Engine
+			nfo["build.version"] = mods.DisplayVersion()
+			nfo["build.hash"] = v.GitSHA
+			nfo["build.timestamp"] = v.BuildTimestamp
+			nfo["build.engine"] = v.Engine
 		}
 		if r := sinfo.Runtime; r != nil {
 			nfo["runtime.os"] = r.OS
 			nfo["runtime.arch"] = r.Arch
 			nfo["runtime.pid"] = r.Pid
-			nfo["runtime.uptimeInSecond"] = r.UptimeInSecond
+			nfo["runtime.uptime"] = util.HumanizeDurationWithFormat(time.Duration(r.UptimeInSecond)*time.Second, util.HumanizeDurationFormatSimple)
 			nfo["runtime.processes"] = r.Processes
 			nfo["runtime.goroutines"] = r.Goroutines
 			if r.Mem != nil {
-				for k, v := range r.Mem {
-					nfo[fmt.Sprintf("runtime.mem.%s", k)] = v
-				}
+				nfo["mem.mallocs"] = util.HumanizeNumber(r.Mem["mallocs"])
+				nfo["mem.frees"] = util.HumanizeNumber(r.Mem["frees"])
+				nfo["mem.lives"] = util.HumanizeNumber(r.Mem["lives"])
+				nfo["mem.sys"] = util.HumanizeByteCount(r.Mem["sys"])
+				nfo["mem.heap_sys"] = util.HumanizeByteCount(r.Mem["heap_sys"])
+				nfo["mem.heap_alloc"] = util.HumanizeByteCount(r.Mem["heap_alloc"])
+				nfo["mem.heap_in_use"] = util.HumanizeByteCount(r.Mem["heap_in_use"])
+				nfo["mem.stack_sys"] = util.HumanizeByteCount(r.Mem["stack_sys"])
+				nfo["mem.stack_in_use"] = util.HumanizeByteCount(r.Mem["stack_in_use"])
 			}
 		}
 	}

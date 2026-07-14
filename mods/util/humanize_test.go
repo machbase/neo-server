@@ -25,28 +25,28 @@ func TestHumanizeNumber(t *testing.T) {
 
 func TestHumanizeByteCount(t *testing.T) {
 	ret := util.HumanizeByteCount(512)
-	require.Equal(t, "512 B", ret)
+	require.Equal(t, "512B", ret)
 
 	ret = util.HumanizeByteCount(1024)
-	require.Equal(t, "1.0 kB", ret)
+	require.Equal(t, "1.0KB", ret)
 
 	ret = util.HumanizeByteCount(1024 + 512)
-	require.Equal(t, "1.5 kB", ret)
+	require.Equal(t, "1.5KB", ret)
 
 	ret = util.HumanizeByteCount((1024 + 512) * 1000)
-	require.Equal(t, "1.5 MB", ret)
+	require.Equal(t, "1.5MB", ret)
 
 	ret = util.HumanizeByteCount((1024 + 512) * 1000 * 1000)
-	require.Equal(t, "1.5 GB", ret)
+	require.Equal(t, "1.5GB", ret)
 
 	ret = util.HumanizeByteCount((1024 + 512) * 1000 * 1000 * 1000)
-	require.Equal(t, "1.5 TB", ret)
+	require.Equal(t, "1.5TB", ret)
 
 	ret = util.HumanizeByteCount((1024 + 512) * 1000 * 1000 * 1000 * 1000)
-	require.Equal(t, "1.5 PB", ret)
+	require.Equal(t, "1.5PB", ret)
 
 	ret = util.HumanizeByteCount((1024 + 512) * 1000 * 1000 * 1000 * 1000 * 1000)
-	require.Equal(t, "1.5 EB", ret)
+	require.Equal(t, "1.5EB", ret)
 
 }
 

@@ -4,619 +4,502 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-client/api"
 )
 
-type ResultSet interface {
-	Columns() api.Columns
-	Err() error
-	Iter(func(values []interface{}) bool)
-	Message() string
-}
+/* Interpreting Influx line protocol
 
-type ResultSetBase struct {
-	err error
-	msg string
-}
+   | Machbase            | influxdb                                    |
+   | ------------------- | ------------------------------------------- |
+   | table name          | db                                          |
+   | tag name            | measurement + '.' + field name              |
+   | time                | timestamp                                   |
+   | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
+*/
 
-func (rs *ResultSetBase) Err() error {
-	return rs.err
-}
+func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
+	columns := descColumns.Names()
+	columns = columns[:3]
 
-func (rs *ResultSetBase) Message() string {
-	if rs.err != nil {
-		return rs.err.Error()
-	}
-	return rs.msg
-}
-
-var serverInfoProvider func() map[string]any
-
-func SetDefaultServerInfo(provider func() map[string]any) {
-	serverInfoProvider = provider
-}
-
-type ServerInfoResultSet struct {
-	ResultSetBase
-	keys []string
-	data map[string]any
-}
-
-var _ ResultSet = (*ServerInfoResultSet)(nil)
-
-func (si *ServerInfoResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnString("NAME"),
-		api.MakeColumnAny("VALUE"),
-	}
-}
-
-func (si *ServerInfoResultSet) Iter(callback func(values []interface{}) bool) {
-	if si.err != nil {
-		return
-	}
-
-	for _, k := range si.keys {
-		v := si.data[k]
-		if !callback([]interface{}{k, v}) {
-			return
-		}
-	}
-}
-
-func QueryServerInfo() *ServerInfoResultSet {
-	if serverInfoProvider == nil {
-		return &ServerInfoResultSet{ResultSetBase: ResultSetBase{err: errors.New("server info provider is not set")}}
-	}
-	serverInfo := serverInfoProvider()
-	keys := make([]string, 0, len(serverInfo))
-	for k := range serverInfo {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return &ServerInfoResultSet{keys: keys, data: serverInfo}
-}
-
-type TablesResultSet struct {
-	ResultSetBase
-	list []*TableInfo
-}
-
-var _ ResultSet = (*TablesResultSet)(nil)
-
-func (ti *TablesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "FLAG", DataType: api.DataTypeString},
-	}
-}
-
-func (ti *TablesResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, t := range ti.list {
-		if !callback([]interface{}{t.Database, t.User, t.Name, t.Id, t.Type.ShortString(), t.Flag.String()}) {
-			return
-		}
-	}
-}
-
-func QueryTables(ctx context.Context, conn api.Conn, showAll bool) *TablesResultSet {
-	var list = []*TableInfo{}
-	var err error
-	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo) bool {
-		if err = t.Err(); err != nil {
-			return false
-		}
-		list = append(list, t)
-		return true
-	})
-	return &TablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type TableResultSet struct {
-	ResultSetBase
-	desc *api.TableDescription
-}
-
-var _ ResultSet = (*TableResultSet)(nil)
-
-func (tr *TableResultSet) Err() error {
-	return tr.err
-}
-
-func (tr *TableResultSet) Message() string {
-	if tr.err != nil {
-		return tr.err.Error()
-	}
-	return ""
-}
-
-func (tr *TableResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "COLUMN", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "LENGTH", DataType: api.DataTypeInt32},
-		{Name: "FLAG", DataType: api.DataTypeString},
-		{Name: "INDEX", DataType: api.DataTypeString},
-	}
-}
-
-func (tr *TableResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, col := range tr.desc.Columns {
-		indexes := []string{}
-		for _, idxDesc := range tr.desc.Indexes {
-			for _, colName := range idxDesc.Cols {
-				if colName == col.Name {
-					indexes = append(indexes, idxDesc.Name)
-					break
-				}
+	/*
+		Machbase : name, time, value, host
+		influxdb : tags key[DC, HOST, NAME, SYSTEM]
+		=> HOST append / DC, NAME, SYSTEM not append
+	*/
+	compareNames := descColumns.Names()
+	compareTypes := descColumns.DataTypes()
+	compareNames = compareNames[3:]
+	compareTypes = compareTypes[3:]
+	for idx, val := range compareNames {
+		if _, ok := tags[val]; ok {
+			if compareTypes[idx] == api.DataTypeString {
+				columns = append(columns, val)
 			}
 		}
-		values := []any{
-			col.Name, col.Type.String(), col.Width(), col.Flag.String(), strings.Join(indexes, ","),
-		}
-		if !callback(values) {
-			return
-		}
 	}
-}
 
-func QueryTable(ctx context.Context, conn api.Conn, tableName string, all bool) *TableResultSet {
-	desc, err := api.DescribeTable(ctx, conn, tableName, all)
-	return &TableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
-}
+	rows := make([][]any, 0)
 
-type IndexesResultSet struct {
-	ResultSetBase
-	list []*IndexInfo
-}
+	for k, v := range fields {
+		values := make([]any, 0)
+		values = append(values, fmt.Sprintf("%s.%s", measurement, k))
+		values = append(values, ts)
 
-var _ ResultSet = (*IndexesResultSet)(nil)
+		switch val := v.(type) {
+		case float32:
+			values = append(values, float64(val))
+		case float64:
+			values = append(values, val)
+		case int:
+			values = append(values, float64(val))
+		case int32:
+			values = append(values, float64(val))
+		case int64:
+			values = append(values, float64(val))
+		default:
+			// unsupported value type
+			continue
+		}
 
-func (ii *IndexesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "DATABASE", DataType: api.DataTypeString},
-		{Name: "USER", DataType: api.DataTypeString},
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "COLUMN_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_TYPE", DataType: api.DataTypeString},
-		{Name: "KEY_COMPRESS", DataType: api.DataTypeString},
-		{Name: "MAX_LEVEL", DataType: api.DataTypeInt64},
-		{Name: "PART_VALUE_COUNT", DataType: api.DataTypeInt64},
-		{Name: "BITMAP_ENCODE", DataType: api.DataTypeString},
+		for i := 3; i < len(columns); i++ {
+			values = append(values, tags[columns[i]])
+		}
+
+		rows = append(rows, values)
 	}
-}
 
-func (ii *IndexesResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range ii.list {
-		cont := callback([]interface{}{
-			idx.Id, idx.Database, idx.User, idx.TableName, idx.ColumnName, idx.IndexName,
-			idx.IndexType, idx.KeyCompress, idx.MaxLevel, idx.PartValueCount, idx.BitMapEncode,
-		})
-		if !cont {
-			return
+	if len(rows) == 0 {
+		return &InsertResult{
+			rowsAffected: 0,
+			message:      "no rows inserted",
 		}
 	}
-}
 
-func QueryIndexes(ctx context.Context, conn api.Conn) *IndexesResultSet {
-	list, err := ListIndexes(ctx, conn)
-	return &IndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type QueryIndexResultSet struct {
-	ResultSetBase
-	desc *IndexInfo
-}
-
-var _ ResultSet = (*QueryIndexResultSet)(nil)
-
-func (qir *QueryIndexResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnString("TABLE_NAME"),
-		api.MakeColumnString("COLUMN_NAME"),
-		api.MakeColumnString("INDEX_NAME"),
-		api.MakeColumnString("INDEX_TYPE"),
-		api.MakeColumnString("KEY_COMPRESS"),
-		api.MakeColumnInt64("MAX_LEVEL"),
-		api.MakeColumnInt64("PART_VALUE_COUNT"),
-		api.MakeColumnString("BITMAP_ENCODE"),
+	vf := make([]string, len(columns))
+	for i := range vf {
+		vf[i] = "?"
 	}
-}
+	tableName := dbName
+	valuesPlaces := strings.Join(vf, ",")
+	columnsPhrase := strings.Join(columns, ",")
 
-func (qir *QueryIndexResultSet) Iter(callback func(values []interface{}) bool) {
-	if qir.desc == nil {
-		return
-	}
-	cont := callback([]interface{}{
-		qir.desc.TableName,
-		qir.desc.ColumnName,
-		qir.desc.IndexName,
-		qir.desc.IndexType,
-		qir.desc.KeyCompress,
-		qir.desc.MaxLevel,
-		qir.desc.PartValueCount,
-		qir.desc.BitMapEncode,
-	})
-	if !cont {
-		return
-	}
-}
-
-func QueryIndex(ctx context.Context, conn api.Conn, indexName string) *QueryIndexResultSet {
-	idx, err := DescribeIndex(ctx, conn, indexName)
-	return &QueryIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
-}
-
-type LsmIndexesResultSet struct {
-	ResultSetBase
-	list []*LsmIndexInfo
-}
-
-var _ ResultSet = (*LsmIndexesResultSet)(nil)
-
-func (li *LsmIndexesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_NAME", DataType: api.DataTypeString},
-		{Name: "LEVEL", DataType: api.DataTypeInt64},
-		{Name: "COUNT", DataType: api.DataTypeInt64},
-	}
-}
-
-func (li *LsmIndexesResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range li.list {
-		cont := callback([]interface{}{
-			idx.TableName, idx.IndexName, idx.Level, idx.Count,
-		})
-		if !cont {
-			return
-		}
-	}
-}
-
-func QueryLsmIndexes(ctx context.Context, conn api.Conn) *LsmIndexesResultSet {
-	list, err := ListLsmIndexesInfo(ctx, conn)
-	return &LsmIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type LicenseResultSet struct {
-	ResultSetBase
-	lic *LicenseInfo
-}
-
-var _ ResultSet = (*LicenseResultSet)(nil)
-
-func (li *LicenseResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "CUSTOMER", DataType: api.DataTypeString},
-		{Name: "PROJECT", DataType: api.DataTypeString},
-		{Name: "COUNTRY_CODE", DataType: api.DataTypeString},
-		{Name: "INSTALL_DATE", DataType: api.DataTypeString},
-		{Name: "ISSUE_DATE", DataType: api.DataTypeString},
-		{Name: "STATUS", DataType: api.DataTypeString},
-	}
-}
-
-func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
-	callback([]interface{}{
-		li.lic.Id, li.lic.Type, li.lic.Customer, li.lic.Project, li.lic.CountryCode,
-		li.lic.InstallDate, li.lic.IssueDate, li.lic.LicenseStatus,
-	})
-}
-
-func QueryLicense(ctx context.Context, conn api.Conn) *LicenseResultSet {
-	licenseInfo, err := GetLicenseInfo(ctx, conn)
-	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
-}
-
-type TagsResultSet struct {
-	ResultSetBase
-	conn      api.Conn
-	tableName string
-	tagNames  []string
-	desc      *api.TableDescription
-}
-
-var _ ResultSet = (*TagsResultSet)(nil)
-
-func (tr *TagsResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "_ID", DataType: api.DataTypeInt64},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
-		{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
-		{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MIN_VALUE", DataType: api.DataTypeFloat64},
-		{Name: "MIN_VALUE_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
-		{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
-	}
-}
-
-func (tr *TagsResultSet) Iter(callback func(values []interface{}) bool) {
-	ctx := context.Background()
-	ListTagsWalk(ctx, tr.conn, tr.tableName, tr.desc.TagNameColumn, func(tagInfo *TagInfo) bool {
-		if tagInfo.Err != nil {
-			return false
-		}
-		if len(tr.tagNames) > 0 {
-			if !slices.Contains(tr.tagNames, tagInfo.Name) {
-				return true // skip this tag
+	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, columnsPhrase, valuesPlaces)
+	var numRows int
+	for _, rec := range rows {
+		result := conn.Exec(ctx, sqlText, rec...)
+		if result.Err() != nil {
+			return &InsertResult{
+				err:          result.Err(),
+				rowsAffected: numRows,
+				message:      "batch inserts aborted - " + sqlText,
 			}
 		}
-		tagInfo.Summarized = tr.desc.Summarized
-		if stat, err := TagStat(ctx, tr.conn, tr.tableName, tagInfo.Name); err != nil {
-			// some tags may not have stat
-			// the err may be 'no rows in result set'
-			// ignore the error, for processing the next tag
-		} else {
-			tagInfo.Stat = stat
-		}
+		numRows++
+	}
 
-		var values []any
-		if tagInfo.Stat != nil {
-			if tagInfo.Summarized {
-				values = []any{tagInfo.Id, tagInfo.Name, tagInfo.Stat.RowCount,
-					tagInfo.Stat.MinTime, tagInfo.Stat.MaxTime, tagInfo.Stat.RecentRowTime,
-					tagInfo.Stat.MinValue, tagInfo.Stat.MinValueTime,
-					tagInfo.Stat.MaxValue, tagInfo.Stat.MaxValueTime}
-			} else {
-				values = []any{tagInfo.Id, tagInfo.Name, tagInfo.Stat.RowCount,
-					tagInfo.Stat.MinTime, tagInfo.Stat.MaxTime, tagInfo.Stat.RecentRowTime,
-					nil, nil, nil, nil}
-			}
-		} else {
-			values = []any{tagInfo.Id, tagInfo.Name, nil,
-				nil, nil, nil,
-				nil, nil, nil, nil}
-		}
-		if !callback(values) {
-			return false
-		}
-		return true
-	})
+	ret := &InsertResult{
+		rowsAffected: numRows,
+	}
+	switch numRows {
+	case 0:
+		ret.message = "no rows inserted"
+	case 1:
+		ret.message = "a row inserted"
+	default:
+		ret.message = fmt.Sprintf("%d rows inserted", numRows)
+	}
+	return ret
 }
 
-func QueryTags(ctx context.Context, conn api.Conn, tableName string, tagNames ...string) *TagsResultSet {
-	tableName = strings.ToUpper(tableName)
-	desc, err := api.DescribeTable(ctx, conn, tableName, false)
+var _ api.Result = &InsertResult{}
+
+type InsertResult struct {
+	err          error
+	rowsAffected int
+	message      string
+}
+
+func (ir *InsertResult) Err() error {
+	return ir.err
+}
+
+func (ir *InsertResult) RowsAffected() int64 {
+	return int64(ir.rowsAffected)
+}
+
+func (ir *InsertResult) Message() string {
+	return ir.message
+}
+
+type LicenseInfo struct {
+	Id            string `json:"id"`
+	Type          string `json:"type"`
+	Customer      string `json:"customer"`
+	Project       string `json:"project"`
+	CountryCode   string `json:"countryCode"`
+	InstallDate   string `json:"installDate"`
+	IssueDate     string `json:"issueDate"`
+	LicenseStatus string `json:"licenseStatus,omitempty"`
+}
+
+func GetLicenseInfo(ctx context.Context, conn api.Conn) (*LicenseInfo, error) {
+	ret := &LicenseInfo{}
+	var violateStatus int
+	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
+	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate, &violateStatus, &ret.LicenseStatus); err != nil {
+		return nil, err
+	}
+	if violateStatus == 0 {
+		ret.LicenseStatus = "Valid"
+	}
+	return ret, nil
+}
+
+func InstallLicenseFile(ctx context.Context, conn api.Conn, path string) (*LicenseInfo, error) {
+	if strings.ContainsRune(path, ';') {
+		return nil, errors.New("invalid license file path")
+	}
+	result := conn.Exec(ctx, "alter system install license='"+path+"'")
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+	return GetLicenseInfo(ctx, conn)
+}
+
+func InstallLicenseData(ctx context.Context, conn api.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
+	_, err := os.Stat(licenseFilePath)
+	if err == nil {
+		// backup existing file
+		os.Rename(licenseFilePath, fmt.Sprintf("%s_%s", licenseFilePath, time.Now().Format("20060102_150405")))
+	}
+	if err := os.WriteFile(licenseFilePath, content, 0640); err != nil {
+		return nil, err
+	}
+	return InstallLicenseFile(ctx, conn, licenseFilePath)
+}
+
+type TableInfo struct {
+	Database string        `json:"database"`       // M$SYS_TABLES.DATABASE_ID
+	User     string        `json:"user"`           // M$SYS_USERS.NAME
+	Name     string        `json:"name"`           // M$SYS_TABLES.NAME
+	Id       int64         `json:"id"`             // M$SYS_TABLES.ID
+	Type     api.TableType `json:"type"`           // M$SYS_TABLES.TYPE
+	Flag     api.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
+	err      error         `json:"-"`
+}
+
+func (ti *TableInfo) Kind() string {
+	desc := "undef"
+	switch ti.Type {
+	case api.TableTypeLog:
+		desc = "Log Table"
+	case api.TableTypeFixed:
+		desc = "Fixed Table"
+	case api.TableTypeVolatile:
+		desc = "Volatile Table"
+	case api.TableTypeLookup:
+		desc = "Lookup Table"
+	case api.TableTypeKeyValue:
+		desc = "KeyValue Table"
+	case api.TableTypeTag:
+		desc = "Tag Table"
+	}
+	switch ti.Flag {
+	case api.TableFlagData:
+		desc += " (data)"
+	case api.TableFlagRollup:
+		desc += " (rollup)"
+	case api.TableFlagMeta:
+		desc += " (meta)"
+	case api.TableFlagStat:
+		desc += " (stat)"
+	}
+	return desc
+}
+
+func (ti *TableInfo) Err() error {
+	return ti.err
+}
+
+func (ti *TableInfo) Values() []interface{} {
+	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
+}
+
+func ifThenElse(cond bool, a, b string) string {
+	if cond {
+		return a
+	}
+	return b
+}
+
+func ListTablesSql(showAll bool, descriptiveType bool) string {
+	return SqlTidy(
+		`SELECT
+			j.DB_NAME as DATABASE_NAME,
+			u.NAME as USER_NAME,
+			j.NAME as TABLE_NAME,
+			j.ID as TABLE_ID,`,
+		ifThenElse(descriptiveType, `
+			case j.TYPE
+				when 0 then 'Log'
+				when 1 then 'Fixed'
+				when 3 then 'Volatile'
+				when 4 then 'Lookup'
+				when 5 then 'KeyValue'
+				when 6 then 'Tag'
+				else ''
+			end as TABLE_TYPE,
+			case j.FLAG
+				when 1 then 'Data'
+				when 2 then 'Rollup'
+				when 4 then 'Meta'
+				when 8 then 'Stat'
+				else ''
+			end as TABLE_FLAG`,
+			`
+			j.TYPE as TABLE_TYPE,
+			j.FLAG as TABLE_FLAG`),
+		`FROM
+			M$SYS_USERS u,
+			(
+				select
+					a.ID as ID,
+					a.NAME as NAME,
+					a.USER_ID as USER_ID,
+					a.TYPE as TYPE,
+					a.FLAG as FLAG,
+					case a.DATABASE_ID
+						when -1 then 'MACHBASEDB'
+						else d.MOUNTDB
+					end as DB_NAME
+				from
+					M$SYS_TABLES a
+				left join
+					V$STORAGE_MOUNT_DATABASES d
+				on
+					a.DATABASE_ID = d.BACKUP_TBSID
+			) as j
+		WHERE
+			u.USER_ID = j.USER_ID`,
+		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'"),
+		`ORDER by j.NAME`)
+}
+
+func ListTablesWalk(ctx context.Context, conn api.Conn, showAll bool, callback func(*TableInfo) bool) {
+	sqlText := ListTablesSql(showAll, false)
+	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return &TagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+		callback(&TableInfo{err: err})
+		return
 	}
-	if desc.Type != api.TableTypeTag {
-		err := fmt.Errorf("f(SQL) table %q is not a tag table", tableName)
-		return &TagsResultSet{ResultSetBase: ResultSetBase{err: err}}
-	}
-	return &TagsResultSet{ResultSetBase: ResultSetBase{err: nil}, conn: conn, tableName: tableName, tagNames: tagNames, desc: desc}
-}
+	defer rows.Close()
 
-type IndexGapResultSet struct {
-	ResultSetBase
-	list []*IndexGapInfo
-}
-
-var _ ResultSet = (*IndexGapResultSet)(nil)
-
-func (igi *IndexGapResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "TABLE", DataType: api.DataTypeString},
-		{Name: "INDEX", DataType: api.DataTypeString},
-		{Name: "GAP", DataType: api.DataTypeInt64},
-	}
-}
-
-func (igi *IndexGapResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range igi.list {
-		cont := callback([]interface{}{
-			idx.ID, idx.TableName, idx.IndexName, idx.Gap,
-		})
-		if !cont {
+	for rows.Next() {
+		ti := &TableInfo{}
+		ti.err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if !callback(ti) {
 			return
 		}
 	}
 }
 
-func QueryIndexGap(ctx context.Context, conn api.Conn) *IndexGapResultSet {
-	list, err := ListIndexGap(ctx, conn)
-	return &IndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type TagIndexGapResultSet struct {
-	ResultSetBase
-	list []*IndexGapInfo
-}
-
-var _ ResultSet = (*TagIndexGapResultSet)(nil)
-
-func (tigi *TagIndexGapResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "STATUS", DataType: api.DataTypeString},
-		{Name: "DISK_GAP", DataType: api.DataTypeInt64},
-		{Name: "MEMORY_GAP", DataType: api.DataTypeInt64},
+func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (api.TableType, error) {
+	_, userName, tableName := api.TableName(fullTableName).Split()
+	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
+	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if r.Err() != nil {
+		return -1, r.Err()
 	}
+	var ret api.TableType
+	if err := r.Scan(&ret); err != nil {
+		return -1, err
+	}
+	return ret, nil
 }
 
-func (tigi *TagIndexGapResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range tigi.list {
-		cont := callback([]interface{}{
-			idx.ID, idx.Status, idx.DiskGap, idx.MemoryGap,
-		})
-		if !cont {
+func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
+	exists, err = api.ExistsTable(ctx, conn, fullTableName)
+	if err != nil {
+		return
+	}
+	if !exists {
+		return
+	}
+
+	// TRUNCATE TABLE
+	if !truncate {
+		return
+	}
+	tableType, err0 := QueryTableType(ctx, conn, fullTableName)
+	if err0 != nil {
+		err = fmt.Errorf("table '%s' doesn't exist, %s", fullTableName, err0.Error())
+		return
+	}
+	if tableType == api.TableTypeLog {
+		result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
+		if result.Err() != nil {
+			err = result.Err()
+			return
+		}
+		truncated = true
+	} else {
+		result := conn.Exec(ctx, fmt.Sprintf("delete from %s", fullTableName))
+		if result.Err() != nil {
+			err = result.Err()
+			return
+		}
+		truncated = true
+	}
+	return
+}
+
+type IndexInfo struct {
+	Id             int64  `json:"id"`
+	Database       string `json:"database"`
+	DatabaseId     int64  `json:"database_id,omitempty"`
+	User           string `json:"user"`
+	TableName      string `json:"table_name"`
+	ColumnName     string `json:"column_name"`
+	IndexName      string `json:"index_name"`
+	IndexType      string `json:"index_type"`
+	KeyCompress    string `json:"key_compress"`
+	MaxLevel       int64  `json:"max_level"`
+	PartValueCount int64  `json:"part_value_count"`
+	BitMapEncode   string `json:"bitmap_encode"`
+	err            error  `json:"-"`
+}
+
+var listIndexesSql = SqlTidy(`
+		SELECT
+			u.name as USER_NAME,
+			j.DB_NAME as DATABASE_NAME,
+			j.TABLE_NAME as TABLE_NAME,
+			c.name as COLUMN_NAME,
+			b.name as INDEX_NAME,
+			b.id as INDEX_ID,
+			case b.type
+				when 1 then 'BITMAP'
+				when 2 then 'KEYWORD'
+				when 5 then 'REDBLACK'
+				when 6 then 'LSM'
+				when 8 then 'REDBLACK'
+				when 9 then 'KEYWORD_LSM'
+				when 11 then 'TAG'
+				else 'LSM' 
+			end as INDEX_TYPE,
+			case b.key_compress
+				when 0 then 'UNCOMPRESS'
+				else 'COMPRESSED'
+			end as KEY_COMPRESS,
+			b.max_level as MAX_LEVEL,
+			b.part_value_count as PART_VALUE_COUNT,
+			case b.bitmap_encode
+				when 0 then 'EQUAL'
+				else 'RANGE'
+			end as BITMAP_ENCODE
+		FROM
+			m$sys_indexes b, 
+			m$sys_index_columns c, 
+			m$sys_users u,
+			(
+				select
+					case a.DATABASE_ID
+						when -1 then 'MACHBASEDB'
+						else d.MOUNTDB
+					end as DB_NAME,
+					a.name as TABLE_NAME,
+					a.id as TABLE_ID,
+					a.USER_ID as USER_ID
+				from
+					M$SYS_TABLES a
+				left join
+					V$STORAGE_MOUNT_DATABASES d
+				on
+					a.DATABASE_ID = d.BACKUP_TBSID
+			) as j
+		WHERE
+			j.TABLE_ID = b.TABLE_ID
+		AND b.ID = c.INDEX_ID
+		AND j.USER_ID = u.USER_ID
+		ORDER BY
+			j.DB_NAME, j.TABLE_NAME, b.ID
+	`)
+
+func ListIndexesWalk(ctx context.Context, conn api.Conn, callback func(*IndexInfo) bool) {
+	rows, err := conn.Query(ctx, listIndexesSql)
+	if err != nil {
+		callback(&IndexInfo{err: err})
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		nfo := &IndexInfo{}
+		nfo.err = rows.Scan(
+			&nfo.User, &nfo.Database, &nfo.TableName, &nfo.ColumnName,
+			&nfo.IndexName, &nfo.Id, &nfo.IndexType, &nfo.KeyCompress,
+			&nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
+		if !callback(nfo) {
 			return
 		}
 	}
 }
 
-func QueryTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
-	list, err := ListTagIndexGap(ctx, conn)
-	return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type RollupGapResultSet struct {
-	ResultSetBase
-	list []*RollupGapInfo
-}
-
-var _ ResultSet = (*RollupGapResultSet)(nil)
-
-func (rgi *RollupGapResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "SRC_TABLE", DataType: api.DataTypeString},
-		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
-		{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
-		{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
-		{Name: "GAP", DataType: api.DataTypeInt64},
-		{Name: "LAST_TIME", DataType: api.DataTypeInt64},
-	}
-}
-
-func (rgi *RollupGapResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range rgi.list {
-		cont := callback([]interface{}{
-			idx.SrcTable, idx.RollupTable, idx.SrcEndRID, idx.RollupEndRID, idx.Gap, idx.LastElapsed,
-		})
-		if !cont {
-			return
+func ListIndexes(ctx context.Context, conn api.Conn) (ret []*IndexInfo, cause error) {
+	ListIndexesWalk(ctx, conn, func(ii *IndexInfo) bool {
+		if ii.err == nil && ii != nil {
+			ret = append(ret, ii)
 		}
+		cause = ii.err
+		return ii.err == nil
+	})
+	return
+}
+
+func DescribeIndex(ctx context.Context, conn api.Conn, name string) (*IndexInfo, error) {
+	sqlText := `select 
+		a.name as TABLE_NAME,
+		c.name as COLUMN_NAME,
+		b.name as INDEX_NAME,
+		case b.type
+			when 1 then 'BITMAP'
+			when 2 then 'KEYWORD'
+			when 5 then 'REDBLACK'
+			when 6 then 'LSM'
+			when 8 then 'REDBLACK'
+			when 9 then 'KEYWORD_LSM'
+			else 'LSM' end 
+		as INDEX_TYPE,
+		case b.key_compress
+			when 0 then 'UNCOMPRESSED'
+			else 'COMPRESSED' end 
+		as KEY_COMPRESS,
+		b.max_level as MAX_LEVEL,
+		b.part_value_count as PART_VALUE_COUNT,
+		case b.bitmap_encode
+			when 0 then 'EQUAL'
+			else 'RANGE' end 
+		as BITMAP_ENCODE
+	from
+		m$sys_tables a,
+		m$sys_indexes b,
+		m$sys_index_columns c
+	where
+		a.id = b.table_id 
+	and b.id = c.index_id
+	and b.name = '%s'`
+	sqlText = fmt.Sprintf(sqlText, strings.ToUpper(name))
+	row := conn.QueryRow(ctx, sqlText)
+	if row.Err() != nil {
+		return nil, row.Err()
 	}
-}
-
-func QueryRollupGap(ctx context.Context, conn api.Conn) *RollupGapResultSet {
-	list, err := ListRollupGap(ctx, conn)
-	return &RollupGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type StorageResultSet struct {
-	ResultSetBase
-	list []*StorageInfo
-}
-
-var _ ResultSet = (*StorageResultSet)(nil)
-
-func (sui *StorageResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
-		{Name: "INDEX_SIZE", DataType: api.DataTypeInt64},
-		{Name: "TOTAL_SIZE", DataType: api.DataTypeInt64},
-	}
-}
-
-func (sui *StorageResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, t := range sui.list {
-		if !callback([]interface{}{t.TableName, t.DataSize, t.IndexSize, t.TotalSize}) {
-			return
-		}
-	}
-}
-
-func QueryStorage(ctx context.Context, conn api.Conn) *StorageResultSet {
-	list, err := ListStorage(ctx, conn)
-	return &StorageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type TableUsageResultSet struct {
-	ResultSetBase
-	list []*TableUsageInfo
-}
-
-var _ ResultSet = (*TableUsageResultSet)(nil)
-
-func (tui *TableUsageResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
-	}
-}
-
-func (tui *TableUsageResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, t := range tui.list {
-		if !callback([]interface{}{t.TableName, t.StorageUsage}) {
-			return
-		}
-	}
-}
-
-func QueryTableUsage(ctx context.Context, conn api.Conn) *TableUsageResultSet {
-	list, err := ListTableUsage(ctx, conn)
-	return &TableUsageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type StatementsResultSet struct {
-	ResultSetBase
-	list []*StatementInfo
-}
-
-var _ ResultSet = (*StatementsResultSet)(nil)
-
-func (sri *StatementsResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
-		{Name: "STATE", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "RECORD_SIZE", DataType: api.DataTypeInt64},
-		{Name: "APPEND_SUCCESS_CNT", DataType: api.DataTypeInt64},
-		{Name: "APPEND_FAILURE_CNT", DataType: api.DataTypeInt64},
-		{Name: "QUERY", DataType: api.DataTypeString},
-	}
-}
-
-func (sri *StatementsResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, s := range sri.list {
-		if !callback(s.Values()) {
-			return
-		}
-	}
-}
-
-func QueryStatements(ctx context.Context, conn api.Conn) *StatementsResultSet {
-	list, err := ListStatements(ctx, conn)
-	return &StatementsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
-type SessionsResultSet struct {
-	ResultSetBase
-	list []*SessionInfo
-}
-
-var _ ResultSet = (*SessionsResultSet)(nil)
-
-func (sri *SessionsResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "USER_ID", DataType: api.DataTypeInt64},
-		{Name: "USER_NAME", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "LOGIN_TIME", DataType: api.DataTypeDatetime},
-		{Name: "MAX_QPX_MEM", DataType: api.DataTypeInt64},
-		{Name: "STMT_COUNT", DataType: api.DataTypeInt64},
-	}
-}
-
-func (sri *SessionsResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, s := range sri.list {
-		if !callback(s.Values()) {
-			return
-		}
-	}
-}
-
-func QuerySessions(ctx context.Context, conn api.Conn) *SessionsResultSet {
-	list, err := ListSessions(ctx, conn)
-	return &SessionsResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+	nfo := &IndexInfo{}
+	nfo.err = row.Scan(
+		&nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType,
+		&nfo.KeyCompress, &nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
+	return nfo, nfo.err
 }

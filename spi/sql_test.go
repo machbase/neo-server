@@ -704,14 +704,6 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 		panic(err)
 	}
 
-	defer func() {
-		// drop table
-		result = userConn.Exec(t.Context(), "drop table data")
-		if err := result.Err(); err != nil {
-			panic(err)
-		}
-	}()
-
 	// insert data, statement cached
 	result = userConn.Exec(t.Context(), "insert into data values (?, ?, ?)", "Alice", "2024-06-01 00:00:00", 123.45)
 	if err := result.Err(); err != nil {
@@ -790,6 +782,7 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 
 // Issue machbase/neo#1403
 // Issue machbase/neo#1410
+// Issue machbase/neo#1418
 func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	conf := &machgo.Config{
 		Host: "127.0.0.1",
@@ -870,7 +863,7 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	}
 	require.Equal(t, 1, count)
 
-	for _, indexName := range []string{"idx_data_value" /*, "david.idx_data_value"*/} {
+	for _, indexName := range []string{"idx_data_value", "david.idx_data_value"} {
 		result = sysConn.Exec(t.Context(), fmt.Sprintf("create index %s on david.data(value)", indexName))
 		if err := result.Err(); err != nil {
 			panic(err)
@@ -919,7 +912,9 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 			require.True(t, expect.found, fmt.Sprintf("%s not found in m$sys_indexes (created %s)", expect.indexName, indexName))
 		}
 
-		result = sysConn.Exec(t.Context(), fmt.Sprintf("drop index %s", indexName))
+		// Issue machbase/neo#1418
+		//result = sysConn.Exec(t.Context(), "drop index david.idx_data_value")
+		result = userConn.Exec(t.Context(), "drop index idx_data_value")
 		if err := result.Err(); err != nil {
 			panic(err)
 		}

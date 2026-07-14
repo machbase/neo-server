@@ -510,9 +510,9 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	spi.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *spi.TagInfo) bool {
-		if tag.Err != nil {
-			rsp.Success, rsp.Reason = false, tag.Err.Error()
+	spi.ListTagsWalk(ctx, conn, table, desc.TagNameColumn, func(tag *spi.TagInfo, err error) bool {
+		if err != nil {
+			rsp.Success, rsp.Reason = false, err.Error()
 			return false
 		}
 		if nameFilter != "" && !strings.HasPrefix(tag.Name, nameFilter) {
@@ -579,7 +579,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 
-	nfo, err := spi.TagStat(ctx, conn, table, tag)
+	nfo, err := spi.QueryTagStat(ctx, conn, table, tag)
 	if err != nil {
 		rsp.Success, rsp.Reason = false, err.Error()
 		rsp.Elapse = time.Since(tick).String()
