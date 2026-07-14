@@ -440,26 +440,21 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
+			name:    "ShowRollupGap",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowRollupGap(t.Context(), conn)) },
+			columns: []string{"USER_NAME", "ROLLUP_NAME", "SRC_TABLE", "ROLLUP_TABLE", "SRC_END_RID", "ROLLUP_END_RID", "GAP", "RUN_STATE", "LAST_ELAPSED_MSEC", "LAST_WAKEUP_TIME", "NEXT_WAKEUP_TIME"},
+			expectFunc: func(values [][]any) {
+				require.Equal(t, "_RS_DATA_ROLLUP_SEC", values[0][1]) // rollup name
+				require.Equal(t, "_RS_DATA_DATA_0", values[0][2])     // src table
+				require.Equal(t, "_RS_DATA_ROLLUP_SEC", values[0][3]) // rollup table
+			},
+		},
+		{
 			name:    "QueryTags",
 			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTags(t.Context(), conn, "rs_data", "test1")) },
 			columns: []string{"_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"},
 			expects: [][]any{
 				{int64(1), "test1", int64(2), parseTime("2024-01-01 00:00:00"), parseTime("2024-01-02 00:00:00"), parseTime("2024-01-02 00:00:00"), float64(1), parseTime("2024-01-01 00:00:00"), float64(2), parseTime("2024-01-02 00:00:00")},
-			},
-		},
-		{
-			name:    "QueryRollupGap",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryRollupGap(t.Context(), conn)) },
-			columns: []string{"SRC_TABLE", "ROLLUP_TABLE", "SRC_END_RID", "ROLLUP_END_RID", "GAP", "LAST_TIME"},
-			expectFunc: func(values [][]any) {
-				require.Equal(t, "_RS_DATA_DATA_0", values[0][0])     // src table
-				require.Equal(t, "_RS_DATA_ROLLUP_SEC", values[0][1]) // rollup table
-
-				require.Equal(t, "_RS_DATA_ROLLUP_MIN", values[1][0])  // src table
-				require.Equal(t, "_RS_DATA_ROLLUP_HOUR", values[1][1]) // rollup table
-
-				require.Equal(t, "_RS_DATA_ROLLUP_SEC", values[2][0]) // src table
-				require.Equal(t, "_RS_DATA_ROLLUP_MIN", values[2][1]) // rollup table
 			},
 		},
 	}

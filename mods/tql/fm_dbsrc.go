@@ -700,7 +700,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryRollupGap(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowRollupGap(node.task.ctx, apiConn))
 		}
 	case "sessions":
 		err = validateNoAll()

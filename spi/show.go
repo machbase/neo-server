@@ -945,3 +945,102 @@ func ShowTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
 	err = rows.Err()
 	return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
+
+type ShowRollupGapResultSet struct {
+	ResultSetBase
+	list []*RollupGapInfo
+}
+
+type RollupGapInfo struct {
+	UserName        string    `json:"user_name"`
+	RollupName      string    `json:"rollup_name"`
+	SrcTable        string    `json:"src_table"`
+	RollupTable     string    `json:"rollup_table"`
+	SrcEndRID       int64     `json:"src_end_rid"`
+	RollupEndRID    int64     `json:"rollup_end_rid"`
+	Gap             int64     `json:"gap"`
+	RunState        string    `json:"run_state"`
+	LastElapsedMsec float64   `json:"last_elapsed_msec"`
+	LastWakeupTime  time.Time `json:"last_wakeup_time"`
+	NextWakeupTime  time.Time `json:"next_wakeup_time"`
+}
+
+var _ ResultSet = (*ShowRollupGapResultSet)(nil)
+
+func (rgi *ShowRollupGapResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "USER_NAME", DataType: api.DataTypeString},
+		{Name: "ROLLUP_NAME", DataType: api.DataTypeString},
+		{Name: "SRC_TABLE", DataType: api.DataTypeString},
+		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
+		{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
+		{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
+		{Name: "GAP", DataType: api.DataTypeInt64},
+		{Name: "RUN_STATE", DataType: api.DataTypeString},
+		{Name: "LAST_ELAPSED_MSEC", DataType: api.DataTypeInt64},
+		{Name: "LAST_WAKEUP_TIME", DataType: api.DataTypeDatetime},
+		{Name: "NEXT_WAKEUP_TIME", DataType: api.DataTypeDatetime},
+	}
+}
+
+func (rgi *ShowRollupGapResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range rgi.list {
+		cont := callback([]interface{}{
+			idx.UserName, idx.RollupName, idx.SrcTable, idx.RollupTable,
+			idx.SrcEndRID, idx.RollupEndRID, idx.Gap, idx.RunState,
+			idx.LastElapsedMsec, idx.LastWakeupTime, idx.NextWakeupTime,
+		})
+		if !cont {
+			return
+		}
+	}
+}
+
+func ShowRollupGap(ctx context.Context, conn api.Conn) *ShowRollupGapResultSet {
+	sqlText := SqlTidy(`SELECT
+            U.NAME AS USER_NAME,
+            C.ROLLUP_NAME AS ROLLUP_NAME,
+            C.SOURCE_TABLE AS SRC_TABLE,
+            C.ROLLUP_TABLE,
+            B.TABLE_END_RID AS SRC_END_RID,
+            C.END_RID AS ROLLUP_END_RID,
+            B.TABLE_END_RID - C.END_RID AS GAP,
+            CASE C.RUN_STATE WHEN 'I' THEN 'INIT' WHEN 'S' THEN 'SLEEPING' WHEN 'R' THEN 'RUNNING' ELSE 'UNKNOWN' END AS RUN_STATE,
+            C.LAST_ELAPSED_MSEC AS LAST_ELAPSED_MSEC,
+            C.LAST_WAKEUP_TIME AS LAST_WAKEUP_TIME,
+            C.NEXT_WAKEUP_TIME AS NEXT_WAKEUP_TIME
+        FROM
+            M$SYS_TABLES A,
+            V$STORAGE_TAG_TABLES B,
+            V$ROLLUP C,
+            M$SYS_USERS U
+        WHERE 
+            A.ID=B.ID
+        AND A.DATABASE_ID=C.DATABASE_ID
+        AND A.DATABASE_ID=-1
+        AND A.NAME=C.SOURCE_TABLE
+        AND A.USER_ID=C.USER_ID
+        AND U.USER_ID=C.USER_ID
+        AND B.TABLE_END_RID <> 0
+        ORDER BY U.USER_ID, SRC_TABLE`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	list := []*RollupGapInfo{}
+	for rows.Next() {
+		rec := &RollupGapInfo{}
+		err := rows.Scan(&rec.UserName, &rec.RollupName, &rec.SrcTable, &rec.RollupTable,
+			&rec.SrcEndRID, &rec.RollupEndRID, &rec.Gap, &rec.RunState,
+			&rec.LastElapsedMsec, &rec.LastWakeupTime, &rec.NextWakeupTime)
+		if err != nil {
+			return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	err = rows.Err()
+	return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}

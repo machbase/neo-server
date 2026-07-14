@@ -113,37 +113,3 @@ func QueryTags(ctx context.Context, conn api.Conn, tableName string, tagNames ..
 	}
 	return &TagsResultSet{ResultSetBase: ResultSetBase{err: nil}, conn: conn, tableName: tableName, tagNames: tagNames, desc: desc}
 }
-
-type RollupGapResultSet struct {
-	ResultSetBase
-	list []*RollupGapInfo
-}
-
-var _ ResultSet = (*RollupGapResultSet)(nil)
-
-func (rgi *RollupGapResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "SRC_TABLE", DataType: api.DataTypeString},
-		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
-		{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
-		{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
-		{Name: "GAP", DataType: api.DataTypeInt64},
-		{Name: "LAST_TIME", DataType: api.DataTypeInt64},
-	}
-}
-
-func (rgi *RollupGapResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range rgi.list {
-		cont := callback([]interface{}{
-			idx.SrcTable, idx.RollupTable, idx.SrcEndRID, idx.RollupEndRID, idx.Gap, idx.LastElapsed,
-		})
-		if !cont {
-			return
-		}
-	}
-}
-
-func QueryRollupGap(ctx context.Context, conn api.Conn) *RollupGapResultSet {
-	list, err := ListRollupGap(ctx, conn)
-	return &RollupGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}

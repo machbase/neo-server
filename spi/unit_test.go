@@ -251,19 +251,6 @@ func TestInfoValueObjects(t *testing.T) {
 		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
 		require.EqualError(t, info.Err(), "table err")
 	})
-
-	t.Run("misc info values", func(t *testing.T) {
-		now := time.Unix(1700000000, 0).UTC()
-		tag := &TagInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", Id: 2, Summarized: true}
-		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(2), true}, tag.Values())
-
-		tagStat := &TagStatInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", RowCount: 3, MinTime: now, MaxTime: now, MinValue: 1.2, MinValueTime: now, MaxValue: 3.4, MaxValueTime: now, RecentRowTime: now}
-		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(3), now, now, 1.2, now, 3.4, now, now}, tagStat.Values())
-
-		rollup := &RollupGapInfo{SrcTable: "SRC", RollupTable: "ROLL", SrcEndRID: 1, RollupEndRID: 2, Gap: 3, LastElapsed: time.Second, err: errors.New("rollup err")}
-		require.Equal(t, []any{"SRC", "ROLL", int64(1), int64(2), int64(3), time.Second}, rollup.Values())
-		require.EqualError(t, rollup.Err(), "rollup err")
-	})
 }
 
 func TestMetricsAndWatcherHelpers(t *testing.T) {

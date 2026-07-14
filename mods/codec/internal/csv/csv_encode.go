@@ -233,6 +233,8 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = v
 		case time.Time:
 			cols[i] = ex.timeformat.Format(v)
+		case time.Duration:
+			cols[i] = strconv.FormatInt(v.Nanoseconds(), 10)
 		case api.JSONString:
 			cols[i] = string(v)
 		case float64:
