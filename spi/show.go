@@ -808,3 +808,140 @@ func ShowLsm(ctx context.Context, conn api.Conn) *ShowLsmResultSet {
 	err = rows.Err()
 	return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
+
+type ShowIndexGapResultSet struct {
+	ResultSetBase
+	list []*IndexGapInfo
+}
+
+type IndexGapInfo struct {
+	ID        int64  `json:"id"`
+	TableName string `json:"table_name"`
+	IndexName string `json:"index_name"`
+	Gap       int64  `json:"gap"`
+}
+
+var _ ResultSet = (*ShowIndexGapResultSet)(nil)
+
+func (igi *ShowIndexGapResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "INDEX_ID", DataType: api.DataTypeInt64},
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "GAP", DataType: api.DataTypeInt64},
+	}
+}
+
+func (igi *ShowIndexGapResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range igi.list {
+		cont := callback([]interface{}{
+			idx.ID, idx.TableName, idx.IndexName, idx.Gap,
+		})
+		if !cont {
+			return
+		}
+	}
+}
+
+func ShowIndexGap(ctx context.Context, conn api.Conn) *ShowIndexGapResultSet {
+	sqlText := SqlTidy(`select
+		c.id,
+		b.name as TABLE_NAME, 
+		c.name as INDEX_NAME, 
+		a.table_end_rid - a.end_rid as GAP
+	from
+		v$storage_dc_table_indexes a,
+		m$sys_tables b,
+		m$sys_indexes c
+	where
+		a.id = c.id 
+	and c.table_id = b.id 
+	order by 3 desc`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return &ShowIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	list := []*IndexGapInfo{}
+	for rows.Next() {
+		rec := &IndexGapInfo{}
+		err = rows.Scan(&rec.ID, &rec.TableName, &rec.IndexName, &rec.Gap)
+		if err != nil {
+			return &ShowIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	err = rows.Err()
+	return &ShowIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}
+
+type TagIndexGapResultSet struct {
+	ResultSetBase
+	list []*TagIndexGapInfo
+}
+
+type TagIndexGapInfo struct {
+	TableId   int64  `json:"id"`
+	TableName string `json:"table_name"`
+	Status    string `json:"status"`
+	DiskGap   int64  `json:"disk_gap"`
+	MemoryGap int64  `json:"memory_gap"`
+}
+
+var _ ResultSet = (*TagIndexGapResultSet)(nil)
+
+func (tigi *TagIndexGapResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_ID", DataType: api.DataTypeInt64},
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "STATUS", DataType: api.DataTypeString},
+		{Name: "DISK_GAP", DataType: api.DataTypeInt64},
+		{Name: "MEMORY_GAP", DataType: api.DataTypeInt64},
+	}
+}
+
+func (tigi *TagIndexGapResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range tigi.list {
+		cont := callback([]interface{}{
+			idx.TableId, idx.TableName, idx.Status, idx.DiskGap, idx.MemoryGap,
+		})
+		if !cont {
+			return
+		}
+	}
+}
+
+func ShowTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
+	sqlText := SqlTidy(`SELECT
+			t.ID AS ID,
+            t.NAME AS TABLE_NAME,
+            i.INDEX_STATE AS STATUS,
+            i.TABLE_END_RID - i.DISK_INDEX_END_RID AS DISK_GAP,
+            i.TABLE_END_RID - i.MEMORY_INDEX_END_RID AS MEMORY_GAP
+        from
+            M$SYS_TABLES t,
+            V$STORAGE_TAG_INDEX i
+        where
+            t.ID = i.TABLE_ID
+        order by id`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	list := []*TagIndexGapInfo{}
+	for rows.Next() {
+		rec := &TagIndexGapInfo{}
+		err := rows.Scan(&rec.TableId, &rec.TableName, &rec.Status, &rec.DiskGap, &rec.MemoryGap)
+		if err != nil {
+			return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	err = rows.Err()
+	return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}

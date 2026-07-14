@@ -260,15 +260,6 @@ func TestInfoValueObjects(t *testing.T) {
 		tagStat := &TagStatInfo{Database: "DB", User: "SYS", Table: "TAG_DATA", Name: "name", RowCount: 3, MinTime: now, MaxTime: now, MinValue: 1.2, MinValueTime: now, MaxValue: 3.4, MaxValueTime: now, RecentRowTime: now}
 		require.Equal(t, []any{"DB", "SYS", "TAG_DATA", "name", int64(3), now, now, 1.2, now, 3.4, now, now}, tagStat.Values())
 
-		nonTagIndexGap := &IndexGapInfo{ID: 1, TableName: "T", IndexName: "IDX", Gap: 2, err: errors.New("gap err")}
-		require.Equal(t, []string{"ID", "TABLE", "INDEX", "GAP"}, nonTagIndexGap.Columns().Names())
-		require.Equal(t, []any{int64(1), "T", "IDX", int64(2)}, nonTagIndexGap.Values())
-		require.EqualError(t, nonTagIndexGap.Err(), "gap err")
-
-		tagIndexGap := &IndexGapInfo{IsTagIndex: true, ID: 2, Status: "OK", DiskGap: 3, MemoryGap: 4}
-		require.Equal(t, []string{"ID", "STATUS", "DISK_GAP", "MEMORY_GAP"}, tagIndexGap.Columns().Names())
-		require.Equal(t, []any{int64(2), "OK", int64(3), int64(4)}, tagIndexGap.Values())
-
 		rollup := &RollupGapInfo{SrcTable: "SRC", RollupTable: "ROLL", SrcEndRID: 1, RollupEndRID: 2, Gap: 3, LastElapsed: time.Second, err: errors.New("rollup err")}
 		require.Equal(t, []any{"SRC", "ROLL", int64(1), int64(2), int64(3), time.Second}, rollup.Values())
 		require.EqualError(t, rollup.Err(), "rollup err")

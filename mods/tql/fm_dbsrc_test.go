@@ -499,7 +499,7 @@ func TestTqlSqlShowIndexGap(t *testing.T) {
 				CSV(header(true))
 			`,
 			ExpectCSV: []string{
-				"ID,TABLE,INDEX,GAP",
+				"INDEX_ID,TABLE_NAME,INDEX_NAME,GAP",
 				"", "",
 			},
 		},
@@ -606,7 +606,7 @@ func TestTqlSqlShowTags(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 1)
-				require.Equal(t, "ID,STATUS,DISK_GAP,MEMORY_GAP", lines[0])
+				require.Equal(t, "TABLE_ID,TABLE_NAME,STATUS,DISK_GAP,MEMORY_GAP", lines[0])
 			},
 		},
 		{

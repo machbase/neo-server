@@ -421,29 +421,30 @@ func TestShowTables(t *testing.T) {
 			expects: [][]any{},
 		},
 		{
+			name:    "ShowIndexGap",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowIndexGap(t.Context(), conn)) },
+			columns: []string{"INDEX_ID", "TABLE_NAME", "INDEX_NAME", "GAP"},
+			expects: [][]any{},
+		},
+		{
+			name:    "ShowTagIndexGap",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTagIndexGap(t.Context(), conn)) },
+			columns: []string{"TABLE_ID", "TABLE_NAME", "STATUS", "DISK_GAP", "MEMORY_GAP"},
+			expectFunc: func(values [][]any) {
+				row := values[0]
+				require.GreaterOrEqual(t, row[0], int64(1))
+				require.NotEmpty(t, row[1])
+				require.NotEmpty(t, row[2]) // "IDLE[0/0]"
+				require.GreaterOrEqual(t, row[3], int64(1))
+				require.GreaterOrEqual(t, row[4], int64(0))
+			},
+		},
+		{
 			name:    "QueryTags",
 			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTags(t.Context(), conn, "rs_data", "test1")) },
 			columns: []string{"_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"},
 			expects: [][]any{
 				{int64(1), "test1", int64(2), parseTime("2024-01-01 00:00:00"), parseTime("2024-01-02 00:00:00"), parseTime("2024-01-02 00:00:00"), float64(1), parseTime("2024-01-01 00:00:00"), float64(2), parseTime("2024-01-02 00:00:00")},
-			},
-		},
-		{
-			name:    "QueryIndexGap",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryIndexGap(t.Context(), conn)) },
-			columns: []string{"ID", "TABLE", "INDEX", "GAP"},
-			expects: [][]any{},
-		},
-		{
-			name:    "QueryTagIndexGap",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryTagIndexGap(t.Context(), conn)) },
-			columns: []string{"ID", "STATUS", "DISK_GAP", "MEMORY_GAP"},
-			expectFunc: func(values [][]any) {
-				row := values[0]
-				require.GreaterOrEqual(t, row[0], int64(1))
-				require.NotEmpty(t, "IDLE[0/0]")
-				require.GreaterOrEqual(t, row[2], int64(1))
-				require.GreaterOrEqual(t, row[3], int64(0))
 			},
 		},
 		{

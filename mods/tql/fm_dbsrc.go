@@ -684,7 +684,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryIndexGap(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowIndexGap(node.task.ctx, apiConn))
 		}
 	case "tagindexgap":
 		err = validateNoAll()
@@ -692,7 +692,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryTagIndexGap(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowTagIndexGap(node.task.ctx, apiConn))
 		}
 	case "rollupgap":
 		err = validateNoAll()

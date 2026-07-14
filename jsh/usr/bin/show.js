@@ -412,85 +412,24 @@ function showLsm(config, args) {
 }
 
 function showIndexGap(config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`select
-            c.id,
-            b.name as TABLE_NAME, 
-            c.name as INDEX_NAME, 
-            a.table_end_rid - a.end_rid as GAP
-        from
-            v$storage_dc_table_indexes a,
-            m$sys_tables b,
-            m$sys_indexes c
-        where
-            a.id = c.id 
-        and c.table_id = b.id 
-        order by 3 desc`);
-
-        let box = pretty.Table(config);
-        box.appendHeader(["ID", "TABLE", "INDEX", "GAP"]);
-        for (const row of rows) {
-            box.append([
-                row.id,
-                row.TABLE_NAME,
-                row.INDEX_NAME,
-                row.GAP
-            ]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        rows && rows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    config.columns = {
+        'INDEX_ID': { align: pretty.Align.right, alignHeader: pretty.Align.left },
+        'TABLE_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'INDEX_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
+    };
+    _show('indexgap', config);
 }
 
 function showTagIndexGap(config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`select 
-            t.NAME AS TABLE_NAME,
-            i.INDEX_STATE AS STATUS,
-            i.TABLE_END_RID - i.DISK_INDEX_END_RID AS DISK_GAP,
-            i.TABLE_END_RID - i.MEMORY_INDEX_END_RID AS MEMORY_GAP
-        from
-            M$SYS_TABLES t,
-            V$STORAGE_TAG_INDEX i
-        where
-            t.ID = i.TABLE_ID
-        order by id`);
-
-        let box = pretty.Table(config);
-        box.appendHeader(["TABLE_NAME", "STATUS", "DISK_GAP", "MEMORY_GAP"]); // tag table
-        box.setColumnConfigs([
-            { align: pretty.Align.left, alignHeader: pretty.Align.left },
-            { align: pretty.Align.left, alignHeader: pretty.Align.left },
-            { align: pretty.Align.right, alignHeader: pretty.Align.left },
-            { align: pretty.Align.right, alignHeader: pretty.Align.left }]);
-
-        for (const row of rows) {
-            box.append([
-                row.TABLE_NAME,
-                row.STATUS,
-                pretty.Ints(row.DISK_GAP),
-                pretty.Ints(row.MEMORY_GAP)
-            ]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        rows && rows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    config.columns = {
+        'TABLE_ID': { align: pretty.Align.right, alignHeader: pretty.Align.left },
+        'TABLE_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'STATUS': { align: pretty.Align.left, alignHeader: pretty.Align.left },
+        'DISK_GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
+        'MEMORY_GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
+    };
+    _show('tagindexgap', config);
 }
 
 function showRollupGap(config, args) {

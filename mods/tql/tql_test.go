@@ -234,8 +234,9 @@ func TestDatabaseTql(t *testing.T) {
 					return
 				}
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "TABLE", gjson.Get(result, "data.columns.1").String(), result)
+				require.Equal(t, "INDEX_ID", gjson.Get(result, "data.columns.0").String(), result)
+				require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
+				require.Equal(t, "INDEX_NAME", gjson.Get(result, "data.columns.2").String(), result)
 			},
 		},
 		{
@@ -246,8 +247,9 @@ func TestDatabaseTql(t *testing.T) {
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.1").String(), result)
+				require.Equal(t, "TABLE_ID", gjson.Get(result, "data.columns.0").String(), result)
+				require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
+				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.2").String(), result)
 			},
 		},
 		{
