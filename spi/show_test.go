@@ -415,8 +415,8 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			name:    "QueryLsmIndexes",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.QueryLsmIndexes(t.Context(), conn)) },
+			name:    "ShowLsm",
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLsm(t.Context(), conn)) },
 			columns: []string{"TABLE_NAME", "INDEX_NAME", "LEVEL", "COUNT"},
 			expects: [][]any{},
 		},

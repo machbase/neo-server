@@ -184,44 +184,6 @@ func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName str
 	return
 }
 
-type LsmIndexInfo struct {
-	TableName string `json:"table_name"`
-	IndexName string `json:"index_name"`
-	Level     int64  `json:"level"`
-	Count     int64  `json:"count"`
-	err       error  `json:"-"`
-}
-
-func ListLsmIndexesInfo(ctx context.Context, conn api.Conn) ([]*LsmIndexInfo, error) {
-	sqlText := `select 
-		b.name as TABLE_NAME,
-		c.name as INDEX_NAME,
-		a.level as LEVEL,
-		a.end_rid - a.begin_rid as COUNT
-	from
-		v$storage_dc_lsmindex_levels a,
-		m$sys_tables b, m$sys_indexes c
-	where
-		c.id = a.index_id 
-	and b.id = a.table_id
-	order by 1, 2, 3`
-	rows, err := conn.Query(ctx, sqlText)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var result []*LsmIndexInfo
-	for rows.Next() {
-		rec := &LsmIndexInfo{}
-		rec.err = rows.Scan(&rec.TableName, &rec.IndexName, &rec.Level, &rec.Count)
-		if rec.err != nil {
-			return nil, rec.err
-		}
-		result = append(result, rec)
-	}
-	return result, nil
-}
-
 type RollupGapInfo struct {
 	SrcTable     string        `json:"src_table"`
 	RollupTable  string        `json:"rollup_table"`

@@ -743,3 +743,68 @@ func ShowTableUsage(ctx context.Context, conn api.Conn) *ShowTableUsageResultSet
 	err = rows.Err()
 	return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
+
+type ShowLsmResultSet struct {
+	ResultSetBase
+	list []*LsmIndexInfo
+}
+
+type LsmIndexInfo struct {
+	TableName string `json:"table_name"`
+	IndexName string `json:"index_name"`
+	Level     int64  `json:"level"`
+	Count     int64  `json:"count"`
+}
+
+var _ ResultSet = (*ShowLsmResultSet)(nil)
+
+func (li *ShowLsmResultSet) Columns() api.Columns {
+	return api.Columns{
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "LEVEL", DataType: api.DataTypeInt64},
+		{Name: "COUNT", DataType: api.DataTypeInt64},
+	}
+}
+
+func (li *ShowLsmResultSet) Iter(callback func(values []interface{}) bool) {
+	for _, idx := range li.list {
+		cont := callback([]interface{}{
+			idx.TableName, idx.IndexName, idx.Level, idx.Count,
+		})
+		if !cont {
+			return
+		}
+	}
+}
+
+func ShowLsm(ctx context.Context, conn api.Conn) *ShowLsmResultSet {
+	sqlText := `select 
+		b.name as TABLE_NAME,
+		c.name as INDEX_NAME,
+		a.level as LEVEL,
+		a.end_rid - a.begin_rid as COUNT
+	from
+		v$storage_dc_lsmindex_levels a,
+		m$sys_tables b, m$sys_indexes c
+	where
+		c.id = a.index_id 
+	and b.id = a.table_id
+	order by 1, 2, 3`
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+	var list []*LsmIndexInfo
+	for rows.Next() {
+		rec := &LsmIndexInfo{}
+		err = rows.Scan(&rec.TableName, &rec.IndexName, &rec.Level, &rec.Count)
+		if err != nil {
+			return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, rec)
+	}
+	err = rows.Err()
+	return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
+}

@@ -32,38 +32,6 @@ func (rs *ResultSetBase) Message() string {
 	return rs.msg
 }
 
-type LsmIndexesResultSet struct {
-	ResultSetBase
-	list []*LsmIndexInfo
-}
-
-var _ ResultSet = (*LsmIndexesResultSet)(nil)
-
-func (li *LsmIndexesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "INDEX_NAME", DataType: api.DataTypeString},
-		{Name: "LEVEL", DataType: api.DataTypeInt64},
-		{Name: "COUNT", DataType: api.DataTypeInt64},
-	}
-}
-
-func (li *LsmIndexesResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, idx := range li.list {
-		cont := callback([]interface{}{
-			idx.TableName, idx.IndexName, idx.Level, idx.Count,
-		})
-		if !cont {
-			return
-		}
-	}
-}
-
-func QueryLsmIndexes(ctx context.Context, conn api.Conn) *LsmIndexesResultSet {
-	list, err := ListLsmIndexesInfo(ctx, conn)
-	return &LsmIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
-}
-
 type TagsResultSet struct {
 	ResultSetBase
 	conn      api.Conn

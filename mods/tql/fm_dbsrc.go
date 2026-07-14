@@ -668,7 +668,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.QueryLsmIndexes(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowLsm(node.task.ctx, apiConn))
 		}
 	case "tags":
 		err = validateNoAll()

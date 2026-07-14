@@ -174,7 +174,7 @@ const storageConfig = {
     func: showStorage,
     command: 'storage',
     usage: 'show storage',
-    description: 'Display storage statistics',
+    description: 'Show storage statistics',
     allowNegative: true,
     options: {
         help: optionHelp,
@@ -198,7 +198,7 @@ const lsmConfig = {
     func: showLsm,
     command: 'lsm',
     usage: 'show lsm',
-    description: 'Display LSM tree status',
+    description: 'Show LSM index status',
     allowNegative: true,
     options: {
         help: optionHelp,
@@ -305,11 +305,10 @@ function _show(line, config) {
             JSON(timeformat('DATETIME'), tz('Local'))
         `)
         .then((rsp) => {
-            if (!rsp || !rsp.data || !rsp.data.rows || rsp.data.rows.length === 0) {
-                console.println('No server info available');
+            if (!rsp || !rsp.data || !rsp.data.rows) {
+                console.println('Invalid response from server');
                 return;
             }
-            const nfo = rsp.data.rows[0];
             let box = pretty.Table(config);
             box.appendHeader(rsp.data.columns);
             box.setColumnTypes(rsp.data.types);
@@ -409,41 +408,7 @@ function showTableUsage(config, args) {
 }
 
 function showLsm(config, args) {
-    let db, conn, rows;
-    try {
-        db = newMachCliClient(config);
-        conn = db.connect();
-        rows = conn.query(`select 
-            b.name as TABLE_NAME,
-            c.name as INDEX_NAME,
-            a.level as LEVEL,
-            a.end_rid - a.begin_rid as COUNT
-        from
-            v$storage_dc_lsmindex_levels a,
-            m$sys_tables b, m$sys_indexes c
-        where
-            c.id = a.index_id 
-        and b.id = a.table_id
-        order by 1, 2, 3`);
-
-        let box = pretty.Table(config);
-        box.appendHeader(["TABLE_NAME", "INDEX_NAME", "LEVEL", "COUNT"]);
-        for (const row of rows) {
-            box.append([
-                row.TABLE_NAME,
-                row.INDEX_NAME,
-                row.LEVEL,
-                row.COUNT
-            ]);
-        }
-        console.println(box.render());
-    } catch (err) {
-        console.println("Error: ", err.message);
-    } finally {
-        rows && rows.close();
-        conn && conn.close();
-        db && db.close();
-    }
+    _show('lsm', config);
 }
 
 function showIndexGap(config, args) {
