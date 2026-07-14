@@ -139,6 +139,7 @@ const statementsConfig = {
     allowNegative: true,
     options: {
         help: optionHelp,
+        long: { type: 'boolean', short: 'l', description: 'Show full SQL statements', default: false },
         ...pretty.TableArgOptions,
     },
 };
@@ -394,6 +395,30 @@ function showSessions(config, args) {
 }
 
 function showStatements(config, args) {
+    let queryFormat;
+    if (config.long) {
+        queryFormat = (v) => v;
+    } else {
+        queryFormat = (v) => {
+            if (v == null) return '';
+            let s = String(v).replace(/\s+/g, ' ').trim();
+            if (s.length === 0) return '';
+
+            const maxLen = 72;
+            if (s.length <= maxLen) return s;
+
+            let cut = s.slice(0, maxLen);
+            const lastSpace = cut.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                cut = cut.slice(0, lastSpace);
+            }
+            return cut + '...';
+        }
+    }
+    config.columns = {
+        'RECORD_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) },
+        'QUERY': { align: pretty.Align.left, alignHeader: pretty.Align.left, formatter: queryFormat },
+    }
     _show('statements', config);
 }
 
