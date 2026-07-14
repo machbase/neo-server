@@ -404,8 +404,8 @@ func (s *Backupd) handleMount(ctx *gin.Context) {
 	defer conn.Close()
 
 	result := conn.Exec(ctx, sqlText)
-	if result.Err() != nil {
-		rsp["reason"] = result.Message()
+	if err := result.Err(); err != nil {
+		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
