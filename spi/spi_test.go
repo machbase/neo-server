@@ -332,15 +332,6 @@ func testDatabaseHelpers(t *testing.T) {
 	_, err = spi.QueryTableType(ctx, conn, "table_not_exists")
 	require.Error(t, err)
 
-	indexes, err := spi.ListIndexes(ctx, conn)
-	require.NoError(t, err)
-	require.NotEmpty(t, indexes)
-
-	// tags, err := spi.ListTags(ctx, conn, "tag_data", "NAME")
-	// require.NoError(t, err)
-	//require.Len(t, tags, 1)
-	//require.Equal(t, "tag1", tags[0].Name)
-
 	exists, truncated, err := spi.TruncateTableIfExists(ctx, conn, "table_not_exists", true)
 	require.NoError(t, err)
 	require.False(t, exists)

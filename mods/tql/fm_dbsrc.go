@@ -586,7 +586,6 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 		return err.Error()
 	}
 	defer conn.Close()
-	apiConn := spi.WrapSqlConn(conn)
 
 	switch command {
 	case "info":
@@ -634,17 +633,17 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 	case "meta-tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowMetaTables(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowMetaTables(node.task.ctx, conn))
 		}
 	case "virtual-tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowVirtualTables(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowVirtualTables(node.task.ctx, conn))
 		}
 	case "table":
 		err = validateArgs(command, 1)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTable(node.task.ctx, apiConn, args[0], showAll))
+			return yieldResultSet(node, spi.ShowTable(node.task.ctx, conn, args[0], showAll))
 		}
 	case "indexes":
 		err = validateNoAll()
@@ -652,7 +651,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndexes(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowIndexes(node.task.ctx, conn))
 		}
 	case "index":
 		err = validateNoAll()
@@ -660,7 +659,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 1)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndex(node.task.ctx, apiConn, args[0]))
+			return yieldResultSet(node, spi.ShowIndex(node.task.ctx, conn, args[0]))
 		}
 	case "lsm":
 		err = validateNoAll()
@@ -668,7 +667,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowLsm(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowLsm(node.task.ctx, conn))
 		}
 	case "tags":
 		err = validateNoAll()
@@ -676,7 +675,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTags(node.task.ctx, apiConn, args[0], args[1:]...))
+			return yieldResultSet(node, spi.ShowTags(node.task.ctx, conn, args[0], args[1:]...))
 		}
 	case "indexgap":
 		err = validateNoAll()
@@ -684,7 +683,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndexGap(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowIndexGap(node.task.ctx, conn))
 		}
 	case "tagindexgap":
 		err = validateNoAll()
@@ -692,7 +691,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTagIndexGap(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowTagIndexGap(node.task.ctx, conn))
 		}
 	case "rollupgap":
 		err = validateNoAll()
@@ -700,7 +699,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowRollupGap(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowRollupGap(node.task.ctx, conn))
 		}
 	case "sessions":
 		err = validateNoAll()
@@ -708,7 +707,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowSessions(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowSessions(node.task.ctx, conn))
 		}
 	case "statements":
 		err = validateNoAll()
@@ -716,7 +715,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowStatements(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowStatements(node.task.ctx, conn))
 		}
 	case "storage":
 		err = validateNoAll()
@@ -724,7 +723,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowStorage(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowStorage(node.task.ctx, conn))
 		}
 	case "table-usage":
 		err = validateNoAll()
@@ -732,7 +731,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTableUsage(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowTableUsage(node.task.ctx, conn))
 		}
 	default:
 		err = fmt.Errorf("f(SQL) unsupported show command %q", command)

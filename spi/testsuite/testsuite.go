@@ -36,7 +36,6 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		AppendTagNotExist,
 		AppendTagPartial,
 		ExistsTable,
-		Indexes,
 		Explain,
 		ExplainFull,
 		Columns,

@@ -298,7 +298,8 @@ func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowTable(ctx context.Context, conn api.Conn, tableName string, all bool) *ShowTableResultSet {
+func ShowTable(ctx context.Context, sqlConn *sql.Conn, tableName string, all bool) *ShowTableResultSet {
+	conn := WrapSqlConn(sqlConn)
 	desc, err := api.DescribeTable(ctx, conn, tableName, all)
 	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
 }
@@ -332,10 +333,10 @@ func (ti *ShowMetaTablesResultSet) Iter(callback func(values []interface{}) bool
 	}
 }
 
-func ShowMetaTables(ctx context.Context, conn api.Conn) *ShowMetaTablesResultSet {
+func ShowMetaTables(ctx context.Context, conn *sql.Conn) *ShowMetaTablesResultSet {
 	var list = []*TableInfo{}
 	var err error
-	rows, err := conn.Query(ctx, "SELECT ID, NAME, TYPE FROM M$TABLES ORDER BY ID")
+	rows, err := conn.QueryContext(ctx, "SELECT ID, NAME, TYPE FROM M$TABLES ORDER BY ID")
 	if err != nil {
 		return &ShowMetaTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -378,10 +379,10 @@ func (ti *ShowVirtualTablesResultSet) Iter(callback func(values []interface{}) b
 	}
 }
 
-func ShowVirtualTables(ctx context.Context, conn api.Conn) *ShowVirtualTablesResultSet {
+func ShowVirtualTables(ctx context.Context, conn *sql.Conn) *ShowVirtualTablesResultSet {
 	var list = []*TableInfo{}
 	var err error
-	rows, err := conn.Query(ctx, "SELECT ID, NAME, TYPE FROM V$TABLES ORDER BY ID")
+	rows, err := conn.QueryContext(ctx, "SELECT ID, NAME, TYPE FROM V$TABLES ORDER BY ID")
 	if err != nil {
 		return &ShowVirtualTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -422,10 +423,10 @@ func (sri *ShowSessionsResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowSessions(ctx context.Context, conn api.Conn) *ShowSessionsResultSet {
+func ShowSessions(ctx context.Context, conn *sql.Conn) *ShowSessionsResultSet {
 	ret := &ShowSessionsResultSet{}
 	func() {
-		rows, err := conn.Query(ctx, "SELECT ID, USER_ID, LOGIN_TIME, CLIENT_TYPE, USER_NAME, USER_IP, MAX_QPX_MEM FROM V$SESSION")
+		rows, err := conn.QueryContext(ctx, "SELECT ID, USER_ID, LOGIN_TIME, CLIENT_TYPE, USER_NAME, USER_IP, MAX_QPX_MEM FROM V$SESSION")
 		if err != nil {
 			ret.err = err
 			return
@@ -455,7 +456,7 @@ func ShowSessions(ctx context.Context, conn api.Conn) *ShowSessionsResultSet {
 		return ret
 	}
 	func() {
-		rows, err := conn.Query(ctx, "SELECT ID, USER_ID, USER_NAME FROM V$NEO_SESSION")
+		rows, err := conn.QueryContext(ctx, "SELECT ID, USER_ID, USER_NAME FROM V$NEO_SESSION")
 		if err != nil {
 			ret.err = err
 			return
@@ -522,8 +523,8 @@ func (sri *ShowStatementsResultSet) Iter(callback func(values []interface{}) boo
 	}
 }
 
-func ShowStatements(ctx context.Context, conn api.Conn) *ShowStatementsResultSet {
-	stmtRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
+func ShowStatements(ctx context.Context, conn *sql.Conn) *ShowStatementsResultSet {
+	stmtRows, err := conn.QueryContext(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
 	if err != nil {
 		return &ShowStatementsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -544,6 +545,21 @@ func ShowStatements(ctx context.Context, conn api.Conn) *ShowStatementsResultSet
 type ShowIndexesResultSet struct {
 	ResultSetBase
 	list []*IndexInfo
+}
+
+type IndexInfo struct {
+	Id             int64  `json:"id"`
+	Database       string `json:"database"`
+	DatabaseId     int64  `json:"database_id,omitempty"`
+	User           string `json:"user"`
+	TableName      string `json:"table_name"`
+	ColumnName     string `json:"column_name"`
+	IndexName      string `json:"index_name"`
+	IndexType      string `json:"index_type"`
+	KeyCompress    string `json:"key_compress"`
+	MaxLevel       int64  `json:"max_level"`
+	PartValueCount int64  `json:"part_value_count"`
+	BitMapEncode   string `json:"bitmap_encode"`
 }
 
 var _ ResultSet = (*ShowIndexesResultSet)(nil)
@@ -576,8 +592,81 @@ func (ii *ShowIndexesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowIndexes(ctx context.Context, conn api.Conn) *ShowIndexesResultSet {
-	list, err := ListIndexes(ctx, conn)
+func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
+	var listIndexesSql = SqlTidy(`
+		SELECT
+			u.name as USER_NAME,
+			j.DB_NAME as DATABASE_NAME,
+			j.TABLE_NAME as TABLE_NAME,
+			c.name as COLUMN_NAME,
+			b.name as INDEX_NAME,
+			b.id as INDEX_ID,
+			case b.type
+				when 1 then 'BITMAP'
+				when 2 then 'KEYWORD'
+				when 5 then 'REDBLACK'
+				when 6 then 'LSM'
+				when 8 then 'REDBLACK'
+				when 9 then 'KEYWORD_LSM'
+				when 11 then 'TAG'
+				else 'LSM' 
+			end as INDEX_TYPE,
+			case b.key_compress
+				when 0 then 'UNCOMPRESS'
+				else 'COMPRESSED'
+			end as KEY_COMPRESS,
+			b.max_level as MAX_LEVEL,
+			b.part_value_count as PART_VALUE_COUNT,
+			case b.bitmap_encode
+				when 0 then 'EQUAL'
+				else 'RANGE'
+			end as BITMAP_ENCODE
+		FROM
+			m$sys_indexes b, 
+			m$sys_index_columns c, 
+			m$sys_users u,
+			(
+				select
+					case a.DATABASE_ID
+						when -1 then 'MACHBASEDB'
+						else d.MOUNTDB
+					end as DB_NAME,
+					a.name as TABLE_NAME,
+					a.id as TABLE_ID,
+					a.USER_ID as USER_ID
+				from
+					M$SYS_TABLES a
+				left join
+					V$STORAGE_MOUNT_DATABASES d
+				on
+					a.DATABASE_ID = d.BACKUP_TBSID
+			) as j
+		WHERE
+			j.TABLE_ID = b.TABLE_ID
+		AND b.ID = c.INDEX_ID
+		AND j.USER_ID = u.USER_ID
+		ORDER BY
+			j.DB_NAME, j.TABLE_NAME, b.ID
+	`)
+	rows, err := conn.QueryContext(ctx, listIndexesSql)
+	if err != nil {
+		return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	defer rows.Close()
+
+	list := []*IndexInfo{}
+	for rows.Next() {
+		nfo := &IndexInfo{}
+		err = rows.Scan(
+			&nfo.User, &nfo.Database, &nfo.TableName, &nfo.ColumnName,
+			&nfo.IndexName, &nfo.Id, &nfo.IndexType, &nfo.KeyCompress,
+			&nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
+		if err != nil {
+			return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		list = append(list, nfo)
+	}
+	err = rows.Err()
 	return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
@@ -622,9 +711,47 @@ func (qir *ShowIndexResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowIndex(ctx context.Context, conn api.Conn, indexName string) *ShowIndexResultSet {
-	idx, err := DescribeIndex(ctx, conn, indexName)
-	return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: idx}
+func ShowIndex(ctx context.Context, conn *sql.Conn, indexName string) *ShowIndexResultSet {
+	sqlText := `select 
+			a.name as TABLE_NAME,
+			c.name as COLUMN_NAME,
+			b.name as INDEX_NAME,
+			case b.type
+				when 1 then 'BITMAP'
+				when 2 then 'KEYWORD'
+				when 5 then 'REDBLACK'
+				when 6 then 'LSM'
+				when 8 then 'REDBLACK'
+				when 9 then 'KEYWORD_LSM'
+				else 'LSM' end 
+			as INDEX_TYPE,
+			case b.key_compress
+				when 0 then 'UNCOMPRESSED'
+				else 'COMPRESSED' end 
+			as KEY_COMPRESS,
+			b.max_level as MAX_LEVEL,
+			b.part_value_count as PART_VALUE_COUNT,
+			case b.bitmap_encode
+				when 0 then 'EQUAL'
+				else 'RANGE' end 
+			as BITMAP_ENCODE
+		from
+			m$sys_tables a,
+			m$sys_indexes b,
+			m$sys_index_columns c
+		where
+			a.id = b.table_id 
+		and b.id = c.index_id
+		and b.name = ?`
+	row := conn.QueryRowContext(ctx, sqlText, strings.ToUpper(indexName))
+	if err := row.Err(); err != nil {
+		return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	nfo := &IndexInfo{}
+	err := row.Scan(
+		&nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType,
+		&nfo.KeyCompress, &nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
+	return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: nfo}
 }
 
 type ShowStorageResultSet struct {
@@ -658,7 +785,7 @@ func (sui *ShowStorageResultSet) Iter(callback func(values []interface{}) bool) 
 	}
 }
 
-func ShowStorage(ctx context.Context, conn api.Conn) *ShowStorageResultSet {
+func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
 	sqlText := SqlTidy(`select
 		a.table_name as TABLE_NAME,
 		a.data_size as DATA_SIZE,
@@ -691,7 +818,7 @@ func ShowStorage(ctx context.Context, conn api.Conn) *ShowStorageResultSet {
 	on a.table_name = b.name
 	order by a.table_name`)
 
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -741,7 +868,7 @@ func (tui *ShowTableUsageResultSet) Iter(callback func(values []interface{}) boo
 	}
 }
 
-func ShowTableUsage(ctx context.Context, conn api.Conn) *ShowTableUsageResultSet {
+func ShowTableUsage(ctx context.Context, conn *sql.Conn) *ShowTableUsageResultSet {
 	sqlText := SqlTidy(`
 		SELECT
 			j.DATABASE_NAME as DATABASE_NAME,
@@ -778,7 +905,7 @@ func ShowTableUsage(ctx context.Context, conn api.Conn) *ShowTableUsageResultSet
 		ORDER BY j.DATABASE_ID, u.USER_ID, s.ID
 	`)
 
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -831,7 +958,7 @@ func (li *ShowLsmResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowLsm(ctx context.Context, conn api.Conn) *ShowLsmResultSet {
+func ShowLsm(ctx context.Context, conn *sql.Conn) *ShowLsmResultSet {
 	sqlText := `select 
 		b.name as TABLE_NAME,
 		c.name as INDEX_NAME,
@@ -844,7 +971,7 @@ func ShowLsm(ctx context.Context, conn api.Conn) *ShowLsmResultSet {
 		c.id = a.index_id 
 	and b.id = a.table_id
 	order by 1, 2, 3`
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -896,7 +1023,7 @@ func (igi *ShowIndexGapResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowIndexGap(ctx context.Context, conn api.Conn) *ShowIndexGapResultSet {
+func ShowIndexGap(ctx context.Context, conn *sql.Conn) *ShowIndexGapResultSet {
 	sqlText := SqlTidy(`select
 		c.id,
 		b.name as TABLE_NAME, 
@@ -911,7 +1038,7 @@ func ShowIndexGap(ctx context.Context, conn api.Conn) *ShowIndexGapResultSet {
 	and c.table_id = b.id 
 	order by 3 desc`)
 
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &ShowIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -966,7 +1093,7 @@ func (tigi *TagIndexGapResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
+func ShowTagIndexGap(ctx context.Context, conn *sql.Conn) *TagIndexGapResultSet {
 	sqlText := SqlTidy(`SELECT
 			t.ID AS ID,
             t.NAME AS TABLE_NAME,
@@ -980,7 +1107,7 @@ func ShowTagIndexGap(ctx context.Context, conn api.Conn) *TagIndexGapResultSet {
             t.ID = i.TABLE_ID
         order by id`)
 
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1049,7 +1176,7 @@ func (rgi *ShowRollupGapResultSet) Iter(callback func(values []interface{}) bool
 	}
 }
 
-func ShowRollupGap(ctx context.Context, conn api.Conn) *ShowRollupGapResultSet {
+func ShowRollupGap(ctx context.Context, conn *sql.Conn) *ShowRollupGapResultSet {
 	sqlText := SqlTidy(`SELECT
             U.NAME AS USER_NAME,
             C.ROLLUP_NAME AS ROLLUP_NAME,
@@ -1077,7 +1204,7 @@ func ShowRollupGap(ctx context.Context, conn api.Conn) *ShowRollupGapResultSet {
         AND B.TABLE_END_RID <> 0
         ORDER BY U.USER_ID, SRC_TABLE`)
 
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1167,7 +1294,9 @@ func (tr *ShowTagsResultSet) Iter(callback func(values []interface{}) bool) {
 	})
 }
 
-func ShowTags(ctx context.Context, conn api.Conn, tableName string, tagNames ...string) *ShowTagsResultSet {
+func ShowTags(ctx context.Context, sqlConn *sql.Conn, tableName string, tagNames ...string) *ShowTagsResultSet {
+	conn := WrapSqlConn(sqlConn)
+
 	tableName = strings.ToUpper(tableName)
 	desc, err := api.DescribeTable(ctx, conn, tableName, false)
 	if err != nil {
