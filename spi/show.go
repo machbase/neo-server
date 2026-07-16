@@ -2,6 +2,7 @@ package spi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -110,7 +111,7 @@ func (li *LicenseResultSet) Iter(callback func(values []interface{}) bool) {
 	})
 }
 
-func ShowLicense(ctx context.Context, conn api.Conn) *LicenseResultSet {
+func ShowLicense(ctx context.Context, conn *sql.Conn) *LicenseResultSet {
 	licenseInfo, err := GetLicenseInfo(ctx, conn)
 	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
 }
@@ -189,8 +190,8 @@ func (si *ShowUsersResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowUsers(ctx context.Context, conn api.Conn) *ShowUsersResultSet {
-	rows, err := conn.Query(ctx, "SELECT USER_ID, NAME FROM M$SYS_USERS ORDER BY USER_ID")
+func ShowUsers(ctx context.Context, conn *sql.Conn) *ShowUsersResultSet {
+	rows, err := conn.QueryContext(ctx, "SELECT USER_ID, NAME FROM M$SYS_USERS ORDER BY USER_ID")
 	if err != nil {
 		return &ShowUsersResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -236,10 +237,10 @@ func (ti *ShowTablesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowTables(ctx context.Context, conn api.Conn, showAll bool) *ShowTablesResultSet {
+func ShowTables(ctx context.Context, conn *sql.Conn, showAll bool) *ShowTablesResultSet {
 	var list = []*TableInfo{}
 	var err error
-	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo) bool {
+	ListTablesWalkSql(ctx, conn, showAll, func(t *TableInfo) bool {
 		if err = t.Err(); err != nil {
 			return false
 		}

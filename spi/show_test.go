@@ -125,7 +125,7 @@ func TestShowLicense(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowLicense",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), fixture.dbConn)) },
 			columns: []string{"ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", "ISSUE_DATE", "STATUS"},
 			expectFunc: func(values [][]any) {
 				row := values[0]
@@ -176,7 +176,7 @@ func TestShowUsers(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowUsers",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.dbConn)) },
 			columns: []string{"USER_ID", "NAME"},
 			expects: [][]any{
 				{int64(1), "SYS"},
@@ -314,7 +314,7 @@ func TestShowTables(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowTables",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), conn, false)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), fixture.dbConn, false)) },
 			columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
 			expects: [][]any{
 				{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},
@@ -322,7 +322,7 @@ func TestShowTables(t *testing.T) {
 		},
 		{
 			name:    "ShowTables_all",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), conn, true)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), fixture.dbConn, true)) },
 			columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
 			expects: [][]any{
 				{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},

@@ -603,7 +603,7 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowLicense(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowLicense(node.task.ctx, conn))
 		}
 	case "ports":
 		err = validateNoAll()
@@ -624,12 +624,12 @@ func sqlShow(node *Node, dbProvider DatabaseProvider, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowUsers(node.task.ctx, apiConn))
+			return yieldResultSet(node, spi.ShowUsers(node.task.ctx, conn))
 		}
 	case "tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTables(node.task.ctx, apiConn, showAll))
+			return yieldResultSet(node, spi.ShowTables(node.task.ctx, conn, showAll))
 		}
 	case "meta-tables":
 		err = validateArgs(command, 0)

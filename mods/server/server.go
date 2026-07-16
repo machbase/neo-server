@@ -833,7 +833,7 @@ func (s *Server) checkAndInstallLicense() error {
 		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+			conn, err := getPoolSqlConn(ctx)
 			if err != nil {
 				s.log.Error("ERR", err.Error())
 				return err

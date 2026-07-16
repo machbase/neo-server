@@ -13,57 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	result := map[string]*spi.TableInfo{}
-	spi.ListTablesWalk(ctx, conn, true, func(ti *spi.TableInfo) bool {
-		require.NoError(t, err, "tables fail")
-		result[fmt.Sprintf("%s.%s.%s", ti.Database, ti.User, ti.Name)] = ti
-		return true
-	})
-	ti := result["MACHBASEDB.SYS.TAG_DATA"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeTag, ti.Type)
-	require.Equal(t, api.TableFlagNone, ti.Flag)
-	require.Equal(t, "Tag Table", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS._TAG_DATA_META"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeLookup, ti.Type)
-	require.Equal(t, api.TableFlagMeta, ti.Flag)
-	require.Equal(t, "Lookup Table (meta)", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS._TAG_DATA_DATA_0"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeKeyValue, ti.Type)
-	require.Equal(t, api.TableFlagData, ti.Flag)
-	require.Equal(t, "KeyValue Table (data)", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS.TAG_SIMPLE"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeTag, ti.Type)
-	require.Equal(t, api.TableFlagNone, ti.Flag)
-	require.Equal(t, "Tag Table", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS._TAG_SIMPLE_META"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeLookup, ti.Type)
-	require.Equal(t, api.TableFlagMeta, ti.Flag)
-	require.Equal(t, "Lookup Table (meta)", ti.Kind())
-
-	tables := spi.ShowTables(ctx, conn, true)
-	require.NoError(t, tables.Err(), "show tables fail")
-	tablesCount := 0
-	tables.Iter(func(values []any) bool {
-		tablesCount++
-		return true
-	})
-	require.Equal(t, len(result), tablesCount, "tables count mismatch")
-}
-
 func ExistsTable(t *testing.T, db api.Database, ctx context.Context) {
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")

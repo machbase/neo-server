@@ -2,6 +2,7 @@ package spi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -146,31 +147,37 @@ type LicenseInfo struct {
 	LicenseStatus string `json:"licenseStatus,omitempty"`
 }
 
-func GetLicenseInfo(ctx context.Context, conn api.Conn) (*LicenseInfo, error) {
+func GetLicenseInfo(ctx context.Context, conn *sql.Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	var violateStatus int
-	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
-	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate, &violateStatus, &ret.LicenseStatus); err != nil {
+	var violateMsg sql.NullString
+	row := conn.QueryRowContext(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
+	if err := row.Err(); err != nil {
+		return nil, err
+	}
+	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate, &violateStatus, &violateMsg); err != nil {
 		return nil, err
 	}
 	if violateStatus == 0 {
 		ret.LicenseStatus = "Valid"
+	} else if violateMsg.Valid {
+		ret.LicenseStatus = violateMsg.String
 	}
 	return ret, nil
 }
 
-func InstallLicenseFile(ctx context.Context, conn api.Conn, path string) (*LicenseInfo, error) {
+func InstallLicenseFile(ctx context.Context, conn *sql.Conn, path string) (*LicenseInfo, error) {
 	if strings.ContainsRune(path, ';') {
 		return nil, errors.New("invalid license file path")
 	}
-	result := conn.Exec(ctx, "alter system install license='"+path+"'")
-	if result.Err() != nil {
-		return nil, result.Err()
+	_, err := conn.ExecContext(ctx, "alter system install license='"+path+"'")
+	if err != nil {
+		return nil, err
 	}
 	return GetLicenseInfo(ctx, conn)
 }
 
-func InstallLicenseData(ctx context.Context, conn api.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
+func InstallLicenseData(ctx context.Context, conn *sql.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
 	_, err := os.Stat(licenseFilePath)
 	if err == nil {
 		// backup existing file
@@ -292,6 +299,24 @@ func ListTablesSql(showAll bool, descriptiveType bool) string {
 func ListTablesWalk(ctx context.Context, conn api.Conn, showAll bool, callback func(*TableInfo) bool) {
 	sqlText := ListTablesSql(showAll, false)
 	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		callback(&TableInfo{err: err})
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		ti := &TableInfo{}
+		ti.err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if !callback(ti) {
+			return
+		}
+	}
+}
+
+func ListTablesWalkSql(ctx context.Context, conn *sql.Conn, showAll bool, callback func(*TableInfo) bool) {
+	sqlText := ListTablesSql(showAll, false)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		callback(&TableInfo{err: err})
 		return
