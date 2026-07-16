@@ -412,7 +412,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 		},
 	}
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := svr.getUserSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -420,9 +420,9 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	spi.ListTablesWalk(ctx, conn, showAll, func(ti *spi.TableInfo) bool {
-		if ti.Err() != nil {
-			rsp.Success, rsp.Reason = false, ti.Err().Error()
+	spi.ListTablesWalk(ctx, conn, showAll, func(ti *spi.TableInfo, err error) bool {
+		if err != nil {
+			rsp.Success, rsp.Reason = false, err.Error()
 			return false
 		}
 		if nameFilter != "" {

@@ -247,9 +247,8 @@ func TestInfoValueObjects(t *testing.T) {
 			require.Equal(t, tc.expect, tc.info.Kind())
 		}
 
-		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: api.TableTypeLookup, Flag: api.TableFlagRollup, err: errors.New("table err")}
+		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: api.TableTypeLookup, Flag: api.TableFlagRollup}
 		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
-		require.EqualError(t, info.Err(), "table err")
 	})
 }
 

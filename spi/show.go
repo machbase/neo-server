@@ -240,8 +240,8 @@ func (ti *ShowTablesResultSet) Iter(callback func(values []interface{}) bool) {
 func ShowTables(ctx context.Context, conn *sql.Conn, showAll bool) *ShowTablesResultSet {
 	var list = []*TableInfo{}
 	var err error
-	ListTablesWalkSql(ctx, conn, showAll, func(t *TableInfo) bool {
-		if err = t.Err(); err != nil {
+	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo, err error) bool {
+		if err != nil {
 			return false
 		}
 		list = append(list, t)

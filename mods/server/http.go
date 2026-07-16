@@ -397,9 +397,7 @@ func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
 func (svr *httpd) getUserSqlConn(ctx *gin.Context) (*sql.Conn, error) {
 	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {
-		// return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
-	} else {
-		//return nil, errors.New("unauthorized db request")
+		return spi.Connect(ctx, claim.Subject)
 	}
 	return nil, errors.New("unauthorized db request")
 }

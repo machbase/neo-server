@@ -196,7 +196,6 @@ type TableInfo struct {
 	Id       int64         `json:"id"`             // M$SYS_TABLES.ID
 	Type     api.TableType `json:"type"`           // M$SYS_TABLES.TYPE
 	Flag     api.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
-	err      error         `json:"-"`
 }
 
 func (ti *TableInfo) Kind() string {
@@ -228,10 +227,6 @@ func (ti *TableInfo) Kind() string {
 	return desc
 }
 
-func (ti *TableInfo) Err() error {
-	return ti.err
-}
-
 func (ti *TableInfo) Values() []interface{} {
 	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
 }
@@ -243,8 +238,9 @@ func ifThenElse(cond bool, a, b string) string {
 	return b
 }
 
-func ListTablesSql(showAll bool, descriptiveType bool) string {
-	return SqlTidy(
+func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback func(*TableInfo, error) bool) {
+	descriptiveType := false
+	sqlText := SqlTidy(
 		`SELECT
 			j.DB_NAME as DATABASE_NAME,
 			u.NAME as USER_NAME,
@@ -294,41 +290,22 @@ func ListTablesSql(showAll bool, descriptiveType bool) string {
 			u.USER_ID = j.USER_ID`,
 		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'"),
 		`ORDER by j.NAME`)
-}
-
-func ListTablesWalk(ctx context.Context, conn api.Conn, showAll bool, callback func(*TableInfo) bool) {
-	sqlText := ListTablesSql(showAll, false)
-	rows, err := conn.Query(ctx, sqlText)
-	if err != nil {
-		callback(&TableInfo{err: err})
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		ti := &TableInfo{}
-		ti.err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
-		if !callback(ti) {
-			return
-		}
-	}
-}
-
-func ListTablesWalkSql(ctx context.Context, conn *sql.Conn, showAll bool, callback func(*TableInfo) bool) {
-	sqlText := ListTablesSql(showAll, false)
 	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
-		callback(&TableInfo{err: err})
+		callback(nil, err)
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		ti := &TableInfo{}
-		ti.err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
-		if !callback(ti) {
+		err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if !callback(ti, err) {
 			return
 		}
+	}
+	if err := rows.Err(); err != nil {
+		callback(nil, err)
 	}
 }
 

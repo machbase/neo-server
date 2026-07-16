@@ -1653,11 +1653,11 @@ func TestHttpTables(t *testing.T) {
 			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/tables"+tc.queryParam, nil)
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 			rsp, err := http.DefaultClient.Do(req)
-			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, rsp.StatusCode)
-			require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
 			result, _ := io.ReadAll(rsp.Body)
 			rsp.Body.Close()
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(result))
+			require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
 
 			resultObj := map[string]any{}
 			err = json.Unmarshal(result, &resultObj)
