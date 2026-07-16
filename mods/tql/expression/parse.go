@@ -150,7 +150,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 		}
 		if character == '`' {
 			kind = STRING
-			tokenValue = readStringUntilBacktick(stream)
+			tokenValue = readBacktickString(stream)
 			break
 		}
 
@@ -320,6 +320,79 @@ func readStringUntilBacktick(stream *lexerStream) string {
 	return tokenBuffer.String()
 }
 
+func readBacktickString(stream *lexerStream) string {
+	if tagged, ok := readTaggedBacktickString(stream); ok {
+		return tagged
+	}
+	return readStringUntilBacktick(stream)
+}
+
+func readTaggedBacktickString(stream *lexerStream) (string, bool) {
+	originalPos := stream.position
+	if stream.position+1 >= stream.length {
+		return "", false
+	}
+	if stream.source[stream.position] != '<' || stream.source[stream.position+1] != '<' {
+		return "", false
+	}
+
+	// consume "<<"
+	stream.position += 2
+	tagLineStart := stream.position
+	for stream.canRead() {
+		if stream.readCharacter() == '\n' {
+			break
+		}
+	}
+	if stream.position <= tagLineStart || stream.source[stream.position-1] != '\n' {
+		stream.position = originalPos
+		return "", false
+	}
+	tagLineEnd := stream.position - 1
+	if tagLineEnd > tagLineStart && stream.source[tagLineEnd-1] == '\r' {
+		tagLineEnd--
+	}
+	tag := strings.TrimSpace(string(stream.source[tagLineStart:tagLineEnd]))
+	if !isTaggedBlockTag(tag) {
+		stream.position = originalPos
+		return "", false
+	}
+
+	var body bytes.Buffer
+	for stream.canRead() {
+		lineStart := stream.position
+		for stream.canRead() {
+			if stream.readCharacter() == '\n' {
+				break
+			}
+		}
+
+		lineEnd := stream.position
+		hasNewline := false
+		if lineEnd > lineStart && stream.source[lineEnd-1] == '\n' {
+			hasNewline = true
+			lineEnd--
+		}
+		if lineEnd > lineStart && stream.source[lineEnd-1] == '\r' {
+			lineEnd--
+		}
+
+		if closeAfterBacktick, ok := matchTaggedBacktickCloser(stream.source, lineStart, lineEnd, tag); ok {
+			stream.position = closeAfterBacktick
+			return body.String(), true
+		}
+
+		body.WriteString(string(stream.source[lineStart:lineEnd]))
+		if hasNewline {
+			body.WriteRune('\n')
+		}
+	}
+
+	// Keep tagged mode even when closer is not yet present so multi-line
+	// callers can continue accumulating input without premature token errors.
+	return body.String(), true
+}
+
 func readStringUntilEndOfLine(stream *lexerStream) {
 	for stream.canRead() {
 		character := stream.readCharacter()
@@ -330,6 +403,14 @@ func readStringUntilEndOfLine(stream *lexerStream) {
 }
 
 func readBlock(stream *lexerStream) string {
+	if tagged, ok := readTaggedBlock(stream); ok {
+		return tagged
+	}
+
+	return readNestedBraceBlock(stream)
+}
+
+func readNestedBraceBlock(stream *lexerStream) string {
 	var tokenBuffer bytes.Buffer
 	var character rune
 	var depth = 1
@@ -350,6 +431,159 @@ func readBlock(stream *lexerStream) string {
 		}
 	}
 	return tokenBuffer.String()
+}
+
+func readTaggedBlock(stream *lexerStream) (string, bool) {
+	originalPos := stream.position
+	if stream.position+1 >= stream.length {
+		return "", false
+	}
+	if stream.source[stream.position] != '<' || stream.source[stream.position+1] != '<' {
+		return "", false
+	}
+
+	// consume "<<"
+	stream.position += 2
+	tagLineStart := stream.position
+	for stream.canRead() {
+		if stream.readCharacter() == '\n' {
+			break
+		}
+	}
+	if stream.position <= tagLineStart || stream.source[stream.position-1] != '\n' {
+		stream.position = originalPos
+		return "", false
+	}
+	tagLineEnd := stream.position - 1
+	if tagLineEnd > tagLineStart && stream.source[tagLineEnd-1] == '\r' {
+		tagLineEnd--
+	}
+	tag := strings.TrimSpace(string(stream.source[tagLineStart:tagLineEnd]))
+	if !isTaggedBlockTag(tag) {
+		stream.position = originalPos
+		return "", false
+	}
+
+	var body bytes.Buffer
+	for stream.canRead() {
+		lineStart := stream.position
+		for stream.canRead() {
+			if stream.readCharacter() == '\n' {
+				break
+			}
+		}
+
+		lineEnd := stream.position
+		hasNewline := false
+		if lineEnd > lineStart && stream.source[lineEnd-1] == '\n' {
+			hasNewline = true
+			lineEnd--
+		}
+		if lineEnd > lineStart && stream.source[lineEnd-1] == '\r' {
+			lineEnd--
+		}
+
+		if closeAfterBrace, ok := matchTaggedBlockCloser(stream.source, lineStart, lineEnd, tag); ok {
+			stream.position = closeAfterBrace
+			return body.String(), true
+		}
+
+		body.WriteString(string(stream.source[lineStart:lineEnd]))
+		if hasNewline {
+			body.WriteRune('\n')
+		}
+	}
+
+	stream.position = originalPos
+	return "", false
+}
+
+func isTaggedBlockTag(tag string) bool {
+	if len(tag) == 0 {
+		return false
+	}
+	for i, r := range tag {
+		if i == 0 {
+			if !(unicode.IsLetter(r) || r == '_') {
+				return false
+			}
+			continue
+		}
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func matchTaggedBlockCloser(source []rune, lineStart int, lineEnd int, tag string) (int, bool) {
+	i := lineStart
+	for i < lineEnd && (source[i] == ' ' || source[i] == '\t') {
+		i++
+	}
+
+	tagRunes := []rune(tag)
+	if i+len(tagRunes) > lineEnd {
+		return 0, false
+	}
+	for _, r := range tagRunes {
+		if source[i] != r {
+			return 0, false
+		}
+		i++
+	}
+
+	for i < lineEnd && (source[i] == ' ' || source[i] == '\t') {
+		i++
+	}
+	if i >= lineEnd || source[i] != '}' {
+		return 0, false
+	}
+	bracePos := i
+	i++
+	if i >= lineEnd || source[i] != ')' {
+		return 0, false
+	}
+	i++
+
+	for i < lineEnd && (source[i] == ' ' || source[i] == '\t') {
+		i++
+	}
+	if i != lineEnd {
+		return 0, false
+	}
+
+	// Keep ')' unread so the caller can lex it as CLAUSE_CLOSE token.
+	return bracePos + 1, true
+}
+
+func matchTaggedBacktickCloser(source []rune, lineStart int, lineEnd int, tag string) (int, bool) {
+	i := lineStart
+	for i < lineEnd && (source[i] == ' ' || source[i] == '\t') {
+		i++
+	}
+
+	tagRunes := []rune(tag)
+	if i+len(tagRunes) > lineEnd {
+		return 0, false
+	}
+	for _, r := range tagRunes {
+		if source[i] != r {
+			return 0, false
+		}
+		i++
+	}
+
+	for i < lineEnd && (source[i] == ' ' || source[i] == '\t') {
+		i++
+	}
+	if i >= lineEnd || source[i] != '`' {
+		return 0, false
+	}
+	backtickPos := i
+
+	// Consume closing backtick to finish string token.
+	return backtickPos + 1, true
 }
 
 func readTokenUntilFalse(stream *lexerStream, condition func(rune) bool) string {
