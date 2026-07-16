@@ -1032,6 +1032,36 @@ func TestTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "CSV_payload_MAPVALUE_MARKDOWN_TEMPLATE",
+			Script: `
+				CSV(payload(), header(false))
+				MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
+				MARKDOWN({
+{{ if .IsFirst }}## demo
+{{ end }}{{ .Value 0 }},{{ .Value 2 }}
+{{ if .IsLast }}--------
+{{ end }}
+				})
+				`,
+			Payload: strings.Join([]string{
+				`NAME,TIME,VALUE,BOOL`,
+				`wave.sin,1676432361,0.000000,true`,
+				`wave.cos,1676432361,1.0000000,false`,
+				`wave.sin,1676432362,0.406736,true`,
+				`wave.cos,1676432362,0.913546,false`,
+				`wave.sin,1676432363,0.743144,true`,
+			}, "\n") + "\n",
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Contains(t, result, "## demo")
+				require.Contains(t, result, "NAME,VALUE")
+				require.Contains(t, result, "wave.sin,0")
+				require.Contains(t, result, "wave.cos,10")
+				require.Contains(t, result, "wave.sin,4.067")
+				require.Contains(t, result, "wave.cos,9.135")
+				require.Contains(t, result, "--------")
+			},
+		},
+		{
 			Name: "CSV_MARKDOWN",
 			Script: `
 				CSV(payload(), header(true))
