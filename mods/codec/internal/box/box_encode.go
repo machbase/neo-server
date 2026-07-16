@@ -41,7 +41,10 @@ func NewEncoder() *Exporter {
 		separateColumns: true,
 		drawBorder:      true,
 		precision:       -1,
+		heading:         true,
 		showTz:          true,
+		timeformat:      "ns",
+		tz:              "Local",
 		timeformatter:   util.NewTimeFormatter(),
 		binaryFormatter: util.NewBinaryFormatter("preview"),
 	}
@@ -178,10 +181,6 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
 	for i, r := range values {
-		if r == nil {
-			cols[i] = strNULL
-			continue
-		}
 		switch v := api.Unbox(r).(type) {
 		case string:
 			cols[i] = v
@@ -208,7 +207,14 @@ func (ex *Exporter) AddRow(values []any) error {
 		case api.JSONString:
 			cols[i] = string(v)
 		default:
-			cols[i] = fmt.Sprintf("%T", r)
+			if v == nil {
+				cols[i] = nil
+			} else {
+				cols[i] = fmt.Sprintf("%v(%T)", r, r)
+			}
+		}
+		if cols[i] == nil {
+			cols[i] = strNULL
 		}
 	}
 

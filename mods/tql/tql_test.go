@@ -377,6 +377,23 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "SQL_select-from-table-rownum_BOX",
+			Script: `
+				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
+				PUSHKEY('test')
+				BOX( precision(3), header(true) )
+				`,
+			ExpectText: []string{
+				"+--------+---------------------+-------+",
+				"| ROWNUM | TIME                | VALUE |",
+				"+--------+---------------------+-------+",
+				"| 1      | 1692686707380411000 | 0.100 |",
+				"| 2      | 1692686708380411000 | 0.200 |",
+				"+--------+---------------------+-------+",
+				"",
+			},
+		},
+		{
 			Name: "SQL_map-select",
 			Script: `
 				FAKE(json({["tag1"]}))

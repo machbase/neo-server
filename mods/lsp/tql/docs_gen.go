@@ -30,6 +30,19 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 		Markdown: "# ARGS\n\n## Kind\n\nstatement source\n\n## Category\n\ncontext source\n\n## Signatures\n\n```text\nARGS()\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| none | no | no | none | none |\n\n## Description\n\n`ARGS()` generates one record from values passed by a parent TQL flow. It is intended as the source of a sub-flow inside `WHEN(..., do(..., { ... }))`.\n\n## Examples\n\n### Use parent flow arguments\n\n```js\nFAKE(json({ [1, 'hello'], [2, 'world'] }))\nWHEN(value(0) == 2, do(value(0), strToUpper(value(1)), {\n    ARGS()\n    WHEN(true, doLog('OUTPUT:', value(0), value(1)))\n    DISCARD()\n}))\nCSV()\n```\n\n## Related\n\nargs, WHEN, do, doLog, DISCARD",
 		Related: []string{"args", "WHEN", "do", "doLog", "DISCARD"},
 	},
+	"BOX": {
+		Label: "BOX",
+		Kind: "statement map",
+		Category: "encoder",
+		Signatures: []tqlDocSignature{
+			{Label: "BOX(...)"},
+		},
+		Slots: []tqlDocSlot{
+			{Name: "args", Required: false, Repeat: true, Accepts: "expression"},
+		},
+		Description: "TODO",
+		Markdown: "# BOX\n\n## Kind\n\nstatement map\n\n## Category\n\nencoder\n\n## Signatures\n\n```text\nBOX(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nBOX()\n```\n\n## Related\n\nTODO",
+	},
 	"BOXPLOT": {
 		Label: "BOXPLOT",
 		Kind: "statement map",
