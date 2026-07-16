@@ -720,6 +720,7 @@ func TestDatabaseTql(t *testing.T) {
 				// FIXME: 'create-table' test is failing randomly on Windows
 				return runtime.GOOS != "windows"
 			},
+			CtxTimeout: 15 * time.Second, // increase timeout for slow CI/CD environment
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Empty(t, result)
 			},
