@@ -37,6 +37,13 @@ func TestMain(m *testing.M) {
 
 	db := testServer.DatabaseGO()
 	spi.SetDefault(db, testServer.DatabaseKey())
+	spi.SetDefaultDSN(map[string]string{
+		"host":            "127.0.0.1",
+		"port":            fmt.Sprintf("%d", testServer.MachPort()),
+		"statement_cache": "auto",
+		"user":            "sys",
+		"password":        "manager",
+	})
 	spi.StartAppendWorkers()
 
 	spi.StartMetrics()
