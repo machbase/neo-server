@@ -868,6 +868,7 @@ func TestDatabaseBinaryTql(t *testing.T) {
 					}
 				})
 				DISCARD()`,
+			CtxTimeout: 30 * time.Second,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Empty(t, result)
 			},

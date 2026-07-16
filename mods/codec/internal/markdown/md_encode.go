@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -196,105 +195,41 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = nullAlt
 			continue
 		}
-		switch v := r.(type) {
-		case *bool:
-			cols[i] = strconv.FormatBool(*v)
+		switch v := api.Unbox(r).(type) {
 		case bool:
 			cols[i] = strconv.FormatBool(v)
-		case *string:
-			cols[i] = *v
 		case string:
 			cols[i] = v
-		case *time.Time:
-			cols[i] = ex.timeformatter.Format(*v)
 		case time.Time:
 			cols[i] = ex.timeformatter.Format(v)
-		case *float64:
-			cols[i] = ex.encodeFloat64(*v)
 		case float64:
 			cols[i] = ex.encodeFloat64(v)
-		case *float32:
-			cols[i] = ex.encodeFloat64(float64(*v))
 		case float32:
 			cols[i] = ex.encodeFloat64(float64(v))
 		case []byte:
 			cols[i] = ex.binaryFormatter.Format(v)
-		case *[]byte:
-			cols[i] = ex.binaryFormatter.Format(*v)
-		case *int:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int8:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int16:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
-		case *uint16:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int16:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case uint16:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int32:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
-		case *uint32:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int32:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case uint32:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int64:
-			cols[i] = strconv.FormatInt(*v, 10)
-		case *uint64:
-			cols[i] = strconv.FormatUint(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
 		case uint64:
 			cols[i] = strconv.FormatUint(v, 10)
-		case *net.IP:
-			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
-		case *sql.NullInt16:
-			if v.Valid {
-				cols[i] = strconv.FormatInt(int64(v.Int16), 10)
-			} else {
-				cols[i] = nullAlt
-			}
-		case *sql.NullInt32:
-			if v.Valid {
-				cols[i] = strconv.FormatInt(int64(v.Int32), 10)
-			} else {
-				cols[i] = nullAlt
-			}
-		case *sql.NullInt64:
-			if v.Valid {
-				cols[i] = strconv.FormatInt(v.Int64, 10)
-			} else {
-				cols[i] = nullAlt
-			}
-		case *sql.NullFloat64:
-			if v.Valid {
-				cols[i] = ex.encodeFloat64(v.Float64)
-			} else {
-				cols[i] = nullAlt
-			}
-		case *sql.NullString:
-			if v.Valid {
-				cols[i] = v.String
-			} else {
-				cols[i] = nullAlt
-			}
-		case *sql.Null[api.JSONString]:
-			if v.Valid {
-				cols[i] = string(v.V)
-			} else {
-				cols[i] = nullAlt
-			}
+		case api.JSONString:
+			cols[i] = string(v)
 		default:
-			cols[i] = fmt.Sprintf("%T", r)
+			cols[i] = fmt.Sprintf("%#v", v)
 		}
 	}
 

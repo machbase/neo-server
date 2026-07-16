@@ -1,7 +1,6 @@
 package box
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
 	"net"
@@ -183,111 +182,31 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strNULL
 			continue
 		}
-		switch v := r.(type) {
-		case *string:
-			cols[i] = *v
+		switch v := api.Unbox(r).(type) {
 		case string:
 			cols[i] = v
-		case *[]byte:
-			cols[i] = ex.binaryFormatter.Format(*v)
 		case []byte:
 			cols[i] = ex.binaryFormatter.Format(v)
-		case *time.Time:
-			cols[i] = ex.timeformatter.Format(*v)
 		case time.Time:
 			cols[i] = ex.timeformatter.Format(v)
-		case *float32:
-			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
 			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
-		case *float64:
-			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:
 			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
-		case *int:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int8:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int16:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int16:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int32:
-			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int32:
 			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *int64:
-			cols[i] = strconv.FormatInt(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
-		case *net.IP:
-			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
-		case *sql.NullInt32:
-			if v.Valid {
-				cols[i] = strconv.FormatInt(int64(v.Int32), 10)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.NullString:
-			if v.Valid {
-				cols[i] = v.String
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.NullTime:
-			if v.Valid {
-				cols[i] = ex.timeformatter.Format(v.Time)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.NullFloat64:
-			if v.Valid {
-				cols[i] = strconv.FormatFloat(v.Float64, 'f', ex.precision, 64)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.NullInt64:
-			if v.Valid {
-				cols[i] = strconv.FormatInt(v.Int64, 10)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.NullInt16:
-			if v.Valid {
-				cols[i] = strconv.FormatInt(int64(v.Int16), 10)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.Null[float32]:
-			if v.Valid {
-				cols[i] = strconv.FormatFloat(float64(v.V), 'f', ex.precision, 32)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.Null[float64]:
-			if v.Valid {
-				cols[i] = strconv.FormatFloat(v.V, 'f', ex.precision, 64)
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.Null[net.IP]:
-			if v.Valid {
-				cols[i] = v.V.String()
-			} else {
-				cols[i] = strNULL
-			}
-		case *sql.Null[api.JSONString]:
-			if v.Valid {
-				cols[i] = string(v.V)
-			} else {
-				cols[i] = strNULL
-			}
+		case api.JSONString:
+			cols[i] = string(v)
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

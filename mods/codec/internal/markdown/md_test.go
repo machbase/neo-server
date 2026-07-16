@@ -160,7 +160,7 @@ func TestMarkdownAddRowTypes(t *testing.T) {
 		{name: "ip pointer", value: &ipValue, expected: "127.0.0.1"},
 		{name: "byte slice", value: []byte{97, 98, 99, 100, 101}, expected: "0x6162636465"},
 		{name: "byte slice pointer", value: &[]byte{97, 98, 99, 100, 101}, expected: "0x6162636465"},
-		{name: "fallback", value: struct{ Name string }{Name: "x"}, expected: "struct { Name string }"},
+		{name: "fallback", value: struct{ Name string }{Name: "x"}, expected: "struct { Name string }{Name:\"x\"}"},
 	}
 
 	for _, tt := range tests {

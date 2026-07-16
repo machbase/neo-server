@@ -1,10 +1,7 @@
 package csv
 
 import (
-	"database/sql"
-	"encoding/base64"
 	"encoding/csv"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -152,163 +149,101 @@ func (ex *Exporter) AddRow(values []any) error {
 
 	var cols = make([]string, len(values))
 
-	for i, r := range values {
+	for i, value := range values {
 		treatIntValueAsFloat := false
 		if ex.precision > 0 && i < len(ex.colTypes) && (ex.colTypes[i] == api.DataTypeFloat64 || ex.colTypes[i] == api.DataTypeFloat32) {
 			treatIntValueAsFloat = true
 		}
-		if r == nil {
-			r = ex.nullAlternative
+		val := api.Unbox(value)
+		if val == nil {
+			val = ex.nullAlternative
 		}
-		switch sqlVal := r.(type) {
-		case *sql.NullBool:
-			if sqlVal.Valid {
-				r = sqlVal.Bool
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullByte:
-			if sqlVal.Valid {
-				r = sqlVal.Byte
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullFloat64:
-			if sqlVal.Valid {
-				r = sqlVal.Float64
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullInt16:
-			if sqlVal.Valid {
-				r = sqlVal.Int16
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullInt32:
-			if sqlVal.Valid {
-				r = sqlVal.Int32
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullInt64:
-			if sqlVal.Valid {
-				r = sqlVal.Int64
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullString:
-			if sqlVal.Valid {
-				r = sqlVal.String
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.NullTime:
-			if sqlVal.Valid {
-				r = ex.timeformat.Format(sqlVal.Time)
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.Null[float32]:
-			if sqlVal.Valid {
-				r = sqlVal.V
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.Null[net.IP]:
-			if sqlVal.Valid {
-				r = sqlVal.V.String()
-			} else {
-				r = ex.nullAlternative
-			}
-		case *sql.Null[api.JSONString]:
-			if sqlVal.Valid {
-				r = string(sqlVal.V)
-			} else {
-				r = ex.nullAlternative
-			}
-		}
-		switch v := api.Unbox(r).(type) {
+		switch val := val.(type) {
+		case bool:
+			cols[i] = strconv.FormatBool(val)
+		case net.IP:
+			cols[i] = val.String()
 		case string:
-			cols[i] = v
+			cols[i] = val
 		case time.Time:
-			cols[i] = ex.timeformat.Format(v)
+			cols[i] = ex.timeformat.Format(val)
 		case time.Duration:
-			cols[i] = strconv.FormatInt(v.Nanoseconds(), 10)
-		case api.JSONString:
-			cols[i] = string(v)
+			cols[i] = strconv.FormatInt(val.Nanoseconds(), 10)
 		case float64:
-			cols[i] = internal.FormatPrecisionFloat64(v, ex.precision, false)
+			cols[i] = internal.FormatPrecisionFloat64(val, ex.precision, false)
 		case float32:
-			cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+			cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 		case int:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatInt(int64(v), 10)
+				cols[i] = strconv.FormatInt(int64(val), 10)
+			}
+		case uint:
+			if treatIntValueAsFloat {
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
+			} else {
+				cols[i] = strconv.FormatUint(uint64(val), 10)
 			}
 		case int8:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatInt(int64(v), 10)
+				cols[i] = strconv.FormatInt(int64(val), 10)
 			}
+		case uint8:
+			cols[i] = strconv.FormatInt(int64(val), 10)
 		case int16:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatInt(int64(v), 10)
+				cols[i] = strconv.FormatInt(int64(val), 10)
 			}
 		case uint16:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatUint(uint64(v), 10)
+				cols[i] = strconv.FormatUint(uint64(val), 10)
 			}
 		case int32:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatInt(int64(v), 10)
+				cols[i] = strconv.FormatInt(int64(val), 10)
 			}
 		case uint32:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatUint(uint64(v), 10)
+				cols[i] = strconv.FormatUint(uint64(val), 10)
 			}
 		case int64:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatInt(v, 10)
+				cols[i] = strconv.FormatInt(val, 10)
 			}
 		case uint64:
 			if treatIntValueAsFloat {
-				cols[i] = internal.FormatPrecisionFloat64(float64(v), ex.precision, false)
+				cols[i] = internal.FormatPrecisionFloat64(float64(val), ex.precision, false)
 			} else {
-				cols[i] = strconv.FormatUint(v, 10)
+				cols[i] = strconv.FormatUint(val, 10)
 			}
-		case bool:
-			cols[i] = strconv.FormatBool(v)
-		case net.IP:
-			cols[i] = v.String()
-		case uint8:
-			cols[i] = strconv.FormatInt(int64(v), 10)
-		case *[]uint8:
-			cols[i] = ex.binaryFormatter.Format(*v)
-		case []uint8:
-			cols[i] = ex.binaryFormatter.Format(v)
+		case []byte:
+			cols[i] = ex.binaryFormatter.Format(val)
 		case *nums.LatLon:
-			cols[i] = fmt.Sprintf("[%v,%v]", v.Lat, v.Lon)
+			cols[i] = fmt.Sprintf("[%v,%v]", val.Lat, val.Lon)
 		case *nums.SingleLatLon:
-			if coord := v.Coordinates(); len(coord) == 1 && len(coord[0]) == 2 {
+			if coord := val.Coordinates(); len(coord) == 1 && len(coord[0]) == 2 {
 				cols[i] = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
 			} else {
 				cols[i] = ""
 			}
+		case api.JSONString:
+			cols[i] = string(val)
 		default:
-			cols[i] = fmt.Sprintf("%T", r)
+			cols[i] = fmt.Sprintf("%T", val)
+
 		}
 	}
 
@@ -319,14 +254,4 @@ func (ex *Exporter) AddRow(values []any) error {
 	} else {
 		return ex.writer.Write(cols)
 	}
-}
-
-func encodeBinary(v []byte, mode string) string {
-	if len(v) == 0 {
-		return ""
-	}
-	if mode == "base64" {
-		return base64.StdEncoding.EncodeToString(v)
-	}
-	return "0x" + hex.EncodeToString(v)
 }
