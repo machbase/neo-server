@@ -166,6 +166,7 @@ func NewNode(task *Task) *Node {
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
 		"TEXT":            x.gen_TEXT,
+		"BOX":             x.gen_BOX,
 		"DISCARD":         x.gen_DISCARD,
 		"CHART":           x.gen_CHART,
 		"CHART_LINE":      x.gen_CHART_LINE,
@@ -2347,6 +2348,21 @@ func (x *Node) gen_TEXT(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmText(p0...)
+}
+
+// gen_BOX
+//
+// syntax: BOX(...interface {})
+func (x *Node) gen_BOX(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "BOX", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmBox(p0...)
 }
 
 // gen_DISCARD
