@@ -365,6 +365,39 @@ func TestScriptBlock(test *testing.T) {
 				{Kind: CLAUSE_CLOSE},
 			},
 		},
+		{
+			Name:      "Tagged block with script literal brace",
+			Input:     "script({<<JS\n// this is a function return '{'\nfunction a () { return '{' };\nJS})",
+			Functions: map[string]Function{"script": noop},
+			Expected: []Token{
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "// this is a function return '{'\nfunction a () { return '{' };\n"},
+				{Kind: CLAUSE_CLOSE},
+			},
+		},
+		{
+			Name:      "Tagged block with mermaid brace",
+			Input:     "script({<<MD\n```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n```\nMD})",
+			Functions: map[string]Function{"script": noop},
+			Expected: []Token{
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n```\n"},
+				{Kind: CLAUSE_CLOSE},
+			},
+		},
+		{
+			Name:      "Tagged backtick string with nested backticks",
+			Input:     "script(`<<MD\n```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n    NOTE : `inline` text\n```\nMD`)",
+			Functions: map[string]Function{"script": noop},
+			Expected: []Token{
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n    NOTE : `inline` text\n```\n"},
+				{Kind: CLAUSE_CLOSE},
+			},
+		},
 	}
 	runTokenParsingTest(tokenParsingTests, test)
 }

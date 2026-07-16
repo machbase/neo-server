@@ -215,3 +215,45 @@ func TestBinaryFormat(t *testing.T) {
 		require.Contains(t, result, tt.expect)
 	}
 }
+
+func TestMarkdownTemplatePathText(t *testing.T) {
+	buffer := &bytes.Buffer{}
+
+	md := markdown.NewEncoder()
+	md.SetOutputStream(buffer)
+	md.SetColumns("name", "value")
+	md.SetTemplate(`{{- if .IsFirst -}}|name|value|{{"\n"}}|:-----|:-----|{{"\n"}}{{- end -}}|{{ .Value 0 }}|{{ .Value 1 }}|{{"\n"}}{{- if .IsLast -}}> *Total* {{ .Num }} *records*{{"\n"}}{{- end -}}`)
+
+	require.NoError(t, md.Open())
+	require.NoError(t, md.AddRow([]any{"alpha", 1}))
+	require.NoError(t, md.AddRow([]any{"beta", 2}))
+	md.Close()
+
+	expected := "|name|value|\n|:-----|:-----|\n|alpha|1|\n|beta|2|\n> *Total* 2 *records*\n"
+	require.Equal(t, expected, buffer.String())
+}
+
+func TestMarkdownTemplatePathHtml(t *testing.T) {
+	buffer := &bytes.Buffer{}
+
+	md := markdown.NewEncoder()
+	md.SetOutputStream(buffer)
+	md.SetHtml(true)
+	md.SetTemplate(`# Title
+
+|name|value|
+|:-----|:-----|
+|{{ .Value 0 }}|{{ .Value 1 }}|
+`)
+
+	require.NoError(t, md.Open())
+	require.NoError(t, md.AddRow([]any{"alpha", 1}))
+	md.Close()
+
+	result := buffer.String()
+	require.Equal(t, "application/xhtml+xml", md.ContentType())
+	require.Contains(t, result, "<div>")
+	require.Contains(t, result, "<h1>Title</h1>")
+	require.Contains(t, result, "<table>")
+	require.Contains(t, result, "<td align=\"left\">alpha</td>")
+}

@@ -190,6 +190,33 @@ func TestReadLine(t *testing.T) {
 				{text: "TEXT()", line: 9},
 			},
 		},
+		{
+			`SCRIPT({<<JS
+			|  // this is a function return '{'
+			|  function a () { return '{' };
+			|JS})
+			|CSV()
+			`,
+			[]Line{
+				{text: " this is a function return '{'", isComment: true, line: 2},
+				{text: "SCRIPT({<<JS\n\n  function a () { return '{' };\nJS})", line: 1},
+				{text: "CSV()", line: 5},
+			},
+		},
+		{
+			"MARKDOWN({<<MD\n```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n```\nMD})\nCSV()\n",
+			[]Line{
+				{text: "MARKDOWN({<<MD\n```mermaid\nerDiagram\nCUSTOMER ||--o{ ORDER :places\n```\nMD})", line: 1},
+				{text: "CSV()", line: 7},
+			},
+		},
+		{
+			"MARKDOWN(`<<MD\n```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n    NOTE : `inline` text\n```\nMD`)\nCSV()\n",
+			[]Line{
+				{text: "MARKDOWN(`<<MD\n```mermaid\nerDiagram\nCUSTOMER ||--o{ ORDER :places\nNOTE : `inline` text\n```\nMD`)", line: 1},
+				{text: "CSV()", line: 8},
+			},
+		},
 	}
 
 	for _, tt := range tests {

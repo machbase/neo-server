@@ -81,6 +81,13 @@ func (node *Node) fmBox(args ...any) (*Encoder, error) {
 }
 
 func (node *Node) fmMarkdown(args ...any) (*Encoder, error) {
+	for i := range args {
+		if o, err := toTemplateOption(args[i]); err != nil {
+			return nil, err
+		} else if o != nil {
+			args[i] = o
+		}
+	}
 	return newEncoder("markdown", args...)
 }
 
