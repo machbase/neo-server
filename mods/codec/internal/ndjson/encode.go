@@ -2,7 +2,6 @@ package ndjson
 
 import (
 	"bytes"
-	"database/sql"
 	"fmt"
 	"io"
 	"net"
@@ -118,95 +117,17 @@ func (ex *Exporter) AddRow(source []any) error {
 		ex.values = ex.values[:len(source)]
 	}
 	for i, field := range source {
-		switch v := field.(type) {
-		case *time.Time:
-			ex.values[i] = ex.timeformat.FormatEpoch(*v)
+		switch v := api.Unbox(field).(type) {
 		case time.Time:
 			ex.values[i] = ex.timeformat.FormatEpoch(v)
 		case []byte:
 			ex.values[i] = ex.binaryformat.Format(v)
-		case *[]byte:
-			ex.values[i] = ex.binaryformat.Format(*v)
-		case *float64:
-			ex.values[i] = *v
-		case float64:
-			ex.values[i] = v
-		case *float32:
-			ex.values[i] = float64(*v)
-		case float32:
-			ex.values[i] = float64(v)
-		case *net.IP:
-			ex.values[i] = v.String()
 		case net.IP:
 			ex.values[i] = v.String()
-		case *sql.NullBool:
-			if v.Valid {
-				ex.values[i] = v.Bool
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullByte:
-			if v.Valid {
-				ex.values[i] = v.Byte
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullFloat64:
-			if v.Valid {
-				ex.values[i] = v.Float64
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullInt16:
-			if v.Valid {
-				ex.values[i] = v.Int16
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullInt32:
-			if v.Valid {
-				ex.values[i] = v.Int32
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.Null[float32]:
-			if v.Valid {
-				ex.values[i] = float64(v.V)
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullInt64:
-			if v.Valid {
-				ex.values[i] = v.Int64
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullString:
-			if v.Valid {
-				ex.values[i] = v.String
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.NullTime:
-			if v.Valid {
-				ex.values[i] = ex.timeformat.Format(v.Time)
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.Null[net.IP]:
-			if v.Valid {
-				ex.values[i] = v.V.String()
-			} else {
-				ex.values[i] = nil
-			}
-		case *sql.Null[api.JSONString]:
-			if v.Valid {
-				ex.values[i] = string(v.V)
-			} else {
-				ex.values[i] = nil
-			}
+		case api.JSONString:
+			ex.values[i] = string(v)
 		default:
-			ex.values[i] = field
+			ex.values[i] = v
 		}
 	}
 

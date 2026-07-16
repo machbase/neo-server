@@ -2,7 +2,6 @@ package json
 
 import (
 	"bytes"
-	"database/sql"
 	gojson "encoding/json"
 	"fmt"
 	"io"
@@ -215,73 +214,17 @@ func (ex *Exporter) AddRow(source []any) error {
 		ex.values = ex.values[:len(source)]
 	}
 	for i, field := range source {
-		switch v := field.(type) {
-		case *time.Time:
-			ex.values[i] = ex.timeformatter.FormatEpoch(*v)
+		switch v := api.Unbox(field).(type) {
 		case time.Time:
 			ex.values[i] = ex.timeformatter.FormatEpoch(v)
-		case []byte:
-			ex.values[i] = ex.binaryFormatter.Format(v)
-		case *[]byte:
-			ex.values[i] = ex.binaryFormatter.Format(*v)
-		case *float64:
-			ex.values[i] = *v
-		case float64:
-			ex.values[i] = v
-		case *float32:
-			ex.values[i] = float64(*v)
-		case float32:
-			ex.values[i] = float64(v)
-		case *net.IP:
-			ex.values[i] = v.String()
 		case net.IP:
 			ex.values[i] = v.String()
-		case *sql.NullBool:
-			if v.Valid {
-				ex.values[i] = v.Bool
-			}
-		case *sql.NullByte:
-			if v.Valid {
-				ex.values[i] = v.Byte
-			}
-		case *sql.NullFloat64:
-			if v.Valid {
-				ex.values[i] = v.Float64
-			}
-		case *sql.NullInt16:
-			if v.Valid {
-				ex.values[i] = v.Int16
-			}
-		case *sql.NullInt32:
-			if v.Valid {
-				ex.values[i] = v.Int32
-			}
-		case *sql.Null[float32]:
-			if v.Valid {
-				ex.values[i] = float64(v.V)
-			}
-		case *sql.NullInt64:
-			if v.Valid {
-				ex.values[i] = v.Int64
-			}
-		case *sql.NullString:
-			if v.Valid {
-				ex.values[i] = v.String
-			}
-		case *sql.NullTime:
-			if v.Valid {
-				ex.values[i] = ex.timeformatter.Format(v.Time)
-			}
-		case *sql.Null[net.IP]:
-			if v.Valid {
-				ex.values[i] = v.V.String()
-			}
-		case *sql.Null[api.JSONString]:
-			if v.Valid {
-				ex.values[i] = string(v.V)
-			}
+		case []byte:
+			ex.values[i] = ex.binaryFormatter.Format(v)
+		case api.JSONString:
+			ex.values[i] = string(v)
 		default:
-			ex.values[i] = field
+			ex.values[i] = v
 		}
 	}
 

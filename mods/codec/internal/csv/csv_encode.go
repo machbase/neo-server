@@ -221,6 +221,30 @@ func (ex *Exporter) AddRow(values []any) error {
 			} else {
 				r = ex.nullAlternative
 			}
+		case *sql.Null[[]byte]:
+			if sqlVal.Valid {
+				r = ex.binaryFormatter.Format(sqlVal.V)
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.Null[time.Time]:
+			if sqlVal.Valid {
+				r = ex.timeformat.Format(sqlVal.V)
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.Null[time.Duration]:
+			if sqlVal.Valid {
+				r = strconv.FormatInt(sqlVal.V.Nanoseconds(), 10)
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.Null[uint8]:
+			if sqlVal.Valid {
+				r = sqlVal.V
+			} else {
+				r = ex.nullAlternative
+			}
 		case *sql.Null[api.JSONString]:
 			if sqlVal.Valid {
 				r = string(sqlVal.V)

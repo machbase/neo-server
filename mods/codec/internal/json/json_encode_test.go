@@ -254,12 +254,13 @@ func TestJsonEncodeRowsFlatten(t *testing.T) {
 	out := &bytes.Buffer{}
 	enc := json.NewEncoder()
 	enc.SetOutputStream(out)
-	enc.SetColumnTypes("string", "long", "double")
-	enc.SetColumns("name", "seq", "value")
+	enc.SetColumnTypes("string", "datetime", "long", "double")
+	enc.SetColumns("name", "time", "seq", "value")
 	enc.SetRowsFlatten(true)
+	now := time.Now()
 	require.NoError(t, enc.Open())
-	require.NoError(t, enc.AddRow([]any{"car-1", int64(1), float64(1.2500)}))
-	require.NoError(t, enc.AddRow([]any{"car-2", int64(2), float64(2.5000)}))
+	require.NoError(t, enc.AddRow([]any{"car-1", &sql.NullTime{Valid: true, Time: now}, int64(1), float64(1.2500)}))
+	require.NoError(t, enc.AddRow([]any{"car-2", &sql.NullTime{Valid: false}, int64(2), float64(2.5000)}))
 	enc.Close()
 
 	var payload map[string]any
@@ -269,13 +270,15 @@ func TestJsonEncodeRowsFlatten(t *testing.T) {
 	require.True(t, ok)
 	rows, ok := data["rows"].([]any)
 	require.True(t, ok)
-	require.Len(t, rows, 6)
+	require.Len(t, rows, 8)
 	require.Equal(t, "car-1", rows[0])
-	require.Equal(t, float64(1), rows[1])
-	require.Equal(t, float64(1.25), rows[2])
-	require.Equal(t, "car-2", rows[3])
-	require.Equal(t, float64(2), rows[4])
-	require.Equal(t, float64(2.5), rows[5])
+	require.Equal(t, float64(now.UnixNano()), rows[1].(float64)) // allow for some precision loss in float64 representation of int64
+	require.Equal(t, float64(1), rows[2])
+	require.Equal(t, float64(1.25), rows[3])
+	require.Equal(t, "car-2", rows[4])
+	require.Equal(t, nil, rows[5])
+	require.Equal(t, float64(2), rows[6])
+	require.Equal(t, float64(2.5), rows[7])
 }
 
 func TestJsonEncodeTranspose(t *testing.T) {

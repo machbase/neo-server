@@ -328,7 +328,7 @@ func TestNdjsonEncodeTypedRowsAndNulls(t *testing.T) {
 	require.Equal(t, float64(2.5), row1["nfloat32"])
 	require.Equal(t, float64(64), row1["nint64"])
 	require.Equal(t, "text", row1["nstring"])
-	require.Equal(t, "1700000000000000000", row1["ntime"])
+	require.Equal(t, float64(1700000000000000000), row1["ntime"])
 	require.Equal(t, "127.0.0.1", row1["nip"])
 	require.Equal(t, map[string]any{"nested": float64(1)}, row1["plain"])
 
