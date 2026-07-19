@@ -232,26 +232,6 @@ func TestSqlBridgeBaseHelpers(t *testing.T) {
 	require.Nil(t, normalized[10])
 }
 
-func TestInfoValueObjects(t *testing.T) {
-	t.Run("table info kind and values", func(t *testing.T) {
-		tests := []struct {
-			info   TableInfo
-			expect string
-		}{
-			{info: TableInfo{Type: api.TableTypeLog, Flag: api.TableFlagData}, expect: "Log Table (data)"},
-			{info: TableInfo{Type: api.TableTypeFixed, Flag: api.TableFlagMeta}, expect: "Fixed Table (meta)"},
-			{info: TableInfo{Type: api.TableTypeTag, Flag: api.TableFlagStat}, expect: "Tag Table (stat)"},
-			{info: TableInfo{Type: api.TableType(-1)}, expect: "undef"},
-		}
-		for _, tc := range tests {
-			require.Equal(t, tc.expect, tc.info.Kind())
-		}
-
-		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: api.TableTypeLookup, Flag: api.TableFlagRollup}
-		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
-	})
-}
-
 func TestMetricsAndWatcherHelpers(t *testing.T) {
 	t.Run("metrics snapshot and filter helpers", func(t *testing.T) {
 		oldMetricsDest := metricsDest

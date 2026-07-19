@@ -227,10 +227,6 @@ func (ti *TableInfo) Kind() string {
 	return desc
 }
 
-func (ti *TableInfo) Values() []interface{} {
-	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
-}
-
 func ifThenElse(cond bool, a, b string) string {
 	if cond {
 		return a
