@@ -19,6 +19,7 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machbase"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 var defaultDatabase api.Database
@@ -61,6 +62,42 @@ func Default() api.Database {
 
 func DefaultKey() crypto.PrivateKey {
 	return defaultDatabaseKey
+}
+
+func Connect(ctx context.Context, user string) (*sql.Conn, error) {
+	user = strings.ToLower(user)
+	var connectDB *sql.DB
+	if user == "sys" || user == "" {
+		pool, err := DefaultPool()
+		if err != nil {
+			return nil, err
+		}
+		connectDB = pool
+	} else {
+		userPoolsLock.Lock()
+		defer userPoolsLock.Unlock()
+		if db, ok := userPools[user]; ok {
+			connectDB = db
+		} else {
+			conf := DefaultDSN(map[string]string{"user": fmt.Sprintf("sys as %s", user)})
+			if db, err := sql.Open("machbase", conf); err != nil {
+				return nil, err
+			} else {
+				if len(userPools) == 0 {
+					util.AddShutdownHook(func() {
+						for _, p := range userPools {
+							p.Close()
+						}
+					})
+				}
+				db.SetConnMaxIdleTime(20 * time.Second)
+				db.SetConnMaxLifetime(1 * time.Minute)
+				userPools[user] = db
+				connectDB = db
+			}
+		}
+	}
+	return connectDB.Conn(ctx)
 }
 
 // IssueToken returns signed current timestamp.
@@ -219,6 +256,8 @@ var (
 	defaultPoolOnce sync.Once
 	defaultPoolDB   *sql.DB
 	defaultPoolErr  error
+	userPools       map[string]*sql.DB = make(map[string]*sql.DB)
+	userPoolsLock   sync.Mutex
 	maxOpenConn     = 20
 	maxIdleConn     = 2
 	connMaxLifetime = 10 * time.Minute

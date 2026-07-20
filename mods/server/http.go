@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -383,14 +384,12 @@ func (svr *httpd) getTrustConnection(ctx *gin.Context) (api.Conn, error) {
 	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 }
 
-// for the api called from web-client that authorized by JWT
-func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
+func (svr *httpd) getUserSqlConn(ctx *gin.Context) (*sql.Conn, error) {
 	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {
-		return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
-	} else {
-		return nil, errors.New("unauthorized db request")
+		return spi.Connect(ctx, claim.Subject)
 	}
+	return nil, errors.New("unauthorized db request")
 }
 
 func (svr *httpd) handleJwtToken(ctx *gin.Context) {
@@ -884,11 +883,11 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.licenseStatusLastTime.IsZero() || time.Since(svr.licenseStatusLastTime) > 30*time.Minute {
 		svr.licenseStatusLastTime = time.Now()
 		svr.licenseStatus = "Unknown"
-		if conn, err := svr.getUserConnection(ctx); err == nil {
+		if conn, err := getPoolSqlConn(ctx); err == nil {
 			if nfo, err := spi.GetLicenseInfo(ctx, conn); err == nil {
 				svr.licenseStatus = nfo.LicenseStatus
 			}
-			conn.Close()
+			defer conn.Close()
 		}
 	}
 
@@ -1016,7 +1015,7 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	rsp := &LicenseResponse{Success: false, Reason: "unspecified"}
 	tick := time.Now()
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnauthorized, rsp)
@@ -1065,7 +1064,15 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := svr.getUserConnection(ctx)
+	claim, _ := svr.getJwtClaim(ctx)
+	if claim == nil || claim.Valid() != nil || claim.Subject != "sys" {
+		rsp.Reason = "unauthorized"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnauthorized, rsp)

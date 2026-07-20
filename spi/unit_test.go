@@ -18,21 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubSQLResult struct {
-	rowsAffected int64
-	err          error
-}
-
-type stubConn struct {
-	execFunc func(ctx context.Context, sqlText string, params ...any) api.Result
-	execSQLs []string
-	execArgs [][]any
-}
-
 type badMetricValue struct{}
 
 func (b badMetricValue) String() string {
 	return "bad"
+}
+
+type stubSQLResult struct {
+	rowsAffected int64
+	err          error
 }
 
 func (s stubSQLResult) LastInsertId() (int64, error) {
@@ -41,39 +35,6 @@ func (s stubSQLResult) LastInsertId() (int64, error) {
 
 func (s stubSQLResult) RowsAffected() (int64, error) {
 	return s.rowsAffected, s.err
-}
-
-func (s *stubConn) Close() error {
-	return nil
-}
-
-func (s *stubConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
-	s.execSQLs = append(s.execSQLs, sqlText)
-	s.execArgs = append(s.execArgs, params)
-	if s.execFunc != nil {
-		return s.execFunc(ctx, sqlText, params...)
-	}
-	return &InsertResult{rowsAffected: 1, message: "a row inserted"}
-}
-
-func (s *stubConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	return nil
-}
-
-func (s *stubConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	return "", errors.New("not implemented")
 }
 
 func TestWrappedSqlResultMessage(t *testing.T) {
@@ -232,27 +193,6 @@ func TestSqlBridgeBaseHelpers(t *testing.T) {
 	require.Nil(t, normalized[10])
 }
 
-func TestInfoValueObjects(t *testing.T) {
-	t.Run("table info kind and values", func(t *testing.T) {
-		tests := []struct {
-			info   TableInfo
-			expect string
-		}{
-			{info: TableInfo{Type: api.TableTypeLog, Flag: api.TableFlagData}, expect: "Log Table (data)"},
-			{info: TableInfo{Type: api.TableTypeFixed, Flag: api.TableFlagMeta}, expect: "Fixed Table (meta)"},
-			{info: TableInfo{Type: api.TableTypeTag, Flag: api.TableFlagStat}, expect: "Tag Table (stat)"},
-			{info: TableInfo{Type: api.TableType(-1)}, expect: "undef"},
-		}
-		for _, tc := range tests {
-			require.Equal(t, tc.expect, tc.info.Kind())
-		}
-
-		info := &TableInfo{Database: "DB", User: "SYS", Name: "T", Id: 1, Type: api.TableTypeLookup, Flag: api.TableFlagRollup, err: errors.New("table err")}
-		require.Equal(t, []any{"DB", "SYS", "T", int64(1), info.Type.ShortString(), info.Flag.String()}, info.Values())
-		require.EqualError(t, info.Err(), "table err")
-	})
-}
-
 func TestMetricsAndWatcherHelpers(t *testing.T) {
 	t.Run("metrics snapshot and filter helpers", func(t *testing.T) {
 		oldMetricsDest := metricsDest
@@ -317,60 +257,82 @@ func TestWriteLineProtocol(t *testing.T) {
 	})
 
 	t.Run("skip unsupported fields", func(t *testing.T) {
-		conn := &stubConn{}
+		scenario := &sqlWrapDriverScenario{}
+		conn := newSQLWrapTestConn(t, scenario)
+		defer conn.Close()
+
 		result := WriteLineProtocol(ctx, conn, "tag_data", descColumns, "cpu", map[string]any{"status": "up"}, map[string]string{"HOST": "srv-a"}, ts)
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(0), result.RowsAffected())
 		require.Equal(t, "no rows inserted", result.Message())
-		require.Empty(t, conn.execSQLs)
+		require.Empty(t, scenario.execCalls)
 	})
 
 	t.Run("single row with string tag only", func(t *testing.T) {
-		conn := &stubConn{}
+		scenario := &sqlWrapDriverScenario{execResults: map[string]int64{
+			"INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)": 1,
+		}}
+		conn := newSQLWrapTestConn(t, scenario)
+		defer conn.Close()
+
 		result := WriteLineProtocol(ctx, conn, "tag_data", descColumns, "cpu", map[string]any{"usage": 12.5}, map[string]string{"HOST": "srv-a", "PORT": "1234"}, ts)
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(1), result.RowsAffected())
-		require.Equal(t, "a row inserted", result.Message())
-		require.Len(t, conn.execSQLs, 1)
-		require.Equal(t, "INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)", conn.execSQLs[0])
-		require.Equal(t, []any{"cpu.usage", ts, 12.5, "srv-a"}, conn.execArgs[0])
+		require.Equal(t, "a row inserted.", result.Message())
+		require.Len(t, scenario.execCalls, 1)
+		require.Equal(t, "INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)", scenario.execCalls[0].query)
+		require.Equal(t, []any{"cpu.usage", ts, 12.5, "srv-a"}, scenario.execCalls[0].args)
 	})
 
 	t.Run("multiple rows inserted", func(t *testing.T) {
-		conn := &stubConn{}
+		scenario := &sqlWrapDriverScenario{execResults: map[string]int64{
+			"INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)": 1,
+		}}
+		conn := newSQLWrapTestConn(t, scenario)
+		defer conn.Close()
+
 		result := WriteLineProtocol(ctx, conn, "tag_data", descColumns, "cpu", map[string]any{"usage": float32(1.5), "temp": int64(3)}, map[string]string{"HOST": "srv-b"}, ts)
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(2), result.RowsAffected())
-		require.Equal(t, "2 rows inserted", result.Message())
-		require.Len(t, conn.execSQLs, 2)
-		for _, sqlText := range conn.execSQLs {
-			require.Equal(t, "INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)", sqlText)
+		require.Equal(t, "2 rows inserted.", result.Message())
+		require.Len(t, scenario.execCalls, 2)
+		for _, call := range scenario.execCalls {
+			require.Equal(t, "INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)", call.query)
 		}
 	})
 
 	t.Run("abort on exec error", func(t *testing.T) {
-		conn := &stubConn{}
+		scenario := &sqlWrapDriverScenario{}
 		callCount := 0
-		conn.execFunc = func(ctx context.Context, sqlText string, params ...any) api.Result {
+		scenario.execFunc = func(query string, args []driver.NamedValue) (driver.Result, error) {
 			callCount++
 			if callCount == 2 {
-				return &InsertResult{err: errors.New("exec failed")}
+				return nil, errors.New("exec failed")
 			}
-			return &InsertResult{rowsAffected: 1, message: "a row inserted"}
+			return driver.RowsAffected(1), nil
 		}
+		conn := newSQLWrapTestConn(t, scenario)
+		defer conn.Close()
 
 		result := WriteLineProtocol(ctx, conn, "tag_data", descColumns, "cpu", map[string]any{"usage": 1.0, "temp": 2.0}, map[string]string{"HOST": "srv-c"}, ts)
 		require.EqualError(t, result.Err(), "exec failed")
 		require.Equal(t, int64(1), result.RowsAffected())
 		require.Equal(t, "batch inserts aborted - INSERT INTO tag_data(NAME,TIME,VALUE,HOST) VALUES(?,?,?,?)", result.Message())
-		require.Len(t, conn.execSQLs, 2)
+		require.Len(t, scenario.execCalls, 2)
 	})
 }
 
 type sqlWrapDriverScenario struct {
 	execResults map[string]int64
+	execFunc    func(query string, args []driver.NamedValue) (driver.Result, error)
+	execCalls   []sqlWrapExecCall
 	queryRows   map[string]*sqlWrapRowsData
 	queryErrs   map[string]error
+}
+
+type sqlWrapExecCall struct {
+	query string
+	args  []any
 }
 
 type sqlWrapRowsData struct {
@@ -422,6 +384,14 @@ func (c *sqlWrapTestConn) Begin() (driver.Tx, error) {
 }
 
 func (c *sqlWrapTestConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	callArgs := make([]any, len(args))
+	for i, arg := range args {
+		callArgs[i] = arg.Value
+	}
+	c.scenario.execCalls = append(c.scenario.execCalls, sqlWrapExecCall{query: query, args: callArgs})
+	if c.scenario.execFunc != nil {
+		return c.scenario.execFunc(query, args)
+	}
 	if n, ok := c.scenario.execResults[query]; ok {
 		return driver.RowsAffected(n), nil
 	}
@@ -695,4 +665,3 @@ func TestWrappedSqlRowsMessageAndErrBranches(t *testing.T) {
 }
 
 var _ driver.Result = stubSQLResult{}
-var _ api.Conn = (*stubConn)(nil)

@@ -2,6 +2,7 @@ package spi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -21,7 +22,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
+func WriteLineProtocol(ctx context.Context, conn *sql.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
 	columns := descColumns.Names()
 	columns = columns[:3]
 
@@ -90,10 +91,10 @@ func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descCo
 	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, columnsPhrase, valuesPlaces)
 	var numRows int
 	for _, rec := range rows {
-		result := conn.Exec(ctx, sqlText, rec...)
-		if result.Err() != nil {
+		_, err := conn.ExecContext(ctx, sqlText, rec...)
+		if err != nil {
 			return &InsertResult{
-				err:          result.Err(),
+				err:          err,
 				rowsAffected: numRows,
 				message:      "batch inserts aborted - " + sqlText,
 			}
@@ -104,14 +105,7 @@ func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descCo
 	ret := &InsertResult{
 		rowsAffected: numRows,
 	}
-	switch numRows {
-	case 0:
-		ret.message = "no rows inserted"
-	case 1:
-		ret.message = "a row inserted"
-	default:
-		ret.message = fmt.Sprintf("%d rows inserted", numRows)
-	}
+	ret.message = MakeUserMessage(SQLStatementTypeInsert, int64(numRows))
 	return ret
 }
 
@@ -146,31 +140,37 @@ type LicenseInfo struct {
 	LicenseStatus string `json:"licenseStatus,omitempty"`
 }
 
-func GetLicenseInfo(ctx context.Context, conn api.Conn) (*LicenseInfo, error) {
+func GetLicenseInfo(ctx context.Context, conn *sql.Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	var violateStatus int
-	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
-	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate, &violateStatus, &ret.LicenseStatus); err != nil {
+	var violateMsg sql.NullString
+	row := conn.QueryRowContext(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
+	if err := row.Err(); err != nil {
+		return nil, err
+	}
+	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate, &violateStatus, &violateMsg); err != nil {
 		return nil, err
 	}
 	if violateStatus == 0 {
 		ret.LicenseStatus = "Valid"
+	} else if violateMsg.Valid {
+		ret.LicenseStatus = violateMsg.String
 	}
 	return ret, nil
 }
 
-func InstallLicenseFile(ctx context.Context, conn api.Conn, path string) (*LicenseInfo, error) {
+func InstallLicenseFile(ctx context.Context, conn *sql.Conn, path string) (*LicenseInfo, error) {
 	if strings.ContainsRune(path, ';') {
 		return nil, errors.New("invalid license file path")
 	}
-	result := conn.Exec(ctx, "alter system install license='"+path+"'")
-	if result.Err() != nil {
-		return nil, result.Err()
+	_, err := conn.ExecContext(ctx, "alter system install license='"+path+"'")
+	if err != nil {
+		return nil, err
 	}
 	return GetLicenseInfo(ctx, conn)
 }
 
-func InstallLicenseData(ctx context.Context, conn api.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
+func InstallLicenseData(ctx context.Context, conn *sql.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
 	_, err := os.Stat(licenseFilePath)
 	if err == nil {
 		// backup existing file
@@ -189,7 +189,6 @@ type TableInfo struct {
 	Id       int64         `json:"id"`             // M$SYS_TABLES.ID
 	Type     api.TableType `json:"type"`           // M$SYS_TABLES.TYPE
 	Flag     api.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
-	err      error         `json:"-"`
 }
 
 func (ti *TableInfo) Kind() string {
@@ -221,14 +220,6 @@ func (ti *TableInfo) Kind() string {
 	return desc
 }
 
-func (ti *TableInfo) Err() error {
-	return ti.err
-}
-
-func (ti *TableInfo) Values() []interface{} {
-	return []interface{}{ti.Database, ti.User, ti.Name, ti.Id, ti.Type.ShortString(), ti.Flag.String()}
-}
-
 func ifThenElse(cond bool, a, b string) string {
 	if cond {
 		return a
@@ -236,8 +227,9 @@ func ifThenElse(cond bool, a, b string) string {
 	return b
 }
 
-func ListTablesSql(showAll bool, descriptiveType bool) string {
-	return SqlTidy(
+func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback func(*TableInfo, error) bool) {
+	descriptiveType := false
+	sqlText := SqlTidy(
 		`SELECT
 			j.DB_NAME as DATABASE_NAME,
 			u.NAME as USER_NAME,
@@ -287,30 +279,29 @@ func ListTablesSql(showAll bool, descriptiveType bool) string {
 			u.USER_ID = j.USER_ID`,
 		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'"),
 		`ORDER by j.NAME`)
-}
-
-func ListTablesWalk(ctx context.Context, conn api.Conn, showAll bool, callback func(*TableInfo) bool) {
-	sqlText := ListTablesSql(showAll, false)
-	rows, err := conn.Query(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
-		callback(&TableInfo{err: err})
+		callback(nil, err)
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		ti := &TableInfo{}
-		ti.err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
-		if !callback(ti) {
+		err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if !callback(ti, err) {
 			return
 		}
 	}
+	if err := rows.Err(); err != nil {
+		callback(nil, err)
+	}
 }
 
-func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (api.TableType, error) {
+func QueryTableType(ctx context.Context, conn *sql.Conn, fullTableName string) (api.TableType, error) {
 	_, userName, tableName := api.TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
-	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if r.Err() != nil {
 		return -1, r.Err()
 	}
@@ -321,8 +312,8 @@ func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (a
 	return ret, nil
 }
 
-func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
-	exists, err = api.ExistsTable(ctx, conn, fullTableName)
+func TruncateTableIfExists(ctx context.Context, conn *sql.Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
+	exists, err = ExistsTable(ctx, conn, fullTableName)
 	if err != nil {
 		return
 	}
@@ -340,16 +331,16 @@ func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName str
 		return
 	}
 	if tableType == api.TableTypeLog {
-		result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
-		if result.Err() != nil {
-			err = result.Err()
+		_, err0 := conn.ExecContext(ctx, fmt.Sprintf("truncate table %s", fullTableName))
+		if err0 != nil {
+			err = err0
 			return
 		}
 		truncated = true
 	} else {
-		result := conn.Exec(ctx, fmt.Sprintf("delete from %s", fullTableName))
-		if result.Err() != nil {
-			err = result.Err()
+		_, err0 := conn.ExecContext(ctx, fmt.Sprintf("delete from %s", fullTableName))
+		if err0 != nil {
+			err = err0
 			return
 		}
 		truncated = true
@@ -357,149 +348,17 @@ func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName str
 	return
 }
 
-type IndexInfo struct {
-	Id             int64  `json:"id"`
-	Database       string `json:"database"`
-	DatabaseId     int64  `json:"database_id,omitempty"`
-	User           string `json:"user"`
-	TableName      string `json:"table_name"`
-	ColumnName     string `json:"column_name"`
-	IndexName      string `json:"index_name"`
-	IndexType      string `json:"index_type"`
-	KeyCompress    string `json:"key_compress"`
-	MaxLevel       int64  `json:"max_level"`
-	PartValueCount int64  `json:"part_value_count"`
-	BitMapEncode   string `json:"bitmap_encode"`
-	err            error  `json:"-"`
-}
-
-var listIndexesSql = SqlTidy(`
-		SELECT
-			u.name as USER_NAME,
-			j.DB_NAME as DATABASE_NAME,
-			j.TABLE_NAME as TABLE_NAME,
-			c.name as COLUMN_NAME,
-			b.name as INDEX_NAME,
-			b.id as INDEX_ID,
-			case b.type
-				when 1 then 'BITMAP'
-				when 2 then 'KEYWORD'
-				when 5 then 'REDBLACK'
-				when 6 then 'LSM'
-				when 8 then 'REDBLACK'
-				when 9 then 'KEYWORD_LSM'
-				when 11 then 'TAG'
-				else 'LSM' 
-			end as INDEX_TYPE,
-			case b.key_compress
-				when 0 then 'UNCOMPRESS'
-				else 'COMPRESSED'
-			end as KEY_COMPRESS,
-			b.max_level as MAX_LEVEL,
-			b.part_value_count as PART_VALUE_COUNT,
-			case b.bitmap_encode
-				when 0 then 'EQUAL'
-				else 'RANGE'
-			end as BITMAP_ENCODE
-		FROM
-			m$sys_indexes b, 
-			m$sys_index_columns c, 
-			m$sys_users u,
-			(
-				select
-					case a.DATABASE_ID
-						when -1 then 'MACHBASEDB'
-						else d.MOUNTDB
-					end as DB_NAME,
-					a.name as TABLE_NAME,
-					a.id as TABLE_ID,
-					a.USER_ID as USER_ID
-				from
-					M$SYS_TABLES a
-				left join
-					V$STORAGE_MOUNT_DATABASES d
-				on
-					a.DATABASE_ID = d.BACKUP_TBSID
-			) as j
-		WHERE
-			j.TABLE_ID = b.TABLE_ID
-		AND b.ID = c.INDEX_ID
-		AND j.USER_ID = u.USER_ID
-		ORDER BY
-			j.DB_NAME, j.TABLE_NAME, b.ID
-	`)
-
-func ListIndexesWalk(ctx context.Context, conn api.Conn, callback func(*IndexInfo) bool) {
-	rows, err := conn.Query(ctx, listIndexesSql)
-	if err != nil {
-		callback(&IndexInfo{err: err})
-		return
+func ExistsTable(ctx context.Context, conn *sql.Conn, fullTableName string) (bool, error) {
+	_, userName, tableName := api.TableName(fullTableName).Split()
+	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
+	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if err := r.Err(); err != nil {
+		fmt.Println("error", err.Error())
+		return false, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		nfo := &IndexInfo{}
-		nfo.err = rows.Scan(
-			&nfo.User, &nfo.Database, &nfo.TableName, &nfo.ColumnName,
-			&nfo.IndexName, &nfo.Id, &nfo.IndexType, &nfo.KeyCompress,
-			&nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
-		if !callback(nfo) {
-			return
-		}
+	var count = 0
+	if err := r.Scan(&count); err != nil {
+		return false, err
 	}
-}
-
-func ListIndexes(ctx context.Context, conn api.Conn) (ret []*IndexInfo, cause error) {
-	ListIndexesWalk(ctx, conn, func(ii *IndexInfo) bool {
-		if ii.err == nil && ii != nil {
-			ret = append(ret, ii)
-		}
-		cause = ii.err
-		return ii.err == nil
-	})
-	return
-}
-
-func DescribeIndex(ctx context.Context, conn api.Conn, name string) (*IndexInfo, error) {
-	sqlText := `select 
-		a.name as TABLE_NAME,
-		c.name as COLUMN_NAME,
-		b.name as INDEX_NAME,
-		case b.type
-			when 1 then 'BITMAP'
-			when 2 then 'KEYWORD'
-			when 5 then 'REDBLACK'
-			when 6 then 'LSM'
-			when 8 then 'REDBLACK'
-			when 9 then 'KEYWORD_LSM'
-			else 'LSM' end 
-		as INDEX_TYPE,
-		case b.key_compress
-			when 0 then 'UNCOMPRESSED'
-			else 'COMPRESSED' end 
-		as KEY_COMPRESS,
-		b.max_level as MAX_LEVEL,
-		b.part_value_count as PART_VALUE_COUNT,
-		case b.bitmap_encode
-			when 0 then 'EQUAL'
-			else 'RANGE' end 
-		as BITMAP_ENCODE
-	from
-		m$sys_tables a,
-		m$sys_indexes b,
-		m$sys_index_columns c
-	where
-		a.id = b.table_id 
-	and b.id = c.index_id
-	and b.name = '%s'`
-	sqlText = fmt.Sprintf(sqlText, strings.ToUpper(name))
-	row := conn.QueryRow(ctx, sqlText)
-	if row.Err() != nil {
-		return nil, row.Err()
-	}
-	nfo := &IndexInfo{}
-	nfo.err = row.Scan(
-		&nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType,
-		&nfo.KeyCompress, &nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
-	return nfo, nfo.err
+	return (count == 1), nil
 }

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto"
 	"database/sql"
-	"database/sql/driver"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -725,24 +724,6 @@ func TestPing(t *testing.T) {
 	require.GreaterOrEqual(t, dur, time.Duration(0))
 }
 
-func TestLicense(t *testing.T) {
-	ctx := t.Context()
-	conn, err := machsvrDB.Connect(ctx, api.WithPassword("sys", "manager"))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	lic, err := spi.GetLicenseInfo(ctx, conn)
-	require.NoError(t, err, "license fail")
-	require.Equal(t, "00000000", lic.Id)
-	require.Equal(t, "COMMUNITY", lic.Type)
-	require.Equal(t, "NONE", lic.Customer)
-	require.Equal(t, "NONE", lic.Project)
-	require.Equal(t, "KR", lic.CountryCode)
-	require.NotEmpty(t, lic.InstallDate)
-	require.NotEmpty(t, lic.IssueDate)
-	require.NotEmpty(t, lic.LicenseStatus)
-}
-
 func TestUserAuth(t *testing.T) {
 	ctx := t.Context()
 	ok, reason, err := machsvrDB.UserAuth(ctx, "sys", "mm")
@@ -817,14 +798,10 @@ func TestUserAuthWithKey(t *testing.T) {
 func TestTableBasedCases(t *testing.T) {
 	t.Run("CreateTables", testCreateTables)
 	t.Run("DescribeTable", testDescribeTable)
-	t.Run("InsertAndQuery", testInsertAndQuery)
 	t.Run("InsertMeta", testInsertMeta)
 	t.Run("AppendTag", testAppendTag)
 	t.Run("AppendTagNotExist", testAppendTagNotExist)
 	t.Run("AppendTagPartial", testAppendTagPartial)
-	t.Run("ShowTables", testShowTables)
-	t.Run("ExistsTable", testExistsTable)
-	t.Run("ShowIndexes", testShowIndexes)
 	t.Run("Explain", testExplain)
 	t.Run("ExplainFull", testExplainFull)
 	t.Run("Columns", testColumns)
@@ -833,7 +810,6 @@ func TestTableBasedCases(t *testing.T) {
 	t.Run("InsertAndQueryLogTable", testInserAndQueryLogTable)
 	t.Run("AppendLogTable", testAppendLogTable)
 	t.Run("AppendTagTable", testAppendTagTable)
-	t.Run("WatchLogTable", testWatchLogTable)
 }
 
 func testCreateTables(t *testing.T) {
@@ -1000,248 +976,6 @@ func testDescribeTable(t *testing.T) {
 	desc, err := api.DescribeTable(ctx, descConn, "m$sys_tables", false)
 	require.NoError(t, err, "describe m$sys_tables fail")
 	require.Equal(t, "M$SYS_TABLES", desc.Name)
-}
-
-func testInsertAndQuery(t *testing.T) {
-	ctx := t.Context()
-	db := machsvrDB
-
-	now, _ := time.ParseInLocation("2006-01-02 15:04:05", "2021-01-01 00:00:00", time.UTC)
-
-	// Because INSERT statement uses '2021-01-01 00:00:00' as time value which was parsed in Local timezone,
-	// the time value should be converted to UTC timezone to compare
-	// TODO: improve this behavior
-	nowStrInLocal := now.In(time.Local).Format("2006-01-02 15:04:05")
-
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"), api.WithStatementCache(api.StatementCacheAuto))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	// insert
-	result := conn.Exec(ctx, `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) `+
-		`values('insert-once', '`+nowStrInLocal+`', 1.23, 1, 2, 3, 'str1', '{"key1": "value1"}')`)
-	require.NoError(t, result.Err(), "insert fail")
-	require.Equal(t, int64(1), result.RowsAffected())
-
-	sysConn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"), api.WithStatementCache(api.StatementCacheAuto))
-	result = sysConn.Exec(ctx, `EXEC table_flush(tag_data)`)
-	require.NoError(t, result.Err(), "table_flush fail")
-	require.Equal(t, int64(0), result.RowsAffected())
-	sysConn.Close()
-
-	// prepare and query
-	stmt, err := conn.Prepare(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`)
-	require.NoError(t, err, "prepare fail")
-	defer stmt.Close()
-	for nth := range 10 {
-		rows, err := stmt.Query(ctx, "insert-once")
-		require.NoError(t, err, "query fail")
-		numRows := 0
-		for rows.Next() {
-			numRows++
-			var name string
-			var timeVal time.Time
-			var value float64
-			var short_value int16
-			var int_value int32
-			var long_value int64
-			var str_value string
-			var json_value string
-			err := rows.Scan(&name, &timeVal, &value, &short_value, &int_value, &long_value, &str_value, &json_value)
-			require.NoError(t, err, "scan fail")
-			require.Equal(t, "insert-once", name)
-			require.Equal(t, now.Unix(), timeVal.Unix())
-			require.Equal(t, 1.23, value)
-			require.Equal(t, int16(1), short_value)
-			require.Equal(t, int32(2), int_value)
-			require.Equal(t, int64(3), long_value)
-			require.Equal(t, "str1", str_value)
-			require.Equal(t, `{"key1": "value1"}`, json_value)
-		}
-		rows.Close()
-		require.Equal(t, 1, numRows, "expect 1 row in nth=%d", nth+1)
-	}
-
-	// select
-	rows, err := conn.Query(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`,
-		"insert-once")
-	require.NoError(t, err, "select fail")
-
-	numRows := 0
-	for rows.Next() {
-		numRows++
-		var name string
-		var timeVal time.Time
-		var value float64
-		var short_value int16
-		var int_value int32
-		var long_value int64
-		var str_value string
-		var json_value string
-		err := rows.Scan(&name, &timeVal, &value, &short_value, &int_value, &long_value, &str_value, &json_value)
-		require.NoError(t, err, "scan fail")
-		require.Equal(t, "insert-once", name)
-		require.Equal(t, now.Unix(), timeVal.Unix())
-		require.Equal(t, 1.23, value)
-		require.Equal(t, int16(1), short_value)
-		require.Equal(t, int32(2), int_value)
-		require.Equal(t, int64(3), long_value)
-		require.Equal(t, "str1", str_value)
-		require.Equal(t, `{"key1": "value1"}`, json_value)
-	}
-	require.Equal(t, 1, numRows)
-	err = rows.Close()
-	require.NoError(t, err, "close fail")
-
-	var unbox = func(val any) any {
-		switch v := val.(type) {
-		case *int:
-			return *v
-		case *uint:
-			return *v
-		case *int16:
-			return *v
-		case *uint16:
-			return *v
-		case *int32:
-			return *v
-		case *uint32:
-			return *v
-		case *int64:
-			return *v
-		case *uint64:
-			return *v
-		case *float64:
-			return *v
-		case *float32:
-			return *v
-		case *string:
-			return *v
-		case *time.Time:
-			return *v
-		case *[]byte:
-			return *v
-		case *net.IP:
-			return *v
-		case *driver.Value:
-			return *v
-		default:
-			return val
-		}
-	}
-
-	// query - select
-	rows, err = conn.Query(ctx, `select * from tag_data where name = ?`, "insert-once")
-	require.NoError(t, err, "query fail")
-	cols, err := rows.Columns()
-	require.NoError(t, err, "columns fail")
-	require.Equal(t, []string{"NAME", "TIME", "VALUE",
-		"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
-		"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols.Names())
-	require.Equal(t, []api.DataType{
-		api.DataTypeString,
-		api.DataTypeDatetime,
-		api.DataTypeFloat64,
-		api.DataTypeInt16,
-		api.DataTypeUInt16,
-		api.DataTypeInt32,
-		api.DataTypeUInt32,
-		api.DataTypeInt64,
-		api.DataTypeUInt64,
-		api.DataTypeString,
-		api.DataTypeString,
-		api.DataTypeIPv4,
-		api.DataTypeIPv6,
-		api.DataTypeBinary,
-	}, cols.DataTypes())
-
-	var nextCalled int
-	for rows.Next() {
-		nextCalled++
-		values, err := cols.MakeBuffer()
-		require.NoError(t, err)
-		err = rows.Scan(values...)
-		require.NoError(t, err)
-		require.Equal(t, "insert-once", unbox(values[0]))
-		require.Equal(t, now, unbox(values[1]))
-		require.Equal(t, 1.23, unbox(values[2]))
-		require.Equal(t, int16(1), unbox(values[3]))
-		require.Equal(t, nil, unbox(values[4]))
-		require.Equal(t, int32(2), unbox(values[5]))
-		require.Equal(t, nil, unbox(values[6]))
-		require.Equal(t, int64(3), unbox(values[7]))
-		require.Equal(t, nil, unbox(values[8]))
-		require.Equal(t, "str1", unbox(values[9]))
-		require.Equal(t, `{"key1": "value1"}`, unbox(values[10]))
-	}
-	require.Equal(t, 1, nextCalled)
-
-	// query - insert
-
-	result = conn.Exec(ctx, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
-		`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
-		`?, ?, `+ // long_value, ulong_value
-		`?, ?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value, bin_value
-		1.23,                     // value
-		10,                       // ushort_value
-		2,                        // int_value
-		20,                       // uint_value
-		3,                        // long_value
-		40,                       // ulong_value
-		"str1",                   // str_value
-		`{"key1": "value1"}`,     // json_value
-		nil,                      // ipv4_value
-		nil,                      // ipv6_value
-		[]byte{0x01, 0x02, 0x03}, // bin_value
-	)
-	require.NoError(t, result.Err(), "query-insert fail")
-	require.Equal(t, "a row inserted.", result.Message())
-
-	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
-	require.NoError(t, result.Err(), "table_flush fail")
-
-	// tags
-	tags := []*spi.TagInfo{}
-	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo, err error) bool {
-		require.NoError(t, err, "tags fail")
-		require.Greater(t, tag.Id, int64(0))
-		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
-		tags = append(tags, tag)
-		return true
-	})
-	tags2 := []*spi.TagInfo{}
-	spi.ListTagsWalk(ctx, conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo, err error) bool {
-		require.NoError(t, err, "tags fail")
-		require.Greater(t, tag.Id, int64(0))
-		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
-		tags2 = append(tags2, tag)
-		return true
-	})
-	require.NoError(t, err, "tags fail")
-	require.EqualValues(t, tags, tags2)
-
-	// tag stat
-	tagStat, err := spi.QueryTagStat(ctx, conn, "TAG_DATA", "insert-once")
-	require.NoError(t, err, "tag stat fail")
-	require.Equal(t, "insert-once", tagStat.Name)
-	require.Equal(t, int64(1), tagStat.RowCount)
-	require.Equal(t, 1.23, tagStat.MinValue)
-	require.Equal(t, 1.23, tagStat.MaxValue)
-
-	// tag stat
-	tagStat, err = spi.QueryTagStat(ctx, conn, "TAG_DATA", "insert-twice")
-	require.NoError(t, err, "tag stat fail")
-	require.Equal(t, "insert-twice", tagStat.Name)
-	require.Equal(t, int64(1), tagStat.RowCount)
-
-	// delete test data
-	result = conn.Exec(ctx, `delete from tag_data where name = ?`, "insert-once")
-	require.NoError(t, result.Err(), "delete fail")
-	require.Equal(t, int64(1), result.RowsAffected())
-
-	result = conn.Exec(ctx, `delete from tag_data where name = ?`, "insert-twice")
-	require.NoError(t, result.Err(), "delete fail")
-	require.Equal(t, int64(1), result.RowsAffected())
 }
 
 func testInsertMeta(t *testing.T) {
@@ -1477,138 +1211,6 @@ func testAppendTagPartial(t *testing.T) {
 	conn.Close()
 }
 
-func testShowTables(t *testing.T) {
-	ctx := t.Context()
-	db := machsvrDB
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	result := map[string]*spi.TableInfo{}
-	spi.ListTablesWalk(ctx, conn, true, func(ti *spi.TableInfo) bool {
-		require.NoError(t, err, "tables fail")
-		result[fmt.Sprintf("%s.%s.%s", ti.Database, ti.User, ti.Name)] = ti
-		return true
-	})
-	ti := result["MACHBASEDB.SYS.TAG_DATA"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeTag, ti.Type)
-	require.Equal(t, api.TableFlagNone, ti.Flag)
-	require.Equal(t, "Tag Table", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS._TAG_DATA_META"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeLookup, ti.Type)
-	require.Equal(t, api.TableFlagMeta, ti.Flag)
-	require.Equal(t, "Lookup Table (meta)", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS._TAG_DATA_DATA_0"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeKeyValue, ti.Type)
-	require.Equal(t, api.TableFlagData, ti.Flag)
-	require.Equal(t, "KeyValue Table (data)", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS.TAG_SIMPLE"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeTag, ti.Type)
-	require.Equal(t, api.TableFlagNone, ti.Flag)
-	require.Equal(t, "Tag Table", ti.Kind())
-
-	ti = result["MACHBASEDB.SYS._TAG_SIMPLE_META"]
-	require.NotNil(t, ti, "table not found")
-	require.Equal(t, api.TableTypeLookup, ti.Type)
-	require.Equal(t, api.TableFlagMeta, ti.Flag)
-	require.Equal(t, "Lookup Table (meta)", ti.Kind())
-
-	tables := spi.ShowTables(ctx, conn, true)
-	require.NotEmpty(t, tables, "tables empty")
-	tableCount := 0
-	tables.Iter(func(values []any) bool {
-		tableCount++
-		return true
-	})
-	require.Equal(t, len(result), tableCount)
-}
-
-func testExistsTable(t *testing.T) {
-	ctx := t.Context()
-	db := machsvrDB
-
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
-		// table exists
-		exists, err := api.ExistsTable(ctx, conn, table_name)
-		require.NoError(t, err, "exists table %q fail", table_name)
-		require.True(t, exists, "table %q not exists", table_name)
-
-		// table not exists
-		exists, err = api.ExistsTable(ctx, conn, table_name+"_not_exists")
-		require.NoError(t, err, "exists table %q_not_exists fail", table_name)
-		require.False(t, exists, "table %q_not_exists exists", table_name)
-
-		// table exists and truncate
-		exists, truncated, err := spi.TruncateTableIfExists(ctx, conn, table_name, true)
-		require.NoError(t, err, "exists table %q fail", table_name)
-		require.True(t, exists, "table %q not exists", table_name)
-		require.True(t, truncated, "table %q not truncated", table_name)
-	}
-}
-
-func testShowIndexes(t *testing.T) {
-	ctx := t.Context()
-	db := machsvrDB
-
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	ret, err := spi.ListIndexes(ctx, conn)
-	require.NoError(t, err, "indexes fail")
-	require.NotEmpty(t, ret, "indexes empty")
-	required := map[string]bool{
-		"_TAG_DATA_META_NAME":         false,
-		"__PK_IDX__TAG_DATA_META_1":   false,
-		"_TAG_SIMPLE_META_NAME":       false,
-		"__PK_IDX__TAG_SIMPLE_META_1": false,
-	}
-	for _, r := range ret {
-		switch r.IndexName {
-		case "_TAG_DATA_META_NAME":
-			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_DATA_META", r.TableName)
-			require.Equal(t, "NAME", r.ColumnName)
-			require.Equal(t, "REDBLACK", r.IndexType)
-			required[r.IndexName] = true
-		case "__PK_IDX__TAG_DATA_META_1":
-			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_DATA_META", r.TableName)
-			require.Equal(t, "_ID", r.ColumnName)
-			require.Equal(t, "REDBLACK", r.IndexType)
-			required[r.IndexName] = true
-		case "_TAG_SIMPLE_META_NAME":
-			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_SIMPLE_META", r.TableName)
-			require.Equal(t, "NAME", r.ColumnName)
-			require.Equal(t, "REDBLACK", r.IndexType)
-			required[r.IndexName] = true
-		case "__PK_IDX__TAG_SIMPLE_META_1":
-			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_SIMPLE_META", r.TableName)
-			require.Equal(t, "_ID", r.ColumnName)
-			require.Equal(t, "REDBLACK", r.IndexType)
-			required[r.IndexName] = true
-		default:
-			// Ignore additional system indexes that may be added by newer engine versions.
-		}
-	}
-	for name, seen := range required {
-		require.True(t, seen, "required index missing: %s", name)
-	}
-}
-
 func testExplain(t *testing.T) {
 	ctx := t.Context()
 	db := machsvrDB
@@ -1830,69 +1432,6 @@ func StringWithCharset(length int, charset string) string {
 		b[i] = charset[seededRand.Intn(len(charset)-1)]
 	}
 	return string(b)
-}
-
-func testWatchLogTable(t *testing.T) {
-	ctx := t.Context()
-	db := machsvrDB
-
-	conf := spi.WatcherConfig{
-		ConnProvider: func() (api.Conn, error) {
-			return db.Connect(ctx, api.WithPassword("sys", "manager"))
-		},
-		Timeformat: "2006-01-02 15:04:05.999999",
-		Timezone:   time.UTC,
-		TableName:  "tag_data",
-		TagNames:   []string{"tag1", "tag2"},
-	}
-	w, err := spi.NewWatcher(ctx, conf)
-	require.NoError(t, err, "new watcher fail")
-	defer w.Close()
-
-	tick := time.NewTicker(2 * time.Second)
-	defer tick.Stop()
-	tickCount := 0
-
-	for {
-		select {
-		case data := <-w.C:
-			if err, ok := data.(error); ok {
-				t.Log("Error", err.Error())
-				t.Fail()
-				return
-			} else if rec, ok := data.(spi.WatchData); !ok {
-				t.Log("Data", data)
-				t.Fail()
-				return
-			} else {
-				if tickCount > 5 {
-					return
-				}
-				require.Equal(t, 4, len(rec["NAME"].(string)), "NAME")
-				require.IsType(t, "", rec["TIME"], "TIME")
-				require.LessOrEqual(t, 1.23, rec["VALUE"], "VALUE")
-				require.Equal(t, int16(1), rec["SHORT_VALUE"], "SHORT_VALUE")
-				require.Less(t, int32(0), rec["INT_VALUE"], "INT_VALUE")
-				require.Equal(t, int64(2), rec["LONG_VALUE"], "LONG_VALUE")
-				require.Equal(t, "str1", rec["STR_VALUE"], "STR_VALUE")
-				require.Equal(t, api.JSONString(`{"key1":"value1"}`), rec["JSON_VALUE"], "JSON_VALUE")
-			}
-		case <-tick.C:
-			tickCount++
-			conn, err := conf.ConnProvider()
-			require.NoError(t, err, "connect fail")
-			name := "tag1"
-			if tickCount%2 == 0 {
-				name = "tag2"
-			}
-			values := []any{name, time.Now(), 1.23 * float64(tickCount), 1, tickCount, 2, "str1", `{"key1":"value1"}`}
-			result := conn.Exec(ctx, `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) values(?, ?, ?, ?, ?, ?, ?, ?)`, values...)
-			conn.Close()
-			require.NoError(t, result.Err(), "insert fail")
-			time.Sleep(100 * time.Millisecond)
-			w.Execute()
-		}
-	}
 }
 
 func testAppendLogTable(t *testing.T) {

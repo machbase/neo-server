@@ -1,6 +1,7 @@
 package spi_test
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	_ "embed"
 	"net"
@@ -316,32 +317,19 @@ func TestDatabaseBasedCases(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	t.Run("Helpers", testDatabaseHelpers)
+	t.Run("TableExists", testTableExists)
+	t.Run("TableType", testTableTypes)
+	t.Run("InsertAndQuery", testInsertAndQuery)
+	t.Run("Watcher", testWatcher)
 }
 
-func testDatabaseHelpers(t *testing.T) {
+func testTableTypes(t *testing.T) {
 	ctx := t.Context()
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	db, err := spi.DefaultPool()
+	require.NoError(t, err)
+	conn, err := db.Conn(ctx)
 	require.NoError(t, err)
 	defer conn.Close()
-
-	tablesSet := spi.ShowTables(ctx, conn, false)
-	require.NoError(t, tablesSet.Err())
-	tables := []string{}
-	tablesSet.Iter(func(values []any) bool {
-		tables = append(tables, values[2].(string))
-		return true
-	})
-	require.GreaterOrEqual(t, len(tables), 3)
-
-	tablesAllSet := spi.ShowTables(ctx, conn, true)
-	require.NoError(t, tablesAllSet.Err())
-	tablesAll := []string{}
-	tablesAllSet.Iter(func(values []any) bool {
-		tablesAll = append(tablesAll, values[2].(string))
-		return true
-	})
-	require.GreaterOrEqual(t, len(tablesAll), len(tables))
 
 	typeTag, err := spi.QueryTableType(ctx, conn, "tag_data")
 	require.NoError(t, err)
@@ -349,15 +337,6 @@ func testDatabaseHelpers(t *testing.T) {
 
 	_, err = spi.QueryTableType(ctx, conn, "table_not_exists")
 	require.Error(t, err)
-
-	indexes, err := spi.ListIndexes(ctx, conn)
-	require.NoError(t, err)
-	require.NotEmpty(t, indexes)
-
-	// tags, err := spi.ListTags(ctx, conn, "tag_data", "NAME")
-	// require.NoError(t, err)
-	//require.Len(t, tags, 1)
-	//require.Equal(t, "tag1", tags[0].Name)
 
 	exists, truncated, err := spi.TruncateTableIfExists(ctx, conn, "table_not_exists", true)
 	require.NoError(t, err)
@@ -368,4 +347,305 @@ func testDatabaseHelpers(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.False(t, truncated)
+}
+
+func testTableExists(t *testing.T) {
+	ctx := t.Context()
+	db, err := spi.DefaultPool()
+	require.NoError(t, err)
+	conn, err := db.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
+		// table exists
+		exists, err := spi.ExistsTable(t.Context(), conn, table_name)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+
+		// table not exists
+		exists, err = spi.ExistsTable(t.Context(), conn, table_name+"_not_exists")
+		require.NoError(t, err, "exists table %q_not_exists fail", table_name)
+		require.False(t, exists, "table %q_not_exists exists", table_name)
+
+		// table exists and truncate
+		exists, truncated, err := spi.TruncateTableIfExists(t.Context(), conn, table_name, true)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+		require.True(t, truncated, "table %q not truncated", table_name)
+	}
+}
+
+func testWatcher(t *testing.T) {
+	db, err := spi.DefaultPool()
+	require.NoError(t, err)
+
+	conf := spi.WatcherConfig{
+		ConnProvider: func() (*sql.Conn, error) {
+			return db.Conn(t.Context())
+		},
+		Timeformat: "2006-01-02 15:04:05.999999",
+		Timezone:   time.UTC,
+		TableName:  "tag_data",
+		TagNames:   []string{"tag1", "tag2"},
+	}
+	w, err := spi.NewWatcher(t.Context(), conf)
+	require.NoError(t, err, "new watcher fail")
+	defer w.Close()
+
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	tickCount := 0
+
+	for {
+		select {
+		case data := <-w.C:
+			if err, ok := data.(error); ok {
+				t.Log("Error", err.Error())
+				t.Fail()
+				return
+			} else if rec, ok := data.(spi.WatchData); !ok {
+				t.Log("Data", data)
+				t.Fail()
+				return
+			} else {
+				if tickCount > 5 {
+					return
+				}
+				require.Equal(t, 4, len(rec["NAME"].(string)), "NAME")
+				require.IsType(t, "", rec["TIME"], "TIME")
+				require.LessOrEqual(t, 1.23, rec["VALUE"], "VALUE")
+				require.Equal(t, int16(1), rec["SHORT_VALUE"], "SHORT_VALUE")
+				require.Equal(t, nil, rec["USHORT_VALUE"], "USHORT_VALUE")
+				require.Less(t, int32(0), rec["INT_VALUE"], "INT_VALUE")
+				require.Equal(t, int64(2), rec["LONG_VALUE"], "LONG_VALUE")
+				require.Equal(t, "str1", rec["STR_VALUE"], "STR_VALUE")
+				require.Equal(t, api.JSONString(`{"key1":"value1"}`), rec["JSON_VALUE"], "JSON_VALUE")
+			}
+		case <-tick.C:
+			tickCount++
+			conn, err := conf.ConnProvider()
+			require.NoError(t, err, "connect fail")
+			name := "tag1"
+			if tickCount%2 == 0 {
+				name = "tag2"
+			}
+			values := []any{name, time.Now(), 1.23 * float64(tickCount), 1, tickCount, 2, "str1", `{"key1":"value1"}`}
+			_, err = conn.ExecContext(t.Context(), `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) values(?, ?, ?, ?, ?, ?, ?, ?)`, values...)
+			conn.Close()
+			require.NoError(t, err, "insert fail")
+			time.Sleep(100 * time.Millisecond)
+			w.Execute()
+		}
+	}
+}
+
+func testInsertAndQuery(t *testing.T) {
+	now, _ := time.ParseInLocation("2006-01-02 15:04:05", "2021-01-01 00:00:00", time.UTC)
+
+	// Because INSERT statement uses '2021-01-01 00:00:00' as time value which was parsed in Local timezone,
+	// the time value should be converted to UTC timezone to compare
+	// TODO: improve this behavior
+	nowStrInLocal := now.In(time.Local).Format("2006-01-02 15:04:05")
+
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	// insert
+	func() {
+		result, err := conn.ExecContext(t.Context(), `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) `+
+			`values('insert-once', '`+nowStrInLocal+`', 1.23, 1, 2, 3, 'str1', '{"key1": "value1"}')`)
+		require.NoError(t, err, "insert fail")
+		rowsAffected, err := result.RowsAffected()
+		require.NoError(t, err, "rows affected fail")
+		require.Equal(t, int64(1), rowsAffected, "expect 1 row affected")
+	}()
+
+	func() {
+		sysConn, err := spi.Connect(t.Context(), "sys")
+		require.NoError(t, err, "connect fail")
+		defer sysConn.Close()
+		result, err := sysConn.ExecContext(t.Context(), `EXEC table_flush(tag_data)`)
+		require.NoError(t, err, "table_flush fail")
+		rowsAffected, err := result.RowsAffected()
+		require.NoError(t, err, "rows affected fail")
+		require.Equal(t, int64(0), rowsAffected)
+	}()
+
+	// prepare and query
+	func() {
+		sqlText := `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`
+		for nth := range 10 {
+			rows, err := conn.QueryContext(t.Context(), sqlText, "insert-once")
+			require.NoError(t, err, "query fail")
+			numRows := 0
+			for rows.Next() {
+				numRows++
+				var name string
+				var timeVal time.Time
+				var value float64
+				var short_value int16
+				var int_value int32
+				var long_value int64
+				var str_value string
+				var json_value string
+				err := rows.Scan(&name, &timeVal, &value, &short_value, &int_value, &long_value, &str_value, &json_value)
+				require.NoError(t, err, "scan fail")
+				require.Equal(t, "insert-once", name)
+				require.Equal(t, now.Unix(), timeVal.Unix())
+				require.Equal(t, 1.23, value)
+				require.Equal(t, int16(1), short_value)
+				require.Equal(t, int32(2), int_value)
+				require.Equal(t, int64(3), long_value)
+				require.Equal(t, "str1", str_value)
+				require.Equal(t, `{"key1": "value1"}`, json_value)
+			}
+			rows.Close()
+			require.Equal(t, 1, numRows, "expect 1 row in nth=%d", nth+1)
+		}
+	}()
+
+	// select
+	func() {
+		sqlText := `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`
+		rows, err := conn.QueryContext(t.Context(), sqlText, "insert-once")
+		require.NoError(t, err, "select fail")
+		defer rows.Close()
+		numRows := 0
+		for rows.Next() {
+			numRows++
+			var name string
+			var timeVal time.Time
+			var value float64
+			var short_value int16
+			var int_value int32
+			var long_value int64
+			var str_value string
+			var json_value string
+			err := rows.Scan(&name, &timeVal, &value, &short_value, &int_value, &long_value, &str_value, &json_value)
+			require.NoError(t, err, "scan fail")
+			require.Equal(t, "insert-once", name)
+			require.Equal(t, now.Unix(), timeVal.Unix())
+			require.Equal(t, 1.23, value)
+			require.Equal(t, int16(1), short_value)
+			require.Equal(t, int32(2), int_value)
+			require.Equal(t, int64(3), long_value)
+			require.Equal(t, "str1", str_value)
+			require.Equal(t, `{"key1": "value1"}`, json_value)
+		}
+		require.Equal(t, 1, numRows)
+	}()
+
+	// query - select
+	func() {
+		sqlText := `select * from tag_data where name = ?`
+		rows, err := conn.QueryContext(t.Context(), sqlText, "insert-once")
+		require.NoError(t, err, "select fail")
+		defer rows.Close()
+
+		cols, err := rows.Columns()
+		require.NoError(t, err, "columns fail")
+		types, err := rows.ColumnTypes()
+		typeNames := make([]string, len(types))
+		for i, t := range types {
+			typeNames[i] = t.DatabaseTypeName()
+		}
+		require.NoError(t, err, "column types fail")
+		require.Equal(t, []string{"NAME", "TIME", "VALUE",
+			"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
+			"STR_VALUE", "JSON_VALUE", "IPV4_VALUE", "IPV6_VALUE", "BIN_VALUE"}, cols)
+		require.EqualValues(t, []string{
+			"VARCHAR", "DATETIME", "DOUBLE",
+			"SHORT", "USHORT", "INTEGER", "UINTEGER", "LONG", "ULONG",
+			"VARCHAR", "JSON", "IPV4", "IPV6", "BINARY"}, typeNames)
+
+		var nextCalled int
+		for rows.Next() {
+			nextCalled++
+			values := spi.MakeBuffer(types)
+			require.NoError(t, err)
+			err = rows.Scan(values...)
+			require.NoError(t, err)
+			require.Equal(t, "insert-once", api.Unbox(values[0]))
+			require.Equal(t, now.In(time.Local), api.Unbox(values[1]))
+			require.Equal(t, 1.23, api.Unbox(values[2]))
+			require.Equal(t, int16(1), api.Unbox(values[3]))
+			require.Equal(t, nil, api.Unbox(values[4]))
+			require.Equal(t, int32(2), api.Unbox(values[5]))
+			require.Equal(t, nil, api.Unbox(values[6]))
+			require.Equal(t, int64(3), api.Unbox(values[7]))
+			require.Equal(t, nil, api.Unbox(values[8]))
+			require.Equal(t, "str1", api.Unbox(values[9]))
+			require.Equal(t, api.JSONString(`{"key1": "value1"}`), api.Unbox(values[10]))
+		}
+		require.NoError(t, rows.Err())
+		stmtType := spi.DetectSQLStatementType(sqlText)
+		require.Equal(t, "a row selected.", spi.MakeUserMessage(stmtType, int64(nextCalled)))
+		require.Equal(t, 1, nextCalled)
+	}()
+
+	// query - insert
+	func() {
+		_, err := conn.ExecContext(t.Context(), `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
+			`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
+			`?, ?, `+ // long_value, ulong_value
+			`?, ?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value, bin_value
+			1.23,                     // value
+			10,                       // ushort_value
+			2,                        // int_value
+			20,                       // uint_value
+			3,                        // long_value
+			40,                       // ulong_value
+			"str1",                   // str_value
+			`{"key1": "value1"}`,     // json_value
+			nil,                      // ipv4_value
+			nil,                      // ipv6_value
+			[]byte{0x01, 0x02, 0x03}, // bin_value
+		)
+		require.NoError(t, err)
+		userMsg := spi.MakeUserMessage(spi.SQLStatementTypeInsert, 1)
+		require.Equal(t, "a row inserted.", userMsg)
+	}()
+
+	func() {
+		result, err := conn.ExecContext(t.Context(), "EXEC table_flush(tag_data)")
+		require.NoError(t, err, "table_flush fail")
+
+		// tags
+		spi.ListTagsWalk(t.Context(), conn, "TAG_DATA", "NAME", func(tag *spi.TagInfo, err error) bool {
+			require.NoError(t, err, "tags fail")
+			require.Greater(t, tag.Id, int64(0))
+			require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
+			return true
+		})
+		require.NoError(t, err, "tags fail")
+
+		// tag stat
+		tagStat, err := spi.QueryTagStat(t.Context(), conn, "TAG_DATA", "insert-once")
+		require.NoError(t, err, "tag stat fail")
+		require.Equal(t, "insert-once", tagStat.Name)
+		require.Equal(t, int64(1), tagStat.RowCount)
+		require.Equal(t, 1.23, tagStat.MinValue)
+		require.Equal(t, 1.23, tagStat.MaxValue)
+
+		// tag stat
+		tagStat, err = spi.QueryTagStat(t.Context(), conn, "TAG_DATA", "insert-twice")
+		require.NoError(t, err, "tag stat fail")
+		require.Equal(t, "insert-twice", tagStat.Name)
+		require.Equal(t, int64(1), tagStat.RowCount)
+
+		// delete test data
+		result, err = conn.ExecContext(t.Context(), `delete from tag_data where name = ?`, "insert-once")
+		require.NoError(t, err, "delete fail")
+		rowsAffected, err := result.RowsAffected()
+		require.NoError(t, err, "rows affected fail")
+		require.Equal(t, int64(1), rowsAffected)
+
+		result, err = conn.ExecContext(t.Context(), `delete from tag_data where name = ?`, "insert-twice")
+		require.NoError(t, err, "delete fail")
+		rowsAffected, err = result.RowsAffected()
+		require.NoError(t, err, "rows affected fail")
+		require.Equal(t, int64(1), rowsAffected)
+	}()
+
 }

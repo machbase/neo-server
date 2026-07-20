@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -139,7 +140,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 
 	watch, err := spi.NewWatcher(ctx,
 		spi.WatcherConfig{
-			ConnProvider: func() (api.Conn, error) { return getPoolConn(ctx) },
+			ConnProvider: func() (*sql.Conn, error) { return getPoolSqlConn(ctx) },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
 			Timeformat:   timeformat,
@@ -283,7 +284,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 	}
 	ts, _ := uidTs.Time()
 
-	conn, err := getPoolConn(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -307,13 +308,14 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 		sqlParams = append(sqlParams, fileID)
 	} else if tableType == api.TableTypeTag {
 		var desc *api.TableDescription
-		if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+		if rs := spi.ShowTable(ctx, conn, tableName, false); rs.Err() != nil {
+			err = rs.Err()
 			rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		} else {
-			desc = desc0
+			desc = rs.Description
 		}
 		basetimeColumn := "TIME"
 		nameColumn := "NAME"
@@ -344,7 +346,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 		return
 	}
 
-	row := conn.QueryRow(ctx, sqlText, sqlParams...)
+	row := conn.QueryRowContext(ctx, sqlText, sqlParams...)
 	if row.Err() != nil {
 		rsp.Reason = row.Err().Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -412,7 +414,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 		},
 	}
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := svr.getUserSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -420,9 +422,9 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	spi.ListTablesWalk(ctx, conn, showAll, func(ti *spi.TableInfo) bool {
-		if ti.Err() != nil {
-			rsp.Success, rsp.Reason = false, ti.Err().Error()
+	spi.ListTablesWalk(ctx, conn, showAll, func(ti *spi.TableInfo, err error) bool {
+		if err != nil {
+			rsp.Success, rsp.Reason = false, err.Error()
 			return false
 		}
 		if nameFilter != "" {
@@ -484,7 +486,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	rownum := 0
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := svr.getUserSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -497,12 +499,14 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		isCancelled = true
 	}()
 
-	desc, err := api.DescribeTable(ctx, conn, table, false)
-	if err != nil {
-		rsp.Success, rsp.Reason = false, err.Error()
+	var desc *api.TableDescription
+	if rs := spi.ShowTable(ctx, conn, table, false); rs.Err() != nil {
+		rsp.Success, rsp.Reason = false, rs.Err().Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
+	} else {
+		desc = rs.Description
 	}
 	if desc.Type != api.TableTypeTag {
 		rsp.Success, rsp.Reason = false, "not a tag table"
@@ -558,19 +562,21 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := svr.getUserSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 	defer conn.Close()
 
-	desc, err := api.DescribeTable(ctx, conn, table, false)
-	if err != nil {
-		rsp.Success, rsp.Reason = false, err.Error()
+	var desc *api.TableDescription
+	if rs := spi.ShowTable(ctx, conn, table, false); rs.Err() != nil {
+		rsp.Success, rsp.Reason = false, rs.Err().Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
+	} else {
+		desc = rs.Description
 	}
 	if desc.Type != api.TableTypeTag {
 		rsp.Success, rsp.Reason = false, "not a tag table"

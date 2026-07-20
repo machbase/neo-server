@@ -37,6 +37,13 @@ func TestMain(m *testing.M) {
 
 	db := testServer.DatabaseGO()
 	spi.SetDefault(db, testServer.DatabaseKey())
+	spi.SetDefaultDSN(map[string]string{
+		"host":            "127.0.0.1",
+		"port":            fmt.Sprintf("%d", testServer.MachPort()),
+		"statement_cache": "auto",
+		"user":            "sys",
+		"password":        "manager",
+	})
 	spi.StartAppendWorkers()
 
 	spi.StartMetrics()
@@ -293,6 +300,19 @@ func TestDatabaseTql(t *testing.T) {
 				require.Equal(t, "success", gjson.Get(result, "reason").String())
 				require.Equal(t, `{"message":"2 rows inserted."}`, gjson.Get(result, "data").Raw)
 				require.NoError(t, flushTable(t.Context(), "tag_simple"))
+			},
+		},
+		{
+			Name: "SQL_exec_flush_table",
+			Script: `
+				SQL("EXEC table_flush(tag_simple)")
+				MARKDOWN()
+				`,
+			ExpectText: []string{
+				`|MESSAGE|`,
+				`|:-----|`,
+				`|executed.|`,
+				``,
 			},
 		},
 		{

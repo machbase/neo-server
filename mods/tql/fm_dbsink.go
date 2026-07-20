@@ -2,6 +2,7 @@ package tql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -59,7 +60,7 @@ func (x *Node) fmInsert(args ...any) (*insert, error) {
 }
 
 type insert struct {
-	conn      api.Conn
+	conn      *sql.Conn
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
@@ -75,8 +76,8 @@ type insert struct {
 }
 
 func (ins *insert) Open(task *Task) error {
-	ins.ctx, ins.ctxCancel = context.WithCancel(context.Background())
-	if conn, err := task.ConnDatabase(ins.ctx); err != nil {
+	ins.ctx, ins.ctxCancel = context.WithCancel(task.ctx)
+	if conn, err := spi.Connect(ins.ctx, ins.node.task.consoleUser); err != nil {
 		return err
 	} else {
 		ins.conn = conn
@@ -150,20 +151,17 @@ func (ins *insert) _addRow(values []any) error {
 		ins.table.Name,
 		strings.Join(ins.columns, ","),
 		strings.Join(placeHolders, ","))
-	var err error
 	if ins.tag == nil {
-		if result := ins.conn.Exec(ins.ctx, sqlText, values...); result.Err() != nil {
-			err = result.Err()
+		if _, err := ins.conn.ExecContext(ins.ctx, sqlText, values...); err != nil {
+			return err
 		}
 	} else {
-		if result := ins.conn.Exec(ins.ctx, sqlText, append([]any{ins.tag.Name}, values...)...); result.Err() != nil {
-			err = result.Err()
+		if _, err := ins.conn.ExecContext(ins.ctx, sqlText, append([]any{ins.tag.Name}, values...)...); err != nil {
+			return err
 		}
 	}
-	if err == nil {
-		ins.rowsAffected++
-	}
-	return err
+	ins.rowsAffected++
+	return nil
 }
 
 func (x *Node) fmAppend(args ...any) (*appender, error) {
@@ -263,18 +261,22 @@ func (x *Node) fmSqlSink(args ...any) (*sqlSink, error) {
 
 	switch v := args[0].(type) {
 	case string:
-		ret.databaseProvider = func(ctx context.Context) (api.Conn, error) {
-			return x.task.ConnDatabase(ctx)
+		if conn, err := spi.Connect(x.task.ctx, x.task.consoleUser); err != nil {
+			return nil, err
+		} else {
+			ret.conn = conn
 		}
 		ret.sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
 		paramStart = 1
 	case *bridgeName:
-		ret.databaseProvider = func(ctx context.Context) (api.Conn, error) {
-			db, err := connector.New(v.name)
-			if err != nil {
-				return nil, err
-			}
-			return db.Connect(ctx)
+		db, err := connector.Database(v.name)
+		if err != nil {
+			return nil, err
+		}
+		if conn, err := db.Conn(x.task.ctx); err != nil {
+			return nil, err
+		} else {
+			ret.conn = conn
 		}
 		if len(args) < 2 {
 			return nil, ErrInvalidNumOfArgs("SQL", 2, len(args))
@@ -305,27 +307,24 @@ func (x *Node) fmSqlSink(args ...any) (*sqlSink, error) {
 }
 
 type sqlSink struct {
-	node             *Node
-	databaseProvider func(ctx context.Context) (api.Conn, error)
-	sqlText          string
-	stmtType         spi.SQLStatementType
-	rawParams        []any
+	node      *Node
+	sqlText   string
+	stmtType  spi.SQLStatementType
+	rawParams []any
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
-	conn      api.Conn
+	conn      *sql.Conn
 
 	affectedRows int64
 	resultMsg    string
 }
 
 func (s *sqlSink) Open(task *Task) error {
-	s.ctx, s.ctxCancel = context.WithCancel(context.Background())
-	conn, err := s.databaseProvider(s.ctx)
-	if err != nil {
-		return err
+	s.ctx, s.ctxCancel = context.WithCancel(task.ctx)
+	if s.conn == nil {
+		return fmt.Errorf("f(SQL) no connection exists")
 	}
-	s.conn = conn
 	return nil
 }
 
@@ -337,13 +336,6 @@ func (s *sqlSink) Close() (string, error) {
 		s.ctxCancel()
 	}
 	return spi.MakeUserMessage(s.stmtType, s.affectedRows), nil
-	// if s.affectedRows > 0 {
-	// 	return formatSqlSinkMessage(s.stmtType, s.affectedRows), nil
-	// }
-	// if s.resultMsg != "" {
-	// 	return s.resultMsg, nil
-	// }
-	// return "0 rows affected.", nil
 }
 
 func (s *sqlSink) AddRow(values []any) error {
@@ -363,11 +355,15 @@ func (s *sqlSink) AddRow(values []any) error {
 			params = append(params, p)
 		}
 	}
-	result := s.conn.Exec(s.ctx, s.sqlText, params...)
-	if err := result.Err(); err != nil {
+	result, err := s.conn.ExecContext(s.ctx, s.sqlText, params...)
+	if err != nil {
 		return err
 	}
-	s.resultMsg = result.Message()
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	s.resultMsg = spi.MakeUserMessage(s.stmtType, affectedRows)
 	if n, ok := parseRowsAffectedFromMessage(s.resultMsg); ok {
 		s.affectedRows += n
 	} else {

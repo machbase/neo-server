@@ -125,7 +125,7 @@ func TestShowLicense(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowLicense",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowLicense(t.Context(), fixture.dbConn)) },
 			columns: []string{"ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", "ISSUE_DATE", "STATUS"},
 			expectFunc: func(values [][]any) {
 				row := values[0]
@@ -176,7 +176,7 @@ func TestShowUsers(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowUsers",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.dbConn)) },
 			columns: []string{"USER_ID", "NAME"},
 			expects: [][]any{
 				{int64(1), "SYS"},
@@ -196,7 +196,7 @@ func TestShowMetaTables(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowMetaTables",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowMetaTables(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowMetaTables(t.Context(), fixture.dbConn)) },
 			columns: []string{"ID", "NAME", "TYPE"},
 			expectFunc: func(values [][]any) {
 				require.GreaterOrEqual(t, len(values), 1)
@@ -221,7 +221,7 @@ func TestShowVirtualTables(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowVirtualTables",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowVirtualTables(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowVirtualTables(t.Context(), fixture.dbConn)) },
 			columns: []string{"ID", "NAME", "TYPE"},
 			expectFunc: func(values [][]any) {
 				require.GreaterOrEqual(t, len(values), 1)
@@ -246,7 +246,7 @@ func TestShowSessions(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "QuerySessions",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowSessions(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowSessions(t.Context(), fixture.dbConn)) },
 			columns: []string{"ID", "USER_NAME", "USER_ID", "LOGIN_TIME", "TYPE", "USER_IP", "MAX_QPX_MEM"},
 			expectFunc: func(values [][]any) {
 				row := values[0]
@@ -274,7 +274,7 @@ func TestShowStatements(t *testing.T) {
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowStatements",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowStatements(t.Context(), fixture.conn)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowStatements(t.Context(), fixture.dbConn)) },
 			columns: []string{"ID", "SESSION_ID", "STATE", "RECORD_SIZE", "QUERY"},
 			expectFunc: func(values [][]any) {
 				row := values[0]
@@ -294,27 +294,26 @@ func TestShowStatements(t *testing.T) {
 func TestShowTables(t *testing.T) {
 	fixture := newShowDatabase(t.Context())
 	defer fixture.Close()
-	dbConn := fixture.dbConn
-	conn := fixture.conn
+	conn := fixture.dbConn
 
 	// Create a test table for the tests
-	dbConn.ExecContext(t.Context(), "CREATE TAG TABLE RS_DATA(NAME VARCHAR(80) PRIMARY KEY, TIME DATETIME basetime, VALUE DOUBLE summarized) with rollup tag_partition_count = 1")
-	defer dbConn.ExecContext(t.Context(), "DROP TAG TABLE RS_DATA CASCADE")
-	dbConn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-01 00:00:00', 1.0)")
-	dbConn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-02 00:00:00', 2.0)")
-	dbConn.ExecContext(t.Context(), "exec table_flush('RS_DATA')")
+	conn.ExecContext(t.Context(), "CREATE TAG TABLE RS_DATA(NAME VARCHAR(80) PRIMARY KEY, TIME DATETIME basetime, VALUE DOUBLE summarized) with rollup tag_partition_count = 1")
+	defer conn.ExecContext(t.Context(), "DROP TAG TABLE RS_DATA CASCADE")
+	conn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-01 00:00:00', 1.0)")
+	conn.ExecContext(t.Context(), "INSERT INTO RS_DATA VALUES('test1', '2024-01-02 00:00:00', 2.0)")
+	conn.ExecContext(t.Context(), "exec table_flush('RS_DATA')")
 
 	parseTime := func(str string) time.Time {
 		tm, err := time.ParseInLocation("2006-01-02 15:04:05", str, time.Local)
 		require.NoError(t, err)
-		return tm.In(time.UTC)
+		return tm
 	}
 	_ = parseTime
 
 	tests := []ResultSetTestCase{
 		{
 			name:    "ShowTables",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), conn, false)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), fixture.dbConn, false)) },
 			columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
 			expects: [][]any{
 				{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},
@@ -322,7 +321,7 @@ func TestShowTables(t *testing.T) {
 		},
 		{
 			name:    "ShowTables_all",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), conn, true)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTables(t.Context(), fixture.dbConn, true)) },
 			columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
 			expects: [][]any{
 				{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},

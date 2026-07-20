@@ -592,19 +592,6 @@ func getPoolSqlConn(ctx context.Context) (*sql.Conn, error) {
 	return sqlConn, nil
 }
 
-func getPoolConn(ctx context.Context) (api.Conn, error) {
-	pool, poolErr := spi.DefaultPool()
-	if poolErr != nil {
-		return nil, poolErr
-	}
-	sqlConn, connErr := pool.Conn(ctx)
-	if connErr != nil {
-		return nil, connErr
-	}
-	conn := spi.WrapSqlConn(sqlConn)
-	return conn, nil
-}
-
 func (s *Server) AddServicePort(svc string, addr string) error {
 	svc = strings.ToLower(svc)
 	if strings.HasPrefix(addr, "tcp://") {
@@ -833,7 +820,7 @@ func (s *Server) checkAndInstallLicense() error {
 		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+			conn, err := getPoolSqlConn(ctx)
 			if err != nil {
 				s.log.Error("ERR", err.Error())
 				return err
