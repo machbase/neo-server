@@ -384,16 +384,6 @@ func (svr *httpd) getTrustConnection(ctx *gin.Context) (api.Conn, error) {
 	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 }
 
-// for the api called from web-client that authorized by JWT
-func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
-	claim, _ := svr.getJwtClaim(ctx)
-	if claim != nil {
-		return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
-	} else {
-		return nil, errors.New("unauthorized db request")
-	}
-}
-
 func (svr *httpd) getUserSqlConn(ctx *gin.Context) (*sql.Conn, error) {
 	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {

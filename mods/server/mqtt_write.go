@@ -133,7 +133,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := getPoolConn(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
@@ -141,7 +141,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	}
 	defer conn.Close()
 
-	exists, err := api.ExistsTable(ctx, conn, wp.Table)
+	exists, err := spi.ExistsTable(ctx, conn, wp.Table)
 	if err != nil {
 		rsp.Reason = err.Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
@@ -153,12 +153,12 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	}
 
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx, conn, wp.Table, false); err != nil {
-		rsp.Reason = err.Error()
+	if rs := spi.ShowTable(ctx, conn, wp.Table, false); rs.Err() != nil {
+		rsp.Reason = rs.Err().Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
 		return
 	} else {
-		desc = desc0
+		desc = rs.Description
 	}
 
 	var inputStream io.Reader
@@ -295,8 +295,8 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 			}
 			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, strings.Join(cols, ","), strings.Join(_hold, ","))
 		}
-		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
-			rsp.Reason = result.Err().Error()
+		if _, err := conn.ExecContext(ctx, insertQuery, vals...); err != nil {
+			rsp.Reason = err.Error()
 			s.log.Warn(cl.Net.Remote, pk.TopicName, rsp.Reason)
 			return
 		}
@@ -461,7 +461,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		s.log.Warn(cl.Net.Remote, pk.TopicName, err.Error())
 		return
@@ -471,11 +471,11 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 	dbName := strings.TrimPrefix(pk.TopicName, "db/metrics/")
 
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx, conn, dbName, false); err != nil {
-		s.log.Warn(cl.Net.Remote, "column error:", err.Error())
+	if rs := spi.ShowTable(ctx, conn, dbName, false); rs.Err() != nil {
+		s.log.Warn(cl.Net.Remote, "column error:", rs.Err().Error())
 		return
 	} else {
-		desc = desc0
+		desc = rs.Description
 	}
 	tableName := strings.ToUpper(dbName)
 	timePrecision := lineprotocol.Nanosecond

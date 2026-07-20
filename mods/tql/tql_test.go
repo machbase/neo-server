@@ -303,6 +303,19 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "SQL_exec_flush_table",
+			Script: `
+				SQL("EXEC table_flush(tag_simple)")
+				MARKDOWN()
+				`,
+			ExpectText: []string{
+				`|MESSAGE|`,
+				`|:-----|`,
+				`|executed.|`,
+				``,
+			},
+		},
+		{
 			Name: "SQL_show-tags",
 			Script: `
 				SQL("show tags tag_simple")

@@ -486,7 +486,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	rownum := 0
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := svr.getUserSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -499,12 +499,14 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		isCancelled = true
 	}()
 
-	desc, err := api.DescribeTable(ctx, conn, table, false)
-	if err != nil {
-		rsp.Success, rsp.Reason = false, err.Error()
+	var desc *api.TableDescription
+	if rs := spi.ShowTable(ctx, conn, table, false); rs.Err() != nil {
+		rsp.Success, rsp.Reason = false, rs.Err().Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
+	} else {
+		desc = rs.Description
 	}
 	if desc.Type != api.TableTypeTag {
 		rsp.Success, rsp.Reason = false, "not a tag table"
@@ -560,19 +562,21 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := svr.getUserConnection(ctx)
+	conn, err := svr.getUserSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 	defer conn.Close()
 
-	desc, err := api.DescribeTable(ctx, conn, table, false)
-	if err != nil {
-		rsp.Success, rsp.Reason = false, err.Error()
+	var desc *api.TableDescription
+	if rs := spi.ShowTable(ctx, conn, table, false); rs.Err() != nil {
+		rsp.Success, rsp.Reason = false, rs.Err().Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
+	} else {
+		desc = rs.Description
 	}
 	if desc.Type != api.TableTypeTag {
 		rsp.Success, rsp.Reason = false, "not a tag table"

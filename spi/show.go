@@ -1227,7 +1227,7 @@ func ShowRollupGap(ctx context.Context, conn *sql.Conn) *ShowRollupGapResultSet 
 
 type ShowTagsResultSet struct {
 	ResultSetBase
-	conn      api.Conn
+	conn      *sql.Conn
 	tableName string
 	tagNames  []string
 	desc      *api.TableDescription
@@ -1294,19 +1294,17 @@ func (tr *ShowTagsResultSet) Iter(callback func(values []interface{}) bool) {
 	})
 }
 
-func ShowTags(ctx context.Context, sqlConn *sql.Conn, tableName string, tagNames ...string) *ShowTagsResultSet {
-	conn := WrapSqlConn(sqlConn)
-
+func ShowTags(ctx context.Context, conn *sql.Conn, tableName string, tagNames ...string) *ShowTagsResultSet {
 	tableName = strings.ToUpper(tableName)
-	desc, err := api.DescribeTable(ctx, conn, tableName, false)
-	if err != nil {
-		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	rs := ShowTable(ctx, conn, tableName, false)
+	if rs.err != nil {
+		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: rs.err}}
 	}
-	if desc.Type != api.TableTypeTag {
+	if rs.Description.Type != api.TableTypeTag {
 		err := fmt.Errorf("table '%s' is not a tag table", tableName)
 		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
-	return &ShowTagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, desc: desc}
+	return &ShowTagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, desc: rs.Description}
 }
 
 type TagInfo struct {
@@ -1348,9 +1346,9 @@ func (tsi *TagStatInfo) Values() []interface{} {
 	}
 }
 
-func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColumn string, callback func(*TagInfo, error) bool) {
+func ListTagsWalk(ctx context.Context, conn *sql.Conn, table string, tagNameColumn string, callback func(*TagInfo, error) bool) {
 	database, userName, tableName := api.TableName(table).Split()
-	rows, err := conn.Query(ctx, fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, userName, tableName))
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, userName, tableName))
 	if err != nil {
 		callback(nil, err)
 		return
@@ -1365,7 +1363,7 @@ func ListTagsWalk(ctx context.Context, conn api.Conn, table string, tagNameColum
 	}
 }
 
-func QueryTagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
+func QueryTagStat(ctx context.Context, conn *sql.Conn, table string, tag string) (*TagStatInfo, error) {
 	database, user, table := api.TableName(table).Split()
 	sqlText := SqlTidy(`SELECT`,
 		`NAME, ROW_COUNT,`,
@@ -1380,14 +1378,51 @@ func QueryTagStat(ctx context.Context, conn api.Conn, table string, tag string) 
 		User:     user,
 		Table:    table,
 	}
-	row := conn.QueryRow(ctx, sqlText, tag)
+	row := conn.QueryRowContext(ctx, sqlText, tag)
 	if err := row.Err(); err != nil {
 		return nil, row.Err()
 	}
+	var name sql.NullString
+	var rowCount sql.NullInt64
+	var minTime sql.NullTime
+	var maxTime sql.NullTime
+	var minValue sql.NullFloat64
+	var minValueTime sql.NullTime
+	var maxValue sql.NullFloat64
+	var maxValueTime sql.NullTime
+	var recentRowTime sql.NullTime
 	err := row.Scan(
-		&nfo.Name, &nfo.RowCount,
-		&nfo.MinTime, &nfo.MaxTime,
-		&nfo.MinValue, &nfo.MinValueTime, &nfo.MaxValue, &nfo.MaxValueTime,
-		&nfo.RecentRowTime)
+		&name, &rowCount,
+		&minTime, &maxTime,
+		&minValue, &minValueTime, &maxValue, &maxValueTime,
+		&recentRowTime)
+
+	if name.Valid {
+		nfo.Name = name.String
+	}
+	if rowCount.Valid {
+		nfo.RowCount = rowCount.Int64
+	}
+	if minTime.Valid {
+		nfo.MinTime = minTime.Time
+	}
+	if maxTime.Valid {
+		nfo.MaxTime = maxTime.Time
+	}
+	if minValue.Valid {
+		nfo.MinValue = minValue.Float64
+	}
+	if minValueTime.Valid {
+		nfo.MinValueTime = minValueTime.Time
+	}
+	if maxValue.Valid {
+		nfo.MaxValue = maxValue.Float64
+	}
+	if maxValueTime.Valid {
+		nfo.MaxValueTime = maxValueTime.Time
+	}
+	if recentRowTime.Valid {
+		nfo.RecentRowTime = recentRowTime.Time
+	}
 	return nfo, err
 }

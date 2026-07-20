@@ -76,7 +76,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	default:
 	}
 
-	conn, err := getPoolConn(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
 		rsp.Reason = "service unavailable"
@@ -87,10 +87,12 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	desc, err := api.DescribeTable(ctx, conn, tableName, false)
-	if err != nil {
-		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+	var desc *api.TableDescription
+	if rs := spi.ShowTable(ctx, conn, tableName, false); rs.Err() != nil {
+		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, rs.Err().Error()))
 		return
+	} else {
+		desc = rs.Description
 	}
 
 	var in io.Reader
@@ -227,8 +229,8 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				}
 				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
 			}
-			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
-				errRsp(http.StatusInternalServerError, result.Err().Error())
+			if _, err := conn.ExecContext(ctx, insertQuery, vals...); err != nil {
+				errRsp(http.StatusInternalServerError, err.Error())
 				return
 			}
 		} else { // append
@@ -475,7 +477,7 @@ func (svr *httpd) handleLineProtocol(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleLineWrite(ctx *gin.Context) {
-	conn, err := getPoolConn(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -484,13 +486,13 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 
 	dbName := ctx.Query("db")
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx, conn, dbName, false); err != nil {
+	if rs := spi.ShowTable(ctx, conn, dbName, false); rs.Err() != nil {
 		ctx.JSON(
 			http.StatusBadRequest,
-			gin.H{"error": fmt.Sprintf("column error: %s", err.Error())})
+			gin.H{"error": fmt.Sprintf("column error: %s", rs.Err().Error())})
 		return
 	} else {
-		desc = desc0
+		desc = rs.Description
 	}
 
 	precision := lineprotocol.Nanosecond

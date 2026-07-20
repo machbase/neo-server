@@ -22,7 +22,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
+func WriteLineProtocol(ctx context.Context, conn *sql.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
 	columns := descColumns.Names()
 	columns = columns[:3]
 
@@ -91,10 +91,10 @@ func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descCo
 	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, columnsPhrase, valuesPlaces)
 	var numRows int
 	for _, rec := range rows {
-		result := conn.Exec(ctx, sqlText, rec...)
-		if result.Err() != nil {
+		_, err := conn.ExecContext(ctx, sqlText, rec...)
+		if err != nil {
 			return &InsertResult{
-				err:          result.Err(),
+				err:          err,
 				rowsAffected: numRows,
 				message:      "batch inserts aborted - " + sqlText,
 			}
@@ -105,14 +105,7 @@ func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descCo
 	ret := &InsertResult{
 		rowsAffected: numRows,
 	}
-	switch numRows {
-	case 0:
-		ret.message = "no rows inserted"
-	case 1:
-		ret.message = "a row inserted"
-	default:
-		ret.message = fmt.Sprintf("%d rows inserted", numRows)
-	}
+	ret.message = MakeUserMessage(SQLStatementTypeInsert, int64(numRows))
 	return ret
 }
 

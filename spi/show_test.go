@@ -306,7 +306,7 @@ func TestShowTables(t *testing.T) {
 	parseTime := func(str string) time.Time {
 		tm, err := time.ParseInLocation("2006-01-02 15:04:05", str, time.Local)
 		require.NoError(t, err)
-		return tm.In(time.UTC)
+		return tm
 	}
 	_ = parseTime
 

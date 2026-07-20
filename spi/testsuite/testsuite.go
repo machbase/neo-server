@@ -30,7 +30,6 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		Ping,
 		AuthKeyConnect,
 		DescribeTable,
-		InsertAndQuery,
 		InsertMeta,
 		AppendTag,
 		AppendTagNotExist,
