@@ -347,83 +347,96 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 	for i, colType := range columnTypes {
 		switch colType.ScanType().String() {
 		case "int16":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.NullInt16)
-			} else {
-				buffer[i] = new(int16)
-			}
+			buffer[i] = new(sql.NullInt16)
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.NullInt16)
+			// } else {
+			// 	buffer[i] = new(int16)
+			// }
 		case "uint16":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[uint16])
-			} else {
-				buffer[i] = new(uint16)
-			}
+			buffer[i] = new(sql.Null[uint16])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[uint16])
+			// } else {
+			// 	buffer[i] = new(uint16)
+			// }
 		case "int32":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.NullInt32)
-			} else {
-				buffer[i] = new(int32)
-			}
+			buffer[i] = new(sql.NullInt32)
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.NullInt32)
+			// } else {
+			// 	buffer[i] = new(int32)
+			// }
 		case "uint32":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[uint32])
-			} else {
-				buffer[i] = new(uint32)
-			}
+			buffer[i] = new(sql.Null[uint32])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[uint32])
+			// } else {
+			// 	buffer[i] = new(uint32)
+			// }
 		case "int64":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.NullInt64)
-			} else {
-				buffer[i] = new(int64)
-			}
+			buffer[i] = new(sql.NullInt64)
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.NullInt64)
+			// } else {
+			// 	buffer[i] = new(int64)
+			// }
 		case "uint64":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[uint64])
-			} else {
-				buffer[i] = new(uint64)
-			}
+			buffer[i] = new(sql.Null[uint64])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[uint64])
+			// } else {
+			// 	buffer[i] = new(uint64)
+			// }
 		case "float32":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[float32])
-			} else {
-				buffer[i] = new(float32)
-			}
+			buffer[i] = new(sql.Null[float32])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[float32])
+			// } else {
+			// 	buffer[i] = new(float32)
+			// }
 		case "float64":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.NullFloat64)
-			} else {
-				buffer[i] = new(float64)
-			}
+			buffer[i] = new(sql.NullFloat64)
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.NullFloat64)
+			// } else {
+			// 	buffer[i] = new(float64)
+			// }
 		case "time.Time":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.NullTime)
-			} else {
-				buffer[i] = new(time.Time)
-			}
+			buffer[i] = new(sql.NullTime)
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.NullTime)
+			// } else {
+			// 	buffer[i] = new(time.Time)
+			// }
 		case "string":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.NullString)
-			} else {
-				buffer[i] = new(string)
-			}
+			buffer[i] = new(sql.NullString)
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.NullString)
+			// } else {
+			// 	buffer[i] = new(string)
+			// }
 		case "[]uint8":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[[]byte])
-			} else {
-				buffer[i] = new([]byte)
-			}
+			buffer[i] = new(sql.Null[[]byte])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[[]byte])
+			// } else {
+			// 	buffer[i] = new([]byte)
+			// }
 		case "net.IP":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[net.IP])
-			} else {
-				buffer[i] = new(net.IP)
-			}
+			buffer[i] = new(sql.Null[net.IP])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[net.IP])
+			// } else {
+			// 	buffer[i] = new(net.IP)
+			// }
 		case "api.JSONString":
-			if nullable, ok := colType.Nullable(); ok && nullable {
-				buffer[i] = new(sql.Null[api.JSONString])
-			} else {
-				buffer[i] = new(api.JSONString)
-			}
+			buffer[i] = new(sql.Null[api.JSONString])
+			// if nullable, ok := colType.Nullable(); ok && nullable {
+			// 	buffer[i] = new(sql.Null[api.JSONString])
+			// } else {
+			// 	buffer[i] = new(api.JSONString)
+			// }
 		case "sql.NullInt16":
 			buffer[i] = new(sql.NullInt16)
 		case "sql.NullInt32":

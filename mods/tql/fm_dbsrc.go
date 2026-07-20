@@ -299,6 +299,9 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			ErrorRecord(err).Tell(node.next)
 			break
 		}
+		for i := range values {
+			values[i] = api.Unbox(values[i])
+		}
 		NewRecord(nrow, values).Tell(node.next)
 	}
 	dc.resultMsg = spi.MakeUserMessage(stmtType, nrow)
@@ -429,6 +432,9 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 					userMsg = err.Error()
 					ErrorRecord(err).Tell(node.next)
 					break
+				}
+				for i := range values {
+					values[i] = api.Unbox(values[i])
 				}
 				NewRecord(nrow, values).Tell(node.next)
 			}
