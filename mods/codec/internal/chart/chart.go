@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
@@ -203,7 +204,8 @@ func convValue(val any) (ret any) {
 	return v
 }
 
-func convValueType(val any) (ret any, typeHint string) {
+func convValueType(value any) (ret any, typeHint string) {
+	val := api.Unbox(value)
 	switch v := val.(type) {
 	case []any:
 		for i, elm := range v {
@@ -211,9 +213,6 @@ func convValueType(val any) (ret any, typeHint string) {
 		}
 		ret = v
 		typeHint = ""
-	case *time.Time:
-		ret = float64(v.UnixMicro()) / 1000
-		typeHint = "time"
 	case time.Time:
 		ret = float64(v.UnixMicro()) / 1000
 		typeHint = "time"
