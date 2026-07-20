@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -139,7 +140,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 
 	watch, err := spi.NewWatcher(ctx,
 		spi.WatcherConfig{
-			ConnProvider: func() (api.Conn, error) { return getPoolConn(ctx) },
+			ConnProvider: func() (*sql.Conn, error) { return getPoolSqlConn(ctx) },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
 			Timeformat:   timeformat,
@@ -283,7 +284,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 	}
 	ts, _ := uidTs.Time()
 
-	conn, err := getPoolConn(ctx)
+	conn, err := getPoolSqlConn(ctx)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -307,13 +308,14 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 		sqlParams = append(sqlParams, fileID)
 	} else if tableType == api.TableTypeTag {
 		var desc *api.TableDescription
-		if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+		if rs := spi.ShowTable(ctx, conn, tableName, false); rs.Err() != nil {
+			err = rs.Err()
 			rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		} else {
-			desc = desc0
+			desc = rs.Description
 		}
 		basetimeColumn := "TIME"
 		nameColumn := "NAME"
@@ -344,7 +346,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 		return
 	}
 
-	row := conn.QueryRow(ctx, sqlText, sqlParams...)
+	row := conn.QueryRowContext(ctx, sqlText, sqlParams...)
 	if row.Err() != nil {
 		rsp.Reason = row.Err().Error()
 		rsp.Elapse = time.Since(tick).String()

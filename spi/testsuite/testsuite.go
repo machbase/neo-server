@@ -35,7 +35,6 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		AppendTag,
 		AppendTagNotExist,
 		AppendTagPartial,
-		ExistsTable,
 		Explain,
 		ExplainFull,
 		Columns,
@@ -46,7 +45,6 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		TagTableAppend,
 		FetchRowsChunk,
 		BitTable,
-		WatchLogTable,
 		DemoUser,
 	}
 

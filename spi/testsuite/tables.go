@@ -13,30 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ExistsTable(t *testing.T, db api.Database, ctx context.Context) {
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-
-	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
-		// table exists
-		exists, err := api.ExistsTable(ctx, conn, table_name)
-		require.NoError(t, err, "exists table %q fail", table_name)
-		require.True(t, exists, "table %q not exists", table_name)
-
-		// table not exists
-		exists, err = api.ExistsTable(ctx, conn, table_name+"_not_exists")
-		require.NoError(t, err, "exists table %q_not_exists fail", table_name)
-		require.False(t, exists, "table %q_not_exists exists", table_name)
-
-		// table exists and truncate
-		exists, truncated, err := spi.TruncateTableIfExists(ctx, conn, table_name, true)
-		require.NoError(t, err, "exists table %q fail", table_name)
-		require.True(t, exists, "table %q not exists", table_name)
-		require.True(t, truncated, "table %q not truncated", table_name)
-	}
-}
-
 func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	now, _ := time.ParseInLocation("2006-01-02 15:04:05", "2021-01-01 00:00:00", time.UTC)
 
@@ -159,7 +135,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		err = rows.Scan(values...)
 		require.NoError(t, err)
 		require.Equal(t, "insert-once", api.Unbox(values[0]))
-		require.Equal(t, now, api.Unbox(values[1]))
+		require.Equal(t, now.In(time.Local), api.Unbox(values[1]))
 		require.Equal(t, 1.23, api.Unbox(values[2]))
 		require.Equal(t, int16(1), api.Unbox(values[3]))
 		require.Equal(t, nil, api.Unbox(values[4]))

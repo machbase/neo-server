@@ -252,7 +252,7 @@ func ShowTables(ctx context.Context, conn *sql.Conn, showAll bool) *ShowTablesRe
 
 type ShowTableResultSet struct {
 	ResultSetBase
-	desc *api.TableDescription
+	Description *api.TableDescription
 }
 
 var _ ResultSet = (*ShowTableResultSet)(nil)
@@ -279,9 +279,9 @@ func (tr *ShowTableResultSet) Columns() api.Columns {
 }
 
 func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
-	for _, col := range tr.desc.Columns {
+	for _, col := range tr.Description.Columns {
 		indexes := []string{}
-		for _, idxDesc := range tr.desc.Indexes {
+		for _, idxDesc := range tr.Description.Indexes {
 			for _, colName := range idxDesc.Cols {
 				if colName == col.Name {
 					indexes = append(indexes, idxDesc.Name)
@@ -301,7 +301,7 @@ func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
 func ShowTable(ctx context.Context, sqlConn *sql.Conn, tableName string, all bool) *ShowTableResultSet {
 	conn := WrapSqlConn(sqlConn)
 	desc, err := api.DescribeTable(ctx, conn, tableName, all)
-	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, desc: desc}
+	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, Description: desc}
 }
 
 type ShowMetaTablesResultSet struct {

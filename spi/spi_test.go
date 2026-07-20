@@ -1,6 +1,7 @@
 package spi_test
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	_ "embed"
 	"net"
@@ -316,12 +317,16 @@ func TestDatabaseBasedCases(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	t.Run("Helpers", testDatabaseHelpers)
+	t.Run("TableExists", testTableExists)
+	t.Run("TableType", testTableTypes)
+	t.Run("Watcher", testWatcher)
 }
 
-func testDatabaseHelpers(t *testing.T) {
+func testTableTypes(t *testing.T) {
 	ctx := t.Context()
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	db, err := spi.DefaultPool()
+	require.NoError(t, err)
+	conn, err := db.Conn(ctx)
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -341,4 +346,94 @@ func testDatabaseHelpers(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.False(t, truncated)
+}
+
+func testTableExists(t *testing.T) {
+	ctx := t.Context()
+	db, err := spi.DefaultPool()
+	require.NoError(t, err)
+	conn, err := db.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
+		// table exists
+		exists, err := spi.ExistsTable(t.Context(), conn, table_name)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+
+		// table not exists
+		exists, err = spi.ExistsTable(t.Context(), conn, table_name+"_not_exists")
+		require.NoError(t, err, "exists table %q_not_exists fail", table_name)
+		require.False(t, exists, "table %q_not_exists exists", table_name)
+
+		// table exists and truncate
+		exists, truncated, err := spi.TruncateTableIfExists(t.Context(), conn, table_name, true)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+		require.True(t, truncated, "table %q not truncated", table_name)
+	}
+}
+
+func testWatcher(t *testing.T) {
+	db, err := spi.DefaultPool()
+	require.NoError(t, err)
+
+	conf := spi.WatcherConfig{
+		ConnProvider: func() (*sql.Conn, error) {
+			return db.Conn(t.Context())
+		},
+		Timeformat: "2006-01-02 15:04:05.999999",
+		Timezone:   time.UTC,
+		TableName:  "tag_data",
+		TagNames:   []string{"tag1", "tag2"},
+	}
+	w, err := spi.NewWatcher(t.Context(), conf)
+	require.NoError(t, err, "new watcher fail")
+	defer w.Close()
+
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	tickCount := 0
+
+	for {
+		select {
+		case data := <-w.C:
+			if err, ok := data.(error); ok {
+				t.Log("Error", err.Error())
+				t.Fail()
+				return
+			} else if rec, ok := data.(spi.WatchData); !ok {
+				t.Log("Data", data)
+				t.Fail()
+				return
+			} else {
+				if tickCount > 5 {
+					return
+				}
+				require.Equal(t, 4, len(rec["NAME"].(string)), "NAME")
+				require.IsType(t, "", rec["TIME"], "TIME")
+				require.LessOrEqual(t, 1.23, rec["VALUE"], "VALUE")
+				require.Equal(t, int16(1), rec["SHORT_VALUE"], "SHORT_VALUE")
+				require.Equal(t, nil, rec["USHORT_VALUE"], "USHORT_VALUE")
+				require.Less(t, int32(0), rec["INT_VALUE"], "INT_VALUE")
+				require.Equal(t, int64(2), rec["LONG_VALUE"], "LONG_VALUE")
+				require.Equal(t, "str1", rec["STR_VALUE"], "STR_VALUE")
+				require.Equal(t, api.JSONString(`{"key1":"value1"}`), rec["JSON_VALUE"], "JSON_VALUE")
+			}
+		case <-tick.C:
+			tickCount++
+			conn, err := conf.ConnProvider()
+			require.NoError(t, err, "connect fail")
+			name := "tag1"
+			if tickCount%2 == 0 {
+				name = "tag2"
+			}
+			values := []any{name, time.Now(), 1.23 * float64(tickCount), 1, tickCount, 2, "str1", `{"key1":"value1"}`}
+			_, err = conn.ExecContext(t.Context(), `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) values(?, ?, ?, ?, ?, ?, ?, ?)`, values...)
+			conn.Close()
+			require.NoError(t, err, "insert fail")
+			time.Sleep(100 * time.Millisecond)
+			w.Execute()
+		}
+	}
 }

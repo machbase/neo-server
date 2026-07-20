@@ -2,6 +2,8 @@ package spi
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,7 +16,7 @@ import (
 type WatchData = map[string]any
 
 type WatcherConfig struct {
-	ConnProvider func() (api.Conn, error)
+	ConnProvider func() (*sql.Conn, error)
 	Timeformat   string
 	Timezone     *time.Location
 	Parallelism  int
@@ -97,6 +99,9 @@ func (w *Watcher) init(ctx context.Context) error {
 	}
 	defer conn.Close()
 	if tableType, err := QueryTableType(ctx, conn, w.TableName); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("table '%s' does not exist", w.TableName)
+		}
 		return err
 	} else if tableType != api.TableTypeTag && tableType != api.TableTypeLog {
 		return fmt.Errorf("not supported table type")
@@ -129,10 +134,10 @@ func (w *Watcher) init(ctx context.Context) error {
 	}
 
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx, conn, w.TableName, false); err != nil {
-		return fmt.Errorf("fail to get table info '%s', %s", w.TableName, err.Error())
+	if rs := ShowTable(ctx, conn, w.TableName, false); rs.err != nil {
+		return fmt.Errorf("fail to get table info '%s', %s", w.TableName, rs.err.Error())
 	} else {
-		desc = desc0
+		desc = rs.Description
 	}
 	for _, c := range desc.Columns {
 		if w.isTagTable {
@@ -186,13 +191,16 @@ func (w *Watcher) executeTag(tag string) {
 		return
 	}
 	defer conn.Close()
-	row := conn.QueryRow(w.ctx, fmt.Sprintf("select recent_row_time from V$%s_STAT where name = ?", strings.ToUpper(w.TableName)), tag)
+	row := conn.QueryRowContext(w.ctx, fmt.Sprintf("select recent_row_time from V$%s_STAT where name = ?", strings.ToUpper(w.TableName)), tag)
 	if err := row.Err(); err != nil {
 		// ignore, no such tag
 		return
 	}
 	recentTime := time.Time{}
 	if err := row.Scan(&recentTime); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return
+		}
 		w.handleError(err)
 		return
 	}
@@ -205,7 +213,7 @@ func (w *Watcher) executeTag(tag string) {
 	w.tagLastTime[tag] = recentTime
 	w.tagLastTimeLock.Unlock()
 
-	row = conn.QueryRow(w.ctx,
+	row = conn.QueryRowContext(w.ctx,
 		fmt.Sprintf("select %s from %s where %s = ? and %s = ?",
 			strings.Join(w.columnNames, ","), strings.ToUpper(w.TableName), w.nameColumn, w.basetimeColumn),
 		tag, recentTime)
@@ -226,13 +234,14 @@ func (w *Watcher) executeTag(tag string) {
 	for i, col := range w.columns {
 		name := col.Name
 		typ := col.Type
+		val := api.Unbox(values[i])
 		if typ == api.ColumnTypeDatetime {
-			if v, ok := values[i].(*time.Time); ok {
-				obj[name] = w.timeformat.FormatEpoch(*v)
+			if v, ok := val.(time.Time); ok {
+				obj[name] = w.timeformat.FormatEpoch(v)
 				continue
 			}
 		}
-		obj[name] = api.Unbox(values[i])
+		obj[name] = val
 	}
 	w.handleData(obj)
 }
@@ -251,18 +260,22 @@ func (w *Watcher) executeLog() {
 	}
 	defer conn.Close()
 	if w.lastArrivalTime.IsZero() {
-		if row := conn.QueryRow(w.ctx, fmt.Sprintf("select max(_ARRIVAL_TIME) from %s", w.TableName)); row.Err() != nil {
-			w.handleError(row.Err())
-			return
-		} else {
-			if err := row.Scan(&w.lastArrivalTime); err != nil {
-				w.handleError(err)
+		var lastArrivalTime sql.NullTime
+		row := conn.QueryRowContext(w.ctx, fmt.Sprintf("select max(_ARRIVAL_TIME) from %s", w.TableName))
+		if err := row.Scan(&lastArrivalTime); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
 				return
 			}
+			w.handleError(err)
+			return
 		}
+		if !lastArrivalTime.Valid {
+			return
+		}
+		w.lastArrivalTime = lastArrivalTime.Time
 	}
 	columns := "_ARRIVAL_TIME," + strings.Join(w.columnNames, ",")
-	rows, err := conn.Query(w.ctx,
+	rows, err := conn.QueryContext(w.ctx,
 		fmt.Sprintf(`select /*+ SCAN_FORWARD(%s) */ %s from %s where _ARRIVAL_TIME > ?`, w.TableName, columns, w.TableName),
 		w.lastArrivalTime.UnixNano(),
 	)

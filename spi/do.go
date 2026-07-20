@@ -305,10 +305,10 @@ func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback 
 	}
 }
 
-func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (api.TableType, error) {
+func QueryTableType(ctx context.Context, conn *sql.Conn, fullTableName string) (api.TableType, error) {
 	_, userName, tableName := api.TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
-	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if r.Err() != nil {
 		return -1, r.Err()
 	}
@@ -319,8 +319,8 @@ func QueryTableType(ctx context.Context, conn api.Conn, fullTableName string) (a
 	return ret, nil
 }
 
-func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
-	exists, err = api.ExistsTable(ctx, conn, fullTableName)
+func TruncateTableIfExists(ctx context.Context, conn *sql.Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
+	exists, err = ExistsTable(ctx, conn, fullTableName)
 	if err != nil {
 		return
 	}
@@ -338,19 +338,34 @@ func TruncateTableIfExists(ctx context.Context, conn api.Conn, fullTableName str
 		return
 	}
 	if tableType == api.TableTypeLog {
-		result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
-		if result.Err() != nil {
-			err = result.Err()
+		_, err0 := conn.ExecContext(ctx, fmt.Sprintf("truncate table %s", fullTableName))
+		if err0 != nil {
+			err = err0
 			return
 		}
 		truncated = true
 	} else {
-		result := conn.Exec(ctx, fmt.Sprintf("delete from %s", fullTableName))
-		if result.Err() != nil {
-			err = result.Err()
+		_, err0 := conn.ExecContext(ctx, fmt.Sprintf("delete from %s", fullTableName))
+		if err0 != nil {
+			err = err0
 			return
 		}
 		truncated = true
 	}
 	return
+}
+
+func ExistsTable(ctx context.Context, conn *sql.Conn, fullTableName string) (bool, error) {
+	_, userName, tableName := api.TableName(fullTableName).Split()
+	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
+	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if err := r.Err(); err != nil {
+		fmt.Println("error", err.Error())
+		return false, err
+	}
+	var count = 0
+	if err := r.Scan(&count); err != nil {
+		return false, err
+	}
+	return (count == 1), nil
 }

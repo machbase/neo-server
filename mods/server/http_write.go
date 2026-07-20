@@ -269,7 +269,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -293,13 +293,14 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 	}
 
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+	if rs := spi.ShowTable(ctx, conn, tableName, false); rs.Err() != nil {
+		err = rs.Err()
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {
-		desc = desc0
+		desc = rs.Description
 	}
 
 	findColumn := func(name string) *api.Column {
@@ -439,8 +440,8 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 
 	insertQuery := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columns, ","), strings.Join(holders, ","))
 
-	if result := conn.Exec(ctx, insertQuery, values...); result.Err() != nil {
-		rsp.Reason = result.Err().Error()
+	if _, err := conn.ExecContext(ctx, insertQuery, values...); err != nil {
+		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
