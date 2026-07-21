@@ -548,18 +548,18 @@ type ShowIndexesResultSet struct {
 }
 
 type IndexInfo struct {
-	Id             int64  `json:"id"`
-	Database       string `json:"database"`
-	DatabaseId     int64  `json:"database_id,omitempty"`
-	User           string `json:"user"`
-	TableName      string `json:"table_name"`
-	ColumnName     string `json:"column_name"`
-	IndexName      string `json:"index_name"`
-	IndexType      string `json:"index_type"`
-	KeyCompress    string `json:"key_compress"`
-	MaxLevel       int64  `json:"max_level"`
-	PartValueCount int64  `json:"part_value_count"`
-	BitMapEncode   string `json:"bitmap_encode"`
+	Id             int64    `json:"id"`
+	DatabaseName   string   `json:"database_name"`
+	DatabaseId     int64    `json:"database_id"`
+	User           string   `json:"user"`
+	TableName      string   `json:"table_name"`
+	ColumnNames    []string `json:"column_names"`
+	IndexName      string   `json:"index_name"`
+	IndexType      string   `json:"index_type"`
+	KeyCompress    string   `json:"key_compress"`
+	MaxLevel       int64    `json:"max_level"`
+	PartValueCount int64    `json:"part_value_count"`
+	BitMapEncode   string   `json:"bitmap_encode"`
 }
 
 var _ ResultSet = (*ShowIndexesResultSet)(nil)
@@ -583,7 +583,7 @@ func (ii *ShowIndexesResultSet) Columns() api.Columns {
 func (ii *ShowIndexesResultSet) Iter(callback func(values []interface{}) bool) {
 	for _, idx := range ii.list {
 		cont := callback([]interface{}{
-			idx.Id, idx.Database, idx.User, idx.TableName, idx.ColumnName, idx.IndexName,
+			idx.Id, idx.DatabaseName, idx.User, idx.TableName, strings.Join(idx.ColumnNames, ","), idx.IndexName,
 			idx.IndexType, idx.KeyCompress, idx.MaxLevel, idx.PartValueCount, idx.BitMapEncode,
 		})
 		if !cont {
@@ -593,12 +593,16 @@ func (ii *ShowIndexesResultSet) Iter(callback func(values []interface{}) bool) {
 }
 
 func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
+	return showIndexes(ctx, conn, "")
+}
+
+func showIndexes(ctx context.Context, conn *sql.Conn, indexName string) *ShowIndexesResultSet {
 	var listIndexesSql = SqlTidy(`
 		SELECT
-			u.name as USER_NAME,
 			j.DB_NAME as DATABASE_NAME,
+			j.DATABASE_ID as DATABASE_ID,
+			u.name as USER_NAME,
 			j.TABLE_NAME as TABLE_NAME,
-			c.name as COLUMN_NAME,
 			b.name as INDEX_NAME,
 			b.id as INDEX_ID,
 			case b.type
@@ -612,7 +616,7 @@ func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
 				else 'LSM' 
 			end as INDEX_TYPE,
 			case b.key_compress
-				when 0 then 'UNCOMPRESS'
+				when 0 then 'UNCOMPRESSED'
 				else 'COMPRESSED'
 			end as KEY_COMPRESS,
 			b.max_level as MAX_LEVEL,
@@ -623,7 +627,6 @@ func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
 			end as BITMAP_ENCODE
 		FROM
 			m$sys_indexes b, 
-			m$sys_index_columns c, 
 			m$sys_users u,
 			(
 				select
@@ -631,6 +634,7 @@ func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
 						when -1 then 'MACHBASEDB'
 						else d.MOUNTDB
 					end as DB_NAME,
+					a.DATABASE_ID as DATABASE_ID,
 					a.name as TABLE_NAME,
 					a.id as TABLE_ID,
 					a.USER_ID as USER_ID
@@ -643,12 +647,16 @@ func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
 			) as j
 		WHERE
 			j.TABLE_ID = b.TABLE_ID
-		AND b.ID = c.INDEX_ID
 		AND j.USER_ID = u.USER_ID
+		` + ifThenElse(indexName != "", "AND b.name = ?", "") + `
 		ORDER BY
-			j.DB_NAME, j.TABLE_NAME, b.ID
+			j.DATABASE_ID, u.USER_ID, j.TABLE_NAME, b.ID
 	`)
-	rows, err := conn.QueryContext(ctx, listIndexesSql)
+	args := []any{}
+	if indexName != "" {
+		args = append(args, indexName)
+	}
+	rows, err := conn.QueryContext(ctx, listIndexesSql, args...)
 	if err != nil {
 		return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -658,12 +666,25 @@ func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
 	for rows.Next() {
 		nfo := &IndexInfo{}
 		err = rows.Scan(
-			&nfo.User, &nfo.Database, &nfo.TableName, &nfo.ColumnName,
-			&nfo.IndexName, &nfo.Id, &nfo.IndexType, &nfo.KeyCompress,
+			&nfo.DatabaseName, &nfo.DatabaseId, &nfo.User, &nfo.TableName, &nfo.IndexName,
+			&nfo.Id, &nfo.IndexType, &nfo.KeyCompress,
 			&nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
 		if err != nil {
 			return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
 		}
+		rowsCols, err := conn.QueryContext(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, nfo.Id, nfo.DatabaseId)
+		if err != nil {
+			return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		for rowsCols.Next() {
+			var col string
+			if err = rowsCols.Scan(&col); err != nil {
+				rowsCols.Close()
+				return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
+			}
+			nfo.ColumnNames = append(nfo.ColumnNames, col)
+		}
+		rowsCols.Close()
 		list = append(list, nfo)
 	}
 	err = rows.Err()
@@ -680,6 +701,8 @@ var _ ResultSet = (*ShowIndexResultSet)(nil)
 func (qir *ShowIndexResultSet) Columns() api.Columns {
 	return api.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
+		{Name: "DATABASE", DataType: api.DataTypeString},
+		{Name: "USER", DataType: api.DataTypeString},
 		{Name: "TABLE", DataType: api.DataTypeString},
 		{Name: "COLUMN", DataType: api.DataTypeString},
 		{Name: "INDEX_NAME", DataType: api.DataTypeString},
@@ -697,8 +720,10 @@ func (qir *ShowIndexResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 	cont := callback([]interface{}{
 		qir.desc.Id,
+		qir.desc.DatabaseName,
+		qir.desc.User,
 		qir.desc.TableName,
-		qir.desc.ColumnName,
+		strings.Join(qir.desc.ColumnNames, ","),
 		qir.desc.IndexName,
 		qir.desc.IndexType,
 		qir.desc.KeyCompress,
@@ -712,46 +737,14 @@ func (qir *ShowIndexResultSet) Iter(callback func(values []interface{}) bool) {
 }
 
 func ShowIndex(ctx context.Context, conn *sql.Conn, indexName string) *ShowIndexResultSet {
-	sqlText := `select 
-			a.name as TABLE_NAME,
-			c.name as COLUMN_NAME,
-			b.name as INDEX_NAME,
-			case b.type
-				when 1 then 'BITMAP'
-				when 2 then 'KEYWORD'
-				when 5 then 'REDBLACK'
-				when 6 then 'LSM'
-				when 8 then 'REDBLACK'
-				when 9 then 'KEYWORD_LSM'
-				else 'LSM' end 
-			as INDEX_TYPE,
-			case b.key_compress
-				when 0 then 'UNCOMPRESSED'
-				else 'COMPRESSED' end 
-			as KEY_COMPRESS,
-			b.max_level as MAX_LEVEL,
-			b.part_value_count as PART_VALUE_COUNT,
-			case b.bitmap_encode
-				when 0 then 'EQUAL'
-				else 'RANGE' end 
-			as BITMAP_ENCODE
-		from
-			m$sys_tables a,
-			m$sys_indexes b,
-			m$sys_index_columns c
-		where
-			a.id = b.table_id 
-		and b.id = c.index_id
-		and b.name = ?`
-	row := conn.QueryRowContext(ctx, sqlText, strings.ToUpper(indexName))
-	if err := row.Err(); err != nil {
-		return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}}
+	r := showIndexes(ctx, conn, indexName)
+	if r.err != nil {
+		return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: r.err}}
 	}
-	nfo := &IndexInfo{}
-	err := row.Scan(
-		&nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType,
-		&nfo.KeyCompress, &nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
-	return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}, desc: nfo}
+	if len(r.list) == 0 {
+		return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: fmt.Errorf("index %s not found", indexName)}}
+	}
+	return &ShowIndexResultSet{desc: r.list[0]}
 }
 
 type ShowStorageResultSet struct {
