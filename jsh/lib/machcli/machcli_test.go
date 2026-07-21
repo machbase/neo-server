@@ -114,6 +114,27 @@ func TestDatabase(t *testing.T) {
 			},
 		},
 		{
+			Name: "mach_exec_flush",
+			Script: `
+				const {Client} = require('machcli');
+				const conf = require("process").env.get("conf");
+				try {
+					db = new Client(conf);
+					conn = db.connect();
+					result = conn.exec('exec table_flush(TAG)');
+					console.println("result:", result.message);
+				} catch(err) {
+					console.println("Error: ", err.message);
+				} finally {
+					conn && conn.close();
+				 	db && db.close();
+				}
+			`,
+			Output: []string{
+				"result: table flushed.",
+			},
+		},
+		{
 			Name: "mach_query_row",
 			Script: `
 				const {Client} = require('machcli');
@@ -185,16 +206,16 @@ func TestDatabase(t *testing.T) {
 				}
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "jsh", gjson.Get(result, "rows.0.NAME").String())
-				require.Equal(t, int64(100), gjson.Get(result, "rows.0.ROW_COUNT").Int())
-				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MIN_TIME").String())
-				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MAX_TIME").String())
-				require.Contains(t, result, "\"MIN_VALUE\":null")
-				require.Contains(t, result, "\"MIN_VALUE_TIME\":null")
-				require.Contains(t, result, "\"MAX_VALUE\":null")
-				require.Contains(t, result, "\"MAX_VALUE_TIME\":null")
-				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.RECENT_ROW_TIME").String())
-				require.Equal(t, "a row selected.", gjson.Get(result, "reason").String())
+				require.Equal(t, "jsh", gjson.Get(result, "rows.0.NAME").String(), result)
+				require.Equal(t, int64(100), gjson.Get(result, "rows.0.ROW_COUNT").Int(), result)
+				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MIN_TIME").String(), result)
+				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MAX_TIME").String(), result)
+				require.Contains(t, result, "\"MIN_VALUE\":null", result)
+				require.Contains(t, result, "\"MIN_VALUE_TIME\":null", result)
+				require.Contains(t, result, "\"MAX_VALUE\":null", result)
+				require.Contains(t, result, "\"MAX_VALUE_TIME\":null", result)
+				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.RECENT_ROW_TIME").String(), result)
+				require.Equal(t, "a row selected.", gjson.Get(result, "reason").String(), result)
 			},
 		},
 		{

@@ -2521,7 +2521,7 @@ func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 		return err
 	}
 	// pubkey not found, add new authkey
-	if err := registerUserAuthKey(ctx, conn, user, pubPemStr, "machbase-neo server key"); err != nil {
+	if err := registerUserAuthKey(ctx, conn, user, pubPemStr, "**DO NOT DELETE** machbase-neo server key"); err != nil {
 		return err
 	}
 	// get authkey info again after registration
