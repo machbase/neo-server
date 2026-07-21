@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/machbase/neo-server/v8/spi/testsuite"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 var machcliTestServer *testsuite.Server
@@ -157,6 +158,43 @@ func TestDatabase(t *testing.T) {
 			Output: []string{
 				fmt.Sprintf("NAME: jsh TIME: %s VALUE: 123 JSON_VALUE: string", tick.Local().Format(time.DateTime)),
 				"a row selected.",
+			},
+		},
+		{
+			Name: "mach_query_stat",
+			Script: `
+				const {Client} = require('machcli');
+				const conf = require("process").env.get("conf");
+				var db, conn, rows;
+				try {
+					db = new Client(conf);
+					conn = db.connect();
+					rows = conn.query("SELECT * from v$TAG_STAT order by name");
+					console.println("{\"rows\": [");
+					for (const row of rows) {
+						console.println(JSON.stringify(row), ",");
+					}
+					console.println("], \"reason\":", "\"" + rows.message() + "\"");
+					console.println("}");
+				} catch(err) {
+					console.println("Error: ", err.message);
+				} finally {
+					rows && rows.close();
+					conn && conn.close();
+				 	db && db.close();
+				}
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "jsh", gjson.Get(result, "rows.0.NAME").String())
+				require.Equal(t, int64(100), gjson.Get(result, "rows.0.ROW_COUNT").Int())
+				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MIN_TIME").String())
+				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MAX_TIME").String())
+				require.Contains(t, result, "\"MIN_VALUE\":null")
+				require.Contains(t, result, "\"MIN_VALUE_TIME\":null")
+				require.Contains(t, result, "\"MAX_VALUE\":null")
+				require.Contains(t, result, "\"MAX_VALUE_TIME\":null")
+				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.RECENT_ROW_TIME").String())
+				require.Equal(t, "a row selected.", gjson.Get(result, "reason").String())
 			},
 		},
 		{
