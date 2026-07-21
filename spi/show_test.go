@@ -388,15 +388,16 @@ func TestShowTables(t *testing.T) {
 		{
 			name:    "ShowStorage",
 			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowStorage(t.Context(), conn)) },
-			columns: []string{"TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"},
+			columns: []string{"DATABASE_NAME", "TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"},
 			expectFunc: func(values [][]any) {
 				names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
 				require.Equal(t, len(names), len(values))
 				for _, row := range values {
-					require.Contains(t, names, row[0])
-					require.GreaterOrEqual(t, row[1], int64(0))
+					require.Equal(t, "MACHBASEDB", row[0])
+					require.Contains(t, names, row[1])
 					require.GreaterOrEqual(t, row[2], int64(0))
 					require.GreaterOrEqual(t, row[3], int64(0))
+					require.GreaterOrEqual(t, row[4], int64(0))
 				}
 			},
 		},

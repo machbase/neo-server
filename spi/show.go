@@ -760,16 +760,20 @@ type ShowStorageResultSet struct {
 }
 
 type StorageInfo struct {
-	TableName string `json:"table_name"`
-	DataSize  int64  `json:"data_size"`
-	IndexSize int64  `json:"index_size"`
-	TotalSize int64  `json:"total_size"`
+	DatabaseName string `json:"database_name"`
+	DatabaseId   int64  `json:"database_id"`
+	TableName    string `json:"table_name"`
+	TableId      int64  `json:"table_id"`
+	DataSize     int64  `json:"data_size"`
+	IndexSize    int64  `json:"index_size"`
+	TotalSize    int64  `json:"total_size"`
 }
 
 var _ ResultSet = (*ShowStorageResultSet)(nil)
 
 func (sui *ShowStorageResultSet) Columns() api.Columns {
 	return api.Columns{
+		{Name: "DATABASE_NAME", DataType: api.DataTypeString},
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
 		{Name: "INDEX_SIZE", DataType: api.DataTypeInt64},
@@ -779,14 +783,32 @@ func (sui *ShowStorageResultSet) Columns() api.Columns {
 
 func (sui *ShowStorageResultSet) Iter(callback func(values []interface{}) bool) {
 	for _, t := range sui.list {
-		if !callback([]interface{}{t.TableName, t.DataSize, t.IndexSize, t.TotalSize}) {
+		if !callback([]interface{}{t.DatabaseName, t.TableName, t.DataSize, t.IndexSize, t.TotalSize}) {
 			return
 		}
 	}
 }
 
 func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
+	mounts := map[int64]string{}
+	func() {
+		rows, err := conn.QueryContext(ctx, "SELECT BACKUP_TBSID, MOUNTDB FROM V$STORAGE_MOUNT_DATABASES")
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var backupTbsid int64
+			var mountDB string
+			if err := rows.Scan(&backupTbsid, &mountDB); err != nil {
+				return
+			}
+			mounts[backupTbsid] = mountDB
+		}
+	}()
 	sqlText := SqlTidy(`select
+        a.database_id,
+        a.table_id,
 		a.table_name as TABLE_NAME,
 		a.data_size as DATA_SIZE,
 		case b.index_size 
@@ -799,24 +821,31 @@ func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
 		as TOTAL_SIZE
 	from
 		(select
+            a.database_id as database_id,
+            a.id as table_id,
 			a.name as table_name,
 			sum(b.storage_usage) as data_size
 		from
 			m$sys_tables a,
 			v$storage_tables b
 		where a.id = b.id
-		group by a.name
+		group by a.database_id, a.id, a.name
+        order by a.database_id, a.id, a.name
 		) as a LEFT OUTER JOIN
 		(select
-			a.name,
+            a.database_id as database_id,
+            a.id as table_id,
+			a.name as table_name,
 			sum(b.disk_file_size) as index_size
 		from
 			m$sys_tables a,
 			v$storage_dc_table_indexes b
-		where a.id = b.table_id
-		group by a.name) as b
-	on a.table_name = b.name
-	order by a.table_name`)
+		where a.database_id = b.database_id
+        and a.id = b.table_id
+		group by a.database_id, a.id, a.name) as b
+	on a.database_id = b.database_id
+    and a.table_id = b.table_id
+	order by a.database_id, a.table_id`)
 
 	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
@@ -827,9 +856,14 @@ func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
 	list := []*StorageInfo{}
 	for rows.Next() {
 		rec := &StorageInfo{}
-		err = rows.Scan(&rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
+		err = rows.Scan(&rec.DatabaseId, &rec.TableId, &rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
 		if err != nil {
 			return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		if rec.DatabaseId == -1 {
+			rec.DatabaseName = "MACHBASEDB"
+		} else {
+			rec.DatabaseName = mounts[rec.DatabaseId]
 		}
 		list = append(list, rec)
 	}

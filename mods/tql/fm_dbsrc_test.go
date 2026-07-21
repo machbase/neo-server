@@ -686,9 +686,9 @@ func TestTqlSqlShowStorage(t *testing.T) {
 			ExpectFunc: func(t *testing.T, result string) {
 				lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 				require.GreaterOrEqual(t, len(lines), 2)
-				require.Equal(t, "TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE", lines[0])
+				require.Equal(t, "DATABASE_NAME,TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE", lines[0])
 				// LOG_DATA,0,0,0
-				require.Regexp(t, regexp.MustCompile(`[A-Z_]+,[0-9]+,[0-9]+,[0-9]+$`), lines[1])
+				require.Regexp(t, regexp.MustCompile(`[A-Z_]+,[A-Z0-9_]+,[0-9]+,[0-9]+,[0-9]+$`), lines[1])
 			},
 		},
 	}

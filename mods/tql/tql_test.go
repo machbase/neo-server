@@ -333,7 +333,7 @@ func TestDatabaseTql(t *testing.T) {
 				SQL("show storage")
 				CSV(header(true))`,
 			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE"), result)
+				require.True(t, strings.HasPrefix(result, "DATABASE_NAME,TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE"), result)
 			},
 		},
 		{
