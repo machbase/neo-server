@@ -93,9 +93,9 @@ func (r *HTMLRenderer) Render(w util.BufWriter, src []byte, node ast.Node, enter
 	}
 
 	if r.ThemeID != nil {
-		renderOpts.ThemeID = r.ThemeID
+		renderOpts.ThemeID = ptr(int64(*r.ThemeID))
 	} else {
-		renderOpts.ThemeID = &d2themescatalog.CoolClassics.ID
+		renderOpts.ThemeID = ptr(int64(d2themescatalog.CoolClassics.ID))
 	}
 
 	if len(n.Options) > 0 {
