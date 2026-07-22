@@ -156,7 +156,7 @@ func TestApplyDefaultFenceOptionsRejectsUnsupportedElkAlgorithm(t *testing.T) {
 	}, compileOpts, renderOpts)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported elk algorithm: spore")
-	require.Contains(t, err.Error(), "supported: layered, mrtree, radial")
+	require.Contains(t, err.Error(), "supported: layered, mrtree, random")
 }
 
 func TestDefaultLayoutResolverUnknownLayoutMessage(t *testing.T) {
