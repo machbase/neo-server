@@ -6,11 +6,11 @@
 
 Use Hugo-style fence options:
 
-```markdown
+~~~markdown
 ```d2 {layout=dagre,theme="Cool Classics",sketch=true,nodesep=120,edgesep=45}
 a -> b: connect
 ```
-```
+~~~
 
 Option values follow `key=value` form.
 
@@ -44,11 +44,11 @@ When `layout=elk`, `d2ext` currently supports the following algorithms:
 
 Example:
 
-```markdown
+~~~markdown
 ```d2 {layout=elk,algorithm="mrtree"}
 a -> b: connect
 ```
-```
+~~~
 
 Note: Other ELK algorithms are rejected by `d2ext` to avoid runtime instability in the current Goja execution path.
 
