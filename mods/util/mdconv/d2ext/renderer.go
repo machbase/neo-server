@@ -9,8 +9,6 @@ import (
 	"github.com/yuin/goldmark/util"
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
-	"oss.terrastruct.com/d2/d2layouts/d2elklayout"
-	"oss.terrastruct.com/d2/d2layouts/d2grid"
 	"oss.terrastruct.com/d2/d2lib"
 	"oss.terrastruct.com/d2/d2renderers/d2svg"
 	"oss.terrastruct.com/d2/d2themes/d2themescatalog"
@@ -18,12 +16,14 @@ import (
 	"oss.terrastruct.com/d2/lib/textmeasure"
 )
 
-var (
-	defaultLayout  = d2dagrelayout.DefaultLayout
-	defaultThemeID = d2themescatalog.CoolClassics.ID
-)
+func ptr[T any](v T) *T {
+	return &v
+}
 
 type HTMLRenderer struct {
+	Layout  d2graph.LayoutGraph
+	ThemeID *int64
+	Sketch  bool
 }
 
 func (r *HTMLRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
@@ -54,25 +54,26 @@ func (r *HTMLRenderer) Render(w util.BufWriter, src []byte, node ast.Node, enter
 		return ast.WalkStop, err
 	}
 
-	layoutResolver := func(engine string) (d2graph.LayoutGraph, error) {
-		switch engine {
-		case "elk":
-			return d2elklayout.DefaultLayout, nil
-		case "dagre":
-			return d2dagrelayout.DefaultLayout, nil
-		case "grid":
-			return d2grid.Layout, nil
-		default:
-			return d2dagrelayout.DefaultLayout, nil
-		}
-	}
-
 	compileOpts := &d2lib.CompileOptions{
-		LayoutResolver: layoutResolver,
-		Ruler:          ruler,
+		Ruler: ruler,
+		LayoutResolver: func(engine string) (d2graph.LayoutGraph, error) {
+			if r.Layout != nil {
+				return r.Layout, nil
+			}
+			return d2dagrelayout.DefaultLayout, nil
+		},
 	}
 
-	renderOpts := &d2svg.RenderOpts{}
+	renderOpts := &d2svg.RenderOpts{
+		Pad:    ptr(int64(d2svg.DEFAULT_PADDING)),
+		Sketch: &r.Sketch,
+	}
+
+	if r.ThemeID != nil {
+		renderOpts.ThemeID = r.ThemeID
+	} else {
+		renderOpts.ThemeID = &d2themescatalog.CoolClassics.ID
+	}
 
 	ctx := d2log.WithDefault(context.Background())
 
@@ -85,9 +86,6 @@ func (r *HTMLRenderer) Render(w util.BufWriter, src []byte, node ast.Node, enter
 	if renderOpts.Scale == nil {
 		renderOpts.Scale = Pointer(1.0)
 	}
-
-	// renderOpts.ThemeID = go2.Pointer(d2themescatalog.NeutralDefault.ID)
-	// renderOpts.ThemeID = go2.Pointer(d2themescatalog.DarkMauve.ID)
 
 	out, err := d2svg.Render(diagram, renderOpts)
 	if err != nil {
