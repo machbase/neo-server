@@ -540,20 +540,9 @@ func matchTaggedBlockCloser(source []rune, lineStart int, lineEnd int, tag strin
 		return 0, false
 	}
 	bracePos := i
-	i++
-	if i >= lineEnd || source[i] != ')' {
-		return 0, false
-	}
-	i++
 
-	for i < lineEnd && (source[i] == ' ' || source[i] == '\t') {
-		i++
-	}
-	if i != lineEnd {
-		return 0, false
-	}
-
-	// Keep ')' unread so the caller can lex it as CLAUSE_CLOSE token.
+	// Close on TAG} and leave the following characters unread so callers can
+	// continue lexing ", ..." arguments or ")" naturally.
 	return bracePos + 1, true
 }
 

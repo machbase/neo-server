@@ -233,6 +233,48 @@ func TestMarkdownTemplatePathText(t *testing.T) {
 	require.Equal(t, expected, buffer.String())
 }
 
+func TestMarkdownTemplatePathTextHtml(t *testing.T) {
+	buffer := &bytes.Buffer{}
+
+	md := markdown.NewEncoder()
+	md.SetOutputStream(buffer)
+	md.SetColumns("name", "value")
+	md.SetTemplate(`{{- if .IsFirst -}}|name|value|{{"\n"}}|:-----|:-----|{{"\n"}}{{- end -}}|{{ .Value 0 }}|{{ .Value 1 }}|{{"\n"}}{{- if .IsLast -}}> *Total* {{ .Num }} *records*{{"\n"}}{{- end -}}`)
+	md.SetHtml(true)
+
+	require.NoError(t, md.Open())
+	require.NoError(t, md.AddRow([]any{"alpha", 1}))
+	require.NoError(t, md.AddRow([]any{"beta", 2}))
+	md.Close()
+
+	expected := strings.Join([]string{
+		"<div>",
+		"<table>",
+		"<thead>",
+		"<tr>",
+		"<th align=\"left\">name</th>",
+		"<th align=\"left\">value</th>",
+		"</tr>",
+		"</thead>",
+		"<tbody>",
+		"<tr>",
+		"<td align=\"left\">alpha</td>",
+		"<td align=\"left\">1</td>",
+		"</tr>",
+		"<tr>",
+		"<td align=\"left\">beta</td>",
+		"<td align=\"left\">2</td>",
+		"</tr>",
+		"</tbody>",
+		"</table>",
+		"<blockquote>",
+		"<p><em>Total</em> 2 <em>records</em></p>",
+		"</blockquote>",
+		"</div>",
+	}, "\n")
+	require.Equal(t, expected, buffer.String())
+}
+
 func TestMarkdownTemplatePathHtml(t *testing.T) {
 	buffer := &bytes.Buffer{}
 

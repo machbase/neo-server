@@ -217,6 +217,13 @@ func TestReadLine(t *testing.T) {
 				{text: "CSV()", line: 8},
 			},
 		},
+		{
+			"MARKDOWN({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))\nCSV()\n",
+			[]Line{
+				{text: "MARKDOWN({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))", line: 1},
+				{text: "CSV()", line: 6},
+			},
+		},
 	}
 
 	for _, tt := range tests {
