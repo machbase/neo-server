@@ -9,9 +9,10 @@ import (
 )
 
 type Extender struct {
-	Layout  d2graph.LayoutGraph
-	ThemeID *int64
-	Sketch  bool
+	Layout          d2graph.LayoutGraph
+	ThemeID         *int64
+	Sketch          bool
+	OptionApplierFn FenceOptionApplier
 }
 
 func (e *Extender) Extend(m goldmark.Markdown) {
@@ -20,9 +21,10 @@ func (e *Extender) Extend(m goldmark.Markdown) {
 	))
 	m.Renderer().AddOptions(renderer.WithNodeRenderers(
 		util.Prioritized(&HTMLRenderer{
-			Layout:  e.Layout,
-			ThemeID: e.ThemeID,
-			Sketch:  e.Sketch,
+			Layout:          e.Layout,
+			ThemeID:         e.ThemeID,
+			Sketch:          e.Sketch,
+			OptionApplierFn: e.OptionApplierFn,
 		}, 0),
 	))
 }

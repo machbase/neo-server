@@ -2,6 +2,7 @@ package mdconv
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"regexp"
 
@@ -42,7 +43,17 @@ func (c *Converter) ConvertString(src string, w io.Writer) error {
 	return c.Convert([]byte(src), w)
 }
 
-func (c *Converter) Convert(src []byte, w io.Writer) error {
+func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Handle the panic and return an error instead of crashing the program
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("panic: %v", r)
+			}
+			retErr = err
+		}
+	}()
 	highlightingStyle := "onesenterprise"
 	if c.darkMode {
 		highlightingStyle = "catppuccin-macchiato"

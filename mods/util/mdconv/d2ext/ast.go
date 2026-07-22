@@ -7,6 +7,7 @@ import (
 
 type Block struct {
 	ast.BaseBlock
+	Options map[string]any
 }
 
 func (n *Block) IsBlank(source []byte) bool {
