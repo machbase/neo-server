@@ -108,6 +108,43 @@ This preserves header case/order from the wire response.
 - `Content-Length` is recalculated from the final bytes that are actually sent on the wire.
 - If a `Content-Length` header is already provided in the fence, its value is replaced with the recalculated value for non-empty bodies.
 
+## Request Body File Directives
+
+`httpext` supports file directives in request body content, compatible with the existing HTTP DSL behavior.
+
+- `< /ssfs/path/file`:
+    load body content from server-side file system (SSFS).
+- `< @/os/abs_path.file`:
+    load body content from OS file path.
+
+Notes:
+
+- File path strings are UTF-8 and may include Korean characters.
+- For multipart bodies, directives can be mixed inside each part payload line.
+- Loaded file content is appended with a newline, same as existing HTTP DSL behavior.
+- Legacy form `<@utf-8 /ssfs/path/file` is accepted for backward compatibility.
+- Loader selection rule: if parsed path starts with `@`, OS loader is used; otherwise SSFS loader is used.
+
+Multipart example:
+
+~~~
+```http
+POST http://127.0.0.1:5654/db/write/STASH
+Content-Type: multipart/form-data; boundary=----Boundary7MA4YWxkTrZu0gW
+
+------Boundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="NAME"
+
+camera-1
+------Boundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="DATA"; filename="image.svg"
+Content-Type: image/svg
+
+< @/tmp/image.svg
+------Boundary7MA4YWxkTrZu0gW--
+```
+~~~
+
 ## Response Body Decoding
 
 - If `Content-Encoding: gzip` and the `Content-Type` is printable (for example JSON or text), `httpext` displays the decompressed body.
