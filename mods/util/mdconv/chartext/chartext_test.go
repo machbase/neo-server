@@ -80,7 +80,7 @@ func TestHTMLRendererRegisterAndRender(t *testing.T) {
 	require.Contains(t, reg.kinds, KindBlock)
 
 	source := []byte("function x(v){return v;}\noption = {xAxis:{type:'category',data:['Mon']},yAxis:{type:'value'},series:[{type:'line',data:[1]}]};\n")
-	block := &Block{Options: map[string]any{"width": "600px", "height": "400px", "theme": "dark"}}
+	block := &Block{Options: map[string]any{"width": "600px", "height": "400px", "theme": "dark", "loader": "auto", "plugins": "gl,wordcloud"}}
 	lines := text.NewSegments()
 	lines.Append(text.NewSegment(0, len(source)-1))
 	block.SetLines(lines)
@@ -99,6 +99,13 @@ func TestHTMLRendererRegisterAndRender(t *testing.T) {
 	require.Contains(t, html, `class="chartext"`)
 	require.Contains(t, html, `class="chartext-echarts"`)
 	require.Contains(t, html, `width:600px;height:400px`)
+	require.Contains(t, html, `/web/echarts/echarts.min.js`)
+	require.Contains(t, html, `/web/echarts/themes/dark.js`)
+	require.Contains(t, html, `/web/echarts/echarts-gl.min.js`)
+	require.Contains(t, html, `/web/echarts/echarts-wordcloud.min.js`)
+	require.Contains(t, html, `cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js`)
+	require.Contains(t, html, `__chartextEchartsLoaderPromises`)
+	require.Contains(t, html, `__ensureThemeAssets`)
 	require.Contains(t, html, `echarts.init`)
 	require.Contains(t, html, `setOption`)
 }

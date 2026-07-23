@@ -156,3 +156,37 @@ func optionString(v any) (string, bool) {
 	}
 	return s, true
 }
+
+func optionStringList(v any) ([]string, bool) {
+	toList := func(in []string) []string {
+		out := make([]string, 0, len(in))
+		for _, item := range in {
+			for _, part := range strings.Split(item, ",") {
+				trimmed := strings.TrimSpace(part)
+				if trimmed != "" {
+					out = append(out, trimmed)
+				}
+			}
+		}
+		return out
+	}
+
+	switch vv := v.(type) {
+	case string:
+		return toList([]string{vv}), true
+	case []string:
+		return toList(vv), true
+	case []any:
+		tmp := make([]string, 0, len(vv))
+		for _, item := range vv {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			tmp = append(tmp, s)
+		}
+		return toList(tmp), true
+	default:
+		return nil, false
+	}
+}

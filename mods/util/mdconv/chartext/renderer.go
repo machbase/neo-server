@@ -24,10 +24,38 @@ type HTMLRenderer struct {
 }
 
 type renderConfig struct {
-	Width    string
-	Height   string
-	Theme    string
-	Renderer string
+	Width      string
+	Height     string
+	Theme      string
+	Renderer   string
+	Loader     string
+	EchartsSrc string
+	CdnSrc     string
+	ThemeSrcs  []string
+	PluginSrcs []string
+}
+
+var builtInPluginPaths = map[string]string{
+	"liquidfill": "/web/echarts/echarts-liquidfill.min.js",
+	"wordcloud":  "/web/echarts/echarts-wordcloud.min.js",
+	"gl":         "/web/echarts/echarts-gl.min.js",
+}
+
+var builtInThemeNames = map[string]bool{
+	"white":          true,
+	"dark":           true,
+	"essos":          true,
+	"chalk":          true,
+	"purple-passion": true,
+	"romantic":       true,
+	"walden":         true,
+	"westeros":       true,
+	"wonderland":     true,
+	"vintage":        true,
+	"macarons":       true,
+	"infographic":    true,
+	"shine":          true,
+	"roma":           true,
 }
 
 func (r *HTMLRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
@@ -77,15 +105,23 @@ func (r *HTMLRenderer) Render(w util.BufWriter, src []byte, node ast.Node, enter
 }
 
 func defaultRenderConfig(darkMode bool) renderConfig {
-	theme := "light"
+	theme := "white"
 	if darkMode {
 		theme = "dark"
 	}
+	themeSrcs := []string{}
+	if theme == "dark" {
+		themeSrcs = append(themeSrcs, "/web/echarts/themes/dark.js")
+	}
 	return renderConfig{
-		Width:    "100%",
-		Height:   "400px",
-		Theme:    theme,
-		Renderer: "canvas",
+		Width:      "100%",
+		Height:     "400px",
+		Theme:      theme,
+		Renderer:   "canvas",
+		Loader:     "auto",
+		EchartsSrc: "/web/echarts/echarts.min.js",
+		CdnSrc:     "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js",
+		ThemeSrcs:  themeSrcs,
 	}
 }
 
@@ -119,10 +155,21 @@ func applyFenceOptions(cfg *renderConfig, opts map[string]any) error {
 			return fmt.Errorf("chart theme must be a string")
 		}
 		s = strings.ToLower(s)
-		if s != "light" && s != "dark" {
-			return fmt.Errorf("chart theme must be light or dark")
+		if s == "light" {
+			s = "white"
+		}
+		themeSrcs := []string{}
+		if builtInThemeNames[s] {
+			if s != "white" {
+				themeSrcs = append(themeSrcs, "/web/echarts/themes/"+s+".js")
+			}
+		} else if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+			themeSrcs = append(themeSrcs, s)
+		} else {
+			return fmt.Errorf("chart theme must be one of white,dark,essos,chalk,purple-passion,romantic,walden,westeros,wonderland,vintage,macarons,infographic,shine,roma,light or an http(s) URL")
 		}
 		cfg.Theme = s
+		cfg.ThemeSrcs = themeSrcs
 	}
 	if mode, ok := opts["renderer"]; ok {
 		s, ok := optionString(mode)
@@ -135,7 +182,64 @@ func applyFenceOptions(cfg *renderConfig, opts map[string]any) error {
 		}
 		cfg.Renderer = s
 	}
+	if mode, ok := opts["loader"]; ok {
+		s, ok := optionString(mode)
+		if !ok {
+			return fmt.Errorf("chart loader must be a string")
+		}
+		s = strings.ToLower(s)
+		if s != "none" && s != "local" && s != "auto" {
+			return fmt.Errorf("chart loader must be none, local or auto")
+		}
+		cfg.Loader = s
+	}
+	if src, ok := opts["echartsSrc"]; ok {
+		s, ok := optionString(src)
+		if !ok {
+			return fmt.Errorf("chart echartsSrc must be a string")
+		}
+		cfg.EchartsSrc = s
+	}
+	if src, ok := opts["cdnSrc"]; ok {
+		s, ok := optionString(src)
+		if !ok {
+			return fmt.Errorf("chart cdnSrc must be a string")
+		}
+		cfg.CdnSrc = s
+	}
+	if plugins, ok := opts["plugins"]; ok {
+		items, ok := optionStringList(plugins)
+		if !ok {
+			return fmt.Errorf("chart plugins must be a string or string array")
+		}
+		pluginSet := map[string]struct{}{}
+		resolved := make([]string, 0, len(items))
+		for _, item := range items {
+			key := strings.ToLower(strings.TrimSpace(item))
+			if key == "" {
+				continue
+			}
+			src := key
+			if path, found := builtInPluginPaths[key]; found {
+				src = path
+			}
+			if _, exists := pluginSet[src]; exists {
+				continue
+			}
+			pluginSet[src] = struct{}{}
+			resolved = append(resolved, src)
+		}
+		cfg.PluginSrcs = resolved
+	}
 	return nil
+}
+
+func jsArrayLiteral(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, v := range values {
+		quoted = append(quoted, strconv.Quote(v))
+	}
+	return "[" + strings.Join(quoted, ",") + "]"
 }
 
 func buildScript(id string, code string, cfg renderConfig) (string, error) {
@@ -144,6 +248,11 @@ func buildScript(id string, code string, cfg renderConfig) (string, error) {
 	quotedID := strconv.Quote(id)
 	quotedTheme := strconv.Quote(cfg.Theme)
 	quotedRenderer := strconv.Quote(cfg.Renderer)
+	quotedLoader := strconv.Quote(cfg.Loader)
+	quotedEchartsSrc := strconv.Quote(cfg.EchartsSrc)
+	quotedCdnSrc := strconv.Quote(cfg.CdnSrc)
+	quotedThemeSrcs := jsArrayLiteral(cfg.ThemeSrcs)
+	quotedPluginSrcs := jsArrayLiteral(cfg.PluginSrcs)
 
 	var b strings.Builder
 	b.WriteString("(function(){")
@@ -154,7 +263,72 @@ func buildScript(id string, code string, cfg renderConfig) (string, error) {
 	b.WriteString(quotedID)
 	b.WriteString(");}")
 	b.WriteString("if(!__dom){return;}")
-	b.WriteString("if(!window.echarts){__dom.innerText='ECharts library is not loaded.';return;}")
+	b.WriteString("var __loaderMode=")
+	b.WriteString(quotedLoader)
+	b.WriteString(";")
+	b.WriteString("var __echartsSrc=")
+	b.WriteString(quotedEchartsSrc)
+	b.WriteString(";")
+	b.WriteString("var __cdnSrc=")
+	b.WriteString(quotedCdnSrc)
+	b.WriteString(";")
+	b.WriteString("var __themeSrcs=")
+	b.WriteString(quotedThemeSrcs)
+	b.WriteString(";")
+	b.WriteString("var __pluginSrcs=")
+	b.WriteString(quotedPluginSrcs)
+	b.WriteString(";")
+	b.WriteString("if(!window.__chartextScriptPromises){window.__chartextScriptPromises={};}")
+	b.WriteString("if(!window.__chartextEchartsLoaderPromises){window.__chartextEchartsLoaderPromises={};}")
+	b.WriteString("function __loadScriptOnce(src){")
+	b.WriteString("if(!src){return Promise.resolve();}")
+	b.WriteString("var p=window.__chartextScriptPromises[src];")
+	b.WriteString("if(p){return p;}")
+	b.WriteString("p=new Promise(function(resolve,reject){")
+	b.WriteString("var s=document.createElement('script');")
+	b.WriteString("s.src=src;")
+	b.WriteString("s.async=true;")
+	b.WriteString("s.onload=function(){resolve();};")
+	b.WriteString("s.onerror=function(){reject(new Error('failed to load script: '+src));};")
+	b.WriteString("document.head.appendChild(s);")
+	b.WriteString("});")
+	b.WriteString("window.__chartextScriptPromises[src]=p;")
+	b.WriteString("return p;")
+	b.WriteString("}")
+	b.WriteString("function __ensureEcharts(){")
+	b.WriteString("if(window.echarts){return Promise.resolve(window.echarts);}")
+	b.WriteString("if(__loaderMode==='none'){return Promise.reject(new Error('ECharts library is not loaded.'));}")
+	b.WriteString("var key=__loaderMode+'|'+(__echartsSrc||'')+'|'+(__cdnSrc||'');")
+	b.WriteString("if(window.__chartextEchartsLoaderPromises[key]){return window.__chartextEchartsLoaderPromises[key];}")
+	b.WriteString("function __loadLocal(){")
+	b.WriteString("return __loadScriptOnce(__echartsSrc).then(function(){")
+	b.WriteString("if(!window.echarts){throw new Error('ECharts loaded but window.echarts is undefined.');}")
+	b.WriteString("return window.echarts;")
+	b.WriteString("});")
+	b.WriteString("}")
+	b.WriteString("var loader; if(__loaderMode==='local'){loader=__loadLocal();}else{loader=__loadLocal().catch(function(localErr){")
+	b.WriteString("if(!__cdnSrc){throw localErr;}")
+	b.WriteString("return __loadScriptOnce(__cdnSrc).then(function(){")
+	b.WriteString("if(!window.echarts){throw new Error('CDN ECharts loaded but window.echarts is undefined.');}")
+	b.WriteString("return window.echarts;")
+	b.WriteString("});")
+	b.WriteString("});}")
+	b.WriteString("window.__chartextEchartsLoaderPromises[key]=loader;")
+	b.WriteString("return loader;")
+	b.WriteString("}")
+	b.WriteString("function __ensurePlugins(){")
+	b.WriteString("if(!__pluginSrcs||!__pluginSrcs.length){return Promise.resolve();}")
+	b.WriteString("var tasks=[];")
+	b.WriteString("for(var i=0;i<__pluginSrcs.length;i++){tasks.push(__loadScriptOnce(__pluginSrcs[i]));}")
+	b.WriteString("return Promise.all(tasks).then(function(){return;});")
+	b.WriteString("}")
+	b.WriteString("function __ensureThemeAssets(){")
+	b.WriteString("if(!__themeSrcs||!__themeSrcs.length){return Promise.resolve();}")
+	b.WriteString("var tasks=[];")
+	b.WriteString("for(var i=0;i<__themeSrcs.length;i++){tasks.push(__loadScriptOnce(__themeSrcs[i]));}")
+	b.WriteString("return Promise.all(tasks).then(function(){return;});")
+	b.WriteString("}")
+	b.WriteString("__ensureEcharts().then(function(){return __ensureThemeAssets();}).then(function(){return __ensurePlugins();}).then(function(){")
 	b.WriteString("if(__dom.__chartextResizeHandler){window.removeEventListener('resize',__dom.__chartextResizeHandler);__dom.__chartextResizeHandler=null;}")
 	b.WriteString("var __prevChart=echarts.getInstanceByDom(__dom);")
 	b.WriteString("if(__prevChart){__prevChart.dispose();}")
@@ -178,6 +352,7 @@ func buildScript(id string, code string, cfg renderConfig) (string, error) {
 	b.WriteString("__dom.__chartextResizeHandler=__resizeHandler;")
 	b.WriteString("window.addEventListener('resize',__resizeHandler);")
 	b.WriteString("}catch(e){__dom.innerText='Chart render error: '+(e&&e.message?e.message:String(e));}")
+	b.WriteString("}).catch(function(e){__dom.innerText='ECharts load error: '+(e&&e.message?e.message:String(e));});")
 	b.WriteString("})();")
 	return b.String(), nil
 }
