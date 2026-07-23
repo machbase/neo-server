@@ -3,6 +3,7 @@ package httpext
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -33,7 +34,10 @@ func executeRawHTTPClient(content string) (string, string, error) {
 		return "", "", err
 	}
 
-	rawReqBytes := buildRawRequest(req)
+	rawReqBytes, err := buildRawRequest(req)
+	if err != nil {
+		return "", "", err
+	}
 	rawReq := string(rawReqBytes)
 
 	respBytes, err := executeRawRequest(req.URL, rawReqBytes)
@@ -166,17 +170,24 @@ func parseRequestLine(line string) (method, rawURL, version string) {
 	return method, rawURL, version
 }
 
-func buildRawRequest(req *parsedRequest) []byte {
+func buildRawRequest(req *parsedRequest) ([]byte, error) {
 	target := req.URL.RequestURI()
 	if target == "" {
 		target = "/"
+	}
+	body := req.Body
+	if len(body) > 0 && requestBodyShouldBeGzipped(req.Headers) {
+		compressed, err := gzipCompress(body)
+		if err != nil {
+			return nil, fmt.Errorf("http: gzip request body failed: %w", err)
+		}
+		body = compressed
 	}
 
 	w := &bytes.Buffer{}
 	_, _ = fmt.Fprintf(w, "%s %s %s\r\n", req.Method, target, req.Version)
 
 	hasHost := false
-	hasContentLength := false
 	hasConnection := false
 	for _, h := range req.Headers {
 		nameLower := strings.ToLower(h.Name)
@@ -184,7 +195,9 @@ func buildRawRequest(req *parsedRequest) []byte {
 			hasHost = true
 		}
 		if nameLower == "content-length" {
-			hasContentLength = true
+			if len(body) > 0 {
+				continue
+			}
 		}
 		if nameLower == "connection" {
 			hasConnection = true
@@ -194,17 +207,44 @@ func buildRawRequest(req *parsedRequest) []byte {
 	if !hasHost {
 		_, _ = fmt.Fprintf(w, "Host: %s\r\n", req.URL.Host)
 	}
-	if len(req.Body) > 0 && !hasContentLength {
-		_, _ = fmt.Fprintf(w, "Content-Length: %d\r\n", len(req.Body))
+	if len(body) > 0 {
+		_, _ = fmt.Fprintf(w, "Content-Length: %d\r\n", len(body))
 	}
 	if !hasConnection {
 		_, _ = io.WriteString(w, "Connection: close\r\n")
 	}
 	_, _ = io.WriteString(w, "\r\n")
-	if len(req.Body) > 0 {
-		_, _ = w.Write(req.Body)
+	if len(body) > 0 {
+		_, _ = w.Write(body)
 	}
-	return w.Bytes()
+	return w.Bytes(), nil
+}
+
+func requestBodyShouldBeGzipped(headers []headerLine) bool {
+	for _, h := range headers {
+		if !strings.EqualFold(h.Name, "Content-Encoding") {
+			continue
+		}
+		for _, token := range strings.Split(h.Value, ",") {
+			if strings.EqualFold(strings.TrimSpace(token), "gzip") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func gzipCompress(body []byte) ([]byte, error) {
+	buf := &bytes.Buffer{}
+	gz := gzip.NewWriter(buf)
+	if _, err := gz.Write(body); err != nil {
+		_ = gz.Close()
+		return nil, err
+	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 type captureConn struct {

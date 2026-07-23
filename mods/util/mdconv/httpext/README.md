@@ -102,6 +102,12 @@ To preserve response header raw bytes, `httpext` performs transport-level captur
 
 This preserves header case/order from the wire response.
 
+## Request Body Encoding
+
+- If request headers include `Content-Encoding: gzip` and request body is not empty, `httpext` compresses the request body with gzip before sending.
+- `Content-Length` is recalculated from the final bytes that are actually sent on the wire.
+- If a `Content-Length` header is already provided in the fence, its value is replaced with the recalculated value for non-empty bodies.
+
 ## Response Body Decoding
 
 - If `Content-Encoding: gzip` and the `Content-Type` is printable (for example JSON or text), `httpext` displays the decompressed body.

@@ -1,10 +1,13 @@
 package httpext
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +41,50 @@ func startRawServer(t *testing.T, response []byte) (string, func()) {
 	}
 }
 
+func readRawHTTPRequest(conn net.Conn) ([]byte, error) {
+	br := bufio.NewReader(conn)
+	raw := &bytes.Buffer{}
+	contentLength := 0
+
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		raw.WriteString(line)
+		trimmed := strings.TrimRight(line, "\r\n")
+		if trimmed == "" {
+			break
+		}
+		if strings.HasPrefix(strings.ToLower(trimmed), "content-length:") {
+			v := strings.TrimSpace(strings.SplitN(trimmed, ":", 2)[1])
+			n, err := strconv.Atoi(v)
+			if err == nil && n > 0 {
+				contentLength = n
+			}
+		}
+	}
+
+	if contentLength > 0 {
+		body := make([]byte, contentLength)
+		if _, err := io.ReadFull(br, body); err != nil {
+			return nil, err
+		}
+		raw.Write(body)
+	}
+	return raw.Bytes(), nil
+}
+
+func splitRawHTTPHeaderBody(raw []byte) ([]byte, []byte, bool) {
+	if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+		return raw[:i+4], raw[i+4:], true
+	}
+	if i := bytes.Index(raw, []byte("\n\n")); i >= 0 {
+		return raw[:i+2], raw[i+2:], true
+	}
+	return nil, nil, false
+}
+
 func TestExecuteRawHTTPClientCapturesRawHeaders(t *testing.T) {
 	response := []byte("HTTP/1.1 200 Weird\r\n" +
 		"x-Zeta: 1\r\n" +
@@ -59,6 +106,59 @@ func TestExecuteRawHTTPClientCapturesRawHeaders(t *testing.T) {
 
 	require.Contains(t, rawRsp, "HTTP/1.1 200 Weird\r\n")
 	require.Contains(t, rawRsp, "x-Zeta: 1\r\nX-alpha: 2\r\nContent-Length: 5\r\n\r\nhello")
+}
+
+func TestExecuteRawHTTPClientCompressesRequestBodyWhenGzipEncoding(t *testing.T) {
+	response := []byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+	requestCh := make(chan []byte, 1)
+
+	lsnr, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := lsnr.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+		reqRaw, err := readRawHTTPRequest(conn)
+		if err == nil {
+			requestCh <- reqRaw
+		}
+		_, _ = conn.Write(response)
+	}()
+	defer func() {
+		_ = lsnr.Close()
+		<-done
+	}()
+
+	body := `{"name":"neo","count":3}`
+	content := fmt.Sprintf("POST http://%s/zip HTTP/1.1\nContent-Type: application/json\nContent-Encoding: gzip\nContent-Length: 1\n\n%s", lsnr.Addr().String(), body)
+
+	rawReq, _, err := executeRawHTTPClient(content)
+	require.NoError(t, err)
+
+	var capturedReq []byte
+	select {
+	case capturedReq = <-requestCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for captured request")
+	}
+
+	require.Contains(t, rawReq, "Content-Encoding: gzip\r\n")
+	headerRaw, bodyRaw, ok := splitRawHTTPHeaderBody(capturedReq)
+	require.True(t, ok)
+	require.Contains(t, string(headerRaw), "POST /zip HTTP/1.1\r\n")
+	require.Contains(t, string(headerRaw), fmt.Sprintf("Content-Length: %d\r\n", len(bodyRaw)))
+
+	gz, err := gzip.NewReader(bytes.NewReader(bodyRaw))
+	require.NoError(t, err)
+	defer gz.Close()
+	decoded, err := io.ReadAll(gz)
+	require.NoError(t, err)
+	require.Equal(t, body, string(decoded))
 }
 
 func TestExtenderRendersRequestAndResponseAsCodeBlocks(t *testing.T) {
