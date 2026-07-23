@@ -1,10 +1,12 @@
 package tql
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,7 +187,7 @@ func TestMarkAreaAndHttp(t *testing.T) {
 	_, err = node.fmHttp([]int{10})
 	require.EqualError(t, err, "f(HTTP) arg(0) should be content, but []int")
 	_, err = node.fmHttp("GET http://example.com\ninvalid-header")
-	require.ErrorContains(t, err, "HTTP parse error")
+	require.ErrorContains(t, err, "HTTP request error")
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -194,7 +196,72 @@ func TestMarkAreaAndHttp(t *testing.T) {
 	defer ts.Close()
 
 	node.next = &captureReceiver{}
-	_, err = node.fmHttp("GET " + ts.URL)
+	ret, err = node.fmHttp("GET " + ts.URL)
 	require.NoError(t, err)
-	require.NotNil(t, node.next.(*captureReceiver).last)
+	retRec, ok := ret.(*Record)
+	require.True(t, ok)
+	require.Equal(t, 0, retRec.Key())
+	retText, ok := retRec.Value().(string)
+	require.True(t, ok)
+	require.Contains(t, retText, "HTTP/1.1 200 OK")
+	require.Nil(t, node.next.(*captureReceiver).last)
+}
+
+func TestHttpMultipartWithInlineBody(t *testing.T) {
+	node := NewNode(NewTask())
+	boundary := "----Boundary7MA4YWxkTrZu0gW"
+	var gotName, gotTime, gotFile string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.NoError(t, r.ParseMultipartForm(4<<20))
+		gotName = r.FormValue("NAME")
+		gotTime = r.FormValue("TIME")
+		f, _, err := r.FormFile("DATA")
+		require.NoError(t, err)
+		defer f.Close()
+		raw, err := io.ReadAll(f)
+		require.NoError(t, err)
+		gotFile = string(raw)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("uploaded"))
+	}))
+	defer ts.Close()
+
+	content := strings.Join([]string{
+		"POST " + ts.URL,
+		"Content-Type: multipart/form-data; boundary=" + boundary,
+		"",
+		"--" + boundary,
+		"Content-Disposition: form-data; name=\"NAME\"",
+		"",
+		"camera-1",
+		"--" + boundary,
+		"Content-Disposition: form-data; name=\"TIME\"",
+		"",
+		"now",
+		"--" + boundary,
+		"Content-Disposition: form-data; name=\"DATA\"; filename=\"image_file.svg\"",
+		"X-Store-Dir: /tmp/store",
+		"Content-Type: image/svg",
+		"",
+		"<svg xmlns=\"http://w3.org\" width=\"100\" height=\"100\" viewBox=\"0 0 100 100\">",
+		"  <rect width=\"100\" height=\"100\" fill=\"red\" />",
+		"  <circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"blue\" />",
+		"</svg>",
+		"--" + boundary + "--",
+	}, "\n")
+
+	ret, err := node.fmHttp(content)
+	require.NoError(t, err)
+	require.Equal(t, "camera-1", gotName)
+	require.Equal(t, "now", gotTime)
+	require.Contains(t, gotFile, "<svg xmlns=\"http://w3.org\"")
+
+	retRec, ok := ret.(*Record)
+	require.True(t, ok)
+	retText, ok := retRec.Value().(string)
+	require.True(t, ok)
+	require.Contains(t, retText, "HTTP/1.1 200 OK")
+	require.Contains(t, retText, "uploaded")
 }

@@ -1,0 +1,188 @@
+.httpext-warning {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #7f1d1d;
+  background: #450a0a;
+  color: #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.httpext-pre {
+  background: #24283b;
+  border: 1px solid #3b4261;
+  border-radius: 8px;
+  overflow: auto;
+  margin: 10px 0;
+  padding: 12px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c0caf5;
+}
+
+.httpext-pre code,
+.httpext-pre span,
+.httpext-pre table,
+.httpext-pre tbody,
+.httpext-pre tr,
+.httpext-pre td,
+.httpext-pre div {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.httpext-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.httpext-lno {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  padding: 0 12px 0 10px;
+  color: #7e88b5;
+  border-right: 1px solid #3b4261;
+  vertical-align: top;
+  user-select: none;
+}
+
+.httpext-line {
+  padding: 0 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.httpext-divider-row td {
+  padding: 8px 0;
+}
+
+.httpext-divider {
+  width: 95%;
+  margin: 16px auto 16px auto;
+  border-top: 1px dashed #414868;
+  height: 0;
+}
+
+.httpext-method {
+  color: #7aa2f7;
+  font-weight: 700;
+}
+
+.httpext-path {
+  color: #c0caf5;
+}
+
+.httpext-param-name {
+  color: #bb9af7;
+}
+
+.httpext-param-value {
+  color: #9ece6a;
+}
+
+.httpext-request-protocol,
+.httpext-response-protocol {
+  color: #7dcfff;
+}
+
+.httpext-header-key {
+  color: #ff9e64;
+}
+
+.httpext-header-value {
+  color: #a9b1d6;
+}
+
+.httpext-status-code {
+  color: #f7768e;
+  font-weight: 700;
+}
+
+.httpext-status-message {
+  color: #7dcfff;
+}
+
+.httpext-body {
+  color: #c0caf5;
+}
+
+.httpext-json-key {
+  color: #7aa2f7;
+}
+
+.httpext-json-string {
+  color: #9ece6a;
+}
+
+.httpext-json-number {
+  color: #ff9e64;
+}
+
+.httpext-json-boolean {
+  color: #e0af68;
+}
+
+.httpext-json-null {
+  color: #565f89;
+}
+
+.httpext-json-punct {
+  color: #89ddff;
+}
+
+.httpext-csv-delim {
+  color: #7e88b5;
+}
+
+.httpext-csv-col-p0 {
+  color: #7aa2f7;
+}
+
+.httpext-csv-col-p1 {
+  color: #9ece6a;
+}
+
+.httpext-csv-col-p2 {
+  color: #ff9e64;
+}
+
+.httpext-csv-col-p3 {
+  color: #bb9af7;
+}
+
+.httpext-csv-col-p4 {
+  color: #e0af68;
+}
+
+.httpext-csv-col-p5 {
+  color: #73daca;
+}
+
+.httpext-csv-col-p6 {
+  color: #f7768e;
+}
+
+.httpext-csv-col-p7 {
+  color: #7dcfff;
+}
+
+.httpext-csv-col-p8 {
+  color: #c0caf5;
+}
+
+.httpext-csv-col-p9 {
+  color: #a9b1d6;
+}
+
+.httpext-csv-col-p10 {
+  color: #b4f9f8;
+}
+
+.httpext-csv-col-p11 {
+  color: #f5c2e7;
+}

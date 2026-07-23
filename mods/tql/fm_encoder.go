@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/machbase/neo-server/v8/mods/util/restclient"
+	"github.com/machbase/neo-server/v8/mods/util/httpdsl"
 )
 
 func newEncoder(format string, args ...any) (*Encoder, error) {
@@ -174,11 +174,10 @@ func (node *Node) fmHttp(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rcli, err := restclient.Parse(content)
+	exchange, err := httpdsl.Execute(content)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP parse error: %w", err)
+		return nil, fmt.Errorf("HTTP request error: %w", err)
 	}
-	result := rcli.Do()
-	NewRecord(0, result).Tell(node.next)
-	return nil, nil
+	result := exchange.ResponseRaw
+	return NewRecord(0, result), nil
 }

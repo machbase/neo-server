@@ -10,6 +10,7 @@ import (
 	pikchr "github.com/jchenry/goldmark-pikchr"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/chartext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/d2ext"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv/httpext"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -86,6 +87,7 @@ func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
 				Sketch:  false,
 			},
 			&chartext.Extender{DarkMode: c.darkMode},
+			&httpext.Extender{},
 		),
 		goldmark.WithRendererOptions(
 			html.WithXHTML(),
