@@ -58,6 +58,50 @@ func (r *fileBodyReader) Close() error {
 	return r.closer.Close()
 }
 
+// Execute parses and runs an HTTP DSL script and returns raw request/response.
+//
+// HTTP DSL syntax:
+//
+//	<METHOD> <ABSOLUTE_URL> [HTTP/VERSION]
+//	[?query=value]           (optional, can appear on one or more lines)
+//	[&query=value]           (optional, can appear on one or more lines)
+//	<Header-Name>: <value>   (optional, one per line)
+//
+//	<blank line>
+//	<body lines...>          (optional)
+//
+// Notes:
+// - URL must be absolute (for example: http://host/path or https://host/path).
+// - If version is omitted, HTTP/1.1 is used.
+// - Query extension lines ('?' and '&') are appended to the request URL.
+// - Request body file directives:
+//   - < /ssfs/path/file      -> load from server-side file system (SSFS)
+//   - < @/os/path/file       -> load from OS file system
+//   - <@utf-8 /path/file     -> legacy form, charset token is parsed but ignored
+//
+// File upload with multipart/form-data:
+// - Put a valid multipart body in <body lines...>, including boundary markers.
+// - In each file-part payload line, you can use a file directive to load content.
+//
+// Example (single file from OS path):
+//
+//	POST http://127.0.0.1:5654/upload
+//	Content-Type: multipart/form-data; boundary=----Boundary7MA4YWxkTrZu0gW
+//
+//	------Boundary7MA4YWxkTrZu0gW
+//	Content-Disposition: form-data; name="meta"
+//
+//	upload-1
+//	------Boundary7MA4YWxkTrZu0gW
+//	Content-Disposition: form-data; name="file"; filename="sample.bin"
+//	Content-Type: application/octet-stream
+//
+//	< @/tmp/sample.bin
+//	------Boundary7MA4YWxkTrZu0gW--
+//
+// Example (mixed loaders in multipart):
+// - OS file part: < @/abs/path/image.png
+// - SSFS file part: < /files/doc.xml
 func Execute(content string) (Exchange, error) {
 	req, err := parseHTTPClient(content)
 	if err != nil {
