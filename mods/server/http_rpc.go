@@ -55,7 +55,6 @@ func rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, 
 	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
 	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
 	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
-	src = replaceHttpClient(src, true)
 
 	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
 	w := &strings.Builder{}

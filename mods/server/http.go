@@ -40,7 +40,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
-	"github.com/machbase/neo-server/v8/mods/util/restclient"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -1133,7 +1132,6 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
 	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
 	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
-	src = replaceHttpClient(src, true)
 
 	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))
@@ -1143,58 +1141,6 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		ctx.String(http.StatusInternalServerError, fmt.Sprintf(`<p>%s</p>`, err.Error()))
 	}
 	ctx.Writer.Write([]byte("</div>"))
-}
-
-func replaceHttpClient(src []byte, preserveSrc bool) []byte {
-	if !bytes.Contains(src, []byte("```http")) {
-		return src
-	}
-	offset := 0
-	for {
-		fenceBegin := bytes.Index(src[offset:], []byte("```http"))
-		if fenceBegin == -1 {
-			break
-		}
-		fenceBegin = offset + fenceBegin
-		contentBegin := fenceBegin + 7 // length of "```http"
-		contentEnd := contentBegin
-
-		if end := bytes.Index(src[contentBegin:], []byte("```")); end == -1 {
-			break
-		} else {
-			contentEnd = contentBegin + end
-		}
-		fenceEnd := contentEnd + 3 // length of "```"
-		offset = fenceEnd
-
-		content := src[contentBegin:contentEnd]
-		restCli, err := restclient.Parse(string(content))
-		if err != nil {
-			return bytes.Join([][]byte{
-				src[0:fenceEnd],
-				[]byte("\n" + err.Error()),
-				src[fenceEnd:]},
-				[]byte("\n"))
-		}
-		restRsp := restCli.Do()
-		resultString := restRsp.String()
-
-		newSrc := [][]byte{}
-		if preserveSrc { // preserve original source code
-			newSrc = append(newSrc, src[0:fenceEnd])
-		} else { // replace original source code with the result
-			newSrc = append(newSrc, src[0:fenceBegin])
-		}
-		newSrc = append(newSrc,
-			[]byte("```http"),
-			[]byte(resultString),
-			[]byte("```"),
-			src[fenceEnd:],
-		)
-		src = bytes.Join(newSrc, []byte("\n"))
-		offset += 10 + len(resultString) + 4 // 10 = len("```http") + len("```")
-	}
-	return src
 }
 
 var upgrader = websocket.Upgrader{
