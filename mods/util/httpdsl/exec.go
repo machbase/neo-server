@@ -42,6 +42,22 @@ type fileDirective struct {
 	Directive bool
 }
 
+type fileBodyReader struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func (r *fileBodyReader) Read(p []byte) (int, error) {
+	return r.reader.Read(p)
+}
+
+func (r *fileBodyReader) Close() error {
+	if r.closer == nil {
+		return nil
+	}
+	return r.closer.Close()
+}
+
 func Execute(content string) (Exchange, error) {
 	req, err := parseHTTPClient(content)
 	if err != nil {
@@ -330,7 +346,7 @@ func parseFileLine(method string, line string) (io.Reader, error) {
 		if err != nil {
 			return nil, err
 		}
-		return io.MultiReader(in, strings.NewReader("\n")), nil
+		return &fileBodyReader{reader: io.MultiReader(in, strings.NewReader("\n")), closer: in}, nil
 	}
 
 	def := ssfs.Default()
