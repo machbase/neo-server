@@ -103,3 +103,24 @@ func TestMdWithJshRunCodeFence(t *testing.T) {
 	// Should have syntax highlighting applied
 	require.Contains(t, result, "<span style=")
 }
+
+func TestMdWithChartCodeFence(t *testing.T) {
+	code := []string{
+		`# Chart test`,
+		"```chart {width=600px,height=400px,theme=dark}",
+		`function digit_format(v) { return "DIGIT: " + v; }`,
+		`option = {xAxis:{type:'category',data:['Mon']},yAxis:{type:'value'},series:[{type:'line',data:[820]}]};`,
+		"```",
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.Nil(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `class="chartext"`)
+	require.Contains(t, result, `class="chartext-echarts"`)
+	require.Contains(t, result, `echarts.init`)
+	require.Contains(t, result, `setOption`)
+}
