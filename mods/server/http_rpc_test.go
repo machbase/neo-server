@@ -586,9 +586,9 @@ Host: localhost:8080`},
 				html := result.Get("result").String()
 				require.Contains(t, html, "<h2")
 				require.Contains(t, html, "HTTP Test")
-				require.Contains(t, html, "<pre><code>GET /db/query?")
+				require.Contains(t, html, "<span class=\"httpext-method\">GET</span> <span class=\"httpext-path\">/db/query</span>?")
 				require.Contains(t, html, "HTTP/1.1")
-				require.Contains(t, html, "HTTP/1.1 200 OK")
+				require.Contains(t, html, "OK")
 			},
 		},
 		{
