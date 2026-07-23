@@ -161,9 +161,7 @@ func TestReadLine(t *testing.T) {
 			|CSV()
 			`,
 			[]Line{
-				{text: " comment-first", isComment: true, line: 3},
-				{text: " comment-second", isComment: true, line: 5},
-				{text: "SCRIPT({\n\n\n  line2;\n\n  line4;\n\n})", line: 1},
+				{text: "SCRIPT({\n\n  // comment-first\n  line2;\n  // comment-second\n  line4;\n\n})", line: 1},
 				{text: "CSV()", line: 9},
 			},
 		},
@@ -198,8 +196,7 @@ func TestReadLine(t *testing.T) {
 			|CSV()
 			`,
 			[]Line{
-				{text: " this is a function return '{'", isComment: true, line: 2},
-				{text: "SCRIPT({<<JS\n\n  function a () { return '{' };\nJS})", line: 1},
+				{text: "SCRIPT({<<JS\n  // this is a function return '{'\n  function a () { return '{' };\nJS})", line: 1},
 				{text: "CSV()", line: 5},
 			},
 		},
@@ -215,6 +212,20 @@ func TestReadLine(t *testing.T) {
 			[]Line{
 				{text: "MARKDOWN(`<<MD\n```mermaid\nerDiagram\nCUSTOMER ||--o{ ORDER :places\nNOTE : `inline` text\n```\nMD`)", line: 1},
 				{text: "CSV()", line: 8},
+			},
+		},
+		{
+			"MARKDOWN({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))\nCSV()\n",
+			[]Line{
+				{text: "MARKDOWN({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))", line: 1},
+				{text: "CSV()", line: 6},
+			},
+		},
+		{
+			"MARKDOWN({<<EOF\nsome text\n# this is not a comment but a title\n// this is not a comment either\nEOF})\nCSV()\n",
+			[]Line{
+				{text: "MARKDOWN({<<EOF\nsome text\n# this is not a comment but a title\n// this is not a comment either\nEOF})", line: 1},
+				{text: "CSV()", line: 6},
 			},
 		},
 	}

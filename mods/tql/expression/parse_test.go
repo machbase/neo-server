@@ -398,6 +398,25 @@ func TestScriptBlock(test *testing.T) {
 				{Kind: CLAUSE_CLOSE},
 			},
 		},
+		{
+			Name:  "Tagged block with trailing option function",
+			Input: "markdown({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))",
+			Functions: map[string]Function{
+				"markdown": noop,
+				"html":     argNoop,
+			},
+			Expected: []Token{
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "{{ if .IsFirst }}\n```d2\n{{ end }}\n"},
+				{Kind: SEPARATOR},
+				{Kind: FUNCTION, Value: argNoop},
+				{Kind: CLAUSE},
+				{Kind: BOOLEAN, Value: true},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: CLAUSE_CLOSE},
+			},
+		},
 	}
 	runTokenParsingTest(tokenParsingTests, test)
 }

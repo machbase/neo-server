@@ -91,7 +91,8 @@ func scanLines(codeReader io.Reader, functions map[string]expression.Function) (
 			}
 			continue
 		}
-		if strings.HasPrefix(trimLineText, "#pragma") {
+		inMultilineStmt := lineFrom != 0
+		if strings.HasPrefix(trimLineText, "#pragma") && !inMultilineStmt {
 			pragmaText := trimLineText[7:]
 			start := lineStartOffset + strings.Index(lineText, pragmaText)
 			if start < lineStartOffset {
@@ -100,7 +101,7 @@ func scanLines(codeReader io.Reader, functions map[string]expression.Function) (
 			expressions = append(expressions, &Line{text: pragmaText, line: lineNo, isComment: true, isPragma: true, start: start, end: start + utf8.RuneCountInString(pragmaText)})
 			continue
 		}
-		if strings.HasPrefix(trimLineText, "//+") {
+		if strings.HasPrefix(trimLineText, "//+") && !inMultilineStmt {
 			pragmaText := trimLineText[3:]
 			start := lineStartOffset + strings.Index(lineText, pragmaText)
 			if start < lineStartOffset {
@@ -109,7 +110,7 @@ func scanLines(codeReader io.Reader, functions map[string]expression.Function) (
 			expressions = append(expressions, &Line{text: pragmaText, line: lineNo, isComment: true, isPragma: true, start: start, end: start + utf8.RuneCountInString(pragmaText)})
 			continue
 		}
-		if strings.HasPrefix(trimLineText, "//") {
+		if strings.HasPrefix(trimLineText, "//") && !inMultilineStmt {
 			stmt = append(stmt, "")
 			commentText := trimLineText[2:]
 			start := lineStartOffset + strings.Index(lineText, commentText)
@@ -119,7 +120,7 @@ func scanLines(codeReader io.Reader, functions map[string]expression.Function) (
 			expressions = append(expressions, &Line{text: commentText, line: lineNo, isComment: true, start: start, end: start + utf8.RuneCountInString(commentText)})
 			continue
 		}
-		if strings.HasPrefix(trimLineText, "#") {
+		if strings.HasPrefix(trimLineText, "#") && !inMultilineStmt {
 			commentText := trimLineText[1:]
 			start := lineStartOffset + strings.Index(lineText, commentText)
 			if start < lineStartOffset {

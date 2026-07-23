@@ -1,6 +1,8 @@
 package mdconv
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"regexp"
 
@@ -12,6 +14,9 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"go.abhg.dev/goldmark/mermaid"
+	"oss.terrastruct.com/d2/d2graph"
+	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
+	"oss.terrastruct.com/d2/d2themes/d2themescatalog"
 )
 
 type Converter struct {
@@ -38,7 +43,17 @@ func (c *Converter) ConvertString(src string, w io.Writer) error {
 	return c.Convert([]byte(src), w)
 }
 
-func (c *Converter) Convert(src []byte, w io.Writer) error {
+func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Handle the panic and return an error instead of crashing the program
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("panic: %v", r)
+			}
+			retErr = err
+		}
+	}()
 	highlightingStyle := "onesenterprise"
 	if c.darkMode {
 		highlightingStyle = "catppuccin-macchiato"
@@ -59,7 +74,16 @@ func (c *Converter) Convert(src []byte, w io.Writer) error {
 					chromahtml.WrapLongLines(true),
 				),
 			),
-			&d2ext.Extender{},
+			&d2ext.Extender{
+				Layout: func(ctx context.Context, g *d2graph.Graph) error {
+					return d2dagrelayout.Layout(ctx, g, &d2dagrelayout.ConfigurableOpts{
+						NodeSep: 20,
+						EdgeSep: 20,
+					})
+				},
+				ThemeID: &d2themescatalog.CoolClassics.ID,
+				Sketch:  false,
+			},
 		),
 		goldmark.WithRendererOptions(
 			html.WithXHTML(),
