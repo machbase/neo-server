@@ -8,6 +8,7 @@ import (
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	pikchr "github.com/jchenry/goldmark-pikchr"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv/chartext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/d2ext"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
@@ -84,6 +85,7 @@ func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
 				ThemeID: &d2themescatalog.CoolClassics.ID,
 				Sketch:  false,
 			},
+			&chartext.Extender{DarkMode: c.darkMode},
 		),
 		goldmark.WithRendererOptions(
 			html.WithXHTML(),
