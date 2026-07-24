@@ -1,0 +1,160 @@
+(function() {
+    var __script = document.currentScript || window.__chartextCurrentScript || null;
+    var __dom = null;
+    if (__script && __script.previousElementSibling && __script.previousElementSibling.classList && __script.previousElementSibling.classList.contains('chartext-echarts')) {
+        __dom = __script.previousElementSibling;
+    }
+    if (!__dom) {
+        __dom = document.getElementById({{.QuotedID}});
+    }
+    if (!__dom) {
+        return;
+    }
+
+    var __loaderMode = {{.QuotedLoader}};
+    var __echartsSrc = {{.QuotedEchartsSrc}};
+    var __cdnSrc = {{.QuotedCdnSrc}};
+    var __themeSrcs = {{.QuotedThemeSrcs}};
+    var __pluginSrcs = {{.QuotedPluginSrcs}};
+
+    if (!window.__chartextScriptPromises) {
+        window.__chartextScriptPromises = {};
+    }
+    if (!window.__chartextEchartsLoaderPromises) {
+        window.__chartextEchartsLoaderPromises = {};
+    }
+
+    function __loadScriptOnce(src) {
+        if (!src) {
+            return Promise.resolve();
+        }
+        var p = window.__chartextScriptPromises[src];
+        if (p) {
+            return p;
+        }
+        p = new Promise(function(resolve, reject) {
+            var s = document.createElement('script');
+            s.src = src;
+            s.async = true;
+            s.onload = function() {
+                resolve();
+            };
+            s.onerror = function() {
+                reject(new Error('failed to load script: ' + src));
+            };
+            document.head.appendChild(s);
+        });
+        window.__chartextScriptPromises[src] = p;
+        return p;
+    }
+
+    function __ensureEcharts() {
+        if (window.echarts) {
+            return Promise.resolve(window.echarts);
+        }
+        if (__loaderMode === 'none') {
+            return Promise.reject(new Error('ECharts library is not loaded.'));
+        }
+        var key = __loaderMode + '|' + (__echartsSrc || '') + '|' + (__cdnSrc || '');
+        if (window.__chartextEchartsLoaderPromises[key]) {
+            return window.__chartextEchartsLoaderPromises[key];
+        }
+
+        function __loadLocal() {
+            return __loadScriptOnce(__echartsSrc).then(function() {
+                if (!window.echarts) {
+                    throw new Error('ECharts loaded but window.echarts is undefined.');
+                }
+                return window.echarts;
+            });
+        }
+
+        var loader;
+        if (__loaderMode === 'local') {
+            loader = __loadLocal();
+        } else {
+            loader = __loadLocal().catch(function(localErr) {
+                if (!__cdnSrc) {
+                    throw localErr;
+                }
+                return __loadScriptOnce(__cdnSrc).then(function() {
+                    if (!window.echarts) {
+                        throw new Error('CDN ECharts loaded but window.echarts is undefined.');
+                    }
+                    return window.echarts;
+                });
+            });
+        }
+        window.__chartextEchartsLoaderPromises[key] = loader;
+        return loader;
+    }
+
+    function __ensurePlugins() {
+        if (!__pluginSrcs || !__pluginSrcs.length) {
+            return Promise.resolve();
+        }
+        var tasks = [];
+        for (var i = 0; i < __pluginSrcs.length; i++) {
+            tasks.push(__loadScriptOnce(__pluginSrcs[i]));
+        }
+        return Promise.all(tasks).then(function() {
+            return;
+        });
+    }
+
+    function __ensureThemeAssets() {
+        if (!__themeSrcs || !__themeSrcs.length) {
+            return Promise.resolve();
+        }
+        var tasks = [];
+        for (var i = 0; i < __themeSrcs.length; i++) {
+            tasks.push(__loadScriptOnce(__themeSrcs[i]));
+        }
+        return Promise.all(tasks).then(function() {
+            return;
+        });
+    }
+
+    __ensureEcharts().then(function() {
+        return __ensureThemeAssets();
+    }).then(function() {
+        return __ensurePlugins();
+    }).then(function() {
+        if (__dom.__chartextResizeHandler) {
+            window.removeEventListener('resize', __dom.__chartextResizeHandler);
+            __dom.__chartextResizeHandler = null;
+        }
+        var __prevChart = echarts.getInstanceByDom(__dom);
+        if (__prevChart) {
+            __prevChart.dispose();
+        }
+        var __option;
+        try {
+            var __chartCode = {{.QuotedCode}};
+            var __factory = new Function('__ctx', "var option;\n(function(){\n" + __chartCode + "\n}).call(__ctx);\nif(typeof option!==\"undefined\"){return option;}\nif(__ctx&&typeof __ctx.option!==\"undefined\"){return __ctx.option;}\nreturn null;");
+            __option = __factory({});
+        } catch (e) {
+            __dom.innerText = 'Chart code error: ' + (e && e.message ? e.message : String(e));
+            return;
+        }
+
+        if (!__option || typeof __option !== 'object') {
+            __dom.innerText = 'Chart option is not defined.';
+            return;
+        }
+
+        try {
+            var __chart = echarts.init(__dom, {{.QuotedTheme}}, { renderer: {{.QuotedRenderer}} });
+            __chart.setOption(__option);
+            var __resizeHandler = function() {
+                __chart.resize();
+            };
+            __dom.__chartextResizeHandler = __resizeHandler;
+            window.addEventListener('resize', __resizeHandler);
+        } catch (e) {
+            __dom.innerText = 'Chart render error: ' + (e && e.message ? e.message : String(e));
+        }
+    }).catch(function(e) {
+        __dom.innerText = 'ECharts load error: ' + (e && e.message ? e.message : String(e));
+    });
+})();

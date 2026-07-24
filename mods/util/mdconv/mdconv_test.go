@@ -124,3 +124,24 @@ func TestMdWithChartCodeFence(t *testing.T) {
 	require.Contains(t, result, `echarts.init`)
 	require.Contains(t, result, `setOption`)
 }
+
+func TestMdWithGeomapCodeFence(t *testing.T) {
+	code := []string{
+		`# Geomap test`,
+		"```geomap {width=600px,height=320px,tile=default,fit=auto}",
+		`[{"type":"marker","coordinates":[37.49785,127.027756],"properties":{"popup":{"content":"hello"}}}]`,
+		"```",
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.Nil(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `class="geomapext"`)
+	require.Contains(t, result, `class="geomapext-map"`)
+	require.Contains(t, result, `L.map(`)
+	require.Contains(t, result, `L.tileLayer`)
+	require.Contains(t, result, `L.marker`)
+}

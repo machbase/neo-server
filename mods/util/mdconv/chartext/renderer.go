@@ -2,12 +2,14 @@ package chartext
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"html"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"text/template"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/renderer"
@@ -18,6 +20,23 @@ var chartIDSeq atomic.Uint64
 
 var sizePattern = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?(?:px|%|vh|vw|rem|em)?$`)
 var scriptClosePattern = regexp.MustCompile(`(?i)</script>`)
+
+//go:embed renderer_js.tmpl
+var scriptTemplateText string
+
+var scriptTemplate = template.Must(template.New("chartext-script").Option("missingkey=error").Parse(scriptTemplateText))
+
+type scriptTemplateData struct {
+	QuotedID         string
+	QuotedLoader     string
+	QuotedEchartsSrc string
+	QuotedCdnSrc     string
+	QuotedThemeSrcs  string
+	QuotedPluginSrcs string
+	QuotedCode       string
+	QuotedTheme      string
+	QuotedRenderer   string
+}
 
 type HTMLRenderer struct {
 	DarkMode bool
@@ -244,117 +263,23 @@ func jsArrayLiteral(values []string) string {
 
 func buildScript(id string, code string, cfg renderConfig) (string, error) {
 	safeCode := scriptClosePattern.ReplaceAllString(code, `<\\/script>`)
-	quotedCode := strconv.Quote(safeCode)
-	quotedID := strconv.Quote(id)
-	quotedTheme := strconv.Quote(cfg.Theme)
-	quotedRenderer := strconv.Quote(cfg.Renderer)
-	quotedLoader := strconv.Quote(cfg.Loader)
-	quotedEchartsSrc := strconv.Quote(cfg.EchartsSrc)
-	quotedCdnSrc := strconv.Quote(cfg.CdnSrc)
-	quotedThemeSrcs := jsArrayLiteral(cfg.ThemeSrcs)
-	quotedPluginSrcs := jsArrayLiteral(cfg.PluginSrcs)
+	data := scriptTemplateData{
+		QuotedID:         strconv.Quote(id),
+		QuotedLoader:     strconv.Quote(cfg.Loader),
+		QuotedEchartsSrc: strconv.Quote(cfg.EchartsSrc),
+		QuotedCdnSrc:     strconv.Quote(cfg.CdnSrc),
+		QuotedThemeSrcs:  jsArrayLiteral(cfg.ThemeSrcs),
+		QuotedPluginSrcs: jsArrayLiteral(cfg.PluginSrcs),
+		QuotedCode:       strconv.Quote(safeCode),
+		QuotedTheme:      strconv.Quote(cfg.Theme),
+		QuotedRenderer:   strconv.Quote(cfg.Renderer),
+	}
 
-	var b strings.Builder
-	b.WriteString("(function(){")
-	b.WriteString("var __script=document.currentScript||window.__chartextCurrentScript||null;")
-	b.WriteString("var __dom=null;")
-	b.WriteString("if(__script&&__script.previousElementSibling&&__script.previousElementSibling.classList&&__script.previousElementSibling.classList.contains('chartext-echarts')){__dom=__script.previousElementSibling;}")
-	b.WriteString("if(!__dom){__dom=document.getElementById(")
-	b.WriteString(quotedID)
-	b.WriteString(");}")
-	b.WriteString("if(!__dom){return;}")
-	b.WriteString("var __loaderMode=")
-	b.WriteString(quotedLoader)
-	b.WriteString(";")
-	b.WriteString("var __echartsSrc=")
-	b.WriteString(quotedEchartsSrc)
-	b.WriteString(";")
-	b.WriteString("var __cdnSrc=")
-	b.WriteString(quotedCdnSrc)
-	b.WriteString(";")
-	b.WriteString("var __themeSrcs=")
-	b.WriteString(quotedThemeSrcs)
-	b.WriteString(";")
-	b.WriteString("var __pluginSrcs=")
-	b.WriteString(quotedPluginSrcs)
-	b.WriteString(";")
-	b.WriteString("if(!window.__chartextScriptPromises){window.__chartextScriptPromises={};}")
-	b.WriteString("if(!window.__chartextEchartsLoaderPromises){window.__chartextEchartsLoaderPromises={};}")
-	b.WriteString("function __loadScriptOnce(src){")
-	b.WriteString("if(!src){return Promise.resolve();}")
-	b.WriteString("var p=window.__chartextScriptPromises[src];")
-	b.WriteString("if(p){return p;}")
-	b.WriteString("p=new Promise(function(resolve,reject){")
-	b.WriteString("var s=document.createElement('script');")
-	b.WriteString("s.src=src;")
-	b.WriteString("s.async=true;")
-	b.WriteString("s.onload=function(){resolve();};")
-	b.WriteString("s.onerror=function(){reject(new Error('failed to load script: '+src));};")
-	b.WriteString("document.head.appendChild(s);")
-	b.WriteString("});")
-	b.WriteString("window.__chartextScriptPromises[src]=p;")
-	b.WriteString("return p;")
-	b.WriteString("}")
-	b.WriteString("function __ensureEcharts(){")
-	b.WriteString("if(window.echarts){return Promise.resolve(window.echarts);}")
-	b.WriteString("if(__loaderMode==='none'){return Promise.reject(new Error('ECharts library is not loaded.'));}")
-	b.WriteString("var key=__loaderMode+'|'+(__echartsSrc||'')+'|'+(__cdnSrc||'');")
-	b.WriteString("if(window.__chartextEchartsLoaderPromises[key]){return window.__chartextEchartsLoaderPromises[key];}")
-	b.WriteString("function __loadLocal(){")
-	b.WriteString("return __loadScriptOnce(__echartsSrc).then(function(){")
-	b.WriteString("if(!window.echarts){throw new Error('ECharts loaded but window.echarts is undefined.');}")
-	b.WriteString("return window.echarts;")
-	b.WriteString("});")
-	b.WriteString("}")
-	b.WriteString("var loader; if(__loaderMode==='local'){loader=__loadLocal();}else{loader=__loadLocal().catch(function(localErr){")
-	b.WriteString("if(!__cdnSrc){throw localErr;}")
-	b.WriteString("return __loadScriptOnce(__cdnSrc).then(function(){")
-	b.WriteString("if(!window.echarts){throw new Error('CDN ECharts loaded but window.echarts is undefined.');}")
-	b.WriteString("return window.echarts;")
-	b.WriteString("});")
-	b.WriteString("});}")
-	b.WriteString("window.__chartextEchartsLoaderPromises[key]=loader;")
-	b.WriteString("return loader;")
-	b.WriteString("}")
-	b.WriteString("function __ensurePlugins(){")
-	b.WriteString("if(!__pluginSrcs||!__pluginSrcs.length){return Promise.resolve();}")
-	b.WriteString("var tasks=[];")
-	b.WriteString("for(var i=0;i<__pluginSrcs.length;i++){tasks.push(__loadScriptOnce(__pluginSrcs[i]));}")
-	b.WriteString("return Promise.all(tasks).then(function(){return;});")
-	b.WriteString("}")
-	b.WriteString("function __ensureThemeAssets(){")
-	b.WriteString("if(!__themeSrcs||!__themeSrcs.length){return Promise.resolve();}")
-	b.WriteString("var tasks=[];")
-	b.WriteString("for(var i=0;i<__themeSrcs.length;i++){tasks.push(__loadScriptOnce(__themeSrcs[i]));}")
-	b.WriteString("return Promise.all(tasks).then(function(){return;});")
-	b.WriteString("}")
-	b.WriteString("__ensureEcharts().then(function(){return __ensureThemeAssets();}).then(function(){return __ensurePlugins();}).then(function(){")
-	b.WriteString("if(__dom.__chartextResizeHandler){window.removeEventListener('resize',__dom.__chartextResizeHandler);__dom.__chartextResizeHandler=null;}")
-	b.WriteString("var __prevChart=echarts.getInstanceByDom(__dom);")
-	b.WriteString("if(__prevChart){__prevChart.dispose();}")
-	b.WriteString("var __option;")
-	b.WriteString("try{")
-	b.WriteString("var __chartCode=")
-	b.WriteString(quotedCode)
-	b.WriteString(";")
-	b.WriteString("var __factory=new Function('__ctx',\"var option;\\n(function(){\\n\"+__chartCode+\"\\n}).call(__ctx);\\nif(typeof option!==\\\"undefined\\\"){return option;}\\nif(__ctx&&typeof __ctx.option!==\\\"undefined\\\"){return __ctx.option;}\\nreturn null;\");")
-	b.WriteString("__option=__factory({});")
-	b.WriteString("}catch(e){__dom.innerText='Chart code error: '+(e&&e.message?e.message:String(e));return;}")
-	b.WriteString("if(!__option||typeof __option!=='object'){__dom.innerText='Chart option is not defined.';return;}")
-	b.WriteString("try{")
-	b.WriteString("var __chart=echarts.init(__dom,")
-	b.WriteString(quotedTheme)
-	b.WriteString(",{renderer:")
-	b.WriteString(quotedRenderer)
-	b.WriteString("});")
-	b.WriteString("__chart.setOption(__option);")
-	b.WriteString("var __resizeHandler=function(){__chart.resize();};")
-	b.WriteString("__dom.__chartextResizeHandler=__resizeHandler;")
-	b.WriteString("window.addEventListener('resize',__resizeHandler);")
-	b.WriteString("}catch(e){__dom.innerText='Chart render error: '+(e&&e.message?e.message:String(e));}")
-	b.WriteString("}).catch(function(e){__dom.innerText='ECharts load error: '+(e&&e.message?e.message:String(e));});")
-	b.WriteString("})();")
-	return b.String(), nil
+	var out bytes.Buffer
+	if err := scriptTemplate.Execute(&out, data); err != nil {
+		return "", err
+	}
+	return out.String(), nil
 }
 
 func nextChartID() string {
