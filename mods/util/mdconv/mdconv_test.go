@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv/katex"
 	"github.com/stretchr/testify/require"
 )
 
@@ -173,4 +174,90 @@ func TestMdWithGeomapCodeFenceIntegerSizeOptions(t *testing.T) {
 	require.Contains(t, result, `class="geomapext-map"`)
 	require.Contains(t, result, `width:400;height:400`)
 	require.Contains(t, result, `type === 'polyline'`)
+}
+
+func TestMdWithKaTeXInlineAndBlock(t *testing.T) {
+	code := []string{
+		`# KaTeX test`,
+		`this is inline $` + "`" + `x^2 + y^2` + "`" + `$ formula.`,
+		``,
+		`$$`,
+		`\int_0^1 x^2 dx`,
+		`$$`,
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.NoError(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `class="katex"`)
+	require.Contains(t, result, `<math xmlns="http://www.w3.org/1998/Math/MathML">`)
+	require.Contains(t, result, `display="block"`)
+	require.NotContains(t, result, `$`+"`"+`x^2 + y^2`+"`"+`$`)
+	require.NotContains(t, result, `<p>$$</p>`)
+}
+
+func TestMdWithKaTeXThrowOnErrorOption(t *testing.T) {
+	code := []string{
+		`# KaTeX error test`,
+		`bad inline: $` + "`" + `\invalidcommand` + "`" + `$`,
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(
+		mdconv.WithDarkMode(true),
+		mdconv.WithKaTeXOptions(katex.RenderOptions{ThrowOnError: true}),
+	)
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.Error(t, err)
+}
+
+func TestMdWithKaTeXDisplayBlockDoesNotLeakSourceText(t *testing.T) {
+	code := []string{
+		`# Test`,
+		``,
+		`$$`,
+		`A = B`,
+		`$$`,
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.NoError(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">`)
+	require.Contains(t, result, `annotation encoding="application/x-tex">A = B</annotation>`)
+}
+
+func TestMdWithKaTeXDisplayBlockWithBlankLines(t *testing.T) {
+	code := []string{
+		`## test`,
+		``,
+		`$$`,
+		`\text{\~{a}} \neq`,
+		`\begin{matrix}`,
+		`   a & b \\`,
+		`   c & d`,
+		`\end{matrix}`,
+		``,
+		`\newline`,
+		``,
+		`x = y^\pi`,
+		`$$`,
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.NoError(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">`)
+	require.NotContains(t, result, `<p>$$`)
+	require.Contains(t, result, `annotation encoding="application/x-tex">`)
+	require.Contains(t, result, `x = y^\pi`)
 }
