@@ -145,3 +145,32 @@ func TestMdWithGeomapCodeFence(t *testing.T) {
 	require.Contains(t, result, `L.tileLayer`)
 	require.Contains(t, result, `L.marker`)
 }
+
+func TestMdWithGeomapCodeFenceIntegerSizeOptions(t *testing.T) {
+	code := []string{
+		`# map`,
+		"```geomap {width=400,height=400}",
+		`[`,
+		`  {`,
+		`    "type": "polyline",`,
+		`    "coordinates": [`,
+		`      [45.51, -122.68],`,
+		`      [37.77, -122.43],`,
+		`      [34.04, -118.2]`,
+		`    ]`,
+		`  }`,
+		`]`,
+		"```",
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.NoError(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `class="geomapext"`)
+	require.Contains(t, result, `class="geomapext-map"`)
+	require.Contains(t, result, `width:400;height:400`)
+	require.Contains(t, result, `type === 'polyline'`)
+}

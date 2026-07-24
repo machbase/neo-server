@@ -146,7 +146,7 @@ func parseOptionValue(raw string) (any, error) {
 }
 
 func optionString(v any) (string, bool) {
-	s, ok := v.(string)
+	s, ok := optionStringConvertible(v)
 	if !ok {
 		return "", false
 	}
@@ -155,6 +155,27 @@ func optionString(v any) (string, bool) {
 		return "", false
 	}
 	return s, true
+}
+
+func optionStringConvertible(v any) (string, bool) {
+	switch val := v.(type) {
+	case string:
+		return val, true
+	case bool:
+		return strconv.FormatBool(val), true
+	case int:
+		return strconv.Itoa(val), true
+	case int64:
+		return strconv.FormatInt(val, 10), true
+	case int32:
+		return strconv.FormatInt(int64(val), 10), true
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64), true
+	case float32:
+		return strconv.FormatFloat(float64(val), 'f', -1, 32), true
+	default:
+		return "", false
+	}
 }
 
 func optionStringList(v any) ([]string, bool) {
@@ -179,7 +200,7 @@ func optionStringList(v any) ([]string, bool) {
 	case []any:
 		tmp := make([]string, 0, len(vv))
 		for _, item := range vv {
-			s, ok := item.(string)
+			s, ok := optionString(item)
 			if !ok {
 				return nil, false
 			}

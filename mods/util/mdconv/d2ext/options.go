@@ -151,12 +151,45 @@ func optionBool(v any) (bool, bool) {
 	case bool:
 		return val, true
 	case string:
-		parsed, err := strconv.ParseBool(val)
+		parsed, err := strconv.ParseBool(strings.TrimSpace(val))
 		if err == nil {
 			return parsed, true
 		}
 	}
 	return false, false
+}
+
+func optionString(v any) (string, bool) {
+	s, ok := optionStringConvertible(v)
+	if !ok {
+		return "", false
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", false
+	}
+	return s, true
+}
+
+func optionStringConvertible(v any) (string, bool) {
+	switch val := v.(type) {
+	case string:
+		return val, true
+	case bool:
+		return strconv.FormatBool(val), true
+	case int:
+		return strconv.Itoa(val), true
+	case int64:
+		return strconv.FormatInt(val, 10), true
+	case int32:
+		return strconv.FormatInt(int64(val), 10), true
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64), true
+	case float32:
+		return strconv.FormatFloat(float64(val), 'f', -1, 32), true
+	default:
+		return "", false
+	}
 }
 
 func optionInt64(v any) (int64, bool) {
@@ -168,7 +201,7 @@ func optionInt64(v any) (int64, bool) {
 	case float64:
 		return int64(val), true
 	case string:
-		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+		if i, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil {
 			return i, true
 		}
 	}
@@ -186,7 +219,7 @@ func optionFloat64(v any) (float64, bool) {
 	case int64:
 		return float64(val), true
 	case string:
-		if f, err := strconv.ParseFloat(val, 64); err == nil {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
 			return f, true
 		}
 	}

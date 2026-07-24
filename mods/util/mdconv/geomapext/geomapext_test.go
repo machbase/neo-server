@@ -235,7 +235,7 @@ func TestParseOptionValueAndConverters(t *testing.T) {
 	_, ok := optionString(" x ")
 	require.True(t, ok)
 	_, ok = optionString(1)
-	require.False(t, ok)
+	require.True(t, ok)
 
 	f, ok := optionFloat64(int64(3))
 	require.True(t, ok)
