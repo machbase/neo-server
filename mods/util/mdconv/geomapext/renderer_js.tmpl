@@ -1,0 +1,269 @@
+(function () {
+    var __script = document.currentScript || window.__geomapextCurrentScript || null;
+    var __dom = null;
+    if (__script && __script.previousElementSibling && __script.previousElementSibling.classList && __script.previousElementSibling.classList.contains('geomapext-map')) { __dom = __script.previousElementSibling; }
+    if (!__dom) { __dom = document.getElementById({{.QuotedID }});
+}
+if (!__dom) { return; }
+
+var __loaderMode = {{.QuotedLoader }};
+var __leafletSrc = {{.QuotedLeafletSrc }};
+var __leafletCss = {{.QuotedLeafletCSS }};
+var __cdnSrc = {{.QuotedCDNSrc }};
+var __cdnCss = {{.QuotedCDNCSS }};
+var __tile = {{.QuotedTile }};
+var __tileOptionRaw = {{.QuotedTileOption }};
+var __fit = {{.QuotedFit }};
+var __center = {{.QuotedCenter }};
+var __zoom = {{.QuotedZoom }};
+var __gray = {{.QuotedGray }};
+var __payloadText = {{.QuotedPayload }};
+
+if (!window.__geomapextScriptPromises) { window.__geomapextScriptPromises = {}; }
+if (!window.__geomapextLeafletLoaderPromises) { window.__geomapextLeafletLoaderPromises = {}; }
+
+function __setError(msg) { __dom.innerText = 'Geomap render error: ' + msg; }
+
+function __loadScriptOnce(src) {
+    if (!src) { return Promise.resolve(); }
+    var p = window.__geomapextScriptPromises[src];
+    if (p) { return p; }
+    p = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = function () { resolve(); };
+        s.onerror = function () { reject(new Error('failed to load script: ' + src)); };
+        document.head.appendChild(s);
+    });
+    window.__geomapextScriptPromises[src] = p;
+    return p;
+}
+
+function __styleHost() {
+    var root = __dom && __dom.getRootNode ? __dom.getRootNode() : null;
+    if (root && root.nodeType === 11) { return root; }
+    return document.head;
+}
+
+function __loadCSSOnce(href) {
+    if (!href) { return Promise.resolve(); }
+    var host = __styleHost();
+    if (!host) { return Promise.resolve(); }
+    if (!host.__geomapextCSSPromises) { host.__geomapextCSSPromises = {}; }
+    var cached = host.__geomapextCSSPromises[href];
+    if (cached) { return cached; }
+    var links = host.querySelectorAll ? host.querySelectorAll('link[rel="stylesheet"]') : [];
+    for (var i = 0; i < links.length; i++) {
+        if (links[i].getAttribute('href') === href) {
+            host.__geomapextCSSPromises[href] = Promise.resolve();
+            return host.__geomapextCSSPromises[href];
+        }
+    }
+    var p = new Promise(function (resolve, reject) {
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = href;
+        l.onload = function () { resolve(); };
+        l.onerror = function () { reject(new Error('failed to load stylesheet: ' + href)); };
+        host.appendChild(l);
+    });
+    host.__geomapextCSSPromises[href] = p;
+    return p;
+}
+
+function __ensureLeafletCSS() {
+    if (__loaderMode === 'none') { return Promise.resolve(); }
+    function __loadLocalCss() { return __loadCSSOnce(__leafletCss); }
+    if (__loaderMode === 'local') { return __loadLocalCss(); }
+    return __loadLocalCss().catch(function (localErr) {
+        if (!__cdnCss) { throw localErr; }
+        return __loadCSSOnce(__cdnCss);
+    });
+}
+
+function __ensureLeaflet() {
+    if (window.L) {
+        return __ensureLeafletCSS().then(function () { return window.L; });
+    }
+    if (__loaderMode === 'none') { return Promise.reject(new Error('Leaflet library is not loaded.')); }
+    var key = __loaderMode + '|' + (__leafletSrc || '') + '|' + (__cdnSrc || '') + '|' + (__leafletCss || '') + '|' + (__cdnCss || '');
+    if (window.__geomapextLeafletLoaderPromises[key]) { return window.__geomapextLeafletLoaderPromises[key]; }
+
+    function __loadLocal() {
+        return __loadCSSOnce(__leafletCss)
+            .then(function () { return __loadScriptOnce(__leafletSrc); })
+            .then(function () {
+                if (!window.L) { throw new Error('Leaflet loaded but window.L is undefined.'); }
+                return window.L;
+            });
+    }
+
+    function __loadCDN() {
+        return __loadCSSOnce(__cdnCss)
+            .then(function () { return __loadScriptOnce(__cdnSrc); })
+            .then(function () {
+                if (!window.L) { throw new Error('Leaflet CDN loaded but window.L is undefined.'); }
+                return window.L;
+            });
+    }
+
+    var loader;
+    if (__loaderMode === 'local') {
+        loader = __loadLocal();
+    } else {
+        loader = __loadLocal().catch(function (localErr) {
+            if (!__cdnSrc) { throw localErr; }
+            return __loadCDN();
+        });
+    }
+    window.__geomapextLeafletLoaderPromises[key] = loader;
+    return loader;
+}
+
+function __ensureLeafletDefaultImagePath() {
+    if (!window.L || !L.Icon || !L.Icon.Default) {
+        return;
+    }
+    // Keep Leaflet default icon behavior, only fix the base path resolution.
+    L.Icon.Default.imagePath = '/web/geomap/images/';
+}
+
+var __geojsonOptions = {{.GeoJSONOptions}};
+
+function __applyPopupAndTooltip(layer, props) {
+    if (!props || typeof props !== 'object') { return; }
+    if (props.popup && typeof props.popup === 'object' && typeof props.popup.content === 'string') {
+        var p = layer.bindPopup(props.popup.content, {});
+        if (props.popup.open) { p.openPopup(); }
+    }
+    if (props.tooltip && typeof props.tooltip === 'object' && typeof props.tooltip.content === 'string') {
+        var t = layer.bindTooltip(props.tooltip.content, {});
+        if (props.tooltip.open) { t.openTooltip(); }
+    }
+}
+
+function __createLayer(entry) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error('layer entry must be an object');
+    }
+    var type = entry.type;
+    if (typeof type !== 'string' || type === '') {
+        throw new Error('layer type is required');
+    }
+
+    if (type === 'marker' || type === 'circleMarker' || type === 'circle' || type === 'polyline' || type === 'polygon') {
+        if (entry.coordinates === undefined) {
+            throw new Error(type + ' coordinates are required');
+        }
+        var props = (entry.properties && typeof entry.properties === 'object') ? entry.properties : {};
+        var layer = L[type](entry.coordinates, props);
+        __applyPopupAndTooltip(layer, props);
+        return layer;
+    }
+
+    if (type === 'FeatureCollection' || type === 'Feature' || type === 'Point' || type === 'MultiPoint' || type === 'LineString' || type === 'MultiLineString' || type === 'Polygon' || type === 'MultiPolygon' || type === 'GeometryCollection') {
+        var geoLayer = L.geoJSON(entry, __geojsonOptions);
+        if (type === 'Feature' && entry.properties) {
+            __applyPopupAndTooltip(geoLayer, entry.properties);
+        }
+        return geoLayer;
+    }
+
+    throw new Error('unsupported layer type: ' + type);
+}
+
+function __parsePayload() {
+    var data;
+    try {
+        data = JSON.parse(__payloadText);
+    } catch (e) {
+        throw new Error('invalid JSON payload: ' + (e && e.message ? e.message : String(e)));
+    }
+    if (data === null || typeof data !== 'object') {
+        throw new Error('payload root must be an object or array');
+    }
+    if (Array.isArray(data)) {
+        return data;
+    }
+    return [data];
+}
+
+function __parseTileOption() {
+    if (__tileOptionRaw === null || __tileOptionRaw === undefined || __tileOptionRaw === '') { return null; }
+    if (typeof __tileOptionRaw === 'object') { return __tileOptionRaw; }
+    try {
+        return JSON.parse(__tileOptionRaw);
+    } catch (e) {
+        throw new Error('invalid tileOption JSON');
+    }
+}
+
+function __applyFit(map, layers) {
+    var bounds = null;
+    if (layers.length > 0) {
+        bounds = L.featureGroup(layers).getBounds();
+    }
+    if (__fit === 'bounds') {
+        if (bounds && bounds.isValid()) {
+            map.fitBounds(bounds);
+        } else {
+            map.setView(__center, __zoom);
+        }
+        return;
+    }
+    if (__fit === 'center') {
+        map.setView(__center, __zoom);
+        return;
+    }
+    if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds);
+    } else {
+        map.setView(__center, __zoom);
+    }
+}
+
+__ensureLeaflet().then(function () {
+    __ensureLeafletDefaultImagePath();
+
+    var map = __dom.__geomapextMap;
+    var tileLayer = __dom.__geomapextTileLayer;
+    var tileOpt = __parseTileOption();
+
+    if (map) {
+        map.eachLayer(function (layer) {
+            if (layer !== tileLayer) {
+                map.removeLayer(layer);
+            }
+        });
+    } else {
+        map = L.map(__dom, { attributionControl: false });
+        tileLayer = tileOpt ? L.tileLayer(__tile, tileOpt) : L.tileLayer(__tile);
+        tileLayer.addTo(map);
+        __dom.__geomapextMap = map;
+        __dom.__geomapextTileLayer = tileLayer;
+    }
+
+    var pane = map.getPane('tilePane');
+    if (pane) {
+        var gray = Math.round(Math.max(0, Math.min(1, __gray)) * 100);
+        pane.style.filter = 'grayscale(' + gray + '%)';
+        pane.style.webkitFilter = 'grayscale(' + gray + '%)';
+    }
+
+    var entries = __parsePayload();
+    var layers = [];
+    for (var i = 0; i < entries.length; i++) {
+        var layer = __createLayer(entries[i]);
+        layer.addTo(map);
+        layers.push(layer);
+    }
+
+    __applyFit(map, layers);
+    map.invalidateSize(false);
+    setTimeout(function () { map.invalidateSize(false); }, 0);
+    setTimeout(function () { map.invalidateSize(false); }, 120);
+}).catch(function (e) {
+    __setError(e && e.message ? e.message : String(e));
+});
+}) ();
