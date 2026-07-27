@@ -92,49 +92,43 @@ jobs:
           apple-team-id: ${{ secrets.CODESIGN_DARWIN_APPLE_TEAM_ID }}
           app-path: |-
             ./tmp/machbase-neo
-      - name: Codesign windows app
-        if: matrix.os == 'windows-no-sign'
+      - name: Setup SM client certificate file
+        if: matrix.os == 'windows'
         shell: pwsh
         env:
-          CODESIGN_WIN_CERTIFICATE: ${{ secrets.CODESIGN_WIN_CERTIFICATE }}
-          CODESIGN_WIN_PASS: ${{ secrets.CODESIGN_WIN_PASS }}
+          DIGICERT_SM_CLIENT_CERT_FILE_B64: ${{ secrets.DIGICERT_SM_CLIENT_CERT_FILE_B64 }}
         run: |
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
-          try {
-            $certificateBase64 = $env:CODESIGN_WIN_CERTIFICATE `
-              -replace '-----BEGIN CERTIFICATE-----', '' `
-              -replace '-----END CERTIFICATE-----', '' `
-              -replace '\s', ''
+          $clientCertPath = Join-Path $env:RUNNER_TEMP 'digicert-client-auth.p12'
 
-            [System.IO.File]::WriteAllBytes(
-              $pfxPath,
-              [System.Convert]::FromBase64String($certificateBase64)
-            )
+          [System.IO.File]::WriteAllBytes(
+            $clientCertPath,
+            [System.Convert]::FromBase64String($env:DIGICERT_SM_CLIENT_CERT_FILE_B64)
+          )
 
-            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1 -ExpandProperty FullName
+          Add-Content $env:GITHUB_ENV "SM_CLIENT_CERT_FILE=$clientCertPath"
+      - name: Codesign windows app
+        if: matrix.os == 'windows'
+        uses: digicert/code-signing-software-trust-action@v1
+        with:
+          simple-signing-mode: true
+          input: ./tmp/machbase-neo.exe
+          keypair-alias: ${{ vars.DIGICERT_KEYPAIR_ALIAS }}
+        env:
+          SM_HOST: ${{ vars.DIGICERT_SM_HOST }}
+          SM_API_KEY: ${{ secrets.DIGICERT_SM_API_KEY }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.DIGICERT_SM_CLIENT_CERT_PASSWORD }}
+      - name: Verify windows signature
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signature = Get-AuthenticodeSignature "$env:GITHUB_WORKSPACE\tmp\machbase-neo.exe"
+          $signature |
+            Select-Object Status, StatusMessage, SignerCertificate, TimeStamperCertificate |
+            Format-List | Out-String | Write-Host
 
-            if (-not $signtool) {
-              throw 'signtool.exe not found'
-            }
-
-            & $signtool sign `
-              /f $pfxPath `
-              /p $env:CODESIGN_WIN_PASS `
-              /tr http://timestamp.digicert.com `
-              /td sha256 `
-              /fd sha256 `
-              './tmp/machbase-neo.exe'
-
-            if ($LASTEXITCODE -ne 0) {
-              throw "signtool.exe failed with exit code $LASTEXITCODE"
-            }
-          }
-          finally {
-            if (Test-Path $pfxPath) {
-              Remove-Item $pfxPath -Force
-            }
+          if ($signature.Status -ne 'Valid') {
+            throw "Authenticode signature status is not valid: $($signature.Status)"
           }
       - name: Package
         if: matrix.os != 'linux'

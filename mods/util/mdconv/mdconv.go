@@ -12,6 +12,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/d2ext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/geomapext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/httpext"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv/katex"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -23,7 +24,8 @@ import (
 )
 
 type Converter struct {
-	darkMode bool
+	darkMode     bool
+	katexOptions katex.RenderOptions
 }
 
 type Option func(*Converter)
@@ -31,6 +33,12 @@ type Option func(*Converter)
 func WithDarkMode(flag bool) Option {
 	return func(c *Converter) {
 		c.darkMode = flag
+	}
+}
+
+func WithKaTeXOptions(opts katex.RenderOptions) Option {
+	return func(c *Converter) {
+		c.katexOptions = opts
 	}
 }
 
@@ -90,6 +98,7 @@ func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
 			&chartext.Extender{DarkMode: c.darkMode},
 			&geomapext.Extender{DarkMode: c.darkMode},
 			&httpext.Extender{},
+			&katex.Extender{Options: c.katexOptions},
 		),
 		goldmark.WithRendererOptions(
 			html.WithXHTML(),

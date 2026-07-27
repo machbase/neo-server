@@ -54,6 +54,17 @@ func TestApplyFenceOptions(t *testing.T) {
 	require.Equal(t, "local", cfg.Loader)
 }
 
+func TestApplyFenceOptionsAcceptsImplicitStringConversion(t *testing.T) {
+	cfg := defaultRenderConfig(false)
+	err := applyFenceOptions(&cfg, map[string]any{
+		"width":  int64(400),
+		"height": 400,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "400", cfg.Width)
+	require.Equal(t, "400", cfg.Height)
+}
+
 func TestApplyFenceOptionsRejectsInvalidTile(t *testing.T) {
 	cfg := defaultRenderConfig(false)
 	err := applyFenceOptions(&cfg, map[string]any{"tile": "https://example.com/no-placeholders"})

@@ -142,11 +142,11 @@ func applyDefaultFenceOptions(opts map[string]any, _ *d2lib.CompileOptions, rend
 func applyDefaultFenceOptionsWithCompile(opts map[string]any, compileOpts *d2lib.CompileOptions, renderOpts *d2svg.RenderOpts) error {
 	layoutName := ""
 	if v, ok := opts["layout"]; ok {
-		layoutValue, ok := v.(string)
+		layoutValue, ok := optionString(v)
 		if !ok {
 			return fmt.Errorf("layout must be a string")
 		}
-		layoutName = strings.ToLower(strings.TrimSpace(layoutValue))
+		layoutName = strings.ToLower(layoutValue)
 		if layoutName == "" {
 			return fmt.Errorf("layout must not be empty")
 		}
@@ -162,7 +162,7 @@ func applyDefaultFenceOptionsWithCompile(opts map[string]any, compileOpts *d2lib
 	}
 
 	if v, ok := opts["theme"]; ok {
-		themeName, ok := v.(string)
+		themeName, ok := optionString(v)
 		if !ok {
 			return fmt.Errorf("theme must be a string")
 		}
@@ -201,11 +201,11 @@ func applyDefaultFenceOptionsWithCompile(opts map[string]any, compileOpts *d2lib
 			if requestedLayout != "elk" {
 				return fmt.Errorf("algorithm is only supported when layout is elk")
 			}
-			algorithm, ok := v.(string)
+			algorithm, ok := optionString(v)
 			if !ok {
 				return fmt.Errorf("algorithm must be a string")
 			}
-			algorithm = strings.ToLower(strings.TrimSpace(algorithm))
+			algorithm = strings.ToLower(algorithm)
 			if algorithm == "" {
 				return fmt.Errorf("algorithm must not be empty")
 			}

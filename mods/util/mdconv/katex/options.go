@@ -1,4 +1,4 @@
-package d2ext
+package katex
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ func parseInlineOptions(raw string) (map[string]any, error) {
 	out := map[string]any{}
 	parts, err := splitTopLevel(raw, ',')
 	if err != nil {
-		return nil, fmt.Errorf("invalid d2 fence options: %w", err)
+		return nil, fmt.Errorf("invalid katex block options: %w", err)
 	}
 	for _, p := range parts {
 		entry := strings.TrimSpace(p)
@@ -19,11 +19,11 @@ func parseInlineOptions(raw string) (map[string]any, error) {
 		}
 		eq := strings.Index(entry, "=")
 		if eq <= 0 || eq == len(entry)-1 {
-			return nil, fmt.Errorf("invalid d2 fence option entry: %q", entry)
+			return nil, fmt.Errorf("invalid katex block option entry: %q", entry)
 		}
 		key := strings.TrimSpace(entry[:eq])
 		if key == "" {
-			return nil, fmt.Errorf("invalid d2 fence option key: %q", entry)
+			return nil, fmt.Errorf("invalid katex block option key: %q", entry)
 		}
 		val, err := parseOptionValue(strings.TrimSpace(entry[eq+1:]))
 		if err != nil {
@@ -31,7 +31,6 @@ func parseInlineOptions(raw string) (map[string]any, error) {
 		}
 		out[key] = val
 	}
-
 	return out, nil
 }
 
@@ -142,7 +141,6 @@ func parseOptionValue(raw string) (any, error) {
 		return f, nil
 	}
 
-	// Hugo style allows unquoted bare words (for example: linenos=table).
 	return raw, nil
 }
 
@@ -190,38 +188,4 @@ func optionStringConvertible(v any) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-func optionInt64(v any) (int64, bool) {
-	switch val := v.(type) {
-	case int64:
-		return val, true
-	case int:
-		return int64(val), true
-	case float64:
-		return int64(val), true
-	case string:
-		if i, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil {
-			return i, true
-		}
-	}
-	return 0, false
-}
-
-func optionFloat64(v any) (float64, bool) {
-	switch val := v.(type) {
-	case float64:
-		return val, true
-	case float32:
-		return float64(val), true
-	case int:
-		return float64(val), true
-	case int64:
-		return float64(val), true
-	case string:
-		if f, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
-			return f, true
-		}
-	}
-	return 0, false
 }

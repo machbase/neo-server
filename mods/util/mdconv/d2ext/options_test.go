@@ -108,6 +108,30 @@ func TestApplyDefaultFenceOptionsWithLayoutOnly(t *testing.T) {
 	require.Equal(t, "elk", *compileOpts.Layout)
 }
 
+func TestApplyDefaultFenceOptionsWithImplicitConversions(t *testing.T) {
+	compileOpts := &d2lib.CompileOptions{}
+	renderOpts := &d2svg.RenderOpts{}
+	err := applyDefaultFenceOptionsWithCompile(map[string]any{
+		"layout":  " dagre ",
+		"sketch":  "true",
+		"theme":   " Cool Classics ",
+		"themeID": "7",
+		"pad":     "32",
+		"scale":   "1.5",
+	}, compileOpts, renderOpts)
+	require.NoError(t, err)
+	require.NotNil(t, compileOpts.Layout)
+	require.Equal(t, "dagre", *compileOpts.Layout)
+	require.NotNil(t, renderOpts.Sketch)
+	require.True(t, *renderOpts.Sketch)
+	require.NotNil(t, renderOpts.ThemeID)
+	require.Equal(t, int64(7), *renderOpts.ThemeID)
+	require.NotNil(t, renderOpts.Pad)
+	require.Equal(t, int64(32), *renderOpts.Pad)
+	require.NotNil(t, renderOpts.Scale)
+	require.Equal(t, 1.5, *renderOpts.Scale)
+}
+
 func TestApplyDefaultFenceOptionsRejectsNodeSepWithNonDagreLayout(t *testing.T) {
 	compileOpts := &d2lib.CompileOptions{}
 	renderOpts := &d2svg.RenderOpts{}

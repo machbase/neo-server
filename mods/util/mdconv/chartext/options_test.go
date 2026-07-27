@@ -58,6 +58,19 @@ func TestApplyFenceOptions(t *testing.T) {
 	require.Equal(t, []string{"/web/echarts/echarts-gl.min.js", "/web/echarts/echarts-wordcloud.min.js"}, cfg.PluginSrcs)
 }
 
+func TestApplyFenceOptionsAcceptsImplicitStringConversion(t *testing.T) {
+	cfg := defaultRenderConfig(false)
+	err := applyFenceOptions(&cfg, map[string]any{
+		"width":   int64(400),
+		"height":  400,
+		"plugins": []any{"gl", int64(123)},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "400", cfg.Width)
+	require.Equal(t, "400", cfg.Height)
+	require.Equal(t, []string{"/web/echarts/echarts-gl.min.js", "123"}, cfg.PluginSrcs)
+}
+
 func TestApplyFenceOptionsRejectsInvalidValue(t *testing.T) {
 	cfg := defaultRenderConfig(false)
 	err := applyFenceOptions(&cfg, map[string]any{"theme": "blue"})
