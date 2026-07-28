@@ -92,3 +92,70 @@ func TestApplyFenceOptionsRejectsInvalidLoader(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "none, local or auto")
 }
+
+func TestParseInlineOptionsCoversErrorBranches(t *testing.T) {
+	t.Run("invalid entry", func(t *testing.T) {
+		_, err := parseInlineOptions("width=600px,=bad")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid chart fence option entry")
+	})
+
+	t.Run("empty value", func(t *testing.T) {
+		_, err := parseInlineOptions("width=")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid chart fence option entry")
+	})
+
+	t.Run("split errors", func(t *testing.T) {
+		_, err := parseInlineOptions(`width=[1,2`)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unbalanced option delimiters")
+	})
+}
+
+func TestParseOptionValueCoversAdditionalBranches(t *testing.T) {
+	t.Run("quoted and array values", func(t *testing.T) {
+		val, err := parseOptionValue(`"hello"`)
+		require.NoError(t, err)
+		require.Equal(t, "hello", val)
+
+		array, err := parseOptionValue(`["a", true, 3]`)
+		require.NoError(t, err)
+		require.Equal(t, []any{"a", true, int64(3)}, array)
+	})
+
+	t.Run("invalid quoted value", func(t *testing.T) {
+		_, err := parseOptionValue(`"unterminated`)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid quoted value")
+	})
+
+	t.Run("invalid array delimiters", func(t *testing.T) {
+		_, err := parseOptionValue(`[1,2`)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid array value")
+	})
+}
+
+func TestOptionStringHelpers(t *testing.T) {
+	t.Run("convertibles", func(t *testing.T) {
+		v, ok := optionStringConvertible(true)
+		require.True(t, ok)
+		require.Equal(t, "true", v)
+
+		v, ok = optionStringConvertible(int32(7))
+		require.True(t, ok)
+		require.Equal(t, "7", v)
+	})
+
+	t.Run("string list", func(t *testing.T) {
+		items, ok := optionStringList([]any{"gl", int64(42), "wordcloud"})
+		require.True(t, ok)
+		require.Equal(t, []string{"gl", "42", "wordcloud"}, items)
+	})
+
+	t.Run("invalid list entry", func(t *testing.T) {
+		_, ok := optionStringList([]any{map[string]string{"bad": "value"}})
+		require.False(t, ok)
+	})
+}

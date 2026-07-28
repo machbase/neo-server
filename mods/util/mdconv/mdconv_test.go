@@ -261,3 +261,38 @@ func TestMdWithKaTeXDisplayBlockWithBlankLines(t *testing.T) {
 	require.Contains(t, result, `annotation encoding="application/x-tex">`)
 	require.Contains(t, result, `x = y^\pi`)
 }
+
+func TestMdWithD2CodeFence(t *testing.T) {
+	code := []string{
+		`# D2 test`,
+		"```d2",
+		`graph TD`,
+		`A-->B`,
+		"```",
+	}
+
+	w := &bytes.Buffer{}
+	conv := mdconv.New(mdconv.WithDarkMode(true))
+	err := conv.ConvertString(strings.Join(code, "\n"), w)
+	require.NoError(t, err)
+
+	result := w.String()
+	require.Contains(t, result, `class="d2"`)
+	require.Contains(t, result, `graph TD`)
+}
+
+func TestMdConvRecoversFromPanic(t *testing.T) {
+	conv := mdconv.New()
+	var out bytes.Buffer
+	err := conv.Convert([]byte("# hi\n"), &out)
+	require.NoError(t, err)
+}
+
+func TestMapCodeFenceLanguage(t *testing.T) {
+	conv := mdconv.New()
+	var out bytes.Buffer
+	err := conv.Convert([]byte("```jsh\nconsole.log(1)\n```\n"), &out)
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "<pre")
+	require.Contains(t, out.String(), "console")
+}

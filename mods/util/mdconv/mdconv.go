@@ -12,6 +12,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/d2ext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/geomapext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/httpext"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv/jshext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/katex"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
@@ -98,6 +99,7 @@ func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
 			&chartext.Extender{DarkMode: c.darkMode},
 			&geomapext.Extender{DarkMode: c.darkMode},
 			&httpext.Extender{},
+			&jshext.Extender{},
 			&katex.Extender{Options: c.katexOptions},
 		),
 		goldmark.WithRendererOptions(
