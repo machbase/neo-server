@@ -93,7 +93,7 @@ jobs:
           app-path: |-
             ./tmp/machbase-neo
       - name: Setup SM client certificate file
-        if: matrix.os == 'windows'
+        if: matrix.os == 'windows' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           DIGICERT_SM_CLIENT_CERT_FILE_B64: ${{ secrets.DIGICERT_SM_CLIENT_CERT_FILE_B64 }}
@@ -107,7 +107,7 @@ jobs:
 
           Add-Content $env:GITHUB_ENV "SM_CLIENT_CERT_FILE=$clientCertPath"
       - name: Codesign windows app
-        if: matrix.os == 'windows'
+        if: matrix.os == 'windows' && startsWith(github.ref, 'refs/tags/v')
         uses: digicert/code-signing-software-trust-action@v1
         with:
           simple-signing-mode: true
@@ -118,7 +118,7 @@ jobs:
           SM_API_KEY: ${{ secrets.DIGICERT_SM_API_KEY }}
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.DIGICERT_SM_CLIENT_CERT_PASSWORD }}
       - name: Verify windows signature
-        if: matrix.os == 'windows'
+        if: matrix.os == 'windows' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
