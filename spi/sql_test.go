@@ -920,3 +920,62 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 		}
 	}
 }
+
+func TestMachbaseSQLCompatibilityAffectedRows(t *testing.T) {
+	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
+	db, err := sql.Open("machbase", dsn)
+	require.NoError(t, err)
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	require.NoError(t, db.PingContext(t.Context()))
+
+	conn, err := db.Conn(t.Context())
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	result, err := conn.ExecContext(t.Context(), "CREATE TAG TABLE IF NOT EXISTS affected_rows_test (name VARCHAR(100) primary key, time DATETIME base time, value DOUBLE)")
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		_, err := conn.ExecContext(t.Context(), "DROP TABLE affected_rows_test")
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	result, err = conn.ExecContext(t.Context(), "INSERT INTO affected_rows_test VALUES (?, ?, ?)", "Alice", "2024-06-01 00:00:00", 123.45)
+	if err != nil {
+		panic(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, int64(1), affected)
+
+	// result, err = conn.ExecContext(t.Context(), "UPDATE affected_rows_test SET value = ? WHERE name = ? AND time = ?", 456.78, "Alice", "2024-06-01 00:00:00")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// affected, err = result.RowsAffected()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// require.Equal(t, int64(1), affected)
+
+	result, err = conn.ExecContext(t.Context(), "DELETE FROM affected_rows_test WHERE name = ?", "Alice")
+	if err != nil {
+		panic(err)
+	}
+	affected, err = result.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, int64(1), affected)
+}

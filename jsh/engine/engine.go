@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"runtime"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -93,38 +92,32 @@ func (jr *JSRuntime) RunContext(ctx context.Context) error {
 		jr.setContext(prevCtx)
 	}()
 
-	done := make(chan struct{})
-	defer close(done)
+	type runResult struct {
+		err error
+	}
 
+	resultCh := make(chan runResult, 1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			// Wait for the vm reference to become available (set at the start of
-			// the event loop callback in Run, typically within nanoseconds).
-			for jr.vmRef.Load() == nil {
-				select {
-				case <-done:
-					return
-				default:
-					runtime.Gosched()
-				}
-			}
-			// vm.Interrupt is goroutine-safe and works even while the JS runtime
-			// is blocked in a tight loop (checked on every backward jump).
-			if vm := jr.vmRef.Load(); vm != nil {
-				vm.Interrupt(ctx.Err())
-			}
-		case <-done:
-		}
+		resultCh <- runResult{err: jr.Run()}
 	}()
 
-	err := jr.Run()
-	if err != nil {
-		if _, ok := err.(*goja.InterruptedError); ok && ctx.Err() != nil {
-			return ctx.Err()
+	select {
+	case res := <-resultCh:
+		if res.err != nil {
+			if _, ok := res.err.(*goja.InterruptedError); ok && ctx.Err() != nil {
+				return ctx.Err()
+			}
 		}
+		return res.err
+	case <-ctx.Done():
+		// Best-effort interruption for tight JS loops. We do not try to tear
+		// down the event loop here because that can block waiting on the same
+		// execution we are trying to cancel.
+		if vm := jr.vmRef.Load(); vm != nil {
+			vm.Interrupt(ctx.Err())
+		}
+		return ctx.Err()
 	}
-	return err
 }
 
 func (jr *JSRuntime) Run() error {
