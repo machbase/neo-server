@@ -151,7 +151,7 @@ func (src *csvSource) gen(node *Node) {
 
 	rownum := 0
 	headerProcessed := false
-	for {
+	for !node.task.shouldStop() {
 		fields, err := reader.Read()
 		if err != nil {
 			if err != io.EOF {
