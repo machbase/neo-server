@@ -483,6 +483,31 @@ func TestRunContext(t *testing.T) {
 		}
 	})
 
+	t.Run("deadline ctx returns promptly for tight loops", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		jr, err := engine.New(engine.Config{
+			Code: `while(true) {}`,
+		})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+
+		start := time.Now()
+		runErr := jr.RunContext(ctx)
+		elapsed := time.Since(start)
+		if runErr == nil {
+			t.Fatal("RunContext should return an error on deadline")
+		}
+		if runErr != context.DeadlineExceeded {
+			t.Fatalf("RunContext error = %v, want context.DeadlineExceeded", runErr)
+		}
+		if elapsed > 2*time.Second {
+			t.Fatalf("RunContext deadline took too long: %v", elapsed)
+		}
+	})
+
 	t.Run("script error propagates when ctx is still active", func(t *testing.T) {
 		ctx := context.Background()
 		jr, err := engine.New(engine.Config{
