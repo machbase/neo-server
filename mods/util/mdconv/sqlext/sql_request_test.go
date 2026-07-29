@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
@@ -176,20 +179,28 @@ func TestExecuteUsesInjectedConn(t *testing.T) {
 	require.Contains(t, out.String(), "neo")
 }
 
-func TestExecuteConnectsWhenConnUnset(t *testing.T) {
-	prev := connectQueryConn
-	t.Cleanup(func() { connectQueryConn = prev })
+func TestExecuteUsesTQLAPIWhenConnUnset(t *testing.T) {
+	var gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/db/tql", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer server.Close()
 
-	conn := &stubConn{}
-	connectQueryConn = func(ctx context.Context) (Conn, error) {
-		return conn, nil
-	}
+	prevBaseURL := tqlBaseURL
+	tqlBaseURL = server.URL
+	t.Cleanup(func() { tqlBaseURL = prevBaseURL })
 
-	req := &QueryRequest{SqlText: "select 1"}
-	err := req.Execute(context.Background(), nil, nil)
+	req := &QueryRequest{SqlText: "select 1", Output: "json", Preview: 3}
+	var out bytes.Buffer
+	err := req.Execute(context.Background(), &out, nil)
 	require.NoError(t, err)
-	require.NotNil(t, req.Conn)
-	require.Equal(t, "select 1", conn.lastQuery)
+	require.Contains(t, gotBody, "SQL(")
+	require.Contains(t, out.String(), `"ok":true`)
 }
 
 func TestExecuteBoxFormatWritesRows(t *testing.T) {
@@ -540,11 +551,17 @@ func TestPreviewSourceRunSQLAndRendererHelpers(t *testing.T) {
 	require.Equal(t, "select 2;", previewSource("select 1;\nselect 2;", Options{Source: "2"}))
 	require.Equal(t, "select 2;", previewSource("select 1;\nselect 2;", Options{Source: "2-2"}))
 
-	prev := connectQueryConn
-	t.Cleanup(func() { connectQueryConn = prev })
-	conn := &stubConn{columns: []string{"value"}, rows: []any{"neo"}}
-	connectQueryConn = func(ctx context.Context) (Conn, error) {
-		return conn, nil
+	prevDoRequest := tqlDoRequest
+	t.Cleanup(func() { tqlDoRequest = prevDoRequest })
+	tqlDoRequest = func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "SQL(")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"data":{"columns":["value"],"types":["string"],"rows":[["neo"]]},"success":true,"reason":"a row selected.","elapse":"0s"}`)),
+			Header:     make(http.Header),
+		}, nil
 	}
 	var out strings.Builder
 	require.NoError(t, runSQL("select 1", Options{Format: "json", Timeout: time.Millisecond}, &out))

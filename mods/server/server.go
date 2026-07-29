@@ -1016,6 +1016,7 @@ func (s *Server) startHttpServer() error {
 	}
 	util.AddShutdownHook(func() { s.httpd.Stop() })
 
+	spi.SetDefaultHttpEndpoint(s.Http.Listeners)
 	tql.SetHttpAddresses(s.Http.Listeners)
 	tql.SetServerKeyPath(s.ServerPrivateKeyPath())
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})

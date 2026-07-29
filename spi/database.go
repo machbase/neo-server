@@ -487,3 +487,66 @@ func MakeUserMessage(smtType SQLStatementType, rowsCount int64) string {
 		return "executed."
 	}
 }
+
+var defaultHttpLocalEndpoint string
+
+func SetDefaultHttpEndpoint(addrs []string) {
+	bestAddr := ""
+	bestScore := -1
+	for _, addr := range addrs {
+		normalized, score := normalizeHTTPListenerAddress(addr)
+		if normalized == "" {
+			continue
+		}
+		if score > bestScore {
+			bestAddr = normalized
+			bestScore = score
+		}
+	}
+	defaultHttpLocalEndpoint = bestAddr
+}
+
+func normalizeHTTPListenerAddress(addr string) (string, int) {
+	trimmed := strings.TrimSpace(addr)
+	if trimmed == "" {
+		return "", 0
+	}
+
+	scheme := ""
+	if idx := strings.Index(trimmed, "://"); idx >= 0 {
+		scheme = trimmed[:idx]
+		trimmed = trimmed[idx+3:]
+	}
+
+	switch scheme {
+	case "http", "https":
+		return addr, 3
+	case "unix":
+		return addr, 0
+	}
+
+	host, port, err := net.SplitHostPort(trimmed)
+	if err != nil {
+		return addr, 0
+	}
+
+	host = strings.Trim(host, "[]")
+	if host == "" {
+		return "http://127.0.0.1:" + port, 2
+	}
+
+	switch host {
+	case "0.0.0.0":
+		return "http://127.0.0.1:" + port, 2
+	case "::", "[::]":
+		return "http://[::1]:" + port, 2
+	case "127.0.0.1", "::1", "localhost":
+		return "http://" + net.JoinHostPort(host, port), 3
+	default:
+		return "http://" + net.JoinHostPort(host, port), 1
+	}
+}
+
+func DefaultHttpEndpoint() string {
+	return defaultHttpLocalEndpoint
+}

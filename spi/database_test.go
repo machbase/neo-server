@@ -255,6 +255,42 @@ func TestVerifyTokenExpired(t *testing.T) {
 	require.False(t, VerifyToken(token, 1*time.Millisecond))
 }
 
+func TestSetDefaultHttpEndpointSelectsLoopbackFriendlyURLs(t *testing.T) {
+	tests := []struct {
+		name     string
+		addrs    []string
+		expected string
+	}{
+		{
+			name:     "ipv4 wildcard",
+			addrs:    []string{"tcp://0.0.0.0:5655"},
+			expected: "http://127.0.0.1:5655",
+		},
+		{
+			name:     "ipv6 wildcard",
+			addrs:    []string{"tcp://[::]:5655"},
+			expected: "http://[::1]:5655",
+		},
+		{
+			name:     "ipv6 loopback",
+			addrs:    []string{"tcp://[::1]:5655"},
+			expected: "http://[::1]:5655",
+		},
+		{
+			name:     "explicit host",
+			addrs:    []string{"tcp://192.168.0.10:5655"},
+			expected: "http://192.168.0.10:5655",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			SetDefaultHttpEndpoint(tt.addrs)
+			require.Equal(t, tt.expected, DefaultHttpEndpoint())
+		})
+	}
+}
+
 func TestDefaultPoolDatabaseNotConfigured(t *testing.T) {
 	oldDB := defaultDatabase
 	oldKey := defaultDatabaseKey

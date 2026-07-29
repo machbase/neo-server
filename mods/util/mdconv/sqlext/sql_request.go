@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -86,6 +87,11 @@ type QueryHook struct {
 	SetContentEncoding func(string)
 	SetStatusCode      func(int)
 	SetUserMessage     func(string)
+}
+
+var tqlBaseURL = ""
+var tqlDoRequest = func(req *http.Request) (*http.Response, error) {
+	return http.DefaultClient.Do(req)
 }
 
 var connectQueryConn = func(ctx context.Context) (Conn, error) {
@@ -364,12 +370,15 @@ func (q *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHook
 		hook = &QueryHook{}
 	}
 
-	conn, err := q.ensureConn(ctx)
-	if err != nil {
-		return err
+	stmtType := spi.DetectSQLStatementType(q.SqlText)
+	if q.Conn != nil {
+		return q.executeWithConn(ctx, w, hook, q.Conn, stmtType, output)
 	}
 
-	stmtType := spi.DetectSQLStatementType(q.SqlText)
+	return q.executeWithTQL(ctx, w, hook, stmtType, output)
+}
+
+func (q *QueryRequest) executeWithConn(ctx context.Context, w io.Writer, hook *QueryHook, conn Conn, stmtType spi.SQLStatementType, output string) error {
 	if !stmtType.IsFetch() {
 		result, err := conn.ExecContext(ctx, q.SqlText, q.Params...)
 		if err != nil {
@@ -424,6 +433,136 @@ func (q *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHook
 		hook.SetUserMessage(userMessageForStatement(stmtType, rowCount))
 	}
 	return nil
+}
+
+func (q *QueryRequest) executeWithTQL(ctx context.Context, w io.Writer, hook *QueryHook, stmtType spi.SQLStatementType, output string) error {
+	var body strings.Builder
+	body.WriteString("SQL(")
+	body.WriteString(quoteTQLString(q.SqlText))
+	if len(q.Params) > 0 {
+		for _, param := range q.Params {
+			body.WriteString(", ")
+			body.WriteString(quoteTQLValue(param))
+		}
+	}
+	body.WriteString(")")
+	if q.Preview > 0 {
+		body.WriteString("\nTAKE(")
+		body.WriteString(strconv.Itoa(q.Preview))
+		body.WriteString(")")
+	}
+
+	switch strings.ToLower(output) {
+	case "json":
+		body.WriteString("\nJSON(")
+	case "ndjson":
+		body.WriteString("\nNDJSON(")
+	case "csv":
+		body.WriteString("\nCSV(")
+	default:
+		body.WriteString("\nBOX(")
+	}
+
+	options := make([]string, 0, 8)
+	if q.TimeFormat != "" {
+		options = append(options, fmt.Sprintf("timeformat('%s')", escapeTQLString(q.TimeFormat)))
+	}
+	if q.Timezone != "" {
+		options = append(options, fmt.Sprintf("tz('%s')", escapeTQLString(q.Timezone)))
+	}
+	if q.BinaryFormat != "" {
+		options = append(options, fmt.Sprintf("binaryformat('%s')", escapeTQLString(q.BinaryFormat)))
+	}
+	if q.Precision > 0 {
+		options = append(options, fmt.Sprintf("precision(%d)", q.Precision))
+	}
+	if q.RowNum {
+		options = append(options, "rownum(true)")
+	}
+	if q.RowsFlattern {
+		options = append(options, "rowsFlatten(true)")
+	}
+	if q.RowsArray {
+		options = append(options, "rowsArray(true)")
+	}
+	if q.Heading {
+		options = append(options, "heading(true)")
+	}
+	if q.Header {
+		options = append(options, "header(true)")
+	}
+	if q.BoxStyle != "" {
+		options = append(options, fmt.Sprintf("boxStyle('%s')", escapeTQLString(q.BoxStyle)))
+	}
+	if len(options) > 0 {
+		body.WriteString(strings.Join(options, ", "))
+	}
+	body.WriteString(")")
+
+	if tqlBaseURL == "" {
+		tqlBaseURL = spi.DefaultHttpEndpoint()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tqlBaseURL+"/db/tql", strings.NewReader(body.String()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "text/plain")
+
+	resp, err := tqlDoRequest(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("tql request failed: %s", resp.Status)
+	}
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		return err
+	}
+	if hook.SetUserMessage != nil {
+		hook.SetUserMessage(userMessageForStatement(stmtType, 0))
+	}
+	return nil
+}
+
+func quoteTQLString(text string) string {
+	return "{<<END_OF_SQL\n" + text + "\nEND_OF_SQL}"
+}
+
+func quoteTQLValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return fmt.Sprintf("'%s'", escapeTQLString(v))
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case nil:
+		return "null"
+	case int:
+		return strconv.Itoa(v)
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		return fmt.Sprintf("'%s'", escapeTQLString(fmt.Sprint(v)))
+	}
+}
+
+func escapeTQLString(text string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(text, `\`, `\\`), `'`, `\\'`)
 }
 
 func normalizeRequestedOutputFormat(output, format string) string {
