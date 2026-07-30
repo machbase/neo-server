@@ -61,3 +61,8 @@ func TestParseOptionsUsesFormatAndHeaderAliases(t *testing.T) {
 	require.Equal(t, "skip", opts.Header)
 	require.Len(t, opts.Params, 2)
 }
+
+func TestParseOptionsUsesAllToDisablePreviewCompaction(t *testing.T) {
+	opts := sqlext.ParseOptions(`{execute=true,preview=all}`)
+	require.Equal(t, 0, opts.Preview)
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,25 +18,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
 )
-
-// Conn is the minimal database connection abstraction used by shared SQL request helpers.
-type Conn interface {
-	PrepareContext(ctx context.Context, query string) (Stmt, error)
-	QueryContext(ctx context.Context, query string, args ...any) (Rows, error)
-	ExecContext(ctx context.Context, query string, args ...any) (Result, error)
-	Close() error
-}
-
-// Result is the minimal execution result abstraction used by shared SQL request helpers.
-type Result interface {
-	RowsAffected() (int64, error)
-}
-
-// Stmt is the minimal statement abstraction used by shared SQL request helpers.
-type Stmt interface {
-	QueryContext(ctx context.Context, args ...any) (Rows, error)
-	Close() error
-}
 
 // Rows is the minimal row set abstraction used by shared SQL request helpers.
 type Rows interface {
@@ -77,7 +59,6 @@ type QueryRequest struct {
 	NoFormat        bool      `json:"noFormat,omitempty"`
 	Cache           bool      `json:"cache,omitempty"`
 	Truncate        int       `json:"truncate,omitempty"`
-	Conn            Conn      `json:"-"`
 	Hook            QueryHook `json:"-"`
 }
 
@@ -88,64 +69,9 @@ type QueryHook struct {
 	SetUserMessage     func(string)
 }
 
-var connectQueryConn = func(ctx context.Context) (Conn, error) {
-	conn, err := spi.Connect(ctx, "sys")
-	if err != nil {
-		return nil, err
-	}
-	return &sqlConnAdapter{Conn: conn}, nil
-}
-
-type sqlConnAdapter struct {
-	*sql.Conn
-}
-
-func (c *sqlConnAdapter) PrepareContext(ctx context.Context, query string) (Stmt, error) {
-	stmt, err := c.Conn.PrepareContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	return &sqlStmtAdapter{Stmt: stmt}, nil
-}
-
-func (c *sqlConnAdapter) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
-	rows, err := c.Conn.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	return &sqlRowsAdapter{Rows: rows}, nil
-}
-
-func (c *sqlConnAdapter) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
-	result, err := c.Conn.ExecContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	return &sqlResultAdapter{result: result}, nil
-}
-
-type sqlStmtAdapter struct {
-	*sql.Stmt
-}
-
-func (s *sqlStmtAdapter) QueryContext(ctx context.Context, args ...any) (Rows, error) {
-	rows, err := s.Stmt.QueryContext(ctx, args...)
-	if err != nil {
-		return nil, err
-	}
-	return &sqlRowsAdapter{Rows: rows}, nil
-}
-
-type sqlRowsAdapter struct {
-	*sql.Rows
-}
-
-type sqlResultAdapter struct {
-	result sql.Result
-}
-
-func (a *sqlResultAdapter) RowsAffected() (int64, error) {
-	return a.result.RowsAffected()
+var tqlBaseURL = ""
+var tqlDoRequest = func(req *http.Request) (*http.Response, error) {
+	return http.DefaultClient.Do(req)
 }
 
 func NewQueryRequest() *QueryRequest {
@@ -364,66 +290,138 @@ func (q *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHook
 		hook = &QueryHook{}
 	}
 
-	conn, err := q.ensureConn(ctx)
-	if err != nil {
-		return err
-	}
-
 	stmtType := spi.DetectSQLStatementType(q.SqlText)
-	if !stmtType.IsFetch() {
-		result, err := conn.ExecContext(ctx, q.SqlText, q.Params...)
-		if err != nil {
-			return err
+	return q.executeWithTQL(ctx, w, hook, stmtType, output)
+}
+
+func (q *QueryRequest) executeWithTQL(ctx context.Context, w io.Writer, hook *QueryHook, stmtType spi.SQLStatementType, output string) error {
+	var body strings.Builder
+	body.WriteString("SQL(")
+	body.WriteString(quoteTQLString(q.SqlText))
+	if len(q.Params) > 0 {
+		for _, param := range q.Params {
+			body.WriteString(", ")
+			body.WriteString(quoteTQLValue(param))
 		}
-		if hook.SetUserMessage != nil {
-			rawRows, _ := result.RowsAffected()
-			hook.SetUserMessage(spi.MakeUserMessage(stmtType, rawRows))
-		}
-		return nil
+	}
+	body.WriteString(")")
+	if q.Preview > 0 {
+		body.WriteString("\nTAKE(")
+		body.WriteString(strconv.Itoa(q.Preview))
+		body.WriteString(")")
 	}
 
-	queryText := q.SqlText
-	switch stmtType {
-	case spi.SQLStatementTypeDescribe:
-		queryText = describeToShowTableQuery(q.SqlText)
+	switch strings.ToLower(output) {
+	case "json":
+		body.WriteString("\nJSON(")
+	case "ndjson":
+		body.WriteString("\nNDJSON(")
+	case "csv":
+		body.WriteString("\nCSV(")
+	default:
+		body.WriteString("\nBOX(")
 	}
 
-	rows, err := conn.QueryContext(ctx, queryText, q.Params...)
+	options := make([]string, 0, 8)
+	if q.TimeFormat != "" {
+		options = append(options, fmt.Sprintf("timeformat('%s')", escapeTQLString(q.TimeFormat)))
+	}
+	if q.Timezone != "" {
+		options = append(options, fmt.Sprintf("tz('%s')", escapeTQLString(q.Timezone)))
+	}
+	if q.BinaryFormat != "" {
+		options = append(options, fmt.Sprintf("binaryformat('%s')", escapeTQLString(q.BinaryFormat)))
+	}
+	if q.Precision > 0 {
+		options = append(options, fmt.Sprintf("precision(%d)", q.Precision))
+	}
+	if q.RowNum {
+		options = append(options, "rownum(true)")
+	}
+	if q.RowsFlattern {
+		options = append(options, "rowsFlatten(true)")
+	}
+	if q.RowsArray {
+		options = append(options, "rowsArray(true)")
+	}
+	if q.Heading {
+		options = append(options, "heading(true)")
+	}
+	if q.Header {
+		options = append(options, "header(true)")
+	}
+	if q.BoxStyle != "" {
+		options = append(options, fmt.Sprintf("boxStyle('%s')", escapeTQLString(q.BoxStyle)))
+	}
+	if len(options) > 0 {
+		body.WriteString(strings.Join(options, ", "))
+	}
+	body.WriteString(")")
+
+	if tqlBaseURL == "" {
+		tqlBaseURL = spi.DefaultHttpEndpoint()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tqlBaseURL+"/db/tql", strings.NewReader(body.String()))
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	req.Header.Set("Content-Type", "text/plain")
 
-	timeLocation, err := util.ParseTimeLocation(q.Timezone, time.UTC)
+	resp, err := tqlDoRequest(req)
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
-	columnTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return err
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("tql request failed: %s", resp.Status)
 	}
-	columnNames, err := rows.Columns()
-	if err != nil {
-		return err
-	}
-	outWriter := w
-	if outWriter == nil {
-		outWriter = io.Discard
-	}
-	if hook.SetContentType != nil {
-		hook.SetContentType(contentTypeForFormat(output))
-	}
-	timeFormatter := util.NewTimeFormatter(util.Timeformat(q.TimeFormat), util.TimeLocation(timeLocation))
-	binaryFormatter := util.NewBinaryFormatter(q.BinaryFormat)
-	rowCount, err := renderRowsByFormat(outWriter, output, q.Heading, rows, columnNames, columnTypes, q.TimeFormat, timeLocation.String(), timeFormatter, binaryFormatter, stmtType, q.Preview)
+	_, err = io.Copy(w, resp.Body)
 	if err != nil {
 		return err
 	}
 	if hook.SetUserMessage != nil {
-		hook.SetUserMessage(userMessageForStatement(stmtType, rowCount))
+		hook.SetUserMessage(userMessageForStatement(stmtType, 0))
 	}
 	return nil
+}
+
+func quoteTQLString(text string) string {
+	return "{<<END_OF_SQL\n" + text + "\nEND_OF_SQL}"
+}
+
+func quoteTQLValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return fmt.Sprintf("'%s'", escapeTQLString(v))
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case nil:
+		return "null"
+	case int:
+		return strconv.Itoa(v)
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		return fmt.Sprintf("'%s'", escapeTQLString(fmt.Sprint(v)))
+	}
+}
+
+func escapeTQLString(text string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(text, `\`, `\\`), `'`, `\\'`)
 }
 
 func normalizeRequestedOutputFormat(output, format string) string {
@@ -821,18 +819,6 @@ func formatValueForTextOutput(value any, timeFormatter *util.TimeFormatter, bina
 		return s.String()
 	}
 	return fmt.Sprintf("%v", value)
-}
-
-func (q *QueryRequest) ensureConn(ctx context.Context) (Conn, error) {
-	if q.Conn != nil {
-		return q.Conn, nil
-	}
-	conn, err := connectQueryConn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	q.Conn = conn
-	return conn, nil
 }
 
 func (q *QueryRequest) HandleQuery(w io.Writer, hook *QueryHook) error {

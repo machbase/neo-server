@@ -6,12 +6,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
@@ -49,49 +50,6 @@ func TestParseQueryParams(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid p")
 }
-
-type stubConn struct {
-	lastQuery   string
-	columns     []string
-	columnTypes []*sql.ColumnType
-	rows        []any
-	multiRows   [][]any
-}
-
-func (c *stubConn) PrepareContext(_ context.Context, query string) (Stmt, error) {
-	return &stubStmt{}, nil
-}
-
-func (c *stubConn) QueryContext(_ context.Context, query string, args ...any) (Rows, error) {
-	c.lastQuery = query
-	columns := []string{"value"}
-	if len(c.columns) > 0 {
-		columns = c.columns
-	}
-	if len(c.multiRows) > 0 {
-		return &stubRows{columns: columns, columnTypes: c.columnTypes, multiValues: c.multiRows}, nil
-	}
-	return &stubRows{columns: columns, columnTypes: c.columnTypes, values: c.rows}, nil
-}
-
-func (c *stubConn) ExecContext(_ context.Context, query string, args ...any) (Result, error) {
-	c.lastQuery = query
-	return &stubResult{}, nil
-}
-
-func (c *stubConn) Close() error { return nil }
-
-type stubStmt struct{}
-
-func (s *stubStmt) QueryContext(_ context.Context, args ...any) (Rows, error) {
-	return &stubRows{columns: []string{"value"}}, nil
-}
-
-func (s *stubStmt) Close() error { return nil }
-
-type stubResult struct{}
-
-func (r *stubResult) RowsAffected() (int64, error) { return 0, nil }
 
 type stubRows struct {
 	columns     []string
@@ -165,165 +123,71 @@ func (r *stubRows) Scan(dest ...any) error {
 	return nil
 }
 
-func TestExecuteUsesInjectedConn(t *testing.T) {
-	conn := &stubConn{rows: []any{"neo"}}
-	req := &QueryRequest{SqlText: "select 1", Conn: conn}
-	var out bytes.Buffer
+func TestExecuteUsesTQLAPIWhenConnUnset(t *testing.T) {
+	var gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/db/tql", r.URL.Path)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer server.Close()
 
+	prevBaseURL := tqlBaseURL
+	tqlBaseURL = server.URL
+	t.Cleanup(func() { tqlBaseURL = prevBaseURL })
+
+	req := &QueryRequest{SqlText: "select 1", Output: "json", Preview: 3}
+	var out bytes.Buffer
 	err := req.Execute(context.Background(), &out, nil)
 	require.NoError(t, err)
-	require.Equal(t, "select 1", conn.lastQuery)
-	require.Contains(t, out.String(), "neo")
+	require.Contains(t, gotBody, "SQL(")
+	require.Contains(t, out.String(), `"ok":true`)
 }
 
-func TestExecuteConnectsWhenConnUnset(t *testing.T) {
-	prev := connectQueryConn
-	t.Cleanup(func() { connectQueryConn = prev })
+func TestExecuteBuildsTQLRequestBody(t *testing.T) {
+	prevDoRequest := tqlDoRequest
+	t.Cleanup(func() { tqlDoRequest = prevDoRequest })
 
-	conn := &stubConn{}
-	connectQueryConn = func(ctx context.Context) (Conn, error) {
-		return conn, nil
+	tqlDoRequest = func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		got := string(body)
+		require.Contains(t, got, "SQL(")
+		require.Contains(t, got, "TAKE(3)")
+		require.Contains(t, got, "JSON(")
+		require.Contains(t, got, "timeformat('2006-01-02 15:04:05')")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true}`)), Header: make(http.Header)}, nil
 	}
 
-	req := &QueryRequest{SqlText: "select 1"}
-	err := req.Execute(context.Background(), nil, nil)
-	require.NoError(t, err)
-	require.NotNil(t, req.Conn)
-	require.Equal(t, "select 1", conn.lastQuery)
-}
-
-func TestExecuteBoxFormatWritesRows(t *testing.T) {
-	conn := &stubConn{}
-	conn.rows = []any{"neo"}
-	req := &QueryRequest{SqlText: "select 1", Format: "box", Conn: conn}
+	req := &QueryRequest{SqlText: "select 1", Output: "json", Preview: 3, TimeFormat: "2006-01-02 15:04:05", Timezone: "Asia/Seoul"}
 	var out bytes.Buffer
-
 	err := req.Execute(context.Background(), &out, nil)
 	require.NoError(t, err)
-	require.Contains(t, out.String(), "neo")
+	require.Contains(t, out.String(), `"ok":true`)
 }
 
-func TestExecuteTableFormatUsesGoPrettyTable(t *testing.T) {
-	conn := &stubConn{columns: []string{"value"}, rows: []any{"neo"}}
-	req := &QueryRequest{SqlText: "select 1", Format: "table", Heading: true, Conn: conn}
-	var out bytes.Buffer
+func TestExecuteUsesTQLAPIAndPreservesQueryText(t *testing.T) {
+	prevDoRequest := tqlDoRequest
+	t.Cleanup(func() { tqlDoRequest = prevDoRequest })
 
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	got := out.String()
-	require.Contains(t, got, "VALUE")
-	require.Contains(t, got, "neo")
-	require.Contains(t, got, "+")
-}
-
-func TestExecuteCompactsLargeResultsWhenLimitExceeded(t *testing.T) {
-	rows := make([][]any, 0, 12)
-	for i := 0; i < 12; i++ {
-		rows = append(rows, []any{fmt.Sprintf("row-%02d", i+1)})
-	}
-	conn := &stubConn{columns: []string{"value"}, multiRows: rows}
-	req := &QueryRequest{SqlText: "select 1", Output: "table", Preview: 10, Conn: conn}
-	var out bytes.Buffer
-
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	got := out.String()
-	require.Contains(t, got, "...")
-	require.Contains(t, got, "row-01")
-	require.Contains(t, got, "row-12")
-}
-
-func TestExecuteTableFormatAddsTimezoneToDatetimeHeaders(t *testing.T) {
-	ct := &sql.ColumnType{}
-	field := reflect.ValueOf(ct).Elem().FieldByName("databaseType")
-	require.True(t, field.IsValid())
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.Addr().Pointer())).Elem().SetString("datetime")
-	conn := &stubConn{columns: []string{"ts"}, columnTypes: []*sql.ColumnType{ct}, rows: []any{time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)}}
-	req := &QueryRequest{SqlText: "select 1", Format: "table", Heading: true, TimeFormat: "2006-01-02 15:04:05", Timezone: "Asia/Seoul", Conn: conn}
-	var out bytes.Buffer
-
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "TS(ASIA/SEOUL)")
-}
-
-func TestExecuteFormatOptionUsesServerStyleEncoder(t *testing.T) {
-	conn := &stubConn{}
-	conn.rows = []any{"neo"}
-	req := &QueryRequest{SqlText: "select 1", Format: "json", Conn: conn}
-	var out bytes.Buffer
-
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), `"neo"`)
-}
-
-func TestExecuteAppendsUserMessageToTableOutput(t *testing.T) {
-	conn := &stubConn{rows: []any{"neo"}}
-	req := &QueryRequest{SqlText: "select 1", Output: "box", Conn: conn}
-	var out bytes.Buffer
-
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "a row selected.")
-}
-
-func TestExecuteSetsJSONReasonToUserMessage(t *testing.T) {
-	conn := &stubConn{rows: []any{"neo"}}
-	req := &QueryRequest{SqlText: "select 1", Output: "json", Conn: conn}
-	var out bytes.Buffer
-
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), `"reason":"a row selected."`)
-}
-
-func TestExecuteDescribeUsesShowTableQuery(t *testing.T) {
-	conn := &stubConn{}
-	req := &QueryRequest{SqlText: "describe tag_data", Conn: conn}
-	var out bytes.Buffer
-
-	err := req.Execute(context.Background(), &out, nil)
-	require.NoError(t, err)
-	require.Equal(t, "SHOW TABLE TAG_DATA", conn.lastQuery)
-	require.Contains(t, out.String(), "a row selected.")
-}
-
-func TestExecuteAppliesFormattingOptionsPerOutputFormat(t *testing.T) {
-	ts := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
-	payload := []byte{0x01, 0x02}
-	cases := []struct {
-		name       string
-		output     string
-		wantString []string
-	}{
-		{name: "box", output: "box", wantString: []string{"2024-01-02 12:04:05", "0x0102"}},
-		{name: "json", output: "json", wantString: []string{"2024-01-02 12:04:05", "0x0102"}},
-		{name: "ndjson", output: "ndjson", wantString: []string{"2024-01-02 12:04:05", "0x0102"}},
-		{name: "csv", output: "csv", wantString: []string{"2024-01-02 12:04:05", "0x0102"}},
+	var gotBody string
+	tqlDoRequest = func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		gotBody = string(body)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true}`)), Header: make(http.Header)}, nil
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			conn := &stubConn{columns: []string{"ts", "payload"}, rows: []any{ts, payload}}
-			req := &QueryRequest{
-				SqlText:      "select 1",
-				Output:       tc.output,
-				TimeFormat:   "2006-01-02 15:04:05",
-				Timezone:     "Asia/Seoul",
-				BinaryFormat: "hex",
-				Conn:         conn,
-			}
-			var out bytes.Buffer
-
-			err := req.Execute(context.Background(), &out, nil)
-			require.NoError(t, err)
-			got := out.String()
-			for _, want := range tc.wantString {
-				require.Contains(t, got, want)
-			}
-		})
-	}
+	req := &QueryRequest{SqlText: "select 1", Output: "json", Preview: 2}
+	var out bytes.Buffer
+	err := req.Execute(context.Background(), &out, nil)
+	require.NoError(t, err)
+	require.Contains(t, gotBody, "{<<END_OF_SQL")
+	require.Contains(t, gotBody, "select 1")
+	require.Contains(t, gotBody, "TAKE(2)")
 }
 
 func TestNormalizeQueryParamValue(t *testing.T) {
@@ -540,11 +404,17 @@ func TestPreviewSourceRunSQLAndRendererHelpers(t *testing.T) {
 	require.Equal(t, "select 2;", previewSource("select 1;\nselect 2;", Options{Source: "2"}))
 	require.Equal(t, "select 2;", previewSource("select 1;\nselect 2;", Options{Source: "2-2"}))
 
-	prev := connectQueryConn
-	t.Cleanup(func() { connectQueryConn = prev })
-	conn := &stubConn{columns: []string{"value"}, rows: []any{"neo"}}
-	connectQueryConn = func(ctx context.Context) (Conn, error) {
-		return conn, nil
+	prevDoRequest := tqlDoRequest
+	t.Cleanup(func() { tqlDoRequest = prevDoRequest })
+	tqlDoRequest = func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "SQL(")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"data":{"columns":["value"],"types":["string"],"rows":[["neo"]]},"success":true,"reason":"a row selected.","elapse":"0s"}`)),
+			Header:     make(http.Header),
+		}, nil
 	}
 	var out strings.Builder
 	require.NoError(t, runSQL("select 1", Options{Format: "json", Timeout: time.Millisecond}, &out))

@@ -89,7 +89,7 @@ func ParseOptions(info string) Options {
 
 func parsePreviewValue(val string) int {
 	v := strings.ToLower(strings.TrimSpace(val))
-	if v == "" || v == "unlimit" || v == "none" {
+	if v == "" || v == "all" || v == "unlimit" || v == "none" {
 		return 0
 	}
 	if n, err := strconv.Atoi(v); err == nil {

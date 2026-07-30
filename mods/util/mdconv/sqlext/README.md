@@ -29,10 +29,10 @@ The extension supports the following options:
   - controls the time zone used for formatting
 - `binaryformat` (`base64|hex|bytes|preview`, default: `hex`)
   - controls how binary values are formatted
-- `preview` (`int` or `unlimit|none`, default: `10`)
+- `preview` (`int` or `all`, default: `10`)
   - controls how many rows are shown when a result set is rendered in preview form
   - when a query returns more rows than the preview size, the renderer shows the first and last rows with an ellipsis in the middle
-  - use `unlimit` or `none` to disable the compact preview behavior and show the full result
+  - use `all` to disable the compact preview behavior and show the full result
 - `params` / `p` (array-like value)
   - supplies bind parameters for the SQL statement
   - example: `params=[1,"neo"]` or `p=[1,"neo"]`
@@ -84,7 +84,7 @@ select * from generate_series(1, 20) as t(v);
 ```
 ~~~
 
-When the result contains more rows than the preview size, the output shows the first and last rows with an ellipsis in between.
+When the result contains more rows than the preview size, the output shows the first and last rows with an ellipsis in between. To show the full result instead, set `preview=all`.
 
 ### 5. Show source preview lines
 
@@ -107,8 +107,6 @@ select ?, ?;
 ~~~
 
 The fenced block can pass bind parameters through the `p` option.
-
-To show the full result instead of the compact preview, set `preview=none` or `preview=unlimit`.
 
 ### 7. Render as CSV with custom header behavior
 
