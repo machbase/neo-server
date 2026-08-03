@@ -593,7 +593,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 	case "table":
 		err = validateArgs(command, 1)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTable(node.task.ctx, conn, args[0], showAll))
+			return yieldResultSet(node, spi.ShowTable(node.task.ctx, conn, "MACHBASEDB", node.task.consoleUser, args[0], showAll))
 		}
 	case "indexes":
 		err = validateNoAll()
@@ -625,7 +625,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTags(node.task.ctx, conn, args[0], args[1:]...))
+			return yieldResultSet(node, spi.ShowTags(node.task.ctx, conn, "MACHBASEDB", node.task.consoleUser, args[0], args[1:]...))
 		}
 	case "indexgap":
 		err = validateNoAll()

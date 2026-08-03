@@ -134,7 +134,7 @@ func (w *Watcher) init(ctx context.Context) error {
 	}
 
 	var desc *api.TableDescription
-	if rs := ShowTable(ctx, conn, w.TableName, false); rs.err != nil {
+	if rs := ShowTable(ctx, conn, "", "", w.TableName, false); rs.err != nil {
 		return fmt.Errorf("fail to get table info '%s', %s", w.TableName, rs.err.Error())
 	} else {
 		desc = rs.Description

@@ -298,7 +298,26 @@ func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowTable(ctx context.Context, sqlConn *sql.Conn, tableName string, all bool) *ShowTableResultSet {
+func ShowTable(ctx context.Context, sqlConn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, all bool) *ShowTableResultSet {
+	if fallbackDatabaseName == "" {
+		fallbackDatabaseName = "MACHBASEDB"
+	}
+	if fallbackUserName == "" {
+		fallbackUserName = "SYS"
+	}
+	databaseName := fallbackDatabaseName
+	userName := fallbackUserName
+	parts := strings.SplitN(strings.ToUpper(tableName), ".", 3)
+	if len(parts) == 3 {
+		databaseName = parts[0]
+		userName = parts[1]
+		tableName = parts[2]
+	} else if len(parts) == 2 {
+		userName = parts[0]
+		tableName = parts[1]
+	}
+
+	tableName = fmt.Sprintf("%s.%s.%s", databaseName, userName, tableName)
 	conn := WrapSqlConn(sqlConn)
 	desc, err := api.DescribeTable(ctx, conn, tableName, all)
 	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, Description: desc}
@@ -1321,14 +1340,33 @@ func (tr *ShowTagsResultSet) Iter(callback func(values []interface{}) bool) {
 	})
 }
 
-func ShowTags(ctx context.Context, conn *sql.Conn, tableName string, tagNames ...string) *ShowTagsResultSet {
-	tableName = strings.ToUpper(tableName)
-	rs := ShowTable(ctx, conn, tableName, false)
+func ShowTags(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, tagNames ...string) *ShowTagsResultSet {
+	if fallbackDatabaseName == "" {
+		fallbackDatabaseName = "MACHBASEDB"
+	}
+	if fallbackUserName == "" {
+		fallbackUserName = "SYS"
+	}
+	originalTableName := strings.ToUpper(tableName)
+	databaseName := fallbackDatabaseName
+	userName := fallbackUserName
+	parts := strings.SplitN(strings.ToUpper(tableName), ".", 3)
+	if len(parts) == 3 {
+		databaseName = parts[0]
+		userName = parts[1]
+		tableName = parts[2]
+	} else if len(parts) == 2 {
+		userName = parts[0]
+		tableName = parts[1]
+	}
+
+	tableName = fmt.Sprintf("%s.%s.%s", databaseName, userName, tableName)
+	rs := ShowTable(ctx, conn, "", "", tableName, false)
 	if rs.err != nil {
 		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: rs.err}}
 	}
 	if rs.Description.Type != api.TableTypeTag {
-		err := fmt.Errorf("table '%s' is not a tag table", tableName)
+		err := fmt.Errorf("table '%s' is not a tag table", originalTableName)
 		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
 	return &ShowTagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, desc: rs.Description}
@@ -1375,7 +1413,13 @@ func (tsi *TagStatInfo) Values() []interface{} {
 
 func ListTagsWalk(ctx context.Context, conn *sql.Conn, table string, tagNameColumn string, callback func(*TagInfo, error) bool) {
 	database, userName, tableName := api.TableName(table).Split()
-	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`SELECT _ID, %s FROM %s.%s._%s_META`, tagNameColumn, database, userName, tableName))
+	metaTableName := ""
+	if database != "MACHBASEDB" {
+		metaTableName = fmt.Sprintf("%s.%s._%s_META", database, userName, tableName)
+	} else {
+		metaTableName = fmt.Sprintf("%s._%s_META", userName, tableName)
+	}
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`SELECT _ID, %s FROM %s`, tagNameColumn, metaTableName))
 	if err != nil {
 		callback(nil, err)
 		return

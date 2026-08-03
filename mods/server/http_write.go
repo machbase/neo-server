@@ -88,7 +88,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	defer conn.Close()
 
 	var desc *api.TableDescription
-	if rs := spi.ShowTable(ctx, conn, tableName, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", tableName, false); rs.Err() != nil {
 		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, rs.Err().Error()))
 		return
 	} else {
@@ -295,7 +295,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 	}
 
 	var desc *api.TableDescription
-	if rs := spi.ShowTable(ctx, conn, tableName, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", tableName, false); rs.Err() != nil {
 		err = rs.Err()
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
@@ -486,7 +486,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 
 	dbName := ctx.Query("db")
 	var desc *api.TableDescription
-	if rs := spi.ShowTable(ctx, conn, dbName, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", dbName, false); rs.Err() != nil {
 		ctx.JSON(
 			http.StatusBadRequest,
 			gin.H{"error": fmt.Sprintf("column error: %s", rs.Err().Error())})

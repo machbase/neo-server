@@ -334,7 +334,7 @@ func TestShowTables(t *testing.T) {
 		},
 		{
 			name:    "ShowTable",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "RS_DATA", false)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "", "", "RS_DATA", false)) },
 			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
 			expects: [][]any{
 				{"NAME", "varchar", 80, "tag name", ""},
@@ -344,7 +344,7 @@ func TestShowTables(t *testing.T) {
 		},
 		{
 			name:    "ShowTable_all",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "RS_DATA", true)) },
+			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "", "", "RS_DATA", true)) },
 			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
 			expects: [][]any{
 				{"NAME", "varchar", 80, "tag name", ""},
@@ -354,8 +354,10 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			name:    "ShowTable_meta",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "M$SYS_TABLES", false)) },
+			name: "ShowTable_meta",
+			fn: func() spi.ResultSet {
+				return spi.ResultSet(spi.ShowTable(t.Context(), conn, "", "", "M$SYS_TABLES", false))
+			},
 			columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
 			expects: [][]any{
 				{"NAME", "varchar", 100, "", ""},
@@ -451,8 +453,10 @@ func TestShowTables(t *testing.T) {
 			},
 		},
 		{
-			name:    "ShowTags",
-			fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTags(t.Context(), conn, "rs_data", "test1")) },
+			name: "ShowTags",
+			fn: func() spi.ResultSet {
+				return spi.ResultSet(spi.ShowTags(t.Context(), conn, "", "", "rs_data", "test1"))
+			},
 			columns: []string{"ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"},
 			expects: [][]any{
 				{int64(1), "test1", int64(2), parseTime("2024-01-01 00:00:00.000"), parseTime("2024-01-02 00:00:00.000"), parseTime("2024-01-02 00:00:00"), float64(1), parseTime("2024-01-01 00:00:00.000"), float64(2), parseTime("2024-01-02 00:00:00.000")},

@@ -153,7 +153,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	}
 
 	var desc *api.TableDescription
-	if rs := spi.ShowTable(ctx, conn, wp.Table, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", wp.Table, false); rs.Err() != nil {
 		rsp.Reason = rs.Err().Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
 		return
@@ -471,7 +471,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 	dbName := strings.TrimPrefix(pk.TopicName, "db/metrics/")
 
 	var desc *api.TableDescription
-	if rs := spi.ShowTable(ctx, conn, dbName, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", dbName, false); rs.Err() != nil {
 		s.log.Warn(cl.Net.Remote, "column error:", rs.Err().Error())
 		return
 	} else {
