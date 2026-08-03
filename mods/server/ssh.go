@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
@@ -242,6 +243,10 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
+	if username, proxied := api.ParseUserName(user); proxied {
+		user = username.Login
+	}
+
 	if valid, _, err := svr.authServer.ValidateUserPassword(ctx, user, password); err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
@@ -263,6 +268,10 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
+	if username, proxied := api.ParseUserName(user); proxied {
+		user = username.Login
+	}
+
 	if valid, err := svr.authServer.ValidateUserPublicKey(ctx, user, key); err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
@@ -326,11 +335,14 @@ type UsernameComposite struct {
 }
 
 func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
-	user := ss.User()
 	var shell *SshShell
 	var shellId string
 	var command string
 
+	user := ss.User()
+	if username, proxied := api.ParseUserName(user); proxied {
+		user = username.Proxy
+	}
 	uc := svr.splitUserAndShell(user)
 	user, shellId, command = uc.user, uc.shellId, uc.command
 	if command != "" {
@@ -449,20 +461,20 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 	}
 
 	// []string{"scp", "-t", "/data/logs/a.txt"}
-	svr.log.Infof("%s command %+v", ss.User(), cmdArr)
+	svr.log.Tracef("%s command %+v", ss.User(), cmdArr)
 	cmd := exec.Command(cmdArr[0], cmdArr[1:]...)
 	cmd.Env = append(cmd.Env, shell.Envs...)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		svr.log.Infof("%s could not open stdin pipe %s", ss.User(), err.Error())
+		svr.log.Warnf("%s could not open stdin pipe %s", ss.User(), err.Error())
 		io.WriteString(ss, "Can not open stdin pipe\n")
 		ss.Exit(1)
 		return
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		svr.log.Infof("%s could not open stdout pipe %s", ss.User(), err.Error())
+		svr.log.Warnf("%s could not open stdout pipe %s", ss.User(), err.Error())
 		io.WriteString(ss, "Can not open stdout pipe\n")
 		ss.Exit(1)
 		return
@@ -470,7 +482,7 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		svr.log.Infof("%s could not open stderr pipe %s", ss.User(), err.Error())
+		svr.log.Warnf("%s could not open stderr pipe %s", ss.User(), err.Error())
 		io.WriteString(ss, "Can not open stderr pipe\n")
 		ss.Exit(1)
 		return
@@ -489,26 +501,26 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 	go func() {
 		_, err := io.Copy(stdin, ss)
 		if err != nil {
-			svr.log.Infof("%s stdin  err %s", ss.User(), err.Error())
+			svr.log.Warnf("%s stdin  err %s", ss.User(), err.Error())
 		}
-		svr.log.Infof("%s stdin  close", ss.User())
+		svr.log.Tracef("%s stdin  close", ss.User())
 		stdin.Close()
 	}()
 	go func() {
 		_, err := io.Copy(ss, stdout)
 		if err != nil && !errors.Is(err, io.EOF) {
-			svr.log.Infof("%s stdout err %s", ss.User(), err.Error())
+			svr.log.Warnf("%s stdout err %s", ss.User(), err.Error())
 		}
-		svr.log.Infof("%s stdout close", ss.User())
+		svr.log.Tracef("%s stdout close", ss.User())
 		stdout.Close()
 		outputWG.Done()
 	}()
 	go func() {
 		_, err := io.Copy(ss, stderr)
 		if err != nil {
-			svr.log.Infof("%s stderr err %s", ss.User(), err.Error())
+			svr.log.Warnf("%s stderr err %s", ss.User(), err.Error())
 		}
-		svr.log.Infof("%s stderr close", ss.User())
+		svr.log.Tracef("%s stderr close", ss.User())
 		stderr.Close()
 		outputWG.Done()
 	}()
@@ -518,31 +530,31 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 		if err != nil {
 			svr.log.Infof("%s command fail %s", ss.User(), err.Error())
 		} else if cmd.ProcessState == nil {
-			svr.log.Infof("%s command state error:%s", ss.User(), cmd.Err)
+			svr.log.Warnf("%s command state error:%s", ss.User(), cmd.Err)
 		} else {
 			exitCode = cmd.ProcessState.ExitCode()
 		}
 		ss.Exit(exitCode)
 
 		cmdChan <- exitCode
-		svr.log.Infof("%s exit %d", ss.User(), exitCode)
+		svr.log.Tracef("%s exit %d", ss.User(), exitCode)
 	}()
 
 eventLoop:
 	for {
-		svr.log.Infof("%s wait command to finish", ss.User())
+		svr.log.Tracef("%s wait command to finish", ss.User())
 		select {
 		case sig := <-sigChan:
-			svr.log.Info("%s signal %d", ss.User(), sig)
+			svr.log.Tracef("%s signal %d", ss.User(), sig)
 			break eventLoop
 		case flag := <-breakChan:
-			svr.log.Infof("%s break %t", ss.User(), flag)
+			svr.log.Tracef("%s break %t", ss.User(), flag)
 			break eventLoop
 		case <-cmdChan:
 			break eventLoop
 		}
 	}
-	svr.log.Infof("%s done  %+v", ss.User(), cmdArr)
+	svr.log.Tracef("%s done", ss.User())
 	outputWG.Wait()
 	ss.Close()
 }

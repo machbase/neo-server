@@ -1211,6 +1211,11 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 
+	// user name other than sys
+	if low := strings.ToLower(termLoginName); low != "sys" {
+		termLoginName = "sys as " + low
+	}
+
 	term, err := NewWebTerm(termAddress, userShell, termLoginName)
 	if err != nil {
 		svr.log.Warnf("term conn %s", err.Error())
