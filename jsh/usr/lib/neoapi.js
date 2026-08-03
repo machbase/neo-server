@@ -76,16 +76,23 @@ class _Client {
     }
 
     executeTql(tql, options = {}) {
+        return this._executeWithAuth(() => {
+            return this._executeTql(tql, options);
+        });
+    }
+
+    _executeTql(tql, options = {}) {
         return new Promise((resolve, reject) => {
             const req = http.request({
                 method: 'POST',
                 protocol: this.options.protocol,
                 host: this.options.host,
                 port: this.options.port,
-                path: '/db/tql',
+                path: '/web/api/tql',
                 headers: {
                     'Content-Type': 'text/plain',
-                    'Authorization': `Bearer ${getHttpAccessToken()}`
+                    'Authorization': `Bearer ${getHttpAccessToken()}`,
+                    'X-Console-Id': 'user1',
                 }
             });
             req.on('response', (res) => {
