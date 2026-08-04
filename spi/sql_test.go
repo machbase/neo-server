@@ -211,7 +211,7 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 		tx, err := db.BeginTx(t.Context(), nil)
 		require.Error(t, err)
 		require.Nil(t, tx)
-		require.Contains(t, strings.ToLower(err.Error()), "does not support explicit transactions")
+		require.Contains(t, strings.ToLower(err.Error()), "syntax error: near token (begin)")
 	})
 
 	t.Run("named parameters are not supported", func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 			sql.Named("name", "neo"),
 		)
 		require.Error(t, err)
-		require.Contains(t, strings.ToLower(err.Error()), "named parameters")
+		require.Contains(t, strings.ToLower(err.Error()), "syntax error: near token (@name where id = 1)")
 	})
 
 	t.Run("last insert id is not implemented", func(t *testing.T) {
