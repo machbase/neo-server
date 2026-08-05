@@ -610,92 +610,6 @@ func TestIsErrTokenExpired(t *testing.T) {
 	require.False(t, IsErrTokenExpired(fmt.Errorf("other error")))
 }
 
-type httpTestDatabase struct {
-	connectErr    error
-	conn          *httpTestConn
-	lastTrustUser string
-}
-
-func (db *httpTestDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
-	for _, opt := range options {
-		if authKey, ok := opt.(*api.ConnectOptionAuthKey); ok {
-			db.lastTrustUser = authKey.User
-		}
-	}
-	if db.connectErr != nil {
-		return nil, db.connectErr
-	}
-	if db.conn == nil {
-		db.conn = &httpTestConn{}
-	}
-	return db.conn, nil
-}
-
-func (db *httpTestDatabase) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
-	return false, "", nil
-}
-
-func (db *httpTestDatabase) Ping(ctx context.Context) (time.Duration, error) {
-	return 0, nil
-}
-
-type httpTestConn struct {
-	lastSQL    string
-	closed     bool
-	execResult api.Result
-}
-
-func (conn *httpTestConn) Close() error {
-	conn.closed = true
-	return nil
-}
-
-func (conn *httpTestConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
-	conn.lastSQL = sqlText
-	if conn.execResult != nil {
-		return conn.execResult
-	}
-	return &httpTestResult{}
-}
-
-func (conn *httpTestConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
-	panic("unexpected Query call")
-}
-
-func (conn *httpTestConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	panic("unexpected QueryRow call")
-}
-
-func (conn *httpTestConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
-	panic("unexpected Prepare call")
-}
-
-func (conn *httpTestConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-	panic("unexpected Appender call")
-}
-
-func (conn *httpTestConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	panic("unexpected Explain call")
-}
-
-type httpTestResult struct {
-	err          error
-	rowsAffected int64
-	message      string
-}
-
-func (r *httpTestResult) Err() error {
-	return r.err
-}
-
-func (r *httpTestResult) RowsAffected() int64 {
-	return r.rowsAffected
-}
-
-func (r *httpTestResult) Message() string {
-	return r.message
-}
-
 func makeAuthorizedClientToken(t *testing.T) (*Server, string) {
 	t.Helper()
 
@@ -2347,4 +2261,3 @@ func TestHandleFiles(t *testing.T) {
 		require.Contains(t, writer.Body.String(), `"success":true`)
 	})
 }
-
