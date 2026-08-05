@@ -118,7 +118,6 @@ const (
 	HandlerMachbase = HandlerType("machbase")
 	HandlerInflux   = HandlerType("influx") // influx line protocol
 	HandlerWeb      = HandlerType("web")    // web ui
-	HandlerLake     = HandlerType("lakes")
 	HandlerVoid     = HandlerType("-")
 )
 
@@ -338,13 +337,6 @@ func (svr *httpd) Router() *gin.Engine {
 				svr.bakd.HttpRouter(backupdGroup)
 			}
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
-		case HandlerLake:
-			group.GET("/tags", svr.handleLakeGetTagList)
-			group.GET("/values/:type", svr.handleLakeGetValues)
-			group.POST("/values", svr.handleLakePostValues)
-			group.POST("/values/:type", svr.handleLakePostValues)
-			group.POST("/inter/execquery", svr.handleLakeExecQuery)
-			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAuth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
