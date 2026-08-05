@@ -635,7 +635,7 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
+	conn, err := spi.Connect(ctx, claim.Subject)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -644,10 +644,10 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	result := conn.Exec(ctx,
+	_, err = conn.ExecContext(ctx,
 		fmt.Sprintf("ALTER USER %s IDENTIFIED BY '%s'", claim.Subject, req.NewPassword))
-	if err := result.Err(); err != nil {
-		rsp.Reason = result.Message()
+	if err != nil {
+		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
