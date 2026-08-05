@@ -783,8 +783,8 @@ func TestDatabaseBinaryTql(t *testing.T) {
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Contains(t, result, "1 row inserted.")
-				conn, _ := spi.Default().Connect(t.Context(), api.WithAuthKey("sys", spi.DefaultKey()))
-				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn, _ := spi.Connect(t.Context(), "sys")
+				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
 		},
@@ -856,9 +856,9 @@ func TestDatabaseBinaryTql(t *testing.T) {
 				spi.FlushAppendWorkers("tqlbin")
 
 				// flush table
-				conn, _ := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				conn, _ := spi.Connect(t.Context(), "sys")
 				time.Sleep(3 * time.Second)
-				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
 		},
@@ -889,9 +889,9 @@ func TestDatabaseBinaryTql(t *testing.T) {
 				spi.FlushAppendWorkers("tqlbin")
 
 				// flush table
-				conn, _ := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				conn, _ := spi.Connect(t.Context(), "sys")
 				time.Sleep(100 * time.Millisecond)
-				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
 		},

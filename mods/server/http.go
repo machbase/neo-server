@@ -370,11 +370,6 @@ func (svr *httpd) Router() *gin.Engine {
 	return r
 }
 
-// for the internal processor
-func (svr *httpd) getTrustConnection(ctx *gin.Context) (api.Conn, error) {
-	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
-}
-
 func (svr *httpd) getUserSqlConn(ctx *gin.Context) (*sql.Conn, error) {
 	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {

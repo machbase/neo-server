@@ -692,6 +692,7 @@ func TestHandleChangePassword(t *testing.T) {
 		return &httpd{
 			log:        logging.GetLog("httpd-fake"),
 			authServer: &Server{},
+			jwtCache:   NewJwtCache(),
 		}
 	}
 
@@ -731,22 +732,25 @@ func TestHandleChangePassword(t *testing.T) {
 		testPassword := "initial_password"
 		newPassword := "updated_password"
 
-		db := spi.Default()
-		sysConn, err := db.Connect(context.Background(), &api.ConnectOptionPassword{User: "sys", Password: "manager"})
+		sysConn, err := spi.Connect(t.Context(), "sys")
 		require.NoError(t, err)
 		defer sysConn.Close()
 
-		result := sysConn.Exec(context.Background(),
+		_, err = sysConn.ExecContext(t.Context(),
 			fmt.Sprintf("CREATE USER %s IDENTIFIED BY '%s'", testUsername, testPassword))
-		require.NoError(t, result.Err())
+		require.NoError(t, err)
 
 		t.Cleanup(func() {
-			sysConn, err := db.Connect(context.Background(), &api.ConnectOptionPassword{User: "sys", Password: "manager"})
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			sysConn, err := spi.Connect(ctx, "sys")
+			require.NoError(t, err)
+			defer sysConn.Close()
 			if err == nil {
 				defer sysConn.Close()
-				dropResult := sysConn.Exec(context.Background(), fmt.Sprintf("DROP USER %s", testUsername))
-				if dropResult.Err() != nil {
-					t.Logf("warning: failed to drop test user: %v", dropResult.Err())
+				_, err := sysConn.ExecContext(ctx, fmt.Sprintf("DROP USER %s", testUsername))
+				if err != nil {
+					t.Logf("warning: failed to drop test user: %v", err.Error())
 				}
 			}
 		})
@@ -761,10 +765,11 @@ func TestHandleChangePassword(t *testing.T) {
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
 
-		userConn, err := db.Connect(context.Background(),
-			&api.ConnectOptionPassword{User: testUsername, Password: newPassword})
-		require.NoError(t, err)
-		defer userConn.Close()
+		ctx, writer = newTestHTTPContext(http.MethodPost, "/web/api/login", []byte(`{"loginName":"`+testUsername+`","password":"`+newPassword+`"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		svr.handleLogin(ctx)
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`, writer.Body.String())
 	})
 }
 

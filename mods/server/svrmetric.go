@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods"
@@ -47,7 +46,7 @@ func stopServerMetrics() {
 func collectSysStatz(g *metric.Gather) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
 		return err
@@ -114,9 +113,9 @@ func addDefaultPoolStatz(g *metric.Gather, stat sql.DBStats) {
 	g.Add("sys:pool:max_lifetime_closed", float64(stat.MaxLifetimeClosed), metric.OdometerType(metric.UnitShort))
 }
 
-func addExecuteStatz(ctx context.Context, conn api.Conn, g *metric.Gather) error {
+func addExecuteStatz(ctx context.Context, conn *sql.Conn, g *metric.Gather) error {
 	var count, min, max, avg int64
-	row := conn.QueryRow(ctx, "select count, min_msec, max_msec, avg_msec from v$systime where name=?", "EXECUTE")
+	row := conn.QueryRowContext(ctx, "select count, min_msec, max_msec, avg_msec from v$systime where name=?", "EXECUTE")
 	if err := row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
 		return err
@@ -132,7 +131,7 @@ func addExecuteStatz(ctx context.Context, conn api.Conn, g *metric.Gather) error
 	return nil
 }
 
-func addRollupGapMetric(ctx context.Context, conn api.Conn, g *metric.Gather) error {
+func addRollupGapMetric(ctx context.Context, conn *sql.Conn, g *metric.Gather) error {
 	const sqlRollupGap = `SELECT
     R.ROLLUP_TABLE NAME,
     SUM(S.TABLE_END_RID - R.END_RID) GAP,
@@ -153,7 +152,7 @@ ORDER BY NAME`
 	var msec float64
 	var name string
 	var rollups int
-	rows, err := conn.Query(ctx, sqlRollupGap)
+	rows, err := conn.QueryContext(ctx, sqlRollupGap)
 	if err != nil {
 		return err
 	}
@@ -181,9 +180,9 @@ ORDER BY NAME`
 	return nil
 }
 
-func queryRowInt64(ctx context.Context, conn api.Conn, sqlText string, params ...any) (int64, error) {
+func queryRowInt64(ctx context.Context, conn *sql.Conn, sqlText string, params ...any) (int64, error) {
 	var result int64
-	row := conn.QueryRow(ctx, sqlText, params...)
+	row := conn.QueryRowContext(ctx, sqlText, params...)
 	if err := row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
 		return 0, err
