@@ -2413,7 +2413,7 @@ type UserAuthKeyInfo struct {
 
 // getUserAuthKeys returns all auth keys of the user, it returns empty slice if no auth key exists
 // if the parameter "user" is empty, it returns all auth keys of all users
-func getUserAuthKeys(ctx context.Context, conn api.Conn, user string) ([]*UserAuthKeyInfo, error) {
+func getUserAuthKeys(ctx context.Context, conn *sql.Conn, user string) ([]*UserAuthKeyInfo, error) {
 	query := `SELECT
 		KEY_ID,
 		USER_NAME,
@@ -2426,12 +2426,12 @@ func getUserAuthKeys(ctx context.Context, conn api.Conn, user string) ([]*UserAu
 		PUBKEY
 	FROM
 		V$USER_AUTH_KEYS`
-	var rows api.Rows
+	var rows *sql.Rows
 	var err error
 	if user == "" {
-		rows, err = conn.Query(ctx, query)
+		rows, err = conn.QueryContext(ctx, query)
 	} else {
-		rows, err = conn.Query(ctx, query+` WHERE USER_NAME=?`, strings.ToUpper(user))
+		rows, err = conn.QueryContext(ctx, query+` WHERE USER_NAME=?`, strings.ToUpper(user))
 	}
 	if err != nil {
 		return nil, err
@@ -2441,12 +2441,43 @@ func getUserAuthKeys(ctx context.Context, conn api.Conn, user string) ([]*UserAu
 	var list []*UserAuthKeyInfo
 	for rows.Next() {
 		var nfo UserAuthKeyInfo
-		if err := rows.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &nfo.Comment, &nfo.PubKey); err != nil {
+		var comment sql.NullString
+		if err := rows.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &comment, &nfo.PubKey); err != nil {
 			return nil, err
+		}
+		if comment.Valid {
+			nfo.Comment = comment.String
 		}
 		list = append(list, &nfo)
 	}
 	return list, nil
+}
+
+func selectUserAuthKey(ctx context.Context, conn *sql.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
+	row := conn.QueryRowContext(ctx, `SELECT
+		KEY_ID,
+		USER_NAME,
+		KEY_ALGO,
+		KEY_PARAM,
+		ACTIVATED,
+		VALID_AFTER,
+		VALID_BEFORE,
+		COMMENT,
+		PUBKEY
+	FROM
+		V$USER_AUTH_KEYS
+	WHERE
+		USER_NAME=?
+	AND PUBKEY=?`,
+		strings.ToUpper(user), strings.TrimSpace(pubPem))
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+	var nfo UserAuthKeyInfo
+	if err := row.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &nfo.Comment, &nfo.PubKey); err != nil {
+		return nil, err
+	}
+	return &nfo, nil
 }
 
 func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
@@ -2476,11 +2507,11 @@ func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem stri
 	return &nfo, nil
 }
 
-func dropUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId int) error {
-	result := conn.Exec(ctx,
+func dropUserAuthKey(ctx context.Context, conn *sql.Conn, user string, keyId int) error {
+	_, err := conn.ExecContext(ctx,
 		fmt.Sprintf("ALTER USER %s DROP AUTH KEY ID %d", user, keyId),
 	)
-	return result.Err()
+	return err
 }
 
 func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string, comment string) error {
@@ -2711,7 +2742,7 @@ func ConvertSshPublicKeyToPem(publicKey ssh.PublicKey) (string, error) {
 
 func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error) {
 	// find the matched key from database, v$user_auth_keys.
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		s.log.Warnf("db server key auth fail, %s", err.Error())
 		return false, err
@@ -2724,7 +2755,7 @@ func (s *Server) ValidateUserPublicKey(ctx context.Context, user string, publicK
 		return false, err
 	}
 
-	nfo, err := getUserAuthKey(ctx, conn, user, pubPemStr)
+	nfo, err := selectUserAuthKey(ctx, conn, user, pubPemStr)
 	if nfo != nil && err == nil {
 		s.log.Debugf("db %q public key authorized: %s", user, nfo.Comment)
 		return true, nil

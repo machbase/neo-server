@@ -15,7 +15,6 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -290,11 +289,14 @@ func TestMqttQuery(t *testing.T) {
 }
 
 func TestMqttQueryFailures(t *testing.T) {
-	conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
-	require.NoError(t, err)
-	defer conn.Close()
-	conn.Exec(t.Context(), `drop table mqtt_query_exec`)
-	defer conn.Exec(t.Context(), `drop table mqtt_query_exec`)
+	defer func() {
+		conn, err := spi.Connect(t.Context(), "sys")
+		if err != nil {
+			t.Fatalf("Test cleanup failed, connect error: %s", err.Error())
+		}
+		defer conn.Close()
+		conn.ExecContext(t.Context(), `drop table mqtt_query_exec`)
+	}()
 
 	tests := []MqttTestCase{
 		{
@@ -577,11 +579,19 @@ func TestMqttWrite(t *testing.T) {
 				tt.TC.Ver = ver
 				runMqttTest(t, &tt.TC)
 
-				conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				conn, err := spi.Connect(t.Context(), "sys")
 				require.NoError(t, err)
-				conn.QueryRow(t.Context(), "EXEC table_flush(test_mqtt)")
+				_, err = conn.ExecContext(t.Context(), "EXEC table_flush(test_mqtt)")
+				if err != nil {
+					t.Fatalf("Test %q failed, table_flush error: %s", tt.TC.Name, err.Error())
+				}
 				var count int
-				conn.QueryRow(t.Context(), tt.ExpectSql).Scan(&count)
+				result := conn.QueryRowContext(t.Context(), tt.ExpectSql)
+				if result.Err() != nil {
+					t.Fatalf("Test %q failed, query error: %s", tt.TC.Name, result.Err().Error())
+				}
+				err = result.Scan(&count)
+				require.NoError(t, err)
 				require.Equal(t, tt.ExpectCount*(n+1), count)
 				conn.Close()
 			})
@@ -796,17 +806,27 @@ func TestAppend(t *testing.T) {
 			// - mqtt works asynchronously
 			time.Sleep(1000 * time.Millisecond)
 
-			conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+			conn, err := spi.Connect(t.Context(), "sys")
 			if err != nil {
 				t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 			}
 			defer conn.Close()
 			retry := 0
 		doRetry:
-			conn.QueryRow(t.Context(), "EXEC table_flush(example)")
+			_, err = conn.ExecContext(t.Context(), "EXEC table_flush(example)")
+			if err != nil {
+				t.Fatalf("Test %q failed, table_flush error: %s", tt.Name, err.Error())
+			}
 			var count int
 			var tag = "my-append"
-			conn.QueryRow(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
+			result := conn.QueryRowContext(t.Context(), "select count(*) from example where name = ?", tag)
+			if result.Err() != nil {
+				t.Fatalf("Test %q failed, query error: %s", tt.Name, result.Err().Error())
+			}
+			err = result.Scan(&count)
+			if err != nil {
+				t.Fatalf("Test %q failed, scan error: %s", tt.Name, err.Error())
+			}
 			if count != 2 {
 				if retry < 10 {
 					retry++
@@ -816,8 +836,8 @@ func TestAppend(t *testing.T) {
 				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 				t.Fail()
 			}
-			conn.QueryRow(t.Context(), "delete from example where name = ?", tag)
-			conn.QueryRow(t.Context(), "EXEC table_flush(example)")
+			conn.ExecContext(t.Context(), "delete from example where name = ?", tag)
+			conn.ExecContext(t.Context(), "EXEC table_flush(example)")
 		})
 	}
 }
@@ -856,17 +876,20 @@ func TestTql(t *testing.T) {
 				// - mqtt works asynchronously
 				time.Sleep(1000 * time.Millisecond)
 
-				conn, err := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				conn, err := spi.Connect(t.Context(), "sys")
 				if err != nil {
 					t.Fatalf("Test %q failed, connect error: %s", tt.Name, err.Error())
 				}
 				defer conn.Close()
 				retry := 0
 			doRetry:
-				conn.QueryRow(t.Context(), "EXEC table_flush(example)")
+				_, err = conn.ExecContext(t.Context(), "EXEC table_flush(example)")
+				if err != nil {
+					t.Fatalf("Test %q failed, table_flush error: %s", tt.Name, err.Error())
+				}
 				var count int
 				var tag = "my-mqtt-tql"
-				conn.QueryRow(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
+				conn.QueryRowContext(t.Context(), "select count(*) from example where name = ?", tag).Scan(&count)
 				if count != 2 {
 					if retry < 10 {
 						retry++
@@ -876,8 +899,14 @@ func TestTql(t *testing.T) {
 					t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
 					t.Fail()
 				}
-				conn.QueryRow(t.Context(), "delete from example where name = ?", tag)
-				conn.QueryRow(t.Context(), "EXEC table_flush(example)")
+				_, err = conn.ExecContext(t.Context(), "delete from example where name = ?", tag)
+				if err != nil {
+					t.Fatalf("Test %q failed, delete error: %s", tt.Name, err.Error())
+				}
+				_, err = conn.ExecContext(t.Context(), "EXEC table_flush(example)")
+				if err != nil {
+					t.Fatalf("Test %q failed, table_flush error: %s", tt.Name, err.Error())
+				}
 			})
 		}
 	}
