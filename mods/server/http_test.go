@@ -29,7 +29,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-client/api"
 	shelllib "github.com/machbase/neo-server/v8/jsh/lib/shell"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
@@ -1463,8 +1462,10 @@ func TestHttpWrite(t *testing.T) {
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
 			spi.FlushAppendWorkers()
-			conn, _ := spi.Default().Connect(t.Context(), api.WithAuthKey("sys", spi.DefaultKey()))
-			conn.Exec(t.Context(), `EXEC table_flush(test_w)`)
+			conn, err := spi.Connect(t.Context(), "sys")
+			require.NoError(t, err)
+			_, err = conn.ExecContext(t.Context(), `EXEC table_flush(test_w)`)
+			require.NoError(t, err)
 			conn.Close()
 
 			if tc.selectSql != "" {

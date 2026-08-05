@@ -136,7 +136,7 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 		return aw, nil
 	}
 
-	trustConn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
+	trustConn, err := Default().Connect(ctx, api.WithAuthKey("sys", DefaultKey()))
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 		return nil, err
 	}
 
-	appendConn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
+	appendConn, err := Default().Connect(ctx, api.WithAuthKey("sys", DefaultKey()))
 	if err != nil {
 		return nil, err
 	}
