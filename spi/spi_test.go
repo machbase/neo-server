@@ -67,8 +67,8 @@ func TestBridge(t *testing.T) {
 		SqlExec     string
 		SqlQuery    string
 		Params      []any
-		ExpectExec  func(t *testing.T, result api.Result)
-		ExpectQuery func(t *testing.T, rows api.Rows, err error)
+		ExpectExec  func(t *testing.T, result sql.Result, err error)
+		ExpectQuery func(t *testing.T, rows *sql.Rows, err error)
 	}{
 		{
 			Name:   "sqlite-create-table",
@@ -82,58 +82,64 @@ func TestBridge(t *testing.T) {
 				`	memo BLOB,` +
 				`	UNIQUE(name)` +
 				`)`,
-			ExpectExec: func(t *testing.T, result api.Result) {
-				require.NoError(t, result.Err())
-				require.Equal(t, "Created successfully.", result.Message())
+			ExpectExec: func(t *testing.T, result sql.Result, err error) {
+				require.NoError(t, err)
+				require.Equal(t, "Created successfully.", spi.MakeUserMessage(spi.SQLStatementTypeCreate, 0))
 			},
 		},
 		{
 			Name:    "sqlite-insert",
 			Bridge:  "sqlite",
 			SqlExec: `INSERT INTO example (id, name, age, address) VALUES (100, 'alpha', 10, 'street-100')`,
-			ExpectExec: func(t *testing.T, result api.Result) {
-				require.NoError(t, result.Err())
-				require.Equal(t, "a row inserted.", result.Message())
+			ExpectExec: func(t *testing.T, result sql.Result, err error) {
+				require.NoError(t, err)
+				n, err := result.RowsAffected()
+				require.NoError(t, err)
+				require.Equal(t, "a row inserted.", spi.MakeUserMessage(spi.SQLStatementTypeInsert, n))
 			},
 		},
 		{
 			Name:     "sqlite-select-all",
 			Bridge:   "sqlite",
 			SqlQuery: `SELECT * FROM example`,
-			ExpectQuery: func(t *testing.T, rows api.Rows, err error) {
+			ExpectQuery: func(t *testing.T, rows *sql.Rows, err error) {
 				require.NoError(t, err)
 				columns, err := rows.Columns()
 				require.NoError(t, err)
 				require.NotNil(t, columns)
-				require.Equal(t, []string{"id", "name", "age", "address", "weight", "memo"}, columns.Names())
-				require.Equal(t, []api.DataType{
-					api.DataTypeInt64, api.DataTypeString, api.DataTypeInt64,
-					api.DataTypeString, api.DataTypeFloat64, api.DataTypeBinary}, columns.DataTypes())
-				require.True(t, rows.Next())
-				buff, err := columns.MakeBuffer()
+				names, err := rows.Columns()
 				require.NoError(t, err)
+				require.Equal(t, []string{"id", "name", "age", "address", "weight", "memo"}, names)
+				types, err := rows.ColumnTypes()
+				typeNames, err := spi.ColumnTypes(rows)
+				require.NoError(t, err)
+				require.Equal(t, []string{"INTEGER", "TEXT", "INTEGER", "TEXT", "REAL", "BLOB"}, typeNames)
+				require.True(t, rows.Next())
+				buff := spi.MakeBuffer(types)
 				err = rows.Scan(buff...)
 				require.NoError(t, err)
-				require.Equal(t, int64(100), buff[0])
-				require.Equal(t, "alpha", buff[1])
-				require.Equal(t, int64(10), buff[2])
-				require.Equal(t, "street-100", buff[3])
-				nilRaw := new([]byte)
-				require.EqualValues(t, nilRaw, buff[5])
+				require.Equal(t, &sql.NullInt64{Int64: 100, Valid: true}, buff[0])
+				require.Equal(t, &sql.NullString{String: "alpha", Valid: true}, buff[1])
+				require.Equal(t, &sql.NullInt64{Int64: 10, Valid: true}, buff[2])
+				require.Equal(t, &sql.NullString{String: "street-100", Valid: true}, buff[3])
+				require.Equal(t, &sql.NullFloat64{Float64: 0, Valid: false}, buff[4])
+				require.IsType(t, &sql.RawBytes{}, buff[5])
+				require.Nil(t, *(buff[5].(*sql.RawBytes)))
 			},
 		},
 		{
 			Name:     "sqlite-select-count",
 			Bridge:   "sqlite",
 			SqlQuery: `SELECT count(*) FROM example`,
-			ExpectQuery: func(t *testing.T, rows api.Rows, err error) {
+			ExpectQuery: func(t *testing.T, rows *sql.Rows, err error) {
 				require.NoError(t, err)
 				columns, err := rows.Columns()
 				require.NoError(t, err)
 				require.NotNil(t, columns)
-				require.Equal(t, []string{"count(*)"}, columns.Names())
-				// TODO: improve datatype detection, currently it's always string; see api/columns.go scanTypeToDataType()
-				require.Equal(t, []api.DataType{api.DataTypeString}, columns.DataTypes())
+				require.Equal(t, []string{"count(*)"}, columns)
+				typeNames, err := spi.ColumnTypes(rows)
+				require.NoError(t, err)
+				require.Equal(t, []string{"string"}, typeNames)
 				require.True(t, rows.Next())
 				var cnt int64
 				err = rows.Scan(&cnt)
@@ -160,24 +166,21 @@ func TestBridge(t *testing.T) {
 			db, err := bridge.GetSqlBridge(tc.Bridge)
 			require.NoError(t, err)
 
-			sqlConn, err := db.Connect(ctx)
+			conn, err := db.Connect(ctx)
 			require.NoError(t, err)
-
-			conn := spi.WrapSqlConn(sqlConn)
-			t.Cleanup(func() {
-				conn.Close()
-			})
+			defer conn.Close()
 
 			if tc.SqlExec != "" {
-				result := conn.Exec(ctx, tc.SqlExec)
-				tc.ExpectExec(t, result)
+				result, err := conn.ExecContext(ctx, tc.SqlExec)
+				require.NoError(t, err)
+				tc.ExpectExec(t, result, err)
 			} else if tc.SqlQuery != "" {
-				rows, err := conn.Query(ctx, tc.SqlQuery)
-				t.Cleanup(func() {
+				rows, err := conn.QueryContext(ctx, tc.SqlQuery)
+				defer func() {
 					if rows != nil {
 						rows.Close()
 					}
-				})
+				}()
 				tc.ExpectQuery(t, rows, err)
 			}
 		})

@@ -438,6 +438,8 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			buffer[i] = new(sql.NullBool)
 		case "sql.NullTime":
 			buffer[i] = new(sql.NullTime)
+		case "sql.RawBytes":
+			buffer[i] = new(sql.RawBytes)
 		default:
 			switch colType.DatabaseTypeName() {
 			case "INT", "BIGINT", "SMALLINT", "TINYINT":
@@ -451,6 +453,7 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			case "DATE", "DATETIME", "TIMESTAMP":
 				buffer[i] = new(sql.NullTime)
 			default:
+				fmt.Println("=================>", colType.DatabaseTypeName(), colType.ScanType().String())
 				buffer[i] = new(interface{})
 			}
 		}
@@ -553,4 +556,26 @@ func DefaultHttpEndpoint() string {
 
 type Explainer interface {
 	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
+
+func ColumnTypes(rows *sql.Rows) ([]string, error) {
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, err
+	}
+	types := make([]string, len(columnTypes))
+	for i, col := range columnTypes {
+		if str := col.DatabaseTypeName(); str != "" {
+			types[i] = str
+		} else {
+			types[i] = col.ScanType().String()
+			if types[i] == "*interface {}" {
+				// TODO: improve datatype detection,
+				// database type name is "", and scan type is "*interface {}",
+				// so we can not determine the data type.
+				types[i] = "string"
+			}
+		}
+	}
+	return types, nil
 }

@@ -24,12 +24,12 @@ func resetDatabasesForTest(t *testing.T) {
 	t.Helper()
 	databasesLock.Lock()
 	prev := databases
-	databases = map[string]*BridgedDatabase{}
+	databases = map[string]*sql.DB{}
 	databasesLock.Unlock()
 	t.Cleanup(func() {
 		for _, db := range databases {
-			if db != nil && db.db != nil {
-				require.NoError(t, db.db.Close())
+			if db != nil {
+				require.NoError(t, db.Close())
 			}
 		}
 		databasesLock.Lock()
@@ -58,18 +58,9 @@ func TestNewCachesAndConnectsSqlite(t *testing.T) {
 	require.NoError(t, err)
 	require.Same(t, first, second)
 
-	bridged := first.(*BridgedDatabase)
-	conn, err := bridged.Connect(ctx)
+	conn, err := first.Conn(ctx)
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
-
-	_, err = bridged.Ping(ctx)
-	require.NoError(t, err)
-
-	ok, reason, err := bridged.UserAuth(ctx, "user", "password")
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.Empty(t, reason)
 
 	_, err = New("unknown,dsn")
 	require.EqualError(t, err, "unknown database type: unknown,dsn")

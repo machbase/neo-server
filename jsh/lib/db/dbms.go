@@ -2,7 +2,7 @@ package db
 
 import (
 	"context"
-	"crypto"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -40,8 +40,7 @@ type ClientOptions struct {
 type Client struct {
 	ctx              context.Context     `json:"-"`
 	rt               *goja.Runtime       `json:"-"`
-	db               api.Database        `json:"-"`
-	dbKey            crypto.PrivateKey   `json:"-"`
+	db               *sql.DB             `json:"-"`
 	supportAppend    bool                `json:"-"`
 	BridgeName       string              `json:"bridge"`
 	Driver           string              `json:"driver"`
@@ -82,8 +81,11 @@ func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
 			panic(rt.NewGoError(err))
 		}
 	} else {
-		ret.db = spi.Default()
-		ret.dbKey = spi.DefaultKey()
+		if db, err := spi.DefaultPool(); err == nil {
+			ret.db = db
+		} else {
+			panic(rt.NewGoError(err))
+		}
 		if ret.db == nil {
 			panic(rt.ToValue("dbms: no database"))
 		}
@@ -120,17 +122,16 @@ func (c *Client) Connect(call goja.FunctionCall) *CONN {
 			panic(c.rt.NewGoError(err))
 		}
 	}
-	var conn api.Conn
+	var conn *sql.Conn
 	var err error
 	if c.BridgeName == "" && c.Driver == "" {
-		var username = "sys"
-		conn, err = c.db.Connect(c.ctx, api.WithAuthKey("sys", c.dbKey), api.WithProxyUser(username))
+		conn, err = c.db.Conn(c.ctx)
 	} else {
 		opts := append([]api.ConnectOption{}, c.ConnectOptions...)
 		if conf.User != "" {
 			opts = append(opts, api.WithPassword(conf.User, conf.Password))
 		}
-		conn, err = c.db.Connect(c.ctx, opts...)
+		conn, err = c.db.Conn(c.ctx)
 	}
 	if err != nil {
 		panic(c.rt.NewGoError(err))
@@ -160,19 +161,27 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 			panic(c.db.rt.ToValue(err.Error()))
 		}
 	}
-	rawAppender, err := c.conn.Appender(c.db.ctx, tableName)
+	appender := &APPENDER{
+		db: c.db,
+	}
+
+	conn, err := spi.Default().Connect(c.db.ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	if err != nil {
+		panic(c.db.rt.ToValue(err.Error()))
+	}
+	rawAppender, err := conn.Appender(c.db.ctx, tableName)
 	if err != nil {
 		c.Close(goja.FunctionCall{})
 		panic(c.db.rt.ToValue(err.Error()))
+	}
+	appender.appender = rawAppender
+	appender.closer = func() error {
+		return conn.Close()
 	}
 	if len(columns) > 0 {
 		rawAppender = rawAppender.WithInputColumns(columns...)
 	}
 
-	appender := &APPENDER{
-		db:       c.db,
-		appender: rawAppender,
-	}
 	ret := c.db.rt.NewObject()
 	ret.Set("close", appender.Close)
 	ret.Set("append", appender.Append)
@@ -185,6 +194,7 @@ type APPENDER struct {
 	appender      api.Appender
 	success       int64
 	fail          int64
+	closer        func() error
 	cancelCleaner func()
 }
 
@@ -197,6 +207,12 @@ func (apd *APPENDER) Close(call goja.FunctionCall) goja.Value {
 			apd.fail = f
 		}
 		apd.appender = nil
+	}
+	if apd.closer != nil {
+		if err := apd.closer(); err != nil {
+			panic(apd.db.rt.ToValue(err.Error()))
+		}
+		apd.closer = nil
 	}
 	return goja.Undefined()
 }
@@ -227,7 +243,7 @@ func (apd *APPENDER) Result(call goja.FunctionCall) goja.Value {
 
 type CONN struct {
 	db   *Client
-	conn api.Conn
+	conn *sql.Conn
 
 	cancelCleaner func()
 }
@@ -261,26 +277,47 @@ func (c *CONN) Exec(call goja.FunctionCall) goja.Value {
 		}
 	}
 
-	result := c.conn.Exec(c.db.ctx, sqlText, params...)
-	if err := result.Err(); err != nil {
+	result, err := c.conn.ExecContext(c.db.ctx, sqlText, params...)
+	_ = result
+	if err != nil {
 		panic(c.db.rt.NewGoError(err))
 	}
+	sqlType := spi.DetectSQLStatementType(sqlText)
+	affected, err := result.RowsAffected()
+	if err != nil {
+		panic(c.db.rt.NewGoError(err))
+	}
+	message := spi.MakeUserMessage(sqlType, affected)
 	return c.db.rt.ToValue(map[string]any{
-		"message":      result.Message(),
-		"rowsAffected": result.RowsAffected(),
+		"message":      message,
+		"rowsAffected": affected,
 	})
 }
 
 func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
-	row := c.QueryRow(call)
+	var sqlText string
+	var params []any
+
+	if len(call.Arguments) == 0 {
+		panic(c.db.rt.ToValue("missing arguments"))
+	}
+	sqlText = call.Arguments[0].String()
+	params = make([]any, len(call.Arguments)-1)
+	for i := 1; i < len(call.Arguments); i++ {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &params[i-1]); err != nil {
+			panic(c.db.rt.NewGoError(err))
+		}
+	}
+
 	ret := c.db.rt.NewObject()
-	if err := row.Err(); err != nil {
+	rows, err := c.conn.QueryContext(c.db.ctx, sqlText, params...)
+	if err != nil {
 		ret.Set("error", c.db.rt.ToValue(err.Error()))
 		ret.Set("values", goja.Undefined())
 		return ret
 	}
-
-	columns, err := row.Columns()
+	defer rows.Close()
+	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
 		ret.Set("error", c.db.rt.ToValue(err.Error()))
 		ret.Set("columns", func() goja.Value { return goja.Null() })
@@ -289,15 +326,17 @@ func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
 		ret.Set("values", goja.Null())
 		return ret
 	}
-	names := columns.Names()
-	if c.db.LowerCaseColumns {
-		for i, col := range names {
-			names[i] = strings.ToLower(col)
+
+	names := make([]string, len(columnTypes))
+	types := make([]string, len(columnTypes))
+	for i, col := range columnTypes {
+		names[i] = col.Name()
+		types[i] = col.DatabaseTypeName()
+		if c.db.LowerCaseColumns {
+			names[i] = strings.ToLower(col.Name())
+		} else {
+
 		}
-	}
-	types := make([]string, len(columns))
-	for i, col := range columns {
-		types[i] = string(col.DataType)
 	}
 
 	ret.Set("columns", func() goja.Value {
@@ -309,13 +348,13 @@ func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
 	ret.Set("columnNames", func() goja.Value { return c.db.rt.ToValue(names) })
 	ret.Set("columnTypes", func() goja.Value { return c.db.rt.ToValue(types) })
 
-	buff, err := columns.MakeBuffer()
-	if err != nil {
-		ret.Set("error", c.db.rt.ToValue(err.Error()))
+	buff := spi.MakeBuffer(columnTypes)
+	if !rows.Next() {
+		ret.Set("error", c.db.rt.ToValue("no rows found"))
 		ret.Set("values", goja.Null())
 		return ret
 	}
-	if err := row.Scan(buff...); err != nil {
+	if err := rows.Scan(buff...); err != nil {
 		ret.Set("error", c.db.rt.ToValue(err.Error()))
 		ret.Set("values", goja.Null())
 		return ret
@@ -333,7 +372,7 @@ func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
 	return ret
 }
 
-func (c *CONN) QueryRow(call goja.FunctionCall) api.Row {
+func (c *CONN) QueryRow(call goja.FunctionCall) *sql.Row {
 	var sqlText string
 	var params []any
 
@@ -348,7 +387,7 @@ func (c *CONN) QueryRow(call goja.FunctionCall) api.Row {
 		}
 	}
 
-	return c.conn.QueryRow(c.db.ctx, sqlText, params...)
+	return c.conn.QueryRowContext(c.db.ctx, sqlText, params...)
 }
 
 func (c *CONN) jsQuery(call goja.FunctionCall) goja.Value {
@@ -379,7 +418,7 @@ func (c *CONN) Query(call goja.FunctionCall) *ROWS {
 	}
 
 	var rows *ROWS
-	if dbRows, dbErr := c.conn.Query(c.db.ctx, sqlText, params...); dbErr != nil {
+	if dbRows, dbErr := c.conn.QueryContext(c.db.ctx, sqlText, params...); dbErr != nil {
 		panic(c.db.rt.NewGoError(dbErr))
 	} else {
 		rows = &ROWS{
@@ -394,11 +433,9 @@ func (c *CONN) Query(call goja.FunctionCall) *ROWS {
 
 type ROWS struct {
 	db     *Client
-	conn   api.Conn
-	rows   api.Rows
-	cols   api.Columns
-	names  []string
-	types  []string
+	conn   *sql.Conn
+	rows   *sql.Rows
+	cols   []*sql.ColumnType
 	rownum int
 
 	cancelCleaner func()
@@ -450,23 +487,8 @@ func (r *ROWS) jsIterator(call goja.FunctionCall) goja.Value {
 
 func (r *ROWS) ensureColumns() {
 	if r.cols == nil {
-		if cols, err := r.rows.Columns(); err != nil {
-			panic(r.db.rt.NewGoError(err))
-		} else {
-			r.cols = cols
-		}
-	}
-	if r.names == nil {
-		r.names = r.cols.Names()
-		if r.db.LowerCaseColumns {
-			for i, col := range r.names {
-				r.names[i] = strings.ToLower(col)
-			}
-		}
-		r.types = make([]string, len(r.cols))
-		for i, col := range r.cols {
-			r.types[i] = string(col.DataType)
-		}
+		types, _ := r.rows.ColumnTypes()
+		r.cols = types
 	}
 }
 
@@ -475,9 +497,16 @@ func (r *ROWS) jsColumns(call goja.FunctionCall) goja.Value {
 		panic(r.db.rt.ToValue("invalid rows"))
 	}
 	r.ensureColumns()
+	names := make([]string, len(r.cols))
+	types := make([]string, len(r.cols))
+	for i, col := range r.cols {
+		names[i] = col.Name()
+		types[i] = col.DatabaseTypeName()
+	}
+
 	return r.db.rt.ToValue(map[string]any{
-		"columns": r.names,
-		"types":   r.types,
+		"columns": names,
+		"types":   types,
 	})
 }
 
@@ -487,7 +516,11 @@ func (r *ROWS) jsColumnNames(call goja.FunctionCall) goja.Value {
 
 func (r *ROWS) ColumnNames(call goja.FunctionCall) []string {
 	r.ensureColumns()
-	return r.names
+	names := make([]string, len(r.cols))
+	for i, col := range r.cols {
+		names[i] = col.Name()
+	}
+	return names
 }
 
 func (r *ROWS) jsColumnTypes(call goja.FunctionCall) goja.Value {
@@ -496,7 +529,11 @@ func (r *ROWS) jsColumnTypes(call goja.FunctionCall) goja.Value {
 
 func (r *ROWS) ColumnTypes(call goja.FunctionCall) []string {
 	r.ensureColumns()
-	return r.types
+	types := make([]string, len(r.cols))
+	for i, col := range r.cols {
+		types[i] = col.DatabaseTypeName()
+	}
+	return types
 }
 
 func (r *ROWS) jsNext(call goja.FunctionCall) goja.Value {
@@ -508,11 +545,11 @@ func (r *ROWS) jsNext(call goja.FunctionCall) goja.Value {
 
 	var vm = r.db.rt
 	var rec = vm.NewObject()
-	for i, col := range r.names {
+	for i, col := range r.cols {
 		if i < len(values) {
-			rec.Set(col, vm.ToValue(api.Unbox(values[i])))
+			rec.Set(col.Name(), vm.ToValue(api.Unbox(values[i])))
 		} else {
-			rec.Set(col, goja.Null())
+			rec.Set(col.Name(), goja.Null())
 		}
 	}
 
@@ -531,10 +568,7 @@ func (r *ROWS) Next(call goja.FunctionCall) []any {
 	if !r.rows.Next() {
 		return nil
 	}
-	values, err := r.cols.MakeBuffer()
-	if err != nil {
-		panic(r.db.rt.NewGoError(err))
-	}
+	values := spi.MakeBuffer(r.cols)
 	r.rows.Scan(values...)
 	r.rownum++
 	for i, v := range values {

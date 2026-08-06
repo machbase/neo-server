@@ -116,7 +116,7 @@ func TestDBMS(t *testing.T) {
 			`,
 			Output: []string{
 				`cols.names: ["NAME","TIME","VALUE","SHORT_VALUE","USHORT_VALUE","INT_VALUE","UINT_VALUE","LONG_VALUE","ULONG_VALUE","STR_VALUE","JSON_VALUE","IPV4_VALUE","IPV6_VALUE","BIN_VALUE"]`,
-				`cols.types: ["string","datetime","double","int16","uint16","int32","uint32","int64","uint64","string","json","ipv4","ipv6","binary"]`,
+				`cols.types: ["VARCHAR","DATETIME","DOUBLE","SHORT","USHORT","INTEGER","UINTEGER","LONG","ULONG","VARCHAR","JSON","IPV4","IPV6","BINARY"]`,
 				"rows: 0",
 			},
 		},
@@ -162,7 +162,7 @@ func TestDBMS(t *testing.T) {
 				"rowsAffected: 1 message: a row inserted.",
 				fmt.Sprintf("test-js %s 1.234", time.Unix(1745324796, 0).Format("2006-01-02 15:04:05")),
 				`cols.names: ["name","time","value"]`,
-				`cols.types: ["string","datetime","double"]`,
+				`cols.types: ["VARCHAR","DATETIME","DOUBLE"]`,
 				"test-js, 1745324796, 1.234",
 				"for_in name : test-js",
 				fmt.Sprintf("for_in time : %s", time.Unix(1745324796, 0).Format("2006-01-02 15:04:05")),
@@ -188,7 +188,7 @@ func TestDBMS(t *testing.T) {
 						appender.append("test-append", new Date(ts), i);
 					}
 				} catch(e) {
-					console.println("Error:", e.message);
+					console.println("Error:", e);
 				} finally {
 				 	if (appender) appender.close();
 					if (conn) conn.close();
