@@ -576,22 +576,7 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 
 // Issue machbase/neo#1395
 func TestStatementCacheBehavior(t *testing.T) {
-	conf := &machgo.Config{
-		Host: "127.0.0.1",
-		Port: testServer.MachPort(),
-	}
-
-	mdb, err := machgo.NewDatabase(conf)
-	if err != nil {
-		panic(err)
-	}
-
-	// Connection A: statement reuse enabled
-	conn, err := mdb.Connect(
-		t.Context(),
-		api.WithPassword("sys", "manager"),
-		api.WithStatementCache(api.StatementCacheAuto),
-	)
+	conn, err := spi.Connect(t.Context(), "sys")
 	if err != nil {
 		panic(err)
 	}
@@ -601,35 +586,36 @@ func TestStatementCacheBehavior(t *testing.T) {
 	sqlInsert := "insert into stmtcache values (?, ?, ?)"
 
 	// create table
-	result := conn.Exec(t.Context(), sqlCreateTable)
-	if err := result.Err(); err != nil {
+	result, err := conn.ExecContext(t.Context(), sqlCreateTable)
+	_ = result
+	if err != nil {
 		panic(err)
 	}
 
 	// insert data, statement cached
-	result = conn.Exec(t.Context(), sqlInsert, "Alice", "2024-06-01 00:00:00", 123.45)
-	if err := result.Err(); err != nil {
+	result, err = conn.ExecContext(t.Context(), sqlInsert, "Alice", "2024-06-01 00:00:00", 123.45)
+	if err != nil {
 		panic(err)
 	}
 
 	// drop table
-	result = conn.Exec(t.Context(), "drop table stmtcache")
-	if err := result.Err(); err != nil {
+	result, err = conn.ExecContext(t.Context(), "drop table stmtcache")
+	if err != nil {
 		panic(err)
 	}
 
 	// re-create table
-	result = conn.Exec(t.Context(), sqlCreateTable)
-	if err := result.Err(); err != nil {
+	result, err = conn.ExecContext(t.Context(), sqlCreateTable)
+	if err != nil {
 		panic(err)
 	}
 	// insert data again
-	result = conn.Exec(t.Context(), sqlInsert, "Bob", "2024-06-02 00:00:00", 678.90)
-	if err := result.Err(); err != nil {
+	result, err = conn.ExecContext(t.Context(), sqlInsert, "Bob", "2024-06-02 00:00:00", 678.90)
+	if err != nil {
 		panic(err)
 	}
 
-	rows, err := conn.Query(t.Context(), "select * from stmtcache")
+	rows, err := conn.QueryContext(t.Context(), "select * from stmtcache")
 	if err != nil {
 		panic(err)
 	}
@@ -653,44 +639,26 @@ func TestStatementCacheBehavior(t *testing.T) {
 
 // Issue machbase/neo#1402
 func TestMultiUserSessionTableBehavior(t *testing.T) {
-	conf := &machgo.Config{
-		Host: "127.0.0.1",
-		Port: testServer.MachPort(),
-	}
-
-	mdb, err := machgo.NewDatabase(conf)
-	if err != nil {
-		panic(err)
-	}
-
-	sysConn, err := mdb.Connect(
-		t.Context(),
-		api.WithPassword("sys", "manager"),
-		api.WithStatementCache(api.StatementCacheOff),
-	)
+	sysConn, err := spi.Connect(t.Context(), "sys")
 	if err != nil {
 		panic(err)
 	}
 	defer sysConn.Close()
 
-	result := sysConn.Exec(t.Context(), "CREATE USER eve IDENTIFIED BY pass")
-	if err := result.Err(); err != nil {
+	result, err := sysConn.ExecContext(t.Context(), "CREATE USER eve IDENTIFIED BY pass")
+	_ = result
+	if err != nil {
 		panic(err)
 	}
 	defer func() {
 		// drop user
-		result = sysConn.Exec(t.Context(), "drop user eve")
-		if err := result.Err(); err != nil {
+		result, err = sysConn.ExecContext(t.Context(), "drop user eve")
+		if err != nil {
 			panic(err)
 		}
 	}()
 
-	userConn, err := mdb.Connect(
-		t.Context(),
-		api.WithPassword("eve", "pass"),
-		// api.WithPassword("sys", "manager"), api.WithProxyUser("eve"),
-		api.WithStatementCache(api.StatementCacheOff),
-	)
+	userConn, err := spi.Connect(t.Context(), "eve")
 	if err != nil {
 		panic(err)
 	}
@@ -699,22 +667,22 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 	sqlCreateTable := "create tag table data (name varchar(80) primary key, time datetime basetime, value double)"
 
 	// create table
-	result = userConn.Exec(t.Context(), sqlCreateTable)
-	if err := result.Err(); err != nil {
+	result, err = userConn.ExecContext(t.Context(), sqlCreateTable)
+	if err != nil {
 		panic(err)
 	}
 
 	// insert data, statement cached
-	result = userConn.Exec(t.Context(), "insert into data values (?, ?, ?)", "Alice", "2024-06-01 00:00:00", 123.45)
-	if err := result.Err(); err != nil {
+	result, err = userConn.ExecContext(t.Context(), "insert into data values (?, ?, ?)", "Alice", "2024-06-01 00:00:00", 123.45)
+	if err != nil {
 		panic(err)
 	}
-	result = sysConn.Exec(t.Context(), "exec table_flush(eve.data)")
-	if err := result.Err(); err != nil {
+	result, err = sysConn.ExecContext(t.Context(), "exec table_flush(eve.data)")
+	if err != nil {
 		panic(err)
 	}
 
-	row := userConn.QueryRow(t.Context(), "select count(*) from data")
+	row := userConn.QueryRowContext(t.Context(), "select count(*) from data")
 	if err := row.Err(); err != nil {
 		panic(err)
 	}
@@ -724,7 +692,7 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 	}
 	require.Equal(t, 1, count)
 
-	rows, err := userConn.Query(t.Context(), "select * from data where name = ?", "Alice")
+	rows, err := userConn.QueryContext(t.Context(), "select * from data where name = ?", "Alice")
 	if err != nil {
 		panic(err)
 	}
@@ -740,12 +708,13 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 	require.Equal(t, "2024-06-01 00:00:00", timeVal.In(time.Local).Format("2006-01-02 15:04:05"))
 	require.Equal(t, 123.45, value)
 
-	result = sysConn.Exec(t.Context(), "insert into eve.data values (?, ?, ?)", "Bob", "2024-06-02 00:00:00", 678.90)
-	if err := result.Err(); err != nil {
+	result, err = sysConn.ExecContext(t.Context(), "insert into eve.data values (?, ?, ?)", "Bob", "2024-06-02 00:00:00", 678.90)
+	_ = result
+	if err != nil {
 		panic(err)
 	}
 
-	rows, err = sysConn.Query(t.Context(), "select * from eve.data")
+	rows, err = sysConn.QueryContext(t.Context(), "select * from eve.data")
 	if err != nil {
 		panic(err)
 	}
@@ -774,8 +743,8 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 	require.NoError(t, rows.Err())
 
 	// drop table
-	result = sysConn.Exec(t.Context(), "drop table eve.data")
-	if err := result.Err(); err != nil {
+	result, err = sysConn.ExecContext(t.Context(), "drop table eve.data")
+	if err != nil {
 		panic(err)
 	}
 }
@@ -784,44 +753,26 @@ func TestMultiUserSessionTableBehavior(t *testing.T) {
 // Issue machbase/neo#1410
 // Issue machbase/neo#1418
 func TestMultiUserSessionIndexBehavior(t *testing.T) {
-	conf := &machgo.Config{
-		Host: "127.0.0.1",
-		Port: testServer.MachPort(),
-	}
-
-	mdb, err := machgo.NewDatabase(conf)
-	if err != nil {
-		panic(err)
-	}
-
-	sysConn, err := mdb.Connect(
-		t.Context(),
-		api.WithPassword("sys", "manager"),
-		api.WithStatementCache(api.StatementCacheOff),
-	)
+	sysConn, err := spi.Connect(t.Context(), "sys")
 	if err != nil {
 		panic(err)
 	}
 	defer sysConn.Close()
 
-	result := sysConn.Exec(t.Context(), "CREATE USER david IDENTIFIED BY pass")
-	if err := result.Err(); err != nil {
+	result, err := sysConn.ExecContext(t.Context(), "CREATE USER david IDENTIFIED BY pass")
+	_ = result
+	if err != nil {
 		panic(err)
 	}
 	defer func() {
 		// drop user
-		result = sysConn.Exec(t.Context(), "drop user david")
-		if err := result.Err(); err != nil {
+		result, err = sysConn.ExecContext(t.Context(), "drop user david")
+		if err != nil {
 			panic(err)
 		}
 	}()
 
-	userConn, err := mdb.Connect(
-		t.Context(),
-		api.WithPassword("david", "pass"),
-		// api.WithPassword("sys", "manager"), api.WithProxyUser("david"),
-		api.WithStatementCache(api.StatementCacheOff),
-	)
+	userConn, err := spi.Connect(t.Context(), "david")
 	if err != nil {
 		panic(err)
 	}
@@ -830,30 +781,30 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	sqlCreateTable := "create tag table data (name varchar(80) primary key, time datetime basetime, value double)"
 
 	// create table
-	result = userConn.Exec(t.Context(), sqlCreateTable)
-	if err := result.Err(); err != nil {
+	result, err = userConn.ExecContext(t.Context(), sqlCreateTable)
+	if err != nil {
 		panic(err)
 	}
 
 	defer func() {
 		// drop table
-		result = userConn.Exec(t.Context(), "drop table data cascade")
-		if err := result.Err(); err != nil {
+		result, err = userConn.ExecContext(t.Context(), "drop table data cascade")
+		if err != nil {
 			panic(err)
 		}
 	}()
 
 	// insert data, statement cached
-	result = userConn.Exec(t.Context(), "insert into data values (?, ?, ?)", "Alice", "2024-06-01 00:00:00", 123.45)
-	if err := result.Err(); err != nil {
+	result, err = userConn.ExecContext(t.Context(), "insert into data values (?, ?, ?)", "Alice", "2024-06-01 00:00:00", 123.45)
+	if err != nil {
 		panic(err)
 	}
-	result = sysConn.Exec(t.Context(), "exec table_flush(david.data)")
-	if err := result.Err(); err != nil {
+	result, err = sysConn.ExecContext(t.Context(), "exec table_flush(david.data)")
+	if err != nil {
 		panic(err)
 	}
 
-	row := userConn.QueryRow(t.Context(), "select count(*) from data")
+	row := userConn.QueryRowContext(t.Context(), "select count(*) from data")
 	if err := row.Err(); err != nil {
 		panic(err)
 	}
@@ -864,13 +815,13 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 	require.Equal(t, 1, count)
 
 	for _, indexName := range []string{"idx_data_value", "david.idx_data_value"} {
-		result = sysConn.Exec(t.Context(), fmt.Sprintf("create index %s on david.data(value)", indexName))
-		if err := result.Err(); err != nil {
+		result, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("create index %s on david.data(value)", indexName))
+		if err != nil {
 			panic(err)
 		}
 		time.Sleep(3 * time.Second)
 
-		rows, err := userConn.Query(t.Context(), "select name, type from m$sys_indexes")
+		rows, err := userConn.QueryContext(t.Context(), "select name, type from m$sys_indexes")
 		if err != nil {
 			panic(err)
 		}
@@ -914,8 +865,8 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 
 		// Issue machbase/neo#1418
 		//result = sysConn.Exec(t.Context(), "drop index david.idx_data_value")
-		result = userConn.Exec(t.Context(), "drop index idx_data_value")
-		if err := result.Err(); err != nil {
+		result, err = userConn.ExecContext(t.Context(), "drop index idx_data_value")
+		if err != nil {
 			panic(err)
 		}
 	}

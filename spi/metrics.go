@@ -245,7 +245,7 @@ func SetMetricsDestTable(destTable string) error {
 	destTable = strings.ToUpper(strings.TrimSpace(destTable))
 	if destTable != "" {
 		ctx := context.Background()
-		conn, err := Default().Connect(ctx, api.WithAuthKey("sys", DefaultKey()))
+		conn, err := Connect(ctx, "sys")
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return nil
@@ -255,9 +255,10 @@ func SetMetricsDestTable(destTable string) error {
 			"NAME VARCHAR(200) primary key, "+
 			"TIME DATETIME basetime, "+
 			"VALUE DOUBLE)", destTable)
-		r := conn.Exec(ctx, ddl)
-		if r.Err() != nil {
-			metricLog.Errorf("metrics creating table: %v", r.Err())
+		r, err := conn.ExecContext(ctx, ddl)
+		_ = r
+		if err != nil {
+			metricLog.Errorf("metrics creating table: %v", err)
 			return nil
 		}
 	}

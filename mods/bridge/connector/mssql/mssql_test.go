@@ -8,7 +8,6 @@ import (
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -47,14 +46,11 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	defer br.AfterUnregister()
 
 	ctx := t.Context()
-	sqlConn, err := br.Connect(ctx)
+	conn, err := br.Connect(ctx)
 	require.NoError(t, err)
-	defer sqlConn.Close()
-
-	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
-	result := conn.Exec(ctx, `CREATE TABLE ids (
+	result, err := conn.ExecContext(ctx, `CREATE TABLE ids (
 		id INT NOT NULL PRIMARY KEY,
 		event_smallint SMALLINT NULL,
 		event_tinyint TINYINT NULL,
@@ -73,15 +69,16 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 		event_text TEXT NULL,
 		event_datetime DATETIME NULL
 	)`)
-	require.NoError(t, result.Err())
+	_ = result
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO ids(id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime) VALUES(1, 7, 12, 34, 1234567890123, 123.45, 234.56, 345.67, 45.67, 9.5, 10.25, 1, 'ms-varchar', N'ms-nchar', N'ms-nvarchar', 'ms-text', '2026-03-14 05:29:01')`)
-	require.NoError(t, result.Err())
+	result, err = conn.ExecContext(ctx, `INSERT INTO ids(id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime) VALUES(1, 7, 12, 34, 1234567890123, 123.45, 234.56, 345.67, 45.67, 9.5, 10.25, 1, 'ms-varchar', N'ms-nchar', N'ms-nvarchar', 'ms-text', '2026-03-14 05:29:01')`)
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO ids(id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime) VALUES(2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)`)
-	require.NoError(t, result.Err())
+	result, err = conn.ExecContext(ctx, `INSERT INTO ids(id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime) VALUES(2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)`)
+	require.NoError(t, err)
 
-	rows, err := sqlConn.QueryContext(ctx, `SELECT id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime FROM ids WHERE id = 1`)
+	rows, err := conn.QueryContext(ctx, `SELECT id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime FROM ids WHERE id = 1`)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -220,7 +217,7 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), convertedDatetime.UTC())
 
-	nullRows, err := sqlConn.QueryContext(ctx, `SELECT id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime FROM ids WHERE id = 2`)
+	nullRows, err := conn.QueryContext(ctx, `SELECT id, event_smallint, event_tinyint, event_int, event_bigint, event_decimal, event_numeric, event_money, event_smallmoney, event_real, event_float, event_bit, event_varchar, event_nchar, event_nvarchar, event_text, event_datetime FROM ids WHERE id = 2`)
 	require.NoError(t, err)
 	defer nullRows.Close()
 

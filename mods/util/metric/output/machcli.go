@@ -2,13 +2,13 @@ package output
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 type MachCli struct {
@@ -18,29 +18,12 @@ type MachCli struct {
 	Host      string
 	Port      int
 	User      string
-	Pass      string
-
-	db *machgo.Database
 }
 
 var _ metric.Output = (*MachCli)(nil)
 
-func (m *MachCli) openConn(ctx context.Context) (api.Conn, error) {
-	if m.db == nil {
-		if db, err := machgo.NewDatabase(&machgo.Config{
-			Host: m.Host,
-			Port: m.Port,
-		}); err != nil {
-			return nil, err
-		} else {
-			m.db = db
-		}
-	}
-	conn, err := m.db.Connect(ctx, api.WithPassword(m.User, m.Pass))
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
+func (m *MachCli) openConn(ctx context.Context) (*sql.Conn, error) {
+	return spi.Connect(ctx, m.User)
 }
 
 func (m *MachCli) Process(prd metric.Product) error {
@@ -66,13 +49,14 @@ func (m *MachCli) Process(prd metric.Product) error {
 	defer conn.Close()
 
 	for _, r := range recs {
-		result := conn.Exec(
+		result, err := conn.ExecContext(
 			ctx,
 			"INSERT INTO %s (%s) VALUES (?, ?, ?)",
 			tableName,
 			strings.Join(columns, ", "),
 			r.Name, r.Time.UnixNano(), r.Val)
-		if err := result.Err(); err != nil {
+		_ = result
+		if err != nil {
 			return fmt.Errorf("metrics insert: %w", err)
 		}
 	}

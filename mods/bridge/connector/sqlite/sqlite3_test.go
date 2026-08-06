@@ -7,7 +7,6 @@ import (
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,16 +79,13 @@ func TestSqliteSupportedTypes(t *testing.T) {
 	require.NoError(t, br.BeforeRegister())
 	defer br.AfterUnregister()
 
-	sqlConn, err := br.Connect(ctx)
+	conn, err := br.Connect(ctx)
 	require.NoError(t, err)
-	defer sqlConn.Close()
-
-	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
 	createdAt := time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC)
 
-	result := conn.Exec(ctx, `CREATE TABLE test_supported (
+	result, err := conn.ExecContext(ctx, `CREATE TABLE test_supported (
 		id INTEGER PRIMARY KEY,
 		event_bool BOOLEAN,
 		event_integer INTEGER,
@@ -98,9 +94,10 @@ func TestSqliteSupportedTypes(t *testing.T) {
 		event_blob BLOB,
 		event_datetime DATETIME
 	)`)
-	require.NoError(t, result.Err())
+	_ = result
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO test_supported(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	result, err = conn.ExecContext(ctx, `INSERT INTO test_supported(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		1,
 		true,
 		42,
@@ -109,9 +106,9 @@ func TestSqliteSupportedTypes(t *testing.T) {
 		[]byte{0x0a, 0x0b, 0x0c},
 		createdAt,
 	)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO test_supported(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	result, err = conn.ExecContext(ctx, `INSERT INTO test_supported(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		2,
 		nil,
 		nil,
@@ -120,9 +117,9 @@ func TestSqliteSupportedTypes(t *testing.T) {
 		nil,
 		nil,
 	)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	rows, err := sqlConn.QueryContext(ctx, `SELECT event_bool, event_integer, event_real, event_text, event_blob, event_datetime FROM test_supported WHERE id = 1`)
+	rows, err := conn.QueryContext(ctx, `SELECT event_bool, event_integer, event_real, event_text, event_blob, event_datetime FROM test_supported WHERE id = 1`)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -184,7 +181,7 @@ func TestSqliteSupportedTypes(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, createdAt.UTC(), convertedTime.UTC())
 
-	nullRows, err := sqlConn.QueryContext(ctx, `SELECT event_bool, event_integer, event_real, event_text, event_blob, event_datetime FROM test_supported WHERE id = 2`)
+	nullRows, err := conn.QueryContext(ctx, `SELECT event_bool, event_integer, event_real, event_text, event_blob, event_datetime FROM test_supported WHERE id = 2`)
 	require.NoError(t, err)
 	defer nullRows.Close()
 

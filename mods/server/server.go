@@ -2822,15 +2822,16 @@ func (s *Server) runSqlScripts(title string, queries []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		s.log.Error("ERR", err.Error())
 		return err
 	}
 	for n, sqlText := range queries {
-		result := conn.Exec(ctx, sqlText)
-		if result.Err() != nil {
-			s.log.Warnf("%s[%d] %s %s", title, n, result.Err().Error(), sqlText)
+		result, err := conn.ExecContext(ctx, sqlText)
+		_ = result
+		if err != nil {
+			s.log.Warnf("%s[%d] %s %s", title, n, err.Error(), sqlText)
 			break
 		} else {
 			s.log.Debugf("%s[%d] %s", title, n, sqlText)

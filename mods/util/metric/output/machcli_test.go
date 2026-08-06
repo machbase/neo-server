@@ -134,7 +134,6 @@ func TestProcessReturnsConnectionError(t *testing.T) {
 		Host: "127.0.0.1",
 		Port: 1,
 		User: "sys",
-		Pass: "manager",
 	}
 
 	err := m.Process(metric.Product{
