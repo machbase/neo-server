@@ -1,6 +1,7 @@
 package db_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -8,25 +9,82 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/machbase/neo-server/v8/spi"
-	"github.com/machbase/neo-server/v8/spi/testsuite"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/machbase/neo-server/v8/test"
 	dockertest "github.com/ory/dockertest/v4"
 )
 
 func TestMain(m *testing.M) {
-	testServer := testsuite.NewServer("./test/tmp")
-	testServer.StartServer()
-	testServer.CreateTestTables()
-
-	db := testServer.DatabaseGO()
-	spi.SetDefault(db, testServer.DatabaseKey())
+	testServer := machsvr.TestServer{}
+	testServer.StartServer("./test/tmp")
+	createTagTables()
 
 	m.Run()
 
-	testServer.DropTestTables()
+	dropTagTables()
 	testServer.StopServer()
+}
+
+func createTagTables() {
+	ctx := context.Background()
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+		create tag table if not exists tag_data(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double summarized,
+			short_value     short,
+			ushort_value    ushort,
+			int_value       integer,
+			uint_value 	    uinteger,
+			long_value      long,
+			ulong_value 	ulong,
+			str_value       varchar(400),
+			json_value      json,
+			ipv4_value      ipv4,
+			ipv6_value      ipv6,
+			bin_value		binary
+		) TAG_DUPLICATE_CHECK_DURATION=1;
+	`))
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+		create tag table if not exists tag_simple(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double
+		) TAG_DUPLICATE_CHECK_DURATION=1;
+	`))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func dropTagTables() {
+	ctx := context.Background()
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	_, err = conn.ExecContext(ctx, "DROP TABLE tag_data")
+	if err != nil {
+		panic(err)
+	}
+	_, err = conn.ExecContext(ctx, "DROP TABLE tag_simple")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func TestDBMS(t *testing.T) {

@@ -16,16 +16,16 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
-	"github.com/machbase/neo-server/v8/spi/testsuite"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-var machcliTestServer *testsuite.Server
+var machcliTestServer *machsvr.TestServer
 
 func TestMain(m *testing.M) {
-	machcliTestServer = testsuite.NewServer("./testsuite_tmp")
-	machcliTestServer.StartServer()
+	machcliTestServer = &machsvr.TestServer{}
+	machcliTestServer.StartServer("./testsuite_tmp")
 	code := m.Run()
 	machcliTestServer.StopServer()
 	os.Exit(code)

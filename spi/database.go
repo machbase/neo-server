@@ -550,3 +550,7 @@ func normalizeHTTPListenerAddress(addr string) (string, int) {
 func DefaultHttpEndpoint() string {
 	return defaultHttpLocalEndpoint
 }
+
+type Explainer interface {
+	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
