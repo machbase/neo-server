@@ -1424,7 +1424,7 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 				"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON           │",
 				"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼──────────────────────┤",
 				"│      1 │  1 │ acme    │ 0.1      │ 100       │ AQ== │ ms-1 │ 2026-03-14T05:29:01Z │",
-				"│      2 │  2 │ company │ NULL     │ NULL      │      │ ms-2 │ 2026-03-14T05:29:01Z │",
+				"│      2 │  2 │ company │ NULL     │ NULL      │ NULL │ ms-2 │ 2026-03-14T05:29:01Z │",
 				"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴──────────────────────┘",
 			},
 		},

@@ -52,7 +52,7 @@ func (c *poolStubConn) Query(ctx context.Context, sqlText string, params ...any)
 }
 
 func (c *poolStubConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	return &WrappedSqlRow{err: api.ErrNotImplemented("QueryRow")}
+	return &poolStubRow{err: api.ErrNotImplemented("QueryRow")}
 }
 
 func (c *poolStubConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
@@ -77,6 +77,52 @@ func (r *poolStubRows) IsFetchable() bool             { return true }
 func (r *poolStubRows) RowsAffected() int64           { return 0 }
 func (r *poolStubRows) Message() string               { return "success" }
 func (r *poolStubRows) Columns() (api.Columns, error) { return api.Columns{}, nil }
+
+type poolStubRow struct {
+	err          error
+	values       []any
+	columns      api.Columns
+	columnsErr   error
+	timeLocation *time.Location
+}
+
+var _ api.Row = (*poolStubRow)(nil)
+
+func (r *poolStubRow) Err() error {
+	return r.err
+}
+
+func (r *poolStubRow) RowsAffected() int64 {
+	return 0
+}
+
+func (r *poolStubRow) Message() string {
+	// TODO: implement
+	return "success"
+}
+
+func (r *poolStubRow) Scan(values ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(values) > len(r.values) {
+		return api.ErrDatabaseScanIndex(len(values), len(r.values))
+	}
+	for i := range values {
+		if r.values[i] == nil {
+			values[i] = nil
+			continue
+		}
+		if err := api.Scan(r.values[i], values[i], r.timeLocation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *poolStubRow) Columns() (api.Columns, error) {
+	return r.columns, nil
+}
 
 type testColumnMeta struct {
 	name     string

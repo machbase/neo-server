@@ -19,6 +19,22 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
+func NewSqliteBridge(name string, path string) *sqlite.Bridge {
+	return sqlite.NewBridge(name, path)
+}
+
+func NewPostgresBridge(name string, path string) *postgres.Bridge {
+	return postgres.NewBridge(name, path)
+}
+
+func NewMySQLBridge(name string, path string) *mysql.Bridge {
+	return mysql.NewBridge(name, path)
+}
+
+func NewMSSQLBridge(name string, path string) *mssql.Bridge {
+	return mssql.NewBridge(name, path)
+}
+
 type BridgedDatabase struct {
 	db        *sql.DB
 	dbType    string
