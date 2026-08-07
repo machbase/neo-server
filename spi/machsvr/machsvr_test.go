@@ -872,7 +872,7 @@ func testCreateTables(t *testing.T) {
 
 func testDescribeTable(t *testing.T) {
 	ctx := t.Context()
-	conn, err := testServer.MachSvr().Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := spi.Connect(ctx, "sys")
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -913,7 +913,7 @@ func testDescribeTable(t *testing.T) {
 	}
 	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
 		// describe table
-		desc, err := api.DescribeTable(ctx, conn, table_name, true)
+		desc, err := spi.DescribeTable(ctx, conn, table_name, true)
 		require.NoError(t, err, "describe table %q fail", table_name)
 		require.Equal(t, "TAG_DATA", desc.Name)
 		require.Equal(t, "SYS", desc.User)
@@ -962,11 +962,11 @@ func testDescribeTable(t *testing.T) {
 		}
 	}
 
-	descConn, err := testServer.MachSvr().Connect(ctx, api.WithPassword("sys", "manager"))
+	descConn, err := spi.Connect(ctx, "sys")
 	require.NoError(t, err, "connect fail")
 	defer descConn.Close()
 
-	desc, err := api.DescribeTable(ctx, descConn, "m$sys_tables", false)
+	desc, err := spi.DescribeTable(ctx, descConn, "m$sys_tables", false)
 	require.NoError(t, err, "describe m$sys_tables fail")
 	require.Equal(t, "M$SYS_TABLES", desc.Name)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,8 +40,9 @@ type SubscriberEntry struct {
 	shouldSubscribe bool
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
-	conn            api.Conn
+	conn            *sql.Conn
 	appender        api.Appender
+	appenderClose   func() error
 	subscription    bridge.Subscription
 
 	wd *util.WriteDescriptor
@@ -169,6 +171,7 @@ func (ent *SubscriberEntry) Stop() error {
 	defer func() {
 		if ent.appender != nil {
 			ent.appender.Close()
+			ent.appenderClose()
 			ent.appender = nil
 		}
 		if ent.conn != nil {
@@ -324,7 +327,7 @@ func extractColumns(payload []byte) []string {
 
 func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
-		if conn, err := spi.Default().Connect(ent.ctx, api.WithAuthKey("sys", spi.DefaultKey())); err != nil {
+		if conn, err := spi.Connect(ent.ctx, "sys"); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 			return
@@ -333,7 +336,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 		}
 	}
 
-	exists, err := api.ExistsTable(ent.ctx, ent.conn, ent.wd.Table)
+	exists, err := spi.ExistsTable(ent.ctx, ent.conn, ent.wd.Table)
 	if err != nil {
 		rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 		ent.log.Warn(ent.TaskTql, err.Error())
@@ -345,13 +348,13 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 		return
 	}
 
-	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ent.ctx, ent.conn, ent.wd.Table, false); err != nil {
-		rsp.Reason = fmt.Sprintf("%s %s", ent.TaskTql, err.Error())
-		ent.log.Warnf(ent.TaskTql, err.Error())
+	var desc *spi.TableDescription
+	if res := spi.ShowTable(ent.ctx, ent.conn, "", "", ent.wd.Table, false); res.Err() != nil {
+		rsp.Reason = fmt.Sprintf("%s %s", ent.TaskTql, res.Err().Error())
+		ent.log.Warnf(ent.TaskTql, res.Err().Error())
 		return
 	} else {
-		desc = desc0
+		desc = res.Description
 	}
 
 	var inputStream io.Reader
@@ -471,8 +474,8 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 		}
 		rownum++
 
-		if result := ent.conn.Exec(ent.ctx, insertQuery, vals...); result.Err() != nil {
-			ent.log.Warn(ent.name, ent.TaskTql, result.Err().Error())
+		if _, err := ent.conn.ExecContext(ent.ctx, insertQuery, vals...); err != nil {
+			ent.log.Warn(ent.name, ent.TaskTql, err.Error())
 			return
 		}
 	}
@@ -485,22 +488,23 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 }
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
-	if ent.conn == nil {
+	if ent.appender == nil {
+		var appendConn api.Conn
 		if conn, err := spi.Default().Connect(ent.ctx, api.WithAuthKey("sys", spi.DefaultKey())); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 			return
 		} else {
-			ent.conn = conn
+			appendConn = conn
 		}
-	}
-
-	if ent.appender == nil {
-		if appender, err := ent.conn.Appender(ent.ctx, ent.wd.Table); err != nil {
+		if appender, err := appendConn.Appender(ent.ctx, ent.wd.Table); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s fail to create appender, %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 		} else {
 			ent.appender = appender
+			ent.appenderClose = func() error {
+				return appendConn.Close()
+			}
 		}
 	}
 

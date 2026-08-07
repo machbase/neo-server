@@ -19,7 +19,7 @@ type AppendWorker struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	tableDesc *api.TableDescription
+	tableDesc *TableDescription
 	lastTime  time.Time
 	refCount  int32
 	// append runner
@@ -136,13 +136,13 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 		return aw, nil
 	}
 
-	trustConn, err := Default().Connect(ctx, api.WithAuthKey("sys", DefaultKey()))
+	trustConn, err := Connect(ctx, "sys")
 	if err != nil {
 		return nil, err
 	}
 	defer trustConn.Close()
 
-	tableDesc, err := api.DescribeTable(ctx, trustConn, tableName, false)
+	tableDesc, err := DescribeTable(ctx, trustConn, tableName, false)
 	if err != nil {
 		return nil, err
 	}

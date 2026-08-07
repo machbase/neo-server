@@ -382,7 +382,7 @@ func onProduct(pd metric.Product) error {
 			return
 		}
 		ctx := context.Background()
-		conn, err := Default().Connect(ctx, api.WithPassword("sys", "manager"))
+		conn, err := Connect(ctx, "sys")
 		if err != nil {
 			metricLog.Errorf("metrics connect: %v", err)
 			return
@@ -390,10 +390,13 @@ func onProduct(pd metric.Product) error {
 		defer conn.Close()
 		sqlText := fmt.Sprintf("INSERT INTO %s (NAME, TIME, VALUE) VALUES (?, ?, ?)", table)
 		for _, m := range result {
-			r := conn.Exec(ctx, sqlText, m.Name, m.Time, m.Value)
-			if r.Err() != nil {
-				metricLog.Errorf("metrics writing: %v", r.Err())
+			result, err := conn.ExecContext(ctx, sqlText, m.Name, m.Time, m.Value)
+			if err != nil {
+				metricLog.Errorf("metrics writing: %v", err)
 				return
+			}
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
+				metricLog.Warnf("metrics writing: no rows affected for %v", m)
 			}
 		}
 	}(result, metricsDest)

@@ -252,7 +252,7 @@ func ShowTables(ctx context.Context, conn *sql.Conn, showAll bool) *ShowTablesRe
 
 type ShowTableResultSet struct {
 	ResultSetBase
-	Description *api.TableDescription
+	Description *TableDescription
 }
 
 var _ ResultSet = (*ShowTableResultSet)(nil)
@@ -298,7 +298,7 @@ func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowTable(ctx context.Context, sqlConn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, all bool) *ShowTableResultSet {
+func ShowTable(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, all bool) *ShowTableResultSet {
 	if fallbackDatabaseName == "" {
 		fallbackDatabaseName = "MACHBASEDB"
 	}
@@ -318,8 +318,7 @@ func ShowTable(ctx context.Context, sqlConn *sql.Conn, fallbackDatabaseName stri
 	}
 
 	tableName = fmt.Sprintf("%s.%s.%s", databaseName, userName, tableName)
-	conn := WrapSqlConn(sqlConn)
-	desc, err := api.DescribeTable(ctx, conn, tableName, all)
+	desc, err := DescribeTable(ctx, conn, tableName, all)
 	return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}, Description: desc}
 }
 
@@ -1276,7 +1275,7 @@ type ShowTagsResultSet struct {
 	conn      *sql.Conn
 	tableName string
 	tagNames  []string
-	desc      *api.TableDescription
+	desc      *TableDescription
 }
 
 var _ ResultSet = (*ShowTagsResultSet)(nil)
