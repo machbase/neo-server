@@ -802,9 +802,13 @@ func TruncateTableIfExists(ctx context.Context, conn *sql.Conn, fullTableName st
 }
 
 func ExistsTable(ctx context.Context, conn *sql.Conn, fullTableName string) (bool, error) {
-	_, userName, tableName := api.TableName(fullTableName).Split()
-	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
-	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	dbName, userName, tableName := api.TableName(fullTableName).SplitOr("", "SYS")
+	_, dbID, err := databaseInfo(ctx, conn, dbName)
+	if err != nil {
+		return false, err
+	}
+	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.DATABASE_ID = ? AND T.NAME = ?"
+	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), dbID, strings.ToUpper(tableName))
 	if err := r.Err(); err != nil {
 		fmt.Println("error", err.Error())
 		return false, err
@@ -814,6 +818,46 @@ func ExistsTable(ctx context.Context, conn *sql.Conn, fullTableName string) (boo
 		return false, err
 	}
 	return (count == 1), nil
+}
+
+func DatabaseID(ctx context.Context, conn *sql.Conn, dbName string) (int64, error) {
+	_, dbID, err := databaseInfo(ctx, conn, dbName)
+	return dbID, err
+}
+
+func databaseInfo(ctx context.Context, conn *sql.Conn, dbName string) (string, int64, error) {
+	var row *sql.Row
+	var resolvedName string
+	var dbID int64
+
+	if dbName == "" {
+		row = conn.QueryRowContext(ctx, "select NAME, DATABASE_ID from V$DATABASES where NAME = CURRENT_DATABASE()")
+	} else {
+		row = conn.QueryRowContext(ctx, "select NAME, DATABASE_ID from V$DATABASES where NAME = ?", dbName)
+	}
+	if err := row.Err(); err != nil {
+		return legacyDatabaseInfo(ctx, conn, dbName)
+	}
+	if err := row.Scan(&resolvedName, &dbID); err != nil {
+		return "", 0, err
+	}
+	return resolvedName, dbID, nil
+}
+
+func legacyDatabaseInfo(ctx context.Context, conn *sql.Conn, dbName string) (string, int64, error) {
+	resolvedName := strings.ToUpper(dbName)
+	if resolvedName == "" || resolvedName == "MACHBASEDB" {
+		return "MACHBASEDB", -1, nil
+	}
+	row := conn.QueryRowContext(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", resolvedName)
+	if row.Err() != nil {
+		return "", 0, row.Err()
+	}
+	var dbID int64
+	if err := row.Scan(&dbID); err != nil {
+		return "", 0, err
+	}
+	return resolvedName, dbID, nil
 }
 
 // TableDescription is represents data that comes as a result of 'desc <table>'
@@ -892,17 +936,10 @@ func describe(ctx context.Context, conn *sql.Conn, name api.TableName, includeHi
 	d := &TableDescription{}
 	var colCount int
 
-	dbName, userName, tableName := name.Split()
-	dbId := -1
-
-	if dbName != "" && dbName != "MACHBASEDB" {
-		row := conn.QueryRowContext(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", dbName)
-		if err := row.Err(); err != nil {
-			return nil, err
-		}
-		if err := row.Scan(&dbId); err != nil {
-			return nil, err
-		}
+	dbName, userName, tableName := name.SplitOr("", "SYS")
+	resolvedDBName, dbId, err := databaseInfo(ctx, conn, dbName)
+	if err != nil {
+		return nil, err
 	}
 
 	describeSqlText := SqlTidy(
@@ -927,7 +964,7 @@ func describe(ctx context.Context, conn *sql.Conn, name api.TableName, includeHi
 	if err := r.Scan(&d.Id, &d.Type, &d.Flag, &colCount); err != nil {
 		return nil, err
 	}
-	d.Database = dbName
+	d.Database = resolvedDBName
 	d.User = userName
 	d.Name = tableName
 
@@ -1020,7 +1057,7 @@ func describe_mv(ctx context.Context, conn *sql.Conn, name api.TableName, includ
 	return d, nil
 }
 
-func describe_idx(ctx context.Context, conn *sql.Conn, tableId int64, dbId int) ([]*IndexDescription, error) {
+func describe_idx(ctx context.Context, conn *sql.Conn, tableId int64, dbId int64) ([]*IndexDescription, error) {
 	rows, err := conn.QueryContext(ctx,
 		`select
 			b.name,
@@ -1031,7 +1068,7 @@ func describe_idx(ctx context.Context, conn *sql.Conn, tableId int64, dbId int) 
 			b.part_value_count,
 			case b.bitmap_encode
 				when 0 then 'EQUAL'
-				else 'RANGE' end 
+				else 'RANGE' end
 			as bitmap_encode
 		from
 			M$SYS_TABLES  a,
@@ -1040,7 +1077,9 @@ func describe_idx(ctx context.Context, conn *sql.Conn, tableId int64, dbId int) 
 			a.id = ?
 		AND a.database_id = ?
 		AND a.id = b.table_id
-		`, tableId, dbId)
+		AND a.database_id = b.database_id
+		AND b.database_id = ?
+		`, tableId, dbId, dbId)
 	if err != nil {
 		return nil, err
 	}
