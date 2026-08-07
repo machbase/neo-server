@@ -52,7 +52,7 @@ func (c *poolStubConn) Query(ctx context.Context, sqlText string, params ...any)
 }
 
 func (c *poolStubConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	return &WrappedSqlRow{err: api.ErrNotImplemented("QueryRow")}
+	return &poolStubRow{err: api.ErrNotImplemented("QueryRow")}
 }
 
 func (c *poolStubConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
@@ -77,6 +77,52 @@ func (r *poolStubRows) IsFetchable() bool             { return true }
 func (r *poolStubRows) RowsAffected() int64           { return 0 }
 func (r *poolStubRows) Message() string               { return "success" }
 func (r *poolStubRows) Columns() (api.Columns, error) { return api.Columns{}, nil }
+
+type poolStubRow struct {
+	err          error
+	values       []any
+	columns      api.Columns
+	columnsErr   error
+	timeLocation *time.Location
+}
+
+var _ api.Row = (*poolStubRow)(nil)
+
+func (r *poolStubRow) Err() error {
+	return r.err
+}
+
+func (r *poolStubRow) RowsAffected() int64 {
+	return 0
+}
+
+func (r *poolStubRow) Message() string {
+	// TODO: implement
+	return "success"
+}
+
+func (r *poolStubRow) Scan(values ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(values) > len(r.values) {
+		return api.ErrDatabaseScanIndex(len(values), len(r.values))
+	}
+	for i := range values {
+		if r.values[i] == nil {
+			values[i] = nil
+			continue
+		}
+		if err := api.Scan(r.values[i], values[i], r.timeLocation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *poolStubRow) Columns() (api.Columns, error) {
+	return r.columns, nil
+}
 
 type testColumnMeta struct {
 	name     string
@@ -535,5 +581,281 @@ func TestMakeUserMessage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, MakeUserMessage(tc.smtType, tc.rowsCount))
 		})
+	}
+}
+
+type catalogTestConn struct {
+	legacy bool
+}
+
+type catalogTestConnDriver struct{}
+
+type catalogTestConnDriverConn struct {
+	scenario catalogTestConn
+}
+
+type catalogTestConnScenario struct {
+	legacy bool
+}
+
+type catalogTestConnRows struct {
+	columns []string
+	rows    [][]driver.Value
+	index   int
+	err     error
+}
+
+var (
+	catalogTestConnDriverOnce sync.Once
+	catalogTestConnDriverMu   sync.Mutex
+	catalogTestConnScenarios  = map[string]catalogTestConnScenario{}
+)
+
+func (c catalogTestConn) legacyMode() bool { return c.legacy }
+
+func registerCatalogTestConnDriver(t *testing.T) {
+	t.Helper()
+	catalogTestConnDriverOnce.Do(func() {
+		sql.Register("spi_catalog_test_driver", &catalogTestConnDriver{})
+	})
+}
+
+func openCatalogTestConn(t *testing.T, scenario catalogTestConn) *sql.Conn {
+	t.Helper()
+	registerCatalogTestConnDriver(t)
+
+	dsn := fmt.Sprintf("%s/%s/%t", t.Name(), time.Now().Format(time.RFC3339Nano), scenario.legacyMode())
+	catalogTestConnDriverMu.Lock()
+	catalogTestConnScenarios[dsn] = catalogTestConnScenario{legacy: scenario.legacyMode()}
+	catalogTestConnDriverMu.Unlock()
+	t.Cleanup(func() {
+		catalogTestConnDriverMu.Lock()
+		delete(catalogTestConnScenarios, dsn)
+		catalogTestConnDriverMu.Unlock()
+	})
+
+	db, err := sql.Open("spi_catalog_test_driver", dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	conn, err := db.Conn(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn.Close())
+	})
+
+	return conn
+}
+
+func (d *catalogTestConnDriver) Open(name string) (driver.Conn, error) {
+	catalogTestConnDriverMu.Lock()
+	scenario, ok := catalogTestConnScenarios[name]
+	catalogTestConnDriverMu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("catalog test scenario not found for dsn %q", name)
+	}
+	return &catalogTestConnDriverConn{scenario: catalogTestConn{legacy: scenario.legacy}}, nil
+}
+
+func (c *catalogTestConnDriverConn) Prepare(string) (driver.Stmt, error) {
+	return nil, api.ErrNotImplemented("Prepare")
+}
+
+func (c *catalogTestConnDriverConn) Close() error { return nil }
+
+func (c *catalogTestConnDriverConn) Begin() (driver.Tx, error) {
+	return nil, api.ErrNotImplemented("Begin")
+}
+
+func (c *catalogTestConnDriverConn) QueryContext(_ context.Context, sqlText string, args []driver.NamedValue) (driver.Rows, error) {
+	params := make([]any, len(args))
+	for i, arg := range args {
+		params[i] = arg.Value
+	}
+
+	if c.scenario.legacyMode() && strings.Contains(sqlText, "from V$DATABASES") {
+		return nil, fmt.Errorf("legacy server does not support V$DATABASES")
+	}
+
+	switch {
+	case strings.Contains(sqlText, "from V$DATABASES"):
+		name := "DB_A"
+		if len(params) == 1 {
+			name = strings.ToUpper(params[0].(string))
+		}
+		return catalogTestConnRowsFrom([]string{"NAME", "DATABASE_ID"}, [][]driver.Value{{name, catalogTestDatabaseID(name)}}), nil
+	case strings.Contains(sqlText, "from V$STORAGE_MOUNT_DATABASES"):
+		if len(params) != 1 || params[0] != "ARCHIVE_DB" {
+			return nil, fmt.Errorf("unexpected mounted database params: %v", params)
+		}
+		return catalogTestConnRowsFrom([]string{"BACKUP_TBSID"}, [][]driver.Value{{int64(303)}}), nil
+	case strings.Contains(sqlText, "select count(*) from M$SYS_TABLES"):
+		if len(params) != 3 || params[0] != "SYS" || params[2] != "SHARED_TABLE" {
+			return nil, fmt.Errorf("unexpected table existence params: %v", params)
+		}
+		dbID := params[1].(int64)
+		count := int64(0)
+		if dbID == -1 || dbID == 101 || dbID == 202 || dbID == 303 {
+			count = 1
+		}
+		return catalogTestConnRowsFrom([]string{"COUNT"}, [][]driver.Value{{count}}), nil
+	case strings.Contains(sqlText, "j.COLCOUNT as TABLE_COLCOUNT"):
+		if len(params) != 3 || params[0] != "SYS" || params[2] != "SHARED_TABLE" {
+			return nil, fmt.Errorf("unexpected table description params: %v", params)
+		}
+		return catalogTestConnRowsFrom([]string{"TABLE_ID", "TABLE_TYPE", "TABLE_FLAG", "TABLE_COLCOUNT"}, [][]driver.Value{{int64(77), int64(api.TableTypeLog), int64(api.TableFlagNone), int64(1)}}), nil
+	case strings.Contains(sqlText, "from M$SYS_COLUMNS"):
+		dbID, err := catalogTestDBParam(params, 2, 1)
+		if err != nil {
+			return nil, err
+		}
+		return catalogTestConnRowsFrom([]string{"NAME", "TYPE", "LENGTH", "ID", "FLAG"}, [][]driver.Value{{catalogTestPrefix(dbID) + "_VALUE", int64(api.ColumnTypeInteger), int64(11), int64(0), int64(api.ColumnFlag(0))}}), nil
+	case strings.Contains(sqlText, "M$SYS_INDEXES"):
+		dbID, err := catalogTestDBParam(params, 3, 1)
+		if err != nil {
+			return nil, err
+		}
+		if params[2].(int64) != dbID {
+			return nil, fmt.Errorf("database ID was not applied to both index tables: %v", params)
+		}
+		return catalogTestConnRowsFrom([]string{"NAME", "TYPE", "ID", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"}, [][]driver.Value{{catalogTestPrefix(dbID) + "_IDX", int64(api.IndexTypeRedBlack), int64(88), int64(0), int64(0), int64(0), "EQUAL"}}), nil
+	case strings.Contains(sqlText, "M$SYS_INDEX_COLUMNS"):
+		dbID, err := catalogTestDBParam(params, 2, 1)
+		if err != nil {
+			return nil, err
+		}
+		return catalogTestConnRowsFrom([]string{"NAME"}, [][]driver.Value{{catalogTestPrefix(dbID) + "_VALUE"}}), nil
+	default:
+		return nil, fmt.Errorf("unexpected Query: %s", sqlText)
+	}
+}
+
+func catalogTestConnRowsFrom(columns []string, rows [][]driver.Value) driver.Rows {
+	return &catalogTestConnRows{columns: columns, rows: rows}
+}
+
+func (r *catalogTestConnRows) Columns() []string { return r.columns }
+
+func (r *catalogTestConnRows) Close() error { return nil }
+
+func (r *catalogTestConnRows) Next(dest []driver.Value) error {
+	if r.err != nil {
+		return r.err
+	}
+	if r.index >= len(r.rows) {
+		return io.EOF
+	}
+	copy(dest, r.rows[r.index])
+	r.index++
+	return nil
+}
+
+func catalogTestDBParam(params []any, count, index int) (int64, error) {
+	if len(params) != count {
+		return 0, fmt.Errorf("unexpected params: %v", params)
+	}
+	dbID, ok := params[index].(int64)
+	if !ok || (dbID != -1 && dbID != 101 && dbID != 202 && dbID != 303) {
+		return 0, fmt.Errorf("unexpected database ID: %v", params[index])
+	}
+	return dbID, nil
+}
+
+func catalogTestDatabaseID(name string) int64 {
+	if name == "DB_B" {
+		return 202
+	}
+	return 101
+}
+
+func catalogTestPrefix(dbID int64) string {
+	switch dbID {
+	case -1:
+		return "LEGACY"
+	case 202:
+		return "B"
+	case 303:
+		return "ARCHIVE"
+	default:
+		return "A"
+	}
+}
+
+func TestCatalogTablesAreIsolatedByDatabase(t *testing.T) {
+	ctx := context.Background()
+	conn := openCatalogTestConn(t, catalogTestConn{})
+
+	for _, name := range []string{"SHARED_TABLE", "DB_B.SYS.SHARED_TABLE"} {
+		exists, err := ExistsTable(ctx, conn, name)
+		if err != nil {
+			t.Fatalf("ExistsTable(%q): %v", name, err)
+		}
+		if !exists {
+			t.Fatalf("ExistsTable(%q) = false", name)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		database   string
+		columnName string
+		indexName  string
+	}{
+		{name: "SHARED_TABLE", database: "DB_A", columnName: "A_VALUE", indexName: "A_IDX"},
+		{name: "DB_B.SYS.SHARED_TABLE", database: "DB_B", columnName: "B_VALUE", indexName: "B_IDX"},
+	}
+	for _, tt := range tests {
+		desc, err := DescribeTable(ctx, conn, tt.name, false)
+		if err != nil {
+			t.Fatalf("DescribeTable(%q): %v", tt.name, err)
+		}
+		if desc.Database != tt.database || len(desc.Columns) != 1 || desc.Columns[0].Name != tt.columnName {
+			t.Fatalf("DescribeTable(%q) returned wrong table: %#v", tt.name, desc)
+		}
+		if len(desc.Indexes) != 1 || desc.Indexes[0].Name != tt.indexName || !reflect.DeepEqual(desc.Indexes[0].Cols, []string{tt.columnName}) {
+			t.Fatalf("DescribeTable(%q) returned wrong index: %#v", tt.name, desc.Indexes)
+		}
+	}
+}
+
+func TestDatabaseIDFallsBackForLegacyServer(t *testing.T) {
+	ctx := context.Background()
+	conn := openCatalogTestConn(t, catalogTestConn{legacy: true})
+
+	currentID, err := DatabaseID(ctx, conn, "")
+	if err != nil || currentID != -1 {
+		t.Fatalf("current legacy database ID = %d, %v; want -1", currentID, err)
+	}
+	mountedID, err := DatabaseID(ctx, conn, "archive_db")
+	if err != nil || mountedID != 303 {
+		t.Fatalf("mounted legacy database ID = %d, %v; want 303", mountedID, err)
+	}
+}
+
+func TestCatalogTablesFallBackForLegacyServer(t *testing.T) {
+	ctx := context.Background()
+	conn := openCatalogTestConn(t, catalogTestConn{legacy: true})
+	tests := []struct {
+		name       string
+		database   string
+		columnName string
+		indexName  string
+	}{
+		{name: "SHARED_TABLE", database: "MACHBASEDB", columnName: "LEGACY_VALUE", indexName: "LEGACY_IDX"},
+		{name: "ARCHIVE_DB.SYS.SHARED_TABLE", database: "ARCHIVE_DB", columnName: "ARCHIVE_VALUE", indexName: "ARCHIVE_IDX"},
+	}
+	for _, tt := range tests {
+		desc, err := DescribeTable(ctx, conn, tt.name, false)
+		if err != nil {
+			t.Fatalf("DescribeTable(%q): %v", tt.name, err)
+		}
+		if desc.Database != tt.database || len(desc.Columns) != 1 || desc.Columns[0].Name != tt.columnName {
+			t.Fatalf("DescribeTable(%q) returned wrong legacy table: %#v", tt.name, desc)
+		}
+		if len(desc.Indexes) != 1 || desc.Indexes[0].Name != tt.indexName {
+			t.Fatalf("DescribeTable(%q) returned wrong legacy index: %#v", tt.name, desc.Indexes)
+		}
 	}
 }

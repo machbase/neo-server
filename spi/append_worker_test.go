@@ -116,7 +116,7 @@ func newAppendWorkerForTest(tableName string) (*AppendWorker, *appendWorkerTestA
 		ctxCancel: cancel,
 		conn:      conn,
 		appender:  appender,
-		tableDesc: &api.TableDescription{Name: tableName},
+		tableDesc: &TableDescription{Name: tableName},
 		lastTime:  time.Now(),
 		log:       logging.GetLog("append-worker-test"),
 	}, appender, conn

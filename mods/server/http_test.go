@@ -29,7 +29,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-client/api"
 	shelllib "github.com/machbase/neo-server/v8/jsh/lib/shell"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
@@ -610,92 +609,6 @@ func TestIsErrTokenExpired(t *testing.T) {
 	require.False(t, IsErrTokenExpired(fmt.Errorf("other error")))
 }
 
-type httpTestDatabase struct {
-	connectErr    error
-	conn          *httpTestConn
-	lastTrustUser string
-}
-
-func (db *httpTestDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
-	for _, opt := range options {
-		if authKey, ok := opt.(*api.ConnectOptionAuthKey); ok {
-			db.lastTrustUser = authKey.User
-		}
-	}
-	if db.connectErr != nil {
-		return nil, db.connectErr
-	}
-	if db.conn == nil {
-		db.conn = &httpTestConn{}
-	}
-	return db.conn, nil
-}
-
-func (db *httpTestDatabase) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
-	return false, "", nil
-}
-
-func (db *httpTestDatabase) Ping(ctx context.Context) (time.Duration, error) {
-	return 0, nil
-}
-
-type httpTestConn struct {
-	lastSQL    string
-	closed     bool
-	execResult api.Result
-}
-
-func (conn *httpTestConn) Close() error {
-	conn.closed = true
-	return nil
-}
-
-func (conn *httpTestConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
-	conn.lastSQL = sqlText
-	if conn.execResult != nil {
-		return conn.execResult
-	}
-	return &httpTestResult{}
-}
-
-func (conn *httpTestConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
-	panic("unexpected Query call")
-}
-
-func (conn *httpTestConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	panic("unexpected QueryRow call")
-}
-
-func (conn *httpTestConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
-	panic("unexpected Prepare call")
-}
-
-func (conn *httpTestConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-	panic("unexpected Appender call")
-}
-
-func (conn *httpTestConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	panic("unexpected Explain call")
-}
-
-type httpTestResult struct {
-	err          error
-	rowsAffected int64
-	message      string
-}
-
-func (r *httpTestResult) Err() error {
-	return r.err
-}
-
-func (r *httpTestResult) RowsAffected() int64 {
-	return r.rowsAffected
-}
-
-func (r *httpTestResult) Message() string {
-	return r.message
-}
-
 func makeAuthorizedClientToken(t *testing.T) (*Server, string) {
 	t.Helper()
 
@@ -774,16 +687,25 @@ func TestHandleAuthToken(t *testing.T) {
 }
 
 func TestHandleChangePassword(t *testing.T) {
-	t.Skip("temporarily skip until we have a better way to test password change without relying on database connection")
-	newServer := func(db api.Database) *httpd {
+	newServer := func() *httpd {
 		return &httpd{
 			log:        logging.GetLog("httpd-fake"),
 			authServer: &Server{},
+			jwtCache:   NewJwtCache(),
 		}
 	}
 
+	t.Run("bind error", func(t *testing.T) {
+		svr := newServer()
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte("{"))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+
+		svr.handleChangePassword(ctx)
+		require.Equal(t, http.StatusBadRequest, writer.Code)
+	})
+
 	t.Run("rejects invalid password", func(t *testing.T) {
-		svr := newServer(&httpTestDatabase{})
+		svr := newServer()
 		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"bad'pw"}`))
 		ctx.Request.Header.Set("Content-Type", "application/json")
 
@@ -794,7 +716,7 @@ func TestHandleChangePassword(t *testing.T) {
 	})
 
 	t.Run("rejects unauthorized request", func(t *testing.T) {
-		svr := newServer(&httpTestDatabase{})
+		svr := newServer()
 		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
 		ctx.Request.Header.Set("Content-Type", "application/json")
 
@@ -804,36 +726,49 @@ func TestHandleChangePassword(t *testing.T) {
 		require.Contains(t, writer.Body.String(), "unauthorized request")
 	})
 
-	t.Run("returns database execution error message", func(t *testing.T) {
-		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{err: errors.New("exec failed"), message: "alter failed"}}}
-		svr := newServer(db)
-		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
+	t.Run("successfully changes password for new test user", func(t *testing.T) {
+		testUsername := "test_pwd_change_user"
+		testPassword := "initial_password"
+		newPassword := "updated_password"
+
+		sysConn, err := spi.Connect(t.Context(), "sys")
+		require.NoError(t, err)
+		defer sysConn.Close()
+
+		_, err = sysConn.ExecContext(t.Context(),
+			fmt.Sprintf("CREATE USER %s IDENTIFIED BY '%s'", testUsername, testPassword))
+		require.NoError(t, err)
+
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			sysConn, err := spi.Connect(ctx, "sys")
+			require.NoError(t, err)
+			defer sysConn.Close()
+			if err == nil {
+				defer sysConn.Close()
+				_, err := sysConn.ExecContext(ctx, fmt.Sprintf("DROP USER %s", testUsername))
+				if err != nil {
+					t.Logf("warning: failed to drop test user: %v", err.Error())
+				}
+			}
+		})
+
+		svr := newServer()
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(fmt.Sprintf(`{"newPassword":"%s"}`, newPassword)))
 		ctx.Request.Header.Set("Content-Type", "application/json")
-		ctx.Set("jwt-claim", NewClaim("sys"))
-
-		svr.handleChangePassword(ctx)
-
-		require.Equal(t, http.StatusInternalServerError, writer.Code)
-		require.Contains(t, writer.Body.String(), "alter failed")
-		require.Equal(t, "sys", db.lastTrustUser)
-		require.Contains(t, db.conn.lastSQL, "ALTER USER sys IDENTIFIED BY 'updated-password'")
-		require.True(t, db.conn.closed)
-	})
-
-	t.Run("updates password cache on success", func(t *testing.T) {
-		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{}}}
-		svr := newServer(db)
-		ctx, writer := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-		ctx.Set("jwt-claim", NewClaim("sys"))
+		ctx.Set("jwt-claim", NewClaim(testUsername))
 
 		svr.handleChangePassword(ctx)
 
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
-		require.Equal(t, "sys", db.lastTrustUser)
-		require.Contains(t, db.conn.lastSQL, "ALTER USER sys IDENTIFIED BY 'updated-password'")
-		require.True(t, db.conn.closed)
+
+		ctx, writer = newTestHTTPContext(http.MethodPost, "/web/api/login", []byte(`{"loginName":"`+testUsername+`","password":"`+newPassword+`"}`))
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		svr.handleLogin(ctx)
+		require.Equal(t, http.StatusOK, writer.Code)
+		require.Contains(t, writer.Body.String(), `"success":true`, writer.Body.String())
 	})
 }
 
@@ -1527,8 +1462,10 @@ func TestHttpWrite(t *testing.T) {
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
 			spi.FlushAppendWorkers()
-			conn, _ := spi.Default().Connect(t.Context(), api.WithAuthKey("sys", spi.DefaultKey()))
-			conn.Exec(t.Context(), `EXEC table_flush(test_w)`)
+			conn, err := spi.Connect(t.Context(), "sys")
+			require.NoError(t, err)
+			_, err = conn.ExecContext(t.Context(), `EXEC table_flush(test_w)`)
+			require.NoError(t, err)
 			conn.Close()
 
 			if tc.selectSql != "" {
@@ -2328,89 +2265,5 @@ func TestHandleFiles(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
-	})
-}
-
-func TestHandleChangePasswordCoverage(t *testing.T) {
-	oldDB := spi.Default()
-	oldKey := spi.DefaultKey()
-	t.Cleanup(func() {
-		spi.SetDefault(oldDB, oldKey)
-	})
-
-	newHTTP := func() *httpd {
-		return &httpd{log: logging.GetLog("httpd-coverage")}
-	}
-
-	t.Run("bind error", func(t *testing.T) {
-		spi.SetDefault(&httpTestDatabase{}, oldKey)
-		svr := newHTTP()
-		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte("{"))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-
-		svr.handleChangePassword(ctx)
-		require.Equal(t, http.StatusBadRequest, w.Code)
-	})
-
-	t.Run("invalid password", func(t *testing.T) {
-		spi.SetDefault(&httpTestDatabase{}, oldKey)
-		svr := newHTTP()
-		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"bad'pw"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-
-		svr.handleChangePassword(ctx)
-		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), "invalid new password")
-	})
-
-	t.Run("unauthorized request", func(t *testing.T) {
-		spi.SetDefault(&httpTestDatabase{}, oldKey)
-		svr := newHTTP()
-		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-
-		svr.handleChangePassword(ctx)
-		require.Equal(t, http.StatusUnauthorized, w.Code)
-		require.Contains(t, w.Body.String(), "unauthorized request")
-	})
-
-	t.Run("connect error", func(t *testing.T) {
-		spi.SetDefault(&httpTestDatabase{connectErr: errors.New("connect failed")}, oldKey)
-		svr := newHTTP()
-		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-		ctx.Set("jwt-claim", NewClaim("sys"))
-
-		svr.handleChangePassword(ctx)
-		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), "connect failed")
-	})
-
-	t.Run("exec error", func(t *testing.T) {
-		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{err: errors.New("exec failed"), message: "alter failed"}}}
-		spi.SetDefault(db, oldKey)
-		svr := newHTTP()
-		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-		ctx.Set("jwt-claim", NewClaim("sys"))
-
-		svr.handleChangePassword(ctx)
-		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), "alter failed")
-		require.True(t, db.conn.closed)
-	})
-
-	t.Run("success", func(t *testing.T) {
-		db := &httpTestDatabase{conn: &httpTestConn{execResult: &httpTestResult{}}}
-		spi.SetDefault(db, oldKey)
-		svr := newHTTP()
-		ctx, w := newTestHTTPContext(http.MethodPost, "/web/api/password", []byte(`{"newPassword":"updated-password"}`))
-		ctx.Request.Header.Set("Content-Type", "application/json")
-		ctx.Set("jwt-claim", NewClaim("sys"))
-
-		svr.handleChangePassword(ctx)
-		require.Equal(t, http.StatusOK, w.Code)
-		require.Contains(t, w.Body.String(), `"success":true`)
-		require.True(t, db.conn.closed)
 	})
 }

@@ -10,7 +10,6 @@ import (
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -50,16 +49,17 @@ func TestPostgres(t *testing.T) {
 	defer bridge.AfterUnregister()
 
 	ctx := t.Context()
-	sqlConn, err := bridge.Connect(ctx)
+	conn, err := bridge.Connect(ctx)
 	require.NoError(t, err)
-	conn := spi.WrapSqlConn(sqlConn)
-	defer conn.Close()
 
-	conn.Exec(ctx, `CREATE TABLE test (id SERIAL PRIMARY KEY, name TEXT)`)
-	conn.Exec(ctx, `INSERT INTO test (name) VALUES ($1)`, "foo")
-	conn.Exec(ctx, `INSERT INTO test (name) VALUES ($1)`, "bar")
+	_, err = conn.ExecContext(ctx, `CREATE TABLE test (id SERIAL PRIMARY KEY, name TEXT)`)
+	require.NoError(t, err)
+	_, err = conn.ExecContext(ctx, `INSERT INTO test (name) VALUES ($1)`, "foo")
+	require.NoError(t, err)
+	_, err = conn.ExecContext(ctx, `INSERT INTO test (name) VALUES ($1)`, "bar")
+	require.NoError(t, err)
 
-	rows, err := conn.Query(ctx, `SELECT * FROM test ORDER BY id`)
+	rows, err := conn.QueryContext(ctx, `SELECT * FROM test ORDER BY id`)
 	require.NoError(t, err)
 	defer rows.Close()
 	for rows.Next() {
@@ -104,17 +104,15 @@ func TestPostgresDateTypes(t *testing.T) {
 	defer br.AfterUnregister()
 
 	ctx := t.Context()
-	sqlConn, err := br.Connect(ctx)
+	conn, err := br.Connect(ctx)
 	require.NoError(t, err)
-	defer sqlConn.Close()
-
-	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
-	result := conn.Exec(ctx, `SET TIME ZONE 'UTC'`)
-	require.NoError(t, result.Err())
+	result, err := conn.ExecContext(ctx, `SET TIME ZONE 'UTC'`)
+	_ = result
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `CREATE TABLE test_dates (
+	result, err = conn.ExecContext(ctx, `CREATE TABLE test_dates (
 		id SERIAL PRIMARY KEY,
 		event_bool BOOLEAN,
 		event_int INTEGER,
@@ -126,9 +124,9 @@ func TestPostgresDateTypes(t *testing.T) {
 		event_timestamp TIMESTAMP,
 		event_timestamptz TIMESTAMPTZ
 	)`)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO test_dates(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+	result, err = conn.ExecContext(ctx, `INSERT INTO test_dates(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		true,
 		int32(42),
 		int64(4200000000),
@@ -139,9 +137,9 @@ func TestPostgresDateTypes(t *testing.T) {
 		"2026-03-14 05:29:01",
 		"2026-03-14 05:29:01+00",
 	)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO test_dates(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+	result, err = conn.ExecContext(ctx, `INSERT INTO test_dates(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		nil,
 		nil,
 		nil,
@@ -152,9 +150,9 @@ func TestPostgresDateTypes(t *testing.T) {
 		nil,
 		nil,
 	)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	rows, err := sqlConn.QueryContext(ctx, `SELECT event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz FROM test_dates WHERE event_timestamp IS NOT NULL`)
+	rows, err := conn.QueryContext(ctx, `SELECT event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz FROM test_dates WHERE event_timestamp IS NOT NULL`)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -241,7 +239,7 @@ func TestPostgresDateTypes(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), convertedTimestampTZ.UTC())
 
-	nullRows, err := sqlConn.QueryContext(ctx, `SELECT event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz FROM test_dates WHERE event_timestamp IS NULL`)
+	nullRows, err := conn.QueryContext(ctx, `SELECT event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz FROM test_dates WHERE event_timestamp IS NULL`)
 	require.NoError(t, err)
 	defer nullRows.Close()
 

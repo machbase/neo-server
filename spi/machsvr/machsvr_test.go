@@ -3,7 +3,6 @@ package machsvr
 import (
 	"bytes"
 	"context"
-	"crypto"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -11,7 +10,6 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -24,133 +22,128 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var machsvrDB *Database
-var machsvrPort int
-var machsvrKey crypto.PrivateKey
-
-//go:embed test/testsuite.conf
-var defaultConfig []byte
+var testServer *TestServer
 
 func TestMain(m *testing.M) {
-	ctx := context.Background()
-	startServer(ctx)
+	testServer = &TestServer{}
+	testServer.StartServer("./test/tmp")
 
 	code := m.Run()
 
-	stopServer(ctx)
+	testServer.StopServer()
 	os.Exit(code)
 }
 
-func startServer(ctx context.Context) {
-	// prepare
-	homePath, err := filepath.Abs(filepath.Join("test", "tmp", "machbase"))
-	if err != nil {
-		panic(err)
-	}
-	confPath := filepath.Join(homePath, "conf", "machbase.conf")
+// func startServer(ctx context.Context) {
+// 	// prepare
+// 	homePath, err := filepath.Abs(filepath.Join("test", "tmp", "machbase"))
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	confPath := filepath.Join(homePath, "conf", "machbase.conf")
 
-	os.RemoveAll(homePath)
-	os.MkdirAll(homePath, 0755)
-	os.MkdirAll(filepath.Join(homePath, "conf"), 0755)
-	os.MkdirAll(filepath.Join(homePath, "trc"), 0755)
-	os.MkdirAll(filepath.Join(homePath, "dbs"), 0755)
-	os.WriteFile(confPath, defaultConfig, 0644)
+// 	os.RemoveAll(homePath)
+// 	os.MkdirAll(homePath, 0755)
+// 	os.MkdirAll(filepath.Join(homePath, "conf"), 0755)
+// 	os.MkdirAll(filepath.Join(homePath, "trc"), 0755)
+// 	os.MkdirAll(filepath.Join(homePath, "dbs"), 0755)
+// 	os.WriteFile(confPath, []byte(defaultConfig), 0644)
 
-	// available port
-	time.Sleep(time.Millisecond * time.Duration(3000*rand.Float32()))
-	var lsnr net.Listener
-	for {
-		if l, err := net.Listen("tcp", "127.0.0.1:0"); err != nil {
-			continue
-		} else {
-			lsnr = l
-			machsvrPort = l.Addr().(*net.TCPAddr).Port
-			break
-		}
-	}
-	lsnr.Close()
+// 	// available port
+// 	time.Sleep(time.Millisecond * time.Duration(3000*rand.Float32()))
+// 	var lsnr net.Listener
+// 	for {
+// 		if l, err := net.Listen("tcp", "127.0.0.1:0"); err != nil {
+// 			continue
+// 		} else {
+// 			lsnr = l
+// 			machsvrPort = l.Addr().(*net.TCPAddr).Port
+// 			break
+// 		}
+// 	}
+// 	lsnr.Close()
 
-	if err := Initialize(homePath, machsvrPort, OPT_SIGHANDLER_OFF); err != nil {
-		panic(err)
-	}
+// 	if err := Initialize(homePath, machsvrPort, OPT_SIGHANDLER_OFF); err != nil {
+// 		panic(err)
+// 	}
 
-	if !ExistsDatabase() {
-		if err := CreateDatabase(); err != nil {
-			panic(err)
-		}
-	}
+// 	if !ExistsDatabase() {
+// 		if err := CreateDatabase(); err != nil {
+// 			panic(err)
+// 		}
+// 	}
 
-	// setup
-	if db, err := NewDatabase(DatabaseOption{MaxOpenConn: -1, MaxOpenQuery: -1}); err != nil {
-		panic(err)
-	} else {
-		machsvrDB = db
-	}
+// 	// setup
+// 	if db, err := NewDatabase(DatabaseOption{MaxOpenConn: -1, MaxOpenQuery: -1}); err != nil {
+// 		panic(err)
+// 	} else {
+// 		machsvrDB = db
+// 	}
 
-	if err := machsvrDB.Startup(); err != nil {
-		panic(err)
-	}
-	time.Sleep(time.Millisecond * 2000)
+// 	if err := machsvrDB.Startup(); err != nil {
+// 		panic(err)
+// 	}
+// 	time.Sleep(time.Millisecond * 2000)
 
-	pair, err := machgo.GenerateAuthKeyPair()
-	if err != nil {
-		panic(err)
-	}
+// 	pair, err := machgo.GenerateAuthKeyPair()
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-	privPath, pubPath, err := pair.WriteFiles(homePath, "authkey_test")
-	if err != nil {
-		panic(err)
-	}
-	// just to verify the generated key file is valid
-	if privKey, err := machgo.LoadPrivateKeyFromFile(privPath); err != nil {
-		panic(err)
-	} else {
-		machsvrKey = privKey
-	}
+// 	privPath, pubPath, err := pair.WriteFiles(homePath, "authkey_test")
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	// just to verify the generated key file is valid
+// 	if privKey, err := machgo.LoadPrivateKeyFromFile(privPath); err != nil {
+// 		panic(err)
+// 	} else {
+// 		machsvrKey = privKey
+// 	}
 
-	pubKeyContent, err := os.ReadFile(pubPath)
-	if err != nil {
-		panic(err)
-	}
+// 	pubKeyContent, err := os.ReadFile(pubPath)
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-	// trace_log_level
-	conn, err := machsvrDB.ConnectTrust(ctx, "sys")
-	if err != nil {
-		panic(err)
-	}
-	result := conn.Exec(ctx, "alter system set trace_log_level=1023")
-	if result.Err() != nil {
-		panic(result.Err())
-	}
-	result = conn.Exec(ctx,
-		fmt.Sprintf("alter user sys add auth key (key='%s', valid_before='2100-01-01', comment='test key')",
-			strings.TrimSpace(string(pubKeyContent))))
-	if result.Err() != nil {
-		panic(result.Err())
-	}
-	conn.Close()
+// 	// trace_log_level
+// 	conn, err := machsvrDB.ConnectTrust(ctx, "sys")
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	result := conn.Exec(ctx, "alter system set trace_log_level=1023")
+// 	if result.Err() != nil {
+// 		panic(result.Err())
+// 	}
+// 	result = conn.Exec(ctx,
+// 		fmt.Sprintf("alter user sys add auth key (key='%s', valid_before='2100-01-01', comment='test key')",
+// 			strings.TrimSpace(string(pubKeyContent))))
+// 	if result.Err() != nil {
+// 		panic(result.Err())
+// 	}
+// 	conn.Close()
 
-	// machgo database
-	if db, err := machgo.NewDatabase(&machgo.Config{
-		Host: "127.0.0.1",
-		Port: machsvrPort,
-	}); err != nil {
-		panic(err)
-	} else {
-		spi.SetDefault(db, machsvrKey)
-	}
-}
+// 	// machgo database
+// 	if db, err := machgo.NewDatabase(&machgo.Config{
+// 		Host: "127.0.0.1",
+// 		Port: machsvrPort,
+// 	}); err != nil {
+// 		panic(err)
+// 	} else {
+// 		spi.SetDefault(db, machsvrKey)
+// 	}
+// }
 
-func stopServer(_ context.Context) {
-	if err := machsvrDB.Shutdown(); err != nil {
-		panic(err)
-	}
-	Finalize()
+// func stopServer(_ context.Context) {
+// 	if err := machsvrDB.Shutdown(); err != nil {
+// 		panic(err)
+// 	}
+// 	Finalize()
 
-	if err := os.RemoveAll(filepath.Join("test", "tmp", "machbase")); err != nil {
-		panic(err)
-	}
-}
+// 	if err := os.RemoveAll(filepath.Join("test", "tmp", "machbase")); err != nil {
+// 		panic(err)
+// 	}
+// }
 
 func TestConnCancelNilHandle(t *testing.T) {
 	conn := &Conn{db: &Database{}}
@@ -182,7 +175,7 @@ func TestConnCloseSignalsReturnChan(t *testing.T) {
 }
 
 func TestSetMaxConn(t *testing.T) {
-	engine := machsvrDB
+	engine := testServer.MachSvr()
 	expectLimit, open := engine.MaxOpenConn()
 	require.NotZero(t, expectLimit)
 	require.LessOrEqual(t, -1, open)
@@ -205,7 +198,7 @@ func TestSetMaxConn(t *testing.T) {
 }
 
 func TestSetMaxQuery(t *testing.T) {
-	engine := machsvrDB
+	engine := testServer.MachSvr()
 	expectLimit, open := engine.MaxOpenQuery()
 	require.NotZero(t, expectLimit)
 	require.LessOrEqual(t, -1, open)
@@ -228,8 +221,8 @@ func TestSetMaxQuery(t *testing.T) {
 }
 
 func TestDatabaseError(t *testing.T) {
-	engine := machsvrDB
-	_, err := machsvrDB.Connect(context.Background(), api.WithPassword("sys", "wrong-password"))
+	engine := testServer.MachSvr()
+	_, err := engine.Connect(context.Background(), api.WithPassword("sys", "wrong-password"))
 	require.Error(t, err)
 
 	lastErr := engine.Error()
@@ -556,7 +549,7 @@ func TestConnConnectedClosed(t *testing.T) {
 }
 
 func TestWatcherRegistry(t *testing.T) {
-	engine := machsvrDB
+	engine := testServer.MachSvr()
 	watcherKey := "registry-test"
 	engine.RemoveWatcher(watcherKey)
 	t.Cleanup(func() {
@@ -591,7 +584,7 @@ func TestWatcherRegistry(t *testing.T) {
 }
 
 func TestKillConnection(t *testing.T) {
-	engine := machsvrDB
+	engine := testServer.MachSvr()
 	require.EqualError(t, engine.KillConnection("missing-watcher", true), "connection 'missing-watcher' not found")
 
 	invalidKey := "invalid-watcher"
@@ -603,7 +596,7 @@ func TestKillConnection(t *testing.T) {
 	engine.RemoveWatcher(invalidKey)
 
 	before := watcherStates(engine)
-	conn, err := machsvrDB.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err := engine.Connect(context.Background(), api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	after := watcherStates(engine)
@@ -616,10 +609,10 @@ func TestKillConnection(t *testing.T) {
 }
 
 func TestCancelConnection(t *testing.T) {
-	engine := machsvrDB
+	engine := testServer.MachSvr()
 
 	before := watcherStates(engine)
-	conn, err := machsvrDB.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err := engine.Connect(context.Background(), api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	after := watcherStates(engine)
@@ -631,7 +624,7 @@ func TestCancelConnection(t *testing.T) {
 	require.NoError(t, conn.Close())
 
 	before = watcherStates(engine)
-	conn, err = machsvrDB.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err = engine.Connect(context.Background(), api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	machConn, ok := conn.(*Conn)
@@ -648,7 +641,7 @@ func TestCancelConnection(t *testing.T) {
 
 func TestPreparedStatement(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
@@ -719,22 +712,22 @@ func newWatcherID(before []*ConnState, after []*ConnState) string {
 
 func TestPing(t *testing.T) {
 	ctx := t.Context()
-	dur, err := machsvrDB.Ping(ctx)
+	dur, err := testServer.MachSvr().Ping(ctx)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, dur, time.Duration(0))
 }
 
 func TestUserAuth(t *testing.T) {
 	ctx := t.Context()
-	ok, reason, err := machsvrDB.UserAuth(ctx, "sys", "mm")
+	ok, reason, err := testServer.MachSvr().UserAuth(ctx, "sys", "mm")
 	if err != nil {
-		t.Fatalf("UserAuth failed [%T]: %s", machsvrDB, err.Error())
+		t.Fatalf("UserAuth failed [%T]: %s", testServer.MachSvr(), err.Error())
 	}
 	require.NoError(t, err)
 	require.False(t, ok)
 	require.Equal(t, "invalid username or password", reason)
 
-	ok, reason, err = machsvrDB.UserAuth(ctx, "sys", "manager")
+	ok, reason, err = testServer.MachSvr().UserAuth(ctx, "sys", "manager")
 	if err != nil {
 		t.Fatalf("UserAuth failed: %s", err.Error())
 	}
@@ -745,9 +738,9 @@ func TestUserAuth(t *testing.T) {
 
 func TestUserAuthWithKey(t *testing.T) {
 	ctx := t.Context()
-	db := spi.Default()
+	db := testServer.MachSvr()
 	host := "127.0.0.1"
-	port := machsvrPort
+	port := testServer.MachPort()
 
 	adminConn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
@@ -815,7 +808,7 @@ func TestTableBasedCases(t *testing.T) {
 func testCreateTables(t *testing.T) {
 	// create test tables
 	ctx := t.Context()
-	conn, err := machsvrDB.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := testServer.MachSvr().Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
@@ -879,7 +872,7 @@ func testCreateTables(t *testing.T) {
 
 func testDescribeTable(t *testing.T) {
 	ctx := t.Context()
-	conn, err := machsvrDB.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := spi.Connect(ctx, "sys")
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -920,7 +913,7 @@ func testDescribeTable(t *testing.T) {
 	}
 	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
 		// describe table
-		desc, err := api.DescribeTable(ctx, conn, table_name, true)
+		desc, err := spi.DescribeTable(ctx, conn, table_name, true)
 		require.NoError(t, err, "describe table %q fail", table_name)
 		require.Equal(t, "TAG_DATA", desc.Name)
 		require.Equal(t, "SYS", desc.User)
@@ -969,18 +962,18 @@ func testDescribeTable(t *testing.T) {
 		}
 	}
 
-	descConn, err := machsvrDB.Connect(ctx, api.WithPassword("sys", "manager"))
+	descConn, err := spi.Connect(ctx, "sys")
 	require.NoError(t, err, "connect fail")
 	defer descConn.Close()
 
-	desc, err := api.DescribeTable(ctx, descConn, "m$sys_tables", false)
+	desc, err := spi.DescribeTable(ctx, descConn, "m$sys_tables", false)
 	require.NoError(t, err, "describe m$sys_tables fail")
 	require.Equal(t, "M$SYS_TABLES", desc.Name)
 }
 
 func testInsertMeta(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
@@ -1035,7 +1028,7 @@ func testInsertMeta(t *testing.T) {
 
 func testAppendTag(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	tableName := "append_tag"
 
@@ -1129,7 +1122,7 @@ func testAppendTag(t *testing.T) {
 
 func testAppendTagNotExist(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
@@ -1145,7 +1138,7 @@ func testAppendTagNotExist(t *testing.T) {
 
 func testAppendTagPartial(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 	tableName := "append_tag2"
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
@@ -1213,7 +1206,7 @@ func testAppendTagPartial(t *testing.T) {
 
 func testExplain(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatal(err)
@@ -1229,7 +1222,7 @@ func testExplain(t *testing.T) {
 
 func testExplainFull(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatal(err)
@@ -1244,7 +1237,7 @@ func testExplainFull(t *testing.T) {
 
 func testColumns(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
@@ -1291,7 +1284,7 @@ func testColumns(t *testing.T) {
 
 func testColumnsNameCaseSensitivity(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
@@ -1325,7 +1318,7 @@ func testColumnsNameCaseSensitivity(t *testing.T) {
 
 func testQueryRow(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
@@ -1364,7 +1357,7 @@ func testQueryRow(t *testing.T) {
 
 func testInserAndQueryLogTable(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
@@ -1436,7 +1429,7 @@ func StringWithCharset(length int, charset string) string {
 
 func testAppendLogTable(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
@@ -1512,7 +1505,7 @@ func testAppendLogTable(t *testing.T) {
 
 func testAppendTagTable(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
@@ -1629,7 +1622,7 @@ func testAppendTagTable(t *testing.T) {
 
 func TestBitTypeColumn(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
@@ -1701,7 +1694,7 @@ func TestBitTypeColumn(t *testing.T) {
 
 func TestProxyUser(t *testing.T) {
 	ctx := t.Context()
-	db := machsvrDB
+	db := testServer.MachSvr()
 
 	sysConn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")

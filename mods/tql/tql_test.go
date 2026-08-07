@@ -22,28 +22,28 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
-	"github.com/machbase/neo-server/v8/spi/testsuite"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-var testServer *testsuite.Server
+var testServer *machsvr.TestServer
 var testHttpAddress string
 
 func TestMain(m *testing.M) {
-	testServer = testsuite.NewServer("./test/tmp")
-	testServer.StartServer()
-	testServer.CreateTestTables()
+	testServer = &machsvr.TestServer{}
+	testServer.StartServer("./test/tmp")
+	createTestTables()
 
-	db := testServer.DatabaseGO()
-	spi.SetDefault(db, testServer.DatabaseKey())
-	spi.SetDefaultDSN(map[string]string{
-		"host":            "127.0.0.1",
-		"port":            fmt.Sprintf("%d", testServer.MachPort()),
-		"statement_cache": "auto",
-		"user":            "sys",
-		"password":        "manager",
-	})
+	// db := testServer.DatabaseGO()
+	// spi.SetDefault(db, testServer.DatabaseKey())
+	// spi.SetDefaultDSN(map[string]string{
+	// 	"host":            "127.0.0.1",
+	// 	"port":            fmt.Sprintf("%d", testServer.MachPort()),
+	// 	"statement_cache": "auto",
+	// 	"user":            "sys",
+	// 	"password":        "manager",
+	// })
 	spi.StartAppendWorkers()
 
 	spi.StartMetrics()
@@ -69,19 +69,103 @@ func TestMain(m *testing.M) {
 
 	http.Stop()
 	tql.Deinit()
-	testServer.DropTestTables()
+	dropTestTables()
 	testServer.StopServer()
 	os.Exit(code)
 }
 
+func createTestTables() {
+	ctx := context.Background()
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+		create tag table if not exists tag_data(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double summarized,
+			short_value     short,
+			ushort_value    ushort,
+			int_value       integer,
+			uint_value 	    uinteger,
+			long_value      long,
+			ulong_value 	ulong,
+			str_value       varchar(400),
+			json_value      json,
+			ipv4_value      ipv4,
+			ipv6_value      ipv6,
+			bin_value		binary
+		) TAG_DUPLICATE_CHECK_DURATION=1;
+	`))
+	if err != nil {
+		panic(err)
+	}
+	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+		create tag table if not exists tag_simple(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double
+		) TAG_DUPLICATE_CHECK_DURATION=1;
+	`))
+	if err != nil {
+		panic(err)
+	}
+	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+		create table if not exists log_data(
+		    time datetime,
+			short_value short,
+			ushort_value ushort,
+			int_value integer,
+			uint_value uinteger,
+			long_value long,
+			ulong_value ulong,
+			double_value double,
+			float_value float,
+			str_value varchar(400),
+			json_value json,
+			ipv4_value ipv4,
+			ipv6_value ipv6,
+			text_value text,
+			bin_value binary)
+	`))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func dropTestTables() {
+	ctx := context.Background()
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	_, err = conn.ExecContext(ctx, "DROP TABLE tag_data")
+	if err != nil {
+		panic(err)
+	}
+	_, err = conn.ExecContext(ctx, "DROP TABLE tag_simple")
+	if err != nil {
+		panic(err)
+	}
+	_, err = conn.ExecContext(ctx, "DROP TABLE log_data")
+	if err != nil {
+		panic(err)
+	}
+}
+
 func flushTable(ctx context.Context, table string) error {
-	conn, err := testServer.DatabaseSVR().Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		return err
 	}
-	result := conn.Exec(ctx, fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
-	if result.Err() != nil {
-		return result.Err()
+	result, err := conn.ExecContext(ctx, fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
+	_ = result
+	if err != nil {
+		return err
 	}
 	conn.Close()
 	return nil
@@ -783,8 +867,8 @@ func TestDatabaseBinaryTql(t *testing.T) {
 			`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Contains(t, result, "1 row inserted.")
-				conn, _ := spi.Default().Connect(t.Context(), api.WithAuthKey("sys", spi.DefaultKey()))
-				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn, _ := spi.Connect(t.Context(), "sys")
+				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
 		},
@@ -856,9 +940,9 @@ func TestDatabaseBinaryTql(t *testing.T) {
 				spi.FlushAppendWorkers("tqlbin")
 
 				// flush table
-				conn, _ := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				conn, _ := spi.Connect(t.Context(), "sys")
 				time.Sleep(3 * time.Second)
-				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
 		},
@@ -889,9 +973,9 @@ func TestDatabaseBinaryTql(t *testing.T) {
 				spi.FlushAppendWorkers("tqlbin")
 
 				// flush table
-				conn, _ := spi.Default().Connect(t.Context(), api.WithPassword("sys", "manager"))
+				conn, _ := spi.Connect(t.Context(), "sys")
 				time.Sleep(100 * time.Millisecond)
-				conn.Exec(t.Context(), "EXEC table_flush(tqlbin)")
+				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
 				conn.Close()
 			},
 		},

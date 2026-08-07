@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
@@ -91,13 +90,9 @@ func TestShowInfo(t *testing.T) {
 type ShowFixture struct {
 	db     *sql.DB
 	dbConn *sql.Conn
-	conn   api.Conn
 }
 
 func (sf *ShowFixture) Close() {
-	if sf.conn != nil {
-		sf.conn.Close()
-	}
 	if sf.db != nil {
 		sf.db.Close()
 	}
@@ -110,12 +105,9 @@ func newShowDatabase(ctx context.Context) *ShowFixture {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
 	db, _ := sql.Open("machbase", dsn)
 	dbConn, _ := db.Conn(ctx)
-	// Wrap the sql.Conn with spi.Conn
-	conn := spi.WrapSqlConn(dbConn)
 	return &ShowFixture{
 		db:     db,
 		dbConn: dbConn,
-		conn:   conn,
 	}
 }
 

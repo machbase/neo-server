@@ -284,7 +284,7 @@ func (dc *DataGenMachbase) gen(node *Node) {
 	cols := make([]*api.Column, len(columnTypes)+1)
 	cols[0] = api.MakeColumnRownum()
 	for i, col := range columnTypes {
-		cols[i+1] = &api.Column{Name: col.Name(), DataType: spi.SqlColumnTypeToDataType(col)}
+		cols[i+1] = api.NewColumnWithType(col)
 	}
 	dc.task.SetResultColumns(cols)
 
@@ -417,7 +417,7 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 			cols := make([]*api.Column, len(columnTypes)+1)
 			cols[0] = api.MakeColumnRownum()
 			for i, col := range columnTypes {
-				cols[i+1] = &api.Column{Name: col.Name(), DataType: spi.SqlColumnTypeToDataType(col)}
+				cols[i+1] = api.NewColumnWithType(col)
 			}
 			node.task.SetResultColumns(cols)
 			nrow := int64(0)

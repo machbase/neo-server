@@ -118,7 +118,6 @@ const (
 	HandlerMachbase = HandlerType("machbase")
 	HandlerInflux   = HandlerType("influx") // influx line protocol
 	HandlerWeb      = HandlerType("web")    // web ui
-	HandlerLake     = HandlerType("lakes")
 	HandlerVoid     = HandlerType("-")
 )
 
@@ -338,13 +337,6 @@ func (svr *httpd) Router() *gin.Engine {
 				svr.bakd.HttpRouter(backupdGroup)
 			}
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
-		case HandlerLake:
-			group.GET("/tags", svr.handleLakeGetTagList)
-			group.GET("/values/:type", svr.handleLakeGetValues)
-			group.POST("/values", svr.handleLakePostValues)
-			group.POST("/values/:type", svr.handleLakePostValues)
-			group.POST("/inter/execquery", svr.handleLakeExecQuery)
-			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAuth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
@@ -376,11 +368,6 @@ func (svr *httpd) Router() *gin.Engine {
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
 	return r
-}
-
-// for the internal processor
-func (svr *httpd) getTrustConnection(ctx *gin.Context) (api.Conn, error) {
-	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 }
 
 func (svr *httpd) getUserSqlConn(ctx *gin.Context) (*sql.Conn, error) {
@@ -635,7 +622,7 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser(claim.Subject))
+	conn, err := spi.Connect(ctx, claim.Subject)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -644,10 +631,10 @@ func (svr *httpd) handleChangePassword(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	result := conn.Exec(ctx,
+	_, err = conn.ExecContext(ctx,
 		fmt.Sprintf("ALTER USER %s IDENTIFIED BY '%s'", claim.Subject, req.NewPassword))
-	if err := result.Err(); err != nil {
-		rsp.Reason = result.Message()
+	if err != nil {
+		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return

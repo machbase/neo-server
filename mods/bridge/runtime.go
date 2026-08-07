@@ -271,9 +271,7 @@ func (s *Service) SqlQueryResultFetch(ctx context.Context, cr *SqlQueryResult) (
 		rsp.Reason = fmt.Sprintf("SqlBridge: %s", err.Error())
 		return rsp, nil
 	}
-	for i, v := range rsp.Values {
-		rsp.Values[i] = UnboxValueToNative(v)
-	}
+	rsp.Values = rowsWrap.bridge.NormalizeType(rsp.Values)
 	rsp.Success = true
 	rsp.Reason = "success"
 	return rsp, nil

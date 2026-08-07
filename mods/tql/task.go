@@ -3,7 +3,6 @@ package tql
 import (
 	"bytes"
 	"context"
-	"crypto"
 	"crypto/sha1"
 	"encoding/json"
 	"errors"
@@ -24,7 +23,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/spi"
 )
 
 const (
@@ -35,8 +33,6 @@ type Task struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
 	params       map[string][]string
-	db           api.Database
-	dbKey        crypto.PrivateKey
 	inputReader  io.Reader
 	outputWriter io.Writer
 	toJsonOutput bool
@@ -94,8 +90,6 @@ func NewTaskContext(ctx context.Context) *Task {
 	}
 	ret.volatileAssetsProvider = instance.vap
 	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
-	ret.db = spi.Default()
-	ret.dbKey = spi.DefaultKey()
 	context.AfterFunc(ret.ctx, func() {
 		ret.fireCircuitBreak(nil)
 	})

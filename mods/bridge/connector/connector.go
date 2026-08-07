@@ -10,14 +10,30 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/sqlite"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/spi"
 )
+
+func NewSqliteBridge(name string, path string) *sqlite.Bridge {
+	return sqlite.NewBridge(name, path)
+}
+
+func NewPostgresBridge(name string, path string) *postgres.Bridge {
+	return postgres.NewBridge(name, path)
+}
+
+func NewMySQLBridge(name string, path string) *mysql.Bridge {
+	return mysql.NewBridge(name, path)
+}
+
+func NewMSSQLBridge(name string, path string) *mssql.Bridge {
+	return mssql.NewBridge(name, path)
+}
 
 type BridgedDatabase struct {
 	db        *sql.DB
@@ -25,11 +41,11 @@ type BridgedDatabase struct {
 	dbConnect string
 }
 
-func (d *BridgedDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
+func (d *BridgedDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (*sql.Conn, error) {
 	if c, err := d.db.Conn(ctx); err != nil {
 		return nil, err
 	} else {
-		return spi.WrapSqlConn(c), nil
+		return c, nil
 	}
 }
 
@@ -45,13 +61,13 @@ func (d *BridgedDatabase) Ping(ctx context.Context) (time.Duration, error) {
 	return time.Since(tick), nil
 }
 
-var databases = map[string]*BridgedDatabase{}
+var databases = map[string]*sql.DB{}
 var databasesLock sync.RWMutex
 
 func init() {
 	util.AddShutdownHook(func() {
 		for _, d := range databases {
-			d.db.Close()
+			d.Close()
 		}
 	})
 }
@@ -73,7 +89,7 @@ func Database(name string) (*sql.DB, error) {
 	databasesLock.RLock()
 	if dbm, ok := databases[name]; ok {
 		databasesLock.RUnlock()
-		return dbm.db, nil
+		return dbm, nil
 	}
 	databasesLock.RUnlock()
 
@@ -102,13 +118,13 @@ func Database(name string) (*sql.DB, error) {
 		return nil, err
 	}
 	if db != nil {
-		ret := &BridgedDatabase{db: db, dbType: dbType, dbConnect: dbConn}
-		databases[name] = ret
+		databases[name] = db
 	}
+	_ = dbType
 	return db, nil
 }
 
-func New(name string) (api.Database, error) {
+func New(name string) (*sql.DB, error) {
 	var db *sql.DB
 	var dbType string
 	var dbConn string
@@ -141,18 +157,18 @@ func New(name string) (api.Database, error) {
 	if err != nil {
 		return nil, err
 	}
+	_ = dbType
 	if db != nil {
-		ret := &BridgedDatabase{db: db, dbType: dbType, dbConnect: dbConn}
 		databasesLock.Lock()
-		databases[name] = ret
+		databases[name] = db
 		databasesLock.Unlock()
-		return ret, nil
+		return db, nil
 	}
 
 	return nil, fmt.Errorf("unknown database type: %s", name)
 }
 
-func NewWithDataSource(driverName string, dataSource string) (api.Database, []api.ConnectOption, error) {
+func NewWithDataSource(driverName string, dataSource string) (*sql.DB, []api.ConnectOption, error) {
 	var db *sql.DB
 	var opts []api.ConnectOption
 	var err error
@@ -216,7 +232,7 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 		if user != "" {
 			opts = append(opts, api.WithPassword(user, password))
 		}
-		db, err := machgo.NewDatabase(&machgo.Config{
+		machdb, err := machgo.NewDatabase(&machgo.Config{
 			Host:    host,
 			Port:    port,
 			ConType: conType,
@@ -224,15 +240,18 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 		if err != nil {
 			return nil, nil, err
 		}
-		return db, opts, nil
+		db, err = machbase.OpenDBWithConnector(machdb, func(context.Context) ([]api.ConnectOption, error) {
+			ret := []api.ConnectOption{}
+			ret = append(ret, opts...)
+			return ret, nil
+		})
 	default:
 		return nil, nil, fmt.Errorf("unknown database type: %s", driverName)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	ret := &BridgedDatabase{db: db, dbType: driverName, dbConnect: dataSource}
-	return ret, opts, nil
+	return db, opts, nil
 }
 
 func SetDatabase(name string, db *sql.DB, dbType string, dbConn string) {
@@ -241,7 +260,7 @@ func SetDatabase(name string, db *sql.DB, dbType string, dbConn string) {
 	}
 	databasesLock.Lock()
 	defer databasesLock.Unlock()
-	databases[name] = &BridgedDatabase{db: db, dbType: dbType, dbConnect: dbConn}
+	databases[name] = db
 }
 
 func UnsetDatabase(name string) {

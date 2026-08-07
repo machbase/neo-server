@@ -10,7 +10,6 @@ import (
 
 	bridgepkg "github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/test"
 	"github.com/ory/dockertest/v4"
 	"github.com/stretchr/testify/require"
@@ -53,17 +52,15 @@ func TestMySQLDateTypes(t *testing.T) {
 	defer br.AfterUnregister()
 
 	ctx := t.Context()
-	sqlConn, err := br.Connect(ctx)
+	conn, err := br.Connect(ctx)
 	require.NoError(t, err)
-	defer sqlConn.Close()
-
-	conn := spi.WrapSqlConn(sqlConn)
 	defer conn.Close()
 
-	result := conn.Exec(ctx, "SET time_zone = '+00:00'")
-	require.NoError(t, result.Err())
+	result, err := conn.ExecContext(ctx, "SET time_zone = '+00:00'")
+	_ = result
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `CREATE TABLE test_dates (
+	result, err = conn.ExecContext(ctx, `CREATE TABLE test_dates (
 		id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 		event_bigint BIGINT,
 		event_int INT,
@@ -77,9 +74,9 @@ func TestMySQLDateTypes(t *testing.T) {
 		event_datetime DATETIME,
 		event_timestamp TIMESTAMP NULL
 	)`)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO test_dates(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	result, err = conn.ExecContext(ctx, `INSERT INTO test_dates(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		int64(4200000000),
 		123456,
 		int16(12),
@@ -92,9 +89,9 @@ func TestMySQLDateTypes(t *testing.T) {
 		"2026-03-14 05:29:01",
 		"2026-03-14 05:29:01",
 	)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	result = conn.Exec(ctx, `INSERT INTO test_dates(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	result, err = conn.ExecContext(ctx, `INSERT INTO test_dates(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nil,
 		nil,
 		nil,
@@ -107,9 +104,9 @@ func TestMySQLDateTypes(t *testing.T) {
 		"2026-03-15 06:30:02",
 		nil,
 	)
-	require.NoError(t, result.Err())
+	require.NoError(t, err)
 
-	rows, err := sqlConn.QueryContext(ctx, `SELECT event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp FROM test_dates WHERE event_timestamp IS NOT NULL`)
+	rows, err := conn.QueryContext(ctx, `SELECT event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp FROM test_dates WHERE event_timestamp IS NOT NULL`)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -194,7 +191,7 @@ func TestMySQLDateTypes(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, time.Date(2026, 3, 14, 5, 29, 1, 0, time.UTC), convertedTimestamp.UTC())
 
-	nullRows, err := sqlConn.QueryContext(ctx, `SELECT event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp FROM test_dates WHERE event_timestamp IS NULL`)
+	nullRows, err := conn.QueryContext(ctx, `SELECT event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp FROM test_dates WHERE event_timestamp IS NULL`)
 	require.NoError(t, err)
 	defer nullRows.Close()
 

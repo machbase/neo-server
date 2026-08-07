@@ -23,7 +23,6 @@ import (
 	"encoding/pem"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/spi"
@@ -427,13 +426,13 @@ func (s *Server) ListSshKey(ctx context.Context, user string) (*ListSshKeyRespon
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	sysConn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		return nil, fmt.Errorf("fail to connect database, %s", err.Error())
 	}
-	defer sysConn.Close()
+	defer conn.Close()
 
-	keys, err := getUserAuthKeys(ctx, sysConn, user)
+	keys, err := getUserAuthKeys(ctx, conn, user)
 	if err != nil {
 		return nil, fmt.Errorf("fail to get user auth keys, %s", err.Error())
 	}
@@ -543,11 +542,11 @@ func (s *Server) addSshKey(ctx context.Context, typ string, key string, comment 
 }
 
 func (s *Server) AddAuthorizedSshKey(ctx context.Context, user string, rawKey string) error {
-	sysConn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		return fmt.Errorf("fail to connect database, %s", err.Error())
 	}
-	defer sysConn.Close()
+	defer conn.Close()
 
 	rawKey = strings.TrimSpace(rawKey)
 	var (
@@ -609,9 +608,13 @@ func (s *Server) AddAuthorizedSshKey(ctx context.Context, user string, rawKey st
 		return fmt.Errorf("failed to convert key to PEM")
 	}
 
-	comment = strings.TrimSpace(comment)
+	comment = strings.ReplaceAll(strings.TrimSpace(comment), "'", "''")
+	// 30 years later
+	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
 
-	err = registerUserAuthKey(ctx, sysConn, user, string(keyPEM), comment)
+	_, err = conn.ExecContext(ctx,
+		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
+			strings.ToUpper(user), strings.TrimSpace(string(keyPEM)), validBefore, comment))
 	if err != nil {
 		return fmt.Errorf("fail to register user auth key, %s", err.Error())
 	}
@@ -667,13 +670,13 @@ func (s *Server) DelSshKey(ctx context.Context, req *DelSshKeyRequest) (*DelSshK
 		user = req.User
 	}
 
-	sysConn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		return nil, fmt.Errorf("fail to connect database, %s", err.Error())
 	}
-	defer sysConn.Close()
+	defer conn.Close()
 
-	keys, err := getUserAuthKeys(ctx, sysConn, user)
+	keys, err := getUserAuthKeys(ctx, conn, user)
 	if err != nil {
 		return nil, fmt.Errorf("fail to get user auth keys, %s", err.Error())
 	}
@@ -685,7 +688,7 @@ func (s *Server) DelSshKey(ctx context.Context, req *DelSshKeyRequest) (*DelSshK
 		}
 		if sk.Fingerprint == req.Fingerprint {
 			// found the key to delete
-			err := dropUserAuthKey(ctx, sysConn, user, k.KeyID)
+			err := dropUserAuthKey(ctx, conn, user, k.KeyID)
 			if err != nil {
 				return nil, fmt.Errorf("fail to delete user auth key, %s", err.Error())
 			}

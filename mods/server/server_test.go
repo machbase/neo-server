@@ -140,15 +140,15 @@ func TestMain(m *testing.M) {
 		)
 	}()
 
-	func(db api.Database) {
+	func() {
 		ctx := context.TODO()
-		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		conn, err := spi.Connect(ctx, "sys")
 		if err != nil {
 			panic(err)
 		}
 		defer conn.Close()
 
-		result := conn.Exec(ctx, `CREATE TAG TABLE TAG_DATA(
+		_, err = conn.ExecContext(ctx, `CREATE TAG TABLE TAG_DATA(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
 			value           double summarized,
@@ -164,11 +164,11 @@ func TestMain(m *testing.M) {
 			ipv6_value      ipv6,
 			bin_value		binary
 		) TAG_PARTITION_COUNT=1`)
-		if result.Err() != nil {
-			panic(result.Err())
+		if err != nil {
+			panic(err)
 		}
 
-		result = conn.Exec(ctx, `CREATE TABLE LOG_DATA(
+		_, err = conn.ExecContext(ctx, `CREATE TABLE LOG_DATA(
 			time datetime,
 			short_value short,
 			ushort_value ushort,
@@ -185,17 +185,17 @@ func TestMain(m *testing.M) {
 			text_value text,
 			bin_value binary
 		)`)
-		if result.Err() != nil {
-			panic(result.Err())
+		if err != nil {
+			panic(err)
 		}
 
-		result = conn.Exec(ctx, `CREATE TAG TABLE example (
+		_, err = conn.ExecContext(ctx, `CREATE TAG TABLE example (
 			name VARCHAR(40) PRIMARY KEY,
 			time DATETIME BASETIME,
 			value DOUBLE SUMMARIZED
 		) TAG_PARTITION_COUNT=1, TAG_DUPLICATE_CHECK_DURATION=1`)
-		if result.Err() != nil {
-			panic(result.Err())
+		if err != nil {
+			panic(err)
 		}
 
 		rows := [][]any{
@@ -207,13 +207,23 @@ func TestMain(m *testing.M) {
 			)
 		}
 		for _, row := range rows {
-			result = conn.Exec(ctx, `INSERT INTO example VALUES (?, ?, ?)`, row[0], row[1], row[2])
-			if result.Err() != nil {
-				panic(result.Err())
+			result, err := conn.ExecContext(ctx, `INSERT INTO example VALUES (?, ?, ?)`, row[0], row[1], row[2])
+			if err != nil {
+				panic(err)
+			}
+			affected, err := result.RowsAffected()
+			if err != nil {
+				panic(err)
+			}
+			if affected != 1 {
+				panic(fmt.Sprintf("expected 1 row affected, got %d", affected))
 			}
 		}
-		conn.Exec(ctx, `EXEC table_flush(example)`)
-	}(spi.Default())
+		_, err = conn.ExecContext(ctx, `EXEC table_flush(example)`)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	// run tests
 	m.Run()
@@ -1414,7 +1424,7 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 				"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON           │",
 				"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼──────────────────────┤",
 				"│      1 │  1 │ acme    │ 0.1      │ 100       │ AQ== │ ms-1 │ 2026-03-14T05:29:01Z │",
-				"│      2 │  2 │ company │ NULL     │ NULL      │      │ ms-2 │ 2026-03-14T05:29:01Z │",
+				"│      2 │  2 │ company │ NULL     │ NULL      │ NULL │ ms-2 │ 2026-03-14T05:29:01Z │",
 				"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴──────────────────────┘",
 			},
 		},
