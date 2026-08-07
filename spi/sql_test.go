@@ -568,6 +568,37 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 	result, err = sysConn.ExecContext(ctx, "exec table_flush(demo.tag_data)")
 	require.NoError(t, err, "table_flush fail")
 
+	// TODO: issue machbase/neo#1445 meta table accessibility for proxy user
+	// for _, metaTable := range []string{"_tag_data_meta", "demo._tag_data_meta", "machbasedb.demo._tag_data_meta"} {
+	for _, metaTable := range []string{"_tag_data_meta"} {
+		rows, err := proxyConn.QueryContext(ctx, fmt.Sprintf("select * from %s", metaTable))
+		require.NoError(t, err)
+		nrow := 0
+		for rows.Next() {
+			var id int64
+			var name string
+			err := rows.Scan(&id, &name)
+			require.NoError(t, err)
+			nrow++
+		}
+		rows.Close()
+		require.Equal(t, 1, nrow)
+	}
+
+	for _, table := range []string{"demo._tag_data_meta", "machbasedb.demo._tag_data_meta"} {
+		rows, err := sysConn.QueryContext(ctx, fmt.Sprintf("select * from %s", table))
+		require.NoError(t, err)
+		nrow := 0
+		for rows.Next() {
+			var id int64
+			var name string
+			err := rows.Scan(&id, &name)
+			require.NoError(t, err)
+			nrow++
+		}
+		rows.Close()
+		require.Equal(t, 1, nrow)
+	}
 	row = sysConn.QueryRowContext(ctx, "select count(*) from demo.tag_data where name = ?", "demo-1")
 	require.NoError(t, row.Err())
 	row.Scan(&count)
