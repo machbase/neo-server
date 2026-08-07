@@ -79,15 +79,6 @@ func TestNewWithDataSourceMachbaseParsing(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, db2.Close()) })
 }
 
-func closeBridgedDatabase(t *testing.T, db any) {
-	t.Helper()
-	bridged, ok := db.(*BridgedDatabase)
-	if !ok || bridged == nil || bridged.db == nil {
-		return
-	}
-	require.NoError(t, bridged.db.Close())
-}
-
 func resetDatabasesForTest(t *testing.T) {
 	t.Helper()
 	databasesLock.Lock()
@@ -120,7 +111,7 @@ func TestNewCachesAndConnectsSqlite(t *testing.T) {
 	first, err := New(name)
 	require.NoError(t, err)
 	require.NotNil(t, first)
-	t.Cleanup(func() { closeBridgedDatabase(t, first) })
+	t.Cleanup(func() { require.NoError(t, first.Close()) })
 
 	second, err := New(name)
 	require.NoError(t, err)
@@ -142,7 +133,7 @@ func TestNewWithDataSourceAndSetDatabase(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, db)
 	require.Empty(t, opts)
-	t.Cleanup(func() { closeBridgedDatabase(t, db) })
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
 	_, _, err = NewWithDataSource("postgresql", "postgres://user:pass@127.0.0.1/db")
 	require.NoError(t, err)
