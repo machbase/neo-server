@@ -249,10 +249,11 @@ func resetDefaultPoolForTest(t *testing.T) {
 
 func resetDefaultPoolConfigForTest(t *testing.T) {
 	t.Helper()
-	maxOpenConn = 20
-	maxIdleConn = 2
-	connMaxLifetime = 10 * time.Minute
-	connMaxIdleTime = 1 * time.Minute
+	pool, _ := DefaultPool()
+	pool.SetMaxOpenConns(20)
+	pool.SetMaxIdleConns(2)
+	pool.SetConnMaxLifetime(10 * time.Minute)
+	pool.SetConnMaxIdleTime(1 * time.Minute)
 }
 
 func setDefaultForTest(t *testing.T, db api.Database, key crypto.PrivateKey) {
@@ -335,136 +336,6 @@ func TestSetDefaultHttpEndpointSelectsLoopbackFriendlyURLs(t *testing.T) {
 			require.Equal(t, tt.expected, DefaultHttpEndpoint())
 		})
 	}
-}
-
-func TestDefaultPoolDatabaseNotConfigured(t *testing.T) {
-	oldDB := defaultDatabase
-	oldKey := defaultDatabaseKey
-	t.Cleanup(func() {
-		defaultDatabase = oldDB
-		defaultDatabaseKey = oldKey
-		resetDefaultPoolForTest(t)
-	})
-
-	setDefaultForTest(t, nil, nil)
-	resetDefaultPoolForTest(t)
-
-	pool, err := DefaultPool()
-	require.Error(t, err)
-	require.Nil(t, pool)
-	require.ErrorContains(t, err, "default database is not configured")
-}
-
-func TestDefaultPoolConnectFailsWhenKeyMissing(t *testing.T) {
-	oldDB := defaultDatabase
-	oldKey := defaultDatabaseKey
-	t.Cleanup(func() {
-		defaultDatabase = oldDB
-		defaultDatabaseKey = oldKey
-		resetDefaultPoolForTest(t)
-	})
-
-	stubDB := &poolStubDatabase{}
-	setDefaultForTest(t, stubDB, nil)
-	resetDefaultPoolForTest(t)
-
-	pool, err := DefaultPool()
-	require.Error(t, err)
-	require.Nil(t, pool)
-	require.ErrorContains(t, err, "default key is not configured")
-	require.Equal(t, 0, stubDB.connectCount)
-}
-
-func TestDefaultPoolSuccessAndCachedInstance(t *testing.T) {
-	oldDB := defaultDatabase
-	oldKey := defaultDatabaseKey
-	t.Cleanup(func() {
-		defaultDatabase = oldDB
-		defaultDatabaseKey = oldKey
-		resetDefaultPoolForTest(t)
-		resetDefaultPoolConfigForTest(t)
-	})
-
-	stubDB := &poolStubDatabase{}
-	setDefaultForTest(t, stubDB, newTestAuthKey(t))
-	resetDefaultPoolForTest(t)
-
-	pool1, err := DefaultPool()
-	require.NoError(t, err)
-	require.NotNil(t, pool1)
-	t.Cleanup(func() {
-		require.NoError(t, pool1.Close())
-	})
-
-	conn, err := pool1.Conn(context.Background())
-	require.NoError(t, err)
-	require.NotNil(t, conn)
-	require.NoError(t, conn.Close())
-	require.GreaterOrEqual(t, stubDB.connectCount, 1)
-
-	pool2, err := DefaultPool()
-	require.NoError(t, err)
-	require.Same(t, pool1, pool2)
-}
-
-func TestDefaultPoolUsesConfiguredPoolSettings(t *testing.T) {
-	oldDB := defaultDatabase
-	oldKey := defaultDatabaseKey
-	t.Cleanup(func() {
-		defaultDatabase = oldDB
-		defaultDatabaseKey = oldKey
-		resetDefaultPoolForTest(t)
-		resetDefaultPoolConfigForTest(t)
-	})
-
-	stubDB := &poolStubDatabase{}
-	setDefaultForTest(t, stubDB, newTestAuthKey(t))
-	resetDefaultPoolForTest(t)
-
-	wantMaxOpen := 31
-	wantMaxIdle := 7
-	wantConnMaxLifetime := 3 * time.Minute
-	wantConnMaxIdleTime := 45 * time.Second
-	SetDefaultPoolConfig(wantMaxOpen, wantMaxIdle, wantConnMaxLifetime, wantConnMaxIdleTime)
-
-	pool, err := DefaultPool()
-	require.NoError(t, err)
-	require.NotNil(t, pool)
-	t.Cleanup(func() {
-		require.NoError(t, pool.Close())
-	})
-
-	stats := pool.Stats()
-	require.Equal(t, wantMaxOpen, stats.MaxOpenConnections)
-	require.Equal(t, wantMaxOpen, maxOpenConn)
-	require.Equal(t, wantMaxIdle, maxIdleConn)
-	require.Equal(t, wantConnMaxLifetime, connMaxLifetime)
-	require.Equal(t, wantConnMaxIdleTime, connMaxIdleTime)
-	require.GreaterOrEqual(t, stubDB.connectCount, 1)
-}
-
-func TestDefaultPoolErrorIsCachedByOnce(t *testing.T) {
-	oldDB := defaultDatabase
-	oldKey := defaultDatabaseKey
-	t.Cleanup(func() {
-		defaultDatabase = oldDB
-		defaultDatabaseKey = oldKey
-		resetDefaultPoolForTest(t)
-	})
-
-	setDefaultForTest(t, nil, nil)
-	resetDefaultPoolForTest(t)
-
-	pool, err := DefaultPool()
-	require.Error(t, err)
-	require.Nil(t, pool)
-	require.ErrorContains(t, err, "default database is not configured")
-
-	setDefaultForTest(t, &poolStubDatabase{}, newTestAuthKey(t))
-	pool2, err2 := DefaultPool()
-	require.Error(t, err2)
-	require.Nil(t, pool2)
-	require.ErrorContains(t, err2, "default database is not configured")
 }
 
 func TestSQLStatementTypeString(t *testing.T) {

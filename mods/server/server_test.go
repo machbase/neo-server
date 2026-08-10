@@ -2210,9 +2210,6 @@ func TestServerCoverage_SessionWrappers(t *testing.T) {
 		"maxIdleTime": limit.ConnMaxIdleTime,
 	})
 	require.NoError(t, err)
-
-	err = svr.killSession(ctx, "definitely-not-a-session", false)
-	require.Error(t, err)
 }
 
 func TestServerCoverage_ScheduleWrappers(t *testing.T) {

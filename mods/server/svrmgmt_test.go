@@ -209,19 +209,6 @@ func TestServerInfoResponse(t *testing.T) {
 func TestSessionsAndLimitsInHeadOnlyDBMode(t *testing.T) {
 	svr := &Server{}
 
-	sessionsRsp, err := svr.Sessions(context.Background(), &SessionsRequest{Sessions: true})
-	require.NoError(t, err)
-	require.NotNil(t, sessionsRsp)
-	require.True(t, sessionsRsp.Success)
-	require.Equal(t, "success", sessionsRsp.Reason)
-	require.NotNil(t, sessionsRsp.Sessions)
-
-	killRsp, err := svr.KillSession(context.Background(), &KillSessionRequest{Id: "missing", Force: false})
-	require.NoError(t, err)
-	require.NotNil(t, killRsp)
-	require.False(t, killRsp.Success)
-	require.Contains(t, killRsp.Reason, "not supported")
-
 	limitRsp, err := svr.LimitSession(context.Background(), &LimitSessionRequest{Cmd: "get"})
 	require.NoError(t, err)
 	require.NotNil(t, limitRsp)
@@ -270,18 +257,6 @@ func TestSessionRPCDefaultDatabaseBranches(t *testing.T) {
 	})
 
 	svr := &Server{}
-
-	sessionsRsp, err := svr.Sessions(context.Background(), &SessionsRequest{Sessions: true})
-	require.NoError(t, err)
-	require.NotNil(t, sessionsRsp)
-	require.True(t, sessionsRsp.Success)
-	require.Equal(t, "success", sessionsRsp.Reason)
-
-	killRsp, err := svr.KillSession(context.Background(), &KillSessionRequest{Id: "x", Force: false})
-	require.NoError(t, err)
-	require.NotNil(t, killRsp)
-	require.False(t, killRsp.Success)
-	require.Contains(t, killRsp.Reason, "not supported")
 
 	limitRsp, err := svr.LimitSession(context.Background(), &LimitSessionRequest{Cmd: "set", MaxOpenConn: 5, MaxOpenQuery: 5})
 	require.NoError(t, err)

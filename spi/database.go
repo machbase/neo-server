@@ -19,13 +19,21 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	_ "github.com/machbase/neo-client/machbase"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 var defaultDatabase api.Database
 var defaultDatabaseKey crypto.PrivateKey
 var defaultDSN map[string]string
+
+var (
+	defaultPoolOnce sync.Once
+	defaultPoolDB   *sql.DB
+	defaultPoolErr  error
+	userPools       map[string]*sql.DB = make(map[string]*sql.DB)
+	userPoolsLock   sync.Mutex
+)
 
 func SetDefaultDSN(dsn map[string]string) {
 	defaultDSN = dsn
@@ -50,6 +58,31 @@ func DefaultDSN(overrides map[string]string) string {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
 	}
 	return strings.Join(parts, ";")
+}
+
+// DefaultPool returns the shared SQL connection pool for the default database.
+func DefaultPool() (*sql.DB, error) {
+	defaultPoolOnce.Do(func() {
+		if len(defaultDSN) == 0 {
+			defaultPoolErr = errors.New("default DSN is not configured")
+			return
+		}
+		if defaultDSN["auth_key_pem"] == "" && defaultDSN["auth_key_file"] == "" {
+			defaultPoolErr = errors.New("default key is not configured")
+			return
+		}
+		defaultPoolDB, defaultPoolErr = sql.Open("machbase", DefaultDSN(nil))
+		if defaultPoolErr == nil {
+			defaultPoolErr = defaultPoolDB.Ping()
+		}
+	})
+	if defaultPoolErr != nil {
+		return nil, defaultPoolErr
+	}
+	if defaultPoolDB == nil {
+		return nil, errors.New("default pool is not initialized")
+	}
+	return defaultPoolDB, nil
 }
 
 func SetDefault(db api.Database, key crypto.PrivateKey) {
@@ -251,55 +284,6 @@ func SqlTidy(sqlTextLines ...string) string {
 		lines[i] = strings.TrimSpace(ln)
 	}
 	return strings.Join(lines, " ")
-}
-
-var (
-	defaultPoolOnce sync.Once
-	defaultPoolDB   *sql.DB
-	defaultPoolErr  error
-	userPools       map[string]*sql.DB = make(map[string]*sql.DB)
-	userPoolsLock   sync.Mutex
-	maxOpenConn     = 20
-	maxIdleConn     = 2
-	connMaxLifetime = 10 * time.Minute
-	connMaxIdleTime = 1 * time.Minute
-)
-
-func SetDefaultPoolConfig(maxOpen, maxIdle int, maxLifetime, maxIdleTime time.Duration) {
-	maxOpenConn = maxOpen
-	maxIdleConn = maxIdle
-	connMaxLifetime = maxLifetime
-	connMaxIdleTime = maxIdleTime
-}
-
-// DefaultPool returns the shared SQL connection pool for the default database.
-func DefaultPool() (*sql.DB, error) {
-	defaultPoolOnce.Do(func() {
-		db := Default()
-		if db == nil {
-			defaultPoolErr = errors.New("default database is not configured")
-			return
-		}
-		defaultPoolDB, defaultPoolErr = machbase.OpenDBWithConnector(db, func(context.Context) ([]api.ConnectOption, error) {
-			key := DefaultKey()
-			if key == nil {
-				return nil, errors.New("default key is not configured")
-			}
-			return []api.ConnectOption{api.WithAuthKey("sys", key)}, nil
-		})
-		defaultPoolDB.SetMaxOpenConns(maxOpenConn)
-		defaultPoolDB.SetMaxIdleConns(maxIdleConn)
-		defaultPoolDB.SetConnMaxLifetime(connMaxLifetime)
-		defaultPoolDB.SetConnMaxIdleTime(connMaxIdleTime)
-		defaultPoolErr = defaultPoolDB.Ping()
-	})
-	if defaultPoolErr != nil {
-		return nil, defaultPoolErr
-	}
-	if defaultPoolDB == nil {
-		return nil, errors.New("default pool is not initialized")
-	}
-	return defaultPoolDB, nil
 }
 
 func ColumnTypesToDataTypes(columnTypes []*sql.ColumnType) []api.DataType {

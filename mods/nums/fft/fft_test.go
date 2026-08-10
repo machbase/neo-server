@@ -10,6 +10,64 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFastFourierTransformAllocations(t *testing.T) {
+	compo := oscillator.NewComposite([]*oscillator.Generator{
+		oscillator.New(10, 1.0),
+		oscillator.New(50, 2.0),
+	})
+	ts := int64(1685714509 * 1000000000)
+
+	times := make([]time.Time, 0, 1024)
+	values := make([]float64, 0, 1024)
+	for i := ts; i < ts+1000000000; i += 100 * 1000 {
+		t := time.Unix(0, i)
+		v := compo.EvalTime(t)
+		times = append(times, t)
+		values = append(values, v)
+	}
+
+	allocs := testing.AllocsPerRun(20, func() {
+		fft.FastFourierTransform(times, values)
+	})
+	require.Less(t, allocs, float64(5), "FFT should avoid excessive allocations during repeated use")
+}
+
+func TestFastFourierTransformRejectsOversizedInput(t *testing.T) {
+	times := make([]time.Time, 1<<20+1)
+	values := make([]float64, len(times))
+	for i := range times {
+		times[i] = time.Unix(0, int64(i))
+		values[i] = float64(i)
+	}
+
+	hz, ampl := fft.FastFourierTransform(times, values)
+	require.Nil(t, hz)
+	require.Nil(t, ampl)
+}
+
+func BenchmarkFastFourierTransform(b *testing.B) {
+	compo := oscillator.NewComposite([]*oscillator.Generator{
+		oscillator.New(10, 1.0),
+		oscillator.New(50, 2.0),
+	})
+	ts := int64(1685714509 * 1000000000)
+
+	times := make([]time.Time, 0, 1024)
+	values := make([]float64, 0, 1024)
+	for i := ts; i < ts+1000000000; i += 100 * 1000 {
+		t := time.Unix(0, i)
+		v := compo.EvalTime(t)
+		times = append(times, t)
+		values = append(values, v)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		fft.FastFourierTransform(times, values)
+	}
+}
+
 func TestFFT(t *testing.T) {
 	compo := oscillator.NewComposite([]*oscillator.Generator{
 		oscillator.New(10, 1.0),

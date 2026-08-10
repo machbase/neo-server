@@ -3,8 +3,11 @@ package backup
 import (
 	"context"
 	"crypto"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -109,6 +113,10 @@ func setupDefaultSPI() error {
 	if err != nil {
 		return err
 	}
+	privKeyContent, err := os.ReadFile(privPath)
+	if err != nil {
+		return err
+	}
 	testKey = key
 	pubKeyContent, err := os.ReadFile(pubPath)
 	if err != nil {
@@ -135,6 +143,12 @@ func setupDefaultSPI() error {
 	if err != nil {
 		return err
 	}
+	spi.SetDefaultDSN(map[string]string{
+		"host":         "127.0.0.1",
+		"port":         fmt.Sprintf("%d", port),
+		"user":         "sys",
+		"auth_key_pem": string(privKeyContent),
+	})
 	spi.SetDefault(testMachgoDB, testKey)
 	return nil
 }
@@ -399,8 +413,10 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 		baseDir := newBackupWorkDir(t)
 		require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "archive1"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(baseDir, "archive1", "backup.dat"), []byte("x"), 0o644))
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{rows: &fakeRows{}}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				columns: []string{"PATH", "MOUNTDB"},
+			}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(baseDir))
@@ -421,8 +437,10 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 		baseDir := newBackupWorkDir(t)
 		absPath := filepath.Join(baseDir, "missing")
 		capturedSQL := ""
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{execResult: &fakeResult{}, onExec: func(sqlText string) { capturedSQL = sqlText }}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				onExec: func(sqlText string) { capturedSQL = sqlText },
+			}), nil
 		}
 		s := NewBackupd(WithBackupdBaseDir(baseDir))
 		w := httptest.NewRecorder()
@@ -443,8 +461,10 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 	t.Run("mount with relative path succeeds", func(t *testing.T) {
 		baseDir := newBackupWorkDir(t)
 		capturedSQL := ""
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{execResult: &fakeResult{}, onExec: func(sqlText string) { capturedSQL = sqlText }}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				onExec: func(sqlText string) { capturedSQL = sqlText },
+			}), nil
 		}
 		s := NewBackupd(WithBackupdBaseDir(baseDir))
 		w := httptest.NewRecorder()
@@ -462,8 +482,10 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 
 	t.Run("unmount with unknown mount succeeds", func(t *testing.T) {
 		capturedSQL := ""
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{execResult: &fakeResult{}, onExec: func(sqlText string) { capturedSQL = sqlText }}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				onExec: func(sqlText string) { capturedSQL = sqlText },
+			}), nil
 		}
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
 		w := httptest.NewRecorder()
@@ -478,8 +500,10 @@ func TestBackupdHandleArchivesAndMountConnectPaths(t *testing.T) {
 	})
 
 	t.Run("mounts list succeeds", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{rows: &fakeRows{}}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				columns: []string{"NAME", "PATH", "BACKUPTBSID", "BACKUPSCN", "MOUNTDB", "DBBEGINTIME", "DBENDTIME", "BACKUPBEGINTIME", "BACKUPENDTIME", "FLAG"},
+			}), nil
 		}
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
 		w := httptest.NewRecorder()
@@ -495,7 +519,7 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	t.Cleanup(func() { connectDefault = origConnector })
 
 	t.Run("archives returns bad request on connect error", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
+		connectDefault = func(context.Context) (*sql.Conn, error) {
 			return nil, assertErr("connect fail")
 		}
 
@@ -509,8 +533,8 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	})
 
 	t.Run("archives returns internal error on query failure", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{queryErr: assertErr("query fail")}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{queryErr: assertErr("query fail")}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
@@ -524,8 +548,11 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	})
 
 	t.Run("archives returns internal error on scan failure", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{rows: &fakeRows{nextSeq: []bool{true, false}, scanErr: assertErr("scan fail")}}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				columns: []string{"PATH", "MOUNTDB"},
+				rows:    [][]driver.Value{{struct{}{}, "mount_name"}},
+			}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
@@ -540,8 +567,8 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	})
 
 	t.Run("mounts returns internal error on query failure", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{queryErr: assertErr("query fail")}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{queryErr: assertErr("query fail")}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
@@ -554,8 +581,11 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	})
 
 	t.Run("mounts returns internal error on scan failure", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{rows: &fakeRows{nextSeq: []bool{true, false}, scanErr: assertErr("scan fail")}}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				columns: []string{"NAME", "PATH", "BACKUPTBSID", "BACKUPSCN", "MOUNTDB", "DBBEGINTIME", "DBENDTIME", "BACKUPBEGINTIME", "BACKUPENDTIME", "FLAG"},
+				rows:    [][]driver.Value{{struct{}{}, "", int64(0), int64(0), "", "", "", "", "", 0}},
+			}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
@@ -569,8 +599,8 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	})
 
 	t.Run("mount returns internal error on exec failure", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{execResult: &fakeResult{err: assertErr("exec fail"), msg: "exec fail"}}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{execErr: assertErr("exec fail")}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
@@ -585,8 +615,8 @@ func TestBackupdHandleArchivesAndMountFailurePathsWithInjectedConnector(t *testi
 	})
 
 	t.Run("unmount returns internal error on exec failure", func(t *testing.T) {
-		connectDefault = func(context.Context) (api.Conn, error) {
-			return &fakeConn{execResult: &fakeResult{err: assertErr("exec fail"), msg: "exec fail"}}, nil
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{execErr: assertErr("exec fail")}), nil
 		}
 
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
@@ -955,161 +985,98 @@ func removeAllWithRetry(path string, timeout time.Duration) error {
 	}
 }
 
-type fakeConn struct {
-	queryErr   error
-	rows       api.Rows
-	execResult api.Result
-	onExec     func(sqlText string)
+var mockSQLDriverSeq atomic.Uint64
+
+type sqlMockBehavior struct {
+	queryErr error
+	execErr  error
+	onExec   func(sqlText string)
+	columns  []string
+	rows     [][]driver.Value
 }
 
-func (c *fakeConn) Close() error { return nil }
+func newMockSQLConn(t *testing.T, behavior sqlMockBehavior) *sql.Conn {
+	t.Helper()
 
-func (c *fakeConn) Exec(_ context.Context, sqlText string, _ ...any) api.Result {
-	if c.onExec != nil {
-		c.onExec(sqlText)
+	name := fmt.Sprintf("backup-sql-mock-%d", mockSQLDriverSeq.Add(1))
+	sql.Register(name, &sqlMockDriver{behavior: behavior})
+
+	db, err := sql.Open(name, "")
+	require.NoError(t, err)
+
+	conn, err := db.Conn(context.Background())
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = conn.Close()
+		_ = db.Close()
+	})
+
+	return conn
+}
+
+type sqlMockDriver struct {
+	behavior sqlMockBehavior
+}
+
+func (d *sqlMockDriver) Open(string) (driver.Conn, error) {
+	return &sqlMockConn{behavior: d.behavior}, nil
+}
+
+type sqlMockConn struct {
+	behavior sqlMockBehavior
+}
+
+func (c *sqlMockConn) Prepare(string) (driver.Stmt, error) {
+	return nil, assertErr("not implemented")
+}
+
+func (c *sqlMockConn) Close() error { return nil }
+
+func (c *sqlMockConn) Begin() (driver.Tx, error) { return nil, assertErr("not implemented") }
+
+func (c *sqlMockConn) ExecContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Result, error) {
+	if c.behavior.onExec != nil {
+		c.behavior.onExec(query)
 	}
-	if c.execResult != nil {
-		return c.execResult
+	if c.behavior.execErr != nil {
+		return nil, c.behavior.execErr
 	}
-	return &fakeResult{}
+	return driver.RowsAffected(0), nil
 }
 
-func (c *fakeConn) Query(context.Context, string, ...any) (api.Rows, error) {
-	if c.queryErr != nil {
-		return nil, c.queryErr
+func (c *sqlMockConn) QueryContext(_ context.Context, _ string, _ []driver.NamedValue) (driver.Rows, error) {
+	if c.behavior.queryErr != nil {
+		return nil, c.behavior.queryErr
 	}
-	if c.rows != nil {
-		return c.rows, nil
+	rows := make([][]driver.Value, len(c.behavior.rows))
+	copy(rows, c.behavior.rows)
+	return &sqlMockRows{columns: c.behavior.columns, rows: rows}, nil
+}
+
+type sqlMockRows struct {
+	columns []string
+	rows    [][]driver.Value
+	index   int
+}
+
+func (r *sqlMockRows) Columns() []string {
+	return r.columns
+}
+
+func (r *sqlMockRows) Close() error { return nil }
+
+func (r *sqlMockRows) Next(dest []driver.Value) error {
+	if r.index >= len(r.rows) {
+		return io.EOF
 	}
-	return &fakeRows{}, nil
-}
-
-func (c *fakeConn) QueryRow(context.Context, string, ...any) api.Row {
-	return &fakeRow{}
-}
-
-func (c *fakeConn) Prepare(context.Context, string) (api.Stmt, error) {
-	panic("not implemented")
-}
-
-func (c *fakeConn) Appender(context.Context, string, ...api.AppenderOption) (api.Appender, error) {
-	panic("not implemented")
-}
-
-func (c *fakeConn) Explain(context.Context, string, bool) (string, error) {
-	panic("not implemented")
-}
-
-type fakeRows struct {
-	nextSeq []bool
-	nextIdx int
-	scanErr error
-	err     error
-	path    string
-	mountDB string
-
-	name            string
-	backupTBSID     int64
-	backupSCN       int64
-	dbBeginTime     string
-	dbEndTime       string
-	backupBeginTime string
-	backupEndTime   string
-	flag            int
-}
-
-func (r *fakeRows) Next() bool {
-	if len(r.nextSeq) == 0 {
-		return false
+	row := r.rows[r.index]
+	r.index++
+	for i := range dest {
+		dest[i] = nil
 	}
-	if r.nextIdx >= len(r.nextSeq) {
-		return false
-	}
-	v := r.nextSeq[r.nextIdx]
-	r.nextIdx++
-	return v
-}
-
-func (r *fakeRows) Scan(cols ...any) error {
-	if r.scanErr != nil {
-		return r.scanErr
-	}
-	if len(cols) == 2 {
-		if p, ok := cols[0].(*string); ok {
-			*p = r.path
-		}
-		if m, ok := cols[1].(*string); ok {
-			*m = r.mountDB
-		}
-		return nil
-	}
-	if len(cols) == 10 {
-		if v, ok := cols[0].(*string); ok {
-			*v = r.name
-		}
-		if v, ok := cols[1].(*string); ok {
-			*v = r.path
-		}
-		if v, ok := cols[2].(*int64); ok {
-			*v = r.backupTBSID
-		}
-		if v, ok := cols[3].(*int64); ok {
-			*v = r.backupSCN
-		}
-		if v, ok := cols[4].(*string); ok {
-			*v = r.mountDB
-		}
-		if v, ok := cols[5].(*string); ok {
-			*v = r.dbBeginTime
-		}
-		if v, ok := cols[6].(*string); ok {
-			*v = r.dbEndTime
-		}
-		if v, ok := cols[7].(*string); ok {
-			*v = r.backupBeginTime
-		}
-		if v, ok := cols[8].(*string); ok {
-			*v = r.backupEndTime
-		}
-		if v, ok := cols[9].(*int); ok {
-			*v = r.flag
-		}
-		return nil
+	for i := 0; i < len(dest) && i < len(row); i++ {
+		dest[i] = row[i]
 	}
 	return nil
 }
-
-func (r *fakeRows) Close() error { return nil }
-
-func (r *fakeRows) Err() error { return r.err }
-
-func (r *fakeRows) IsFetchable() bool { return true }
-
-func (r *fakeRows) RowsAffected() int64 { return 0 }
-
-func (r *fakeRows) Message() string { return "" }
-
-func (r *fakeRows) Columns() (api.Columns, error) { return nil, nil }
-
-type fakeResult struct {
-	err error
-	msg string
-}
-
-func (r *fakeResult) Err() error { return r.err }
-
-func (r *fakeResult) RowsAffected() int64 { return 0 }
-
-func (r *fakeResult) Message() string { return r.msg }
-
-type fakeRow struct{}
-
-func (r *fakeRow) Err() error { return nil }
-
-func (r *fakeRow) RowsAffected() int64 { return 0 }
-
-func (r *fakeRow) Message() string { return "" }
-
-func (r *fakeRow) Scan(...any) error { return nil }
-
-func (r *fakeRow) Columns() (api.Columns, error) { return nil, nil }
