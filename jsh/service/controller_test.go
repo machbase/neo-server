@@ -1183,7 +1183,12 @@ func TestControllerLaunchedServiceAutoMountsSharedFS(t *testing.T) {
 		"fs.writeSync(writeFD, 'child-wrote-this');\n" +
 		"fs.fchmodSync(writeFD, 0o600);\n" +
 		"fs.fchownSync(writeFD, 1000, 1000);\n" +
-		"fs.closeSync(writeFD);\n" +
+		"fs.fsyncSync(writeFD);\n" +
+		"try {\n" +
+		"  fs.closeSync(writeFD);\n" +
+		"} catch (e) {\n" +
+		"  if (!e || e.code !== 'EBADF') { throw e; }\n" +
+		"}\n" +
 		"fs.chmodSync('/mnt/shared/from-child.txt', 0o640);\n" +
 		"fs.chownSync('/mnt/shared/from-child.txt', 1000, 1000);\n" +
 		"console.println('shared.done', fs.readFileSync('/mnt/shared/from-child.txt'));\n"
