@@ -1,6 +1,6 @@
 module github.com/machbase/neo-server/v8
 
-go 1.25.7
+go 1.25.12
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
@@ -19,7 +19,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
-	github.com/gopcua/opcua v0.9.0
+	github.com/gopcua/opcua v0.9.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/hymkor/go-multiline-ny v0.22.4
@@ -28,8 +28,8 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.12.3
-	github.com/machbase/neo-client v1.8.3-0.20260810035528-2b8908732d20
-	github.com/machbase/neo-engine/v8 v8.5.9
+	github.com/machbase/neo-client v1.8.3
+	github.com/machbase/neo-engine/v8 v8.5.10
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.16.0
 	github.com/mattn/go-colorable v0.1.14
