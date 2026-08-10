@@ -47,6 +47,12 @@ func TestDatabase(t *testing.T) {
 					result = conn.exec("CREATE TAG TABLE IF NOT EXISTS TAG (NAME VARCHAR(100) primary key, TIME DATETIME basetime, VALUE DOUBLE, JSON_VALUE JSON)");
 					console.println("Created Table Message:", result.message);
 
+					// null record max test, sql.Null[uint64]
+					const rows = conn.query("select max(_id) as max_id from _tag_meta")
+					const rec = rows.next()
+					console.println("done:", rec.done);
+					console.println("rows.max_id:", rec.max_id); // expect null
+
 					result = conn.exec("CREATE VIEW TAGVIEW as select * from TAG where name='jsh'");
 					console.println("Created View Message:", result.message);
 
@@ -61,6 +67,8 @@ func TestDatabase(t *testing.T) {
 			`,
 			Output: []string{
 				"Created Table Message: table created.",
+				"done: false",
+				"rows.max_id: null",
 				"Created View Message: view created.",
 				"Inserted rows: 1 Message: a row inserted.",
 			},
