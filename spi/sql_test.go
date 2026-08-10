@@ -895,8 +895,7 @@ func TestMultiUserSessionIndexBehavior(t *testing.T) {
 		}
 
 		// Issue machbase/neo#1418
-		//result = sysConn.Exec(t.Context(), "drop index david.idx_data_value")
-		result, err = userConn.ExecContext(t.Context(), "drop index idx_data_value")
+		result, err = sysConn.ExecContext(t.Context(), "drop index david.idx_data_value")
 		if err != nil {
 			panic(err)
 		}
