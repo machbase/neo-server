@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,13 +13,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
-var connectDefault = func(ctx context.Context) (api.Conn, error) {
-	return spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+var connectDefault = func(ctx context.Context) (*sql.Conn, error) {
+	return spi.Connect(ctx, "sys")
 }
 
 func NewBackupd(opts ...Option) *Backupd {
@@ -232,7 +232,7 @@ func (s *Backupd) handleArchive(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *Backupd) backupManager(conn api.Conn, archive BackupArchive, sqlText string) {
+func (s *Backupd) backupManager(conn *sql.Conn, archive BackupArchive, sqlText string) {
 	go func() {
 		defer conn.Close()
 
@@ -241,9 +241,9 @@ func (s *Backupd) backupManager(conn api.Conn, archive BackupArchive, sqlText st
 			s.backup.IsRunning = true
 			s.backup.Info = archive
 
-			if result := conn.Exec(context.Background(), sqlText); result.Err() != nil {
-				s.backup.err = result.Err()
-				s.backup.Message = result.Message()
+			if _, err := conn.ExecContext(context.Background(), sqlText); err != nil {
+				s.backup.err = err
+				s.backup.Message = err.Error()
 			} else {
 				s.backup.err = nil
 				s.backup.Info = BackupArchive{}
@@ -291,7 +291,7 @@ func (s *Backupd) handleArchives(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	rows, err := conn.Query(ctx, "SELECT PATH, MOUNTDB FROM V$STORAGE_MOUNT_DATABASES")
+	rows, err := conn.QueryContext(ctx, "SELECT PATH, MOUNTDB FROM V$STORAGE_MOUNT_DATABASES")
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -403,8 +403,8 @@ func (s *Backupd) handleMount(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	result := conn.Exec(ctx, sqlText)
-	if err := result.Err(); err != nil {
+	_, err = conn.ExecContext(ctx, sqlText)
+	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
@@ -439,9 +439,9 @@ func (s *Backupd) handleUnmount(ctx *gin.Context) {
 	defer conn.Close()
 
 	sqlText := fmt.Sprintf("UNMOUNT DATABASE '%s'", name)
-	result := conn.Exec(ctx, sqlText)
-	if result.Err() != nil {
-		rsp["reason"] = result.Message()
+	_, err = conn.ExecContext(ctx, sqlText)
+	if err != nil {
+		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
@@ -479,7 +479,7 @@ func (s *Backupd) handleMounts(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	rows, err := conn.Query(ctx, "SELECT * FROM V$STORAGE_MOUNT_DATABASES")
+	rows, err := conn.QueryContext(ctx, "SELECT * FROM V$STORAGE_MOUNT_DATABASES")
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()

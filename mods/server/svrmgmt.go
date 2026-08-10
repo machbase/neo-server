@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -841,72 +840,6 @@ type Session struct {
 	CreTime       int64  `json:"creTime"`
 	LatestSqlTime int64  `json:"latestSqlTime"`
 	LatestSql     string `json:"latestSql"`
-}
-
-func (s *Server) Sessions(ctx context.Context, req *SessionsRequest) (*SessionsResponse, error) {
-	rsp := &SessionsResponse{}
-	tick := time.Now()
-	defer func() {
-		if panic := recover(); panic != nil {
-			s.log.Error("Sessions panic recover", panic)
-			debug.PrintStack()
-		}
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	if req.Sessions {
-		sessions := []*Session{}
-		if db, ok := spi.Default().(*machsvr.Database); ok {
-			db.ListWatcher(func(st *machsvr.ConnState) bool {
-				sessions = append(sessions, &Session{
-					Id:            st.Id,
-					CreTime:       st.CreatedTime.UnixNano(),
-					LatestSqlTime: st.LatestTime.UnixNano(),
-					LatestSql:     st.LatestSql,
-				})
-				return true
-			})
-		}
-		rsp.Sessions = sessions
-	}
-	rsp.Success = true
-	rsp.Reason = "success"
-	return rsp, nil
-}
-
-type KillSessionRequest struct {
-	Id    string `json:"id"`
-	Force bool   `json:"force"`
-}
-
-type KillSessionResponse struct {
-	Success bool   `json:"success"`
-	Reason  string `json:"reason"`
-	Elapse  string `json:"elapse"`
-}
-
-func (s *Server) KillSession(ctx context.Context, req *KillSessionRequest) (*KillSessionResponse, error) {
-	rsp := &KillSessionResponse{}
-	tick := time.Now()
-	defer func() {
-		if panic := recover(); panic != nil {
-			s.log.Error("Sessions kill panic recover", panic)
-		}
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	if db, ok := spi.Default().(*machsvr.Database); ok {
-		if err := db.KillConnection(req.Id, req.Force); err != nil {
-			rsp.Reason = err.Error()
-		} else {
-			rsp.Success = true
-			rsp.Reason = "success"
-		}
-	} else {
-		rsp.Success = false
-		rsp.Reason = "Session kill not supported in head-only mode"
-	}
-	return rsp, nil
 }
 
 type LimitSessionRequest struct {

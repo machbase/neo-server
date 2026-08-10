@@ -509,11 +509,14 @@ func (s *Server) startMachbaseSvr() error {
 			"auth_key_pem":    string(pem),
 		})
 		spi.SetDefault(db, key)
-		spi.SetDefaultPoolConfig(
-			s.Config.MaxOpenConn,
-			s.Config.MaxIdleConn,
-			s.Config.ConnMaxLifetime,
-			s.Config.ConnMaxIdleTime)
+		pool, err := spi.DefaultPool()
+		if err != nil {
+			return fmt.Errorf("default pool, %s", err.Error())
+		}
+		pool.SetMaxOpenConns(s.Config.MaxOpenConn)
+		pool.SetMaxIdleConns(s.Config.MaxIdleConn)
+		pool.SetConnMaxLifetime(s.Config.ConnMaxLifetime)
+		pool.SetConnMaxIdleTime(s.Config.ConnMaxIdleTime)
 	}
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
@@ -567,11 +570,14 @@ func (s *Server) startMachbaseCli() error {
 			"auth_key_pem":    string(pem),
 		})
 		spi.SetDefault(db, key)
-		spi.SetDefaultPoolConfig(
-			s.Config.MaxOpenConn,
-			s.Config.MaxIdleConn,
-			s.Config.ConnMaxLifetime,
-			s.Config.ConnMaxIdleTime)
+		pool, err := spi.DefaultPool()
+		if err != nil {
+			return fmt.Errorf("default pool, %s", err.Error())
+		}
+		pool.SetMaxOpenConns(s.Config.MaxOpenConn)
+		pool.SetMaxIdleConns(s.Config.MaxIdleConn)
+		pool.SetConnMaxLifetime(s.Config.ConnMaxLifetime)
+		pool.SetConnMaxIdleTime(s.Config.ConnMaxIdleTime)
 	}
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
@@ -2093,19 +2099,20 @@ func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string
 //
 // return: session list
 func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
-	rsp, err := s.Sessions(ctx, &SessionsRequest{
-		Statz: false, Sessions: true, ResetStatz: false,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !rsp.Success {
-		return nil, errors.New(rsp.Reason)
-	}
-	if rsp.Sessions == nil {
-		return []*Session{}, nil
-	}
-	return rsp.Sessions, nil
+	return []*Session{}, nil
+	// rsp, err := s.Sessions(ctx, &SessionsRequest{
+	// 	Statz: false, Sessions: true, ResetStatz: false,
+	// })
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if !rsp.Success {
+	// 	return nil, errors.New(rsp.Reason)
+	// }
+	// if rsp.Sessions == nil {
+	// 	return []*Session{}, nil
+	// }
+	// return rsp.Sessions, nil
 }
 
 // killSession terminates a session.
@@ -2116,17 +2123,18 @@ func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
 //
 // return: null on success
 func (s *Server) killSession(ctx context.Context, id string, force bool) error {
-	rsp, err := s.KillSession(ctx, &KillSessionRequest{
-		Id:    id,
-		Force: force,
-	})
-	if err != nil {
-		return err
-	}
-	if !rsp.Success {
-		return errors.New(rsp.Reason)
-	}
 	return nil
+	// rsp, err := s.KillSession(ctx, &KillSessionRequest{
+	// 	Id:    id,
+	// 	Force: force,
+	// })
+	// if err != nil {
+	// 	return err
+	// }
+	// if !rsp.Success {
+	// 	return errors.New(rsp.Reason)
+	// }
+	// return nil
 }
 
 // statSession returns session statistics.
