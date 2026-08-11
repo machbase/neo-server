@@ -148,8 +148,9 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	appender := machbase.NewAppender(ctx)
-	err = appender.Connect(DefaultDSN(map[string]string{"user": "sys"}), tableName)
+	appender := &machbase.Appender{}
+	dsn := DefaultDSN(map[string]string{"user": "sys"})
+	err = appender.Connect(ctx, dsn, tableName)
 	if err != nil {
 		ctxCancel()
 		return nil, err

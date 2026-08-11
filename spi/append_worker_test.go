@@ -17,7 +17,7 @@ func newAppendWorkerForTest(tableName string) *AppendWorker {
 	return &AppendWorker{
 		ctx:       ctx,
 		ctxCancel: cancel,
-		appender:  machbase.NewAppender(ctx),
+		appender:  &machbase.Appender{},
 		tableDesc: &TableDescription{Name: tableName},
 		lastTime:  time.Now(),
 		log:       logging.GetLog("append-worker-test"),

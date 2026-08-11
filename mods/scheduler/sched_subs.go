@@ -490,8 +490,9 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.appender == nil {
-		ap := machbase.NewAppender(ent.ctx)
-		err := ap.Connect(spi.DefaultDSN(map[string]string{"user": "sys"}), ent.wd.Table)
+		dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
+		ap := &machbase.Appender{}
+		err := ap.Connect(ent.ctx, dsn, ent.wd.Table)
 		if err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())

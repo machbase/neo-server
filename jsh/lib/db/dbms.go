@@ -166,8 +166,9 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 		db: c.db,
 	}
 
-	ap := machbase.NewAppender(c.db.ctx)
-	err := ap.Connect(spi.DefaultDSN(map[string]string{"user": "sys"}), tableName, columns...)
+	dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
+	ap := &machbase.Appender{}
+	err := ap.Connect(c.db.ctx, dsn, tableName, columns...)
 	if err != nil {
 		panic(c.db.rt.ToValue(err.Error()))
 	}

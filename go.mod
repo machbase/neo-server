@@ -14,7 +14,7 @@ require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gliderlabs/ssh v0.3.8
-	github.com/go-git/go-git/v5 v5.19.1
+	github.com/go-git/go-git/v5 v5.19.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gofrs/uuid/v5 v5.4.0
@@ -28,7 +28,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.12.3
-	github.com/machbase/neo-client v1.8.4-0.20260811032743-6d6f395c081c
+	github.com/machbase/neo-client v1.8.4-0.20260811082918-5b2a1265c2bd
 	github.com/machbase/neo-engine/v8 v8.5.10
 	github.com/magefile/mage v1.16.0
 	github.com/mattn/go-colorable v0.1.14
