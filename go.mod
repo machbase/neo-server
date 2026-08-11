@@ -30,7 +30,6 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/machbase/neo-client v1.8.4-0.20260811032743-6d6f395c081c
 	github.com/machbase/neo-engine/v8 v8.5.10
-	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.16.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-sqlite3 v1.14.24
@@ -64,7 +63,6 @@ require (
 	golang.org/x/text v0.40.0
 	gonum.org/v1/gonum v0.17.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
-	gopkg.in/yaml.v3 v3.0.1
 	oss.terrastruct.com/d2 v0.7.1
 )
 
@@ -192,5 +190,6 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a // indirect
 )

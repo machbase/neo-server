@@ -38,7 +38,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/pkgs"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -71,7 +70,6 @@ type Server struct {
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
-	pkgMgr   *pkgs.PkgManager
 	proxyMgr *ProxyManager
 
 	serviceController *service.Controller
@@ -261,11 +259,6 @@ func (s *Server) Start() error {
 		return fmt.Errorf("mqtt server: %w", err)
 	}
 
-	// package manager
-	if err := s.initPackageManager(); err != nil {
-		return fmt.Errorf("package manager: %w", err)
-	}
-
 	// service manager
 	if err := s.initServiceController(); err != nil {
 		return fmt.Errorf("service controller: %w", err)
@@ -371,9 +364,6 @@ func (s *Server) Start() error {
 	}
 	s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
 		dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
-
-	// pkgs
-	s.pkgMgr.Start()
 
 	// navel cord
 	if s.NavelCord != nil {
@@ -952,14 +942,10 @@ func (s *Server) startHttpServer() error {
 		WithHttpListenAddress(s.Http.Listeners...),
 		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
 		WithHttpTqlLoader(tql.NewLoader()),
-		WithHttpScheduleServer(s.schedSvc), // add, timer
-		WithHttpBridgeServer(s.bridgeSvc),
 		WithHttpServerSideFileSystem(ssfs.Default()),
-		WithHttpBackupService(s.bakd),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 		WithHttpWebShellProvider(s.models.ShellProvider()),
-		WithHttpPackageManager(s.pkgMgr),
 		WithHttpPathMap("data", s.homeDirPath),
 		WithHttpLinger(s.Http.Linger),
 		WithHttpWriteBufSize(s.Http.WriteBufSize),
@@ -1028,27 +1014,6 @@ func (s *Server) startSshServer() error {
 		return err
 	}
 	util.AddShutdownHook(func() { s.sshd.Stop() })
-	return nil
-}
-
-func (s *Server) initPackageManager() error {
-	envs := map[string]string{}
-	if b, err := os.Executable(); err == nil {
-		b, _ = filepath.Abs(b)
-		envs["MACHBASE_NEO"] = b
-	}
-	envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
-	envs["MACHBASE_NEO_FILE"] = strings.Join(s.FileDirs, string(filepath.ListSeparator))
-	envs["MACHBASE_NEO_HTTP"] = strings.Join(s.Http.Listeners, ",")
-	envs["MACHBASE_NEO_MQTT"] = strings.Join(s.Mqtt.Listeners, ",")
-	envs["MACHBASE_HOME"] = s.homeDirPath
-	pkgsDir := filepath.Join(s.homeDirPath, "pkgs")
-	if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.ExperimentMode); err != nil {
-		return fmt.Errorf("pkg manager, %s", err.Error())
-	} else {
-		s.pkgMgr = mgr
-	}
-	util.AddShutdownHook(func() { s.pkgMgr.Stop() })
 	return nil
 }
 
@@ -1166,6 +1131,7 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("schedule.delete", s.deleteSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.start", s.startSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.stop", s.stopSchedule)
+	// TODO: add schedule.update, schedule.status
 	ctl.RegisterJsonRpcHandler("server.shutdown", s.Shutdown)
 	ctl.RegisterJsonRpcHandler("http.debug.set", s.setHttpDebug)
 	ctl.RegisterJsonRpcHandler("session.list", s.listSessions)

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	httpPprof "net/http/pprof"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,16 +28,11 @@ import (
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
-	"github.com/machbase/neo-server/v8/mods/backup"
-	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/pkgs"
-	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -74,13 +67,9 @@ type httpd struct {
 	handlers        []*HandlerConfig
 	mqttWsHandler   func(*gin.Context)
 
-	httpServer     *http.Server
-	listeners      []net.Listener
-	jwtCache       JwtCache
-	bakd           *backup.Backupd
-	schedMgmtImpl  *scheduler.Service
-	bridgeMgmtImpl *bridge.Service
-	pkgMgr         *pkgs.PkgManager
+	httpServer *http.Server
+	listeners  []net.Listener
+	jwtCache   JwtCache
 
 	authServer    *Server
 	rpcController *service.Controller
@@ -278,15 +267,11 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/tql-exec", svr.handleTqlQueryExec)
 			group.Any("/services/*path", svr.handleServiceProxy)
 			group.Use(svr.handleJwtToken)
-			if svr.pkgMgr != nil {
-				svr.pkgMgr.HttpPkgRouter(group.Group("/api/pkgs"))
-			}
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.GET("/api/tql/*path", svr.handleTqlFile)
 			group.POST("/api/tql/*path", svr.handleTqlFile)
 			group.GET("/api/tql", svr.handleTqlQuery)
 			group.POST("/api/tql", svr.handleTqlQuery)
-			group.POST("/api/md", svr.handleMarkdown)
 			group.Any("/machbase", func(c *gin.Context) {
 				svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
 				svr.handleQuery(c)
@@ -294,36 +279,12 @@ func (svr *httpd) Router() *gin.Engine {
 			group.Any("/api/query", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/rpc", svr.handleHttpRpc)
-			group.POST("/api/splitter/sql", svr.handleSplitSQL)
-			group.POST("/api/splitter/http", svr.handleSplitHTTP)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
 			group.POST("/api/chpasswd", svr.handleChangePassword)
-			group.GET("/api/shell/:id", svr.handleGetShell)
-			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
-			group.POST("/api/shell/:id", svr.handlePostShell)
-			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
-			group.GET("/api/keys", svr.handleKeys)
-			group.POST("/api/keys", svr.handleKeysGen)
-			group.DELETE("/api/keys/:id", svr.handleKeysDel)
 			group.GET("/api/timers/:name", svr.handleTimer)
-			group.GET("/api/timers", svr.handleTimers)
-			group.POST("/api/timers", svr.handleTimersAdd)
-			group.POST("/api/timers/:name/state", svr.handleTimersState)
 			group.PUT("/api/timers/:name", svr.handleTimersUpdate)
-			group.DELETE("/api/timers/:name", svr.handleTimersDel)
-			group.GET("/api/bridges", svr.handleBridges)
-			group.POST("/api/bridges", svr.handleBridgesAdd)
-			group.POST("/api/bridges/:name/state", svr.handleBridgeState)
-			group.DELETE("/api/bridges/:name", svr.handleBridgesDel)
 			group.GET("/api/subscribers/:name", svr.handleSubscriber)
-			group.GET("/api/subscribers", svr.handleSubscribers)
-			group.POST("/api/subscribers", svr.handleSubscribersAdd)
-			group.POST("/api/subscribers/:name/state", svr.handleSubscribersState)
-			group.DELETE("/api/subscribers/:name", svr.handleSubscribersDel)
-			group.GET("/api/sshkeys", svr.handleSshKeys)
-			group.POST("/api/sshkeys", svr.handleSshKeysAdd)
-			group.DELETE("/api/sshkeys/*fingerprint", svr.handleSshKeysDel)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
@@ -332,9 +293,8 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/license", svr.handleGetLicense)
 			group.POST("/api/license", svr.handleInstallLicense)
 			group.Any("/api/statz/config", svr.handleStatzConfig)
-			if svr.bakd != nil {
-				backupdGroup := group.Group("/api/backup")
-				svr.bakd.HttpRouter(backupdGroup)
+			if svr.authServer != nil && svr.authServer.bakd != nil {
+				svr.authServer.bakd.HttpRouter(group.Group("/api/backup"))
 			}
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerMachbase: // "machbase"
@@ -1086,49 +1046,6 @@ var (
 	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
 	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
 )
-
-// POST "/md"
-// POST "/md?darkMode=true"
-func (svr *httpd) handleMarkdown(ctx *gin.Context) {
-	src, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		ctx.String(http.StatusBadRequest, err.Error())
-		return
-	}
-	var referer string
-	if dec, err := base64.StdEncoding.DecodeString(ctx.GetHeader("X-Referer")); err != nil {
-		ctx.String(http.StatusBadRequest, err.Error())
-		return
-	} else {
-		referer = string(dec)
-	}
-	// referer := "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
-	// referer := "http://127.0.0.1:5654/web/ui" // file is not saved
-	var filePath, fileName, fileDir string
-	if u, err := url.Parse(referer); err == nil {
-		// {{ file_path }} => /web/api/tql/path/to/file.wrk
-		// {{ file_name }} => file.wrk
-		// {{ file_dir }}  => /web/api/tql/path/to
-		filePath = u.Path
-		fileName = path.Base(filePath)
-		fileDir = path.Dir(filePath)
-	}
-	// {{ file_root }} => /web/api/tql
-	fileRoot := path.Join(strings.TrimSuffix(ctx.Request.URL.Path, "/md"), "tql")
-	src = mdFileRootRegexp.ReplaceAll(src, []byte(fileRoot))
-	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
-	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
-	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
-
-	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
-	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))
-	ctx.Writer.Write([]byte("<div>"))
-	err = conv.Convert(src, ctx.Writer)
-	if err != nil {
-		ctx.String(http.StatusInternalServerError, fmt.Sprintf(`<p>%s</p>`, err.Error()))
-	}
-	ctx.Writer.Write([]byte("</div>"))
-}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
