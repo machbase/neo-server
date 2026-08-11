@@ -51,12 +51,13 @@ import (
 type Server struct {
 	Config
 
-	log   logging.Log
-	navel *net.TCPConn
-	mqttd *mqttd
-	httpd *httpd
-	sshd  *sshd
-	bakd  *backup.Backupd
+	log       logging.Log
+	navel     *net.TCPConn
+	navelLock sync.RWMutex
+	mqttd     *mqttd
+	httpd     *httpd
+	sshd      *sshd
+	bakd      *backup.Backupd
 
 	hasHead    bool // if Server contains head (http, mqtt, ssh) servers
 	hasEngine  bool // if Server contains machbase engine
