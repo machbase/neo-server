@@ -58,10 +58,13 @@ type Server struct {
 	sshd  *sshd
 	bakd  *backup.Backupd
 
+	hasHead    bool // if Server contains head (http, mqtt, ssh) servers
+	hasEngine  bool // if Server contains machbase engine
+	machEngine *machsvr.Database
+
 	bridgeSvc *bridge.Service
 	schedSvc  *scheduler.Service
 
-	authHandler       AuthHandler
 	authorizedKeysDir string
 	licenseFilePath   string
 	licenseFileTime   time.Time
@@ -161,7 +164,11 @@ func (s *Server) Start() error {
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
 
-	HeadOnly = strings.HasPrefix(s.DataDir, "machbase://")
+	s.hasHead = !Headless
+	s.hasEngine = !strings.HasPrefix(s.DataDir, "machbase://")
+	if !s.hasHead && !s.hasEngine {
+		return fmt.Errorf("headless mode is not possible alongside head-only mode, %s", s.DataDir)
+	}
 
 	if err := s.preparePrefDir(); err != nil {
 		return err
@@ -169,13 +176,6 @@ func (s *Server) Start() error {
 
 	if err := s.prepareHomeDir(); err != nil {
 		return err
-	}
-
-	if Headless {
-		if HeadOnly {
-			return fmt.Errorf("headless mode is not possible alongside head-only mode, %s", s.DataDir)
-		}
-		return s.StartHeadless()
 	}
 
 	if err := s.startModelService(); err != nil {
@@ -186,18 +186,16 @@ func (s *Server) Start() error {
 		return err
 	}
 
-	if s.Jwt.AtDuration > 0 && s.Jwt.RtDuration > 0 {
-		JwtConfigure(&s.Jwt)
+	if err := JwtConfigure(&s.Jwt); err != nil {
+		return err
 	}
 
-	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.AuthHandler.Enabled)
-
-	if HeadOnly {
-		if err := s.startMachbaseCli(); err != nil {
+	if s.hasEngine {
+		if err := s.startMachbaseSvr(); err != nil {
 			return err
 		}
 	} else {
-		if err := s.startMachbaseSvr(); err != nil {
+		if err := s.startMachbaseCli(); err != nil {
 			return err
 		}
 	}
@@ -208,20 +206,38 @@ func (s *Server) Start() error {
 
 	spi.SetServerInfoProvider(s.getServerInfoMap)
 	spi.SetServerPortsProvider(s.getServicePorts)
-	if !HeadOnly {
+
+	if s.hasEngine {
 		if err := s.checkAndInstallLicense(); err != nil {
 			return err
 		}
 
-		if err := s.runInitScripts(); err != nil {
-			return err
-		}
+		// native port
+		s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
 
-		// backup service
-		if err := s.startBackupService(); err != nil {
-			return err
+		if s.hasHead {
+			if err := s.runInitScripts(); err != nil {
+				return err
+			}
+
+			// backup service
+			if err := s.startBackupService(); err != nil {
+				return err
+			}
+		} else {
+			// headless mode, just print the ready message and return
+			dbInitInfo := ""
+			if s.databaseCreated {
+				dbInitInfo = fmt.Sprintf("\n\n >> New database created at '%s'", s.homeDirPath)
+			}
+			s.log.Infof("%s\n\n  ready in %s", dbInitInfo, time.Since(s.startupTime).Round(time.Millisecond).String())
+			return nil
 		}
 	}
+
+	//
+	// From this point, the server has head, so initiate the head services (http, mqtt, ssh)
+	//
 
 	// tqlLoader
 	tql.Init()
@@ -237,11 +253,6 @@ func (s *Server) Start() error {
 	// bridge and scheduler
 	if err := s.startBridgeAndSchedulerService(); err != nil {
 		return err
-	}
-
-	// native port
-	if !HeadOnly {
-		s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
 	}
 
 	// mqtt server
@@ -371,73 +382,15 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// write virtual files on shared dir, for example, for cli configuration
-func (s *Server) writeSharedInfo(filename string, data any) error {
-	if s.serviceController == nil {
-		return fmt.Errorf("service controller is not initialized")
-	}
-	filename = "/" + strings.TrimPrefix(filename, "/")
-	var err error
-	switch val := data.(type) {
-	case string:
-		err = s.serviceController.WriteSharedFileString(filename, val)
-	default:
-		err = s.serviceController.WriteSharedFileJSON(filename, val)
-	}
-	return err
-}
-
-func (s *Server) StartHeadless() error {
-	if err := s.startMachbaseSvr(); err != nil {
-		return err
-	}
-
-	if !s.NoBanner {
-		s.log.Infof("\n%s", mods.GenBanner())
-	}
-
-	if err := s.checkAndInstallLicense(); err != nil {
-		return err
-	}
-
-	// native port
-	s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
-
-	dbInitInfo := ""
-	if s.databaseCreated {
-		dbInitInfo = fmt.Sprintf("\n\n >> New database created at '%s'", s.homeDirPath)
-	}
-	s.log.Infof("%s\n\n  ready in %s", dbInitInfo, time.Since(s.startupTime).Round(time.Millisecond).String())
-	return nil
-}
-
-func representativePort(addr string) string {
-	addr = strings.Replace(addr, "tcp://", "http://", 1)
-	if strings.HasPrefix(addr, "http://127.0.0.1:") {
-		addr = fmt.Sprintf("  > Local:   %s", addr)
-	} else if strings.HasPrefix(addr, "unix://") {
-		addr = fmt.Sprintf("  > Unix:    %s", filepath.FromSlash(strings.TrimPrefix(addr, "unix://")))
-	} else {
-		addr = fmt.Sprintf("  > Network: %s", addr)
-	}
-	return addr
-}
-
 func (s *Server) Stop() {
 	util.RunShutdownHooks()
-
 	tql.Deinit()
-
-	if pool, _ := spi.DefaultPool(); pool != nil {
-		pool.Close()
-	}
-	if db, ok := spi.Default().(*machgo.Database); ok {
-		if err := db.Close(); err != nil {
-			s.log.Warnf("db close; %s", err.Error())
+	spi.CleanUp()
+	if s.machEngine != nil {
+		if err := machsvr.StopDatabase(); err != nil {
+			s.log.Warnf("db shutdown; %s", err.Error())
 		}
-	}
-	if err := machsvr.StopDatabase(); err != nil {
-		s.log.Warnf("db shutdown; %s", err.Error())
+		s.machEngine = nil
 	}
 	s.log.Infof("shutdown.")
 }
@@ -470,14 +423,15 @@ func (s *Server) startMachbaseSvr() error {
 	}
 
 	// create database instance
-	sysdb, err := machsvr.StartDatabase(machsvr.DatabaseOption{})
-	if err != nil {
+	if sysdb, err := machsvr.StartDatabase(machsvr.DatabaseOption{}); err != nil {
 		return fmt.Errorf("start database failed, %s", err.Error())
+	} else {
+		s.machEngine = sysdb
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, err := sysdb.ConnectTrust(ctx, "sys")
+	conn, err := s.machEngine.ConnectTrust(ctx, "sys")
 	if err != nil {
 		return fmt.Errorf("database connect failed, %s", err.Error())
 	}
@@ -489,35 +443,33 @@ func (s *Server) startMachbaseSvr() error {
 	if err := s.migrateAuthorizedSshKeys(ctx, conn, "sys"); err != nil {
 		return err
 	}
-
 	conn.Close()
 
-	db, err := machgo.NewDatabase(&machgo.Config{
-		Host:           "127.0.0.1",
-		Port:           s.Machbase.PORT_NO,
-		StatementCache: api.StatementCacheAuto,
-	})
+	var defaultKey crypto.PrivateKey
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
-		pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
-		spi.SetDefaultDSN(map[string]string{
-			"host":            "127.0.0.1",
-			"port":            fmt.Sprintf("%d", s.Machbase.PORT_NO),
-			"statement_cache": "auto",
-			"user":            "sys",
-			"auth_key_pem":    string(pem),
-		})
-		spi.SetDefault(db, key)
-		pool, err := spi.DefaultPool()
-		if err != nil {
-			return fmt.Errorf("default pool, %s", err.Error())
-		}
-		pool.SetMaxOpenConns(s.Config.MaxOpenConn)
-		pool.SetMaxIdleConns(s.Config.MaxIdleConn)
-		pool.SetConnMaxLifetime(s.Config.ConnMaxLifetime)
-		pool.SetConnMaxIdleTime(s.Config.ConnMaxIdleTime)
+		defaultKey = key
 	}
+
+	pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
+	spi.SetDefaultDSN(map[string]string{
+		"host":            "127.0.0.1",
+		"port":            fmt.Sprintf("%d", s.Machbase.PORT_NO),
+		"statement_cache": "auto",
+		"user":            "sys",
+		"auth_key_pem":    string(pem),
+	})
+	spi.SetDefaultKey(defaultKey)
+	pool, err := spi.DefaultPool()
+	if err != nil {
+		return fmt.Errorf("default pool, %s", err.Error())
+	}
+	pool.SetMaxOpenConns(s.Config.MaxOpenConn)
+	pool.SetMaxIdleConns(s.Config.MaxIdleConn)
+	pool.SetConnMaxLifetime(s.Config.ConnMaxLifetime)
+	pool.SetConnMaxIdleTime(s.Config.ConnMaxIdleTime)
+
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
 		spi.StopAppendWorkers()
@@ -558,27 +510,35 @@ func (s *Server) startMachbaseCli() error {
 		}
 	}
 
+	if err := db.Close(); err != nil {
+		s.log.Warnf("db close; %s", err.Error())
+	}
+
+	var defaultKey crypto.PrivateKey
 	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
-		pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
-		spi.SetDefaultDSN(map[string]string{
-			"host":            host,
-			"port":            fmt.Sprintf("%d", port),
-			"statement_cache": "auto",
-			"user":            user,
-			"auth_key_pem":    string(pem),
-		})
-		spi.SetDefault(db, key)
-		pool, err := spi.DefaultPool()
-		if err != nil {
-			return fmt.Errorf("default pool, %s", err.Error())
-		}
-		pool.SetMaxOpenConns(s.Config.MaxOpenConn)
-		pool.SetMaxIdleConns(s.Config.MaxIdleConn)
-		pool.SetConnMaxLifetime(s.Config.ConnMaxLifetime)
-		pool.SetConnMaxIdleTime(s.Config.ConnMaxIdleTime)
+		defaultKey = key
 	}
+
+	pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
+	spi.SetDefaultDSN(map[string]string{
+		"host":            host,
+		"port":            fmt.Sprintf("%d", port),
+		"statement_cache": "auto",
+		"user":            user,
+		"auth_key_pem":    string(pem),
+	})
+	spi.SetDefaultKey(defaultKey)
+	pool, err := spi.DefaultPool()
+	if err != nil {
+		return fmt.Errorf("default pool, %s", err.Error())
+	}
+	pool.SetMaxOpenConns(s.Config.MaxOpenConn)
+	pool.SetMaxIdleConns(s.Config.MaxIdleConn)
+	pool.SetConnMaxLifetime(s.Config.ConnMaxLifetime)
+	pool.SetConnMaxIdleTime(s.Config.ConnMaxIdleTime)
+
 	spi.StartAppendWorkers()
 	util.AddShutdownHook(func() {
 		spi.StopAppendWorkers()
@@ -637,6 +597,18 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 	return nil
 }
 
+func representativePort(addr string) string {
+	addr = strings.Replace(addr, "tcp://", "http://", 1)
+	if strings.HasPrefix(addr, "http://127.0.0.1:") {
+		addr = fmt.Sprintf("  > Local:   %s", addr)
+	} else if strings.HasPrefix(addr, "unix://") {
+		addr = fmt.Sprintf("  > Unix:    %s", filepath.FromSlash(strings.TrimPrefix(addr, "unix://")))
+	} else {
+		addr = fmt.Sprintf("  > Network: %s", addr)
+	}
+	return addr
+}
+
 // returns host, port, user, password, error
 func parseMachbaseAddress(addrStr string) (string, int, string, string, error) {
 	addr, err := url.Parse(addrStr)
@@ -670,15 +642,7 @@ func parseMachbaseAddress(addrStr string) (string, int, string, string, error) {
 
 func (s *Server) preparePorts() error {
 	// port-check MACH
-	if HeadOnly {
-		host, port, _, _, err := parseMachbaseAddress(s.DataDir)
-		if err != nil {
-			return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
-		}
-		if err := s.AddServicePort("mach", fmt.Sprintf("tcp://%s:%d", host, port)); err != nil {
-			return fmt.Errorf("MACH port not available, %s", err.Error())
-		}
-	} else {
+	if s.hasEngine {
 		if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
 			return fmt.Errorf("MACH port not available, %s", err.Error())
 		} else {
@@ -687,27 +651,37 @@ func (s *Server) preparePorts() error {
 				return fmt.Errorf("MACH port not available, %s", err.Error())
 			}
 		}
-	}
-	// port-check HTTP
-	for _, addr := range s.Http.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return fmt.Errorf("HTTP port not available, %s", err.Error())
+	} else {
+		host, port, _, _, err := parseMachbaseAddress(s.DataDir)
+		if err != nil {
+			return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
 		}
-		s.AddServicePort("http", addr)
-	}
-	// port-check MQTT
-	for _, addr := range s.Mqtt.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return fmt.Errorf("MQTT port not available, %s", err.Error())
+		if err := s.AddServicePort("mach", fmt.Sprintf("tcp://%s:%d", host, port)); err != nil {
+			return fmt.Errorf("MACH port not available, %s", err.Error())
 		}
-		s.AddServicePort("mqtt", addr)
 	}
-	// port-check SSHD
-	for _, addr := range s.Shell.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return fmt.Errorf("SSHD port not available, %s", err.Error())
+	if s.hasHead {
+		// port-check HTTP
+		for _, addr := range s.Http.Listeners {
+			if err := s.checkListenPort(addr); err != nil {
+				return fmt.Errorf("HTTP port not available, %s", err.Error())
+			}
+			s.AddServicePort("http", addr)
 		}
-		s.AddServicePort("shell", addr)
+		// port-check MQTT
+		for _, addr := range s.Mqtt.Listeners {
+			if err := s.checkListenPort(addr); err != nil {
+				return fmt.Errorf("MQTT port not available, %s", err.Error())
+			}
+			s.AddServicePort("mqtt", addr)
+		}
+		// port-check SSHD
+		for _, addr := range s.Shell.Listeners {
+			if err := s.checkListenPort(addr); err != nil {
+				return fmt.Errorf("SSHD port not available, %s", err.Error())
+			}
+			s.AddServicePort("shell", addr)
+		}
 	}
 	return nil
 }
@@ -745,7 +719,7 @@ func (s *Server) preparePrefDir() error {
 }
 
 func (s *Server) prepareHomeDir() error {
-	if HeadOnly {
+	if !s.hasEngine {
 		bin, err := os.Executable()
 		if err != nil {
 			return err
@@ -767,7 +741,7 @@ func (s *Server) prepareHomeDir() error {
 		return fmt.Errorf("machbase_home, %s", err.Error())
 	}
 
-	if !HeadOnly {
+	if s.hasEngine {
 		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "conf")); err != nil {
 			return fmt.Errorf("machbase conf, %s", err.Error())
 		}
@@ -782,6 +756,9 @@ func (s *Server) prepareHomeDir() error {
 }
 
 func (s *Server) startModelService() error {
+	if !s.hasHead {
+		return nil
+	}
 	s.models = model.NewService(
 		model.WithConfigDirPath(s.prefDirPath),
 		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
@@ -2099,20 +2076,7 @@ func (s *Server) setHttpDebug(ctx context.Context, m map[string]any) (map[string
 //
 // return: session list
 func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
-	return []*Session{}, nil
-	// rsp, err := s.Sessions(ctx, &SessionsRequest{
-	// 	Statz: false, Sessions: true, ResetStatz: false,
-	// })
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if !rsp.Success {
-	// 	return nil, errors.New(rsp.Reason)
-	// }
-	// if rsp.Sessions == nil {
-	// 	return []*Session{}, nil
-	// }
-	// return rsp.Sessions, nil
+	return nil, fmt.Errorf("listSessions not supported")
 }
 
 // killSession terminates a session.
@@ -2123,18 +2087,7 @@ func (s *Server) listSessions(ctx context.Context) ([]*Session, error) {
 //
 // return: null on success
 func (s *Server) killSession(ctx context.Context, id string, force bool) error {
-	return nil
-	// rsp, err := s.KillSession(ctx, &KillSessionRequest{
-	// 	Id:    id,
-	// 	Force: force,
-	// })
-	// if err != nil {
-	// 	return err
-	// }
-	// if !rsp.Success {
-	// 	return errors.New(rsp.Reason)
-	// }
-	// return nil
+	return fmt.Errorf("killSession not supported")
 }
 
 // statSession returns session statistics.
@@ -2789,7 +2742,19 @@ func (s *Server) ValidateUserPassword(ctx context.Context, user string, password
 		}
 	}
 	// otherwise, check password with database
-	return spi.Default().UserAuth(ctx, user, password)
+	dsn := spi.DefaultDSN(map[string]string{"user": user, "password": password}, "auth_key_pem", "auth_key_file")
+	db, err := sql.Open("machbase", dsn)
+	if err != nil {
+		return false, err.Error(), nil
+	}
+	defer db.Close()
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return false, err.Error(), nil
+	}
+	conn.Close()
+	return true, "password authorized", nil
 }
 
 func (s *Server) runSqlScriptFile(title string, path string) error {
@@ -2893,4 +2858,20 @@ func loadSqlScriptFile(in io.Reader) ([]string, error) {
 		ret = append(ret, line)
 	}
 	return ret, nil
+}
+
+// write virtual files on shared dir, for example, for cli configuration
+func (s *Server) writeSharedInfo(filename string, data any) error {
+	if s.serviceController == nil {
+		return fmt.Errorf("service controller is not initialized")
+	}
+	filename = "/" + strings.TrimPrefix(filename, "/")
+	var err error
+	switch val := data.(type) {
+	case string:
+		err = s.serviceController.WriteSharedFileString(filename, val)
+	default:
+		err = s.serviceController.WriteSharedFileJSON(filename, val)
+	}
+	return err
 }

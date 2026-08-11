@@ -124,22 +124,16 @@ func (s *TestServer) StartServer(dataDir string) {
 	}
 	conn.Close()
 
+	spi.SetDefaultKey(privKey)
+
 	// machgo database
-	if db, err := machgo.NewDatabase(&machgo.Config{
-		Host: "127.0.0.1",
-		Port: s.machsvrPort,
-	}); err != nil {
-		panic(err)
-	} else {
-		spi.SetDefaultDSN(map[string]string{
-			"host":            "127.0.0.1",
-			"port":            fmt.Sprintf("%d", s.machsvrPort),
-			"statement_cache": "auto",
-			"user":            "sys",
-			"auth_key_file":   privPath,
-		})
-		spi.SetDefault(db, privKey)
-	}
+	spi.SetDefaultDSN(map[string]string{
+		"host":            "127.0.0.1",
+		"port":            fmt.Sprintf("%d", s.machsvrPort),
+		"statement_cache": "auto",
+		"user":            "sys",
+		"auth_key_file":   privPath,
+	})
 }
 
 func (s *TestServer) StopServer() {

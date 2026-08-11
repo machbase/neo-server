@@ -22,7 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
@@ -206,16 +205,6 @@ func TestServerInfoResponse(t *testing.T) {
 	require.NotEmpty(t, rsp.Elapse)
 }
 
-func TestSessionsAndLimitsInHeadOnlyDBMode(t *testing.T) {
-	svr := &Server{}
-
-	limitRsp, err := svr.LimitSession(context.Background(), &LimitSessionRequest{Cmd: "get"})
-	require.NoError(t, err)
-	require.NotNil(t, limitRsp)
-	require.True(t, limitRsp.Success)
-	require.Equal(t, "success", limitRsp.Reason)
-}
-
 func TestShutdownRejectsRemoteGinRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -246,23 +235,6 @@ func TestHttpDebugModeRPC(t *testing.T) {
 	require.NotNil(t, rsp)
 	require.True(t, rsp.Success)
 	require.True(t, rsp.Enable)
-}
-
-func TestSessionRPCDefaultDatabaseBranches(t *testing.T) {
-	oldDB := spi.Default()
-	oldKey := spi.DefaultKey()
-	spi.SetDefault(&coverageStubDB{}, oldKey)
-	t.Cleanup(func() {
-		spi.SetDefault(oldDB, oldKey)
-	})
-
-	svr := &Server{}
-
-	limitRsp, err := svr.LimitSession(context.Background(), &LimitSessionRequest{Cmd: "set", MaxOpenConn: 5, MaxOpenQuery: 5})
-	require.NoError(t, err)
-	require.NotNil(t, limitRsp)
-	require.False(t, limitRsp.Success)
-	require.Contains(t, limitRsp.Reason, "not supported")
 }
 
 func TestServerKeyFormatCases(t *testing.T) {

@@ -23,7 +23,7 @@ func Init() {
 }
 
 func Deinit() {
-	if instance.vap != nil {
+	if instance != nil && instance.vap != nil {
 		instance.vap.Stop()
 	}
 	instance = nil

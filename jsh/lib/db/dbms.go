@@ -8,6 +8,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 )
@@ -165,23 +166,12 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 		db: c.db,
 	}
 
-	conn, err := spi.Default().Connect(c.db.ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	ap := machbase.NewAppender(c.db.ctx)
+	err := ap.Connect(spi.DefaultDSN(map[string]string{"user": "sys"}), tableName, columns...)
 	if err != nil {
 		panic(c.db.rt.ToValue(err.Error()))
 	}
-	rawAppender, err := conn.Appender(c.db.ctx, tableName)
-	if err != nil {
-		c.Close(goja.FunctionCall{})
-		panic(c.db.rt.ToValue(err.Error()))
-	}
-	appender.appender = rawAppender
-	appender.closer = func() error {
-		return conn.Close()
-	}
-	if len(columns) > 0 {
-		rawAppender = rawAppender.WithInputColumns(columns...)
-	}
-
+	appender.appender = ap
 	ret := c.db.rt.NewObject()
 	ret.Set("close", appender.Close)
 	ret.Set("append", appender.Append)
@@ -191,7 +181,7 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 
 type APPENDER struct {
 	db            *Client
-	appender      api.Appender
+	appender      *machbase.Appender
 	success       int64
 	fail          int64
 	closer        func() error

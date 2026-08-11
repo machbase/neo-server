@@ -1032,7 +1032,7 @@ func testAppendTag(t *testing.T) {
 
 	tableName := "append_tag"
 
-	conn, err := spi.Default().Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := db.Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
 	require.NoError(t, err, "connect fail")
 	result := conn.Exec(ctx, fmt.Sprintf(`CREATE TAG TABLE %s (
 		name     varchar(200) primary key,

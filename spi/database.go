@@ -23,7 +23,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
-var defaultDatabase api.Database
 var defaultDatabaseKey crypto.PrivateKey
 var defaultDSN map[string]string
 
@@ -39,7 +38,7 @@ func SetDefaultDSN(dsn map[string]string) {
 	defaultDSN = dsn
 }
 
-func DefaultDSN(overrides map[string]string) string {
+func DefaultDSN(overrides map[string]string, deletes ...string) string {
 	result := make(map[string]string)
 	for k, v := range defaultDSN {
 		result[k] = v
@@ -49,6 +48,9 @@ func DefaultDSN(overrides map[string]string) string {
 	}
 	if _, ok := result["auth_key_pem"]; ok {
 		delete(result, "auth_key_file")
+	}
+	for _, k := range deletes {
+		delete(result, k)
 	}
 	parts := make([]string, 0, len(result))
 	for k, v := range result {
@@ -85,13 +87,14 @@ func DefaultPool() (*sql.DB, error) {
 	return defaultPoolDB, nil
 }
 
-func SetDefault(db api.Database, key crypto.PrivateKey) {
-	defaultDatabase = db
-	defaultDatabaseKey = key
+func CleanUp() {
+	if pool, _ := DefaultPool(); pool != nil {
+		pool.Close()
+	}
 }
 
-func Default() api.Database {
-	return defaultDatabase
+func SetDefaultKey(key crypto.PrivateKey) {
+	defaultDatabaseKey = key
 }
 
 func DefaultKey() crypto.PrivateKey {

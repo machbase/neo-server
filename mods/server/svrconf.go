@@ -99,7 +99,6 @@ type Config struct {
 
 var PreferredPreset string = "auto"
 var Headless bool = false
-var HeadOnly bool = false
 
 func NewConfig() *Config {
 	conf := Config{}

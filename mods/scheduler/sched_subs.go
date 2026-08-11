@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -41,7 +42,7 @@ type SubscriberEntry struct {
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
 	conn            *sql.Conn
-	appender        api.Appender
+	appender        *machbase.Appender
 	appenderClose   func() error
 	subscription    bridge.Subscription
 
@@ -489,22 +490,17 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.appender == nil {
-		var appendConn api.Conn
-		if conn, err := spi.Default().Connect(ent.ctx, api.WithAuthKey("sys", spi.DefaultKey())); err != nil {
+		ap := machbase.NewAppender(ent.ctx)
+		err := ap.Connect(spi.DefaultDSN(map[string]string{"user": "sys"}), ent.wd.Table)
+		if err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 			return
-		} else {
-			appendConn = conn
 		}
-		if appender, err := appendConn.Appender(ent.ctx, ent.wd.Table); err != nil {
-			rsp.Reason = fmt.Sprintf("%s %s fail to create appender, %s", ent.name, ent.TaskTql, err.Error())
-			ent.log.Warn(ent.TaskTql, err.Error())
-		} else {
-			ent.appender = appender
-			ent.appenderClose = func() error {
-				return appendConn.Close()
-			}
+		ent.appender = ap
+		ent.appenderClose = func() error {
+			_, _, err := ap.Close()
+			return err
 		}
 	}
 
@@ -529,10 +525,14 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 		inputStream = bytes.NewReader(payload)
 	}
 
-	cols, _ := ent.appender.Columns()
-	colNames := cols.Names()
-	colTypes := cols.DataTypes()
-	if ent.appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+	colNames, _ := ent.appender.Columns()
+	colTypeNames, _ := ent.appender.ColumnTypes()
+	colTypes := make([]api.DataType, len(colTypeNames))
+	for i, colTypeName := range colTypeNames {
+		colTypes[i] = api.ParseColumnType(colTypeName).DataType()
+	}
+	tableType, _ := ent.appender.TableType()
+	if tableType == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

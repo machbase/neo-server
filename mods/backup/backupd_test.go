@@ -149,7 +149,7 @@ func setupDefaultSPI() error {
 		"user":         "sys",
 		"auth_key_pem": string(privKeyContent),
 	})
-	spi.SetDefault(testMachgoDB, testKey)
+	spi.SetDefaultKey(testKey)
 	return nil
 }
 
