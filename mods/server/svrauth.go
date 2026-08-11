@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/x509"
 	"errors"
 	"regexp"
 	"strings"
@@ -41,34 +40,6 @@ type AuthServer interface {
 	ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error)
 	ValidateUserPassword(ctx context.Context, user string, password string) (bool, string, error)
 	ServerPrivateKeyPath() string
-}
-
-type AuthHandler interface {
-	Enabled() bool
-	AuthId(id string, password string) (bool, error)
-	AuthCert(cert *x509.Certificate) (bool, error)
-}
-
-func NewAuthenticator(serverCertFile string, authorizedKeysDir string, enabled bool) AuthHandler {
-	return &authZero{
-		enabled: enabled,
-	}
-}
-
-type authZero struct {
-	enabled bool
-}
-
-func (az *authZero) Enabled() bool {
-	return az.enabled
-}
-
-func (az *authZero) AuthId(id string, password string) (bool, error) {
-	return true, nil
-}
-
-func (az *authZero) AuthCert(cert *x509.Certificate) (bool, error) {
-	return true, nil
 }
 
 type JwtCacheValue struct {
@@ -131,8 +102,11 @@ var jwtConf = &JwtConfig{
 	Secret:     "__secr3t__",
 }
 
-func JwtConfigure(conf *JwtConfig) {
-	jwtConf = conf
+func JwtConfigure(conf *JwtConfig) error {
+	if conf != nil && conf.AtDuration > 0 && conf.RtDuration > 0 {
+		jwtConf = conf
+	}
+	return nil
 }
 
 var idgen = uuid.NewGen()

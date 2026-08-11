@@ -511,6 +511,7 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 		"user":       "sys as demo",
 		"fetch_rows": "100",
 	})
+	// userDSN := fmt.Sprintf("host=127.0.0.1;port=%d;user=sys as demo;password=manager", testServer.MachPort())
 	userDB, err := sql.Open("machbase", userDSN)
 	require.NoError(t, err, "connect fail")
 	defer userDB.Close()
@@ -570,7 +571,7 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 
 	// TODO: issue machbase/neo#1445 meta table accessibility for proxy user
 	// for _, metaTable := range []string{"_tag_data_meta", "demo._tag_data_meta", "machbasedb.demo._tag_data_meta"} {
-	for _, metaTable := range []string{"_tag_data_meta"} {
+	for _, metaTable := range []string{"_tag_data_meta", "demo._tag_data_meta"} {
 		rows, err := proxyConn.QueryContext(ctx, fmt.Sprintf("select * from %s", metaTable))
 		require.NoError(t, err)
 		nrow := 0

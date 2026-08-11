@@ -6,11 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/v8/mods/backup"
-	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/pkgs"
-	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -196,30 +192,6 @@ func WithHttpQueryCypher(algAndKey string) HttpOption {
 func WithHttpMqttWsHandlerFunc(fn http.HandlerFunc) HttpOption {
 	return func(s *httpd) {
 		s.mqttWsHandler = gin.WrapF(fn)
-	}
-}
-
-func WithHttpScheduleServer(handler *scheduler.Service) HttpOption {
-	return func(s *httpd) {
-		s.schedMgmtImpl = handler
-	}
-}
-
-func WithHttpBridgeServer(handler *bridge.Service) HttpOption {
-	return func(s *httpd) {
-		s.bridgeMgmtImpl = handler
-	}
-}
-
-func WithHttpBackupService(handler *backup.Backupd) HttpOption {
-	return func(s *httpd) {
-		s.bakd = handler
-	}
-}
-
-func WithHttpPackageManager(pm *pkgs.PkgManager) HttpOption {
-	return func(s *httpd) {
-		s.pkgMgr = pm
 	}
 }
 

@@ -3,19 +3,18 @@ package spi
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 type AppendWorker struct {
-	conn      api.Conn
-	appender  api.Appender
+	appender  *machbase.Appender
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
@@ -147,21 +146,19 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 		return nil, err
 	}
 
-	appendConn, err := Default().Connect(ctx, api.WithAuthKey("sys", DefaultKey()))
-	if err != nil {
-		return nil, err
-	}
-
-	appender, err := appendConn.Appender(ctx, tableName)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, ctxCancel := context.WithCancel(context.Background())
+
+	appender := &machbase.Appender{}
+	dsn := DefaultDSN(map[string]string{"user": "sys"})
+	err = appender.Connect(ctx, dsn, tableName)
+	if err != nil {
+		ctxCancel()
+		return nil, err
+	}
+
 	ret := &AppendWorker{
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
-		conn:      appendConn,
 		appender:  appender,
 		tableDesc: tableDesc,
 		lastTime:  time.Now(),
@@ -179,19 +176,6 @@ func (aw *AppendWorker) Start() {
 	aw.appendWg.Add(1)
 	go func(aw *AppendWorker) {
 		defer aw.appendWg.Done()
-		runtime.LockOSThread()
-		// !!IMPORTANT!!
-		// machsvr.Appender implements "AppendSync()" which is at least x50 faster than "Append()"
-		// ONLY when it is called by a dedicated native thread,
-		// which is the case here by locking a native thread with "runtime.LockOSThread()".
-		// And intentionally ignore calling "runtime.UnlockOSThread()"
-		// to terminate the native thread when the goroutine is done.
-		var appendFunc func(...any) error
-		if appendSync, ok := aw.appender.(interface{ AppendSync(...any) error }); ok {
-			appendFunc = appendSync.AppendSync
-		} else {
-			appendFunc = aw.appender.Append
-		}
 		aw.log.Info("open")
 	loop:
 		for {
@@ -201,7 +185,7 @@ func (aw *AppendWorker) Start() {
 			case <-aw.appendStop:
 				break loop
 			case vals := <-aw.appendC:
-				err := appendFunc(vals...)
+				err := aw.appender.Append(vals...)
 				if err != nil {
 					aw.log.Error("error:", err)
 				}
@@ -209,7 +193,7 @@ func (aw *AppendWorker) Start() {
 		}
 		for len(aw.appendC) > 0 {
 			vals := <-aw.appendC
-			err := appendFunc(vals...)
+			err := aw.appender.Append(vals...)
 			if err != nil {
 				aw.log.Error("error:", err)
 			}
@@ -234,7 +218,6 @@ func (aw *AppendWorker) Stop() {
 			aw.log.Info("close, success:", success)
 		}
 	}
-	aw.conn.Close()
 }
 
 var _ api.Appender = (*AppendWorker)(nil)
@@ -245,7 +228,7 @@ func (aw *AppendWorker) Append(vals ...any) error {
 }
 
 func (aw *AppendWorker) AppendLogTime(ts time.Time, vals ...any) error {
-	if aw.appender.TableType() != api.TableTypeLog {
+	if tableType, _ := aw.appender.TableType(); tableType != api.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", aw.appender.TableName())
 	}
 	aw.appendC <- append([]interface{}{ts}, vals...)
@@ -258,11 +241,12 @@ func (aw *AppendWorker) Close() (success, fail int64, err error) {
 }
 
 func (aw *AppendWorker) Columns() (api.Columns, error) {
-	return aw.appender.Columns()
+	return aw.appender.ApiColumns()
 }
 
 func (aw *AppendWorker) TableType() api.TableType {
-	return aw.appender.TableType()
+	typ, _ := aw.appender.TableType()
+	return typ
 }
 
 func (aw *AppendWorker) TableName() string {
@@ -280,7 +264,7 @@ func (aw *AppendWorker) WithInputColumns(columns ...string) api.Appender {
 		ret.inputColumns = append(ret.inputColumns, AppenderInputColumn{Name: strings.ToUpper(col), Idx: -1})
 	}
 	if len(ret.inputColumns) > 0 {
-		columns, _ := aw.appender.Columns()
+		columns, _ := aw.appender.ApiColumns()
 		for idx, col := range columns {
 			for inIdx, inputCol := range ret.inputColumns {
 				if col.Name == inputCol.Name {
@@ -340,7 +324,7 @@ func (ap *AppenderWithWorker) Append(vals ...any) error {
 }
 
 func (aw *AppenderWithWorker) AppendLogTime(ts time.Time, vals ...any) error {
-	if aw.appender.TableType() != api.TableTypeLog {
+	if tableType, _ := aw.appender.TableType(); tableType != api.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", aw.appender.TableName())
 	}
 	aw.Append(append([]interface{}{ts}, vals...))

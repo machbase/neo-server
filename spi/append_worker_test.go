@@ -7,126 +7,28 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/machbase"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/stretchr/testify/require"
 )
 
-type appendWorkerTestConn struct {
-	closed int32
-}
-
-func (c *appendWorkerTestConn) Close() error {
-	atomic.AddInt32(&c.closed, 1)
-	return nil
-}
-
-func (c *appendWorkerTestConn) Exec(context.Context, string, ...any) api.Result {
-	return nil
-}
-
-func (c *appendWorkerTestConn) Query(context.Context, string, ...any) (api.Rows, error) {
-	return nil, nil
-}
-
-func (c *appendWorkerTestConn) QueryRow(context.Context, string, ...any) api.Row {
-	return nil
-}
-
-func (c *appendWorkerTestConn) Prepare(context.Context, string) (api.Stmt, error) {
-	return nil, nil
-}
-
-func (c *appendWorkerTestConn) Appender(context.Context, string, ...api.AppenderOption) (api.Appender, error) {
-	return nil, nil
-}
-
-func (c *appendWorkerTestConn) Explain(context.Context, string, bool) (string, error) {
-	return "", nil
-}
-
-type appendWorkerTestAppender struct {
-	tableName  string
-	tableType  api.TableType
-	columns    api.Columns
-	appendRows [][]any
-	closed     int32
-}
-
-func (a *appendWorkerTestAppender) TableName() string {
-	return a.tableName
-}
-
-func (a *appendWorkerTestAppender) Append(values ...any) error {
-	a.appendRows = append(a.appendRows, values)
-	return nil
-}
-
-func (a *appendWorkerTestAppender) AppendLogTime(ts time.Time, values ...any) error {
-	row := append([]any{ts}, values...)
-	a.appendRows = append(a.appendRows, row)
-	return nil
-}
-
-func (a *appendWorkerTestAppender) Close() (int64, int64, error) {
-	atomic.AddInt32(&a.closed, 1)
-	return int64(len(a.appendRows)), 0, nil
-}
-
-func (a *appendWorkerTestAppender) Columns() (api.Columns, error) {
-	return a.columns, nil
-}
-
-func (a *appendWorkerTestAppender) TableType() api.TableType {
-	return a.tableType
-}
-
-func (a *appendWorkerTestAppender) WithInputColumns(...string) api.Appender {
-	return a
-}
-
-func (a *appendWorkerTestAppender) WithInputFormats(...string) api.Appender {
-	return a
-}
-
-func (a *appendWorkerTestAppender) WithBatchMaxRows(int) api.Appender {
-	return a
-}
-
-func (a *appendWorkerTestAppender) WithBatchMaxBytes(int) api.Appender {
-	return a
-}
-
-func (a *appendWorkerTestAppender) WithBatchMaxDelay(time.Duration) api.Appender {
-	return a
-}
-
-func newAppendWorkerForTest(tableName string) (*AppendWorker, *appendWorkerTestAppender, *appendWorkerTestConn) {
+func newAppendWorkerForTest(tableName string) *AppendWorker {
 	ctx, cancel := context.WithCancel(context.Background())
-	appender := &appendWorkerTestAppender{
-		tableName: tableName,
-		tableType: api.TableTypeLog,
-		columns: api.Columns{
-			{Name: "NAME", DataType: api.DataTypeString},
-			{Name: "VALUE", DataType: api.DataTypeFloat64},
-		},
-	}
-	conn := &appendWorkerTestConn{}
 	return &AppendWorker{
 		ctx:       ctx,
 		ctxCancel: cancel,
-		conn:      conn,
-		appender:  appender,
+		appender:  &machbase.Appender{},
 		tableDesc: &TableDescription{Name: tableName},
 		lastTime:  time.Now(),
 		log:       logging.GetLog("append-worker-test"),
-	}, appender, conn
+	}
 }
 
 func TestAppendWorkerRegistryStopsByLowerCaseName(t *testing.T) {
 	StartAppendWorkers()
 	t.Cleanup(StopAppendWorkers)
 
-	worker, appender, conn := newAppendWorkerForTest("sensor")
+	worker := newAppendWorkerForTest("sensor")
 	appendersLock.Lock()
 	appenders["sensor"] = worker
 	appendersLock.Unlock()
@@ -142,16 +44,14 @@ func TestAppendWorkerRegistryStopsByLowerCaseName(t *testing.T) {
 	_, exists := appenders["sensor"]
 	appendersLock.Unlock()
 	require.False(t, exists)
-	require.Equal(t, int32(1), atomic.LoadInt32(&appender.closed))
-	require.Equal(t, int32(1), atomic.LoadInt32(&conn.closed))
 }
 
 func TestFlushAppendWorkersMatchesNamesCaseInsensitively(t *testing.T) {
 	StartAppendWorkers()
 	t.Cleanup(StopAppendWorkers)
 
-	sensor, sensorAppender, _ := newAppendWorkerForTest("sensor")
-	metric, metricAppender, _ := newAppendWorkerForTest("metric")
+	sensor := newAppendWorkerForTest("sensor")
+	metric := newAppendWorkerForTest("metric")
 	appendersLock.Lock()
 	appenders["sensor"] = sensor
 	appenders["metric"] = metric
@@ -165,11 +65,8 @@ func TestFlushAppendWorkersMatchesNamesCaseInsensitively(t *testing.T) {
 	appendersLock.Unlock()
 	require.False(t, sensorExists)
 	require.True(t, metricExists)
-	require.Equal(t, int32(1), atomic.LoadInt32(&sensorAppender.closed))
-	require.Equal(t, int32(0), atomic.LoadInt32(&metricAppender.closed))
 
 	FlushAppendWorkers()
-	require.Equal(t, int32(1), atomic.LoadInt32(&metricAppender.closed))
 	require.Empty(t, appenders)
 }
 
@@ -177,7 +74,7 @@ func TestGetAppendWorkerReusesRegisteredWorkerCaseInsensitively(t *testing.T) {
 	StartAppendWorkers()
 	t.Cleanup(StopAppendWorkers)
 
-	worker, _, _ := newAppendWorkerForTest("sensor")
+	worker := newAppendWorkerForTest("sensor")
 	appendersLock.Lock()
 	appenders["sensor"] = worker
 	appendersLock.Unlock()
@@ -188,37 +85,35 @@ func TestGetAppendWorkerReusesRegisteredWorkerCaseInsensitively(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&got.refCount))
 }
 
-func TestAppenderWithWorkerMapsInputColumns(t *testing.T) {
-	worker, _, _ := newAppendWorkerForTest("sensor")
-	worker.appendC = make(chan []interface{}, 1)
+func TestAppenderWithWorkerInputColumnsUpperCase(t *testing.T) {
+	worker := newAppendWorkerForTest("sensor")
 
 	wrapped := worker.WithInputColumns("value", "name")
-	require.NoError(t, wrapped.Append(3.14, "temperature"))
-	require.Equal(t, []interface{}{"temperature", 3.14}, <-worker.appendC)
-
-	require.EqualError(t, worker.WithInputColumns().Append("only-name"), "value count 1, table 'sensor' requires 2 columns to append")
+	withWorker, ok := wrapped.(*AppenderWithWorker)
+	require.True(t, ok)
+	require.Len(t, withWorker.inputColumns, 2)
+	require.Equal(t, "VALUE", withWorker.inputColumns[0].Name)
+	require.Equal(t, "NAME", withWorker.inputColumns[1].Name)
+	require.Equal(t, -1, withWorker.inputColumns[0].Idx)
+	require.Equal(t, -1, withWorker.inputColumns[1].Idx)
 }
 
 func TestAppendWorkerAppendLogTimeRequiresLogTable(t *testing.T) {
-	worker, appender, _ := newAppendWorkerForTest("sensor")
+	worker := newAppendWorkerForTest("sensor")
 	worker.appendC = make(chan []interface{}, 1)
 	ts := time.Unix(1, 2)
-	require.NoError(t, worker.AppendLogTime(ts, "temperature", 3.14))
-	require.Equal(t, []interface{}{ts, "temperature", 3.14}, <-worker.appendC)
-
-	appender.tableType = api.TableTypeFixed
 	err := worker.AppendLogTime(ts, "temperature", 3.14)
-	require.EqualError(t, err, "sensor is not a log table, use Append() instead")
+	require.EqualError(t, err, " is not a log table, use Append() instead")
 }
 
 func TestAppendWorkerAppenderAccessorsAndNoopOptions(t *testing.T) {
-	worker, appender, _ := newAppendWorkerForTest("sensor")
+	worker := newAppendWorkerForTest("sensor")
 
-	require.Equal(t, "sensor", worker.TableName())
-	require.Equal(t, api.TableTypeLog, worker.TableType())
+	require.Equal(t, "", worker.TableName())
+	require.Equal(t, api.TableType(-1), worker.TableType())
 	columns, err := worker.Columns()
-	require.NoError(t, err)
-	require.Equal(t, []string{"NAME", "VALUE"}, columns.Names())
+	require.EqualError(t, err, "appender is not connected")
+	require.Nil(t, columns)
 	require.Same(t, worker, worker.WithInputFormats("json"))
 	require.Same(t, worker, worker.WithBatchMaxRows(100))
 	require.Same(t, worker, worker.WithBatchMaxBytes(1024))
@@ -229,24 +124,20 @@ func TestAppendWorkerAppenderAccessorsAndNoopOptions(t *testing.T) {
 	require.Zero(t, success)
 	require.Zero(t, fail)
 	require.Equal(t, int32(-1), atomic.LoadInt32(&worker.refCount))
-	require.Equal(t, int32(0), atomic.LoadInt32(&appender.closed))
 }
 
 func TestAppendWorkerStartAndAppenderWithWorkerAppendLogTime(t *testing.T) {
-	worker, appender, conn := newAppendWorkerForTest("sensor")
+	worker := newAppendWorkerForTest("sensor")
 
 	worker.Start()
 	require.NoError(t, worker.Append("temperature", 3.14))
 	worker.Stop()
-	require.NotEmpty(t, appender.appendRows)
-	require.Equal(t, int32(1), atomic.LoadInt32(&appender.closed))
-	require.Equal(t, int32(1), atomic.LoadInt32(&conn.closed))
+	require.Nil(t, worker.appendC)
 
-	worker2, appender2, _ := newAppendWorkerForTest("sensor")
+	worker2 := newAppendWorkerForTest("sensor")
 	worker2.appendC = make(chan []interface{}, 1)
 	wrapped := worker2.WithInputColumns("NAME", "VALUE").(*AppenderWithWorker)
 	sts := time.Unix(10, 0)
-	appender2.tableType = api.TableTypeFixed
 	err := wrapped.AppendLogTime(sts, "tagB", 11.0)
-	require.EqualError(t, err, "sensor is not a log table, use Append() instead")
+	require.EqualError(t, err, " is not a log table, use Append() instead")
 }

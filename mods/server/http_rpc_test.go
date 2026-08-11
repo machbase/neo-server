@@ -277,46 +277,92 @@ Host: localhost:8080`},
 			}
 		},
 	}.run(t, at)
-
-	// session limit is not supported after migrate machsvr to machgo entirely,
-	// so, skip session limit related tests for now.
-	//
-	// newMaxPoolSize := originalSessionLimit["MaxPoolSize"] + 1
-	// if originalSessionLimit["MaxPoolSize"] < 0 {
-	// 	newMaxPoolSize = 1
-	// }
-	// JsonRpcTestCase{
-	// 	name:   "setSessionLimit",
-	// 	method: "session.limit.set",
-	// 	params: []interface{}{map[string]any{"MaxPoolSize": newMaxPoolSize}},
-	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
-	// 		require.True(t, rsp.Get("result").Exists(), rsp.String())
-	// 	},
-	// }.run(t, at)
-	// JsonRpcTestCase{
-	// 	name:   "getSessionLimit_afterSet",
-	// 	method: "session.limit.get",
-	// 	params: []interface{}{},
-	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
-	// 		require.Equal(t, int64(newMaxPoolSize), rsp.Get("result.MaxPoolSize").Int(), rsp.String())
-	// 	},
-	// }.run(t, at)
-	// JsonRpcTestCase{
-	// 	name:   "restoreSessionLimit",
-	// 	method: "session.limit.set",
-	// 	params: []interface{}{map[string]any{"MaxPoolSize": originalSessionLimit["MaxPoolSize"]}},
-	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
-	// 		require.True(t, rsp.Get("result").Exists(), rsp.String())
-	// 	},
-	// }.run(t, at)
-	// JsonRpcTestCase{
-	// 	name:   "getSessionLimit_afterRestore",
-	// 	method: "session.limit.get",
-	// 	params: []interface{}{},
-	// 	expectFunc: func(t *testing.T, rsp gjson.Result) {
-	// 		require.Equal(t, int64(originalSessionLimit["MaxPoolSize"]), rsp.Get("result.MaxPoolSize").Int(), rsp.String())
-	// 	},
-	// }.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_beforeAdd",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Empty(t, rsp.Get("result").Array(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addTimer_not_exists",
+		method: "schedule.timer.add",
+		params: []interface{}{map[string]any{
+			"name":      "test-timer",
+			"spec":      "*/1 * * * * *",
+			"command":   "test-timer-not_exists.tql",
+			"authStart": true,
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, -32000, int(rsp.Get("error.code").Int()), rsp.String())
+			require.Equal(t, "not found 'test-timer-not_exists.tql'", rsp.Get("error.message").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addTimer",
+		method: "schedule.timer.add",
+		params: []interface{}{map[string]any{
+			"name":      "test-timer",
+			"spec":      "0 30 * * * *",
+			"command":   "csv_map.tql",
+			"authStart": true,
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_afterAdd",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.NotEmpty(t, rsp.Get("result").Array(), rsp.String())
+			require.Equal(t, "TEST-TIMER", rsp.Get("result.0.name").String(), rsp.String())
+			require.Equal(t, "0 30 * * * *", rsp.Get("result.0.schedule").String(), rsp.String())
+			require.Equal(t, "STOP", rsp.Get("result.0.state").String(), rsp.String())
+			require.Equal(t, "csv_map.tql", rsp.Get("result.0.task").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "startTimer",
+		method: "schedule.start",
+		params: []interface{}{"test-timer"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_afterStart",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.NotEmpty(t, rsp.Get("result").Array(), rsp.String())
+			require.Equal(t, "TEST-TIMER", rsp.Get("result.0.name").String(), rsp.String())
+			require.Equal(t, "0 30 * * * *", rsp.Get("result.0.schedule").String(), rsp.String())
+			require.Equal(t, "RUNNING", rsp.Get("result.0.state").String(), rsp.String())
+			require.Equal(t, "csv_map.tql", rsp.Get("result.0.task").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteTimer",
+		method: "schedule.delete",
+		params: []interface{}{"test-timer"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_afterDelete",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Empty(t, rsp.Get("result").Array(), rsp.String())
+		},
+	}.run(t, at)
 
 	originalDebugEnabled, originalDebugLatency := httpServer.DebugMode()
 	targetDebugEnabled := !originalDebugEnabled
@@ -538,6 +584,75 @@ Host: localhost:8080`},
 		name:   "deleteBridge",
 		method: "bridge.delete",
 		params: []interface{}{"br-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addMqttBridge",
+		method: "bridge.add",
+		params: []interface{}{"mqtt-test", "mqtt", map[string]any{
+			"broker": mqttServerAddress,
+			"id":     "client-id",
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addMqttSubscriber",
+		method: "schedule.subscriber.add",
+		params: []interface{}{map[string]any{
+			"name":      "mqtt-subscriber",
+			"type":      "mqtt",
+			"autoStart": false,
+			"command":   "sub.tql",
+			"bridge":    "mqtt-test",
+			"mqtt": map[string]any{
+				"topic": "test/topic",
+				"QoS":   0,
+			},
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listMqttSubscribers",
+		method: "schedule.list",
+		params: []interface{}{"mqtt-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			result := rsp.Get("result")
+			require.Equal(t, 1, len(result.Array()), rsp.String())
+			require.Equal(t, "MQTT-SUBSCRIBER", result.Get("0.name").String(), rsp.String())
+			require.Equal(t, "SUBSCRIBER", result.Get("0.type").String(), rsp.String())
+			require.Equal(t, "STOP", result.Get("0.state").String(), rsp.String())
+			require.Equal(t, "mqtt-test", result.Get("0.bridge").String(), rsp.String())
+			require.Equal(t, "test/topic", result.Get("0.topic").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteMqttSubscriber",
+		method: "schedule.delete",
+		params: []interface{}{"mqtt-subscriber"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteMqttBridge",
+		method: "bridge.delete",
+		params: []interface{}{"mqtt-test"},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("id").Exists(), rsp.String())
 			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())

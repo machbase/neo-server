@@ -74,23 +74,6 @@ func withTestJwtConfig(t *testing.T, conf *JwtConfig) {
 	})
 }
 
-func TestNewAuthenticatorAndAuthZero(t *testing.T) {
-	auth := NewAuthenticator("server.crt", "authorized_keys", true)
-	require.NotNil(t, auth)
-	require.True(t, auth.Enabled())
-
-	ok, err := auth.AuthId("user", "password")
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	ok, err = auth.AuthCert(nil)
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	disabled := NewAuthenticator("server.crt", "authorized_keys", false)
-	require.False(t, disabled.Enabled())
-}
-
 func TestJwtMemCacheLifecycle(t *testing.T) {
 	cache := NewJwtCache()
 	require.NotNil(t, cache)

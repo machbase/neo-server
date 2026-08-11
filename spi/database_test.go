@@ -2,10 +2,6 @@ package spi
 
 import (
 	"context"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
@@ -238,35 +234,6 @@ func makeColumnTypesForTest(t *testing.T, metas []testColumnMeta) []*sql.ColumnT
 
 func boolPtr(v bool) *bool {
 	return &v
-}
-
-func resetDefaultPoolForTest(t *testing.T) {
-	t.Helper()
-	defaultPoolOnce = sync.Once{}
-	defaultPoolDB = nil
-	defaultPoolErr = nil
-}
-
-func resetDefaultPoolConfigForTest(t *testing.T) {
-	t.Helper()
-	pool, _ := DefaultPool()
-	pool.SetMaxOpenConns(20)
-	pool.SetMaxIdleConns(2)
-	pool.SetConnMaxLifetime(10 * time.Minute)
-	pool.SetConnMaxIdleTime(1 * time.Minute)
-}
-
-func setDefaultForTest(t *testing.T, db api.Database, key crypto.PrivateKey) {
-	t.Helper()
-	defaultDatabase = db
-	defaultDatabaseKey = key
-}
-
-func newTestAuthKey(t *testing.T) *ecdsa.PrivateKey {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	return key
 }
 
 func TestIssueTokenAndVerifyToken(t *testing.T) {

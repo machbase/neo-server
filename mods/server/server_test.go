@@ -2187,31 +2187,6 @@ func coverageRunningServer(t *testing.T) *Server {
 	return svr
 }
 
-func TestServerCoverage_SessionWrappers(t *testing.T) {
-	svr := coverageRunningServer(t)
-	ctx := context.Background()
-
-	sessions, err := svr.listSessions(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, sessions)
-
-	statz, err := svr.statSession(ctx, false)
-	require.NoError(t, err)
-	require.NotNil(t, statz)
-
-	limit, err := svr.getSessionLimit(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, limit)
-
-	err = svr.setSessionLimit(ctx, map[string]any{
-		"maxOpenConn": float64(limit.MaxOpenConn),
-		"maxIdleConn": float64(limit.MaxIdleConn),
-		"maxLifetime": limit.ConnMaxLifetime,
-		"maxIdleTime": limit.ConnMaxIdleTime,
-	})
-	require.NoError(t, err)
-}
-
 func TestServerCoverage_ScheduleWrappers(t *testing.T) {
 	svr := coverageRunningServer(t)
 	ctx := context.Background()
@@ -2337,12 +2312,9 @@ func TestServerCoverage_NewServerAndExecutable(t *testing.T) {
 }
 
 func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
-	oldHeadOnly := HeadOnly
 	oldHeadless := Headless
-	HeadOnly = false
 	Headless = false
 	t.Cleanup(func() {
-		HeadOnly = oldHeadOnly
 		Headless = oldHeadless
 	})
 
@@ -2362,6 +2334,8 @@ func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
 			Shell: ShellConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
 		},
 		servicePorts: make(map[string][]*model.ServicePort),
+		hasEngine:    true,
+		hasHead:      false,
 	}
 
 	require.NoError(t, svr.preparePrefDir())
@@ -2519,14 +2493,10 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 }
 
 func TestServerCoverage_PreparePortsHeadOnlyInvalid(t *testing.T) {
-	oldHeadOnly := HeadOnly
-	HeadOnly = true
-	t.Cleanup(func() {
-		HeadOnly = oldHeadOnly
-	})
-
 	svr := &Server{
-		Config: Config{DataDir: "invalid-headonly-address"},
+		Config:    Config{DataDir: "invalid-headonly-address"},
+		hasEngine: false,
+		hasHead:   true,
 	}
 	err := svr.preparePorts()
 	require.Error(t, err)
@@ -2546,6 +2516,7 @@ func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
 		},
 		log:         logging.GetLog("server-coverage"),
 		prefDirPath: t.TempDir(),
+		hasHead:     true,
 	}
 
 	require.NoError(t, svr.startModelService())
