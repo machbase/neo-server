@@ -1,9 +1,12 @@
 package machsvr
 
 import (
+	"bytes"
 	"context"
 	"crypto"
+	"crypto/x509"
 	_ "embed"
+	"encoding/pem"
 	"fmt"
 	"math/rand/v2"
 	"net"
@@ -12,7 +15,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -86,7 +88,7 @@ func (s *TestServer) StartServer(dataDir string) {
 
 	ctx := context.TODO()
 
-	pair, err := machgo.GenerateAuthKeyPair()
+	pair, err := api.GenerateAuthKeyPair()
 	if err != nil {
 		panic(err)
 	}
@@ -96,7 +98,7 @@ func (s *TestServer) StartServer(dataDir string) {
 		panic(err)
 	}
 	// just to verify the generated key file is valid
-	privKey, err := machgo.LoadPrivateKeyFromFile(privPath)
+	privKey, err := api.LoadPrivateKeyFromFile(privPath)
 	if err != nil {
 		panic(err)
 	}
@@ -152,6 +154,21 @@ func (s *TestServer) MachPort() int {
 
 func (s *TestServer) MachKey() crypto.PrivateKey {
 	return s.machsvrKey
+}
+
+func (s *TestServer) MachKeyPEM() (string, error) {
+	buff := &bytes.Buffer{}
+	// encode private key to PEM format (PKCS#8)
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(s.machsvrKey)
+	if err != nil {
+		return "", err
+	}
+
+	err = pem.Encode(buff, &pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes})
+	if err != nil {
+		return "", err
+	}
+	return buff.String(), nil
 }
 
 func (s *TestServer) MachSvr() *Database {

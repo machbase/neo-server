@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"crypto"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
@@ -22,17 +21,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	testMachgoDB  api.Database
-	testMachsvrDB *machsvr.Database
-	testKey       crypto.PrivateKey
-	testHomeDir   string
+	testServer  *machsvr.TestServer
+	testHomeDir string
 )
 
 func TestMain(m *testing.M) {
@@ -57,112 +53,41 @@ func isBackupHelperProcess() bool {
 }
 
 func setupDefaultSPI() error {
+	testServer := &machsvr.TestServer{}
 	testHomeDir = mustAbsPath(filepath.Join("tmp", "machbase_default"))
 	if err := os.RemoveAll(testHomeDir); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(testHomeDir, "conf"), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(testHomeDir, "trc"), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(testHomeDir, "dbs"), 0o755); err != nil {
-		return err
-	}
+	testServer.StartServer(filepath.Join("tmp", "machbase_default"))
 
-	confSrc := filepath.Join("..", "..", "spi", "machsvr", "test", "testsuite.conf")
-	confBytes, err := os.ReadFile(confSrc)
+	db, err := sql.Open("machbase", fmt.Sprintf("host=127.0.0.1; port=%d; user=sys; password=manager", testServer.MachPort()))
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(testHomeDir, "conf", "machbase.conf"), confBytes, 0o644); err != nil {
+	defer db.Close()
+	conn, err := db.Conn(context.Background())
+	if err != nil {
 		return err
 	}
+	defer conn.Close()
 
-	port, err := freeTCPPortNoTest()
-	if err != nil {
-		return err
-	}
-	if err := machsvr.Initialize(testHomeDir, port, machsvr.OPT_SIGHANDLER_OFF); err != nil {
-		return err
-	}
-	if !machsvr.ExistsDatabase() {
-		if err := machsvr.CreateDatabase(); err != nil {
-			return err
-		}
-	}
-
-	testMachsvrDB, err = machsvr.NewDatabase(machsvr.DatabaseOption{MaxOpenConn: -1, MaxOpenQuery: -1})
-	if err != nil {
-		return err
-	}
-	if err := testMachsvrDB.Startup(); err != nil {
-		return err
-	}
-
-	pair, err := machgo.GenerateAuthKeyPair()
-	if err != nil {
-		return err
-	}
-	privPath, pubPath, err := pair.WriteFiles(testHomeDir, "authkey_test")
-	if err != nil {
-		return err
-	}
-	key, err := machgo.LoadPrivateKeyFromFile(privPath)
-	if err != nil {
-		return err
-	}
-	privKeyContent, err := os.ReadFile(privPath)
-	if err != nil {
-		return err
-	}
-	testKey = key
-	pubKeyContent, err := os.ReadFile(pubPath)
-	if err != nil {
-		return err
-	}
-
-	conn, err := testMachsvrDB.Connect(context.Background(), api.WithPassword("sys", "manager"))
-	if err != nil {
-		return err
-	}
-	result := conn.Exec(context.Background(),
-		fmt.Sprintf("alter user sys add auth key (key='%s', valid_before='2100-01-01', comment='backup test key')",
-			strings.TrimSpace(string(pubKeyContent))),
-	)
-	_ = conn.Close()
-	if result.Err() != nil {
-		return result.Err()
-	}
-
-	testMachgoDB, err = machgo.NewDatabase(&machgo.Config{
-		Host: "127.0.0.1",
-		Port: port,
-	})
+	keyPEM, err := testServer.MachKeyPEM()
 	if err != nil {
 		return err
 	}
 	spi.SetDefaultDSN(map[string]string{
 		"host":         "127.0.0.1",
-		"port":         fmt.Sprintf("%d", port),
+		"port":         fmt.Sprintf("%d", testServer.MachPort()),
 		"user":         "sys",
-		"auth_key_pem": string(privKeyContent),
+		"auth_key_pem": keyPEM,
 	})
-	spi.SetDefaultKey(testKey)
 	return nil
 }
 
 func teardownDefaultSPI() {
-	if testMachgoDB != nil {
-		if closer, ok := testMachgoDB.(interface{ Close() error }); ok {
-			_ = closer.Close()
-		}
+	if testServer != nil {
+		testServer.StopServer()
 	}
-	if testMachsvrDB != nil {
-		_ = testMachsvrDB.Shutdown()
-	}
-	machsvr.Finalize()
 	if testHomeDir != "" {
 		_ = os.RemoveAll(testHomeDir)
 	}
@@ -896,15 +821,6 @@ func freeTCPPort(t *testing.T) int {
 	require.NoError(t, err)
 	defer lsnr.Close()
 	return lsnr.Addr().(*net.TCPAddr).Port
-}
-
-func freeTCPPortNoTest() (int, error) {
-	lsnr, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer lsnr.Close()
-	return lsnr.Addr().(*net.TCPAddr).Port, nil
 }
 
 func sqlPath(path string) string {

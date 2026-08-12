@@ -12,7 +12,6 @@ import (
 
 	"github.com/machbase/neo-client/api"
 	_ "github.com/machbase/neo-client/machbase"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
@@ -475,7 +474,7 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 
 	key := spi.DefaultKey()
 	require.NotNil(t, key, "failed to get default key")
-	keyPair, err := machgo.AuthKeyPairFromPrivateKey(key)
+	keyPair, err := api.AuthKeyPairFromPrivateKey(key)
 	require.NoError(t, err)
 	privKeyPEM := strings.TrimSpace(string(keyPair.PrivateKeyPEM))
 	require.NotEmpty(t, privKeyPEM)

@@ -437,7 +437,7 @@ func (s *Server) startMachbaseSvr() error {
 	conn.Close()
 
 	var defaultKey crypto.PrivateKey
-	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
+	if key, err := api.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
 		defaultKey = key
@@ -506,7 +506,7 @@ func (s *Server) startMachbaseCli() error {
 	}
 
 	var defaultKey crypto.PrivateKey
-	if key, err := machgo.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
+	if key, err := api.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
 		defaultKey = key
