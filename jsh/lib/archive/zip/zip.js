@@ -20,13 +20,21 @@ function ensureParentDir(targetPath) {
 
 function toWritableBytes(data) {
     if (data instanceof Uint8Array) {
-        return Array.from(data);
+        return data;
     }
     if (data instanceof ArrayBuffer) {
-        return Array.from(new Uint8Array(data));
+        return new Uint8Array(data);
     }
     if (Array.isArray(data)) {
-        return data;
+        return Uint8Array.from(data);
+    }
+    if (data && typeof data === 'object' && typeof data.byteLength === 'number') {
+        if (data.buffer && typeof data.byteOffset === 'number') {
+            return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        }
+        if (typeof data.slice === 'function') {
+            return new Uint8Array(data.slice(0, data.byteLength));
+        }
     }
     return data;
 }
@@ -35,8 +43,19 @@ function normalizeEntryData(data) {
     if (data instanceof Uint8Array) {
         return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     }
+    if (data instanceof ArrayBuffer) {
+        return data;
+    }
     if (Array.isArray(data)) {
         return Uint8Array.from(data).buffer;
+    }
+    if (data && typeof data === 'object' && typeof data.byteLength === 'number') {
+        if (data.buffer && typeof data.byteOffset === 'number') {
+            return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        }
+        if (typeof data.slice === 'function') {
+            return data.slice(0, data.byteLength);
+        }
     }
     return data;
 }

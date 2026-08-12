@@ -1524,6 +1524,14 @@
         if (Array.isArray(data)) {
             return data;
         }
+        if (data && typeof data === 'object' && typeof data.byteLength === 'number') {
+            if (data.buffer && typeof data.byteOffset === 'number') {
+                return Array.from(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+            }
+            if (typeof data.slice === 'function') {
+                return Array.from(new Uint8Array(data.slice(0, data.byteLength)));
+            }
+        }
         throw new Error('Unsupported binary payload type');
     }
 
