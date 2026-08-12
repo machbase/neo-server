@@ -39,14 +39,13 @@ type ClientOptions struct {
 }
 
 type Client struct {
-	ctx              context.Context     `json:"-"`
-	rt               *goja.Runtime       `json:"-"`
-	db               *sql.DB             `json:"-"`
-	supportAppend    bool                `json:"-"`
-	BridgeName       string              `json:"bridge"`
-	Driver           string              `json:"driver"`
-	ConnectOptions   []api.ConnectOption `json:"-"`
-	LowerCaseColumns bool                `json:"lowerCaseColumns"`
+	ctx              context.Context `json:"-"`
+	rt               *goja.Runtime   `json:"-"`
+	db               *sql.DB         `json:"-"`
+	supportAppend    bool            `json:"-"`
+	BridgeName       string          `json:"bridge"`
+	Driver           string          `json:"driver"`
+	LowerCaseColumns bool            `json:"lowerCaseColumns"`
 }
 
 func NewClient(rt *goja.Runtime, optValue []goja.Value) *Client {
@@ -75,9 +74,8 @@ func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
 			panic(rt.NewGoError(err))
 		}
 	} else if opts.Driver != "" {
-		if db, opts, err := connector.NewWithDataSource(opts.Driver, opts.DataSource); err == nil {
+		if db, err := connector.NewWithDataSource(opts.Driver, opts.DataSource); err == nil {
 			ret.db = db
-			ret.ConnectOptions = opts
 		} else {
 			panic(rt.NewGoError(err))
 		}
@@ -114,26 +112,10 @@ func (c *Client) jsConnect(call goja.FunctionCall) goja.Value {
 }
 
 func (c *Client) Connect(call goja.FunctionCall) *CONN {
-	conf := struct {
-		User     string `json:"user"`
-		Password string `json:"password"`
-	}{}
 	if len(call.Arguments) > 0 {
-		if err := c.rt.ExportTo(call.Arguments[0], &conf); err != nil {
-			panic(c.rt.NewGoError(err))
-		}
+		panic(c.rt.NewGoError(fmt.Errorf("Connect() does not accept any arguments")))
 	}
-	var conn *sql.Conn
-	var err error
-	if c.BridgeName == "" && c.Driver == "" {
-		conn, err = c.db.Conn(c.ctx)
-	} else {
-		opts := append([]api.ConnectOption{}, c.ConnectOptions...)
-		if conf.User != "" {
-			opts = append(opts, api.WithPassword(conf.User, conf.Password))
-		}
-		conn, err = c.db.Conn(c.ctx)
-	}
+	conn, err := c.db.Conn(c.ctx)
 	if err != nil {
 		panic(c.rt.NewGoError(err))
 	}

@@ -28,7 +28,6 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -430,10 +429,6 @@ func (s *Server) startMachbaseSvr() error {
 	if err := s.registerServerKeys(ctx, conn); err != nil {
 		return err
 	}
-	// migrate old ssh keys if exists
-	if err := s.migrateAuthorizedSshKeys(ctx, conn, "sys"); err != nil {
-		return err
-	}
 	conn.Close()
 
 	var defaultKey crypto.PrivateKey
@@ -465,6 +460,16 @@ func (s *Server) startMachbaseSvr() error {
 	util.AddShutdownHook(func() {
 		spi.StopAppendWorkers()
 	})
+
+	// migrate old ssh keys if exists
+	sqlConn, err := pool.Conn(context.Background())
+	if err != nil {
+		return fmt.Errorf("get sql connection, %s", err.Error())
+	}
+	defer sqlConn.Close()
+	if err := s.migrateAuthorizedSshKeys(ctx, sqlConn, "sys"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -473,36 +478,34 @@ func (s *Server) startMachbaseCli() error {
 	if err != nil {
 		return err
 	}
+	if user == "" {
+		user = "sys"
+	}
+	if password == "" {
+		password = "manager"
+	}
 
-	db, err := machgo.NewDatabase(&machgo.Config{
-		Host: host,
-		Port: port,
-	})
+	db, err := sql.Open("machbase", fmt.Sprintf("host=%s;port=%d;user=%s;password=%s", host, port, user, password))
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 
-	if user != "" && password != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		conn, err := db.Connect(ctx, api.WithPassword(user, password))
-		if err != nil {
-			return fmt.Errorf("head-only mode user auth failed: %s", err.Error())
-		}
-		defer conn.Close()
-
-		// check if the server keys are exist, if not, register the keys
-		if err := s.registerServerKeys(ctx, conn); err != nil {
-			return err
-		}
-		// migrate old ssh keys if exists
-		if err := s.migrateAuthorizedSshKeys(ctx, conn, "sys"); err != nil {
-			return err
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
 	}
+	defer conn.Close()
 
-	if err := db.Close(); err != nil {
-		s.log.Warnf("db close; %s", err.Error())
+	// check if the server keys are exist, if not, register the keys
+	if err := s.registerServerKeysSql(ctx, conn); err != nil {
+		return err
+	}
+	// migrate old ssh keys if exists
+	if err := s.migrateAuthorizedSshKeys(ctx, conn, "sys"); err != nil {
+		return err
 	}
 
 	var defaultKey crypto.PrivateKey
@@ -2408,8 +2411,35 @@ func selectUserAuthKey(ctx context.Context, conn *sql.Conn, user string, pubPem 
 	return &nfo, nil
 }
 
-func getUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
+func getUserAuthKeyAPI(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
 	row := conn.QueryRow(ctx, `SELECT
+		KEY_ID,
+		USER_NAME,
+		KEY_ALGO,
+		KEY_PARAM,
+		ACTIVATED,
+		VALID_AFTER,
+		VALID_BEFORE,
+		COMMENT,
+		PUBKEY
+	FROM
+		V$USER_AUTH_KEYS
+	WHERE
+		USER_NAME=?
+	AND PUBKEY=?`,
+		strings.ToUpper(user), strings.TrimSpace(pubPem))
+	if row.Err() != nil {
+		return nil, row.Err()
+	}
+	var nfo UserAuthKeyInfo
+	if err := row.Scan(&nfo.KeyID, &nfo.UserName, &nfo.KeyAlgo, &nfo.KeyParam, &nfo.Activated, &nfo.ValidAfter, &nfo.ValidBefore, &nfo.Comment, &nfo.PubKey); err != nil {
+		return nil, err
+	}
+	return &nfo, nil
+}
+
+func getUserAuthKey(ctx context.Context, conn *sql.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
+	row := conn.QueryRowContext(ctx, `SELECT
 		KEY_ID,
 		USER_NAME,
 		KEY_ALGO,
@@ -2455,6 +2485,19 @@ func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem
 	return result.Err()
 }
 
+func registerUserAuthKeySql(ctx context.Context, conn *sql.Conn, user string, pubPem string, comment string) error {
+	// 30 years later
+	user = strings.ToUpper(user)
+	pubPem = strings.TrimSpace(pubPem)
+	comment = strings.ReplaceAll(comment, "'", "''")
+
+	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
+	_, err := conn.ExecContext(ctx,
+		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
+			user, pubPem, validBefore, comment))
+	return err
+}
+
 func activateUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId int) error {
 	result := conn.Exec(ctx,
 		fmt.Sprintf("ALTER USER %s ACTIVATE AUTH KEY ID %d", user, keyId),
@@ -2462,7 +2505,53 @@ func activateUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId 
 	return result.Err()
 }
 
+func activateUserAuthKeySql(ctx context.Context, conn *sql.Conn, user string, keyId int) error {
+	_, err := conn.ExecContext(ctx,
+		fmt.Sprintf("ALTER USER %s ACTIVATE AUTH KEY ID %d", user, keyId),
+	)
+	return err
+}
+
 func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
+	// server's public key in pem
+	pubFile := s.ServerPublicKeyPath()
+	pubPemStr := ""
+	if pubBytes, err := os.ReadFile(pubFile); err == nil {
+		pubPemStr = strings.TrimSpace(string(pubBytes))
+	} else {
+		return fmt.Errorf("failed to read server public key: %s", err.Error())
+	}
+	user := "SYS"
+	nfo, err := getUserAuthKeyAPI(ctx, conn, user, pubPemStr)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		// other error
+		return err
+	}
+	// pubkey not found, add new authkey
+	if err := registerUserAuthKey(ctx, conn, user, pubPemStr, "**DO NOT DELETE** machbase-neo server key"); err != nil {
+		return err
+	}
+	// get authkey info again after registration
+	nfo, err = getUserAuthKeyAPI(ctx, conn, user, pubPemStr)
+	if err != nil {
+		return err
+	}
+	// activate authkey
+	if err := activateUserAuthKey(ctx, conn, user, nfo.KeyID); err != nil {
+		return err
+	}
+	// get authkey info again after activation
+	nfo, err = getUserAuthKeyAPI(ctx, conn, user, pubPemStr)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) registerServerKeysSql(ctx context.Context, conn *sql.Conn) error {
 	// server's public key in pem
 	pubFile := s.ServerPublicKeyPath()
 	pubPemStr := ""
@@ -2481,7 +2570,7 @@ func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 		return err
 	}
 	// pubkey not found, add new authkey
-	if err := registerUserAuthKey(ctx, conn, user, pubPemStr, "**DO NOT DELETE** machbase-neo server key"); err != nil {
+	if err := registerUserAuthKeySql(ctx, conn, user, pubPemStr, "**DO NOT DELETE** machbase-neo server key"); err != nil {
 		return err
 	}
 	// get authkey info again after registration
@@ -2490,7 +2579,7 @@ func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 		return err
 	}
 	// activate authkey
-	if err := activateUserAuthKey(ctx, conn, user, nfo.KeyID); err != nil {
+	if err := activateUserAuthKeySql(ctx, conn, user, nfo.KeyID); err != nil {
 		return err
 	}
 	// get authkey info again after activation
@@ -2503,7 +2592,7 @@ func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
 
 const authorized_ssh_keys = "ssh_keys"
 
-func (s *Server) migrateAuthorizedSshKeys(ctx context.Context, conn api.Conn, user string) error {
+func (s *Server) migrateAuthorizedSshKeys(ctx context.Context, conn *sql.Conn, user string) error {
 	// migrate existing "authroized_keys/ssh_keys" to database auth keys
 	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_RDONLY, 0600)
 	if err != nil {
@@ -2537,7 +2626,7 @@ func (s *Server) migrateAuthorizedSshKeys(ctx context.Context, conn api.Conn, us
 		if err != nil {
 			continue
 		}
-		if err := registerUserAuthKey(ctx, conn, user, pubPem, comment); err != nil {
+		if err := registerUserAuthKeySql(ctx, conn, user, pubPem, comment); err != nil {
 			continue
 		}
 	}

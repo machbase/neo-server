@@ -66,16 +66,14 @@ func TestConnDatabaseAndUnsetHelpers(t *testing.T) {
 func TestNewWithDataSourceMachbaseParsing(t *testing.T) {
 	resetDatabasesForTest(t)
 
-	db1, opts1, err := NewWithDataSource("machbase", "host=127.0.0.1;port=5656;user=sys;password=manager")
+	db1, err := NewWithDataSource("machbase", "host=127.0.0.1;port=5656;user=sys;password=manager")
 	require.NoError(t, err)
 	require.NotNil(t, db1)
-	require.NotEmpty(t, opts1)
 	t.Cleanup(func() { require.NoError(t, db1.Close()) })
 
-	db2, opts2, err := NewWithDataSource("machbase", "SERVER=127.0.0.1;UID=sys;PWD=manager;CONNTYPE=1;PORT_NO=5656")
+	db2, err := NewWithDataSource("machbase", "server=tcp://sys:manager@127.0.0.1:5656")
 	require.NoError(t, err)
 	require.NotNil(t, db2)
-	require.NotEmpty(t, opts2)
 	t.Cleanup(func() { require.NoError(t, db2.Close()) })
 }
 
@@ -129,22 +127,21 @@ func TestNewWithDataSourceAndSetDatabase(t *testing.T) {
 	resetDatabasesForTest(t)
 
 	dataSource := sqliteDataSource(t)
-	db, opts, err := NewWithDataSource("sqlite", dataSource)
+	db, err := NewWithDataSource("sqlite", dataSource)
 	require.NoError(t, err)
 	require.NotNil(t, db)
-	require.Empty(t, opts)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	_, _, err = NewWithDataSource("postgresql", "postgres://user:pass@127.0.0.1/db")
+	_, err = NewWithDataSource("postgresql", "postgres://user:pass@127.0.0.1/db")
 	require.NoError(t, err)
 
-	_, _, err = NewWithDataSource("mysql", "user:pass@tcp(127.0.0.1:3306)/db")
+	_, err = NewWithDataSource("mysql", "user:pass@tcp(127.0.0.1:3306)/db")
 	require.NoError(t, err)
 
-	_, _, err = NewWithDataSource("mssql", "sqlserver://user:pass@127.0.0.1:1433?database=db")
+	_, err = NewWithDataSource("mssql", "sqlserver://user:pass@127.0.0.1:1433?database=db")
 	require.NoError(t, err)
 
-	_, _, err = NewWithDataSource("unknown", "dsn")
+	_, err = NewWithDataSource("unknown", "dsn")
 	require.EqualError(t, err, "unknown database type: unknown")
 
 	sqlDB, err := sqlite.Connect(dataSource)

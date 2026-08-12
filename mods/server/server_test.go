@@ -2268,9 +2268,10 @@ func TestServerCoverage_ValidateClientCertificate(t *testing.T) {
 
 func TestServerCoverage_MigrateAuthorizedSshKeys(t *testing.T) {
 	svr := &Server{authorizedKeysDir: t.TempDir()}
-	conn := &coverageConn{}
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
 
-	err := svr.migrateAuthorizedSshKeys(context.Background(), conn, "sys")
+	err = svr.migrateAuthorizedSshKeys(t.Context(), conn, "sys")
 	require.NoError(t, err)
 
 	pri, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -2286,9 +2287,8 @@ func TestServerCoverage_MigrateAuthorizedSshKeys(t *testing.T) {
 	}, "\n")
 	require.NoError(t, os.WriteFile(filePath, []byte(body), 0o600))
 
-	err = svr.migrateAuthorizedSshKeys(context.Background(), conn, "sys")
+	err = svr.migrateAuthorizedSshKeys(t.Context(), conn, "sys")
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, conn.execCount, 1)
 	_, statErr := os.Stat(filePath)
 	require.Error(t, statErr)
 	require.True(t, os.IsNotExist(statErr))
@@ -2369,17 +2369,17 @@ func TestServerCoverage_StartMachbaseCliErrorPaths(t *testing.T) {
 		}
 		err := svr.startMachbaseCli()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "head-only mode user auth failed")
+		require.Contains(t, err.Error(), "connection refused")
 	})
 
-	t.Run("missing_server_private_key", func(t *testing.T) {
+	t.Run("missing_server_key", func(t *testing.T) {
 		svr := &Server{
-			Config:      Config{DataDir: "machbase://127.0.0.1:5656"},
+			Config:      Config{DataDir: "machbase://127.0.0.1:15656"},
 			certDirPath: t.TempDir(),
 		}
 		err := svr.startMachbaseCli()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "load server private key failed")
+		require.Contains(t, err.Error(), "failed to read server public key")
 	})
 }
 

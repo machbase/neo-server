@@ -4,14 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	_ "github.com/machbase/neo-client"
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
@@ -168,9 +166,8 @@ func New(name string) (*sql.DB, error) {
 	return nil, fmt.Errorf("unknown database type: %s", name)
 }
 
-func NewWithDataSource(driverName string, dataSource string) (*sql.DB, []api.ConnectOption, error) {
+func NewWithDataSource(driverName string, dataSource string) (*sql.DB, error) {
 	var db *sql.DB
-	var opts []api.ConnectOption
 	var err error
 
 	switch driverName {
@@ -183,75 +180,14 @@ func NewWithDataSource(driverName string, dataSource string) (*sql.DB, []api.Con
 	case "mysql":
 		db, err = mysql.Connect(dataSource)
 	case "machbase":
-		var host string
-		var port int
-		var user string = "sys"
-		var password string = "manager"
-		var conType = 1
-		if strings.Contains(dataSource, "SERVER=") {
-			// input := `SERVER=value1;UID=value2;PWD=value3;CONNTYPE=1;PORT_NO=1234`
-			inputSegs := strings.Split(dataSource, ";")
-			for _, seg := range inputSegs {
-				result := util.ParseNameValuePairs(seg)
-				for _, pair := range result {
-					switch strings.ToLower(pair.Name) {
-					case "server":
-						host = pair.Value
-					case "uid":
-						user = pair.Value
-					case "pwd":
-						password = pair.Value
-					case "port_no":
-						if p, err := strconv.Atoi(pair.Value); err == nil {
-							port = p
-						}
-					case "conntype":
-						if p, err := strconv.Atoi(pair.Value); err == nil {
-							conType = p
-						}
-					}
-				}
-			}
-		} else {
-			pairs := util.ParseNameValuePairs(dataSource)
-			for _, pair := range pairs {
-				switch strings.ToLower(pair.Name) {
-				case "host":
-					host = pair.Value
-				case "port":
-					if p, err := strconv.Atoi(pair.Value); err == nil {
-						port = p
-					}
-				case "user":
-					user = pair.Value
-				case "password":
-					password = pair.Value
-				}
-			}
-		}
-		if user != "" {
-			opts = append(opts, api.WithPassword(user, password))
-		}
-		machdb, err := machgo.NewDatabase(&machgo.Config{
-			Host:    host,
-			Port:    port,
-			ConType: conType,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		db, err = machbase.OpenDBWithConnector(machdb, func(context.Context) ([]api.ConnectOption, error) {
-			ret := []api.ConnectOption{}
-			ret = append(ret, opts...)
-			return ret, nil
-		})
+		db, err = sql.Open("machbase", dataSource)
 	default:
-		return nil, nil, fmt.Errorf("unknown database type: %s", driverName)
+		return nil, fmt.Errorf("unknown database type: %s", driverName)
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return db, opts, nil
+	return db, nil
 }
 
 func SetDatabase(name string, db *sql.DB, dbType string, dbConn string) {
