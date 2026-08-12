@@ -93,7 +93,7 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 		if strings.HasPrefix(obj.IdentityFile, "@") {
 			// path is os filesystem
 			path := strings.TrimPrefix(obj.IdentityFile, "@")
-			if key, err := machgo.LoadPrivateKeyFromFile(path); err == nil {
+			if key, err := api.LoadPrivateKeyFromFile(path); err == nil {
 				privateKey = key
 			} else {
 				return nil, err

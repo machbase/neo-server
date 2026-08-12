@@ -190,6 +190,35 @@ func TestZipClass(t *testing.T) {
 			},
 		},
 		{
+			Name: "zip-class-extractAllTo-preserves-binary-data",
+			Script: `
+				const fs = require('fs');
+				const zip = require('archive/zip');
+				const base = '/tmp/jsh-zip-binary';
+				fs.rmSync(base, { recursive: true, force: true });
+				fs.mkdirSync(base, { recursive: true });
+				const original = new Uint8Array([0, 1, 2, 3, 255, 254, 253, 128, 129, 130, 131]);
+				const archive = zip.zipSync([
+					{ name: 'assets/logo.bin', data: original }
+				]);
+				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
+				const z = new zip.Zip(base + '/file.zip');
+				z.extractAllTo(base + '/out', true);
+				const extracted = fs.readFileSync(base + '/out/assets/logo.bin', { encoding: null });
+				let mismatch = false;
+				for (let i = 0; i < extracted.length; i++) {
+					if (extracted[i] !== original[i]) {
+						mismatch = true;
+						break;
+					}
+				}
+				console.println('binary preserved:', !mismatch, 'len:', extracted.length);
+			`,
+			Output: []string{
+				"binary preserved: true len: 11",
+			},
+		},
+		{
 			Name: "zip-class-extractAllTo-callback-filter-and-conflict",
 			Script: `
 				const fs = require('fs');

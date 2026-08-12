@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
@@ -33,117 +32,6 @@ func TestMain(m *testing.M) {
 	testServer.StopServer()
 	os.Exit(code)
 }
-
-// func startServer(ctx context.Context) {
-// 	// prepare
-// 	homePath, err := filepath.Abs(filepath.Join("test", "tmp", "machbase"))
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	confPath := filepath.Join(homePath, "conf", "machbase.conf")
-
-// 	os.RemoveAll(homePath)
-// 	os.MkdirAll(homePath, 0755)
-// 	os.MkdirAll(filepath.Join(homePath, "conf"), 0755)
-// 	os.MkdirAll(filepath.Join(homePath, "trc"), 0755)
-// 	os.MkdirAll(filepath.Join(homePath, "dbs"), 0755)
-// 	os.WriteFile(confPath, []byte(defaultConfig), 0644)
-
-// 	// available port
-// 	time.Sleep(time.Millisecond * time.Duration(3000*rand.Float32()))
-// 	var lsnr net.Listener
-// 	for {
-// 		if l, err := net.Listen("tcp", "127.0.0.1:0"); err != nil {
-// 			continue
-// 		} else {
-// 			lsnr = l
-// 			machsvrPort = l.Addr().(*net.TCPAddr).Port
-// 			break
-// 		}
-// 	}
-// 	lsnr.Close()
-
-// 	if err := Initialize(homePath, machsvrPort, OPT_SIGHANDLER_OFF); err != nil {
-// 		panic(err)
-// 	}
-
-// 	if !ExistsDatabase() {
-// 		if err := CreateDatabase(); err != nil {
-// 			panic(err)
-// 		}
-// 	}
-
-// 	// setup
-// 	if db, err := NewDatabase(DatabaseOption{MaxOpenConn: -1, MaxOpenQuery: -1}); err != nil {
-// 		panic(err)
-// 	} else {
-// 		machsvrDB = db
-// 	}
-
-// 	if err := machsvrDB.Startup(); err != nil {
-// 		panic(err)
-// 	}
-// 	time.Sleep(time.Millisecond * 2000)
-
-// 	pair, err := machgo.GenerateAuthKeyPair()
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	privPath, pubPath, err := pair.WriteFiles(homePath, "authkey_test")
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	// just to verify the generated key file is valid
-// 	if privKey, err := machgo.LoadPrivateKeyFromFile(privPath); err != nil {
-// 		panic(err)
-// 	} else {
-// 		machsvrKey = privKey
-// 	}
-
-// 	pubKeyContent, err := os.ReadFile(pubPath)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	// trace_log_level
-// 	conn, err := machsvrDB.ConnectTrust(ctx, "sys")
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	result := conn.Exec(ctx, "alter system set trace_log_level=1023")
-// 	if result.Err() != nil {
-// 		panic(result.Err())
-// 	}
-// 	result = conn.Exec(ctx,
-// 		fmt.Sprintf("alter user sys add auth key (key='%s', valid_before='2100-01-01', comment='test key')",
-// 			strings.TrimSpace(string(pubKeyContent))))
-// 	if result.Err() != nil {
-// 		panic(result.Err())
-// 	}
-// 	conn.Close()
-
-// 	// machgo database
-// 	if db, err := machgo.NewDatabase(&machgo.Config{
-// 		Host: "127.0.0.1",
-// 		Port: machsvrPort,
-// 	}); err != nil {
-// 		panic(err)
-// 	} else {
-// 		spi.SetDefault(db, machsvrKey)
-// 	}
-// }
-
-// func stopServer(_ context.Context) {
-// 	if err := machsvrDB.Shutdown(); err != nil {
-// 		panic(err)
-// 	}
-// 	Finalize()
-
-// 	if err := os.RemoveAll(filepath.Join("test", "tmp", "machbase")); err != nil {
-// 		panic(err)
-// 	}
-// }
 
 func TestConnCancelNilHandle(t *testing.T) {
 	conn := &Conn{db: &Database{}}
@@ -748,12 +636,12 @@ func TestUserAuthWithKey(t *testing.T) {
 
 	type keyCase struct {
 		name string
-		gen  func() (*machgo.AuthKeyPair, error)
+		gen  func() (*api.AuthKeyPair, error)
 	}
 
 	cases := []keyCase{
-		{name: "ecdsa_p256", gen: machgo.GenerateAuthKeyPairECDSA},
-		{name: "rsa_2048", gen: machgo.GenerateAuthKeyPairRSA},
+		{name: "ecdsa_p256", gen: api.GenerateAuthKeyPairECDSA},
+		{name: "rsa_2048", gen: api.GenerateAuthKeyPairRSA},
 	}
 
 	for _, tc := range cases {
@@ -762,24 +650,22 @@ func TestUserAuthWithKey(t *testing.T) {
 			require.NoError(t, err)
 
 			comment := fmt.Sprintf("testsuite auth key %s %d", tc.name, time.Now().UnixNano())
-			keyID, err := machgo.RegisterAuthKey(ctx, adminConn, "sys", authkey.PublicKeyPEM, comment)
+			keyID, err := api.RegisterAuthKey(ctx, adminConn, "sys", authkey.PublicKeyPEM, comment)
 			require.NoError(t, err)
 			require.Greater(t, keyID, 0)
 
-			authDB, err := machgo.NewDatabase(&machgo.Config{
-				Host: host,
-				Port: port,
-			})
+			dsn := fmt.Sprintf("host=%s; port=%d; user=sys; auth_key_pem=%s", host, port, authkey.PrivateKeyPEM)
+			authDB, err := sql.Open("machbase", dsn)
+			require.NoError(t, err)
+			defer authDB.Close()
 			require.NoError(t, err)
 			defer authDB.Close()
 
-			key, err := authkey.PrivateKey()
-			require.NoError(t, err)
-			authConn, err := authDB.Connect(ctx, api.WithAuthKey("sys", key))
+			authConn, err := authDB.Conn(ctx)
 			require.NoError(t, err)
 			defer authConn.Close()
 
-			row := authConn.QueryRow(ctx, "select 1")
+			row := authConn.QueryRowContext(ctx, "select 1")
 			require.NoError(t, row.Err())
 			var v int64
 			require.NoError(t, row.Scan(&v))
@@ -1622,22 +1508,24 @@ func testAppendTagTable(t *testing.T) {
 
 func TestBitTypeColumn(t *testing.T) {
 	ctx := t.Context()
-	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	dsn := fmt.Sprintf("host=127.0.0.1; port=%d; user=sys; password=manager", testServer.MachPort())
+	db, err := sql.Open("machbase", dsn)
+	require.NoError(t, err, "connect fail")
+
+	conn, err := db.Conn(ctx)
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	result := conn.Exec(ctx,
+	_, err = conn.ExecContext(ctx,
 		"CREATE TABLE bit_table (i1 INTEGER, i2 UINTEGER, i3 FLOAT, i4 DOUBLE, i5 SHORT, i6 VARCHAR(10))",
 	)
-	require.NoError(t, result.Err(), "create bit table fail")
+	require.NoError(t, err, "create bit table fail")
 
-	result = conn.Exec(ctx, "INSERT INTO bit_table VALUES (-1, 1, 1, 1, 2, 'aaa')")
-	require.NoError(t, result.Err(), "insert bit table fail")
+	_, err = conn.ExecContext(ctx, "INSERT INTO bit_table VALUES (-1, 1, 1, 1, 2, 'aaa')")
 	require.NoError(t, err)
 
-	rows, err := conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i2, 1) = 1")
+	rows, err := conn.QueryContext(ctx, "SELECT * FROM bit_table WHERE BITAND(i2, 1) = 1")
 	require.NoError(t, err, "select bit table BITAND(i2, 1) should not fail")
 	for rows.Next() {
 		var i1 int
@@ -1657,39 +1545,25 @@ func TestBitTypeColumn(t *testing.T) {
 	}
 	rows.Close()
 
-	rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
-	if _, ok := conn.(*machgo.Conn); ok {
-		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
-		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
-	} else {
-		require.NoError(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
-		require.False(t, rows.Next(), "select bit table BITAND(i4, 1) should fail")
-		require.Error(t, rows.Err(), "select bit table BITAND(i4, 1) should fail")
-		// https://github.com/machbase/neo/issues/956
-		require.Equal(t, "MACH-ERR 2037 Function [BITAND] argument data type is mismatched.", rows.Err().Error())
-	}
+	// https://github.com/machbase/neo/issues/956
+	rows, err = conn.QueryContext(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
+	require.Error(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 
 	if rows != nil {
 		rows.Close()
 	}
 
-	rows, err = conn.Query(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
-	if _, ok := conn.(*machgo.Conn); ok {
-		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
-		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
-	} else {
-		require.NoError(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
-		require.False(t, rows.Next(), "select bit table BITAND(i1, i3) should fail")
-		require.Error(t, rows.Err(), "select bit table BITAND(i4, 1) should fail")
-		// https://github.com/machbase/neo/issues/956
-		require.Equal(t, "MACH-ERR 2037 Function [BITAND] argument data type is mismatched.", rows.Err().Error())
-	}
+	// https://github.com/machbase/neo/issues/956
+	rows, err = conn.QueryContext(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
+	require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 	if rows != nil {
 		rows.Close()
 	}
 
-	result = conn.Exec(ctx, "DROP TABLE bit_table")
-	require.NoError(t, result.Err(), "drop bit table fail")
+	_, err = conn.ExecContext(ctx, "DROP TABLE bit_table")
+	require.NoError(t, err, "drop bit table fail")
 }
 
 func TestProxyUser(t *testing.T) {

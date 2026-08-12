@@ -28,10 +28,16 @@ if (!Buffer.isBuffer) {
 }
 
 function isByteLike(data) {
-    return Array.isArray(data)
-        || data instanceof Uint8Array
-        || data instanceof ArrayBuffer
-        || Buffer.isBuffer(data);
+    if (data === null || data === undefined) {
+        return false;
+    }
+    if (Array.isArray(data) || data instanceof Uint8Array || data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
+        return true;
+    }
+    if (typeof data === 'object' && typeof data.byteLength === 'number') {
+        return true;
+    }
+    return false;
 }
 
 function normalizeByteSource(data) {
@@ -49,6 +55,14 @@ function normalizeByteSource(data) {
     }
     if (Array.isArray(data)) {
         return Uint8Array.from(data);
+    }
+    if (typeof data === 'object' && typeof data.byteLength === 'number') {
+        if (data.buffer && typeof data.byteOffset === 'number') {
+            return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        }
+        if (typeof data.slice === 'function') {
+            return new Uint8Array(data.slice(0, data.byteLength));
+        }
     }
     return Uint8Array.from(Buffer.from(String(data), 'utf8'));
 }
@@ -158,6 +172,21 @@ function getProcessModule() {
     return require('./process');
 }
 
+function resolveFileEncoding(options) {
+    if (options === null || options === undefined) {
+        return 'utf8';
+    }
+    if (typeof options === 'string') {
+        return options;
+    }
+    if (typeof options === 'object') {
+        if (Object.prototype.hasOwnProperty.call(options, 'encoding')) {
+            return options.encoding === undefined ? 'utf8' : options.encoding;
+        }
+    }
+    return 'utf8';
+}
+
 /**
  * Read file contents synchronously
  * @param {string} path - File path
@@ -168,8 +197,7 @@ function readFileSync(path, options) {
     const fullPath = _fs.resolveAbsPath(path);
     try {
         const raw = _fs.readFile(fullPath);
-        // Default to utf8 encoding if not specified
-        const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
+        const encoding = resolveFileEncoding(options);
         if (encoding === null || encoding === 'buffer') {
             return raw;
         }
@@ -193,10 +221,12 @@ function readFileSync(path, options) {
 function writeFileSync(path, data, options) {
     const fullPath = _fs.resolvePath(path);
     try {
-        const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        const bytes = (encoding === null || encoding === 'buffer' || isByteLike(data))
-            ? data
-            : stringToBytes(data);
+        const encoding = resolveFileEncoding(options);
+        const bytes = isByteLike(data)
+            ? normalizeByteSource(data)
+            : (encoding === null || encoding === 'buffer')
+                ? normalizeByteSource(data)
+                : stringToBytes(data);
         _fs.writeFile(fullPath, bytes);
     } catch (e) {
         const error = new Error(`EACCES: permission denied, open '${path}'`);
@@ -214,7 +244,7 @@ class ReadStream extends EventEmitter {
         this.path = path;
         this.isStdin = path === '-';
         this.fullPath = this.isStdin ? path : _fs.resolvePath(path);
-        this.encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
+        this.encoding = resolveFileEncoding(options);
         this.flags = constants.O_RDONLY;
         // Use highWaterMark for Node.js compatibility, fallback to bufferSize for backward compatibility
         this.bufferSize = options?.highWaterMark || options?.bufferSize || 64 * 1024; // 64KB (Node.js default)
@@ -377,7 +407,7 @@ class WriteStream extends EventEmitter {
     constructor(path, options) {
         super();
         this.fullPath = _fs.resolvePath(path);
-        this.encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
+        this.encoding = resolveFileEncoding(options);
         this.flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC;
         try {
             this.fd = _fs.open(this.fullPath, this.flags, options?.mode || 0o666);
@@ -433,10 +463,12 @@ function createWriteStream(path, options) {
 function appendFileSync(path, data, options) {
     const fullPath = _fs.resolvePath(path);
     try {
-        const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        const newBytes = (encoding === null || encoding === 'buffer' || isByteLike(data))
-            ? data
-            : stringToBytes(data);
+        const encoding = resolveFileEncoding(options);
+        const newBytes = isByteLike(data)
+            ? normalizeByteSource(data)
+            : (encoding === null || encoding === 'buffer')
+                ? normalizeByteSource(data)
+                : stringToBytes(data);
         _fs.appendFile(fullPath, newBytes);
     } catch (e) {
         const error = new Error(`EACCES: permission denied, open '${path}'`);

@@ -15,7 +15,6 @@ import (
 	"unsafe"
 
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	mach "github.com/machbase/neo-engine/v8"
 
 	"github.com/machbase/neo-engine/v8/native"
@@ -535,7 +534,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			return nil, err
 		}
 		pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
-		if _, err := machgo.GetRegisteredAuthKey(ctx, sysConn, "sys", pubPEM); err != nil {
+		if _, err := api.GetRegisteredAuthKey(ctx, sysConn, "sys", pubPEM); err != nil {
 			return nil, err
 		}
 		username := ret.username
