@@ -2369,7 +2369,11 @@ func TestServerCoverage_StartMachbaseCliErrorPaths(t *testing.T) {
 		}
 		err := svr.startMachbaseCli()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "connection refused")
+		if runtime.GOOS == "windows" {
+			require.Contains(t, err.Error(), "No connection could be made because the target machine actively refused it")
+		} else {
+			require.Contains(t, err.Error(), "connection refused")
+		}
 	})
 
 	t.Run("missing_server_key", func(t *testing.T) {
