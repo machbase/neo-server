@@ -2,7 +2,7 @@ package machcli
 
 import (
 	"context"
-	"crypto"
+	"database/sql"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -10,7 +10,8 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
+	"github.com/machbase/neo-client/machbase"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 //go:embed machcli.js
@@ -28,8 +29,13 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("NewDatabase", func(data string) (*Database, error) {
 		return newDatabase(ctx, data)
 	})
+	exports.Set("Context", Context)
 	exports.Set("Unbox", Unbox)
 	exports.Set("RowsScan", RowsScan)
+	exports.Set("QueryRow", QueryRow)
+	exports.Set("Explain", Explain)
+	exports.Set("Message", Message)
+	exports.Set("IsFetchable", IsFetchable)
 }
 
 func Unbox(value any) any {
@@ -39,6 +45,14 @@ func Unbox(value any) any {
 		return string(v)
 	}
 	return v
+}
+
+func Context(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, machbase.MetaKey, &machbase.Meta{})
+	return ctx
 }
 
 type Config struct {
@@ -52,12 +66,10 @@ type Config struct {
 }
 
 type Database struct {
-	Ctx        context.Context
-	Cancel     context.CancelFunc
-	cli        *machgo.Database
-	user       string
-	password   string
-	privateKey crypto.PrivateKey
+	Ctx  context.Context
+	pool *sql.DB
+	user string
+	dsn  string
 }
 
 func NewDatabase(data string) (*Database, error) {
@@ -68,75 +80,66 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 	obj := Config{
 		Host:     "127.0.0.1",
 		Port:     5656,
-		User:     "sys",
-		Password: "manager",
+		User:     "",
+		Password: "",
 	} // default values
 	if err := json.Unmarshal([]byte(data), &obj); err != nil {
 		return nil, err
 	}
-	conf := &machgo.Config{
-		Host: obj.Host,
-		Port: obj.Port,
+	opts := []string{
+		"host=" + obj.Host,
+		"port=" + fmt.Sprintf("%d", obj.Port),
+		"user=" + obj.User,
 	}
-	if obj.AlternativeHost != "" {
-		conf.AlternativeHost = obj.AlternativeHost
+	if obj.AlternativeHost != "" && obj.AlternativePort != 0 {
+		opts = append(opts, fmt.Sprintf("alternative_servers=%s:%d", obj.AlternativeHost, obj.AlternativePort))
 	}
-	if obj.AlternativePort != 0 {
-		conf.AlternativePort = obj.AlternativePort
-	}
-	db, err := machgo.NewDatabase(conf)
-	if err != nil {
-		return nil, err
-	}
-	var privateKey crypto.PrivateKey
-	if obj.IdentityFile != "" {
+	if obj.IdentityFile == "" {
+		opts = append(opts, "password="+obj.Password)
+	} else {
 		if strings.HasPrefix(obj.IdentityFile, "@") {
 			// path is os filesystem
-			path := strings.TrimPrefix(obj.IdentityFile, "@")
-			if key, err := api.LoadPrivateKeyFromFile(path); err == nil {
-				privateKey = key
-			} else {
-				return nil, err
-			}
+			opts = append(opts, "auth_key_file="+strings.TrimPrefix(obj.IdentityFile, "@"))
 		} else {
 			// path is virtual filesystem
 			// TODO: load private key from virtual filesystem
 			return nil, fmt.Errorf("loading private key from virtual filesystem is not supported yet")
 		}
 	}
-	derivedCtx, cancel := context.WithCancel(ctx)
+	dsn := strings.Join(opts, ";")
+	db, err := sql.Open("machbase", dsn)
+	if err != nil {
+		return nil, err
+	}
 	return &Database{
-		Ctx:        derivedCtx,
-		Cancel:     cancel,
-		cli:        db,
-		user:       strings.ToUpper(obj.User),
-		password:   obj.Password,
-		privateKey: privateKey,
+		Ctx:  ctx,
+		pool: db,
+		user: strings.ToUpper(obj.User),
+		dsn:  dsn,
 	}, nil
 }
 
 func (db *Database) Close() error {
-	return db.cli.Close()
+	if db.pool == nil {
+		return nil
+	}
+	return db.pool.Close()
 }
 
 func (db *Database) User() string {
 	return db.user
 }
 
-func (db *Database) Connect() (*machgo.Conn, error) {
-	ctx, cancel := context.WithCancel(db.Ctx)
-	defer cancel()
-	var conn api.Conn
-	var err error
-	if db.privateKey != nil {
-		conn, err = db.cli.Connect(ctx, api.WithAuthKey("sys", db.privateKey), api.WithProxyUser(db.user))
-	} else {
-		conn, err = db.cli.Connect(ctx, api.WithPassword(db.user, db.password))
-	}
-	if err != nil {
+func (db *Database) Connect() (*sql.Conn, error) {
+	return db.pool.Conn(db.Ctx)
+}
+
+func (db *Database) Appender(ctx context.Context, table string, columns ...string) (*machbase.Appender, error) {
+	ret := &machbase.Appender{}
+	if err := ret.Connect(ctx, db.dsn, table, columns...); err != nil {
 		return nil, err
 	}
-	return conn.(*machgo.Conn), nil
+	return ret, nil
 }
 
 func (db *Database) NormalizeTableName(tableName string) [3]string {
@@ -152,20 +155,89 @@ func (db *Database) NormalizeTableName(tableName string) [3]string {
 	return [3]string{"", "", tableName}
 }
 
+func QueryRow(ctx context.Context, conn *sql.Conn, sqlText string, args ...any) (map[string]any, error) {
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, sql.ErrNoRows
+	}
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, err
+	}
+	buffer := spi.MakeBuffer(cols)
+	if err := rows.Scan(buffer...); err != nil {
+		return nil, err
+	}
+	result := make(map[string]any)
+	result["_ROWNUM"] = 1
+	for i, col := range cols {
+		result[col.Name()] = Unbox(buffer[i])
+	}
+	return result, nil
+}
+
 // This helper function is used to fetch rows that includes null values,
 // which are not properly-handled by goja's variadic arguments in rows.Scan(...buffer).
-func RowsScan(rows *machgo.Rows) ([]any, error) {
-	cols, err := rows.Columns()
+func RowsScan(rows *sql.Rows) ([]any, error) {
+	cols, err := rows.ColumnTypes()
 	if err != nil {
 		return nil, err
 	}
-	buffer, err := cols.MakeBuffer()
-	if err != nil {
-		return nil, err
-	}
+	buffer := spi.MakeBuffer(cols)
 	err = rows.Scan(buffer...)
 	if err != nil {
 		return nil, err
 	}
 	return buffer, nil
+}
+
+type Explainer interface {
+	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
+
+func Explain(ctx context.Context, conn *sql.Conn, sqlText string, args ...any) (plan string, err error) {
+	conn.Raw(func(driverConn any) error {
+		if c, ok := driverConn.(Explainer); ok {
+			full := false
+			if len(args) > 0 {
+				if b, ok := args[0].(bool); ok {
+					full = b
+				}
+			}
+			plan, err = c.Explain(ctx, sqlText, full)
+		} else {
+			err = fmt.Errorf("driver does not support Explain interface")
+		}
+		return nil
+	})
+	return
+}
+
+func IsFetchable(ctx context.Context) bool {
+	meta := ctx.Value(machbase.MetaKey)
+	if meta == nil {
+		return false
+	}
+	if m, ok := meta.(*machbase.Meta); ok {
+		return m.IsFetchable()
+	}
+	return false
+}
+
+func Message(ctx context.Context) string {
+	meta := ctx.Value(machbase.MetaKey)
+	if meta == nil {
+		return ""
+	}
+	if m, ok := meta.(*machbase.Meta); ok {
+		return m.Message()
+	}
+	return ""
 }

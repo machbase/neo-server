@@ -28,7 +28,7 @@ class Client {
     }
     connect() {
         let conn = this.db.connect();
-        return new Connection(this.ctx, conn);
+        return new Connection(this.ctx, this.db, conn);
     }
     normalizeTableName(tableName) {
         return this.db.normalizeTableName(tableName);
@@ -39,50 +39,41 @@ class Client {
 }
 
 class Connection {
-    constructor(ctx, dbConn) {
+    constructor(ctx, db, dbConn) {
         this.ctx = ctx;
+        this.db = db;
         this.conn = dbConn;
     }
     close() {
         this.conn.close();
     }
     explain() {
-        let plan = this.conn.explain(this.ctx, ...arguments);
+        let plan = _machcli.Explain(_machcli.Context(this.ctx), this.conn, ...arguments);
         return plan;
     }
+    // IMPORTANT: caller should call rows.close() after using rows
     query() {
-        let rows = this.conn.query(this.ctx, ...arguments);
-        return new Rows(this.ctx, rows);
+        let ctx = _machcli.Context(this.ctx);
+        let rows = this.conn.queryContext(ctx, ...arguments);
+        return new Rows(ctx, rows);
     }
     queryRow() {
-        let row = this.conn.queryRow(this.ctx, ...arguments);
-        let value = { _ROWNUM: 1 };
-        value.err = () => { row.err(); };
-        if (row.err()) {
-            throw new Error(row.err());
-        }
-        let cols = row.columns();
-        let names = cols.names();
-        let buffer = cols.makeBuffer();
-        row.scan(...buffer);
-        for (let i = 0; i < names.length; i++) {
-            value[names[i]] = _machcli.Unbox(buffer[i]);
-        }
-        return value;
+        let ctx = _machcli.Context(this.ctx)
+        return _machcli.QueryRow(ctx, this.conn, ...arguments);
     }
     exec() {
-        let result = this.conn.exec(this.ctx, ...arguments);
-        if (result.err()) {
-            throw new Error(result.err());
-        }
+        let ctx = _machcli.Context(this.ctx);
+        let result = this.conn.execContext(ctx, ...arguments);
+        let rowsAffected = result.rowsAffected();
+        let message = _machcli.Message(ctx);
         return {
-            rowsAffected: result.rowsAffected(),
-            message: result.message()
+            rowsAffected: rowsAffected,
+            message: message,
         };
     }
     append() {
-        let appender = this.conn.appender(this.ctx, ...arguments);
-        return appender
+        let appender = this.db.appender(_machcli.Context(this.ctx), ...arguments);
+        return appender;
     }
 }
 
@@ -90,22 +81,22 @@ class Rows {
     constructor(ctx, dbRows) {
         this.ctx = ctx;
         this.rows = dbRows;
-        this.cols = dbRows.columns();
-        this.columnNames = this.cols.names();
-        this.columnTypes = this.cols.dataTypes();
+        this.columnNames = dbRows.columns();
+        //Caution!!: columnTypes is an array of sql.ColumnType objects
+        this.columnTypes = dbRows.columnTypes();
         this.rownum = 0;
     }
     close() {
         this.rows.close();
     }
     isFetchable() {
-        return this.rows.isFetchable();
+        return _machcli.IsFetchable(this.ctx);
     }
     message() {
-        return this.rows.message();
+        return _machcli.Message(this.ctx);
     }
     next() {
-        if (this.rows.isFetchable() == false) {
+        if (_machcli.IsFetchable(this.ctx) == false) {
             return { done: true };
         }
         let hasNext = this.rows.next(this.ctx);
@@ -114,7 +105,7 @@ class Rows {
         }
         let buffer = _machcli.RowsScan(this.rows);
         this.rownum += 1;
-        let row = new Row(this.cols, buffer);
+        let row = new Row(this.columnNames, buffer);
         return { value: row, done: false };
     }
     [Symbol.iterator]() {
@@ -127,9 +118,9 @@ class Rows {
 }
 
 class Row {
-    constructor(cols, buffer) {
+    constructor(columnNames, buffer) {
         this.buffer = buffer;
-        this.names = cols.names();
+        this.names = columnNames;
 
         for (let i = 0; i < this.names.length; i++) {
             this[this.names[i]] = _machcli.Unbox(buffer[i]);

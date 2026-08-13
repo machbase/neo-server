@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machgo"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
@@ -52,6 +50,7 @@ func TestDatabase(t *testing.T) {
 					const rec = rows.next()
 					console.println("done:", rec.done);
 					console.println("rows.max_id:", rec.max_id); // expect null
+					rows.close();
 
 					result = conn.exec("CREATE VIEW TAGVIEW as select * from TAG where name='jsh'");
 					console.println("Created View Message:", result.message);
@@ -275,7 +274,7 @@ func TestNewDatabaseCoverage(t *testing.T) {
 	})
 
 	t.Run("defaults and alternative config", func(t *testing.T) {
-		cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"alternativeHost":"127.0.0.2","alternativePort":5657}`,
+		cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"sys","password":"manager","alternativeHost":"127.0.0.2","alternativePort":5657}`,
 			machcliTestServer.MachPort(),
 		)
 		db, err := machcli.NewDatabase(cfg)
@@ -385,25 +384,21 @@ func TestRowsScanCoverage(t *testing.T) {
 		require.NoError(t, conn.Close())
 	})
 
-	result := conn.Exec(ctx, fmt.Sprintf("CREATE TAG TABLE IF NOT EXISTS %s (NAME VARCHAR(100) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE)", tableName))
-	require.NoError(t, result.Err())
+	_, err = conn.ExecContext(ctx, fmt.Sprintf("CREATE TAG TABLE IF NOT EXISTS %s (NAME VARCHAR(100) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE)", tableName))
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = conn.Exec(ctx, "DROP TABLE "+tableName).Err()
+		_, _ = conn.ExecContext(ctx, "DROP TABLE "+tableName)
 	})
 
-	result = conn.Exec(ctx, fmt.Sprintf("INSERT INTO %s VALUES(?, ?, ?)", tableName), "row-1", tick, 123.45)
-	require.NoError(t, result.Err())
-
-	rowsAny, err := conn.Query(ctx, fmt.Sprintf("SELECT NAME, VALUE FROM %s ORDER BY TIME LIMIT 1", tableName))
+	_, err = conn.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s VALUES(?, ?, ?)", tableName), "row-1", tick, 123.45)
 	require.NoError(t, err)
-	rows, ok := rowsAny.(*machgo.Rows)
-	require.True(t, ok)
+
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf("SELECT NAME, VALUE FROM %s ORDER BY TIME LIMIT 1", tableName))
+	require.NoError(t, err)
 	require.NoError(t, rows.Close())
 
-	rowsAny, err = conn.Query(ctx, fmt.Sprintf("SELECT NAME, VALUE FROM %s ORDER BY TIME LIMIT 1", tableName))
+	rows, err = conn.QueryContext(ctx, fmt.Sprintf("SELECT NAME, VALUE FROM %s ORDER BY TIME LIMIT 1", tableName))
 	require.NoError(t, err)
-	rows, ok = rowsAny.(*machgo.Rows)
-	require.True(t, ok)
 	t.Cleanup(func() {
 		_ = rows.Close()
 	})
@@ -412,6 +407,6 @@ func TestRowsScanCoverage(t *testing.T) {
 	buffer, err := machcli.RowsScan(rows)
 	require.NoError(t, err)
 	require.Len(t, buffer, 2)
-	require.Equal(t, "row-1", api.Unbox(buffer[0]))
-	require.Equal(t, 123.45, api.Unbox(buffer[1]))
+	require.Equal(t, "row-1", machcli.Unbox(buffer[0]))
+	require.Equal(t, 123.45, machcli.Unbox(buffer[1]))
 }

@@ -56,8 +56,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 
 	{
 		// table type
-		var describeTableSql = api.SqlTidy(
-			`SELECT
+		var describeTableSql = `SELECT
 				j.ID as TABLE_ID,
 				j.TYPE as TABLE_TYPE,
 				j.FLAG as TABLE_FLAG,
@@ -69,7 +68,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 				u.NAME = ?
 			and j.USER_ID = u.USER_ID
 			and j.DATABASE_ID = ?
-			and j.NAME = ?`)
+			and j.NAME = ?`
 		row := queryCon.QueryRow(ctx, describeTableSql, userName, -1, tableName)
 		var tableId int32
 		var tableType = api.TableType(-1)
@@ -88,15 +87,14 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		appender.tableType = api.TableType(tableType)
 
 		// columns
-		var columnsSql = api.SqlTidy(
-			`SELECT
-				name, type, length, id, flag
-			FROM
-				M$SYS_COLUMNS
-			WHERE
-				table_id = ?
-			AND database_id = ?
-			ORDER BY id`)
+		var columnsSql = `SELECT ` +
+			`	name, type, length, id, flag ` +
+			`FROM ` +
+			`	M$SYS_COLUMNS ` +
+			`WHERE ` +
+			`	table_id = ? ` +
+			`AND database_id = ? ` +
+			`ORDER BY id`
 		rows, err := queryCon.Query(ctx, columnsSql, tableId, -1)
 		if err != nil {
 			return nil, err

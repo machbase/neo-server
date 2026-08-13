@@ -34,6 +34,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func SqlTidy(sqlTextLines ...string) string {
+	sqlText := strings.Join(sqlTextLines, "\n")
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.Join(lines, " ")
+}
+
 func TestPing(t *testing.T) {
 	db, err := spi.DefaultPool()
 	require.NoError(t, err)
@@ -344,7 +353,7 @@ func testCreateTagTables(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	_, err = conn.ExecContext(t.Context(), api.SqlTidy(`
+	_, err = conn.ExecContext(t.Context(), SqlTidy(`
 		create tag table if not exists tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -364,7 +373,7 @@ func testCreateTagTables(t *testing.T) {
 	`))
 	require.NoError(t, err)
 
-	_, err = conn.ExecContext(t.Context(), api.SqlTidy(`
+	_, err = conn.ExecContext(t.Context(), SqlTidy(`
 		create tag table if not exists tag_simple(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -1080,7 +1089,7 @@ func TestInsertMeta(t *testing.T) {
 	defer conn.Close()
 
 	// create tag table
-	result, err := conn.ExecContext(t.Context(), api.SqlTidy(`
+	result, err := conn.ExecContext(t.Context(), SqlTidy(`
 		CREATE TAG TABLE MYTAG (
 			name varchar(32) primary key,
 			time datetime basetime,
@@ -1450,7 +1459,7 @@ func testCreateLogTable(t *testing.T) {
 	conn, err := spi.Connect(t.Context(), "sys")
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
-	_, err = conn.ExecContext(t.Context(), api.SqlTidy(`
+	_, err = conn.ExecContext(t.Context(), SqlTidy(`
 		create table if not exists log_data(
 		    time datetime,
 			short_value short,

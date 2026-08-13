@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
 )
@@ -234,6 +233,15 @@ func TestSplitSqlStatements(t *testing.T) {
 	}
 }
 
+func SqlTidy(sqlTextLines ...string) string {
+	sqlText := strings.Join(sqlTextLines, "\n")
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.Join(lines, " ")
+}
+
 func ExampleSplitSqlStatements() {
 	input := `SELECT 1; SELECT 2 FROM T WHERE name = '--abc';
 	-- comment
@@ -255,7 +263,7 @@ func ExampleSplitSqlStatements() {
 
 	for n, stmt := range statements {
 		if !stmt.IsComment {
-			stmt.Text = api.SqlTidy(stmt.Text)
+			stmt.Text = SqlTidy(stmt.Text)
 		}
 		fmt.Println(n, stmt.BeginLine, stmt.EndLine, stmt.IsComment, stmt.Text)
 	}

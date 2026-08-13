@@ -88,16 +88,20 @@ try {
         }
         if (config.showTz) {
             let columnLabels = [];
-            for (let i = 0; i < rows.columnTypes.length; i++) {
-                if (rows.columnTypes[i] == 'datetime') {
-                    columnLabels.push(rows.columnNames[i] + `(${config.tz})`);
+            const tzSuffix = config && config.tz ? `(${config.tz})` : '';
+            for (let i = 0; i < (rows.columnTypes ? rows.columnTypes.length : 0); i++) {
+                const columnName = rows && rows.columnNames && rows.columnNames[i] ? rows.columnNames[i] : '';
+                const columnType = rows && rows.columnTypes ? rows.columnTypes[i] : null;
+                // columnType is sql.ColumnType object
+                if (columnType && typeof columnType.databaseTypeName === 'function' && columnType.databaseTypeName() === 'DATETIME') {
+                    columnLabels.push(columnName ? `${columnName}${tzSuffix}` : `DATETIME${tzSuffix}`);
                 } else {
-                    columnLabels.push(rows.columnNames[i])
+                    columnLabels.push(columnName);
                 }
             }
             box.appendHeader(columnLabels);
         } else {
-            box.appendHeader(rows.columnNames);
+            box.appendHeader(rows.columnNames || []);
         }
         box.setColumnTypes(rows.columnTypes);
         for (const row of rows) {

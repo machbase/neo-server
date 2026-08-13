@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
@@ -28,6 +28,15 @@ func TestMain(m *testing.M) {
 	testServer.StopServer()
 }
 
+func SqlTidy(sqlTextLines ...string) string {
+	sqlText := strings.Join(sqlTextLines, "\n")
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.Join(lines, " ")
+}
+
 func createTagTables() {
 	ctx := context.Background()
 	conn, err := spi.Connect(ctx, "sys")
@@ -36,7 +45,7 @@ func createTagTables() {
 	}
 	defer conn.Close()
 
-	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+	_, err = conn.ExecContext(ctx, SqlTidy(`
 		create tag table if not exists tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -58,7 +67,7 @@ func createTagTables() {
 		panic(err)
 	}
 
-	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+	_, err = conn.ExecContext(ctx, SqlTidy(`
 		create tag table if not exists tag_simple(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 

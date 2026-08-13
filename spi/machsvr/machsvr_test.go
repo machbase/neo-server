@@ -691,6 +691,15 @@ func TestTableBasedCases(t *testing.T) {
 	t.Run("AppendTagTable", testAppendTagTable)
 }
 
+func SqlTidy(sqlTextLines ...string) string {
+	sqlText := strings.Join(sqlTextLines, "\n")
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.Join(lines, " ")
+}
+
 func testCreateTables(t *testing.T) {
 	// create test tables
 	ctx := t.Context()
@@ -700,7 +709,7 @@ func testCreateTables(t *testing.T) {
 	}
 	defer conn.Close()
 
-	result := conn.Exec(ctx, api.SqlTidy(`
+	result := conn.Exec(ctx, SqlTidy(`
 		create tag table if not exists tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -722,7 +731,7 @@ func testCreateTables(t *testing.T) {
 		t.Fatalf("failed to create tag_data table: %v", err)
 	}
 
-	result = conn.Exec(ctx, api.SqlTidy(`
+	result = conn.Exec(ctx, SqlTidy(`
 		create tag table if not exists tag_simple(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -733,7 +742,7 @@ func testCreateTables(t *testing.T) {
 		t.Fatalf("failed to create tag_simple table: %v", err)
 	}
 
-	result = conn.Exec(ctx, api.SqlTidy(`
+	result = conn.Exec(ctx, SqlTidy(`
 		create table if not exists log_data(
 		    time datetime,
 			short_value short,
@@ -866,7 +875,7 @@ func testInsertMeta(t *testing.T) {
 	defer conn.Close()
 
 	// create tag table
-	result := conn.Exec(ctx, api.SqlTidy(`
+	result := conn.Exec(ctx, SqlTidy(`
 		CREATE TAG TABLE MYTAG (
 			name varchar(32) primary key,
 			time datetime basetime,

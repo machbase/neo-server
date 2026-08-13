@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/server"
@@ -74,6 +73,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func SqlTidy(sqlTextLines ...string) string {
+	sqlText := strings.Join(sqlTextLines, "\n")
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.Join(lines, " ")
+}
+
 func createTestTables() {
 	ctx := context.Background()
 	conn, err := spi.Connect(ctx, "sys")
@@ -82,7 +90,7 @@ func createTestTables() {
 	}
 	defer conn.Close()
 
-	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+	_, err = conn.ExecContext(ctx, SqlTidy(`
 		create tag table if not exists tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -103,7 +111,7 @@ func createTestTables() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+	_, err = conn.ExecContext(ctx, SqlTidy(`
 		create tag table if not exists tag_simple(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -113,7 +121,7 @@ func createTestTables() {
 	if err != nil {
 		panic(err)
 	}
-	_, err = conn.ExecContext(ctx, api.SqlTidy(`
+	_, err = conn.ExecContext(ctx, SqlTidy(`
 		create table if not exists log_data(
 		    time datetime,
 			short_value short,
