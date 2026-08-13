@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"

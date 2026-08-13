@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 )
@@ -149,7 +149,7 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 	}
 
 	dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
-	ap := &machbase.Appender{}
+	ap := &client.Appender{}
 	err := ap.Connect(c.db.ctx, dsn, tableName, columns...)
 	if err != nil {
 		panic(c.db.rt.ToValue(err.Error()))
@@ -164,7 +164,7 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 
 type APPENDER struct {
 	db            *Client
-	appender      *machbase.Appender
+	appender      *client.Appender
 	success       int64
 	fail          int64
 	closer        func() error

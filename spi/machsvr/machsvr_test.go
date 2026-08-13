@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"

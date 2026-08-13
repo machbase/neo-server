@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	codecOpts "github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"golang.org/x/text/encoding"

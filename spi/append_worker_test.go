@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func newAppendWorkerForTest(tableName string) *AppendWorker {
 	return &AppendWorker{
 		ctx:       ctx,
 		ctxCancel: cancel,
-		appender:  &machbase.Appender{},
+		appender:  &client.Appender{},
 		tableDesc: &TableDescription{Name: tableName},
 		lastTime:  time.Now(),
 		log:       logging.GetLog("append-worker-test"),

@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
@@ -966,7 +966,7 @@ func testAppendTags(t *testing.T) {
 	defer conn.Close()
 
 	conn.Raw(func(driverConn any) error {
-		rawConn, ok := driverConn.(*machbase.Conn)
+		rawConn, ok := driverConn.(*client.Conn)
 		require.True(t, ok, "driverConn is not spi.RawConn")
 		require.NotNil(t, rawConn, "rawConn is nil")
 
@@ -1221,7 +1221,7 @@ func TestAppendTagAndQuery(t *testing.T) {
 	testCount := 100
 	ts := time.Now()
 	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*machbase.Conn)
+		rawConn := driverConn.(*client.Conn)
 		appender, err := rawConn.Appender(t.Context(), tableName)
 		if err != nil {
 			panic(err)
@@ -1290,7 +1290,7 @@ func TestAppendTagNotExist(t *testing.T) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*machbase.Conn)
+		rawConn := driverConn.(*client.Conn)
 		appender, err := rawConn.Appender(t.Context(), "notexist")
 		require.NotNil(t, err)
 		require.True(t, strings.Contains(err.Error(), "does not exist"), err.Error())
@@ -1334,7 +1334,7 @@ func TestAppendTagPartial(t *testing.T) {
 	ts := time.Now()
 
 	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*machbase.Conn)
+		rawConn := driverConn.(*client.Conn)
 		appender, err := rawConn.Appender(t.Context(), tableName)
 		if err != nil {
 			panic(err)
@@ -1602,7 +1602,7 @@ func testLogTableAppend(t *testing.T) {
 	defer conn.Close()
 
 	conn.Raw(func(driverConn any) error {
-		rawConn, ok := driverConn.(*machbase.Conn)
+		rawConn, ok := driverConn.(*client.Conn)
 		require.True(t, ok, "driverConn is not spi.RawConn")
 		require.NotNil(t, rawConn, "rawConn is nil")
 

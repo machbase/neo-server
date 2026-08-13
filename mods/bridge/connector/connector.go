@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/machbase/neo-client"
-	"github.com/machbase/neo-client/api"
+	_ "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"

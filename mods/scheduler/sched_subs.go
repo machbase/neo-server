@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -42,7 +42,7 @@ type SubscriberEntry struct {
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
 	conn            *sql.Conn
-	appender        *machbase.Appender
+	appender        *client.Appender
 	appenderClose   func() error
 	subscription    bridge.Subscription
 
@@ -491,7 +491,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.appender == nil {
 		dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
-		ap := &machbase.Appender{}
+		ap := &client.Appender{}
 		err := ap.Connect(ent.ctx, dsn, ent.wd.Table)
 		if err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())

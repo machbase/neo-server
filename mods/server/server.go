@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"

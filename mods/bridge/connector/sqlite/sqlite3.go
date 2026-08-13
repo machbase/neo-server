@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	_ "github.com/mattn/go-sqlite3"
 )
 

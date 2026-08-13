@@ -36,7 +36,7 @@ func main() {
 		`import(`,
 		`   "math"`,
 		``,
-		`	"github.com/machbase/neo-client/api"`,
+		`	"github.com/machbase/neo-client/v2/api"`,
 		`	"github.com/machbase/neo-server/v8/mods/tql/expression"`,
 		`	"github.com/machbase/neo-server/v8/mods/codec/opts"`,
 		`	"github.com/machbase/neo-server/v8/mods/nums"`,

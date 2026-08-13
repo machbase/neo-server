@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ func BenchmarkTagDataAppend(b *testing.B) {
 	require.NoError(b, err, "truncate table fail")
 
 	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*machbase.Conn)
+		rawConn := driverConn.(*client.Conn)
 		appender, err := rawConn.Appender(b.Context(), "tag_data")
 		require.NoError(b, err, "appender fail")
 		defer appender.Close()
@@ -55,7 +55,7 @@ func BenchmarkTagSimpleAppend(b *testing.B) {
 	defer conn.Close()
 
 	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*machbase.Conn)
+		rawConn := driverConn.(*client.Conn)
 		appender, err := rawConn.Appender(b.Context(), "tag_simple")
 		require.NoError(b, err, "appender fail")
 		for i := 0; i < b.N; i++ {

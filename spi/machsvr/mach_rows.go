@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	mach "github.com/machbase/neo-engine/v8"
 
 	"golang.org/x/text/language"

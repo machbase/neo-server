@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"

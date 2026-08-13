@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	_ "github.com/machbase/neo-client/machbase"
+	_ "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
@@ -206,7 +206,7 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 	tableName := fixture.tableName
 
 	t.Run("transactions are not supported", func(t *testing.T) {
-		// TODO: implement transaction support in neo-client/machbase (Begin/BeginTx, Commit, Rollback).
+		// TODO: implement transaction support in neo-client/driver (Begin/BeginTx, Commit, Rollback).
 		tx, err := db.BeginTx(t.Context(), nil)
 		require.Error(t, err)
 		require.Nil(t, tx)
@@ -214,7 +214,7 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 	})
 
 	t.Run("named parameters are not supported", func(t *testing.T) {
-		// TODO: add named parameter binding support in neo-client/machbase driver (sql.Named / :name / @name).
+		// TODO: add named parameter binding support in neo-client/driver driver (sql.Named / :name / @name).
 		_, err := db.ExecContext(
 			t.Context(),
 			fmt.Sprintf("UPDATE %s SET NAME = @name WHERE ID = 1", tableName),

@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 )
 
 func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {

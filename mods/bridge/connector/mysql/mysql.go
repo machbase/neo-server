@@ -7,7 +7,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/machbase/neo-client/api"
+	"github.com/machbase/neo-client/v2/api"
 )
 
 type Bridge struct {

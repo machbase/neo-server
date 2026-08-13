@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 type AppendWorker struct {
-	appender  *machbase.Appender
+	appender  *client.Appender
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
@@ -148,7 +148,7 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
-	appender := &machbase.Appender{}
+	appender := &client.Appender{}
 	dsn := DefaultDSN(map[string]string{"user": "sys"})
 	err = appender.Connect(ctx, dsn, tableName)
 	if err != nil {

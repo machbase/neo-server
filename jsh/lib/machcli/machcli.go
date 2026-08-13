@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-client/api"
-	"github.com/machbase/neo-client/machbase"
+	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -51,7 +51,7 @@ func Context(ctx context.Context) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx = context.WithValue(ctx, machbase.MetaKey, &machbase.Meta{})
+	ctx = context.WithValue(ctx, client.MetaKey, &client.Meta{})
 	return ctx
 }
 
@@ -134,8 +134,8 @@ func (db *Database) Connect() (*sql.Conn, error) {
 	return db.pool.Conn(db.Ctx)
 }
 
-func (db *Database) Appender(ctx context.Context, table string, columns ...string) (*machbase.Appender, error) {
-	ret := &machbase.Appender{}
+func (db *Database) Appender(ctx context.Context, table string, columns ...string) (*client.Appender, error) {
+	ret := &client.Appender{}
 	if err := ret.Connect(ctx, db.dsn, table, columns...); err != nil {
 		return nil, err
 	}
@@ -221,22 +221,22 @@ func Explain(ctx context.Context, conn *sql.Conn, sqlText string, args ...any) (
 }
 
 func IsFetchable(ctx context.Context) bool {
-	meta := ctx.Value(machbase.MetaKey)
+	meta := ctx.Value(client.MetaKey)
 	if meta == nil {
 		return false
 	}
-	if m, ok := meta.(*machbase.Meta); ok {
+	if m, ok := meta.(*client.Meta); ok {
 		return m.IsFetchable()
 	}
 	return false
 }
 
 func Message(ctx context.Context) string {
-	meta := ctx.Value(machbase.MetaKey)
+	meta := ctx.Value(client.MetaKey)
 	if meta == nil {
 		return ""
 	}
-	if m, ok := meta.(*machbase.Meta); ok {
+	if m, ok := meta.(*client.Meta); ok {
 		return m.Message()
 	}
 	return ""
