@@ -9,7 +9,7 @@ import (
 	txtTemplate "text/template"
 	"time"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
@@ -183,7 +183,7 @@ func (ex *Exporter) AddRow(values []any) error {
 					if i > 0 {
 						fmt.Fprint(ex.output, " ")
 					}
-					fmt.Fprint(ex.output, api.Unbox(val))
+					fmt.Fprint(ex.output, client.Unbox(val))
 				}
 				fmt.Fprintln(ex.output)
 			}
@@ -198,7 +198,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		}
 	}
 	for i, val := range values {
-		values[i] = api.Unbox(val)
+		values[i] = client.Unbox(val)
 	}
 	ex.record = &Record{
 		values:   values,

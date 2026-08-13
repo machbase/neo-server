@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/nums"
@@ -133,7 +134,7 @@ func (ex *Exporter) Close() {
 
 func (ex *Exporter) Flush(heading bool) {
 	ex.writer.Flush()
-	if flusher, ok := ex.output.(api.Flusher); ok {
+	if flusher, ok := ex.output.(interface{ Flush() error }); ok {
 		flusher.Flush()
 	}
 }
@@ -154,7 +155,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		if ex.precision > 0 && i < len(ex.colTypes) && (ex.colTypes[i] == api.DataTypeFloat64 || ex.colTypes[i] == api.DataTypeFloat32) {
 			treatIntValueAsFloat = true
 		}
-		val := api.Unbox(value)
+		val := client.Unbox(value)
 		if val == nil {
 			val = ex.nullAlternative
 		}

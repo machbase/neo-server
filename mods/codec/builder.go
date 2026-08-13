@@ -3,6 +3,7 @@ package codec
 import (
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/box"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/chart"
@@ -126,11 +127,11 @@ func NewDecoder(decoderType string, opts ...opts.Option) RowsDecoder {
 	return ret
 }
 
-func SetEncoderColumns(encoder RowsEncoder, cols api.Columns) {
+func SetEncoderColumns(encoder RowsEncoder, cols client.Columns) {
 	SetEncoderColumnsTimeLocation(encoder, cols, nil)
 }
 
-func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols api.Columns, tz *time.Location) {
+func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols client.Columns, tz *time.Location) {
 	var colNames []string
 	if tz != nil {
 		colNames = cols.NamesWithTimeLocation(tz)

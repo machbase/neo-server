@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 )
@@ -250,9 +250,9 @@ func (dc *DataGenMachbase) gen(node *Node) {
 
 	stmtType := spi.DetectSQLStatementType(dc.sqlText)
 	if !stmtType.IsFetch() {
-		dc.task.SetResultColumns(api.Columns{
-			api.MakeColumnRownum(),
-			api.MakeColumnString("MESSAGE"),
+		dc.task.SetResultColumns(client.Columns{
+			client.MakeColumnRownum(),
+			client.MakeColumnString("MESSAGE"),
 		})
 		result, err := conn.ExecContext(node.task.ctx, dc.sqlText, dc.params...)
 		if err != nil {
@@ -281,10 +281,10 @@ func (dc *DataGenMachbase) gen(node *Node) {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
-	cols := make([]*api.Column, len(columnTypes)+1)
-	cols[0] = api.MakeColumnRownum()
+	cols := make([]*client.Column, len(columnTypes)+1)
+	cols[0] = client.MakeColumnRownum()
 	for i, col := range columnTypes {
-		cols[i+1] = api.NewColumnWithType(col)
+		cols[i+1] = client.NewColumnWithType(col)
 	}
 	dc.task.SetResultColumns(cols)
 
@@ -300,7 +300,7 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			break
 		}
 		for i := range values {
-			values[i] = api.Unbox(values[i])
+			values[i] = client.Unbox(values[i])
 		}
 		NewRecord(nrow, values).Tell(node.next)
 	}
@@ -392,9 +392,9 @@ func sqlExec(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText 
 	} else {
 		nrows, _ := result.RowsAffected()
 		userMsg = spi.MakeUserMessage(stmtType, nrows)
-		node.task.SetResultColumns(api.Columns{
-			api.MakeColumnRownum(),
-			api.MakeColumnString("MESSAGE"),
+		node.task.SetResultColumns(client.Columns{
+			client.MakeColumnRownum(),
+			client.MakeColumnString("MESSAGE"),
 		})
 		NewRecord(1, userMsg).Tell(node.next)
 	}
@@ -414,10 +414,10 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 			userMsg = err.Error()
 			ErrorRecord(err).Tell(node.next)
 		} else {
-			cols := make([]*api.Column, len(columnTypes)+1)
-			cols[0] = api.MakeColumnRownum()
+			cols := make([]*client.Column, len(columnTypes)+1)
+			cols[0] = client.MakeColumnRownum()
 			for i, col := range columnTypes {
-				cols[i+1] = api.NewColumnWithType(col)
+				cols[i+1] = client.NewColumnWithType(col)
 			}
 			node.task.SetResultColumns(cols)
 			nrow := int64(0)
@@ -434,7 +434,7 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 					break
 				}
 				for i := range values {
-					values[i] = api.Unbox(values[i])
+					values[i] = client.Unbox(values[i])
 				}
 				NewRecord(nrow, values).Tell(node.next)
 			}
@@ -463,9 +463,9 @@ func sqlExplain(node *Node, conn *sql.Conn, sqlText string) string {
 				ErrorRecord(err).Tell(node.next)
 				resultMsg = err.Error()
 			} else {
-				node.task.SetResultColumns(api.Columns{
-					api.MakeColumnRownum(),
-					api.MakeColumnString("PLAN"),
+				node.task.SetResultColumns(client.Columns{
+					client.MakeColumnRownum(),
+					client.MakeColumnString("PLAN"),
 				})
 				for n, line := range strings.Split(plan, "\n") {
 					NewRecord(n, []any{line}).Tell(node.next)
@@ -752,7 +752,7 @@ func isSQLStatementStart(tok string) bool {
 }
 
 func yieldResultSet[T spi.ResultSet](node *Node, nfo T) string {
-	node.task.SetResultColumns(append(api.Columns{api.MakeColumnRownum()}, nfo.Columns()...))
+	node.task.SetResultColumns(append(client.Columns{client.MakeColumnRownum()}, nfo.Columns()...))
 	if err := nfo.Err(); err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return err.Error()

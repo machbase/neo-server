@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
@@ -2158,20 +2158,20 @@ type coverageConn struct {
 }
 
 func (c *coverageConn) Close() error { return nil }
-func (c *coverageConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+func (c *coverageConn) Exec(ctx context.Context, sqlText string, params ...any) *coverageResult {
 	c.execCount++
 	return &coverageResult{}
 }
-func (c *coverageConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+func (c *coverageConn) Query(ctx context.Context, sqlText string, params ...any) (*client.Rows, error) {
 	panic("unexpected Query")
 }
-func (c *coverageConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
+func (c *coverageConn) QueryRow(ctx context.Context, sqlText string, params ...any) *client.ClientRow {
 	panic("unexpected QueryRow")
 }
-func (c *coverageConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
+func (c *coverageConn) Prepare(ctx context.Context, query string) (*client.ClientPreparedStmt, error) {
 	panic("unexpected Prepare")
 }
-func (c *coverageConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+func (c *coverageConn) Appender(ctx context.Context, tableName string) (*client.Appender, error) {
 	panic("unexpected Appender")
 }
 func (c *coverageConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {

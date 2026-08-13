@@ -39,7 +39,7 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 }
 
 func Unbox(value any) any {
-	v := api.Unbox(value)
+	v := client.Unbox(value)
 	switch v := v.(type) {
 	case api.JSONString:
 		return string(v)

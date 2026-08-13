@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods/nums"
@@ -101,14 +102,14 @@ func genStatz(node *Node, gen *statz) error {
 	}
 
 	// set columns
-	cols := []*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnDatetime("time"),
+	cols := []*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnDatetime("time"),
 	}
 
 	for _, spec := range specs {
 		for _, series := range spec.Series {
-			cols = append(cols, api.MakeColumnAny(series.Name))
+			cols = append(cols, client.MakeColumnAny(series.Name))
 		}
 	}
 	node.task.SetResultColumns(cols)
@@ -198,10 +199,10 @@ func genCsvData(node *Node, cd *csvdata) {
 			return
 		}
 		if i == 0 {
-			cols := []*api.Column{api.MakeColumnRownum()}
+			cols := []*client.Column{client.MakeColumnRownum()}
 			for i := 0; i < len(values); i++ {
 				cname := fmt.Sprintf("column%d", i)
-				cols = append(cols, api.MakeColumnString(cname))
+				cols = append(cols, client.MakeColumnString(cname))
 			}
 			node.task.SetResultColumns(cols)
 		}
@@ -240,18 +241,18 @@ func genJsonData(node *Node, jd *jsondata) {
 	}
 	if len(jd.Data) > 0 {
 		colCount := len(jd.Data[0])
-		cols := []*api.Column{api.MakeColumnRownum()}
+		cols := []*client.Column{client.MakeColumnRownum()}
 		for i := 0; i < colCount; i++ {
 			cname := fmt.Sprintf("column%d", i)
 			switch jd.Data[0][i].(type) {
 			case string:
-				cols = append(cols, api.MakeColumnString(cname))
+				cols = append(cols, client.MakeColumnString(cname))
 			case float64:
-				cols = append(cols, api.MakeColumnDouble(cname))
+				cols = append(cols, client.MakeColumnDouble(cname))
 			case bool:
-				cols = append(cols, api.MakeColumnBoolean(cname))
+				cols = append(cols, client.MakeColumnBoolean(cname))
 			default:
-				cols = append(cols, api.MakeColumnAny(cname))
+				cols = append(cols, client.MakeColumnAny(cname))
 			}
 		}
 		node.task.SetResultColumns(cols)
@@ -271,9 +272,9 @@ type doOnce struct {
 }
 
 func genOnce(node *Node, gen *doOnce) {
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnDouble("x"),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnDouble("x"),
 	})
 	NewRecord(1, []any{gen.value}).Tell(node.next)
 }
@@ -301,9 +302,9 @@ type arrange struct {
 }
 
 func genArrange(node *Node, ar *arrange) {
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnDouble("x"),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnDouble("x"),
 	})
 	i := 0
 	if ar.start < ar.stop {
@@ -336,9 +337,9 @@ type linspace struct {
 }
 
 func genLinspace(node *Node, ls *linspace) {
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnDouble("x"),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnDouble("x"),
 	})
 	vals := nums.Linspace(ls.start, ls.stop, ls.num)
 	for i, v := range vals {
@@ -377,10 +378,10 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 	}
 	vals := nums.Meshgrid(xv, yv)
 
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnDouble("x"),
-		api.MakeColumnDouble("y"),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnDouble("x"),
+		client.MakeColumnDouble("y"),
 	})
 	id := 0
 	for x := range vals {
@@ -410,11 +411,11 @@ type sphere struct {
 }
 
 func genSphere(node *Node, sp *sphere) {
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnDouble("x"),
-		api.MakeColumnDouble("y"),
-		api.MakeColumnDouble("z"),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnDouble("x"),
+		client.MakeColumnDouble("y"),
+		client.MakeColumnDouble("z"),
 	})
 	var u, v float64
 	var id = 0
@@ -476,8 +477,8 @@ type oscillator struct {
 }
 
 func genOscillator(node *Node, gen *oscillator) {
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
 		{Name: "time", DataType: api.DataTypeDatetime},
 		{Name: "value", DataType: api.DataTypeFloat64},
 	})

@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	mach "github.com/machbase/neo-engine/v8"
 
 	"golang.org/x/text/language"
@@ -20,8 +20,6 @@ type Result struct {
 	affectedRows int64
 	stmtType     mach.StmtType
 }
-
-var _ api.Result = (*Result)(nil)
 
 func (r *Result) RowsAffected() int64 {
 	return r.affectedRows
@@ -62,15 +60,13 @@ func (r *Result) Message() string {
 type Row struct {
 	ok           bool
 	err          error
-	columns      api.Columns
+	columns      client.Columns
 	values       []any
 	timeLocation *time.Location
 
 	affectedRows int64
 	stmtType     mach.StmtType
 }
-
-var _ api.Row = (*Row)(nil)
 
 func (row *Row) Success() bool {
 	return row.ok
@@ -84,7 +80,7 @@ func (row *Row) Values() []any {
 	return row.values
 }
 
-func (row *Row) Columns() (api.Columns, error) {
+func (row *Row) Columns() (client.Columns, error) {
 	return row.columns, nil
 }
 
@@ -129,12 +125,12 @@ func (row *Row) Scan(cols ...any) error {
 	}
 	for i := range cols {
 		if i >= len(row.values) {
-			return api.ErrDatabaseScanIndex(i, len(row.values))
+			return ErrDatabaseScanIndex(i, len(row.values))
 		}
 		var isNull = row.values[i] == nil
 		if isNull {
 			cols[i] = nil
-		} else if row.err = api.Scan(row.values[i], cols[i], row.timeLocation); row.err != nil {
+		} else if row.err = client.Scan(row.values[i], cols[i], row.timeLocation); row.err != nil {
 			return row.err
 		}
 	}
@@ -145,7 +141,7 @@ type Rows struct {
 	stmt       unsafe.Pointer
 	stmtType   mach.StmtType
 	sqlText    string
-	columns    api.Columns
+	columns    client.Columns
 	fetchError error
 
 	timeLocation        *time.Location
@@ -209,7 +205,7 @@ func (rows *Rows) RowsAffected() int64 {
 	return nrow
 }
 
-func (rows *Rows) Columns() (api.Columns, error) {
+func (rows *Rows) Columns() (client.Columns, error) {
 	return rows.columns, nil
 }
 
@@ -282,7 +278,7 @@ func (rows *Rows) FetchSync() ([]any, bool, error) {
 
 	next, err := mach.EngFetch(rows.stmt)
 	if err != nil {
-		return nil, next, api.ErrDatabaseFetch(err)
+		return nil, next, ErrDatabaseFetch(err)
 	}
 	if !next {
 		return nil, false, nil
@@ -294,7 +290,7 @@ func (rows *Rows) FetchSync() ([]any, bool, error) {
 	}
 	for i := range values {
 		if i >= len(rows.columns) {
-			return values, next, api.ErrDatabaseScanIndex(i, len(rows.columns))
+			return values, next, ErrDatabaseScanIndex(i, len(rows.columns))
 		}
 		rawType, err := columnDataTypeToRawType(rows.columns[i].DataType)
 		if err != nil {
@@ -350,7 +346,7 @@ func (rows *Rows) Scan(cols ...any) error {
 	}
 	for i := range cols {
 		if i >= len(rows.columns) {
-			return api.ErrDatabaseScanIndex(i, len(rows.columns))
+			return ErrDatabaseScanIndex(i, len(rows.columns))
 		}
 		rawType, err := columnDataTypeToRawType(rows.columns[i].DataType)
 		if err != nil {
@@ -375,122 +371,122 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 	case ColumnRawTypeInt16:
 		v, nonNull, err := mach.EngColumnDataInt16(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("int16", err)
+			return ErrDatabaseScanTypeName("int16", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeUInt16:
 		v, nonNull, err := mach.EngColumnDataUInt16(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("uint16", err)
+			return ErrDatabaseScanTypeName("uint16", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeInt32:
 		v, nonNull, err := mach.EngColumnDataInt32(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("int32", err)
+			return ErrDatabaseScanTypeName("int32", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeUInt32:
 		v, nonNull, err := mach.EngColumnDataUInt32(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("uint32", err)
+			return ErrDatabaseScanTypeName("uint32", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeInt64:
 		v, nonNull, err := mach.EngColumnDataInt64(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("int64", err)
+			return ErrDatabaseScanTypeName("int64", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeUInt64:
 		v, nonNull, err := mach.EngColumnDataUInt64(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("uint64", err)
+			return ErrDatabaseScanTypeName("uint64", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeDatetime:
 		v, nonNull, err := mach.EngColumnDataDateTime(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("datetime", err)
+			return ErrDatabaseScanTypeName("datetime", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeFloat32:
 		v, nonNull, err := mach.EngColumnDataFloat32(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("float32", err)
+			return ErrDatabaseScanTypeName("float32", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeFloat64:
 		v, nonNull, err := mach.EngColumnDataFloat64(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("float64", err)
+			return ErrDatabaseScanTypeName("float64", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeIPv4:
 		v, nonNull, err := mach.EngColumnDataIPv4(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("IPv4", err)
+			return ErrDatabaseScanTypeName("IPv4", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeIPv6:
 		v, nonNull, err := mach.EngColumnDataIPv6(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("IPv6", err)
+			return ErrDatabaseScanTypeName("IPv6", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeString:
 		v, nonNull, err := mach.EngColumnDataString(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("string", err)
+			return ErrDatabaseScanTypeName("string", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	case ColumnRawTypeBinary:
 		v, nonNull, err := mach.EngColumnDataBinary(stmt, idx)
 		if err != nil {
-			return api.ErrDatabaseScanTypeName("binary", err)
+			return ErrDatabaseScanTypeName("binary", err)
 		}
 		*isNull = !nonNull
 		if nonNull {
-			return api.Scan(v, dst, loc)
+			return client.Scan(v, dst, loc)
 		}
 	default:
-		return api.ErrDatabaseScanUnsupportedType(dst)
+		return ErrDatabaseScanUnsupportedType(dst)
 	}
 	return nil
 }

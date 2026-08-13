@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
@@ -182,8 +182,8 @@ func (x *Node) fmAppend(args ...any) (*appender, error) {
 
 type appender struct {
 	nrows      int
-	dbAppender api.Appender
-	dbColumns  api.Columns
+	dbAppender *spi.AppendWorker
+	dbColumns  client.Columns
 	table      *Table
 }
 

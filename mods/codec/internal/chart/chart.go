@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
@@ -205,7 +205,7 @@ func convValue(val any) (ret any) {
 }
 
 func convValueType(value any) (ret any, typeHint string) {
-	val := api.Unbox(value)
+	val := client.Unbox(value)
 	switch v := val.(type) {
 	case []any:
 		for i, elm := range v {

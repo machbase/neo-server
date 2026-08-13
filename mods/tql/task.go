@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
@@ -69,7 +70,7 @@ type Task struct {
 	_shouldStop          bool
 	_shouldStopListeners []func()
 
-	_resultColumns api.Columns
+	_resultColumns client.Columns
 	_stateLock     sync.RWMutex
 	_created       time.Time
 }
@@ -494,9 +495,9 @@ func (x *Task) shouldStop() bool {
 	return ret
 }
 
-func (x *Task) SetResultColumns(cols api.Columns) {
+func (x *Task) SetResultColumns(cols client.Columns) {
 	x._stateLock.Lock()
-	ts := make([]*api.Column, len(cols))
+	ts := make([]*client.Column, len(cols))
 	for i, c := range cols {
 		x := *c
 		switch x.DataType {
@@ -525,7 +526,7 @@ func (x *Task) SetResultColumns(cols api.Columns) {
 	x._stateLock.Unlock()
 }
 
-func (x *Task) ResultColumns() api.Columns {
+func (x *Task) ResultColumns() client.Columns {
 	x._stateLock.RLock()
 	ret := x._resultColumns
 	x._stateLock.RUnlock()

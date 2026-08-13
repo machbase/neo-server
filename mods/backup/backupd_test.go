@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
@@ -637,7 +636,7 @@ func TestBackupLifecycleScenarioHelper(t *testing.T) {
 	const tableName = "backup_e2e_tbl"
 	const mountName = "backup_mount"
 
-	var result api.Result
+	var result *machsvr.Result
 
 	// 2) create table
 	result = conn.Exec(ctx, fmt.Sprintf("CREATE TABLE %s (id INTEGER, name VARCHAR(40))", tableName))

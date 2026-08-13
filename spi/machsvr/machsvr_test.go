@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/spi"
@@ -40,26 +41,23 @@ func TestConnCancelNilHandle(t *testing.T) {
 
 func TestConnCloseNilHandle(t *testing.T) {
 	conn := &Conn{db: &Database{}}
-	require.ErrorIs(t, conn.Close(), api.ErrDatabaseNoConnection)
+	require.ErrorIs(t, conn.Close(), ErrDatabaseNoConnection)
 }
 
 func TestConnCloseSignalsReturnChan(t *testing.T) {
-	conn, err := _env.database.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err := _env.database.Connect(context.Background(), WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
-	machConn, ok := conn.(*Conn)
-	require.True(t, ok)
-
-	machConn.returnChan = make(chan struct{}, 1)
-	require.NoError(t, machConn.Close())
+	conn.returnChan = make(chan struct{}, 1)
+	require.NoError(t, conn.Close())
 
 	select {
-	case <-machConn.returnChan:
+	case <-conn.returnChan:
 	default:
 		t.Fatal("expected Close to signal returnChan")
 	}
 
-	require.NoError(t, machConn.Close())
+	require.NoError(t, conn.Close())
 }
 
 func TestSetMaxConn(t *testing.T) {
@@ -110,7 +108,7 @@ func TestSetMaxQuery(t *testing.T) {
 
 func TestDatabaseError(t *testing.T) {
 	engine := testServer.MachSvr()
-	_, err := engine.Connect(context.Background(), api.WithPassword("sys", "wrong-password"))
+	_, err := engine.Connect(context.Background(), WithPassword("sys", "wrong-password"))
 	require.Error(t, err)
 
 	lastErr := engine.Error()
@@ -175,7 +173,7 @@ func TestResultMessageBranches(t *testing.T) {
 func TestRowBasicBranches(t *testing.T) {
 	t.Run("err_columns_and_rows_affected", func(t *testing.T) {
 		typeErr := fmt.Errorf("row failed")
-		cols := api.Columns{{Name: "A"}}
+		cols := client.Columns{{Name: "A"}}
 		row := &Row{err: typeErr, columns: cols, affectedRows: 3}
 
 		require.EqualError(t, row.Err(), "row failed")
@@ -209,7 +207,7 @@ func TestRowBasicBranches(t *testing.T) {
 		row := &Row{ok: true, values: []any{int32(1)}}
 		var a, b int32
 		err := row.Scan(&a, &b)
-		require.EqualError(t, err, api.ErrDatabaseScanIndex(1, 1).Error())
+		require.EqualError(t, err, ErrDatabaseScanIndex(1, 1).Error())
 	})
 
 	t.Run("scan_valid", func(t *testing.T) {
@@ -252,7 +250,7 @@ func TestRowsNonEngineBranches(t *testing.T) {
 	})
 
 	t.Run("columns_and_error_accessors", func(t *testing.T) {
-		cols := api.Columns{{Name: "VALUE"}}
+		cols := client.Columns{{Name: "VALUE"}}
 		rows := &Rows{columns: cols, fetchError: fmt.Errorf("fetch failed")}
 
 		gotCols, err := rows.Columns()
@@ -350,14 +348,14 @@ func TestRowsNonEngineBranches(t *testing.T) {
 
 func TestAppenderSimpleBranches(t *testing.T) {
 	t.Run("string_table_and_type", func(t *testing.T) {
-		ap := &Appender{tableName: "TAG_DATA", tableType: api.TableTypeTag}
+		ap := &Appender{tableName: "TAG_DATA", tableType: client.TableTypeTag}
 		require.Contains(t, ap.String(), "appender TAG_DATA")
 		require.Equal(t, "TAG_DATA", ap.TableName())
-		require.Equal(t, api.TableTypeTag, ap.TableType())
+		require.Equal(t, client.TableTypeTag, ap.TableType())
 	})
 
 	t.Run("columns_accessor", func(t *testing.T) {
-		expect := api.Columns{{Name: "NAME"}, {Name: "TIME"}}
+		expect := client.Columns{{Name: "NAME"}, {Name: "TIME"}}
 		ap := &Appender{columns: expect}
 		cols, err := ap.Columns()
 		require.NoError(t, err)
@@ -365,7 +363,7 @@ func TestAppenderSimpleBranches(t *testing.T) {
 	})
 
 	t.Run("with_input_columns_maps_index", func(t *testing.T) {
-		ap := &Appender{columns: api.Columns{{Name: "TIME"}, {Name: "VALUE"}}}
+		ap := &Appender{columns: client.Columns{{Name: "TIME"}, {Name: "VALUE"}}}
 		ap.WithInputColumns("value", "time")
 		require.Len(t, ap.inputColumns, 2)
 		require.Equal(t, "VALUE", ap.inputColumns[0].Name)
@@ -375,57 +373,57 @@ func TestAppenderSimpleBranches(t *testing.T) {
 	})
 
 	t.Run("append_invalid_table_type", func(t *testing.T) {
-		ap := &Appender{tableName: "X", tableType: api.TableType(-1)}
+		ap := &Appender{tableName: "X", tableType: client.TableType(-1)}
 		err := ap.Append(1)
 		require.EqualError(t, err, "X can not be appended")
 	})
 
 	t.Run("append_tag_without_columns", func(t *testing.T) {
-		ap := &Appender{tableName: "TAG_DATA", tableType: api.TableTypeTag}
+		ap := &Appender{tableName: "TAG_DATA", tableType: client.TableTypeTag}
 		err := ap.Append("name", time.Now(), 1.23)
-		require.EqualError(t, err, api.ErrDatabaseNoColumns("TAG_DATA").Error())
+		require.EqualError(t, err, ErrDatabaseNoColumns("TAG_DATA").Error())
 	})
 
 	t.Run("append_log_without_columns", func(t *testing.T) {
-		ap := &Appender{tableName: "LOG_DATA", tableType: api.TableTypeLog}
+		ap := &Appender{tableName: "LOG_DATA", tableType: client.TableTypeLog}
 		err := ap.Append(time.Now(), 1.23)
-		require.EqualError(t, err, api.ErrDatabaseNoColumns("LOG_DATA").Error())
+		require.EqualError(t, err, ErrDatabaseNoColumns("LOG_DATA").Error())
 	})
 
 	t.Run("append_with_input_columns_length_mismatch", func(t *testing.T) {
 		ap := &Appender{
 			tableName: "TAG_DATA",
-			tableType: api.TableTypeTag,
-			columns:   api.Columns{{Name: "NAME"}, {Name: "VALUE"}},
+			tableType: client.TableTypeTag,
+			columns:   client.Columns{{Name: "NAME"}, {Name: "VALUE"}},
 		}
 		ap.WithInputColumns("name")
 		err := ap.append("a", 1)
-		require.EqualError(t, err, api.ErrDatabaseLengthOfColumns("TAG_DATA", 2, 2).Error())
+		require.EqualError(t, err, ErrDatabaseLengthOfColumns("TAG_DATA", 2, 2).Error())
 	})
 
 	t.Run("append_closed_appender", func(t *testing.T) {
 		ap := &Appender{
 			tableName: "TAG_DATA",
-			tableType: api.TableTypeTag,
+			tableType: client.TableTypeTag,
 			closed:    true,
-			columns:   api.Columns{{Name: "NAME"}},
+			columns:   client.Columns{{Name: "NAME"}},
 		}
 		err := ap.append("a")
-		require.ErrorIs(t, err, api.ErrDatabaseClosedAppender)
+		require.ErrorIs(t, err, ErrDatabaseClosedAppender)
 	})
 
 	t.Run("append_without_connection", func(t *testing.T) {
 		ap := &Appender{
 			tableName: "TAG_DATA",
-			tableType: api.TableTypeTag,
-			columns:   api.Columns{{Name: "NAME"}},
+			tableType: client.TableTypeTag,
+			columns:   client.Columns{{Name: "NAME"}},
 		}
 		err := ap.append("a")
-		require.ErrorIs(t, err, api.ErrDatabaseNoConnection)
+		require.ErrorIs(t, err, ErrDatabaseNoConnection)
 	})
 
 	t.Run("append_log_time_non_log", func(t *testing.T) {
-		ap := &Appender{tableName: "TAG_DATA", tableType: api.TableTypeTag}
+		ap := &Appender{tableName: "TAG_DATA", tableType: client.TableTypeTag}
 		err := ap.AppendLogTime(time.Now(), 1)
 		require.EqualError(t, err, "TAG_DATA is not a log table, use Append() instead")
 	})
@@ -484,7 +482,7 @@ func TestKillConnection(t *testing.T) {
 	engine.RemoveWatcher(invalidKey)
 
 	before := watcherStates(engine)
-	conn, err := engine.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err := engine.Connect(context.Background(), WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	after := watcherStates(engine)
@@ -500,7 +498,7 @@ func TestCancelConnection(t *testing.T) {
 	engine := testServer.MachSvr()
 
 	before := watcherStates(engine)
-	conn, err := engine.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err := engine.Connect(context.Background(), WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	after := watcherStates(engine)
@@ -512,17 +510,14 @@ func TestCancelConnection(t *testing.T) {
 	require.NoError(t, conn.Close())
 
 	before = watcherStates(engine)
-	conn, err = engine.Connect(context.Background(), api.WithPassword("sys", "manager"))
+	conn, err = engine.Connect(context.Background(), WithPassword("sys", "manager"))
 	require.NoError(t, err)
-
-	machConn, ok := conn.(*Conn)
-	require.True(t, ok)
 
 	after = watcherStates(engine)
 	watcherID = newWatcherID(before, after)
 	require.NotEmpty(t, watcherID)
 
-	require.NoError(t, machConn.Cancel())
+	require.NoError(t, conn.Cancel())
 	require.EqualError(t, engine.KillConnection(watcherID, false), "connection '"+watcherID+"' not found")
 	require.NoError(t, conn.Close())
 }
@@ -531,7 +526,7 @@ func TestPreparedStatement(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -630,7 +625,7 @@ func TestUserAuthWithKey(t *testing.T) {
 	host := "127.0.0.1"
 	port := testServer.MachPort()
 
-	adminConn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	adminConn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	defer adminConn.Close()
 
@@ -650,7 +645,7 @@ func TestUserAuthWithKey(t *testing.T) {
 			require.NoError(t, err)
 
 			comment := fmt.Sprintf("testsuite auth key %s %d", tc.name, time.Now().UnixNano())
-			keyID, err := api.RegisterAuthKey(ctx, adminConn, "sys", authkey.PublicKeyPEM, comment)
+			keyID, err := RegisterAuthKey(ctx, adminConn, "sys", authkey.PublicKeyPEM, comment)
 			require.NoError(t, err)
 			require.Greater(t, keyID, 0)
 
@@ -703,7 +698,7 @@ func SqlTidy(sqlTextLines ...string) string {
 func testCreateTables(t *testing.T) {
 	// create test tables
 	ctx := t.Context()
-	conn, err := testServer.MachSvr().Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := testServer.MachSvr().Connect(ctx, WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
@@ -771,7 +766,7 @@ func testDescribeTable(t *testing.T) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	expect := api.Columns{
+	expect := client.Columns{
 		{Name: "NAME", Type: api.ColumnTypeVarchar, DataType: api.DataTypeString},
 		{Name: "TIME", Type: api.ColumnTypeDatetime, DataType: api.DataTypeDatetime},
 		{Name: "VALUE", Type: api.ColumnTypeDouble, DataType: api.DataTypeFloat64},
@@ -814,7 +809,7 @@ func testDescribeTable(t *testing.T) {
 		require.Equal(t, "SYS", desc.User)
 		require.Equal(t, "MACHBASEDB", desc.Database)
 		require.Equal(t, "Tag Table", desc.String())
-		require.Equal(t, api.TableTypeTag, desc.Type)
+		require.Equal(t, client.TableTypeTag, desc.Type)
 
 		require.Equal(t, len(expect), len(desc.Columns))
 
@@ -870,7 +865,7 @@ func testInsertMeta(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -927,7 +922,7 @@ func testAppendTag(t *testing.T) {
 
 	tableName := "append_tag"
 
-	conn, err := db.Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()))
+	conn, err := db.Connect(ctx, WithAuthKey("sys", spi.DefaultKey()))
 	require.NoError(t, err, "connect fail")
 	result := conn.Exec(ctx, fmt.Sprintf(`CREATE TAG TABLE %s (
 		name     varchar(200) primary key,
@@ -940,13 +935,13 @@ func testAppendTag(t *testing.T) {
 	require.NoError(t, result.Err(), "create table fail")
 
 	defer func() {
-		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 		require.NoError(t, err, "connect fail")
 		conn.Exec(ctx, fmt.Sprintf(`DROP TABLE %s`, tableName))
 		conn.Close()
 	}()
 
-	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	appender, err := conn.Appender(ctx, tableName)
@@ -954,7 +949,7 @@ func testAppendTag(t *testing.T) {
 		panic(err)
 	}
 	require.Equal(t, strings.ToUpper(tableName), appender.TableName())
-	require.Equal(t, api.TableTypeTag, appender.TableType())
+	require.Equal(t, client.TableTypeTag, appender.TableType())
 
 	testCount := 100
 	ts := time.Now()
@@ -974,7 +969,7 @@ func testAppendTag(t *testing.T) {
 	appender.Close()
 	conn.Close()
 
-	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
 	if row.Err() != nil {
@@ -988,7 +983,7 @@ func testAppendTag(t *testing.T) {
 	require.Equal(t, testCount, count)
 	conn.Close()
 
-	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	rows, err := conn.Query(ctx, "select * from "+tableName+" where time >= ?", ts)
 	if err != nil {
@@ -1019,7 +1014,7 @@ func testAppendTagNotExist(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -1036,7 +1031,7 @@ func testAppendTagPartial(t *testing.T) {
 	db := testServer.MachSvr()
 	tableName := "append_tag2"
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	result := conn.Exec(ctx, fmt.Sprintf(`
 	CREATE TAG TABLE %s (
@@ -1050,13 +1045,13 @@ func testAppendTagPartial(t *testing.T) {
 	require.NoError(t, result.Err(), "create table fail")
 
 	defer func() {
-		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 		require.NoError(t, err, "connect fail")
 		conn.Exec(ctx, fmt.Sprintf(`DROP TABLE %s`, tableName))
 		conn.Close()
 	}()
 
-	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 
 	appender, err := conn.Appender(ctx, tableName)
@@ -1064,7 +1059,7 @@ func testAppendTagPartial(t *testing.T) {
 		panic(err)
 	}
 	require.Equal(t, strings.ToUpper(tableName), appender.TableName())
-	require.Equal(t, api.TableTypeTag, appender.TableType())
+	require.Equal(t, client.TableTypeTag, appender.TableType())
 
 	// arbitrary column order
 	appender = appender.WithInputColumns("time", "name", "jsondata", "value")
@@ -1084,7 +1079,7 @@ func testAppendTagPartial(t *testing.T) {
 	appender.Close()
 	conn.Close()
 
-	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
 	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
 	if row.Err() != nil {
@@ -1102,7 +1097,7 @@ func testAppendTagPartial(t *testing.T) {
 func testExplain(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1118,7 +1113,7 @@ func testExplain(t *testing.T) {
 func testExplainFull(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1133,7 +1128,7 @@ func testExplainFull(t *testing.T) {
 func testColumns(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -1180,7 +1175,7 @@ func testColumns(t *testing.T) {
 func testColumnsNameCaseSensitivity(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -1214,7 +1209,7 @@ func testColumnsNameCaseSensitivity(t *testing.T) {
 func testQueryRow(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -1254,7 +1249,7 @@ func testInserAndQueryLogTable(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -1326,17 +1321,17 @@ func testAppendLogTable(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
 	appender, err := conn.Appender(ctx, "log_data")
 	require.NoError(t, err)
 	require.Equal(t, "LOG_DATA", appender.TableName())
-	require.Equal(t, api.TableTypeLog, appender.TableType())
+	require.Equal(t, client.TableTypeLog, appender.TableType())
 	appender = appender.WithInputFormats()
 
-	expectCols := []*api.Column{
+	expectCols := []*client.Column{
 		{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
@@ -1402,7 +1397,7 @@ func testAppendTagTable(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -1411,7 +1406,7 @@ func testAppendTagTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	require.Equal(t, "TAG_DATA", appender.TableName())
-	require.Equal(t, api.TableTypeTag, appender.TableType())
+	require.Equal(t, client.TableTypeTag, appender.TableType())
 	appender = appender.WithInputFormats()
 
 	// On systems with slow network configurations (e.g., GitHub Actions runners),
@@ -1422,7 +1417,7 @@ func testAppendTagTable(t *testing.T) {
 		WithBatchMaxBytes(1024). // reduce tcp packet size
 		WithBatchMaxRows(2000)
 
-	expectCols := []*api.Column{
+	expectCols := []*client.Column{
 		{Name: "NAME", Type: api.ColumnTypeVarchar, Length: 100, DataType: api.DataTypeString},
 		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 		{Name: "VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
@@ -1502,13 +1497,6 @@ func testAppendTagTable(t *testing.T) {
 		}
 	}
 	time.Sleep(10 * time.Millisecond) // wait for appender to flush
-	if flusher, ok := appender.(api.Flusher); ok {
-		err = flusher.Flush()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	time.Sleep(10 * time.Millisecond) // wait for appender to flush
 	sc, fc, err := appender.Close()
 	require.NoError(t, err)
 	require.Equal(t, int64(expectCount), sc)
@@ -1579,7 +1567,7 @@ func TestProxyUser(t *testing.T) {
 	ctx := t.Context()
 	db := testServer.MachSvr()
 
-	sysConn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	sysConn, err := db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer sysConn.Close()
 
@@ -1593,7 +1581,7 @@ func TestProxyUser(t *testing.T) {
 	}()
 
 	// create table
-	conn, err := db.Connect(ctx, api.WithPassword("demo", "demo"))
+	conn, err := db.Connect(ctx, WithPassword("demo", "demo"))
 	require.NoError(t, err, "connect fail")
 
 	result = conn.Exec(ctx, "CREATE TAG TABLE tag_data (name VARCHAR(100) primary key, time datetime basetime, value double, json_value json)")
@@ -1622,7 +1610,7 @@ func TestProxyUser(t *testing.T) {
 	conn.Close()
 
 	// connect as proxy user
-	proxyConn, err := db.Connect(ctx, api.WithAuthKey("sys", spi.DefaultKey()), api.WithProxyUser("demo"))
+	proxyConn, err := db.Connect(ctx, WithAuthKey("sys", spi.DefaultKey()), WithProxyUser("demo"))
 	require.NoError(t, err, "connect fail")
 	defer proxyConn.Close()
 

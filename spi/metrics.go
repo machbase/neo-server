@@ -11,6 +11,7 @@ import (
 	"text/template"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -26,7 +27,7 @@ var metricLog = logging.GetLog("statz")
 
 type QueryStatzResult struct {
 	Err        error            `json:"error,omitempty"`
-	Cols       []*api.Column    `json:"columns"`
+	Cols       []*client.Column `json:"columns"`
 	Rows       []*QueryStatzRow `json:"rows"`
 	ValueTypes []string         `json:"types"`
 }
@@ -69,7 +70,7 @@ func QueryStatzFilter(filters ...string) func(key string) (bool, int) {
 type MetricQueryKey struct {
 	key       string
 	field     string
-	column    *api.Column
+	column    *client.Column
 	valueType string
 	order     int
 }
@@ -89,15 +90,15 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 		if pass, order := filter(key); pass {
 			switch kv.Value.(type) {
 			case *expvar.Int:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnInt64(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: client.MakeColumnInt64(kv.Key), valueType: "i", order: order})
 			case *expvar.String:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "s", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: client.MakeColumnString(kv.Key), valueType: "s", order: order})
 			case *expvar.Float:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnDouble(kv.Key), valueType: "f", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: client.MakeColumnDouble(kv.Key), valueType: "f", order: order})
 			case expvar.Func:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnString(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: client.MakeColumnString(kv.Key), valueType: "i", order: order})
 			case metric.MultiTimeSeries:
-				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: api.MakeColumnDouble(kv.Key), valueType: "i", order: order})
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: client.MakeColumnDouble(kv.Key), valueType: "i", order: order})
 			}
 		}
 	})

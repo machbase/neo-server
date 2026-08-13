@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/machbase/neo-client/v2"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
@@ -441,8 +443,8 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			case "DATE", "DATETIME", "TIMESTAMP":
 				buffer[i] = new(sql.NullTime)
 			default:
-				fmt.Printf("=================> colName: %s, databaseType: %s, scanType: %s\n",
-					colType.Name(), colType.DatabaseTypeName(), colType.ScanType().String())
+				// fmt.Printf("=================> colName: %s, databaseType: %s, scanType: %s\n",
+				// 	colType.Name(), colType.DatabaseTypeName(), colType.ScanType().String())
 				buffer[i] = new(interface{})
 			}
 		}
@@ -623,38 +625,38 @@ func InstallLicenseData(ctx context.Context, conn *sql.Conn, licenseFilePath str
 }
 
 type TableInfo struct {
-	Database string        `json:"database"`       // M$SYS_TABLES.DATABASE_ID
-	User     string        `json:"user"`           // M$SYS_USERS.NAME
-	Name     string        `json:"name"`           // M$SYS_TABLES.NAME
-	Id       int64         `json:"id"`             // M$SYS_TABLES.ID
-	Type     api.TableType `json:"type"`           // M$SYS_TABLES.TYPE
-	Flag     api.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
+	Database string           `json:"database"`       // M$SYS_TABLES.DATABASE_ID
+	User     string           `json:"user"`           // M$SYS_USERS.NAME
+	Name     string           `json:"name"`           // M$SYS_TABLES.NAME
+	Id       int64            `json:"id"`             // M$SYS_TABLES.ID
+	Type     client.TableType `json:"type"`           // M$SYS_TABLES.TYPE
+	Flag     client.TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
 }
 
 func (ti *TableInfo) Kind() string {
 	desc := "undef"
 	switch ti.Type {
-	case api.TableTypeLog:
+	case client.TableTypeLog:
 		desc = "Log Table"
-	case api.TableTypeFixed:
+	case client.TableTypeFixed:
 		desc = "Fixed Table"
-	case api.TableTypeVolatile:
+	case client.TableTypeVolatile:
 		desc = "Volatile Table"
-	case api.TableTypeLookup:
+	case client.TableTypeLookup:
 		desc = "Lookup Table"
-	case api.TableTypeKeyValue:
+	case client.TableTypeKeyValue:
 		desc = "KeyValue Table"
-	case api.TableTypeTag:
+	case client.TableTypeTag:
 		desc = "Tag Table"
 	}
 	switch ti.Flag {
-	case api.TableFlagData:
+	case client.TableFlagData:
 		desc += " (data)"
-	case api.TableFlagRollup:
+	case client.TableFlagRollup:
 		desc += " (rollup)"
-	case api.TableFlagMeta:
+	case client.TableFlagMeta:
 		desc += " (meta)"
-	case api.TableFlagStat:
+	case client.TableFlagStat:
 		desc += " (stat)"
 	}
 	return desc
@@ -738,14 +740,14 @@ func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback 
 	}
 }
 
-func QueryTableType(ctx context.Context, conn *sql.Conn, fullTableName string) (api.TableType, error) {
-	_, userName, tableName := api.TableName(fullTableName).Split()
+func QueryTableType(ctx context.Context, conn *sql.Conn, fullTableName string) (client.TableType, error) {
+	_, userName, tableName := TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRowContext(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if r.Err() != nil {
 		return -1, r.Err()
 	}
-	var ret api.TableType
+	var ret client.TableType
 	if err := r.Scan(&ret); err != nil {
 		return -1, err
 	}
@@ -770,7 +772,7 @@ func TruncateTableIfExists(ctx context.Context, conn *sql.Conn, fullTableName st
 		err = fmt.Errorf("table '%s' doesn't exist, %s", fullTableName, err0.Error())
 		return
 	}
-	if tableType == api.TableTypeLog {
+	if tableType == client.TableTypeLog {
 		_, err0 := conn.ExecContext(ctx, fmt.Sprintf("truncate table %s", fullTableName))
 		if err0 != nil {
 			err = err0
@@ -789,7 +791,7 @@ func TruncateTableIfExists(ctx context.Context, conn *sql.Conn, fullTableName st
 }
 
 func ExistsTable(ctx context.Context, conn *sql.Conn, fullTableName string) (bool, error) {
-	dbName, userName, tableName := api.TableName(fullTableName).SplitOr("", "SYS")
+	dbName, userName, tableName := TableName(fullTableName).SplitOr("", "SYS")
 	_, dbID, err := databaseInfo(ctx, conn, dbName)
 	if err != nil {
 		return false, err
@@ -853,9 +855,9 @@ type TableDescription struct {
 	User     string              `json:"user"`
 	Name     string              `json:"name"`
 	Id       int64               `json:"id"`
-	Type     api.TableType       `json:"type"`
-	Flag     api.TableFlag       `json:"flag,omitempty"`
-	Columns  api.Columns         `json:"columns"`
+	Type     client.TableType    `json:"type"`
+	Flag     client.TableFlag    `json:"flag,omitempty"`
+	Columns  client.Columns      `json:"columns"`
 	Indexes  []*IndexDescription `json:"indexes"`
 
 	Summarized       bool   `json:"summarized"`
@@ -864,41 +866,41 @@ type TableDescription struct {
 }
 
 type IndexDescription struct {
-	Id             int64         `json:"id"`
-	Name           string        `json:"name"`
-	Type           api.IndexType `json:"type"`
-	Cols           []string      `json:"columns"`
-	KeyCompress    bool          `json:"keyCompress"`
-	MaxLevel       int           `json:"maxLevel"`
-	PartValueCount int           `json:"partValueCount"`
-	BitMapEncode   string        `json:"bitMapEncode"`
+	Id             int64            `json:"id"`
+	Name           string           `json:"name"`
+	Type           client.IndexType `json:"type"`
+	Cols           []string         `json:"columns"`
+	KeyCompress    bool             `json:"keyCompress"`
+	MaxLevel       int              `json:"maxLevel"`
+	PartValueCount int              `json:"partValueCount"`
+	BitMapEncode   string           `json:"bitMapEncode"`
 }
 
 // String returns string representation of table type.
 func (td *TableDescription) String() string {
 	desc := "undef"
 	switch td.Type {
-	case api.TableTypeLog:
+	case client.TableTypeLog:
 		desc = "Log Table"
-	case api.TableTypeFixed:
+	case client.TableTypeFixed:
 		desc = "Fixed Table"
-	case api.TableTypeVolatile:
+	case client.TableTypeVolatile:
 		desc = "Volatile Table"
-	case api.TableTypeLookup:
+	case client.TableTypeLookup:
 		desc = "Lookup Table"
-	case api.TableTypeKeyValue:
+	case client.TableTypeKeyValue:
 		desc = "KeyValue Table"
-	case api.TableTypeTag:
+	case client.TableTypeTag:
 		desc = "Tag Table"
 	}
 	switch td.Flag {
-	case api.TableFlagData:
+	case client.TableFlagData:
 		desc += " (data)"
-	case api.TableFlagRollup:
+	case client.TableFlagRollup:
 		desc += " (rollup)"
-	case api.TableFlagMeta:
+	case client.TableFlagMeta:
 		desc += " (meta)"
-	case api.TableFlagStat:
+	case client.TableFlagStat:
 		desc += " (stat)"
 	}
 	return desc
@@ -909,17 +911,17 @@ func (td *TableDescription) String() string {
 // If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
 // such as "_RID" and "_ARRIVAL_TIME".
 func DescribeTable(ctx context.Context, conn *sql.Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
-	_, _, tableName := api.TableName(name).Split()
+	_, _, tableName := TableName(name).Split()
 	if strings.HasPrefix(tableName, "V$") {
-		return describe_mv(ctx, conn, api.TableName(name), includeHiddenColumns)
+		return describe_mv(ctx, conn, TableName(name), includeHiddenColumns)
 	} else if strings.HasPrefix(tableName, "M$") {
-		return describe_mv(ctx, conn, api.TableName(name), includeHiddenColumns)
+		return describe_mv(ctx, conn, TableName(name), includeHiddenColumns)
 	} else {
-		return describe(ctx, conn, api.TableName(name), includeHiddenColumns)
+		return describe(ctx, conn, TableName(name), includeHiddenColumns)
 	}
 }
 
-func describe(ctx context.Context, conn *sql.Conn, name api.TableName, includeHiddenColumns bool) (*TableDescription, error) {
+func describe(ctx context.Context, conn *sql.Conn, name TableName, includeHiddenColumns bool) (*TableDescription, error) {
 	d := &TableDescription{}
 	var colCount int
 
@@ -966,7 +968,7 @@ func describe(ctx context.Context, conn *sql.Conn, name api.TableName, includeHi
 	}()
 
 	for rows.Next() {
-		col := &api.Column{}
+		col := &client.Column{}
 		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id, &col.Flag)
 		if err != nil {
 			return nil, err
@@ -977,14 +979,14 @@ func describe(ctx context.Context, conn *sql.Conn, name api.TableName, includeHi
 		col.DataType = col.Type.DataType()
 		d.Columns = append(d.Columns, col)
 
-		if col.Flag&api.ColumnFlagSummarized > 0 {
+		if col.IsSummarized() {
 			d.Summarized = true
 			d.SummarizedColumn = col.Name
 		}
-		if col.Flag&api.ColumnFlagTagName > 0 {
+		if col.IsTagName() {
 			d.TagNameColumn = col.Name
 		}
-		if col.Flag&api.ColumnFlagBasetime > 0 && col.Type != api.ColumnTypeDatetime {
+		if col.IsBaseDistance() {
 			col.Flag = api.ColumnFlagBaseDistance
 		}
 	}
@@ -999,7 +1001,7 @@ func describe(ctx context.Context, conn *sql.Conn, name api.TableName, includeHi
 	return d, nil
 }
 
-func describe_mv(ctx context.Context, conn *sql.Conn, name api.TableName, includeHiddenColumns bool) (*TableDescription, error) {
+func describe_mv(ctx context.Context, conn *sql.Conn, name TableName, includeHiddenColumns bool) (*TableDescription, error) {
 	d := &TableDescription{}
 	var tableType int
 	var colCount int
@@ -1021,7 +1023,7 @@ func describe_mv(ctx context.Context, conn *sql.Conn, name api.TableName, includ
 	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = api.TableType(tableType)
+	d.Type = client.TableType(tableType)
 
 	rows, err := conn.QueryContext(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
 	if err != nil {
@@ -1030,7 +1032,7 @@ func describe_mv(ctx context.Context, conn *sql.Conn, name api.TableName, includ
 	defer rows.Close()
 
 	for rows.Next() {
-		col := &api.Column{}
+		col := &client.Column{}
 		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id)
 		if err != nil {
 			return nil, err
@@ -1080,7 +1082,7 @@ func describe_idx(ctx context.Context, conn *sql.Conn, tableId int64, dbId int64
 		if err = rows.Scan(&d.Name, &indexType, &d.Id, &keyCompress, &d.MaxLevel, &d.PartValueCount, &d.BitMapEncode); err != nil {
 			return nil, err
 		}
-		d.Type = api.IndexType(indexType)
+		d.Type = client.IndexType(indexType)
 		d.KeyCompress = (keyCompress != 0)
 		idxCols, err := conn.QueryContext(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, d.Id, dbId)
 		if err != nil {
@@ -1110,7 +1112,7 @@ func describe_idx(ctx context.Context, conn *sql.Conn, tableId int64, dbId int64
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(ctx context.Context, conn *sql.Conn, dbName string, descColumns api.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
+func WriteLineProtocol(ctx context.Context, conn *sql.Conn, dbName string, descColumns client.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) *InsertResult {
 	columns := descColumns.Names()
 	columns = columns[:3]
 
@@ -1197,8 +1199,6 @@ func WriteLineProtocol(ctx context.Context, conn *sql.Conn, dbName string, descC
 	return ret
 }
 
-var _ api.Result = &InsertResult{}
-
 type InsertResult struct {
 	err          error
 	rowsAffected int
@@ -1215,4 +1215,167 @@ func (ir *InsertResult) RowsAffected() int64 {
 
 func (ir *InsertResult) Message() string {
 	return ir.message
+}
+
+// ParseUserName parses the given loginName into a UserName struct.
+// It returns the parsed UserName and a boolean indicating whether proxy authentication is allowed.
+// The expected format for proxy authentication is "sys as proxy_user" (case-insensitive for "as").
+// If the format is correct and the login username is "sys", it allows proxy authentication and returns true.
+// If the format is correct but the login username is not "sys", it does not allow proxy authentication and returns false.
+// If the format is incorrect, it treats the entire loginName as the Login with no Proxy and returns false.
+func ParseUserName(loginName string) (UserName, bool) {
+	username := UserName{}
+	allowed := username.Parse(loginName)
+	return username, allowed
+}
+
+type UserName struct {
+	// Login is the login username token (the left side of "as") or the raw input when parsing fails.
+	Login string
+	// Proxy is the proxy username token (the right side of "as") when present.
+	Proxy string
+}
+
+var usernameProxyPattern = regexp.MustCompile(`(?i)^\s*(\S+)\s+as\s+(\S+)\s*$`)
+
+// Parse attempts to parse the given loginName into Login and Proxy components.
+// The expected format is "login as proxy_user" (case-insensitive for "as").
+// It returns true if parsing is successful and the login username is "sys" (case-insensitive), allowing proxy authentication.
+// On parse failure, it sets Login to the original loginName, Proxy to an empty string, and returns false.
+// Example:
+//   - Input: "sys as alice" -> Login: "sys", Proxy: "alice", returns true (proxy auth allowed)
+//   - Input: "bob as alice" -> Login: "bob", Proxy: "alice", returns false (proxy auth not allowed)
+func (u *UserName) Parse(loginName string) bool {
+	matches := usernameProxyPattern.FindStringSubmatch(loginName)
+	if len(matches) == 3 {
+		u.Login = matches[1]
+		u.Proxy = matches[2]
+		if strings.EqualFold(u.Login, "sys") {
+			if strings.EqualFold(u.Proxy, "sys") {
+				// treat "sys as sys" as normal "sys" login without proxy
+				u.Proxy = ""
+				return false
+			} else {
+				// "sys as proxy_user" format is only allowed when login is "sys""
+				return true
+			}
+		} else {
+			// proxy auth not allowed when login is not "sys", even if the format is correct
+			return false
+		}
+	}
+	u.Login = loginName
+	u.Proxy = ""
+	return false
+}
+
+// String returns the string representation of the Username.
+// It formats as "login as proxy" if Proxy is present, otherwise just "login".
+// The returned string is in lowercase for consistency, as login names are typically case-insensitive.
+func (u UserName) String() string {
+	if u.Proxy != "" {
+		return fmt.Sprintf("%s as %s", strings.ToLower(u.Login), strings.ToLower(u.Proxy))
+	}
+	return strings.ToLower(u.Login)
+}
+
+type TableName string
+
+func (tn TableName) String() string {
+	return strings.ToUpper(string(tn))
+}
+
+// Split splits the full table name that consists of database, user, and table name.
+func (tn TableName) SplitOr(dbName string, userName string) (string, string, string) {
+	tableName := strings.ToUpper(string(tn))
+	parts := strings.SplitN(tableName, ".", 3)
+	if len(parts) == 2 {
+		userName = parts[0]
+		tableName = parts[1]
+	} else if len(parts) == 3 {
+		dbName = parts[0]
+		userName = parts[1]
+		tableName = parts[2]
+	}
+	return dbName, userName, tableName
+}
+
+// Split splits the full table name that consists of database, user, and table name.
+func (tn TableName) Split() (string, string, string) {
+	dbName := "MACHBASEDB"
+	userName := "SYS"
+	tableName := strings.ToUpper(string(tn))
+	parts := strings.SplitN(tableName, ".", 3)
+	if len(parts) == 2 {
+		userName = parts[0]
+		tableName = parts[1]
+	} else if len(parts) == 3 {
+		dbName = parts[0]
+		userName = parts[1]
+		tableName = parts[2]
+	}
+	return dbName, userName, tableName
+}
+
+type Appender interface {
+	// TableName returns the name of the table to which the Appender is appending data.
+	TableName() string
+
+	// Append adds a new row with the specified values to the table.
+	// The number of values must match the number of columns in the table.
+	//
+	// Example:
+	//	appender.Append("name", time.Now(), 3.14)
+	Append(values ...any) error
+
+	// AppendLogTime adds a new row with the specified timestamp and values to the table.
+	// This is applicable only for log tables, where the timestamp is applied to _ARRIVAL_TIME instead of the current system time.
+	//
+	// Example:
+	//	appender.AppendLogTime(time.Now(), "name", 3.14)
+	AppendLogTime(ts time.Time, values ...any) error
+
+	// Close finalizes the appending process and releases any resources associated with the Appender.
+	// It returns the number of rows successfully appended and the number of rows that failed to append.
+	//
+	// Example:
+	//	rowsAppended, rowsFailed, err := appender.Close()
+	Close() (int64, int64, error)
+
+	// Columns returns a list of column information for the table.
+	//
+	// Example:
+	//	columns, err := appender.Columns()
+	//	if err != nil {
+	//		log.Fatal(err)
+	//	}
+	//	for _, col := range columns {
+	//		fmt.Println(col.Name)
+	//	}
+	Columns() (client.Columns, error)
+
+	// TableType returns the type of the table to which the Appender is appending data.
+	TableType() client.TableType
+
+	// WithInputColumns sets the input column names for the Appender.
+	WithInputColumns(columns ...string) Appender
+
+	// WithInputFormats sets the input formats for the Appender.
+	WithInputFormats(formats ...string) Appender
+
+	// WithBatchMaxRows sets the maximum batch size in rows for batch append. If the batch size exceeds the limit, it will be flushed immediately.
+	// The default value is 512 rows. The minimum value is 1 row.
+	WithBatchMaxRows(rows int) Appender
+
+	// WithBatchMaxBytes sets the maximum batch size in bytes for batch append. If the batch size exceeds the limit, it will be flushed immediately.
+	// The default value is 512KB. The minimum value is 4KB.
+	WithBatchMaxBytes(bytes int) Appender
+
+	// WithBatchMaxDelay sets the maximum delay for batch append. If the batch is not full, it will be flushed when the delay is reached.
+	// The default value is 5 milliseconds. The minimum value is 1 millisecond.
+	WithBatchMaxDelay(duration time.Duration) Appender
+}
+
+type Flusher interface {
+	Flush() error
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	client "github.com/machbase/neo-client/v2"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -110,7 +109,7 @@ func TestAppendWorkerAppenderAccessorsAndNoopOptions(t *testing.T) {
 	worker := newAppendWorkerForTest("sensor")
 
 	require.Equal(t, "", worker.TableName())
-	require.Equal(t, api.TableType(-1), worker.TableType())
+	require.Equal(t, client.TableType(-1), worker.TableType())
 	columns, err := worker.Columns()
 	require.EqualError(t, err, "appender is not connected")
 	require.Nil(t, columns)
@@ -136,7 +135,7 @@ func TestAppendWorkerStartAndAppenderWithWorkerAppendLogTime(t *testing.T) {
 
 	worker2 := newAppendWorkerForTest("sensor")
 	worker2.appendC = make(chan []interface{}, 1)
-	wrapped := worker2.WithInputColumns("NAME", "VALUE").(*AppenderWithWorker)
+	wrapped := worker2.WithInputColumns("NAME", "VALUE")
 	sts := time.Unix(10, 0)
 	err := wrapped.AppendLogTime(sts, "tagB", 11.0)
 	require.EqualError(t, err, " is not a log table, use Append() instead")

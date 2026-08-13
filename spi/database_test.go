@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +23,7 @@ type poolStubDatabase struct {
 	connectCount int
 }
 
-func (s *poolStubDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
+func (s *poolStubDatabase) Connect(ctx context.Context) (*poolStubConn, error) {
 	s.connectCount++
 	return &poolStubConn{}, nil
 }
@@ -38,51 +40,49 @@ type poolStubConn struct{}
 
 func (c *poolStubConn) Close() error { return nil }
 
-func (c *poolStubConn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+func (c *poolStubConn) Exec(ctx context.Context, sqlText string, params ...any) *InsertResult {
 	return &InsertResult{rowsAffected: 1, message: "a row inserted."}
 }
 
-func (c *poolStubConn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+func (c *poolStubConn) Query(ctx context.Context, sqlText string, params ...any) (*poolStubRows, error) {
 	// DefaultPool() validates connector availability via database/sql Ping() -> SELECT 1.
 	return &poolStubRows{}, nil
 }
 
-func (c *poolStubConn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	return &poolStubRow{err: api.ErrNotImplemented("QueryRow")}
+func (c *poolStubConn) QueryRow(ctx context.Context, sqlText string, params ...any) *poolStubRow {
+	return &poolStubRow{err: errors.New("not implemented QueryRow")}
 }
 
-func (c *poolStubConn) Prepare(ctx context.Context, query string) (api.Stmt, error) {
-	return nil, api.ErrNotImplemented("Prepare")
+func (c *poolStubConn) Prepare(ctx context.Context, query string) (any, error) {
+	return nil, errors.New("not implemented Prepare")
 }
 
-func (c *poolStubConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-	return nil, api.ErrNotImplemented("Appender")
+func (c *poolStubConn) Appender(ctx context.Context, tableName string) (any, error) {
+	return nil, errors.New("not implemented Appender")
 }
 
 func (c *poolStubConn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	return "", api.ErrNotImplemented("Explain")
+	return "", errors.New("not implemented Explain")
 }
 
 type poolStubRows struct{}
 
-func (r *poolStubRows) Next() bool                    { return false }
-func (r *poolStubRows) Scan(cols ...any) error        { return nil }
-func (r *poolStubRows) Close() error                  { return nil }
-func (r *poolStubRows) Err() error                    { return nil }
-func (r *poolStubRows) IsFetchable() bool             { return true }
-func (r *poolStubRows) RowsAffected() int64           { return 0 }
-func (r *poolStubRows) Message() string               { return "success" }
-func (r *poolStubRows) Columns() (api.Columns, error) { return api.Columns{}, nil }
+func (r *poolStubRows) Next() bool                       { return false }
+func (r *poolStubRows) Scan(cols ...any) error           { return nil }
+func (r *poolStubRows) Close() error                     { return nil }
+func (r *poolStubRows) Err() error                       { return nil }
+func (r *poolStubRows) IsFetchable() bool                { return true }
+func (r *poolStubRows) RowsAffected() int64              { return 0 }
+func (r *poolStubRows) Message() string                  { return "success" }
+func (r *poolStubRows) Columns() (client.Columns, error) { return client.Columns{}, nil }
 
 type poolStubRow struct {
 	err          error
 	values       []any
-	columns      api.Columns
+	columns      client.Columns
 	columnsErr   error
 	timeLocation *time.Location
 }
-
-var _ api.Row = (*poolStubRow)(nil)
 
 func (r *poolStubRow) Err() error {
 	return r.err
@@ -102,21 +102,21 @@ func (r *poolStubRow) Scan(values ...any) error {
 		return r.err
 	}
 	if len(values) > len(r.values) {
-		return api.ErrDatabaseScanIndex(len(values), len(r.values))
+		return fmt.Errorf("scan column %d is out of range %d", len(values), len(r.values))
 	}
 	for i := range values {
 		if r.values[i] == nil {
 			values[i] = nil
 			continue
 		}
-		if err := api.Scan(r.values[i], values[i], r.timeLocation); err != nil {
+		if err := client.Scan(r.values[i], values[i], r.timeLocation); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *poolStubRow) Columns() (api.Columns, error) {
+func (r *poolStubRow) Columns() (client.Columns, error) {
 	return r.columns, nil
 }
 
@@ -151,13 +151,13 @@ type testColumnConn struct {
 }
 
 func (c *testColumnConn) Prepare(string) (driver.Stmt, error) {
-	return nil, api.ErrNotImplemented("Prepare")
+	return nil, errors.New("not implemented Prepare")
 }
 
 func (c *testColumnConn) Close() error { return nil }
 
 func (c *testColumnConn) Begin() (driver.Tx, error) {
-	return nil, api.ErrNotImplemented("Begin")
+	return nil, errors.New("not implemented Begin")
 }
 
 func (c *testColumnConn) QueryContext(_ context.Context, _ string, _ []driver.NamedValue) (driver.Rows, error) {
@@ -498,13 +498,13 @@ func (d *catalogTestConnDriver) Open(name string) (driver.Conn, error) {
 }
 
 func (c *catalogTestConnDriverConn) Prepare(string) (driver.Stmt, error) {
-	return nil, api.ErrNotImplemented("Prepare")
+	return nil, errors.New("not implemented Prepare")
 }
 
 func (c *catalogTestConnDriverConn) Close() error { return nil }
 
 func (c *catalogTestConnDriverConn) Begin() (driver.Tx, error) {
-	return nil, api.ErrNotImplemented("Begin")
+	return nil, errors.New("not implemented Begin")
 }
 
 func (c *catalogTestConnDriverConn) QueryContext(_ context.Context, sqlText string, args []driver.NamedValue) (driver.Rows, error) {
@@ -543,7 +543,7 @@ func (c *catalogTestConnDriverConn) QueryContext(_ context.Context, sqlText stri
 		if len(params) != 3 || params[0] != "SYS" || params[2] != "SHARED_TABLE" {
 			return nil, fmt.Errorf("unexpected table description params: %v", params)
 		}
-		return catalogTestConnRowsFrom([]string{"TABLE_ID", "TABLE_TYPE", "TABLE_FLAG", "TABLE_COLCOUNT"}, [][]driver.Value{{int64(77), int64(api.TableTypeLog), int64(api.TableFlagNone), int64(1)}}), nil
+		return catalogTestConnRowsFrom([]string{"TABLE_ID", "TABLE_TYPE", "TABLE_FLAG", "TABLE_COLCOUNT"}, [][]driver.Value{{int64(77), int64(client.TableTypeLog), int64(client.TableFlagNone), int64(1)}}), nil
 	case strings.Contains(sqlText, "from M$SYS_COLUMNS"):
 		dbID, err := catalogTestDBParam(params, 2, 1)
 		if err != nil {
@@ -558,7 +558,7 @@ func (c *catalogTestConnDriverConn) QueryContext(_ context.Context, sqlText stri
 		if params[2].(int64) != dbID {
 			return nil, fmt.Errorf("database ID was not applied to both index tables: %v", params)
 		}
-		return catalogTestConnRowsFrom([]string{"NAME", "TYPE", "ID", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"}, [][]driver.Value{{catalogTestPrefix(dbID) + "_IDX", int64(api.IndexTypeRedBlack), int64(88), int64(0), int64(0), int64(0), "EQUAL"}}), nil
+		return catalogTestConnRowsFrom([]string{"NAME", "TYPE", "ID", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"}, [][]driver.Value{{catalogTestPrefix(dbID) + "_IDX", int64(client.IndexTypeRedBlack), int64(88), int64(0), int64(0), int64(0), "EQUAL"}}), nil
 	case strings.Contains(sqlText, "M$SYS_INDEX_COLUMNS"):
 		dbID, err := catalogTestDBParam(params, 2, 1)
 		if err != nil {
@@ -695,5 +695,123 @@ func TestCatalogTablesFallBackForLegacyServer(t *testing.T) {
 		if len(desc.Indexes) != 1 || desc.Indexes[0].Name != tt.indexName {
 			t.Fatalf("DescribeTable(%q) returned wrong legacy index: %#v", tt.name, desc.Indexes)
 		}
+	}
+}
+
+func TestParseProxyUserName(t *testing.T) {
+	tests := []struct {
+		name              string
+		input             string
+		expectedLoginName string
+		expectedProxyUser string
+		expectedAllowed   bool
+		expectedString    string
+	}{
+		{
+			name:              "no proxy user",
+			input:             "alice",
+			expectedLoginName: "alice",
+			expectedProxyUser: "",
+			expectedAllowed:   false,
+			expectedString:    "alice",
+		},
+		{
+			name:              "with proxy user",
+			input:             "Sys As proxy",
+			expectedLoginName: "Sys",
+			expectedProxyUser: "proxy",
+			expectedAllowed:   true,
+			expectedString:    "sys as proxy",
+		},
+		{
+			name:              "proxy user same as login",
+			input:             "sys as sys",
+			expectedLoginName: "sys",
+			expectedProxyUser: "",
+			expectedAllowed:   false,
+			expectedString:    "sys",
+		},
+		{
+			name:              "non-sys login with proxy format",
+			input:             "Proxy as other",
+			expectedLoginName: "Proxy",
+			expectedProxyUser: "other",
+			expectedAllowed:   false,
+			expectedString:    "proxy as other",
+		},
+		{
+			name:              "invalid format",
+			input:             "PROXY other",
+			expectedLoginName: "PROXY other",
+			expectedProxyUser: "",
+			expectedAllowed:   false,
+			expectedString:    "proxy other",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			un := &UserName{}
+			allowed := un.Parse(tt.input)
+			require.Equal(t, tt.expectedLoginName, un.Login)
+			require.Equal(t, tt.expectedProxyUser, un.Proxy)
+			require.Equal(t, tt.expectedAllowed, allowed)
+			require.Equal(t, tt.expectedString, un.String())
+		})
+	}
+}
+
+func TestParseTableName(t *testing.T) {
+	tests := []struct {
+		name            string
+		input           string
+		expectedDB      string
+		expectedUser    string
+		expectedTable   string
+		expectedOrDB    string
+		expectedOrUser  string
+		expectedOrTable string
+	}{
+		{
+			name:            "table_only",
+			input:           "example",
+			expectedDB:      "MACHBASEDB",
+			expectedUser:    "SYS",
+			expectedTable:   "EXAMPLE",
+			expectedOrDB:    "db0",
+			expectedOrUser:  "user0",
+			expectedOrTable: "EXAMPLE",
+		},
+		{
+			name:            "user.table",
+			input:           "sys.example",
+			expectedDB:      "MACHBASEDB",
+			expectedUser:    "SYS",
+			expectedTable:   "EXAMPLE",
+			expectedOrDB:    "db0",
+			expectedOrUser:  "SYS",
+			expectedOrTable: "EXAMPLE",
+		},
+		{
+			name:            "db.user.table",
+			input:           "testdb.sys.example",
+			expectedDB:      "TESTDB",
+			expectedUser:    "SYS",
+			expectedTable:   "EXAMPLE",
+			expectedOrDB:    "TESTDB",
+			expectedOrUser:  "SYS",
+			expectedOrTable: "EXAMPLE",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, user, table := TableName(tt.input).Split()
+			require.Equal(t, tt.expectedDB, db)
+			require.Equal(t, tt.expectedUser, user)
+			require.Equal(t, tt.expectedTable, table)
+			db, user, table = TableName(tt.input).SplitOr("db0", "user0")
+			require.Equal(t, tt.expectedOrDB, db)
+			require.Equal(t, tt.expectedOrUser, user)
+			require.Equal(t, tt.expectedOrTable, table)
+		})
 	}
 }

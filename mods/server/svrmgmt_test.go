@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
@@ -28,7 +28,7 @@ import (
 
 type coverageStubDB struct{}
 
-func (d *coverageStubDB) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
+func (d *coverageStubDB) Connect(ctx context.Context) (*client.Appender, error) {
 	return nil, errors.New("not implemented")
 }
 

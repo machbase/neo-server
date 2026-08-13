@@ -8,7 +8,6 @@ import (
 
 	"github.com/dop251/goja"
 	client "github.com/machbase/neo-client/v2"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 )
@@ -337,7 +336,7 @@ func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
 		if v == nil {
 			values.Set(names[i], goja.Null())
 		} else {
-			values.Set(names[i], api.Unbox(v))
+			values.Set(names[i], client.Unbox(v))
 		}
 	}
 	ret.Set("values", values)
@@ -520,7 +519,7 @@ func (r *ROWS) jsNext(call goja.FunctionCall) goja.Value {
 	var rec = vm.NewObject()
 	for i, col := range r.cols {
 		if i < len(values) {
-			rec.Set(col.Name(), vm.ToValue(api.Unbox(values[i])))
+			rec.Set(col.Name(), vm.ToValue(client.Unbox(values[i])))
 		} else {
 			rec.Set(col.Name(), goja.Null())
 		}
@@ -548,7 +547,7 @@ func (r *ROWS) Next(call goja.FunctionCall) []any {
 		if v == nil {
 			continue
 		}
-		values[i] = api.Unbox(v)
+		values[i] = client.Unbox(v)
 	}
 	return values
 }

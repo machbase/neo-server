@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
@@ -243,7 +242,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	if username, proxied := api.ParseUserName(user); proxied {
+	if username, proxied := spi.ParseUserName(user); proxied {
 		user = username.Login
 	}
 
@@ -268,7 +267,7 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 		user = strings.Split(user, ":")[0]
 	}
 	user = strings.ToLower(user)
-	if username, proxied := api.ParseUserName(user); proxied {
+	if username, proxied := spi.ParseUserName(user); proxied {
 		user = username.Login
 	}
 
@@ -340,7 +339,7 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
 	var command string
 
 	user := ss.User()
-	if username, proxied := api.ParseUserName(user); proxied {
+	if username, proxied := spi.ParseUserName(user); proxied {
 		user = username.Proxy
 	}
 	uc := svr.splitUserAndShell(user)

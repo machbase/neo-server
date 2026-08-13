@@ -533,7 +533,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 		colTypes[i] = api.ParseColumnType(colTypeName).DataType()
 	}
 	tableType, _ := ent.appender.TableType()
-	if tableType == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+	if tableType == client.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

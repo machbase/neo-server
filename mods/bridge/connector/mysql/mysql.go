@@ -7,7 +7,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 )
 
 type Bridge struct {
@@ -65,7 +65,7 @@ func (c *Bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 func (c *Bridge) SupportLastInsertId() bool      { return true }
 func (c *Bridge) ParameterMarker(idx int) string { return "?" }
 func (c *Bridge) NormalizeType(values []any) []any {
-	return api.NormalizeTypes(values, time.UTC)
+	return client.NormalizeTypes(values, time.UTC)
 }
 func (c *Bridge) NewScanType(reflectType string, databaseTypeName string) any {
 	return NewScanType(reflectType, databaseTypeName)

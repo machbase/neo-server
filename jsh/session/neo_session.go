@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
-	"github.com/machbase/neo-client/v2/api"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
@@ -122,7 +122,7 @@ func Configure(c Config) error {
 	c.accessToken = rspData.AccessToken
 	c.refreshToken = rspData.RefreshToken
 
-	if username, proxyed := api.ParseUserName(c.User); username.Proxy != "" && proxyed {
+	if username, proxyed := spi.ParseUserName(c.User); username.Proxy != "" && proxyed {
 		c.User = username.Proxy
 	}
 	rpcPayload := map[string]any{

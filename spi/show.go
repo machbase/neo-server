@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type ResultSet interface {
-	Columns() api.Columns
+	Columns() client.Columns
 	Err() error
 	Iter(func(values []interface{}) bool)
 	Message() string
@@ -51,10 +52,10 @@ type ShowInfoResultSet struct {
 
 var _ ResultSet = (*ShowInfoResultSet)(nil)
 
-func (si *ShowInfoResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnString("NAME"),
-		api.MakeColumnAny("VALUE"),
+func (si *ShowInfoResultSet) Columns() client.Columns {
+	return client.Columns{
+		client.MakeColumnString("NAME"),
+		client.MakeColumnAny("VALUE"),
 	}
 }
 
@@ -91,8 +92,8 @@ type LicenseResultSet struct {
 
 var _ ResultSet = (*LicenseResultSet)(nil)
 
-func (li *LicenseResultSet) Columns() api.Columns {
-	return api.Columns{
+func (li *LicenseResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeString},
 		{Name: "TYPE", DataType: api.DataTypeString},
 		{Name: "CUSTOMER", DataType: api.DataTypeString},
@@ -129,10 +130,10 @@ type ShowPortsResultSet struct {
 
 var _ ResultSet = (*ShowPortsResultSet)(nil)
 
-func (si *ShowPortsResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnString("PORT"),
-		api.MakeColumnString("ADDRESS"),
+func (si *ShowPortsResultSet) Columns() client.Columns {
+	return client.Columns{
+		client.MakeColumnString("PORT"),
+		client.MakeColumnString("ADDRESS"),
 	}
 }
 
@@ -171,10 +172,10 @@ type UserInfo struct {
 
 var _ ResultSet = (*ShowUsersResultSet)(nil)
 
-func (si *ShowUsersResultSet) Columns() api.Columns {
-	return api.Columns{
-		api.MakeColumnInt64("USER_ID"),
-		api.MakeColumnString("NAME"),
+func (si *ShowUsersResultSet) Columns() client.Columns {
+	return client.Columns{
+		client.MakeColumnInt64("USER_ID"),
+		client.MakeColumnString("NAME"),
 	}
 }
 
@@ -218,14 +219,14 @@ type ShowTablesResultSet struct {
 
 var _ ResultSet = (*ShowTablesResultSet)(nil)
 
-func (ti *ShowTablesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "DATABASE_NAME", DataType: api.DataTypeString},
-		{Name: "USER_NAME", DataType: api.DataTypeString},
-		{Name: "TABLE_NAME", DataType: api.DataTypeString},
-		{Name: "TABLE_ID", DataType: api.DataTypeInt64},
-		{Name: "TABLE_TYPE", DataType: api.DataTypeString},
-		{Name: "TABLE_FLAG", DataType: api.DataTypeString},
+func (ti *ShowTablesResultSet) Columns() client.Columns {
+	return client.Columns{
+		client.MakeColumnString("DATABASE_NAME"),
+		client.MakeColumnString("USER_NAME"),
+		client.MakeColumnString("TABLE_NAME"),
+		client.MakeColumnInt64("TABLE_ID"),
+		client.MakeColumnString("TABLE_TYPE"),
+		client.MakeColumnString("TABLE_FLAG"),
 	}
 }
 
@@ -268,13 +269,13 @@ func (tr *ShowTableResultSet) Message() string {
 	return ""
 }
 
-func (tr *ShowTableResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "COLUMN", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
-		{Name: "LENGTH", DataType: api.DataTypeInt32},
-		{Name: "FLAG", DataType: api.DataTypeString},
-		{Name: "INDEX", DataType: api.DataTypeString},
+func (tr *ShowTableResultSet) Columns() client.Columns {
+	return client.Columns{
+		client.MakeColumnString("COLUMN"),
+		client.MakeColumnString("TYPE"),
+		client.MakeColumnInt32("LENGTH"),
+		client.MakeColumnString("FLAG"),
+		client.MakeColumnString("INDEX"),
 	}
 }
 
@@ -328,18 +329,18 @@ type ShowMetaTablesResultSet struct {
 }
 
 type MetaTableInfo struct {
-	Id   int64         `json:"id"`
-	Name string        `json:"name"`
-	Type api.TableType `json:"type"`
+	Id   int64            `json:"id"`
+	Name string           `json:"name"`
+	Type client.TableType `json:"type"`
 }
 
 var _ ResultSet = (*ShowMetaTablesResultSet)(nil)
 
-func (ti *ShowMetaTablesResultSet) Columns() api.Columns {
-	return api.Columns{
-		{Name: "ID", DataType: api.DataTypeInt64},
-		{Name: "NAME", DataType: api.DataTypeString},
-		{Name: "TYPE", DataType: api.DataTypeString},
+func (ti *ShowMetaTablesResultSet) Columns() client.Columns {
+	return client.Columns{
+		client.MakeColumnInt64("ID"),
+		client.MakeColumnString("NAME"),
+		client.MakeColumnString("TYPE"),
 	}
 }
 
@@ -374,15 +375,15 @@ type ShowVirtualTablesResultSet struct {
 }
 
 type VirtualTableInfo struct {
-	Id   int64         `json:"id"`
-	Name string        `json:"name"`
-	Type api.TableType `json:"type"`
+	Id   int64            `json:"id"`
+	Name string           `json:"name"`
+	Type client.TableType `json:"type"`
 }
 
 var _ ResultSet = (*ShowVirtualTablesResultSet)(nil)
 
-func (ti *ShowVirtualTablesResultSet) Columns() api.Columns {
-	return api.Columns{
+func (ti *ShowVirtualTablesResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "NAME", DataType: api.DataTypeString},
 		{Name: "TYPE", DataType: api.DataTypeString},
@@ -421,8 +422,8 @@ type ShowSessionsResultSet struct {
 
 var _ ResultSet = (*ShowSessionsResultSet)(nil)
 
-func (sri *ShowSessionsResultSet) Columns() api.Columns {
-	return api.Columns{
+func (sri *ShowSessionsResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "USER_NAME", DataType: api.DataTypeString},
 		{Name: "USER_ID", DataType: api.DataTypeInt64},
@@ -523,8 +524,8 @@ func (si *StatementInfo) Values() []interface{} {
 
 var _ ResultSet = (*ShowStatementsResultSet)(nil)
 
-func (sri *ShowStatementsResultSet) Columns() api.Columns {
-	return api.Columns{
+func (sri *ShowStatementsResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "SESSION_ID", DataType: api.DataTypeInt64},
 		{Name: "STATE", DataType: api.DataTypeString},
@@ -582,8 +583,8 @@ type IndexInfo struct {
 
 var _ ResultSet = (*ShowIndexesResultSet)(nil)
 
-func (ii *ShowIndexesResultSet) Columns() api.Columns {
-	return api.Columns{
+func (ii *ShowIndexesResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "DATABASE", DataType: api.DataTypeString},
 		{Name: "USER", DataType: api.DataTypeString},
@@ -716,8 +717,8 @@ type ShowIndexResultSet struct {
 
 var _ ResultSet = (*ShowIndexResultSet)(nil)
 
-func (qir *ShowIndexResultSet) Columns() api.Columns {
-	return api.Columns{
+func (qir *ShowIndexResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "DATABASE", DataType: api.DataTypeString},
 		{Name: "USER", DataType: api.DataTypeString},
@@ -782,8 +783,8 @@ type StorageInfo struct {
 
 var _ ResultSet = (*ShowStorageResultSet)(nil)
 
-func (sui *ShowStorageResultSet) Columns() api.Columns {
-	return api.Columns{
+func (sui *ShowStorageResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "DATABASE_NAME", DataType: api.DataTypeString},
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
@@ -896,8 +897,8 @@ type TableUsageInfo struct {
 
 var _ ResultSet = (*ShowTableUsageResultSet)(nil)
 
-func (tui *ShowTableUsageResultSet) Columns() api.Columns {
-	return api.Columns{
+func (tui *ShowTableUsageResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "DATABASE", DataType: api.DataTypeString},
 		{Name: "USER", DataType: api.DataTypeString},
 		{Name: "TABLE", DataType: api.DataTypeString},
@@ -983,8 +984,8 @@ type LsmIndexInfo struct {
 
 var _ ResultSet = (*ShowLsmResultSet)(nil)
 
-func (li *ShowLsmResultSet) Columns() api.Columns {
-	return api.Columns{
+func (li *ShowLsmResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "INDEX_NAME", DataType: api.DataTypeString},
 		{Name: "LEVEL", DataType: api.DataTypeInt64},
@@ -1048,8 +1049,8 @@ type IndexGapInfo struct {
 
 var _ ResultSet = (*ShowIndexGapResultSet)(nil)
 
-func (igi *ShowIndexGapResultSet) Columns() api.Columns {
-	return api.Columns{
+func (igi *ShowIndexGapResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "INDEX_ID", DataType: api.DataTypeInt64},
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "INDEX_NAME", DataType: api.DataTypeString},
@@ -1117,8 +1118,8 @@ type TagIndexGapInfo struct {
 
 var _ ResultSet = (*TagIndexGapResultSet)(nil)
 
-func (tigi *TagIndexGapResultSet) Columns() api.Columns {
-	return api.Columns{
+func (tigi *TagIndexGapResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "TABLE_ID", DataType: api.DataTypeInt64},
 		{Name: "TABLE_NAME", DataType: api.DataTypeString},
 		{Name: "STATUS", DataType: api.DataTypeString},
@@ -1192,8 +1193,8 @@ type RollupGapInfo struct {
 
 var _ ResultSet = (*ShowRollupGapResultSet)(nil)
 
-func (rgi *ShowRollupGapResultSet) Columns() api.Columns {
-	return api.Columns{
+func (rgi *ShowRollupGapResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "USER_NAME", DataType: api.DataTypeString},
 		{Name: "ROLLUP_NAME", DataType: api.DataTypeString},
 		{Name: "SRC_TABLE", DataType: api.DataTypeString},
@@ -1280,8 +1281,8 @@ type ShowTagsResultSet struct {
 
 var _ ResultSet = (*ShowTagsResultSet)(nil)
 
-func (tr *ShowTagsResultSet) Columns() api.Columns {
-	return api.Columns{
+func (tr *ShowTagsResultSet) Columns() client.Columns {
+	return client.Columns{
 		{Name: "ID", DataType: api.DataTypeInt64},
 		{Name: "NAME", DataType: api.DataTypeString},
 		{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
@@ -1364,7 +1365,7 @@ func ShowTags(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, 
 	if rs.err != nil {
 		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: rs.err}}
 	}
-	if rs.Description.Type != api.TableTypeTag {
+	if rs.Description.Type != client.TableTypeTag {
 		err := fmt.Errorf("table '%s' is not a tag table", originalTableName)
 		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1411,7 +1412,7 @@ func (tsi *TagStatInfo) Values() []interface{} {
 }
 
 func ListTagsWalk(ctx context.Context, conn *sql.Conn, table string, tagNameColumn string, callback func(*TagInfo, error) bool) {
-	database, userName, tableName := api.TableName(table).Split()
+	database, userName, tableName := TableName(table).Split()
 	metaTableName := ""
 	if database != "MACHBASEDB" {
 		metaTableName = fmt.Sprintf("%s.%s._%s_META", database, userName, tableName)
@@ -1434,7 +1435,7 @@ func ListTagsWalk(ctx context.Context, conn *sql.Conn, table string, tagNameColu
 }
 
 func QueryTagStat(ctx context.Context, conn *sql.Conn, table string, tag string) (*TagStatInfo, error) {
-	database, user, table := api.TableName(table).Split()
+	database, user, table := TableName(table).Split()
 	sqlText := SqlTidy(`SELECT`,
 		`NAME, ROW_COUNT,`,
 		`MIN_TIME, MAX_TIME,`,

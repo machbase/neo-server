@@ -9,7 +9,6 @@ import (
 	"time"
 
 	_ "github.com/machbase/neo-client/v2"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
@@ -39,7 +38,7 @@ type BridgedDatabase struct {
 	dbConnect string
 }
 
-func (d *BridgedDatabase) Connect(ctx context.Context, options ...api.ConnectOption) (*sql.Conn, error) {
+func (d *BridgedDatabase) Connect(ctx context.Context) (*sql.Conn, error) {
 	if c, err := d.db.Conn(ctx); err != nil {
 		return nil, err
 	} else {

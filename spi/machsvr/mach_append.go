@@ -7,8 +7,10 @@ import (
 	"time"
 	"unsafe"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	mach "github.com/machbase/neo-engine/v8"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
 // Appender creates a new Appender for the given table.
@@ -20,16 +22,16 @@ import (
 //	app, _ := conn.Appender(ctx, "MY_TABLE")
 //	defer app.Close()
 //	app.Append("name", time.Now(), 3.14)
-func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...AppenderOption) (*Appender, error) {
 	appender := &Appender{}
 	appender.conn = conn
 	appender.tableName = strings.ToUpper(tableName)
 
-	_, userName, tableName := api.TableName(tableName).Split()
+	_, userName, tableName := spi.TableName(tableName).Split()
 
 	for _, opt := range opts {
 		switch opt.(type) {
-		case *api.AppenderOptionBuffer:
+		case *AppenderOptionBuffer:
 			return nil, fmt.Errorf("unsupported option %T", opt)
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", opt)
@@ -38,15 +40,15 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 
 	// make a new internal connection to avoid MACH-ERR 2118
 	// MACH-ERR 2118 Lock object was already initialized. (Do not use select and append simultaneously in single session.)
-	var queryCon api.Conn
+	var queryCon *Conn
 	if conn.password != "" {
-		if conn, err := conn.db.Connect(ctx, api.WithPassword(conn.username, conn.password), api.WithProxyUser(userName)); err != nil {
+		if conn, err := conn.db.Connect(ctx, WithPassword(conn.username, conn.password), WithProxyUser(userName)); err != nil {
 			return nil, err
 		} else {
 			queryCon = conn
 		}
 	} else {
-		if conn, err := conn.db.Connect(ctx, api.WithAuthKey("sys", conn.key), api.WithProxyUser(userName)); err != nil {
+		if conn, err := conn.db.Connect(ctx, WithAuthKey("sys", conn.key), WithProxyUser(userName)); err != nil {
 			return nil, err
 		} else {
 			queryCon = conn
@@ -71,7 +73,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 			and j.NAME = ?`
 		row := queryCon.QueryRow(ctx, describeTableSql, userName, -1, tableName)
 		var tableId int32
-		var tableType = api.TableType(-1)
+		var tableType = client.TableType(-1)
 		var tableFlag int32
 		var colCount int32
 		if err := row.Scan(&tableId, &tableType, &tableFlag, &colCount); err != nil {
@@ -81,10 +83,10 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 				return nil, fmt.Errorf("table '%s' does not exist, %s", strings.ToUpper(appender.tableName), err.Error())
 			}
 		}
-		if tableType != api.TableTypeLog && tableType != api.TableTypeTag {
+		if tableType != client.TableTypeLog && tableType != client.TableTypeTag {
 			return nil, fmt.Errorf("%s '%s' doesn't support append", tableType.String(), appender.tableName)
 		}
-		appender.tableType = api.TableType(tableType)
+		appender.tableType = client.TableType(tableType)
 
 		// columns
 		var columnsSql = `SELECT ` +
@@ -101,7 +103,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		}
 		defer rows.Close()
 		for rows.Next() {
-			col := &api.Column{}
+			col := &client.Column{}
 			if err := rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id, &col.Flag); err != nil {
 				return nil, err
 			}
@@ -172,9 +174,9 @@ type Appender struct {
 	conn      *Conn
 	stmt      unsafe.Pointer
 	tableName string
-	tableType api.TableType
+	tableType client.TableType
 	closed    bool
-	columns   api.Columns
+	columns   client.Columns
 
 	inputColumns []AppenderInputColumn
 
@@ -184,14 +186,12 @@ type Appender struct {
 	failCount    int64
 }
 
-var _ api.Appender = (*Appender)(nil)
-
 type AppenderInputColumn struct {
 	Name string
 	Idx  int
 }
 
-func (ap *Appender) WithInputColumns(columns ...string) api.Appender {
+func (ap *Appender) WithInputColumns(columns ...string) *Appender {
 	ap.inputColumns = nil
 	for _, col := range columns {
 		ap.inputColumns = append(ap.inputColumns, AppenderInputColumn{Name: strings.ToUpper(col), Idx: -1})
@@ -208,22 +208,22 @@ func (ap *Appender) WithInputColumns(columns ...string) api.Appender {
 	return ap
 }
 
-func (ap *Appender) WithInputFormats(formats ...string) api.Appender {
+func (ap *Appender) WithInputFormats(formats ...string) *Appender {
 	// noop, handled in Append
 	return ap
 }
 
-func (a *Appender) WithBatchMaxRows(rows int) api.Appender {
+func (a *Appender) WithBatchMaxRows(rows int) *Appender {
 	// noop, handled in Append
 	return a
 }
 
-func (a *Appender) WithBatchMaxBytes(bytes int) api.Appender {
+func (a *Appender) WithBatchMaxBytes(bytes int) *Appender {
 	// noop, handled in Append
 	return a
 }
 
-func (a *Appender) WithBatchMaxDelay(duration time.Duration) api.Appender {
+func (a *Appender) WithBatchMaxDelay(duration time.Duration) *Appender {
 	// noop, handled in Append
 	return a
 }
@@ -253,18 +253,18 @@ func (ap *Appender) TableName() string {
 	return ap.tableName
 }
 
-func (ap *Appender) Columns() (api.Columns, error) {
+func (ap *Appender) Columns() (client.Columns, error) {
 	return ap.columns, nil
 }
 
-func (ap *Appender) TableType() api.TableType {
+func (ap *Appender) TableType() client.TableType {
 	return ap.tableType
 }
 
 func (ap *Appender) Append(values ...any) error {
-	if ap.tableType == api.TableTypeTag {
+	if ap.tableType == client.TableTypeTag {
 		return ap.append(values...)
-	} else if ap.tableType == api.TableTypeLog {
+	} else if ap.tableType == client.TableTypeLog {
 		var colsWithTime []any
 		if len(values) == len(ap.columns) {
 			colsWithTime = values
@@ -278,7 +278,7 @@ func (ap *Appender) Append(values ...any) error {
 }
 
 func (ap *Appender) AppendLogTime(ts time.Time, cols ...any) error {
-	if ap.tableType != api.TableTypeLog {
+	if ap.tableType != client.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", ap.tableName)
 	}
 	colsWithTime := append([]any{ts}, cols...)
@@ -287,11 +287,11 @@ func (ap *Appender) AppendLogTime(ts time.Time, cols ...any) error {
 
 func (ap *Appender) append(values ...any) error {
 	if len(ap.columns) == 0 {
-		return api.ErrDatabaseNoColumns(ap.tableName)
+		return ErrDatabaseNoColumns(ap.tableName)
 	}
 	if len(ap.inputColumns) > 0 {
 		if len(ap.inputColumns) != len(values) {
-			return api.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
+			return ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
 		}
 		newValues := make([]any, len(ap.columns))
 		for i, inputCol := range ap.inputColumns {
@@ -300,14 +300,14 @@ func (ap *Appender) append(values ...any) error {
 		values = newValues
 	} else {
 		if len(ap.columns) != len(values) {
-			return api.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
+			return ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
 		}
 	}
 	if ap.closed {
-		return api.ErrDatabaseClosedAppender
+		return ErrDatabaseClosedAppender
 	}
 	if ap.conn == nil || !ap.conn.Connected() {
-		return api.ErrDatabaseNoConnection
+		return ErrDatabaseNoConnection
 	}
 
 	return ap.buffer.Append(values...)

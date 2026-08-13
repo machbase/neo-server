@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/machbase/neo-client/v2"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
@@ -463,7 +464,7 @@ func TestMachbaseSQLCompatibilityEmptyVarchar(t *testing.T) {
 	require.Equal(t, "*sql.NullString", reflect.TypeOf(buff[0]).String())
 	err = rows.Scan(buff...)
 	require.NoError(t, err)
-	str := api.Unbox(buff[0])
+	str := client.Unbox(buff[0])
 	// instead of using string
 	//require.Equal(t, "", str)
 	require.Nil(t, str)

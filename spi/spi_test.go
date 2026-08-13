@@ -61,7 +61,7 @@ func TestTableNames(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			a, b, c := api.TableName(test.input).Split()
+			a, b, c := spi.TableName(test.input).Split()
 			require.Equal(t, test.expect[0], a)
 			require.Equal(t, test.expect[1], b)
 			require.Equal(t, test.expect[2], c)
@@ -319,16 +319,16 @@ func TestScan(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if err := api.Scan(tt.src, tt.dst, time.UTC); err != nil {
+		if err := client.Scan(tt.src, tt.dst, time.UTC); err != nil {
 			t.Errorf("%s: Scan(%v, %v) got error: %v", tt.name, tt.src, tt.dst, err)
 		}
-		result := api.Unbox(tt.dst)
+		result := client.Unbox(tt.dst)
 		require.EqualValues(t, tt.expect, result, "%s: Scan(%T, %T) got %v, want %v", tt.name, tt.src, tt.dst, result, tt.expect)
 
-		if err := api.Scan(box(tt.src), tt.dst, time.UTC); err != nil {
+		if err := client.Scan(box(tt.src), tt.dst, time.UTC); err != nil {
 			t.Errorf("%s: Scan(*%v, %v) got error: %v", tt.name, tt.src, tt.dst, err)
 		}
-		result = api.Unbox(tt.dst)
+		result = client.Unbox(tt.dst)
 		require.EqualValues(t, tt.expect, result, "%s: Scan(*%T, %T) got %v, want %v", tt.name, tt.src, tt.dst, result, tt.expect)
 	}
 }
@@ -403,7 +403,7 @@ func testTagTableType(t *testing.T) {
 
 	typeTag, err := spi.QueryTableType(ctx, conn, "tag_data")
 	require.NoError(t, err)
-	require.Equal(t, api.TableTypeTag, typeTag)
+	require.Equal(t, client.TableTypeTag, typeTag)
 
 	_, err = spi.QueryTableType(ctx, conn, "table_not_exists")
 	require.Error(t, err)
@@ -419,7 +419,7 @@ func testDescribeTable(t *testing.T) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	expect := api.Columns{
+	expect := client.Columns{
 		{Name: "NAME", Type: api.ColumnTypeVarchar, DataType: api.DataTypeString},
 		{Name: "TIME", Type: api.ColumnTypeDatetime, DataType: api.DataTypeDatetime},
 		{Name: "VALUE", Type: api.ColumnTypeDouble, DataType: api.DataTypeFloat64},
@@ -463,7 +463,7 @@ func testDescribeTable(t *testing.T) {
 		require.Equal(t, "SYS", desc.User)
 		require.Equal(t, "MACHBASEDB", desc.Database)
 		require.Equal(t, "Tag Table", desc.String())
-		require.Equal(t, api.TableTypeTag, desc.Type)
+		require.Equal(t, client.TableTypeTag, desc.Type)
 
 		require.Equal(t, len(expect), len(desc.Columns))
 
@@ -876,17 +876,17 @@ func testInsertAndQuery(t *testing.T) {
 			require.NoError(t, err)
 			err = rows.Scan(values...)
 			require.NoError(t, err)
-			require.Equal(t, "insert-once", api.Unbox(values[0]))
-			require.Equal(t, now.In(time.Local), api.Unbox(values[1]))
-			require.Equal(t, 1.23, api.Unbox(values[2]))
-			require.Equal(t, int16(1), api.Unbox(values[3]))
-			require.Equal(t, nil, api.Unbox(values[4]))
-			require.Equal(t, int32(2), api.Unbox(values[5]))
-			require.Equal(t, nil, api.Unbox(values[6]))
-			require.Equal(t, int64(3), api.Unbox(values[7]))
-			require.Equal(t, nil, api.Unbox(values[8]))
-			require.Equal(t, "str1", api.Unbox(values[9]))
-			require.Equal(t, api.JSONString(`{"key1": "value1"}`), api.Unbox(values[10]))
+			require.Equal(t, "insert-once", client.Unbox(values[0]))
+			require.Equal(t, now.In(time.Local), client.Unbox(values[1]))
+			require.Equal(t, 1.23, client.Unbox(values[2]))
+			require.Equal(t, int16(1), client.Unbox(values[3]))
+			require.Equal(t, nil, client.Unbox(values[4]))
+			require.Equal(t, int32(2), client.Unbox(values[5]))
+			require.Equal(t, nil, client.Unbox(values[6]))
+			require.Equal(t, int64(3), client.Unbox(values[7]))
+			require.Equal(t, nil, client.Unbox(values[8]))
+			require.Equal(t, "str1", client.Unbox(values[9]))
+			require.Equal(t, api.JSONString(`{"key1": "value1"}`), client.Unbox(values[10]))
 		}
 		require.NoError(t, rows.Err())
 		stmtType := spi.DetectSQLStatementType(sqlText)
@@ -975,7 +975,7 @@ func testAppendTags(t *testing.T) {
 			t.Fatal(err)
 		}
 		require.Equal(t, "TAG_DATA", appender.TableName())
-		require.Equal(t, api.TableTypeTag, appender.TableType())
+		require.Equal(t, client.TableTypeTag, appender.TableType())
 		appender = appender.WithInputFormats()
 
 		// On systems with slow network configurations (e.g., GitHub Actions runners),
@@ -986,7 +986,7 @@ func testAppendTags(t *testing.T) {
 			WithBatchMaxBytes(1024). // reduce tcp packet size
 			WithBatchMaxRows(2000)
 
-		expectCols := []*api.Column{
+		expectCols := []*client.Column{
 			{Name: "NAME", Type: api.ColumnTypeVarchar, Length: 100, DataType: api.DataTypeString},
 			{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 			{Name: "VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
@@ -1064,11 +1064,9 @@ func testAppendTags(t *testing.T) {
 			}
 		}
 		time.Sleep(10 * time.Millisecond) // wait for appender to flush
-		if flusher, ok := appender.(api.Flusher); ok {
-			err = flusher.Flush()
-			if err != nil {
-				t.Fatal(err)
-			}
+		err = appender.Flush()
+		if err != nil {
+			t.Fatal(err)
 		}
 		time.Sleep(10 * time.Millisecond) // wait for appender to flush
 		sc, fc, err := appender.Close()
@@ -1227,7 +1225,7 @@ func TestAppendTagAndQuery(t *testing.T) {
 			panic(err)
 		}
 		require.Equal(t, strings.ToUpper(tableName), appender.TableName())
-		require.Equal(t, api.TableTypeTag, appender.TableType())
+		require.Equal(t, client.TableTypeTag, appender.TableType())
 
 		for i := 0; i < testCount; i++ {
 			err = appender.Append(
@@ -1340,7 +1338,7 @@ func TestAppendTagPartial(t *testing.T) {
 			panic(err)
 		}
 		require.Equal(t, strings.ToUpper(tableName), appender.TableName())
-		require.Equal(t, api.TableTypeTag, appender.TableType())
+		require.Equal(t, client.TableTypeTag, appender.TableType())
 
 		// arbitrary column order
 		appender = appender.WithInputColumns("time", "name", "jsondata", "value")
@@ -1502,7 +1500,7 @@ func testLogTableType(t *testing.T) {
 
 	tableType, err := spi.QueryTableType(t.Context(), conn, "log_data")
 	require.NoError(t, err)
-	require.Equal(t, api.TableTypeLog, tableType)
+	require.Equal(t, client.TableTypeLog, tableType)
 }
 
 func testLogInsertAndQuery(t *testing.T) {
@@ -1609,10 +1607,10 @@ func testLogTableAppend(t *testing.T) {
 		appender, err := rawConn.Appender(t.Context(), "log_data")
 		require.NoError(t, err)
 		require.Equal(t, "LOG_DATA", appender.TableName())
-		require.Equal(t, api.TableTypeLog, appender.TableType())
+		require.Equal(t, client.TableTypeLog, appender.TableType())
 		appender = appender.WithInputFormats()
 
-		expectCols := []*api.Column{
+		expectCols := []*client.Column{
 			{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 			{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
 			{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},

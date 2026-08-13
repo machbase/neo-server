@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util/charset"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -177,9 +177,9 @@ func (src *bytesSource) gen(node *Node) {
 	} else {
 		label = "BYTES"
 	}
-	node.task.SetResultColumns([]*api.Column{
-		api.MakeColumnRownum(),
-		api.MakeColumnString(label),
+	node.task.SetResultColumns([]*client.Column{
+		client.MakeColumnRownum(),
+		client.MakeColumnString(label),
 	})
 
 	yield := func(num int, data []byte) {
