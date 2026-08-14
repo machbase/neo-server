@@ -220,11 +220,7 @@ func (app *appender) AddRow(values []any) error {
 		return errors.New("f(APPEND) no appender exists")
 	}
 	if app.dbColumns == nil {
-		if columns, err := app.dbAppender.Columns(); err != nil {
-			return fmt.Errorf("failed to get appender columns, %s", err.Error())
-		} else {
-			app.dbColumns = columns
-		}
+		app.dbColumns = app.dbAppender.Columns()
 	}
 
 	var timeformat string = "ns"

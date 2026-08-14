@@ -412,7 +412,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		inputStream = bytes.NewReader(pk.Payload)
 	}
 
-	cols, _ := appender.Columns()
+	cols := appender.Columns()
 	colNames := cols.Names()
 	colTypes := cols.DataTypes()
 	if appender.TableType() == client.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {

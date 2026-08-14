@@ -541,6 +541,11 @@ type ShellTestCase struct {
 	expectFunc func(t *testing.T, output string) error
 }
 
+func (tt ShellTestCase) runShellTestCase(t *testing.T) {
+	t.Helper()
+	runShellTestCase(t, tt)
+}
+
 func runShellTestCase(t *testing.T, tt ShellTestCase) {
 	t.Helper()
 	t.Run(tt.name, func(t *testing.T) {
@@ -729,6 +734,46 @@ func TestShellUser(t *testing.T) {
 	for _, tt := range tests {
 		runShellTestCase(t, tt)
 	}
+}
+
+func TestShellImportExport(t *testing.T) {
+	ShellTestCase{
+		name: "ix_sql_cre_table",
+		args: append(shellArgs, "sql", `CREATE TAG TABLE tag (name varchar(100) primary key, time datetime basetime, value double)`),
+		expect: []string{
+			"table created.",
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "ix_sql_cre_table_copy",
+		args: append(shellArgs, "sql", `CREATE TAG TABLE tag_copy (name varchar(100) primary key, time datetime basetime, value double)`),
+		expect: []string{
+			"table created.",
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "ix_sql_import",
+		args: append(shellArgs, "import",
+			"--input", "/work/example.csv.gz",
+			"--compress", "gzip", "--timeformat", "s", "tag"),
+		expect: []string{
+			"Import 19 rows completed. 19,0",
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "ix_sql_drop_table_copy",
+		args: append(shellArgs, "sql", `DROP TABLE tag_copy`),
+		expect: []string{
+			"table dropped.",
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "ix_sql_drop_table",
+		args: append(shellArgs, "sql", `DROP TABLE tag`),
+		expect: []string{
+			"table dropped.",
+		},
+	}.runShellTestCase(t)
 }
 
 func TestShellBridge(t *testing.T) {
@@ -2165,10 +2210,10 @@ func (c *coverageConn) Exec(ctx context.Context, sqlText string, params ...any) 
 func (c *coverageConn) Query(ctx context.Context, sqlText string, params ...any) (*client.Rows, error) {
 	panic("unexpected Query")
 }
-func (c *coverageConn) QueryRow(ctx context.Context, sqlText string, params ...any) *client.ClientRow {
+func (c *coverageConn) QueryRow(ctx context.Context, sqlText string, params ...any) *client.Row {
 	panic("unexpected QueryRow")
 }
-func (c *coverageConn) Prepare(ctx context.Context, query string) (*client.ClientPreparedStmt, error) {
+func (c *coverageConn) Prepare(ctx context.Context, query string) (*client.Stmt, error) {
 	panic("unexpected Prepare")
 }
 func (c *coverageConn) Appender(ctx context.Context, tableName string) (*client.Appender, error) {

@@ -227,7 +227,7 @@ func (aw *AppendWorker) Append(vals ...any) error {
 }
 
 func (aw *AppendWorker) AppendLogTime(ts time.Time, vals ...any) error {
-	if tableType, _ := aw.appender.TableType(); tableType != client.TableTypeLog {
+	if tableType := aw.appender.TableType(); tableType != client.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", aw.appender.TableName())
 	}
 	aw.appendC <- append([]interface{}{ts}, vals...)
@@ -239,13 +239,12 @@ func (aw *AppendWorker) Close() (success, fail int64, err error) {
 	return 0, 0, nil
 }
 
-func (aw *AppendWorker) Columns() (client.Columns, error) {
-	return aw.appender.ApiColumns()
+func (aw *AppendWorker) Columns() client.Columns {
+	return aw.appender.Columns()
 }
 
 func (aw *AppendWorker) TableType() client.TableType {
-	typ, _ := aw.appender.TableType()
-	return typ
+	return aw.appender.TableType()
 }
 
 func (aw *AppendWorker) TableName() string {
@@ -263,7 +262,7 @@ func (aw *AppendWorker) WithInputColumns(columns ...string) Appender {
 		ret.inputColumns = append(ret.inputColumns, AppenderInputColumn{Name: strings.ToUpper(col), Idx: -1})
 	}
 	if len(ret.inputColumns) > 0 {
-		columns, _ := aw.appender.ApiColumns()
+		columns := aw.appender.Columns()
 		for idx, col := range columns {
 			for inIdx, inputCol := range ret.inputColumns {
 				if col.Name == inputCol.Name {
@@ -308,7 +307,7 @@ type AppenderInputColumn struct {
 }
 
 func (ap *AppenderWithWorker) Append(vals ...any) error {
-	columns, _ := ap.Columns()
+	columns := ap.Columns()
 	if len(ap.inputColumns) == 0 {
 		if len(columns) != len(vals) {
 			return fmt.Errorf("value count %d, table '%s' requires %d columns to append", len(vals), ap.tableDesc.Name, len(columns))
@@ -323,7 +322,7 @@ func (ap *AppenderWithWorker) Append(vals ...any) error {
 }
 
 func (aw *AppenderWithWorker) AppendLogTime(ts time.Time, vals ...any) error {
-	if tableType, _ := aw.appender.TableType(); tableType != client.TableTypeLog {
+	if tableType := aw.appender.TableType(); tableType != client.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", aw.appender.TableName())
 	}
 	aw.Append(append([]interface{}{ts}, vals...))

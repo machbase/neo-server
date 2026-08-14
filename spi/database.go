@@ -1352,7 +1352,7 @@ type Appender interface {
 	//	for _, col := range columns {
 	//		fmt.Println(col.Name)
 	//	}
-	Columns() (client.Columns, error)
+	Columns() client.Columns
 
 	// TableType returns the type of the table to which the Appender is appending data.
 	TableType() client.TableType

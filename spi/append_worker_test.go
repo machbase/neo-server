@@ -110,8 +110,7 @@ func TestAppendWorkerAppenderAccessorsAndNoopOptions(t *testing.T) {
 
 	require.Equal(t, "", worker.TableName())
 	require.Equal(t, client.TableType(-1), worker.TableType())
-	columns, err := worker.Columns()
-	require.EqualError(t, err, "appender is not connected")
+	columns := worker.Columns()
 	require.Nil(t, columns)
 	require.Same(t, worker, worker.WithInputFormats("json"))
 	require.Same(t, worker, worker.WithBatchMaxRows(100))

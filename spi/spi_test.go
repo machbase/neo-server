@@ -961,124 +961,112 @@ func testInsertAndQuery(t *testing.T) {
 }
 
 func testAppendTags(t *testing.T) {
-	conn, err := spi.Connect(t.Context(), "sys")
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
+	dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
+	appender := &client.Appender{}
+	if err := appender.Connect(t.Context(), dsn, "tag_data"); err != nil {
+		t.Fatal(err)
+	}
+	defer appender.Close()
+	require.Equal(t, "TAG_DATA", appender.TableName())
+	require.Equal(t, client.TableTypeTag, appender.TableType())
+	appender = appender.WithInputFormats()
 
-	conn.Raw(func(driverConn any) error {
-		rawConn, ok := driverConn.(*client.Conn)
-		require.True(t, ok, "driverConn is not spi.RawConn")
-		require.NotNil(t, rawConn, "rawConn is nil")
+	// On systems with slow network configurations (e.g., GitHub Actions runners),
+	// the appender may flush data too frequently (default: 5ms), causing rapid,
+	// fragmented exchanges that can fail tests. Disable delay based flushing by setting it to 0.
+	appender = appender.
+		WithBatchMaxDelay(0).
+		WithBatchMaxBytes(1024). // reduce tcp packet size
+		WithBatchMaxRows(2000)
 
-		appender, err := rawConn.Appender(t.Context(), "tag_data")
+	expectCols := []*client.Column{
+		{Name: "NAME", Type: api.ColumnTypeVarchar, Length: 100, DataType: api.DataTypeString},
+		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
+		{Name: "VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
+		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
+		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeUInt16},
+		{Name: "INT_VALUE", Type: api.ColumnTypeInteger, Length: 4, DataType: api.DataTypeInt32},
+		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeUInt32},
+		{Name: "LONG_VALUE", Type: api.ColumnTypeLong, Length: 8, DataType: api.DataTypeInt64},
+		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeUInt64},
+		{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, Length: 400, DataType: api.DataTypeString},
+		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeJSON},
+		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
+		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
+		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 32767, DataType: api.DataTypeBinary},
+	}
+	cols := appender.Columns()
+	require.Equal(t, len(expectCols), len(cols))
+	for i, c := range cols {
+		require.Equal(t, expectCols[i].Name, c.Name)
+		require.Equal(t, expectCols[i].Type, c.Type, "diff column: "+c.Name)
+		require.Equal(t, expectCols[i].DataType, c.DataType, "diff column: "+c.Name)
+		require.Equal(t, expectCols[i].Length, c.Length, "diff column: "+c.Name)
+	}
+
+	// FIXME: windows github actions runner failed to append 10000 rows, need to investigate further, for now reduce the count to 5000
+	// It might be related with host's network configurations.
+	//
+	// For the refrence, here are some settings that can be applied to Windows to improve the performance of appending large number of rows:
+	//
+	// - name: Windows Network Tuning
+	//    if: matrix.os == 'windows'
+	//    shell: powershell
+	//    run: |
+	//      Write-Host "===== BEFORE SETTINGS ====="
+	//      netsh int tcp show global
+	//      netsh int ipv4 show dynamicport tcp
+
+	//      Write-Host "===== EXPAND DYNAMIC PORT ====="
+	//      netsh int ipv4 set dynamicport tcp start=10000 num=55000
+
+	//      Write-Host "===== REDUCE TIME_WAIT ====="
+	//      reg add HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters `
+	//        /v TcpTimedWaitDelay /t REG_DWORD /d 30 /f
+
+	//      Write-Host "===== DISABLE TCP AUTOTUNING ====="
+	//      netsh int tcp set global autotuninglevel=disabled
+
+	//      Write-Host "===== AFTER SETTINGS ====="
+	//      netsh int ipv4 show dynamicport tcp
+	//
+	// expectCount := 10000
+	expectCount := 5000
+	var err error
+	for i := 0; i < expectCount; i++ {
+		ip4 := net.ParseIP(fmt.Sprintf("192.168.0.%d", i%255))
+		ip6 := net.ParseIP(fmt.Sprintf("12:FF:FF:FF:CC:EE:FF:%02X", i%255))
+		varchar := fmt.Sprintf("varchar_append-%d", i)
+		err = appender.Append(
+			fmt.Sprintf("name-%d", i%100),   // name
+			time.Now(),                      // time
+			float64(i)*1.1,                  // value
+			int16(i),                        // short_value
+			uint16(i*10),                    // ushort_value
+			int(i*100),                      // int_value
+			uint(i*1000),                    // uint_value
+			int64(i*10000),                  // long_value
+			uint64(i*100000),                // ulong_value
+			varchar,                         // str_value
+			fmt.Sprintf("{\"json\":%d}", i), // json_value
+			ip4,                             // IPv4_value
+			ip6,                             // IPv6_value
+			[]byte{0x01, 0x02, 0x03},        // bin_value
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		require.Equal(t, "TAG_DATA", appender.TableName())
-		require.Equal(t, client.TableTypeTag, appender.TableType())
-		appender = appender.WithInputFormats()
-
-		// On systems with slow network configurations (e.g., GitHub Actions runners),
-		// the appender may flush data too frequently (default: 5ms), causing rapid,
-		// fragmented exchanges that can fail tests. Disable delay based flushing by setting it to 0.
-		appender = appender.
-			WithBatchMaxDelay(0).
-			WithBatchMaxBytes(1024). // reduce tcp packet size
-			WithBatchMaxRows(2000)
-
-		expectCols := []*client.Column{
-			{Name: "NAME", Type: api.ColumnTypeVarchar, Length: 100, DataType: api.DataTypeString},
-			{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
-			{Name: "VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
-			{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
-			{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeUInt16},
-			{Name: "INT_VALUE", Type: api.ColumnTypeInteger, Length: 4, DataType: api.DataTypeInt32},
-			{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeUInt32},
-			{Name: "LONG_VALUE", Type: api.ColumnTypeLong, Length: 8, DataType: api.DataTypeInt64},
-			{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeUInt64},
-			{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, Length: 400, DataType: api.DataTypeString},
-			{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeJSON},
-			{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
-			{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
-			{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 32767, DataType: api.DataTypeBinary},
-		}
-		cols, _ := appender.Columns()
-		require.Equal(t, len(expectCols), len(cols))
-		for i, c := range cols {
-			require.Equal(t, expectCols[i].Name, c.Name)
-			require.Equal(t, expectCols[i].Type, c.Type, "diff column: "+c.Name)
-			require.Equal(t, expectCols[i].DataType, c.DataType, "diff column: "+c.Name)
-			require.Equal(t, expectCols[i].Length, c.Length, "diff column: "+c.Name)
-		}
-
-		// FIXME: windows github actions runner failed to append 10000 rows, need to investigate further, for now reduce the count to 5000
-		// It might be related with host's network configurations.
-		//
-		// For the refrence, here are some settings that can be applied to Windows to improve the performance of appending large number of rows:
-		//
-		// - name: Windows Network Tuning
-		//    if: matrix.os == 'windows'
-		//    shell: powershell
-		//    run: |
-		//      Write-Host "===== BEFORE SETTINGS ====="
-		//      netsh int tcp show global
-		//      netsh int ipv4 show dynamicport tcp
-
-		//      Write-Host "===== EXPAND DYNAMIC PORT ====="
-		//      netsh int ipv4 set dynamicport tcp start=10000 num=55000
-
-		//      Write-Host "===== REDUCE TIME_WAIT ====="
-		//      reg add HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters `
-		//        /v TcpTimedWaitDelay /t REG_DWORD /d 30 /f
-
-		//      Write-Host "===== DISABLE TCP AUTOTUNING ====="
-		//      netsh int tcp set global autotuninglevel=disabled
-
-		//      Write-Host "===== AFTER SETTINGS ====="
-		//      netsh int ipv4 show dynamicport tcp
-		//
-		// expectCount := 10000
-		expectCount := 5000
-		for i := 0; i < expectCount; i++ {
-			ip4 := net.ParseIP(fmt.Sprintf("192.168.0.%d", i%255))
-			ip6 := net.ParseIP(fmt.Sprintf("12:FF:FF:FF:CC:EE:FF:%02X", i%255))
-			varchar := fmt.Sprintf("varchar_append-%d", i)
-			err = appender.Append(
-				fmt.Sprintf("name-%d", i%100),   // name
-				time.Now(),                      // time
-				float64(i)*1.1,                  // value
-				int16(i),                        // short_value
-				uint16(i*10),                    // ushort_value
-				int(i*100),                      // int_value
-				uint(i*1000),                    // uint_value
-				int64(i*10000),                  // long_value
-				uint64(i*100000),                // ulong_value
-				varchar,                         // str_value
-				fmt.Sprintf("{\"json\":%d}", i), // json_value
-				ip4,                             // IPv4_value
-				ip6,                             // IPv6_value
-				[]byte{0x01, 0x02, 0x03},        // bin_value
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		time.Sleep(10 * time.Millisecond) // wait for appender to flush
-		err = appender.Flush()
-		if err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(10 * time.Millisecond) // wait for appender to flush
-		sc, fc, err := appender.Close()
-		require.NoError(t, err)
-		require.Equal(t, int64(expectCount), sc)
-		require.Equal(t, int64(0), fc)
-
-		appender.Close()
-		rawConn.Close()
-		return driver.ErrBadConn
-	})
-	conn.Close()
+	}
+	time.Sleep(10 * time.Millisecond) // wait for appender to flush
+	err = appender.Flush()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond) // wait for appender to flush
+	sc, fc, err := appender.Close()
+	require.NoError(t, err)
+	require.Equal(t, int64(expectCount), sc)
+	require.Equal(t, int64(0), fc)
 }
 
 func TestInsertMeta(t *testing.T) {
@@ -1213,39 +1201,30 @@ func TestAppendTagAndQuery(t *testing.T) {
 		conn.Close()
 	}()
 
-	conn, err = spi.Connect(t.Context(), "sys")
-	require.NoError(t, err)
-
 	testCount := 100
 	ts := time.Now()
-	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*client.Conn)
-		appender, err := rawConn.Appender(t.Context(), tableName)
+
+	appender := &client.Appender{}
+	err = appender.Connect(t.Context(), spi.DefaultDSN(map[string]string{"user": "sys"}), tableName)
+	require.NoError(t, err, "appender connect fail")
+
+	require.Equal(t, strings.ToUpper(tableName), appender.TableName())
+	require.Equal(t, client.TableTypeTag, appender.TableType())
+
+	for i := 0; i < testCount; i++ {
+		err = appender.Append(
+			fmt.Sprintf("name-%d", i%5),
+			ts.Add(time.Duration(i)),
+			1.001*float64(i+1),
+			"some-id-string",
+			`{"name":"json"}`,
+			[]byte{0x01, 0x02, 0x03},
+		)
 		if err != nil {
 			panic(err)
 		}
-		require.Equal(t, strings.ToUpper(tableName), appender.TableName())
-		require.Equal(t, client.TableTypeTag, appender.TableType())
-
-		for i := 0; i < testCount; i++ {
-			err = appender.Append(
-				fmt.Sprintf("name-%d", i%5),
-				ts.Add(time.Duration(i)),
-				1.001*float64(i+1),
-				"some-id-string",
-				`{"name":"json"}`,
-				[]byte{0x01, 0x02, 0x03},
-			)
-			if err != nil {
-				panic(err)
-			}
-		}
-		appender.Close()
-		// Returning driver.ErrBadConn signals Go to discard this connection
-		rawConn.Close()
-		return driver.ErrBadConn
-	})
-	conn.Close()
+	}
+	appender.Close()
 
 	conn, err = spi.Connect(t.Context(), "sys")
 	require.NoError(t, err)
@@ -1284,21 +1263,10 @@ func TestAppendTagAndQuery(t *testing.T) {
 }
 
 func TestAppendTagNotExist(t *testing.T) {
-	conn, err := spi.Connect(t.Context(), "sys")
-	require.NoError(t, err, "connect fail")
-	defer conn.Close()
-	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*client.Conn)
-		appender, err := rawConn.Appender(t.Context(), "notexist")
-		require.NotNil(t, err)
-		require.True(t, strings.Contains(err.Error(), "does not exist"), err.Error())
-		if appender != nil {
-			appender.Close()
-		}
-		// Returning driver.ErrBadConn signals Go to discard this connection
-		rawConn.Close()
-		return driver.ErrBadConn
-	})
+	appender := &client.Appender{}
+	err := appender.Connect(t.Context(), spi.DefaultDSN(map[string]string{"user": "sys"}), "notexist")
+	require.True(t, strings.Contains(err.Error(), "does not exist"), err.Error())
+	appender.Close()
 }
 
 func TestAppendTagPartial(t *testing.T) {
@@ -1331,34 +1299,27 @@ func TestAppendTagPartial(t *testing.T) {
 	testCount := 100
 	ts := time.Now()
 
-	conn.Raw(func(driverConn any) error {
-		rawConn := driverConn.(*client.Conn)
-		appender, err := rawConn.Appender(t.Context(), tableName)
+	appender := &client.Appender{}
+	err = appender.Connect(t.Context(), spi.DefaultDSN(map[string]string{"user": "sys"}), tableName)
+
+	require.Equal(t, strings.ToUpper(tableName), appender.TableName())
+	require.Equal(t, client.TableTypeTag, appender.TableType())
+
+	// arbitrary column order
+	appender = appender.WithInputColumns("time", "name", "jsondata", "value")
+
+	for i := 0; i < testCount; i++ {
+		err = appender.Append(
+			ts.Add(time.Duration(i)),
+			fmt.Sprintf("name-%d", i%5),
+			`{"name":"json"}`,
+			1.001*float64(i+1))
 		if err != nil {
 			panic(err)
 		}
-		require.Equal(t, strings.ToUpper(tableName), appender.TableName())
-		require.Equal(t, client.TableTypeTag, appender.TableType())
+	}
+	appender.Close()
 
-		// arbitrary column order
-		appender = appender.WithInputColumns("time", "name", "jsondata", "value")
-
-		for i := 0; i < testCount; i++ {
-			err = appender.Append(
-				ts.Add(time.Duration(i)),
-				fmt.Sprintf("name-%d", i%5),
-				`{"name":"json"}`,
-				1.001*float64(i+1))
-			if err != nil {
-				panic(err)
-			}
-		}
-		appender.Close()
-
-		// Returning driver.ErrBadConn signals Go to discard this connection
-		rawConn.Close()
-		return driver.ErrBadConn
-	})
 	conn.Close()
 
 	conn, err = spi.Connect(t.Context(), "sys")
@@ -1599,82 +1560,74 @@ func testLogTableAppend(t *testing.T) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	conn.Raw(func(driverConn any) error {
-		rawConn, ok := driverConn.(*client.Conn)
-		require.True(t, ok, "driverConn is not spi.RawConn")
-		require.NotNil(t, rawConn, "rawConn is nil")
+	appender := &client.Appender{}
+	err = appender.Connect(t.Context(), spi.DefaultDSN(map[string]string{"user": "sys"}), "log_data")
+	require.NoError(t, err, "appender connect fail")
+	defer appender.Close()
+	require.Equal(t, "LOG_DATA", appender.TableName())
+	require.Equal(t, client.TableTypeLog, appender.TableType())
+	appender = appender.WithInputFormats()
 
-		appender, err := rawConn.Appender(t.Context(), "log_data")
+	expectCols := []*client.Column{
+		{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
+		{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
+		{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
+		{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeUInt16},
+		{Name: "INT_VALUE", Type: api.ColumnTypeInteger, Length: 4, DataType: api.DataTypeInt32},
+		{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeUInt32},
+		{Name: "LONG_VALUE", Type: api.ColumnTypeLong, Length: 8, DataType: api.DataTypeInt64},
+		{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeUInt64},
+		{Name: "DOUBLE_VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
+		{Name: "FLOAT_VALUE", Type: api.ColumnTypeFloat, Length: 4, DataType: api.DataTypeFloat32},
+		{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, Length: 400, DataType: api.DataTypeString},
+		{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeJSON},
+		{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
+		{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
+		{Name: "TEXT_VALUE", Type: api.ColumnTypeText, Length: 67108864, DataType: api.DataTypeString},
+		{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 67108864, DataType: api.DataTypeBinary},
+	}
+	cols := appender.Columns()
+	require.Equal(t, len(expectCols), len(cols), strings.Join(cols.Names(), ", "))
+	for i, col := range cols {
+		require.Equal(t, expectCols[i].Name, col.Name)
+		require.Equal(t, expectCols[i].Type, col.Type, "diff column: "+col.Name)
+		require.Equal(t, expectCols[i].DataType, col.DataType, "diff column: "+col.Name)
+		require.Equal(t, expectCols[i].Length, col.Length, "diff column: "+col.Name)
+	}
+
+	expectCount := 10000
+	for i := 0; i < expectCount; i++ {
+		ip4 := net.ParseIP(fmt.Sprintf("192.168.0.%d", i%255))
+		ip6 := net.ParseIP(fmt.Sprintf("12:FF:FF:FF:CC:EE:FF:%02X", i%255))
+		varchar := fmt.Sprintf("varchar_append-%d", i)
+		err = appender.AppendLogTime(
+			time.Now(),                      // _arrival_time
+			time.Now(),                      // time
+			int16(i),                        // short
+			uint16(i*10),                    // ushort
+			int(i*100),                      // int
+			uint(i*1000),                    // uint
+			int64(i*10000),                  // long
+			uint64(i*100000),                // ulong
+			float64(i),                      // double
+			float32(i),                      // float
+			varchar,                         // varchar
+			fmt.Sprintf("{\"json\":%d}", i), // json
+			ip4,                             // IPv4
+			ip6,                             // IPv6
+			fmt.Sprintf("text_append-%d-%s.", i, randomVarchar()),
+			[]byte(fmt.Sprintf("binary_append_%02d", i)),
+		)
 		require.NoError(t, err)
-		require.Equal(t, "LOG_DATA", appender.TableName())
-		require.Equal(t, client.TableTypeLog, appender.TableType())
-		appender = appender.WithInputFormats()
-
-		expectCols := []*client.Column{
-			{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
-			{Name: "TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
-			{Name: "SHORT_VALUE", Type: api.ColumnTypeShort, Length: 2, DataType: api.DataTypeInt16},
-			{Name: "USHORT_VALUE", Type: api.ColumnTypeUShort, Length: 2, DataType: api.DataTypeUInt16},
-			{Name: "INT_VALUE", Type: api.ColumnTypeInteger, Length: 4, DataType: api.DataTypeInt32},
-			{Name: "UINT_VALUE", Type: api.ColumnTypeUInteger, Length: 4, DataType: api.DataTypeUInt32},
-			{Name: "LONG_VALUE", Type: api.ColumnTypeLong, Length: 8, DataType: api.DataTypeInt64},
-			{Name: "ULONG_VALUE", Type: api.ColumnTypeULong, Length: 8, DataType: api.DataTypeUInt64},
-			{Name: "DOUBLE_VALUE", Type: api.ColumnTypeDouble, Length: 8, DataType: api.DataTypeFloat64},
-			{Name: "FLOAT_VALUE", Type: api.ColumnTypeFloat, Length: 4, DataType: api.DataTypeFloat32},
-			{Name: "STR_VALUE", Type: api.ColumnTypeVarchar, Length: 400, DataType: api.DataTypeString},
-			{Name: "JSON_VALUE", Type: api.ColumnTypeJSON, Length: 32767, DataType: api.DataTypeJSON},
-			{Name: "IPV4_VALUE", Type: api.ColumnTypeIPv4, Length: 5, DataType: api.DataTypeIPv4},
-			{Name: "IPV6_VALUE", Type: api.ColumnTypeIPv6, Length: 17, DataType: api.DataTypeIPv6},
-			{Name: "TEXT_VALUE", Type: api.ColumnTypeText, Length: 67108864, DataType: api.DataTypeString},
-			{Name: "BIN_VALUE", Type: api.ColumnTypeBinary, Length: 67108864, DataType: api.DataTypeBinary},
-		}
-		cols, _ := appender.Columns()
-		require.Equal(t, len(expectCols), len(cols), strings.Join(cols.Names(), ", "))
-		for i, col := range cols {
-			require.Equal(t, expectCols[i].Name, col.Name)
-			require.Equal(t, expectCols[i].Type, col.Type, "diff column: "+col.Name)
-			require.Equal(t, expectCols[i].DataType, col.DataType, "diff column: "+col.Name)
-			require.Equal(t, expectCols[i].Length, col.Length, "diff column: "+col.Name)
-		}
-
-		expectCount := 10000
-		for i := 0; i < expectCount; i++ {
-			ip4 := net.ParseIP(fmt.Sprintf("192.168.0.%d", i%255))
-			ip6 := net.ParseIP(fmt.Sprintf("12:FF:FF:FF:CC:EE:FF:%02X", i%255))
-			varchar := fmt.Sprintf("varchar_append-%d", i)
-			err = appender.AppendLogTime(
-				time.Now(),                      // _arrival_time
-				time.Now(),                      // time
-				int16(i),                        // short
-				uint16(i*10),                    // ushort
-				int(i*100),                      // int
-				uint(i*1000),                    // uint
-				int64(i*10000),                  // long
-				uint64(i*100000),                // ulong
-				float64(i),                      // double
-				float32(i),                      // float
-				varchar,                         // varchar
-				fmt.Sprintf("{\"json\":%d}", i), // json
-				ip4,                             // IPv4
-				ip6,                             // IPv6
-				fmt.Sprintf("text_append-%d-%s.", i, randomVarchar()),
-				[]byte(fmt.Sprintf("binary_append_%02d", i)),
-			)
-			require.NoError(t, err)
-		}
-		sc, fc, err := appender.Close()
-		require.NoError(t, err)
-		require.Equal(t, int64(expectCount), sc)
-		require.Equal(t, int64(0), fc)
-		sc, fc, err = appender.Close()
-		require.NoError(t, err)
-		require.Equal(t, int64(expectCount), sc)
-		require.Equal(t, int64(0), fc)
-
-		appender.Close()
-		rawConn.Close()
-		return driver.ErrBadConn
-	})
+	}
+	sc, fc, err := appender.Close()
+	require.NoError(t, err)
+	require.Equal(t, int64(expectCount), sc)
+	require.Equal(t, int64(0), fc)
+	sc, fc, err = appender.Close()
+	require.NoError(t, err)
+	require.Equal(t, int64(expectCount), sc)
+	require.Equal(t, int64(0), fc)
 }
 
 func randomVarchar() string {

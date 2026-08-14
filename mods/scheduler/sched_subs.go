@@ -526,13 +526,13 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 		inputStream = bytes.NewReader(payload)
 	}
 
-	colNames, _ := ent.appender.Columns()
-	colTypeNames, _ := ent.appender.ColumnTypes()
+	colNames := ent.appender.ColumnNames()
+	colTypeNames := ent.appender.ColumnTypes()
 	colTypes := make([]api.DataType, len(colTypeNames))
 	for i, colTypeName := range colTypeNames {
 		colTypes[i] = api.ParseColumnType(colTypeName).DataType()
 	}
-	tableType, _ := ent.appender.TableType()
+	tableType := ent.appender.TableType()
 	if tableType == client.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
