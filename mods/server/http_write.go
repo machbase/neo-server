@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -116,7 +117,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		opts.HeaderColumns(headerColumns),
 	}
 
-	var appender api.Appender
+	var appender spi.Appender
 	var recNo int
 	var insertQuery string
 
@@ -130,7 +131,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		defer appender.Close()
 		colNames := desc.Columns.Names()
 		colTypes := desc.Columns.DataTypes()
-		if appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+		if appender.TableType() == client.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 			colNames = colNames[1:]
 			colTypes = colTypes[1:]
 		}
@@ -287,7 +288,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if tableType != api.TableTypeLog && tableType != api.TableTypeTag {
+	if tableType != client.TableTypeLog && tableType != client.TableTypeTag {
 		rsp.Reason = fmt.Sprintf("Table '%s' is does not supported for files", tableName)
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
@@ -305,7 +306,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		desc = rs.Description
 	}
 
-	findColumn := func(name string) *api.Column {
+	findColumn := func(name string) *client.Column {
 		for _, c := range desc.Columns {
 			if strings.EqualFold(c.Name, name) {
 				return c
@@ -346,7 +347,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
-			if tableType == api.TableTypeTag && c.IsBaseTime() {
+			if tableType == client.TableTypeTag && c.IsBaseTime() {
 				ts = val.(time.Time)
 			}
 			values = append(values, val)

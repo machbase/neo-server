@@ -91,38 +91,45 @@ func TestSqlRowsScanTypes(t *testing.T) {
 	columnTypes, err := rows.ColumnTypes()
 	require.NoError(t, err)
 	expects := []struct {
-		name         string
-		databaseType string
-		scanType     string
-		nullable     bool
-		length       int64
-		decimalSize  int64
+		name               string
+		databaseType       string
+		scanType           string
+		nullable           bool
+		length             int64
+		supportDecimalSize bool
+		decimalPrecision   int64
+		decimalScale       int64
 	}{
-		{name: "NAME", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 100},                //
-		{name: "TIME", databaseType: "DATETIME", scanType: "time.Time", nullable: true, length: 8},              // length??
-		{name: "VALUE", databaseType: "DOUBLE", scanType: "float64", nullable: true, length: 8, decimalSize: 8}, //
-		{name: "SHORT_VALUE", databaseType: "SHORT", scanType: "int16", nullable: true, length: 2},              //
-		{name: "USHORT_VALUE", databaseType: "USHORT", scanType: "uint16", nullable: true, length: 2},           //
-		{name: "INT_VALUE", databaseType: "INTEGER", scanType: "int32", nullable: true, length: 4},              //
-		{name: "UINT_VALUE", databaseType: "UINTEGER", scanType: "uint32", nullable: true, length: 4},           //
-		{name: "LONG_VALUE", databaseType: "LONG", scanType: "int64", nullable: true, length: 8},                //
-		{name: "ULONG_VALUE", databaseType: "ULONG", scanType: "uint64", nullable: true, length: 8},             //
-		{name: "STR_VALUE", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 400},           //
-		{name: "JSON_VALUE", databaseType: "JSON", scanType: "api.JSONString", nullable: true, length: 32767},   //
-		{name: "IPV4_VALUE", databaseType: "IPV4", scanType: "net.IP", nullable: true, length: 5},               //
-		{name: "IPV6_VALUE", databaseType: "IPV6", scanType: "net.IP", nullable: true, length: 17},              //
-		{name: "BIN_VALUE", databaseType: "BINARY", scanType: "[]uint8", nullable: true, length: 32767},         //
+		{name: "NAME", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 100},
+		{name: "TIME", databaseType: "DATETIME", scanType: "time.Time", nullable: true, length: 8},
+		{name: "VALUE", databaseType: "DOUBLE", scanType: "float64", nullable: true, length: 8,
+			supportDecimalSize: true, decimalPrecision: 8, decimalScale: 0},
+		{name: "SHORT_VALUE", databaseType: "SHORT", scanType: "int16", nullable: true, length: 2},
+		{name: "USHORT_VALUE", databaseType: "USHORT", scanType: "uint16", nullable: true, length: 2},
+		{name: "INT_VALUE", databaseType: "INTEGER", scanType: "int32", nullable: true, length: 4},
+		{name: "UINT_VALUE", databaseType: "UINTEGER", scanType: "uint32", nullable: true, length: 4},
+		{name: "LONG_VALUE", databaseType: "LONG", scanType: "int64", nullable: true, length: 8},
+		{name: "ULONG_VALUE", databaseType: "ULONG", scanType: "uint64", nullable: true, length: 8},
+		{name: "STR_VALUE", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 400},
+		{name: "JSON_VALUE", databaseType: "JSON", scanType: "api.JSONString", nullable: true, length: 32767},
+		{name: "IPV4_VALUE", databaseType: "IPV4", scanType: "net.IP", nullable: true, length: 5},
+		{name: "IPV6_VALUE", databaseType: "IPV6", scanType: "net.IP", nullable: true, length: 17},
+		{name: "BIN_VALUE", databaseType: "BINARY", scanType: "[]uint8", nullable: true, length: 32767},
 	}
 	require.Equal(t, len(expects), len(columnTypes))
 	for i, ct := range columnTypes {
-		nullable, _ := ct.Nullable()
-		length, _ := ct.Length()
-		decimalSize, _, _ := ct.DecimalSize()
+		nullable, supportNullable := ct.Nullable()
+		length, supportLength := ct.Length()
+		decimalPrecision, decimalScale, supportDecimalSize := ct.DecimalSize()
+		require.True(t, supportNullable, "column %s does not support Nullable()", ct.Name())
+		require.True(t, supportLength, "column %s does not support Length()", ct.Name())
+		require.Equal(t, expects[i].supportDecimalSize, supportDecimalSize, "column %s does not support DecimalSize()", ct.Name())
 		require.Equal(t, expects[i].name, ct.Name(), "column %s", ct.Name())
 		require.Equal(t, expects[i].databaseType, ct.DatabaseTypeName(), "column %s", ct.Name())
 		require.Equal(t, expects[i].scanType, ct.ScanType().String(), "column %s", ct.Name())
 		require.Equal(t, expects[i].nullable, nullable, "column %s", ct.Name())
 		require.Equal(t, expects[i].length, length, "column %s", ct.Name())
-		require.Equal(t, expects[i].decimalSize, decimalSize, "column %s", ct.Name())
+		require.Equal(t, expects[i].decimalPrecision, decimalPrecision, "column %s", ct.Name())
+		require.Equal(t, expects[i].decimalScale, decimalScale, "column %s", ct.Name())
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 	"unsafe"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	mach "github.com/machbase/neo-engine/v8"
 
@@ -70,7 +71,7 @@ func DestroyDatabase() error {
 	_env.Lock()
 	defer _env.Unlock()
 	if _env.handle == nil {
-		return api.ErrDatabaseNotInitialized
+		return ErrDatabaseNotInitialized
 	}
 	return mach.EngDestroyDatabase(_env.handle)
 }
@@ -79,7 +80,7 @@ func CreateDatabase() error {
 	_env.Lock()
 	defer _env.Unlock()
 	if _env.handle == nil {
-		return api.ErrDatabaseNotInitialized
+		return ErrDatabaseNotInitialized
 	}
 	return mach.EngCreateDatabase(_env.handle)
 }
@@ -167,8 +168,6 @@ type Database struct {
 	maxQueryMutex sync.RWMutex
 	maxQueryChan  chan struct{}
 }
-
-var _ api.Database = (*Database)(nil)
 
 func NewDatabase(opt DatabaseOption) (*Database, error) {
 	_env.Lock()
@@ -335,7 +334,7 @@ func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
 	if ExistsDatabase() {
 		return time.Since(tick), nil
 	} else {
-		return 0, api.ErrDatabaseNotInitialized
+		return 0, ErrDatabaseNotInitialized
 	}
 }
 
@@ -380,7 +379,7 @@ func (db *Database) ListWatcher(cb func(*ConnState) bool) {
 func (db *Database) KillConnection(id string, force bool) error {
 	if cw, ok := db.conns.Get(id); ok {
 		if cw.conn == nil {
-			return api.ErrDatabaseConnectionInvalid(id)
+			return ErrDatabaseConnectionInvalid(id)
 		}
 		if force {
 			return cw.conn.Close()
@@ -388,7 +387,7 @@ func (db *Database) KillConnection(id string, force bool) error {
 			return cw.conn.Cancel()
 		}
 	} else {
-		return api.ErrDatabaseConnectionNotFound(id)
+		return ErrDatabaseConnectionNotFound(id)
 	}
 }
 
@@ -437,14 +436,12 @@ type Conn struct {
 	returnChan chan struct{}
 }
 
-var _ api.Conn = (*Conn)(nil)
-
 func (conn *Conn) SetLatestSql(sql string) {
 	conn.latestTime = time.Now()
 	conn.latestSql = sql
 }
 
-func (db *Database) ConnectTrust(ctx context.Context, username string) (api.Conn, error) {
+func (db *Database) ConnectTrust(ctx context.Context, username string) (*Conn, error) {
 	ret := &Conn{
 		ctx:          ctx,
 		db:           db,
@@ -459,7 +456,7 @@ func (db *Database) ConnectTrust(ctx context.Context, username string) (api.Conn
 	return ret, nil
 }
 
-func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
+func (db *Database) Connect(ctx context.Context, opts ...ConnectOption) (*Conn, error) {
 	var connTimeout time.Duration
 	ret := &Conn{
 		ctx:        ctx,
@@ -468,23 +465,21 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	}
 	for _, o := range opts {
 		switch v := o.(type) {
-		case *api.ConnectOptionPassword:
+		case *ConnectOptionPassword:
 			ret.username = v.User
 			ret.password = v.Password
-		case *api.ConnectOptionTimeout:
+		case *ConnectOptionTimeout:
 			connTimeout = v.Timeout
-		case *api.ConnectOptionStatementCache:
-			// currently statement cache is only supported in prepared statements, so it is ignored here
-		case *api.ConnectOptionFetchRows:
+		case *ConnectOptionFetchRows:
 			// currently fetch rows is ignored
-		case *api.ConnectOptionIOMetrics:
+		case *ConnectOptionIOMetrics:
 			// currently IO metrics ignored
-		case *api.ConnectOptionAuthKey:
+		case *ConnectOptionAuthKey:
 			ret.username = v.User
 			ret.key = v.Key
-		case *api.ConnectOptionProxyUser:
+		case *ConnectOptionProxyUser:
 			ret.proxyUser = v.ProxyUser
-		case *api.ConnectOptionTimeLocation:
+		case *ConnectOptionTimeLocation:
 			ret.timeLocation = v.Location
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
@@ -500,15 +495,15 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			select {
 			case <-ret.returnChan:
 			case <-ctx.Done():
-				return nil, api.NewError("connect canceled")
+				return nil, NewError("connect canceled")
 			case <-time.After(connTimeout):
-				return nil, api.NewError("connect timeout")
+				return nil, NewError("connect timeout")
 			}
 		} else {
 			select {
 			case <-ret.returnChan:
 			case <-ctx.Done():
-				return nil, api.NewError("connect canceled")
+				return nil, NewError("connect canceled")
 			}
 		}
 	}
@@ -534,7 +529,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			return nil, err
 		}
 		pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
-		if _, err := api.GetRegisteredAuthKey(ctx, sysConn, "sys", pubPEM); err != nil {
+		if _, err := GetRegisteredAuthKey(ctx, sysConn, "sys", pubPEM); err != nil {
 			return nil, err
 		}
 		username := ret.username
@@ -565,7 +560,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	} else {
 		id, err := db.idGen.NextID()
 		if err != nil {
-			return nil, api.ErrDatabaseConnectID(err.Error())
+			return nil, ErrDatabaseConnectID(err.Error())
 		}
 		ret.id = fmt.Sprintf("%X", id)
 	}
@@ -582,7 +577,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 // Close closes connection
 func (conn *Conn) Close() (err error) {
 	if conn == nil || conn.db == nil || conn.handle == nil {
-		return api.ErrDatabaseNoConnection
+		return ErrDatabaseNoConnection
 	}
 	conn.closeOnce.Do(func() {
 		defer func() {
@@ -604,7 +599,7 @@ func (conn *Conn) Close() (err error) {
 
 func (conn *Conn) Cancel() error {
 	if conn == nil || conn.handle == nil {
-		return api.ErrDatabaseNoConnection
+		return ErrDatabaseNoConnection
 	}
 	if err := mach.EngCancel(conn.handle); err != nil {
 		return err
@@ -626,7 +621,7 @@ func (conn *Conn) Connected() bool {
 
 // ExecContext executes SQL statements that does not return result
 // like 'ALTER', 'CREATE TABLE', 'DROP TABLE', ...
-func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) *Result {
 	conn.SetLatestSql(sqlText)
 	var result = &Result{}
 	var stmt unsafe.Pointer
@@ -666,7 +661,7 @@ func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.R
 	return result
 }
 
-func (conn *Conn) Prepare(ctx context.Context, sqlText string) (api.Stmt, error) {
+func (conn *Conn) Prepare(ctx context.Context, sqlText string) (*PreparedStmt, error) {
 	conn.SetLatestSql(sqlText)
 	var stmt unsafe.Pointer
 	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
@@ -686,7 +681,7 @@ type PreparedStmt struct {
 	stmtType     mach.StmtType
 	affectedRows int64
 	timeLocation *time.Location
-	columns      api.Columns
+	columns      client.Columns
 }
 
 func (ps *PreparedStmt) Close() error {
@@ -696,7 +691,7 @@ func (ps *PreparedStmt) Close() error {
 	return nil
 }
 
-func (ps *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
+func (ps *PreparedStmt) Exec(ctx context.Context, params ...any) *Result {
 	defer mach.EngExecuteClean(ps.stmt)
 	var result = &Result{}
 	for i, p := range params {
@@ -714,7 +709,7 @@ func (ps *PreparedStmt) Exec(ctx context.Context, params ...any) api.Result {
 	return result
 }
 
-func (ps *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, error) {
+func (ps *PreparedStmt) Query(ctx context.Context, params ...any) (*Rows, error) {
 	for i, p := range params {
 		if err := bind(ps.stmt, i, p); err != nil {
 			mach.EngFreeStmt(ps.stmt)
@@ -736,7 +731,7 @@ func (ps *PreparedStmt) Query(ctx context.Context, params ...any) (api.Rows, err
 	return rows, nil
 }
 
-func (ps *PreparedStmt) QueryRow(ctx context.Context, params ...any) api.Row {
+func (ps *PreparedStmt) QueryRow(ctx context.Context, params ...any) *Row {
 	defer mach.EngExecuteClean(ps.stmt)
 	var row = &Row{timeLocation: ps.timeLocation}
 	for i, p := range params {
@@ -831,7 +826,7 @@ func (ps *PreparedStmt) execute() error {
 //		panic(err)
 //	}
 //	defer rows.Close()
-func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (*Rows, error) {
 	conn.SetLatestSql(sqlText)
 	rows := &Rows{
 		sqlText:             sqlText,
@@ -871,12 +866,12 @@ func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api
 	return rows, nil
 }
 
-func stmtColumns(stmt unsafe.Pointer) (api.Columns, error) {
+func stmtColumns(stmt unsafe.Pointer) (client.Columns, error) {
 	columnCount, err := mach.EngColumnCount(stmt)
 	if err != nil {
 		return nil, err
 	}
-	ret := make(api.Columns, columnCount)
+	ret := make(client.Columns, columnCount)
 	for i := 0; i < columnCount; i++ {
 		var columnName string
 		var columnRawType, columnSize, columnLength int
@@ -888,7 +883,7 @@ func stmtColumns(stmt unsafe.Pointer) (api.Columns, error) {
 		if err != nil {
 			return nil, mach.ErrDatabaseWrap("Invalid column type", err)
 		}
-		ret[i] = &api.Column{
+		ret[i] = &client.Column{
 			Name:     columnName,
 			DataType: dataType,
 			Length:   columnSize,
@@ -948,7 +943,7 @@ func columnRawTypeToDataType(rawType int) (api.DataType, error) {
 	case ColumnRawTypeJSON:
 		return api.DataTypeString, nil
 	default:
-		return "", api.ErrDatabaseUnsupportedType("ColumnType", rawType)
+		return "", ErrDatabaseUnsupportedType("ColumnType", rawType)
 	}
 }
 
@@ -981,7 +976,7 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 	case api.DataTypeBinary:
 		return ColumnRawTypeBinary, nil
 	default:
-		return 0, api.ErrDatabaseUnsupportedTypeName("DataType", string(typ))
+		return 0, ErrDatabaseUnsupportedTypeName("DataType", string(typ))
 	}
 }
 
@@ -993,7 +988,7 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 //	var cnt int
 //	row := conn.QueryRow(ctx, "select count(*) from my_table where name = ?", "my_name")
 //	row.Scan(&cnt)
-func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
+func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) *Row {
 	conn.SetLatestSql(sqlText)
 	var row = &Row{timeLocation: conn.timeLocation}
 	var stmt unsafe.Pointer
@@ -1106,117 +1101,182 @@ func (conn *Conn) Explain(ctx context.Context, sqlText string, full bool) (strin
 func bind(stmt unsafe.Pointer, idx int, c any) error {
 	if c == nil {
 		if err := mach.EngBindNull(stmt, idx); err != nil {
-			return api.ErrDatabaseBindNull(idx, err)
+			return ErrDatabaseBindNull(idx, err)
 		}
 		return nil
 	}
 	switch cv := c.(type) {
 	case int:
 		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *int:
 		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case uint:
 		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *uint:
 		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case int16:
 		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *int16:
 		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case uint16:
 		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *uint16:
 		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case int32:
 		if err := mach.EngBindInt32(stmt, idx, cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *int32:
 		if err := mach.EngBindInt32(stmt, idx, *cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case uint32:
 		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *uint32:
 		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case int64:
 		if err := mach.EngBindInt64(stmt, idx, cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *int64:
 		if err := mach.EngBindInt64(stmt, idx, *cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case uint64:
 		if err := mach.EngBindInt64(stmt, idx, int64(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *uint64:
 		if err := mach.EngBindInt64(stmt, idx, int64(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case float32:
 		if err := mach.EngBindFloat64(stmt, idx, float64(cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *float32:
 		if err := mach.EngBindFloat64(stmt, idx, float64(*cv)); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case float64:
 		if err := mach.EngBindFloat64(stmt, idx, cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *float64:
 		if err := mach.EngBindFloat64(stmt, idx, *cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case string:
 		if err := mach.EngBindString(stmt, idx, cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *string:
 		if err := mach.EngBindString(stmt, idx, *cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case []byte:
 		if err := mach.EngBindBinary(stmt, idx, cv); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case net.IP:
 		if err := mach.EngBindString(stmt, idx, cv.String()); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case time.Time:
 		if err := mach.EngBindInt64(stmt, idx, cv.UnixNano()); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	case *time.Time:
 		if err := mach.EngBindInt64(stmt, idx, cv.UnixNano()); err != nil {
-			return api.ErrDatabaseBind(idx, c, err)
+			return ErrDatabaseBind(idx, c, err)
 		}
 	default:
-		return api.ErrDatabaseBindType(idx, c)
+		return ErrDatabaseBindType(idx, c)
 	}
 	return nil
+}
+
+type RegisteredAuthKey struct {
+	KeyID     int
+	User      string
+	PubKey    string
+	Comment   string
+	Activated int
+}
+
+func GetRegisteredAuthKey(ctx context.Context, conn *Conn, user string, pubKey []byte) (RegisteredAuthKey, error) {
+	//var pubKeyStr = strings.TrimSpace(string(pubKey))
+	var ret RegisteredAuthKey
+	row := conn.QueryRow(ctx, `SELECT 
+			KEY_ID, 
+			USER_NAME,
+			PUBKEY,
+			COMMENT,
+			ACTIVATED 
+		FROM
+			V$USER_AUTH_KEYS
+		WHERE
+			USER_NAME=? 
+		AND PUBKEY=?
+		ORDER BY
+			KEY_ID DESC LIMIT 1`,
+		strings.ToUpper(user), strings.TrimSpace(string(pubKey)))
+	if row.Err() != nil {
+		return ret, row.Err()
+	}
+	if err := row.Scan(&ret.KeyID, &ret.User, &ret.PubKey, &ret.Comment, &ret.Activated); err != nil {
+		return ret, err
+	}
+	return ret, nil
+}
+
+// RegisterAuthKey registers the public key as an auth key of the user, and returns the key ID.
+func RegisterAuthKey(ctx context.Context, sysConn *Conn, user string, pubKey []byte, comment string) (int, error) {
+	user = strings.ToUpper(user)
+	pubKeyStr := strings.TrimSpace(string(pubKey))
+	comment = strings.ReplaceAll(comment, `'`, `''`)
+
+	validBefore := time.Now().Add(24 * time.Hour * 365 * 30).Format("2006-01-02")
+	result := sysConn.Exec(ctx,
+		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
+			user, pubKeyStr, validBefore, comment),
+	)
+	if result.Err() != nil {
+		return 0, result.Err()
+	}
+
+	reg, err := GetRegisteredAuthKey(ctx, sysConn, user, pubKey)
+	if err != nil {
+		return 0, err
+	}
+	if reg.KeyID == 0 {
+		return 0, fmt.Errorf("failed to get registered auth key")
+	}
+	if reg.Activated != 1 {
+		result := sysConn.Exec(ctx, fmt.Sprintf("ALTER USER %s ACTIVATE AUTH KEY ID %d", user, reg.KeyID))
+		if result.Err() != nil {
+			return 0, result.Err()
+		}
+	}
+	return reg.KeyID, nil
 }

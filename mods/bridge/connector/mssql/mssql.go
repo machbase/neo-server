@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	_ "github.com/microsoft/go-mssqldb"
 )
 
@@ -115,7 +115,7 @@ func (c *Bridge) ParameterMarker(idx int) string {
 }
 
 func (c *Bridge) NormalizeType(values []any) []any {
-	return api.NormalizeTypes(values, time.UTC)
+	return client.NormalizeTypes(values, time.UTC)
 }
 
 func (c *Bridge) NewScanType(reflectType string, databaseTypeName string) any {

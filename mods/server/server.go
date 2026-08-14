@@ -2411,7 +2411,7 @@ func selectUserAuthKey(ctx context.Context, conn *sql.Conn, user string, pubPem 
 	return &nfo, nil
 }
 
-func getUserAuthKeyAPI(ctx context.Context, conn api.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
+func getUserAuthKeyAPI(ctx context.Context, conn *machsvr.Conn, user string, pubPem string) (*UserAuthKeyInfo, error) {
 	row := conn.QueryRow(ctx, `SELECT
 		KEY_ID,
 		USER_NAME,
@@ -2472,7 +2472,7 @@ func dropUserAuthKey(ctx context.Context, conn *sql.Conn, user string, keyId int
 	return err
 }
 
-func registerUserAuthKey(ctx context.Context, conn api.Conn, user string, pubPem string, comment string) error {
+func registerUserAuthKey(ctx context.Context, conn *machsvr.Conn, user string, pubPem string, comment string) error {
 	// 30 years later
 	user = strings.ToUpper(user)
 	pubPem = strings.TrimSpace(pubPem)
@@ -2498,7 +2498,7 @@ func registerUserAuthKeySql(ctx context.Context, conn *sql.Conn, user string, pu
 	return err
 }
 
-func activateUserAuthKey(ctx context.Context, conn api.Conn, user string, keyId int) error {
+func activateUserAuthKey(ctx context.Context, conn *machsvr.Conn, user string, keyId int) error {
 	result := conn.Exec(ctx,
 		fmt.Sprintf("ALTER USER %s ACTIVATE AUTH KEY ID %d", user, keyId),
 	)
@@ -2512,7 +2512,7 @@ func activateUserAuthKeySql(ctx context.Context, conn *sql.Conn, user string, ke
 	return err
 }
 
-func (s *Server) registerServerKeys(ctx context.Context, conn api.Conn) error {
+func (s *Server) registerServerKeys(ctx context.Context, conn *machsvr.Conn) error {
 	// server's public key in pem
 	pubFile := s.ServerPublicKeyPath()
 	pubPemStr := ""

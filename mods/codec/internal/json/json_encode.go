@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -157,7 +158,7 @@ func (ex *Exporter) Close() {
 }
 
 func (ex *Exporter) Flush(heading bool) {
-	if flusher, ok := ex.output.(api.Flusher); ok {
+	if flusher, ok := ex.output.(interface{ Flush() error }); ok {
 		flusher.Flush()
 	}
 }
@@ -214,7 +215,7 @@ func (ex *Exporter) AddRow(source []any) error {
 		ex.values = ex.values[:len(source)]
 	}
 	for i, field := range source {
-		switch v := api.Unbox(field).(type) {
+		switch v := client.Unbox(field).(type) {
 		case time.Time:
 			ex.values[i] = ex.timeformatter.FormatEpoch(v)
 		case net.IP:

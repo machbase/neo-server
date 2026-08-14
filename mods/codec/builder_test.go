@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/stretchr/testify/require"
@@ -58,7 +59,7 @@ func TestNewDecoderReturnsExpectedDecoder(t *testing.T) {
 
 func TestSetEncoderColumnsTimeLocation(t *testing.T) {
 	enc := &captureEncoder{}
-	cols := api.Columns{
+	cols := client.Columns{
 		{Name: "name", DataType: api.DataTypeString},
 		{Name: "ts", DataType: api.DataTypeDatetime},
 	}

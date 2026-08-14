@@ -110,7 +110,7 @@ func (s *TestServer) StartServer(dataDir string) {
 	}
 
 	// trace_log_level
-	conn, err := s.machsvrDatabase.Connect(ctx, api.WithPassword("sys", "manager"))
+	conn, err := s.machsvrDatabase.Connect(ctx, WithPassword("sys", "manager"))
 	if err != nil {
 		panic(err)
 	}

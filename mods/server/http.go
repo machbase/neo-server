@@ -25,7 +25,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
@@ -454,7 +453,7 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 	return corsHandler
 }
 
-func (svr *httpd) issueAccessTokenUsername(username api.UserName) (string, string, string, error) {
+func (svr *httpd) issueAccessTokenUsername(username spi.UserName) (string, string, string, error) {
 	realUser := username.Login
 	if username.Proxy != "" {
 		realUser = username.Proxy
@@ -630,7 +629,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	username, proxyed := api.ParseUserName(req.LoginName)
+	username, proxyed := spi.ParseUserName(req.LoginName)
 	if username.Proxy != "" && !proxyed {
 		rsp.Reason = "proxy login is not allowed"
 		rsp.Elapse = time.Since(tick).String()

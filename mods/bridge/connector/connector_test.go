@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/sqlite"
 	"github.com/stretchr/testify/require"
 )
@@ -179,7 +179,7 @@ func TestResultAndScanTypeHelpers(t *testing.T) {
 	nullTime := &sql.NullTime{Time: time.Unix(0, 10), Valid: true}
 	raw := sql.RawBytes("bytes")
 
-	normalized := api.NormalizeTypes([]any{
+	normalized := client.NormalizeTypes([]any{
 		raw,
 		nullBool,
 		nullByte,

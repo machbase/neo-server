@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -166,7 +167,7 @@ func (ex *Exporter) Close() {
 
 func (ex *Exporter) Flush(heading bool) {
 	ex.writer.Render()
-	if flusher, ok := ex.output.(api.Flusher); ok {
+	if flusher, ok := ex.output.(interface{ Flush() error }); ok {
 		flusher.Flush()
 	}
 	ex.writer.ResetRows()
@@ -181,7 +182,7 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
 	for i, r := range values {
-		switch v := api.Unbox(r).(type) {
+		switch v := client.Unbox(r).(type) {
 		case string:
 			cols[i] = v
 		case []byte:

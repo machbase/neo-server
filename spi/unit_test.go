@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	metricpkg "github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/stretchr/testify/require"
@@ -85,7 +86,7 @@ func TestMetricsAndWatcherHelpers(t *testing.T) {
 func TestWriteLineProtocol(t *testing.T) {
 	ctx := t.Context()
 	ts := time.Unix(1700000000, 0).UTC()
-	descColumns := api.Columns{
+	descColumns := client.Columns{
 		{Name: "NAME", DataType: api.DataTypeString},
 		{Name: "TIME", DataType: api.DataTypeDatetime},
 		{Name: "VALUE", DataType: api.DataTypeFloat64},

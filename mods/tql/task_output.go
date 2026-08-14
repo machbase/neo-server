@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -186,7 +187,7 @@ func (out *output) start() {
 						arr := rec.Flatten()
 						for i, v := range arr {
 							resultColumns = append(resultColumns,
-								&api.Column{
+								&client.Column{
 									Name:     fmt.Sprintf("column%d", i-1),
 									DataType: api.DataTypeOf(v),
 								})
@@ -268,7 +269,7 @@ func (out *output) stop() {
 	out.closeWg.Wait()
 }
 
-func (out *output) setHeader(cols api.Columns) {
+func (out *output) setHeader(cols client.Columns) {
 	if out.encoder != nil {
 		codec.SetEncoderColumns(out.encoder, cols)
 	}

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/machbase/neo-client/v2/api"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -111,9 +111,9 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.task.consoleOtp)
 		cmd.Stderr = &bytes.Buffer{}
 		if _, ok := node.GetValue("shell"); !ok {
-			cols := []*api.Column{
-				api.MakeColumnRownum(),
-				api.MakeColumnString("RESULT"),
+			cols := []*client.Column{
+				client.MakeColumnRownum(),
+				client.MakeColumnString("RESULT"),
 			}
 			node.task.SetResultColumns(cols)
 		}

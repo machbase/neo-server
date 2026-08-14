@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
@@ -36,7 +37,7 @@ type Watcher struct {
 	// table info
 	isTagTable  bool
 	columnNames []string
-	columns     api.Columns
+	columns     client.Columns
 	timeformat  *util.TimeFormatter
 	// tag table
 	nameColumn      string
@@ -103,10 +104,10 @@ func (w *Watcher) init(ctx context.Context) error {
 			return fmt.Errorf("table '%s' does not exist", w.TableName)
 		}
 		return err
-	} else if tableType != api.TableTypeTag && tableType != api.TableTypeLog {
+	} else if tableType != client.TableTypeTag && tableType != client.TableTypeLog {
 		return fmt.Errorf("not supported table type")
 	} else {
-		w.isTagTable = tableType == api.TableTypeTag
+		w.isTagTable = tableType == client.TableTypeTag
 	}
 
 	if w.isTagTable {
@@ -234,7 +235,7 @@ func (w *Watcher) executeTag(tag string) {
 	for i, col := range w.columns {
 		name := col.Name
 		typ := col.Type
-		val := api.Unbox(values[i])
+		val := client.Unbox(values[i])
 		if typ == api.ColumnTypeDatetime {
 			if v, ok := val.(time.Time); ok {
 				obj[name] = w.timeformat.FormatEpoch(v)
@@ -306,7 +307,7 @@ func (w *Watcher) executeLog() {
 		values = values[1:]
 		obj := WatchData{}
 		for i, n := range w.columnNames {
-			obj[n] = api.Unbox(values[i])
+			obj[n] = client.Unbox(values[i])
 		}
 		w.handleData(obj)
 		w.lastArrivalTime = *arrivalTime

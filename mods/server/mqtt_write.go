@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -381,7 +382,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		wp.Table = strings.ToUpper(wp.Table)
 	}
 	var appenderName = tableUser + "." + wp.Table
-	var appender api.Appender
+	var appender spi.Appender
 	if aw, err := spi.GetAppendWorker(context.TODO(), appenderName); err != nil {
 		s.log.Warn(cl.Net.Remote, "fail to get append worker,", err.Error())
 		return
@@ -411,10 +412,10 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		inputStream = bytes.NewReader(pk.Payload)
 	}
 
-	cols, _ := appender.Columns()
+	cols := appender.Columns()
 	colNames := cols.Names()
 	colTypes := cols.DataTypes()
-	if appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+	if appender.TableType() == client.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

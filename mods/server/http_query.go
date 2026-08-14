@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -248,13 +249,13 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
-	} else if tableType == api.TableTypeLog {
+	} else if tableType == client.TableTypeLog {
 		sqlText = fmt.Sprintf("SELECT %s FROM %s WHERE _ARRIVAL_TIME BETWEEN ? and ? and %s->'$.ID' = ?",
 			columnName, tableName, columnName)
 		sqlParams = append(sqlParams, ts.Add(-2*time.Second).UnixNano())
 		sqlParams = append(sqlParams, ts.Add(3*time.Second).UnixNano())
 		sqlParams = append(sqlParams, fileID)
-	} else if tableType == api.TableTypeTag {
+	} else if tableType == client.TableTypeTag {
 		var desc *spi.TableDescription
 		if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", tableName, false); rs.Err() != nil {
 			err = rs.Err()
@@ -456,7 +457,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	} else {
 		desc = rs.Description
 	}
-	if desc.Type != api.TableTypeTag {
+	if desc.Type != client.TableTypeTag {
 		rsp.Success, rsp.Reason = false, "not a tag table"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
@@ -526,7 +527,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	} else {
 		desc = rs.Description
 	}
-	if desc.Type != api.TableTypeTag {
+	if desc.Type != client.TableTypeTag {
 		rsp.Success, rsp.Reason = false, "not a tag table"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)

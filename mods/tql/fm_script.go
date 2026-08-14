@@ -14,10 +14,11 @@ import (
 	"sync"
 
 	"github.com/dop251/goja"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
-	mod_dbms "github.com/machbase/neo-server/v8/jsh/lib/db"
+	jshdb "github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
@@ -276,7 +277,7 @@ func (ctx *JSContext) doResult() error {
 
 type JSResultOption map[string]any
 
-func (so JSResultOption) ResultColumns() api.Columns {
+func (so JSResultOption) ResultColumns() client.Columns {
 	var columns []string
 	var types []string
 	if c, ok := so["columns"]; !ok {
@@ -306,10 +307,10 @@ func (so JSResultOption) ResultColumns() api.Columns {
 		}
 	}
 
-	cols := make([]*api.Column, len(columns)+1)
-	cols[0] = &api.Column{Name: "key", DataType: api.DataTypeAny}
+	cols := make([]*client.Column, len(columns)+1)
+	cols[0] = &client.Column{Name: "key", DataType: api.DataTypeAny}
 	for i, name := range columns {
-		cols[i+1] = &api.Column{Name: name, DataType: api.DataTypeAny}
+		cols[i+1] = &client.Column{Name: name, DataType: api.DataTypeAny}
 		if len(types) > i {
 			cols[i+1].DataType = api.ParseDataType(types[i])
 		}
@@ -590,7 +591,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 		var node = ctx.node
 		var dbObj = vm.NewObject()
 
-		dbOpts := mod_dbms.ClientOptions{
+		dbOpts := jshdb.ClientOptions{
 			BridgeName:       "",
 			LowerCaseColumns: false,
 			Driver:           "",
@@ -632,8 +633,8 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 			copy(queryArgs, call.Arguments)
 
 			queryObj.Set("yield", func(call goja.FunctionCall) goja.Value {
-				client := mod_dbms.NewClientWithOptions(vm, dbOpts)
-				conn := client.Connect(goja.FunctionCall{})
+				jshClient := jshdb.NewClientWithOptions(vm, dbOpts)
+				conn := jshClient.Connect(goja.FunctionCall{})
 				defer conn.Close(goja.FunctionCall{})
 				rows := conn.Query(goja.FunctionCall{Arguments: queryArgs})
 				defer rows.Close(goja.FunctionCall{})
@@ -659,8 +660,8 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 			})
 
 			queryObj.Set("forEach", func(callback goja.Callable) goja.Value {
-				client := mod_dbms.NewClientWithOptions(vm, dbOpts)
-				conn := client.Connect(goja.FunctionCall{})
+				jshClient := jshdb.NewClientWithOptions(vm, dbOpts)
+				conn := jshClient.Connect(goja.FunctionCall{})
 				defer conn.Close(goja.FunctionCall{})
 				rows := conn.Query(goja.FunctionCall{Arguments: queryArgs})
 				defer rows.Close(goja.FunctionCall{})
@@ -677,7 +678,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 					var rec = map[string]any{}
 					for i, col := range names {
 						if i < len(values) {
-							rec[col] = vm.ToValue(api.Unbox(values[i]))
+							rec[col] = vm.ToValue(client.Unbox(values[i]))
 						} else {
 							rec[col] = goja.Null()
 						}
@@ -704,7 +705,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 
 		// $.db().exec(sql, params...)
 		dbObj.Set("exec", func(call goja.FunctionCall) goja.Value {
-			client := mod_dbms.NewClientWithOptions(vm, dbOpts)
+			client := jshdb.NewClientWithOptions(vm, dbOpts)
 			conn := client.Connect(goja.FunctionCall{})
 			defer conn.Close(goja.FunctionCall{})
 			return conn.Exec(call)
