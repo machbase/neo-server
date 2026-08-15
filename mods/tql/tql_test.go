@@ -122,7 +122,7 @@ func createTestTables() {
 		panic(err)
 	}
 	_, err = conn.ExecContext(ctx, SqlTidy(`
-		create table if not exists log_data(
+		create log table if not exists log_data(
 		    time datetime,
 			short_value short,
 			ushort_value ushort,

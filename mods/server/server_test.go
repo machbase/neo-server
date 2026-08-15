@@ -168,7 +168,7 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 
-		_, err = conn.ExecContext(ctx, `CREATE TABLE LOG_DATA(
+		_, err = conn.ExecContext(ctx, `CREATE LOG TABLE LOG_DATA(
 			time datetime,
 			short_value short,
 			ushort_value ushort,
@@ -697,9 +697,9 @@ func TestShellUser(t *testing.T) {
 				"┌────────┬────┐",
 				"│ ROWNUM │ ID │",
 				"├────────┼────┤",
-				"│      1 │  3 │",
+				"│      1 │  1 │",
 				"│      2 │  2 │",
-				"│      3 │  1 │",
+				"│      3 │  3 │",
 				"└────────┴────┘",
 				"3 rows selected.",
 				"",
@@ -716,10 +716,10 @@ func TestShellUser(t *testing.T) {
 				"",
 				"sql --format csv select * from user_x.table_x",
 				"ROWNUM,ID",
-				"1,4",
-				"2,3",
-				"3,2",
-				"4,1",
+				"1,1",
+				"2,2",
+				"3,3",
+				"4,4",
 				"4 rows selected.",
 				"",
 				"drop table user_x.table_x",

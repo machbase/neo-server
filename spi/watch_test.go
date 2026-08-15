@@ -15,7 +15,7 @@ func TestWatchLogTableInitialEmptyExecuteDoesNotError(t *testing.T) {
 
 	conn, err := db.Conn(t.Context())
 	require.NoError(t, err, "connect fail")
-	_, err = conn.ExecContext(t.Context(), `create table if not exists watch_log_empty (
+	_, err = conn.ExecContext(t.Context(), `create log table if not exists watch_log_empty (
 		time datetime,
 		value double,
 		memo varchar(80)

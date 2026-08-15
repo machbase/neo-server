@@ -206,23 +206,20 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 	db := fixture.db
 	tableName := fixture.tableName
 
-	t.Run("transactions are not supported", func(t *testing.T) {
+	t.Run("transactions are supported", func(t *testing.T) {
 		// TODO: implement transaction support in neo-client/driver (Begin/BeginTx, Commit, Rollback).
 		tx, err := db.BeginTx(t.Context(), nil)
-		require.Error(t, err)
-		require.Nil(t, tx)
-		require.Contains(t, strings.ToLower(err.Error()), "syntax error: near token (begin)")
+		require.NoError(t, err)
+		require.NotNil(t, tx)
 	})
 
-	t.Run("named parameters are not supported", func(t *testing.T) {
-		// TODO: add named parameter binding support in neo-client/driver driver (sql.Named / :name / @name).
+	t.Run("named parameters are supported", func(t *testing.T) {
 		_, err := db.ExecContext(
 			t.Context(),
-			fmt.Sprintf("UPDATE %s SET NAME = @name WHERE ID = 1", tableName),
+			fmt.Sprintf("UPDATE %s SET NAME = :name WHERE ID = 1", tableName),
 			sql.Named("name", "neo"),
 		)
-		require.Error(t, err)
-		require.Contains(t, strings.ToLower(err.Error()), "syntax error: near token (@name where id = 1)")
+		require.NoError(t, err)
 	})
 
 	t.Run("last insert id is not implemented", func(t *testing.T) {
@@ -453,20 +450,26 @@ func TestMachbaseSQLCompatibilityEmptyVarchar(t *testing.T) {
 	require.Equal(t, "EMPTY_VARCHAR", strings.ToUpper(columnTypes[0].Name()))
 	require.Equal(t, "VARCHAR", strings.ToUpper(columnTypes[0].DatabaseTypeName()))
 	require.Equal(t, reflect.TypeOf(""), columnTypes[0].ScanType())
+	nullable, supportNullable := columnTypes[0].Nullable()
+	require.False(t, nullable)
+	require.True(t, supportNullable)
 
 	require.True(t, rows.Next())
 
-	// Issue machbase/neo#1408
+	// Issue machbase/neo#1408, fixed in v8.7.0
+	// Column nullability is supported since v8.7.0, empty string can be scanned into string
+	// but the previous implementation considered all columns are nullable, so the scan type should be *sql.NullString
 	buff := spi.MakeBuffer(columnTypes)
-	// instead of using string
-	// require.Equal(t, "*string", reflect.TypeOf(buff[0]).String())
-	// using sql.NullString
-	require.Equal(t, "*sql.NullString", reflect.TypeOf(buff[0]).String())
+	require.Equal(t, "*string", reflect.TypeOf(buff[0]).String())
+
+	// TODO: remove this code after fix dbms-nfx#4071
+	buff[0] = &sql.NullString{}
+	//
+
 	err = rows.Scan(buff...)
 	require.NoError(t, err)
+
 	str := client.Unbox(buff[0])
-	// instead of using string
-	//require.Equal(t, "", str)
 	require.Nil(t, str)
 }
 

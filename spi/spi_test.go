@@ -1419,7 +1419,7 @@ func testCreateLogTable(t *testing.T) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 	_, err = conn.ExecContext(t.Context(), SqlTidy(`
-		create table if not exists log_data(
+		create log table if not exists log_data(
 		    time datetime,
 			short_value short,
 			ushort_value ushort,

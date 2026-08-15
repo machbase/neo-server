@@ -616,6 +616,14 @@ func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
 }
 
 func showIndexes(ctx context.Context, conn *sql.Conn, indexName string) *ShowIndexesResultSet {
+	supportDatabaseMetadata := false
+	conn.Raw(func(driverConn any) error {
+		if c, ok := driverConn.(*client.Conn); ok {
+			supportDatabaseMetadata = c.SupportDatabaseMetadata()
+		}
+		return nil
+	})
+
 	var listIndexesSql = SqlTidy(`
 		SELECT
 			j.DB_NAME as DATABASE_NAME,
@@ -649,20 +657,13 @@ func showIndexes(ctx context.Context, conn *sql.Conn, indexName string) *ShowInd
 			m$sys_users u,
 			(
 				select
-					case a.DATABASE_ID
-						when -1 then 'MACHBASEDB'
-						else d.MOUNTDB
-					end as DB_NAME,
+					a.DATABASE_NAME DB_NAME,
 					a.DATABASE_ID as DATABASE_ID,
 					a.name as TABLE_NAME,
 					a.id as TABLE_ID,
 					a.USER_ID as USER_ID
 				from
 					M$SYS_TABLES a
-				left join
-					V$STORAGE_MOUNT_DATABASES d
-				on
-					a.DATABASE_ID = d.BACKUP_TBSID
 			) as j
 		WHERE
 			j.TABLE_ID = b.TABLE_ID
@@ -671,6 +672,64 @@ func showIndexes(ctx context.Context, conn *sql.Conn, indexName string) *ShowInd
 		ORDER BY
 			j.DATABASE_ID, u.USER_ID, j.TABLE_NAME, b.ID
 	`)
+
+	if !supportDatabaseMetadata {
+		listIndexesSql = SqlTidy(`
+			SELECT
+				j.DB_NAME as DATABASE_NAME,
+				j.DATABASE_ID as DATABASE_ID,
+				u.name as USER_NAME,
+				j.TABLE_NAME as TABLE_NAME,
+				b.name as INDEX_NAME,
+				b.id as INDEX_ID,
+				case b.type
+					when 1 then 'BITMAP'
+					when 2 then 'KEYWORD'
+					when 5 then 'REDBLACK'
+					when 6 then 'LSM'
+					when 8 then 'REDBLACK'
+					when 9 then 'KEYWORD_LSM'
+					when 11 then 'TAG'
+					else 'LSM' 
+				end as INDEX_TYPE,
+				case b.key_compress
+					when 0 then 'UNCOMPRESSED'
+					else 'COMPRESSED'
+				end as KEY_COMPRESS,
+				b.max_level as MAX_LEVEL,
+				b.part_value_count as PART_VALUE_COUNT,
+				case b.bitmap_encode
+					when 0 then 'EQUAL'
+					else 'RANGE'
+				end as BITMAP_ENCODE
+			FROM
+				m$sys_indexes b, 
+				m$sys_users u,
+				(
+					select
+						case a.DATABASE_ID
+							when -1 then 'MACHBASEDB'
+							else d.MOUNTDB
+						end as DB_NAME,
+						a.DATABASE_ID as DATABASE_ID,
+						a.name as TABLE_NAME,
+						a.id as TABLE_ID,
+						a.USER_ID as USER_ID
+					from
+						M$SYS_TABLES a
+					left join
+						V$STORAGE_MOUNT_DATABASES d
+					on
+						a.DATABASE_ID = d.BACKUP_TBSID
+				) as j
+			WHERE
+				j.TABLE_ID = b.TABLE_ID
+			AND j.USER_ID = u.USER_ID
+			` + ifThenElse(indexName != "", "AND b.name = ?", "") + `
+			ORDER BY
+				j.DATABASE_ID, u.USER_ID, j.TABLE_NAME, b.ID
+		`)
+	}
 	args := []any{}
 	if indexName != "" {
 		args = append(args, indexName)
@@ -802,63 +861,90 @@ func (sui *ShowStorageResultSet) Iter(callback func(values []interface{}) bool) 
 }
 
 func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
-	mounts := map[int64]string{}
-	func() {
-		rows, err := conn.QueryContext(ctx, "SELECT BACKUP_TBSID, MOUNTDB FROM V$STORAGE_MOUNT_DATABASES")
-		if err != nil {
-			return
+	supportDatabaseMetadata := false
+	conn.Raw(func(driverConn any) error {
+		if c, ok := driverConn.(*client.Conn); ok {
+			supportDatabaseMetadata = c.SupportDatabaseMetadata()
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var backupTbsid int64
-			var mountDB string
-			if err := rows.Scan(&backupTbsid, &mountDB); err != nil {
-				return
-			}
-			mounts[backupTbsid] = mountDB
-		}
-	}()
-	sqlText := SqlTidy(`select
-        a.database_id,
-        a.table_id,
-		a.table_name as TABLE_NAME,
-		a.data_size as DATA_SIZE,
-		case b.index_size 
-			when b.index_size then b.index_size 
-			else 0 end 
-		as INDEX_SIZE,
-		case a.data_size + b.index_size 
-			when a.data_size + b.index_size then a.data_size + b.index_size 
-			else a.data_size end 
-		as TOTAL_SIZE
-	from
-		(select
-            a.database_id as database_id,
-            a.id as table_id,
-			a.name as table_name,
-			sum(b.storage_usage) as data_size
-		from
-			m$sys_tables a,
-			v$storage_tables b
-		where a.id = b.id
-		group by a.database_id, a.id, a.name
-        order by a.database_id, a.id, a.name
-		) as a LEFT OUTER JOIN
-		(select
-            a.database_id as database_id,
-            a.id as table_id,
-			a.name as table_name,
-			sum(b.disk_file_size) as index_size
-		from
-			m$sys_tables a,
-			v$storage_dc_table_indexes b
-		where a.database_id = b.database_id
-        and a.id = b.table_id
-		group by a.database_id, a.id, a.name) as b
-	on a.database_id = b.database_id
-    and a.table_id = b.table_id
-	order by a.database_id, a.table_id`)
+		return nil
+	})
 
+	sqlText := SqlTidy(`
+SELECT
+	a.database_id as DATABASE_ID,
+	a.database_name as DATABASE_NAME,
+    a.table_id as TABLE_ID,
+	a.table_name as TABLE_NAME,
+	a.data_size as DATA_SIZE,
+    case b.index_size when b.index_size then b.index_size else 0
+	end as INDEX_SIZE,
+    case a.data_size + b.index_size
+        when a.data_size + b.index_size then a.data_size + b.index_size
+        else a.data_size
+    end as TOTAL_SIZE
+FROM (
+    select
+		a.database_id as database_id,
+		a.database_name as database_name,
+        a.id as table_id,
+		a.name as table_name,
+		sum(b.storage_usage) as data_size
+    from m$sys_tables a, v$storage_tables b
+    where a.id = b.id
+    group by a.database_id, a.database_name, a.id, a.name
+) as a
+left outer join (
+    select
+		a.name, sum(b.disk_file_size) as index_size
+    from m$sys_tables a, v$storage_dc_table_indexes b
+    where a.id = b.table_id
+    group by a.name
+) as b
+on a.table_name = b.name
+order by a.database_name, a.table_name`)
+
+	if !supportDatabaseMetadata {
+		sqlText = SqlTidy(`select
+				a.database_id,
+				a.table_id,
+				a.table_name as TABLE_NAME,
+				a.data_size as DATA_SIZE,
+				case b.index_size 
+					when b.index_size then b.index_size 
+					else 0 end 
+				as INDEX_SIZE,
+				case a.data_size + b.index_size 
+					when a.data_size + b.index_size then a.data_size + b.index_size 
+					else a.data_size end 
+				as TOTAL_SIZE
+			from
+				(select
+					a.database_id as database_id,
+					a.id as table_id,
+					a.name as table_name,
+					sum(b.storage_usage) as data_size
+				from
+					m$sys_tables a,
+					v$storage_tables b
+				where a.id = b.id
+				group by a.database_id, a.id, a.name
+				order by a.database_id, a.id, a.name
+				) as a LEFT OUTER JOIN
+				(select
+					a.database_id as database_id,
+					a.id as table_id,
+					a.name as table_name,
+					sum(b.disk_file_size) as index_size
+				from
+					m$sys_tables a,
+					v$storage_dc_table_indexes b
+				where a.database_id = b.database_id
+				and a.id = b.table_id
+				group by a.database_id, a.id, a.name) as b
+			on a.database_id = b.database_id
+			and a.table_id = b.table_id
+			order by a.database_id, a.table_id`)
+	}
 	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
@@ -868,14 +954,9 @@ func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
 	list := []*StorageInfo{}
 	for rows.Next() {
 		rec := &StorageInfo{}
-		err = rows.Scan(&rec.DatabaseId, &rec.TableId, &rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
+		err = rows.Scan(&rec.DatabaseId, &rec.DatabaseName, &rec.TableId, &rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
 		if err != nil {
 			return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
-		}
-		if rec.DatabaseId == -1 {
-			rec.DatabaseName = "MACHBASEDB"
-		} else {
-			rec.DatabaseName = mounts[rec.DatabaseId]
 		}
 		list = append(list, rec)
 	}
@@ -915,6 +996,16 @@ func (tui *ShowTableUsageResultSet) Iter(callback func(values []interface{}) boo
 }
 
 func ShowTableUsage(ctx context.Context, conn *sql.Conn) *ShowTableUsageResultSet {
+	supportDatabaseMetadata := false
+	conn.Raw(func(driverConn any) error {
+		if c, ok := driverConn.(*client.Conn); ok {
+			supportDatabaseMetadata = c.SupportDatabaseMetadata()
+		} else {
+			panic("driverConn is not *client.Conn")
+		}
+		return nil
+	})
+
 	sqlText := SqlTidy(`
 		SELECT
 			j.DATABASE_NAME as DATABASE_NAME,
@@ -931,18 +1022,18 @@ func ShowTableUsage(ctx context.Context, conn *sql.Conn) *ShowTableUsageResultSe
 					a.USER_ID as USER_ID,
 					a.DATABASE_ID,
 					case a.DATABASE_ID
-						when -1 then 'MACHBASEDB'
+						when 1 then 'MACHBASEDB'
 						else d.MOUNTDB
 					end as DATABASE_NAME,
 					case a.DATABASE_ID
-						when -1 then 'Normal'
+						when 1 then 'Normal'
 						else 'Mounted'
 					end as STATUS
 				FROM
 					M$SYS_TABLES a
 				LEFT JOIN
 					V$STORAGE_MOUNT_DATABASES d
-				ON a.DATABASE_ID = d.BACKUP_TBSID
+				ON a.DATABASE_NAME = d.MOUNTDB
 			) j
 		WHERE
 			u.USER_ID = j.USER_ID
@@ -950,6 +1041,44 @@ func ShowTableUsage(ctx context.Context, conn *sql.Conn) *ShowTableUsageResultSe
 		AND s.STATUS = j.STATUS
 		ORDER BY j.DATABASE_ID, u.USER_ID, s.ID
 	`)
+
+	if !supportDatabaseMetadata {
+		sqlText = SqlTidy(`
+			SELECT
+				j.DATABASE_NAME as DATABASE_NAME,
+				u.NAME as USER_NAME,
+				j.NAME as TABLE_NAME,
+				s.STORAGE_USAGE
+			FROM
+				M$SYS_USERS u,
+				V$STORAGE_TABLES s,
+				(
+					SELECT
+						a.ID as ID,
+						a.NAME as NAME,
+						a.USER_ID as USER_ID,
+						a.DATABASE_ID,
+						case a.DATABASE_ID
+							when -1 then 'MACHBASEDB'
+							else d.MOUNTDB
+						end as DATABASE_NAME,
+						case a.DATABASE_ID
+							when -1 then 'Normal'
+							else 'Mounted'
+						end as STATUS
+					FROM
+						M$SYS_TABLES a
+					LEFT JOIN
+						V$STORAGE_MOUNT_DATABASES d
+					ON a.DATABASE_ID = d.BACKUP_TBSID
+				) j
+			WHERE
+				u.USER_ID = j.USER_ID
+			AND s.ID = j.ID
+			AND s.STATUS = j.STATUS
+			ORDER BY j.DATABASE_ID, u.USER_ID, s.ID
+		`)
+	}
 
 	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
@@ -1242,8 +1371,8 @@ func ShowRollupGap(ctx context.Context, conn *sql.Conn) *ShowRollupGapResultSet 
             M$SYS_USERS U
         WHERE 
             A.ID=B.ID
-        AND A.DATABASE_ID=C.DATABASE_ID
-        AND A.DATABASE_ID=-1
+        AND A.TABLESPACE_ID=C.TABLESPACE_ID
+        AND A.DATABASE_ID=1
         AND A.NAME=C.SOURCE_TABLE
         AND A.USER_ID=C.USER_ID
         AND U.USER_ID=C.USER_ID

@@ -701,6 +701,58 @@ func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback 
 			M$SYS_USERS u,
 			(
 				select
+					ID as ID,
+					NAME as NAME,
+					USER_ID as USER_ID,
+					TYPE as TYPE,
+					FLAG as FLAG,
+					DATABASE_NAME as DB_NAME
+				from
+					M$SYS_TABLES
+			) as j
+		WHERE
+			u.USER_ID = j.USER_ID`,
+		ifThenElse(showAll, "", `AND j.NAME NOT LIKE '\_%'`),
+		`ORDER by j.NAME`)
+
+	supportDatabaseMetadata := false
+	conn.Raw(func(driverConn any) error {
+		if c, ok := driverConn.(*client.Conn); ok {
+			supportDatabaseMetadata = c.SupportDatabaseMetadata()
+		}
+		return nil
+	})
+	if !supportDatabaseMetadata {
+		sqlText = SqlTidy(
+			`SELECT
+			j.DB_NAME as DATABASE_NAME,
+			u.NAME as USER_NAME,
+			j.NAME as TABLE_NAME,
+			j.ID as TABLE_ID,`,
+			ifThenElse(descriptiveType, `
+			case j.TYPE
+				when 0 then 'Log'
+				when 1 then 'Fixed'
+				when 3 then 'Volatile'
+				when 4 then 'Lookup'
+				when 5 then 'KeyValue'
+				when 6 then 'Tag'
+				else ''
+			end as TABLE_TYPE,
+			case j.FLAG
+				when 1 then 'Data'
+				when 2 then 'Rollup'
+				when 4 then 'Meta'
+				when 8 then 'Stat'
+				else ''
+			end as TABLE_FLAG`,
+				`
+			j.TYPE as TABLE_TYPE,
+			j.FLAG as TABLE_FLAG`),
+			`FROM
+			M$SYS_USERS u,
+			(
+				select
 					a.ID as ID,
 					a.NAME as NAME,
 					a.USER_ID as USER_ID,
@@ -719,8 +771,9 @@ func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback 
 			) as j
 		WHERE
 			u.USER_ID = j.USER_ID`,
-		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'"),
-		`ORDER by j.NAME`)
+			ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'"),
+			`ORDER by j.NAME`)
+	}
 	rows, err := conn.QueryContext(ctx, sqlText)
 	if err != nil {
 		callback(nil, err)

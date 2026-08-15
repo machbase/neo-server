@@ -59,6 +59,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 	{
 		// table type
 		var describeTableSql = `SELECT
+				j.DATABASE_ID as DATABASE_ID,
 				j.ID as TABLE_ID,
 				j.TYPE as TABLE_TYPE,
 				j.FLAG as TABLE_FLAG,
@@ -69,14 +70,15 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 			where
 				u.NAME = ?
 			and j.USER_ID = u.USER_ID
-			and j.DATABASE_ID = ?
+			and j.DATABASE_NAME = ?
 			and j.NAME = ?`
-		row := queryCon.QueryRow(ctx, describeTableSql, userName, -1, tableName)
+		row := queryCon.QueryRow(ctx, describeTableSql, userName, "MACHBASEDB", tableName)
+		var databaseId int64
 		var tableId int32
 		var tableType = client.TableType(-1)
 		var tableFlag int32
 		var colCount int32
-		if err := row.Scan(&tableId, &tableType, &tableFlag, &colCount); err != nil {
+		if err := row.Scan(&databaseId, &tableId, &tableType, &tableFlag, &colCount); err != nil {
 			if err.Error() == "sql: no rows in result set" {
 				return nil, fmt.Errorf("table '%s' does not exist", strings.ToUpper(appender.tableName))
 			} else {
@@ -97,7 +99,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 			`	table_id = ? ` +
 			`AND database_id = ? ` +
 			`ORDER BY id`
-		rows, err := queryCon.Query(ctx, columnsSql, tableId, -1)
+		rows, err := queryCon.Query(ctx, columnsSql, tableId, databaseId)
 		if err != nil {
 			return nil, err
 		}
