@@ -11,7 +11,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -469,33 +467,6 @@ func TestProxyRPCHandlers(t *testing.T) {
 
 	_, err = svr.getProxy(ProxyGetRequest{Service: "alpha", Prefix: "/api/"})
 	require.ErrorIs(t, err, errProxyNotFound)
-}
-
-func TestHandleServiceProxy(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(r.URL.Path))
-	}))
-	defer target.Close()
-
-	pm := NewProxyManager()
-	_, err := pm.Register(ProxyRegisterRequest{Service: "github.com/acme/chart", Prefix: "/api/", Target: target.URL})
-	require.NoError(t, err)
-	svr := &httpd{authServer: &Server{proxyMgr: pm}}
-
-	router := gin.New()
-	router.Any("/web/services/*path", svr.handleServiceProxy)
-	frontend := httptest.NewServer(router)
-	defer frontend.Close()
-
-	rsp, err := http.Get(frontend.URL + "/web/services/github.com/acme/chart/api/v1")
-	require.NoError(t, err)
-	defer rsp.Body.Close()
-	body, err := io.ReadAll(rsp.Body)
-	require.NoError(t, err)
-
-	require.Equal(t, http.StatusOK, rsp.StatusCode)
-	require.Equal(t, "/v1", string(body))
 }
 
 func TestServiceLifecycleCleansProxies(t *testing.T) {

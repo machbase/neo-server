@@ -3077,3 +3077,71 @@ func (s *Server) provideShellForSsh(user string, shellId string) *SshShell {
 	}
 	return shell
 }
+
+func (s *Server) cleanupServiceProxies(serviceName string) {
+	if s == nil || s.proxyMgr == nil || serviceName == "" {
+		return
+	}
+	removed, err := s.proxyMgr.Unregister(ProxyUnregisterRequest{Service: serviceName})
+	if err != nil {
+		if s.log != nil {
+			s.log.Warnf("service %s proxy cleanup failed: %v", serviceName, err)
+		}
+		return
+	}
+	if len(removed) > 0 && s.log != nil {
+		s.log.Infof("service %s proxy cleanup removed %d entries", serviceName, len(removed))
+	}
+}
+
+// registerProxy registers a service proxy entry.
+//
+// params:
+//   - req: proxy registration request
+//
+// return: registered proxy snapshot
+func (s *Server) registerProxy(req ProxyRegisterRequest) (ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		s.proxyMgr = NewProxyManager()
+	}
+	return s.proxyMgr.Register(req)
+}
+
+// unregisterProxy removes service proxy entries by filter.
+//
+// params:
+//   - req: proxy unregister request
+//
+// return: removed proxy snapshots
+func (s *Server) unregisterProxy(req ProxyUnregisterRequest) ([]ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		s.proxyMgr = NewProxyManager()
+	}
+	return s.proxyMgr.Unregister(req)
+}
+
+// listProxies lists service proxy entries.
+//
+// params:
+//   - service: service name filter
+//
+// return: proxy snapshot list
+func (s *Server) listProxies(service string) ([]ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		return []ProxyEntrySnapshot{}, nil
+	}
+	return s.proxyMgr.List(service), nil
+}
+
+// getProxy gets one service proxy entry.
+//
+// params:
+//   - req: proxy lookup request
+//
+// return: proxy snapshot
+func (s *Server) getProxy(req ProxyGetRequest) (ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		return ProxyEntrySnapshot{}, errProxyNotFound
+	}
+	return s.proxyMgr.Get(req)
+}

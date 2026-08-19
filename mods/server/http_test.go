@@ -1148,6 +1148,33 @@ func jwtLogin(username, password string) (string, string, error) {
 	return loginRsp.AccessToken, loginRsp.RefreshToken, nil
 }
 
+func TestHandleServiceProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	}))
+	defer target.Close()
+
+	pm := NewProxyManager()
+	_, err := pm.Register(ProxyRegisterRequest{Service: "github.com/acme/chart", Prefix: "/api/", Target: target.URL})
+	require.NoError(t, err)
+	svr := &httpd{authServer: &Server{proxyMgr: pm}}
+
+	router := gin.New()
+	router.Any("/web/services/*path", svr.handleServiceProxy)
+	frontend := httptest.NewServer(router)
+	defer frontend.Close()
+
+	rsp, err := http.Get(frontend.URL + "/web/services/github.com/acme/chart/api/v1")
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	require.Equal(t, "/v1", string(body))
+}
+
 func TestLicense(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")
 	require.NoError(t, err)

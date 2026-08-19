@@ -52,13 +52,7 @@ func NewHttp(options ...HttpOption) (*httpd, error) {
 	s := &httpd{
 		log:      logging.GetLog("httpd"),
 		jwtCache: NewJwtCache(),
-		handlers: []*HandlerConfig{
-			{Prefix: "/db", Handler: "machbase"},
-			{Prefix: "/lakes", Handler: "lakes"},
-			{Prefix: "/metrics", Handler: "influx"},
-			{Prefix: "/web", Handler: "web"},
-		},
-		pathMap: map[string]string{},
+		pathMap:  map[string]string{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -72,7 +66,6 @@ type httpd struct {
 
 	listenAddresses []string
 	enableTokenAuth bool
-	handlers        []*HandlerConfig
 	mqttWsHandler   func(*gin.Context)
 
 	httpServer *http.Server
@@ -298,20 +291,6 @@ func WithHttpPathMap(name string, realPath string) HttpOption {
 	}
 }
 
-type HandlerType string
-
-const (
-	HandlerMachbase = HandlerType("machbase")
-	HandlerInflux   = HandlerType("influx") // influx line protocol
-	HandlerWeb      = HandlerType("web")    // web ui
-	HandlerVoid     = HandlerType("-")
-)
-
-type HandlerConfig struct {
-	Prefix  string
-	Handler HandlerType
-}
-
 func (svr *httpd) Start() error {
 	svr.alive = true
 
@@ -412,108 +391,92 @@ func (svr *httpd) Router() *gin.Engine {
 	r.Use(MetricsInterceptor())
 
 	// redirect '/' -> '/web/'
-	for _, h := range svr.handlers {
-		if h.Handler == HandlerWeb {
-			r.GET("/", func(ctx *gin.Context) {
-				ctx.Redirect(http.StatusFound, h.Prefix)
-			})
-			break
-		}
+	r.GET("/", func(ctx *gin.Context) {
+		ctx.Redirect(http.StatusFound, "/web/")
+	})
+	// prefix '/metrics' for influx line protocol
+	metricsGroup := r.Group("/metrics")
+	if svr.enableTokenAuth && svr.authServer != nil {
+		metricsGroup.Use(svr.handleAuthToken)
 	}
+	metricsGroup.POST("/:oper", svr.handleLineProtocol)
+	svr.log.Infof("HTTP path %s for the line protocol", "/metrics")
 
-	for _, h := range svr.handlers {
-		prefix := h.Prefix
-		// remove trailing slash
-		prefix = strings.TrimSuffix(prefix, "/")
-
-		if h.Handler == HandlerVoid {
-			// disabled by configuration
-			continue
-		}
-		svr.log.Debugf("Add handler %s '%s'", h.Handler, prefix)
-		group := r.Group(prefix)
-
-		switch h.Handler {
-		case HandlerInflux: // "influx line protocol"
-			if svr.enableTokenAuth && svr.authServer != nil {
-				group.Use(svr.handleAuthToken)
-			}
-			group.POST("/:oper", svr.handleLineProtocol)
-			svr.log.Infof("HTTP path %s for the line protocol", prefix)
-		case HandlerWeb: // web ui
-			contentBase := "/ui/"
-			group.GET("/", func(ctx *gin.Context) {
-				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))
-			})
-			if svr.uiContentFs != nil {
-				group.StaticFS(contentBase, svr.uiContentFs)
-			} else {
-				group.StaticFS(contentBase, GetAssets(contentBase))
-			}
-			group.Any("/api/license/eula", svr.handleEula)
-			group.POST("/api/login", svr.handleLogin)
-			group.GET("/api/term/:term_id/data", svr.handleTermData)
-			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
-			if svr.mqttWsHandler != nil {
-				group.GET("/api/mqtt", svr.mqttWsHandler)
-				svr.log.Infof("MQTT websocket handler enabled")
-			}
-			if svr.tqlLoader != nil {
-				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
-			}
-			group.GET("/api/tql-exec", svr.handleTqlQueryExec)
-			group.Any("/services/*path", svr.handleServiceProxy)
-			group.Use(svr.handleJwtToken)
-			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
-			group.GET("/api/tql/*path", svr.handleTqlFile)
-			group.POST("/api/tql/*path", svr.handleTqlFile)
-			group.GET("/api/tql", svr.handleTqlQuery)
-			group.POST("/api/tql", svr.handleTqlQuery)
-			group.Any("/machbase", func(c *gin.Context) {
-				svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
-				svr.handleQuery(c)
-			})
-			group.Any("/api/query", svr.handleQuery)
-			group.GET("/api/check", svr.handleCheck)
-			group.POST("/api/rpc", svr.handleHttpRpc)
-			group.POST("/api/relogin", svr.handleReLogin)
-			group.POST("/api/logout", svr.handleLogout)
-			group.POST("/api/chpasswd", svr.handleChangePassword)
-			group.GET("/api/timers/:name", svr.handleTimer)
-			group.PUT("/api/timers/:name", svr.handleTimersUpdate)
-			group.GET("/api/subscribers/:name", svr.handleSubscriber)
-			group.GET("/api/tables", svr.handleTables)
-			group.GET("/api/tables/:table/tags", svr.handleTags)
-			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
-			group.Any("/api/files/*path", svr.handleFiles)
-			group.GET("/api/refs/*path", svr.handleRefs)
-			group.GET("/api/license", svr.handleGetLicense)
-			group.POST("/api/license", svr.handleInstallLicense)
-			group.Any("/api/statz/config", svr.handleStatzConfig)
-			if svr.authServer != nil && svr.authServer.bakd != nil {
-				svr.authServer.bakd.HttpRouter(group.Group("/api/backup"))
-			}
-			svr.log.Infof("HTTP path %s for the web ui", prefix)
-		case HandlerMachbase: // "machbase"
-			if svr.enableTokenAuth && svr.authServer != nil {
-				group.Use(svr.handleAuthToken)
-			}
-			group.GET("/query", svr.handleQuery)
-			group.POST("/query", svr.handleQuery)
-			group.POST("/write", svr.handleWrite)
-			group.POST("/write/:table", svr.handleWrite)
-			group.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
-			group.GET("/watch/:table", svr.handleWatchQuery)
-			group.GET("/tql/*path", svr.handleTqlFile)
-			group.POST("/tql/*path", svr.handleTqlFile)
-			group.GET("/tql", svr.handleTqlQuery)
-			group.POST("/tql", svr.handleTqlQuery)
-			svr.log.Infof("HTTP path %s for machbase api", prefix)
-		}
+	// prefix '/db' for machbase
+	dbGroup := r.Group("/db")
+	if svr.enableTokenAuth && svr.authServer != nil {
+		dbGroup.Use(svr.handleAuthToken)
 	}
-	// public group
-	publicGroup := r.Group("/public")
-	publicGroup.Any("/*path", svr.handlePublic)
+	dbGroup.GET("/query", svr.handleQuery)
+	dbGroup.POST("/query", svr.handleQuery)
+	dbGroup.POST("/write", svr.handleWrite)
+	dbGroup.POST("/write/:table", svr.handleWrite)
+	dbGroup.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
+	dbGroup.GET("/watch/:table", svr.handleWatchQuery)
+	dbGroup.GET("/tql/*path", svr.handleTqlFile)
+	dbGroup.POST("/tql/*path", svr.handleTqlFile)
+	dbGroup.GET("/tql", svr.handleTqlQuery)
+	dbGroup.POST("/tql", svr.handleTqlQuery)
+	svr.log.Infof("HTTP path %s for machbase api", "/db")
+
+	// prefix '/web' for web ui
+	webGroup := r.Group("/web")
+	contentBase := "/ui/"
+	webGroup.GET("/", func(ctx *gin.Context) {
+		ctx.Redirect(http.StatusFound, path.Join("/web", contentBase))
+	})
+	if svr.uiContentFs != nil {
+		webGroup.StaticFS(contentBase, svr.uiContentFs)
+	} else {
+		webGroup.StaticFS(contentBase, GetAssets(contentBase))
+	}
+	webGroup.Any("/api/license/eula", svr.handleEula)
+	webGroup.POST("/api/login", svr.handleLogin)
+	webGroup.GET("/api/term/:term_id/data", svr.handleTermData)
+	webGroup.GET("/api/console/:console_id/data", svr.handleConsoleData)
+	if svr.mqttWsHandler != nil {
+		webGroup.GET("/api/mqtt", svr.mqttWsHandler)
+		svr.log.Infof("MQTT websocket handler enabled")
+	}
+	if svr.tqlLoader != nil {
+		webGroup.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
+	}
+	webGroup.GET("/api/tql-exec", svr.handleTqlQueryExec)
+	webGroup.Any("/services/*path", svr.handleServiceProxy)
+	webGroup.Use(svr.handleJwtToken)
+	webGroup.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+	webGroup.GET("/api/tql/*path", svr.handleTqlFile)
+	webGroup.POST("/api/tql/*path", svr.handleTqlFile)
+	webGroup.GET("/api/tql", svr.handleTqlQuery)
+	webGroup.POST("/api/tql", svr.handleTqlQuery)
+	webGroup.Any("/machbase", func(c *gin.Context) {
+		svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
+		svr.handleQuery(c)
+	})
+	webGroup.Any("/api/query", svr.handleQuery)
+	webGroup.GET("/api/check", svr.handleCheck)
+	webGroup.POST("/api/rpc", svr.handleHttpRpc)
+	webGroup.POST("/api/relogin", svr.handleReLogin)
+	webGroup.POST("/api/logout", svr.handleLogout)
+	webGroup.POST("/api/chpasswd", svr.handleChangePassword)
+	webGroup.GET("/api/timers/:name", svr.handleTimer)
+	webGroup.PUT("/api/timers/:name", svr.handleTimersUpdate)
+	webGroup.GET("/api/subscribers/:name", svr.handleSubscriber)
+	webGroup.GET("/api/tables", svr.handleTables)
+	webGroup.GET("/api/tables/:table/tags", svr.handleTags)
+	webGroup.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
+	webGroup.Any("/api/files/*path", svr.handleFiles)
+	webGroup.GET("/api/refs/*path", svr.handleRefs)
+	webGroup.GET("/api/license", svr.handleGetLicense)
+	webGroup.POST("/api/license", svr.handleInstallLicense)
+	webGroup.Any("/api/statz/config", svr.handleStatzConfig)
+	if svr.authServer != nil && svr.authServer.bakd != nil {
+		svr.authServer.bakd.HttpRouter(webGroup.Group("/api/backup"))
+	}
+	svr.log.Infof("HTTP path %s for the web ui", "/web")
+
+	// prefix '/public' for public files
+	r.Any("/public/*path", svr.handlePublic)
 
 	// debug group
 	debugGroup := r.Group("/debug")
@@ -710,17 +673,6 @@ type LoginRsp struct {
 	ServerInfo   *ServerInfo `json:"server,omitempty"`
 }
 
-type LoginCheckRsp struct {
-	Success        bool                     `json:"success"`
-	Reason         string                   `json:"reason"`
-	Elapse         string                   `json:"elapse"`
-	ServerInfo     *ServerInfo              `json:"server,omitempty"`
-	ExperimentMode bool                     `json:"experimentMode"`
-	EulaRequired   bool                     `json:"eulaRequired,omitempty"`
-	LicenseStatus  string                   `json:"licenseStatus,omitempty"`
-	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
-}
-
 type ChangePasswordReq struct {
 	NewPassword string `json:"newPassword"`
 }
@@ -729,22 +681,6 @@ type ChangePasswordRsp struct {
 	Success bool   `json:"success"`
 	Reason  string `json:"reason"`
 	Elapse  string `json:"elapse"`
-}
-
-type ServerInfo struct {
-	Version string `json:"version,omitempty"`
-}
-
-type WebReferenceGroup struct {
-	Label string          `json:"label"`
-	Items []ReferenceItem `json:"items"`
-}
-
-type ReferenceItem struct {
-	Type   string `json:"type"`
-	Title  string `json:"title"`
-	Addr   string `json:"address"`
-	Target string `json:"target,omitempty"`
 }
 
 func (svr *httpd) handleChangePassword(ctx *gin.Context) {
@@ -858,13 +794,6 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-
-	// cache username and password for web-terminal uses
-	// if svr.authServer != nil {
-	// 	svr.authServer.neoShellAccountMu.Lock()
-	// 	svr.authServer.neoShellAccount[strings.ToLower(username.Login)] = req.Password
-	// 	svr.authServer.neoShellAccountMu.Unlock()
-	// }
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
@@ -998,6 +927,24 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 	rsp.Elapse = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
+
+type LoginCheckRsp struct {
+	Success        bool                     `json:"success"`
+	Reason         string                   `json:"reason"`
+	Elapse         string                   `json:"elapse"`
+	ServerInfo     *ServerInfo              `json:"server,omitempty"`
+	ExperimentMode bool                     `json:"experimentMode"`
+	EulaRequired   bool                     `json:"eulaRequired,omitempty"`
+	LicenseStatus  string                   `json:"licenseStatus,omitempty"`
+	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
+}
+
+type ServerInfo struct {
+	Version string `json:"version,omitempty"`
+}
+
+//go:embed eula.txt
+var eulaTxt string
 
 func (svr *httpd) handleCheck(ctx *gin.Context) {
 	tick := time.Now()
@@ -1357,13 +1304,6 @@ func (svr *httpd) handleSubscriber(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-var (
-	mdFileRootRegexp = regexp.MustCompile(`{{\s*file_root\s*}}`)
-	mdFilePathRegexp = regexp.MustCompile(`{{\s*file_path\s*}}`)
-	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
-	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
-)
-
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
@@ -1561,11 +1501,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 }
 
-type setTerminalSizeRequest struct {
-	Rows int `query:"rows" form:"rows" json:"rows"`
-	Cols int `query:"cols" form:"cols" json:"cols"`
-}
-
 func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 	termId := ctx.Param("term_id")
 
@@ -1577,7 +1512,10 @@ func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 	claim := claimAny.(Claim)
 	termLoginName := claim.Subject
 
-	req := &setTerminalSizeRequest{}
+	req := &struct {
+		Rows int `query:"rows" form:"rows" json:"rows"`
+		Cols int `query:"cols" form:"cols" json:"cols"`
+	}{}
 	if err := ctx.Bind(req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"success": false, "reason": err.Error()})
 		return
@@ -1953,9 +1891,6 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 	})
 	cons.connMutex.Unlock()
 }
-
-//go:embed eula.txt
-var eulaTxt string
 
 //go:embed assets/*
 var assetsDir embed.FS
@@ -2404,6 +2339,18 @@ type RefsResponse struct {
 	} `json:"data"`
 }
 
+type WebReferenceGroup struct {
+	Label string          `json:"label"`
+	Items []ReferenceItem `json:"items"`
+}
+
+type ReferenceItem struct {
+	Type   string `json:"type"`
+	Title  string `json:"title"`
+	Addr   string `json:"address"`
+	Target string `json:"target,omitempty"`
+}
+
 func (svr *httpd) handleRefs(ctx *gin.Context) {
 	rsp := &RefsResponse{Reason: "unspecified"}
 	tick := time.Now()
@@ -2453,6 +2400,13 @@ var defaultJsonRpcController = &service.Controller{}
 func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplicitParamResolver) ([]reflect.Value, error) {
 	return service.BuildRpcCallParams(handler, rawParams, service.JsonRpcImplicitParamResolver(resolveImplicit))
 }
+
+var (
+	mdFileRootRegexp = regexp.MustCompile(`{{\s*file_root\s*}}`)
+	mdFilePathRegexp = regexp.MustCompile(`{{\s*file_path\s*}}`)
+	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
+	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
+)
 
 // rpcMarkdownRender renders markdown to HTML.
 //
@@ -2820,4 +2774,12 @@ func (ws *WsReadWriter) Write(data []byte) (int, error) {
 		return 0, err
 	}
 	return len(data), nil
+}
+
+func (svr *httpd) handleServiceProxy(ctx *gin.Context) {
+	if svr.authServer == nil || svr.authServer.proxyMgr == nil {
+		ctx.JSON(404, gin.H{"success": false, "reason": "proxy not registered"})
+		return
+	}
+	svr.authServer.proxyMgr.Handle(ctx, ctx.Param("path"))
 }
