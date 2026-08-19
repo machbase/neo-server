@@ -575,6 +575,14 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 		if err == nil {
 			return yieldResultSet(node, spi.ShowUsers(node.task.ctx, conn))
 		}
+	case "databases":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowDatabases(node.task.ctx, conn))
+		}
 	case "tables":
 		err = validateArgs(command, 0)
 		if err == nil {

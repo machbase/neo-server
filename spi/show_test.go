@@ -148,6 +148,27 @@ func TestShowPorts(t *testing.T) {
 	}.runResultSetTestCases(t)
 }
 
+func TestShowDatabases(t *testing.T) {
+	fixture := newShowDatabase(t.Context())
+	defer fixture.Close()
+	ResultSetTestCase{
+		name:    "ShowDatabases",
+		fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowDatabases(t.Context(), fixture.dbConn)) },
+		columns: []string{"DATABASE_ID", "NAME", "KIND", "ACCESS_MODE", "CAN_USE", "STATE", "IS_DEFAULT"},
+		expectFunc: func(values [][]any) {
+			require.Equal(t, 1, len(values))
+			row := values[0]
+			require.GreaterOrEqual(t, row[0], int64(1)) // DATABASE_ID
+			require.Equal(t, "MACHBASEDB", row[1])      // NAME
+			require.NotEqual(t, "", row[2])             // KIND
+			require.Equal(t, "READ_WRITE", row[3])      // ACCESS_MODE
+			require.Equal(t, 1, row[4].(int))           // CAN_USE
+			require.Equal(t, "NORMAL", row[5])          // STATE
+			require.Equal(t, 1, row[6].(int))           // IS_DEFAULT
+		},
+	}.runResultSetTestCases(t)
+}
+
 func TestShowUsers(t *testing.T) {
 	fixture := newShowDatabase(t.Context())
 	defer fixture.Close()
