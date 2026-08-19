@@ -973,7 +973,7 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.licenseStatusLastTime.IsZero() || time.Since(svr.licenseStatusLastTime) > 30*time.Minute {
 		svr.licenseStatusLastTime = time.Now()
 		svr.licenseStatus = "Unknown"
-		if conn, err := getPoolSqlConn(ctx); err == nil {
+		if conn, err := spi.Connect(ctx, "sys"); err == nil {
 			if nfo, err := spi.GetLicenseInfo(ctx, conn); err == nil {
 				svr.licenseStatus = nfo.LicenseStatus
 			}
@@ -1105,7 +1105,7 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	rsp := &LicenseResponse{Success: false, Reason: "unspecified"}
 	tick := time.Now()
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnauthorized, rsp)
@@ -1162,7 +1162,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnauthorized, rsp)

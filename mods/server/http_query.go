@@ -141,7 +141,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 
 	watch, err := spi.NewWatcher(ctx,
 		spi.WatcherConfig{
-			ConnProvider: func() (*sql.Conn, error) { return getPoolSqlConn(ctx) },
+			ConnProvider: func() (*sql.Conn, error) { return spi.Connect(ctx, "sys") },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
 			Timeformat:   timeformat,
@@ -233,7 +233,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 	}
 	ts, _ := uidTs.Time()
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
