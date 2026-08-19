@@ -2,23 +2,34 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net/url"
+	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/spi"
+	"golang.org/x/crypto/ssh"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -215,4 +226,839 @@ func HashCertificate(cert *x509.Certificate) (string, error) {
 	sha := sha3.New256()
 	sha.Write([]byte(b64str))
 	return hex.EncodeToString(sha.Sum(nil)), nil
+}
+
+type ListKeyResponse struct {
+	Success bool       `json:"success"`
+	Reason  string     `json:"reason"`
+	Elapse  string     `json:"elapse"`
+	Keys    []*KeyInfo `json:"keys"`
+}
+
+type KeyInfo struct {
+	Idx       int    `json:"idx"`
+	Id        string `json:"id"`
+	NotBefore int64  `json:"notBefore"`
+	NotAfter  int64  `json:"notAfter"`
+}
+
+func (s *Server) ListKey(context.Context) (*ListKeyResponse, error) {
+	tick := time.Now()
+	rsp := &ListKeyResponse{}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	err := s.IterateAuthorizedCertificates(func(id string) bool {
+		cert, err := s.AuthorizedCertificate(id)
+		if err != nil {
+			s.log.Warnf("fail to load certificate '%s', %s", id, err.Error())
+			return true
+		}
+		if id != cert.Subject.CommonName {
+			s.log.Warnf("certificate id '%s' has different common name '%s'", id, cert.Subject.CommonName)
+			return true
+		}
+
+		item := KeyInfo{
+			Idx:       len(rsp.Keys),
+			Id:        cert.Subject.CommonName,
+			NotBefore: cert.NotBefore.Unix(),
+			NotAfter:  cert.NotAfter.Unix(),
+		}
+
+		rsp.Keys = append(rsp.Keys, &item)
+		return true
+	})
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
+}
+
+type GenKeyRequest struct {
+	Id        string `json:"id"`
+	Type      string `json:"type"`      // RSA, ECDSA
+	NotBefore int64  `json:"notBefore"` // unix epoch in seconds
+	NotAfter  int64  `json:"notAfter"`  // unix epoch in seconds
+	NotStore  bool   `json:"notStore"`  // if true, the generated key will not be stored in the server
+}
+
+type GenKeyResponse struct {
+	Success     bool   `json:"success"`
+	Reason      string `json:"reason"`
+	Elapse      string `json:"elapse"`
+	Id          string `json:"id"`
+	Token       string `json:"token"`
+	Key         string `json:"key"`
+	Certificate string `json:"certificate"`
+}
+
+func (s *Server) GenKey(ctx context.Context, req *GenKeyRequest) (*GenKeyResponse, error) {
+	tick := time.Now()
+	rsp := &GenKeyResponse{Reason: "not specified"}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	req.Id = strings.ToLower(req.Id)
+	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", req.Id)
+	if !pass {
+		rsp.Reason = "id contains invalid character"
+		return rsp, nil
+	}
+	if len(req.Id) > 40 {
+		rsp.Reason = "id is too long, should be shorter than 40 characters"
+		return rsp, nil
+	}
+	_, err := s.AuthorizedCertificate(req.Id)
+	if err != nil && err != os.ErrNotExist {
+		if err == os.ErrExist {
+			rsp.Reason = fmt.Sprintf("'%s' already exists", req.Id)
+		} else {
+			rsp.Reason = err.Error()
+		}
+		return rsp, nil
+	}
+
+	ca, err := s.ServerCertificate()
+	if err != nil {
+		return nil, err
+	}
+	caKey, err := s.ServerPrivateKey()
+	if err != nil {
+		return nil, err
+	}
+	clientURN, err := url.Parse(fmt.Sprintf("urn:machbase:neo:client:%s", req.Id))
+	if err != nil {
+		rsp.Reason = fmt.Sprintf("invalid client urn, %s", err.Error())
+		return rsp, nil
+	}
+	gen := GenCertReq{
+		Name: pkix.Name{
+			CommonName: req.Id,
+		},
+		DNSNames:  []string{req.Id},
+		URIs:      []*url.URL{clientURN},
+		NotBefore: time.Unix(req.NotBefore, 0),
+		NotAfter:  time.Unix(req.NotAfter, 0),
+		Issuer:    ca,
+		IssuerKey: caKey,
+		Type:      strings.ToLower(req.Type),
+		Format:    "pkcs8",
+	}
+	cert, key, token, err := generateClientKey(&gen)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	if !req.NotStore {
+		s.SetAuthorizedCertificate(req.Id, cert)
+	}
+
+	rsp.Id = req.Id
+	rsp.Token = string(token)
+	rsp.Certificate = string(cert)
+	rsp.Key = string(key)
+	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
+}
+
+type DelKeyRequest struct {
+	Id string `json:"id"`
+}
+
+type DelKeyResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) DelKey(ctx context.Context, req *DelKeyRequest) (*DelKeyResponse, error) {
+	tick := time.Now()
+	rsp := &DelKeyResponse{}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	err := s.RemoveAuthorizedCertificate(req.Id)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
+}
+
+type ServerKeyRequest struct {
+	Format string `json:"format,omitempty"` // PEM, DER, CER
+}
+
+type ServerKeyResponse struct {
+	Success     bool   `json:"success"`
+	Reason      string `json:"reason"`
+	Elapse      string `json:"elapse"`
+	Format      string `json:"format,omitempty"`
+	Certificate string `json:"certificate"`
+}
+
+func (s *Server) ServerKey(ctx context.Context, req *ServerKeyRequest) (*ServerKeyResponse, error) {
+	tick := time.Now()
+	rsp := &ServerKeyResponse{Reason: "unspecified"}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if req == nil {
+		req = &ServerKeyRequest{Format: "pem"}
+	}
+
+	format := strings.ToLower(strings.TrimSpace(req.Format))
+	if format == "" {
+		format = "pem"
+	}
+	rsp.Format = strings.ToUpper(format)
+
+	path := s.ServerCertificatePath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	if format == "pem" {
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Certificate = string(b)
+		return rsp, nil
+	}
+
+	block, _ := pem.Decode(b)
+	if block == nil {
+		rsp.Reason = "invalid PEM certificate"
+		return rsp, nil
+	}
+
+	switch format {
+	case "der", "cer":
+		// DER/CER are binary encodings; return base64 for JSON-safe transport.
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Certificate = base64.StdEncoding.EncodeToString(block.Bytes)
+	default:
+		rsp.Reason = "unsupported format, use PEM, DER, or CER"
+	}
+	return rsp, nil
+}
+
+type GenCertReq struct {
+	pkix.Name
+	DNSNames  []string
+	URIs      []*url.URL
+	NotBefore time.Time
+	NotAfter  time.Time
+	Issuer    *x509.Certificate
+	IssuerKey any
+	Type      string // rsa
+	Format    string // pkcs1, pkcs8
+}
+
+// generateClientKey returns certificate, privatekey, token and error
+func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
+	var clientKey any
+	var clientPub any
+	var clientKeyPEM []byte
+
+	var keyType = strings.ToLower(req.Type)
+	switch {
+	case strings.HasPrefix(keyType, "rsa"):
+		bitSize := 2048
+		key, err := rsa.GenerateKey(rand.Reader, bitSize)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		clientKey = key
+		clientPub = &key.PublicKey
+		var keyBytes []byte
+		switch req.Format {
+		case "pkcs1":
+			if _, ok := clientKey.(*rsa.PrivateKey); ok {
+				keyBytes = x509.MarshalPKCS1PrivateKey(clientKey.(*rsa.PrivateKey))
+			} else {
+				return nil, nil, "", fmt.Errorf("%s key type can not encoded into pkcs1 format", req.Type)
+			}
+		default:
+			keyBytes, _ = x509.MarshalPKCS8PrivateKey(clientKey)
+		}
+		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
+	case strings.HasPrefix(keyType, "ec"):
+		ec := NewEllipticCurveP256()
+		pri, pub, err := ec.GenerateKeys()
+		if err != nil {
+			return nil, nil, "", err
+		}
+		clientKey = pri
+		clientPub = pub
+		marshal, err := x509.MarshalECPrivateKey(pri)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: marshal})
+	default:
+		return nil, nil, "", errors.New("unsupported key type")
+	}
+
+	token, err := GenerateClientToken(req.CommonName, clientKey, "b")
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	certBytes, err := GenerateClientCertificate(req.Name, req.DNSNames, req.URIs, req.NotBefore, req.NotAfter, req.Issuer, req.IssuerKey, clientPub)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("client certificate: %s", err.Error())
+	}
+
+	return certBytes, clientKeyPEM, token, nil
+}
+
+func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method string) (token string, err error) {
+	var signature []byte
+	hash := sha256.New()
+	hash.Write([]byte(clientId))
+	hashSum := hash.Sum(nil)
+	switch key := clientPriKey.(type) {
+	case *rsa.PrivateKey:
+		signature, err = rsa.SignPSS(rand.Reader, key, crypto.SHA256, hashSum, nil)
+		if err != nil {
+			return "", err
+		}
+	case *ecdsa.PrivateKey:
+		signature, err = ecdsa.SignASN1(rand.Reader, key, hashSum)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("unsupported algorithm '%T'", key)
+	}
+	if method != "b" {
+		return "", fmt.Errorf("unsupported method '%s'", method)
+	}
+	token = fmt.Sprintf("%s:%s:%s", clientId, method, hex.EncodeToString(signature))
+	return
+}
+
+func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error) {
+	parts := strings.SplitN(token, ":", 3)
+	if len(parts) != 3 {
+		return false, errors.New("invalid token format")
+	}
+
+	if parts[1] != "b" {
+		return false, fmt.Errorf("unsupported method '%s'", parts[1])
+	}
+
+	signature, err := hex.DecodeString(parts[2])
+	if err != nil {
+		return false, err
+	}
+
+	hash := sha256.New()
+	hash.Write([]byte(parts[0]))
+	hashSum := hash.Sum(nil)
+
+	switch key := clientPubKey.(type) {
+	case *rsa.PublicKey:
+		err = rsa.VerifyPSS(key, crypto.SHA256, hashSum, signature, nil)
+		if err != nil {
+			fmt.Printf("rsa <<< %s", err.Error())
+			return false, err
+		}
+		return err == nil, err
+	case *ecdsa.PublicKey:
+		return ecdsa.VerifyASN1(key, hashSum, signature), nil
+	default:
+		return false, fmt.Errorf("unsupported algorithm '%T'", key)
+	}
+}
+
+// listSshKeys returns authorized SSH keys for the current user.
+//
+// params:
+//
+// return: authorized SSH key list
+func (s *Server) listSshKeys(ctx context.Context) ([]*AuthorizedSshKey, error) {
+	// typ exists for compatibility with ssh key types.
+	user := "sys"
+	if c, ok := ctx.(*gin.Context); ok {
+		claim, ok := s.httpd.getJwtClaim(c)
+		if !ok || claim == nil {
+			return nil, fmt.Errorf("unauthenticated")
+		}
+		user = claim.Subject
+	}
+	rsp, err := s.ListSshKey(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("fail to list ssh keys, %s", err.Error())
+	}
+	return rsp.SshKeys, nil
+}
+
+type ListSshKeyResponse struct {
+	Success bool                `json:"success"`
+	Reason  string              `json:"reason"`
+	Elapse  string              `json:"elapse"`
+	SshKeys []*AuthorizedSshKey `json:"sshKeys"`
+}
+
+func (s *Server) ListSshKey(ctx context.Context, user string) (*ListSshKeyResponse, error) {
+	tick := time.Now()
+	rsp := &ListSshKeyResponse{Reason: "not-implemented"}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		return nil, fmt.Errorf("fail to connect database, %s", err.Error())
+	}
+	defer conn.Close()
+
+	keys, err := getUserAuthKeys(ctx, conn, user)
+	if err != nil {
+		return nil, fmt.Errorf("fail to get user auth keys, %s", err.Error())
+	}
+	for _, k := range keys {
+		sk, err := ConvertUserAuthInfoToAuthorizedSshKey(k)
+		if err != nil {
+			s.log.Warnf("fail to convert user auth key to authorized ssh key, %s", err.Error())
+			continue
+		}
+		rsp.SshKeys = append(rsp.SshKeys, sk)
+	}
+	rsp.Success, rsp.Reason = true, "success"
+	return rsp, nil
+}
+
+func ConvertUserAuthInfoToAuthorizedSshKey(k *UserAuthKeyInfo) (*AuthorizedSshKey, error) {
+	if k == nil {
+		return nil, fmt.Errorf("user auth key info is nil")
+	}
+
+	block, _ := pem.Decode([]byte(strings.TrimSpace(k.PubKey)))
+	if block == nil {
+		return nil, fmt.Errorf("fail to decode public key, invalid PEM format")
+	}
+
+	var pubAny any
+	var err error
+
+	switch block.Type {
+	case "PUBLIC KEY":
+		pubAny, err = x509.ParsePKIXPublicKey(block.Bytes)
+	case "RSA PUBLIC KEY":
+		pubAny, err = x509.ParsePKCS1PublicKey(block.Bytes)
+	case "CERTIFICATE":
+		var cert *x509.Certificate
+		cert, err = x509.ParseCertificate(block.Bytes)
+		if err == nil {
+			pubAny = cert.PublicKey
+		}
+	default:
+		pubAny, err = x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			if rsaPub, errRSA := x509.ParsePKCS1PublicKey(block.Bytes); errRSA == nil {
+				pubAny = rsaPub
+				err = nil
+			}
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fail to parse public key, %s", err.Error())
+	}
+
+	sshPub, err := ssh.NewPublicKey(pubAny)
+	if err != nil {
+		return nil, fmt.Errorf("fail to convert to ssh public key, %s", err.Error())
+	}
+
+	return &AuthorizedSshKey{
+		KeyType:     sshPub.Type(),
+		Fingerprint: ssh.FingerprintSHA256(sshPub),
+		Comment:     k.Comment,
+	}, nil
+}
+
+func ConvertAuthorizedSshKeyToUserAuthInfo(k *AuthorizedSshKey) (*UserAuthKeyInfo, error) {
+	if k == nil {
+		return nil, fmt.Errorf("authorized ssh key is nil")
+	}
+
+	keyRaw := strings.TrimSpace(k.Key)
+	if keyRaw == "" {
+		return nil, fmt.Errorf("ssh public key is empty")
+	}
+
+	pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(keyRaw))
+	if err != nil {
+		return nil, fmt.Errorf("fail to parse authorized public key, %s", err.Error())
+	}
+
+	cryptoPub, ok := pubKey.(ssh.CryptoPublicKey)
+	if !ok {
+		return nil, fmt.Errorf("unsupported key type")
+	}
+
+	pubDer, err := x509.MarshalPKIXPublicKey(cryptoPub.CryptoPublicKey())
+	if err != nil {
+		return nil, fmt.Errorf("fail to encode public key, %s", err.Error())
+	}
+
+	pubKeyPem := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDer})
+	return &UserAuthKeyInfo{
+		PubKey:  string(pubKeyPem),
+		Comment: k.Comment,
+	}, nil
+}
+
+// addSshKey adds an authorized SSH public key.
+//
+// params:
+//   - typ: SSH key type prefix from authorized key format
+//   - key: SSH public key body
+//   - comment: key comment text
+//
+// return: null on success
+func (s *Server) addSshKey(ctx context.Context, typ string, key string, comment string) error {
+	return s.AddAuthorizedSshKey(ctx, "sys", strings.Join([]string{typ, key, comment}, " "))
+}
+
+func (s *Server) AddAuthorizedSshKey(ctx context.Context, user string, rawKey string) error {
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		return fmt.Errorf("fail to connect database, %s", err.Error())
+	}
+	defer conn.Close()
+
+	rawKey = strings.TrimSpace(rawKey)
+	var (
+		sshPub  ssh.PublicKey
+		keyPEM  []byte
+		comment string
+	)
+
+	if block, _ := pem.Decode([]byte(rawKey)); block != nil {
+		var pubAny any
+		pubAny, err = x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			if rsaPub, errRSA := x509.ParsePKCS1PublicKey(block.Bytes); errRSA == nil {
+				pubAny = rsaPub
+				err = nil
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("invalid PEM key format, %s", err.Error())
+		}
+
+		sshPub, err = ssh.NewPublicKey(pubAny)
+		if err != nil {
+			return fmt.Errorf("unsupported key type, %s", err.Error())
+		}
+
+		der, err := x509.MarshalPKIXPublicKey(pubAny)
+		if err != nil {
+			return fmt.Errorf("failed to encode ssh key, %s", err.Error())
+		}
+
+		keyPEM = pem.EncodeToMemory(&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: der,
+		})
+	} else {
+		sshPub, comment, _, _, err = ssh.ParseAuthorizedKey([]byte(rawKey))
+		if err != nil {
+			return fmt.Errorf("invalid key format, %s", err.Error())
+		}
+
+		cryptoPub, ok := sshPub.(ssh.CryptoPublicKey)
+		if !ok {
+			return fmt.Errorf("unsupported key type")
+		}
+
+		der, err := x509.MarshalPKIXPublicKey(cryptoPub.CryptoPublicKey())
+		if err != nil {
+			return fmt.Errorf("failed to encode ssh key, %s", err.Error())
+		}
+
+		keyPEM = pem.EncodeToMemory(&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: der,
+		})
+	}
+
+	if len(keyPEM) == 0 {
+		return fmt.Errorf("failed to convert key to PEM")
+	}
+
+	comment = strings.ReplaceAll(strings.TrimSpace(comment), "'", "''")
+	// 30 years later
+	validBefore := time.Now().Add(time.Hour * 24 * 365 * 30).Format("2006-01-02")
+
+	_, err = conn.ExecContext(ctx,
+		fmt.Sprintf("ALTER USER %s ADD AUTH KEY (KEY = '%s', VALID_BEFORE = '%s', COMMENT = '%s')",
+			strings.ToUpper(user), strings.TrimSpace(string(keyPEM)), validBefore, comment))
+	if err != nil {
+		return fmt.Errorf("fail to register user auth key, %s", err.Error())
+	}
+	return nil
+}
+
+// deleteSshKey removes an authorized SSH key by fingerprint.
+//
+// params:
+//   - fingerprint: SSH key fingerprint
+//
+// return: null on success
+func (s *Server) deleteSshKey(ctx context.Context, fingerprint string) error {
+	user := "sys"
+	if c, ok := ctx.(*gin.Context); ok {
+		claim, ok := s.httpd.getJwtClaim(c)
+		if !ok || claim == nil {
+			return fmt.Errorf("unauthenticated")
+		}
+		user = claim.Subject
+	}
+
+	rsp, err := s.DelSshKey(ctx, &DelSshKeyRequest{User: user, Fingerprint: fingerprint})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+type DelSshKeyRequest struct {
+	User        string `json:"-"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type DelSshKeyResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+func (s *Server) DelSshKey(ctx context.Context, req *DelSshKeyRequest) (*DelSshKeyResponse, error) {
+	tick := time.Now()
+	rsp := &DelSshKeyResponse{Reason: "not-implemented"}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	user := "sys"
+	if req.User != "" {
+		user = req.User
+	}
+
+	conn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		return nil, fmt.Errorf("fail to connect database, %s", err.Error())
+	}
+	defer conn.Close()
+
+	keys, err := getUserAuthKeys(ctx, conn, user)
+	if err != nil {
+		return nil, fmt.Errorf("fail to get user auth keys, %s", err.Error())
+	}
+	for _, k := range keys {
+		sk, err := ConvertUserAuthInfoToAuthorizedSshKey(k)
+		if err != nil {
+			s.log.Warnf("fail to convert user auth key to authorized ssh key, %s", err.Error())
+			continue
+		}
+		if sk.Fingerprint == req.Fingerprint {
+			// found the key to delete
+			err := dropUserAuthKey(ctx, conn, user, k.KeyID)
+			if err != nil {
+				return nil, fmt.Errorf("fail to delete user auth key, %s", err.Error())
+			}
+			rsp.Success, rsp.Reason = true, "success"
+			return rsp, nil
+		}
+	}
+	rsp.Success, rsp.Reason = false, "key not found"
+	return rsp, nil
+}
+
+type ShutdownResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+}
+
+// Shutdown requests server shutdown from a local caller.
+//
+// params:
+//
+// return: shutdown status
+func (s *Server) Shutdown(ctx context.Context) (*ShutdownResponse, error) {
+	if ctx, ok := ctx.(*gin.Context); ok {
+		remoteAddr := ctx.RemoteIP()
+		isTcpLocal := false
+		switch remoteAddr {
+		case "127.0.0.1":
+			isTcpLocal = true
+		case "0:0:0:0:0:0:0:1", "::1":
+			isTcpLocal = true
+		}
+		if !isTcpLocal {
+			return nil, fmt.Errorf("remote shutdown not allowed")
+		}
+		booter.NotifySignal()
+		return nil, nil
+	}
+	tick := time.Now()
+	rsp := &ShutdownResponse{}
+
+	booter.NotifySignal()
+	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
+}
+
+type ServicePortsRequest struct {
+	Service string `json:"service"`
+}
+
+type ServicePortsResponse struct {
+	Success bool           `json:"success"`
+	Reason  string         `json:"reason"`
+	Elapse  string         `json:"elapse"`
+	Ports   []*ServicePort `json:"ports"`
+}
+
+type ServicePort struct {
+	Service string `json:"service"`
+	Address string `json:"address"`
+}
+
+func (s *Server) ServicePorts(ctx context.Context, req *ServicePortsRequest) (*ServicePortsResponse, error) {
+	tick := time.Now()
+	rsp := &ServicePortsResponse{}
+
+	ret := []*ServicePort{}
+	ports, err := s.getServicePorts(req.Service)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range ports {
+		ret = append(ret, &ServicePort{
+			Service: p.Service,
+			Address: p.Address,
+		})
+	}
+
+	rsp.Ports = ret
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
+}
+
+type ServerInfoResponse struct {
+	Success bool     `json:"success"`
+	Reason  string   `json:"reason"`
+	Elapse  string   `json:"elapse"`
+	Version *Version `json:"version"`
+	Runtime *Runtime `json:"runtime"`
+}
+
+type Version struct {
+	Major          int32  `json:"major"`
+	Minor          int32  `json:"minor"`
+	Patch          int32  `json:"patch"`
+	GitSHA         string `json:"gitSHA"`
+	BuildTimestamp string `json:"buildTimestamp"`
+	BuildCompiler  string `json:"buildCompiler"`
+	Engine         string `json:"engine"`
+}
+
+type Runtime struct {
+	OS             string            `json:"OS,omitempty"`
+	Arch           string            `json:"arch,omitempty"`
+	Pid            int32             `json:"pid,omitempty"`
+	UptimeInSecond int64             `json:"uptimeInSecond,omitempty"`
+	Processes      int32             `json:"processes,omitempty"`
+	Goroutines     int32             `json:"goroutines,omitempty"`
+	Mem            map[string]uint64 `json:"mem,omitempty"`
+}
+
+func (s *Server) ServerInfo(ctx context.Context) (*ServerInfoResponse, error) {
+	tick := time.Now()
+	rsp := &ServerInfoResponse{}
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("GetServerInfo panic recover", panic)
+		}
+		if rsp != nil {
+			rsp.Elapse = time.Since(tick).String()
+		}
+	}()
+	if r, err := s.getServerInfo(); err != nil {
+		return nil, err
+	} else {
+		rsp = r
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}
+
+type Session struct {
+	Id            string `json:"id"`
+	CreTime       int64  `json:"creTime"`
+	LatestSqlTime int64  `json:"latestSqlTime"`
+	LatestSql     string `json:"latestSql"`
+}
+
+type HttpDebugModeRequest struct {
+	Cmd        string `json:"cmd"`                  // get, set
+	Enable     bool   `json:"enable,omitempty"`     // set
+	LogLatency int64  `json:"logLatency,omitempty"` // set
+}
+
+type HttpDebugModeResponse struct {
+	Success    bool   `json:"success"`
+	Reason     string `json:"reason"`
+	Elapse     string `json:"elapse"`
+	Enable     bool   `json:"enable,omitempty"`     // get
+	LogLatency int64  `json:"logLatency,omitempty"` // get
+}
+
+func (s *Server) HttpDebugMode(ctx context.Context, req *HttpDebugModeRequest) (*HttpDebugModeResponse, error) {
+	rsp := &HttpDebugModeResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("HttpDebugMode panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if strings.ToLower(req.Cmd) == "set" {
+		s.httpd.SetDebugMode(req.Enable, time.Duration(req.LogLatency))
+	}
+	enable, logLatency := s.httpd.DebugMode()
+	rsp.Enable = enable
+	rsp.LogLatency = int64(logLatency)
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
 }
