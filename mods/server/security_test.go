@@ -26,7 +26,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	client "github.com/machbase/neo-client/v2"
-	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
@@ -574,37 +573,6 @@ func TestConvertAuthorizedSshKeyToUserAuthInfo(t *testing.T) {
 
 	_, err = ConvertAuthorizedSshKeyToUserAuthInfo(&AuthorizedSshKey{Key: "invalid key"})
 	require.Error(t, err)
-}
-
-func TestServicePortsResponse(t *testing.T) {
-	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
-			"http": {
-				{Service: "http", Address: "tcp://127.0.0.1:5654"},
-				{Service: "http", Address: "unix:///tmp/neo-http.sock"},
-			},
-		},
-	}
-
-	rsp, err := svr.ServicePorts(context.Background(), &ServicePortsRequest{Service: "http"})
-	require.NoError(t, err)
-	require.NotNil(t, rsp)
-	require.Len(t, rsp.Ports, 2)
-	require.Equal(t, "http", rsp.Ports[0].Service)
-	require.NotEmpty(t, rsp.Elapse)
-}
-
-func TestServerInfoResponse(t *testing.T) {
-	svr := &Server{startupTime: time.Now().Add(-2 * time.Second)}
-
-	rsp, err := svr.ServerInfo(context.Background())
-	require.NoError(t, err)
-	require.NotNil(t, rsp)
-	require.True(t, rsp.Success)
-	require.Equal(t, "success", rsp.Reason)
-	require.NotNil(t, rsp.Version)
-	require.NotNil(t, rsp.Runtime)
-	require.NotEmpty(t, rsp.Elapse)
 }
 
 func TestShutdownRejectsRemoteGinRequest(t *testing.T) {

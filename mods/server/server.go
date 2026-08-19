@@ -86,15 +86,15 @@ type Server struct {
 	authorizedSshKeysLock sync.RWMutex
 
 	neoShellAddress string
-
-	// test purpose only, not set in normal execution
-	binExecutable string
 }
 
+var _ booter.Boot = (*Server)(nil)
+
+// ///////////////////////////
+// test purpose only, not set in normal execution
+var binExecutable string
 var serverAfterStartC = make(chan struct{})
 var serverBeforeStopC = make(chan struct{})
-
-var _ booter.Boot = (*Server)(nil)
 
 func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
@@ -113,8 +113,8 @@ func NewServer(conf *Config) (*Server, error) {
 }
 
 func (s *Server) Executable() (string, error) {
-	if s.binExecutable != "" {
-		return s.binExecutable, nil
+	if binExecutable != "" {
+		return binExecutable, nil
 	}
 	return os.Executable()
 }
@@ -209,27 +209,25 @@ func (s *Server) Start() error {
 		if err := s.checkAndInstallLicense(); err != nil {
 			return err
 		}
-
 		// native port
 		s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
-
-		if s.hasHead {
-			if err := s.runInitScripts(); err != nil {
-				return err
-			}
-
-			// backup service
-			if err := s.startBackupService(); err != nil {
-				return err
-			}
-		} else {
-			// headless mode, just print the ready message and return
+		// headless mode, print the ready message and return
+		if !s.hasHead {
 			dbInitInfo := ""
 			if s.databaseCreated {
 				dbInitInfo = fmt.Sprintf("\n\n >> New database created at '%s'", s.homeDirPath)
 			}
 			s.log.Infof("%s\n\n  ready in %s", dbInitInfo, time.Since(s.startupTime).Round(time.Millisecond).String())
 			return nil
+		}
+
+		// init script
+		if err := s.runInitScripts(); err != nil {
+			return err
+		}
+		// backup service
+		if err := s.startBackupService(); err != nil {
+			return err
 		}
 	}
 
@@ -432,21 +430,25 @@ func (s *Server) startMachbaseSvr() error {
 	conn.Close()
 
 	var defaultKey crypto.PrivateKey
+	var defaultUser string = "sys"
 	if key, err := api.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
 		defaultKey = key
 	}
+	pem, err := os.ReadFile(s.ServerPrivateKeyPath())
+	if err != nil {
+		return fmt.Errorf("read server private key failed, %s", err.Error())
+	}
 
-	pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
 	spi.SetDefaultDSN(map[string]string{
 		"host":            "127.0.0.1",
 		"port":            fmt.Sprintf("%d", s.Machbase.PORT_NO),
 		"statement_cache": "auto",
-		"user":            "sys",
+		"user":            defaultUser,
 		"auth_key_pem":    string(pem),
 	})
-	spi.SetDefaultKey(defaultKey)
+	spi.SetDefaultKey(defaultUser, defaultKey)
 	pool, err := spi.DefaultPool()
 	if err != nil {
 		return fmt.Errorf("default pool, %s", err.Error())
@@ -523,7 +525,7 @@ func (s *Server) startMachbaseCli() error {
 		"user":            user,
 		"auth_key_pem":    string(pem),
 	})
-	spi.SetDefaultKey(defaultKey)
+	spi.SetDefaultKey(user, defaultKey)
 	pool, err := spi.DefaultPool()
 	if err != nil {
 		return fmt.Errorf("default pool, %s", err.Error())

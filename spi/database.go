@@ -25,6 +25,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
+var defaultDatabaseUser string = "sys"
 var defaultDatabaseKey crypto.PrivateKey
 var defaultDSN map[string]string
 
@@ -95,7 +96,8 @@ func CleanUp() {
 	}
 }
 
-func SetDefaultKey(key crypto.PrivateKey) {
+func SetDefaultKey(user string, key crypto.PrivateKey) {
+	defaultDatabaseUser = strings.ToLower(user)
 	defaultDatabaseKey = key
 }
 
@@ -106,7 +108,8 @@ func DefaultKey() crypto.PrivateKey {
 func Connect(ctx context.Context, user string) (*sql.Conn, error) {
 	user = strings.ToLower(user)
 	var connectDB *sql.DB
-	if user == "sys" || user == "" {
+	// user can be empty, where the caller is from SQL() function in TQL.
+	if user == defaultDatabaseUser || user == "" {
 		pool, err := DefaultPool()
 		if err != nil {
 			return nil, err
@@ -118,7 +121,7 @@ func Connect(ctx context.Context, user string) (*sql.Conn, error) {
 		if db, ok := userPools[user]; ok {
 			connectDB = db
 		} else {
-			conf := DefaultDSN(map[string]string{"user": fmt.Sprintf("sys as %s", user)})
+			conf := DefaultDSN(map[string]string{"user": fmt.Sprintf("%s as %s", defaultDatabaseUser, user)})
 			if db, err := sql.Open("machbase", conf); err != nil {
 				return nil, err
 			} else {
