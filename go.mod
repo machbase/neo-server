@@ -28,7 +28,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.12.3
-	github.com/machbase/neo-client/v2 v2.0.0-20260819011908-7c98d2055edd
+	github.com/machbase/neo-client/v2 v2.0.0-20260820073225-37af7c7f6219
 	github.com/machbase/neo-engine/v8 v8.5.11-0.20260814042732-a85b6f9f3105
 	github.com/magefile/mage v1.16.0
 	github.com/mattn/go-colorable v0.1.14
