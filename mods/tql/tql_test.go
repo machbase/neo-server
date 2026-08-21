@@ -73,15 +73,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func SqlTidy(sqlTextLines ...string) string {
-	sqlText := strings.Join(sqlTextLines, "\n")
-	lines := strings.Split(sqlText, "\n")
-	for i, ln := range lines {
-		lines[i] = strings.TrimSpace(ln)
-	}
-	return strings.Join(lines, " ")
-}
-
 func createTestTables() {
 	ctx := context.Background()
 	conn, err := spi.Connect(ctx, "sys")
@@ -90,7 +81,7 @@ func createTestTables() {
 	}
 	defer conn.Close()
 
-	_, err = conn.ExecContext(ctx, SqlTidy(`
+	_, err = conn.ExecContext(ctx, `
 		create tag table if not exists tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
@@ -107,21 +98,21 @@ func createTestTables() {
 			ipv6_value      ipv6,
 			bin_value		binary
 		) TAG_DUPLICATE_CHECK_DURATION=1;
-	`))
+	`)
 	if err != nil {
 		panic(err)
 	}
-	_, err = conn.ExecContext(ctx, SqlTidy(`
+	_, err = conn.ExecContext(ctx, `
 		create tag table if not exists tag_simple(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
 			value           double
 		) TAG_DUPLICATE_CHECK_DURATION=1;
-	`))
+	`)
 	if err != nil {
 		panic(err)
 	}
-	_, err = conn.ExecContext(ctx, SqlTidy(`
+	_, err = conn.ExecContext(ctx, `
 		create log table if not exists log_data(
 		    time datetime,
 			short_value short,
@@ -138,7 +129,7 @@ func createTestTables() {
 			ipv6_value ipv6,
 			text_value text,
 			bin_value binary)
-	`))
+	`)
 	if err != nil {
 		panic(err)
 	}
@@ -207,6 +198,10 @@ type TqlTestCase struct {
 	ExpectVolatileFile func(t *testing.T, mock *VolatileFileWriterMock)
 	ExpectLog          []string
 	RunCondition       func() bool
+}
+
+func (tc TqlTestCase) run(t *testing.T) {
+	runTestCase(t, tc)
 }
 
 func runTestCase(t *testing.T, tc TqlTestCase) {
@@ -310,72 +305,701 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	}
 }
 
-func TestDatabaseExplainTql(t *testing.T) {
-	tests := []TqlTestCase{}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
+func TestSql_explain(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_explain",
+		Script: `
+			SQL('explain select * from tag_data')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Greater(t, len(result), 50, result)
+			require.Contains(t, result, "TAG READ (RAW)")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_explain_full",
+		Script: `
+			SQL('explain full select * from tag_data')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Greater(t, len(result), 5000, result)
+			require.Contains(t, result, "EXECUTE")
+		},
+	}.run(t)
 }
 
-func TestDatabaseTql(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "SQL_show-indexgap_JSON",
-			Script: `
+func TestSql_insert_flush_select(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_sink",
+		Script: `
+			SCRIPT({
+				const dt = new Date('2026-07-10T17:10:20');
+				$.yield(
+					'sql_test', dt, 3.142, 			// name, time, value
+					-123, 123,						// short, ushort
+					-1234, 1234,					// int, uint
+					-12345, 12345,					// long, ulong
+					'STR', '{"json":true}',			// str, json
+					'192.168.0.1', '2001:db8::1',	// ipv4, ipv6
+					new Uint8Array([1,2,3]) 		// bin
+			)})
+			SQL('insert into tag_data (name,time,value, '+
+				'short_value,ushort_value,int_value,uint_value, '+
+				'long_value,ulong_value,str_value,json_value,ipv4_value,ipv6_value,bin_value) '+
+				'values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+					value(0), value(1), value(2),
+					value(3), value(4), value(5), value(6),
+					value(7), value(8), value(9), value(10), value(11), value(12), value(13)
+			)
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, gjson.Get(result, "data.message").String(), "a row inserted.")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_FLUSH",
+		Script: `
+			FAKE(once(1))
+			SQL('exec table_flush(tag_data)')
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, gjson.Get(result, "data.message").String(), "executed.")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_json",
+		Script: `
+			SQL('select * from tag_data where name = ?', 'sql_test')
+			JSON(timeformat('default'), tz('Local'))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, gjson.Get(result, "reason").String(), "success")
+			columns := gjson.Get(result, "data.columns").String()
+			require.Equal(t, `["NAME","TIME","VALUE","SHORT_VALUE","USHORT_VALUE","INT_VALUE","UINT_VALUE","LONG_VALUE","ULONG_VALUE","STR_VALUE","JSON_VALUE","IPV4_VALUE","IPV6_VALUE","BIN_VALUE"]`, columns)
+			types := gjson.Get(result, "data.types").String()
+			require.Equal(t, `["string","datetime","double","int16","uint16","int32","uint32","int64","uint64","string","json","ipv4","ipv6","binary"]`, types)
+			values := gjson.Get(result, "data.rows").String()
+			require.Equal(t, `[["sql_test","2026-07-10 17:10:20",3.142,-123,123,-1234,1234,-12345,12345,"STR","{\"json\":true}","192.168.0.1","2001:db8::1","0x010203"]]`, values)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_ndjson",
+		Script: `
+			SQL('select * from tag_data where name = ?', 'sql_test')
+			NDJSON(timeformat('default'), tz('Local'))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, `{"NAME":"sql_test","TIME":"2026-07-10 17:10:20","VALUE":3.142,"SHORT_VALUE":-123,"USHORT_VALUE":123,"INT_VALUE":-1234,"UINT_VALUE":1234,"LONG_VALUE":-12345,"ULONG_VALUE":12345,"STR_VALUE":"STR","JSON_VALUE":"{\"json\":true}","IPV4_VALUE":"192.168.0.1","IPV6_VALUE":"2001:db8::1","BIN_VALUE":"0x010203"}`+"\n\n", result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_csv",
+		Script: `
+			SQL('select * from tag_data where name = ?', 'sql_test')
+			CSV(header(true), timeformat('default'), tz('Local'))
+		`,
+		ExpectCSV: []string{
+			"NAME,TIME,VALUE,SHORT_VALUE,USHORT_VALUE,INT_VALUE,UINT_VALUE,LONG_VALUE,ULONG_VALUE,STR_VALUE,JSON_VALUE,IPV4_VALUE,IPV6_VALUE,BIN_VALUE",
+			`sql_test,2026-07-10 17:10:20,3.142,-123,123,-1234,1234,-12345,12345,STR,"{""json"":true}",192.168.0.1,2001:db8::1,0x010203`,
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_markdown",
+		Script: `
+			SQL('select * from tag_data where name = ?', 'sql_test')
+			MARKDOWN(timeformat('default'), tz('Local'))
+		`,
+		ExpectText: []string{
+			"|NAME|TIME|VALUE|SHORT_VALUE|USHORT_VALUE|INT_VALUE|UINT_VALUE|LONG_VALUE|ULONG_VALUE|STR_VALUE|JSON_VALUE|IPV4_VALUE|IPV6_VALUE|BIN_VALUE|",
+			"|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|",
+			`|sql_test|2026-07-10 17:10:20|3.142000|-123|123|-1234|1234|-12345|12345|STR|{"json":true}|192.168.0.1|2001:db8::1|0x010203|`,
+			"",
+		},
+	}.run(t)
+}
+
+func TestSql_show_wrong(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_wrong",
+		Script: `
+			SQL('show wrong')
+			CSV(header(true))
+		`,
+		ExpectErr: `f(SQL) unsupported show command "wrong"`,
+	}.run(t)
+}
+
+func TestSql_show_info(t *testing.T) {
+	spi.SetServerInfoProvider(func() map[string]any { return map[string]any{"purpose": "test"} })
+	TqlTestCase{
+		Name: "SQL_show_info",
+		Script: `
+			SQL('show info')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"NAME,VALUE",
+			"purpose,test",
+			"", "",
+		},
+	}.run(t)
+}
+
+func TestSql_show_license(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_license",
+		Script: `
+			SQL('show license')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.Equal(t, 2, len(lines), result)
+			require.Equal(t, "ID,TYPE,CUSTOMER,PROJECT,COUNTRY_CODE,INSTALL_DATE,ISSUE_DATE,STATUS", lines[0])
+			// "00000000,COMMUNITY,NONE,NONE,KR,2026-07-08 10:15:59,20991231,Valid",
+			require.Regexp(t, regexp.MustCompile(`^[0-9]+,[A-Z]+,[A-Z0-9]+,[A-Z0-9]+,[A-Z]{2},[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2},[0-9]{8},[A-Za-z]+$`), lines[1])
+		},
+	}.run(t)
+}
+
+func TestSql_show_ports(t *testing.T) {
+	spi.SetServerPortsProvider(func(svc string) ([]*model.ServicePort, error) {
+		ret := []*model.ServicePort{}
+		if svc == "" || svc == "http" {
+			ret = append(ret, &model.ServicePort{Service: "http", Address: "tcp://127.0.0.1:5654"})
+		}
+		if svc == "" || svc == "mqtt" {
+			ret = append(ret, &model.ServicePort{Service: "mqtt", Address: "tcp://127.0.0.1:1883"})
+		}
+		return ret, nil
+	})
+	TqlTestCase{
+		Name: "SQL_show_ports",
+		Script: `
+			SQL('show ports')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"PORT,ADDRESS",
+			"http,tcp://127.0.0.1:5654",
+			"mqtt,tcp://127.0.0.1:1883",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_ports_mqtt",
+		Script: `
+			SQL('show ports mqtt')
+			BOX()
+			`,
+		ExpectText: []string{
+			"+------+----------------------+",
+			"| PORT | ADDRESS              |",
+			"+------+----------------------+",
+			"| mqtt | tcp://127.0.0.1:1883 |",
+			"+------+----------------------+",
+			"",
+		},
+	}.run(t)
+}
+
+func TestSql_show_users(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_create_user",
+		Script: `
+			SQL('create user testuser identified by "testpass"')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"MESSAGE",
+			"Created successfully.",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_users",
+		Script: `
+			SQL('show users')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"USER_ID,NAME",
+			"1,SYS",
+			"2,TESTUSER",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_drop_user",
+		Script: `
+			SQL('drop user testuser')
+			CSV(header(true))
+		`,
+		ExpectText: []string{
+			"MESSAGE",
+			"Dropped successfully.",
+			"", "",
+		},
+	}.run(t)
+}
+
+func TestSql_show_databases(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_create_database",
+		Script: `
+			SQL('create database testdb')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"MESSAGE",
+			"Created successfully.",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_databases",
+		Script: `
+			SQL('show databases')
+			BOX()
+		`,
+		ExpectText: []string{
+			"+-------------+------------+--------+-------------+---------+--------+------------+",
+			"| DATABASE_ID | NAME       | KIND   | ACCESS_MODE | CAN_USE | STATE  | IS_DEFAULT |",
+			"+-------------+------------+--------+-------------+---------+--------+------------+",
+			"| 1           | MACHBASEDB | ACTIVE | READ_WRITE  | 1       | NORMAL | 1          |",
+			"| 2           | TESTDB     | ACTIVE | READ_WRITE  | 1       | NORMAL | 0          |",
+			"+-------------+------------+--------+-------------+---------+--------+------------+",
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_drop_database",
+		Script: `
+			SQL('drop database testdb')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"MESSAGE",
+			"Dropped successfully.",
+			"", "",
+		},
+	}.run(t)
+}
+
+func TestSql_show_tables(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_tables",
+		Script: `
+			SQL('show tables')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 4)
+			require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tables_all",
+		Script: `
+			SQL('show tables --all')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 4)
+			require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
+			require.GreaterOrEqual(t, len(lines), 8)
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$`), lines[4])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$`), lines[5])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,[0-9]+,KeyValue,Data$`), lines[6])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_SIMPLE_META,[0-9]+,Lookup,Meta$`), lines[7])
+		},
+	}.run(t)
+}
+
+func TestSql_show_table(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_table_log_data",
+		Script: `
+			SQL('show table log_data')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"COLUMN,TYPE,LENGTH,FLAG,INDEX",
+			"TIME,datetime,31,,",
+			"SHORT_VALUE,short,6,,",
+			"USHORT_VALUE,ushort,5,,",
+			"INT_VALUE,integer,11,,",
+			"UINT_VALUE,uinteger,10,,",
+			"LONG_VALUE,long,20,,",
+			"ULONG_VALUE,ulong,20,,",
+			"DOUBLE_VALUE,double,17,,",
+			"FLOAT_VALUE,float,17,,",
+			"STR_VALUE,varchar,400,,",
+			"JSON_VALUE,json,32767,,",
+			"IPV4_VALUE,ipv4,15,,",
+			"IPV6_VALUE,ipv6,45,,",
+			"TEXT_VALUE,text,67108864,,",
+			"BIN_VALUE,binary,67108864,,",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_table_log_data_all",
+		Script: `
+			SQL('show table log_data --all')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"COLUMN,TYPE,LENGTH,FLAG,INDEX",
+			"_ARRIVAL_TIME,datetime,31,,",
+			"TIME,datetime,31,,",
+			"SHORT_VALUE,short,6,,",
+			"USHORT_VALUE,ushort,5,,",
+			"INT_VALUE,integer,11,,",
+			"UINT_VALUE,uinteger,10,,",
+			"LONG_VALUE,long,20,,",
+			"ULONG_VALUE,ulong,20,,",
+			"DOUBLE_VALUE,double,17,,",
+			"FLOAT_VALUE,float,17,,",
+			"STR_VALUE,varchar,400,,",
+			"JSON_VALUE,json,32767,,",
+			"IPV4_VALUE,ipv4,15,,",
+			"IPV6_VALUE,ipv6,45,,",
+			"TEXT_VALUE,text,67108864,,",
+			"BIN_VALUE,binary,67108864,,",
+			"_RID,long,20,,",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_desc_tag_data",
+		Script: `
+			SQL('desc tag_data')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"COLUMN,TYPE,LENGTH,FLAG,INDEX",
+			"NAME,varchar,100,tag name,",
+			"TIME,datetime,31,base time,",
+			"VALUE,double,17,summarized,",
+			"SHORT_VALUE,short,6,,",
+			"USHORT_VALUE,ushort,5,,",
+			"INT_VALUE,integer,11,,",
+			"UINT_VALUE,uinteger,10,,",
+			"LONG_VALUE,long,20,,",
+			"ULONG_VALUE,ulong,20,,",
+			"STR_VALUE,varchar,400,,",
+			"JSON_VALUE,json,32767,,",
+			"IPV4_VALUE,ipv4,15,,",
+			"IPV6_VALUE,ipv6,45,,",
+			"BIN_VALUE,binary,32767,,",
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_describe_tag_data_all",
+		Script: `
+			SQL('describe tag_data --all')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"COLUMN,TYPE,LENGTH,FLAG,INDEX",
+			"NAME,varchar,100,tag name,",
+			"TIME,datetime,31,base time,",
+			"VALUE,double,17,summarized,",
+			"SHORT_VALUE,short,6,,",
+			"USHORT_VALUE,ushort,5,,",
+			"INT_VALUE,integer,11,,",
+			"UINT_VALUE,uinteger,10,,",
+			"LONG_VALUE,long,20,,",
+			"ULONG_VALUE,ulong,20,,",
+			"STR_VALUE,varchar,400,,",
+			"JSON_VALUE,json,32767,,",
+			"IPV4_VALUE,ipv4,15,,",
+			"IPV6_VALUE,ipv6,45,,",
+			"BIN_VALUE,binary,32767,,",
+			"_RID,long,20,,",
+			"", "",
+		},
+	}.run(t)
+}
+
+func TestSql_show_indexes(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_indexes",
+		Script: `
+			SQL('show indexes')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 5)
+			require.Equal(t, "ID,DATABASE,USER,TABLE,COLUMN,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE", lines[0])
+
+			required := map[string]struct {
+				table  string
+				column string
+			}{
+				"__PK_IDX__TAG_DATA_META_1":   {table: "_TAG_DATA_META", column: "_ID"},
+				"_TAG_DATA_META_NAME":         {table: "_TAG_DATA_META", column: "NAME"},
+				"__PK_IDX__TAG_SIMPLE_META_1": {table: "_TAG_SIMPLE_META", column: "_ID"},
+				"_TAG_SIMPLE_META_NAME":       {table: "_TAG_SIMPLE_META", column: "NAME"},
+			}
+			seen := map[string]bool{}
+			for _, line := range lines[1:] {
+				fields := strings.Split(line, ",")
+				require.GreaterOrEqual(t, len(fields), 11)
+				idxName := fields[5]
+				req, ok := required[idxName]
+				if !ok {
+					continue
+				}
+				require.Equal(t, "MACHBASEDB", fields[1])
+				require.Equal(t, "SYS", fields[2])
+				require.Equal(t, req.table, fields[3])
+				require.Equal(t, req.column, fields[4])
+				require.Equal(t, "REDBLACK", fields[6])
+				seen[idxName] = true
+			}
+			for name := range required {
+				require.True(t, seen[name], "required index missing: %s", name)
+			}
+		},
+	}.run(t)
+}
+
+func TestSql_show_index(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_index",
+		Script: `
+			SQL('show index _TAG_DATA_META_NAME')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"ID,DATABASE,USER,TABLE,COLUMN,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
+			"4,MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESSED,0,100000,EQUAL",
+			"", "",
+		},
+	}.run(t)
+}
+
+func TestSql_show_indexgap(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show-indexgap_JSON",
+		Script: `
 				SQL("show indexgap")
 				JSON()
 				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				if strings.TrimSpace(result) == "" {
-					return
-				}
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "INDEX_ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
-				require.Equal(t, "INDEX_NAME", gjson.Get(result, "data.columns.2").String(), result)
-			},
+		ExpectFunc: func(t *testing.T, result string) {
+			if strings.TrimSpace(result) == "" {
+				return
+			}
+			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+			require.Equal(t, "INDEX_ID", gjson.Get(result, "data.columns.0").String(), result)
+			require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
+			require.Equal(t, "INDEX_NAME", gjson.Get(result, "data.columns.2").String(), result)
 		},
-		{
-			Name: "SQL_show-tagindexgap_JSON",
-			Script: `
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show-tagindexgap_JSON",
+		Script: `
 				SQL("show tagindexgap")
 				JSON()
 				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "TABLE_ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
-				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.2").String(), result)
-			},
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+			require.Equal(t, "TABLE_ID", gjson.Get(result, "data.columns.0").String(), result)
+			require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
+			require.Equal(t, "STATUS", gjson.Get(result, "data.columns.2").String(), result)
 		},
-		{
-			Name: "SQL_desc-table",
-			Script: `
-				SQL("desc tag_data;")
-				CSV(header(true))
-				`,
-			ExpectCSV: []string{
-				"COLUMN,TYPE,LENGTH,FLAG,INDEX",
-				"NAME,varchar,100,tag name,",
-				"TIME,datetime,31,base time,",
-				"VALUE,double,17,summarized,",
-				"SHORT_VALUE,short,6,,",
-				"USHORT_VALUE,ushort,5,,",
-				"INT_VALUE,integer,11,,",
-				"UINT_VALUE,uinteger,10,,",
-				"LONG_VALUE,long,20,,",
-				"ULONG_VALUE,ulong,20,,",
-				"STR_VALUE,varchar,400,,",
-				"JSON_VALUE,json,32767,,",
-				"IPV4_VALUE,ipv4,15,,",
-				"IPV6_VALUE,ipv6,45,,",
-				"BIN_VALUE,binary,32767,,",
-				"\n",
-			},
+	}.run(t)
+}
+
+func TestSql_show_lsm(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_lsm",
+		Script: `
+			SQL('show lsm')
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"TABLE_NAME,INDEX_NAME,LEVEL,COUNT",
+			"", "",
 		},
+	}.run(t)
+}
+
+func TestSql_show_tags(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_insert",
+		Script: `
+			SCRIPT({$.yield('show_test', 1.234)})
+			SQL('insert into tag_data (name,time,value) values(?,now,?)', value(0), value(1))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, gjson.Get(result, "data.message").String(), "a row inserted.")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_exec_flush_table",
+		Script: `
+			FAKE(once(1))
+			SQL('exec table_flush(tag_data)')
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, gjson.Get(result, "data.message").String(), "executed.")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tags_no_args",
+		Script: `
+			SQL('show tags')
+			CSV(header(true))
+		`,
+		ExpectErr: `f(SQL) show tags expects at least 1 argument, got 0`,
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tags",
+		Script: `
+			SQL('show tags tag_data')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 2)
+			require.Equal(t, "ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME", lines[0])
+			hasTag := false
+			hasValue := false
+			for _, line := range lines[1:] {
+				if strings.Contains(line, "show_test") {
+					hasTag = true
+				}
+				if strings.Contains(line, "1.234") {
+					hasValue = true
+				}
+			}
+			require.True(t, hasTag, "expected to find tag 'show_test' in output")
+			require.True(t, hasValue, "expected to find value '1.234' in output")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tags_log_table",
+		Script: `
+			SQL('show tags log_data')
+			CSV(header(true))
+		`,
+		ExpectErr: `table 'LOG_DATA' is not a tag table`,
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tagindexgap",
+		Script: `
+			SQL('show tagindexgap')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 1)
+			require.Equal(t, "TABLE_ID,TABLE_NAME,STATUS,DISK_GAP,MEMORY_GAP", lines[0])
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_rollupgap",
+		Script: `
+			SQL('show rollupgap')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 1)
+			require.Equal(t, "USER_NAME,ROLLUP_NAME,SRC_TABLE,ROLLUP_TABLE,SRC_END_RID,ROLLUP_END_RID,GAP,RUN_STATE,LAST_ELAPSED_MSEC,LAST_WAKEUP_TIME,NEXT_WAKEUP_TIME", lines[0])
+		},
+	}.run(t)
+}
+
+func TestSql_show_sessions(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_sessions",
+		Script: `
+			SQL('show sessions')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 2)
+			require.Equal(t, "ID,USER_NAME,USER_ID,LOGIN_TIME,TYPE,USER_IP,MAX_QPX_MEM", lines[0])
+			require.Regexp(t, regexp.MustCompile(`^[0-9]+,[A-Z]+,[0-9]+,[0-9]+,CLI,127.0.0.1,[0-9]+([.][0-9]+)?[KMG]?B$`), lines[1])
+		},
+	}.run(t)
+}
+
+func TestSql_show_statements(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_statements",
+		Script: `
+			SQL('show statements')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 2)
+			require.Equal(t, "ID,SESSION_ID,STATE,RECORD_SIZE,QUERY", lines[0])
+			require.Regexp(t, regexp.MustCompile(`^[0-9]+,[0-9]+,.+,[0-9]+,.+$`), lines[1])
+		},
+	}.run(t)
+}
+
+func TestSql_show_storage(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_storage",
+		Script: `
+			SQL('show storage')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 2)
+			require.Equal(t, "DATABASE_NAME,TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE", lines[0])
+			// LOG_DATA,0,0,0
+			require.Regexp(t, regexp.MustCompile(`[A-Z_]+,[A-Z0-9_]+,[0-9]+,[0-9]+,[0-9]+$`), lines[1])
+		},
+	}.run(t)
+}
+
+func TestSql_show_table_usage(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_show_table_usage",
+		Script: `
+			SQL('show table-usage')
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 2)
+			require.Equal(t, "DATABASE,USER,TABLE,STORAGE_USAGE", lines[0])
+			// LOG_DATA,0,0,0
+			require.Regexp(t, regexp.MustCompile(`^.+,.+,.+,[0-9]+$`), lines[1])
+		},
+	}.run(t)
+}
+
+func TestSql_show_others(t *testing.T) {
+	tests := []TqlTestCase{
 		{
 			Name: "SQL_insert-tag1",
 			Script: `
