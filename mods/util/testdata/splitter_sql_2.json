@@ -142,12 +142,12 @@
         "env": {}
     },
     {
-        "text": "-- env: db=mydb",
+        "text": "-- env: use=mydb",
         "beginLine": 25,
         "endLine": 25,
         "isComment": true,
         "env": {
-            "db": "mydb"
+            "use": "mydb"
         }
     },
     {
@@ -157,17 +157,17 @@
         "isComment": false,
         "stmtType": "select",
         "env": {
-			"db": "mydb"
+			"use": "mydb"
         }
     },
     {
-        "text": "-- env: bridge=sqlite db=otherdb",
+        "text": "-- env: bridge=sqlite use=otherdb",
         "beginLine": 27,
         "endLine": 27,
         "isComment": true,
         "env": {
             "bridge": "sqlite",
-            "db": "otherdb"
+            "use": "otherdb"
         }
     },
     {
@@ -178,7 +178,7 @@
         "stmtType": "select",
         "env": {
 			"bridge": "sqlite",
-			"db": "otherdb"
+			"use": "otherdb"
         }
     },
     {

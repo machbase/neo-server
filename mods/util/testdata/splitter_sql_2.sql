@@ -22,9 +22,9 @@ SELECT 7
 FROM T WHERE id = 3;
 -- env: reset
 
--- env: db=mydb
+-- env: use=mydb
 SELECT 8 FROM T WHERE id = 4;
--- env: bridge=sqlite db=otherdb
+-- env: bridge=sqlite use=otherdb
 SELECT 9 FROM T WHERE id = 5;
 -- env: reset
 
