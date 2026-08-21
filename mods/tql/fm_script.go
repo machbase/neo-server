@@ -303,7 +303,7 @@ func (so JSResultOption) ResultColumns() client.Columns {
 	for i, name := range columns {
 		cols[i+1] = &client.Column{Name: name, DataType: api.DataTypeAny}
 		if len(types) > i {
-			cols[i+1].DataType = api.ParseDataType(types[i])
+			cols[i+1].DataType = toDataType(types[i])
 		}
 	}
 	return cols
@@ -790,5 +790,59 @@ func (l *JSLog) Printf(format string, args ...any) {
 		v.Log(fmt.Sprintf(format, args...))
 	} else {
 		fmt.Fprintf(l.w, format, args...)
+	}
+}
+
+func toDataType(typ string) api.DataType {
+	switch strings.ToLower(typ) {
+	case "int16":
+		return api.DataTypeInt16
+	case "int32":
+		return api.DataTypeInt32
+	case "int64":
+		return api.DataTypeInt64
+	case "datetime":
+		return api.DataTypeDatetime
+	case "float":
+		return api.DataTypeFloat32
+	case "double":
+		return api.DataTypeFloat64
+	case "ipv4":
+		return api.DataTypeIPv4
+	case "ipv6":
+		return api.DataTypeIPv6
+	case "string", "varchar":
+		return api.DataTypeString
+	case "binary":
+		return api.DataTypeBinary
+	case "decimal", "numeric", "number":
+		return api.DataTypeDecimal
+	case "bool":
+		return api.DataTypeBoolean
+	case "int8":
+		return api.DataTypeByte
+	default:
+		switch typ {
+		default:
+			return api.DataType(fmt.Sprintf("Unsupported DataType: %s", typ))
+		case "sql.NullString":
+			return api.DataTypeString
+		case "time.Time", "sql.NullTime":
+			return api.DataTypeDatetime
+		case "sql.NullInt16":
+			return api.DataTypeInt16
+		case "sql.NullInt32":
+			return api.DataTypeInt32
+		case "sql.NullInt64":
+			return api.DataTypeInt64
+		case "sql.NullByte":
+			return api.DataTypeByte
+		case "sql.NullFloat32":
+			return api.DataTypeFloat32
+		case "sql.NullFloat64":
+			return api.DataTypeFloat64
+		case "sql.NullBool":
+			return api.DataTypeBoolean
+		}
 	}
 }

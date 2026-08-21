@@ -414,7 +414,7 @@ func (node *Node) fmGroup(args ...any) any {
 			for i, c := range columns {
 				resultType := c.ColumnType()
 				if c.ValueType != "" {
-					resultType = api.ParseDataType(c.ValueType)
+					resultType = toDataType(c.ValueType)
 				}
 				cols[i+1] = &client.Column{
 					Name:     c.Name,
