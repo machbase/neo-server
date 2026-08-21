@@ -3194,6 +3194,19 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 		Markdown: "# tz\n\n## Kind\n\nhelper\n\n## Category\n\ntime\n\n## Signatures\n\n```text\ntz(name)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| name | yes | no | literal:string | 'local', 'UTC', 'EST', 'Europe/Paris' |\n\n## Description\n\n`tz()` returns the timezone matching the given name.\n\n## Examples\n\n### Basic\n\n```js\nCSV(sqlTimeformat('YYYY-MM-DD HH24:MI:SS.nnn'), tz('Asia/Seoul'))\n```\n\n## Related\n\ntime, parseTime, sqlTimeformat, ansiTimeformat",
 		Related: []string{"time", "parseTime", "sqlTimeformat", "ansiTimeformat"},
 	},
+	"use": {
+		Label: "use",
+		Kind: "helper",
+		Category: "use",
+		Signatures: []tqlDocSignature{
+			{Label: "use(...)"},
+		},
+		Slots: []tqlDocSlot{
+			{Name: "args", Required: false, Repeat: true, Accepts: "expression"},
+		},
+		Description: "TODO",
+		Markdown: "# use\n\n## Kind\n\nhelper\n\n## Category\n\nuse\n\n## Signatures\n\n```text\nuse(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nuse()\n```\n\n## Related\n\nTODO",
+	},
 	"useFirstWithLast": {
 		Label: "useFirstWithLast",
 		Kind: "helper",

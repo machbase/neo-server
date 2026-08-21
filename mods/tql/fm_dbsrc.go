@@ -309,6 +309,24 @@ func (dc *DataGenMachbase) gen(node *Node) {
 	dc.resultMsg = spi.MakeUserMessage(stmtType, nrow)
 }
 
+type bridgeName struct {
+	name string
+}
+
+// bridge('name')
+func (x *Node) fmBridge(name string) *bridgeName {
+	return &bridgeName{name: name}
+}
+
+type useDatabase struct {
+	use string
+}
+
+// use('database')
+func (x *Node) fmUse(dbname string) *useDatabase {
+	return &useDatabase{use: dbname}
+}
+
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
 func (x *Node) fmSql(args ...any) (any, error) {
@@ -321,6 +339,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	}
 	tick := time.Now()
 	var conn *sql.Conn
+	var use string
 	var sqlText string
 	var sqlParams []any
 	var prompt string
@@ -336,6 +355,8 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		defer conn.Close()
 		sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
 		sqlParams = args[1:]
+	case *useDatabase:
+		use = strings.ToUpper(v.use)
 	case *bridgeName:
 		dbm, err := connector.Database(v.name)
 		if err != nil {
@@ -364,6 +385,12 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(SQL) Empty SQL text")
 	}
 
+	if use != "" && conn != nil {
+		_, err := conn.ExecContext(x.task.ctx, fmt.Sprintf("USE %s", use))
+		if err != nil {
+			return nil, fmt.Errorf("f(SQL) failed to switch database to %s: %v", use, err)
+		}
+	}
 	stmtType := spi.DetectSQLStatementType(sqlText)
 	x.task.LogInfo("╭─", prompt, sqlText)
 	switch {

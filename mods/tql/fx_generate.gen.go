@@ -154,6 +154,8 @@ func NewNode(task *Task) *Node {
 		"APPEND": x.gen_APPEND,
 		// bridge
 		"bridge": x.gen_bridge,
+		// use
+		"use": x.gen_use,
 		// fourier transform
 		"minHz": x.gen_minHz,
 		"maxHz": x.gen_maxHz,
@@ -2186,6 +2188,21 @@ func (x *Node) gen_bridge(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmBridge(p0)
+	return ret, nil
+}
+
+// gen_use
+//
+// syntax: use(string)
+func (x *Node) gen_use(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("use", 1, len(args))
+	}
+	p0, err := convString(args, 0, "use", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmUse(p0)
 	return ret, nil
 }
 

@@ -23,15 +23,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
-type bridgeName struct {
-	name string
-}
-
-// bridge('name')
-func (x *Node) fmBridge(name string) *bridgeName {
-	return &bridgeName{name: name}
-}
-
 func (node *Node) fmScript(args ...any) (any, error) {
 	if len(args) > 0 && args[0] == "js" {
 		args = args[1:]

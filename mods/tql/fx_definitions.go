@@ -214,6 +214,8 @@ var FxDefinitions = []Definition{
 	// bridge
 	{"// bridge", nil},
 	{"bridge", defTask.fmBridge},
+	{"// use", nil},
+	{"use", defTask.fmUse},
 	// fourier transform
 	{"// fourier transform", nil},
 	{"minHz", defTask.fmMinHz},
