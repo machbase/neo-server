@@ -338,27 +338,41 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
 	tick := time.Now()
-	var conn *sql.Conn
-	var use string
 	var sqlText string
 	var sqlParams []any
-	var prompt string
+
+	var use string
+	var bridge string
+
+	var conn *sql.Conn
 	var resultMsg string
 
-	switch v := args[0].(type) {
-	case string:
+loop:
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
+			sqlParams = args[i+1:]
+			break loop
+		case *useDatabase:
+			use = strings.TrimSpace(strings.ToUpper(v.use))
+		case *bridgeName:
+			bridge = v.name
+		}
+	}
+	if len(sqlText) == 0 {
+		return nil, fmt.Errorf("f(SQL) Empty SQL text")
+	}
+
+	if bridge == "" {
 		if c, err := spi.Connect(x.task.ctx, x.task.consoleUser); err != nil {
 			return nil, err
 		} else {
 			conn = c
 		}
 		defer conn.Close()
-		sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
-		sqlParams = args[1:]
-	case *useDatabase:
-		use = strings.ToUpper(v.use)
-	case *bridgeName:
-		dbm, err := connector.Database(v.name)
+	} else {
+		dbm, err := connector.Database(bridge)
 		if err != nil {
 			return nil, err
 		}
@@ -367,30 +381,37 @@ func (x *Node) fmSql(args ...any) (any, error) {
 			return nil, err
 		}
 		defer conn.Close()
-		if str, ok := args[1].(string); ok {
-			sqlText = strings.TrimSuffix(strings.TrimSpace(str), ";")
-		}
-		sqlParams = args[2:]
-		prompt = v.name
-		for _, prefix := range []string{"sqlite,", "mysql,", "mssql,", "postgres,"} {
-			if strings.HasPrefix(v.name, prefix) {
-				prompt = strings.TrimSuffix(prefix, ",")
-			}
-		}
-		prompt = fmt.Sprintf("SQL(%s):", prompt)
-	default:
-		return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
 	}
-	if len(sqlText) == 0 {
-		return nil, fmt.Errorf("f(SQL) Empty SQL text")
+	if conn == nil {
+		return nil, errors.New("f(SQL) failed to connect to database")
 	}
 
-	if use != "" && conn != nil {
+	if use != "" {
 		_, err := conn.ExecContext(x.task.ctx, fmt.Sprintf("USE %s", use))
 		if err != nil {
-			return nil, fmt.Errorf("f(SQL) failed to switch database to %s: %v", use, err)
+			return nil, fmt.Errorf("f(SQL) failed to use database %s: %v", use, err)
 		}
 	}
+
+	prompt := "SQL("
+	flags := []string{}
+	if bridge != "" {
+		for _, prefix := range []string{"sqlite,", "mysql,", "mssql,", "postgres,"} {
+			if strings.HasPrefix(bridge, prefix) {
+				flags = append(flags, "BRIDGE "+strings.TrimSuffix(bridge, ","))
+				break
+			}
+		}
+	}
+	if use != "" {
+		flags = append(flags, "USE "+use)
+	}
+	if len(flags) > 0 {
+		prompt = prompt + strings.Join(flags, ", ") + ")"
+	} else {
+		prompt = prompt + ")"
+	}
+
 	stmtType := spi.DetectSQLStatementType(sqlText)
 	x.task.LogInfo("╭─", prompt, sqlText)
 	switch {
