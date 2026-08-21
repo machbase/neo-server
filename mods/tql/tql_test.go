@@ -114,20 +114,6 @@ func dropTestTables() {
 	}
 }
 
-func flushTable(ctx context.Context, table string) error {
-	conn, err := spi.Connect(ctx, "sys")
-	if err != nil {
-		return err
-	}
-	result, err := conn.ExecContext(ctx, fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
-	_ = result
-	if err != nil {
-		return err
-	}
-	conn.Close()
-	return nil
-}
-
 type VolatileFileWriterMock struct {
 	name     string
 	deadline time.Time
@@ -151,15 +137,6 @@ func TestMain(m *testing.M) {
 	testServer.StartServer("./test/tmp")
 	createTestTables()
 
-	// db := testServer.DatabaseGO()
-	// spi.SetDefault(db, testServer.DatabaseKey())
-	// spi.SetDefaultDSN(map[string]string{
-	// 	"host":            "127.0.0.1",
-	// 	"port":            fmt.Sprintf("%d", testServer.MachPort()),
-	// 	"statement_cache": "auto",
-	// 	"user":            "sys",
-	// 	"password":        "manager",
-	// })
 	spi.StartAppendWorkers()
 
 	spi.StartMetrics()
@@ -1015,7 +992,6 @@ func TestSql_show_others(t *testing.T) {
 			require.True(t, gjson.Get(result, "success").Bool())
 			require.Equal(t, "success", gjson.Get(result, "reason").String())
 			require.Equal(t, `{"message":"2 rows inserted."}`, gjson.Get(result, "data").Raw)
-			require.NoError(t, flushTable(t.Context(), "tag_simple"))
 		},
 	}.run(t)
 	TqlTestCase{
@@ -1128,7 +1104,21 @@ func TestSql_show_others(t *testing.T) {
 			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 			require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 			require.Equal(t, "2 rows inserted.", gjson.Get(result, "data.message").String(), result)
-			require.NoError(t, flushTable(t.Context(), "tag_simple"))
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_exec_flush_table",
+		Script: `
+			SQL("EXEC table_flush(tag_simple)")
+			BOX()
+			`,
+		ExpectText: []string{
+			"+-----------+",
+			"| MESSAGE   |",
+			"+-----------+",
+			"| executed. |",
+			"+-----------+",
+			"",
 		},
 	}.run(t)
 	TqlTestCase{
@@ -1218,7 +1208,21 @@ func TestSql_show_others(t *testing.T) {
 			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 			require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 			require.Equal(t, `{"message":"3 rows inserted."}`, gjson.Get(result, "data").Raw, result)
-			require.NoError(t, flushTable(t.Context(), "tag_simple"))
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_exec_flush_table",
+		Script: `
+			SQL("EXEC table_flush(tag_simple)")
+			BOX()
+			`,
+		ExpectText: []string{
+			"+-----------+",
+			"| MESSAGE   |",
+			"+-----------+",
+			"| executed. |",
+			"+-----------+",
+			"",
 		},
 	}.run(t)
 	TqlTestCase{
@@ -1248,7 +1252,21 @@ func TestSql_show_others(t *testing.T) {
 			require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 			// since we are using api.AppendWorker, the success and fail count is always same as the number of records
 			require.Equal(t, `{"message":"append 3 rows (success 3, fail 0)"}`, gjson.Get(result, "data").Raw, result)
-			require.NoError(t, flushTable(t.Context(), "tag_simple"))
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_exec_flush_table",
+		Script: `
+			SQL("EXEC table_flush(tag_simple)")
+			BOX()
+			`,
+		ExpectText: []string{
+			"+-----------+",
+			"| MESSAGE   |",
+			"+-----------+",
+			"| executed. |",
+			"+-----------+",
+			"",
 		},
 	}.run(t)
 	TqlTestCase{
@@ -1322,1210 +1340,7 @@ func TestSql_show_others(t *testing.T) {
 	}.run(t)
 }
 
-func TestDatabaseBinaryTql(t *testing.T) {
-	TqlTestCase{
-		Name:       "create-tqlbin",
-		CtxTimeout: 15 * time.Second,
-		Script: `
-			SCRIPT("js", {
-				var ret = $.db().exec("create tag table tqlbin (name varchar(40) primary key, time datetime basetime, value binary)");
-				if (ret instanceof Error) {
-					$.yield(ret.message);
-				} else {
-					$.yield("create-tqlbin done");
-				}
-			})
-			CSV()`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Equal(t, "create-tqlbin done\n\n", result)
-		},
-	}.run(t)
-	// INSERT binary data
-	TqlTestCase{
-		Name: "insert-binary",
-		Script: `
-			SCRIPT({
-				$.yield('bin1', 1692686707380411000, '0x0102030405060708090a');
-			})
-			INSERT('name', 'time', 'value', table('tqlbin'))
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Contains(t, result, "1 row inserted.")
-			conn, _ := spi.Connect(t.Context(), "sys")
-			conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
-			conn.Close()
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "select-binary-hex",
-		Script: `
-			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-			CSV(header(true))
-		`,
-		ExpectCSV: []string{
-			"NAME,VALUE",
-			"bin1,0x0102030405060708090a",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "select-binary-bytes",
-		Script: `
-			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-			CSV(header(true), binaryformat('preview'))
-		`,
-		ExpectCSV: []string{
-			"NAME,VALUE",
-			"bin1,0x0102030405..",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "select-binary-base64",
-		Script: `
-			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-			CSV(header(true), binaryformat('base64'))
-		`,
-		ExpectCSV: []string{
-			"NAME,VALUE",
-			"bin1,AQIDBAUGBwgJCg==",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "select-binary-bytes",
-		Script: `
-			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-			CSV(header(true), binaryformat('bytes'))
-		`,
-		ExpectCSV: []string{
-			"NAME,VALUE",
-			"bin1,[1 2 3 4 5 6 7 8 9 10]",
-			"\n",
-		},
-	}.run(t)
-	// APPEND binary data
-	TqlTestCase{
-		Name: "append-binary",
-		Script: `
-			SCRIPT({
-				$.yield('bin2', 1692686707380411000, '0x0102030405060708090a');
-				$.yield('bin2', 1692686707380412000, '0x02030405060708090a10');
-				$.yield('bin2', 1692686707380413000, '0x030405060708090a1011');
-				$.yield('bin2', 1692686707380414000, '0x0405060708090a101213');
-				$.yield('bin2', 1692686707380415000, '0x05060708090a10121314');
-			})
-			APPEND(table('tqlbin'))
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Contains(t, result, "append 5 rows (success 5, fail 0)")
-
-			// flush appender
-			spi.FlushAppendWorkers("tqlbin")
-
-			// flush table
-			conn, _ := spi.Connect(t.Context(), "sys")
-			time.Sleep(3 * time.Second)
-			conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
-			conn.Close()
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "append-select-binary-hex",
-		Script: `
-			SQL("select NAME, VALUE from tqlbin where name = 'bin2'")
-			CSV(header(true))
-		`,
-		ExpectCSV: []string{
-			"NAME,VALUE",
-			"bin2,0x0102030405060708090a",
-			"bin2,0x02030405060708090a10",
-			"bin2,0x030405060708090a1011",
-			"bin2,0x0405060708090a101213",
-			"bin2,0x05060708090a10121314",
-			"\n",
-		},
-	}.run(t)
-	// FLUSH before DROP TABLE
-	TqlTestCase{
-		Name: "flush-before-drop",
-		Script: `
-			FAKE( once(1) )
-			DISCARD()`,
-		ExpectFunc: func(t *testing.T, result string) {
-			// flush appender workers to ensure all pending writes are done
-			spi.FlushAppendWorkers("tqlbin")
-
-			// flush table
-			conn, _ := spi.Connect(t.Context(), "sys")
-			time.Sleep(100 * time.Millisecond)
-			conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
-			conn.Close()
-		},
-	}.run(t)
-	// DROP TABLE
-	TqlTestCase{
-		Name: "drop-table",
-		Script: `
-			SCRIPT("js", {
-				var ret = $.db().exec("drop table tqlbin");
-				if (ret instanceof Error) {
-					console.error(ret.message);
-				}
-			})
-			DISCARD()`,
-		CtxTimeout: 30 * time.Second,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Empty(t, result)
-		},
-	}.run(t)
-}
-
-func TestShell(t *testing.T) {
-	tql.ShellExecutable = func(addr, path string) ([]string, error) {
-		return []string{"/bin/bash", path}, nil
-	}
-	TqlTestCase{
-		Name: "SHELL_shell-command",
-		Script: `
-			FAKE( once(1) )
-			SHELL("echo 'Hello, World!'; echo 123;")
-			CSV()
-			`,
-		ExpectCSV: []string{`"Hello, World!"`, "123", "", "", ""},
-		RunCondition: func() bool {
-			// FIXME: This test is not working on Windows
-			return runtime.GOOS != "windows"
-		},
-	}.run(t)
-}
-
-func TestTql(t *testing.T) {
-	TqlTestCase{
-		Name: "CSV_CSV",
-		Script: `
-			CSV("1,line1\n2,line2\n3,\n4,line4")
-			CSV( heading(true) )
-			`,
-		ExpectCSV: []string{
-			"column0,column1",
-			"1,line1",
-			"2,line2",
-			"3,",
-			"4,line4",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_CSV_single_column",
-		Script: `
-			CSV("line1\nline2\n\nline4")
-			CSV( heading(true) )
-			`,
-		ExpectCSV: []string{
-			"column0",
-			"line1",
-			"line2",
-			"line4",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_payload_CSV",
-		Script: `
-			CSV(payload(),
-				field(0, stringType(), "name"),
-				field(1, datetimeType("s"), "time"),
-				field(2, doubleType(), "value"),
-				field(3, stringType(), "active")
-			)
-			CSV(timeformat("s"), heading(true))
-			`,
-		Payload: `temp.name,1691662156,123.456789,true` + "\n",
-		ExpectCSV: []string{
-			`name,time,value,active`,
-			`temp.name,1691662156,123.456789,true`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_payload_CSV_timeformat",
-		Script: `
-			CSV(payload(),
-				field(0, stringType(), "name"),
-				field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
-				field(2, doubleType(), "value"),
-				field(3, stringType(), "active")
-			)
-			CSV(timeformat("s"), heading(true))
-			`,
-		Payload: `temp.name,2023/08/10 19:09:16,123.456789,true` + "\n",
-		ExpectCSV: []string{
-			`name,time,value,active`,
-			`temp.name,1691662156,123.456789,true`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_payload_CSV_timeformat_precision",
-		Script: `
-			CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"), field(3, boolType(),"flag") )
-			CSV(timeformat("s"), heading(true), precision(2))
-		`,
-		Payload: strings.Join([]string{
-			"1700256261,dry,1,true",
-			"1700256262,dry,2,false",
-			"1700256262,wet,2,TRUE",
-			"1700256263,dry,3,False",
-			"1700256264,dry,4,1",
-			"1700256264,wet,5,0",
-			"",
-		}, "\n"),
-		ExpectCSV: []string{
-			"time,column1,value,flag",
-			"1700256261,dry,1.00,true",
-			"1700256262,dry,2.00,false",
-			"1700256262,wet,2.00,true",
-			"1700256263,dry,3.00,false",
-			"1700256264,dry,4.00,true",
-			"1700256264,wet,5.00,false",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_payload_MAPVALUE_MARKDOWN",
-		Script: `
-			CSV(payload(), header(false))
-			MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
-			MARKDOWN()
-			`,
-		Payload: strings.Join([]string{
-			`NAME,TIME,VALUE,BOOL`,
-			`wave.sin,1676432361,0.000000,true`,
-			`wave.cos,1676432361,1.0000000,false`,
-			`wave.sin,1676432362,0.406736,true`,
-			`wave.cos,1676432362,0.913546,false`,
-			`wave.sin,1676432363,0.743144,true`,
-		}, "\n") + "\n",
-		ExpectText: []string{
-			`|column0|column1|column2|column3|`,
-			`|:-----|:-----|:-----|:-----|`,
-			`|NAME|TIME|VALUE|BOOL|`,
-			`|wave.sin|1676432361|0.000000|true|`,
-			`|wave.cos|1676432361|10.000000|false|`,
-			`|wave.sin|1676432362|4.067360|true|`,
-			`|wave.cos|1676432362|9.135460|false|`,
-			`|wave.sin|1676432363|7.431440|true|`,
-			"",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_payload_MAPVALUE_MARKDOWN_TEMPLATE",
-		Script: `
-			CSV(payload(), header(false))
-			MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
-			MARKDOWN({
-{{ if .IsFirst }}## demo
-{{ end }}{{ .Value 0 }},{{ .Value 2 }}
-{{ if .IsLast }}--------
-{{ end }}
-			})
-			`,
-		Payload: strings.Join([]string{
-			`NAME,TIME,VALUE,BOOL`,
-			`wave.sin,1676432361,0.000000,true`,
-			`wave.cos,1676432361,1.0000000,false`,
-			`wave.sin,1676432362,0.406736,true`,
-			`wave.cos,1676432362,0.913546,false`,
-			`wave.sin,1676432363,0.743144,true`,
-		}, "\n") + "\n",
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Contains(t, result, "## demo")
-			require.Contains(t, result, "NAME,VALUE")
-			require.Contains(t, result, "wave.sin,0")
-			require.Contains(t, result, "wave.cos,10")
-			require.Contains(t, result, "wave.sin,4.067")
-			require.Contains(t, result, "wave.cos,9.135")
-			require.Contains(t, result, "--------")
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_MARKDOWN",
-		Script: `
-			CSV(payload(), header(true))
-			MARKDOWN()
-			`,
-		Payload: strings.Join([]string{
-			`NAME,TIME,VALUE`,
-			`wave.sin,1676432361,0.000000`,
-			`wave.cos,1676432361,1.000000`,
-			`wave.sin,1676432362,0.406736`,
-			`wave.cos,1676432362,0.913546`,
-			`wave.sin,1676432363,0.743144`,
-		}, "\n"),
-		ExpectText: []string{
-			`|NAME|TIME|VALUE|`,
-			`|:-----|:-----|:-----|`,
-			`|wave.sin|1676432361|0.000000|`,
-			`|wave.cos|1676432361|1.000000|`,
-			`|wave.sin|1676432362|0.406736|`,
-			`|wave.cos|1676432362|0.913546|`,
-			`|wave.sin|1676432363|0.743144|`,
-			"",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_payload_MARKDOWN",
-		Script: `
-			CSV(payload(), header(true))
-			MARKDOWN()
-			`,
-		Payload: strings.Join([]string{
-			`NAME,TIME,VALUE`,
-			`wave.sin,1676432361,0.000000`,
-			`wave.cos,1676432361,1.000000`,
-			`wave.sin,1676432362,0.406736`,
-			`wave.cos,1676432362,0.913546`,
-			`wave.sin,1676432363,0.743144`,
-			"\n"}, "\n"),
-		ExpectText: []string{
-			`|NAME|TIME|VALUE|`,
-			`|:-----|:-----|:-----|`,
-			`|wave.sin|1676432361|0.000000|`,
-			`|wave.cos|1676432361|1.000000|`,
-			`|wave.sin|1676432362|0.406736|`,
-			`|wave.cos|1676432362|0.913546|`,
-			`|wave.sin|1676432363|0.743144|`,
-			"",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_header(true)_MARKDOWN",
-		Script: `
-			CSV(payload(),
-			field(0, stringType(), 'name'),
-			field(1, datetimeType('s'), 'time'),
-			field(2, doubleType(), 'value'),
-			header(true))
-			MARKDOWN()
-			`,
-		Payload: strings.Join([]string{
-			`NAME,TIME,VALUE`,
-			`wave.sin,1676432361,0.000000`,
-			`wave.cos,1676432361,1.000000`,
-			`wave.sin,1676432362,0.406736`,
-			`wave.cos,1676432362,0.913546`,
-			`wave.sin,1676432363,0.743144`,
-		}, "\n"),
-		ExpectText: []string{
-			`|name|time|value|`,
-			`|:-----|:-----|:-----|`,
-			`|wave.sin|1676432361000000000|0.000000|`,
-			`|wave.cos|1676432361000000000|1.000000|`,
-			`|wave.sin|1676432362000000000|0.406736|`,
-			`|wave.cos|1676432362000000000|0.913546|`,
-			`|wave.sin|1676432363000000000|0.743144|`,
-			"",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_header(false)_MARKDOWN",
-		Script: `
-			CSV(payload(),
-			field(0, stringType(), 'NAME'),
-			field(1, datetimeType('s'), 'TIME'),
-			field(2, doubleType(), 'VALUE'),
-			header(false))
-			MARKDOWN()
-			`,
-		Payload: strings.Join([]string{
-			`wave.sin,1676432361,0.000000`,
-			`wave.cos,1676432361,1.000000`,
-			`wave.sin,1676432362,0.406736`,
-			`wave.cos,1676432362,0.913546`,
-			`wave.sin,1676432363,0.743144`,
-		}, "\n"),
-		ExpectText: []string{
-			`|NAME|TIME|VALUE|`,
-			`|:-----|:-----|:-----|`,
-			`|wave.sin|1676432361000000000|0.000000|`,
-			`|wave.cos|1676432361000000000|1.000000|`,
-			`|wave.sin|1676432362000000000|0.406736|`,
-			`|wave.cos|1676432362000000000|0.913546|`,
-			`|wave.sin|1676432363000000000|0.743144|`,
-			"",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_no_header_MARKDOWN",
-		Script: `
-			CSV(payload())
-			MARKDOWN()
-			`,
-		Payload: strings.Join([]string{
-			`wave.sin,1676432361,0.000000`,
-			`wave.cos,1676432361,1.000000`,
-			`wave.sin,1676432362,0.406736`,
-			`wave.cos,1676432362,0.913546`,
-			`wave.sin,1676432363,0.743144`,
-		}, "\n"),
-		ExpectText: []string{
-			`|column0|column1|column2|`,
-			`|:-----|:-----|:-----|`,
-			`|wave.sin|1676432361|0.000000|`,
-			`|wave.cos|1676432361|1.000000|`,
-			`|wave.sin|1676432362|0.406736|`,
-			`|wave.cos|1676432362|0.913546|`,
-			`|wave.sin|1676432363|0.743144|`,
-			"",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_NDJSON",
-		Script: `
-			CSV("1,line1\n2,line2\n3,\n4,line4")
-			NDJSON( rownum(true) )
-		`,
-		ExpectText: []string{
-			`{"ROWNUM":1,"column0":"1","column1":"line1"}`,
-			`{"ROWNUM":2,"column0":"2","column1":"line2"}`,
-			`{"ROWNUM":3,"column0":"3","column1":""}`,
-			`{"ROWNUM":4,"column0":"4","column1":"line4"}`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_file",
-		Script: `
-			CSV(file('/iris.data'))
-			DROP(10)
-			TAKE(2)
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`5.4,3.7,1.5,0.2,Iris-setosa`,
-			`4.8,3.4,1.6,0.2,Iris-setosa`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_file_gz",
-		Script: `
-			CSV(file('/iris.data.gz'))
-			DROP(10)
-			TAKE(2)
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`5.4,3.7,1.5,0.2,Iris-setosa`,
-			`4.8,3.4,1.6,0.2,Iris-setosa`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_file_JSON_timeformat",
-		Script: `
-			CSV(file('/iris.data'))
-			DROP(10)
-			TAKE(2)
-			JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
-			`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["column0","column1","column2","column3","column4"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string","string","string","string","string"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `["5.4","3.7","1.5","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.0").Raw)
-			require.Equal(t, `["4.8","3.4","1.6","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.1").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "CSV_charset_jp",
-		Script: `
-			CSV(file("/euc-jp.csv"), charset("EUC-JP"))
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`利用されてきた文字コー,1701913182,3.141592`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "strSprintf",
-		Script: `
-			FAKE(json(strSprintf('[%.f, %q]', 123, "hello")))
-			CSV( heading(false) )
-			`,
-		ExpectCSV: []string{
-			`123,hello`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "UTIL_sqlTimeformat_csv",
-		Script: `
-			FAKE( json({
-				[1701345032123456789, 10],
-				[1701345043219876543, 11]
-			}))
-			MAPVALUE(0, time(value(0)))
-			CSV(sqlTimeformat("YYYY-MM-DD HH24:MI:SS.nnnnnn"), tz("Asia/Seoul"))
-			`,
-		ExpectCSV: []string{
-			`2023-11-30 20:50:32.123456,10`,
-			`2023-11-30 20:50:43.219876,11`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "UTIL_ansiTimeformat_csv",
-		Script: `
-			FAKE( json({
-				[1701345032123456789, 10],
-				[1701345043219876543, 11]
-			}))
-			MAPVALUE(0, time(value(0)))
-			CSV(ansiTimeformat("yyyy-mm-dd hh:nn:ss.ffffff"), tz("UTC"))
-			`,
-		ExpectCSV: []string{
-			`2023-11-30 11:50:32.123456,10`,
-			`2023-11-30 11:50:43.219876,11`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "UTIL_string_trim_replace",
-		Script: `
-			FAKE( json({
-				["prefix-hello-suffix"]
-			}))
-			MAPVALUE(0, strTrimPrefix(value(0), "prefix-"))
-			MAPVALUE(0, strTrimSuffix(value(0), "-suffix"))
-			MAPVALUE(0, strReplace(value(0), "l", "L", 1))
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`heLlo`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "UTIL_string_predicates",
-		Script: `
-			FAKE( json({
-				["prefix-hello-suffix"],
-				["hello"]
-			}))
-			PUSHVALUE(1, strHasPrefix(value(0), "prefix-"))
-			PUSHVALUE(2, strHasSuffix(value(0), "-suffix"))
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`prefix-hello-suffix,true,true`,
-			`hello,false,false`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "UTIL_string_replace_all",
-		Script: `
-			FAKE( json({
-				["a-b-c"]
-			}))
-			MAPVALUE(0, strReplaceAll(value(0), "-", "_"))
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`a_b_c`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_pushkey_manual",
-		Script: `
-			FAKE( linspace(1, 2, 2) )
-			PUSHKEY("k")
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`1,1`,
-			`2,2`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_popkey_manual",
-		Script: `
-			FAKE( json({
-				["TAG0", 1, 10],
-				["TAG1", 2, 20]
-			}))
-			POPKEY()
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`1,10`,
-			`2,20`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_transpose_header_manual",
-		Script: `
-			FAKE(csv("CITY,DATE,TEMPERATURE,HUMIDITY\nTokyo,2023/12/07,23,30"))
-			TRANSPOSE(header(true))
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`CITY,Tokyo`,
-			`DATE,2023/12/07`,
-			`TEMPERATURE,23`,
-			`HUMIDITY,30`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_take_offset_count_manual",
-		Script: `
-			FAKE( json({
-				["TAG0", 1, 10],
-				["TAG0", 2, 11],
-				["TAG0", 3, 12],
-				["TAG0", 4, 13],
-				["TAG0", 5, 14],
-				["TAG0", 6, 15]
-			}))
-			TAKE(3, 2)
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`TAG0,4,13`,
-			`TAG0,5,14`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_drop_offset_count_manual",
-		Script: `
-			FAKE( json({
-				["TAG0", 1, 10],
-				["TAG0", 2, 11],
-				["TAG0", 3, 12],
-				["TAG0", 4, 13],
-				["TAG0", 5, 14],
-				["TAG0", 6, 15]
-			}))
-			DROP(2, 3)
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`TAG0,1,10`,
-			`TAG0,2,11`,
-			`TAG0,6,15`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_json_manual",
-		Script: `
-			FAKE(
-				json({
-					["A", 1, true],
-					["B", 2, false],
-					["C", 3, true]
-				})
-			)
-			MAPVALUE(1, value(1)*10)
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`A,10,true`,
-			`B,20,false`,
-			`C,30,true`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_csv_manual",
-		Script: `
-			FAKE(
-				csv(
-					strTrimSpace(` + "`" + `
-						A,1,true
-						B,2,false
-						C,3,true
-					` + "`" + `)
-				)
-			)
-			MAPVALUE(0, strTrimSpace(value(0)))
-			MAPVALUE(1, parseFloat(value(1))*10)
-			MAPVALUE(2, parseBool(value(2)))
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`A,10,true`,
-			`B,20,false`,
-			`C,30,true`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_meshgrid_manual",
-		Script: `
-			FAKE(
-				meshgrid(linspace(1, 2, 2), linspace(10, 20, 2))
-			)
-			CSV()
-			`,
-		ExpectCSV: []string{
-			`1,10`,
-			`1,20`,
-			`2,10`,
-			`2,20`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_invalid_generator_type",
-		Script: `
-			FAKE( 123 )
-			CSV()
-			`,
-		ExpectErr: "f(FAKE) arg(0) should be fakeSource, but float64",
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_arrange_zero_step",
-		Script: `FAKE( arrange(10, 30, 0) )
-				CSV()`,
-		ExpectErr: `FUNCTION "arrange" step can not be 0`,
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_arrange_start_stop_equal",
-		Script: `FAKE( arrange(10, 10, 10) )
-				CSV()`,
-		ExpectErr: `FUNCTION "arrange" start, stop can not be equal`,
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_arrange_start_stop_invalid1",
-		Script: `FAKE( arrange(10, 30, -10) )
-				CSV()`,
-		ExpectErr: `FUNCTION "arrange" step can not be less than 0`,
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_arrange_start_stop_invalid2",
-		Script: `FAKE( arrange(30, 10, 10) )
-				CSV()`,
-		ExpectErr: `FUNCTION "arrange" step can not be greater than 0`,
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_AVG",
-		Script: `
-			FAKE( arrange(10, 30, 10) )
-			MAP_AVG(1, value(0))
-			CSV( precision(0) )
-			`,
-		ExpectCSV: []string{
-			"10,10",
-			"20,15",
-			"30,20",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_MOVAVG",
-		Script: `
-			FAKE( linspace(0, 100, 100) )
-			MAP_MOVAVG(1, value(0), 10)
-			CSV( precision(4) )
-			`,
-		ExpectCSV: loadLines("./test/movavg_result.csv"),
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_MOVAVG_nowait",
-		Script: `
-			FAKE( linspace(0, 100, 100) )
-			MAP_MOVAVG(1, value(0), 10, noWait(true))
-			CSV( precision(4) )
-			`,
-		ExpectCSV: loadLines("./test/movavg_result_nowait.csv"),
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_LOWPASS",
-		Script: `
-			FAKE(arrange(1, 10, 1))
-			MAPVALUE(1, value(0) + simplex(1, value(0))*3)
-			MAP_LOWPASS(2, value(1), 0.3)
-			CSV(precision(2))
-			`,
-		ExpectCSV: []string{
-			`1.00,1.48,1.48`,
-			`2.00,0.40,1.15`,
-			`3.00,3.84,1.96`,
-			`4.00,2.89,2.24`,
-			`5.00,5.47,3.21`,
-			`6.00,5.29,3.83`,
-			`7.00,7.22,4.85`,
-			`8.00,10.31,6.49`,
-			`9.00,8.36,7.05`,
-			`10.00,8.56,7.50`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_KALMAN",
-		Script: `
-			FAKE(json({[1.3], [10.2], [5.0], [3.4]}))
-			MAP_KALMAN(1, value(0), model(1.0, 1.0, 2.0))
-			CSV(precision(1))
-			`,
-		ExpectCSV: []string{
-			`1.3,1.3`,
-			`10.2,5.7`,
-			`5.0,5.4`,
-			`3.4,4.4`,
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_DIFF",
-		Script: `
-			FAKE( csv("1\n3\n2\n7") )
-			MAP_DIFF(0, value(0))
-			CSV()
-			`,
-		ExpectCSV: []string{"NULL", "2", "-1", "5", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_NONEGDIFF",
-		Script: `
-			FAKE( csv("1\n3\n2\n7") )
-			MAP_NONEGDIFF(0, value(0))
-			CSV()
-			`,
-		ExpectCSV: []string{"NULL", "2", "0", "5", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "MAP_ABSDIFF",
-		Script: `
-			FAKE( csv("1\n3\n2\n7") )
-			MAP_ABSDIFF(0, value(0))
-			CSV()
-			`,
-		ExpectCSV: []string{"NULL", "2", "1", "5", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FILTER_CHANGED_string",
-		Script: `
-			FAKE(json({
-				["A", 1.0],
-				["A", 2.0],
-				["B", 3.0],
-				["B", 4.0]
-			}))
-			FILTER_CHANGED(value(0))
-			CSV()
-			`,
-		ExpectCSV: []string{"A,1", "B,3", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FILTER_CHANGED_bool",
-		Script: `
-			FAKE(json({
-				["A", true, 1.0],
-				["A", false, 2.0],
-				["B", false, 3.0],
-				["B", true, 4.0]
-			}))
-			FILTER_CHANGED(value(1))
-			CSV()
-			`,
-		ExpectCSV: []string{"A,true,1", "A,false,2", "B,true,4", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FILTER_CHANGED_time",
-		Script: `
-			FAKE(json({
-				["A", 1692329338, 1.0],
-				["A", 1692329339, 2.0],
-				["B", 1692329340, 3.0],
-				["B", 1692329341, 4.0],
-				["B", 1692329342, 5.0],
-				["B", 1692329343, 6.0],
-				["B", 1692329344, 7.0],
-				["B", 1692329345, 8.0],
-				["C", 1692329346, 9.0],
-				["D", 1692329347, 9.1],
-				["D", 1692329348, 9.2],
-				["D", 1692329349, 9.3]
-			}))
-			MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))
-			FILTER_CHANGED(value(0), retain(value(1), "2s"))
-			CSV(timeformat("s"))
-			`,
-		ExpectCSV: []string{
-			"A,1692329338,1",
-			"B,1692329342,5",
-			"D,1692329349,9.3",
-			"\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FILTER_CHANGED_useFirstWithLast(true)",
-		Script: `
-			FAKE(json({
-				["A", 1.0], ["A", 2.0],
-				["B", 3.0], ["B", 4.0], ["B", 5.0],
-				["C", 6.0], ["C", 7.0],
-				["D", 8.0], ["D", 9.0]
-			}))
-			FILTER_CHANGED(value(0), useFirstWithLast(true))
-			CSV()
-			`,
-		ExpectCSV: []string{"A,1", "A,2", "B,3", "B,5", "C,6", "C,7", "D,8", "D,9", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FILTER_CHANGED_useFirstWithLast(false)",
-		Script: `
-			FAKE(json({
-				["A", 1.0], ["A", 2.0],
-				["B", 3.0], ["B", 4.0], ["B", 5.0],
-				["C", 6.0], ["C", 7.0],
-				["D", 8.0], ["D", 9.0]
-			}))
-			FILTER_CHANGED(value(0), useFirstWithLast(false))
-			CSV()
-			`,
-		ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FILTER_CHANGED_useFirstWithLast(false)_implicit",
-		Script: `
-			FAKE(json({
-				["A", 1.0], ["A", 2.0],
-				["B", 3.0], ["B", 4.0], ["B", 5.0],
-				["C", 6.0], ["C", 7.0],
-				["D", 8.0], ["D", 9.0]
-			}))
-			FILTER_CHANGED(value(0))
-			CSV()
-			`,
-		// This result should be same as using "useFirstWithLast(false)"
-		ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_sphere_4_4",
-		Script: `
-			FAKE( sphere(4, 4) )
-			PUSHKEY('test')
-			CSV( header(true), precision(6) )
-			`,
-		ExpectCSV: loadLines("./test/sphere_4_4.csv"),
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_sphere_0_0",
-		Script: `
-			FAKE( sphere(0, 0) )
-			PUSHKEY('test')
-			CSV( header(false), precision(6) )
-			`,
-		ExpectCSV: loadLines("./test/sphere_0_0.csv"),
-	}.run(t)
-	TqlTestCase{
-		Name: "FFT",
-		Script: `
-			FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
-			MAPKEY('samples')
-			GROUPBYKEY(lazy(false))
-			FFT(minHz(0), maxHz(60))
-			CSV(precision(6))
-			`,
-		ExpectCSV: loadLines("./test/fft2d.csv"),
-	}.run(t)
-	TqlTestCase{
-		Name: "FFT_not_enough_samples_0",
-		Script: `
-			FAKE( linspace(0, 10, 100) )
-			FFT()
-			CSV()
-			`,
-		ExpectCSV: []string{"\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "FFT_not_enough_samples_16",
-		Script: `
-			FAKE( meshgrid(linspace(0, 10, 100), linspace(0, 10, 1000)) )
-			PUSHKEY('sample')
-			GROUPBYKEY()
-			FFT()
-			CSV()
-			`,
-		ExpectErr: "f(FFT) sample should be a tuple of (time, value), but len=3",
-	}.run(t)
-	TqlTestCase{
-		Name: "FFT_3d",
-		Script: `
-			FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
-			MAPKEY( roundTime(value(0), '500ms') )
-			GROUPBYKEY()
-			FFT(maxHz(60))
-			FLATTEN()
-			PUSHKEY('fft3d')
-			CSV(precision(6))
-			`,
-		ExpectCSV: loadLines("./test/fft3d.csv"),
-	}.run(t)
-}
-
-func mustSeriesID(t *testing.T, id, title string, period time.Duration, maxCount int) metric.SeriesID {
-	t.Helper()
-	seriesID, err := metric.NewSeriesID(id, title, period, maxCount)
-	require.NoError(t, err)
-	return seriesID
-}
-
-func TestFakeStatz(t *testing.T) {
-	seriesID := mustSeriesID(t, "CPU_USAGE", "CPU Usage", time.Second, 8)
-	collector := metric.NewCollector(
-		metric.WithSamplingInterval(time.Second),
-		metric.WithSeries(seriesID),
-	)
-	collector.Start()
-	t.Cleanup(collector.Stop)
-
-	collector.Send(metric.Measure{Name: "cpu:usage", Value: 1, Type: metric.CounterType(metric.UnitScalar)})
-	time.Sleep(1100 * time.Millisecond)
-	collector.Send(metric.Measure{Name: "cpu:usage", Value: 2, Type: metric.CounterType(metric.UnitScalar)})
-
-	org := spi.SetCollector(collector)
-	defer spi.SetCollector(org)
-
-	require.Eventually(t, func() bool {
-		mts := collector.Timeseries("cpu:usage")
-		if len(mts) == 0 {
-			return false
-		}
-		_, values := mts[0].All()
-		samples := make([]float64, 0, len(values))
-		for _, raw := range values {
-			v, ok := raw.(*metric.CounterValue)
-			if !ok || v.Samples == 0 {
-				continue
-			}
-			samples = append(samples, v.Value)
-		}
-		if len(samples) < 2 {
-			return false
-		}
-		return samples[len(samples)-2] == 1 && samples[len(samples)-1] == 2
-	}, 3*time.Second, 50*time.Millisecond)
-
-	TqlTestCase{
-		Name: "FAKE_statz",
-		Script: `
-			FAKE( statz(0, 'cpu:usage') )
-			FILTER( value(1) != NULL )
-			CSV(timeformat('15:04:05'), heading(true), precision(0))`,
-		ExpectFunc: func(t *testing.T, result string) {
-			lines := strings.Split(result, "\n")
-			require.Equal(t, "time,cpu:usage", lines[0])
-			// 2026-06-12 08:14:22,1
-			require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},1$`).MatchString(lines[1]), "line: %q", lines[1])
-			// 2026-06-12 08:14:23,2
-			require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},2$`).MatchString(lines[2]), "line: %q", lines[2])
-			require.Equal(t, "", lines[3])
-		},
-	}.run(t)
-}
-
-func TestFake_oscillator(t *testing.T) {
-	back := util.StandardTimeNow
-	util.StandardTimeNow = func() time.Time {
-		return time.Unix(0, 1692329338315327000)
-	}
-	defer func() {
-		util.StandardTimeNow = back
-	}()
-
-	TqlTestCase{
-		Name: "FAKE_oscillator_no_args",
-		Script: `
-			FAKE( oscillator() )
-			JSON()`,
-		ExpectErr: "f(oscillator) no time range is defined",
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_invalid_args",
-		Script: `
-			FAKE( oscillator(123) )
-			JSON()`,
-		ExpectErr: "f(oscillator) invalid arg type 'float64'",
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_no_time_range",
-		Script: `
-			FAKE( oscillator(freq(1.0, 1.0)) )
-			JSON()
-		`,
-		ExpectErr: "f(oscillator) no time range is defined",
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_dup_time_range",
-		Script: `
-			FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms'), range(time('now-1s'), '1s', '200ms')) )
-			JSON()
-		`,
-		ExpectErr: "f(oscillator) duplicated time range",
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_minus_time_range",
-		Script: `
-			FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '-200ms')) )
-			JSON()
-		`,
-		ExpectErr: "f(oscillator) period should be positive",
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_1",
-		Script: `
-			FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms')) )
-			JSON(precision(16))
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-			require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
-			require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-			require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-			require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_2",
-		Script: `
-			FAKE( oscillator(freq(1.0, 1.0), range(time('now'), '-1s', '200ms')) )
-			JSON(precision(16))
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-			require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
-			require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-			require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-			require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "FAKE_oscillator_1Hz_2Hz_3Hz",
-		Script: `
-			FAKE( 
-				oscillator(
-					range(timeAdd(1685714509*1000000000,'1s'), '1s', '1ms'), 
-					freq(1, 1.0), freq(2, 2.0), freq(3, 3.0)))
-			PUSHKEY('test')
-			CSV( header(true), precision(6) )
-			`,
-		ExpectCSV: loadLines("./test/oscillator_1Hz_2Hz_3Hz.csv"),
-	}.run(t)
-}
-
-func TestBridgeSqlite(t *testing.T) {
+func TestSql_bridge_sqlite(t *testing.T) {
 	if err := bridge.Register(&model.BridgeDefinition{
 		Type: model.BRIDGE_SQLITE,
 		Name: "sqlite",
@@ -2833,23 +1648,1284 @@ func TestBridgeSqlite(t *testing.T) {
 	}.run(t)
 }
 
-func TestGeoJSON(t *testing.T) {
+func TestBinary(t *testing.T) {
+	TqlTestCase{
+		Name:       "create-tqlbin",
+		CtxTimeout: 15 * time.Second,
+		Script: `
+			SCRIPT("js", {
+				var ret = $.db().exec("create tag table tqlbin (name varchar(40) primary key, time datetime basetime, value binary)");
+				if (ret instanceof Error) {
+					$.yield(ret.message);
+				} else {
+					$.yield("create-tqlbin done");
+				}
+			})
+			CSV()`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "create-tqlbin done\n\n", result)
+		},
+	}.run(t)
+	// INSERT binary data
+	TqlTestCase{
+		Name: "insert-binary",
+		Script: `
+			SCRIPT({
+				$.yield('bin1', 1692686707380411000, '0x0102030405060708090a');
+			})
+			INSERT('name', 'time', 'value', table('tqlbin'))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Contains(t, result, "1 row inserted.")
+			conn, _ := spi.Connect(t.Context(), "sys")
+			conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
+			conn.Close()
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "select-binary-hex",
+		Script: `
+			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"NAME,VALUE",
+			"bin1,0x0102030405060708090a",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "select-binary-bytes",
+		Script: `
+			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+			CSV(header(true), binaryformat('preview'))
+		`,
+		ExpectCSV: []string{
+			"NAME,VALUE",
+			"bin1,0x0102030405..",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "select-binary-base64",
+		Script: `
+			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+			CSV(header(true), binaryformat('base64'))
+		`,
+		ExpectCSV: []string{
+			"NAME,VALUE",
+			"bin1,AQIDBAUGBwgJCg==",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "select-binary-bytes",
+		Script: `
+			SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
+			CSV(header(true), binaryformat('bytes'))
+		`,
+		ExpectCSV: []string{
+			"NAME,VALUE",
+			"bin1,[1 2 3 4 5 6 7 8 9 10]",
+			"\n",
+		},
+	}.run(t)
+	// APPEND binary data
+	TqlTestCase{
+		Name: "append-binary",
+		Script: `
+			SCRIPT({
+				$.yield('bin2', 1692686707380411000, '0x0102030405060708090a');
+				$.yield('bin2', 1692686707380412000, '0x02030405060708090a10');
+				$.yield('bin2', 1692686707380413000, '0x030405060708090a1011');
+				$.yield('bin2', 1692686707380414000, '0x0405060708090a101213');
+				$.yield('bin2', 1692686707380415000, '0x05060708090a10121314');
+			})
+			APPEND(table('tqlbin'))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Contains(t, result, "append 5 rows (success 5, fail 0)")
+
+			// flush appender
+			spi.FlushAppendWorkers("tqlbin")
+
+			// flush table
+			conn, _ := spi.Connect(t.Context(), "sys")
+			time.Sleep(3 * time.Second)
+			conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
+			conn.Close()
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "append-select-binary-hex",
+		Script: `
+			SQL("select NAME, VALUE from tqlbin where name = 'bin2'")
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"NAME,VALUE",
+			"bin2,0x0102030405060708090a",
+			"bin2,0x02030405060708090a10",
+			"bin2,0x030405060708090a1011",
+			"bin2,0x0405060708090a101213",
+			"bin2,0x05060708090a10121314",
+			"\n",
+		},
+	}.run(t)
+	// FLUSH before DROP TABLE
+	TqlTestCase{
+		Name: "flush-before-drop",
+		Script: `
+			FAKE( once(1) )
+			DISCARD()`,
+		ExpectFunc: func(t *testing.T, result string) {
+			// flush appender workers to ensure all pending writes are done
+			spi.FlushAppendWorkers("tqlbin")
+
+			// flush table
+			conn, _ := spi.Connect(t.Context(), "sys")
+			time.Sleep(100 * time.Millisecond)
+			conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
+			conn.Close()
+		},
+	}.run(t)
+	// DROP TABLE
+	TqlTestCase{
+		Name: "drop-table",
+		Script: `
+			SCRIPT("js", {
+				var ret = $.db().exec("drop table tqlbin");
+				if (ret instanceof Error) {
+					console.error(ret.message);
+				}
+			})
+			DISCARD()`,
+		CtxTimeout: 30 * time.Second,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Empty(t, result)
+		},
+	}.run(t)
+}
+
+func TestSHELL(t *testing.T) {
+	tql.ShellExecutable = func(addr, path string) ([]string, error) {
+		return []string{"/bin/bash", path}, nil
+	}
+	TqlTestCase{
+		Name: "SHELL_shell-command",
+		Script: `
+			FAKE( once(1) )
+			SHELL("echo 'Hello, World!'; echo 123;")
+			CSV()
+			`,
+		ExpectCSV: []string{`"Hello, World!"`, "123", "", "", ""},
+		RunCondition: func() bool {
+			// FIXME: This test is not working on Windows
+			return runtime.GOOS != "windows"
+		},
+	}.run(t)
+}
+
+func TestCSV(t *testing.T) {
+	TqlTestCase{
+		Name: "CSV_CSV",
+		Script: `
+			CSV("1,line1\n2,line2\n3,\n4,line4")
+			CSV( heading(true) )
+			`,
+		ExpectCSV: []string{
+			"column0,column1",
+			"1,line1",
+			"2,line2",
+			"3,",
+			"4,line4",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_CSV_single_column",
+		Script: `
+			CSV("line1\nline2\n\nline4")
+			CSV( heading(true) )
+			`,
+		ExpectCSV: []string{
+			"column0",
+			"line1",
+			"line2",
+			"line4",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_payload_CSV",
+		Script: `
+			CSV(payload(),
+				field(0, stringType(), "name"),
+				field(1, datetimeType("s"), "time"),
+				field(2, doubleType(), "value"),
+				field(3, stringType(), "active")
+			)
+			CSV(timeformat("s"), heading(true))
+			`,
+		Payload: `temp.name,1691662156,123.456789,true` + "\n",
+		ExpectCSV: []string{
+			`name,time,value,active`,
+			`temp.name,1691662156,123.456789,true`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_payload_CSV_timeformat",
+		Script: `
+			CSV(payload(),
+				field(0, stringType(), "name"),
+				field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
+				field(2, doubleType(), "value"),
+				field(3, stringType(), "active")
+			)
+			CSV(timeformat("s"), heading(true))
+			`,
+		Payload: `temp.name,2023/08/10 19:09:16,123.456789,true` + "\n",
+		ExpectCSV: []string{
+			`name,time,value,active`,
+			`temp.name,1691662156,123.456789,true`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_payload_CSV_timeformat_precision",
+		Script: `
+			CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"), field(3, boolType(),"flag") )
+			CSV(timeformat("s"), heading(true), precision(2))
+		`,
+		Payload: strings.Join([]string{
+			"1700256261,dry,1,true",
+			"1700256262,dry,2,false",
+			"1700256262,wet,2,TRUE",
+			"1700256263,dry,3,False",
+			"1700256264,dry,4,1",
+			"1700256264,wet,5,0",
+			"",
+		}, "\n"),
+		ExpectCSV: []string{
+			"time,column1,value,flag",
+			"1700256261,dry,1.00,true",
+			"1700256262,dry,2.00,false",
+			"1700256262,wet,2.00,true",
+			"1700256263,dry,3.00,false",
+			"1700256264,dry,4.00,true",
+			"1700256264,wet,5.00,false",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_file",
+		Script: `
+			CSV(file('/iris.data'))
+			DROP(10)
+			TAKE(2)
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`5.4,3.7,1.5,0.2,Iris-setosa`,
+			`4.8,3.4,1.6,0.2,Iris-setosa`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_file_gz",
+		Script: `
+			CSV(file('/iris.data.gz'))
+			DROP(10)
+			TAKE(2)
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`5.4,3.7,1.5,0.2,Iris-setosa`,
+			`4.8,3.4,1.6,0.2,Iris-setosa`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_file_JSON_timeformat",
+		Script: `
+			CSV(file('/iris.data'))
+			DROP(10)
+			TAKE(2)
+			JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, `["column0","column1","column2","column3","column4"]`, gjson.Get(result, "data.columns").Raw)
+			require.Equal(t, `["string","string","string","string","string"]`, gjson.Get(result, "data.types").Raw)
+			require.Equal(t, `["5.4","3.7","1.5","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.0").Raw)
+			require.Equal(t, `["4.8","3.4","1.6","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.1").Raw)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_charset_jp",
+		Script: `
+			CSV(file("/euc-jp.csv"), charset("EUC-JP"))
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`利用されてきた文字コー,1701913182,3.141592`,
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestMARKDOWN(t *testing.T) {
+	TqlTestCase{
+		Name: "CSV_payload_MAPVALUE_MARKDOWN",
+		Script: `
+			CSV(payload(), header(false))
+			MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
+			MARKDOWN()
+			`,
+		Payload: strings.Join([]string{
+			`NAME,TIME,VALUE,BOOL`,
+			`wave.sin,1676432361,0.000000,true`,
+			`wave.cos,1676432361,1.0000000,false`,
+			`wave.sin,1676432362,0.406736,true`,
+			`wave.cos,1676432362,0.913546,false`,
+			`wave.sin,1676432363,0.743144,true`,
+		}, "\n") + "\n",
+		ExpectText: []string{
+			`|column0|column1|column2|column3|`,
+			`|:-----|:-----|:-----|:-----|`,
+			`|NAME|TIME|VALUE|BOOL|`,
+			`|wave.sin|1676432361|0.000000|true|`,
+			`|wave.cos|1676432361|10.000000|false|`,
+			`|wave.sin|1676432362|4.067360|true|`,
+			`|wave.cos|1676432362|9.135460|false|`,
+			`|wave.sin|1676432363|7.431440|true|`,
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_payload_MAPVALUE_MARKDOWN_TEMPLATE",
+		Script: `
+			CSV(payload(), header(false))
+			MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
+			MARKDOWN({
+{{ if .IsFirst }}## demo
+{{ end }}{{ .Value 0 }},{{ .Value 2 }}
+{{ if .IsLast }}--------
+{{ end }}
+			})
+			`,
+		Payload: strings.Join([]string{
+			`NAME,TIME,VALUE,BOOL`,
+			`wave.sin,1676432361,0.000000,true`,
+			`wave.cos,1676432361,1.0000000,false`,
+			`wave.sin,1676432362,0.406736,true`,
+			`wave.cos,1676432362,0.913546,false`,
+			`wave.sin,1676432363,0.743144,true`,
+		}, "\n") + "\n",
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Contains(t, result, "## demo")
+			require.Contains(t, result, "NAME,VALUE")
+			require.Contains(t, result, "wave.sin,0")
+			require.Contains(t, result, "wave.cos,10")
+			require.Contains(t, result, "wave.sin,4.067")
+			require.Contains(t, result, "wave.cos,9.135")
+			require.Contains(t, result, "--------")
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_MARKDOWN",
+		Script: `
+			CSV(payload(), header(true))
+			MARKDOWN()
+			`,
+		Payload: strings.Join([]string{
+			`NAME,TIME,VALUE`,
+			`wave.sin,1676432361,0.000000`,
+			`wave.cos,1676432361,1.000000`,
+			`wave.sin,1676432362,0.406736`,
+			`wave.cos,1676432362,0.913546`,
+			`wave.sin,1676432363,0.743144`,
+		}, "\n"),
+		ExpectText: []string{
+			`|NAME|TIME|VALUE|`,
+			`|:-----|:-----|:-----|`,
+			`|wave.sin|1676432361|0.000000|`,
+			`|wave.cos|1676432361|1.000000|`,
+			`|wave.sin|1676432362|0.406736|`,
+			`|wave.cos|1676432362|0.913546|`,
+			`|wave.sin|1676432363|0.743144|`,
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_payload_MARKDOWN",
+		Script: `
+			CSV(payload(), header(true))
+			MARKDOWN()
+			`,
+		Payload: strings.Join([]string{
+			`NAME,TIME,VALUE`,
+			`wave.sin,1676432361,0.000000`,
+			`wave.cos,1676432361,1.000000`,
+			`wave.sin,1676432362,0.406736`,
+			`wave.cos,1676432362,0.913546`,
+			`wave.sin,1676432363,0.743144`,
+			"\n"}, "\n"),
+		ExpectText: []string{
+			`|NAME|TIME|VALUE|`,
+			`|:-----|:-----|:-----|`,
+			`|wave.sin|1676432361|0.000000|`,
+			`|wave.cos|1676432361|1.000000|`,
+			`|wave.sin|1676432362|0.406736|`,
+			`|wave.cos|1676432362|0.913546|`,
+			`|wave.sin|1676432363|0.743144|`,
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_header(true)_MARKDOWN",
+		Script: `
+			CSV(payload(),
+			field(0, stringType(), 'name'),
+			field(1, datetimeType('s'), 'time'),
+			field(2, doubleType(), 'value'),
+			header(true))
+			MARKDOWN()
+			`,
+		Payload: strings.Join([]string{
+			`NAME,TIME,VALUE`,
+			`wave.sin,1676432361,0.000000`,
+			`wave.cos,1676432361,1.000000`,
+			`wave.sin,1676432362,0.406736`,
+			`wave.cos,1676432362,0.913546`,
+			`wave.sin,1676432363,0.743144`,
+		}, "\n"),
+		ExpectText: []string{
+			`|name|time|value|`,
+			`|:-----|:-----|:-----|`,
+			`|wave.sin|1676432361000000000|0.000000|`,
+			`|wave.cos|1676432361000000000|1.000000|`,
+			`|wave.sin|1676432362000000000|0.406736|`,
+			`|wave.cos|1676432362000000000|0.913546|`,
+			`|wave.sin|1676432363000000000|0.743144|`,
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_header(false)_MARKDOWN",
+		Script: `
+			CSV(payload(),
+			field(0, stringType(), 'NAME'),
+			field(1, datetimeType('s'), 'TIME'),
+			field(2, doubleType(), 'VALUE'),
+			header(false))
+			MARKDOWN()
+			`,
+		Payload: strings.Join([]string{
+			`wave.sin,1676432361,0.000000`,
+			`wave.cos,1676432361,1.000000`,
+			`wave.sin,1676432362,0.406736`,
+			`wave.cos,1676432362,0.913546`,
+			`wave.sin,1676432363,0.743144`,
+		}, "\n"),
+		ExpectText: []string{
+			`|NAME|TIME|VALUE|`,
+			`|:-----|:-----|:-----|`,
+			`|wave.sin|1676432361000000000|0.000000|`,
+			`|wave.cos|1676432361000000000|1.000000|`,
+			`|wave.sin|1676432362000000000|0.406736|`,
+			`|wave.cos|1676432362000000000|0.913546|`,
+			`|wave.sin|1676432363000000000|0.743144|`,
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_no_header_MARKDOWN",
+		Script: `
+			CSV(payload())
+			MARKDOWN()
+			`,
+		Payload: strings.Join([]string{
+			`wave.sin,1676432361,0.000000`,
+			`wave.cos,1676432361,1.000000`,
+			`wave.sin,1676432362,0.406736`,
+			`wave.cos,1676432362,0.913546`,
+			`wave.sin,1676432363,0.743144`,
+		}, "\n"),
+		ExpectText: []string{
+			`|column0|column1|column2|`,
+			`|:-----|:-----|:-----|`,
+			`|wave.sin|1676432361|0.000000|`,
+			`|wave.cos|1676432361|1.000000|`,
+			`|wave.sin|1676432362|0.406736|`,
+			`|wave.cos|1676432362|0.913546|`,
+			`|wave.sin|1676432363|0.743144|`,
+			"",
+		},
+	}.run(t)
+}
+
+func TestNDJSON(t *testing.T) {
+	TqlTestCase{
+		Name: "CSV_NDJSON",
+		Script: `
+			CSV("1,line1\n2,line2\n3,\n4,line4")
+			NDJSON( rownum(true) )
+		`,
+		ExpectText: []string{
+			`{"ROWNUM":1,"column0":"1","column1":"line1"}`,
+			`{"ROWNUM":2,"column0":"2","column1":"line2"}`,
+			`{"ROWNUM":3,"column0":"3","column1":""}`,
+			`{"ROWNUM":4,"column0":"4","column1":"line4"}`,
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestTql(t *testing.T) {
+	TqlTestCase{
+		Name: "pragma-log-level",
+		Script: `
+			#pragma log-level=warn
+			FAKE( linspace(1, 5, 5))
+			SCRIPT("js", { console.log("-", $.values[0]); $.yield($.values[0]) })
+			JSON()
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "success", gjson.Get(result, "reason").String())
+			require.Equal(t, `5`, gjson.Get(result, "data.rows.#").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "strSprintf",
+		Script: `
+			FAKE(json(strSprintf('[%.f, %q]', 123, "hello")))
+			CSV( heading(false) )
+			`,
+		ExpectCSV: []string{
+			`123,hello`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "UTIL_sqlTimeformat_csv",
+		Script: `
+			FAKE( json({
+				[1701345032123456789, 10],
+				[1701345043219876543, 11]
+			}))
+			MAPVALUE(0, time(value(0)))
+			CSV(sqlTimeformat("YYYY-MM-DD HH24:MI:SS.nnnnnn"), tz("Asia/Seoul"))
+			`,
+		ExpectCSV: []string{
+			`2023-11-30 20:50:32.123456,10`,
+			`2023-11-30 20:50:43.219876,11`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "UTIL_ansiTimeformat_csv",
+		Script: `
+			FAKE( json({
+				[1701345032123456789, 10],
+				[1701345043219876543, 11]
+			}))
+			MAPVALUE(0, time(value(0)))
+			CSV(ansiTimeformat("yyyy-mm-dd hh:nn:ss.ffffff"), tz("UTC"))
+			`,
+		ExpectCSV: []string{
+			`2023-11-30 11:50:32.123456,10`,
+			`2023-11-30 11:50:43.219876,11`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "UTIL_string_trim_replace",
+		Script: `
+			FAKE( json({
+				["prefix-hello-suffix"]
+			}))
+			MAPVALUE(0, strTrimPrefix(value(0), "prefix-"))
+			MAPVALUE(0, strTrimSuffix(value(0), "-suffix"))
+			MAPVALUE(0, strReplace(value(0), "l", "L", 1))
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`heLlo`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "UTIL_string_predicates",
+		Script: `
+			FAKE( json({
+				["prefix-hello-suffix"],
+				["hello"]
+			}))
+			PUSHVALUE(1, strHasPrefix(value(0), "prefix-"))
+			PUSHVALUE(2, strHasSuffix(value(0), "-suffix"))
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`prefix-hello-suffix,true,true`,
+			`hello,false,false`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "UTIL_string_replace_all",
+		Script: `
+			FAKE( json({
+				["a-b-c"]
+			}))
+			MAPVALUE(0, strReplaceAll(value(0), "-", "_"))
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`a_b_c`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_pushkey_manual",
+		Script: `
+			FAKE( linspace(1, 2, 2) )
+			PUSHKEY("k")
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`1,1`,
+			`2,2`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_popkey_manual",
+		Script: `
+			FAKE( json({
+				["TAG0", 1, 10],
+				["TAG1", 2, 20]
+			}))
+			POPKEY()
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`1,10`,
+			`2,20`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_transpose_header_manual",
+		Script: `
+			FAKE(csv("CITY,DATE,TEMPERATURE,HUMIDITY\nTokyo,2023/12/07,23,30"))
+			TRANSPOSE(header(true))
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`CITY,Tokyo`,
+			`DATE,2023/12/07`,
+			`TEMPERATURE,23`,
+			`HUMIDITY,30`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_take_offset_count_manual",
+		Script: `
+			FAKE( json({
+				["TAG0", 1, 10],
+				["TAG0", 2, 11],
+				["TAG0", 3, 12],
+				["TAG0", 4, 13],
+				["TAG0", 5, 14],
+				["TAG0", 6, 15]
+			}))
+			TAKE(3, 2)
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`TAG0,4,13`,
+			`TAG0,5,14`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_drop_offset_count_manual",
+		Script: `
+			FAKE( json({
+				["TAG0", 1, 10],
+				["TAG0", 2, 11],
+				["TAG0", 3, 12],
+				["TAG0", 4, 13],
+				["TAG0", 5, 14],
+				["TAG0", 6, 15]
+			}))
+			DROP(2, 3)
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`TAG0,1,10`,
+			`TAG0,2,11`,
+			`TAG0,6,15`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_AVG",
+		Script: `
+			FAKE( arrange(10, 30, 10) )
+			MAP_AVG(1, value(0))
+			CSV( precision(0) )
+			`,
+		ExpectCSV: []string{
+			"10,10",
+			"20,15",
+			"30,20",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_MOVAVG",
+		Script: `
+			FAKE( linspace(0, 100, 100) )
+			MAP_MOVAVG(1, value(0), 10)
+			CSV( precision(4) )
+			`,
+		ExpectCSV: loadLines("./test/movavg_result.csv"),
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_MOVAVG_nowait",
+		Script: `
+			FAKE( linspace(0, 100, 100) )
+			MAP_MOVAVG(1, value(0), 10, noWait(true))
+			CSV( precision(4) )
+			`,
+		ExpectCSV: loadLines("./test/movavg_result_nowait.csv"),
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_LOWPASS",
+		Script: `
+			FAKE(arrange(1, 10, 1))
+			MAPVALUE(1, value(0) + simplex(1, value(0))*3)
+			MAP_LOWPASS(2, value(1), 0.3)
+			CSV(precision(2))
+			`,
+		ExpectCSV: []string{
+			`1.00,1.48,1.48`,
+			`2.00,0.40,1.15`,
+			`3.00,3.84,1.96`,
+			`4.00,2.89,2.24`,
+			`5.00,5.47,3.21`,
+			`6.00,5.29,3.83`,
+			`7.00,7.22,4.85`,
+			`8.00,10.31,6.49`,
+			`9.00,8.36,7.05`,
+			`10.00,8.56,7.50`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_KALMAN",
+		Script: `
+			FAKE(json({[1.3], [10.2], [5.0], [3.4]}))
+			MAP_KALMAN(1, value(0), model(1.0, 1.0, 2.0))
+			CSV(precision(1))
+			`,
+		ExpectCSV: []string{
+			`1.3,1.3`,
+			`10.2,5.7`,
+			`5.0,5.4`,
+			`3.4,4.4`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_DIFF",
+		Script: `
+			FAKE( csv("1\n3\n2\n7") )
+			MAP_DIFF(0, value(0))
+			CSV()
+			`,
+		ExpectCSV: []string{"NULL", "2", "-1", "5", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_NONEGDIFF",
+		Script: `
+			FAKE( csv("1\n3\n2\n7") )
+			MAP_NONEGDIFF(0, value(0))
+			CSV()
+			`,
+		ExpectCSV: []string{"NULL", "2", "0", "5", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "MAP_ABSDIFF",
+		Script: `
+			FAKE( csv("1\n3\n2\n7") )
+			MAP_ABSDIFF(0, value(0))
+			CSV()
+			`,
+		ExpectCSV: []string{"NULL", "2", "1", "5", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FILTER_CHANGED_string",
+		Script: `
+			FAKE(json({
+				["A", 1.0],
+				["A", 2.0],
+				["B", 3.0],
+				["B", 4.0]
+			}))
+			FILTER_CHANGED(value(0))
+			CSV()
+			`,
+		ExpectCSV: []string{"A,1", "B,3", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FILTER_CHANGED_bool",
+		Script: `
+			FAKE(json({
+				["A", true, 1.0],
+				["A", false, 2.0],
+				["B", false, 3.0],
+				["B", true, 4.0]
+			}))
+			FILTER_CHANGED(value(1))
+			CSV()
+			`,
+		ExpectCSV: []string{"A,true,1", "A,false,2", "B,true,4", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FILTER_CHANGED_time",
+		Script: `
+			FAKE(json({
+				["A", 1692329338, 1.0],
+				["A", 1692329339, 2.0],
+				["B", 1692329340, 3.0],
+				["B", 1692329341, 4.0],
+				["B", 1692329342, 5.0],
+				["B", 1692329343, 6.0],
+				["B", 1692329344, 7.0],
+				["B", 1692329345, 8.0],
+				["C", 1692329346, 9.0],
+				["D", 1692329347, 9.1],
+				["D", 1692329348, 9.2],
+				["D", 1692329349, 9.3]
+			}))
+			MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))
+			FILTER_CHANGED(value(0), retain(value(1), "2s"))
+			CSV(timeformat("s"))
+			`,
+		ExpectCSV: []string{
+			"A,1692329338,1",
+			"B,1692329342,5",
+			"D,1692329349,9.3",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "FILTER_CHANGED_useFirstWithLast(true)",
+		Script: `
+			FAKE(json({
+				["A", 1.0], ["A", 2.0],
+				["B", 3.0], ["B", 4.0], ["B", 5.0],
+				["C", 6.0], ["C", 7.0],
+				["D", 8.0], ["D", 9.0]
+			}))
+			FILTER_CHANGED(value(0), useFirstWithLast(true))
+			CSV()
+			`,
+		ExpectCSV: []string{"A,1", "A,2", "B,3", "B,5", "C,6", "C,7", "D,8", "D,9", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FILTER_CHANGED_useFirstWithLast(false)",
+		Script: `
+			FAKE(json({
+				["A", 1.0], ["A", 2.0],
+				["B", 3.0], ["B", 4.0], ["B", 5.0],
+				["C", 6.0], ["C", 7.0],
+				["D", 8.0], ["D", 9.0]
+			}))
+			FILTER_CHANGED(value(0), useFirstWithLast(false))
+			CSV()
+			`,
+		ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FILTER_CHANGED_useFirstWithLast(false)_implicit",
+		Script: `
+			FAKE(json({
+				["A", 1.0], ["A", 2.0],
+				["B", 3.0], ["B", 4.0], ["B", 5.0],
+				["C", 6.0], ["C", 7.0],
+				["D", 8.0], ["D", 9.0]
+			}))
+			FILTER_CHANGED(value(0))
+			CSV()
+			`,
+		// This result should be same as using "useFirstWithLast(false)"
+		ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_sphere_4_4",
+		Script: `
+			FAKE( sphere(4, 4) )
+			PUSHKEY('test')
+			CSV( header(true), precision(6) )
+			`,
+		ExpectCSV: loadLines("./test/sphere_4_4.csv"),
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_sphere_0_0",
+		Script: `
+			FAKE( sphere(0, 0) )
+			PUSHKEY('test')
+			CSV( header(false), precision(6) )
+			`,
+		ExpectCSV: loadLines("./test/sphere_0_0.csv"),
+	}.run(t)
+}
+
+func TestFAKE(t *testing.T) {
+	TqlTestCase{
+		Name: "FAKE_invalid_generator_type",
+		Script: `
+			FAKE( 123 )
+			CSV()
+			`,
+		ExpectErr: "f(FAKE) arg(0) should be fakeSource, but float64",
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_json",
+		Script: `
+			FAKE(
+				json({
+					["A", 1, true],
+					["B", 2, false],
+					["C", 3, true]
+				})
+			)
+			MAPVALUE(1, value(1)*10)
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`A,10,true`,
+			`B,20,false`,
+			`C,30,true`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_csv",
+		Script: `
+			FAKE(
+				csv(
+					strTrimSpace(` + "`" + `
+						A,1,true
+						B,2,false
+						C,3,true
+					` + "`" + `)
+				)
+			)
+			MAPVALUE(0, strTrimSpace(value(0)))
+			MAPVALUE(1, parseFloat(value(1))*10)
+			MAPVALUE(2, parseBool(value(2)))
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`A,10,true`,
+			`B,20,false`,
+			`C,30,true`,
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestFAKE_arrange(t *testing.T) {
+	TqlTestCase{
+		Name: "FAKE_arrange_zero_step",
+		Script: `FAKE( arrange(10, 30, 0) )
+				CSV()`,
+		ExpectErr: `FUNCTION "arrange" step can not be 0`,
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_arrange_start_stop_equal",
+		Script: `FAKE( arrange(10, 10, 10) )
+				CSV()`,
+		ExpectErr: `FUNCTION "arrange" start, stop can not be equal`,
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_arrange_start_stop_invalid1",
+		Script: `FAKE( arrange(10, 30, -10) )
+				CSV()`,
+		ExpectErr: `FUNCTION "arrange" step can not be less than 0`,
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_arrange_start_stop_invalid2",
+		Script: `FAKE( arrange(30, 10, 10) )
+				CSV()`,
+		ExpectErr: `FUNCTION "arrange" step can not be greater than 0`,
+	}.run(t)
+}
+
+func TestFAKE_meshgrid(t *testing.T) {
+	TqlTestCase{
+		Name: "FAKE_meshgrid_manual",
+		Script: `
+			FAKE(
+				meshgrid(linspace(1, 2, 2), linspace(10, 20, 2))
+			)
+			CSV()
+			`,
+		ExpectCSV: []string{
+			`1,10`,
+			`1,20`,
+			`2,10`,
+			`2,20`,
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestFAKE_oscillator(t *testing.T) {
+	back := util.StandardTimeNow
+	util.StandardTimeNow = func() time.Time {
+		return time.Unix(0, 1692329338315327000)
+	}
+	defer func() {
+		util.StandardTimeNow = back
+	}()
+
+	TqlTestCase{
+		Name: "FAKE_oscillator_no_args",
+		Script: `
+			FAKE( oscillator() )
+			JSON()`,
+		ExpectErr: "f(oscillator) no time range is defined",
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_invalid_args",
+		Script: `
+			FAKE( oscillator(123) )
+			JSON()`,
+		ExpectErr: "f(oscillator) invalid arg type 'float64'",
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_no_time_range",
+		Script: `
+			FAKE( oscillator(freq(1.0, 1.0)) )
+			JSON()
+		`,
+		ExpectErr: "f(oscillator) no time range is defined",
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_dup_time_range",
+		Script: `
+			FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms'), range(time('now-1s'), '1s', '200ms')) )
+			JSON()
+		`,
+		ExpectErr: "f(oscillator) duplicated time range",
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_minus_time_range",
+		Script: `
+			FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '-200ms')) )
+			JSON()
+		`,
+		ExpectErr: "f(oscillator) period should be positive",
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_1",
+		Script: `
+			FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms')) )
+			JSON(precision(16))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+			require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
+			require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+			require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
+			require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_2",
+		Script: `
+			FAKE( oscillator(freq(1.0, 1.0), range(time('now'), '-1s', '200ms')) )
+			JSON(precision(16))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+			require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
+			require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+			require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
+			require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_oscillator_1Hz_2Hz_3Hz",
+		Script: `
+			FAKE( 
+				oscillator(
+					range(timeAdd(1685714509*1000000000,'1s'), '1s', '1ms'), 
+					freq(1, 1.0), freq(2, 2.0), freq(3, 3.0)))
+			PUSHKEY('test')
+			CSV( header(true), precision(6) )
+			`,
+		ExpectCSV: loadLines("./test/oscillator_1Hz_2Hz_3Hz.csv"),
+	}.run(t)
+}
+
+func TestFAKE_statz(t *testing.T) {
+	var mustSeriesID = func(t *testing.T, id, title string, period time.Duration, maxCount int) metric.SeriesID {
+		t.Helper()
+		seriesID, err := metric.NewSeriesID(id, title, period, maxCount)
+		require.NoError(t, err)
+		return seriesID
+	}
+	seriesID := mustSeriesID(t, "CPU_USAGE", "CPU Usage", time.Second, 8)
+	collector := metric.NewCollector(
+		metric.WithSamplingInterval(time.Second),
+		metric.WithSeries(seriesID),
+	)
+	collector.Start()
+	t.Cleanup(collector.Stop)
+
+	collector.Send(metric.Measure{Name: "cpu:usage", Value: 1, Type: metric.CounterType(metric.UnitScalar)})
+	time.Sleep(1100 * time.Millisecond)
+	collector.Send(metric.Measure{Name: "cpu:usage", Value: 2, Type: metric.CounterType(metric.UnitScalar)})
+
+	org := spi.SetCollector(collector)
+	defer spi.SetCollector(org)
+
+	require.Eventually(t, func() bool {
+		mts := collector.Timeseries("cpu:usage")
+		if len(mts) == 0 {
+			return false
+		}
+		_, values := mts[0].All()
+		samples := make([]float64, 0, len(values))
+		for _, raw := range values {
+			v, ok := raw.(*metric.CounterValue)
+			if !ok || v.Samples == 0 {
+				continue
+			}
+			samples = append(samples, v.Value)
+		}
+		if len(samples) < 2 {
+			return false
+		}
+		return samples[len(samples)-2] == 1 && samples[len(samples)-1] == 2
+	}, 3*time.Second, 50*time.Millisecond)
+
+	TqlTestCase{
+		Name: "FAKE_statz",
+		Script: `
+			FAKE( statz(0, 'cpu:usage') )
+			FILTER( value(1) != NULL )
+			CSV(timeformat('15:04:05'), heading(true), precision(0))`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(result, "\n")
+			require.Equal(t, "time,cpu:usage", lines[0])
+			// 2026-06-12 08:14:22,1
+			require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},1$`).MatchString(lines[1]), "line: %q", lines[1])
+			// 2026-06-12 08:14:23,2
+			require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},2$`).MatchString(lines[2]), "line: %q", lines[2])
+			require.Equal(t, "", lines[3])
+		},
+	}.run(t)
+}
+
+func TestTEXT_template(t *testing.T) {
+	TqlTestCase{
+		Name: "js-array-template",
+		Script: `
+				SCRIPT({
+					$.yield(1, 2, 3);
+					$.yield(4, 5, 6);
+				})
+				TEXT('{{- .Value 0 }},{{ .Value 1 }},{{ .Value 2 }}{{"\\n"}}')
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "1,2,3\n4,5,6\n", result, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "js-obj-template",
+		Script: `
+			SCRIPT({
+				$.yield("John", 30);
+				$.yield("Jane", 25);
+			})
+			TEXT({
+				{{- with .V -}}
+					{{ .column0 }}:{{ .column1 }}{{"\n"}}
+				{{- end -}}
+			})
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "John:30\nJane:25\n", result, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "js-obj-template",
+		Script: `
+			SCRIPT({
+				$.result = {
+					columns: ["name", "age"],
+					types: ["string", "int64"]
+				};
+				$.yield("John", 30);
+				$.yield("Jane", 25);
+			})
+			TEXT({
+				{{- with .V -}}
+					{{ .name }}:{{ .age }}{{"\n"}}
+				{{- end -}}
+			})
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "John:30\nJane:25\n", result, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "js-obj-template",
+		Script: `
+			SCRIPT({
+				$.yield({name: "John", age: 30});
+				$.yield({name: "Jane", age: 25});
+			})
+			TEXT({
+				{{- with .Value 0 -}}
+					{{ .name }}:{{ .age }}{{"\n"}}
+				{{- end -}}
+			})
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "John:30\nJane:25\n", result, result)
+		},
+	}.run(t)
+}
+
+func TestGEOMAP(t *testing.T) {
 	TqlTestCase{
 		Name: "js-geojson-point",
 		Script: `
-				SCRIPT("js", {
-					var lat = 37.497850;
-					var lon =  127.027756;
-					var name = "Gangnam-cross";
-					$.yield({
-						type: "Feature",
-						geometry: {
-							type: "Point",
-							coordinates: [lon, lat]
-						}
-					});
-				})
-				GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
+			SCRIPT("js", {
+				var lat = 37.497850;
+				var lon =  127.027756;
+				var name = "Gangnam-cross";
+				$.yield({
+					type: "Feature",
+					geometry: {
+						type: "Point",
+						coordinates: [lon, lat]
+					}
+				});
+			})
+			GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
 		ExpectFunc: func(t *testing.T, result string) {
 			require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
 			require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
@@ -2953,7 +3029,7 @@ func TestGeoJSON(t *testing.T) {
 	}.run(t)
 }
 
-func TestThrottle(t *testing.T) {
+func TestTHROTTLE(t *testing.T) {
 	t.Skip("throttle test is not stable")
 	TqlTestCase{
 		Name: "throttle-10tps",
@@ -2988,25 +3064,271 @@ func TestThrottle(t *testing.T) {
 	}.run(t)
 }
 
-func TestPragma(t *testing.T) {
+func TestHISTOGRAM(t *testing.T) {
 	TqlTestCase{
-		Name: "pragma-log-level",
+		Name: "histogram",
 		Script: `
-			#pragma log-level=warn
-			FAKE( linspace(1, 5, 5))
-			SCRIPT("js", { console.log("-", $.values[0]); $.yield($.values[0]) })
-			JSON()
-			`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, "success", gjson.Get(result, "reason").String())
-			require.Equal(t, `5`, gjson.Get(result, "data.rows.#").String())
+			FAKE( arrange(1, 100, 1) )
+			MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)
+			HISTOGRAM(value(0), bins(0, 200, 20))
+			CSV( precision(0) )`,
+		ExpectCSV: []string{
+			"0,20,0",
+			"20,40,2",
+			"40,60,12",
+			"60,80,19",
+			"80,100,25",
+			"100,120,22",
+			"120,140,8",
+			"140,160,8",
+			"160,180,4",
+			"180,200,0",
+			"\n",
 		},
 	}.run(t)
-
+	TqlTestCase{
+		Name: "histogram_bins",
+		Script: `
+			FAKE( arrange(1, 100, 1) )
+			MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)
+			HISTOGRAM(value(0), bins(80, 120, 13))
+			CSV( precision(0), header(true) )`,
+		ExpectCSV: []string{
+			"low,high,count",
+			"-Inf,80,19",
+			"80,93,28",
+			"93,106,19",
+			"106,119,14",
+			"119,+Inf,20",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "histogram_bins2",
+		Script: `
+			FAKE( arrange(1, 100, 1) )
+			MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)
+			HISTOGRAM(value(0), bins(20, 180, 20))
+			CSV( header(true), precision(0) )
+		`,
+		ExpectCSV: []string{
+			"low,high,count",
+			"20,40,2",
+			"40,60,12",
+			"60,80,19",
+			"80,100,25",
+			"100,120,22",
+			"120,140,8",
+			"140,160,8",
+			"160,180,4",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "histogram_category",
+		Script: `
+		FAKE( arrange(1, 100, 1) )
+		MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)
+		PUSHVALUE(0, key() % 2 == 0 ? "Cat.A" : "Cat.B")
+		HISTOGRAM(value(1), bins(0, 200, 20), category(value(0)), order("Cat.B", "Cat.A"))
+		CSV( header(true), precision(0) )`,
+		ExpectCSV: []string{
+			"low,high,Cat.B,Cat.A",
+			"0,20,0,0",
+			"20,40,1,1",
+			"40,60,5,7",
+			"60,80,6,13",
+			"80,100,14,11",
+			"100,120,14,8",
+			"120,140,4,4",
+			"140,160,5,3",
+			"160,180,1,3",
+			"180,200,0,0",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "histogram_unpredicatedBins",
+		Script: `
+			FAKE( arrange(1, 100, 1) )
+			MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)
+			HISTOGRAM(value(0), bins(10))
+			CSV( header(true), precision(0) )`,
+		ExpectCSV: []string{
+			"value,count",
+			"23,1",
+			"44,6",
+			"59,12",
+			"80,26",
+			"99,20",
+			"113,18",
+			"129,5",
+			"141,2",
+			"153,7",
+			"170,3",
+			"\n",
+		},
+	}.run(t)
 }
 
-func TestRestClient(t *testing.T) {
+func TestBOXPLOT(t *testing.T) {
+	src := `FAKE(json({
+			["A", 850, 740, 900, 1070, 930, 850, 950, 980, 980, 880, 1000, 980, 930, 650, 760, 810, 1000, 1000, 960, 960],
+			["B", 960, 940, 960, 940, 880, 800, 850, 880, 900, 840, 830, 790, 810, 880, 880, 830, 800, 790, 760, 800],
+			["C", 880, 880, 880, 860, 720, 720, 620, 860, 970, 950, 880, 910, 850, 870, 840, 840, 850, 840, 840, 840],
+			["D", 890, 810, 810, 820, 800, 770, 760, 740, 750, 760, 910, 920, 890, 860, 880, 720, 840, 850, 850, 780],
+			["E", 890, 840, 780, 810, 760, 810, 790, 810, 820, 850, 870, 870, 810, 740, 810, 940, 950, 800, 810, 870]
+		}))
+		`
+	TqlTestCase{
+		Name: "boxplot",
+		Script: src + `
+			TRANSPOSE(fixed(0))
+			BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true))
+			FILTER(value(0) != "OUTLIER")
+			CSV( header(true), precision(0) )`,
+		ExpectCSV: []string{
+			"CATEGORY,A,D,C,B,E",
+			"MIN,650,720,620,760,740",
+			"LOWER,655,610,780,680,695",
+			"Q1,850,760,840,800,800",
+			"Q2,930,810,850,840,810",
+			"Q3,980,860,880,880,870",
+			"UPPER,1175,1010,940,1000,975",
+			"MAX,1070,920,970,960,950",
+			"IQR,130,100,40,80,70",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "boxplot_dict",
+		Script: src + `
+			TRANSPOSE(fixed(0))
+			BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true), boxplotOutput("dict"))
+			JSON()
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, `success`, gjson.Get(result, "reason").String())
+			require.Equal(t, `["A","D","C","B","E"]`, gjson.Get(result, "data.columns").String())
+			require.Equal(t, `["dict","dict","dict","dict","dict"]`, gjson.Get(result, "data.types").String())
+			require.Equal(t, int64(130), gjson.Get(result, "data.rows.0.0.iqr").Int())
+			require.Equal(t, int64(655), gjson.Get(result, "data.rows.0.0.lower").Int())
+			require.Equal(t, int64(1070), gjson.Get(result, "data.rows.0.0.max").Int())
+			require.Equal(t, int64(650), gjson.Get(result, "data.rows.0.0.min").Int())
+			require.Equal(t, int64(850), gjson.Get(result, "data.rows.0.0.q1").Int())
+			require.Equal(t, int64(930), gjson.Get(result, "data.rows.0.0.q2").Int())
+			require.Equal(t, int64(980), gjson.Get(result, "data.rows.0.0.q3").Int())
+			require.Equal(t, int64(1175), gjson.Get(result, "data.rows.0.0.upper").Int())
+			require.Equal(t, `[650]`, gjson.Get(result, "data.rows.0.0.outlier").String())
+
+			require.Equal(t, int64(100), gjson.Get(result, "data.rows.0.1.iqr").Int())
+			require.Equal(t, int64(610), gjson.Get(result, "data.rows.0.1.lower").Int())
+			require.Equal(t, int64(920), gjson.Get(result, "data.rows.0.1.max").Int())
+			require.Equal(t, int64(720), gjson.Get(result, "data.rows.0.1.min").Int())
+			require.Equal(t, int64(760), gjson.Get(result, "data.rows.0.1.q1").Int())
+			require.Equal(t, int64(810), gjson.Get(result, "data.rows.0.1.q2").Int())
+			require.Equal(t, int64(860), gjson.Get(result, "data.rows.0.1.q3").Int())
+			require.Equal(t, int64(1010), gjson.Get(result, "data.rows.0.1.upper").Int())
+			require.Equal(t, ``, gjson.Get(result, "data.rows.0.1.outlier").String())
+
+			require.Equal(t, int64(40), gjson.Get(result, "data.rows.0.2.iqr").Int())
+			require.Equal(t, int64(780), gjson.Get(result, "data.rows.0.2.lower").Int())
+			require.Equal(t, int64(970), gjson.Get(result, "data.rows.0.2.max").Int())
+			require.Equal(t, int64(620), gjson.Get(result, "data.rows.0.2.min").Int())
+			require.Equal(t, int64(840), gjson.Get(result, "data.rows.0.2.q1").Int())
+			require.Equal(t, int64(850), gjson.Get(result, "data.rows.0.2.q2").Int())
+			require.Equal(t, int64(880), gjson.Get(result, "data.rows.0.2.q3").Int())
+			require.Equal(t, int64(940), gjson.Get(result, "data.rows.0.2.upper").Int())
+			require.Equal(t, `[620,720,720,950,970]`, gjson.Get(result, "data.rows.0.2.outlier").String())
+
+			require.Equal(t, int64(80), gjson.Get(result, "data.rows.0.3.iqr").Int())
+			require.Equal(t, int64(680), gjson.Get(result, "data.rows.0.3.lower").Int())
+			require.Equal(t, int64(960), gjson.Get(result, "data.rows.0.3.max").Int())
+			require.Equal(t, int64(760), gjson.Get(result, "data.rows.0.3.min").Int())
+			require.Equal(t, int64(800), gjson.Get(result, "data.rows.0.3.q1").Int())
+			require.Equal(t, int64(840), gjson.Get(result, "data.rows.0.3.q2").Int())
+			require.Equal(t, int64(880), gjson.Get(result, "data.rows.0.3.q3").Int())
+			require.Equal(t, int64(1000), gjson.Get(result, "data.rows.0.3.upper").Int())
+			require.Equal(t, ``, gjson.Get(result, "data.rows.0.3.outlier").String())
+
+			require.Equal(t, int64(70), gjson.Get(result, "data.rows.0.4.iqr").Int())
+			require.Equal(t, int64(695), gjson.Get(result, "data.rows.0.4.lower").Int())
+			require.Equal(t, int64(950), gjson.Get(result, "data.rows.0.4.max").Int())
+			require.Equal(t, int64(740), gjson.Get(result, "data.rows.0.4.min").Int())
+			require.Equal(t, int64(800), gjson.Get(result, "data.rows.0.4.q1").Int())
+			require.Equal(t, int64(810), gjson.Get(result, "data.rows.0.4.q2").Int())
+			require.Equal(t, int64(870), gjson.Get(result, "data.rows.0.4.q3").Int())
+			require.Equal(t, int64(975), gjson.Get(result, "data.rows.0.4.upper").Int())
+			require.Equal(t, ``, gjson.Get(result, "data.rows.0.4.outlier").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "boxplot_chart",
+		Script: src + `
+			TRANSPOSE(fixed(0))
+			BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true), boxplotOutput("chart"))
+			CSV(header(true))`,
+		ExpectCSV: []string{
+			"CATEGORY,BOXPLOT,OUTLIER",
+			"A,[]interface {},[]interface {}",
+			"D,[]interface {},[]interface {}",
+			"C,[]interface {},[]interface {}",
+			"B,[]interface {},[]interface {}",
+			"E,[]interface {},[]interface {}",
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestFFT(t *testing.T) {
+	TqlTestCase{
+		Name: "FFT",
+		Script: `
+			FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
+			MAPKEY('samples')
+			GROUPBYKEY(lazy(false))
+			FFT(minHz(0), maxHz(60))
+			CSV(precision(6))
+			`,
+		ExpectCSV: loadLines("./test/fft2d.csv"),
+	}.run(t)
+	TqlTestCase{
+		Name: "FFT_not_enough_samples_0",
+		Script: `
+			FAKE( linspace(0, 10, 100) )
+			FFT()
+			CSV()
+			`,
+		ExpectCSV: []string{"\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "FFT_not_enough_samples_16",
+		Script: `
+			FAKE( meshgrid(linspace(0, 10, 100), linspace(0, 10, 1000)) )
+			PUSHKEY('sample')
+			GROUPBYKEY()
+			FFT()
+			CSV()
+			`,
+		ExpectErr: "f(FFT) sample should be a tuple of (time, value), but len=3",
+	}.run(t)
+	TqlTestCase{
+		Name: "FFT_3d",
+		Script: `
+			FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
+			MAPKEY( roundTime(value(0), '500ms') )
+			GROUPBYKEY()
+			FFT(maxHz(60))
+			FLATTEN()
+			PUSHKEY('fft3d')
+			CSV(precision(6))
+			`,
+		ExpectCSV: loadLines("./test/fft3d.csv"),
+	}.run(t)
+}
+
+func TestHTTP(t *testing.T) {
 	TqlTestCase{
 		Name: "rest-client-query-csv",
 		Script: fmt.Sprintf(`
@@ -3025,7 +3347,61 @@ func TestRestClient(t *testing.T) {
 
 }
 
-func TestScript(t *testing.T) {
+func TestSCRIPT_fft(t *testing.T) {
+	TqlTestCase{
+		Name: "js-fft",
+		Script: `
+			FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
+			SCRIPT("js", {
+				m = require("mathx");
+				times = [];
+				values = [];
+			}, {
+				times.push($.values[0]);
+				values.push($.values[1]);
+			}, {
+				result = m.fft(times, values);
+				for( i = 0; i < result.length; i++ ) {
+					if (result[i][0] > 60)
+						break
+					$.yield(result[i][0], result[i][1])
+				}
+			})
+			CSV(precision(6))
+			`,
+		ExpectCSV: loadLines("./test/fft2d.csv"),
+	}.run(t)
+	TqlTestCase{
+		Name: "js-fft_not_enough_samples_0",
+		Script: `
+			FAKE( linspace(0, 10, 100) )
+			SCRIPT("js", {
+				m = require("mathx");
+				times = [];
+				values = [];
+			}, {
+				times.push($.values[0]);
+				values.push($.values[1]);
+			}, {
+				try{
+					result = m.fft(times, values);
+					for( i = 0; i < result.length; i++ ) {
+						if (result[i][0] > 60)
+							break
+						$.yield(result[i][0], result[i][1])
+					}
+				} catch (e) {
+					console.error(e.message);
+				}
+			})
+			CSV()
+			`,
+		ExpectLog: []string{"[ERROR] fft invalid 0th sample value, but <nil>"},
+		ExpectCSV: []string{"\n"},
+	}.run(t)
+}
+
+func TestSCRIPT(t *testing.T) {
 	TqlTestCase{
 		Name: "script_src",
 		Script: `
@@ -3087,200 +3463,6 @@ func TestScript(t *testing.T) {
 			require.Empty(t, result)
 		},
 	}.run(t)
-	TqlTestCase{
-		Name: "js-finalize",
-		Script: `
-			FAKE( linspace(1,3,3))
-			SCRIPT("js", {
-				function finalize(){ $.yieldKey("last", 1.234); }
-				function square(x) { return x * x };
-				$.yield(square($.values[0]));
-			})
-			CSV(header(false))
-		`,
-		ExpectCSV: []string{
-			"1", "4", "9", "1.234", "\n",
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-timeformat",
-		Script: `
-			STRING(param("format_time") ?? "808210800", separator('\n'))
-			SCRIPT("js", {
-				epoch = parseInt($.values[0])
-				time = new Date(epoch * 1000)
-				$.yield(epoch, time.toISOString())
-			})
-			CSV()`,
-		ExpectCSV: []string{"808210800,1995-08-12T07:00:00.000Z", "", ""},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-timeformat-parse",
-		Script: `
-			STRING(param("timestamp") ?? "1995-08-12T00:00:00.000Z", separator('\n'))
-			SCRIPT("js", {
-				ts = new Date( Date.parse($.values[0]) );
-				epoch = ts / 1000;
-				$.yield(epoch, ts.toISOString());
-			})
-			CSV()`,
-		ExpectCSV: []string{"808185600,1995-08-12T00:00:00.000Z", "", ""},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-string",
-		Script: `
-			STRING('1,2,3,4,5', separator('\n'))
-			SCRIPT("js", {
-				$.yieldArray($.values[0].split(','))
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[["1","2","3","4","5"]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-bool",
-		Script: `
-			STRING('true,true,false,true,false', separator('\n'))
-			SCRIPT("js", {
-				$.yieldArray($.values[0].split(',').map(function(v){ return v === 'true'}))
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[[true,true,false,true,false]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-number",
-		Script: `
-			STRING('1.2,2.3,3.4,5.6', separator('\n'))
-			SCRIPT("js", {
-				$.yieldArray($.values[0].split(',').map(function(v){ return parseFloat(v) }))
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[[1.2,2.3,3.4,5.6]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-number-int64",
-		Script: `
-			STRING('1,2,3,4,5', separator('\n'))
-			SCRIPT("js", {
-				$.yieldArray($.values[0].split(',').map(function(v){ return parseInt(v) }))
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[[1,2,3,4,5]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-number-mixed",
-		Script: `
-			SCRIPT("js", {
-				$.result = {
-					columns: ["a", "b", "c", "d"],
-					types: ["int64", "double", "string", "bool"]
-				};
-				var arr = [1, 2.3, '3.4', true];
-				$.yieldArray(arr);
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-}
-
-func TestScriptInterrupt(t *testing.T) {
-	requireNoPayload := func(t *testing.T, result string) {
-		// Timeout interrupts may flush either "" or "\n" depending on writer/runtime timing.
-		// The semantic contract is that no payload rows are produced.
-		require.Equal(t, "", strings.TrimSpace(result))
-	}
-
-	// Give the JS runtime enough time to start on slower CI runners so these
-	// cases validate interrupt handling rather than startup scheduling.
-	interruptTimeout := 500 * time.Millisecond
-
-	TqlTestCase{
-		Name: "js-timeout",
-		Script: `
-				FAKE( linspace(1,10,10))
-				SCRIPT("js", {
-					while(true) {
-					}
-					$.yield(123)
-				})
-				CSV()
-			`,
-		CtxTimeout: interruptTimeout,
-		ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
-		ExpectFunc: func(t *testing.T, result string) {
-			requireNoPayload(t, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-timeout-init",
-		Script: `
-			FAKE( linspace(1,10,10))
-			SCRIPT("js", {
-				while(true) {
-				}
-			},{
-				$.yield(123)
-			})
-			CSV()
-		`,
-		CtxTimeout: interruptTimeout,
-		ExpectFunc: func(t *testing.T, result string) {
-			requireNoPayload(t, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-timeout-finalize",
-		Script: `
-			FAKE( linspace(1,10,10))
-			SCRIPT("js", {
-				function finalize(){
-					while(true) {}
-				}
-			},{
-				$.yield($.values[0])
-			})
-			CSV()
-		`,
-		CtxTimeout: interruptTimeout,
-		ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:2:5(1))"},
-		ExpectFunc: func(t *testing.T, result string) {
-			// SCRIPT was interrupted during the finalize()
-			// so the result exists
-			require.Equal(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n\n", result)
-		},
-	}.run(t)
-}
-
-func TestScriptJS(t *testing.T) {
 	TqlTestCase{
 		Name: "js-console-log",
 		Script: `
@@ -3383,11 +3565,31 @@ func TestScriptJS(t *testing.T) {
 		},
 	}.run(t)
 	TqlTestCase{
+		Name: "js-yieldArray-number-mixed",
+		Script: `
+			SCRIPT("js", {
+				$.result = {
+					columns: ["a", "b", "c", "d"],
+					types: ["int64", "double", "string", "bool"]
+				};
+				var arr = [1, 2.3, '3.4', true];
+				$.yield(...arr);
+			})
+			JSON()
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool(), "success message should be true: %s", result)
+			require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
+			require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
+			require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
+		},
+	}.run(t)
+	TqlTestCase{
 		Name: "js-yieldArray-number-int64",
 		Script: `
 			STRING('1,2,3,4,5', separator('\n'))
 			SCRIPT("js", {
-				$.yieldArray($.values[0].split(',').map( (v) => { return parseInt(v) }))
+				$.yieldArray($.values[0].split(',').map(function(v){ return parseInt(v) }))
 			})
 			JSON()
 		`,
@@ -3396,46 +3598,6 @@ func TestScriptJS(t *testing.T) {
 			require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
 			require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
 			require.Equal(t, `[[1,2,3,4,5]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-number-mixed",
-		Script: `
-			SCRIPT("js", {
-				$.result = {
-					columns: ["a", "b", "c", "d"],
-					types: ["int64", "double", "string", "bool"]
-				};
-				var arr = [1, 2.3, '3.4', true];
-				$.yield(...arr);
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool(), "success message should be true: %s", result)
-			require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-yieldArray-number-mixed",
-		Script: `
-			SCRIPT("js", {
-				$.result = {
-					columns: ["a", "b", "c", "d"],
-					types: ["int64", "double", "string", "bool"]
-				};
-				var arr = [1, 2.3, '3.4', true];
-				$.yield(...arr);
-			})
-			JSON()
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool(), "success message should be true: %s", result)
-			require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
 		},
 	}.run(t)
 	TqlTestCase{
@@ -3544,72 +3706,135 @@ func TestScriptJS(t *testing.T) {
 	}.run(t)
 }
 
-func TestScriptJS2(t *testing.T) {
-	t.Skip("skipping not implemented test")
+func TestSCRIPT_exception(t *testing.T) {
 	TqlTestCase{
-		Name: "js-db-query",
+		Name: "js-exception",
 		Script: `
 			SCRIPT("js", {
-				db = $.db();
-				db.exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
-				db.exec("insert into js_table(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
-			},{
-				db.query("select NAME, TIME, VALUE from js_table limit ?", 2).yield();
-				db.query("select NAME, TIME, VALUE from js_table limit ?", 2).forEach((row) => {
-					$.yield(...row);
-				});
-			},{
-				db.exec("drop table js_table");
-			})
-			JSON(timeformat("s"))
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool())
-			require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
-			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.1").Raw)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-db-query-module",
-		Script: `
-			SCRIPT("js", {
-				db = require("@jsh/db");
-			},{
-				client = new db.Client();
-				try{
-					conn = client.connect();
-					conn.exec("create tag table if not exists js_table2(name varchar(100) primary key, time datetime basetime, value double)");
-					conn.exec("insert into js_table2(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
-					conn.exec("EXEC table_flush(tag_data)")
-
-					rows = conn.query("select NAME, TIME, VALUE from js_table2 limit ?", 2)
-					$.result = rows.columns();
-					for( let row of rows ) {
-						$.yield(row.NAME, row.TIME.Unix(), row.VALUE);
-					}
-				}catch(e) {
-					console.log("Error:", e);
-				}finally{
-					// intentionally not closing the rows
-					// rows.close();
-					conn.exec("drop table js_table2");
-					conn.close();
+				o = {a: 1, other: ()=>{throw "other error";}};
+				o.a++;
+				$.yield(o.a)
+				try {
+					o.undef_function();
+				} catch (e) {
+					console.error(e.message);
+				}
+				try {
+					o.other();
+				} catch (e) {
+					console.error(e);
 				}
 			})
-			JSON(timeformat("s"))
+			CSV()
 		`,
-		// ExpectLog: []string{
-		// 	"WARNING: db rows not closed!!!",
-		// },
+		ExpectLog: []string{
+			"[ERROR] Object has no member 'undef_function'",
+			"[ERROR] other error",
+		},
+		ExpectCSV: []string{"2", "\n"},
+	}.run(t)
+}
+
+func TestSCRIPT_interrupt(t *testing.T) {
+	requireNoPayload := func(t *testing.T, result string) {
+		// Timeout interrupts may flush either "" or "\n" depending on writer/runtime timing.
+		// The semantic contract is that no payload rows are produced.
+		require.Equal(t, "", strings.TrimSpace(result))
+	}
+
+	// Give the JS runtime enough time to start on slower CI runners so these
+	// cases validate interrupt handling rather than startup scheduling.
+	interruptTimeout := 500 * time.Millisecond
+
+	TqlTestCase{
+		Name: "js-timeout",
+		Script: `
+				FAKE( linspace(1,10,10))
+				SCRIPT("js", {
+					while(true) {
+					}
+					$.yield(123)
+				})
+				CSV()
+			`,
+		CtxTimeout: interruptTimeout,
+		ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
 		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, gjson.Get(result, "success").Bool(), result)
-			require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
-			require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
-			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
+			requireNoPayload(t, result)
 		},
 	}.run(t)
+	TqlTestCase{
+		Name: "js-timeout-init",
+		Script: `
+			FAKE( linspace(1,10,10))
+			SCRIPT("js", {
+				while(true) {
+				}
+			},{
+				$.yield(123)
+			})
+			CSV()
+		`,
+		CtxTimeout: interruptTimeout,
+		ExpectFunc: func(t *testing.T, result string) {
+			requireNoPayload(t, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "js-timeout-finalize",
+		Script: `
+			FAKE( linspace(1,10,10))
+			SCRIPT("js", {
+				function finalize(){
+					while(true) {}
+				}
+			},{
+				$.yield($.values[0])
+			})
+			CSV()
+		`,
+		CtxTimeout: interruptTimeout,
+		ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:2:5(1))"},
+		ExpectFunc: func(t *testing.T, result string) {
+			// SCRIPT was interrupted during the finalize()
+			// so the result exists
+			require.Equal(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n\n", result)
+		},
+	}.run(t)
+}
+
+func TestSCRIPT_inflight(t *testing.T) {
+	TqlTestCase{
+		Name: "js-set-value",
+		Script: `
+				FAKE( linspace(1,2,1))
+				SCRIPT("js", {
+					$.inflight().set("key1", 123);
+					$.inflight().set("key2", "abc");
+					$.yield("");
+				})
+				MAPVALUE(0, $key1)
+				MAPVALUE(1, $key2)
+				CSV()
+			`,
+		ExpectCSV: []string{"123,abc", "\n"},
+	}.run(t)
+	TqlTestCase{
+		Name: "js-get-value",
+		Script: `
+				FAKE( linspace(1,2,1))
+				SET(key1, 123)
+				SET(key2, "abc")
+				SCRIPT("js", {
+					$.yield($.inflight().get("key1"), $.inflight().get("key2"));
+				})
+				CSV()
+			`,
+		ExpectCSV: []string{"123,abc", "\n"},
+	}.run(t)
+}
+
+func TestSCRIPT_request(t *testing.T) {
 	TqlTestCase{
 		Name: "js-request",
 		Script: fmt.Sprintf(`
@@ -3644,56 +3869,7 @@ func TestScriptJS2(t *testing.T) {
 	}.run(t)
 }
 
-func TestScriptSystemInflight(t *testing.T) {
-	TqlTestCase{
-		Name: "js-set-value",
-		Script: `
-				FAKE( linspace(1,2,1))
-				SCRIPT("js", {
-					$.inflight().set("key1", 123);
-					$.inflight().set("key2", "abc");
-					$.yield("");
-				})
-				MAPVALUE(0, $key1)
-				MAPVALUE(1, $key2)
-				CSV()
-			`,
-		ExpectCSV: []string{"123,abc", "\n"},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-get-value",
-		Script: `
-				FAKE( linspace(1,2,1))
-				SET(key1, 123)
-				SET(key2, "abc")
-				SCRIPT("js", {
-					$.yield($.inflight().get("key1"), $.inflight().get("key2"));
-				})
-				CSV()
-			`,
-		ExpectCSV: []string{"123,abc", "\n"},
-	}.run(t)
-}
-
-func TestScriptSystemStatz(t *testing.T) {
-	t.Skip("skipping unstable test")
-	TqlTestCase{
-		Name: "js-statz",
-		Script: `
-				SCRIPT("js", {
-					statz = require("@jsh/system").statz("1m", "machbase:session:conn:wait_time");
-					last = statz.length - 1;
-					$.yield(statz[last].time, ...statz[last].values);
-				})
-				CSV()
-			`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.True(t, len(result) > 20, result)
-		},
-	}.run(t)
-}
-
-func TestScriptDatabase(t *testing.T) {
+func TestSCRIPT_db(t *testing.T) {
 	TqlTestCase{
 		Name: "create-table",
 		Script: `
@@ -3807,163 +3983,74 @@ func TestScriptDatabase(t *testing.T) {
 			require.Empty(t, result)
 		},
 	}.run(t)
-}
-
-func TestScriptFFT(t *testing.T) {
 	TqlTestCase{
-		Name: "js-fft",
+		Name: "js-db-query",
 		Script: `
-			FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
 			SCRIPT("js", {
-				m = require("mathx");
-				times = [];
-				values = [];
-			}, {
-				times.push($.values[0]);
-				values.push($.values[1]);
-			}, {
-				result = m.fft(times, values);
-				for( i = 0; i < result.length; i++ ) {
-					if (result[i][0] > 60)
-						break
-					$.yield(result[i][0], result[i][1])
-				}
+				db = $.db();
+				db.exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
+				db.exec("insert into js_table(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
+				db.exec("EXEC table_flush(js_table)")
+			},{
+				db.query("select NAME, TIME, VALUE from js_table limit ?", 2).yield();
+				db.query("select NAME, TIME, VALUE from js_table limit ?", 2).forEach((row) => {
+					$.yield(...row);
+				});
+			},{
+				db.exec("drop table js_table");
 			})
-			CSV(precision(6))
-			`,
-		ExpectCSV: loadLines("./test/fft2d.csv"),
+			JSON(timeformat("s"))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
+			require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
+			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
+			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.1").Raw)
+		},
 	}.run(t)
 	TqlTestCase{
-		Name: "js-fft_not_enough_samples_0",
+		Name: "js-db-query-module",
 		Script: `
-			FAKE( linspace(0, 10, 100) )
 			SCRIPT("js", {
-				m = require("mathx");
-				times = [];
-				values = [];
-			}, {
-				times.push($.values[0]);
-				values.push($.values[1]);
-			}, {
+				db = require("@jsh/db");
+			},{
+				client = new db.Client();
 				try{
-					result = m.fft(times, values);
-					for( i = 0; i < result.length; i++ ) {
-						if (result[i][0] > 60)
-							break
-						$.yield(result[i][0], result[i][1])
+					conn = client.connect();
+					conn.exec("create tag table if not exists js_table2(name varchar(100) primary key, time datetime base time, value double)");
+					conn.exec("insert into js_table2(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
+					conn.exec("EXEC table_flush(js_table2)")
+
+					rows = conn.query("select NAME, TIME, VALUE from js_table2 limit ?", 2)
+					$.result = rows.columns();
+					for( let row of rows ) {
+						$.yield(row.NAME, row.TIME.unix(), row.VALUE);
 					}
-				} catch (e) {
-					console.error(e.message);
+				}catch(e) {
+					console.log("Error:", e);
+				}finally{
+					// intentionally not closing the rows
+					// rows.close();
+					conn.exec("drop table js_table2");
+					conn.close();
 				}
 			})
-			CSV()
-			`,
-		ExpectLog: []string{"[ERROR] fft invalid 0th sample value, but <nil>"},
-		ExpectCSV: []string{"\n"},
-	}.run(t)
-}
-
-func TestScriptToTemplate(t *testing.T) {
-	TqlTestCase{
-		Name: "js-array-template",
-		Script: `
-				SCRIPT({
-					$.yield(1, 2, 3);
-					$.yield(4, 5, 6);
-				})
-				TEXT('{{- .Value 0 }},{{ .Value 1 }},{{ .Value 2 }}{{"\\n"}}')
-			`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Equal(t, "1,2,3\n4,5,6\n", result, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-obj-template",
-		Script: `
-			SCRIPT({
-				$.yield("John", 30);
-				$.yield("Jane", 25);
-			})
-			TEXT({
-				{{- with .V -}}
-					{{ .column0 }}:{{ .column1 }}{{"\n"}}
-				{{- end -}}
-			})
+			JSON(timeformat("s"))
 		`,
+		// ExpectLog: []string{
+		// 	"WARNING: db rows not closed!!!",
+		// },
 		ExpectFunc: func(t *testing.T, result string) {
-			require.Equal(t, "John:30\nJane:25\n", result, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-obj-template",
-		Script: `
-			SCRIPT({
-				$.result = {
-					columns: ["name", "age"],
-					types: ["string", "int64"]
-				};
-				$.yield("John", 30);
-				$.yield("Jane", 25);
-			})
-			TEXT({
-				{{- with .V -}}
-					{{ .name }}:{{ .age }}{{"\n"}}
-				{{- end -}}
-			})
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Equal(t, "John:30\nJane:25\n", result, result)
-		},
-	}.run(t)
-	TqlTestCase{
-		Name: "js-obj-template",
-		Script: `
-			SCRIPT({
-				$.yield({name: "John", age: 30});
-				$.yield({name: "Jane", age: 25});
-			})
-			TEXT({
-				{{- with .Value 0 -}}
-					{{ .name }}:{{ .age }}{{"\n"}}
-				{{- end -}}
-			})
-		`,
-		ExpectFunc: func(t *testing.T, result string) {
-			require.Equal(t, "John:30\nJane:25\n", result, result)
+			require.True(t, gjson.Get(result, "success").Bool(), result)
+			require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
+			require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
+			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
 		},
 	}.run(t)
 }
 
-func TestScriptException(t *testing.T) {
-	TqlTestCase{
-		Name: "js-exception",
-		Script: `
-			SCRIPT("js", {
-				o = {a: 1, other: ()=>{throw "other error";}};
-				o.a++;
-				$.yield(o.a)
-				try {
-					o.undef_function();
-				} catch (e) {
-					console.error(e.message);
-				}
-				try {
-					o.other();
-				} catch (e) {
-					console.error(e);
-				}
-			})
-			CSV()
-		`,
-		ExpectLog: []string{
-			"[ERROR] Object has no member 'undef_function'",
-			"[ERROR] other error",
-		},
-		ExpectCSV: []string{"2", "\n"},
-	}.run(t)
-}
-
-func TestScriptOPCUA(t *testing.T) {
+func TestSCRIPT_opcua(t *testing.T) {
 	svr, endpoint := startOPCUAServer(t)
 	t.Cleanup(func() {
 		require.NoError(t, svr.Close())

@@ -2286,33 +2286,38 @@ func Example_select_WithDateTime() {
 	db, _, cleanup := exampleTagTable()
 	defer cleanup()
 
+	// "2026-02-03 16:05:06",
+	utc, _ := time.ParseInLocation("2006-01-02 15:04:05", "2026-02-03 16:05:06", time.UTC)
+	local := utc.In(time.Local)
+	localTimeStr := local.Format("2006-01-02 15:04:05")
+
 	ctx := context.Background()
 	items, err := client.Select[time.Time](ctx, db, `SELECT TO_DATE(?) TS`,
-		"2026-02-03 16:05:06",
-		client.WithDateTime("2006/01/02 15:04:05", "Asia/Seoul"))
+		localTimeStr,
+		client.WithDateTime("2006/01/02 15:04:05", "UTC"))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("time.Time:", items[0])
 
 	items2, err := client.Select[string](ctx, db, `SELECT TO_DATE(?) TS`,
-		"2026-02-03 16:05:06",
-		client.WithDateTime("2006/01/02 15:04:05", "Asia/Seoul"))
+		localTimeStr,
+		client.WithDateTime("2006/01/02 15:04:05", "UTC"))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("string:", items2[0])
 
 	item3, err := client.Select[sql.NullString](ctx, db, `SELECT TO_DATE(?) TS`,
-		"2026-02-03 16:05:06",
-		client.WithDateTime("2006/01/02 15:04:05", "Asia/Seoul"))
+		localTimeStr,
+		client.WithDateTime("2006/01/02 15:04:05", "UTC"))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("sql.NullString:", item3[0].String)
 
 	// Output:
-	// time.Time: 2026-02-03 16:05:06 +0900 KST
+	// time.Time: 2026-02-03 16:05:06 +0000 UTC
 	// string: 2026/02/03 16:05:06
 	// sql.NullString: 2026/02/03 16:05:06
 }
