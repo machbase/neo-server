@@ -172,6 +172,7 @@ type TqlTestCase struct {
 	Script             string
 	Payload            string
 	Params             map[string][]string
+	LogLevel           *tql.Level
 	CtxTimeout         time.Duration
 	ExpectErr          string
 	ExpectCSV          []string
@@ -202,6 +203,9 @@ func (tc TqlTestCase) run(t *testing.T) {
 	log := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
 	task.SetLogWriter(log)
+	if tc.LogLevel != nil {
+		task.SetLogLevel(*tc.LogLevel)
+	}
 	task.SetOutputWriterJson(output, true)
 	task.SetVolatileAssetsProvider(memMock)
 	if tc.Payload != "" {
@@ -211,8 +215,12 @@ func (tc TqlTestCase) run(t *testing.T) {
 		task.SetParams(tc.Params)
 	}
 	if err := task.CompileString(tc.Script); err != nil {
-		t.Log("ERROR:", tc.Name, err.Error())
-		t.Fail()
+		if tc.ExpectErr != "" {
+			require.Equal(t, tc.ExpectErr, err.Error())
+		} else {
+			t.Log("ERROR:", tc.Name, err.Error())
+			t.Fail()
+		}
 		return
 	}
 	result := task.Execute()
@@ -1874,6 +1882,27 @@ func TestCSV(t *testing.T) {
 			"\n",
 		},
 	}.run(t)
+	levelInfo := tql.INFO
+	TqlTestCase{
+		Name: "CSV_with_logProgress",
+		Script: `
+			CSV("1,line1\n2,line2\n3,\n4,line4", logProgress(2))
+			CSV( heading(true) )
+			`,
+		LogLevel: &levelInfo,
+		ExpectLog: []string{
+			"[INFO] Loading 2 records",
+			"[INFO] Loading 4 records",
+		},
+		ExpectCSV: []string{
+			"column0,column1",
+			"1,line1",
+			"2,line2",
+			"3,",
+			"4,line4",
+			"\n",
+		},
+	}.run(t)
 	TqlTestCase{
 		Name: "CSV_payload_CSV_timeformat",
 		Script: `
@@ -1973,9 +2002,156 @@ func TestCSV(t *testing.T) {
 			"\n",
 		},
 	}.run(t)
+	TqlTestCase{
+		Name: "CSV_nullValue",
+		Script: `
+			FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))
+			CSV( nullValue("<NULL>") )
+		`,
+		ExpectCSV: []string{
+			"A,123",
+			"B,<NULL>",
+			"C,234",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_substituteNull",
+		Script: `
+			FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))
+			CSV( substituteNull("<NULL>") )
+		`,
+		ExpectCSV: []string{
+			"A,123",
+			"B,<NULL>",
+			"C,234",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_nullValue_boolean",
+		Script: `
+			FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))
+			CSV( nullValue(false) )
+		`,
+		ExpectCSV: []string{
+			"A,123",
+			"B,false",
+			"C,234",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_nullValue_double",
+		Script: `
+			FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))
+			CSV( nullValue(3.14) )
+		`,
+		ExpectCSV: []string{
+			"A,123",
+			"B,3.14",
+			"C,234",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "CSV_nullValue_precision",
+		Script: `
+			FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))
+			CSV( nullValue(3.14), precision(1) )
+		`,
+		ExpectCSV: []string{
+			"A,123.0",
+			"B,3.1",
+			"C,234.0",
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestJSON(t *testing.T) {
+	TqlTestCase{
+		Name: "CSV_to_JSON",
+		Script: `
+			CSV("A,123\nB,456\nC,789")
+			JSON()
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "success", gjson.Get(result, "reason").String())
+			require.Equal(t, `["column0","column1"]`, gjson.Get(result, "data.columns").String())
+			require.Equal(t, `["string","string"]`, gjson.Get(result, "data.types").String())
+			require.Equal(t, `[["A","123"],["B","456"],["C","789"]]`, gjson.Get(result, "data.rows").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "JSON_empty_resultset",
+		Script: `
+			SQL("select * from tag_simple where name = 'no_name'")
+			JSON()
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "success", gjson.Get(result, "reason").String())
+			require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").String())
+			require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").String())
+			require.Equal(t, `[]`, gjson.Get(result, "data.rows").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "JSON_no_yield",
+		Script: `
+			SCRIPT({
+				$.result = {columns:["NAME","TIME","VALUE"],types:["string","datetime","double"]}
+			},{
+				$.db().query("select * from tag_simple where name = 'no_name'").forEach(r => console.log(r))
+			})
+			JSON()
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "success", gjson.Get(result, "reason").String())
+			require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").String())
+			require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").String())
+			require.Equal(t, `[]`, gjson.Get(result, "data.rows").String())
+		},
+	}.run(t)
 }
 
 func TestMARKDOWN(t *testing.T) {
+	TqlTestCase{
+		Name: "MARKDOWN_invalid_option",
+		Script: `STRING(file('/lines.txt'), separator('\\n'))
+				MARKDOWN(true)`,
+		ExpectErr: "line 2, column 1: encoder 'markdown' invalid option true (bool) [statement: MARKDOWN(true)]",
+	}.run(t)
+	TqlTestCase{
+		Name: "MARKDOWN_html",
+		Script: `
+			STRING(file('/lines.txt'), separator('\n'))
+			PUSHKEY('test')
+			MARKDOWN(html(true))
+		`,
+		ExpectText: loadLines("./test/markdown_xhtml.txt"),
+	}.run(t)
+	TqlTestCase{
+		Name: "MARKDOWN_html_false",
+		Script: `
+			STRING(file('/lines.txt'), separator('\n'))
+			PUSHKEY('test')
+			MARKDOWN(html(false))
+		`,
+		ExpectText: []string{
+			"|ROWNUM|STRING|",
+			"|:-----|:-----|",
+			"|1|line1|",
+			"|2|line2|",
+			"|3||",
+			"|4|line4|",
+			"",
+		},
+	}.run(t)
+
 	TqlTestCase{
 		Name: "CSV_payload_MAPVALUE_MARKDOWN",
 		Script: `
@@ -2670,20 +2846,54 @@ func TestFAKE_arrange(t *testing.T) {
 	}.run(t)
 }
 
+func TestFAKE_linspace(t *testing.T) {
+	TqlTestCase{
+		Name: "FAKE_linspace",
+		Script: `
+			FAKE( linspace(0, 2, 3))
+			CSV( heading(true), precision(1) )
+		`,
+		ExpectCSV: []string{
+			"x",
+			"0.0",
+			"1.0",
+			"2.0",
+			"\n",
+		},
+	}.run(t)
+}
+
 func TestFAKE_meshgrid(t *testing.T) {
 	TqlTestCase{
-		Name: "FAKE_meshgrid_manual",
+		Name: "FAKE_meshgrid",
 		Script: `
-			FAKE(
-				meshgrid(linspace(1, 2, 2), linspace(10, 20, 2))
-			)
-			CSV()
-			`,
+			FAKE( meshgrid(linspace(1, 2, 2), linspace(10, 20, 2)) )
+			CSV()`,
 		ExpectCSV: []string{
 			`1,10`,
 			`1,20`,
 			`2,10`,
 			`2,20`,
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "FAKE_meshgrid_precision",
+		Script: `
+			FAKE( meshgrid(linspace(0, 2, 3), linspace(0, 2, 3)) )
+			CSV( heading(true), precision(6) )
+		`,
+		ExpectCSV: []string{
+			"x,y",
+			"0.000000,0.000000",
+			"0.000000,1.000000",
+			"0.000000,2.000000",
+			"1.000000,0.000000",
+			"1.000000,1.000000",
+			"1.000000,2.000000",
+			"2.000000,0.000000",
+			"2.000000,1.000000",
+			"2.000000,2.000000",
 			"\n",
 		},
 	}.run(t)
@@ -2834,6 +3044,76 @@ func TestFAKE_statz(t *testing.T) {
 			// 2026-06-12 08:14:23,2
 			require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},2$`).MatchString(lines[2]), "line: %q", lines[2])
 			require.Equal(t, "", lines[3])
+		},
+	}.run(t)
+}
+
+func TestSTRING(t *testing.T) {
+	TqlTestCase{
+		Name: "string",
+		Script: `
+			STRING("line1\nline2\n\nline4", separator("\n"))
+			PUSHKEY('test')
+			CSV( heading(true) )
+		`,
+		ExpectCSV: []string{
+			"ROWNUM,STRING",
+			"1,line1",
+			"2,line2",
+			"3,",
+			"4,line4",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "string_file",
+		Script: `
+			STRING(file("/lines.txt"), separator("\n"), trimspace(true))
+			PUSHKEY('test')
+			CSV( heading(true) )
+		`,
+		ExpectCSV: []string{
+			"ROWNUM,STRING",
+			"1,line1",
+			"2,line2",
+			"3,",
+			"4,line4",
+			"\n",
+		},
+	}.run(t)
+}
+
+func TestBYTES(t *testing.T) {
+	TqlTestCase{
+		Name: "bytes",
+		Script: `
+			BYTES("line1\nline2\n\nline4", separator("\n"))
+			PUSHKEY('test')
+			CSV( heading(true), binaryformat("hex") )
+		`,
+		ExpectCSV: []string{
+			"ROWNUM,BYTES",
+			`1,0x6c696e6531`,
+			`2,0x6c696e6532`,
+			`3,`,
+			`4,0x6c696e6534`,
+			"\n",
+		},
+	}.run(t)
+
+	TqlTestCase{
+		Name: "bytes_file",
+		Script: `
+			BYTES(file("/lines.txt"), separator("\n"))
+			CSV( header(true), binaryformat("hex") )
+		`,
+		ExpectCSV: []string{
+			"BYTES",
+			`0x6c696e6531`,
+			`0x6c696e6532`,
+			``,
+			`0x6c696e6534`,
+			"\n",
 		},
 	}.run(t)
 }
@@ -3345,6 +3625,67 @@ func TestHTTP(t *testing.T) {
 		},
 	}.run(t)
 
+}
+
+func TestDISCARD(t *testing.T) {
+	TqlTestCase{
+		Name: "discard",
+		Script: `
+			#pragma log-level=INFO
+			CSV("1,line-1\n2,line-2\n3,line-3")
+			MAPVALUE(0, parseFloat(value(0)))
+			WHEN(
+				value(0) == 2 && 
+				strHasPrefix( strToUpper(value(1)), "LINE-") &&
+				strHasSuffix(value(1), "-2"),
+				do(value(0), strToUpper(value(1)), {
+					ARGS()
+					WHEN(true, doLog("OUTPUT:", value(0), strToLower(value(1)) ))
+					CSV()
+				})
+			)
+			DISCARD()
+		`,
+		ExpectLog: []string{
+			"[WARN] do: CSV() sink does not work in a sub-routine",
+			"[INFO] OUTPUT: 2 line-2",
+		},
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Empty(t, result)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "discard-utf8",
+		Script: `
+			#pragma log-level=INFO
+			FAKE( json({         
+				[ 1, "hello" ],   
+				[ 2, "你好"],   
+				[ 3, "world" ],
+				[ 4, "世界"]
+			}))
+			WHEN(
+				mod(value(0), 2) == 0,
+				do( value(0), strToUpper(value(1)), {
+					ARGS()
+					WHEN( true, doLog("OUTPUT:", value(0), value(1)))
+					DISCARD()
+				})
+			)
+			CSV()
+		`,
+		ExpectLog: []string{
+			"[INFO] OUTPUT: 2 你好",
+			"[INFO] OUTPUT: 4 世界",
+		},
+		ExpectCSV: []string{
+			"1,hello",
+			"2,你好",
+			"3,world",
+			"4,世界",
+			"\n",
+		},
+	}.run(t)
 }
 
 func TestSCRIPT_fft(t *testing.T) {
