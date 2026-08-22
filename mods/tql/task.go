@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"regexp"
@@ -691,21 +692,6 @@ func (l Level) LoggingLevel() logging.Level {
 	}
 }
 
-func LoggingLevelFrom(l logging.Level) Level {
-	switch l {
-	default:
-		return INFO
-	case logging.LevelTrace:
-		return TRACE
-	case logging.LevelDebug:
-		return DEBUG
-	case logging.LevelWarn:
-		return WARN
-	case logging.LevelError:
-		return ERROR
-	}
-}
-
 func ParseLogLevel(str string) Level {
 	s := strings.ToUpper(str)
 	for i := range Levels {
@@ -714,4 +700,581 @@ func ParseLogLevel(str string) Level {
 		}
 	}
 	return ERROR
+}
+
+type Closer interface {
+	Close() error
+}
+
+type Node struct {
+	task *Task
+	name string
+	next Receiver
+
+	src  chan *Record
+	expr *expression.Expression
+	nrow int
+
+	functions map[string]expression.Function
+	values    map[string]any
+	debug     bool
+
+	closeWg sync.WaitGroup
+	closers []Closer
+	mutex   sync.Mutex
+
+	_inflight *Record
+
+	eofCallback func(*Node)
+
+	pragma  map[string]string
+	tqlLine *Line
+}
+
+var _ expression.Parameters = (*Node)(nil)
+
+func (node *Node) compile(code string) error {
+	expr, err := node.Parse(code)
+	if err != nil {
+		return fmt.Errorf("%s at %s", err.Error(), code)
+	}
+	if expr == nil {
+		return fmt.Errorf("compile error at %s", code)
+	}
+	node.name = asNodeName(expr)
+	node.expr = expr
+	node.src = make(chan *Record)
+	return nil
+}
+
+func (node *Node) Parse(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, node.functions)
+}
+
+func (node *Node) SetInflight(rec *Record) {
+	node._inflight = rec
+}
+
+func (node *Node) Function(name string) expression.Function {
+	return node.functions[name]
+}
+
+func (node *Node) Name() string {
+	return node.name
+}
+
+func (node *Node) Inflight() *Record {
+	return node._inflight
+}
+
+func (node *Node) Rownum() int {
+	return node.nrow
+}
+
+func (node *Node) Receive(rec *Record) {
+	select {
+	case node.src <- rec:
+	case <-node.task.ctx.Done():
+		node.task.Cancel()
+	}
+}
+
+func (node *Node) SetEOF(f func(*Node)) {
+	node.eofCallback = f
+}
+
+func (node *Node) Pragma(name string) (string, bool) {
+	if node.pragma != nil {
+		if v, ok := node.pragma[name]; ok {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+func (node *Node) PragmaBool(name string) bool {
+	if node.pragma != nil {
+		if v, ok := node.pragma[name]; ok {
+			if v == "" || v == "1" || strings.ToLower(v) == "true" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Get implements expression.Parameters
+func (node *Node) Get(name string) (any, error) {
+	switch name {
+	case "PI":
+		return math.Pi, nil
+	case "nil", "NULL":
+		return expression.NullValue, nil
+	default:
+		inflight := node.Inflight()
+		if inflight == nil {
+			return nil, nil
+		}
+		if node.Name() == "SET()" && !strings.HasPrefix(name, "$") {
+			return func(v any) {
+				inflight.SetVariable(name, v)
+			}, nil
+		} else {
+			return inflight.GetVariable(name)
+		}
+	}
+}
+
+func (node *Node) fmSET(left any, right any) (any, error) {
+	if left == nil {
+		return node.Inflight(), nil
+	}
+	if fn, ok := left.(func(any)); ok {
+		fn(right)
+	} else {
+		return nil, fmt.Errorf("%q left operand is not valid", "LET")
+	}
+	return node.Inflight(), nil
+}
+
+func (node *Node) GetValue(name string) (any, bool) {
+	if node.values == nil {
+		return nil, false
+	}
+	ret, ok := node.values[name]
+	return ret, ok
+}
+
+func (node *Node) SetValue(name string, value any) {
+	if node.values == nil {
+		node.values = make(map[string]any)
+	}
+	node.values[name] = value
+}
+
+func (node *Node) DeleteValue(name string) {
+	if node.values != nil {
+		delete(node.values, name)
+	}
+}
+
+func (node *Node) yield(key any, values []any) {
+	var yieldRec *Record
+	if len(values) == 0 {
+		yieldRec = NewRecord(key, []any{})
+	} else if len(values) == 1 {
+		yieldRec = NewRecord(key, values[0])
+	} else {
+		yieldRec = NewRecord(key, values)
+	}
+	if node.debug {
+		node.task.LogDebug("++", node.name, "-->", node.next.Name(), yieldRec.String(), " ")
+	}
+	yieldRec.Tell(node.next)
+}
+
+func (node *Node) start() {
+	node.closeWg.Add(1)
+	go func() {
+		defer func() {
+			node.closeWg.Done()
+			if o := recover(); o != nil {
+				w := &bytes.Buffer{}
+				w.Write(debug.Stack())
+				node.task.Log("panic", node.name, o, w.String())
+				node.task.LogErrorf("panic %s %v\n%s", node.name, o, w.String())
+			}
+		}()
+		var lastWill *Record
+	loop:
+		for {
+			select {
+			case <-node.task.ctx.Done():
+				// task has benn cancelled.
+				break loop
+			case rec := <-node.src:
+				if rec == nil {
+					// when chan is closed:
+					// while record.Tell() is called the ctx is done
+					break loop
+				} else if rec.IsEOF() || rec.IsCircuitBreak() {
+					lastWill = rec
+					break loop
+				} else if rec.IsError() {
+					rec.Tell(node.next)
+					continue
+				} else { // else if !node.task.shouldStop() <- do not use shouldStop() : https://github.com/machbase/neo/issues/309
+					node.nrow++
+					node.SetInflight(rec)
+					if node.debug {
+						node.task.LogDebug("->", node.Name(), "RECV", fmt.Sprintf("%v", rec.key), rec.StringValueTypes(), " ")
+					}
+					ret, err := node.expr.Eval(node)
+					if err != nil {
+						ErrorRecord(err).Tell(node.next)
+						continue
+					}
+					if ret == nil {
+						continue
+					}
+
+					to_next := func(rec *Record) bool {
+						if rec == nil {
+							return true
+						}
+						if rec.IsEOF() {
+							rec.Tell(node.next)
+							return false
+						} else if rec.IsCircuitBreak() {
+							node.task.fireCircuitBreak(node)
+							return false
+						} else {
+							rec.Tell(node.next)
+							return true
+						}
+					}
+					switch rs := ret.(type) {
+					case *Record:
+						to_next(rs)
+					case []*Record:
+						for _, rec := range rs {
+							if alive := to_next(rec); !alive {
+								break
+							}
+						}
+					default:
+						errRec := ErrorRecord(fmt.Errorf("func '%s' returns invalid type: %T", node.Name(), ret))
+						errRec.Tell(node.next)
+					}
+				}
+			}
+		}
+		if lastWill != nil {
+			if node.eofCallback != nil {
+				node.eofCallback(node)
+			}
+			lastWill.Tell(node.next)
+		}
+	}()
+}
+
+func (node *Node) wait() {
+	node.closeWg.Wait()
+}
+
+func (node *Node) stop() {
+	if node.src != nil {
+		close(node.src)
+	}
+	node.wait()
+	for i := len(node.closers) - 1; i >= 0; i-- {
+		c := node.closers[i]
+		if err := c.Close(); err != nil {
+			node.task.LogError(node.name, "context closer", err.Error())
+		}
+	}
+}
+
+func (node *Node) AddCloser(c Closer) {
+	node.mutex.Lock()
+	node.closers = append(node.closers, c)
+	node.mutex.Unlock()
+}
+
+func (node *Node) CancelCloser(c Closer) {
+	node.mutex.Lock()
+	idx := -1
+	for i, cl := range node.closers {
+		if c == cl {
+			idx = i
+			break
+		}
+	}
+	if idx >= 0 {
+		node.closers = append(node.closers[:idx], node.closers[idx+1:]...)
+	}
+	node.mutex.Unlock()
+}
+
+type Receiver interface {
+	Name() string
+	Receive(*Record)
+}
+
+const kEOF = "f0ec1dea-03e8-4121-8c98-0b78704e009d"
+const kBREAK = "5bd2e423-4536-4a8d-a80d-c11567fc296f"
+const kBYTES = "a6cd7131-63cc-4f83-9cbb-709a3d317780"
+const kIMAGE = "f2f79e86-44dc-4721-95e0-ba42ebe1fe88"
+const kERR = "0fd184f8-0f4a-4d05-bf0f-77bd31642eae"
+const kARR = "057f1cb0-df9f-41d3-b003-ba7c1ef8f497"
+
+var EofRecord = &Record{key: kEOF}
+var BreakRecord = &Record{key: kBREAK}
+
+func ErrorRecord(err error) *Record     { return &Record{key: kERR, value: err} }
+func ArrayRecord(arr []*Record) *Record { return &Record{key: kARR, value: arr} }
+
+type Record struct {
+	key         any
+	value       any
+	contentType string
+	vars        map[string]any
+}
+
+func NewRecord(k, v any) *Record {
+	return &Record{key: k, value: v}
+}
+
+func NewRecordVars(k, v any, vars map[string]any) *Record {
+	return &Record{key: k, value: v, vars: vars}
+}
+
+func NewBytesRecord(raw []byte) *Record {
+	return &Record{key: kBYTES, value: raw}
+}
+
+func NewImageRecord(raw []byte, contentType string) *Record {
+	return &Record{key: kIMAGE, value: raw, contentType: contentType}
+}
+
+func (r *Record) ReplaceValue(v any) *Record {
+	r.value = v
+	return r
+}
+
+func (r *Record) ReplaceKey(k any) *Record {
+	r.key = k
+	return r
+}
+
+func (r *Record) ReplaceKeyValue(k, v any) *Record {
+	r.key = k
+	r.value = v
+	return r
+}
+
+func (r *Record) IsEOF() bool {
+	return r.key == kEOF
+}
+
+func (r *Record) IsCircuitBreak() bool {
+	return r.key == kBREAK
+}
+
+func (r *Record) IsError() bool {
+	return r.key == kERR
+}
+
+func (r *Record) IsBytes() bool {
+	return r.key == kBYTES
+}
+
+func (r *Record) IsImage() bool {
+	return r.key == kIMAGE
+}
+
+func (r *Record) Error() error {
+	if r.key == kERR {
+		return r.value.(error)
+	} else {
+		return nil
+	}
+}
+
+func (r *Record) IsArray() bool {
+	return r.key == kARR
+}
+
+func (r *Record) IsTuple() bool {
+	switch r.key {
+	case kEOF, kBREAK, kBYTES, kIMAGE, kERR, kARR:
+		return false
+	default:
+		return true
+	}
+}
+
+func (r *Record) Array() []*Record {
+	if r.key == kARR {
+		return r.value.([]*Record)
+	} else {
+		return nil
+	}
+}
+
+func (r *Record) Key() any {
+	return r.key
+}
+
+func (r *Record) Value() any {
+	return r.value
+}
+
+func (r *Record) SetVariable(name string, value any) {
+	if r.vars == nil {
+		r.vars = map[string]any{}
+	}
+	r.vars[name] = value
+}
+
+func (r *Record) GetVariable(name string) (any, error) {
+	if r.vars != nil && strings.HasPrefix(name, "$") {
+		if v, ok := r.vars[strings.TrimPrefix(name, "$")]; ok {
+			return v, nil
+		}
+		return nil, nil
+	} else {
+		return nil, fmt.Errorf("undefined variable '%s'", name)
+	}
+}
+
+func (r *Record) Flatten() []any {
+	k := r.Key()
+	v := r.Value()
+	switch vv := v.(type) {
+	case []any:
+		return append([]any{k}, vv...)
+	case any:
+		return []any{k, vv}
+	default:
+		if vv == nil {
+			return []any{k}
+		}
+		return []any{k, fmt.Sprintf("Record: unsupported value type(%T)", vv)}
+	}
+}
+
+func (r *Record) Tell(receiver Receiver) {
+	if receiver == nil {
+		return
+	}
+	receiver.Receive(r)
+}
+
+func (r *Record) String() string {
+	if r == nil {
+		return "<nil>"
+	}
+	if r.key == kEOF {
+		return "EOF"
+	} else if r.key == kBREAK {
+		return "CIRCUITBREAK"
+	} else if r.key == kBYTES {
+		return "BYTES"
+	} else if r.key == kIMAGE {
+		return "IMAGE"
+	} else if r.key == kERR {
+		return fmt.Sprintf("ERROR %s", r.value)
+	} else if r.key == kARR {
+		return "ARRAY"
+	} else {
+		return fmt.Sprintf("K:%T(%v) V:%s", r.key, r.key, r.StringValueTypes())
+	}
+}
+
+func (r *Record) Fields() []any {
+	var ret []any
+	if value := r.Value(); value == nil {
+		// if the value of the record is nil, yield key only
+		ret = []any{r.Key()}
+	} else {
+		switch v := value.(type) {
+		case [][]any:
+			ret = []any{r.Key()}
+			for n := range v {
+				ret = append(ret, v[n]...)
+			}
+		case []any:
+			ret = append([]any{r.Key()}, v...)
+		case any:
+			ret = []any{r.Key(), v}
+		}
+	}
+	return ret
+}
+
+func (p *Record) StringValueTypes() string {
+	if arr, ok := p.value.([]any); ok {
+		return p.stringTypesOfArray(arr, 3)
+	} else if arr, ok := p.value.([][]any); ok {
+		subTypes := []string{}
+		for i, subarr := range arr {
+			if i == 3 && len(arr) > i {
+				subTypes = append(subTypes, fmt.Sprintf("[%d]{%s}, ...", i, p.stringTypesOfArray(subarr, 3)))
+				break
+			} else {
+				subTypes = append(subTypes, fmt.Sprintf("[%d]{%s}", i, p.stringTypesOfArray(subarr, 3)))
+			}
+		}
+
+		return fmt.Sprintf("(len=%d) [][]any{%s}", len(arr), strings.Join(subTypes, ","))
+	} else {
+		return fmt.Sprintf("%T", p.value)
+	}
+}
+
+func (p *Record) stringTypesOfArray(arr []any, limit int) string {
+	s := []string{}
+	for i, a := range arr {
+		aType := fmt.Sprintf("%T", a)
+		if subarr, ok := a.([]any); ok {
+			s2 := []string{}
+			for n, subelm := range subarr {
+				if n == limit && len(subarr) > n {
+					s2 = append(s2, fmt.Sprintf("%T,... (len=%d)", subelm, len(subarr)))
+					break
+				} else {
+					s2 = append(s2, fmt.Sprintf("%T", subelm))
+				}
+			}
+			aType = "[]any{" + strings.Join(s2, ",") + "}"
+		}
+
+		if i == limit && len(arr) > i {
+			t := fmt.Sprintf("%s, ... (len=%d)", aType, len(arr))
+			s = append(s, t)
+			break
+		} else {
+			s = append(s, aType)
+		}
+	}
+	return strings.Join(s, ", ")
+}
+
+func (p *Record) EqualKey(other *Record) bool {
+	if other == nil {
+		return false
+	}
+	switch lv := p.key.(type) {
+	case time.Time:
+		if rv, ok := other.key.(time.Time); !ok {
+			return false
+		} else {
+			return lv.Nanosecond() == rv.Nanosecond()
+		}
+	case []int:
+		if rv, ok := other.key.([]int); !ok {
+			return false
+		} else {
+			if len(lv) != len(rv) {
+				return false
+			}
+			for i := range lv {
+				if lv[i] != rv[i] {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return p.key == other.key
+}
+
+func (p *Record) EqualValue(other *Record) bool {
+	if other == nil {
+		return false
+	}
+	lv := fmt.Sprintf("%#v", p.value)
+	rv := fmt.Sprintf("%#v", other.value)
+	return lv == rv
 }
