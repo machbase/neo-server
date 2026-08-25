@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -125,4 +126,55 @@ func TestSqlRowsScanTypes(t *testing.T) {
 		require.Equal(t, expects[i].length, length, "column %s", ct.Name())
 		require.Equal(t, expects[i].decimalSize, decimalSize, "column %s", ct.Name())
 	}
+}
+
+// Issue machbase/neo#1466
+// Regression test for issue #1466:
+// reusing the same prepared statement after closing rows before full fetch
+// must not fail with MACHCLI-ERR-3008 (fetch in progress).
+func TestPreparedStmtReuseAfterPartialFetchClose(t *testing.T) {
+	dsn := "server=" + strings.TrimPrefix(machServerAddress, "tcp://") + ";user=sys;password=manager;fetch_rows=2"
+	db, err := sql.Open("machbase", dsn)
+	require.NoError(t, err)
+	defer db.Close()
+
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	ctx := t.Context()
+	conn, err := db.Conn(ctx)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	stmt, err := conn.PrepareContext(ctx, "SELECT NAME, TIME, VALUE FROM EXAMPLE WHERE NAME = ? ORDER BY TIME")
+	require.NoError(t, err)
+	defer stmt.Close()
+
+	for i := 0; i < 5; i++ {
+		var name string
+		var ts time.Time
+		var value float64
+		err := stmt.QueryRowContext(ctx, "test.query").Scan(&name, &ts, &value)
+		require.NoErrorf(t, err, "QueryRowContext failed at iteration %d", i)
+		require.Equal(t, "test.query", name)
+	}
+
+	for i := 0; i < 5; i++ {
+		rows, err := stmt.QueryContext(ctx, "test.query")
+		require.NoErrorf(t, err, "QueryContext failed at iteration %d", i)
+
+		require.Truef(t, rows.Next(), "expected at least one row at iteration %d", i)
+		var name string
+		var ts time.Time
+		var value float64
+		require.NoError(t, rows.Scan(&name, &ts, &value))
+		require.Equal(t, "test.query", name)
+
+		require.NoError(t, rows.Close())
+	}
+
+	var count int
+	err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM EXAMPLE WHERE NAME = ?", "test.query").Scan(&count)
+	require.NoError(t, err)
+	require.Greater(t, count, 0)
 }
