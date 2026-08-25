@@ -95,12 +95,12 @@ func parseRecordValueIndex(arg any) (int, error) {
 
 // tql function: payload()
 func (node *Node) GetRequestPayload() any {
-	return node.task.inputReader
+	return node.ensureRuntime().InputReader()
 }
 
 // tql function: param()
 func (node *Node) GetRequestParam(name string) any {
-	vals := node.task.params[name]
+	vals := node.ensureRuntime().Params()[name]
 	if len(vals) == 1 {
 		return vals[0]
 	} else if len(vals) > 0 {
@@ -121,10 +121,11 @@ func (node *Node) fmArgs() (any, error) {
 
 // tql function: args()
 func (node *Node) fmArgsParam(args ...any) (any, error) {
-	argValues := node.task.argValues
+	runtime := node.ensureRuntime()
+	argValues := runtime.ArgValues()
 	if len(argValues) == 0 {
 		cols := []*client.Column{client.MakeColumnRownum()}
-		node.task.SetResultColumns(cols)
+		runtime.SetResultColumns(cols)
 		return []any{}, nil
 	}
 	var ret any

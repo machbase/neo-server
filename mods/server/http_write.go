@@ -77,7 +77,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	default:
 	}
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
 		rsp.Reason = "service unavailable"
@@ -478,7 +478,7 @@ func (svr *httpd) handleLineProtocol(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleLineWrite(ctx *gin.Context) {
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return

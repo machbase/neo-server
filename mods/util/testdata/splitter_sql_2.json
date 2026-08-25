@@ -142,9 +142,56 @@
         "env": {}
     },
     {
-        "text": "wrong statement\n",
+        "text": "-- env: use=mydb",
         "beginLine": 25,
+        "endLine": 25,
+        "isComment": true,
+        "env": {
+            "use": "mydb"
+        }
+    },
+    {
+        "text": "SELECT 8 FROM T WHERE id = 4;",
+        "beginLine": 26,
         "endLine": 26,
+        "isComment": false,
+        "stmtType": "select",
+        "env": {
+			"use": "mydb"
+        }
+    },
+    {
+        "text": "-- env: bridge=sqlite use=otherdb",
+        "beginLine": 27,
+        "endLine": 27,
+        "isComment": true,
+        "env": {
+            "bridge": "sqlite",
+            "use": "otherdb"
+        }
+    },
+    {
+        "text": "SELECT 9 FROM T WHERE id = 5;",
+        "beginLine": 28,
+        "endLine": 28,
+        "isComment": false,
+        "stmtType": "select",
+        "env": {
+			"bridge": "sqlite",
+			"use": "otherdb"
+        }
+    },
+    {
+        "text": "-- env: reset",
+        "beginLine": 29,
+        "endLine": 29,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "wrong statement\n",
+        "beginLine": 31,
+        "endLine": 32,
         "isComment": false,
         "stmtType": "wrong",
         "env": {}

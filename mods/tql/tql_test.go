@@ -1,2885 +1,3854 @@
-package tql_test
+package tql
 
 import (
+	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io/fs"
+	"io"
+	"net/http"
 	"os"
-	"regexp"
-	"runtime"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/server"
-	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
-	"github.com/machbase/neo-server/v8/spi"
-	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-var testServer *machsvr.TestServer
-var testHttpAddress string
-
-func TestMain(m *testing.M) {
-	testServer = &machsvr.TestServer{}
-	testServer.StartServer("./test/tmp")
-	createTestTables()
-
-	// db := testServer.DatabaseGO()
-	// spi.SetDefault(db, testServer.DatabaseKey())
-	// spi.SetDefaultDSN(map[string]string{
-	// 	"host":            "127.0.0.1",
-	// 	"port":            fmt.Sprintf("%d", testServer.MachPort()),
-	// 	"statement_cache": "auto",
-	// 	"user":            "sys",
-	// 	"password":        "manager",
-	// })
-	spi.StartAppendWorkers()
-
-	spi.StartMetrics()
-
-	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
-	ssfs.SetDefault(f)
-
-	tql.Init()
-
-	http, err := server.NewHttp(server.WithHttpListenAddress("tcp://127.0.0.1:0"))
-	if err != nil {
-		panic(err)
-	}
-	if err := http.Start(); err != nil {
-		panic(err)
-	}
-	testHttpAddress = http.AdvertiseAddress()
-	if testHttpAddress == "" {
-		panic("http server address is empty")
-	}
-
-	code := m.Run()
-
-	http.Stop()
-	tql.Deinit()
-	dropTestTables()
-	testServer.StopServer()
-	os.Exit(code)
+type closeCounter struct {
+	count int
 }
 
-func SqlTidy(sqlTextLines ...string) string {
-	sqlText := strings.Join(sqlTextLines, "\n")
-	lines := strings.Split(sqlText, "\n")
-	for i, ln := range lines {
-		lines[i] = strings.TrimSpace(ln)
-	}
-	return strings.Join(lines, " ")
-}
-
-func createTestTables() {
-	ctx := context.Background()
-	conn, err := spi.Connect(ctx, "sys")
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	_, err = conn.ExecContext(ctx, SqlTidy(`
-		create tag table if not exists tag_data(
-			name            varchar(100) primary key, 
-			time            datetime basetime, 
-			value           double summarized,
-			short_value     short,
-			ushort_value    ushort,
-			int_value       integer,
-			uint_value 	    uinteger,
-			long_value      long,
-			ulong_value 	ulong,
-			str_value       varchar(400),
-			json_value      json,
-			ipv4_value      ipv4,
-			ipv6_value      ipv6,
-			bin_value		binary
-		) TAG_DUPLICATE_CHECK_DURATION=1;
-	`))
-	if err != nil {
-		panic(err)
-	}
-	_, err = conn.ExecContext(ctx, SqlTidy(`
-		create tag table if not exists tag_simple(
-			name            varchar(100) primary key, 
-			time            datetime basetime, 
-			value           double
-		) TAG_DUPLICATE_CHECK_DURATION=1;
-	`))
-	if err != nil {
-		panic(err)
-	}
-	_, err = conn.ExecContext(ctx, SqlTidy(`
-		create table if not exists log_data(
-		    time datetime,
-			short_value short,
-			ushort_value ushort,
-			int_value integer,
-			uint_value uinteger,
-			long_value long,
-			ulong_value ulong,
-			double_value double,
-			float_value float,
-			str_value varchar(400),
-			json_value json,
-			ipv4_value ipv4,
-			ipv6_value ipv6,
-			text_value text,
-			bin_value binary)
-	`))
-	if err != nil {
-		panic(err)
-	}
-}
-
-func dropTestTables() {
-	ctx := context.Background()
-	conn, err := spi.Connect(ctx, "sys")
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-	_, err = conn.ExecContext(ctx, "DROP TABLE tag_data")
-	if err != nil {
-		panic(err)
-	}
-	_, err = conn.ExecContext(ctx, "DROP TABLE tag_simple")
-	if err != nil {
-		panic(err)
-	}
-	_, err = conn.ExecContext(ctx, "DROP TABLE log_data")
-	if err != nil {
-		panic(err)
-	}
-}
-
-func flushTable(ctx context.Context, table string) error {
-	conn, err := spi.Connect(ctx, "sys")
-	if err != nil {
-		return err
-	}
-	result, err := conn.ExecContext(ctx, fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
-	_ = result
-	if err != nil {
-		return err
-	}
-	conn.Close()
+func (x *closeCounter) Close() error {
+	x.count++
 	return nil
 }
 
-type VolatileFileWriterMock struct {
-	name     string
-	deadline time.Time
-	buff     bytes.Buffer
+type synchronizedCloser struct {
+	mu    sync.Mutex
+	count int
 }
 
-func (v *VolatileFileWriterMock) VolatileFilePrefix() string { return "/web/api/tql-assets/" }
-
-func (v *VolatileFileWriterMock) VolatileFileWrite(name string, data []byte, deadline time.Time) fs.File {
-	v.buff.Write(data)
-	v.name = name
-	v.deadline = deadline
+func (x *synchronizedCloser) Close() error {
+	x.mu.Lock()
+	x.count++
+	x.mu.Unlock()
 	return nil
 }
 
-type TqlTestCase struct {
-	Name               string
-	Script             string
-	Payload            string
-	Params             map[string][]string
-	CtxTimeout         time.Duration
-	ExpectErr          string
-	ExpectCSV          []string
-	ExpectText         []string
-	ExpectFunc         func(t *testing.T, result string)
-	ExpectVolatileFile func(t *testing.T, mock *VolatileFileWriterMock)
-	ExpectLog          []string
-	RunCondition       func() bool
+func (x *synchronizedCloser) Count() int {
+	x.mu.Lock()
+	count := x.count
+	x.mu.Unlock()
+	return count
 }
 
-func runTestCase(t *testing.T, tc TqlTestCase) {
+type CompileErr string
+type ExpectErr string
+type ExpectLog string
+type Payload string
+type MatchPrefix bool
+type ExpectFunc func(t *testing.T, result string)
+
+type Param = struct {
+	name  string
+	value string
+}
+
+func runTest(t *testing.T, codeLines []string, expect []string, options ...any) {
 	t.Helper()
-	if tc.RunCondition != nil && !tc.RunCondition() {
-		t.Skip("Skip by tc.RunCondition")
-		return
-	}
+	var compileErr string
+	var expectErr string
+	var expectLog string
+	var expectFunc ExpectFunc
+	var payload []byte
+	var params map[string][]string
+	var matchFunc func(*testing.T, string)
+	var matchPrefix bool
+	var httpClient *http.Client
 
-	memMock := &VolatileFileWriterMock{}
-
-	timeout := 5 * time.Second
-	if tc.CtxTimeout > 0 {
-		timeout = tc.CtxTimeout
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), timeout)
-	defer cancel()
-
-	output := &bytes.Buffer{}
-	log := &bytes.Buffer{}
-	task := tql.NewTaskContext(ctx)
-	task.SetLogWriter(log)
-	task.SetOutputWriterJson(output, true)
-	task.SetVolatileAssetsProvider(memMock)
-	if tc.Payload != "" {
-		task.SetInputReader(bytes.NewBufferString(tc.Payload))
-	}
-	if len(tc.Params) > 0 {
-		task.SetParams(tc.Params)
-	}
-	if err := task.CompileString(tc.Script); err != nil {
-		t.Log("ERROR:", tc.Name, err.Error())
-		t.Fail()
-		return
-	}
-	result := task.Execute()
-	if tc.ExpectErr != "" {
-		require.Error(t, result.Err)
-		require.Equal(t, tc.ExpectErr, result.Err.Error())
-		return
-	}
-	if result.Err != nil {
-		t.Log("ERROR:", tc.Name, result.Err.Error())
-		t.Fail()
-		return
-	}
-
-	logLines := strings.Split(log.String(), "\n")
-	if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
-		logLines = logLines[:len(logLines)-1]
-	}
-	for i, expectLog := range tc.ExpectLog {
-		if i >= len(logLines) {
-			t.Errorf("Expected Log[%d] %q, but no log line", i, expectLog)
-			return
-		}
-		line := logLines[i]
-		if i >= len(tc.ExpectLog) {
-			break
-		}
-		if line != expectLog {
-			t.Errorf("Expected Log[%d] %q, got %q", i, expectLog, line)
-			return
-		}
-	}
-	if len(logLines) > len(tc.ExpectLog) {
-		t.Errorf("Expected Log %d lines, got %d\n%s",
-			len(tc.ExpectLog), len(logLines), strings.Join(logLines[len(tc.ExpectLog):], "\n"))
-		return
-	}
-
-	switch task.OutputContentType() {
-	case "text/plain",
-		"text/csv; charset=utf-8",
-		"text/markdown",
-		"application/xhtml+xml",
-		"application/json",
-		"application/x-ndjson":
-		outputText := output.String()
-		if outputText == "" && result.IsDbSink {
-			if v, err := json.Marshal(result); err == nil {
-				outputText = string(v)
-			} else {
-				outputText = "ERROR: failed to marshal result"
+	for _, o := range options {
+		switch v := o.(type) {
+		case CompileErr:
+			compileErr = string(v)
+		case ExpectErr:
+			expectErr = string(v)
+		case ExpectLog:
+			expectLog = string(v)
+		case ExpectFunc:
+			expectFunc = v
+		case Payload:
+			payload = []byte(v)
+		case Param:
+			if params == nil {
+				params = map[string][]string{}
 			}
+			arr := params[v.name]
+			arr = append(arr, v.value)
+			params[v.name] = arr
+		case MatchPrefix:
+			matchPrefix = bool(v)
+		case func(*testing.T, string):
+			matchFunc = v
+		case *http.Client:
+			httpClient = v
 		}
-		if tc.ExpectFunc != nil {
-			tc.ExpectFunc(t, outputText)
-		} else if len(tc.ExpectCSV) > 0 {
-			require.Equal(t, strings.Join(tc.ExpectCSV, "\n"), outputText)
-		} else if len(tc.ExpectText) > 0 {
-			require.Equal(t, strings.Join(tc.ExpectText, "\n"), outputText)
-		} else {
-			t.Fatalf("unhandled output %q: %s", task.OutputContentType(), outputText)
-		}
-		if tc.ExpectVolatileFile != nil {
-			tc.ExpectVolatileFile(t, memMock)
-		}
-	default:
-		t.Fatal("ERROR:", tc.Name, "unexpected content type:", task.OutputContentType())
 	}
-}
 
-func TestDatabaseExplainTql(t *testing.T) {
-	tests := []TqlTestCase{}
+	code := strings.Join(codeLines, "\n")
+	w := &bytes.Buffer{}
 
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
+	ctx, ctxCancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer ctxCancel()
+
+	doneCh := make(chan any)
+
+	logBuf := &bytes.Buffer{}
+
+	task := NewTaskContext(ctx)
+	task.SetOutputWriter(w)
+	task.SetLogWriter(logBuf)
+	task.SetConsoleLogLevel(ERROR)
+	if len(payload) > 0 {
+		task.SetInputReader(bytes.NewBuffer(payload))
+	}
+	if len(params) > 0 {
+		task.SetParams(params)
+	}
+	if httpClient != nil {
+		task.SetHttpClientFactory(func() *http.Client {
+			return httpClient
 		})
 	}
-}
-
-func TestDatabaseTql(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "SQL_show-indexgap_JSON",
-			Script: `
-				SQL("show indexgap")
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				if strings.TrimSpace(result) == "" {
-					return
-				}
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "INDEX_ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
-				require.Equal(t, "INDEX_NAME", gjson.Get(result, "data.columns.2").String(), result)
-			},
-		},
-		{
-			Name: "SQL_show-tagindexgap_JSON",
-			Script: `
-				SQL("show tagindexgap")
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "TABLE_ID", gjson.Get(result, "data.columns.0").String(), result)
-				require.Equal(t, "TABLE_NAME", gjson.Get(result, "data.columns.1").String(), result)
-				require.Equal(t, "STATUS", gjson.Get(result, "data.columns.2").String(), result)
-			},
-		},
-		{
-			Name: "SQL_desc-table",
-			Script: `
-				SQL("desc tag_data;")
-				CSV(header(true))
-				`,
-			ExpectCSV: []string{
-				"COLUMN,TYPE,LENGTH,FLAG,INDEX",
-				"NAME,varchar,100,tag name,",
-				"TIME,datetime,31,base time,",
-				"VALUE,double,17,summarized,",
-				"SHORT_VALUE,short,6,,",
-				"USHORT_VALUE,ushort,5,,",
-				"INT_VALUE,integer,11,,",
-				"UINT_VALUE,uinteger,10,,",
-				"LONG_VALUE,long,20,,",
-				"ULONG_VALUE,ulong,20,,",
-				"STR_VALUE,varchar,400,,",
-				"JSON_VALUE,json,32767,,",
-				"IPV4_VALUE,ipv4,15,,",
-				"IPV6_VALUE,ipv6,45,,",
-				"BIN_VALUE,binary,32767,,",
-				"\n",
-			},
-		},
-		{
-			Name: "SQL_insert-tag1",
-			Script: `
-			CSV("tag1,1692686707380411000,0.100\ntag1,1692686708380411000,0.200\n",
-				header(false),
-				field(0, stringType(), "name"),
-				field(1, datetimeType("ns"), "time"),
-				field(2, doubleType(), "value")
-			)
-			INSERT('name', 'time', 'value', table('tag_simple'))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, "success", gjson.Get(result, "reason").String())
-				require.Equal(t, `{"message":"2 rows inserted."}`, gjson.Get(result, "data").Raw)
-				require.NoError(t, flushTable(t.Context(), "tag_simple"))
-			},
-		},
-		{
-			Name: "SQL_exec_flush_table",
-			Script: `
-				SQL("EXEC table_flush(tag_simple)")
-				MARKDOWN()
-				`,
-			ExpectText: []string{
-				`|MESSAGE|`,
-				`|:-----|`,
-				`|executed.|`,
-				``,
-			},
-		},
-		{
-			Name: "SQL_show-tags",
-			Script: `
-				SQL("show tags tag_simple")
-				CSV(header(true))
-				`,
-			ExpectCSV: []string{
-				"ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME",
-				"1,tag1,2,1692686707380411000,1692686708380411000,1692686708380411000,NULL,NULL,NULL,NULL",
-				"\n",
-			},
-		},
-		{
-			Name: "SQL_show_storage",
-			Script: `
-				SQL("show storage")
-				CSV(header(true))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "DATABASE_NAME,TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE"), result)
-			},
-		},
-		{
-			Name: "SQL_show_table-usage",
-			Script: `
-				SQL("show table-usage")
-				CSV(header(true))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "DATABASE,USER,TABLE,STORAGE_USAGE"), result)
-				require.Contains(t, result, "TAG_DATA,")
-			},
-		},
-		{
-			Name: "SQL_show_lsm",
-			Script: `
-				SQL("show lsm")
-				CSV(header(true))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "TABLE_NAME,INDEX_NAME,LEVEL,COUNT"), result)
-			},
-		},
-		{
-			Name: "SQL_explain-json-select",
-			Script: `
-				SQL("explain select * from tag_simple where name = 'tag1'")
-				DROP(0)
-				TAKE(50)
-				JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Contains(t, result, `"success":true`, result)
-				require.Contains(t, result, "PROJECT")
-				require.Contains(t, result, "SCAN")
-			},
-		},
-		{
-			Name: "SQL_select-from-table",
-			Script: `
-				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
-				CSV( precision(3), header(true) )
-				`,
-			ExpectCSV: []string{
-				"TIME,VALUE",
-				"1692686707380411000,0.100",
-				"1692686708380411000,0.200",
-				"\n",
-			},
-		},
-		{
-			Name: "SQL_select-from-table-rownum",
-			Script: `
-				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
-				PUSHKEY('test')
-				CSV( precision(3), header(true) )
-				`,
-			ExpectCSV: []string{
-				"ROWNUM,TIME,VALUE",
-				"1,1692686707380411000,0.100",
-				"2,1692686708380411000,0.200",
-				"\n",
-			},
-		},
-		{
-			Name: "SQL_select-from-table-rownum_BOX",
-			Script: `
-				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
-				PUSHKEY('test')
-				BOX( precision(3), header(true) )
-				`,
-			ExpectText: []string{
-				"+--------+---------------------+-------+",
-				"| ROWNUM | TIME                | VALUE |",
-				"+--------+---------------------+-------+",
-				"| 1      | 1692686707380411000 | 0.100 |",
-				"| 2      | 1692686708380411000 | 0.200 |",
-				"+--------+---------------------+-------+",
-				"",
-			},
-		},
-		{
-			Name: "SQL_map-select",
-			Script: `
-				FAKE(json({["tag1"]}))
-				SQL("select TIME, VALUE from tag_simple where name = ?", value(0))
-				CSV( precision(3), header(true) )
-				`,
-			ExpectCSV: []string{
-				"TIME,VALUE",
-				"1692686707380411000,0.100",
-				"1692686708380411000,0.200",
-				"\n",
-			},
-		},
-		{
-			Name: "SQL_SQL",
-			Script: `
-				SQL("select TIME, VALUE from tag_simple where name = ?", param("name"))
-				SQL("insert into tag_simple (name, time, value) values (?, ?, ?)", "tag2", value(0), value(1))
-			`,
-			Params: map[string][]string{
-				"name": {"tag1"},
-			},
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
-				require.Equal(t, "2 rows inserted.", gjson.Get(result, "data.message").String(), result)
-				require.NoError(t, flushTable(t.Context(), "tag_simple"))
-			},
-		},
-		{
-			Name: "SQL_SQL-cleanup",
-			Script: `
-				SQL("delete from tag_simple where name = ?", param("name"))
-				MARKDOWN()
-			`,
-			Params: map[string][]string{
-				"name": {"tag2"},
-			},
-			ExpectText: []string{
-				`|MESSAGE|`,
-				`|:-----|`,
-				`|2 rows deleted.|`,
-				``,
-			},
-		},
-		{
-			Name: "SQL_create-tag-table",
-			Script: `
-				SQL({create tag table if not exists tag_simple(
-					name varchar(40) primary key, time datetime basetime, value double summarized )})
-				MARKDOWN(html(true), rownum(true), heading(true), brief(true))
-				`,
-			ExpectText: loadLines("./test/sql_ddl_executed.txt"),
-		},
-		{
-			Name: "QUERY_CSV",
-			Script: `
-				QUERY('VALUE', from('tag_simple', 'tag1', "TIME"), between(1692686707000000000, 1692686709000000000))
-				CSV( precision(3), header(true) )
-				`,
-			ExpectCSV: []string{
-				"TIME,VALUE",
-				"1692686707380411000,0.100",
-				"1692686708380411000,0.200",
-				"\n",
-			},
-		},
-		{
-			Name: "QUERY_JSON-rows-flatten",
-			Script: `
-				QUERY('VALUE', from('tag_simple', 'tag1', "TIME"), between(1692686707000000000, 1692686709000000000))
-				JSON( precision(3), rowsFlatten(true) )
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[1692686707380411000,0.1,1692686708380411000,0.2]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "QUERY_JSON-rows-flatten-rownum",
-			Script: `
-				QUERY('VALUE', from('tag_simple', 'tag1', "TIME"), between(1692686707000000000, 1692686709000000000))
-				JSON( precision(3), rowsFlatten(true), rownum(true) )
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["ROWNUM","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["int64","datetime","double"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[1,1692686707380411000,0.1,2,1692686708380411000,0.2]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "SQL_NDJSON",
-			Script: `
-				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
-				NDJSON( timeformat('default'), tz('UTC') )
-				`,
-			ExpectText: []string{
-				`{"TIME":"2023-08-22 06:45:07.38","VALUE":0.1}`,
-				`{"TIME":"2023-08-22 06:45:08.38","VALUE":0.2}`,
-				"\n",
-			},
-		},
-		{
-			Name: "FAKE_INSERT",
-			Script: `
-				FAKE( linspace(0, 1, 3) )
-				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
-				INSERT('TIME', 'VALUE', table('tag_simple'), tag('signal.3'))
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
-				require.Equal(t, `{"message":"3 rows inserted."}`, gjson.Get(result, "data").Raw, result)
-				require.NoError(t, flushTable(t.Context(), "tag_simple"))
-			},
-		},
-		{
-			Name: "FAKE_INSERT-cleanup",
-			Script: `
-				SQL("delete from tag_simple where name = 'signal.3'")
-				MARKDOWN()
-				`,
-			ExpectText: []string{
-				`|MESSAGE|`,
-				`|:-----|`,
-				`|3 rows deleted.|`,
-				``,
-			},
-		},
-		{
-			Name: "FAKE_APPEND",
-			Script: `
-				FAKE( linspace(0, 1, 3) )
-				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
-				PUSHVALUE(0, 'signal.append')
-				APPEND( table('tag_simple') )
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				spi.FlushAppendWorkers("tag_simple")
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
-				// since we are using api.AppendWorker, the success and fail count is always same as the number of records
-				require.Equal(t, `{"message":"append 3 rows (success 3, fail 0)"}`, gjson.Get(result, "data").Raw, result)
-				require.NoError(t, flushTable(t.Context(), "tag_simple"))
-			},
-		},
-		{
-			Name: "FAKE_APPEND-cleanup",
-			Script: `
-				SQL("delete from tag_simple where name = 'signal.append'")
-				MARKDOWN()
-				`,
-			ExpectText: []string{
-				`|MESSAGE|`,
-				`|:-----|`,
-				`|3 rows deleted.|`,
-				``,
-			},
-		},
-		{
-			Name: "js-request-json",
-			Script: fmt.Sprintf(`
-				SCRIPT("js", {
-					$.result = {
-						columns: ["NAME", "TIME", "VALUE"],
-						types : ["string", "datetime", "double"]
-					};
-				},{
-					$.request("%s/db/query?q="+
-						encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: 'GET'})
-						.do(function(rsp) {
-							rsp.text(function(body){
-								obj = JSON.parse(body);
-								obj.data.rows.forEach(function(r){
-									$.yield(r[0], new Date(r[1]/1000000), r[2]);
-								})
-							})
-						})
-					})
-				JSON(timeformat("s"))
-			`, testHttpAddress),
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[["tag1",1692686707,0.1],["tag1",1692686708,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
-			},
-		},
-		{
-			Name: "js-request-csv",
-			Script: fmt.Sprintf(`
-				SCRIPT("js", {
-					$.result = {
-						columns: ["NAME", "TIME", "VALUE"],
-						types : ["string", "datetime", "double"]
-					};
-				},{
-					$.request("%s/db/query?q="+
-							encodeURIComponent("select name, time, value from tag_simple where name = 'tag1' limit 2")+"&format=csv&header=skip", 
-							{method: 'GET'}
-						).do(function(rsp) {
-							rsp.csv(function(r){
-								$.yield(r[0], new Date(parseInt(r[1]/1000000)), parseFloat(r[2]));
-							})
-						})
-					})
-				JSON(timeformat("s"))
-			`, testHttpAddress),
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[["tag1",1692686707,0.1],["tag1",1692686708,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
-			},
-		},
-		{
-			Name: "create-table",
-			Script: `
-				SCRIPT("js", {
-					var ret = $.db().exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
-					if (ret instanceof Error) {
-						$.yield(ret.message);
-					} else {
-						$.yield("create-table done");
-					}
-				})
-				CSV()`,
-			RunCondition: func() bool {
-				// FIXME: This test is failing randomly on Windows
-				return runtime.GOOS != "windows"
-			},
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "create-table done\n\n", result)
-			},
-		},
-		{
-			Name: "select-value",
-			Script: `
-				SCRIPT("js", {
-					var tick = 1731900710328594958;
-					for (i = 0; i < 10; i++) {
-						tick += 1000000000; // add 1 second
-						var ret = $.db().exec("insert into js_tag values('test-script', ?, ?)", tick, 1.23 * i);
-						if (ret instanceof Error) {
-							console.error(ret.message);
-						}
-					}
-					$.yield("done");
-				})
-				SCRIPT("js", {
-					$.result = {
-						columns: ["name", "time", "value"],
-						types: ["varchar", "datetime", "double"],
-					}
-				},{
-					$.db().query("select * from js_tag").forEach(function(row) {
-						$.yield(row[0], row[1], row[2]);
-					});
-				})
-				CSV(header(true))
-				`,
-			ExpectCSV: []string{
-				"name,time,value",
-				"test-script,1731900711328594944,0",
-				"test-script,1731900712328594944,1.23",
-				"test-script,1731900713328594944,2.46",
-				"test-script,1731900714328594944,3.69",
-				"test-script,1731900715328594944,4.92",
-				"test-script,1731900716328594944,6.15",
-				"test-script,1731900717328594944,7.38",
-				"test-script,1731900718328594944,8.61",
-				"test-script,1731900719328594944,9.84",
-				"test-script,1731900720328594944,11.07",
-				"",
-				"",
-			},
-			RunCondition: func() bool {
-				// FIXME: 'create-table' test is failing randomly on Windows
-				return runtime.GOOS != "windows"
-			},
-		},
-		{
-			Name: "select-value",
-			Script: `
-				SCRIPT("js", {
-					$.db().query("select * from js_tag").yield();
-				})
-				CSV(header(true))
-				`,
-			ExpectCSV: []string{
-				"NAME,TIME,VALUE",
-				"test-script,1731900711328594944,0",
-				"test-script,1731900712328594944,1.23",
-				"test-script,1731900713328594944,2.46",
-				"test-script,1731900714328594944,3.69",
-				"test-script,1731900715328594944,4.92",
-				"test-script,1731900716328594944,6.15",
-				"test-script,1731900717328594944,7.38",
-				"test-script,1731900718328594944,8.61",
-				"test-script,1731900719328594944,9.84",
-				"test-script,1731900720328594944,11.07",
-				"",
-				"",
-			},
-			RunCondition: func() bool {
-				// FIXME: 'create-table' test is failing randomly on Windows
-				return runtime.GOOS != "windows"
-			},
-		},
-		{
-			Name: "drop-table",
-			Script: `
-				SCRIPT("js", {
-					var ret = $.db().exec("drop table js_tag");
-					if (ret instanceof Error) {
-						console.error(ret.message);
-					}
-				})
-				DISCARD()`,
-			RunCondition: func() bool {
-				// FIXME: 'create-table' test is failing randomly on Windows
-				return runtime.GOOS != "windows"
-			},
-			CtxTimeout: 15 * time.Second, // increase timeout for slow CI/CD environment
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Empty(t, result)
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestDatabaseBinaryTql(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name:       "create-tqlbin",
-			CtxTimeout: 15 * time.Second,
-			Script: `
-				SCRIPT("js", {
-					var ret = $.db().exec("create tag table tqlbin (name varchar(40) primary key, time datetime basetime, value binary)");
-					if (ret instanceof Error) {
-						$.yield(ret.message);
-					} else {
-						$.yield("create-tqlbin done");
-					}
-				})
-				CSV()`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "create-tqlbin done\n\n", result)
-			},
-		},
-		// INSERT binary data
-		{
-			Name: "insert-binary",
-			Script: `
-				SCRIPT({
-					$.yield('bin1', 1692686707380411000, '0x0102030405060708090a');
-				})
-				INSERT('name', 'time', 'value', table('tqlbin'))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Contains(t, result, "1 row inserted.")
-				conn, _ := spi.Connect(t.Context(), "sys")
-				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
-				conn.Close()
-			},
-		},
-		{
-			Name: "select-binary-hex",
-			Script: `
-				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-				CSV(header(true))
-			`,
-			ExpectCSV: []string{
-				"NAME,VALUE",
-				"bin1,0x0102030405060708090a",
-				"\n",
-			},
-		},
-		{
-			Name: "select-binary-bytes",
-			Script: `
-				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-				CSV(header(true), binaryformat('preview'))
-			`,
-			ExpectCSV: []string{
-				"NAME,VALUE",
-				"bin1,0x0102030405..",
-				"\n",
-			},
-		},
-		{
-			Name: "select-binary-base64",
-			Script: `
-				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-				CSV(header(true), binaryformat('base64'))
-			`,
-			ExpectCSV: []string{
-				"NAME,VALUE",
-				"bin1,AQIDBAUGBwgJCg==",
-				"\n",
-			},
-		},
-		{
-			Name: "select-binary-bytes",
-			Script: `
-				SQL("select NAME, VALUE from tqlbin where name = 'bin1'")
-				CSV(header(true), binaryformat('bytes'))
-			`,
-			ExpectCSV: []string{
-				"NAME,VALUE",
-				"bin1,[1 2 3 4 5 6 7 8 9 10]",
-				"\n",
-			},
-		},
-		// APPEND binary data
-		{
-			Name: "append-binary",
-			Script: `
-				SCRIPT({
-					$.yield('bin2', 1692686707380411000, '0x0102030405060708090a');
-					$.yield('bin2', 1692686707380412000, '0x02030405060708090a10');
-					$.yield('bin2', 1692686707380413000, '0x030405060708090a1011');
-					$.yield('bin2', 1692686707380414000, '0x0405060708090a101213');
-					$.yield('bin2', 1692686707380415000, '0x05060708090a10121314');
-				})
-				APPEND(table('tqlbin'))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Contains(t, result, "append 5 rows (success 5, fail 0)")
-
-				// flush appender
-				spi.FlushAppendWorkers("tqlbin")
-
-				// flush table
-				conn, _ := spi.Connect(t.Context(), "sys")
-				time.Sleep(3 * time.Second)
-				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
-				conn.Close()
-			},
-		},
-		{
-			Name: "append-select-binary-hex",
-			Script: `
-				SQL("select NAME, VALUE from tqlbin where name = 'bin2'")
-				CSV(header(true))
-			`,
-			ExpectCSV: []string{
-				"NAME,VALUE",
-				"bin2,0x0102030405060708090a",
-				"bin2,0x02030405060708090a10",
-				"bin2,0x030405060708090a1011",
-				"bin2,0x0405060708090a101213",
-				"bin2,0x05060708090a10121314",
-				"\n",
-			},
-		},
-		// FLUSH before DROP TABLE
-		{
-			Name: "flush-before-drop",
-			Script: `
-				FAKE( once(1) )
-				DISCARD()`,
-			ExpectFunc: func(t *testing.T, result string) {
-				// flush appender workers to ensure all pending writes are done
-				spi.FlushAppendWorkers("tqlbin")
-
-				// flush table
-				conn, _ := spi.Connect(t.Context(), "sys")
-				time.Sleep(100 * time.Millisecond)
-				conn.ExecContext(t.Context(), "EXEC table_flush(tqlbin)")
-				conn.Close()
-			},
-		},
-		// DROP TABLE
-		{
-			Name: "drop-table",
-			Script: `
-				SCRIPT("js", {
-					var ret = $.db().exec("drop table tqlbin");
-					if (ret instanceof Error) {
-						console.error(ret.message);
-					}
-				})
-				DISCARD()`,
-			CtxTimeout: 30 * time.Second,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Empty(t, result)
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestTql(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "SHELL_shell-command",
-			Script: `
-				FAKE( once(1) )
-				SHELL("echo 'Hello, World!'; echo 123;")
-				CSV()
-				`,
-			ExpectCSV: []string{`"Hello, World!"`, "123", "", "", ""},
-			RunCondition: func() bool {
-				// FIXME: This test is not working on Windows
-				return runtime.GOOS != "windows"
-			},
-		},
-		{
-			Name: "CSV_CSV",
-			Script: `
-				CSV("1,line1\n2,line2\n3,\n4,line4")
-				CSV( heading(true) )
-				`,
-			ExpectCSV: []string{
-				"column0,column1",
-				"1,line1",
-				"2,line2",
-				"3,",
-				"4,line4",
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_CSV_single_column",
-			Script: `
-				CSV("line1\nline2\n\nline4")
-				CSV( heading(true) )
-				`,
-			ExpectCSV: []string{
-				"column0",
-				"line1",
-				"line2",
-				"line4",
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_payload_CSV",
-			Script: `
-				CSV(payload(),
-					field(0, stringType(), "name"),
-					field(1, datetimeType("s"), "time"),
-					field(2, doubleType(), "value"),
-					field(3, stringType(), "active")
-				)
-				CSV(timeformat("s"), heading(true))
-				`,
-			Payload: `temp.name,1691662156,123.456789,true` + "\n",
-			ExpectCSV: []string{
-				`name,time,value,active`,
-				`temp.name,1691662156,123.456789,true`,
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_payload_CSV_timeformat",
-			Script: `
-				CSV(payload(),
-					field(0, stringType(), "name"),
-					field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
-					field(2, doubleType(), "value"),
-					field(3, stringType(), "active")
-				)
-				CSV(timeformat("s"), heading(true))
-				`,
-			Payload: `temp.name,2023/08/10 19:09:16,123.456789,true` + "\n",
-			ExpectCSV: []string{
-				`name,time,value,active`,
-				`temp.name,1691662156,123.456789,true`,
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_payload_CSV_timeformat_precision",
-			Script: `
-				CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"), field(3, boolType(),"flag") )
-				CSV(timeformat("s"), heading(true), precision(2))
-			`,
-			Payload: strings.Join([]string{
-				"1700256261,dry,1,true",
-				"1700256262,dry,2,false",
-				"1700256262,wet,2,TRUE",
-				"1700256263,dry,3,False",
-				"1700256264,dry,4,1",
-				"1700256264,wet,5,0",
-				"",
-			}, "\n"),
-			ExpectCSV: []string{
-				"time,column1,value,flag",
-				"1700256261,dry,1.00,true",
-				"1700256262,dry,2.00,false",
-				"1700256262,wet,2.00,true",
-				"1700256263,dry,3.00,false",
-				"1700256264,dry,4.00,true",
-				"1700256264,wet,5.00,false",
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_payload_MAPVALUE_MARKDOWN",
-			Script: `
-				CSV(payload(), header(false))
-				MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
-				MARKDOWN()
-				`,
-			Payload: strings.Join([]string{
-				`NAME,TIME,VALUE,BOOL`,
-				`wave.sin,1676432361,0.000000,true`,
-				`wave.cos,1676432361,1.0000000,false`,
-				`wave.sin,1676432362,0.406736,true`,
-				`wave.cos,1676432362,0.913546,false`,
-				`wave.sin,1676432363,0.743144,true`,
-			}, "\n") + "\n",
-			ExpectText: []string{
-				`|column0|column1|column2|column3|`,
-				`|:-----|:-----|:-----|:-----|`,
-				`|NAME|TIME|VALUE|BOOL|`,
-				`|wave.sin|1676432361|0.000000|true|`,
-				`|wave.cos|1676432361|10.000000|false|`,
-				`|wave.sin|1676432362|4.067360|true|`,
-				`|wave.cos|1676432362|9.135460|false|`,
-				`|wave.sin|1676432363|7.431440|true|`,
-				"",
-			},
-		},
-		{
-			Name: "CSV_payload_MAPVALUE_MARKDOWN_TEMPLATE",
-			Script: `
-				CSV(payload(), header(false))
-				MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
-				MARKDOWN({
-{{ if .IsFirst }}## demo
-{{ end }}{{ .Value 0 }},{{ .Value 2 }}
-{{ if .IsLast }}--------
-{{ end }}
-				})
-				`,
-			Payload: strings.Join([]string{
-				`NAME,TIME,VALUE,BOOL`,
-				`wave.sin,1676432361,0.000000,true`,
-				`wave.cos,1676432361,1.0000000,false`,
-				`wave.sin,1676432362,0.406736,true`,
-				`wave.cos,1676432362,0.913546,false`,
-				`wave.sin,1676432363,0.743144,true`,
-			}, "\n") + "\n",
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Contains(t, result, "## demo")
-				require.Contains(t, result, "NAME,VALUE")
-				require.Contains(t, result, "wave.sin,0")
-				require.Contains(t, result, "wave.cos,10")
-				require.Contains(t, result, "wave.sin,4.067")
-				require.Contains(t, result, "wave.cos,9.135")
-				require.Contains(t, result, "--------")
-			},
-		},
-		{
-			Name: "CSV_MARKDOWN",
-			Script: `
-				CSV(payload(), header(true))
-				MARKDOWN()
-				`,
-			Payload: strings.Join([]string{
-				`NAME,TIME,VALUE`,
-				`wave.sin,1676432361,0.000000`,
-				`wave.cos,1676432361,1.000000`,
-				`wave.sin,1676432362,0.406736`,
-				`wave.cos,1676432362,0.913546`,
-				`wave.sin,1676432363,0.743144`,
-			}, "\n"),
-			ExpectText: []string{
-				`|NAME|TIME|VALUE|`,
-				`|:-----|:-----|:-----|`,
-				`|wave.sin|1676432361|0.000000|`,
-				`|wave.cos|1676432361|1.000000|`,
-				`|wave.sin|1676432362|0.406736|`,
-				`|wave.cos|1676432362|0.913546|`,
-				`|wave.sin|1676432363|0.743144|`,
-				"",
-			},
-		},
-		{
-			Name: "CSV_payload_MARKDOWN",
-			Script: `
-				CSV(payload(), header(true))
-				MARKDOWN()
-				`,
-			Payload: strings.Join([]string{
-				`NAME,TIME,VALUE`,
-				`wave.sin,1676432361,0.000000`,
-				`wave.cos,1676432361,1.000000`,
-				`wave.sin,1676432362,0.406736`,
-				`wave.cos,1676432362,0.913546`,
-				`wave.sin,1676432363,0.743144`,
-				"\n"}, "\n"),
-			ExpectText: []string{
-				`|NAME|TIME|VALUE|`,
-				`|:-----|:-----|:-----|`,
-				`|wave.sin|1676432361|0.000000|`,
-				`|wave.cos|1676432361|1.000000|`,
-				`|wave.sin|1676432362|0.406736|`,
-				`|wave.cos|1676432362|0.913546|`,
-				`|wave.sin|1676432363|0.743144|`,
-				"",
-			},
-		},
-		{
-			Name: "CSV_header(true)_MARKDOWN",
-			Script: `
-				CSV(payload(),
-				field(0, stringType(), 'name'),
-				field(1, datetimeType('s'), 'time'),
-				field(2, doubleType(), 'value'),
-				header(true))
-				MARKDOWN()
-				`,
-			Payload: strings.Join([]string{
-				`NAME,TIME,VALUE`,
-				`wave.sin,1676432361,0.000000`,
-				`wave.cos,1676432361,1.000000`,
-				`wave.sin,1676432362,0.406736`,
-				`wave.cos,1676432362,0.913546`,
-				`wave.sin,1676432363,0.743144`,
-			}, "\n"),
-			ExpectText: []string{
-				`|name|time|value|`,
-				`|:-----|:-----|:-----|`,
-				`|wave.sin|1676432361000000000|0.000000|`,
-				`|wave.cos|1676432361000000000|1.000000|`,
-				`|wave.sin|1676432362000000000|0.406736|`,
-				`|wave.cos|1676432362000000000|0.913546|`,
-				`|wave.sin|1676432363000000000|0.743144|`,
-				"",
-			},
-		},
-		{
-			Name: "CSV_header(false)_MARKDOWN",
-			Script: `
-				CSV(payload(),
-				field(0, stringType(), 'NAME'),
-				field(1, datetimeType('s'), 'TIME'),
-				field(2, doubleType(), 'VALUE'),
-				header(false))
-				MARKDOWN()
-				`,
-			Payload: strings.Join([]string{
-				`wave.sin,1676432361,0.000000`,
-				`wave.cos,1676432361,1.000000`,
-				`wave.sin,1676432362,0.406736`,
-				`wave.cos,1676432362,0.913546`,
-				`wave.sin,1676432363,0.743144`,
-			}, "\n"),
-			ExpectText: []string{
-				`|NAME|TIME|VALUE|`,
-				`|:-----|:-----|:-----|`,
-				`|wave.sin|1676432361000000000|0.000000|`,
-				`|wave.cos|1676432361000000000|1.000000|`,
-				`|wave.sin|1676432362000000000|0.406736|`,
-				`|wave.cos|1676432362000000000|0.913546|`,
-				`|wave.sin|1676432363000000000|0.743144|`,
-				"",
-			},
-		},
-		{
-			Name: "CSV_no_header_MARKDOWN",
-			Script: `
-				CSV(payload())
-				MARKDOWN()
-				`,
-			Payload: strings.Join([]string{
-				`wave.sin,1676432361,0.000000`,
-				`wave.cos,1676432361,1.000000`,
-				`wave.sin,1676432362,0.406736`,
-				`wave.cos,1676432362,0.913546`,
-				`wave.sin,1676432363,0.743144`,
-			}, "\n"),
-			ExpectText: []string{
-				`|column0|column1|column2|`,
-				`|:-----|:-----|:-----|`,
-				`|wave.sin|1676432361|0.000000|`,
-				`|wave.cos|1676432361|1.000000|`,
-				`|wave.sin|1676432362|0.406736|`,
-				`|wave.cos|1676432362|0.913546|`,
-				`|wave.sin|1676432363|0.743144|`,
-				"",
-			},
-		},
-		{
-			Name: "CSV_NDJSON",
-			Script: `
-				CSV("1,line1\n2,line2\n3,\n4,line4")
-				NDJSON( rownum(true) )
-			`,
-			ExpectText: []string{
-				`{"ROWNUM":1,"column0":"1","column1":"line1"}`,
-				`{"ROWNUM":2,"column0":"2","column1":"line2"}`,
-				`{"ROWNUM":3,"column0":"3","column1":""}`,
-				`{"ROWNUM":4,"column0":"4","column1":"line4"}`,
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_file",
-			Script: `
-				CSV(file('/iris.data'))
-				DROP(10)
-				TAKE(2)
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`5.4,3.7,1.5,0.2,Iris-setosa`,
-				`4.8,3.4,1.6,0.2,Iris-setosa`,
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_file_gz",
-			Script: `
-				CSV(file('/iris.data.gz'))
-				DROP(10)
-				TAKE(2)
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`5.4,3.7,1.5,0.2,Iris-setosa`,
-				`4.8,3.4,1.6,0.2,Iris-setosa`,
-				"\n",
-			},
-		},
-		{
-			Name: "CSV_file_JSON_timeformat",
-			Script: `
-				CSV(file('/iris.data'))
-				DROP(10)
-				TAKE(2)
-				JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["column0","column1","column2","column3","column4"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["string","string","string","string","string"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `["5.4","3.7","1.5","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.0").Raw)
-				require.Equal(t, `["4.8","3.4","1.6","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.1").Raw)
-			},
-		},
-		{
-			Name: "CSV_charset_jp",
-			Script: `
-				CSV(file("/euc-jp.csv"), charset("EUC-JP"))
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`利用されてきた文字コー,1701913182,3.141592`,
-				"\n",
-			},
-		},
-		{
-			Name: "strSprintf",
-			Script: `
-				FAKE(json(strSprintf('[%.f, %q]', 123, "hello")))
-				CSV( heading(false) )
-				`,
-			ExpectCSV: []string{
-				`123,hello`,
-				"\n",
-			},
-		},
-		{
-			Name: "UTIL_sqlTimeformat_csv",
-			Script: `
-				FAKE( json({
-					[1701345032123456789, 10],
-					[1701345043219876543, 11]
-				}))
-				MAPVALUE(0, time(value(0)))
-				CSV(sqlTimeformat("YYYY-MM-DD HH24:MI:SS.nnnnnn"), tz("Asia/Seoul"))
-				`,
-			ExpectCSV: []string{
-				`2023-11-30 20:50:32.123456,10`,
-				`2023-11-30 20:50:43.219876,11`,
-				"\n",
-			},
-		},
-		{
-			Name: "UTIL_ansiTimeformat_csv",
-			Script: `
-				FAKE( json({
-					[1701345032123456789, 10],
-					[1701345043219876543, 11]
-				}))
-				MAPVALUE(0, time(value(0)))
-				CSV(ansiTimeformat("yyyy-mm-dd hh:nn:ss.ffffff"), tz("UTC"))
-				`,
-			ExpectCSV: []string{
-				`2023-11-30 11:50:32.123456,10`,
-				`2023-11-30 11:50:43.219876,11`,
-				"\n",
-			},
-		},
-		{
-			Name: "UTIL_string_trim_replace",
-			Script: `
-				FAKE( json({
-					["prefix-hello-suffix"]
-				}))
-				MAPVALUE(0, strTrimPrefix(value(0), "prefix-"))
-				MAPVALUE(0, strTrimSuffix(value(0), "-suffix"))
-				MAPVALUE(0, strReplace(value(0), "l", "L", 1))
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`heLlo`,
-				"\n",
-			},
-		},
-		{
-			Name: "UTIL_string_predicates",
-			Script: `
-				FAKE( json({
-					["prefix-hello-suffix"],
-					["hello"]
-				}))
-				PUSHVALUE(1, strHasPrefix(value(0), "prefix-"))
-				PUSHVALUE(2, strHasSuffix(value(0), "-suffix"))
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`prefix-hello-suffix,true,true`,
-				`hello,false,false`,
-				"\n",
-			},
-		},
-		{
-			Name: "UTIL_string_replace_all",
-			Script: `
-				FAKE( json({
-					["a-b-c"]
-				}))
-				MAPVALUE(0, strReplaceAll(value(0), "-", "_"))
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`a_b_c`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_pushkey_manual",
-			Script: `
-				FAKE( linspace(1, 2, 2) )
-				PUSHKEY("k")
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`1,1`,
-				`2,2`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_popkey_manual",
-			Script: `
-				FAKE( json({
-					["TAG0", 1, 10],
-					["TAG1", 2, 20]
-				}))
-				POPKEY()
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`1,10`,
-				`2,20`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_transpose_header_manual",
-			Script: `
-				FAKE(csv("CITY,DATE,TEMPERATURE,HUMIDITY\nTokyo,2023/12/07,23,30"))
-				TRANSPOSE(header(true))
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`CITY,Tokyo`,
-				`DATE,2023/12/07`,
-				`TEMPERATURE,23`,
-				`HUMIDITY,30`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_take_offset_count_manual",
-			Script: `
-				FAKE( json({
-					["TAG0", 1, 10],
-					["TAG0", 2, 11],
-					["TAG0", 3, 12],
-					["TAG0", 4, 13],
-					["TAG0", 5, 14],
-					["TAG0", 6, 15]
-				}))
-				TAKE(3, 2)
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`TAG0,4,13`,
-				`TAG0,5,14`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_drop_offset_count_manual",
-			Script: `
-				FAKE( json({
-					["TAG0", 1, 10],
-					["TAG0", 2, 11],
-					["TAG0", 3, 12],
-					["TAG0", 4, 13],
-					["TAG0", 5, 14],
-					["TAG0", 6, 15]
-				}))
-				DROP(2, 3)
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`TAG0,1,10`,
-				`TAG0,2,11`,
-				`TAG0,6,15`,
-				"\n",
-			},
-		},
-		{
-			Name: "FAKE_json_manual",
-			Script: `
-				FAKE(
-					json({
-						["A", 1, true],
-						["B", 2, false],
-						["C", 3, true]
-					})
-				)
-				MAPVALUE(1, value(1)*10)
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`A,10,true`,
-				`B,20,false`,
-				`C,30,true`,
-				"\n",
-			},
-		},
-		{
-			Name: "FAKE_csv_manual",
-			Script: `
-				FAKE(
-					csv(
-						strTrimSpace(` + "`" + `
-							A,1,true
-							B,2,false
-							C,3,true
-						` + "`" + `)
-					)
-				)
-				MAPVALUE(0, strTrimSpace(value(0)))
-				MAPVALUE(1, parseFloat(value(1))*10)
-				MAPVALUE(2, parseBool(value(2)))
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`A,10,true`,
-				`B,20,false`,
-				`C,30,true`,
-				"\n",
-			},
-		},
-		{
-			Name: "FAKE_meshgrid_manual",
-			Script: `
-				FAKE(
-					meshgrid(linspace(1, 2, 2), linspace(10, 20, 2))
-				)
-				CSV()
-				`,
-			ExpectCSV: []string{
-				`1,10`,
-				`1,20`,
-				`2,10`,
-				`2,20`,
-				"\n",
-			},
-		},
-		{
-			Name: "FAKE_invalid_generator_type",
-			Script: `
-				FAKE( 123 )
-				CSV()
-				`,
-			ExpectErr: "f(FAKE) arg(0) should be fakeSource, but float64",
-		},
-		{
-			Name: "FAKE_arrange_zero_step",
-			Script: `FAKE( arrange(10, 30, 0) )
-					CSV()`,
-			ExpectErr: `FUNCTION "arrange" step can not be 0`,
-		},
-		{
-			Name: "FAKE_arrange_start_stop_equal",
-			Script: `FAKE( arrange(10, 10, 10) )
-					CSV()`,
-			ExpectErr: `FUNCTION "arrange" start, stop can not be equal`,
-		},
-		{
-			Name: "FAKE_arrange_start_stop_invalid1",
-			Script: `FAKE( arrange(10, 30, -10) )
-					CSV()`,
-			ExpectErr: `FUNCTION "arrange" step can not be less than 0`,
-		},
-		{
-			Name: "FAKE_arrange_start_stop_invalid2",
-			Script: `FAKE( arrange(30, 10, 10) )
-					CSV()`,
-			ExpectErr: `FUNCTION "arrange" step can not be greater than 0`,
-		},
-		{
-			Name: "MAP_AVG",
-			Script: `
-				FAKE( arrange(10, 30, 10) )
-				MAP_AVG(1, value(0))
-				CSV( precision(0) )
-				`,
-			ExpectCSV: []string{
-				"10,10",
-				"20,15",
-				"30,20",
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_MOVAVG",
-			Script: `
-				FAKE( linspace(0, 100, 100) )
-				MAP_MOVAVG(1, value(0), 10)
-				CSV( precision(4) )
-				`,
-			ExpectCSV: loadLines("./test/movavg_result.csv"),
-		},
-		{
-			Name: "MAP_MOVAVG_nowait",
-			Script: `
-				FAKE( linspace(0, 100, 100) )
-				MAP_MOVAVG(1, value(0), 10, noWait(true))
-				CSV( precision(4) )
-				`,
-			ExpectCSV: loadLines("./test/movavg_result_nowait.csv"),
-		},
-		{
-			Name: "MAP_LOWPASS",
-			Script: `
-				FAKE(arrange(1, 10, 1))
-				MAPVALUE(1, value(0) + simplex(1, value(0))*3)
-				MAP_LOWPASS(2, value(1), 0.3)
-				CSV(precision(2))
-				`,
-			ExpectCSV: []string{
-				`1.00,1.48,1.48`,
-				`2.00,0.40,1.15`,
-				`3.00,3.84,1.96`,
-				`4.00,2.89,2.24`,
-				`5.00,5.47,3.21`,
-				`6.00,5.29,3.83`,
-				`7.00,7.22,4.85`,
-				`8.00,10.31,6.49`,
-				`9.00,8.36,7.05`,
-				`10.00,8.56,7.50`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_KALMAN",
-			Script: `
-				FAKE(json({[1.3], [10.2], [5.0], [3.4]}))
-				MAP_KALMAN(1, value(0), model(1.0, 1.0, 2.0))
-				CSV(precision(1))
-				`,
-			ExpectCSV: []string{
-				`1.3,1.3`,
-				`10.2,5.7`,
-				`5.0,5.4`,
-				`3.4,4.4`,
-				"\n",
-			},
-		},
-		{
-			Name: "MAP_DIFF",
-			Script: `
-				FAKE( csv("1\n3\n2\n7") )
-				MAP_DIFF(0, value(0))
-				CSV()
-				`,
-			ExpectCSV: []string{"NULL", "2", "-1", "5", "\n"},
-		},
-		{
-			Name: "MAP_NONEGDIFF",
-			Script: `
-				FAKE( csv("1\n3\n2\n7") )
-				MAP_NONEGDIFF(0, value(0))
-				CSV()
-				`,
-			ExpectCSV: []string{"NULL", "2", "0", "5", "\n"},
-		},
-		{
-			Name: "MAP_ABSDIFF",
-			Script: `
-				FAKE( csv("1\n3\n2\n7") )
-				MAP_ABSDIFF(0, value(0))
-				CSV()
-				`,
-			ExpectCSV: []string{"NULL", "2", "1", "5", "\n"},
-		},
-		{
-			Name: "FILTER_CHANGED_string",
-			Script: `
-				FAKE(json({
-					["A", 1.0],
-					["A", 2.0],
-					["B", 3.0],
-					["B", 4.0]
-				}))
-				FILTER_CHANGED(value(0))
-				CSV()
-				`,
-			ExpectCSV: []string{"A,1", "B,3", "\n"},
-		},
-		{
-			Name: "FILTER_CHANGED_bool",
-			Script: `
-				FAKE(json({
-					["A", true, 1.0],
-					["A", false, 2.0],
-					["B", false, 3.0],
-					["B", true, 4.0]
-				}))
-				FILTER_CHANGED(value(1))
-				CSV()
-				`,
-			ExpectCSV: []string{"A,true,1", "A,false,2", "B,true,4", "\n"},
-		},
-		{
-			Name: "FILTER_CHANGED_time",
-			Script: `
-				FAKE(json({
-					["A", 1692329338, 1.0],
-					["A", 1692329339, 2.0],
-					["B", 1692329340, 3.0],
-					["B", 1692329341, 4.0],
-					["B", 1692329342, 5.0],
-					["B", 1692329343, 6.0],
-					["B", 1692329344, 7.0],
-					["B", 1692329345, 8.0],
-					["C", 1692329346, 9.0],
-					["D", 1692329347, 9.1],
-					["D", 1692329348, 9.2],
-					["D", 1692329349, 9.3]
-				}))
-				MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))
-				FILTER_CHANGED(value(0), retain(value(1), "2s"))
-				CSV(timeformat("s"))
-				`,
-			ExpectCSV: []string{
-				"A,1692329338,1",
-				"B,1692329342,5",
-				"D,1692329349,9.3",
-				"\n",
-			},
-		},
-		{
-			Name: "FILTER_CHANGED_useFirstWithLast(true)",
-			Script: `
-				FAKE(json({
-					["A", 1.0], ["A", 2.0],
-					["B", 3.0], ["B", 4.0], ["B", 5.0],
-					["C", 6.0], ["C", 7.0],
-					["D", 8.0], ["D", 9.0]
-				}))
-				FILTER_CHANGED(value(0), useFirstWithLast(true))
-				CSV()
-				`,
-			ExpectCSV: []string{"A,1", "A,2", "B,3", "B,5", "C,6", "C,7", "D,8", "D,9", "\n"},
-		},
-		{
-			Name: "FILTER_CHANGED_useFirstWithLast(false)",
-			Script: `
-				FAKE(json({
-					["A", 1.0], ["A", 2.0],
-					["B", 3.0], ["B", 4.0], ["B", 5.0],
-					["C", 6.0], ["C", 7.0],
-					["D", 8.0], ["D", 9.0]
-				}))
-				FILTER_CHANGED(value(0), useFirstWithLast(false))
-				CSV()
-				`,
-			ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
-		},
-		{
-			Name: "FILTER_CHANGED_useFirstWithLast(false)_implicit",
-			Script: `
-				FAKE(json({
-					["A", 1.0], ["A", 2.0],
-					["B", 3.0], ["B", 4.0], ["B", 5.0],
-					["C", 6.0], ["C", 7.0],
-					["D", 8.0], ["D", 9.0]
-				}))
-				FILTER_CHANGED(value(0))
-				CSV()
-				`,
-			// This result should be same as using "useFirstWithLast(false)"
-			ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
-		},
-		{
-			Name: "FAKE_sphere_4_4",
-			Script: `
-				FAKE( sphere(4, 4) )
-				PUSHKEY('test')
-				CSV( header(true), precision(6) )
-				`,
-			ExpectCSV: loadLines("./test/sphere_4_4.csv"),
-		},
-		{
-			Name: "FAKE_sphere_0_0",
-			Script: `
-				FAKE( sphere(0, 0) )
-				PUSHKEY('test')
-				CSV( header(false), precision(6) )
-				`,
-			ExpectCSV: loadLines("./test/sphere_0_0.csv"),
-		},
-		{
-			Name: "FFT",
-			Script: `
-				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
-				MAPKEY('samples')
-				GROUPBYKEY(lazy(false))
-				FFT(minHz(0), maxHz(60))
-				CSV(precision(6))
-				`,
-			ExpectCSV: loadLines("./test/fft2d.csv"),
-		},
-		{
-			Name: "FFT_not_enough_samples_0",
-			Script: `
-				FAKE( linspace(0, 10, 100) )
-				FFT()
-				CSV()
-				`,
-			ExpectCSV: []string{"\n"},
-		},
-		{
-			Name: "FFT_not_enough_samples_16",
-			Script: `
-				FAKE( meshgrid(linspace(0, 10, 100), linspace(0, 10, 1000)) )
-				PUSHKEY('sample')
-				GROUPBYKEY()
-				FFT()
-				CSV()
-				`,
-			ExpectErr: "f(FFT) sample should be a tuple of (time, value), but len=3",
-		},
-		{
-			Name: "FFT_3d",
-			Script: `
-				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
-				MAPKEY( roundTime(value(0), '500ms') )
-				GROUPBYKEY()
-				FFT(maxHz(60))
-				FLATTEN()
-				PUSHKEY('fft3d')
-				CSV(precision(6))
-				`,
-			ExpectCSV: loadLines("./test/fft3d.csv"),
-		},
+	err := task.CompileString(code)
+	if compileErr != "" {
+		require.NotNil(t, err)
+		require.Equal(t, compileErr, err.Error())
+		ctxCancel()
+		return
+	} else {
+		require.Nil(t, err)
 	}
 
-	tql.ShellExecutable = func(addr, path string) ([]string, error) {
-		return []string{"/bin/bash", path}, nil
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func mustSeriesID(t *testing.T, id, title string, period time.Duration, maxCount int) metric.SeriesID {
-	t.Helper()
-	seriesID, err := metric.NewSeriesID(id, title, period, maxCount)
-	require.NoError(t, err)
-	return seriesID
-}
-
-func TestFakeStatz(t *testing.T) {
-	seriesID := mustSeriesID(t, "CPU_USAGE", "CPU Usage", time.Second, 8)
-	collector := metric.NewCollector(
-		metric.WithSamplingInterval(time.Second),
-		metric.WithSeries(seriesID),
-	)
-	collector.Start()
-	t.Cleanup(collector.Stop)
-
-	collector.Send(metric.Measure{Name: "cpu:usage", Value: 1, Type: metric.CounterType(metric.UnitScalar)})
-	time.Sleep(1100 * time.Millisecond)
-	collector.Send(metric.Measure{Name: "cpu:usage", Value: 2, Type: metric.CounterType(metric.UnitScalar)})
-
-	org := spi.SetCollector(collector)
-	defer spi.SetCollector(org)
-
-	require.Eventually(t, func() bool {
-		mts := collector.Timeseries("cpu:usage")
-		if len(mts) == 0 {
-			return false
+	var executeErr error
+	go func() {
+		result := task.Execute()
+		executeErr = result.Err
+		if result.IsDbSink {
+			b, _ := result.MarshalJSON()
+			w.Write(b)
 		}
-		_, values := mts[0].All()
-		samples := make([]float64, 0, len(values))
-		for _, raw := range values {
-			v, ok := raw.(*metric.CounterValue)
-			if !ok || v.Samples == 0 {
-				continue
-			}
-			samples = append(samples, v.Value)
-		}
-		if len(samples) < 2 {
-			return false
-		}
-		return samples[len(samples)-2] == 1 && samples[len(samples)-1] == 2
-	}, 3*time.Second, 50*time.Millisecond)
-
-	tests := []TqlTestCase{
-		{
-			Name: "FAKE_statz",
-			Script: `
-				FAKE( statz(0, 'cpu:usage') )
-				FILTER( value(1) != NULL )
-				CSV(timeformat('15:04:05'), heading(true), precision(0))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				lines := strings.Split(result, "\n")
-				require.Equal(t, "time,cpu:usage", lines[0])
-				// 2026-06-12 08:14:22,1
-				require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},1$`).MatchString(lines[1]), "line: %q", lines[1])
-				// 2026-06-12 08:14:23,2
-				require.True(t, regexp.MustCompile(`^[0-9]{2}:[0-9]{2}:[0-9]{2},2$`).MatchString(lines[2]), "line: %q", lines[2])
-				require.Equal(t, "", lines[3])
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestFake_oscillator(t *testing.T) {
-	back := util.StandardTimeNow
-	util.StandardTimeNow = func() time.Time {
-		return time.Unix(0, 1692329338315327000)
-	}
-	defer func() {
-		util.StandardTimeNow = back
+		doneCh <- true
 	}()
 
-	tests := []TqlTestCase{
-		{
-			Name: "FAKE_oscillator_no_args",
-			Script: `
-				FAKE( oscillator() )
-				JSON()`,
-			ExpectErr: "f(oscillator) no time range is defined",
-		},
-		{
-			Name: "FAKE_oscillator_invalid_args",
-			Script: `
-				FAKE( oscillator(123) )
-				JSON()`,
-			ExpectErr: "f(oscillator) invalid arg type 'float64'",
-		},
-		{
-			Name: "FAKE_oscillator_no_time_range",
-			Script: `
-				FAKE( oscillator(freq(1.0, 1.0)) )
-				JSON()
-			`,
-			ExpectErr: "f(oscillator) no time range is defined",
-		},
-		{
-			Name: "FAKE_oscillator_dup_time_range",
-			Script: `
-				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms'), range(time('now-1s'), '1s', '200ms')) )
-				JSON()
-			`,
-			ExpectErr: "f(oscillator) duplicated time range",
-		},
-		{
-			Name: "FAKE_oscillator_minus_time_range",
-			Script: `
-				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '-200ms')) )
-				JSON()
-			`,
-			ExpectErr: "f(oscillator) period should be positive",
-		},
-		{
-			Name: "FAKE_oscillator_1",
-			Script: `
-				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms')) )
-				JSON(precision(16))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
-			},
-		},
-		{
-			Name: "FAKE_oscillator_2",
-			Script: `
-				FAKE( oscillator(freq(1.0, 1.0), range(time('now'), '-1s', '200ms')) )
-				JSON(precision(16))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
-				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.0961529923781393],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.6628509149282410]]`, gjson.Get(result, "data.rows").Raw, result)
-			},
-		},
-		{
-			Name: "FAKE_oscillator_1Hz_2Hz_3Hz",
-			Script: `
-				FAKE( 
-					oscillator(
-						range(timeAdd(1685714509*1000000000,'1s'), '1s', '1ms'), 
-						freq(1, 1.0), freq(2, 2.0), freq(3, 3.0)))
-				PUSHKEY('test')
-				CSV( header(true), precision(6) )
-				`,
-			ExpectCSV: loadLines("./test/oscillator_1Hz_2Hz_3Hz.csv"),
-		},
+	select {
+	case <-ctx.Done():
+		t.Logf("CODE:\n%s", code)
+		t.Logf("LOG:\n%s", strings.TrimSpace(logBuf.String()))
+		t.Fatal("ERROR time out!!!")
+		ctxCancel()
+	case <-doneCh:
+		ctxCancel()
+	}
+	logString := strings.TrimSpace(logBuf.String())
+	if expectErr != "" {
+		// case error
+		require.NotNil(t, executeErr)
+		require.Equal(t, expectErr, executeErr.Error())
+	}
+	if expectLog != "" {
+		// log message
+		if !strings.Contains(logString, expectLog) {
+			t.Log("LOG OUTPUT:", logString)
+			t.Log("LOG EXPECT:", expectLog)
+			t.Fail()
+		}
+	} else {
+		if len(logString) > 0 && expectErr == "" {
+			t.Log("LOG OUTPUT:", logString)
+		}
 	}
 
+	if expectErr == "" {
+		require.Nil(t, executeErr)
+	}
+
+	if expectFunc != nil {
+		expectFunc(t, w.String())
+		return
+	}
+	if expectErr == "" && expectLog == "" {
+		// case success
+		require.Nil(t, err)
+		result := w.String()
+		if matchPrefix {
+			strExpect := strings.Join(expect, "\n") + "\n"
+			trimResult := strings.TrimSpace(result)
+			strResult := "<N/A>"
+			if len(trimResult) >= len(strExpect) {
+				strResult = trimResult[0:len(strExpect)]
+			} else {
+				strResult = trimResult
+			}
+			require.Equal(t, strExpect, strResult)
+		} else if matchFunc != nil {
+			matchFunc(t, result)
+		} else {
+			resultLines := strings.Split(result, "\n")
+			if len(resultLines) > 0 && resultLines[len(resultLines)-1] == "" {
+				// remove trailing empty line
+				resultLines = resultLines[0 : len(resultLines)-1]
+			}
+			if len(expect) != len(resultLines) {
+				t.Logf("Expect result %d lines, got %d", len(expect), len(resultLines))
+				t.Logf("Expect:\n%s", strings.Join(expect, "\n"))
+				t.Logf("Actual:\n%s", strings.Join(resultLines, "\n"))
+				t.Fail()
+				return
+			}
+
+			for n, expectLine := range expect {
+				require.Equal(t, expectLine, resultLines[n], fmt.Sprintf("Expected(line#%d): %s", n, expectLine))
+			}
+		}
+		if strings.Contains(logString, "ERROR") || (strings.Contains(logString, "WARN") && !strings.Contains(logString, "deprecated")) {
+			t.Log("LOG OUTPUT:", logString)
+			t.Fail()
+		}
+	}
+}
+
+func TestTaskCancelNotifiesLateShouldStopListener(t *testing.T) {
+	task := NewTaskContext(context.Background())
+	task.Cancel()
+
+	called := make(chan struct{}, 1)
+	task.AddShouldStopListener(func() {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+	})
+
+	select {
+	case <-called:
+		return
+	case <-time.After(1 * time.Second):
+		t.Fatal("late should-stop listener was not notified after task cancellation")
+	}
+}
+
+func TestTaskContextCancelNotifiesLateShouldStopListener(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	task := NewTaskContext(ctx)
+	cancel()
+
+	called := make(chan struct{}, 1)
+	task.AddShouldStopListener(func() {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+	})
+
+	select {
+	case <-called:
+		return
+	case <-time.After(1 * time.Second):
+		t.Fatal("late should-stop listener was not notified after context cancellation")
+	}
+}
+
+func TestTaskCancelCancelsContext(t *testing.T) {
+	task := NewTask()
+	task.Cancel()
+
+	select {
+	case <-task.Context().Done():
+		require.ErrorIs(t, task.Context().Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("task context was not canceled")
+	}
+}
+
+func TestExecutionFailurePreservesCancelCause(t *testing.T) {
+	task := NewTask()
+	runtime := newExecutionRuntime(task, task.currentExecution())
+	err := errors.New("terminal failure")
+
+	runtime.fail(err)
+
+	require.ErrorIs(t, runtime.execution.Error(), err)
+	require.ErrorIs(t, context.Cause(runtime.Context()), err)
+}
+
+func TestPreemptiveExecutionKeepsTaskParentContext(t *testing.T) {
+	task := NewTask()
+	parent := task.ctx
+	exec := task.beginExecution(context.Background(), true)
+
+	require.Same(t, parent, task.ctx)
+	require.Same(t, exec.ctx, task.Context())
+	require.True(t, exec.preemptive)
+}
+
+func TestNodeRuntimeKeepsBoundExecution(t *testing.T) {
+	task := NewTask()
+	node := NewNode(task)
+	bound := newExecutionRuntime(task, task.currentExecution())
+	node.runtime = bound
+
+	task.beginExecution(context.Background(), true)
+
+	require.Same(t, bound.execution, node.runtime.execution)
+	require.NotSame(t, task.currentExecution(), node.runtime.execution)
+}
+
+func TestNodeRuntimeKeepsConfigurationSnapshot(t *testing.T) {
+	task := NewTask()
+	task.SetParams(map[string][]string{"name": {"before"}})
+	node := NewNode(task)
+	node.runtime = newExecutionRuntime(task, task.currentExecution())
+
+	task.SetParams(map[string][]string{"name": {"after"}})
+
+	require.Equal(t, "before", node.GetRequestParam("name"))
+}
+
+func TestRuntimeKeepsResultColumnsSnapshot(t *testing.T) {
+	task := NewTask()
+	runtime := newExecutionRuntime(task, task.currentExecution())
+	runtime.SetResultColumns(client.Columns{
+		client.MakeColumnRownum(),
+		client.MakeColumnString("before"),
+	})
+	task.publishResultColumns(client.Columns{
+		client.MakeColumnRownum(),
+		client.MakeColumnString("after"),
+	})
+
+	columns := runtime.ResultColumns()
+	require.Len(t, columns, 2)
+	require.Equal(t, "before", columns[1].Name)
+}
+
+func TestRuntimeFinalizesResultSchema(t *testing.T) {
+	task := NewTask()
+	runtime := newExecutionRuntime(task, task.currentExecution())
+	require.Equal(t, SchemaUnknown, runtime.SchemaState())
+
+	runtime.SetResultColumns(client.Columns{
+		client.MakeColumnRownum(),
+		client.MakeColumnString("before"),
+	})
+	require.Equal(t, SchemaKnown, runtime.SchemaState())
+	runtime.FinalizeSchema()
+	require.Equal(t, SchemaFinal, runtime.SchemaState())
+
+	runtime.SetResultColumns(client.Columns{
+		client.MakeColumnRownum(),
+		client.MakeColumnString("after"),
+	})
+	columns := runtime.ResultColumns()
+	require.Equal(t, "before", columns[1].Name)
+	require.EqualError(t, runtime.execution.Error(), "result columns mutation after schema finalization")
+}
+
+func TestTaskPublishesCompletedRuntimeColumns(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		CSV()
+	`))
+
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	columns := task.ResultColumns()
+	require.Len(t, columns, 3)
+	require.Equal(t, "column0", columns[1].Name)
+	require.Equal(t, "column1", columns[2].Name)
+}
+
+func TestTaskPublishesOutputMetadata(t *testing.T) {
+	task := NewTask()
+	output := &bytes.Buffer{}
+	task.SetOutputWriter(output)
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		CSV()
+	`))
+
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	require.Equal(t, "text/csv; charset=utf-8", result.OutputMetadata.ContentType)
+	require.Equal(t, "identity", result.OutputMetadata.ContentEncoding)
+	require.Equal(t, result.OutputMetadata, task.LastOutputMetadata())
+}
+
+func TestTaskExecuteRejectsSequentialRun(t *testing.T) {
+	task := NewTask()
+	output := &bytes.Buffer{}
+	task.SetOutputWriter(output)
+	require.NoError(t, task.CompileString("FAKE(json({[\"A\", 1]}))\nCSV()"))
+
+	firstResult := task.Execute()
+	require.NoError(t, firstResult.Err)
+	require.Equal(t, "A,1\n\n", output.String())
+
+	secondResult := task.Execute()
+	require.EqualError(t, secondResult.Err, "task has already been executed")
+}
+
+func TestTaskCloneCreatesFreshExecutionGraph(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString("FAKE(json({[\"A\", 1]}))\nCSV()"))
+
+	clone, err := task.cloneForExecution(context.Background(), &bytes.Buffer{})
+	require.NoError(t, err)
+	require.Nil(t, task.nodes)
+	require.Nil(t, clone.nodes)
+	require.NoError(t, task.Execute().Err)
+	require.NoError(t, clone.Execute().Err)
+	require.NotSame(t, task.nodes[0], clone.nodes[0])
+	require.NotSame(t, task.output, clone.output)
+}
+
+func TestPreemptiveCloneDoesNotPublishParentColumns(t *testing.T) {
+	task := NewTask()
+	task.publishResultColumns(client.Columns{
+		client.MakeColumnRownum(),
+		client.MakeColumnString("parent"),
+	})
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		CSV()
+	`))
+
+	clone, err := task.cloneForExecution(context.Background(), &bytes.Buffer{})
+	require.NoError(t, err)
+	result := clone.Execute()
+	require.NoError(t, result.Err)
+
+	columns := task.ResultColumns()
+	require.Len(t, columns, 2)
+	require.Equal(t, "parent", columns[1].Name)
+}
+
+func TestRuntimeKeepsLoggingSnapshot(t *testing.T) {
+	task := NewTask()
+	first := &bytes.Buffer{}
+	second := &bytes.Buffer{}
+	task.SetLogWriter(first)
+	task.SetLogLevel(INFO)
+	runtime := newExecutionRuntime(task, task.currentExecution())
+	task.SetLogWriter(second)
+
+	runtime.LogInfo("snapshot")
+
+	require.Equal(t, "[INFO] snapshot\n", first.String())
+	require.Empty(t, second.String())
+}
+
+func TestExecutionCloneUsesIndependentRuntimeGraph(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		MAPVALUE(1, value(1) * 10)
+		CSV()
+	`))
+
+	clone, err := task.cloneForExecution(context.Background(), &bytes.Buffer{})
+	require.NoError(t, err)
+	require.NotSame(t, task, clone)
+	require.NotSame(t, task.execution, clone.execution)
+	require.Nil(t, task.output)
+	require.Nil(t, clone.output)
+	require.NoError(t, task.Execute().Err)
+	require.NoError(t, clone.Execute().Err)
+	require.NotSame(t, task.output, clone.output)
+	require.Len(t, clone.nodes, len(task.nodes))
+	for index := range task.nodes {
+		require.NotSame(t, task.nodes[index], clone.nodes[index])
+	}
+}
+
+func TestExecuteRejectsConcurrentCall(t *testing.T) {
+	task := NewTask()
+	task.executing = true
+
+	result := task.Execute()
+	require.EqualError(t, result.Err, "task is already executing")
+}
+
+func TestTaskDirectionalStopSignalsOnlyUpstreamNodes(t *testing.T) {
+	task := NewTask()
+	upstream := NewNode(task)
+	upstream.index = 0
+	stopAt := NewNode(task)
+	stopAt.index = 1
+	downstream := NewNode(task)
+	downstream.index = 2
+
+	task.fireCircuitBreak(stopAt)
+
+	require.True(t, task.shouldStopNode(upstream))
+	require.True(t, task.shouldStopNode(stopAt))
+	require.False(t, task.shouldStopNode(downstream))
+
+	select {
+	case <-task.stopSignal(upstream):
+	case <-time.After(time.Second):
+		t.Fatal("upstream node did not receive directional stop signal")
+	}
+
+	require.Nil(t, task.stopSignal(downstream))
+}
+
+func TestTakeStopsUpstreamAndDrainsDownstream(t *testing.T) {
+	task := NewTask()
+	output := &bytes.Buffer{}
+	task.SetOutputWriter(output)
+	require.NoError(t, task.CompileString(`
+		FAKE(linspace(0, 2, 100))
+		TAKE(2)
+		PUSHKEY('row')
+		CSV(precision(6))
+	`))
+
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	require.NoError(t, task.Context().Err())
+	require.Equal(t, "1,0.000000\n2,0.020202\n\n", output.String())
+}
+
+func TestTaskExecuteReturnsErrorAfterPanic(t *testing.T) {
+	task := NewTask()
+	task.compiled = true
+
+	require.NotPanics(t, func() {
+		result := task.Execute()
+		require.Error(t, result.Err)
+		require.Contains(t, result.Err.Error(), "task execution panic")
+	})
+}
+
+func TestCompiledPipelineLinksProducerOutputs(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		MAPVALUE(1, value(1) * 10)
+		CSV()
+	`))
+
+	require.Nil(t, task.nodes)
+	require.Nil(t, task.output)
+	require.Len(t, task.plan.nodes, 2)
+	require.Equal(t, StageSource, task.plan.nodes[0].role)
+	require.Equal(t, StageMap, task.plan.nodes[1].role)
+	require.Equal(t, StageSink, task.plan.sink.role)
+	require.Equal(t, "FAKE(json({[\"A\", 1]}))", strings.TrimSpace(task.plan.nodes[0].code))
+	require.Equal(t, "MAPVALUE(1, value(1) * 10)", strings.TrimSpace(task.plan.nodes[1].code))
+	require.Equal(t, "CSV()", strings.TrimSpace(task.plan.sink.code))
+}
+
+func TestExplainPlan(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString("//+ trace=true\nFAKE(json({[\"A\", 1]}))\nMAPVALUE(1, value(1))\nCSV()"))
+
+	stages := task.ExplainPlan()
+	require.Len(t, stages, 3)
+	require.Equal(t, StageSource, stages[0].Role)
+	require.Equal(t, StageMap, stages[1].Role)
+	require.Equal(t, StageSink, stages[2].Role)
+	require.Equal(t, "true", stages[0].Pragma["trace"])
+
+	stages[0].Pragma["trace"] = "changed"
+	require.Equal(t, "true", task.ExplainPlan()[0].Pragma["trace"])
+}
+
+func TestCompiledPlanCacheCreatesIndependentRuntimeGraph(t *testing.T) {
+	code := "#pragma log-level=DEBUG\nFAKE(json({[\"A\", 1]}))\nCSV()"
+	first := NewTask()
+	require.NoError(t, first.CompileString(code))
+	second := NewTask()
+	require.NoError(t, second.CompileString(code))
+
+	require.Same(t, first.plan, second.plan)
+	require.Nil(t, first.nodes)
+	require.Nil(t, second.nodes)
+	require.Nil(t, first.output)
+	require.Nil(t, second.output)
+	require.Equal(t, DEBUG, second.logLevel)
+}
+
+func TestCompiledPlanCacheEvictsOldestPlan(t *testing.T) {
+	cache := newCompiledPlanCache(2)
+	first := &compiledPlan{}
+	second := &compiledPlan{}
+	third := &compiledPlan{}
+
+	cache.Store("first", first)
+	cache.Store("second", second)
+	cache.Store("third", third)
+
+	_, ok := cache.Load("first")
+	require.False(t, ok)
+	actual, ok := cache.Load("second")
+	require.True(t, ok)
+	require.Same(t, second, actual)
+	actual, ok = cache.Load("third")
+	require.True(t, ok)
+	require.Same(t, third, actual)
+	require.Equal(t, 2, cache.Len())
+	require.Equal(t, 200, DEFAULT_PLAN_CACHE_CAPACITY)
+}
+
+func TestPipelineBufferPragma(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString("//+ pipeline-buffer=2\nFAKE(json({[\"A\", 1]}))\n//+ pipeline-buffer=3\nMAPVALUE(1, value(1))\nCSV()"))
+	require.Nil(t, task.nodes)
+	require.Equal(t, 2, task.ExplainPlan()[0].Buffer)
+	require.Equal(t, 3, task.ExplainPlan()[1].Buffer)
+}
+
+func TestPipelineBufferPragmaRejectsInvalidValue(t *testing.T) {
+	task := NewTask()
+	err := task.CompileString("//+ pipeline-buffer=-1\nFAKE(json({[\"A\", 1]}))\nCSV()")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid pipeline-buffer")
+}
+
+func TestExecutionStageStats(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString("FAKE(json({[\"A\", 1]}))\nMAPVALUE(1, value(1))\nCSV()"))
+
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	stats := task.LastStageStats()
+	require.Len(t, stats, 3)
+	byRole := make(map[StageRole]StageStats)
+	for index, stat := range stats {
+		require.Equal(t, index, stat.Index)
+		byRole[stat.Role] = stat
+		require.GreaterOrEqual(t, stat.Elapsed, time.Duration(0))
+		require.GreaterOrEqual(t, stat.BlockedSendDuration, time.Duration(0))
+	}
+	require.EqualValues(t, 1, byRole[StageSource].OutputCount)
+	require.EqualValues(t, 1, byRole[StageMap].InputCount)
+	require.EqualValues(t, 1, byRole[StageSink].InputCount)
+}
+
+func TestStageTelemetryCapturesQueueAndStopOrigin(t *testing.T) {
+	task := NewTask()
+	output := &bytes.Buffer{}
+	task.SetOutputWriter(output)
+	require.NoError(t, task.CompileString(`
+		//+ pipeline-buffer=4
+		FAKE(linspace(0, 9, 10))
+		TAKE(1)
+		CSV()
+	`))
+
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	stats := task.LastStageStats()
+	require.Len(t, stats, 3)
+	require.Equal(t, 4, stats[0].QueueCapacity)
+	require.True(t, stats[1].StopOrigin)
+	require.GreaterOrEqual(t, stats[0].QueueHighWatermark, 0)
+}
+
+func TestStageTelemetryCountsStreamErrors(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString(`
+		FAKE(1)
+		CSV()
+	`))
+
+	result := task.Execute()
+	require.Error(t, result.Err)
+	stats := task.LastStageStats()
+	require.Len(t, stats, 2)
+	require.EqualValues(t, 1, stats[0].ErrorCount)
+	require.NotEmpty(t, stats[0].LastError)
+	require.EqualValues(t, 1, stats[1].ErrorCount)
+}
+
+func TestPipelineLifecycleFaultInjection(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+	}{
+		{name: "source error", code: "FAKE(1)\nCSV()"},
+		{name: "map error", code: "FAKE(json({[\"A\", 1]}))\nMAPVALUE(1, parseFloat(\"bad\"))\nCSV()"},
+		{name: "sink prepare error", code: "FAKE(json({[\"A\", 1]}))\nMARKDOWN(true)"},
+	}
 	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
+		t.Run(tc.name, func(t *testing.T) {
+			task := NewTaskContext(t.Context())
+			task.SetOutputWriter(&bytes.Buffer{})
+			require.NoError(t, task.CompileString(tc.code))
+			result := task.Execute()
+			require.Error(t, result.Err)
 		})
 	}
 }
 
-func TestScript(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "script_src",
-			Script: `
-				SCRIPT({
-					for (i = 0; i < 10; i++) {
-						$.yieldKey("test", i, i*10)
-					}
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{
-				"0,0", "1,10", "2,20", "3,30", "4,40", "5,50", "6,60", "7,70", "8,80", "9,90", "\n",
-			},
-		},
-		{
-			Name: "script_src_map",
-			Script: `
-				SCRIPT({
-					a = 10*2+1
-					// comment
+func TestExecutionStageStatsKeepsRepeatedStageNames(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString("FAKE(json({[\"A\", 1]}))\nMAPVALUE(1, value(1))\nMAPVALUE(1, value(1))\nCSV()"))
 
-					$.yield(a)
-				})
-				SCRIPT({
-					a = $.values[0];
-					$.yield(a+1, 2, 3, 4)
-				})
-				CSV()
-				`,
-			ExpectCSV: []string{"22,2,3,4", "\n"},
-		},
-		{
-			Name: "script_2",
-			Script: `
-				FAKE( linspace(1,2,2))
-				MAPKEY("hello")
-				SCRIPT("js", {
-					c = 0;
-					if ($.params.temp !== undefined) {
-						c = $.params.temp;
-					}
-					$.yield($.key, $.values[0], c)
-				})
-				MAPVALUE(0, value(0), "key")
-				MAPVALUE(1, value(1), "value")
-				MAPVALUE(2, value(2), "parameter")
-				CSV(header(true))
-			`,
-			ExpectCSV: []string{
-				`key,value,parameter`, `hello,1,0`, `hello,2,0`, "\n",
-			},
-		},
-		{
-			Name: "js-console-log",
-			Script: `
-				SCRIPT("js", "console.log('Hello, World!')")
-				DISCARD()`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Empty(t, result)
-			},
-		},
-		{
-			Name: "js-finalize",
-			Script: `
-				FAKE( linspace(1,3,3))
-				SCRIPT("js", {
-					function finalize(){ $.yieldKey("last", 1.234); }
-					function square(x) { return x * x };
-					$.yield(square($.values[0]));
-				})
-				CSV(header(false))
-			`,
-			ExpectCSV: []string{
-				"1", "4", "9", "1.234", "\n",
-			},
-		},
-		{
-			Name: "js-timeformat",
-			Script: `
-				STRING(param("format_time") ?? "808210800", separator('\n'))
-				SCRIPT("js", {
-					epoch = parseInt($.values[0])
-					time = new Date(epoch * 1000)
-					$.yield(epoch, time.toISOString())
-				})
-				CSV()`,
-			ExpectCSV: []string{"808210800,1995-08-12T07:00:00.000Z", "", ""},
-		},
-		{
-			Name: "js-timeformat-parse",
-			Script: `
-				STRING(param("timestamp") ?? "1995-08-12T00:00:00.000Z", separator('\n'))
-				SCRIPT("js", {
-					ts = new Date( Date.parse($.values[0]) );
-					epoch = ts / 1000;
-					$.yield(epoch, ts.toISOString());
-				})
-				CSV()`,
-			ExpectCSV: []string{"808185600,1995-08-12T00:00:00.000Z", "", ""},
-		},
-		{
-			Name: "js-yieldArray-string",
-			Script: `
-				STRING('1,2,3,4,5', separator('\n'))
-				SCRIPT("js", {
-					$.yieldArray($.values[0].split(','))
-				})
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[["1","2","3","4","5"]]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "js-yieldArray-bool",
-			Script: `
-				STRING('true,true,false,true,false', separator('\n'))
-				SCRIPT("js", {
-					$.yieldArray($.values[0].split(',').map(function(v){ return v === 'true'}))
-				})
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[[true,true,false,true,false]]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "js-yieldArray-number",
-			Script: `
-				STRING('1.2,2.3,3.4,5.6', separator('\n'))
-				SCRIPT("js", {
-					$.yieldArray($.values[0].split(',').map(function(v){ return parseFloat(v) }))
-				})
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[[1.2,2.3,3.4,5.6]]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "js-yieldArray-number-int64",
-			Script: `
-				STRING('1,2,3,4,5', separator('\n'))
-				SCRIPT("js", {
-					$.yieldArray($.values[0].split(',').map(function(v){ return parseInt(v) }))
-				})
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[[1,2,3,4,5]]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "js-yieldArray-number-mixed",
-			Script: `
-				SCRIPT("js", {
-					$.result = {
-						columns: ["a", "b", "c", "d"],
-						types: ["int64", "double", "string", "bool"]
-					};
-					var arr = [1, 2.3, '3.4', true];
-					$.yieldArray(arr);
-				})
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
-				require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
-				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
+	require.NoError(t, task.Execute().Err)
+	stats := task.LastStageStats()
+	require.Len(t, stats, 4)
+	require.Equal(t, []int{0, 1, 2, 3}, []int{stats[0].Index, stats[1].Index, stats[2].Index, stats[3].Index})
+	require.Equal(t, []string{"FAKE()", "MAPVALUE()", "MAPVALUE()", "CSV()"}, []string{stats[0].Name, stats[1].Name, stats[2].Name, stats[3].Name})
+	require.EqualValues(t, 1, stats[1].InputCount)
+	require.EqualValues(t, 1, stats[2].InputCount)
+}
+
+func TestNodeFinalizesOnInputClose(t *testing.T) {
+	task := NewTask()
+	node := NewNode(task)
+	require.NoError(t, node.compile("MAPVALUE(0, value(0))"))
+
+	input := make(chan *Record)
+	node.input = input
+	node.SetFinalize(func(n *Node) {
+		n.emit(NewRecord("final", 2))
+	})
+	output := node.Run(input)
+
+	go func() {
+		input <- NewRecord("first", []any{1})
+		close(input)
+	}()
+
+	var records []*Record
+	for record := range output {
+		records = append(records, record)
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
+	require.Len(t, records, 2)
+	require.Equal(t, "first", records[0].Key())
+	require.Equal(t, "final", records[1].Key())
+}
+
+func TestPureSourceRunsWithoutInputRecord(t *testing.T) {
+	task := NewTask()
+	node := NewNode(task)
+	require.NoError(t, node.compile(`FAKE(json({["A", 1]}))`))
+	node.kind = StatementSource
+	node.runtime = newExecutionRuntime(task, task.currentExecution())
+
+	var records []*Record
+	for record := range node.RunSource() {
+		records = append(records, record)
+	}
+
+	require.Len(t, records, 1)
+	require.Equal(t, 1, records[0].Key())
+	require.Equal(t, []any{"A", float64(1)}, records[0].Value())
+}
+
+func TestSqlFirstStageRunsAsSource(t *testing.T) {
+	task := NewTask()
+	output := &bytes.Buffer{}
+	task.SetOutputWriter(output)
+	require.NoError(t, task.CompileString(`
+		SQL('select 1 value')
+		CSV()
+	`))
+
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	require.Contains(t, output.String(), "1")
+}
+
+func TestSqlSinkDefersBridgeConnection(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		SQL(bridge("missing-tql-bridge"), "insert into missing_table values (?)", value(0))
+	`))
+
+	result := task.Execute()
+	require.Error(t, result.Err)
+}
+
+func TestNodeCloserClosesExactlyOnce(t *testing.T) {
+	node := NewNode(NewTask())
+	first := &closeCounter{}
+	second := &closeCounter{}
+
+	node.AddCloser(first)
+	node.closeResources()
+	node.closeResources()
+	node.AddCloser(second)
+	node.CancelCloser(first)
+
+	require.Equal(t, 1, first.count)
+	require.Equal(t, 1, second.count)
+}
+
+func TestNodeCloserConcurrentRegistration(t *testing.T) {
+	node := NewNode(NewTask())
+	const closerCount = 32
+	closers := make([]*synchronizedCloser, closerCount)
+	start := make(chan struct{})
+	closed := make(chan struct{})
+	var wait sync.WaitGroup
+
+	for index := range closers {
+		closers[index] = &synchronizedCloser{}
+		wait.Add(1)
+		go func(closer *synchronizedCloser) {
+			defer wait.Done()
+			<-start
+			node.AddCloser(closer)
+		}(closers[index])
+	}
+	go func() {
+		<-start
+		node.closeResources()
+		close(closed)
+	}()
+	close(start)
+	wait.Wait()
+	<-closed
+	node.closeResources()
+
+	for _, closer := range closers {
+		require.Equal(t, 1, closer.Count())
 	}
 }
 
-func TestScriptInterrupt(t *testing.T) {
-	requireNoPayload := func(t *testing.T, result string) {
-		// Timeout interrupts may flush either "" or "\n" depending on writer/runtime timing.
-		// The semantic contract is that no payload rows are produced.
-		require.Equal(t, "", strings.TrimSpace(result))
-	}
+func TestPipelineLifecycleRepeated(t *testing.T) {
+	for iteration := 0; iteration < 100; iteration++ {
+		task := NewTask()
+		output := &bytes.Buffer{}
+		task.SetOutputWriter(output)
+		require.NoError(t, task.CompileString(`
+			FAKE(linspace(0, 2, 100))
+			TAKE(2)
+			CSV(precision(6))
+		`))
 
-	// Give the JS runtime enough time to start on slower CI runners so these
-	// cases validate interrupt handling rather than startup scheduling.
-	interruptTimeout := 500 * time.Millisecond
-
-	tests := []TqlTestCase{
-		{
-			Name: "js-timeout",
-			Script: `
-				FAKE( linspace(1,10,10))
-				SCRIPT("js", {
-					while(true) {
-					}
-					$.yield(123)
-				})
-				CSV()
-			`,
-			CtxTimeout: interruptTimeout,
-			ExpectLog:  []string{"[ERROR] interrupt at SCRIPT main:1:1(0)"},
-			ExpectFunc: func(t *testing.T, result string) {
-				requireNoPayload(t, result)
-			},
-		},
-		{
-			Name: "js-timeout-init",
-			Script: `
-				FAKE( linspace(1,10,10))
-				SCRIPT("js", {
-					while(true) {
-					}
-				},{
-					$.yield(123)
-				})
-				CSV()
-			`,
-			CtxTimeout: interruptTimeout,
-			ExpectFunc: func(t *testing.T, result string) {
-				requireNoPayload(t, result)
-			},
-		},
-		{
-			Name: "js-timeout-finalize",
-			Script: `
-				FAKE( linspace(1,10,10))
-				SCRIPT("js", {
-					function finalize(){
-						while(true) {}
-					}
-				},{
-					$.yield($.values[0])
-				})
-				CSV()
-			`,
-			CtxTimeout: interruptTimeout,
-			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:2:6(1))"},
-			ExpectFunc: func(t *testing.T, result string) {
-				// SCRIPT was interrupted during the finalize()
-				// so the result exists
-				require.Equal(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n\n", result)
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
+		result := task.Execute()
+		require.NoError(t, result.Err)
+		require.Equal(t, "0.000000\n0.020202\n\n", output.String())
 	}
 }
 
-func TestBridgeSqlite(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "sqlite-table-not-exist",
-			Script: `
-				SQL(bridge('sqlite'), "select * from example_sql")
-				CSV(heading(true))
-			`,
-			ExpectErr: "no such table: example_sql",
-		},
-		{
-			Name: "sqlite-create-table",
-			Script: `
-				SQL(bridge('sqlite'), "create table example_sql (` +
-				`	id INTEGER NOT NULL PRIMARY KEY,` +
-				`	name TEXT,` +
-				`	age INTEGER,` +
-				`	address TEXT,` +
-				`	weight REAL,` +
-				`	memo BLOB,` +
-				`	UNIQUE(name)` +
-				`)")
-				MARKDOWN()
-			`,
-			ExpectText: []string{
-				"|MESSAGE|",
-				"|:-----|",
-				"|Created successfully.|",
-				"",
-			},
-		},
-		{
-			Name: "sqlite-insert",
-			Script: `
-				CSV("100,alpha,10,street-100\n200,bravo,20,street-200\n")
-				INSERT(bridge('sqlite'), "id", "name", "age", "address", table("example_sql"))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, "success", gjson.Get(result, "reason").String())
-				require.Equal(t, `1 row inserted.`, gjson.Get(result, "data.message").String())
-			},
-		},
-		// TODO: insert blob value
-		// conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?, ?, ?)`,
-		//                        200, "bravo", 20, "street-200", 56.789, []byte{0, 1, 0xFF})
-		// TODO: select blob value
-		// `200,bravo,20,street-200,56.789,\x00\x01\xFF`,
-		{
-			Name: "sqlite",
-			Script: `
-				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
-				CSV(heading(true))
-			`,
-			ExpectCSV: []string{
-				"id,name,age,address",
-				"100,alpha,10,street-100",
-				"200,bravo,20,street-200",
-				"\n",
-			},
-		},
-		{
-			Name: "sqlite-params-format",
-			Script: `
-				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
-				HTML({
-					{{- .V.name }}: {{ .V.age | format (param "f") }}, {{ .V.address }}{{ "\n" -}}
-				})
-			`,
-			Params: map[string][]string{"f": {"age=%d"}},
-			ExpectCSV: []string{
-				"alpha: age=10, street-100",
-				"bravo: age=20, street-200",
-				"",
-			},
-		},
-		{
-			Name: "sqlite-to-html",
-			Script: `
-				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
-				HTML({
-{{- if .IsFirst }}<ul>{{ end }}
-<li>{{ .V.id }}: {{ .V.name }}, {{ .V.age }}, {{ .V.address }}
-{{ if .IsLast }}</ul>{{ end -}}
- 				})
-			`,
-			ExpectText: []string{
-				"<ul>",
-				"<li>100: alpha, 10, street-100",
-				"",
-				"<li>200: bravo, 20, street-200",
-				"</ul>",
-			},
-		},
-		{
-			Name: "sqlite-to-html-files",
-			RunCondition: func() bool {
-				return runtime.GOOS != "windows" // TODO: fix windows line endings
-			},
-			Script: `
-				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
-				HTML(file("/html_template_item.html"), file("/html_template_list.html"))
-			`,
-			ExpectText: []string{
-				"<ul>",
-				"<li>100: alpha, 10, street-100",
-				"",
-				"<li>200: bravo, 20, street-200",
-				"</ul>",
-			},
-		},
-		{
-			Name: "sqlite-to-text",
-			Script: `
-				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
-				TEXT({
-				{{- if .IsFirst }}--begin--{{ end }}
-- {{ .V.id }}: {{ .V.name }}, {{ .V.age }}, {{ .V.address }}
-{{ if .IsLast }}--end--{{ end -}}
-				})
-			`,
+func TestOutputConsumesClosedNodeStream(t *testing.T) {
+	task := NewTask()
+	output := &bytes.Buffer{}
+	task.SetOutputWriter(output)
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		CSV()
+	`))
 
-			ExpectText: []string{
-				"--begin--",
-				"- 100: alpha, 10, street-100",
-				"",
-				"- 200: bravo, 20, street-200",
-				"--end--",
-			},
-		},
-		{
-			Name: "sqlite-update-100",
-			Script: `
-				SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)
-				CSV(heading(false))
-			`,
-			ExpectCSV: []string{"a row updated.", "\n"},
-		},
-		{
-			Name: "sqlite-update-200",
-			Script: `
-				SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 56.789, 200)
-				CSV(heading(false))
-			`,
-			ExpectCSV: []string{"a row updated.", "\n"},
-		},
-		{
-			Name: "sqlite-source-to-sink-insert",
-			Script: `
-				SQL(bridge('sqlite'), "select 400 as id, 'delta' as name, 40 as age, 'street-400' as address union all select 500, 'echo' as name, 50 as age, 'street-500' as address")
-				SQL(bridge('sqlite'), "insert into example_sql(id,name,age,address) values(?,?,?,?)", value(0), value(1), value(2), value(3))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, "success", gjson.Get(result, "reason").String())
-				require.Equal(t, "2 rows inserted.", gjson.Get(result, "data.message").String())
-			},
-		},
-		{
-			Name: "sqlite-source-to-sink-count",
-			Script: `
-				SQL(bridge('sqlite'), "select count(*) as cnt from example_sql where id in (400,500)")
-				JSON()
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, `[[2]]`, gjson.Get(result, "data.rows").Raw)
-			},
-		},
-		{
-			Name: "sqlite-source-to-sink-cleanup",
-			Script: `
-				SQL(bridge('sqlite'), "delete from example_sql where id in (400,500)")
-				CSV(heading(false))
-			`,
-			ExpectCSV: []string{"2 rows deleted.", "\n"},
-		},
-		{
-			Name: "sqlite-select-updated",
-			Script: `
-				SQL(bridge('sqlite'), "select * from example_sql")
-				CSV(heading(true),nullValue('NULL'))
-			`,
-			ExpectCSV: []string{
-				"id,name,age,address,weight,memo",
-				"100,alpha,10,street-100,45.67,NULL",
-				`200,bravo,20,street-200,56.789,NULL`,
-				"\n",
-			},
-			RunCondition: func() bool {
-				// FIXME: sqlite3-CSV does not work with nullValue('NULL')
-				return false
-			},
-		},
-		{
-			Name: "sqlite-delete-syntax-error",
-			Script: `
-				SQL(bridge('sqlite'), 'delete example_sql where id = ?', 100)
-				CSV(heading(false))
-				`,
-			ExpectErr: "near \"example_sql\": syntax error",
-		},
-		{
-			Name: "sqlite-delete-before-count",
-			Script: `
-				SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))
-				JSON()
-				`,
-			Params: map[string][]string{"id": {"100"}},
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				// FIXME: count(*) should be integer instead of string
-				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[[1]]}`, gjson.Get(result, "data").Raw)
-			},
-		},
-		{
-			Name: "sqlite-delete",
-			Script: `
-				SQL(bridge('sqlite'), 'delete from example_sql where id = ?', param('id'))
-				CSV(heading(false))
-				`,
-			Params:    map[string][]string{"id": {"100"}},
-			ExpectCSV: []string{"a row deleted.", "\n"},
-		},
-		{
-			Name: "sqlite-delete-after-count",
-			Script: `
-				SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))
-				JSON()
-				`,
-			Params: map[string][]string{"id": {"100"}},
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				// FIXME: count(*) should be integer instead of string
-				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[[0]]}`, gjson.Get(result, "data").Raw)
-			},
-		},
-		{
-			Name: "sqlite-select-no-rows",
-			Script: `
-				SQL(bridge('sqlite'), "select * from example_sql where id = ?", param('id'))
-				CSV(heading(true))
-				`,
-			Params:    map[string][]string{"id": {"-1"}},
-			ExpectCSV: []string{"id,name,age,address,weight,memo", "\n"},
-		},
-		{
-			Name: "sqlite-select-no-rows-no-header",
-			Script: `
-				SQL(bridge('sqlite'), "select * from example_sql where id = ?", param('id'))
-				CSV(heading(false))
-				`,
-			Params:    map[string][]string{"id": {"-1"}},
-			ExpectCSV: []string{"\n"},
-		},
-		{
-			Name: "sqlite-js-insert",
-			Script: `
-				SCRIPT("js", {
-					err = $.db({bridge: 'sqlite'})
-						.exec("insert into example_sql values(?, ?, ?, ?, ?, ?)", 300, "charlie", 30, "street-300", 67.89, null)
-					if (err) {
-						$.yield(err.message);
-					}
-				})
-				DISCARD()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-			},
-		},
-		{
-			Name: "sqlite-js-query",
-			Script: `
-				SCRIPT("js", {
-					err = $.db({bridge: 'sqlite'}).query("select * from example_sql where id = ?", $.params.id)
-					    .forEach(function(row) {
-							id = row[0];
-							name = row[1];
-							age = row[2];
-							address = row[3];
-							$.yield(id, name, age, address);
-						})
-					if (err) {
-						$.yield(err.message);
-					}
-				})
-				JSON()
-				`,
-			Params: map[string][]string{"id": {"300"}},
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, "success", gjson.Get(result, "reason").String())
-				require.Equal(t, `["column0","column1","column2","column3"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["int64","string","int64","string"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[300,"charlie",30,"street-300"]`, gjson.Get(result, "data.rows.0").Raw, result)
-			},
-		},
+	result := task.Execute()
+	require.NoError(t, result.Err)
+	require.Equal(t, "A,1\n\n", output.String())
+}
+
+func TestExecutionRecordsPipelineError(t *testing.T) {
+	task := NewTask()
+	require.NoError(t, task.CompileString(`
+		FAKE(json({["A", 1]}))
+		MAPVALUE(1, value(10))
+		CSV()
+	`))
+
+	result := task.Execute()
+	require.Error(t, result.Err)
+	require.Nil(t, task.currentExecution().Error())
+}
+
+func TestMemoryFS(t *testing.T) {
+	memoryFS := &MemoryFS{
+		Prefix: "/assets",
+		list:   map[string]*MemoryFile{},
+		stop:   make(chan bool),
+	}
+	require.Equal(t, "/assets", memoryFS.VolatileFilePrefix())
+
+	deadline := time.Now().Add(time.Minute)
+	memoryFS.VolatileFileWrite("/assets/active.txt", []byte("data"), deadline)
+	memoryFS.VolatileFileWrite("/assets/expired.txt", []byte("expired"), time.Now().Add(-time.Minute))
+	require.Equal(t, 2, memoryFS.statzCount())
+	require.Equal(t, int64(11), memoryFS.statzTotalSize())
+
+	file, err := memoryFS.Open("/assets/active.txt")
+	require.NoError(t, err)
+	defer file.Close()
+
+	buffer := make([]byte, 2)
+	count, err := file.Read(buffer)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+	require.Equal(t, "da", string(buffer))
+
+	position, err := file.Seek(-1, io.SeekCurrent)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), position)
+
+	remaining := make([]byte, 3)
+	count, err = file.Read(remaining)
+	require.NoError(t, err)
+	require.Equal(t, 3, count)
+	require.Equal(t, "ata", string(remaining))
+
+	count, err = file.Read(make([]byte, 1))
+	require.Equal(t, 0, count)
+	require.ErrorIs(t, err, io.EOF)
+
+	_, err = memoryFS.Open("/assets/expired.txt")
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	done := make(chan struct{})
+	go func() {
+		memoryFS.Start()
+		close(done)
+	}()
+	memoryFS.Stop()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("MemoryFS did not stop")
+	}
+}
+
+func TestMapChanged(t *testing.T) {
+	var codeLines, resultLines []string
+
+	data := `FAKE(json({
+		["A", 1.0],
+		["A", 2.0],
+		["B", 3.0],
+		["B", 4.0],
+		["B", 5.0],
+		["C", 6.0],
+		["C", 7.0],
+		["D", 8.0],
+		["D", 9.0]
+	}))`
+
+	data = `FAKE(json({
+		["A", 1692329338, 1.0],
+		["A", 1692329339, 2.0],
+		["B", 1692329340, 3.0],
+		["B", 1692329341, 4.0],
+		["B", 1692329342, 5.0],
+		["B", 1692329343, 6.0],
+		["B", 1692329344, 7.0],
+		["B", 1692329345, 8.0],
+		["C", 1692329346, 9.0],
+		["D", 1692329347, 9.1],
+		["D", 1692329348, 9.2],
+		["D", 1692329349, 9.3]
+	}))`
+
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), retain(value(1), "2s"), useFirstWithLast(false))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"B,1692329340,3",
+		"D,1692329347,9.1",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), retain(value(1), "2s"), useFirstWithLast(true))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"A,1692329339,2",
+		"B,1692329340,3",
+		"B,1692329345,8",
+		"D,1692329347,9.1",
+		"D,1692329349,9.3",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), useFirstWithLast(true))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"A,1692329339,2",
+		"B,1692329340,3",
+		"B,1692329345,8",
+		"C,1692329346,9",
+		"C,1692329346,9",
+		"D,1692329347,9.1",
+		"D,1692329349,9.3",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	data = `FAKE(json({
+		["A", 1692329338, 1.0],
+		["A", 1692329341, 2.0],
+		["A", 1692329344, 2.0],
+		["B", 1692329339, 1.0],
+		["B", 1692329342, 2.0],
+		["B", 1692329345, 1.0],
+		["C", 1692329340, 1.0],
+		["C", 1692329343, 1.0],
+		["C", 1692329346, 1.0]
+	}))`
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(strSprintf("%s.%.f", value(0),value(2)), useFirstWithLast(true))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		`A,1692329338,1`,
+		`A,1692329338,1`,
+		`A,1692329341,2`,
+		`A,1692329344,2`,
+		`B,1692329339,1`,
+		`B,1692329339,1`,
+		`B,1692329342,2`,
+		`B,1692329342,2`,
+		`B,1692329345,1`,
+		`B,1692329345,1`,
+		`C,1692329340,1`,
+		`C,1692329346,1`,
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestHttpFile(t *testing.T) {
+	var codeLines, resultLines []string
+
+	httpClient := &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.Method != "GET" {
+			t.Error("expected request method to be GET, got", req.Method)
+			t.Fail()
+		}
+		var body io.ReadCloser
+		switch req.URL.Path {
+		case "/string":
+			body = io.NopCloser(strings.NewReader("ok."))
+		case "/bytes":
+			body = io.NopCloser(strings.NewReader("ok."))
+		case "/csv":
+			body = io.NopCloser(strings.NewReader("1,3.141592,true,\"escaped, string\",123456"))
+		default:
+			t.Error("Unexpected request path, got", req.URL.Path)
+			t.Fail()
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       body,
+		}
+	})}
+
+	codeLines = []string{
+		`STRING(file("http://example.com/string"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`ok.`,
+		"",
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`BYTES(file("http://example.com/bytes"))`,
+		`CSV(binaryformat("hex"))`,
+	}
+	resultLines = []string{
+		`0x6f6b2e`,
+		"",
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`CSV(file("http://example.com/csv"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`1,3.141592,true,"escaped, string",123456`,
+		"",
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+}
+
+func TestMath(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(sin(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines := []string{
+		"0.000000,0.000000",
+		"0.785398,0.707107",
+		"1.570796,1.000000",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(cos(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"0.000000,1.000000",
+		"0.785398,0.707107",
+		"1.570796,0.000000",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(tan(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"0.000000,0.000000",
+		"0.785398,1.000000",
+		"1.570796,3060023.306953",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(exp(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,0.135335",
+		"-1.000000,0.367879",
+		"0.000000,1.000000",
+		"1.000000,2.718282",
+		"2.000000,7.389056",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(exp2(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,0.250000",
+		"-1.000000,0.500000",
+		"0.000000,1.000000",
+		"1.000000,2.000000",
+		"2.000000,4.000000",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(log(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,NaN",
+		"-1.000000,NaN",
+		"0.000000,-Inf",
+		"1.000000,0.000000",
+		"2.000000,0.693147",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(log10(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,NaN",
+		"-1.000000,NaN",
+		"0.000000,-Inf",
+		"1.000000,0.000000",
+		"2.000000,0.301030",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(1000, 100, -1) )",
+		"CSV(precision(5), header(true))",
+	}
+	resultLines = []string{"x", ""}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestSetVariables(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 3))`,
+		`SET(x10, value(0) * 10)`,
+		`SET(x10, $x10 + 1)`,
+		`MAPVALUE(1, $x10)`,
+		`CSV(header(true))`,
+	}
+	resultLines = []string{
+		`x,column`,
+		`0,1`,
+		`0.5,6`,
+		`1,11`,
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( arrange(0, 3, 1))`,
+		`SET(flag, value(0) != 0 && mod(value(0), 2) == 0 )`,
+		`MAPVALUE(1, !$flag)`,
+		`CSV(header(true))`,
+	}
+	resultLines = []string{
+		`x,column`,
+		`0,true`,
+		`1,true`,
+		`2,false`,
+		`3,true`,
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`STRING("temp")`,
+		`SET(temp, 11)`,
+		`MAPVALUE(0, 1.234)`,
+		`MAPVALUE(1, $temp)`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`1.234,11`,
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestPushKey(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 1, 2))",
+		"PUSHKEY('sample')",
+		"PUSHKEY('test')",
+		"CSV(header(true))",
+	}
+	resultLines := []string{
+		"key,ROWNUM,x",
+		"sample,1,0",
+		"sample,2,1",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestPushAndPopMonad(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 1, 3))",
+		"PUSHKEY('sample')",
+		"POPKEY()",
+		"CSV(precision(1))",
+	}
+	resultLines := []string{
+		"0.0",
+		"0.5",
+		"1.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 3.141592/2, 5) )`,
+		`PUSHKEY(sin(value(0)))`,
+		`PUSHKEY(value(0))`,
+		`POPKEY(1)`,
+		`POPKEY(1)`,
+		`PUSHKEY('test')`,
+		`CSV(precision(3))`,
+	}
+	resultLines = []string{
+		"0.000,0.000",
+		"0.393,0.383",
+		"0.785,0.707",
+		"1.178,0.924",
+		"1.571,1.000",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+}
+
+func TestGroupByKey(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHKEY('sample')",
+		"GROUPBYKEY()",
+		"FLATTEN()",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines := []string{
+		"sample,1,0.000000",
+		"sample,2,1.000000",
+		"sample,3,2.000000",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapKey(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY(value(0)*2)",
+		"PUSHKEY('test')",
+		"CSV(precision(0))",
+	}
+	resultLines = []string{
+		"0,0",
+		"2,1",
+		"4,2",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY(key())",
+		"PUSHKEY('test')",
+		"CSV(precision(0))",
+	}
+	resultLines = []string{
+		"1,0",
+		"2,1",
+		"3,2",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY( key() + 100 )",
+		"PUSHKEY('test')",
+		"CSV(precision(1))",
+	}
+	resultLines = []string{
+		"101.0,0.0",
+		"102.0,1.0",
+		"103.0,2.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestPushValue(t *testing.T) {
+	var codeLines, resultLines []string
+
+	for i := -2; i <= 0; i++ {
+		codeLines = []string{
+			"FAKE( linspace(0, 2, 3))",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5)", i),
+			"CSV(precision(1), heading(true), rownum(true))",
+		}
+		resultLines = []string{
+			"ROWNUM,column,x",
+			"1,0.0,0.0",
+			"2,1.5,1.0",
+			"3,3.0,2.0",
+			"",
+		}
+		runTest(t, codeLines, resultLines)
 	}
 
-	if err := bridge.Register(&model.BridgeDefinition{
+	for i := 1; i < 2; i++ {
+		codeLines = []string{
+			"FAKE( linspace(0, 2, 3))",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5, 'x1.5')", i),
+			"CSV(precision(1), heading(true), rownum(false))",
+		}
+		resultLines = []string{
+			"x,x1.5",
+			"0.0,0.0",
+			"1.0,1.5",
+			"2.0,3.0",
+			"",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	for i := 1; i < 2; i++ {
+		codeLines = []string{
+			`FAKE( json({["a", 0],["b", 1],["c", 2]}))`,
+			"POPKEY(0)",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5, 'x1.5')", i),
+			"CSV(precision(1), heading(false), rownum(false))",
+		}
+		resultLines = []string{
+			"0.0,0.0",
+			"1.0,1.5",
+			"2.0,3.0",
+			"",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add')",
+		"CSV(precision(1), heading(true), rownum(false))",
+	}
+	resultLines = []string{
+		"x,x1.5,add",
+		"0.0,0.0,10.0",
+		"1.0,1.5,11.5",
+		"2.0,3.0,13.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add', where(value(0) != 1.0 ))",
+		"CSV(precision(1), heading(true), rownum(false))",
+	}
+	resultLines = []string{
+		"x,x1.5,add",
+		"0.0,0.0,10.0",
+		"1.0,1.5,NULL",
+		"2.0,3.0,13.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestPushPopValue(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add')",
+		"PUSHVALUE(3, value(2)+0.5, 'add2')",
+		"POPVALUE(0,1,2)",
+		"CSV(precision(1), heading(true), rownum(true))",
+	}
+	resultLines = []string{
+		"ROWNUM,add2",
+		"1,10.5",
+		"2,12.0",
+		"3,13.5",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapValue(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(-1, value(0)*1.5)",
+		"CSV(precision(1))",
+	}
+	resultLines = []string{
+		"0.0,0.0",
+		"1.5,1.0",
+		"3.0,2.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(99, value(0)*1.5)",
+		"CSV(precision(1), header(true))",
+	}
+	resultLines = []string{
+		"x,column",
+		"0.0,0.0",
+		"1.0,1.5",
+		"2.0,3.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(0, value(0)*1.5, 'new_column')",
+		"CSV(precision(1), header(true))",
+	}
+	resultLines = []string{
+		"new_column",
+		"0.0",
+		"1.5",
+		"3.0",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( csv(`world,3.141592`) )",
+		"MAPVALUE(1, parseFloat(value(1)))",
+		"MAPVALUE(2, strSprintf(`hello %s, %1.2f`, value(0), value(1)))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"world,3.141592,\"hello world, 3.14\"", "",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( csv(`1,,3`) )",
+		"MAPVALUE(0, parseFloat(value(0)))",
+		`MAPVALUE(1, value(1) == "" ? 100 : parseFloat(value(1)) )`,
+		"MAPVALUE(2, parseFloat(value(2)))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1,100,3",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( json({[1],[null],[3]}) )`,
+		"MAPVALUE(0, value(0), nullValue(2))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1",
+		"2",
+		"3",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( json({[1],[null],[3]}) )`,
+		"MAPVALUE(0, value(0), nullValue(2))",
+		"MAPVALUE(0, value(0) * 10, where( value(0) % 2 == 0) )",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1",
+		"20",
+		"3",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+type TestRoundTripFunc func(req *http.Request) *http.Response
+
+func (f TestRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req), nil
+}
+
+func TestWhen(t *testing.T) {
+	err := bridge.Register(&model.BridgeDefinition{
 		Type: model.BRIDGE_SQLITE,
 		Name: "sqlite",
 		Path: "file::memory:?cache=shared",
-	}); err == bridge.ErrBridgeDisabled {
-		t.Fatal(err)
+	})
+	if err == bridge.ErrBridgeDisabled {
+		return
+	}
+	require.Nil(t, err)
+
+	br, _ := bridge.GetSqlBridge("sqlite")
+	conn, _ := br.Connect(t.Context())
+	conn.ExecContext(t.Context(), `create table if not exists test_when (
+		id INTEGER NOT NULL PRIMARY KEY,
+		name TEXT,
+		value INTEGER
+	)`)
+	conn.Close()
+
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`#pragma log-level=INFO`,
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doLog("hello", value(0), value(1)) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLog := ExpectLog("[INFO] hello msg123 0\n[INFO] hello msg123 2")
+	runTest(t, codeLines, nil, resultLog, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, "1 row inserted.", gjson.Get(result, "data.message").String())
+	}))
+
+	var notifiedValues = []string{}
+	var httpClient *http.Client
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.Path != "/notify" {
+			t.Error("expected request to /notify, got", req.URL.Path)
+			t.Fail()
+		}
+		if req.Method != "GET" {
+			t.Error("expected request method to be GET, got", req.Method)
+			t.Fail()
+		}
+		notifiedValues = append(notifiedValues, req.URL.Query()["v"]...)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doHttp("GET", strSprintf("http://example.com/notify?v=%f", value(1)), nil) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	runTest(t, codeLines, nil, httpClient, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, "1 row inserted.", gjson.Get(result, "data.message").String())
+	}))
+	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
+	require.Equal(t, "0.000000", notifiedValues[0])
+	require.Equal(t, "2.000000", notifiedValues[1])
+
+	notifiedValues = notifiedValues[0:0]
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.String() != "http://example.com/notify" {
+			t.Error("expected request to http://example.com/notify, got", req.URL.String())
+			t.Fail()
+		}
+		if req.Method != "POST" {
+			t.Error("expected request method to be POST, got", req.Method)
+			t.Fail()
+		}
+		if req.Header.Get("Content-Type") != "text/csv" {
+			t.Error("expected request Content-Type header to be text/csv, got", req.Header.Get("Content-Type"))
+			t.Fail()
+		}
+		scan := bufio.NewScanner(req.Body)
+		for scan.Scan() {
+			notifiedValues = append(notifiedValues, scan.Text())
+		}
+		if err := scan.Err(); err != nil {
+			t.Error("failed to read request body:", err)
+			t.Fail()
+		}
+		fmt.Println(notifiedValues)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doHttp("POST", "http://example.com/notify", value()) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	runTest(t, codeLines, nil, httpClient, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, "1 row inserted.", gjson.Get(result, "data.message").String())
+	}))
+	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
+	require.Equal(t, "msg123,0", notifiedValues[0])
+	require.Equal(t, "msg123,2", notifiedValues[1])
+
+	codeLines = []string{
+		`#pragma log-level=INFO`,
+		`FAKE( linspace(0, 1, 2) )`,
+		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
+		`  ARGS() // some comment`,
+		`  WHEN(true, doLog("MSG", args(0), args(1), "안녕") ) // some comment`,
+		`  DISCARD() // some comment`,
+		`} )) // some comment`,
+		`DISCARD() // some comment`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] MSG test 1 안녕")
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`#pragma log-level=INFO`,
+		`FAKE( linspace(0, 1, 2) )`,
+		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
+		`  FAKE( args() )`,
+		`  WHEN(true, doLog("MSG", args(0), args(1), "안녕") )`,
+		`  DISCARD()`,
+		`} ))`,
+		`DISCARD()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] MSG test 1 안녕")
+	runTest(t, codeLines, resultLines, httpClient)
+}
+
+func TestArgs(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`ARGS()`,
+		`MAPVALUE(0, 'tag-1', 'name')`,
+		`MAPVALUE(1, 123.4, 'value')`,
+		`CSV(heading(true))`,
+	}
+	resultLines = []string{
+		`name,value`,
+		`tag-1,123.4`,
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestGroup(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	payload = []string{
+		"A,1",
+		"B,3",
+		"C,6",
+		"",
+	}
+
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP( )`,
+		"CSV()",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() has no aggregator"))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`SET(ErrKey, NULL)`,
+		`GROUP( by($ErrKey, "NAME"), avg(value(1)))`,
+		"CSV()",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() has by() with NULL"))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP( by(value(0), "NAME"), avg(value(1)), true)`,
+		"CSV()",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() unknown type 'bool' in arguments"))
+
+	payload = []string{
+		"A,1",
+		"A,2",
+		"B,3",
+		"B,4",
+		"B,5",
+		"C,6",
+		"C,7",
+		"C,8",
+		"C,9",
+		"",
+	}
+	// first, last, avg, sum
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), first(value(1)), last(value(1)), avg(value(1)), sum(value(1)), count(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,FIRST,LAST,AVG,SUM,COUNT",
+		"A,1.00,2.00,1.50,3.00,2.00",
+		"B,3.00,5.00,4.00,12.00,3.00",
+		"C,6.00,9.00,7.50,30.00,4.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// min, max, rss, rms
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), min(value(1)), max(value(1)), rss(value(1)), rms(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MIN,MAX,RSS,RMS",
+		"A,1.00,2.00,2.24,1.58",
+		"B,3.00,5.00,7.07,4.08",
+		"C,6.00,9.00,15.17,7.58",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// mean, median, stddev, stderr, entropy
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), mean(value(1)), median(value(1)), stddev(value(1)), stderr(value(1)), entropy(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MEAN,QUANTILE,STDDEV,STDERR,ENTROPY",
+		"A,1.50,1.00,0.71,0.50,-1.39",
+		"B,4.00,4.00,1.00,0.58,-16.89",
+		"C,7.50,7.00,1.29,0.65,-60.78",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// mean
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), mean(value(1)), mean(value(1), weight(value(1))), variance(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MEAN,MEAN,VARIANCE",
+		"A,1.50,1.67,0.50",
+		"B,4.00,4.17,1.00",
+		"C,7.50,7.67,1.67",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// stddev
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), stddev(value(1)), stddev(value(1), weight(value(1))) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,STDDEV,STDDEV",
+		"A,0.71,0.58",
+		"B,1.00,0.83",
+		"C,1.29,1.12",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// stderr
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), stderr(value(1)), stderr(value(1), weight(value(1))) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,STDERR,STDERR",
+		"A,0.50,0.41",
+		"B,0.58,0.48",
+		"C,0.65,0.56",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// quantile
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, "P99"), quantile(value(1), 0.5, "P50"), median(value(1), "MEDIAN") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,P99,P50,MEDIAN",
+		"A,2.00,1.00,1.00",
+		"B,5.00,4.00,4.00",
+		"C,9.00,7.00,7.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// weighted quantile
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, weight(value(1)), "P99"), quantile(value(1), 0.5, "P50"), median(value(1), "MEDIAN") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,P99,P50,MEDIAN",
+		"A,2.00,1.00,1.00",
+		"B,5.00,4.00,4.00",
+		"C,9.00,7.00,7.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"A,1.1",
+		"A,1.1",
+		"B,2.1",
+		"B,2.2",
+		"B,2.1",
+		"C,3.1",
+		"C,3.2",
+		"C,3.3",
+		"C,3.3",
+		"",
+	}
+	// mode
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), mode(value(1)), mode(value(1), weight(value(1))) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MODE,MODE",
+		"A,1.10,1.10",
+		"B,2.10,2.10",
+		"C,3.30,3.30",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// quantile
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, "P99"), quantile(value(1), 0.5, "P50") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,P99,P50",
+		"A,1.10,1.10",
+		"B,2.20,2.10",
+		"C,3.30,3.20",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// cdf
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), cdf(value(1), 3.1, "Q99") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,Q99",
+		"A,1.00",
+		"B,1.00",
+		"C,0.25",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"A,0,0",
+		"A,1,1",
+		"A,2,2",
+		"B,1,1",
+		"B,1,1",
+		"B,1,1",
+		"C,1,10",
+		"C,2,100",
+		"C,3,200",
+		"C,4,300",
+		"",
+	}
+
+	// lrs - linear regression slope
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "x"), field(2, doubleType(), "y"))`,
+		`GROUP(by(value(0)), lrs(value(1), value(2), "SLOPE") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,SLOPE",
+		"A,1.00",
+		"B,NULL",
+		"C,97.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// list - list array
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "x"), field(2, doubleType(), "y"))`,
+		`GROUP(by(value(0)), list(value(2)) )`,
+		`POPKEY(0)`,
+		`FLATTEN()`,
+		`PUSHKEY('result')`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,LIST",
+		"A,0.00,1.00,2.00",
+		"B,1.00,1.00,1.00",
+		"C,10.00,100.00,200.00,300.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// list - list array
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "x"), field(2, doubleType(), "y"))`,
+		`GROUP(by(value(0)), list(value(2),"VALUES") )`,
+		`POPKEY(0)`,
+		`FLATTEN()`,
+		`PUSHKEY('result')`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,VALUES",
+		"A,0.00,1.00,2.00",
+		"B,1.00,1.00,1.00",
+		"C,10.00,100.00,200.00,300.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"8,10,2",
+		"-3,5,1.5",
+		"7,6,3",
+		"8,3,3",
+		"-4,-1,2",
+	}
+	// correlation
+	codeLines = []string{
+		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y"), field(2, doubleType(), "w"))`,
+		`GROUP(correlation(value(0), value(1), weight(value(2)), "CORR") )`,
+		`CSV(heading(true), precision(5))`,
+	}
+	resultLines = []string{
+		"CORR",
+		"0.59915",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"8,10,1",
+		"-3,2,2",
+		"7,2,3",
+		"8,4,4",
+		"-4,1,5",
+	}
+	// moment
+	codeLines = []string{
+		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y1"), field(2, doubleType(), "y2"))`,
+		`GROUP(
+			moment(value(0), 2, weight(2.0), "N1"),
+			moment(value(2), 2, weight(1.0), "N2"),
+			moment(value(2), 1, "N3")
+		)`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"N1,N2,N3",
+		"30.16,2.00,0.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"8,2",
+		"2,2",
+		"-9,6",
+		"15,7",
+		"4,1",
+	}
+	// variance
+	codeLines = []string{
+		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "w") )`,
+		`GROUP(
+			variance(value(0), "VARIANCE"),
+			variance(value(0), weight(value(1)), "VARIANCE-WEIGHTED")
+		)`,
+		`CSV(heading(true), precision(4))`,
+	}
+	resultLines = []string{
+		"VARIANCE,VARIANCE-WEIGHTED",
+		"77.5000,111.7941",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
+func TestGroupWhere(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	// time
+	payload = []string{
+		// 50
+		// 55
+		// 60
+		"1700256261,dry,1",
+		"1700256262,dry,2",
+		"1700256262,wet,2",
+		"1700256263,dry,3",
+		"1700256264,dry,4",
+		"1700256264,wet,4",
+		// 65
+		"1700256265,wet,5",
+		"1700256265,dry,5",
+		"1700256266,dry,6",
+		"1700256267,dry,7",
+		"1700256268,dry,8",
+		"1700256269,dry,9",
+		// 70
+		// 75
+		"1700256276,dry,10",
+		// 80
+	}
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(2, doubleType(), "value"))`,
+		`GROUP(`,
+		`  by( roundTime(value(0), "2s")),`,
+		`  avg(value(2), where(value(1) == "dry"), "DRY"),`,
+		`  last(value(2), where(value(1) == "wet"), "WET") )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,DRY,WET",
+		"1700256260,1.00,NULL",
+		"1700256262,2.50,2.00",
+		"1700256264,4.50,5.00",
+		"1700256266,6.50,NULL",
+		"1700256268,8.50,NULL",
+		"1700256276,10.00,NULL",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"))`,
+		`GROUP(`,
+		`  by( roundTime(value(0), "2s")),`,
+		`  avg(value(2), where(value(1) == "dry"), "DRY"),`,
+		`  last(value(2), where(value(1) == "wet"), "WET") )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,DRY,WET",
+		"1700256260,1.00,NULL",
+		"1700256262,2.50,2.00",
+		"1700256264,4.50,5.00",
+		"1700256266,6.50,NULL",
+		"1700256268,8.50,NULL",
+		"1700256276,10.00,NULL",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(2, doubleType(), "value"))`,
+		`GROUP(`,
+		`  by( roundTime(value(0), "2s")),`,
+		`  avg(value(2), where(value(1) == "dry"), "DRY"),`,
+		`  last(value(2), where(value(1) == "wet"), nullValue("1"), "WET") )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,DRY,WET",
+		"1700256260,1.00,1",
+		"1700256262,2.50,2.00",
+		"1700256264,4.50,5.00",
+		"1700256266,6.50,1",
+		"1700256268,8.50,1",
+		"1700256276,10.00,1",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
+func TestGroupByTimeWindow(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	// time
+	payload = []string{
+		// 55
+		// 60
+		"1700256261,1",
+		"1700256262,2",
+		"1700256263,3",
+		"1700256264,4",
+		// 65
+		"1700256266,5",
+		"1700256267,6",
+		"1700256268,7",
+		"1700256269,8",
+		// 70
+		// 75
+		"1700256276,9",
+		// 80
+	}
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(1, doubleType(), "value"))`,
+		`GROUP( by( value(0), timewindow(`,
+		`           time(1700256255 * 1000000000),`,
+		`           time(1700256282 * 1000000000),`,
+		`           period("2s"))),`,
+		`      avg(value(1)),`,
+		`      last(value(1), nullValue(0)),`,
+		`      last(value(1), predict("linearregression"), "PREDICT"),`,
+		`      last(value(1), predict("akimaspline"), nullValue(100), "PREDICT")`,
+		` )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,AVG,LAST,PREDICT,PREDICT",
+		"1700256256,NULL,0.00,NULL,100.00",
+		"1700256258,NULL,0.00,NULL,100.00",
+		"1700256260,1.00,1.00,1.00,1.00",
+		"1700256262,2.50,3.00,3.00,3.00",
+		"1700256264,4.00,4.00,4.00,4.00",
+		"1700256266,5.50,6.00,6.00,6.00",
+		"1700256268,7.50,8.00,8.00,8.00",
+		"1700256270,NULL,0.00,9.50,8.00",
+		"1700256272,NULL,0.00,11.20,8.00",
+		"1700256274,NULL,0.00,12.90,8.00",
+		"1700256276,9.00,9.00,9.00,9.00",
+		"1700256278,NULL,0.00,11.17,9.00",
+		"1700256280,NULL,0.00,12.17,9.00",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(1, doubleType(), "value"))`,
+		`GROUP( by( value(0), timewindow(`,
+		`             time(1700256255 * 1000000000),`,
+		`             time(1700256282 * 1000000000),`,
+		`             period("4s"))),`,
+		`      avg(value(1)),`,
+		`      sum(value(1)),`,
+		`      last(value(1))`,
+		`)`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,AVG,SUM,LAST",
+		"1700256256,NULL,NULL,NULL",
+		"1700256260,2.00,6.00,3.00",  // 1,2,3
+		"1700256264,5.00,15.00,6.00", // 4,5,6
+		"1700256268,7.50,15.00,8.00", // 7,8
+		"1700256272,NULL,NULL,NULL",  //
+		"1700256276,9.00,9.00,9.00",  // 9
+		"1700256280,NULL,NULL,NULL",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// src data is larger time range than timewindow.
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(1, doubleType(), "value"))`,
+		`GROUP( by( value(0), timewindow(`,
+		`             time(1700256262 * 1000000000),`,
+		`             time(1700256276 * 1000000000),`,
+		`             period("4s"))),`,
+		`      avg(value(1)),`,
+		`      sum(value(1)),`,
+		`      last(value(1))`,
+		`)`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,AVG,SUM,LAST",
+		"1700256264,5.00,15.00,6.00",
+		"1700256268,7.50,15.00,8.00",
+		"1700256272,NULL,NULL,NULL",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+}
+
+func TestTimeWindow(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	for _, agg := range []string{
+		"avg", "mean", "median", "median-interpolated",
+		"stddev", "stderr", "entropy",
+		"sum", "first", "last", "min", "max",
+		"rss", "rms",
+		"rss:LinearRegression", "rss:PiecewiseConstant", "rss:PiecewiseLinear",
+	} {
+		codeLines = []string{
+			`CSV(payload(),
+				field(0, datetimeType("s"), "time"),
+				field(1, doubleType(), "value"))`,
+			fmt.Sprintf(`TIMEWINDOW(
+				time(1700256250 * 1000000000),
+				time(1700256285 * 1000000000),
+				period('5s'),
+				nullValue(0),
+				'time', '%s')`, agg),
+			`CSV(timeformat("s"), heading(true), precision(2))`,
+		}
+		payload = []string{
+			// 50
+			// 55
+			// 60
+			"1700256261,1",
+			"1700256262,2",
+			"1700256263,3",
+			"1700256264,4",
+			// 65
+			"1700256265,5",
+			"1700256266,6",
+			"1700256267,7",
+			"1700256268,8",
+			"1700256269,9",
+			// 70
+			// 75
+			"1700256276,10",
+			// 80
+		}
+
+		switch agg {
+		case "stddev":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,1.29",
+				"1700256265,1.58",
+				"1700256270,0.00",
+				"1700256275,0.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "stderr":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,0.65",
+				"1700256265,0.71",
+				"1700256270,0.00",
+				"1700256275,0.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "entropy":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,-10.23",
+				"1700256265,-68.83",
+				"1700256270,0.00",
+				"1700256275,-23.03",
+				"1700256280,0.00",
+				"",
+			}
+		case "avg":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.50",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "mean":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.50",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "median":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.00",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "median-interpolated":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.00",
+				"1700256265,6.50",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "sum":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,10.00",
+				"1700256265,35.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "first", "min":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,1.00",
+				"1700256265,5.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "last", "max":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,4.00",
+				"1700256265,9.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "rss":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		case "rss:LinearRegression":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,7.60",
+				"1700256255,8.46",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,11.06",
+				"1700256275,10.00",
+				"1700256280,12.79",
+				"",
+			}
+		case "rss:PiecewiseConstant":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,5.48",
+				"1700256255,5.48",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,10.00",
+				"1700256275,10.00",
+				"1700256280,10.00",
+				"",
+			}
+		case "rss:PiecewiseLinear":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,5.48",
+				"1700256255,5.48",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,12.98",
+				"1700256275,10.00",
+				"1700256280,10.00",
+				"",
+			}
+		case "rms":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.74",
+				"1700256265,7.14",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+				"",
+			}
+		}
+		runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+	}
+}
+
+func TestTimeWindowMs(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	codeLines = []string{
+		`CSV(payload(),
+			field(0, datetimeType("ms"), "time"),
+			field(1, doubleType(), "value"))`,
+		`TIMEWINDOW(
+			time(1700256250 * 1000000000),
+			time(1700256285 * 1000000000),
+			period('5s'),
+			'time', 'avg')`,
+		`CSV(timeformat("ms"), heading(true))`,
+	}
+	payload = []string{
+		// 50
+		// 55
+		// 60
+		"1700256261001,1",
+		"1700256262010,2",
+		"1700256263100,3",
+		"1700256264010,4",
+		// 65
+		"1700256265002,5",
+		"1700256266020,6",
+		"1700256267200,7",
+		"1700256268020,8",
+		"1700256269002,9",
+		// 70
+		// 75
+		"1700256276300,10",
+		// 80
+	}
+	resultLines = []string{
+		`time,value`,
+		"1700256250000,NULL",
+		"1700256255000,NULL",
+		"1700256260000,2.5",
+		"1700256265000,7",
+		"1700256270000,NULL",
+		"1700256275000,10",
+		"1700256280000,NULL",
+		"",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
+func TestTimeWindowHighDef(t *testing.T) {
+	var codeLines, resultLines []string
+
+	tick := time.Unix(0, 1692329338315327000)
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	codeLines = []string{
+		`FAKE( 
+			oscillator(
+			  freq(15, 1.0), freq(24, 1.5),
+			  range('now', '10s', '1ms')) 
+		  )`,
+		`TIMEWINDOW(
+			time('now'),
+			time('now+10s'),
+			period('1s'),
+			'time', 'first')`,
+		`CSV(timeformat("ns"), heading(true), precision(7))`,
+	}
+	resultLines = []string{
+		`time,value`,
+		"1692329339000000000,0.1046705",
+		"1692329340000000000,0.1046637",
+		"1692329341000000000,0.1046874",
+		"1692329342000000000,0.1046806",
+		"1692329343000000000,0.1046738",
+		"1692329344000000000,0.1046670",
+		"1692329345000000000,0.1046906",
+		"1692329346000000000,0.1046838",
+		"1692329347000000000,0.1046770",
+		"1692329348000000000,0.1046702",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestDropTake(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(50)",
+		"TAKE(3)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines := []string{
+		"51,1.010101",
+		"52,1.030303",
+		"53,1.050505",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(0)",
+		"TAKE(2)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"1,0.000000",
+		"2,0.020202",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(0)",
+		"TAKE(0)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(5, 45)",
+		"TAKE(5, 3)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"51,1.010101",
+		"52,1.030303",
+		"53,1.050505",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100) )",
+		"TAKE(5, -1)",
+		"CSV(precision(6))",
+	}
+	runTest(t, codeLines, []string{}, ExpectErr("f(TAKE) arg(1) limit should be larger than 0"))
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100) )",
+		"DROP(5, -1)",
+		"CSV(precision(6))",
+	}
+	runTest(t, codeLines, []string{}, ExpectErr("f(DROP) arg(1) limit should be larger than 0"))
+}
+
+func TestDict(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		`MAPVALUE(0, dict("key", value(0)) )`,
+		"JSON(precision(0))",
+	}
+	runTest(t, codeLines, nil, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, `["x"]`, gjson.Get(result, "data.columns").String())
+		require.Equal(t, `["double"]`, gjson.Get(result, "data.types").String())
+		require.Equal(t, `[[{"key":0}],[{"key":1}]]`, gjson.Get(result, "data.rows").String())
+	}))
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		`MAPVALUE(0, dict("key", value(0), "value") )`,
+		"JSON(precision(0))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines, ExpectErr("dict() name \"value\" doesn't match with any value"))
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		`MAPVALUE(0, dict(123, value(0)) )`,
+		"JSON(precision(0))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines, ExpectErr("dict() name should be string, got args[0] float64"))
+
+}
+
+func TestSrcError(t *testing.T) {
+	codeLines := []string{
+		"FAKE( arrange(0, 1, 1) )",
+		"INSERT(table('example'))",
+		"JSON()",
+	}
+	resultLines := []string{}
+	runTest(t, codeLines, resultLines, CompileErr("line 2, column 1: \"INSERT()\" is not applicable for MAP (allowed: SINK) [statement: INSERT(table('example'))]"))
+
+	codeLines = []string{
+		"MAPVALUE(0, 1)",
+		"SQL('select * from example')",
+		"JSON()",
+	}
+	runTest(t, codeLines, resultLines, CompileErr("line 1, column 1: \"MAPVALUE()\" is not applicable for SRC (allowed: MAP) [statement: MAPVALUE(0, 1)]"))
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		"SQL('select * from example')",
+	}
+	runTest(t, codeLines, resultLines, ExpectErr("line 2, column 1: f(SQL) sink does not allow fetch verb \"SELECT\" [statement: SQL('select * from example')]"))
+}
+
+func TestValidateScriptStructureRoleMatrix(t *testing.T) {
+	line := func(line int, name string, kind StatementKind) *Statement {
+		return &Statement{
+			Text: name,
+			Name: name,
+			Kind: kind,
+			Span: expression.SourceSpan{Start: expression.SourcePosition{Line: line, Column: 1}},
+		}
+	}
+
+	valid := []*TQLScript{
+		{Statements: []*Statement{line(1, "SQL()", StatementSourceOrMapOrSink), line(2, "CSV()", StatementSourceOrSink)}},
+		{Statements: []*Statement{line(1, "FAKE()", StatementSource), line(2, "SQL()", StatementSourceOrMapOrSink), line(3, "JSON()", StatementSink)}},
+		{Statements: []*Statement{line(1, "FAKE()", StatementSource), line(2, "SQL()", StatementSourceOrMapOrSink)}},
+		{Statements: []*Statement{line(1, "CSV()", StatementSourceOrSink), line(2, "CSV()", StatementSourceOrSink)}},
+		{Statements: []*Statement{line(1, "SCRIPT()", StatementSourceOrMap), line(2, "JSON()", StatementSink)}},
+		{Statements: []*Statement{line(1, "HTTP()", StatementSourceOrMap), line(2, "JSON()", StatementSink)}},
+	}
+	for _, script := range valid {
+		require.NoError(t, ValidateScriptStructure(script))
+	}
+
+	tests := []struct {
+		name   string
+		script *TQLScript
+		err    string
+	}{
+		{
+			name:   "source only function at sink",
+			script: &TQLScript{Statements: []*Statement{line(1, "FAKE()", StatementSource), line(2, "QUERY()", StatementSource)}},
+			err:    `line 2, column 1: "QUERY()" is not applicable for SINK (allowed: SRC) [statement: QUERY()]`,
+		},
+		{
+			name:   "sink only function at map",
+			script: &TQLScript{Statements: []*Statement{line(1, "FAKE()", StatementSource), line(2, "INSERT()", StatementSink), line(3, "JSON()", StatementSink)}},
+			err:    `line 2, column 1: "INSERT()" is not applicable for MAP (allowed: SINK) [statement: INSERT()]`,
+		},
+		{
+			name:   "map function at source",
+			script: &TQLScript{Statements: []*Statement{line(1, "customMap()", StatementMap), line(2, "JSON()", StatementSink)}},
+			err:    `line 1, column 1: "customMap()" is not applicable for SRC (allowed: MAP) [statement: customMap()]`,
+		},
+		{
+			name:   "source or map function at sink",
+			script: &TQLScript{Statements: []*Statement{line(1, "FAKE()", StatementSource), line(2, "SCRIPT()", StatementSourceOrMap)}},
+			err:    `line 2, column 1: "SCRIPT()" is not applicable for SINK (allowed: SRC,MAP) [statement: SCRIPT()]`,
+		},
+		{
+			name:   "http source or map function at sink",
+			script: &TQLScript{Statements: []*Statement{line(1, "FAKE()", StatementSource), line(2, "HTTP()", StatementSourceOrMap)}},
+			err:    `line 2, column 1: "HTTP()" is not applicable for SINK (allowed: SRC,MAP) [statement: HTTP()]`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateScriptStructure(tc.script)
+			require.EqualError(t, err, tc.err)
+		})
+	}
+}
+
+func TestExecutionSinkPrepareErrorIsScriptError(t *testing.T) {
+	code := strings.Join([]string{
+		"STRING(file('/lines.txt'), separator('\\n'))",
+		"MARKDOWN(true)",
+	}, "\n")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	task := NewTaskContext(ctx)
+	err := task.CompileString(code)
+	require.NoError(t, err)
+
+	result := task.Execute()
+	require.Error(t, result.Err)
+	require.Equal(t, "line 2, column 1: encoder 'markdown' invalid option true (bool) [statement: MARKDOWN(true)]", result.Err.Error())
+
+	var scriptErr *ScriptError
+	require.True(t, errors.As(result.Err, &scriptErr))
+	require.Equal(t, "sink_compile_error", scriptErr.Kind)
+	require.Equal(t, 2, scriptErr.Span.Start.Line)
+}
+
+func TestQuerySql(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`QUERY('value', between('last-10s', 'last'), from("table", "tag", "time"), dump(true))`,
+		`CSV()`,
+	}
+	resultLines = []string{normalize(`
+		SELECT time, value 
+		FROM TABLE WHERE name = 'tag' 
+		AND time BETWEEN 
+				(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
+			AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
+		LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	// basic
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('val', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), between('last -1.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), between('last-12.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('val1', 'val2' , from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('(val + val2/2)', from('table', 'tag'), between('last-2.34s', 'last'), limit(10, 2000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('val', from('table', 'tag'), between('now -2.34s', 'now'), limit(5, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), between(123456789000-2.34*1000000000, 123456789000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('AVG(val1+val2)', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	// between()
+	codeLines = []string{
+		`QUERY( 'value', from('example', 'barn'), between('last -1h', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY( 'value', from('example', 'barn'), between('last -1h23m45s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY( 'STDDEV(value)', from('example', 'barn'), between('last -1h23m45s', 'last', '10m'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY( 'STDDEV(value)', from('example', 'barn'), between(1677646906*1000000000, 'last', '1s'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000000)*1000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	// GroupBy time
+	codeLines = []string{
+		`QUERY('STDDEV(val)', from('table', 'tag'), between(123456789000 - 3.45*1000000000, 123456789000, '1ms'), limit(1, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('STDDEV(val)', 'zval', from('table', 'tag'), between('last-2.34s', 'last', '0.5ms'), limit(2, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('STDDEV(val)', from('table', 'tag'), between('now-2.34s', 'now', '0.5ms'), limit(3, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`), ""}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestSqlSelect(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`SQL_SELECT('value', between('last-10s', 'last'), from("table", "tag", "time"), dump(true))`,
+		`CSV()`,
+	}
+	resultLines = []string{normalize(`
+		SELECT value 
+		FROM TABLE WHERE name = 'tag' 
+		AND time BETWEEN 
+				(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
+			AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
+		LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	// basic
+	codeLines = []string{
+		`SQL_SELECT('time', 'value', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('val', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('value', from('table', 'tag'), between('last -1.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('time', 'value', from('table', 'tag'), between('last-12.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('val1', 'val2' , from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('(val * 0.01) altVal', 'val2', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('(val + val2/2)', from('table', 'tag'), between('last-2.34s', 'last'), limit(10, 2000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('time', 'val', from('table', 'tag'), between('now -2.34s', 'now'), limit(5, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('value', from('table', 'tag'), between(123456789000-2.34*1000000000, 123456789000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('AVG(val1+val2)', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	// between()
+	codeLines = []string{
+		`SQL_SELECT( 'value', from('example', 'barn'), between('last -1h', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT( 'value', from('example', 'barn'), between('last -1h23m45s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT( 'time', 'STDDEV(value)', from('example', 'barn'), between('last -1h23m45s', 'last', '10m'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT( 'STDDEV(value)', from('example', 'barn'), between(1677646906*1000000000, 'last', '1s'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
+	runTest(t, codeLines, resultLines)
+
+	// GroupBy time
+	codeLines = []string{
+		`SQL_SELECT('time', 'STDDEV(val)', from('table', 'tag'), between(123456789000 - 3.45*1000000000, 123456789000, '1ms'), limit(1, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('time', 'STDDEV(val)', 'zval', from('table', 'tag'), between('last-2.34s', 'last', '0.5ms'), limit(2, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`), ""}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('STDDEV(val)', from('table', 'tag'), between('now-2.34s', 'now', '0.5ms'), limit(3, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`), ""}
+	runTest(t, codeLines, resultLines)
+}
+
+func normalize(ret string) string {
+	csvQuote := true
+	lines := []string{}
+	for _, str := range strings.Split(ret, "\n") {
+		l := strings.TrimSpace(str)
+		if l == "" {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	text := strings.Join(lines, " ")
+	if csvQuote {
+		return `"` + text + `"`
 	} else {
-		defer bridge.Unregister("sqlite")
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
+		return text
 	}
 }
 
-func TestGeoJSON(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-geojson-point",
-			Script: `
-				SCRIPT("js", {
-					var lat = 37.497850;
-					var lon =  127.027756;
-					var name = "Gangnam-cross";
-					$.yield({
-						type: "Feature",
-						geometry: {
-							type: "Point",
-							coordinates: [lon, lat]
-						}
-					});
-				})
-				GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
-				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
-				require.Equal(t, int64(0), gjson.Get(result, "style.grayscale").Int(), result)
-				require.Equal(t, `["/web/geomap/leaflet.js"]`, gjson.Get(result, "jsAssets").String(), result)
-				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
-				id := gjson.Get(result, "geomapID").String()
-				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
-				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
-				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()
-				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
-			},
-			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
-				b, _ := os.ReadFile("./test/js-geojson-point.js")
-				expect := strings.ReplaceAll(string(b), "\r\n", "\n")
-				require.Equal(t, expect, mock.buff.String())
-			},
-		},
-		{
-			Name: "js-parse-geojson-point",
-			Script: `
-				SCRIPT("js", {
-					var lat = 37.497850;
-					var lon =  127.027756;
-					var name = "Gangnam-cross";
-					m = require("mathx/spatial");
-					var obj = m.parseGeoJSON({
-						type: "Feature",
-						geometry: {
-							type: "Point",
-							coordinates: [lon, lat]
-						}
-					});
-					if( obj instanceof Error ) {
-						$.yield(obj.message);
-					} else {
-						$.yield(obj);
-					}
-				})
-				GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
-				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
-				require.Equal(t, int64(0), gjson.Get(result, "style.grayscale").Int(), result)
-				require.Equal(t, `["/web/geomap/leaflet.js"]`, gjson.Get(result, "jsAssets").String(), result)
-				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
-				id := gjson.Get(result, "geomapID").String()
-				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
-				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
-				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()
-				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
-			},
-			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
-				b, _ := os.ReadFile("./test/js-geojson-point.js")
-				expect := strings.ReplaceAll(string(b), "\r\n", "\n")
-				require.Equal(t, expect, mock.buff.String())
-			},
-		},
-		{
-			Name: "js-geojson-polygon",
-			Script: `
-				SCRIPT("js", {
-					m = require("mathx/spatial");
-					obj = m.parseGeoJSON({
-						type:"Feature",
-						geometry: {
-							type: "MultiPolygon",
-							coordinates: [
-								[
-									[ [ 2.291863239086439, 48.8577137262115 ], [ 2.293452085617105, 48.856693553273885 ], [ 2.2968403487010107, 48.85892279314069 ], [ 2.2951175030651143, 48.86006886087142 ], [ 2.291863239086439, 48.8577137262115 ] ]
-								],
-								[
-									[ [ 2.288226120523035, 48.86156752523257 ], [ 2.2899681088877344, 48.86042149181674 ], [ 2.290810388976098, 48.86063558796482 ], [ 2.2909826735397587, 48.8611015587675 ], [ 2.28947039792655, 48.862234983151495 ], [ 2.288226120523035, 48.86156752523257 ] ]
-								],
-								[
-									[ [ 2.2912927602678224, 48.85709062155263 ], [ 2.2905402133688426, 48.85661663833349 ], [ 2.291917551492446, 48.855746990243716 ], [ 2.2926328654095016, 48.85624492205244 ], [ 2.2912927602678224, 48.85709062155263 ] ]
-								]
-							]
-						}
-					})
-					$.yield(obj)
-				})
-				GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
-				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
-				require.Equal(t, int64(0), gjson.Get(result, "style.grayscale").Int(), result)
-				require.Equal(t, `["/web/geomap/leaflet.js"]`, gjson.Get(result, "jsAssets").String(), result)
-				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
-				id := gjson.Get(result, "geomapID").String()
-				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
-				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
-				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()
-				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
-			},
-			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
-				b, _ := os.ReadFile("./test/js-geojson-polygon.js")
-				expect := strings.ReplaceAll(string(b), "\r\n", "\n")
-				require.Equal(t, expect, mock.buff.String())
-			},
-		},
+func TestRecordFields(t *testing.T) {
+	require.Equal(t, "BYTES", NewBytesRecord([]byte{0x1, 0x2}).String())
+
+	r := NewRecord("key", nil)
+	fields := r.Fields()
+	require.Equal(t, "key", fields[0])
+
+	r = NewRecord("key", "value")
+	require.Equal(t, []any{"key", "value"}, r.Fields())
+	require.Equal(t, "K:string(key) V:string", r.String())
+
+	r = NewRecord("key", []any{"v1", "v2"})
+	require.Equal(t, []any{"key", "v1", "v2"}, r.Fields())
+	require.Equal(t, "K:string(key) V:string, string", r.String())
+
+	r = NewRecord("key", [][]any{{"v1", "v2"}, {"w1", "w2"}})
+	require.Equal(t, []any{"key", "v1", "v2", "w1", "w2"}, r.Fields())
+	require.Equal(t, "K:string(key) V:(len=2) [][]any{[0]{string, string},[1]{string, string}}", r.String())
+}
+
+func TestRecordKindsAndArrayAccessors(t *testing.T) {
+	t.Run("array record", func(t *testing.T) {
+		items := []*Record{NewRecord("k", 1), NewRecord("k2", 2)}
+		rec := ArrayRecord(items)
+
+		require.True(t, rec.IsArray())
+		require.False(t, rec.IsTuple())
+		require.Equal(t, items, rec.Array())
+		require.Equal(t, "ARRAY", rec.String())
+	})
+
+	t.Run("bytes and image records", func(t *testing.T) {
+		bytesRec := NewBytesRecord([]byte("abc"))
+		require.True(t, bytesRec.IsBytes())
+		require.False(t, bytesRec.IsTuple())
+		require.Equal(t, "BYTES", bytesRec.String())
+		require.Nil(t, bytesRec.Array())
+
+		imageRec := NewImageRecord([]byte("img"), "image/png")
+		require.True(t, imageRec.IsImage())
+		require.False(t, imageRec.IsTuple())
+		require.Equal(t, "IMAGE", imageRec.String())
+		require.Equal(t, "image/png", imageRec.contentType)
+	})
+
+	t.Run("special records", func(t *testing.T) {
+		errRec := ErrorRecord(errors.New("boom"))
+		require.True(t, errRec.IsError())
+		require.EqualError(t, errRec.Error(), "boom")
+		require.Equal(t, "ERROR boom", errRec.String())
+
+		normal := NewRecord("key", 1)
+		require.Nil(t, normal.Error())
+		require.True(t, normal.IsTuple())
+		require.Equal(t, "K:string(key) V:int", normal.String())
+	})
+
+	t.Run("nil record string", func(t *testing.T) {
+		var rec *Record
+		require.Equal(t, "<nil>", rec.String())
+	})
+}
+
+func TestRecordVariable(t *testing.T) {
+	rec := NewRecord("key", 1)
+	rec.SetVariable("answer", 42)
+
+	v, err := rec.GetVariable("$answer")
+	require.NoError(t, err)
+	require.Equal(t, 42, v)
+
+	v, err = rec.GetVariable("$missing")
+	require.NoError(t, err)
+	require.Nil(t, v)
+
+	v, err = rec.GetVariable("answer")
+	require.EqualError(t, err, "undefined variable 'answer'")
+	require.Nil(t, v)
+
+	v, err = NewRecord("other", 2).GetVariable("$answer")
+	require.EqualError(t, err, "undefined variable '$answer'")
+	require.Nil(t, v)
+
+}
+
+func TestRecordFlattenAndStringValueTypes(t *testing.T) {
+	t.Run("flatten variants", func(t *testing.T) {
+		require.Equal(t, []any{"k", 1, "two"}, NewRecord("k", []any{1, "two"}).Flatten())
+		require.Equal(t, []any{"k", "value"}, NewRecord("k", "value").Flatten())
+		require.Equal(t, []any{"k"}, NewRecord("k", nil).Flatten())
+	})
+
+	t.Run("string value types", func(t *testing.T) {
+		rec := NewRecord("k", []any{1, "two", []any{true, 3.14, "x", 7}, 9})
+		require.Equal(t, "int, string, []any{bool,float64,string,int,... (len=4)}, int, ... (len=4)", rec.StringValueTypes())
+
+		matrix := NewRecord("k", [][]any{{1, "a"}, {true}, {3.14}, {"tail", 2}})
+		require.Equal(t, "(len=4) [][]any{[0]{int, string},[1]{bool},[2]{float64},[3]{string, int}, ...}", matrix.StringValueTypes())
+	})
+}
+
+func TestRecordEqualKeyAndValue(t *testing.T) {
+	base := time.Date(2024, 1, 2, 3, 4, 5, 6, time.UTC)
+	require.True(t, NewRecord(base, nil).EqualKey(NewRecord(base, nil)))
+	require.False(t, NewRecord(base, nil).EqualKey(NewRecord(base.Add(time.Nanosecond), nil)))
+
+	require.True(t, NewRecord([]int{1, 2}, nil).EqualKey(NewRecord([]int{1, 2}, nil)))
+	require.False(t, NewRecord([]int{1, 2}, nil).EqualKey(NewRecord([]int{1, 3}, nil)))
+	require.False(t, NewRecord("x", nil).EqualKey(nil))
+
+	require.True(t, NewRecord("k", []any{1, "a"}).EqualValue(NewRecord("k", []any{1, "a"})))
+	require.False(t, NewRecord("k", []any{1, "a"}).EqualValue(NewRecord("k", []any{2, "a"})))
+	require.False(t, NewRecord("k", 1).EqualValue(nil))
+}
+
+func TestLoader(t *testing.T) {
+	fileDirs := []string{"/=./test"}
+	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
+	ssfs.SetDefault(serverFs)
+
+	loader := NewLoader()
+	var task *Task
+	var sc *Script
+	var expect string
+	var err error
+
+	_, err = loader.Load(".")
+	require.NotNil(t, err)
+	require.Equal(t, "not found '.'", err.Error())
+
+	_, err = loader.Load("../task_test.go")
+	require.NotNil(t, err)
+	require.Equal(t, "not found '../task_test.go'", err.Error())
+
+	tick := time.Unix(0, 1692329338315327000) // 2023-08-18 03:28:58.315
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	tests := []struct {
+		name string
+	}{
+		{"TestLoader"},
+		{"TestLoader_Pi"},
+		{"TestLoader_qq"},
+		{"TestLoader_groupbykey"},
+		{"TestLoader_iris"},
+		{"TestLoader_iris_setosa"},
+		{"TestLoader_group"},
+		{"TestLoader_simplex"},
+		{"transpose_all"},
+		{"transpose_all_hdr"},
+		{"transpose_hdr"},
+		{"transpose_nohdr"},
 	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
+
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=./test"})
+	ssfs.SetDefault(f)
+
+	for _, tt := range tests {
+		sc, err = loader.Load(fmt.Sprintf("%s.tql", tt.name))
+		require.Nil(t, err)
+		require.NotNil(t, sc)
+		resultFile := filepath.Join(".", "test", fmt.Sprintf("%s.csv", tt.name))
+		if b, err := os.ReadFile(resultFile); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+		} else {
+			expect = string(b)
+			// for windows
+			expect = strings.ReplaceAll(expect, "\r", "") + "\n"
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+
+		w := &bytes.Buffer{}
+
+		task = NewTaskContext(ctx)
+		task.SetOutputWriter(w)
+		if err := task.CompileScript(sc); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+		}
+		result := task.Execute()
+		require.NotNil(t, result)
+
+		if w.String() != expect {
+			t.Log("Test Case:", tt.name)
+			t.Logf("EXPECT:\n%s", expect)
+			t.Logf("ACTUAL:\n%s", w.String())
+			t.Fail()
+		}
 	}
 }
 
-func TestThrottle(t *testing.T) {
-	t.Skip("throttle test is not stable")
-	tests := []TqlTestCase{
-		{
-			Name: "throttle-10tps",
-			Script: `
-				FAKE( linspace(1, 10, 10))
-				THROTTLE( 10 )
-				SCRIPT("js", {
-					// Use javascript to add current time for validation
-					$.yield((new Date).getTime() * 1000000, $.values[0])
-				})
-				MAPVALUE(0, time(value(0)))
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, "success", gjson.Get(result, "reason").String())
-				require.Equal(t, `10`, gjson.Get(result, "data.rows.#").String())
-				var lastTime time.Time
-				for i := 0; i < 10; i++ {
-					ts := time.Unix(0, gjson.Get(result, fmt.Sprintf("data.rows.%d", i)).Get("0").Int())
-					if i == 0 {
-						lastTime = ts
-						continue
-					}
-					delta := ts.Sub(lastTime)
-					lastTime = ts
-					// theoretically, 10tps should be 100ms
-					// but it may take little bit less than 100ms
-					require.True(t, delta > 90*time.Millisecond, "delta[%d]: %v", i, delta)
-				}
-			},
-		},
-	}
+type ReadTestCase struct {
+	code   string
+	expect []Line
+}
 
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
+func (tc ReadTestCase) run(t *testing.T) {
+	t.Helper()
+
+	buf := []string{}
+	src := strings.Split(tc.code, "\n")
+	for _, l := range src {
+		l = strings.TrimPrefix(strings.TrimSpace(l), "|")
+		buf = append(buf, l)
 	}
+	code := strings.Join(buf, "\n")
+	reader := bytes.NewBufferString(code)
+	lines, err := scanLines(reader, functions)
+	if err != nil {
+		t.Fail()
+		return
+	}
+	if len(tc.expect) != len(lines) {
+		t.Logf("Expect %d lines, got %d", len(tc.expect), len(lines))
+		t.Log("Expect:")
+		for i, l := range tc.expect {
+			t.Logf("  expect[%d] %s", i, l.text)
+		}
+		t.Log("Actual:")
+		for i, l := range lines {
+			t.Logf("  actual[%d] %s", i, l.text)
+		}
+		t.Fail()
+		return
+	}
+	for i := 0; i < len(tc.expect); i++ {
+		e := tc.expect[i]
+		l := lines[i]
+		require.Equal(t, e.text, l.text)
+		if e.text != l.text || e.isComment != l.isComment || e.isPragma != l.isPragma || e.line != l.line {
+			t.Logf("Expect[%d]:%d %v", i, e.line, e)
+			t.Logf("Actual[%d]:%d %v", i, l.line, *l)
+			t.Fail()
+		}
+	}
+	if len(lines) > len(tc.expect) {
+		for i := len(tc.expect); i < len(lines); i++ {
+			l := lines[i]
+			t.Logf("Actual[%d]:%d %v", i, l.line, *l)
+		}
+		t.Fail()
+	}
+}
+
+func TestReadLine(t *testing.T) {
+	ReadTestCase{
+		`FAKE('안녕') // comment
+			|CSV()
+			`,
+		[]Line{
+			{text: "FAKE('안녕')", line: 1},
+			{text: "CSV()", line: 2},
+		},
+	}.run(t)
+	ReadTestCase{
+		`//comment1
+			|FAKE('hello') // comment2
+			| MAPVALUE(2,
+			|  value(1) * 10, // inline comment
+			|  true
+			| ) // end of MAPVALUE
+			|// comment3 // and
+			|CSV()
+			`,
+		[]Line{
+			{text: "comment1", isComment: true, line: 1},
+			{text: "\nFAKE('hello')", line: 2},
+			{text: " MAPVALUE(2,\n  value(1) * 10,\n  true\n )", line: 3},
+			{text: " comment3 // and", isComment: true, line: 7},
+			{text: "\nCSV()", line: 8},
+		},
+	}.run(t)
+	ReadTestCase{
+		`FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))
+			|MAPVALUE(2,
+			|	sin(pow(value(0), 2) + pow(value(1), 2))
+			|	/
+			|	(pow(value(0), 2) + pow(value(1), 2))
+			|)
+			|CHART_LINE3D()
+			`,
+		[]Line{
+			{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))", line: 1},
+			{text: "MAPVALUE(2,\n	sin(pow(value(0), 2) + pow(value(1), 2))\n	/\n	(pow(value(0), 2) + pow(value(1), 2))\n)", line: 2},
+			{text: "CHART_LINE3D()", line: 7},
+		},
+	}.run(t)
+	ReadTestCase{
+		`FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100))) // comment
+			|MAPVALUE()
+			`,
+		[]Line{
+			{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))", line: 1},
+			{text: "MAPVALUE()", line: 2},
+		},
+	}.run(t)
+	ReadTestCase{
+		`FAKE(meshgrid(linspace(-4,4,100 // comment
+			|),
+			|linspace(-4,4, 100)))
+			|MAPVALUE()
+			`,
+		[]Line{
+			{text: "FAKE(meshgrid(linspace(-4,4,100 \n),\nlinspace(-4,4, 100)))", line: 1},
+			{text: "MAPVALUE()", line: 4},
+		},
+	}.run(t)
+	ReadTestCase{
+		`FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))
+			|//+ stateful
+			|WHEN( cond, doHttp())
+			|MAPVALUE()
+			`,
+		[]Line{
+			{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))", line: 1},
+			{text: " stateful", isComment: true, isPragma: true, line: 2},
+			{text: "WHEN( cond, doHttp())", line: 3},
+			{text: "MAPVALUE()", line: 4},
+		},
+	}.run(t)
+	ReadTestCase{
+		`FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))
+			|#pragma stateful
+			|WHEN( cond, doHttp())
+			|MAPVALUE()
+			`,
+		[]Line{
+			{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))", line: 1},
+			{text: " stateful", isComment: true, isPragma: true, line: 2},
+			{text: "WHEN( cond, doHttp())", line: 3},
+			{text: "MAPVALUE()", line: 4},
+		},
+	}.run(t)
+	ReadTestCase{
+		`SCRIPT({
+			|
+			|  // comment-first
+			|  line2;
+			|  // comment-second
+			|  line4;
+			|
+			|}) // comment
+			|CSV()
+			`,
+		[]Line{
+			{text: "SCRIPT({\n\n  // comment-first\n  line2;\n  // comment-second\n  line4;\n\n})", line: 1},
+			{text: "CSV()", line: 9},
+		},
+	}.run(t)
+	ReadTestCase{
+		`RESTCLIENT({
+			|  POST http://127.0.0.1:5654/db/query
+			|  Content-Type: application/json
+			|
+			|  {
+			|    "q": "select all"
+			|  }
+			|}) // comment
+			|TEXT()
+			`,
+		[]Line{
+			{text: `RESTCLIENT({
+  POST http://127.0.0.1:5654/db/query
+  Content-Type: application/json
+
+  {
+    "q": "select all"
+  }
+})`, line: 1},
+			{text: "TEXT()", line: 9},
+		},
+	}.run(t)
+	ReadTestCase{
+		`SCRIPT({<<JS
+			|  // this is a function return '{'
+			|  function a () { return '{' };
+			|JS})
+			|CSV()
+			`,
+		[]Line{
+			{text: "SCRIPT({<<JS\n  // this is a function return '{'\n  function a () { return '{' };\nJS})", line: 1},
+			{text: "CSV()", line: 5},
+		},
+	}.run(t)
+	ReadTestCase{
+		"MARKDOWN({<<MD\n```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n```\nMD})\nCSV()\n",
+		[]Line{
+			{text: "MARKDOWN({<<MD\n```mermaid\nerDiagram\nCUSTOMER ||--o{ ORDER :places\n```\nMD})", line: 1},
+			{text: "CSV()", line: 7},
+		},
+	}.run(t)
+	ReadTestCase{
+		"MARKDOWN(`<<MD\n```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER :places\n    NOTE : `inline` text\n```\nMD`)\nCSV()\n",
+		[]Line{
+			{text: "MARKDOWN(`<<MD\n```mermaid\nerDiagram\nCUSTOMER ||--o{ ORDER :places\nNOTE : `inline` text\n```\nMD`)", line: 1},
+			{text: "CSV()", line: 8},
+		},
+	}.run(t)
+	ReadTestCase{
+		"MARKDOWN({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))\nCSV()\n",
+		[]Line{
+			{text: "MARKDOWN({<<EOF\n{{ if .IsFirst }}\n```d2\n{{ end }}\nEOF}, html(true))", line: 1},
+			{text: "CSV()", line: 6},
+		},
+	}.run(t)
+	ReadTestCase{
+		"MARKDOWN({<<EOF\nsome text\n# this is not a comment but a title\n// this is not a comment either\nEOF})\nCSV()\n",
+		[]Line{
+			{text: "MARKDOWN({<<EOF\nsome text\n# this is not a comment but a title\n// this is not a comment either\nEOF})", line: 1},
+			{text: "CSV()", line: 6},
+		},
+	}.run(t)
 }
 
 func TestPragma(t *testing.T) {
-	tests := []TqlTestCase{
+	tests := []struct {
+		Name       string
+		Script     string
+		ExpectFunc func(t *testing.T, task *Task)
+	}{
 		{
-			Name: "pragma-log-level",
+			Name: "pragma-log-level-bang",
 			Script: `
 				#pragma log-level=warn
 				FAKE( linspace(1, 5, 5))
-				SCRIPT("js", { console.log("-", $.values[0]); $.yield($.values[0]) })
-				JSON()
-				`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool())
-				require.Equal(t, "success", gjson.Get(result, "reason").String())
-				require.Equal(t, `5`, gjson.Get(result, "data.rows.#").String())
+				JSON()`,
+			ExpectFunc: func(t *testing.T, task *Task) {
+				require.Equal(t, ParseLogLevel("warn"), task.logLevel)
+			},
+		},
+		{
+			Name: "pragma-log-level",
+			Script: `
+				//+ log-level=trace sql-thread-lock
+				SQL( 'select count(*) from example' )
+				JSON()`,
+			ExpectFunc: func(t *testing.T, task *Task) {
+				require.Equal(t, ParseLogLevel("trace"), task.logLevel)
+			},
+		},
+		{
+			Name: "pragma-sql-thread-lock-bang",
+			Script: `
+				#pragma sql-thread-lock=0
+				SQL( 'select count(*) from example' )
+				JSON()`,
+			ExpectFunc: func(t *testing.T, task *Task) {
+				require.Equal(t, ParseLogLevel("error"), task.logLevel)
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
+			task := NewTaskContext(t.Context())
+			task.SetLogWriter(os.Stdout)
+			if err := task.CompileString(tc.Script); err != nil {
+				t.Log("ERROR:", tc.Name, err.Error())
+				t.Fail()
+				return
+			}
+			tc.ExpectFunc(t, task)
 		})
 	}
 }
 
-func TestRestClient(t *testing.T) {
-	tests := []TqlTestCase{
+func TestParseScript(t *testing.T) {
+	script, err := ParseScript("FAKE(json({\n  [1]\n}))\nMAPVALUE(0, value(0)*10)\nCSV()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(script.Statements) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(script.Statements))
+	}
+	if script.Statements[0].Name != "FAKE()" || script.Statements[0].Kind != StatementSource {
+		t.Fatalf("unexpected first statement: name=%s kind=%v", script.Statements[0].Name, script.Statements[0].Kind)
+	}
+	if script.Statements[1].Name != "MAPVALUE()" || script.Statements[1].Kind != StatementMap {
+		t.Fatalf("unexpected second statement: name=%s kind=%v", script.Statements[1].Name, script.Statements[1].Kind)
+	}
+	if script.Statements[2].Name != "CSV()" || script.Statements[2].Kind != StatementSourceOrSink {
+		t.Fatalf("unexpected third statement: name=%s kind=%v", script.Statements[2].Name, script.Statements[2].Kind)
+	}
+}
+
+func TestValidateScriptStructureValid(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))\nMAPVALUE(0, value(0))\nCSV()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if err := ValidateScriptStructure(script); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestValidateScriptStructureInvalidSource(t *testing.T) {
+	script, err := ParseScript("MAPVALUE(0, 1)\nCSV()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	err = ValidateScriptStructure(script)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var scriptErr *ScriptError
+	if !errors.As(err, &scriptErr) {
+		t.Fatalf("expected ScriptError, got %T", err)
+	}
+	if scriptErr.Kind != "invalid_source" {
+		t.Fatalf("unexpected script error kind: %s", scriptErr.Kind)
+	}
+}
+
+func TestValidateScriptStructureInvalidMap(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))\nINSERT(table('example'))\nCSV()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	err = ValidateScriptStructure(script)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var scriptErr *ScriptError
+	if !errors.As(err, &scriptErr) {
+		t.Fatalf("expected ScriptError, got %T", err)
+	}
+	if scriptErr.Kind != "invalid_map" {
+		t.Fatalf("unexpected script error kind: %s", scriptErr.Kind)
+	}
+}
+
+func TestValidateScriptStructureSqlAsMapAndSink(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))\nSQL('select 1')\nSQL('insert into example values(1)')", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if err := ValidateScriptStructure(script); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestParseScriptKeepsCommentAndPragmaStatements(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))\n//+ stateful\n// comment\nCSV()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(script.Statements) != 4 {
+		t.Fatalf("expected 4 statements, got %d", len(script.Statements))
+	}
+	if !script.Statements[1].IsPragma || script.Statements[1].Kind != StatementPragma {
+		t.Fatalf("unexpected pragma statement: %+v", script.Statements[1])
+	}
+	if !script.Statements[2].IsComment || script.Statements[2].Kind != StatementComment {
+		t.Fatalf("unexpected comment statement: %+v", script.Statements[2])
+	}
+}
+
+func TestParseScriptMultilineStatement(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))\nMAPVALUE(2,\n value(1) * 10,\n true\n)\nCSV()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(script.Statements) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(script.Statements))
+	}
+	if script.Statements[1].Name != "MAPVALUE()" {
+		t.Fatalf("unexpected multiline statement name: %s", script.Statements[1].Name)
+	}
+	if script.Statements[1].Line != 2 {
+		t.Fatalf("unexpected multiline statement start line: %d", script.Statements[1].Line)
+	}
+}
+
+func TestValidateScriptStructureNoSource(t *testing.T) {
+	script := &TQLScript{}
+	err := ValidateScriptStructure(script)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var scriptErr *ScriptError
+	if !errors.As(err, &scriptErr) {
+		t.Fatalf("expected ScriptError, got %T", err)
+	}
+	if scriptErr.Kind != "no_source" {
+		t.Fatalf("unexpected script error kind: %s", scriptErr.Kind)
+	}
+}
+
+func TestValidateScriptStructureNoSink(t *testing.T) {
+	script, err := ParseScript("FAKE(json({[1]}))", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	err = ValidateScriptStructure(script)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var scriptErr *ScriptError
+	if !errors.As(err, &scriptErr) {
+		t.Fatalf("expected ScriptError, got %T", err)
+	}
+	if scriptErr.Kind != "no_sink" {
+		t.Fatalf("unexpected script error kind: %s", scriptErr.Kind)
+	}
+}
+
+func TestValidateScriptStructureSourceOrSinkAllowedAsSource(t *testing.T) {
+	script, err := ParseScript("CSV(file(\"/tmp/x.csv\"))\nTEXT()", nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if err := ValidateScriptStructure(script); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestParseScriptStatementSpanRawMatch(t *testing.T) {
+	source := "FAKE(json({[1]})) // trailing\nMAPVALUE(2,\n value(1) * 10,\n true\n)\nCSV()"
+	script, err := ParseScript(source, nil)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(script.Statements) != 3 {
+		t.Fatalf("expected 3 statements, got %d", len(script.Statements))
+	}
+	runes := []rune(source)
+
+	first := script.Statements[0]
+	firstRaw := first.Span.RawFrom(runes)
+	if firstRaw != "FAKE(json({[1]}))" {
+		t.Fatalf("unexpected first raw span: %q", firstRaw)
+	}
+
+	second := script.Statements[1]
+	secondRaw := second.Span.RawFrom(runes)
+	if secondRaw != second.Text {
+		t.Fatalf("unexpected second raw span: %q", secondRaw)
+	}
+}
+
+func TestParseScriptErrorUsesAbsoluteLineNumber(t *testing.T) {
+	_, err := ParseScript("FAKE( linspace(0, 360, 50))\nMAPVALUE(1, sin((value(0)/180)*PI))\nMAPVALUE(2, cos((value(0)/180)*PI))3\nCHART()", nil)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	var parseErr *expression.ParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("expected ParseError, got %T", err)
+	}
+	if parseErr.Span.Start.Line != 3 {
+		t.Fatalf("expected absolute line 3, got %d", parseErr.Span.Start.Line)
+	}
+	if parseErr.Near != "3" {
+		t.Fatalf("expected near token 3, got %q", parseErr.Near)
+	}
+}
+
+func TestParseErrorFormatsLocation(t *testing.T) {
+	err := &expression.ParseError{
+		Message: "unexpected token '3'",
+		Near:    "3",
+		Span: expression.SourceSpan{
+			Start: expression.SourcePosition{Line: 3, Column: 36},
+		},
+	}
+
+	formatted := err.Error()
+	if formatted != "unexpected token '3' (line=3, column=36, near=\"3\")" {
+		t.Fatalf("unexpected formatted error: %q", formatted)
+	}
+}
+
+func TestCompileLogsAbsoluteParseErrorLocations(t *testing.T) {
+	tests := []struct {
+		name       string
+		code       string
+		expectLine int
+		expectNear string
+	}{
 		{
-			Name: "rest-client-query-csv",
-			Script: fmt.Sprintf(`
-				HTTP({
-					GET %s/db/query
-					?q=select * from tag_simple limit 2
-					&format=csv
-				})
-				TEXT()
-				`, testHttpAddress),
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, strings.HasPrefix(result, "HTTP/1.1 200 OK"))
-				require.Contains(t, result, "Content-Type: text/csv")
-			},
+			name:       "line 2 literal",
+			code:       "FAKE( linspace(0, 360, 50))\nMAPVALUE(1, sin((value(0)/180)*PI))2\nCHART()",
+			expectLine: 2,
+			expectNear: "2",
+		},
+		{
+			name:       "line 3 literal",
+			code:       "FAKE( linspace(0, 360, 50))\nMAPVALUE(1, sin((value(0)/180)*PI))\nMAPVALUE(2, cos((value(0)/180)*PI))3\nCHART()",
+			expectLine: 3,
+			expectNear: "3",
 		},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+
+			logBuf := &bytes.Buffer{}
+			task := NewTaskContext(ctx)
+			task.SetLogWriter(logBuf)
+			task.SetConsoleLogLevel(ERROR)
+
+			err := task.CompileString(tc.code)
+			if err == nil {
+				t.Fatal("expected compile error")
+			}
+
+			logOutput := logBuf.String()
+			if !strings.Contains(logOutput, "Compile unexpected token '") {
+				t.Fatalf("expected compile log, got %q", logOutput)
+			}
+			if !strings.Contains(logOutput, "line="+strconv.Itoa(tc.expectLine)) {
+				t.Fatalf("expected line=%d in log, got %q", tc.expectLine, logOutput)
+			}
+			if !strings.Contains(logOutput, "near=\""+tc.expectNear+"\"") {
+				t.Fatalf("expected near=%q in log, got %q", tc.expectNear, logOutput)
+			}
 		})
 	}
 }

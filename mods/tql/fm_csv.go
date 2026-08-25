@@ -79,19 +79,19 @@ func (src *csvSource) gen(node *Node) {
 	} else if src.srcFile != "" {
 		stat, err := os.Stat(src.srcFile)
 		if err != nil {
-			node.task.LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
 		if stat.IsDir() {
-			node.task.LogErrorf("Fail to read %q, it is a directory", src.srcFile)
-			ErrorRecord(errors.New("failed to read directory as CSV")).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to read %q, it is a directory", src.srcFile)
+			node.emit(ErrorRecord(errors.New("failed to read directory as CSV")))
 			return
 		}
 		content, err := os.Open(src.srcFile)
 		if err != nil {
-			node.task.LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
 		defer content.Close()
@@ -100,8 +100,8 @@ func (src *csvSource) gen(node *Node) {
 		if strings.HasSuffix(src.srcFile, ".gz") {
 			gzReader, err := gzip.NewReader(content)
 			if err != nil {
-				node.task.LogErrorf("Fail to create gzip reader for %q, %s", src.srcFile, err.Error())
-				ErrorRecord(err).Tell(node.next)
+				node.ensureRuntime().LogErrorf("Fail to create gzip reader for %q, %s", src.srcFile, err.Error())
+				node.emit(ErrorRecord(err))
 				return
 			}
 			defer gzReader.Close()
@@ -114,17 +114,17 @@ func (src *csvSource) gen(node *Node) {
 			reader = csv.NewReader(inputReader)
 		}
 	} else if src.srcHttp != "" {
-		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
+		req, err := http.NewRequestWithContext(node.runtime.Context(), "GET", src.srcHttp, nil)
 		if err != nil {
-			node.task.LogErrorf("Fail to request %q, %s", src.srcHttp, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to request %q, %s", src.srcHttp, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
-		httpClient := node.task.NewHttpClient()
+		httpClient := node.runtime.NewHTTPClient()
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			node.task.LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
 		defer resp.Body.Close()
@@ -132,8 +132,8 @@ func (src *csvSource) gen(node *Node) {
 		if strings.HasSuffix(src.srcHttp, ".gz") || resp.Header.Get("Content-Encoding") == "gzip" {
 			gzReader, err := gzip.NewReader(resp.Body)
 			if err != nil {
-				node.task.LogErrorf("Fail to create gzip reader for %q, %s", src.srcHttp, err.Error())
-				ErrorRecord(err).Tell(node.next)
+				node.ensureRuntime().LogErrorf("Fail to create gzip reader for %q, %s", src.srcHttp, err.Error())
+				node.emit(ErrorRecord(err))
 				return
 			}
 			defer gzReader.Close()
@@ -146,22 +146,22 @@ func (src *csvSource) gen(node *Node) {
 		}
 	}
 	if reader == nil {
-		node.task.LogErrorf("CSV() no input is specified")
+		node.ensureRuntime().LogErrorf("CSV() no input is specified")
 		return
 	}
 
 	rownum := 0
 	headerProcessed := false
-	for !node.task.shouldStop() {
+	for !node.runtime.ShouldStop() {
 		fields, err := reader.Read()
 		if err != nil {
 			if err != io.EOF {
-				node.task.LogErrorf("CSV() invalid input, %s", err.Error())
+				node.ensureRuntime().LogErrorf("CSV() invalid input, %s", err.Error())
 			}
 			return
 		}
 		if len(fields) == 0 {
-			node.task.LogError("CSV() invalid input")
+			node.ensureRuntime().LogError("CSV() invalid input")
 			return
 		}
 		if !headerProcessed {
@@ -179,7 +179,7 @@ func (src *csvSource) gen(node *Node) {
 				}
 			}
 			headerProcessed = true // done processing header
-			node.task.SetResultColumns(src.header())
+			node.runtime.SetResultColumns(src.header())
 			if src.hasHeader {
 				continue
 			}
@@ -222,18 +222,18 @@ func (src *csvSource) gen(node *Node) {
 				values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
 			}
 			if err != nil {
-				node.task.LogWarnf("CSV() invalid number format (at line %d)", rownum)
+				node.ensureRuntime().LogWarnf("CSV() invalid number format (at line %d)", rownum)
 				break
 			}
 		}
 		rownum++
 		if err == nil {
-			NewRecord(rownum, values).Tell(node.next)
+			node.emit(NewRecord(rownum, values))
 			if src.printProgressCount > 0 && int64(rownum)%src.printProgressCount == 0 {
 				if src.printer == nil {
 					src.printer = message.NewPrinter(language.English)
 				}
-				node.task.LogInfo(src.printer.Sprintf("Loading %v records", number.Decimal(rownum)))
+				node.ensureRuntime().LogInfo(src.printer.Sprintf("Loading %v records", number.Decimal(rownum)))
 			}
 		} else {
 			err = nil

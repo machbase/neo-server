@@ -1,31 +1,385 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto"
-	"encoding/base64"
-	"errors"
-	"fmt"
-	"net/url"
-	"os"
-	"regexp"
-	"strings"
-	"time"
-
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
+	"net/url"
+	"os"
+	"reflect"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gofrs/uuid/v5"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/spi"
+	"golang.org/x/crypto/sha3"
 	"golang.org/x/crypto/ssh"
 )
+
+// regular expression for splitting 'sys as other_user'
+var proxyLoginRegex = regexp.MustCompile(`(?i)^(\w+)(?:\s+as\s+(\w+))?$`)
+
+// ParseProxyLoginName parses the login name for proxy login.
+// If the login name matches the pattern 'sys as other_user',
+// it returns 'other_user' as the login name and 'sys' as the proxy user and true.
+// If the login name does not match the pattern,
+// it returns the original login name and an empty proxy user and false.
+func ParseProxyLoginName(loginName string) (string, string, bool) {
+	matches := proxyLoginRegex.FindStringSubmatch(strings.ToLower(loginName))
+	proxyUser := ""
+	isProxyLogin := false
+	if len(matches) == 3 && matches[2] != "" {
+		// proxy login, use the second group as the login name
+		loginName = matches[2]
+		proxyUser = matches[1]
+		isProxyLogin = true
+	}
+	return loginName, proxyUser, isProxyLogin
+}
+
+type AuthServer interface {
+	ValidateClientToken(token string) (bool, error)
+	ValidateClientCertificate(clientId string, certHash string) (bool, error)
+	ValidateUserPublicKey(ctx context.Context, user string, publicKey ssh.PublicKey) (bool, error)
+	ValidateUserPassword(ctx context.Context, user string, password string) (bool, string, error)
+	ServerPrivateKeyPath() string
+}
+
+type JwtCacheValue struct {
+	Rt   string
+	When time.Time
+}
+
+type JwtCache interface {
+	SetRefreshToken(id string, rt string)
+	GetRefreshToken(id string) (string, bool)
+	RemoveRefreshToken(id string)
+}
+
+type jwtMemCache struct {
+	rtTable map[string]*JwtCacheValue
+	rtLock  sync.RWMutex
+}
+
+func NewJwtCache() JwtCache {
+	return &jwtMemCache{
+		rtTable: make(map[string]*JwtCacheValue),
+	}
+}
+
+func (svr *jwtMemCache) SetRefreshToken(id string, rt string) {
+	svr.rtLock.Lock()
+	defer svr.rtLock.Unlock()
+	svr.rtTable[id] = &JwtCacheValue{
+		Rt:   rt,
+		When: time.Now(),
+	}
+}
+
+func (svr *jwtMemCache) GetRefreshToken(id string) (string, bool) {
+	svr.rtLock.RLock()
+	defer svr.rtLock.RUnlock()
+	val, ok := svr.rtTable[id]
+	if val != nil {
+		return val.Rt, ok
+	} else {
+		return "", ok
+	}
+}
+
+func (svr *jwtMemCache) RemoveRefreshToken(id string) {
+	svr.rtLock.Lock()
+	defer svr.rtLock.Unlock()
+	delete(svr.rtTable, id)
+}
+
+type JwtConfig struct {
+	AtDuration time.Duration
+	RtDuration time.Duration
+	Secret     string
+}
+
+var jwtConf = &JwtConfig{
+	AtDuration: 5 * time.Minute,
+	RtDuration: 60 * time.Minute,
+	Secret:     "__secr3t__",
+}
+
+func JwtConfigure(conf *JwtConfig) error {
+	if conf != nil && conf.AtDuration > 0 && conf.RtDuration > 0 {
+		jwtConf = conf
+	}
+	return nil
+}
+
+var idgen = uuid.NewGen()
+
+type Claim = *jwt.RegisteredClaims
+
+func NewClaimEmpty() Claim {
+	return &jwt.RegisteredClaims{}
+}
+
+func NewClaim(loginName string) Claim {
+	id, _ := idgen.NewV6()
+	claim := &jwt.RegisteredClaims{
+		Issuer:    "machbase-neo",
+		Subject:   loginName,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtConf.AtDuration)),
+		NotBefore: jwt.NewNumericDate(time.Now()),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ID:        id.String(),
+	}
+	return claim
+}
+
+func NewClaimForRefresh(claim Claim) Claim {
+	c := NewClaim(claim.Subject)
+	c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(jwtConf.RtDuration))
+	return c
+}
+
+func SignTokenWithClaim(claim Claim) (string, error) {
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
+	signedTok, err := tok.SignedString([]byte(jwtConf.Secret))
+	return signedTok, err
+}
+
+func VerifyToken(token string) (bool, error) {
+	return VerifyTokenWithClaim(token, nil)
+}
+
+func VerifyTokenWithClaim(token string, claim Claim) (bool, error) {
+	if claim == nil {
+		claim = &jwt.RegisteredClaims{}
+	}
+	key := func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return false, errors.New("unexpected signing method")
+		}
+		return []byte(jwtConf.Secret), nil
+	}
+
+	tok, err := jwt.ParseWithClaims(token, claim, key)
+	if err != nil {
+		return false, err
+	}
+	return tok.Valid, nil
+}
+
+type EllipticCurve struct {
+	pubKeyCurve elliptic.Curve
+	privateKey  *ecdsa.PrivateKey
+	publicKey   *ecdsa.PublicKey
+}
+
+func NewEllipticCurveP256() *EllipticCurve {
+	return NewEllipticCurve(elliptic.P256())
+}
+
+func NewEllipticCurveP521() *EllipticCurve {
+	return NewEllipticCurve(elliptic.P521())
+}
+
+func NewEllipticCurve(curve elliptic.Curve) *EllipticCurve {
+	return &EllipticCurve{
+		pubKeyCurve: curve,
+		privateKey:  new(ecdsa.PrivateKey),
+	}
+}
+
+func (ec *EllipticCurve) GenerateKeys() (*ecdsa.PrivateKey, *ecdsa.PublicKey, error) {
+	var err error
+	privKey, err := ecdsa.GenerateKey(ec.pubKeyCurve, rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	ec.privateKey = privKey
+	ec.publicKey = &privKey.PublicKey
+	return ec.privateKey, ec.publicKey, nil
+}
+
+// EncodePrivate private key
+func (ec *EllipticCurve) EncodePrivate(privKey *ecdsa.PrivateKey) (string, error) {
+	encoded, err := x509.MarshalECPrivateKey(privKey)
+	if err != nil {
+		return "", err
+	}
+	pemEncoded := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: encoded})
+	return string(pemEncoded), nil
+}
+
+// EncodePublic public key
+func (ec *EllipticCurve) EncodePublic(pubKey *ecdsa.PublicKey) (string, error) {
+	encoded, err := x509.MarshalPKIXPublicKey(pubKey)
+	if err != nil {
+		return "", err
+	}
+	pemEncodedPub := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: encoded})
+	return string(pemEncodedPub), nil
+}
+
+// DecodePrivate private key
+func (ec *EllipticCurve) DecodePrivate(pemEncodedPriv string) (*ecdsa.PrivateKey, error) {
+	blockPriv, _ := pem.Decode([]byte(pemEncodedPriv))
+	x509EncodedPriv := blockPriv.Bytes
+	privateKey, err := x509.ParseECPrivateKey(x509EncodedPriv)
+	return privateKey, err
+}
+
+// DecodePublic public key
+func (ec *EllipticCurve) DecodePublic(pemEncodedPub string) (*ecdsa.PublicKey, error) {
+	blockPub, _ := pem.Decode([]byte(pemEncodedPub))
+	x509EncodedPub := blockPub.Bytes
+	genericPublicKey, err := x509.ParsePKIXPublicKey(x509EncodedPub)
+	publicKey := genericPublicKey.(*ecdsa.PublicKey)
+	return publicKey, err
+}
+
+// VerifySignature sign ecdsa style and verify signature
+func (ec *EllipticCurve) VerifySignature(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey) ([]byte, bool, error) {
+	h := md5.New()
+	io.WriteString(h, "This is a message to be signed and verified by ECDSA!")
+	signhash := h.Sum(nil)
+
+	r, s, serr := ecdsa.Sign(rand.Reader, privKey, signhash)
+	if serr != nil {
+		return []byte(""), false, serr
+	}
+
+	signature := r.Bytes()
+	signature = append(signature, s.Bytes()...)
+
+	verify := ecdsa.Verify(pubKey, signhash, r, s)
+
+	return signature, verify, nil
+}
+
+// Test encode, decode and test it with deep equal
+func (ec *EllipticCurve) Test(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey) error {
+	encPriv, err := ec.EncodePrivate(privKey)
+	if err != nil {
+		return err
+	}
+	encPub, err := ec.EncodePublic(pubKey)
+	if err != nil {
+		return err
+	}
+	priv2, err := ec.DecodePrivate(encPriv)
+	if err != nil {
+		return err
+	}
+	pub2, err := ec.DecodePublic(encPub)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(privKey, priv2) {
+		return errors.New("private keys do not match")
+	}
+	if !reflect.DeepEqual(pubKey, pub2) {
+		return errors.New("public keys do not match")
+	}
+	return nil
+}
+
+func GenerateServerCertificate(priKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey) ([]byte, error) {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	template := &x509.Certificate{
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		SerialNumber:          serialNumber,
+		Subject: pkix.Name{
+			CommonName:         "neo.machbase.com",
+			OrganizationalUnit: []string{"R&D Center"},
+			Organization:       []string{"machbase.com"},
+			StreetAddress:      []string{"3003 N First St #206"},
+			PostalCode:         []string{"95134"},
+			Locality:           []string{"San Jose"},
+			Country:            []string{"CA"},
+		},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Now().AddDate(10, 0, 0),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, template, template, pubKey, priKey)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &bytes.Buffer{}
+	err = pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	if err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func GenerateClientCertificate(subject pkix.Name, dnsNames []string, uris []*url.URL, notBefore time.Time, notAfter time.Time, ca *x509.Certificate, caKey crypto.PrivateKey, pubKey crypto.PublicKey) ([]byte, error) {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	template := &x509.Certificate{
+		IsCA:                  false,
+		BasicConstraintsValid: true,
+		SerialNumber:          serialNumber,
+		Subject:               subject,
+		DNSNames:              dnsNames,
+		URIs:                  uris,
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, template, ca, pubKey, caKey)
+	if err != nil {
+		return nil, err
+	}
+	out := &bytes.Buffer{}
+	if err := pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func HashCertificate(cert *x509.Certificate) (string, error) {
+	raw := cert.Raw
+	b64str := base64.StdEncoding.EncodeToString(raw)
+	b64str = strings.Trim(b64str, "\r\n ")
+
+	sha := sha3.New256()
+	sha.Write([]byte(b64str))
+	return hex.EncodeToString(sha.Sum(nil)), nil
+}
 
 type ListKeyResponse struct {
 	Success bool       `json:"success"`
@@ -730,93 +1084,6 @@ func (s *Server) Shutdown(ctx context.Context) (*ShutdownResponse, error) {
 	booter.NotifySignal()
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.Elapse = time.Since(tick).String()
-	return rsp, nil
-}
-
-type ServicePortsRequest struct {
-	Service string `json:"service"`
-}
-
-type ServicePortsResponse struct {
-	Success bool           `json:"success"`
-	Reason  string         `json:"reason"`
-	Elapse  string         `json:"elapse"`
-	Ports   []*ServicePort `json:"ports"`
-}
-
-type ServicePort struct {
-	Service string `json:"service"`
-	Address string `json:"address"`
-}
-
-func (s *Server) ServicePorts(ctx context.Context, req *ServicePortsRequest) (*ServicePortsResponse, error) {
-	tick := time.Now()
-	rsp := &ServicePortsResponse{}
-
-	ret := []*ServicePort{}
-	ports, err := s.getServicePorts(req.Service)
-	if err != nil {
-		return nil, err
-	}
-	for _, p := range ports {
-		ret = append(ret, &ServicePort{
-			Service: p.Service,
-			Address: p.Address,
-		})
-	}
-
-	rsp.Ports = ret
-	rsp.Elapse = time.Since(tick).String()
-	return rsp, nil
-}
-
-type ServerInfoResponse struct {
-	Success bool     `json:"success"`
-	Reason  string   `json:"reason"`
-	Elapse  string   `json:"elapse"`
-	Version *Version `json:"version"`
-	Runtime *Runtime `json:"runtime"`
-}
-
-type Version struct {
-	Major          int32  `json:"major"`
-	Minor          int32  `json:"minor"`
-	Patch          int32  `json:"patch"`
-	GitSHA         string `json:"gitSHA"`
-	BuildTimestamp string `json:"buildTimestamp"`
-	BuildCompiler  string `json:"buildCompiler"`
-	Engine         string `json:"engine"`
-}
-
-type Runtime struct {
-	OS             string            `json:"OS,omitempty"`
-	Arch           string            `json:"arch,omitempty"`
-	Pid            int32             `json:"pid,omitempty"`
-	UptimeInSecond int64             `json:"uptimeInSecond,omitempty"`
-	Processes      int32             `json:"processes,omitempty"`
-	Goroutines     int32             `json:"goroutines,omitempty"`
-	Mem            map[string]uint64 `json:"mem,omitempty"`
-}
-
-func (s *Server) ServerInfo(ctx context.Context) (*ServerInfoResponse, error) {
-	tick := time.Now()
-	rsp := &ServerInfoResponse{}
-	defer func() {
-		if panic := recover(); panic != nil {
-			s.log.Error("GetServerInfo panic recover", panic)
-		}
-		if rsp != nil {
-			rsp.Elapse = time.Since(tick).String()
-		}
-	}()
-	if r, err := s.getServerInfo(); err != nil {
-		return nil, err
-	} else {
-		rsp = r
-	}
-
-	rsp.Success = true
-	rsp.Reason = "success"
 	return rsp, nil
 }
 

@@ -54,7 +54,7 @@ func main() {
 		``,
 	}
 	w := &bytes.Buffer{}
-	fmt.Fprintf(w, strings.Join(header, EOL))
+	fmt.Fprint(w, strings.Join(header, EOL))
 	for _, def := range definitions {
 		if strings.HasPrefix(def.Name, "//") {
 			fmt.Fprintf(w, "%s%s", def.Name, EOL)
@@ -66,7 +66,7 @@ func main() {
 			fmt.Fprintf(w, `	"%s": x.gen_%s,%s`, def.Name, def.Name, EOL)
 		}
 	}
-	fmt.Fprintf(w, strings.Join(footer, EOL))
+	fmt.Fprint(w, strings.Join(footer, EOL))
 
 	for _, def := range definitions {
 		if _, ok := def.Func.(string); ok {
@@ -84,7 +84,7 @@ func main() {
 		fmt.Println(string(content))
 		panic(err)
 	}
-	file, err := os.Create("fx_generate.gen.go")
+	file, err := os.Create("fx_node.gen.go")
 	if err != nil {
 		panic(err)
 	}
@@ -178,19 +178,20 @@ func writeMapFunc(w io.Writer, name string, f any) {
 
 	strCall := fmt.Sprintf(`	%s(%s)`, realFuncName, strings.Join(strParams, ","))
 	numOuts := methodType.NumOut()
-	if numOuts == 0 {
+	switch numOuts {
+	case 0:
 		lines = append(lines, strCall, `return nil, nil`)
-	} else if numOuts == 1 {
+	case 1:
 		lines = append(lines, fmt.Sprintf(`ret := %s`, strCall), `return ret, nil`)
-	} else if numOuts == 2 {
+	case 2:
 		lines = append(lines, fmt.Sprintf(`return %s`, strCall))
-	} else {
+	default:
 		panic(fmt.Sprintf("function %s returns too many", name))
 	}
 
 	lines = append(lines, `}`, ``)
 
-	fmt.Fprintf(w, strings.Join(lines, EOL))
+	fmt.Fprint(w, strings.Join(lines, EOL))
 }
 
 func getConvFunc(ptype string, pname string, funcName string) string {

@@ -17,11 +17,13 @@ import (
 type SqlStatementEnv struct {
 	Error  string `json:"error,omitempty"`
 	Bridge string `json:"bridge,omitempty"`
+	Use    string `json:"use,omitempty"`
 }
 
 func (sse *SqlStatementEnv) Reset() {
 	sse.Error = ""
 	sse.Bridge = ""
+	sse.Use = ""
 }
 
 type SqlStatement struct {
@@ -257,6 +259,7 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 	}
 	// -- env: bridge=sqlite
 	// -- env: reset
+	// -- env: use=mydb
 	text = strings.TrimSpace(strings.TrimPrefix(text, "env:"))
 	pairs := ParseNameValuePairs(text)
 	if len(pairs) == 0 {
@@ -268,6 +271,8 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 		switch pair.Name {
 		case "bridge":
 			env.Bridge = pair.Value
+		case "use":
+			env.Use = pair.Value
 		case "reset":
 			env.Reset()
 		default:

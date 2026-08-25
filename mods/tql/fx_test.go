@@ -1,24 +1,54 @@
-package tql_test
+package tql
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/machbase/neo-server/v8/mods/tql"
-	"github.com/machbase/neo-server/v8/mods/tql/expression"
+	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/encoding/unicode"
 )
 
-type FunctionTestCase struct {
-	f         func(args ...any) (any, error)
-	args      []any
-	expect    any
-	expectErr string
+func TestStatementKindByFunctionName(t *testing.T) {
+	kind, ok := StatementKindByFunctionName("CSV()")
+	require.True(t, ok)
+	require.Equal(t, StatementSourceOrSink, kind)
+
+	kind, ok = StatementKindByFunctionName("SQL()")
+	require.True(t, ok)
+	require.Equal(t, StatementSourceOrMapOrSink, kind)
+
+	kind, ok = StatementKindByFunctionName("customMap")
+	require.True(t, ok)
+	require.Equal(t, StatementMap, kind)
+
+	kind, ok = StatementKindByFunctionName("")
+	require.False(t, ok)
+	require.Equal(t, StatementUnknown, kind)
 }
+
+type FunctionTestCase struct {
+	f            func(args ...any) (any, error)
+	args         []any
+	expect       any
+	expectErr    string
+	expectErrAny bool
+	verify       func(t *testing.T, ret any)
+}
+
+type volatileFileWriterStub struct{}
+
+func (volatileFileWriterStub) VolatileFilePrefix() string {
+	return ""
+}
+
+func (volatileFileWriterStub) VolatileFileWrite(string, []byte, time.Time) {}
 
 func (tc FunctionTestCase) run(t *testing.T) {
 	t.Helper()
@@ -28,38 +58,248 @@ func (tc FunctionTestCase) run(t *testing.T) {
 		require.Equal(t, tc.expectErr, err.Error())
 		return
 	}
+	if tc.expectErrAny {
+		require.Error(t, err)
+		return
+	}
 	require.Nil(t, err)
+	if tc.verify != nil {
+		tc.verify(t, ret)
+		return
+	}
 	require.Equal(t, tc.expect, ret)
 }
 
-func TestStatementKindByFunctionName(t *testing.T) {
-	kind, ok := tql.StatementKindByFunctionName("CSV()")
-	require.True(t, ok)
-	require.Equal(t, tql.StatementSourceOrSink, kind)
-
-	kind, ok = tql.StatementKindByFunctionName("SQL()")
-	require.True(t, ok)
-	require.Equal(t, tql.StatementSourceOrMapOrSink, kind)
-
-	kind, ok = tql.StatementKindByFunctionName("customMap")
-	require.True(t, ok)
-	require.Equal(t, tql.StatementMap, kind)
-
-	kind, ok = tql.StatementKindByFunctionName("")
-	require.False(t, ok)
-	require.Equal(t, tql.StatementUnknown, kind)
-}
-
 func TestEscapeParam(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("escapeParam"),
 		args:   []any{"a b"},
 		expect: "a+b",
 	}.run(t)
 }
 
+func TestGeoFunctions(t *testing.T) {
+	node := NewNode(NewTask())
+	seoul := nums.NewLatLon(37.5665, 126.9780)
+	busan := nums.NewLatLon(35.1796, 129.0756)
+
+	tests := []FunctionTestCase{
+		{f: node.Function("latlon"), args: []any{37.5665, 126.9780}, expect: seoul},
+		{f: node.Function("latlon"), args: []any{true, 126.9780}, expectErr: "f(latlon) arg(0) should be float64, but bool"},
+		{f: node.Function("geoPoint"), args: []any{seoul, "Seoul"}, expect: nums.NewGeoPoint(seoul, "Seoul")},
+		{f: node.Function("geoCircle"), args: []any{seoul, 1000.0, "Seoul"}, expect: nums.NewGeoCircle(seoul, 1000.0, "Seoul")},
+		{f: node.Function("geoMultiPoint"), args: []any{seoul, busan, "cities"}, expect: nums.NewGeoMultiPointFunc(seoul, busan, "cities")},
+		{f: node.Function("geoPolygon"), args: []any{seoul, busan, seoul, "area"}, expect: nums.NewGeoPolygonFunc(seoul, busan, seoul, "area")},
+		{f: node.Function("geoLineString"), args: []any{seoul, busan, "route"}, expect: nums.NewGeoLineStringFunc(seoul, busan, "route")},
+		{f: node.Function("geoPointMarker"), args: []any{seoul, "marker"}, expect: nums.NewGeoPointMarker(seoul, "marker")},
+		{f: node.Function("geoCircleMarker"), args: []any{seoul, 1000.0, "marker"}, expect: nums.NewGeoCircleMarker(seoul, 1000.0, "marker")},
+	}
+	for index, test := range tests {
+		t.Run(fmt.Sprintf("case-%d", index), func(t *testing.T) {
+			test.run(t)
+		})
+	}
+
+	node.SetInflight(NewRecord("key", []any{"first", "second"}))
+	FunctionTestCase{f: node.Function("key"), expect: "key"}.run(t)
+	FunctionTestCase{f: node.Function("value"), expect: []any{"first", "second"}}.run(t)
+	FunctionTestCase{f: node.Function("value"), args: []any{1}, expect: "second"}.run(t)
+	FunctionTestCase{f: node.Function("payload"), expect: nil}.run(t)
+	node.output = make(chan *Record, 1)
+	FunctionTestCase{f: node.Function("ARGS"), expect: nil}.run(t)
+}
+
+func TestOptionFunctions(t *testing.T) {
+	node := NewNode(NewTask())
+	seoul := nums.NewLatLon(37.5665, 126.9780)
+	verifyOption := func(t *testing.T, ret any) {
+		t.Helper()
+		option, ok := ret.(opts.Option)
+		require.True(t, ok)
+		require.NotNil(t, option)
+	}
+
+	tests := []FunctionTestCase{
+		{f: node.Function("httpHeader"), args: []any{"X-Test", "value"}, verify: verifyOption},
+		{f: node.Function("autoRotate"), args: []any{1.5}, verify: verifyOption},
+		{f: node.Function("binaryformat"), args: []any{"hex"}, verify: verifyOption},
+		{f: node.Function("boxDrawBorder"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("boxSeparateColumns"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("boxStyle"), args: []any{"light"}, verify: verifyOption},
+		{f: node.Function("brief"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("briefCount"), args: []any{10}, verify: verifyOption},
+		{f: node.Function("chartAssets"), args: []any{"asset.js", "theme.js"}, verify: verifyOption},
+		{f: node.Function("chartDispatchAction"), args: []any{"highlight"}, verify: verifyOption},
+		{f: node.Function("chartID"), args: []any{"chart-1"}, verify: verifyOption},
+		{f: node.Function("chartId"), args: []any{"chart-1"}, verify: verifyOption},
+		{f: node.Function("chartJSCode"), args: []any{"console.log(1)"}, verify: verifyOption},
+		{f: node.Function("chartJson"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("chartOption"), args: []any{"{}"}, verify: verifyOption},
+		{f: node.Function("columns"), args: []any{"time", "value"}, verify: verifyOption},
+		{f: node.Function("contentType"), args: []any{"application/json"}, verify: verifyOption},
+		{f: node.Function("dataZoom"), args: []any{"inside", 10.0, 90.0}, verify: verifyOption},
+		{f: node.Function("delimiter"), args: []any{","}, verify: verifyOption},
+		{f: node.Function("geoMapJson"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("geomapID"), args: []any{"map-1"}, verify: verifyOption},
+		{f: node.Function("globalOptions"), args: []any{"{}"}, verify: verifyOption},
+		{f: node.Function("gridSize"), args: []any{10.0, 20.0}, verify: verifyOption},
+		{f: node.Function("header"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("headerColumns"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("heading"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("html"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("icon"), args: []any{"series", "circle"}, verify: verifyOption},
+		{f: node.Function("initialLocation"), args: []any{seoul, 12}, verify: verifyOption},
+		{f: node.Function("lineWidth"), args: []any{2.0}, verify: verifyOption},
+		{f: node.Function("mapAssets"), args: []any{"map.js"}, verify: verifyOption},
+		{f: node.Function("markAreaNameCoord"), args: []any{1.0, 2.0, "start", "end", 0.5}, verify: verifyOption},
+		{f: node.Function("markLineXAxisCoord"), args: []any{1.0, "x"}, verify: verifyOption},
+		{f: node.Function("markLineYAxisCoord"), args: []any{1.0, "y"}, verify: verifyOption},
+		{f: node.Function("opacity"), args: []any{0.5}, verify: verifyOption},
+		{f: node.Function("plugins"), args: []any{"dataZoom"}, verify: verifyOption},
+		{f: node.Function("precision"), args: []any{3}, verify: verifyOption},
+		{f: node.Function("rownum"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("rowsArray"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("rowsFlatten"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("seriesLabels"), args: []any{"cpu", "memory"}, verify: verifyOption},
+		{f: node.Function("size"), args: []any{"800px", "600px"}, verify: verifyOption},
+		{f: node.Function("substituteNull"), args: []any{"-"}, verify: verifyOption},
+		{f: node.Function("subtitle"), args: []any{"subtitle"}, verify: verifyOption},
+		{f: node.Function("tableName"), args: []any{"example"}, verify: verifyOption},
+		{f: node.Function("template"), args: []any{"{{.Value}}"}, verify: verifyOption},
+		{f: node.Function("theme"), args: []any{"dark"}, verify: verifyOption},
+		{f: node.Function("tileGrayscale"), args: []any{0.5}, verify: verifyOption},
+		{f: node.Function("tileOption"), args: []any{"{}"}, verify: verifyOption},
+		{f: node.Function("tileTemplate"), args: []any{"https://tiles/{z}/{x}/{y}.png"}, verify: verifyOption},
+		{f: node.Function("timeLocation"), args: []any{time.UTC}, verify: verifyOption},
+		{f: node.Function("timeformat"), args: []any{"2006-01-02"}, verify: verifyOption},
+		{f: node.Function("title"), args: []any{"title"}, verify: verifyOption},
+		{f: node.Function("toolboxDataView"), verify: verifyOption},
+		{f: node.Function("toolboxDataZoom"), verify: verifyOption},
+		{f: node.Function("toolboxSaveAsImage"), args: []any{"chart"}, verify: verifyOption},
+		{f: node.Function("transpose"), args: []any{true}, verify: verifyOption},
+		{f: node.Function("visualMap"), args: []any{0.0, 100.0}, verify: verifyOption},
+		{f: node.Function("visualMapColor"), args: []any{0.0, 100.0, "#000", "#fff"}, verify: verifyOption},
+		{f: node.Function("xAxis"), args: []any{"time"}, verify: verifyOption},
+		{f: node.Function("yAxis"), args: []any{"value"}, verify: verifyOption},
+		{f: node.Function("zAxis"), args: []any{"depth"}, verify: verifyOption},
+	}
+	for _, test := range tests {
+		test.run(t)
+	}
+}
+
+func TestGeneratedNodeFunctions(t *testing.T) {
+	node := NewNode(NewTask())
+	verifyValue := func(t *testing.T, ret any) {
+		t.Helper()
+		require.NotNil(t, ret)
+	}
+	verifyRecord := func(t *testing.T, ret any) {
+		t.Helper()
+		_, ok := ret.(*Record)
+		require.True(t, ok)
+	}
+
+	tests := []FunctionTestCase{
+		{f: node.Function("context"), verify: verifyValue},
+		{f: node.Function("sep"), args: []any{","}, verify: verifyValue},
+		{f: node.Function("THROTTLE"), args: []any{10.0}, verify: verifyRecord},
+		{f: node.Function("use"), args: []any{"example"}, verify: verifyValue},
+		{f: node.Function("CHART"), args: []any{opts.Title("chart")}, verify: verifyValue},
+		{f: node.Function("CHART_LINE"), args: []any{opts.Title("line")}, verify: verifyValue},
+		{f: node.Function("CHART_SCATTER"), args: []any{opts.Title("scatter")}, verify: verifyValue},
+		{f: node.Function("CHART_BAR"), args: []any{opts.Title("bar")}, verify: verifyValue},
+		{f: node.Function("CHART_LINE3D"), args: []any{opts.Title("line3d")}, verify: verifyValue},
+		{f: node.Function("CHART_BAR3D"), args: []any{opts.Title("bar3d")}, verify: verifyValue},
+		{f: node.Function("CHART_SURFACE3D"), args: []any{opts.Title("surface3d")}, verify: verifyValue},
+		{f: node.Function("CHART_SCATTER3D"), args: []any{opts.Title("scatter3d")}, verify: verifyValue},
+		{f: node.Function("DISCARD"), verify: verifyValue},
+		{f: node.Function("col"), args: []any{0.0, "string", "name"}, verify: verifyValue},
+		{f: node.Function("field"), args: []any{0.0, "string", "name"}, verify: verifyValue},
+		{f: node.Function("stringType"), args: []any{"ignored"}, verify: verifyValue},
+		{f: node.Function("datetimeType"), args: []any{"ns"}, verify: verifyValue},
+		{f: node.Function("doubleType"), args: []any{"ignored"}, verify: verifyValue},
+		{f: node.Function("floatType"), args: []any{"ignored"}, verify: verifyValue},
+		{f: node.Function("boolType"), args: []any{"ignored"}, verify: verifyValue},
+		{f: node.Function("charsetEncoding"), args: []any{unicode.UTF8}, verify: verifyValue},
+		{f: node.Function("columnTypes"), args: []any{"s"}, verify: verifyValue},
+		{f: node.Function("logger"), args: []any{facility.DiscardLogger}, verify: verifyValue},
+		{f: node.Function("volatileFileWriter"), args: []any{volatileFileWriterStub{}}, verify: verifyValue},
+		{f: node.Function("timeSecond"), args: []any{time.Unix(0, 0), time.UTC}, expect: 0},
+		{f: node.Function("timeNanosecond"), args: []any{time.Unix(0, 123), time.UTC}, expect: 123},
+		{f: node.Function("linspace50"), args: []any{0.0, 1.0}, verify: verifyValue},
+	}
+	for index, test := range tests {
+		t.Run(fmt.Sprintf("case-%d", index), func(t *testing.T) {
+			test.run(t)
+		})
+	}
+}
+
+func TestGeneratedNodeWrapperValidation(t *testing.T) {
+	node := NewNode(NewTask())
+	verifyOption := func(t *testing.T, ret any) {
+		t.Helper()
+		_, ok := ret.(opts.Option)
+		require.True(t, ok)
+	}
+
+	FunctionTestCase{f: node.Function("inputStream"), args: []any{bytes.NewBufferString("input")}, verify: verifyOption}.run(t)
+	FunctionTestCase{f: node.Function("outputStream"), args: []any{&bytes.Buffer{}}, verify: verifyOption}.run(t)
+	FunctionTestCase{f: node.Function("MAP_DISTANCE"), args: []any{0, 1}, expect: nil}.run(t)
+	FunctionTestCase{f: node.Function("option"), expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("ARGS"), args: []any{1}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("SET"), expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("key"), args: []any{1}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("payload"), args: []any{1}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("geoCircle"), args: []any{"invalid", 1.0, "circle"}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("geoLineString"), args: []any{"invalid", "invalid"}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("timeSecond"), args: []any{true}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("latlon"), args: []any{1.0, true}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("geoCircle"), args: []any{nums.NewLatLon(0, 0), true, "circle"}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("geoLineString"), args: []any{nums.NewLatLon(0, 0), "invalid"}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("timeNanosecond"), args: []any{true}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("timeAdd"), args: []any{time.Unix(0, 0), true}, expectErrAny: true}.run(t)
+	FunctionTestCase{f: node.Function("timeAdd"), args: []any{true, "1s"}, expectErrAny: true}.run(t)
+	chartNode := NewNode(NewTask())
+	chartNode.name = "CHART()"
+	FunctionTestCase{f: chartNode.Function("option"), args: []any{"title: chart"}, verify: verifyOption}.run(t)
+	FunctionTestCase{f: node.Function("covariance"), args: []any{1.0, 2.0}, verify: func(t *testing.T, ret any) { require.NotNil(t, ret) }}.run(t)
+	FunctionTestCase{f: node.Function("quantileInterpolated"), args: []any{1.0, 0.5}, verify: func(t *testing.T, ret any) { require.NotNil(t, ret) }}.run(t)
+
+	for _, name := range []string{
+		"latlon", "geoPoint", "geoCircle", "geoPointMarker", "geoCircleMarker",
+		"httpHeader", "autoRotate", "binaryformat", "boxDrawBorder", "boxSeparateColumns", "boxStyle", "brief", "briefCount",
+		"THROTTLE", "use", "charsetEncoding", "logger", "volatileFileWriter",
+		"chartDispatchAction", "chartID", "chartId", "chartJSCode", "chartJson", "chartOption", "contentType", "dataZoom", "delimiter",
+		"geoMapJson", "geomapID", "globalOptions", "header", "headerColumns", "heading", "html", "icon", "initialLocation", "lineWidth",
+		"markAreaNameCoord", "markLineXAxisCoord", "markLineYAxisCoord", "opacity", "precision", "rownum", "rowsArray", "rowsFlatten",
+		"size", "substituteNull", "subtitle", "tableName", "theme", "tileGrayscale", "tileOption", "tileTemplate", "timeLocation", "timeformat",
+		"title", "toolboxSaveAsImage", "transpose", "visualMap", "visualMapColor", "linspace50", "MAP_DISTANCE", "covariance", "quantileInterpolated",
+	} {
+		t.Run(name, func(t *testing.T) {
+			FunctionTestCase{f: node.Function(name), expectErrAny: true}.run(t)
+		})
+	}
+
+	for _, name := range []string{
+		"SET", "param", "escapeParam", "period", "time", "timeUnix", "timeUnixMilli", "timeUnixMicro", "timeUnixNano",
+		"timeYear", "timeMonth", "timeDay", "timeHour", "timeMinute", "timeSecond", "timeNanosecond", "timeISOYear", "timeISOWeek", "timeYearDay", "timeWeekDay",
+		"parseTime", "timeAdd", "roundTime", "range", "sqlTimeformat", "ansiTimeformat",
+		"HISTOGRAM", "bins", "boxplotInterp", "boxplotOutput", "category",
+		"FILTER", "FILTER_CHANGED", "retain", "useFirstWithLast", "MAPKEY", "PUSHVALUE", "MAPVALUE",
+		"MAP_AVG", "MAP_MOVAVG", "MAP_LOWPASS", "MAP_KALMAN", "MAP_DIFF", "MAP_ABSDIFF", "MAP_NONEGDIFF", "TIMEWINDOW",
+		"glob", "regexp", "strTime", "strTrimSpace", "strTrimPrefix", "strTrimSuffix", "strReplace", "strReplaceAll", "strSprintf", "strSub", "strIndex", "strLastIndex", "strToUpper", "strToLower",
+		"by", "timewindow", "where", "predict", "weight", "first", "last", "min", "max", "sum", "mean", "variance", "cdf", "correlation", "quantile", "median", "medianInterpolated", "stddev", "stderr", "entropy", "mode", "moment", "avg", "rss", "rms", "lrs",
+	} {
+		t.Run(name, func(t *testing.T) {
+			FunctionTestCase{f: node.Function(name), expectErrAny: true}.run(t)
+		})
+	}
+}
+
 func TestParseFloat(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("parseFloat"),
 		args:   []any{"0"},
 		expect: 0.0,
@@ -71,7 +311,7 @@ func TestParseFloat(t *testing.T) {
 }
 
 func TestParseBool(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("parseBool"),
 		args:   []any{"true"},
 		expect: true,
@@ -88,7 +328,7 @@ func TestParseBool(t *testing.T) {
 
 func TestStrTime(t *testing.T) {
 	now := time.Unix(0, 1704871917655327000)
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strTime"),
 		args:   []any{now, "RFC822", time.UTC},
 		expect: "10 Jan 24 07:31 UTC",
@@ -120,7 +360,7 @@ func TestStrTime(t *testing.T) {
 }
 
 func TestStrTrimSpace(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strTrimSpace"),
 		args:   []any{"  text\t\n"},
 		expect: "text",
@@ -132,7 +372,7 @@ func TestStrTrimSpace(t *testing.T) {
 }
 
 func TestStrTrimPrefix(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strTrimPrefix"),
 		args:   []any{"  text\t\n", "  "},
 		expect: "text\t\n",
@@ -144,7 +384,7 @@ func TestStrTrimPrefix(t *testing.T) {
 }
 
 func TestStrTrimSuffix(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strTrimSuffix"),
 		args:   []any{"  text\t\n", "\t\n"},
 		expect: "  text",
@@ -156,7 +396,7 @@ func TestStrTrimSuffix(t *testing.T) {
 }
 
 func TestStrReplace(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strReplace"),
 		args:   []any{"apple", "a", "A", 1},
 		expect: "Apple",
@@ -172,7 +412,7 @@ func TestStrReplace(t *testing.T) {
 }
 
 func TestStrReplaceAll(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strReplaceAll"),
 		args:   []any{"apple", "a", "A"},
 		expect: "Apple",
@@ -184,7 +424,7 @@ func TestStrReplaceAll(t *testing.T) {
 }
 
 func TestStrSprintf(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strSprintf"),
 		args:   []any{"hello %s %1.2f", "world", 3.141592},
 		expect: "hello world 3.14",
@@ -192,7 +432,7 @@ func TestStrSprintf(t *testing.T) {
 }
 
 func TestStrSub(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strSub"),
 		args:   []any{"HelLo 😀 World"},
 		expect: "HelLo 😀 World",
@@ -236,7 +476,7 @@ func TestStrSub(t *testing.T) {
 }
 
 func TestStrIndex(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strIndex"),
 		args:   []any{"HelLo 😀 World", "😀"},
 		expect: 6,
@@ -252,7 +492,7 @@ func TestStrIndex(t *testing.T) {
 }
 
 func TestStrLastIndex(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("strLastIndex"),
 		args:   []any{"HelLo 😀 World", "😀"},
 		expect: 6,
@@ -272,7 +512,7 @@ func TestStrLastIndex(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("list"),
 		args:   []any{"HelLo 😀", 3.14, true},
 		expect: []any{"HelLo 😀", 3.14, true},
@@ -280,7 +520,7 @@ func TestList(t *testing.T) {
 }
 
 func TestGlob(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("glob"),
 		args:   []any{"test*me", "test123me"},
 		expect: true,
@@ -296,7 +536,7 @@ func TestGlob(t *testing.T) {
 }
 
 func TestRegexp(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("regexp"),
 		args:      []any{`^test[0-9$`, "test123"},
 		expectErr: "error parsing regexp: missing closing ]: `[0-9$`",
@@ -324,7 +564,7 @@ func TestRegexp(t *testing.T) {
 }
 
 func TestTime(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 
 	tick := time.Now()
 	util.StandardTimeNow = func() time.Time { return tick }
@@ -424,7 +664,7 @@ func TestTime(t *testing.T) {
 }
 
 func TestTimeYear(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 
 	tick := time.Now().In(time.UTC)
 	util.StandardTimeNow = func() time.Time { return tick }
@@ -514,7 +754,7 @@ func TestTimeYear(t *testing.T) {
 }
 
 func TestParseTime(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("tz"),
 		args:   []any{"local"},
 		expect: time.Local,
@@ -544,7 +784,7 @@ func TestParseTime(t *testing.T) {
 }
 
 func TestRoundTime(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("roundTime"),
 		args:      []any{time.Unix(123, 456789123), "0s"},
 		expectErr: "f(roundTime) arg(1) zero duration is not allowed",
@@ -572,7 +812,7 @@ func TestRoundTime(t *testing.T) {
 }
 
 func TestRangeTime(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("range"),
 		args:      []any{false, "1s", "100ms"},
 		expectErr: "f(range) arg(0) should be time, but bool",
@@ -591,12 +831,12 @@ func TestRangeTime(t *testing.T) {
 	}.run(t)
 	FunctionTestCase{f: node.Function("range"),
 		args:   []any{0, "1s"},
-		expect: &tql.TimeRange{Time: time.Unix(0, 0), Duration: time.Second},
+		expect: &TimeRange{Time: time.Unix(0, 0), Duration: time.Second},
 	}.run(t)
 }
 
 func TestLen(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("len"),
 		args:   []any{[]string{"1", "2", "3", "4"}},
 		expect: 4.0,
@@ -608,7 +848,7 @@ func TestLen(t *testing.T) {
 }
 
 func TestElement(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	// invalid number of args
 	FunctionTestCase{f: node.Function("element"),
 		args:      []any{1, 2},
@@ -665,7 +905,7 @@ func TestElement(t *testing.T) {
 }
 
 func TestMathFunctions(t *testing.T) {
-	node := tql.NewNode(tql.NewTask())
+	node := NewNode(NewTask())
 	FunctionTestCase{f: node.Function("round"),
 		args:      []any{},
 		expectErr: "f(round) invalid number of args; expect:1, actual:0",
@@ -738,9 +978,16 @@ func TestMathFunctions(t *testing.T) {
 // TestCase
 type MapFuncTestCase struct {
 	input     string
-	params    *tql.Node // expression.Parameters
-	expect    *tql.Record
+	params    *Node // expression.Parameters
+	expect    *Record
 	expectErr string
+}
+
+func FuncParamMock(k any, v any) *Node {
+	task := NewTask()
+	node := NewNode(task)
+	node.SetInflight(NewRecord(k, v))
+	return node
 }
 
 func TestMapFunc_roundTime(t *testing.T) {
@@ -760,7 +1007,7 @@ func TestMapFunc_TAKE(t *testing.T) {
 	MapFuncTestCase{
 		input:  `TAKE(1)`,
 		params: FuncParamMock("sam", []any{1, 2, 3}),
-		expect: tql.NewRecord("sam", []any{1, 2, 3}),
+		expect: NewRecord("sam", []any{1, 2, 3}),
 	}.run(t)
 }
 
@@ -774,14 +1021,14 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `PUSHKEY('sam')`,
 		params: FuncParamMock(extime, []any{1, 2, 3}),
-		expect: tql.NewRecord("sam", []any{extime, 1, 2, 3}),
+		expect: NewRecord("sam", []any{extime, 1, 2, 3}),
 	}.run(t)
 	tick := time.Now()
 	tick100ms := time.Unix(0, (tick.UnixNano()/100000000)*100000000)
 	MapFuncTestCase{
 		input:  `PUSHKEY(roundTime(key(), '100ms'))`,
 		params: FuncParamMock(tick, []any{"v"}),
-		expect: tql.NewRecord(tick100ms, []any{tick, "v"}),
+		expect: NewRecord(tick100ms, []any{tick, "v"}),
 	}.run(t)
 }
 
@@ -794,12 +1041,12 @@ func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `POPKEY()`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord(1, []any{2, 3}),
+		expect: NewRecord(1, []any{2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `POPKEY()`,
 		params: FuncParamMock("x", []any{[]int{10, 11, 12}, []int{20, 21, 22}, []int{30, 31, 32}}),
-		expect: tql.NewRecord([]int{10, 11, 12}, []any{[]int{20, 21, 22}, []int{30, 31, 32}}),
+		expect: NewRecord([]int{10, 11, 12}, []any{[]int{20, 21, 22}, []int{30, 31, 32}}),
 	}.run(t)
 	MapFuncTestCase{
 		input:     `POPKEY(0)`,
@@ -809,7 +1056,7 @@ func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `POPKEY(1)`,
 		params: FuncParamMock("x", []any{"K", 1, 2}),
-		expect: tql.NewRecord(1, []any{"K", 2}),
+		expect: NewRecord(1, []any{"K", 2}),
 	}.run(t)
 }
 
@@ -817,7 +1064,7 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(10<100)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord("x", []any{1, 2, 3}),
+		expect: NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(10>100)`,
@@ -827,7 +1074,7 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(key() == 'x')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord("x", []any{1, 2, 3}),
+		expect: NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(key() != 'x')`,
@@ -837,12 +1084,12 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(key() != 'y')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord("x", []any{1, 2, 3}),
+		expect: NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(len(value()) > 2)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord("x", []any{1, 2, 3}),
+		expect: NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(len(value()) > 4)`,
@@ -852,12 +1099,12 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(element(value(), 0) >= 1)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord("x", []any{1, 2, 3}),
+		expect: NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(element(value(), 0) > 0)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: tql.NewRecord("x", []any{1, 2, 3}),
+		expect: NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 }
 
@@ -889,32 +1136,10 @@ func (tc MapFuncTestCase) run(t *testing.T) {
 	}
 	require.NotNil(t, ret, msg)
 	// compare key
-	if retParam, ok := ret.(*tql.Record); !ok {
+	if retParam, ok := ret.(*Record); !ok {
 		t.Fatalf("invalid return type: %T", ret)
 	} else {
 		require.True(t, tc.expect.EqualKey(retParam), "K's are different")
 		require.True(t, tc.expect.EqualValue(retParam), "V's are different")
 	}
-}
-
-// Mock expression.Parameters
-func FuncParamMockFunc(back func(name string) (any, error)) expression.Parameters {
-	return &paramMock{
-		back: back,
-	}
-}
-
-func FuncParamMock(k any, v any) *tql.Node {
-	task := tql.NewTask()
-	node := tql.NewNode(task)
-	node.SetInflight(tql.NewRecord(k, v))
-	return node
-}
-
-type paramMock struct {
-	back func(name string) (any, error)
-}
-
-func (mock *paramMock) Get(name string) (any, error) {
-	return mock.back(name)
 }

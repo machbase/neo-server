@@ -427,7 +427,7 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		tw = obj.(*TimeWindow)
 	} else {
 		// deprecated
-		node.task.LogWarn("TIMEWINDOW() deprecated, use GROUP(timewindow()) instead")
+		node.ensureRuntime().LogWarn("TIMEWINDOW() deprecated, use GROUP(timewindow()) instead")
 
 		isFirstRecord = true
 		tw = NewTimeWindow()
@@ -463,10 +463,10 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 			}
 		}
 		if err := tw.SetColumns(columns); err != nil {
-			node.task.LogError("TIMEWINDOW", err.Error())
+			node.ensureRuntime().LogError("TIMEWINDOW", err.Error())
 			return ErrArgs("TIMEWINDOW", 3, err.Error())
 		}
-		node.SetEOF(tw.onEOF)
+		node.SetFinalize(tw.onEOF)
 		node.SetValue("timewindow", tw)
 	}
 
@@ -814,14 +814,15 @@ type TimeWindowColumnSingle struct {
 }
 
 func (twc *TimeWindowColumnSingle) Append(ts time.Time, v any) error {
-	if twc.name == "first" {
+	switch twc.name {
+	case "first":
 		if twc.hasValue {
 			return nil
 		}
 		twc.value = v
 		twc.hasValue = true
 		return nil
-	} else if twc.name == "last" {
+	case "last":
 		twc.value = v
 		twc.hasValue = true
 		return nil

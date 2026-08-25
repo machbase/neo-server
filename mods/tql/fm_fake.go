@@ -49,7 +49,7 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genRawData(node, gen)
 	case *statz:
 		if err := genStatz(node, gen); err != nil {
-			ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())).Tell(node.next)
+			node.emit(ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())))
 		}
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
@@ -112,7 +112,7 @@ func genStatz(node *Node, gen *statz) error {
 			cols = append(cols, client.MakeColumnAny(series.Name))
 		}
 	}
-	node.task.SetResultColumns(cols)
+	node.ensureRuntime().SetResultColumns(cols)
 
 	for i, ts := range times {
 		values := []any{time.Unix(0, ts)}
@@ -132,7 +132,7 @@ func genStatz(node *Node, gen *statz) error {
 				}
 			}
 		}
-		NewRecord(i, values).Tell(node.next)
+		node.emit(NewRecord(i, values))
 	}
 	return nil
 }
@@ -170,7 +170,7 @@ type rawdata struct {
 
 func genRawData(node *Node, gen *rawdata) {
 	rec := NewRecord(1, gen.data)
-	rec.Tell(node.next)
+	node.emit(rec)
 }
 
 func (node *Node) fmCsvData(data string) (*csvdata, error) {
@@ -195,7 +195,7 @@ func genCsvData(node *Node, cd *csvdata) {
 			if err == io.EOF {
 				break
 			}
-			ErrorRecord(err).Tell(node.next)
+			node.emit(ErrorRecord(err))
 			return
 		}
 		if i == 0 {
@@ -204,14 +204,14 @@ func genCsvData(node *Node, cd *csvdata) {
 				cname := fmt.Sprintf("column%d", i)
 				cols = append(cols, client.MakeColumnString(cname))
 			}
-			node.task.SetResultColumns(cols)
+			node.ensureRuntime().SetResultColumns(cols)
 		}
 		v := make([]any, len(values))
 		for i, s := range values {
 			v[i] = s
 		}
 		rec := NewRecord(i+1, v)
-		rec.Tell(node.next)
+		node.emit(rec)
 	}
 }
 
@@ -236,7 +236,7 @@ func genJsonData(node *Node, jd *jsondata) {
 	// fromjson({ [a1,a2],[b1,b2] })
 	content := `{"data":[` + jd.content + `]}`
 	if err := json.Unmarshal([]byte(content), jd); err != nil {
-		ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())).Tell(node.next)
+		node.emit(ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())))
 		return
 	}
 	if len(jd.Data) > 0 {
@@ -255,11 +255,11 @@ func genJsonData(node *Node, jd *jsondata) {
 				cols = append(cols, client.MakeColumnAny(cname))
 			}
 		}
-		node.task.SetResultColumns(cols)
+		node.ensureRuntime().SetResultColumns(cols)
 	}
 	for i, v := range jd.Data {
 		rec := NewRecord(i+1, v)
-		rec.Tell(node.next)
+		node.emit(rec)
 	}
 }
 
@@ -272,11 +272,11 @@ type doOnce struct {
 }
 
 func genOnce(node *Node, gen *doOnce) {
-	node.task.SetResultColumns([]*client.Column{
+	node.ensureRuntime().SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		client.MakeColumnDouble("x"),
 	})
-	NewRecord(1, []any{gen.value}).Tell(node.next)
+	node.emit(NewRecord(1, []any{gen.value}))
 }
 
 func (node *Node) fmArrange(start float64, stop float64, step float64) (*arrange, error) {
@@ -302,7 +302,7 @@ type arrange struct {
 }
 
 func genArrange(node *Node, ar *arrange) {
-	node.task.SetResultColumns([]*client.Column{
+	node.ensureRuntime().SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		client.MakeColumnDouble("x"),
 	})
@@ -310,13 +310,13 @@ func genArrange(node *Node, ar *arrange) {
 	if ar.start < ar.stop {
 		for v := ar.start; v <= ar.stop; v += ar.step {
 			rec := NewRecord(i+1, []any{v})
-			rec.Tell(node.next)
+			node.emit(rec)
 			i++
 		}
 	} else {
 		for v := ar.start; v >= ar.stop; v += ar.step {
 			rec := NewRecord(i+1, []any{v})
-			rec.Tell(node.next)
+			node.emit(rec)
 			i++
 		}
 	}
@@ -337,14 +337,14 @@ type linspace struct {
 }
 
 func genLinspace(node *Node, ls *linspace) {
-	node.task.SetResultColumns([]*client.Column{
+	node.ensureRuntime().SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		client.MakeColumnDouble("x"),
 	})
 	vals := nums.Linspace(ls.start, ls.stop, ls.num)
 	for i, v := range vals {
 		rec := NewRecord(i+1, []any{v})
-		rec.Tell(node.next)
+		node.emit(rec)
 	}
 }
 
@@ -378,7 +378,7 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 	}
 	vals := nums.Meshgrid(xv, yv)
 
-	node.task.SetResultColumns([]*client.Column{
+	node.ensureRuntime().SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		client.MakeColumnDouble("x"),
 		client.MakeColumnDouble("y"),
@@ -389,7 +389,7 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 			elm := vals[x][y]
 			if len(elm) == 2 {
 				id++
-				NewRecord(id, []any{elm[0], elm[1]}).Tell(node.next)
+				node.emit(NewRecord(id, []any{elm[0], elm[1]}))
 			}
 		}
 	}
@@ -411,7 +411,7 @@ type sphere struct {
 }
 
 func genSphere(node *Node, sp *sphere) {
-	node.task.SetResultColumns([]*client.Column{
+	node.ensureRuntime().SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		client.MakeColumnDouble("x"),
 		client.MakeColumnDouble("y"),
@@ -425,7 +425,7 @@ func genSphere(node *Node, sp *sphere) {
 			y := math.Sin(u) * math.Sin(v)
 			z := math.Cos(v)
 			id++
-			NewRecord(id, []any{x, y, z}).Tell(node.next)
+			node.emit(NewRecord(id, []any{x, y, z}))
 		}
 	}
 }
@@ -477,7 +477,7 @@ type oscillator struct {
 }
 
 func genOscillator(node *Node, gen *oscillator) {
-	node.task.SetResultColumns([]*client.Column{
+	node.ensureRuntime().SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		{Name: "time", DataType: api.DataTypeDatetime},
 		{Name: "value", DataType: api.DataTypeFloat64},
@@ -489,7 +489,7 @@ func genOscillator(node *Node, gen *oscillator) {
 			value += fr.Value(float64(x) / float64(time.Second))
 		}
 		rownum++
-		NewRecord(rownum, []any{time.Unix(0, x), value}).Tell(node.next)
+		node.emit(NewRecord(rownum, []any{time.Unix(0, x), value}))
 	}
 }
 

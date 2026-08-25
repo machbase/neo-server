@@ -126,7 +126,7 @@ func (s *TestServer) StartServer(dataDir string) {
 	}
 	conn.Close()
 
-	spi.SetDefaultKey(privKey)
+	spi.SetDefaultKey("sys", privKey)
 
 	// machgo database
 	spi.SetDefaultDSN(map[string]string{

@@ -5,20 +5,26 @@ import (
 	"context"
 	"crypto/sha1"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	httpPprof "net/http/pprof"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -30,8 +36,11 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -43,13 +52,7 @@ func NewHttp(options ...HttpOption) (*httpd, error) {
 	s := &httpd{
 		log:      logging.GetLog("httpd"),
 		jwtCache: NewJwtCache(),
-		handlers: []*HandlerConfig{
-			{Prefix: "/db", Handler: "machbase"},
-			{Prefix: "/lakes", Handler: "lakes"},
-			{Prefix: "/metrics", Handler: "influx"},
-			{Prefix: "/web", Handler: "web"},
-		},
-		pathMap: map[string]string{},
+		pathMap:  map[string]string{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -63,7 +66,6 @@ type httpd struct {
 
 	listenAddresses []string
 	enableTokenAuth bool
-	handlers        []*HandlerConfig
 	mqttWsHandler   func(*gin.Context)
 
 	httpServer *http.Server
@@ -100,18 +102,193 @@ type httpd struct {
 	cypherPad    string
 }
 
-type HandlerType string
+type HttpOption func(s *httpd)
 
-const (
-	HandlerMachbase = HandlerType("machbase")
-	HandlerInflux   = HandlerType("influx") // influx line protocol
-	HandlerWeb      = HandlerType("web")    // web ui
-	HandlerVoid     = HandlerType("-")
-)
+// ListenAddresses
+func WithHttpListenAddress(addrs ...string) HttpOption {
+	return func(s *httpd) {
+		s.listenAddresses = append(s.listenAddresses, addrs...)
+	}
+}
 
-type HandlerConfig struct {
-	Prefix  string
-	Handler HandlerType
+// AuthServer
+func WithHttpAuthServer(authSvc *Server, enabled bool) HttpOption {
+	return func(s *httpd) {
+		s.authServer = authSvc
+		s.enableTokenAuth = enabled
+		if authSvc != nil && authSvc.rpcController != nil {
+			s.rpcController = authSvc.rpcController
+		}
+		if enabled {
+			s.log.Infof("HTTP token authentication enabled")
+		} else {
+			s.log.Infof("HTTP token authentication disabled")
+		}
+	}
+}
+
+// neo-shell address
+func WithHttpNeoShellAddress(addrs ...string) HttpOption {
+	return func(s *httpd) {
+		candidates := []string{}
+		for _, addr := range addrs {
+			if strings.HasPrefix(addr, "tcp://127.0.0.1:") || strings.HasPrefix(addr, "tcp://localhost:") {
+				s.authServer.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+				// if loopback is available, use it for web-terminal
+				// eliminate other candiates
+				candidates = candidates[:0]
+				break
+			} else if strings.HasPrefix(addr, "tcp://") {
+				candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
+			}
+		}
+		if len(candidates) > 0 {
+			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
+			s.authServer.neoShellAddress = candidates[0]
+		}
+	}
+}
+
+// license file path
+func WithHttpLicenseFilePath(path string) HttpOption {
+	return func(s *httpd) {
+		s.licenseFilePath = path
+	}
+}
+
+// End User License Agreement (EULA) file path
+func WithHttpEulaFilePath(path string) HttpOption {
+	return func(s *httpd) {
+		s.eulaFilePath = path
+	}
+}
+
+func WithHttpTqlLoader(loader tql.Loader) HttpOption {
+	return func(s *httpd) {
+		s.tqlLoader = loader
+	}
+}
+
+func WithHttpServerSideFileSystem(ssfs *ssfs.SSFS) HttpOption {
+	return func(s *httpd) {
+		s.serverFs = ssfs
+	}
+}
+
+func WithHttpDebugMode(isDebug bool, filterLatency string) HttpOption {
+	return func(s *httpd) {
+		s.debugMode = isDebug
+		if filterLatency != "" {
+			s.debugLogFilterLatency, _ = time.ParseDuration(filterLatency)
+		}
+	}
+}
+
+func WithHttpKeepAlive(keepAlive int) HttpOption {
+	return func(s *httpd) {
+		s.keepAlive = keepAlive
+	}
+}
+
+func WithHttpLinger(linger int) HttpOption {
+	return func(s *httpd) {
+		s.linger = linger
+	}
+}
+
+func WithHttpReadBufSize(size int) HttpOption {
+	return func(s *httpd) {
+		s.readBufSize = size
+	}
+}
+
+func WithHttpWriteBufSize(size int) HttpOption {
+	return func(s *httpd) {
+		s.writeBufSize = size
+	}
+}
+
+func WithHttpWebDir(path string) HttpOption {
+	return func(s *httpd) {
+		s.uiContentFs = WrapAssets(path)
+	}
+}
+
+// experiement features
+func WithHttpExperimentModeProvider(provider func() bool) HttpOption {
+	return func(s *httpd) {
+		s.experimentModeProvider = provider
+	}
+}
+
+func WithHttpWebShellProvider(provider model.ShellProvider) HttpOption {
+	return func(s *httpd) {
+		s.webShellProvider = provider
+	}
+}
+
+func WithHttpStatzAllow(remotes ...string) HttpOption {
+	return func(s *httpd) {
+		addr := make([]string, 0, len(remotes))
+		for _, remote := range remotes {
+			list := strings.Split(remote, ",")
+			for _, item := range list {
+				if item == "" {
+					continue
+				}
+				addr = append(addr, item)
+			}
+		}
+		s.statzAllowed = append(s.statzAllowed, addr...)
+	}
+}
+
+func WithHttpStatzToken(token string) HttpOption {
+	return func(s *httpd) {
+		s.statzToken = token
+	}
+}
+
+func WithHttpQueryCypher(algAndKey string) HttpOption {
+	alg := ""
+	pad := "PCKCS7"
+	key := ""
+	pairs := util.ParseNameValuePairs(algAndKey)
+	for _, p := range pairs {
+		switch strings.ToLower(p.Name) {
+		case "cypher", "cipher", "alg", "algorithm":
+			alg = strings.ToUpper(p.Value)
+		case "key":
+			key = p.Value
+		case "pad", "padding":
+			pad = strings.ToUpper(p.Value)
+		}
+	}
+	return func(s *httpd) {
+		if alg == "" && key == "" {
+			return
+		}
+		if err := util.ValidateCypherKey(alg, key); err != nil {
+			s.log.Errorf("Invalid cypher settings, query cypher disabled: %v", err)
+		} else {
+			s.cypherAlg = alg
+			s.cypherKey = key
+			s.cypherPad = pad
+			s.log.Infof("HTTP query cypher enabled (alg=%s,pad=%s)", s.cypherAlg, s.cypherPad)
+		}
+	}
+}
+
+func WithHttpMqttWsHandlerFunc(fn http.HandlerFunc) HttpOption {
+	return func(s *httpd) {
+		s.mqttWsHandler = gin.WrapF(fn)
+	}
+}
+
+func WithHttpPathMap(name string, realPath string) HttpOption {
+	return func(s *httpd) {
+		s.pathMap[name] = realPath
+	}
 }
 
 func (svr *httpd) Start() error {
@@ -214,108 +391,92 @@ func (svr *httpd) Router() *gin.Engine {
 	r.Use(MetricsInterceptor())
 
 	// redirect '/' -> '/web/'
-	for _, h := range svr.handlers {
-		if h.Handler == HandlerWeb {
-			r.GET("/", func(ctx *gin.Context) {
-				ctx.Redirect(http.StatusFound, h.Prefix)
-			})
-			break
-		}
+	r.GET("/", func(ctx *gin.Context) {
+		ctx.Redirect(http.StatusFound, "/web/")
+	})
+	// prefix '/metrics' for influx line protocol
+	metricsGroup := r.Group("/metrics")
+	if svr.enableTokenAuth && svr.authServer != nil {
+		metricsGroup.Use(svr.handleAuthToken)
 	}
+	metricsGroup.POST("/:oper", svr.handleLineProtocol)
+	svr.log.Infof("HTTP path %s for the line protocol", "/metrics")
 
-	for _, h := range svr.handlers {
-		prefix := h.Prefix
-		// remove trailing slash
-		prefix = strings.TrimSuffix(prefix, "/")
-
-		if h.Handler == HandlerVoid {
-			// disabled by configuration
-			continue
-		}
-		svr.log.Debugf("Add handler %s '%s'", h.Handler, prefix)
-		group := r.Group(prefix)
-
-		switch h.Handler {
-		case HandlerInflux: // "influx line protocol"
-			if svr.enableTokenAuth && svr.authServer != nil {
-				group.Use(svr.handleAuthToken)
-			}
-			group.POST("/:oper", svr.handleLineProtocol)
-			svr.log.Infof("HTTP path %s for the line protocol", prefix)
-		case HandlerWeb: // web ui
-			contentBase := "/ui/"
-			group.GET("/", func(ctx *gin.Context) {
-				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))
-			})
-			if svr.uiContentFs != nil {
-				group.StaticFS(contentBase, svr.uiContentFs)
-			} else {
-				group.StaticFS(contentBase, GetAssets(contentBase))
-			}
-			group.Any("/api/license/eula", svr.handleEula)
-			group.POST("/api/login", svr.handleLogin)
-			group.GET("/api/term/:term_id/data", svr.handleTermData)
-			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
-			if svr.mqttWsHandler != nil {
-				group.GET("/api/mqtt", svr.mqttWsHandler)
-				svr.log.Infof("MQTT websocket handler enabled")
-			}
-			if svr.tqlLoader != nil {
-				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
-			}
-			group.GET("/api/tql-exec", svr.handleTqlQueryExec)
-			group.Any("/services/*path", svr.handleServiceProxy)
-			group.Use(svr.handleJwtToken)
-			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
-			group.GET("/api/tql/*path", svr.handleTqlFile)
-			group.POST("/api/tql/*path", svr.handleTqlFile)
-			group.GET("/api/tql", svr.handleTqlQuery)
-			group.POST("/api/tql", svr.handleTqlQuery)
-			group.Any("/machbase", func(c *gin.Context) {
-				svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
-				svr.handleQuery(c)
-			})
-			group.Any("/api/query", svr.handleQuery)
-			group.GET("/api/check", svr.handleCheck)
-			group.POST("/api/rpc", svr.handleHttpRpc)
-			group.POST("/api/relogin", svr.handleReLogin)
-			group.POST("/api/logout", svr.handleLogout)
-			group.POST("/api/chpasswd", svr.handleChangePassword)
-			group.GET("/api/timers/:name", svr.handleTimer)
-			group.PUT("/api/timers/:name", svr.handleTimersUpdate)
-			group.GET("/api/subscribers/:name", svr.handleSubscriber)
-			group.GET("/api/tables", svr.handleTables)
-			group.GET("/api/tables/:table/tags", svr.handleTags)
-			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
-			group.Any("/api/files/*path", svr.handleFiles)
-			group.GET("/api/refs/*path", svr.handleRefs)
-			group.GET("/api/license", svr.handleGetLicense)
-			group.POST("/api/license", svr.handleInstallLicense)
-			group.Any("/api/statz/config", svr.handleStatzConfig)
-			if svr.authServer != nil && svr.authServer.bakd != nil {
-				svr.authServer.bakd.HttpRouter(group.Group("/api/backup"))
-			}
-			svr.log.Infof("HTTP path %s for the web ui", prefix)
-		case HandlerMachbase: // "machbase"
-			if svr.enableTokenAuth && svr.authServer != nil {
-				group.Use(svr.handleAuthToken)
-			}
-			group.GET("/query", svr.handleQuery)
-			group.POST("/query", svr.handleQuery)
-			group.POST("/write", svr.handleWrite)
-			group.POST("/write/:table", svr.handleWrite)
-			group.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
-			group.GET("/watch/:table", svr.handleWatchQuery)
-			group.GET("/tql/*path", svr.handleTqlFile)
-			group.POST("/tql/*path", svr.handleTqlFile)
-			group.GET("/tql", svr.handleTqlQuery)
-			group.POST("/tql", svr.handleTqlQuery)
-			svr.log.Infof("HTTP path %s for machbase api", prefix)
-		}
+	// prefix '/db' for machbase
+	dbGroup := r.Group("/db")
+	if svr.enableTokenAuth && svr.authServer != nil {
+		dbGroup.Use(svr.handleAuthToken)
 	}
-	// public group
-	publicGroup := r.Group("/public")
-	publicGroup.Any("/*path", svr.handlePublic)
+	dbGroup.GET("/query", svr.handleQuery)
+	dbGroup.POST("/query", svr.handleQuery)
+	dbGroup.POST("/write", svr.handleWrite)
+	dbGroup.POST("/write/:table", svr.handleWrite)
+	dbGroup.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
+	dbGroup.GET("/watch/:table", svr.handleWatchQuery)
+	dbGroup.GET("/tql/*path", svr.handleTqlFile)
+	dbGroup.POST("/tql/*path", svr.handleTqlFile)
+	dbGroup.GET("/tql", svr.handleTqlQuery)
+	dbGroup.POST("/tql", svr.handleTqlQuery)
+	svr.log.Infof("HTTP path %s for machbase api", "/db")
+
+	// prefix '/web' for web ui
+	webGroup := r.Group("/web")
+	contentBase := "/ui/"
+	webGroup.GET("/", func(ctx *gin.Context) {
+		ctx.Redirect(http.StatusFound, path.Join("/web", contentBase))
+	})
+	if svr.uiContentFs != nil {
+		webGroup.StaticFS(contentBase, svr.uiContentFs)
+	} else {
+		webGroup.StaticFS(contentBase, GetAssets(contentBase))
+	}
+	webGroup.Any("/api/license/eula", svr.handleEula)
+	webGroup.POST("/api/login", svr.handleLogin)
+	webGroup.GET("/api/term/:term_id/data", svr.handleTermData)
+	webGroup.GET("/api/console/:console_id/data", svr.handleConsoleData)
+	if svr.mqttWsHandler != nil {
+		webGroup.GET("/api/mqtt", svr.mqttWsHandler)
+		svr.log.Infof("MQTT websocket handler enabled")
+	}
+	if svr.tqlLoader != nil {
+		webGroup.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
+	}
+	webGroup.GET("/api/tql-exec", svr.handleTqlQueryExec)
+	webGroup.Any("/services/*path", svr.handleServiceProxy)
+	webGroup.Use(svr.handleJwtToken)
+	webGroup.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+	webGroup.GET("/api/tql/*path", svr.handleTqlFile)
+	webGroup.POST("/api/tql/*path", svr.handleTqlFile)
+	webGroup.GET("/api/tql", svr.handleTqlQuery)
+	webGroup.POST("/api/tql", svr.handleTqlQuery)
+	webGroup.Any("/machbase", func(c *gin.Context) {
+		svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
+		svr.handleQuery(c)
+	})
+	webGroup.Any("/api/query", svr.handleQuery)
+	webGroup.GET("/api/check", svr.handleCheck)
+	webGroup.POST("/api/rpc", svr.handleHttpRpc)
+	webGroup.POST("/api/relogin", svr.handleReLogin)
+	webGroup.POST("/api/logout", svr.handleLogout)
+	webGroup.POST("/api/chpasswd", svr.handleChangePassword)
+	webGroup.GET("/api/timers/:name", svr.handleTimer)
+	webGroup.PUT("/api/timers/:name", svr.handleTimersUpdate)
+	webGroup.GET("/api/subscribers/:name", svr.handleSubscriber)
+	webGroup.GET("/api/tables", svr.handleTables)
+	webGroup.GET("/api/tables/:table/tags", svr.handleTags)
+	webGroup.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
+	webGroup.Any("/api/files/*path", svr.handleFiles)
+	webGroup.GET("/api/refs/*path", svr.handleRefs)
+	webGroup.GET("/api/license", svr.handleGetLicense)
+	webGroup.POST("/api/license", svr.handleInstallLicense)
+	webGroup.Any("/api/statz/config", svr.handleStatzConfig)
+	if svr.authServer != nil && svr.authServer.bakd != nil {
+		svr.authServer.bakd.HttpRouter(webGroup.Group("/api/backup"))
+	}
+	svr.log.Infof("HTTP path %s for the web ui", "/web")
+
+	// prefix '/public' for public files
+	r.Any("/public/*path", svr.handlePublic)
 
 	// debug group
 	debugGroup := r.Group("/debug")
@@ -512,17 +673,6 @@ type LoginRsp struct {
 	ServerInfo   *ServerInfo `json:"server,omitempty"`
 }
 
-type LoginCheckRsp struct {
-	Success        bool                     `json:"success"`
-	Reason         string                   `json:"reason"`
-	Elapse         string                   `json:"elapse"`
-	ServerInfo     *ServerInfo              `json:"server,omitempty"`
-	ExperimentMode bool                     `json:"experimentMode"`
-	EulaRequired   bool                     `json:"eulaRequired,omitempty"`
-	LicenseStatus  string                   `json:"licenseStatus,omitempty"`
-	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
-}
-
 type ChangePasswordReq struct {
 	NewPassword string `json:"newPassword"`
 }
@@ -531,22 +681,6 @@ type ChangePasswordRsp struct {
 	Success bool   `json:"success"`
 	Reason  string `json:"reason"`
 	Elapse  string `json:"elapse"`
-}
-
-type ServerInfo struct {
-	Version string `json:"version,omitempty"`
-}
-
-type WebReferenceGroup struct {
-	Label string          `json:"label"`
-	Items []ReferenceItem `json:"items"`
-}
-
-type ReferenceItem struct {
-	Type   string `json:"type"`
-	Title  string `json:"title"`
-	Addr   string `json:"address"`
-	Target string `json:"target,omitempty"`
 }
 
 func (svr *httpd) handleChangePassword(ctx *gin.Context) {
@@ -660,13 +794,6 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-
-	// cache username and password for web-terminal uses
-	// if svr.authServer != nil {
-	// 	svr.authServer.neoShellAccountMu.Lock()
-	// 	svr.authServer.neoShellAccount[strings.ToLower(username.Login)] = req.Password
-	// 	svr.authServer.neoShellAccountMu.Unlock()
-	// }
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
@@ -801,6 +928,24 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
+type LoginCheckRsp struct {
+	Success        bool                     `json:"success"`
+	Reason         string                   `json:"reason"`
+	Elapse         string                   `json:"elapse"`
+	ServerInfo     *ServerInfo              `json:"server,omitempty"`
+	ExperimentMode bool                     `json:"experimentMode"`
+	EulaRequired   bool                     `json:"eulaRequired,omitempty"`
+	LicenseStatus  string                   `json:"licenseStatus,omitempty"`
+	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
+}
+
+type ServerInfo struct {
+	Version string `json:"version,omitempty"`
+}
+
+//go:embed eula.txt
+var eulaTxt string
+
 func (svr *httpd) handleCheck(ctx *gin.Context) {
 	tick := time.Now()
 	claim, claimExists := svr.getJwtClaim(ctx)
@@ -828,7 +973,7 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.licenseStatusLastTime.IsZero() || time.Since(svr.licenseStatusLastTime) > 30*time.Minute {
 		svr.licenseStatusLastTime = time.Now()
 		svr.licenseStatus = "Unknown"
-		if conn, err := getPoolSqlConn(ctx); err == nil {
+		if conn, err := spi.Connect(ctx, "sys"); err == nil {
 			if nfo, err := spi.GetLicenseInfo(ctx, conn); err == nil {
 				svr.licenseStatus = nfo.LicenseStatus
 			}
@@ -960,7 +1105,7 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	rsp := &LicenseResponse{Success: false, Reason: "unspecified"}
 	tick := time.Now()
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnauthorized, rsp)
@@ -1017,7 +1162,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnauthorized, rsp)
@@ -1039,12 +1184,125 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-var (
-	mdFileRootRegexp = regexp.MustCompile(`{{\s*file_root\s*}}`)
-	mdFilePathRegexp = regexp.MustCompile(`{{\s*file_path\s*}}`)
-	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
-	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
-)
+func (svr *httpd) handleTimer(ctx *gin.Context) {
+	tick := time.Now()
+	rsp := gin.H{"success": false, "reason": "not specified"}
+
+	name := ctx.Param("name")
+	getRsp, err := svr.authServer.schedSvc.GetSchedule(ctx, &scheduler.GetScheduleRequest{
+		Name: name,
+	})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !getRsp.Success {
+		rsp["reason"] = getRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	rsp["success"] = true
+	rsp["reason"] = "success"
+	rsp["data"] = getRsp.Schedule
+	rsp["elapse"] = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) handleTimersUpdate(ctx *gin.Context) {
+	tick := time.Now()
+	rsp := gin.H{"success": false, "reason": "not specified"}
+	req := struct {
+		AutoStart bool   `json:"autoStart"`
+		Schedule  string `json:"schedule"`
+		Path      string `json:"path"`
+	}{}
+
+	name := ctx.Param("name")
+	if name == "" {
+		rsp["reason"] = "no name specified"
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	err := ctx.ShouldBind(&req)
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	getRsp, err := svr.authServer.schedSvc.GetSchedule(ctx, &scheduler.GetScheduleRequest{
+		Name: name,
+	})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !getRsp.Success {
+		rsp["reason"] = getRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	updateRsp, err := svr.authServer.schedSvc.UpdateSchedule(ctx, &scheduler.UpdateScheduleRequest{
+		Name:      name,
+		AutoStart: req.AutoStart,
+		Schedule:  req.Schedule,
+		Task:      req.Path,
+	})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !updateRsp.Success {
+		rsp["reason"] = updateRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	rsp["success"] = true
+	rsp["reason"] = "success"
+	rsp["elapse"] = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) handleSubscriber(ctx *gin.Context) {
+	tick := time.Now()
+	rsp := gin.H{"success": false, "reason": "not specified"}
+
+	name := ctx.Param("name")
+	getRsp, err := svr.authServer.schedSvc.GetSchedule(ctx, &scheduler.GetScheduleRequest{Name: name})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !getRsp.Success {
+		rsp["reason"] = getRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	rsp["success"] = true
+	rsp["reason"] = "success"
+	rsp["data"] = getRsp.Schedule
+	rsp["elapse"] = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
@@ -1243,11 +1501,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 }
 
-type setTerminalSizeRequest struct {
-	Rows int `query:"rows" form:"rows" json:"rows"`
-	Cols int `query:"cols" form:"cols" json:"cols"`
-}
-
 func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 	termId := ctx.Param("term_id")
 
@@ -1259,7 +1512,10 @@ func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 	claim := claimAny.(Claim)
 	termLoginName := claim.Subject
 
-	req := &setTerminalSizeRequest{}
+	req := &struct {
+		Rows int `query:"rows" form:"rows" json:"rows"`
+		Cols int `query:"cols" form:"cols" json:"cols"`
+	}{}
 	if err := ctx.Bind(req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"success": false, "reason": err.Error()})
 		return
@@ -1416,6 +1672,372 @@ func (term *WebTerm) Close() {
 	if term.conn != nil {
 		term.conn.Close()
 	}
+}
+
+type WebConsoleProcessor interface {
+	Process(ctx context.Context, line string)
+	Input(line string)
+	Control(ctrl string)
+}
+
+type WebConsole struct {
+	log       logging.Log
+	username  string
+	consoleId string
+	topic     string
+	conn      *websocket.Conn
+	connMutex sync.Mutex
+	closeOnce sync.Once
+	closed    atomic.Bool
+
+	messages      []*eventbus.Event
+	lastFlushTime time.Time
+	flushPeriod   time.Duration
+	processor     WebConsoleProcessor
+	rpcController *service.Controller
+}
+
+type webConsoleRpcNotifier struct {
+	cons *WebConsole
+}
+
+func (n *webConsoleRpcNotifier) NotifyJsonRpc(session string, payload map[string]any) error {
+	if n == nil || n.cons == nil {
+		return nil
+	}
+	n.cons.connMutex.Lock()
+	defer n.cons.connMutex.Unlock()
+	return n.cons.conn.WriteJSON(map[string]any{
+		"type":    eventbus.EVT_RPC_RSP,
+		"session": session,
+		"rpc":     payload,
+	})
+}
+
+func NewWebConsole(username string, consoleId string, conn *websocket.Conn, rpcController *service.Controller) *WebConsole {
+	if rpcController == nil {
+		rpcController = defaultJsonRpcController
+	}
+	ret := &WebConsole{
+		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
+		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
+		username:      username,
+		consoleId:     consoleId,
+		conn:          conn,
+		lastFlushTime: time.Now(),
+		flushPeriod:   300 * time.Millisecond,
+		rpcController: rpcController,
+	}
+	eventbus.Default.SubscribeAsync(ret.topic, ret.Send, true)
+	return ret
+}
+
+func (cons *WebConsole) Run() {
+	go cons.readerLoop()
+	go cons.flushLoop()
+}
+
+func (cons *WebConsole) Close() {
+	cons.closeOnce.Do(func() {
+		cons.closed.Store(true)
+		eventbus.Default.Unsubscribe(cons.topic, cons.Send)
+		if cons.conn != nil {
+			cons.conn.Close()
+		}
+	})
+}
+
+func (cons *WebConsole) readerLoop() {
+	defer func() {
+		cons.Close()
+		if e := recover(); e != nil {
+			cons.log.Error("panic recover %s", e)
+		}
+	}()
+
+	if cons.log.TraceEnabled() {
+		cons.log.Trace("websocket: established", cons.conn.RemoteAddr().String())
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for {
+		evt := &eventbus.Event{}
+		err := cons.conn.ReadJSON(evt)
+		if err != nil {
+			if we, ok := err.(*websocket.CloseError); ok {
+				cons.log.Trace(we.Error())
+			} else if !errors.Is(err, io.EOF) {
+				cons.log.Warn("ERR", err.Error())
+			}
+			cons.connMutex.Lock()
+			cons.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
+			cons.connMutex.Unlock()
+			return
+		}
+		switch evt.Type {
+		case eventbus.EVT_PING:
+			if evt.Ping != nil {
+				cons.handlePing(ctx, evt.Ping)
+			}
+		case eventbus.EVT_RPC_REQ:
+			if evt.Rpc != nil {
+				go cons.handleRpc(ctx, evt.Session, evt.Rpc)
+			}
+		}
+	}
+}
+
+func (cons *WebConsole) flushLoop() {
+	ticker := time.NewTicker(cons.flushPeriod)
+	for range ticker.C {
+		if cons.closed.Load() {
+			break
+		}
+		cons.Send(nil)
+	}
+	ticker.Stop()
+}
+
+func (cons *WebConsole) Send(evt *eventbus.Event) {
+	shouldAppend := true
+	forceFlush := false
+
+	cons.connMutex.Lock()
+	defer cons.connMutex.Unlock()
+
+	if evt != nil && evt.Type == eventbus.EVT_LOG &&
+		len(cons.messages) > 0 &&
+		cons.messages[len(cons.messages)-1].Type == eventbus.EVT_LOG {
+
+		lastLog := cons.messages[len(cons.messages)-1].Log
+		if lastLog.Message == evt.Log.Message {
+			if lastLog.Repeat == 0 {
+				lastLog.Repeat = 1
+			}
+			lastLog.Repeat += 1
+			shouldAppend = false
+		}
+	} else if evt != nil && evt.Type != eventbus.EVT_LOG {
+		forceFlush = true
+	}
+
+	if evt != nil && shouldAppend {
+		cons.messages = append(cons.messages, evt)
+	}
+
+	if !forceFlush && time.Since(cons.lastFlushTime) < cons.flushPeriod {
+		// do not flush for now
+		return
+	}
+
+	for _, msg := range cons.messages {
+		err := cons.conn.WriteJSON(msg)
+		if err != nil {
+			cons.log.Warn("ERR", err.Error())
+			cons.Close()
+			break
+		}
+	}
+	cons.lastFlushTime = time.Now()
+	cons.messages = cons.messages[0:0]
+}
+
+func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
+	rsp := eventbus.NewPing(evt.Tick)
+	cons.connMutex.Lock()
+	cons.conn.WriteJSON(rsp)
+	cons.connMutex.Unlock()
+}
+
+func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
+	rpcCtx := service.WithJsonRpcNotificationWriter(ctx, &webConsoleRpcNotifier{cons: cons})
+	rpcCtx = service.WithJsonRpcSession(rpcCtx, session)
+
+	rsp := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      evt.ID,
+	}
+	result, rpcErr := cons.rpcController.CallJsonRpc(evt.Method, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+		switch {
+		case paramType == webConsoleType:
+			return reflect.ValueOf(cons), true
+		case paramType == contextType:
+			return reflect.ValueOf(rpcCtx), true
+		default:
+			return reflect.Value{}, false
+		}
+	})
+	if rpcErr == nil {
+		rsp["result"] = result
+	} else {
+		code := rpcErr.Code
+		message := rpcErr.Message
+		if code == -32603 {
+			code = -32000
+		}
+		if rpcErr.Code == -32601 {
+			message = "Method not found"
+		}
+		rsp["error"] = map[string]any{
+			"code":    code,
+			"message": message,
+		}
+	}
+	cons.connMutex.Lock()
+	cons.conn.WriteJSON(map[string]any{
+		"type":    eventbus.EVT_RPC_RSP,
+		"session": session,
+		"rpc":     rsp,
+	})
+	cons.connMutex.Unlock()
+}
+
+//go:embed assets/*
+var assetsDir embed.FS
+
+func AssetsDir() http.FileSystem {
+	return &StaticFSWrap{
+		TrimPrefix:      "/web/",
+		PrependRealPath: "/assets/",
+		Base:            http.FS(assetsDir),
+		FixedModTime:    time.Now(),
+	}
+}
+
+type StaticFSWrap struct {
+	TrimPrefix      string
+	PrependRealPath string
+	Base            http.FileSystem
+	FixedModTime    time.Time
+}
+
+type staticFile struct {
+	http.File
+	modTime time.Time
+}
+
+func (fsw *StaticFSWrap) Open(name string) (http.File, error) {
+	if !strings.HasPrefix(name, fsw.TrimPrefix) {
+		name = strings.TrimSuffix(fsw.TrimPrefix, "/") + "/" + strings.TrimPrefix(name, "/")
+	}
+	f, err := fsw.Base.Open(fsw.PrependRealPath + strings.TrimPrefix(name, fsw.TrimPrefix))
+	if err != nil {
+		return nil, err
+	}
+	return &staticFile{File: f, modTime: fsw.FixedModTime}, nil
+}
+
+func (f *staticFile) Stat() (fs.FileInfo, error) {
+	stat, err := f.File.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return &staticStat{FileInfo: stat, modTime: f.modTime}, nil
+}
+
+func (f *staticFile) ModTime() time.Time {
+	return f.modTime
+}
+
+type staticStat struct {
+	fs.FileInfo
+	modTime time.Time
+}
+
+func (stat *staticStat) ModTime() time.Time {
+	return stat.modTime
+}
+
+func WrapAssets(path string) http.FileSystem {
+	fs := http.Dir(path)
+	ret := &wrapFileSystem{base: fs}
+	return ret
+}
+
+type wrapFileSystem struct {
+	base http.FileSystem
+}
+
+func (fs *wrapFileSystem) Open(name string) (http.File, error) {
+	ret, err := fs.base.Open(name)
+	if err == nil {
+		return ret, nil
+	}
+	return fs.base.Open("index.html")
+}
+
+//go:embed web/*
+var webFs embed.FS
+
+func GetAssets(dir string) http.FileSystem {
+	dir = strings.TrimPrefix(strings.TrimSuffix(dir, "/"), "/")
+	_, err := fs.Sub(webFs, "web/"+dir)
+	if err != nil {
+		panic(err)
+	}
+
+	return &assetFileSystem{
+		StaticFSWrap: StaticFSWrap{
+			TrimPrefix:   "",
+			Base:         http.FS(webFs),
+			FixedModTime: time.Now(),
+		},
+		prefix: "web/" + dir,
+	}
+}
+
+type assetFileSystem struct {
+	StaticFSWrap
+	prefix string
+}
+
+func (fs *assetFileSystem) Open(name string) (http.File, error) {
+	toks := strings.SplitN(name, "?", 2)
+	if len(toks) == 0 {
+		return nil, os.ErrNotExist
+	}
+	name = toks[0]
+	if strings.HasSuffix(name, "/") {
+		return fs.StaticFSWrap.Open(name)
+	} else if isWellKnownFileType(name) {
+		return fs.StaticFSWrap.Open(fs.prefix + name)
+	} else {
+		return fs.StaticFSWrap.Open(fs.prefix + "/index.html")
+	}
+}
+
+var wellknowns = map[string]bool{
+	".css":   true,
+	".gif":   true,
+	".html":  true,
+	".htm":   true,
+	".ico":   true,
+	".jpg":   true,
+	".jpeg":  true,
+	".json":  true,
+	".js":    true,
+	".map":   true,
+	".png":   true,
+	".svg":   true,
+	".ttf":   true,
+	".txt":   true,
+	".yaml":  true,
+	".yml":   true,
+	".webp":  true,
+	".woff":  true,
+	".woff2": true,
+}
+
+func isWellKnownFileType(name string) bool {
+	ext := filepath.Ext(name)
+	if len(ext) == 0 {
+		return false
+	}
+
+	if _, ok := wellknowns[strings.ToLower(ext)]; ok {
+		return true
+	}
+	return false
 }
 
 type SsfsResponse struct {
@@ -1717,6 +2339,18 @@ type RefsResponse struct {
 	} `json:"data"`
 }
 
+type WebReferenceGroup struct {
+	Label string          `json:"label"`
+	Items []ReferenceItem `json:"items"`
+}
+
+type ReferenceItem struct {
+	Type   string `json:"type"`
+	Title  string `json:"title"`
+	Addr   string `json:"address"`
+	Target string `json:"target,omitempty"`
+}
+
 func (svr *httpd) handleRefs(ctx *gin.Context) {
 	rsp := &RefsResponse{Reason: "unspecified"}
 	tick := time.Now()
@@ -1751,4 +2385,401 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 	}
+}
+
+var (
+	ginContextType = reflect.TypeOf((*gin.Context)(nil))
+	contextType    = reflect.TypeOf((*context.Context)(nil)).Elem()
+	webConsoleType = reflect.TypeOf((*WebConsole)(nil))
+)
+
+type rpcImplicitParamResolver func(paramType reflect.Type) (reflect.Value, bool)
+
+var defaultJsonRpcController = &service.Controller{}
+
+func buildRpcCallParams(handler any, rawParams []any, resolveImplicit rpcImplicitParamResolver) ([]reflect.Value, error) {
+	return service.BuildRpcCallParams(handler, rawParams, service.JsonRpcImplicitParamResolver(resolveImplicit))
+}
+
+var (
+	mdFileRootRegexp = regexp.MustCompile(`{{\s*file_root\s*}}`)
+	mdFilePathRegexp = regexp.MustCompile(`{{\s*file_path\s*}}`)
+	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
+	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
+)
+
+// rpcMarkdownRender renders markdown to HTML.
+//
+// params:
+//   - markdown: markdown source text
+//   - darkMode: whether to render with dark-mode style
+//   - referer: the referer URL
+//     "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
+//     "http://127.0.0.1:5654/web/ui" // file is not saved
+//
+// return: rendered HTML text
+func rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, error) {
+	var filePath, fileName, fileDir string
+	if u, err := url.Parse(referer); err == nil {
+		// {{ file_path }} => /web/api/tql/path/to/file.wrk
+		// {{ file_name }} => file.wrk
+		// {{ file_dir }}  => /web/api/tql/path/to
+		filePath = u.Path
+		fileName = path.Base(filePath)
+		fileDir = path.Dir(filePath)
+	}
+	// {{ file_root }} => /web/api/tql
+	fileRoot := "/web/api/tql"
+	src := []byte(markdown)
+	src = mdFileRootRegexp.ReplaceAll(src, []byte(fileRoot))
+	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
+	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
+	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
+
+	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
+	w := &strings.Builder{}
+	w.Write([]byte(`<div>`))
+	if err := conv.Convert(src, w); err != nil {
+		return "", err
+	}
+	w.Write([]byte(`</div>`))
+	return w.String(), nil
+}
+
+// handleHttpRpc handles HTTP POST requests for JSON-RPC
+func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
+	var req eventbus.RPC
+
+	// Parse JSON-RPC request
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		// Invalid JSON-RPC request format
+		rsp := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      nil,
+			"error": map[string]any{
+				"code":    -32700,
+				"message": "Parse error",
+			},
+		}
+		ctx.JSON(http.StatusOK, rsp)
+		return
+	}
+
+	rsp := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      req.ID,
+	}
+
+	ctl := svr.rpcController
+	if ctl == nil {
+		ctl = defaultJsonRpcController
+	}
+	result, rpcErr := ctl.CallJsonRpc(req.Method, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+		switch {
+		case paramType == ginContextType:
+			return reflect.ValueOf(ctx), true
+		case paramType == contextType:
+			// Pass gin.Context as context.Context to preserve requester information.
+			return reflect.ValueOf(ctx), true
+		default:
+			return reflect.Value{}, false
+		}
+	})
+	if rpcErr == nil {
+		rsp["result"] = result
+	} else {
+		code := rpcErr.Code
+		message := rpcErr.Message
+		if code == -32603 {
+			code = -32000
+		}
+		if rpcErr.Code == -32601 {
+			message = "Method not found"
+		}
+		rsp["error"] = map[string]any{
+			"code":    code,
+			"message": message,
+		}
+	}
+
+	// Always return HTTP 200 as per JSON-RPC 2.0 specification
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func strBool(str string, def bool) bool {
+	if str == "" {
+		return def
+	}
+	return strings.ToLower(str) == "true" || str == "1"
+}
+
+func strInt(str string, def int) int {
+	if str == "" {
+		return def
+	}
+	v, err := strconv.Atoi(str)
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+func strString(str string, def string) string {
+	if str == "" {
+		return def
+	}
+	return str
+}
+
+func MetricsInterceptor() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+
+		latency := time.Since(start)
+		m := []metric.Measure{}
+		m = append(m, metric.Measure{Name: "http:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		m = append(m, metric.Measure{Name: "http:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+		if strings.HasPrefix(c.Request.URL.Path, "/db/write") {
+			m = append(m, metric.Measure{Name: "http:write:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:write:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+		} else if strings.HasPrefix(c.Request.URL.Path, "/db/query") {
+			m = append(m, metric.Measure{Name: "http:query:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:query:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+		} else if strings.HasPrefix(c.Request.URL.Path, "/db/tql") {
+			m = append(m, metric.Measure{Name: "http:tql:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:tql:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+		}
+		if s := c.Request.ContentLength; s > 0 {
+			m = append(m, metric.Measure{Name: "http:recv_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
+		}
+		if s := c.Writer.Size(); s > 0 {
+			m = append(m, metric.Measure{Name: "http:send_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
+		}
+
+		status := c.Writer.Status()
+		if status < 200 {
+			m = append(m, metric.Measure{Name: "http:status_1xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		} else if status < 300 {
+			m = append(m, metric.Measure{Name: "http:status_2xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		} else if status < 400 {
+			m = append(m, metric.Measure{Name: "http:status_3xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		} else if status < 500 {
+			m = append(m, metric.Measure{Name: "http:status_4xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		} else {
+			m = append(m, metric.Measure{Name: "http:status_5xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		}
+		spi.AddMetrics(m...)
+	}
+}
+
+func RecoveryWithLogging(log logging.Log, recovery ...gin.RecoveryFunc) gin.HandlerFunc {
+	gin.DefaultWriter = log
+	gin.DefaultErrorWriter = log
+
+	if len(recovery) > 0 {
+		return gin.CustomRecoveryWithWriter(log, recovery[0])
+	}
+	return gin.CustomRecoveryWithWriter(log, func(c *gin.Context, err any) {
+		c.AbortWithStatus(http.StatusInternalServerError)
+	})
+}
+
+type HttpLoggerFilter func(req *http.Request, statusCode int, latency time.Duration) bool
+
+var httpLoggerNewLogFile = logging.NewLogFile
+
+func HttpLogger(loggingName string, debugMode func() (bool, time.Duration)) gin.HandlerFunc {
+	return HttpLoggerWithFilter(loggingName, func(req *http.Request, statusCode int, latency time.Duration) bool {
+		enabled := false
+		threshold := time.Duration(-1)
+		if debugMode != nil {
+			enabled, threshold = debugMode()
+		}
+		// when log is disabled
+		if !enabled {
+			return false
+		}
+		// when status code is error
+		if statusCode >= 400 {
+			return true
+		}
+		// when logLatencyThreshold is not set
+		if threshold < 0 {
+			return false
+		}
+
+		// when logLatencyThreshold is set
+		return latency >= threshold
+	})
+}
+
+func HttpLoggerWithFilter(loggingName string, filter HttpLoggerFilter) gin.HandlerFunc {
+	log := logging.GetLog(loggingName)
+	return logger(log, filter)
+}
+
+func HttpLoggerWithFile(loggingName string, filename string) gin.HandlerFunc {
+	return HttpLoggerWithFileConf(loggingName,
+		logging.LogFileConf{
+			Filename:             filename,
+			Level:                "DEBUG",
+			MaxSize:              10,
+			MaxBackups:           2,
+			MaxAge:               7,
+			Compress:             false,
+			Append:               true,
+			RotateSchedule:       "@midnight",
+			Console:              false,
+			PrefixWidth:          20,
+			EnableSourceLocation: false,
+		})
+}
+
+func HttpLoggerWithFileConf(loggingName string, fileConf logging.LogFileConf) gin.HandlerFunc {
+	return HttpLoggerWithFilterAndFileConf(loggingName, nil, fileConf)
+}
+
+func HttpLoggerWithFilterAndFileConf(loggingName string, filter HttpLoggerFilter, fileConf logging.LogFileConf) gin.HandlerFunc {
+	if len(fileConf.Filename) > 0 {
+		return logger(httpLoggerNewLogFile(loggingName, fileConf), filter)
+	} else {
+		return HttpLoggerWithFilter(loggingName, filter)
+	}
+}
+
+var ignoreAccessLog = []struct {
+	pathSuffix string
+	method     string
+}{
+	{pathSuffix: "/healthz", method: http.MethodGet},
+	{pathSuffix: "/statz", method: http.MethodGet},
+	{pathSuffix: "/web/api/check", method: http.MethodGet},
+}
+
+func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		// Start timer
+		start := time.Now()
+
+		// Process request
+		c.Next()
+
+		for _, ignore := range ignoreAccessLog {
+			if c.Request.Method == ignore.method && strings.HasSuffix(c.Request.URL.Path, ignore.pathSuffix) {
+				return
+			}
+		}
+
+		// Stop timer
+		TimeStamp := time.Now()
+		Latency := TimeStamp.Sub(start)
+
+		StatusCode := c.Writer.Status()
+
+		// filter exists, and it returns false not to leave log
+		if filter != nil && !filter(c.Request, StatusCode, Latency) {
+			return
+		}
+
+		url := c.Request.Host + c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+		if len(raw) > 0 {
+			url = url + "?" + raw
+		}
+
+		ClientIP := c.ClientIP()
+		Proto := c.Request.Proto
+		Method := c.Request.Method
+		ErrorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
+		if len(ErrorMessage) > 0 {
+			ErrorMessage = "\n" + ErrorMessage
+		}
+
+		wSize := c.Writer.Size()
+		if wSize == -1 {
+			wSize = 0
+		}
+		WriteSize := util.HumanizeByteCount(int64(wSize))
+		ReadSize := util.HumanizeByteCount(c.Request.ContentLength)
+
+		color := ""
+		reset := "\033[0m"
+		level := logging.LevelDebug
+
+		switch {
+		case StatusCode >= http.StatusContinue && StatusCode < http.StatusOK:
+			color, reset = "", "" // 1xx
+		case StatusCode >= http.StatusOK && StatusCode < http.StatusMultipleChoices:
+			color = "\033[97;42m" // 2xx green
+		case StatusCode >= http.StatusMultipleChoices && StatusCode < http.StatusBadRequest:
+			color = "\033[90;47m" // 3xx white
+		case StatusCode >= http.StatusBadRequest && StatusCode < http.StatusInternalServerError:
+			color = "\033[90;43m" // 4xx yellow
+		default:
+			color = "\033[97;41m" // 5xx red
+			level = logging.LevelError
+		}
+
+		log.Logf(level, "%s %3d %s| %13v | %15s | %8s | %8s | %s %-7s %s%s",
+			color, StatusCode, reset,
+			Latency,
+			ClientIP,
+			ReadSize,
+			WriteSize,
+			Proto,
+			Method,
+			url,
+			ErrorMessage,
+		)
+	}
+}
+
+type WsReadWriter struct {
+	*websocket.Conn
+	r  io.Reader
+	mu sync.Mutex
+}
+
+var _ io.ReadWriter = (*WsReadWriter)(nil)
+
+func (ws *WsReadWriter) Read(p []byte) (int, error) {
+	if ws.r == nil {
+		if _, r, err := ws.NextReader(); err != nil {
+			return 0, err
+		} else {
+			ws.r = r
+		}
+	}
+	n, err := ws.r.Read(p)
+	if err == io.EOF {
+		if _, r, err := ws.NextReader(); err != nil {
+			return 0, err
+		} else {
+			ws.r = r
+		}
+		m, e := ws.r.Read(p[n:])
+		n += m
+		err = e
+	}
+	return n, err
+}
+
+func (ws *WsReadWriter) Write(data []byte) (int, error) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	err := (*ws).WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
+}
+
+func (svr *httpd) handleServiceProxy(ctx *gin.Context) {
+	if svr.authServer == nil || svr.authServer.proxyMgr == nil {
+		ctx.JSON(404, gin.H{"success": false, "reason": "proxy not registered"})
+		return
+	}
+	svr.authServer.proxyMgr.Handle(ctx, ctx.Param("path"))
 }

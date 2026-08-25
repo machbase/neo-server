@@ -186,7 +186,7 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		opts.RowsArray(req.RowsArray),
 		opts.Transpose(req.Transpose),
 	)
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		if hook.SetStatusCode != nil {
 			hook.SetStatusCode(http.StatusServiceUnavailable)

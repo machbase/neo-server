@@ -83,7 +83,7 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 
 	tmpFile, err := os.CreateTemp("", "runner*.sql")
 	if err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return
 	}
 	defer os.Remove(tmpFile.Name())
@@ -92,7 +92,7 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 
 		switch strings.ToLower(subCmd) {
 		case "exit", "quit", "set", "help", "clear", "shutdown":
-			ErrorRecord(fmt.Errorf("command %q is not supported", subCmd)).Tell(node.next)
+			node.emit(ErrorRecord(fmt.Errorf("command %q is not supported", subCmd)))
 			continue
 		default:
 			line := strings.Join(append([]string{subCmd}, args...), " ")
@@ -103,19 +103,19 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 
 	var cmd *exec.Cmd
 	if args, err := ShellExecutable(_httpServer, tmpFile.Name()); err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return
 	} else {
 		cmd = exec.Command(args[0], args[1:]...)
-		cmd.Env = append(os.Environ(), "NEOSHELL_USER="+node.task.consoleUser)
-		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.task.consoleOtp)
+		cmd.Env = append(os.Environ(), "NEOSHELL_USER="+node.ensureRuntime().ConsoleUser())
+		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.ensureRuntime().ConsoleOTP())
 		cmd.Stderr = &bytes.Buffer{}
 		if _, ok := node.GetValue("shell"); !ok {
 			cols := []*client.Column{
 				client.MakeColumnRownum(),
 				client.MakeColumnString("RESULT"),
 			}
-			node.task.SetResultColumns(cols)
+			node.ensureRuntime().SetResultColumns(cols)
 		}
 		if output, err := cmd.Output(); err != nil {
 			if cmd.Stderr != nil {
@@ -123,12 +123,12 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 					err = fmt.Errorf("%s", string(bs))
 				}
 			}
-			node.task.LogError(err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogError(err.Error())
+			node.emit(ErrorRecord(err))
 		} else {
 			var rowNum = 1
 			for _, ln := range strings.Split(string(output), "\n") {
-				NewRecord(rowNum, ln).Tell(node.next)
+				node.emit(NewRecord(rowNum, ln))
 				rowNum++
 			}
 		}

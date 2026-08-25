@@ -141,7 +141,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 
 	watch, err := spi.NewWatcher(ctx,
 		spi.WatcherConfig{
-			ConnProvider: func() (*sql.Conn, error) { return getPoolSqlConn(ctx) },
+			ConnProvider: func() (*sql.Conn, error) { return spi.Connect(ctx, "sys") },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
 			Timeformat:   timeformat,
@@ -233,7 +233,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 	}
 	ts, _ := uidTs.Time()
 
-	conn, err := getPoolSqlConn(ctx)
+	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -643,6 +643,42 @@ func parseConsoleId(ctx *gin.Context) *ConsoleInfo {
 const TQL_SCRIPT_PARAM = "$"
 const TQL_TOKEN_PARAM = "$token"
 
+type tqlHTTPHeaderWriter struct {
+	writer      gin.ResponseWriter
+	task        *tql.Task
+	xhtmlAsHTML bool
+	applied     bool
+}
+
+func (w *tqlHTTPHeaderWriter) Write(p []byte) (int, error) {
+	w.applyHeaders()
+	return w.writer.Write(p)
+}
+
+func (w *tqlHTTPHeaderWriter) applyHeaders() {
+	if w.applied || w.task == nil {
+		return
+	}
+	w.applied = true
+	contentType := w.task.OutputContentType()
+	if w.xhtmlAsHTML && contentType == "application/xhtml+xml" {
+		contentType = "text/html"
+	}
+	header := w.writer.Header()
+	header.Set("Content-Type", contentType)
+	header.Set("Content-Encoding", w.task.OutputContentEncoding())
+	if chart := w.task.OutputChartType(); len(chart) > 0 {
+		header.Set(TqlHeaderChartType, chart)
+	}
+	if headers := w.task.OutputHttpHeaders(); len(headers) > 0 {
+		for key, values := range headers {
+			for _, value := range values {
+				header.Set(key, value)
+			}
+		}
+	}
+}
+
 // POST "/tql/tql-exec" accepts the access token in the query parameter
 func (svr *httpd) handleTqlQueryExec(ctx *gin.Context) {
 	if token := ctx.Query(TQL_TOKEN_PARAM); token != "" {
@@ -727,25 +763,14 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$"+otp)
 		}
 	}
-	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
+	headerWriter := &tqlHTTPHeaderWriter{writer: ctx.Writer, task: task}
+	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: headerWriter}, true)
 	if err := task.Compile(codeReader); err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
-	}
-	ctx.Writer.Header().Set("Content-Type", task.OutputContentType())
-	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
-	if chart := task.OutputChartType(); len(chart) > 0 {
-		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
-	}
-	if headers := task.OutputHttpHeaders(); len(headers) > 0 {
-		for k, vs := range headers {
-			for _, v := range vs {
-				ctx.Writer.Header().Set(k, v)
-			}
-		}
 	}
 	go func() {
 		<-ctx.Request.Context().Done()
@@ -827,11 +852,13 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	task.SetParams(params)
 	task.SetLogWriter(logging.GetLog(filepath.Base(path)))
 
+	headerWriter := &tqlHTTPHeaderWriter{writer: ctx.Writer, task: task, xhtmlAsHTML: true}
+
 	// Set output writer based on headers
 	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" || ctx.Request.Header.Get(TqlHeaderTqlOutput) == "json" {
-		task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
+		task.SetOutputWriterJson(&util.NopCloseWriter{Writer: headerWriter}, true)
 	} else {
-		task.SetOutputWriter(&util.NopCloseWriter{Writer: ctx.Writer})
+		task.SetOutputWriter(&util.NopCloseWriter{Writer: headerWriter})
 	}
 
 	// Compile the script
@@ -839,23 +866,6 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 		svr.log.Error("tql parse fail", path, err.Error())
 		handleError(ctx, http.StatusInternalServerError, err.Error(), tick)
 		return
-	}
-
-	contentType := task.OutputContentType()
-	if contentType == "application/xhtml+xml" {
-		contentType = "text/html"
-	}
-	ctx.Writer.Header().Set("Content-Type", contentType)
-	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
-	if chart := task.OutputChartType(); len(chart) > 0 {
-		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
-	}
-	if headers := task.OutputHttpHeaders(); len(headers) > 0 {
-		for k, vs := range headers {
-			for _, v := range vs {
-				ctx.Writer.Header().Set(k, v)
-			}
-		}
 	}
 
 	// Handle task cancellation

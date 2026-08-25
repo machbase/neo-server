@@ -100,9 +100,9 @@ func TestSqlRowsScanTypes(t *testing.T) {
 		decimalPrecision   int64
 		decimalScale       int64
 	}{
-		{name: "NAME", databaseType: "VARCHAR", scanType: "string", nullable: true, length: 100},
-		{name: "TIME", databaseType: "DATETIME", scanType: "time.Time", nullable: true, length: 8},
-		{name: "VALUE", databaseType: "DOUBLE", scanType: "float64", nullable: true, length: 8,
+		{name: "NAME", databaseType: "VARCHAR", scanType: "string", nullable: false, length: 100},
+		{name: "TIME", databaseType: "DATETIME", scanType: "time.Time", nullable: false, length: 8},
+		{name: "VALUE", databaseType: "DOUBLE", scanType: "float64", nullable: false, length: 8,
 			supportDecimalSize: true, decimalPrecision: 8, decimalScale: 0},
 		{name: "SHORT_VALUE", databaseType: "SHORT", scanType: "int16", nullable: true, length: 2},
 		{name: "USHORT_VALUE", databaseType: "USHORT", scanType: "uint16", nullable: true, length: 2},

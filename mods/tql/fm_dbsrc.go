@@ -3,12 +3,14 @@ package tql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
 	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/spi"
 )
@@ -25,15 +27,15 @@ func (node *Node) fmSqlSelect(args ...any) (any, error) {
 	var sqlText string
 	defer func() {
 		if ds != nil {
-			node.task.LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
+			node.ensureRuntime().LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
 		} else {
-			node.task.LogTrace("SQL_SELECT dump:", sqlText)
+			node.ensureRuntime().LogTrace("SQL_SELECT dump:", sqlText)
 		}
 	}()
 
 	if ret.dump == nil || !ret.dump.Flag {
-		node.task.LogTrace("╭─", ret.ToSQL())
-		ds = &DataGenMachbase{task: node.task, sqlText: ret.ToSQL()}
+		node.ensureRuntime().LogTrace("╭─", ret.ToSQL())
+		ds = &DataGenMachbase{sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
 		if ret.between != nil {
@@ -46,7 +48,7 @@ func (node *Node) fmSqlSelect(args ...any) (any, error) {
 		if ret.dump.Escape {
 			sqlText = url.QueryEscape(sqlText)
 		}
-		NewRecord("SQLDUMP", sqlText).Tell(node.next)
+		node.emit(NewRecord("SQLDUMP", sqlText))
 		return nil, nil
 	}
 	return nil, nil
@@ -63,15 +65,15 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 	var sqlText string
 	defer func() {
 		if ds != nil {
-			node.task.LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
+			node.ensureRuntime().LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
 		} else {
-			node.task.LogTrace("QUERY dump:", sqlText)
+			node.ensureRuntime().LogTrace("QUERY dump:", sqlText)
 		}
 	}()
 
 	if ret.dump == nil || !ret.dump.Flag {
-		node.task.LogTrace("╭─", ret.ToSQL())
-		ds = &DataGenMachbase{task: node.task, sqlText: ret.ToSQL()}
+		node.ensureRuntime().LogTrace("╭─", ret.ToSQL())
+		ds = &DataGenMachbase{sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
 		if ret.between != nil {
@@ -84,7 +86,7 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		if ret.dump.Escape {
 			sqlText = url.QueryEscape(sqlText)
 		}
-		NewRecord("SQLDUMP", sqlText).Tell(node.next)
+		node.emit(NewRecord("SQLDUMP", sqlText))
 		return nil, nil
 	}
 	return nil, nil
@@ -233,7 +235,6 @@ type DataGen interface {
 var _ DataGen = (*DataGenMachbase)(nil)
 
 type DataGenMachbase struct {
-	task    *Task
 	sqlText string
 	params  []any
 
@@ -241,44 +242,45 @@ type DataGenMachbase struct {
 }
 
 func (dc *DataGenMachbase) gen(node *Node) {
-	conn, err := spi.Connect(node.task.ctx, node.task.consoleUser)
+	runtime := node.ensureRuntime()
+	conn, err := spi.Connect(runtime.Context(), runtime.ConsoleUser())
 	if err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return
 	}
 	defer conn.Close()
 
 	stmtType := spi.DetectSQLStatementType(dc.sqlText)
 	if !stmtType.IsFetch() {
-		dc.task.SetResultColumns(client.Columns{
+		runtime.SetResultColumns(client.Columns{
 			client.MakeColumnRownum(),
 			client.MakeColumnString("MESSAGE"),
 		})
-		result, err := conn.ExecContext(node.task.ctx, dc.sqlText, dc.params...)
+		result, err := conn.ExecContext(runtime.Context(), dc.sqlText, dc.params...)
 		if err != nil {
-			ErrorRecord(err).Tell(node.next)
+			node.emit(ErrorRecord(err))
 		} else {
 			nrows, err := result.RowsAffected()
 			if err != nil {
-				ErrorRecord(err).Tell(node.next)
+				node.emit(ErrorRecord(err))
 			} else {
 				dc.resultMsg = spi.MakeUserMessage(stmtType, nrows)
-				NewRecord(1, dc.resultMsg).Tell(node.next)
+				node.emit(NewRecord(1, dc.resultMsg))
 			}
 		}
 		return
 	}
 
-	rows, err := conn.QueryContext(node.task.ctx, dc.sqlText, dc.params...)
+	rows, err := conn.QueryContext(runtime.Context(), dc.sqlText, dc.params...)
 	if err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return
 	}
 	defer rows.Close()
 
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return
 	}
 	cols := make([]*client.Column, len(columnTypes)+1)
@@ -286,84 +288,133 @@ func (dc *DataGenMachbase) gen(node *Node) {
 	for i, col := range columnTypes {
 		cols[i+1] = client.NewColumnWithType(col)
 	}
-	dc.task.SetResultColumns(cols)
+	runtime.SetResultColumns(cols)
 
 	nrow := int64(0)
 	for rows.Next() {
 		nrow++
-		if dc.task.shouldStop() {
+		if runtime.ShouldStop() {
 			break
 		}
 		values := spi.MakeBuffer(columnTypes)
 		if err = rows.Scan(values...); err != nil {
-			ErrorRecord(err).Tell(node.next)
+			node.emit(ErrorRecord(err))
 			break
 		}
 		for i := range values {
 			values[i] = client.Unbox(values[i])
 		}
-		NewRecord(nrow, values).Tell(node.next)
+		node.emit(NewRecord(nrow, values))
 	}
 	dc.resultMsg = spi.MakeUserMessage(stmtType, nrow)
+}
+
+type bridgeName struct {
+	name string
+}
+
+// bridge('name')
+func (x *Node) fmBridge(name string) *bridgeName {
+	return &bridgeName{name: name}
+}
+
+type useDatabase struct {
+	use string
+}
+
+// use('database')
+func (x *Node) fmUse(dbname string) *useDatabase {
+	return &useDatabase{use: dbname}
 }
 
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
 func (x *Node) fmSql(args ...any) (any, error) {
-	if x.Inflight() == nil {
+	if x.role == StageSink {
 		return x.fmSqlSink(args...)
 	}
+	runtime := x.ensureRuntime()
 
 	if len(args) == 0 {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
 	tick := time.Now()
-	var conn *sql.Conn
 	var sqlText string
 	var sqlParams []any
-	var prompt string
+
+	var use string
+	var bridge string
+
+	var conn *sql.Conn
 	var resultMsg string
 
-	switch v := args[0].(type) {
-	case string:
-		if c, err := spi.Connect(x.task.ctx, x.task.consoleUser); err != nil {
-			return nil, err
-		} else {
-			conn = c
+loop:
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
+			sqlParams = args[i+1:]
+			break loop
+		case *useDatabase:
+			use = strings.TrimSpace(strings.ToUpper(v.use))
+		case *bridgeName:
+			bridge = v.name
 		}
-		defer conn.Close()
-		sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
-		sqlParams = args[1:]
-	case *bridgeName:
-		dbm, err := connector.Database(v.name)
-		if err != nil {
-			return nil, err
-		}
-		conn, err = dbm.Conn(x.task.ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-		if str, ok := args[1].(string); ok {
-			sqlText = strings.TrimSuffix(strings.TrimSpace(str), ";")
-		}
-		sqlParams = args[2:]
-		prompt = v.name
-		for _, prefix := range []string{"sqlite,", "mysql,", "mssql,", "postgres,"} {
-			if strings.HasPrefix(v.name, prefix) {
-				prompt = strings.TrimSuffix(prefix, ",")
-			}
-		}
-		prompt = fmt.Sprintf("SQL(%s):", prompt)
-	default:
-		return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
 	}
 	if len(sqlText) == 0 {
 		return nil, fmt.Errorf("f(SQL) Empty SQL text")
 	}
 
+	if bridge == "" {
+		if c, err := spi.Connect(runtime.Context(), runtime.ConsoleUser()); err != nil {
+			return nil, err
+		} else {
+			conn = c
+		}
+		defer conn.Close()
+	} else {
+		dbm, err := connector.Database(bridge)
+		if err != nil {
+			return nil, err
+		}
+		conn, err = dbm.Conn(runtime.Context())
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+	}
+	if conn == nil {
+		return nil, errors.New("f(SQL) failed to connect to database")
+	}
+
+	if use != "" {
+		_, err := conn.ExecContext(runtime.Context(), fmt.Sprintf("USE %s", use))
+		if err != nil {
+			return nil, fmt.Errorf("f(SQL) failed to use database %s: %v", use, err)
+		}
+	}
+
+	prompt := "SQL("
+	flags := []string{}
+	if bridge != "" {
+		for _, prefix := range []string{"sqlite,", "mysql,", "mssql,", "postgres,"} {
+			if strings.HasPrefix(bridge, prefix) {
+				flags = append(flags, "BRIDGE "+strings.TrimSuffix(bridge, ","))
+				break
+			}
+		}
+	}
+	if use != "" {
+		flags = append(flags, "USE "+use)
+	}
+	if len(flags) > 0 {
+		prompt = prompt + strings.Join(flags, ", ") + ")"
+	} else {
+		prompt = prompt + ")"
+	}
+
 	stmtType := spi.DetectSQLStatementType(sqlText)
-	x.task.LogInfo("╭─", prompt, sqlText)
+	runtime.LogInfo("╭─", prompt, sqlText)
 	switch {
 	case stmtType == spi.SQLStatementTypeShow:
 		resultMsg = sqlShow(x, conn, sqlText)
@@ -379,64 +430,66 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	default:
 		resultMsg = sqlExec(x, stmtType, conn, sqlText, sqlParams...)
 	}
-	x.task.LogInfo("╰─➤", resultMsg, time.Since(tick).String())
+	runtime.LogInfo("╰─➤", resultMsg, time.Since(tick).String())
 	return nil, nil
 }
 
 func sqlExec(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText string, sqlParams ...any) string {
+	runtime := node.ensureRuntime()
 	var userMsg string
-	result, err := conn.ExecContext(node.task.ctx, sqlText, sqlParams...)
+	result, err := conn.ExecContext(runtime.Context(), sqlText, sqlParams...)
 	if err != nil {
 		userMsg = err.Error()
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 	} else {
 		nrows, _ := result.RowsAffected()
 		userMsg = spi.MakeUserMessage(stmtType, nrows)
-		node.task.SetResultColumns(client.Columns{
+		runtime.SetResultColumns(client.Columns{
 			client.MakeColumnRownum(),
 			client.MakeColumnString("MESSAGE"),
 		})
-		NewRecord(1, userMsg).Tell(node.next)
+		node.emit(NewRecord(1, userMsg))
 	}
 	return userMsg
 }
 
 func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText string, sqlParams ...any) string {
+	runtime := node.ensureRuntime()
 	var userMsg string
-	rows, err := conn.QueryContext(node.task.ctx, sqlText, sqlParams...)
+	rows, err := conn.QueryContext(runtime.Context(), sqlText, sqlParams...)
 	if err != nil {
 		userMsg = err.Error()
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 	} else {
 		defer rows.Close()
 		columnTypes, err := rows.ColumnTypes()
 		if err != nil {
 			userMsg = err.Error()
-			ErrorRecord(err).Tell(node.next)
+			node.emit(ErrorRecord(err))
 		} else {
 			cols := make([]*client.Column, len(columnTypes)+1)
 			cols[0] = client.MakeColumnRownum()
 			for i, col := range columnTypes {
 				cols[i+1] = client.NewColumnWithType(col)
 			}
-			node.task.SetResultColumns(cols)
+			runtime.SetResultColumns(cols)
 			nrow := int64(0)
 			for rows.Next() {
 				nrow++
-				if node.task.shouldStop() {
+				if runtime.ShouldStop() {
 					userMsg = spi.MakeUserMessage(stmtType, nrow) + ", cancelled"
 					break
 				}
 				values := spi.MakeBuffer(columnTypes)
 				if err := rows.Scan(values...); err != nil {
 					userMsg = err.Error()
-					ErrorRecord(err).Tell(node.next)
+					node.emit(ErrorRecord(err))
 					break
 				}
 				for i := range values {
 					values[i] = client.Unbox(values[i])
 				}
-				NewRecord(nrow, values).Tell(node.next)
+				node.emit(NewRecord(nrow, values))
 			}
 			userMsg = spi.MakeUserMessage(stmtType, nrow)
 		}
@@ -449,32 +502,33 @@ type Explainer interface {
 }
 
 func sqlExplain(node *Node, conn *sql.Conn, sqlText string) string {
+	runtime := node.ensureRuntime()
 	explainTokens, explainSqlText, err := splitExplainSQLText(sqlText)
 	if err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
 	resultMsg := ""
 	conn.Raw(func(driverConn any) error {
 		if c, ok := driverConn.(Explainer); ok {
 			// Use the Explainer interface if available
-			plan, err := c.Explain(node.task.ctx, explainSqlText, explainHasFullFlag(explainTokens))
+			plan, err := c.Explain(runtime.Context(), explainSqlText, explainHasFullFlag(explainTokens))
 			if err != nil {
-				ErrorRecord(err).Tell(node.next)
+				node.emit(ErrorRecord(err))
 				resultMsg = err.Error()
 			} else {
-				node.task.SetResultColumns(client.Columns{
+				runtime.SetResultColumns(client.Columns{
 					client.MakeColumnRownum(),
 					client.MakeColumnString("PLAN"),
 				})
 				for n, line := range strings.Split(plan, "\n") {
-					NewRecord(n, []any{line}).Tell(node.next)
+					node.emit(NewRecord(n, []any{line}))
 				}
 				resultMsg = "plan generated."
 			}
 		} else {
 			err := fmt.Errorf("database driver does not support Explain interface")
-			ErrorRecord(err).Tell(node.next)
+			node.emit(ErrorRecord(err))
 			resultMsg = err.Error()
 		}
 		return nil
@@ -483,16 +537,17 @@ func sqlExplain(node *Node, conn *sql.Conn, sqlText string) string {
 }
 
 func sqlShow(node *Node, conn *sql.Conn, text string) string {
+	runtime := node.ensureRuntime()
 	trimmed := strings.TrimSuffix(strings.TrimSpace(text), ";")
 	fields := strings.Fields(trimmed)
 	if len(fields) == 0 {
 		err := fmt.Errorf("f(SQL) Empty SQL text")
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
 	if !strings.EqualFold(fields[0], "show") {
 		err := fmt.Errorf("f(SQL) invalid SHOW statement")
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
 
@@ -506,7 +561,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 		default:
 			if strings.HasPrefix(raw, "-") {
 				err := fmt.Errorf("f(SQL) unsupported show option %q", raw)
-				ErrorRecord(err).Tell(node.next)
+				node.emit(ErrorRecord(err))
 				return err.Error()
 			}
 			if command == "" {
@@ -519,7 +574,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 
 	if command == "" {
 		err := fmt.Errorf("f(SQL) missing show command")
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
 
@@ -552,7 +607,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowLicense(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowLicense(runtime.Context(), conn))
 		}
 	case "ports":
 		err = validateNoAll()
@@ -573,27 +628,35 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowUsers(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowUsers(runtime.Context(), conn))
+		}
+	case "databases":
+		err = validateNoAll()
+		if err == nil {
+			err = validateArgs(command, 0)
+		}
+		if err == nil {
+			return yieldResultSet(node, spi.ShowDatabases(runtime.Context(), conn))
 		}
 	case "tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTables(node.task.ctx, conn, showAll))
+			return yieldResultSet(node, spi.ShowTables(runtime.Context(), conn, showAll))
 		}
 	case "meta-tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowMetaTables(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowMetaTables(runtime.Context(), conn))
 		}
 	case "virtual-tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowVirtualTables(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowVirtualTables(runtime.Context(), conn))
 		}
 	case "table":
 		err = validateArgs(command, 1)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTable(node.task.ctx, conn, "MACHBASEDB", node.task.consoleUser, args[0], showAll))
+			return yieldResultSet(node, spi.ShowTable(runtime.Context(), conn, "MACHBASEDB", runtime.ConsoleUser(), args[0], showAll))
 		}
 	case "indexes":
 		err = validateNoAll()
@@ -601,7 +664,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndexes(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowIndexes(runtime.Context(), conn))
 		}
 	case "index":
 		err = validateNoAll()
@@ -609,7 +672,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 1)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndex(node.task.ctx, conn, args[0]))
+			return yieldResultSet(node, spi.ShowIndex(runtime.Context(), conn, args[0]))
 		}
 	case "lsm":
 		err = validateNoAll()
@@ -617,7 +680,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowLsm(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowLsm(runtime.Context(), conn))
 		}
 	case "tags":
 		err = validateNoAll()
@@ -625,7 +688,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTags(node.task.ctx, conn, "MACHBASEDB", node.task.consoleUser, args[0], args[1:]...))
+			return yieldResultSet(node, spi.ShowTags(runtime.Context(), conn, "MACHBASEDB", runtime.ConsoleUser(), args[0], args[1:]...))
 		}
 	case "indexgap":
 		err = validateNoAll()
@@ -633,7 +696,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndexGap(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowIndexGap(runtime.Context(), conn))
 		}
 	case "tagindexgap":
 		err = validateNoAll()
@@ -641,7 +704,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTagIndexGap(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowTagIndexGap(runtime.Context(), conn))
 		}
 	case "rollupgap":
 		err = validateNoAll()
@@ -649,7 +712,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowRollupGap(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowRollupGap(runtime.Context(), conn))
 		}
 	case "sessions":
 		err = validateNoAll()
@@ -657,7 +720,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowSessions(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowSessions(runtime.Context(), conn))
 		}
 	case "statements":
 		err = validateNoAll()
@@ -665,7 +728,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowStatements(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowStatements(runtime.Context(), conn))
 		}
 	case "storage":
 		err = validateNoAll()
@@ -673,7 +736,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowStorage(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowStorage(runtime.Context(), conn))
 		}
 	case "table-usage":
 		err = validateNoAll()
@@ -681,13 +744,13 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTableUsage(node.task.ctx, conn))
+			return yieldResultSet(node, spi.ShowTableUsage(runtime.Context(), conn))
 		}
 	default:
 		err = fmt.Errorf("f(SQL) unsupported show command %q", command)
 	}
 
-	ErrorRecord(err).Tell(node.next)
+	node.emit(ErrorRecord(err))
 	return err.Error()
 }
 
@@ -752,22 +815,23 @@ func isSQLStatementStart(tok string) bool {
 }
 
 func yieldResultSet[T spi.ResultSet](node *Node, nfo T) string {
-	node.task.SetResultColumns(append(client.Columns{client.MakeColumnRownum()}, nfo.Columns()...))
+	runtime := node.ensureRuntime()
+	runtime.SetResultColumns(append(client.Columns{client.MakeColumnRownum()}, nfo.Columns()...))
 	if err := nfo.Err(); err != nil {
-		ErrorRecord(err).Tell(node.next)
+		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
 	nrow := int64(0)
 	nfo.Iter(func(values []any) bool {
 		nrow++
 		if err := nfo.Err(); err != nil {
-			ErrorRecord(err).Tell(node.next)
+			node.emit(ErrorRecord(err))
 			return false
 		}
-		if node.task.shouldStop() {
+		if runtime.ShouldStop() {
 			return false
 		}
-		NewRecord(nrow, values).Tell(node.next)
+		node.emit(NewRecord(nrow, values))
 		return true
 	})
 	return nfo.Message()
@@ -955,4 +1019,393 @@ func (x *Node) fmBetween(begin any, end any, period ...any) (*QueryBetween, erro
 		return nil, ErrWrongTypeOfArgs("between", 2, "duration", val)
 	}
 	return ret, nil
+}
+
+type Table struct {
+	Name string
+}
+
+func (x *Node) fmTable(tableName string) *Table {
+	return &Table{Name: tableName}
+}
+
+type Tag struct {
+	Name   string
+	Column string
+}
+
+func (x *Node) fmTag(name string, column ...string) *Tag {
+	if len(column) == 0 {
+		return &Tag{Name: name, Column: "name"}
+	} else {
+		return &Tag{Name: name, Column: column[0]}
+	}
+}
+
+func (x *Node) fmInsert(args ...any) (*insert, error) {
+	ret := &insert{}
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *bridgeName:
+			ret.bridge = v
+		case string:
+			ret.columns = append(ret.columns, v)
+		case *Table:
+			ret.table = v
+		case *Tag:
+			ret.tag = v
+		}
+	}
+	if ret.table == nil {
+		return nil, ErrArgs("INSERT", 0, "table is not specified")
+	}
+	if ret.bridge == nil && ret.tag != nil {
+		ret.columns = append([]string{ret.tag.Column}, ret.columns...)
+	}
+	ret.node = x
+	return ret, nil
+}
+
+type insert struct {
+	conn      *sql.Conn
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+
+	rowsAffected int64
+	lastInsertId int64
+
+	node    *Node
+	bridge  *bridgeName
+	columns []string
+
+	table *Table
+	tag   *Tag
+}
+
+func (ins *insert) Open(runtime *executionRuntime) error {
+	ins.ctx, ins.ctxCancel = context.WithCancel(runtime.Context())
+	if conn, err := spi.Connect(ins.ctx, runtime.ConsoleUser()); err != nil {
+		return err
+	} else {
+		ins.conn = conn
+	}
+	return nil
+}
+
+func (ins *insert) Close() (string, error) {
+	ins.conn.Close()
+	ins.ctxCancel()
+
+	unit := "rows"
+	if ins.rowsAffected <= 1 {
+		unit = "row"
+	}
+	return fmt.Sprintf("%d %s inserted.", ins.rowsAffected, unit), nil
+}
+
+func (ins *insert) AddRow(values []any) error {
+	if ins.bridge != nil {
+		return ins._addRowBridge(values)
+	} else {
+		return ins._addRow(values)
+	}
+
+}
+func (ins *insert) _addRowBridge(values []any) error {
+	br, err := bridge.GetSqlBridge(ins.bridge.name)
+	if err != nil {
+		return err
+	}
+
+	placeHolders := []string{}
+	for idx := range ins.columns {
+		placeHolders = append(placeHolders, br.ParameterMarker(idx))
+	}
+	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)",
+		ins.table.Name,
+		strings.Join(ins.columns, ","),
+		strings.Join(placeHolders, ","))
+	conn, err := br.Connect(ins.node.runtime.Context())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	result, err := conn.ExecContext(ins.node.runtime.Context(), sqlText, values...)
+	if err != nil {
+		return fmt.Errorf("%s, %s", err, sqlText)
+	}
+	if br.SupportLastInsertId() {
+		lastInsertId, err := result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("%s, %s", err, sqlText)
+		}
+		ins.lastInsertId = lastInsertId
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s, %s", err, sqlText)
+	}
+	ins.rowsAffected = rowsAffected
+	return nil
+}
+
+func (ins *insert) _addRow(values []any) error {
+	placeHolders := []string{}
+	for range ins.columns {
+		placeHolders = append(placeHolders, "?")
+	}
+	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)",
+		ins.table.Name,
+		strings.Join(ins.columns, ","),
+		strings.Join(placeHolders, ","))
+	if ins.tag == nil {
+		if _, err := ins.conn.ExecContext(ins.ctx, sqlText, values...); err != nil {
+			return err
+		}
+	} else {
+		if _, err := ins.conn.ExecContext(ins.ctx, sqlText, append([]any{ins.tag.Name}, values...)...); err != nil {
+			return err
+		}
+	}
+	ins.rowsAffected++
+	return nil
+}
+
+func (x *Node) fmAppend(args ...any) (*appender, error) {
+	ret := &appender{}
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case *Table:
+			ret.table = v
+		case *bridgeName:
+			return nil, ErrArgs("APPEND", i, "cannot use with a bridge")
+		}
+	}
+	if ret.table == nil {
+		return nil, ErrArgs("APPEND", 0, "table is not specified")
+	}
+	return ret, nil
+}
+
+type appender struct {
+	nrows      int
+	dbAppender *spi.AppendWorker
+	dbColumns  client.Columns
+	table      *Table
+}
+
+func (app *appender) Open(runtime *executionRuntime) (err error) {
+	aw, err := spi.GetAppendWorker(runtime.Context(), app.table.Name)
+	if err != nil {
+		return
+	}
+	app.dbAppender = aw
+	return
+}
+
+func (app *appender) Close() (string, error) {
+	var succ, fail int64
+	var err error
+	if app.dbAppender != nil {
+		succ, fail, err = app.dbAppender.Close()
+	}
+	_ = succ
+	if err != nil {
+		return fmt.Sprintf("append fail, %s", err.Error()), err
+	} else {
+		unit := "rows"
+		if app.nrows <= 1 {
+			unit = "row"
+		}
+		// since we are using api.AppendWraper, success is always nrows
+		return fmt.Sprintf("append %d %s (success %d, fail %d)", app.nrows, unit, app.nrows, fail), nil
+	}
+}
+
+func (app *appender) AddRow(values []any) error {
+	if app.dbAppender == nil {
+		return errors.New("f(APPEND) no appender exists")
+	}
+	if app.dbColumns == nil {
+		app.dbColumns = app.dbAppender.Columns()
+	}
+
+	var timeformat string = "ns"
+	var timeLocation *time.Location
+	for idx, col := range app.dbColumns {
+		if idx >= len(values) {
+			return fmt.Errorf("missing value for column %s", col.Name)
+		}
+		if values[idx] == nil {
+			continue
+		}
+		val, err := col.DataType.Apply(values[idx], timeformat, timeLocation)
+		if err != nil {
+			return fmt.Errorf("invalid value for column %s: %v, error: %s", col.Name, values[idx], err.Error())
+		} else {
+			values[idx] = val
+		}
+	}
+
+	err := app.dbAppender.Append(values...)
+	if err == nil {
+		app.nrows++
+	}
+	return err
+}
+
+func (x *Node) fmSqlSink(args ...any) (*sqlSink, error) {
+	if len(args) == 0 {
+		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
+	}
+
+	ret := &sqlSink{}
+	var paramStart int
+
+	switch v := args[0].(type) {
+	case string:
+		ret.sqlText = strings.TrimSuffix(strings.TrimSpace(v), ";")
+		paramStart = 1
+	case *bridgeName:
+		ret.bridge = v.name
+		if len(args) < 2 {
+			return nil, ErrInvalidNumOfArgs("SQL", 2, len(args))
+		}
+		sqlText, ok := args[1].(string)
+		if !ok {
+			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
+		}
+		ret.sqlText = strings.TrimSuffix(strings.TrimSpace(sqlText), ";")
+		paramStart = 2
+	default:
+		return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
+	}
+
+	if len(ret.sqlText) == 0 {
+		return nil, fmt.Errorf("f(SQL) Empty SQL text")
+	}
+	ret.stmtType = spi.DetectSQLStatementType(ret.sqlText)
+	if err := validateSqlVerbForSink(ret.sqlText); err != nil {
+		return nil, err
+	}
+
+	ret.rawParams = make([]any, 0, len(args)-paramStart)
+	for i := paramStart; i < len(args); i++ {
+		ret.rawParams = append(ret.rawParams, args[i])
+	}
+	return ret, nil
+}
+
+type sqlSink struct {
+	sqlText   string
+	stmtType  spi.SQLStatementType
+	rawParams []any
+	bridge    string
+
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+	conn      *sql.Conn
+
+	affectedRows int64
+	resultMsg    string
+}
+
+func (s *sqlSink) Open(runtime *executionRuntime) error {
+	s.ctx, s.ctxCancel = context.WithCancel(runtime.Context())
+	if s.bridge == "" {
+		conn, err := spi.Connect(s.ctx, runtime.ConsoleUser())
+		if err != nil {
+			s.ctxCancel()
+			return err
+		}
+		s.conn = conn
+		return nil
+	}
+	db, err := connector.Database(s.bridge)
+	if err != nil {
+		s.ctxCancel()
+		return err
+	}
+	conn, err := db.Conn(s.ctx)
+	if err != nil {
+		s.ctxCancel()
+		return err
+	}
+	s.conn = conn
+	return nil
+}
+
+func (s *sqlSink) Close() (string, error) {
+	if s.conn != nil {
+		s.conn.Close()
+	}
+	if s.ctxCancel != nil {
+		s.ctxCancel()
+	}
+	return spi.MakeUserMessage(s.stmtType, s.affectedRows), nil
+}
+
+func (s *sqlSink) AddRow(values []any) error {
+	params := make([]any, 0, len(s.rawParams))
+	for _, p := range s.rawParams {
+		switch v := p.(type) {
+		case *recordValueRef:
+			if v == nil {
+				params = append(params, nil)
+				continue
+			}
+			if v.index < 0 || v.index >= len(values) {
+				return fmt.Errorf("f(SQL) value(%d) is out of range of input tuple(len:%d)", v.index, len(values))
+			}
+			params = append(params, values[v.index])
+		default:
+			params = append(params, p)
+		}
+	}
+	result, err := s.conn.ExecContext(s.ctx, s.sqlText, params...)
+	if err != nil {
+		return err
+	}
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	s.resultMsg = spi.MakeUserMessage(s.stmtType, affectedRows)
+	if n, ok := parseRowsAffectedFromMessage(s.resultMsg); ok {
+		s.affectedRows += n
+	} else {
+		s.affectedRows++
+	}
+	return nil
+}
+
+func validateSqlVerbForSink(sqlText string) error {
+	stmtType := spi.DetectSQLStatementType(sqlText)
+	if stmtType.IsFetch() {
+		verb := strings.ToUpper(strings.Fields(sqlText)[0])
+		return fmt.Errorf("f(SQL) sink does not allow fetch verb %q", verb)
+	}
+	return nil
+}
+
+func parseRowsAffectedFromMessage(msg string) (int64, bool) {
+	trimmed := strings.TrimSpace(strings.ToLower(msg))
+	if trimmed == "" {
+		return 0, false
+	}
+	if strings.HasPrefix(trimmed, "a row ") {
+		return 1, true
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) < 3 {
+		return 0, false
+	}
+	if fields[1] != "row" && fields[1] != "rows" {
+		return 0, false
+	}
+	var n int64
+	if _, err := fmt.Sscan(fields[0], &n); err != nil {
+		return 0, false
+	}
+	return n, true
 }

@@ -144,30 +144,30 @@ func (src *bytesSource) gen(node *Node) {
 	} else if src.srcFile != "" {
 		content, err := os.Open(src.srcFile)
 		if err != nil {
-			node.task.LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
 		defer content.Close()
 		reader = content
 	} else if src.srcHttp != "" {
-		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
+		req, err := http.NewRequestWithContext(node.runtime.Context(), "GET", src.srcHttp, nil)
 		if err != nil {
-			node.task.LogErrorf("Fail to request %q, %s", src.srcHttp, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to request %q, %s", src.srcHttp, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
-		httpClient := node.task.NewHttpClient()
+		httpClient := node.runtime.NewHTTPClient()
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			node.task.LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
-			ErrorRecord(err).Tell(node.next)
+			node.ensureRuntime().LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
+			node.emit(ErrorRecord(err))
 			return
 		}
 		defer resp.Body.Close()
 		reader = resp.Body
 	} else {
-		ErrorRecord(fmt.Errorf("no data location is specified")).Tell(node.next)
+		node.emit(ErrorRecord(fmt.Errorf("no data location is specified")))
 		return
 	}
 
@@ -177,7 +177,7 @@ func (src *bytesSource) gen(node *Node) {
 	} else {
 		label = "BYTES"
 	}
-	node.task.SetResultColumns([]*client.Column{
+	node.runtime.SetResultColumns([]*client.Column{
 		client.MakeColumnRownum(),
 		client.MakeColumnString(label),
 	})
@@ -188,9 +188,9 @@ func (src *bytesSource) gen(node *Node) {
 			if src.trimspace {
 				rec = strings.TrimSpace(rec)
 			}
-			NewRecord(num, rec).Tell(node.next)
+			node.emit(NewRecord(num, rec))
 		} else {
-			NewRecord(num, data).Tell(node.next)
+			node.emit(NewRecord(num, data))
 		}
 	}
 
@@ -198,7 +198,7 @@ func (src *bytesSource) gen(node *Node) {
 	remains := []byte{}
 	totalBytes := 0
 	isEOF := false
-	for !node.task.shouldStop() && !isEOF {
+	for !node.runtime.ShouldStop() && !isEOF {
 		readbuf := make([]byte, 4024)
 		n, err := reader.Read(readbuf)
 		totalBytes += n

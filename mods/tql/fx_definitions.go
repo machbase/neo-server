@@ -8,6 +8,8 @@ import (
 
 //go:generate go run fx_generate.go
 
+//go:generate go run ../codec/opts/generate.go fx
+
 type Definition struct {
 	Name string
 	Func any
@@ -214,6 +216,8 @@ var FxDefinitions = []Definition{
 	// bridge
 	{"// bridge", nil},
 	{"bridge", defTask.fmBridge},
+	{"// use", nil},
+	{"use", defTask.fmUse},
 	// fourier transform
 	{"// fourier transform", nil},
 	{"minHz", defTask.fmMinHz},

@@ -23,15 +23,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
-type bridgeName struct {
-	name string
-}
-
-// bridge('name')
-func (x *Node) fmBridge(name string) *bridgeName {
-	return &bridgeName{name: name}
-}
-
 func (node *Node) fmScript(args ...any) (any, error) {
 	if len(args) > 0 && args[0] == "js" {
 		args = args[1:]
@@ -88,7 +79,7 @@ func (node *Node) fmScriptJS(initCode string, mainCode string, deinitCode string
 		if r := recover(); r != nil {
 			code := "{" + strings.TrimSpace(strings.TrimPrefix(initCode, "//")) + "}\n" +
 				"{" + strings.TrimSpace(strings.TrimPrefix(mainCode, "//")) + "}"
-			node.task.LogWarnf("script panic; %v\n%s", r, code)
+			node.ensureRuntime().LogWarnf("script panic; %v\n%s", r, code)
 		}
 	}()
 
@@ -131,7 +122,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	conf := engine.Config{
 		Name:    "SCRIPT",
 		Code:    `(()=>{})()`,
-		Context: node.task.ctx,
+		Context: node.runtime.Context(),
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
@@ -140,7 +131,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		Env: map[string]any{
 			"LIBRARY_PATH": "/lib",
 		},
-		Reader: node.task.inputReader,
+		Reader: node.runtime.InputReader(),
 		Writer: &JSLog{w: node.task},
 	}
 	jr, err := engine.New(conf)
@@ -152,7 +143,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 
 	// create ctx
 	ctx := &JSContext{
-		Context: node.task.ctx,
+		Context: node.runtime.Context(),
 		engine:  jr,
 		node:    node,
 	}
@@ -164,7 +155,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	}
 
 	// it should run before the init code, so that the init code can use the native modules.
-	if err := jr.RunContext(node.task.ctx); err != nil {
+	if err := jr.RunContext(node.runtime.Context()); err != nil {
 		return nil, fmt.Errorf("SCRIPT runtime, %s", err.Error())
 	}
 
@@ -172,7 +163,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	var initErr error
 	jr.EventLoop().Run(func(vm *goja.Runtime) {
 		// set interrupt trigger
-		ctx.node.task.AddShouldStopListener(func() {
+		ctx.node.runtime.AddShouldStopListener(func() {
 			ctx.onceInterrupt.Do(func() {
 				vm.Interrupt("interrupt")
 			})
@@ -183,7 +174,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		vm.Set("$", ctx.obj)
 
 		// set $.payload
-		if node.task.nodes[0] == node && node.task.inputReader != nil {
+		if node.role == StageSource && node.runtime.InputReader() != nil {
 			// $.payload will be defined, only when the SCRIPT is the SRC node.
 			// If the SCRIPT is not the SRC node, the payload has been using by the previous node.
 			// and if the "inputReader" was consumed here, the actual SRC node will see the EOF.
@@ -212,7 +203,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		return nil, fmt.Errorf("SCRIPT init, %s", initErr.Error())
 	}
 
-	node.SetEOF(func(*Node) {
+	node.SetFinalize(func(*Node) {
 		defer closeJSContext(ctx)
 		ctx.onceFinalize.Do(func() {
 			ctx.engine.EventLoop().Run(func(vm *goja.Runtime) {
@@ -222,7 +213,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 					if f, ok := goja.AssertFunction(vm.Get("finalize")); ok {
 						_, err := f(goja.Undefined())
 						if err != nil {
-							node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
+							node.ensureRuntime().LogErrorf("SCRIPT finalize, %s", err.Error())
 						}
 					}
 				} else {
@@ -232,7 +223,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 					}
 					_, err := vm.RunString(deinitCode)
 					if err != nil {
-						node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
+						node.ensureRuntime().LogErrorf("SCRIPT finalize, %s", err.Error())
 					}
 				}
 				// set $.result columns if no records are yielded
@@ -269,7 +260,7 @@ func (ctx *JSContext) doResult() error {
 	var opts JSResultOption
 	json.Unmarshal(x, &opts)
 	if cols := opts.ResultColumns(); cols != nil {
-		ctx.node.task.SetResultColumns(cols)
+		ctx.node.ensureRuntime().SetResultColumns(cols)
 	}
 	ctx.didSetResult = true
 	return nil
@@ -312,7 +303,7 @@ func (so JSResultOption) ResultColumns() client.Columns {
 	for i, name := range columns {
 		cols[i+1] = &client.Column{Name: name, DataType: api.DataTypeAny}
 		if len(types) > i {
-			cols[i+1].DataType = api.ParseDataType(types[i])
+			cols[i+1].DataType = toDataType(types[i])
 		}
 	}
 	return cols
@@ -350,7 +341,7 @@ func (ctx *JSContext) run(inflight *Record) (any, error) {
 		}
 	})
 	if retErr != nil {
-		ctx.node.task.LogError(retErr.Error())
+		ctx.node.ensureRuntime().LogError(retErr.Error())
 	}
 	return ret, retErr
 }
@@ -359,7 +350,7 @@ func (ctx *JSContext) jsPayload() any {
 	// $.payload is defined, only when the SCRIPT is the SRC node.
 	// If the SCRIPT is not the SRC node, the payload has been using by the previous node.
 	// and if the "inputReader" was consumed here, the actual SRC node will see the EOF.
-	if b, err := io.ReadAll(ctx.node.task.inputReader); err == nil {
+	if b, err := io.ReadAll(ctx.node.runtime.InputReader()); err == nil {
 		return string(b)
 	}
 	return goja.Undefined()
@@ -367,7 +358,7 @@ func (ctx *JSContext) jsPayload() any {
 
 func (ctx *JSContext) jsParam() any {
 	m := make(map[string]any)
-	for k, v := range ctx.node.task.params {
+	for k, v := range ctx.node.runtime.Params() {
 		if len(v) == 1 {
 			m[k] = v[0]
 		} else {
@@ -406,7 +397,7 @@ func (ctx *JSContext) yield(key any, values []any) {
 	if inf := ctx.node.Inflight(); inf != nil && inf.vars != nil {
 		vars = inf.vars
 	}
-	NewRecordVars(key, values, vars).Tell(ctx.node.next)
+	ctx.node.emit(NewRecordVars(key, values, vars))
 	ctx.yieldCount++
 }
 
@@ -464,7 +455,7 @@ func (ctx *JSContext) jsFuncRequest(vm *goja.Runtime) func(reqUrl string, reqOpt
 		requestObj := vm.NewObject()
 		requestObj.Set("do", func(callback goja.Callable) goja.Value {
 			responseObj := vm.NewObject()
-			httpClient := ctx.node.task.NewHttpClient()
+			httpClient := ctx.node.runtime.NewHTTPClient()
 			httpRequest, httpErr := http.NewRequest(strings.ToUpper(option.Method), option.Url, strings.NewReader(option.Body))
 			var httpResponse *http.Response
 			if httpErr == nil {
@@ -585,7 +576,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 	return func(opt map[string]any) goja.Value {
 		defer func() {
 			if r := recover(); r != nil {
-				ctx.node.task.LogErrorf("SCRIPT db====, %s", r)
+				ctx.node.ensureRuntime().LogErrorf("SCRIPT db====, %s", r)
 			}
 		}()
 		var node = ctx.node
@@ -644,7 +635,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 					"types":   rows.ColumnTypes(goja.FunctionCall{}),
 				}
 				if cols := resultOpt.ResultColumns(); cols != nil {
-					node.task.SetResultColumns(cols)
+					node.ensureRuntime().SetResultColumns(cols)
 				}
 				// yield rows
 				count := 0
@@ -654,7 +645,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 						break
 					}
 					count++
-					NewRecord(count, values).Tell(node.next)
+					node.emit(NewRecord(count, values))
 				}
 				return goja.Undefined()
 			})
@@ -799,5 +790,59 @@ func (l *JSLog) Printf(format string, args ...any) {
 		v.Log(fmt.Sprintf(format, args...))
 	} else {
 		fmt.Fprintf(l.w, format, args...)
+	}
+}
+
+func toDataType(typ string) api.DataType {
+	switch strings.ToLower(typ) {
+	case "int16":
+		return api.DataTypeInt16
+	case "int32":
+		return api.DataTypeInt32
+	case "int64":
+		return api.DataTypeInt64
+	case "datetime":
+		return api.DataTypeDatetime
+	case "float":
+		return api.DataTypeFloat32
+	case "double":
+		return api.DataTypeFloat64
+	case "ipv4":
+		return api.DataTypeIPv4
+	case "ipv6":
+		return api.DataTypeIPv6
+	case "string", "varchar":
+		return api.DataTypeString
+	case "binary":
+		return api.DataTypeBinary
+	case "decimal", "numeric", "number":
+		return api.DataTypeDecimal
+	case "bool":
+		return api.DataTypeBoolean
+	case "int8":
+		return api.DataTypeByte
+	default:
+		switch typ {
+		default:
+			return api.DataType(fmt.Sprintf("Unsupported DataType: %s", typ))
+		case "sql.NullString":
+			return api.DataTypeString
+		case "time.Time", "sql.NullTime":
+			return api.DataTypeDatetime
+		case "sql.NullInt16":
+			return api.DataTypeInt16
+		case "sql.NullInt32":
+			return api.DataTypeInt32
+		case "sql.NullInt64":
+			return api.DataTypeInt64
+		case "sql.NullByte":
+			return api.DataTypeByte
+		case "sql.NullFloat32":
+			return api.DataTypeFloat32
+		case "sql.NullFloat64":
+			return api.DataTypeFloat64
+		case "sql.NullBool":
+			return api.DataTypeBoolean
+		}
 	}
 }

@@ -46,15 +46,6 @@ func (r *markAreaRecorder) SetMarkAreaNameCoord(from any, to any, label string, 
 	r.opacity = opacity
 }
 
-type captureReceiver struct {
-	last *Record
-}
-
-func (r *captureReceiver) Name() string { return "capture" }
-func (r *captureReceiver) Receive(rec *Record) {
-	r.last = rec
-}
-
 func TestNewEncoder(t *testing.T) {
 	ret, err := newEncoder("json", time.UTC)
 	require.NoError(t, err)
@@ -195,7 +186,6 @@ func TestMarkAreaAndHttp(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	node.next = &captureReceiver{}
 	ret, err = node.fmHttp("GET " + ts.URL)
 	require.NoError(t, err)
 	retRec, ok := ret.(*Record)
@@ -204,7 +194,6 @@ func TestMarkAreaAndHttp(t *testing.T) {
 	retText, ok := retRec.Value().(string)
 	require.True(t, ok)
 	require.Contains(t, retText, "HTTP/1.1 200 OK")
-	require.Nil(t, node.next.(*captureReceiver).last)
 }
 
 func TestHttpMultipartWithInlineBody(t *testing.T) {

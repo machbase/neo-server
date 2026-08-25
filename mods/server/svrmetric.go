@@ -228,10 +228,8 @@ func collectTqlCacheStatz(g *metric.Gather) error {
 	return nil
 }
 
-var maxProcessors int32
-var pid int32
-var ver *mods.Version
-
+// getServerInfoMap provides information that is required by `show info`,
+// it returns key-value pairs of server information.
 func (s *Server) getServerInfoMap() map[string]any {
 	nfo := map[string]any{}
 	if sinfo, err := s.getServerInfo(); err != nil {
@@ -265,6 +263,38 @@ func (s *Server) getServerInfoMap() map[string]any {
 	}
 	return nfo
 }
+
+type ServerInfoResponse struct {
+	Success bool     `json:"success"`
+	Reason  string   `json:"reason"`
+	Elapse  string   `json:"elapse"`
+	Version *Version `json:"version"`
+	Runtime *Runtime `json:"runtime"`
+}
+
+type Version struct {
+	Major          int32  `json:"major"`
+	Minor          int32  `json:"minor"`
+	Patch          int32  `json:"patch"`
+	GitSHA         string `json:"gitSHA"`
+	BuildTimestamp string `json:"buildTimestamp"`
+	BuildCompiler  string `json:"buildCompiler"`
+	Engine         string `json:"engine"`
+}
+
+type Runtime struct {
+	OS             string            `json:"OS,omitempty"`
+	Arch           string            `json:"arch,omitempty"`
+	Pid            int32             `json:"pid,omitempty"`
+	UptimeInSecond int64             `json:"uptimeInSecond,omitempty"`
+	Processes      int32             `json:"processes,omitempty"`
+	Goroutines     int32             `json:"goroutines,omitempty"`
+	Mem            map[string]uint64 `json:"mem,omitempty"`
+}
+
+var maxProcessors int32
+var pid int32
+var ver *mods.Version
 
 // getServerInfo returns runtime and version information.
 //

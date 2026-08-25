@@ -2,7 +2,6 @@ package tql
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,7 @@ import (
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/nums/fft"
 	"github.com/machbase/neo-server/v8/mods/nums/kalman"
 	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -26,6 +26,98 @@ import (
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"
 )
+
+type maxHzOption float64
+
+func (x *Node) fmMaxHz(freq float64) maxHzOption {
+	return maxHzOption(freq)
+}
+
+type minHzOption float64
+
+func (node *Node) fmMinHz(freq float64) minHzOption {
+	return minHzOption(freq)
+}
+
+func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
+	minHz := math.NaN()
+	maxHz := math.NaN()
+	// options
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case minHzOption:
+			minHz = float64(v)
+		case maxHzOption:
+			maxHz = float64(v)
+		}
+	}
+
+	// key any, value []any,
+	inflight := node.Inflight()
+	if inflight == nil || inflight.key == nil {
+		return nil, nil
+	}
+	key := inflight.key
+	var value []any
+	if v, ok := inflight.value.([]any); ok {
+		value = v
+	} else {
+		value = []any{v}
+	}
+	lenSamples := len(value)
+	if lenSamples < 16 {
+		// fmt.Errorf("f(FFT) samples should be more than 16")
+		// drop input, instead of raising error
+		return nil, nil
+	}
+
+	sampleTimes := make([]time.Time, lenSamples)
+	sampleValues := make([]float64, lenSamples)
+	for i := range value {
+		tuple, ok := value[i].([]any)
+		if !ok {
+			return nil, fmt.Errorf("f(FFT) sample should be a tuple of (time, value), but %T (%v)", value[i], value[i])
+		}
+		if len(tuple) != 2 {
+			return nil, fmt.Errorf("f(FFT) sample should be a tuple of (time, value), but len=%d", len(tuple))
+		}
+		switch val := tuple[0].(type) {
+		case time.Time:
+			sampleTimes[i] = val
+		case *time.Time:
+			sampleTimes[i] = *val
+		default:
+			return nil, fmt.Errorf("f(FFT) invalid %dth sample time, but %T", i, tuple[0])
+		}
+		switch val := tuple[1].(type) {
+		case float64:
+			sampleValues[i] = val
+		case *float64:
+			sampleValues[i] = *val
+		case int64:
+			sampleValues[i] = float64(val)
+		case *int64:
+			sampleValues[i] = float64(*val)
+		default:
+			return nil, fmt.Errorf("f(FFT) invalid %dth sample value, but %T", i, tuple[1])
+		}
+	}
+
+	freqs, values := fft.FastFourierTransform(sampleTimes, sampleValues)
+
+	newVal := [][]any{}
+	for i := range freqs {
+		hz := freqs[i]
+		amplitude := values[i]
+		if hz == 0 || hz < minHz || hz > maxHz {
+			continue
+		}
+		newVal = append(newVal, []any{hz, amplitude})
+	}
+
+	ret := NewRecord(key, newVal)
+	return ret, nil
+}
 
 type lazyOption struct {
 	flag bool
@@ -67,7 +159,8 @@ func (node *Node) fmTake(args ...int) (*Record, error) {
 	node.SetValue("count", count)
 
 	if count > offset+limit {
-		return BreakRecord, nil
+		node.ensureRuntime().fireCircuitBreak(node)
+		return nil, nil
 	}
 	if count <= offset {
 		return nil, nil
@@ -150,9 +243,9 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 			bf.lastRecord = inflight
 		}
 		node.SetValue("filter_changed", bf)
-		node.SetEOF(func(node *Node) {
+		node.SetFinalize(func(node *Node) {
 			if withLast && bf.lastRecord != nil {
-				bf.lastRecord.Tell(node.next)
+				node.emit(bf.lastRecord)
 			}
 		})
 		return inflight
@@ -160,7 +253,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 
 	val := client.Unbox(value)
 	if retain != nil {
-		if inflight.IsEOF() || bf.last != val {
+		if bf.last != val {
 			var ret *Record
 			if withLast {
 				ret = bf.lastRecord
@@ -367,7 +460,7 @@ func (node *Node) fmGroup(args ...any) any {
 			chunkMode: true,
 		}
 		node.SetValue("group", gr)
-		node.SetEOF(gr.onEOF)
+		node.SetFinalize(gr.onEOF)
 		shouldSetColumns = true
 		for _, arg := range args {
 			switch v := arg.(type) {
@@ -389,9 +482,10 @@ func (node *Node) fmGroup(args ...any) any {
 		switch v := arg.(type) {
 		case *GroupAggregate:
 			columns = append(columns, v)
-			if v.Type == GroupBy {
+			switch v.Type {
+			case GroupBy:
 				by = v
-			} else if v.Type == GroupByTimeWindow {
+			case GroupByTimeWindow:
 				by = v
 			}
 		case *lazyOption:
@@ -414,14 +508,14 @@ func (node *Node) fmGroup(args ...any) any {
 			for i, c := range columns {
 				resultType := c.ColumnType()
 				if c.ValueType != "" {
-					resultType = api.ParseDataType(c.ValueType)
+					resultType = toDataType(c.ValueType)
 				}
 				cols[i+1] = &client.Column{
 					Name:     c.Name,
 					DataType: resultType,
 				}
 			}
-			node.task.SetResultColumns(cols)
+			node.ensureRuntime().SetResultColumns(cols)
 		}
 	}
 	if gr.byTimeWindow {
@@ -535,7 +629,7 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 				if buff := c.NewBuffer(); buff != nil {
 					buffers = append(buffers, buff)
 				} else {
-					node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
+					node.ensureRuntime().LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
 					return
 				}
 			}
@@ -549,7 +643,7 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 				if buff := c.NewBuffer(); buff != nil {
 					buffers = append(buffers, buff)
 				} else {
-					node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
+					node.ensureRuntime().LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
 					return
 				}
 			}
@@ -1013,7 +1107,7 @@ func (node *Node) fmGroupByKey(args ...any) any {
 			chunkMode: true,
 		}
 		node.SetValue("group", gr)
-		node.SetEOF(gr.onEOF)
+		node.SetFinalize(gr.onEOF)
 		for _, arg := range args {
 			switch v := arg.(type) {
 			case *lazyOption:
@@ -1469,14 +1563,15 @@ func (gc *GroupColumnSingle) Result() any {
 }
 
 func (gc *GroupColumnSingle) Append(v any) error {
-	if gc.name == "first" {
+	switch gc.name {
+	case "first":
 		if gc.hasValue {
 			return nil
 		}
 		gc.value = v
 		gc.hasValue = true
 		return nil
-	} else if gc.name == "last" {
+	case "last":
 		gc.value = v
 		gc.hasValue = true
 		return nil
@@ -1533,7 +1628,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		}
 		if _, ok := node.GetValue("isFirst"); !ok {
 			node.SetValue("isFirst", true)
-			columns := node.task.ResultColumns() // it contains ROWNUM
+			columns := node.ensureRuntime().ResultColumns() // it contains ROWNUM
 			cols := columns
 			if len(columns) > nth+1 {
 				cols = []*client.Column{columns[nth+1]}
@@ -1542,7 +1637,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 			if len(columns) >= nth+2 {
 				cols = append(cols, columns[nth+2:]...)
 			}
-			node.task.SetResultColumns(cols)
+			node.ensureRuntime().SetResultColumns(cols)
 		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
@@ -1551,9 +1646,9 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		ret := make([]*Record, len(val))
 		if _, ok := node.GetValue("isFirst"); !ok {
 			node.SetValue("isFirst", true)
-			columns := node.task.ResultColumns()
+			columns := node.ensureRuntime().ResultColumns()
 			if len(columns) > 1 {
-				node.task.SetResultColumns(columns[1:])
+				node.ensureRuntime().SetResultColumns(columns[1:])
 			}
 		}
 		for i, v := range val {
@@ -1576,7 +1671,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 func (node *Node) fmPushKey(newKey any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		node.task.SetResultColumns(append([]*client.Column{client.MakeColumnOf("key", newKey)}, node.task.ResultColumns()...))
+		node.ensureRuntime().SetResultColumns(append([]*client.Column{client.MakeColumnOf("key", newKey)}, node.ensureRuntime().ResultColumns()...))
 	}
 	rec := node.Inflight()
 	if rec == nil {
@@ -1598,9 +1693,9 @@ func (node *Node) fmPushKey(newKey any) (any, error) {
 func (node *Node) fmMapKey(newKey any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		cols := node.task.ResultColumns()
+		cols := node.ensureRuntime().ResultColumns()
 		if len(cols) > 0 {
-			node.task.SetResultColumns(append([]*client.Column{client.MakeColumnOf("key", newKey)}, node.task.ResultColumns()[1:]...))
+			node.ensureRuntime().SetResultColumns(append([]*client.Column{client.MakeColumnOf("key", newKey)}, node.ensureRuntime().ResultColumns()[1:]...))
 		}
 	}
 	rec := node.Inflight()
@@ -1650,7 +1745,7 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		cols := node.task.ResultColumns() // cols contains "ROWNUM"
+		cols := node.ensureRuntime().ResultColumns() // cols contains "ROWNUM"
 		if len(cols) >= idx {
 			var head []*client.Column
 			var tail []*client.Column
@@ -1664,14 +1759,14 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 			updateCols = append(updateCols, head...)
 			updateCols = append(updateCols, client.MakeColumnOf(columnName, newValue))
 			updateCols = append(updateCols, tail...)
-			node.task.SetResultColumns(updateCols)
+			node.ensureRuntime().SetResultColumns(updateCols)
 		} else {
 			for i := len(cols); i < idx; i++ {
 				newCol := &client.Column{}
 				newCol.Name = fmt.Sprintf("column%d", i)
 				cols = append(cols, newCol)
 			}
-			node.task.SetResultColumns(cols)
+			node.ensureRuntime().SetResultColumns(cols)
 		}
 	}
 
@@ -1725,14 +1820,14 @@ func (node *Node) fmPopValue(indexes ...int) (any, error) {
 
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		cols := node.task.ResultColumns() // cols contains "ROWNUM"
+		cols := node.ensureRuntime().ResultColumns() // cols contains "ROWNUM"
 		updateCols := []*client.Column{cols[0]}
 		for _, idx := range includes {
 			if idx+1 < len(cols) {
 				updateCols = append(updateCols, cols[idx+1])
 			}
 		}
-		node.task.SetResultColumns(updateCols)
+		node.ensureRuntime().SetResultColumns(updateCols)
 	}
 
 	val := inflight.value.([]any)
@@ -1768,14 +1863,14 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 			node.SetValue("isFirst", true)
 			if len(opts) > 0 {
 				if newName, ok := opts[0].(string); ok {
-					cols := node.task.ResultColumns() // cols contains "ROWNUM"
+					cols := node.ensureRuntime().ResultColumns() // cols contains "ROWNUM"
 					if idx+1 >= len(cols) {
 						for i := len(cols); i <= idx+1; i++ {
 							cols = append(cols, client.MakeColumnAny(fmt.Sprintf("column%d", i)))
 						}
 					}
 					cols[idx+1] = client.MakeColumnOf(newName, newValue)
-					node.task.SetResultColumns(cols)
+					node.ensureRuntime().SetResultColumns(cols)
 				}
 			}
 		}
@@ -1792,7 +1887,7 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 			node.SetValue("isFirst", true)
 			if len(opts) > 0 {
 				if newName, ok := opts[0].(string); ok {
-					cols := node.task.ResultColumns() // cols contains "ROWNUM"
+					cols := node.ensureRuntime().ResultColumns() // cols contains "ROWNUM"
 					cols[idx+1].Name = newName
 				}
 			}
@@ -2170,7 +2265,7 @@ func (node *Node) fmGlob(pattern string, text string) (bool, error) {
 type LogDoer []any
 
 func (ld LogDoer) Do(node *Node) error {
-	node.task.LogInfo(ld...)
+	node.ensureRuntime().LogInfo(ld...)
 	return nil
 }
 
@@ -2248,7 +2343,7 @@ func (doer *HttpDoer) Do(node *Node) error {
 		body = buff
 	}
 
-	req, err := http.NewRequestWithContext(node.task.ctx, doer.method, doer.url, body)
+	req, err := http.NewRequestWithContext(node.ensureRuntime().Context(), doer.method, doer.url, body)
 	if err != nil {
 		return err
 	}
@@ -2266,7 +2361,7 @@ func (doer *HttpDoer) Do(node *Node) error {
 		req.Header.Add("User-Agent", "machbase-neo tql http doer")
 	}
 	if doer.client == nil {
-		doer.client = node.task.NewHttpClient()
+		doer.client = node.ensureRuntime().NewHTTPClient()
 	}
 	resp, err := doer.client.Do(req)
 	if err != nil {
@@ -2283,11 +2378,11 @@ func (doer *HttpDoer) Do(node *Node) error {
 	reply := string(replyBuff)
 
 	if resp.StatusCode >= 400 {
-		node.task.LogWarn("http-doer", doer.method, doer.url, resp.Status, reply)
+		node.ensureRuntime().LogWarn("http-doer", doer.method, doer.url, resp.Status, reply)
 	} else if resp.StatusCode >= 300 {
-		node.task.LogInfo("http-doer", doer.method, doer.url, resp.Status, reply)
+		node.ensureRuntime().LogInfo("http-doer", doer.method, doer.url, resp.Status, reply)
 	} else {
-		node.task.LogDebug("http-doer", doer.method, doer.url, resp.Status, reply)
+		node.ensureRuntime().LogDebug("http-doer", doer.method, doer.url, resp.Status, reply)
 	}
 	return nil
 }
@@ -2315,25 +2410,20 @@ type SubRoutine struct {
 }
 
 func (sr *SubRoutine) Write(b []byte) (int, error) {
-	if sr.node == nil || sr.node.task.logWriter == nil {
+	if sr.node == nil || sr.node.ensureRuntime().LogWriter() == nil {
 		return len(b), nil
 	}
-	return sr.node.task.logWriter.Write(b)
+	return sr.node.ensureRuntime().LogWriter().Write(b)
 }
 
 func (sr *SubRoutine) Do(node *Node) error {
 	defer func() {
 		if e := recover(); e != nil {
-			node.task.LogErrorf("do: recover, %v", e)
+			node.ensureRuntime().LogErrorf("do: recover, %v", e)
 		}
 	}()
 	sr.node = node
-	subTask := NewTask()
-	subTask.SetParams(node.task.params)
-	subTask.SetConsoleLogLevel(node.task.consoleLogLevel)
-	subTask.SetConsole(node.task.consoleUser, node.task.consoleId, node.task.consoleOtp)
-	subTask.SetLogWriter(node.task.logWriter)
-	subTask.SetLogLevel(node.task.logLevel)
+	subTask := node.ensureRuntime().NewChildTask()
 	subTask.SetOutputWriterJson(io.Discard, true)
 	subTask.argValues = sr.inValue
 
@@ -2342,18 +2432,14 @@ func (sr *SubRoutine) Do(node *Node) error {
 		subTask.LogError("do: compile error", err.Error())
 		return err
 	}
-	switch subTask.output.Name() {
+	switch subTask.SinkName() {
 	case "INSERT()":
 	case "APPEND()":
 	case "DISCARD()":
 	default:
-		sinkName := subTask.output.Name()
+		sinkName := subTask.SinkName()
 		subTask.LogWarnf("do: %s sink does not work in a sub-routine", sinkName)
 	}
-
-	var subTaskCancel context.CancelFunc
-	subTask.ctx, subTaskCancel = context.WithCancel(node.task.ctx)
-	defer subTaskCancel()
 
 	result := subTask.Execute()
 	if result.Err != nil {
@@ -2399,15 +2485,15 @@ func (node *Node) fmWhen(cond bool, action any) any {
 	}
 	doer, ok := action.(WhenDoer)
 	if !ok {
-		node.task.LogErrorf("f(WHEN) 2nd arg is not a Doer, got %T", action)
+		node.ensureRuntime().LogErrorf("f(WHEN) 2nd arg is not a Doer, got %T", action)
 	} else {
 		defer func() {
 			if e := recover(); e != nil {
-				node.task.LogErrorf("f(WHEN) Doer fail recover, %v", e)
+				node.ensureRuntime().LogErrorf("f(WHEN) Doer fail recover, %v", e)
 			}
 		}()
 		if err := doer.Do(node); err != nil {
-			node.task.LogErrorf("f(WHEN) Doer fail, %s", err.Error())
+			node.ensureRuntime().LogErrorf("f(WHEN) Doer fail, %s", err.Error())
 		}
 	}
 	return node.Inflight()
@@ -2436,7 +2522,7 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 			return nil, ErrArgs("TRANSPOSE", 1, "cannot use 'fixed columns' and 'transposed columns' together")
 		}
 
-		cols := node.task.ResultColumns()
+		cols := node.ensureRuntime().ResultColumns()
 		inflight := node.Inflight()
 		if inflight == nil {
 			return nil, nil
@@ -2471,7 +2557,7 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 				newCols = append(newCols, client.MakeColumnAny("header"))
 			}
 			newCols = append(newCols, client.MakeColumnAny(fmt.Sprintf("column%d", len(newCols)-1)))
-			node.task.SetResultColumns(newCols)
+			node.ensureRuntime().SetResultColumns(newCols)
 		case any:
 			newCols := client.Columns{cols[0]}
 			if tr.header {
@@ -2479,7 +2565,7 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 				newCols = append(newCols, client.MakeColumnAny(fmt.Sprintf("column%d", len(newCols)-1)))
 			}
 			newCols = append(newCols, client.MakeColumnAny("column1"))
-			node.task.SetResultColumns(newCols)
+			node.ensureRuntime().SetResultColumns(newCols)
 		}
 		if tr.header {
 			return nil, nil

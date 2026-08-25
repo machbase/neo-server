@@ -86,15 +86,15 @@ type Server struct {
 	authorizedSshKeysLock sync.RWMutex
 
 	neoShellAddress string
-
-	// test purpose only, not set in normal execution
-	binExecutable string
 }
 
+var _ booter.Boot = (*Server)(nil)
+
+// ///////////////////////////
+// test purpose only, not set in normal execution
+var binExecutable string
 var serverAfterStartC = make(chan struct{})
 var serverBeforeStopC = make(chan struct{})
-
-var _ booter.Boot = (*Server)(nil)
 
 func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
@@ -113,8 +113,8 @@ func NewServer(conf *Config) (*Server, error) {
 }
 
 func (s *Server) Executable() (string, error) {
-	if s.binExecutable != "" {
-		return s.binExecutable, nil
+	if binExecutable != "" {
+		return binExecutable, nil
 	}
 	return os.Executable()
 }
@@ -209,27 +209,25 @@ func (s *Server) Start() error {
 		if err := s.checkAndInstallLicense(); err != nil {
 			return err
 		}
-
 		// native port
 		s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
-
-		if s.hasHead {
-			if err := s.runInitScripts(); err != nil {
-				return err
-			}
-
-			// backup service
-			if err := s.startBackupService(); err != nil {
-				return err
-			}
-		} else {
-			// headless mode, just print the ready message and return
+		// headless mode, print the ready message and return
+		if !s.hasHead {
 			dbInitInfo := ""
 			if s.databaseCreated {
 				dbInitInfo = fmt.Sprintf("\n\n >> New database created at '%s'", s.homeDirPath)
 			}
 			s.log.Infof("%s\n\n  ready in %s", dbInitInfo, time.Since(s.startupTime).Round(time.Millisecond).String())
 			return nil
+		}
+
+		// init script
+		if err := s.runInitScripts(); err != nil {
+			return err
+		}
+		// backup service
+		if err := s.startBackupService(); err != nil {
+			return err
 		}
 	}
 
@@ -432,21 +430,25 @@ func (s *Server) startMachbaseSvr() error {
 	conn.Close()
 
 	var defaultKey crypto.PrivateKey
+	var defaultUser string = "sys"
 	if key, err := api.LoadPrivateKeyFromFile(s.ServerPrivateKeyPath()); err != nil {
 		return fmt.Errorf("load server private key failed, %s", err.Error())
 	} else {
 		defaultKey = key
 	}
+	pem, err := os.ReadFile(s.ServerPrivateKeyPath())
+	if err != nil {
+		return fmt.Errorf("read server private key failed, %s", err.Error())
+	}
 
-	pem, _ := os.ReadFile(s.ServerPrivateKeyPath())
 	spi.SetDefaultDSN(map[string]string{
 		"host":            "127.0.0.1",
 		"port":            fmt.Sprintf("%d", s.Machbase.PORT_NO),
 		"statement_cache": "auto",
-		"user":            "sys",
+		"user":            defaultUser,
 		"auth_key_pem":    string(pem),
 	})
-	spi.SetDefaultKey(defaultKey)
+	spi.SetDefaultKey(defaultUser, defaultKey)
 	pool, err := spi.DefaultPool()
 	if err != nil {
 		return fmt.Errorf("default pool, %s", err.Error())
@@ -523,7 +525,7 @@ func (s *Server) startMachbaseCli() error {
 		"user":            user,
 		"auth_key_pem":    string(pem),
 	})
-	spi.SetDefaultKey(defaultKey)
+	spi.SetDefaultKey(user, defaultKey)
 	pool, err := spi.DefaultPool()
 	if err != nil {
 		return fmt.Errorf("default pool, %s", err.Error())
@@ -538,18 +540,6 @@ func (s *Server) startMachbaseCli() error {
 		spi.StopAppendWorkers()
 	})
 	return nil
-}
-
-func getPoolSqlConn(ctx context.Context) (*sql.Conn, error) {
-	pool, poolErr := spi.DefaultPool()
-	if poolErr != nil {
-		return nil, poolErr
-	}
-	sqlConn, connErr := pool.Conn(ctx)
-	if connErr != nil {
-		return nil, connErr
-	}
-	return sqlConn, nil
 }
 
 func (s *Server) AddServicePort(svc string, addr string) error {
@@ -797,7 +787,7 @@ func (s *Server) checkAndInstallLicense() error {
 		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			conn, err := getPoolSqlConn(ctx)
+			conn, err := spi.Connect(ctx, "sys")
 			if err != nil {
 				s.log.Error("ERR", err.Error())
 				return err
@@ -2930,4 +2920,218 @@ func (s *Server) writeSharedInfo(filename string, data any) error {
 		err = s.serviceController.WriteSharedFileJSON(filename, val)
 	}
 	return err
+}
+
+func (s *Server) initShellProvider() error {
+	tcpCandidates := []string{}
+	for _, addr := range s.Http.Listeners {
+		if !strings.HasPrefix(addr, "tcp://") {
+			continue
+		}
+		tcpCandidates = append(tcpCandidates, strings.TrimPrefix(addr, "tcp://"))
+	}
+	if len(tcpCandidates) == 0 {
+		s.log.Warn("no port found for internal communication")
+		return nil
+	}
+
+	candidate := ""
+	for _, addr := range tcpCandidates {
+		if isLoopbackCandidate(addr) {
+			candidate = addr
+			break
+		}
+	}
+	if candidate == "" {
+		for _, addr := range tcpCandidates {
+			if !isAnyIfaceCandidate(addr) {
+				continue
+			}
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				continue
+			}
+			// Use IPv6 loopback for IPv6 any address, IPv4 loopback for IPv4 any address
+			loopbackIP := "127.0.0.1"
+			if strings.Contains(host, ":") {
+				loopbackIP = "::1"
+			}
+			candidate = net.JoinHostPort(loopbackIP, port)
+			break
+		}
+	}
+	if candidate == "" {
+		candidate = tcpCandidates[0]
+	}
+
+	shellCmd := []string{}
+	if len(os.Args) > 0 {
+		// The "[[shell]]" is placeholder for "shell" and "jsh"
+		if executable, err := os.Executable(); err != nil {
+			shellCmd = append(shellCmd, fmt.Sprintf("%q", os.Args[0]), "[[shell]]")
+		} else {
+			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "[[shell]]")
+		}
+	}
+	fsMgr := ssfs.Default()
+	lst := fsMgr.ListMounts()
+	for _, mnt := range lst {
+		if mnt == "/" {
+			if root, err := fsMgr.RealPath("/"); err == nil {
+				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work=%s"`, root))
+			}
+		} else {
+			if realPath, err := fsMgr.RealPath(mnt); err == nil {
+				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work%s=%s"`, mnt, realPath))
+			}
+		}
+	}
+	cmdLine := strings.Join(shellCmd, " ")
+	// neo-shell require -server option
+	defaultShellCmd := strings.Replace(cmdLine, "[[shell]]", "shell", 1) + " -server " + candidate
+	s.models.ShellProvider().SetDefaultShellCommand(defaultShellCmd)
+	s.log.Trace("Set shell command:", defaultShellCmd)
+	// jsh
+	defaultJshCmd := strings.Replace(cmdLine, "[[shell]]", "jsh", 1)
+	s.log.Trace("Set jsh command:", defaultShellCmd)
+	s.models.ShellProvider().SetDefaultJshCommand(defaultJshCmd)
+	return nil
+}
+
+func isLoopbackCandidate(candidate string) bool {
+	host := candidate
+	if parsedHost, _, err := net.SplitHostPort(candidate); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
+}
+
+// isAnyIfaceCandidate checks if the candidate address is bound to any interface (
+func isAnyIfaceCandidate(candidate string) bool {
+	host := candidate
+	if parsedHost, _, err := net.SplitHostPort(candidate); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsUnspecified()
+}
+
+// sshd shell provider
+func (s *Server) provideShellForSsh(user string, shellId string) *SshShell {
+	shellId = strings.ToUpper(shellId)
+	shellDef, _ := s.models.ShellProvider().GetShell(shellId)
+	if shellDef == nil {
+		return nil
+	}
+
+	parsed := util.SplitFields(shellDef.Command, true)
+	if len(parsed) == 0 {
+		return nil
+	}
+
+	shell := &SshShell{}
+
+	shell.Cmd = parsed[0]
+	if len(parsed) > 1 {
+		shell.Args = parsed[1:]
+	}
+
+	shell.Envs = append([]string{}, os.Environ()...)
+	if runtime.GOOS == "windows" {
+		has := false
+		for _, env := range shell.Envs {
+			if strings.HasPrefix(env, "USERPROFILE=") {
+				has = true
+				break
+			}
+		}
+		if !has {
+			userHomeDir, err := os.UserHomeDir()
+			if err != nil {
+				userHomeDir = "."
+			}
+			shell.Envs = append(shell.Envs, "USERPROFILE="+userHomeDir)
+		}
+	}
+	return shell
+}
+
+func (s *Server) cleanupServiceProxies(serviceName string) {
+	if s == nil || s.proxyMgr == nil || serviceName == "" {
+		return
+	}
+	removed, err := s.proxyMgr.Unregister(ProxyUnregisterRequest{Service: serviceName})
+	if err != nil {
+		if s.log != nil {
+			s.log.Warnf("service %s proxy cleanup failed: %v", serviceName, err)
+		}
+		return
+	}
+	if len(removed) > 0 && s.log != nil {
+		s.log.Infof("service %s proxy cleanup removed %d entries", serviceName, len(removed))
+	}
+}
+
+// registerProxy registers a service proxy entry.
+//
+// params:
+//   - req: proxy registration request
+//
+// return: registered proxy snapshot
+func (s *Server) registerProxy(req ProxyRegisterRequest) (ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		s.proxyMgr = NewProxyManager()
+	}
+	return s.proxyMgr.Register(req)
+}
+
+// unregisterProxy removes service proxy entries by filter.
+//
+// params:
+//   - req: proxy unregister request
+//
+// return: removed proxy snapshots
+func (s *Server) unregisterProxy(req ProxyUnregisterRequest) ([]ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		s.proxyMgr = NewProxyManager()
+	}
+	return s.proxyMgr.Unregister(req)
+}
+
+// listProxies lists service proxy entries.
+//
+// params:
+//   - service: service name filter
+//
+// return: proxy snapshot list
+func (s *Server) listProxies(service string) ([]ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		return []ProxyEntrySnapshot{}, nil
+	}
+	return s.proxyMgr.List(service), nil
+}
+
+// getProxy gets one service proxy entry.
+//
+// params:
+//   - req: proxy lookup request
+//
+// return: proxy snapshot
+func (s *Server) getProxy(req ProxyGetRequest) (ProxyEntrySnapshot, error) {
+	if s.proxyMgr == nil {
+		return ProxyEntrySnapshot{}, errProxyNotFound
+	}
+	return s.proxyMgr.Get(req)
 }

@@ -19,6 +19,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"reflect"
+	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -210,6 +215,132 @@ func TestAllowDebug(t *testing.T) {
 
 		require.False(t, ctx.IsAborted())
 		require.Equal(t, http.StatusOK, writer.Code)
+	})
+}
+
+func newHttpdForOptionTest() *httpd {
+	return &httpd{
+		log:        logging.GetLog("http-opts-test"),
+		authServer: &Server{},
+		pathMap:    map[string]string{},
+	}
+}
+
+func TestWithHttpAuthServer(t *testing.T) {
+	t.Run("enabled_with_rpc_controller", func(t *testing.T) {
+		authSvc := &Server{neoShellAddress: "before", rpcController: &service.Controller{}}
+		h := newHttpdForOptionTest()
+
+		WithHttpAuthServer(authSvc, true)(h)
+
+		require.Same(t, authSvc, h.authServer)
+		require.True(t, h.enableTokenAuth)
+		require.Same(t, authSvc.rpcController, h.rpcController)
+	})
+
+	t.Run("disabled_nil_service", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		h.rpcController = &service.Controller{}
+
+		WithHttpAuthServer(nil, false)(h)
+
+		require.Nil(t, h.authServer)
+		require.False(t, h.enableTokenAuth)
+		require.NotNil(t, h.rpcController)
+	})
+}
+
+func TestWithHttpNeoShellAddress(t *testing.T) {
+	t.Run("prefers_loopback", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		WithHttpNeoShellAddress("tcp://10.0.0.8:5655", "tcp://127.0.0.1:7777", "unix:///tmp/test.sock")(h)
+		require.Equal(t, "127.0.0.1:7777", h.authServer.neoShellAddress)
+	})
+
+	t.Run("falls_back_to_first_tcp_candidate", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		WithHttpNeoShellAddress("http://example.com", "tcp://192.168.0.10:5655", "tcp://192.168.0.11:5656")(h)
+		require.Equal(t, "192.168.0.10:5655", h.authServer.neoShellAddress)
+	})
+
+	t.Run("keeps_existing_when_no_tcp_candidate", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		h.authServer.neoShellAddress = "persist:1234"
+		WithHttpNeoShellAddress("unix:///tmp/test.sock", "http://example.com")(h)
+		require.Equal(t, "persist:1234", h.authServer.neoShellAddress)
+	})
+}
+
+func TestWithHttpStatzAllowAndQueryCypher(t *testing.T) {
+	t.Run("split_statz_allow", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		WithHttpStatzAllow("127.0.0.1,10.0.0.1", "", "::1")(h)
+		require.Equal(t, []string{"127.0.0.1", "10.0.0.1", "::1"}, h.statzAllowed)
+	})
+
+	t.Run("empty_query_cypher_keeps_defaults", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		h.cypherAlg = "OLD"
+		h.cypherKey = "OLDKEY"
+		h.cypherPad = "OLDPAD"
+
+		WithHttpQueryCypher("")(h)
+
+		require.Equal(t, "OLD", h.cypherAlg)
+		require.Equal(t, "OLDKEY", h.cypherKey)
+		require.Equal(t, "OLDPAD", h.cypherPad)
+	})
+
+	t.Run("invalid_query_cypher_does_not_apply", func(t *testing.T) {
+		h := newHttpdForOptionTest()
+		WithHttpQueryCypher("alg=FOO key=short")(h)
+		require.Empty(t, h.cypherAlg)
+		require.Empty(t, h.cypherKey)
+		require.Empty(t, h.cypherPad)
+	})
+
+	t.Run("valid_query_cypher_applies", func(t *testing.T) {
+		require.NoError(t, util.ValidateCypherKey("AES", "1234567890abcdef"))
+		h := newHttpdForOptionTest()
+		WithHttpQueryCypher("algorithm=AES key=1234567890abcdef padding=pkcs5")(h)
+		require.Equal(t, "AES", h.cypherAlg)
+		require.Equal(t, "1234567890abcdef", h.cypherKey)
+		require.Equal(t, "PKCS5", h.cypherPad)
+	})
+}
+
+func TestWithHttpMiscOptions(t *testing.T) {
+	h := newHttpdForOptionTest()
+	called := false
+	handler := func(http.ResponseWriter, *http.Request) {}
+
+	WithHttpDebugMode(true, "150ms")(h)
+	WithHttpKeepAlive(11)(h)
+	WithHttpLinger(7)(h)
+	WithHttpReadBufSize(1024)(h)
+	WithHttpWriteBufSize(2048)(h)
+	WithHttpPathMap("/data", "/tmp/data")(h)
+	WithHttpExperimentModeProvider(func() bool {
+		called = true
+		return true
+	})(h)
+	WithHttpMqttWsHandlerFunc(handler)(h)
+
+	require.True(t, h.debugMode)
+	require.Equal(t, 150*time.Millisecond, h.debugLogFilterLatency)
+	require.Equal(t, 11, h.keepAlive)
+	require.Equal(t, 7, h.linger)
+	require.Equal(t, 1024, h.readBufSize)
+	require.Equal(t, 2048, h.writeBufSize)
+	require.Equal(t, "/tmp/data", h.pathMap["/data"])
+	require.NotNil(t, h.experimentModeProvider)
+	require.True(t, h.experimentModeProvider())
+	require.True(t, called)
+	require.NotNil(t, h.mqttWsHandler)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.NotPanics(t, func() {
+		h.mqttWsHandler(ctx)
 	})
 }
 
@@ -1015,6 +1146,33 @@ func jwtLogin(username, password string) (string, string, error) {
 	}
 	rsp.Body.Close()
 	return loginRsp.AccessToken, loginRsp.RefreshToken, nil
+}
+
+func TestHandleServiceProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(r.URL.Path))
+	}))
+	defer target.Close()
+
+	pm := NewProxyManager()
+	_, err := pm.Register(ProxyRegisterRequest{Service: "github.com/acme/chart", Prefix: "/api/", Target: target.URL})
+	require.NoError(t, err)
+	svr := &httpd{authServer: &Server{proxyMgr: pm}}
+
+	router := gin.New()
+	router.Any("/web/services/*path", svr.handleServiceProxy)
+	frontend := httptest.NewServer(router)
+	defer frontend.Close()
+
+	rsp, err := http.Get(frontend.URL + "/web/services/github.com/acme/chart/api/v1")
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	require.Equal(t, "/v1", string(body))
 }
 
 func TestLicense(t *testing.T) {
@@ -2099,5 +2257,1424 @@ func TestHandleFiles(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
+	})
+}
+
+func newTestWebsocketPair(t *testing.T) (*websocket.Conn, *websocket.Conn) {
+	t.Helper()
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	serverConnCh := make(chan *websocket.Conn, 1)
+	errCh := make(chan error, 1)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		serverConnCh <- conn
+	}))
+	t.Cleanup(ts.Close)
+
+	clientConn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(ts.URL, "http"), nil)
+	require.NoError(t, err)
+
+	var serverConn *websocket.Conn
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case serverConn = <-serverConnCh:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for websocket upgrade")
+	}
+
+	t.Cleanup(func() {
+		clientConn.Close()
+		if serverConn != nil {
+			serverConn.Close()
+		}
+	})
+
+	return clientConn, serverConn
+}
+
+func newTestWebConsole(conn *websocket.Conn) *WebConsole {
+	return &WebConsole{
+		log:           logging.GetLog("test-web-console"),
+		topic:         "console:test:ws",
+		conn:          conn,
+		messages:      []*eventbus.Event{},
+		lastFlushTime: time.Now(),
+		flushPeriod:   time.Hour,
+	}
+}
+
+func TestWsReadWriterRead(t *testing.T) {
+	t.Run("continues across frame boundaries", func(t *testing.T) {
+		clientConn, serverConn := newTestWebsocketPair(t)
+		reader := &WsReadWriter{Conn: clientConn}
+
+		require.NoError(t, serverConn.WriteMessage(websocket.BinaryMessage, []byte("hello")))
+		require.NoError(t, serverConn.WriteMessage(websocket.BinaryMessage, []byte("world")))
+		require.NoError(t, clientConn.SetReadDeadline(time.Now().Add(time.Second)))
+
+		buf := make([]byte, 3)
+		n, err := reader.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, "hel", string(buf[:n]))
+
+		buf = make([]byte, 2)
+		n, err = reader.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, "lo", string(buf[:n]))
+
+		buf = make([]byte, 5)
+		n, err = reader.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, "world", string(buf[:n]))
+	})
+
+	t.Run("propagates next reader errors after frame eof", func(t *testing.T) {
+		clientConn, serverConn := newTestWebsocketPair(t)
+		reader := &WsReadWriter{Conn: clientConn}
+
+		require.NoError(t, serverConn.WriteMessage(websocket.BinaryMessage, []byte("hello")))
+		require.NoError(t, clientConn.SetReadDeadline(time.Now().Add(time.Second)))
+
+		buf := make([]byte, 3)
+		n, err := reader.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		require.Equal(t, "hel", string(buf[:n]))
+
+		buf = make([]byte, 2)
+		n, err = reader.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 2, n)
+		require.Equal(t, "lo", string(buf[:n]))
+
+		require.NoError(t, serverConn.Close())
+
+		buf = make([]byte, 8)
+		n, err = reader.Read(buf)
+		require.Zero(t, n)
+		require.Error(t, err)
+	})
+}
+
+func TestWsReadWriterWrite(t *testing.T) {
+	t.Run("writes binary frames", func(t *testing.T) {
+		clientConn, serverConn := newTestWebsocketPair(t)
+		writer := &WsReadWriter{Conn: clientConn}
+
+		require.NoError(t, serverConn.SetReadDeadline(time.Now().Add(time.Second)))
+		n, err := writer.Write([]byte("payload"))
+		require.NoError(t, err)
+		require.Equal(t, len("payload"), n)
+
+		msgType, payload, err := serverConn.ReadMessage()
+		require.NoError(t, err)
+		require.Equal(t, websocket.BinaryMessage, msgType)
+		require.Equal(t, []byte("payload"), payload)
+	})
+
+	t.Run("returns write errors", func(t *testing.T) {
+		clientConn, _ := newTestWebsocketPair(t)
+		writer := &WsReadWriter{Conn: clientConn}
+
+		require.NoError(t, clientConn.Close())
+		n, err := writer.Write([]byte("payload"))
+		require.Zero(t, n)
+		require.Error(t, err)
+	})
+}
+
+func TestWebConsoleSend(t *testing.T) {
+	t.Run("coalesces repeated log messages", func(t *testing.T) {
+		clientConn, serverConn := newTestWebsocketPair(t)
+		cons := newTestWebConsole(clientConn)
+
+		cons.Send(eventbus.NewLog("INFO", "same message"))
+		cons.Send(eventbus.NewLog("INFO", "same message"))
+
+		require.Len(t, cons.messages, 1)
+		require.Equal(t, 2, cons.messages[0].Log.Repeat)
+
+		cons.lastFlushTime = time.Now().Add(-2 * time.Hour)
+		require.NoError(t, serverConn.SetReadDeadline(time.Now().Add(time.Second)))
+		cons.Send(nil)
+
+		evt := &eventbus.Event{}
+		require.NoError(t, serverConn.ReadJSON(evt))
+		require.Equal(t, eventbus.EVT_LOG, evt.Type)
+		require.Equal(t, "same message", evt.Log.Message)
+		require.Equal(t, 2, evt.Log.Repeat)
+		require.Empty(t, cons.messages)
+	})
+
+	t.Run("non log events force pending logs to flush", func(t *testing.T) {
+		clientConn, serverConn := newTestWebsocketPair(t)
+		cons := newTestWebConsole(clientConn)
+
+		cons.Send(eventbus.NewLog("INFO", "pending log"))
+		require.NoError(t, serverConn.SetReadDeadline(time.Now().Add(time.Second)))
+		cons.Send(&eventbus.Event{Type: eventbus.EVT_OPEN_FILE, OpenFile: &eventbus.OpenFile{Path: "/tmp/result.txt"}})
+
+		first := &eventbus.Event{}
+		second := &eventbus.Event{}
+		require.NoError(t, serverConn.ReadJSON(first))
+		require.NoError(t, serverConn.ReadJSON(second))
+		require.Equal(t, eventbus.EVT_LOG, first.Type)
+		require.Equal(t, "pending log", first.Log.Message)
+		require.Equal(t, eventbus.EVT_OPEN_FILE, second.Type)
+		require.Equal(t, "/tmp/result.txt", second.OpenFile.Path)
+	})
+
+	t.Run("write failure closes the console", func(t *testing.T) {
+		clientConn, _ := newTestWebsocketPair(t)
+		cons := newTestWebConsole(clientConn)
+		cons.flushPeriod = 0
+		cons.lastFlushTime = time.Now().Add(-time.Second)
+
+		require.NoError(t, clientConn.Close())
+		cons.Send(eventbus.NewLog("INFO", "will fail"))
+
+		require.True(t, cons.closed.Load())
+	})
+}
+
+func TestWebTermCoverage_NewSetWindowSizeClose(t *testing.T) {
+	hostPort := fmt.Sprintf("127.0.0.1:%d", shellPort)
+
+	term, err := NewWebTerm(hostPort, "", "sys")
+	require.NoError(t, err)
+	require.NotNil(t, term)
+
+	err = term.SetWindowSize(32, 96)
+	require.NoError(t, err)
+	require.Equal(t, 32, term.Rows)
+	require.Equal(t, 96, term.Cols)
+
+	term.Close()
+}
+
+func TestWebTermCoverage_NewWebTermErrorPath(t *testing.T) {
+	_, err := NewWebTerm("127.0.0.1:1", "", "sys")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NewTerm dial")
+}
+
+func TestStaticFSWrapOpenAppliesPrefixAndFixedModTime(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "assets"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "assets", "hello.txt"), []byte("hello"), 0o644))
+
+	fixedTime := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
+	fsw := &StaticFSWrap{
+		TrimPrefix:      "/web/",
+		PrependRealPath: "/assets/",
+		Base:            http.Dir(tempDir),
+		FixedModTime:    fixedTime,
+	}
+
+	file, err := fsw.Open("hello.txt")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, file.Close()) })
+
+	body, err := io.ReadAll(file)
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(body))
+	require.Equal(t, fixedTime, file.(*staticFile).ModTime())
+
+	stat, err := file.Stat()
+	require.NoError(t, err)
+	require.Equal(t, fixedTime, stat.ModTime())
+}
+
+func TestWrapAssetsFallbackToIndexHTML(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "index.html"), []byte("index page"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "app.js"), []byte("console.log('ok')"), 0o644))
+
+	fs := WrapAssets(tempDir)
+
+	assetFile, err := fs.Open("app.js")
+	require.NoError(t, err)
+	assetBody, err := io.ReadAll(assetFile)
+	require.NoError(t, err)
+	require.NoError(t, assetFile.Close())
+	require.Equal(t, "console.log('ok')", string(assetBody))
+
+	fallbackFile, err := fs.Open("missing/route")
+	require.NoError(t, err)
+	fallbackBody, err := io.ReadAll(fallbackFile)
+	require.NoError(t, err)
+	require.NoError(t, fallbackFile.Close())
+	require.Equal(t, "index page", string(fallbackBody))
+}
+
+func TestGetAssetsServesKnownFileAndSpaFallback(t *testing.T) {
+	fs := GetAssets("ui")
+
+	assetFile, err := fs.Open("/vite.svg?cache=1")
+	require.NoError(t, err)
+	assetBody, err := io.ReadAll(assetFile)
+	require.NoError(t, err)
+	require.NoError(t, assetFile.Close())
+	require.Contains(t, string(assetBody), "<svg")
+
+	fallbackFile, err := fs.Open("dashboard/metrics")
+	require.NoError(t, err)
+	fallbackBody, err := io.ReadAll(fallbackFile)
+	require.NoError(t, err)
+	require.NoError(t, fallbackFile.Close())
+	require.Contains(t, string(fallbackBody), "<!DOCTYPE html>")
+}
+
+func TestIsWellKnownFileType(t *testing.T) {
+	require.True(t, isWellKnownFileType("app.js"))
+	require.True(t, isWellKnownFileType("image.WEBP"))
+	require.True(t, isWellKnownFileType("font.woff2"))
+	require.False(t, isWellKnownFileType("README"))
+	require.False(t, isWellKnownFileType("archive.tar.gz"))
+	require.False(t, isWellKnownFileType("custom.bin"))
+}
+
+func TestHttpRpc(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+	require.NotEmpty(t, at)
+
+	var originalSessionLimit map[string]any
+	generatedKeyID := fmt.Sprintf("rpc-test-key-%d", time.Now().UnixNano())
+	sshFixture := newTestSSHKeyFixture(t)
+	sshKeyMaterial := sshFixture.AuthorizedKey
+	sshKeyFingerprint := sshFixture.Fingerprint
+	sshKeyComment := fmt.Sprintf("rpc-test-comment-%d", time.Now().UnixNano())
+	var addedSshKeyFingerprint string
+	bridgeTableName := fmt.Sprintf("rpc_bridge_%d", time.Now().UnixNano())
+	insertedBridgeMemo := fmt.Sprintf("rpc-row-%d", time.Now().UnixNano())
+	insertedBridgeCreatedOn := "2023-09-09T00:00:00Z"
+	var bridgeQueryHandle string
+
+	tests := []JsonRpcTestCase{
+		{
+			name:   "method-not-found",
+			method: "nonExistentMethod",
+			params: []interface{}{},
+			expectFunc: func(t *testing.T, jsonRsp gjson.Result) {
+				require.True(t, jsonRsp.Get("error").Exists())
+				require.Equal(t, int64(-32601), jsonRsp.Get("error.code").Int())
+				require.Equal(t, "Method not found", jsonRsp.Get("error.message").String())
+			},
+		},
+		{
+			name:   "getServerInfo",
+			method: "server.info.get",
+			params: []interface{}{},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				require.Equal(t, runtime.GOOS, rsp.Get("result.runtime.OS").String(), rsp.String())
+			},
+		},
+		{
+			name:   "getServerStatz",
+			method: "server.info.statz",
+			params: []interface{}{[]string{"http:count"}},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				require.True(t, rsp.Get("result").Exists(), rsp.String())
+				require.Equal(t, "http:count", rsp.Get("result.statz.0.name").String(), rsp.String())
+			},
+		},
+		{
+			name:       "getServicePorts",
+			method:     "service.port.list",
+			params:     []interface{}{"mach"},
+			expectJSON: fmt.Sprintf(`[{"Service":"mach", "Address":"%s"}]`, machServerAddress),
+		},
+		{
+			name:   "getServerCertificate",
+			method: "server.certificate.get",
+			params: []interface{}{},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				certificate := rsp.Get("result").String()
+				require.Contains(t, certificate, "BEGIN CERTIFICATE", rsp.String())
+				require.Contains(t, certificate, "END CERTIFICATE", rsp.String())
+			},
+		},
+		{
+			name:   "getSessionLimit",
+			method: "session.limit.get",
+			params: []interface{}{},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.True(t, result.Get("maxOpenConn").Exists(), rsp.String())
+				require.True(t, result.Get("maxIdleConn").Exists(), rsp.String())
+				require.True(t, result.Get("connMaxIdleTime").Exists(), rsp.String())
+				require.True(t, result.Get("connMaxLifetime").Exists(), rsp.String())
+				originalSessionLimit = map[string]any{
+					"maxOpenConn":     int(result.Get("maxOpenConn").Int()),
+					"maxIdleConn":     int(result.Get("maxIdleConn").Int()),
+					"connMaxIdleTime": result.Get("connMaxIdleTime").String(),
+					"connMaxLifetime": result.Get("connMaxLifetime").String(),
+				}
+			},
+		},
+		{
+			name:   "splitSqlStatements",
+			method: "sql.split",
+			params: []interface{}{"select 1;\nselect 2;"},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.Len(t, result.Array(), 2, rsp.String())
+				require.Equal(t, "select 1;", strings.TrimSpace(result.Get("0.text").String()), rsp.String())
+				require.Equal(t, int64(1), result.Get("0.beginLine").Int(), rsp.String())
+				require.Equal(t, int64(1), result.Get("0.endLine").Int(), rsp.String())
+				require.False(t, result.Get("0.isComment").Bool(), rsp.String())
+				require.Equal(t, "select 2;", strings.TrimSpace(result.Get("1.text").String()), rsp.String())
+				require.Equal(t, int64(2), result.Get("1.beginLine").Int(), rsp.String())
+				require.Equal(t, int64(2), result.Get("1.endLine").Int(), rsp.String())
+				require.False(t, result.Get("1.isComment").Bool(), rsp.String())
+			},
+		},
+		{
+			name:   "splitSql_first",
+			method: "sql.split",
+			params: []interface{}{`select * from first;`},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t, `[{"text":"select * from first;","beginLine":1,"endLine":1,"isComment":false,"stmtType":"select","env":{}}]`, result.String())
+			},
+		},
+		{
+			name:   "splitSql_second",
+			method: "sql.split",
+			params: []interface{}{"\nselect * from second;  "},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t, `[{"text":"select * from second;","beginLine":2,"endLine":2,"isComment":false,"stmtType":"select","env":{}}]`, result.String())
+			},
+		},
+		{
+			name:   "httpSplit_simple_get",
+			method: "http.split",
+			params: []interface{}{`GET /web/api/tables HTTP/1.1
+Host: localhost:8080`},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t,
+					`[{"beginLine":1, "endLine":2, "text":"GET /web/api/tables HTTP/1.1\nHost: localhost:8080\n"}]`,
+					result.String())
+			},
+		},
+		{
+			name:   "httpSplit_simple_multiple",
+			method: "http.split",
+			params: []interface{}{"\n###\nGET /abc\n###\nGET /def\n###\nGET /gih"},
+			expectFunc: func(t *testing.T, rsp gjson.Result) {
+				result := rsp.Get("result")
+				require.JSONEq(t,
+					`[{"beginLine":3, "endLine":3, "text":"GET /abc\n"}, {"beginLine":5, "endLine":5, "text":"GET /def\n"}, {"beginLine":7, "endLine":7, "text":"GET /gih\n"}]`,
+					result.String())
+			},
+		},
+	}
+	for _, tc := range tests {
+		RunJsonRpcTest(t, at, tc)
+	}
+	require.NotNil(t, originalSessionLimit)
+
+	JsonRpcTestCase{
+		name:   "listKeys_beforeGenerate",
+		method: "key.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			for _, item := range rsp.Get("result").Array() {
+				require.NotEqual(t, generatedKeyID, item.Get("id").String(), rsp.String())
+			}
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "generateKey",
+		method: "key.generate",
+		params: []interface{}{generatedKeyID, "ecdsa", 0, 0, true},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Equal(t, generatedKeyID, result.Get("id").String(), rsp.String())
+			require.Contains(t, result.Get("certificate").String(), "BEGIN CERTIFICATE", rsp.String())
+			privateKey := result.Get("key").String()
+			require.Contains(t, privateKey, "BEGIN ", rsp.String())
+			require.Contains(t, privateKey, "PRIVATE KEY", rsp.String())
+			require.NotEmpty(t, result.Get("token").String(), rsp.String())
+			require.NotEmpty(t, result.Get("zip").String(), rsp.String())
+			require.NotEmpty(t, result.Get("serverKey").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listKeys_afterGenerate",
+		method: "key.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			found := false
+			for _, item := range rsp.Get("result").Array() {
+				if item.Get("id").String() == generatedKeyID {
+					found = true
+					break
+				}
+			}
+			require.True(t, found, rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteKey",
+		method: "key.delete",
+		params: []interface{}{generatedKeyID},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("result").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listKeys_afterDelete",
+		method: "key.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			for _, item := range rsp.Get("result").Array() {
+				require.NotEqual(t, generatedKeyID, item.Get("id").String(), rsp.String())
+			}
+		},
+	}.run(t, at)
+
+	JsonRpcTestCase{
+		name:   "listSshKeys_beforeAdd",
+		method: "sshkey.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			for _, item := range rsp.Get("result").Array() {
+				require.NotEqual(t, sshKeyFingerprint, item.Get("fingerprint").String(), rsp.String())
+			}
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addSshKey",
+		method: "sshkey.add",
+		params: []interface{}{"ed25519", sshKeyMaterial, sshKeyComment},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.True(t, rsp.Get("result").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listSshKeys_afterAdd",
+		method: "sshkey.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			found := false
+			for _, item := range rsp.Get("result").Array() {
+				if item.Get("Fingerprint").String() == sshKeyFingerprint {
+					found = true
+					addedSshKeyFingerprint = item.Get("Fingerprint").String()
+					require.Equal(t, sshKeyFingerprint, item.Get("Fingerprint").String(), rsp.String())
+				}
+			}
+			require.True(t, found, rsp.String())
+			require.NotEmpty(t, addedSshKeyFingerprint, rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteSshKey",
+		method: "sshkey.delete",
+		params: []interface{}{addedSshKeyFingerprint},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.NotEmpty(t, addedSshKeyFingerprint)
+			require.True(t, rsp.Get("result").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listSshKeys_afterDelete",
+		method: "sshkey.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			for _, item := range rsp.Get("result").Array() {
+				require.NotEqual(t, sshKeyFingerprint, item.Get("fingerprint").String(), rsp.String())
+			}
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_beforeAdd",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Empty(t, rsp.Get("result").Array(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addTimer_not_exists",
+		method: "schedule.timer.add",
+		params: []interface{}{map[string]any{
+			"name":      "test-timer",
+			"spec":      "*/1 * * * * *",
+			"command":   "test-timer-not_exists.tql",
+			"authStart": true,
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, -32000, int(rsp.Get("error.code").Int()), rsp.String())
+			require.Equal(t, "not found 'test-timer-not_exists.tql'", rsp.Get("error.message").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addTimer",
+		method: "schedule.timer.add",
+		params: []interface{}{map[string]any{
+			"name":      "test-timer",
+			"spec":      "0 30 * * * *",
+			"command":   "csv_map.tql",
+			"authStart": true,
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_afterAdd",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.NotEmpty(t, rsp.Get("result").Array(), rsp.String())
+			require.Equal(t, "TEST-TIMER", rsp.Get("result.0.name").String(), rsp.String())
+			require.Equal(t, "0 30 * * * *", rsp.Get("result.0.schedule").String(), rsp.String())
+			require.Equal(t, "STOP", rsp.Get("result.0.state").String(), rsp.String())
+			require.Equal(t, "csv_map.tql", rsp.Get("result.0.task").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "startTimer",
+		method: "schedule.start",
+		params: []interface{}{"test-timer"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_afterStart",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.NotEmpty(t, rsp.Get("result").Array(), rsp.String())
+			require.Equal(t, "TEST-TIMER", rsp.Get("result.0.name").String(), rsp.String())
+			require.Equal(t, "0 30 * * * *", rsp.Get("result.0.schedule").String(), rsp.String())
+			require.Equal(t, "RUNNING", rsp.Get("result.0.state").String(), rsp.String())
+			require.Equal(t, "csv_map.tql", rsp.Get("result.0.task").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteTimer",
+		method: "schedule.delete",
+		params: []interface{}{"test-timer"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listTimers_afterDelete",
+		method: "schedule.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Empty(t, rsp.Get("result").Array(), rsp.String())
+		},
+	}.run(t, at)
+
+	originalDebugEnabled, originalDebugLatency := httpServer.DebugMode()
+	targetDebugEnabled := !originalDebugEnabled
+	targetDebugLatency := 250 * time.Millisecond
+	if originalDebugLatency == targetDebugLatency {
+		targetDebugLatency = 100 * time.Millisecond
+	}
+	JsonRpcTestCase{
+		name:   "setHttpDebug",
+		method: "http.debug.set",
+		params: []interface{}{map[string]any{"enable": targetDebugEnabled, "logLatency": targetDebugLatency.String()}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Equal(t, targetDebugEnabled, result.Get("enable").Bool(), rsp.String())
+			require.Equal(t, targetDebugLatency.String(), result.Get("logLatency").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "restoreHttpDebug",
+		method: "http.debug.set",
+		params: []interface{}{map[string]any{"enable": originalDebugEnabled, "logLatency": originalDebugLatency.String()}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Equal(t, originalDebugEnabled, result.Get("enable").Bool(), rsp.String())
+			require.Equal(t, originalDebugLatency.String(), result.Get("logLatency").String(), rsp.String())
+		},
+	}.run(t, at)
+
+	JsonRpcTestCase{
+		name:   "addShell_not_exists_cmd",
+		method: "shell.add",
+		params: []interface{}{"test-shell", `not_exists_cmd`},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("error").Exists())
+			require.Equal(t, -32000, int(rsp.Get("error.code").Int()))
+			require.Contains(t, `'not_exists_cmd' is not accessible`, rsp.Get("result.error.message").String())
+		},
+	}.run(t, at)
+
+	var addShellResult func() string
+	var shellCommand = "/bin/bash -il"
+	if runtime.GOOS == "windows" {
+		// Use cmd.exe for better compatibility in Windows environment
+		shellCommand = `C:\Windows\System32\cmd.exe /c "echo off && cmd.exe /k"`
+	}
+	JsonRpcTestCase{
+		name:   "addShell",
+		method: "shell.add",
+		params: []interface{}{"test-shell", shellCommand},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			id := rsp.Get("result").String()
+			require.NotEmpty(t, id, rsp.String())
+			addShellResult = func() string { return id }
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listShells",
+		method: "shell.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, 1, len(rsp.Get("result").Array()), rsp.String())
+			require.Equal(t, addShellResult(), rsp.Get("result.0.id").String(), rsp.String())
+			require.Equal(t, "test-shell", rsp.Get("result.0.label").String(), rsp.String())
+			require.Equal(t, shellCommand, rsp.Get("result.0.command").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteShell",
+		method: "shell.delete",
+		params: []interface{}{addShellResult()},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("result").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listShells",
+		method: "shell.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, 0, len(rsp.Get("result").Array()), rsp.String())
+		},
+	}.run(t, at)
+
+	JsonRpcTestCase{
+		name:   "addBridge",
+		method: "bridge.add",
+		params: []interface{}{"br-test", "sqlite", "file::memory:?cache=shared"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listBridges",
+		method: "bridge.list",
+		params: []interface{}{},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			result := rsp.Get("result")
+			require.Equal(t, 1, len(result.Array()), rsp.String())
+			require.Equal(t, "br-test", result.Get("0.name").String(), rsp.String())
+			require.Equal(t, "sqlite", result.Get("0.type").String(), rsp.String())
+			require.Equal(t, "file::memory:?cache=shared", result.Get("0.path").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "getBridge",
+		method: "bridge.get",
+		params: []interface{}{"br-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Equal(t, "br-test", result.Get("name").String(), rsp.String())
+			require.Equal(t, "sqlite", result.Get("type").String(), rsp.String())
+			require.Equal(t, "file::memory:?cache=shared", result.Get("path").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "testBridge",
+		method: "bridge.test",
+		params: []interface{}{"br-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("result").Bool(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "statsBridge_beforeExec",
+		method: "bridge.stats",
+		params: []interface{}{"br-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("error").Exists(), rsp.String())
+			require.Equal(t, int64(-32000), rsp.Get("error.code").Int(), rsp.String())
+			require.Contains(t, rsp.Get("error.message").String(), "does not support stats", rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "execBridge_createTable",
+		method: "bridge.exec",
+		params: []interface{}{"br-test", fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER NOT NULL PRIMARY KEY, memo TEXT, created_on DATETIME NOT NULL)", bridgeTableName)},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Equal(t, "success", result.Get("Reason").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "execBridge_insertRow",
+		method: "bridge.exec",
+		params: []interface{}{"br-test", fmt.Sprintf("INSERT INTO %s(id, memo, created_on) VALUES(1, '%s', '2023-09-09 00:00:00Z')", bridgeTableName, insertedBridgeMemo)},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Equal(t, "success", result.Get("Reason").String(), rsp.String())
+			require.Equal(t, int64(1), result.Get("RowsAffected").Int(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "queryBridge_selectRows",
+		method: "bridge.query",
+		params: []interface{}{"br-test", fmt.Sprintf("SELECT id, memo, created_on FROM %s ORDER BY id", bridgeTableName)},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			bridgeQueryHandle = result.Get("Handle").String()
+			require.NotEmpty(t, bridgeQueryHandle, rsp.String())
+			require.Equal(t, "id", result.Get("Columns.0.Name").String(), rsp.String())
+			require.Equal(t, "memo", result.Get("Columns.1.Name").String(), rsp.String())
+			require.Equal(t, "created_on", result.Get("Columns.2.Name").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "fetchBridgeResult_row",
+		method: "bridge.result.fetch",
+		params: []interface{}{func() string { return bridgeQueryHandle }()},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.False(t, result.Get("HasNoRows").Bool(), rsp.String())
+			require.Equal(t, int64(1), result.Get("Values.0").Int(), rsp.String())
+			require.Equal(t, insertedBridgeMemo, result.Get("Values.1").String(), rsp.String())
+			require.Equal(t, insertedBridgeCreatedOn, result.Get("Values.2").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "fetchBridgeResult_noRows",
+		method: "bridge.result.fetch",
+		params: []interface{}{func() string { return bridgeQueryHandle }()},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.True(t, result.Get("HasNoRows").Bool(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "closeBridgeResult",
+		method: "bridge.result.close",
+		params: []interface{}{func() string { return bridgeQueryHandle }()},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("result").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "execBridge_dropTable",
+		method: "bridge.exec",
+		params: []interface{}{"br-test", fmt.Sprintf("DROP TABLE %s", bridgeTableName)},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.Equal(t, "success", rsp.Get("result.Reason").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "statsBridge_afterExec",
+		method: "bridge.stats",
+		params: []interface{}{"br-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("error").Exists(), rsp.String())
+			require.Equal(t, int64(-32000), rsp.Get("error.code").Int(), rsp.String())
+			require.Contains(t, rsp.Get("error.message").String(), "does not support stats", rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteBridge",
+		method: "bridge.delete",
+		params: []interface{}{"br-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addMqttBridge",
+		method: "bridge.add",
+		params: []interface{}{"mqtt-test", "mqtt", map[string]any{
+			"broker": mqttServerAddress,
+			"id":     "client-id",
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "addMqttSubscriber",
+		method: "schedule.subscriber.add",
+		params: []interface{}{map[string]any{
+			"name":      "mqtt-subscriber",
+			"type":      "mqtt",
+			"autoStart": false,
+			"command":   "sub.tql",
+			"bridge":    "mqtt-test",
+			"mqtt": map[string]any{
+				"topic": "test/topic",
+				"QoS":   0,
+			},
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "listMqttSubscribers",
+		method: "schedule.list",
+		params: []interface{}{"mqtt-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			result := rsp.Get("result")
+			require.Equal(t, 1, len(result.Array()), rsp.String())
+			require.Equal(t, "MQTT-SUBSCRIBER", result.Get("0.name").String(), rsp.String())
+			require.Equal(t, "SUBSCRIBER", result.Get("0.type").String(), rsp.String())
+			require.Equal(t, "STOP", result.Get("0.state").String(), rsp.String())
+			require.Equal(t, "mqtt-test", result.Get("0.bridge").String(), rsp.String())
+			require.Equal(t, "test/topic", result.Get("0.topic").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteMqttSubscriber",
+		method: "schedule.delete",
+		params: []interface{}{"mqtt-subscriber"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "deleteMqttBridge",
+		method: "bridge.delete",
+		params: []interface{}{"mqtt-test"},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.True(t, rsp.Get("id").Exists(), rsp.String())
+			require.Equal(t, "2.0", rsp.Get("jsonrpc").String(), rsp.String())
+			require.Empty(t, rsp.Get("result").String(), rsp.String())
+		},
+	}.run(t, at)
+
+	readFile := func(path string) string {
+		content, err := os.ReadFile(path)
+		require.NoError(t, err)
+		// replace \r\n with \n to avoid line ending issues on Windows
+		content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+		return string(content)
+	}
+
+	tests = []JsonRpcTestCase{
+		{
+			name:   "markdownRender-light",
+			method: "markdown.render",
+			params: []interface{}{"# Hello World\n\nThis is a **test**.", false},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Contains(t, html, "<h1")
+				require.Contains(t, html, "Hello World")
+				require.Contains(t, html, "<strong>test</strong>")
+			},
+		},
+		{
+			name:   "markdownRender-dark",
+			method: "markdown.render",
+			params: []interface{}{"## Dark Mode Test\n\n- Item 1\n- Item 2", true},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Contains(t, html, "<h2")
+				require.Contains(t, html, "Dark Mode Test")
+				require.Contains(t, html, "<li>Item 1</li>")
+				require.Contains(t, html, "<li>Item 2</li>")
+			},
+		},
+		{
+			name:   "markdownRender-http-fence",
+			method: "markdown.render",
+			params: []interface{}{"## HTTP Test\n\n```http\nGET " +
+				httpServerAddress + "/db/query?q=select * from example limit 1\n```\n", false},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Contains(t, html, "<h2")
+				require.Contains(t, html, "HTTP Test")
+				require.Contains(t, html, "<span class=\"httpext-method\">GET</span> <span class=\"httpext-path\">/db/query</span>?")
+				require.Contains(t, html, "HTTP/1.1")
+				require.Contains(t, html, "OK")
+			},
+		},
+		{
+			name:   "markdownRender-list",
+			method: "markdown.render",
+			params: []interface{}{readFile("./test/test_markdown_list.md"), false, httpServerAddress + "/web/api/tql/sample/file.wrk"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Equal(t, readFile("./test/test_markdown_list.txt"), html)
+			},
+		},
+		{
+			name:   "markdownRender-utf8",
+			method: "markdown.render",
+			params: []interface{}{readFile("./test/test_markdown_list_utf8.md"), false, httpServerAddress + "/web/api/tql/语言/文檔.wrk"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Equal(t, readFile("./test/test_markdown_list_utf8.txt"), html)
+			},
+		},
+		{
+			name:   "markdownRender-mermaid",
+			method: "markdown.render",
+			params: []interface{}{readFile("./test/test_markdown_mermaid.md"), false, httpServerAddress + "/web/api/tql/diagram.wrk"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				html := result.Get("result").String()
+				require.Equal(t, readFile("./test/test_markdown_mermaid.txt"), html)
+			},
+		},
+		{
+			name:   "vizspecRender-passthrough",
+			method: "vizspec.render",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec/v1", result.Get("result.schema").String())
+				require.Equal(t, "timeseries", result.Get("result.kind").String())
+				require.Equal(t, "t1", result.Get("result.data.x.0").String())
+				require.Equal(t, "value", result.Get("result.data.series.0.name").String())
+				require.Equal(t, int64(1), result.Get("result.data.series.0.data.0").Int())
+			},
+		},
+		{
+			name:   "vizspecExport-svg",
+			method: "vizspec.export",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}, "svg"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec-export/v1", result.Get("result.schema").String())
+				require.Equal(t, "svg", result.Get("result.format").String())
+				require.Equal(t, "image/svg+xml", result.Get("result.mimeType").String())
+				data := result.Get("result.data").String()
+				require.Contains(t, data, "<svg")
+			},
+		},
+		{
+			name:   "vizspecExport-png",
+			method: "vizspec.export",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}, "png"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec-export/v1", result.Get("result.schema").String())
+				require.Equal(t, "png", result.Get("result.format").String())
+				require.Equal(t, "image/png", result.Get("result.mimeType").String())
+				data := result.Get("result.data").String()
+				require.NotEmpty(t, data)
+			},
+		},
+		{
+			name:   "vizspecExport-echarts",
+			method: "vizspec.export",
+			params: []interface{}{map[string]any{
+				"schema": "vizspec/v1",
+				"kind":   "timeseries",
+				"data": map[string]any{
+					"x":      []any{"t1", "t2"},
+					"series": []any{map[string]any{"name": "value", "data": []any{1, 2}}},
+				},
+			}, "echarts"},
+			expectFunc: func(t *testing.T, result gjson.Result) {
+				require.Equal(t, "vizspec-export/v1", result.Get("result.schema").String())
+				require.Equal(t, "echarts", result.Get("result.format").String())
+				require.Equal(t, "application/json", result.Get("result.mimeType").String())
+				require.Equal(t, "line", result.Get("result.data.series.0.type").String())
+			},
+		},
+	}
+	for _, tc := range tests {
+		RunJsonRpcTest(t, at, tc)
+	}
+}
+
+type JsonRpcTestCase struct {
+	name       string
+	method     string
+	params     []interface{}
+	expect     []string
+	expectFunc func(t *testing.T, result gjson.Result)
+	expectJSON string
+}
+
+func (tc JsonRpcTestCase) run(t *testing.T, accessToken string) {
+	t.Helper()
+	RunJsonRpcTest(t, accessToken, tc)
+}
+
+func RunJsonRpcTest(t *testing.T, accessToken string, tc JsonRpcTestCase) {
+	t.Helper()
+	t.Run(tc.name, func(t *testing.T) {
+		t.Helper()
+		// Build JSON-RPC request
+		rpcReq := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  tc.method,
+			"params":  tc.params,
+		}
+		reqBody, err := json.Marshal(rpcReq)
+		require.NoError(t, err)
+
+		// Send HTTP POST request
+		req, _ := http.NewRequest(
+			http.MethodPost,
+			httpServerAddress+"/web/api/rpc",
+			bytes.NewBuffer(reqBody),
+		)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+		req.Header.Set("Content-Type", "application/json")
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+
+		// Parse JSON-RPC response
+		body, err := io.ReadAll(rsp.Body)
+		require.NoError(t, err)
+		rsp.Body.Close()
+
+		// Validate JSON-RPC structure
+		jsonRsp := gjson.ParseBytes(body)
+		require.Equal(t, "2.0", jsonRsp.Get("jsonrpc").String())
+		require.Equal(t, int64(1), jsonRsp.Get("id").Int())
+
+		// If validate function is provided, use it to validate the result
+		if tc.expectFunc != nil {
+			tc.expectFunc(t, jsonRsp)
+		}
+		// If expected output is provided, validate it
+		if len(tc.expect) > 0 {
+			require.True(t, jsonRsp.Get("result").Exists())
+			output := jsonRsp.Get("result").String()
+			outputLines := strings.Split(string(output), "\n")
+			for i, outputLine := range outputLines {
+				if i >= len(tc.expect) {
+					if outputLine != "" || i != len(outputLines)-1 {
+						require.Fail(t, "Unexpected extra output", "Line: %s", outputLine)
+					}
+					continue
+				}
+				expect := tc.expect[i]
+				if strings.HasPrefix(expect, "/r/") {
+					// regular expression match
+					pattern := expect[3:]
+					matched, err := regexp.MatchString(pattern, outputLine)
+					require.NoError(t, err, "Invalid regular expression: %s", pattern)
+					require.True(t, matched, "Output line does not match pattern. Line: %s, Pattern: %s", outputLine, pattern)
+				} else {
+					require.Equal(t, expect, outputLine)
+				}
+			}
+			for i, expectLine := range tc.expect[len(outputLines):] {
+				require.Fail(t, "Expected line not found in output", "Line[%d]: %s", i+len(outputLines), expectLine)
+			}
+		}
+		// If expected JSON is provided, validate it
+		if tc.expectJSON != "" {
+			require.JSONEq(t, tc.expectJSON, jsonRsp.Get("result").String())
+		}
+	})
+}
+
+func TestBuildRpcCallParams(t *testing.T) {
+	type rpcPayload struct {
+		Count int    `json:"count"`
+		Name  string `json:"name"`
+	}
+
+	handler := func(ctx context.Context, count int, enabled bool, payload rpcPayload, req *rpcPayload) error {
+		return nil
+	}
+
+	params, err := buildRpcCallParams(handler, []any{
+		float64(7),
+		true,
+		map[string]any{"count": float64(3), "name": "neo"},
+		map[string]any{"count": float64(9), "name": "rpc"},
+	}, func(paramType reflect.Type) (reflect.Value, bool) {
+		if paramType == contextType {
+			return reflect.ValueOf(t.Context()), true
+		}
+		return reflect.Value{}, false
+	})
+	require.NoError(t, err)
+	require.Len(t, params, 5)
+	require.Equal(t, 7, params[1].Interface().(int))
+	require.True(t, params[2].Interface().(bool))
+	require.Equal(t, rpcPayload{Count: 3, Name: "neo"}, params[3].Interface().(rpcPayload))
+	require.Equal(t, &rpcPayload{Count: 9, Name: "rpc"}, params[4].Interface().(*rpcPayload))
+}
+
+func TestBuildRpcCallParamsRejectsInvalidNumber(t *testing.T) {
+	handler := func(count int) error {
+		return nil
+	}
+
+	_, err := buildRpcCallParams(handler, []any{1.25}, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "param 0")
+	require.Contains(t, err.Error(), "int")
+}
+
+func TestHttpLoggerWithFileWritesAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logPath := filepath.Join(t.TempDir(), "access.log")
+
+	router := gin.New()
+	accessLog := logging.NewLogFile("http-util-file", logging.LogFileConf{
+		Filename:             logPath,
+		Level:                "DEBUG",
+		MaxSize:              10,
+		MaxBackups:           2,
+		MaxAge:               7,
+		Compress:             false,
+		Append:               true,
+		RotateSchedule:       "@midnight",
+		Console:              false,
+		PrefixWidth:          20,
+		EnableSourceLocation: false,
+	})
+	closeLogOnCleanup(t, accessLog)
+	router.Use(logger(accessLog, nil))
+	router.GET("/logging/file", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/logging/file?x=1", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body, err := osReadFileWithRetry(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/logging/file?x=1")
+}
+
+func TestHttpLoggerWithFileConfWritesAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logPath := filepath.Join(t.TempDir(), "access-conf.log")
+	fileConf := logging.LogFileConf{
+		Filename:             logPath,
+		Level:                "DEBUG",
+		MaxSize:              1,
+		MaxBackups:           1,
+		MaxAge:               1,
+		Append:               true,
+		PrefixWidth:          12,
+		EnableSourceLocation: false,
+	}
+
+	router := gin.New()
+	accessLog := logging.NewLogFile("http-util-file-conf", fileConf)
+	closeLogOnCleanup(t, accessLog)
+	router.Use(logger(accessLog, nil))
+	router.POST("/logging/file-conf", func(c *gin.Context) {
+		_, _ = io.WriteString(c.Writer, "created")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/logging/file-conf", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body, err := osReadFileWithRetry(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/logging/file-conf")
+}
+
+func TestHttpLoggerWithFilterAndFileConfFallsBackWithoutFile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	filterCalled := false
+
+	router := gin.New()
+	router.Use(HttpLoggerWithFilterAndFileConf("http-util-filter", func(req *http.Request, statusCode int, latency time.Duration) bool {
+		filterCalled = true
+		return false
+	}, logging.LogFileConf{}))
+	router.GET("/logging/filter", func(c *gin.Context) {
+		c.String(http.StatusNoContent, "")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/logging/filter", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.True(t, filterCalled)
+}
+
+func TestHttpLoggerWithFileWrapperWritesAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logPath := filepath.Join(t.TempDir(), "wrapper-access.log")
+	origNewLogFile := httpLoggerNewLogFile
+	var createdLog logging.Log
+	httpLoggerNewLogFile = func(name string, cfg logging.LogFileConf) logging.Log {
+		createdLog = logging.NewLogFile(name, cfg)
+		return createdLog
+	}
+	t.Cleanup(func() {
+		httpLoggerNewLogFile = origNewLogFile
+		if createdLog != nil {
+			closer, ok := createdLog.(interface{ Close() error })
+			require.True(t, ok)
+			require.NoError(t, closer.Close())
+		}
+	})
+
+	router := gin.New()
+	router.Use(HttpLoggerWithFile("http-util-wrapper", logPath))
+	router.GET("/logging/wrapper", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/logging/wrapper?from=wrapper", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body, err := osReadFileWithRetry(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/logging/wrapper?from=wrapper")
+}
+
+func TestHttpLoggerWithFileConfWrapperWritesAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logPath := filepath.Join(t.TempDir(), "wrapper-access-conf.log")
+	origNewLogFile := httpLoggerNewLogFile
+	var createdLog logging.Log
+	httpLoggerNewLogFile = func(name string, cfg logging.LogFileConf) logging.Log {
+		createdLog = logging.NewLogFile(name, cfg)
+		return createdLog
+	}
+	t.Cleanup(func() {
+		httpLoggerNewLogFile = origNewLogFile
+		if createdLog != nil {
+			closer, ok := createdLog.(interface{ Close() error })
+			require.True(t, ok)
+			require.NoError(t, closer.Close())
+		}
+	})
+
+	router := gin.New()
+	router.Use(HttpLoggerWithFileConf("http-util-wrapper-conf", logging.LogFileConf{
+		Filename:             logPath,
+		Level:                "DEBUG",
+		MaxSize:              1,
+		MaxBackups:           1,
+		MaxAge:               1,
+		Append:               true,
+		PrefixWidth:          12,
+		EnableSourceLocation: false,
+	}))
+	router.GET("/logging/wrapper-conf", func(c *gin.Context) {
+		c.String(http.StatusAccepted, "accepted")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/logging/wrapper-conf", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusAccepted, rec.Code)
+	body, err := osReadFileWithRetry(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "/logging/wrapper-conf")
+}
+
+func TestWithHttpWebDirSetsWrappedAssets(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "index.html"), []byte("index page"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "app.js"), []byte("console.log('ok')"), 0o644))
+
+	svr := &httpd{}
+	WithHttpWebDir(tempDir)(svr)
+
+	require.NotNil(t, svr.uiContentFs)
+
+	assetFile, err := svr.uiContentFs.Open("app.js")
+	require.NoError(t, err)
+	assetBody, err := io.ReadAll(assetFile)
+	require.NoError(t, err)
+	require.NoError(t, assetFile.Close())
+	require.Equal(t, "console.log('ok')", string(assetBody))
+
+	fallbackFile, err := svr.uiContentFs.Open("missing/route")
+	require.NoError(t, err)
+	fallbackBody, err := io.ReadAll(fallbackFile)
+	require.NoError(t, err)
+	require.NoError(t, fallbackFile.Close())
+	require.Equal(t, "index page", string(fallbackBody))
+}
+
+func osReadFileWithRetry(path string) ([]byte, error) {
+	var lastErr error
+	for range 10 {
+		body, err := os.ReadFile(path)
+		if err == nil {
+			return body, nil
+		}
+		lastErr = err
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil, lastErr
+}
+
+func closeLogOnCleanup(t *testing.T, log logging.Log) {
+	t.Helper()
+	closer, ok := log.(interface{ Close() error })
+	if !ok {
+		return
+	}
+	t.Cleanup(func() {
+		require.NoError(t, closer.Close())
 	})
 }

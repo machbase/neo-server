@@ -639,7 +639,7 @@ func TestBackupLifecycleScenarioHelper(t *testing.T) {
 	var result *machsvr.Result
 
 	// 2) create table
-	result = conn.Exec(ctx, fmt.Sprintf("CREATE TABLE %s (id INTEGER, name VARCHAR(40))", tableName))
+	result = conn.Exec(ctx, fmt.Sprintf("CREATE LOG TABLE %s (id INTEGER, name VARCHAR(40))", tableName))
 	require.NoError(t, result.Err(), result.Message())
 
 	// 3) insert test data
