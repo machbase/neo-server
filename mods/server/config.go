@@ -331,13 +331,6 @@ type MachbaseConfig struct {
 	INDEX_LEVEL_PARTITION_BUILD_MEMORY_HIGH_LIMIT_PCT int
 	VOLATILE_TABLESPACE_MEMORY_MAX_SIZE               int64
 
-	RS_CACHE_ENABLE                    int
-	RS_CACHE_TIME_BOUND_MSEC           int
-	RS_CACHE_MAX_MEMORY_SIZE           int64
-	RS_CACHE_MAX_RECORD_PER_QUERY      int
-	RS_CACHE_MAX_MEMORY_PER_QUERY      int64
-	RS_CACHE_APPROXIMATE_RESULT_ENABLE int
-
 	GRANT_REMOTE_ACCESS int
 
 	DISK_COLUMNAR_TABLE_TIME_INVERSION_MODE int
@@ -348,7 +341,6 @@ type MachbaseConfig struct {
 	SESSION_IDLE_TIMEOUT_SEC int
 
 	HTTP_ENABLE  int
-	HTTP_PORT_NO int
 	HTTP_MAX_MEM int64
 	HTTP_AUTH    int
 
@@ -362,7 +354,6 @@ type MachbaseConfig struct {
 	TAG_DATA_PART_SIZE        int
 	TAG_CACHE_MAX_MEMORY_SIZE int
 	DISK_TAG_INDEX_BLOCKS     int
-	STREAM_THREAD_COUNT       int
 	TAG_TABLE_META_MAX_SIZE   int64
 	DISK_BUFFER_COUNT         int
 	TAG_CACHE_ENABLE          int
@@ -438,13 +429,6 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		INDEX_LEVEL_PARTITION_BUILD_MEMORY_HIGH_LIMIT_PCT: 70,
 		VOLATILE_TABLESPACE_MEMORY_MAX_SIZE:               2147483648, // 2GB
 
-		RS_CACHE_ENABLE:                    1,
-		RS_CACHE_TIME_BOUND_MSEC:           1000,
-		RS_CACHE_MAX_MEMORY_SIZE:           536870912, // 512MB
-		RS_CACHE_MAX_RECORD_PER_QUERY:      50000,
-		RS_CACHE_MAX_MEMORY_PER_QUERY:      16777216, // 16MB
-		RS_CACHE_APPROXIMATE_RESULT_ENABLE: 0,
-
 		GRANT_REMOTE_ACCESS: 1,
 
 		DISK_COLUMNAR_TABLE_TIME_INVERSION_MODE: 1,
@@ -454,18 +438,12 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		TAGDATA_AUTO_META_INSERT: 2,
 		SESSION_IDLE_TIMEOUT_SEC: 0,
 
-		HTTP_ENABLE:  0,
-		HTTP_PORT_NO: 5657,
-		HTTP_MAX_MEM: 536870912, // 512MB
-		HTTP_AUTH:    0,
-
 		HANDLE_LIMIT: 8192,
 
 		LOOKUP_APPEND_UPDATE_ON_DUPKEY: 0,
 		ROLLUP_FETCH_COUNT_LIMIT:       3000000,
 		TAG_CACHE_MAX_MEMORY_SIZE:      512 * 1024 * 1024,
 		DISK_TAG_INDEX_BLOCKS:          2048,
-		STREAM_THREAD_COUNT:            4,
 		TAG_TABLE_META_MAX_SIZE:        104857600, // 100MB
 		DISK_BUFFER_COUNT:              16,
 		TAG_CACHE_ENABLE:               31, // 0b11111
@@ -477,9 +455,6 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		c.PROCESS_MAX_SIZE = 64 * 1024 * 1024 * 1024                        // 64GB
 		c.TAG_TABLE_META_MAX_SIZE = 512 * 1024 * 1024                       // 512MB
 		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 2 * 1024 * 1024 * 1024      // 2GB
-		c.RS_CACHE_ENABLE = 1                                               //
-		c.RS_CACHE_MAX_MEMORY_SIZE = 512 * 1024 * 1024                      // 512MB
-		c.RS_CACHE_MAX_MEMORY_PER_QUERY = 16 * 1024 * 1024                  // 16MB
 		c.TAG_CACHE_MAX_MEMORY_SIZE = 512 * 1024 * 1024                     // 512MB
 		c.DEFAULT_LSM_MAX_LEVEL = 2                                         //
 		c.MAX_QPX_MEM = 1024 * 1024 * 1024                                  // 1GB
@@ -493,15 +468,11 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		c.PROCESS_MAX_SIZE = 32 * 1024 * 1024 * 1024                   // 32GB
 		c.TAG_TABLE_META_MAX_SIZE = 100 * 1024 * 1024                  // 100MB
 		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 512 * 1024 * 1024      // 512MB
-		c.RS_CACHE_ENABLE = 0                                          //
-		c.RS_CACHE_MAX_MEMORY_SIZE = 32 * 1024 * 1024                  // 32M
-		c.RS_CACHE_MAX_MEMORY_PER_QUERY = 4 * 1024 * 1024              // 4M
 		c.TAG_CACHE_MAX_MEMORY_SIZE = 256 * 1024 * 1024                // 256MB
 		c.DEFAULT_LSM_MAX_LEVEL = 0                                    //
 		c.MAX_QPX_MEM = 256 * 1024 * 1024                              // 256MB
 		c.ROLLUP_FETCH_COUNT_LIMIT = 10000                             // Max speed of 32bit rollup : 10000rec/sec
 		c.DISK_TAG_INDEX_BLOCKS = 512                                  //
-		c.STREAM_THREAD_COUNT = 0                                      //
 		c.DISK_BUFFER_COUNT = 1                                        //
 		c.TAG_CACHE_ENABLE = 3                                         //
 		c.TAG_PARTITION_COUNT = 1                                      //

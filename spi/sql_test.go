@@ -452,21 +452,21 @@ func TestMachbaseSQLCompatibilityEmptyVarchar(t *testing.T) {
 	require.Equal(t, "EMPTY_VARCHAR", strings.ToUpper(columnTypes[0].Name()))
 	require.Equal(t, "VARCHAR", strings.ToUpper(columnTypes[0].DatabaseTypeName()))
 	require.Equal(t, reflect.TypeOf(""), columnTypes[0].ScanType())
-	nullable, supportNullable := columnTypes[0].Nullable()
-	require.False(t, nullable)
-	require.True(t, supportNullable)
 
 	require.True(t, rows.Next())
 
+	////////////////////////////////////////////////////
 	// Issue machbase/neo#1408, fixed in v8.7.0
-	// Column nullability is supported since v8.7.0, empty string can be scanned into string
-	// but the previous implementation considered all columns are nullable, so the scan type should be *sql.NullString
-	buff := spi.MakeBuffer(columnTypes)
-	require.Equal(t, "*string", reflect.TypeOf(buff[0]).String())
+	// Column nullability is supported since v8.7.0, empty string is considered as NULL for VARCHAR columns,
+	// so the scan type should be *sql.NullString
+	nullable, supportNullable := columnTypes[0].Nullable()
+	require.True(t, nullable)
+	require.True(t, supportNullable)
 
-	// TODO: remove this code after fix dbms-nfx#4071
-	buff[0] = &sql.NullString{}
-	//
+	buff := spi.MakeBuffer(columnTypes)
+	require.Equal(t, "*sql.NullString", reflect.TypeOf(buff[0]).String())
+	// fixed.
+	////////////////////////////////////////////////////
 
 	err = rows.Scan(buff...)
 	require.NoError(t, err)

@@ -1160,7 +1160,7 @@ func TestBitTable(t *testing.T) {
 	require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
 	require.Nil(t, rows, "select bit table BITAND(i4, 1) should fail")
 	// https://github.com/machbase/neo/issues/956
-	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type does not match.", err.Error())
 	if rows != nil {
 		rows.Close()
 	}
@@ -1169,7 +1169,7 @@ func TestBitTable(t *testing.T) {
 	require.Error(t, err, "select bit table BITAND(i1, i3) should fail")
 	require.Nil(t, rows, "select bit table BITAND(i1, i3) should fail")
 	// https://github.com/machbase/neo/issues/956
-	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type does not match.", err.Error())
 	if rows != nil {
 		rows.Close()
 	}
