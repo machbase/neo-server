@@ -3,29 +3,6 @@
 const { Transform } = require('stream');
 const _parser = require('@jsh/parser');
 
-function byteLen(value) {
-    if (value == null) {
-        return 0;
-    }
-    if (typeof value === 'string') {
-        if (typeof TextEncoder !== 'undefined') {
-            return new TextEncoder().encode(value).length;
-        }
-        return value.length;
-    }
-    if (value.byteLength !== undefined) {
-        return value.byteLength;
-    }
-    if (Array.isArray(value)) {
-        return value.length;
-    }
-    const str = String(value);
-    if (typeof TextEncoder !== 'undefined') {
-        return new TextEncoder().encode(str).length;
-    }
-    return str.length;
-}
-
 /**
  * CSV Parser
  * Parses CSV data and emits row objects
@@ -47,32 +24,42 @@ class CSVParser extends Transform {
         this.mapHeaders = options.mapHeaders || null;
         this.mapValues = options.mapValues || null;
         this.trimLeadingSpace = options.trimLeadingSpace !== false;
+        // 'object' emits {header: value}, 'array' emits the raw field list (much cheaper).
+        this.rowMode = options.rowMode === 'array' ? 'array' : 'object';
 
         // Internal state
-        this.bufferChunks = [];  // Array of string chunks for O(n) concatenation
-        this.bufferLength = 0;   // Track total buffer length
         this.lineNumber = 0;
         this.headersParsed = false;
         this.columnHeaders = null;
-        this.skippedLines = 0;
         this.bytesWritten = 0;
         this.bytesRead = 0;
+        this._decoder = null;
+    }
+
+    // The decoder is created lazily so that options assigned after construction are honored.
+    _ensureDecoder() {
+        if (!this._decoder) {
+            this._decoder = _parser.NewCSVDecoder({
+                separator: this.separator,
+                quote: this.quote,
+                escape: this.escape,
+                commentChar: this.commentChar,
+                skipComments: !!this.skipComments,
+                trimLeadingSpace: this.trimLeadingSpace,
+                skipLines: this.skipLines,
+            });
+        }
+        return this._decoder;
     }
 
     _transform(chunk, encoding, callback) {
         try {
-            const incomingBytes = byteLen(chunk);
-            this.bytesWritten += incomingBytes;
-
-            // Convert chunk to string
-            const str = (typeof chunk === 'string') ? chunk : chunk.toString('utf-8');
-
-            // Use array buffering to avoid O(n²) string concatenation
-            this.bufferChunks.push(str);
-            this.bufferLength += str.length;
-
-            // Process complete lines
-            this.processBuffer(callback);
+            const decoder = this._ensureDecoder();
+            const err = this._consume(decoder, decoder.write(chunk));
+            if (err) {
+                return callback(err);
+            }
+            callback();
         } catch (err) {
             callback(err);
         }
@@ -80,70 +67,73 @@ class CSVParser extends Transform {
 
     _flush(callback) {
         try {
-            // Join any remaining buffered chunks and process
-            const remaining = this.bufferChunks.join('');
-            if (remaining.length > 0) {
-                this.bytesRead += byteLen(remaining);
+            const decoder = this._ensureDecoder();
+            const err = this._consume(decoder, decoder.flush());
+            if (err) {
+                return callback(err);
             }
-            if (remaining.trim().length > 0) {
-                this.processLine(remaining, callback);
-            }
-            this.bufferChunks = [];
-            this.bufferLength = 0;
             callback();
         } catch (err) {
             callback(err);
         }
     }
 
-    processBuffer(callback) {
-        // Join all buffered chunks into a single string
-        const buffer = this.bufferChunks.join('');
-        const lines = buffer.split('\n');
-
-        // Keep the last incomplete line in buffer as a single chunk
-        const incompleteLine = lines.pop() || '';
-        this.bufferChunks = incompleteLine ? [incompleteLine] : [];
-        this.bufferLength = incompleteLine.length;
-
-        // Process each complete line
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            this.bytesRead += byteLen(line + '\n');
-            const err = this.processLine(line);
-            if (err) {
-                return callback(err);
-            }
+    // Returns the sole 'data' listener when rows can be delivered without any
+    // per-row transformation, so the emit() dispatch can be bypassed.
+    _fastListener() {
+        if (this.rowMode !== 'array' || this.mapValues || this.strict) {
+            return null;
         }
-
-        callback();
+        const handlers = this._events && this._events['data'];
+        return handlers && handlers.length === 1 ? handlers[0] : null;
     }
 
-    processLine(line) {
-        this.lineNumber++;
-
-        // Remove trailing \r (for \r\n line endings)
-        line = line.replace(/\r$/, '');
-
-        // Skip initial lines if configured
-        if (this.skippedLines < this.skipLines) {
-            this.skippedLines++;
+    _consume(decoder, records) {
+        this.bytesWritten = decoder.bytesWritten();
+        this.bytesRead = decoder.bytesRead();
+        if (!records) {
+            this.lineNumber = decoder.lineNumber();
             return null;
         }
-
-        // Skip empty lines
-        if (line.trim().length === 0) {
+        const count = records.length;
+        let i = 0;
+        while (i < count && !this.headersParsed) {
+            const err = this.processRecord(records[i]);
+            if (err) {
+                return err;
+            }
+            i++;
+        }
+        const fast = this._fastListener();
+        if (fast) {
+            for (; i < count; i++) {
+                try {
+                    fast.call(this, records[i]);
+                } catch (err) {
+                    if (!this._events['error']) {
+                        throw err;
+                    }
+                    this.emit('error', err);
+                }
+            }
+            this.lineNumber = decoder.lineNumber();
             return null;
         }
-
-        // Skip comments
-        if (this.skipComments && line.trim().startsWith(this.commentChar)) {
-            return null;
+        const recordLines = this.strict ? decoder.recordLines() : null;
+        for (; i < count; i++) {
+            if (recordLines) {
+                this.lineNumber = recordLines[i];
+            }
+            const err = this.processRecord(records[i]);
+            if (err) {
+                return err;
+            }
         }
+        this.lineNumber = decoder.lineNumber();
+        return null;
+    }
 
-        // Parse the CSV line
-        const fields = this.parseCSVLine(line);
-
+    processRecord(fields) {
         // Handle headers
         if (!this.headersParsed) {
             if (Array.isArray(this.headers)) {
@@ -154,20 +144,26 @@ class CSVParser extends Transform {
                 return this.emitRow(fields);
             } else if (this.headers === false) {
                 // No headers, use column indices
-                this.columnHeaders = fields.map((_, i) => String(i));
+                this.columnHeaders = [];
+                for (let i = 0; i < fields.length; i++) {
+                    this.columnHeaders.push(String(i));
+                }
                 this.headersParsed = true;
                 // This line is data, not headers
                 return this.emitRow(fields);
             } else {
                 // First line is headers (default behavior)
-                this.columnHeaders = fields;
-
-                // Apply header mapping if provided
-                if (this.mapHeaders) {
-                    this.columnHeaders = this.columnHeaders.map((header, index) => {
-                        const mapped = this.mapHeaders({ header, index });
-                        return mapped !== null && mapped !== undefined ? mapped : header;
-                    }).filter(h => h !== null && h !== undefined);
+                this.columnHeaders = [];
+                for (let i = 0; i < fields.length; i++) {
+                    let header = fields[i];
+                    if (this.mapHeaders) {
+                        const mapped = this.mapHeaders({ header, index: i });
+                        if (mapped === null || mapped === undefined) {
+                            continue;
+                        }
+                        header = mapped;
+                    }
+                    this.columnHeaders.push(header);
                 }
 
                 this.headersParsed = true;
@@ -180,54 +176,6 @@ class CSVParser extends Transform {
         return this.emitRow(fields);
     }
 
-    parseCSVLine(line) {
-        const fields = [];
-        let fieldChars = [];  // Use array building instead of string concatenation
-        let inQuotes = false;
-        let i = 0;
-
-        while (i < line.length) {
-            const char = line[i];
-            const nextChar = i + 1 < line.length ? line[i + 1] : '';
-
-            if (inQuotes) {
-                if (char === this.escape && nextChar === this.quote) {
-                    // Escaped quote
-                    fieldChars.push(this.quote);
-                    i += 2;
-                } else if (char === this.quote) {
-                    // End of quoted field
-                    inQuotes = false;
-                    i++;
-                } else {
-                    fieldChars.push(char);
-                    i++;
-                }
-            } else {
-                if (char === this.quote) {
-                    // Start of quoted field
-                    inQuotes = true;
-                    i++;
-                } else if (char === this.separator) {
-                    // Field separator
-                    const field = fieldChars.join('');
-                    fields.push(this.trimLeadingSpace ? field.trimStart() : field);
-                    fieldChars = [];
-                    i++;
-                } else {
-                    fieldChars.push(char);
-                    i++;
-                }
-            }
-        }
-
-        // Add the last field
-        const field = fieldChars.join('');
-        fields.push(this.trimLeadingSpace ? field.trimStart() : field);
-
-        return fields;
-    }
-
     emitRow(fields) {
         // Check strict mode
         if (this.strict && fields.length !== this.columnHeaders.length) {
@@ -237,6 +185,11 @@ class CSVParser extends Transform {
             );
             this.emit('error', err);
             return err;
+        }
+
+        if (this.rowMode === 'array' && !this.mapValues) {
+            this.emit('data', fields);
+            return null;
         }
 
         // Build row object
