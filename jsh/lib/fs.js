@@ -333,10 +333,7 @@ class ReadStream extends EventEmitter {
 
             if (this.encoding === null || this.encoding === 'buffer') {
                 // Must copy since buffer will be reused in next read
-                const uint8Data = new Uint8Array(bytesRead);
-                for (let i = 0; i < bytesRead; i++) {
-                    uint8Data[i] = this._buffer[i];
-                }
+                const uint8Data = this._buffer.slice(0, bytesRead);
                 this.emit('data', uint8Data);
                 return uint8Data;
             }

@@ -77,6 +77,7 @@ for (let i = 0; i < colDefs.length; i++) {
 
 const csvParser = parser.csv({
     separator: config.format === 'tsv' ? '\t' : ',',
+    rowMode: 'array',
 })
 
 switch (config.header) {
@@ -95,6 +96,7 @@ switch (config.header) {
 
 let nRows = 0;
 let totalSize = 0;
+const PROGRESS_INTERVAL = 10000;
 if (config.input !== '-') {
     fs.statSync(config.input).isFile() ? totalSize = fs.statSync(config.input).size : totalSize = 0;
 }
@@ -108,7 +110,7 @@ appender = appender.withInputColumns(...columnNames);
 
 let inputStat = () => { return 0 };
 
-let inputFile = fs.createReadStream(config.input, { highWaterMark: 4 * 1024, encoding: 'buffer' })
+let inputFile = fs.createReadStream(config.input, { highWaterMark: 1024 * 1024, encoding: 'buffer' })
 if (config.compress === 'gzip') {
     const gunzip = zlib.createGunzip();
     gunzip.on('error', function (err) {
@@ -142,42 +144,34 @@ inputFile.on('headers', (headers) => {
         }
         if (found === -1) {
             throw new Error(`Column '${headers[i]}' not found in table '${tableName}'`);
-        } else {
-            // do not use `colDefs[found].name` here
-            // since the `row` object of `inputFile.on('data', row)` has case-sensitive keys
-            // which are the same as the original header names in the input file,
-            // so we need to use the original header name instead of the column name in the table schema (colDefs[found].name)
-            columnNames.push(headers[i]);
-            columnTypes.push(colDefs[found].type.toString());
         }
+        columnNames.push(colDefs[found].name);
+        columnTypes.push(colDefs[found].type.toString());
     }
+    // rebind the appender to the column order of the input file
+    appender = appender.withInputColumns(...columnNames);
 });
 inputFile.on('data', (row) => {
     nRows++;
-    tracker.setValue(inputStat());
+    if (nRows % PROGRESS_INTERVAL === 0) {
+        tracker.setValue(inputStat());
+    }
     if (nRows == 1 && config.header === 'skip') {
         // skip header row, do nothing
         return;
     }
-    let rec = [];
-    for (let i = 0; i < columnNames.length; i++) {
-        let colName = columnNames[i];
-        let colType = columnTypes[i];
-        let value = row[colName];
-        switch (colType) {
+    const rec = new Array(columnTypes.length);
+    for (let i = 0; i < columnTypes.length; i++) {
+        let value = row[i];
+        switch (columnTypes[i]) {
             case 'datetime':
                 value = pretty.parseTime(value, config.timeformat, config.tz);
                 break;
-            case "double":
+            case 'double':
                 value = parseFloat(value);
                 break;
         }
-        if (value === config.nullValue) {
-            rec.push(null);
-            continue;
-        } else {
-            rec.push(value);
-        }
+        rec[i] = value === config.nullValue ? null : value;
     }
     if (config.dryRun) {
         if (config.verbose) {

@@ -32,6 +32,11 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	// Export native functions
 	m := module.Get("exports").(*goja.Object)
 	m.Set("NewCSVReader", NewCSVReader)
+	m.Set("NewCSVDecoder", func(options map[string]any) *CSVDecoder {
+		d := NewCSVDecoder(options)
+		d.rt = rt
+		return d
+	})
 	m.Set("NewLineReader", NewLineReader)
 }
 
