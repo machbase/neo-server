@@ -72,10 +72,10 @@ type httpd struct {
 	listeners  []net.Listener
 	jwtCache   JwtCache
 
-	authServer    *Server
-	rpcController *service.Controller
-	tqlLoader     tql.Loader
-	serverFs      *ssfs.SSFS
+	authServer        *Server
+	serviceController *service.Controller
+	tqlLoader         tql.Loader
+	serverFs          *ssfs.SSFS
 
 	eulaPassed             bool
 	eulaFilePath           string
@@ -116,8 +116,8 @@ func WithHttpAuthServer(authSvc *Server, enabled bool) HttpOption {
 	return func(s *httpd) {
 		s.authServer = authSvc
 		s.enableTokenAuth = enabled
-		if authSvc != nil && authSvc.rpcController != nil {
-			s.rpcController = authSvc.rpcController
+		if authSvc != nil && authSvc.serviceController != nil {
+			s.serviceController = authSvc.serviceController
 		}
 		if enabled {
 			s.log.Infof("HTTP token authentication enabled")
@@ -1328,7 +1328,7 @@ func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 		return
 	}
 
-	cons := NewWebConsole(claim.Subject, consoleId, conn, svr.rpcController)
+	cons := NewWebConsole(claim.Subject, consoleId, conn, svr.serviceController)
 	cons.Run()
 }
 
@@ -1690,11 +1690,11 @@ type WebConsole struct {
 	closeOnce sync.Once
 	closed    atomic.Bool
 
-	messages      []*eventbus.Event
-	lastFlushTime time.Time
-	flushPeriod   time.Duration
-	processor     WebConsoleProcessor
-	rpcController *service.Controller
+	messages          []*eventbus.Event
+	lastFlushTime     time.Time
+	flushPeriod       time.Duration
+	processor         WebConsoleProcessor
+	serviceController *service.Controller
 }
 
 type webConsoleRpcNotifier struct {
@@ -1714,19 +1714,19 @@ func (n *webConsoleRpcNotifier) NotifyJsonRpc(session string, payload map[string
 	})
 }
 
-func NewWebConsole(username string, consoleId string, conn *websocket.Conn, rpcController *service.Controller) *WebConsole {
-	if rpcController == nil {
-		rpcController = defaultJsonRpcController
+func NewWebConsole(username string, consoleId string, conn *websocket.Conn, serviceController *service.Controller) *WebConsole {
+	if serviceController == nil {
+		serviceController = defaultJsonRpcController
 	}
 	ret := &WebConsole{
-		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
-		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
-		username:      username,
-		consoleId:     consoleId,
-		conn:          conn,
-		lastFlushTime: time.Now(),
-		flushPeriod:   300 * time.Millisecond,
-		rpcController: rpcController,
+		log:               logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
+		topic:             fmt.Sprintf("console:%s:%s", username, consoleId),
+		username:          username,
+		consoleId:         consoleId,
+		conn:              conn,
+		lastFlushTime:     time.Now(),
+		flushPeriod:       300 * time.Millisecond,
+		serviceController: serviceController,
 	}
 	eventbus.Default.SubscribeAsync(ret.topic, ret.Send, true)
 	return ret
@@ -1857,7 +1857,7 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 		"jsonrpc": "2.0",
 		"id":      evt.ID,
 	}
-	result, rpcErr := cons.rpcController.CallJsonRpc(evt.Method, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+	result, rpcErr := cons.serviceController.CallJsonRpc(evt.Method, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
 		switch {
 		case paramType == webConsoleType:
 			return reflect.ValueOf(cons), true
@@ -2470,7 +2470,7 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 		"id":      req.ID,
 	}
 
-	ctl := svr.rpcController
+	ctl := svr.serviceController
 	if ctl == nil {
 		ctl = defaultJsonRpcController
 	}

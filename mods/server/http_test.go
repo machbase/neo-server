@@ -228,25 +228,25 @@ func newHttpdForOptionTest() *httpd {
 
 func TestWithHttpAuthServer(t *testing.T) {
 	t.Run("enabled_with_rpc_controller", func(t *testing.T) {
-		authSvc := &Server{neoShellAddress: "before", rpcController: &service.Controller{}}
+		authSvc := &Server{neoShellAddress: "before", serviceController: &service.Controller{}}
 		h := newHttpdForOptionTest()
 
 		WithHttpAuthServer(authSvc, true)(h)
 
 		require.Same(t, authSvc, h.authServer)
 		require.True(t, h.enableTokenAuth)
-		require.Same(t, authSvc.rpcController, h.rpcController)
+		require.Same(t, authSvc.serviceController, h.serviceController)
 	})
 
 	t.Run("disabled_nil_service", func(t *testing.T) {
 		h := newHttpdForOptionTest()
-		h.rpcController = &service.Controller{}
+		h.serviceController = &service.Controller{}
 
 		WithHttpAuthServer(nil, false)(h)
 
 		require.Nil(t, h.authServer)
 		require.False(t, h.enableTokenAuth)
-		require.NotNil(t, h.rpcController)
+		require.NotNil(t, h.serviceController)
 	})
 }
 
@@ -495,7 +495,7 @@ func TestWebConsoleRpc(t *testing.T) {
 
 	methodOK := "test.ws.rpc.ok"
 	methodErr := "test.ws.rpc.err"
-	httpServer.rpcController.RegisterJsonRpcHandler(methodOK, func(ctx context.Context, cons *WebConsole, name string) (map[string]any, error) {
+	httpServer.serviceController.RegisterJsonRpcHandler(methodOK, func(ctx context.Context, cons *WebConsole, name string) (map[string]any, error) {
 		return map[string]any{
 			"user":      cons.username,
 			"console":   cons.consoleId,
@@ -503,11 +503,11 @@ func TestWebConsoleRpc(t *testing.T) {
 			"echo_name": name,
 		}, nil
 	})
-	httpServer.rpcController.RegisterJsonRpcHandler(methodErr, func() error {
+	httpServer.serviceController.RegisterJsonRpcHandler(methodErr, func() error {
 		return fmt.Errorf("boom")
 	})
-	defer httpServer.rpcController.UnregisterJsonRpcHandler(methodOK)
-	defer httpServer.rpcController.UnregisterJsonRpcHandler(methodErr)
+	defer httpServer.serviceController.UnregisterJsonRpcHandler(methodOK)
+	defer httpServer.serviceController.UnregisterJsonRpcHandler(methodErr)
 
 	sendRPC := func(session string, method string, params []any) gjson.Result {
 		t.Helper()

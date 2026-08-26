@@ -266,15 +266,15 @@ func TestRepresentativePort(t *testing.T) {
 
 func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
 	authSvc := &Server{
-		rpcController: &service.Controller{},
+		serviceController: &service.Controller{},
 	}
 	authSvc.registerJsonRpcHandlers()
 
 	httpSvc, err := NewHttp(WithHttpAuthServer(authSvc, false))
 	require.NoError(t, err)
-	require.Same(t, authSvc.rpcController, httpSvc.rpcController)
+	require.Same(t, authSvc.serviceController, httpSvc.serviceController)
 
-	result, rpcErr := httpSvc.rpcController.CallJsonRpc("markdown.render", []any{"# Hello", false}, nil)
+	result, rpcErr := httpSvc.serviceController.CallJsonRpc("markdown.render", []any{"# Hello", false}, nil)
 	require.Nil(t, rpcErr)
 	require.Contains(t, result.(string), "Hello")
 }

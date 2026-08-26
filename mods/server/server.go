@@ -69,12 +69,9 @@ type Server struct {
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
-	proxyMgr *ProxyManager
-
+	proxyMgr          *ProxyManager
 	serviceController *service.Controller
-	rpcController     *service.Controller
-
-	models model.Service
+	models            model.Service
 
 	startupTime      time.Time
 	servicePorts     map[string][]*model.ServicePort
@@ -105,10 +102,9 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:        *conf,
-		servicePorts:  make(map[string][]*model.ServicePort),
-		proxyMgr:      NewProxyManager(),
-		rpcController: &service.Controller{},
+		Config:       *conf,
+		servicePorts: make(map[string][]*model.ServicePort),
+		proxyMgr:     NewProxyManager(),
 	}, nil
 }
 
@@ -1047,13 +1043,11 @@ func (s *Server) initServiceController() error {
 		}
 	})
 	s.serviceController = ctrl
-	s.rpcController = ctrl
 	s.registerJsonRpcHandlers()
 	if err := ctrl.Start(func(sc *service.Config, action string, err error) {
 		s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
 	}); err != nil {
 		s.serviceController = nil
-		s.rpcController = nil
 		return err
 	}
 	s.AddServicePort("servicectl", ctrl.Address())
@@ -1080,7 +1074,7 @@ func (s *Server) addVStatFile(name string, fn func() []byte) {
 }
 
 func (s *Server) registerJsonRpcHandlers() {
-	ctl := s.rpcController
+	ctl := s.serviceController
 	if ctl == nil {
 		return
 	}
