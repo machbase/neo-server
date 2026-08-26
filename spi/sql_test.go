@@ -488,11 +488,6 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 	require.Contains(t, privKeyPEM, "PRIVATE KEY")
 
 	sysDSN := fmt.Sprintf("server=127.0.0.1:%d;user=sys;auth_key_pem=\"%s\";fetch_rows=100", testServer.MachPort(), privKeyPEM)
-	// TODO: fix ERR-2361, Table (8) structure was modified.
-	// sysDSN := spi.DefaultDSN(map[string]string{
-	// 	"user":         "sys",
-	// 	"auth_key_pem": privKeyPEM,
-	// })
 	db, err := sql.Open("machbase", sysDSN)
 	require.NoError(t, err, "connect fail")
 	defer db.Close()
@@ -516,7 +511,6 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 		"user":       "sys as demo",
 		"fetch_rows": "100",
 	})
-	// userDSN := fmt.Sprintf("host=127.0.0.1;port=%d;user=sys as demo;password=manager", testServer.MachPort())
 	userDB, err := sql.Open("machbase", userDSN)
 	require.NoError(t, err, "connect fail")
 	defer userDB.Close()
@@ -574,9 +568,9 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 	result, err = sysConn.ExecContext(ctx, "exec table_flush(demo.tag_data)")
 	require.NoError(t, err, "table_flush fail")
 
-	// TODO: issue machbase/neo#1445 meta table accessibility for proxy user
-	// for _, metaTable := range []string{"_tag_data_meta", "demo._tag_data_meta", "machbasedb.demo._tag_data_meta"} {
-	for _, metaTable := range []string{"_tag_data_meta", "demo._tag_data_meta"} {
+	////////////////////////////////////////////////
+	// Issue machbase/neo#1445 meta table accessibility for proxy user
+	for _, metaTable := range []string{"_tag_data_meta", "demo._tag_data_meta", "machbasedb.demo._tag_data_meta"} {
 		rows, err := proxyConn.QueryContext(ctx, fmt.Sprintf("select * from %s", metaTable))
 		require.NoError(t, err)
 		nrow := 0
@@ -590,6 +584,8 @@ func TestMachbaseSQLCompatibilityProxyUser(t *testing.T) {
 		rows.Close()
 		require.Equal(t, 1, nrow)
 	}
+	// fixed.
+	////////////////////////////////////////////////
 
 	for _, table := range []string{"demo._tag_data_meta", "machbasedb.demo._tag_data_meta"} {
 		rows, err := sysConn.QueryContext(ctx, fmt.Sprintf("select * from %s", table))
@@ -945,16 +941,46 @@ func TestMachbaseSQLCompatibilityAffectedRows(t *testing.T) {
 		panic(err)
 	}
 	require.Equal(t, int64(1), affected)
+	_, err = conn.ExecContext(t.Context(), "exec table_flush(affected_rows_test)")
+	if err != nil {
+		panic(err)
+	}
 
-	// result, err = conn.ExecContext(t.Context(), "UPDATE affected_rows_test SET value = ? WHERE name = ? AND time = ?", 456.78, "Alice", "2024-06-01 00:00:00")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// affected, err = result.RowsAffected()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// require.Equal(t, int64(1), affected)
+	obj := struct {
+		Name  string    `db:"name"`
+		Time  time.Time `db:"time"`
+		Value float64   `db:"value"`
+	}{}
+	err = conn.QueryRowContext(t.Context(), "SELECT name, time, value FROM affected_rows_test WHERE name = ?", "Alice").Scan(&obj.Name, &obj.Time, &obj.Value)
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, "Alice", obj.Name)
+	require.Equal(t, "2024-06-01 00:00:00", obj.Time.Format("2006-01-02 15:04:05"))
+	require.Equal(t, 123.45, obj.Value)
+
+	// FIXME: Issue dbms-nfx#4127
+	//
+	// Update value is working only when name and time is specified with literal value,
+	// but not working when using placeholders for name and time.
+	result, err = conn.ExecContext(t.Context(), "UPDATE affected_rows_test SET value = ? WHERE name = 'Alice' AND time = '2024-06-01 00:00:00'", 456.78)
+	if err != nil {
+		panic(err)
+	}
+
+	affected, err = result.RowsAffected()
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, int64(1), affected)
+
+	err = conn.QueryRowContext(t.Context(), "SELECT name, time, value FROM affected_rows_test WHERE name = ?", "Alice").Scan(&obj.Name, &obj.Time, &obj.Value)
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, "Alice", obj.Name)
+	require.Equal(t, "2024-06-01 00:00:00", obj.Time.Format("2006-01-02 15:04:05"))
+	require.Equal(t, 456.78, obj.Value)
 
 	result, err = conn.ExecContext(t.Context(), "DELETE FROM affected_rows_test WHERE name = ?", "Alice")
 	if err != nil {
