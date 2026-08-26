@@ -985,7 +985,14 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		rsp.ExperimentMode = svr.experimentModeProvider()
 	}
 	if svr.authServer != nil && svr.authServer.models != nil {
-		rsp.Shells = svr.authServer.models.GetAllShells(true)
+		shells, err := svr.authServer.models.GetAllShells(ctx, model.UserScope{User: claim.Subject}, true)
+		if err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		rsp.Shells = shells
 	}
 	rsp.Elapse = time.Since(tick).String()
 
@@ -1845,6 +1852,7 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
 	rpcCtx := service.WithJsonRpcNotificationWriter(ctx, &webConsoleRpcNotifier{cons: cons})
 	rpcCtx = service.WithJsonRpcSession(rpcCtx, session)
+	rpcCtx = contextWithModelUser(rpcCtx, cons.username)
 
 	rsp := map[string]any{
 		"jsonrpc": "2.0",
@@ -2467,13 +2475,17 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 	if ctl == nil {
 		ctl = defaultJsonRpcController
 	}
+	rpcCtx := context.Context(ctx)
+	if claim, exists := svr.getJwtClaim(ctx); exists && claim != nil {
+		rpcCtx = contextWithModelUser(rpcCtx, claim.Subject)
+	}
 	result, rpcErr := ctl.CallJsonRpc(req.Method, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
 		switch {
 		case paramType == ginContextType:
 			return reflect.ValueOf(ctx), true
 		case paramType == contextType:
 			// Pass gin.Context as context.Context to preserve requester information.
-			return reflect.ValueOf(ctx), true
+			return reflect.ValueOf(rpcCtx), true
 		default:
 			return reflect.Value{}, false
 		}

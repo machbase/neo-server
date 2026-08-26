@@ -1,22 +1,28 @@
 package model
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
-type ServicePort struct {
-	Service string
-	Address string
+type UserScope struct {
+	User string
 }
+
+type connectFunc func(context.Context, string) (*sql.Conn, error)
 
 func NewProvider(opts ...Option) *Provider {
 	ret := &Provider{
-		log: logging.GetLog("scheduler"),
+		log:     logging.GetLog("model"),
+		connect: spi.Connect,
 	}
 	for _, o := range opts {
 		o(ret)
@@ -33,6 +39,10 @@ type Provider struct {
 	schedDir  string
 	bridgeDir string
 	shellDir  string
+	connect   connectFunc
+
+	shellTableMu    sync.Mutex
+	shellTableReady bool
 
 	experimentMode func() bool
 }

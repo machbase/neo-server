@@ -281,7 +281,7 @@ func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
 
 func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
+		servicePorts: map[string][]*spi.ServicePort{
 			"mach": {
 				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
 				{Service: "mach", Address: "tcp://192.168.0.10:5656"},
@@ -297,7 +297,7 @@ func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {
 
 func TestGetBestMachPortFallsBackToLoopback(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
+		servicePorts: map[string][]*spi.ServicePort{
 			"mach": {
 				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
 			},
@@ -312,7 +312,7 @@ func TestGetBestMachPortFallsBackToLoopback(t *testing.T) {
 
 func TestGetBestMachPortReturnsErrorWhenUnavailable(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{},
+		servicePorts: map[string][]*spi.ServicePort{},
 	}
 
 	_, _, err := svr.getBestMachPort()
@@ -321,7 +321,7 @@ func TestGetBestMachPortReturnsErrorWhenUnavailable(t *testing.T) {
 
 func TestGetBestMachPortSkipsInvalidEntries(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
+		servicePorts: map[string][]*spi.ServicePort{
 			"mach": {
 				{Service: "mach", Address: "tcp://bad-host"},
 				{Service: "mach", Address: "unix:///tmp/mach.sock"},
@@ -2348,7 +2348,7 @@ func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
 			Mqtt:  MqttConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
 			Shell: ShellConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
 		},
-		servicePorts: make(map[string][]*model.ServicePort),
+		servicePorts: make(map[string][]*spi.ServicePort),
 		hasEngine:    true,
 		hasHead:      false,
 	}
@@ -2566,9 +2566,10 @@ func newShellTestServer(t *testing.T) *Server {
 
 func withReservedShellCommands(t *testing.T, svr *Server, shellCmd string, jshCmd string) {
 	t.Helper()
-	shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
+	scope := model.UserScope{User: "sys"}
+	shellDef, err := svr.models.GetShell(context.Background(), scope, model.SHELLID_SHELL)
 	require.NoError(t, err)
-	jshDef, err := svr.models.GetShell(model.SHELLID_JSH)
+	jshDef, err := svr.models.GetShell(context.Background(), scope, model.SHELLID_JSH)
 	require.NoError(t, err)
 	prevShell := shellDef.Command
 	prevJsh := jshDef.Command
@@ -2613,12 +2614,12 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "shell")
 		require.Contains(t, shellDef.Command, "-server 127.0.0.1:7777")
 
-		jshDef, err := svr.models.GetShell(model.SHELLID_JSH)
+		jshDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_JSH)
 		require.NoError(t, err)
 		require.Contains(t, jshDef.Command, "jsh")
 		require.NotContains(t, jshDef.Command, " -server ")
@@ -2632,7 +2633,7 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "-server 127.0.0.1:5655")
 	})
@@ -2645,7 +2646,7 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "-server 10.10.1.20:5655")
 	})
@@ -2658,11 +2659,11 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Equal(t, "keep-shell", shellDef.Command)
 
-		jshDef, err := svr.models.GetShell(model.SHELLID_JSH)
+		jshDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_JSH)
 		require.NoError(t, err)
 		require.Equal(t, "keep-jsh", jshDef.Command)
 	})
@@ -2711,17 +2712,18 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 	command := fmt.Sprintf("%q --help", exePath)
 
 	t.Run("add_and_copy_shell", func(t *testing.T) {
-		addedID, err := svr.addShell("my-shell", command)
+		ctx := contextWithModelUser(context.Background(), "sys")
+		addedID, err := svr.addShell(ctx, "my-shell", command)
 		require.NoError(t, err)
 		require.NotEmpty(t, addedID)
 
-		addedShell, err := svr.models.GetShell(addedID)
+		addedShell, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, addedID)
 		require.NoError(t, err)
 		require.NotNil(t, addedShell)
 		require.Equal(t, "my-shell", addedShell.Label)
 		require.Equal(t, command, addedShell.Command)
 
-		copiedShell, err := svr.copyShell(addedID)
+		copiedShell, err := svr.copyShell(ctx, addedID)
 		require.NoError(t, err)
 		require.NotNil(t, copiedShell)
 		require.NotEqual(t, addedID, copiedShell.Id)
@@ -2732,38 +2734,40 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 		require.True(t, copiedShell.Attributes.Editable)
 		require.True(t, copiedShell.Attributes.Cloneable)
 
-		persistedCopiedShell, err := svr.models.GetShell(copiedShell.Id)
+		persistedCopiedShell, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, copiedShell.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persistedCopiedShell)
 		require.Equal(t, copiedShell.Id, persistedCopiedShell.Id)
 	})
 
 	t.Run("copy_shell_validation", func(t *testing.T) {
-		_, err := svr.copyShell("")
+		ctx := contextWithModelUser(context.Background(), "sys")
+		_, err := svr.copyShell(ctx, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "source shell id not specified")
 
-		_, err = svr.copyShell("missing-shell")
+		_, err = svr.copyShell(ctx, "missing-shell")
 		require.Error(t, err)
-		require.Contains(t, strings.ToLower(err.Error()), "not found")
+		require.Contains(t, strings.ToLower(err.Error()), "invalid shell id")
 	})
 
 	t.Run("update_shell", func(t *testing.T) {
-		id, err := svr.addShell("old-name", command)
+		ctx := contextWithModelUser(context.Background(), "sys")
+		id, err := svr.addShell(ctx, "old-name", command)
 		require.NoError(t, err)
 
-		shell, err := svr.models.GetShell(id)
+		shell, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, id)
 		require.NoError(t, err)
 		require.NotNil(t, shell)
 
 		shell.Label = "new-name"
 		shell.Command = command
-		updated, err := svr.updateShell(shell)
+		updated, err := svr.updateShell(ctx, shell)
 		require.NoError(t, err)
 		require.NotNil(t, updated)
 		require.Equal(t, "new-name", updated.Label)
 
-		persisted, err := svr.models.GetShell(id)
+		persisted, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
 		require.Equal(t, "new-name", persisted.Label)
@@ -2771,15 +2775,16 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 	})
 
 	t.Run("update_shell_validation", func(t *testing.T) {
-		_, err := svr.updateShell(nil)
+		ctx := contextWithModelUser(context.Background(), "sys")
+		_, err := svr.updateShell(ctx, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "shell definition not specified")
 
-		_, err = svr.updateShell(&model.ShellDefinition{Label: strings.Repeat("a", 17), Command: command})
+		_, err = svr.updateShell(ctx, &model.ShellDefinition{Label: strings.Repeat("a", 17), Command: command})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "name is too long")
 
-		_, err = svr.updateShell(&model.ShellDefinition{Label: "ok-name", Command: "   "})
+		_, err = svr.updateShell(ctx, &model.ShellDefinition{Label: "ok-name", Command: "   "})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "command not specified")
 	})

@@ -572,13 +572,13 @@ func TestSql_show_license(t *testing.T) {
 }
 
 func TestSql_show_ports(t *testing.T) {
-	spi.SetServerPortsProvider(func(svc string) ([]*model.ServicePort, error) {
-		ret := []*model.ServicePort{}
+	spi.SetServerPortsProvider(func(svc string) ([]*spi.ServicePort, error) {
+		ret := []*spi.ServicePort{}
 		if svc == "" || svc == "http" {
-			ret = append(ret, &model.ServicePort{Service: "http", Address: "tcp://127.0.0.1:5654"})
+			ret = append(ret, &spi.ServicePort{Service: "http", Address: "tcp://127.0.0.1:5654"})
 		}
 		if svc == "" || svc == "mqtt" {
-			ret = append(ret, &model.ServicePort{Service: "mqtt", Address: "tcp://127.0.0.1:1883"})
+			ret = append(ret, &spi.ServicePort{Service: "mqtt", Address: "tcp://127.0.0.1:1883"})
 		}
 		return ret, nil
 	})

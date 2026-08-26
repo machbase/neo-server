@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 )
@@ -133,8 +132,8 @@ func TestShowLicense(t *testing.T) {
 }
 
 func TestShowPorts(t *testing.T) {
-	spi.SetServerPortsProvider(func(string) ([]*model.ServicePort, error) {
-		return []*model.ServicePort{
+	spi.SetServerPortsProvider(func(string) ([]*spi.ServicePort, error) {
+		return []*spi.ServicePort{
 			{Service: "servicectl", Address: "tcp://127.0.0.1:40257"},
 		}, nil
 	})

@@ -11,9 +11,13 @@ import (
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
-	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
+
+type ServicePort struct {
+	Service string
+	Address string
+}
 
 type ResultSet interface {
 	Columns() client.Columns
@@ -117,15 +121,15 @@ func ShowLicense(ctx context.Context, conn *sql.Conn) *LicenseResultSet {
 	return &LicenseResultSet{ResultSetBase: ResultSetBase{err: err}, lic: licenseInfo}
 }
 
-var serverPortsProvider func(string) ([]*model.ServicePort, error)
+var serverPortsProvider func(string) ([]*ServicePort, error)
 
-func SetServerPortsProvider(provider func(string) ([]*model.ServicePort, error)) {
+func SetServerPortsProvider(provider func(string) ([]*ServicePort, error)) {
 	serverPortsProvider = provider
 }
 
 type ShowPortsResultSet struct {
 	ResultSetBase
-	data []*model.ServicePort
+	data []*ServicePort
 }
 
 var _ ResultSet = (*ShowPortsResultSet)(nil)

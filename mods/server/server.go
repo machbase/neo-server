@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -74,7 +73,7 @@ type Server struct {
 	models            *model.Provider
 
 	startupTime      time.Time
-	servicePorts     map[string][]*model.ServicePort
+	servicePorts     map[string][]*spi.ServicePort
 	servicePortsLock sync.RWMutex
 
 	certDirPath           string
@@ -93,6 +92,26 @@ var binExecutable string
 var serverAfterStartC = make(chan struct{})
 var serverBeforeStopC = make(chan struct{})
 
+type modelUserContextKey struct{}
+
+func contextWithModelUser(ctx context.Context, user string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, modelUserContextKey{}, user)
+}
+
+func modelUserScopeFromContext(ctx context.Context) (model.UserScope, error) {
+	if ctx == nil {
+		return model.UserScope{}, errors.New("context is nil")
+	}
+	user, _ := ctx.Value(modelUserContextKey{}).(string)
+	if strings.TrimSpace(user) == "" {
+		return model.UserScope{}, errors.New("model user is not specified")
+	}
+	return model.UserScope{User: user}, nil
+}
+
 func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
 		if port, err := strconv.ParseInt(navelCord, 10, 64); err == nil {
@@ -103,7 +122,7 @@ func NewServer(conf *Config) (*Server, error) {
 	}
 	return &Server{
 		Config:       *conf,
-		servicePorts: make(map[string][]*model.ServicePort),
+		servicePorts: make(map[string][]*spi.ServicePort),
 		proxyMgr:     NewProxyManager(),
 	}, nil
 }
@@ -556,21 +575,21 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 				lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
 				s.servicePortsLock.Lock()
 				lst := s.servicePorts[svc]
-				lst = append(lst, &model.ServicePort{Service: svc, Address: lsnrPort})
+				lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
 				s.servicePorts[svc] = lst
 				s.servicePortsLock.Unlock()
 			}
 		} else {
 			s.servicePortsLock.Lock()
 			lst := s.servicePorts[svc]
-			lst = append(lst, &model.ServicePort{Service: svc, Address: addr})
+			lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
 			s.servicePorts[svc] = lst
 			s.servicePortsLock.Unlock()
 		}
 	} else {
 		s.servicePortsLock.Lock()
 		lst := s.servicePorts[svc]
-		lst = append(lst, &model.ServicePort{Service: svc, Address: addr})
+		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
 		s.servicePorts[svc] = lst
 		s.servicePortsLock.Unlock()
 	}
@@ -1248,11 +1267,11 @@ func scoreMachHost(host string, ifAddrs []*util.InterfaceAddr) int {
 //   - svc: service name filter; empty string returns all services
 //
 // return: service ports sorted by service and address
-func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
+func (s *Server) getServicePorts(svc string) ([]*spi.ServicePort, error) {
 	s.servicePortsLock.RLock()
 	defer s.servicePortsLock.RUnlock()
 
-	ports := []*model.ServicePort{}
+	ports := []*spi.ServicePort{}
 	for k, s := range s.servicePorts {
 		if svc != "" {
 			if strings.ToLower(svc) != k {
@@ -1268,7 +1287,7 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 		return ports[i].Service < ports[j].Service
 	})
 	if ports == nil {
-		ports = []*model.ServicePort{}
+		ports = []*spi.ServicePort{}
 	}
 	return ports, nil
 }
@@ -1278,12 +1297,19 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 // params:
 //
 // return: shell definitions
-func (s *Server) listShells() []*model.ShellDefinition {
-	lst := s.models.GetAllShells(false)
-	if lst == nil {
-		return []*model.ShellDefinition{}
+func (s *Server) listShells(ctx context.Context) ([]*model.ShellDefinition, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return lst
+	lst, err := s.models.GetAllShells(ctx, scope, false)
+	if err != nil {
+		return nil, err
+	}
+	if lst == nil {
+		return []*model.ShellDefinition{}, nil
+	}
+	return lst, nil
 }
 
 // copyShell copies a shell definition by identifier.
@@ -1292,14 +1318,18 @@ func (s *Server) listShells() []*model.ShellDefinition {
 //   - srcId: source shell identifier
 //
 // return: copied shell definition
-func (s *Server) copyShell(srcId string) (*model.ShellDefinition, error) {
+func (s *Server) copyShell(ctx context.Context, srcId string) (*model.ShellDefinition, error) {
 	if srcId == "" {
 		return nil, fmt.Errorf("source shell id not specified")
 	}
 	if s.models == nil {
 		return nil, fmt.Errorf("shell provider not available")
 	}
-	shell, err := s.models.CopyShell(srcId)
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	shell, err := s.models.CopyShell(ctx, scope, srcId)
 	if err != nil {
 		return nil, err
 	}
@@ -1315,7 +1345,7 @@ func (s *Server) copyShell(srcId string) (*model.ShellDefinition, error) {
 //   - shell: shell definition
 //
 // return: updated shell definition
-func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefinition, error) {
+func (s *Server) updateShell(ctx context.Context, shell *model.ShellDefinition) (*model.ShellDefinition, error) {
 	if shell == nil {
 		return nil, fmt.Errorf("shell definition not specified")
 	}
@@ -1328,7 +1358,11 @@ func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefiniti
 	if s.models == nil {
 		return nil, fmt.Errorf("shell provider not available")
 	}
-	if err := s.models.SaveShell(shell); err != nil {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.models.SaveShell(ctx, scope, shell); err != nil {
 		return nil, err
 	}
 	return shell, nil
@@ -1341,16 +1375,11 @@ func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefiniti
 //   - command: shell launch command
 //
 // return: created shell identifier
-func (s *Server) addShell(name string, command string) (string, error) {
+func (s *Server) addShell(ctx context.Context, name string, command string) (string, error) {
 	def := &model.ShellDefinition{}
 	if len(name) > 16 {
 		return "", fmt.Errorf("name is too long, should be shorter than 16 characters")
 	}
-	uid, err := uuid.DefaultGenerator.NewV4()
-	if err != nil {
-		return "", err
-	}
-	def.Id = uid.String()
 	def.Label = name
 	def.Type = model.SHELL_TERM
 	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
@@ -1361,7 +1390,11 @@ func (s *Server) addShell(name string, command string) (string, error) {
 		def.Command = command
 	}
 
-	if err := s.models.SaveShell(def); err != nil {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := s.models.SaveShell(ctx, scope, def); err != nil {
 		return "", err
 	}
 	return def.Id, nil
@@ -1373,8 +1406,12 @@ func (s *Server) addShell(name string, command string) (string, error) {
 //   - id: shell identifier
 //
 // return: null on success
-func (s *Server) deleteShell(id string) error {
-	return s.models.RemoveShell(id)
+func (s *Server) deleteShell(ctx context.Context, id string) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	return s.models.RemoveShell(ctx, scope, id)
 }
 
 // getBridge returns bridge configuration by name.
@@ -3022,7 +3059,7 @@ func isAnyIfaceCandidate(candidate string) bool {
 // sshd shell provider
 func (s *Server) provideShellForSsh(user string, shellId string) *SshShell {
 	shellId = strings.ToUpper(shellId)
-	shellDef, _ := s.models.GetShell(shellId)
+	shellDef, _ := s.models.GetShell(context.Background(), model.UserScope{User: user}, shellId)
 	if shellDef == nil {
 		return nil
 	}
