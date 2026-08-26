@@ -262,7 +262,7 @@ func TestPrecision(t *testing.T) {
 	for _, tt := range tests {
 		floor := math.Floor(tt.input*ten13) / ten13
 		result := fmt.Sprintf("%v", floor)
-		fmt.Println("==>", tt.input, "=>", result)
+		require.Equal(t, tt.expect, result)
 	}
 }
 
@@ -320,16 +320,12 @@ func TestBoxWide(t *testing.T) {
 	err := enc.Open()
 	require.Nil(t, err)
 
-	// str := "🄒CD"
-	// fmt.Println("=========>", str, len(str), len([]rune(str)), utf8.RuneCountInString(str))
-	// str = "ABCD"
-	// fmt.Println("=========>", str, len(str), len([]rune(str)), utf8.RuneCountInString(str))
 	enc.AddRow([]any{
 		0.0,
 		1.234000,
 		float32(-1.234000),
 		-1.234000,
-		"🄒CD",
+		"가CD",
 		math.Pi,
 	})
 	enc.AddRow([]any{
@@ -342,12 +338,12 @@ func TestBoxWide(t *testing.T) {
 	})
 	enc.Close()
 
-	// FIXME "| 🄒CD  |" should be "| 🄒CD |"
+	// Use a consistently wide CJK character to avoid locale-dependent ambiguous width behavior.
 	expects := []string{
 		"╭────────┬──────┬───────┬────────┬────────┬──────┬───────────────────╮",
 		"│ ROWNUM │ COL1 │ COL2  │ COL3   │ COL4   │ COL5 │ COL6              │",
 		"├────────┼──────┼───────┼────────┼────────┼──────┼───────────────────┤",
-		`│      1 │ 0    │ 1.234 │ -1.234 │ -1.234 │ 🄒CD  │ 3.141592653589793 │`,
+		`│      1 │ 0    │ 1.234 │ -1.234 │ -1.234 │ 가CD │ 3.141592653589793 │`,
 		"│      2 │ 0    │ 1.234 │ -1.234 │ -1.234 │ ABCD │ 3.141592653589793 │",
 		"╰────────┴──────┴───────┴────────┴────────┴──────┴───────────────────╯",
 		"",
