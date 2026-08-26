@@ -44,6 +44,9 @@ type Provider struct {
 	shellTableMu    sync.Mutex
 	shellTableReady bool
 
+	bridgeTableMu    sync.Mutex
+	bridgeTableReady bool
+
 	experimentMode func() bool
 }
 

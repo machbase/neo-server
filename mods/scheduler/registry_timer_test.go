@@ -1,7 +1,9 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/mods/bridge"
@@ -13,6 +15,33 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 )
+
+// schedulerBridgeDefProviderStub is a minimal BridgeDefProvider used by
+// tests that register ad-hoc bridges directly (bypassing model.Provider).
+type schedulerBridgeDefProviderStub struct {
+	defs map[string]int64
+}
+
+func (p *schedulerBridgeDefProviderStub) LoadBridge(_ context.Context, _ model.UserScope, name string) (*model.BridgeDefinition, error) {
+	id, ok := p.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("undefined bridge name '%s'", name)
+	}
+	return &model.BridgeDefinition{Id: id, Name: name}, nil
+}
+
+func (p *schedulerBridgeDefProviderStub) LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *schedulerBridgeDefProviderStub) LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *schedulerBridgeDefProviderStub) SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error {
+	return nil
+}
+func (p *schedulerBridgeDefProviderStub) RemoveBridge(ctx context.Context, scope model.UserScope, name string) error {
+	return nil
+}
 
 type schedulerLoaderStub struct {
 	err error
@@ -176,6 +205,9 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	bridge.UnregisterAll()
 	t.Cleanup(bridge.UnregisterAll)
 
+	defStub := &schedulerBridgeDefProviderStub{defs: map[string]int64{}}
+	bridge.SetBridgeProvider(defStub)
+
 	ent, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
 		Name:   "subscriber",
 		Task:   "db/append/table",
@@ -190,7 +222,9 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	mqtt := bridge.NewMqttBridge("mqtt_sub", "")
 	require.NoError(t, mqtt.BeforeRegister())
 	bridge.UnregisterAll()
-	require.NoError(t, bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_MQTT, Name: "mqtt_sub"}))
+	mqttSubDef := &model.BridgeDefinition{Id: 1, Type: model.BRIDGE_MQTT, Name: "mqtt_sub"}
+	defStub.defs["mqtt_sub"] = mqttSubDef.Id
+	require.NoError(t, bridge.RegisterByID(mqttSubDef))
 	emptyTopic, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
 		Name:   "empty_topic",
 		Task:   "db/append/table",
@@ -213,7 +247,9 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	require.EqualError(t, stopMissingBridge.Stop(), "undefined bridge name 'missing_stop'")
 	require.Equal(t, FAILED, stopMissingBridge.Status())
 
-	require.NoError(t, bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_MQTT, Name: "mqtt_wait"}))
+	mqttWaitDef := &model.BridgeDefinition{Id: 2, Type: model.BRIDGE_MQTT, Name: "mqtt_wait"}
+	defStub.defs["mqtt_wait"] = mqttWaitDef.Id
+	require.NoError(t, bridge.RegisterByID(mqttWaitDef))
 	waitingMqtt, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
 		Name:   "waiting_mqtt",
 		Task:   "db/append/table",
@@ -226,7 +262,9 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	require.NoError(t, waitingMqtt.Stop())
 	require.Equal(t, STOP, waitingMqtt.Status())
 
-	require.NoError(t, bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_NATS, Name: "nats_sub"}))
+	natsSubDef := &model.BridgeDefinition{Id: 3, Type: model.BRIDGE_NATS, Name: "nats_sub"}
+	defStub.defs["nats_sub"] = natsSubDef.Id
+	require.NoError(t, bridge.RegisterByID(natsSubDef))
 	natsEntry, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
 		Name:      "nats_entry",
 		Task:      "db/append/table",

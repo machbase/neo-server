@@ -866,9 +866,8 @@ func (s *Server) startBridgeAndSchedulerService() error {
 		scheduler.WithTqlLoader(tql.NewLoader()),
 	)
 
-	s.bridgeSvc = bridge.NewService(
-		bridge.WithProvider(s.models),
-	)
+	s.bridgeSvc = bridge.NewService()
+	bridge.SetBridgeProvider(s.models)
 
 	if err := s.bridgeSvc.Start(); err != nil {
 		return err
@@ -1420,9 +1419,12 @@ func (s *Server) deleteShell(ctx context.Context, id string) error {
 //   - name: bridge name
 //
 // return: bridge information
-func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.GetBridge(ctx, &bridge.GetBridgeRequest{
+func (s *Server) getBridge(ctx context.Context, name string) (*bridge.BridgeInfo, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rsp, err := s.bridgeSvc.GetBridge(ctx, scope, &bridge.GetBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1439,9 +1441,12 @@ func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
 // params:
 //
 // return: bridge list
-func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
-	ctx := context.Background()
-	if rsp, err := s.bridgeSvc.ListBridge(ctx); err != nil {
+func (s *Server) listBridges(ctx context.Context) ([]*bridge.BridgeInfo, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if rsp, err := s.bridgeSvc.ListBridge(ctx, scope); err != nil {
 		return nil, err
 	} else {
 		if rsp.Bridges == nil {
@@ -1459,9 +1464,12 @@ func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
 //   - conn: bridge connection string
 //
 // return: null on success
-func (s *Server) addBridge(name string, typ string, conn string) error {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridge.AddBridgeRequest{
+func (s *Server) addBridge(ctx context.Context, name string, typ string, conn string) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	rsp, err := s.bridgeSvc.AddBridge(ctx, scope, &bridge.AddBridgeRequest{
 		Name: name,
 		Type: typ,
 		Path: conn,
@@ -1481,8 +1489,11 @@ func (s *Server) addBridge(name string, typ string, conn string) error {
 //   - name: bridge name
 //
 // return: null on success
-func (s *Server) deleteBridge(name string) error {
-	ctx := context.Background()
+func (s *Server) deleteBridge(ctx context.Context, name string) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	listRsp, err := s.schedSvc.ListSchedule(ctx)
 	if err != nil {
@@ -1502,7 +1513,7 @@ func (s *Server) deleteBridge(name string) error {
 		return fmt.Errorf("bridge %q has subscribers, %s", name, strings.Join(subscribers, ","))
 	}
 
-	rsp, err := s.bridgeSvc.DelBridge(ctx, &bridge.DelBridgeRequest{
+	rsp, err := s.bridgeSvc.DelBridge(ctx, scope, &bridge.DelBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1520,9 +1531,12 @@ func (s *Server) deleteBridge(name string) error {
 //   - name: bridge name
 //
 // return: true when the bridge test succeeds
-func (s *Server) testBridge(name string) (bool, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridge.TestBridgeRequest{
+func (s *Server) testBridge(ctx context.Context, name string) (bool, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	rsp, err := s.bridgeSvc.TestBridge(ctx, scope, &bridge.TestBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1549,12 +1563,15 @@ type BridgeStats struct {
 //   - name: bridge name
 //
 // return: bridge statistics
-func (s *Server) statsBridge(name string) (BridgeStats, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridge.StatsBridgeRequest{
+func (s *Server) statsBridge(ctx context.Context, name string) (BridgeStats, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	ret := BridgeStats{}
+	if err != nil {
+		return ret, err
+	}
+	rsp, err := s.bridgeSvc.StatsBridge(ctx, scope, &bridge.StatsBridgeRequest{
 		Name: name,
 	})
-	ret := BridgeStats{}
 	if err != nil {
 		return ret, err
 	}
@@ -1583,9 +1600,13 @@ type BridgeExecResult struct {
 //   - command: SQL statement for exec
 //
 // return: execution result
-func (s *Server) execBridge(name string, command string) (BridgeExecResult, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
+func (s *Server) execBridge(ctx context.Context, name string, command string) (BridgeExecResult, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	ret := BridgeExecResult{}
+	if err != nil {
+		return ret, err
+	}
+	rsp, err := s.bridgeSvc.Exec(ctx, scope, &bridge.ExecRequest{
 		Name: name,
 		Command: bridge.ExecCommand{
 			SqlExec: &bridge.SqlRequest{
@@ -1593,7 +1614,6 @@ func (s *Server) execBridge(name string, command string) (BridgeExecResult, erro
 			},
 		},
 	})
-	ret := BridgeExecResult{}
 	if err != nil {
 		return ret, err
 	}
@@ -1626,9 +1646,13 @@ type BridgeQueryColumn struct {
 //   - query: SQL query statement
 //
 // return: query handle and column metadata
-func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
+func (s *Server) queryBridge(ctx context.Context, name string, query string) (BridgeQueryResult, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	ret := BridgeQueryResult{}
+	if err != nil {
+		return ret, err
+	}
+	rsp, err := s.bridgeSvc.Exec(ctx, scope, &bridge.ExecRequest{
 		Name: name,
 		Command: bridge.ExecCommand{
 			SqlQuery: &bridge.SqlRequest{
@@ -1636,7 +1660,6 @@ func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, erro
 			},
 		},
 	})
-	ret := BridgeQueryResult{}
 	if err != nil {
 		return ret, err
 	}

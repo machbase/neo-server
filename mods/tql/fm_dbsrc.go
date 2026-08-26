@@ -11,7 +11,7 @@ import (
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -343,7 +343,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	var sqlParams []any
 
 	var use string
-	var bridge string
+	var bridge_ string
 
 	var conn *sql.Conn
 	var resultMsg string
@@ -358,14 +358,14 @@ loop:
 		case *useDatabase:
 			use = strings.TrimSpace(strings.ToUpper(v.use))
 		case *bridgeName:
-			bridge = v.name
+			bridge_ = v.name
 		}
 	}
 	if len(sqlText) == 0 {
 		return nil, fmt.Errorf("f(SQL) Empty SQL text")
 	}
 
-	if bridge == "" {
+	if bridge_ == "" {
 		if c, err := spi.Connect(runtime.Context(), runtime.ConsoleUser()); err != nil {
 			return nil, err
 		} else {
@@ -373,7 +373,7 @@ loop:
 		}
 		defer conn.Close()
 	} else {
-		dbm, err := connector.Database(bridge)
+		dbm, err := bridge.ResolveSqlDB(runtime.Context(), model.UserScope{User: runtime.ConsoleUser()}, bridge_)
 		if err != nil {
 			return nil, err
 		}
@@ -396,10 +396,10 @@ loop:
 
 	prompt := "SQL("
 	flags := []string{}
-	if bridge != "" {
+	if bridge_ != "" {
 		for _, prefix := range []string{"sqlite,", "mysql,", "mssql,", "postgres,"} {
-			if strings.HasPrefix(bridge, prefix) {
-				flags = append(flags, "BRIDGE "+strings.TrimSuffix(bridge, ","))
+			if strings.HasPrefix(bridge_, prefix) {
+				flags = append(flags, "BRIDGE "+strings.TrimSuffix(bridge_, ","))
 				break
 			}
 		}
@@ -1112,7 +1112,7 @@ func (ins *insert) AddRow(values []any) error {
 
 }
 func (ins *insert) _addRowBridge(values []any) error {
-	br, err := bridge.GetSqlBridge(ins.bridge.name)
+	br, err := bridge.GetSqlBridge(ins.node.runtime.Context(), model.UserScope{User: ins.node.runtime.ConsoleUser()}, ins.bridge.name)
 	if err != nil {
 		return err
 	}
@@ -1321,7 +1321,7 @@ func (s *sqlSink) Open(runtime *executionRuntime) error {
 		s.conn = conn
 		return nil
 	}
-	db, err := connector.Database(s.bridge)
+	db, err := bridge.ResolveSqlDB(s.ctx, model.UserScope{User: runtime.ConsoleUser()}, s.bridge)
 	if err != nil {
 		s.ctxCancel()
 		return err

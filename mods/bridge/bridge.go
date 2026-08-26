@@ -24,34 +24,30 @@ func NewService(opts ...Option) *Service {
 
 type Option func(*Service)
 
+// BridgeProvider is the persistence-layer dependency of the bridge Service.
+// It is satisfied by *model.Provider.
 type BridgeProvider interface {
-	LoadAllBridges() ([]*model.BridgeDefinition, error)
-	LoadBridge(name string) (*model.BridgeDefinition, error)
-	SaveBridge(def *model.BridgeDefinition) error
-	RemoveBridge(name string) error
-}
-
-func WithProvider(provider BridgeProvider) Option {
-	return func(s *Service) {
-		s.models = provider
-	}
+	LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error)
+	LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error)
+	LoadBridge(ctx context.Context, scope model.UserScope, name string) (*model.BridgeDefinition, error)
+	SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error
+	RemoveBridge(ctx context.Context, scope model.UserScope, name string) error
 }
 
 type Service struct {
 	log    logging.Log
 	ctxMap cmap.ConcurrentMap[string, *rowsWrap]
-
-	models BridgeProvider
 }
 
 func (s *Service) Start() error {
-	lst, err := s.models.LoadAllBridges()
+	ctx := context.Background()
+	lst, err := defProvider.LoadAllBridgesForBootstrap(ctx)
 	if err != nil {
 		return err
 	}
 	for _, define := range lst {
-		if err := Register(define); err == nil {
-			s.log.Infof("add bridge %s type=%s", define.Name, define.Type)
+		if err := RegisterByID(define); err == nil {
+			s.log.Infof("add bridge %s type=%s owner=%s", define.Name, define.Type, define.Owner)
 		} else {
 			s.log.Errorf("fail to add bridge %s type=%s, %s", define.Name, define.Type, err.Error())
 		}
@@ -72,18 +68,22 @@ type ListBridgeResponse struct {
 }
 
 type BridgeInfo struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Path string `json:"path"`
+	Id          int64  `json:"id"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Path        string `json:"path"`
+	Owner       string `json:"owner"`
+	IsPublic    bool   `json:"isPublic"`
+	AllowedUser string `json:"allowedUser,omitempty"`
 }
 
-func (s *Service) ListBridge(context.Context) (*ListBridgeResponse, error) {
+func (s *Service) ListBridge(ctx context.Context, scope model.UserScope) (*ListBridgeResponse, error) {
 	tick := time.Now()
 	rsp := &ListBridgeResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	lst, err := s.models.LoadAllBridges()
+	lst, err := defProvider.LoadAllBridges(ctx, scope)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -91,9 +91,13 @@ func (s *Service) ListBridge(context.Context) (*ListBridgeResponse, error) {
 
 	for _, define := range lst {
 		rsp.Bridges = append(rsp.Bridges, &BridgeInfo{
-			Name: define.Name,
-			Type: string(define.Type),
-			Path: define.Path,
+			Id:          define.Id,
+			Name:        define.Name,
+			Type:        string(define.Type),
+			Path:        define.Path,
+			Owner:       define.Owner,
+			IsPublic:    define.IsPublic,
+			AllowedUser: define.AllowedUser,
 		})
 	}
 	rsp.Success, rsp.Reason = true, "success"
@@ -111,19 +115,21 @@ type GetBridgeResponse struct {
 	Bridge  *BridgeInfo `json:"bridge"`
 }
 
-func (s *Service) GetBridge(ctx context.Context, req *GetBridgeRequest) (*GetBridgeResponse, error) {
+func (s *Service) GetBridge(ctx context.Context, scope model.UserScope, req *GetBridgeRequest) (*GetBridgeResponse, error) {
 	tick := time.Now()
 	rsp := &GetBridgeResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if define, err := s.models.LoadBridge(req.Name); err != nil {
+	if define, err := defProvider.LoadBridge(ctx, scope, req.Name); err != nil {
 		rsp.Reason = err.Error()
 	} else {
 		rsp.Bridge = &BridgeInfo{
-			Name: define.Name,
-			Type: string(define.Type),
-			Path: define.Path,
+			Name:     define.Name,
+			Type:     string(define.Type),
+			Path:     define.Path,
+			Owner:    define.Owner,
+			IsPublic: define.IsPublic,
 		}
 		rsp.Success, rsp.Reason = true, "success"
 	}
@@ -131,9 +137,11 @@ func (s *Service) GetBridge(ctx context.Context, req *GetBridgeRequest) (*GetBri
 }
 
 type AddBridgeRequest struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Path string `json:"path"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Path        string `json:"path"`
+	IsPublic    bool   `json:"isPublic,omitempty"`
+	AllowedUser string `json:"allowedUser,omitempty"`
 }
 
 type AddBridgeResponse struct {
@@ -142,7 +150,7 @@ type AddBridgeResponse struct {
 	Elapse  string `json:"elapse"`
 }
 
-func (s *Service) AddBridge(ctx context.Context, req *AddBridgeRequest) (*AddBridgeResponse, error) {
+func (s *Service) AddBridge(ctx context.Context, scope model.UserScope, req *AddBridgeRequest) (*AddBridgeResponse, error) {
 	tick := time.Now()
 	rsp := &AddBridgeResponse{Reason: "not specified"}
 	defer func() {
@@ -169,13 +177,20 @@ func (s *Service) AddBridge(ctx context.Context, req *AddBridgeRequest) (*AddBri
 		return rsp, nil
 	}
 	def.Path = req.Path
+	// least-privilege default: a newly created bridge is private to its
+	// owner unless the caller explicitly opts into IsPublic/AllowedUser.
+	def.IsPublic = req.IsPublic
+	def.AllowedUser = req.AllowedUser
 
-	if err := Register(def); err != nil {
+	if err := defProvider.SaveBridge(ctx, scope, def); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
-	if err := s.models.SaveBridge(def); err != nil {
+	if err := RegisterByID(def); err != nil {
+		// the persisted definition is unusable (e.g. connection failed),
+		// so roll it back instead of leaving an unreachable bridge.
+		_ = defProvider.RemoveBridge(ctx, scope, def.Name)
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
@@ -194,19 +209,25 @@ type DelBridgeResponse struct {
 	Elapse  string `json:"elapse"`
 }
 
-func (s *Service) DelBridge(ctx context.Context, req *DelBridgeRequest) (*DelBridgeResponse, error) {
+func (s *Service) DelBridge(ctx context.Context, scope model.UserScope, req *DelBridgeRequest) (*DelBridgeResponse, error) {
 	tick := time.Now()
 	rsp := &DelBridgeResponse{}
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if err := s.models.RemoveBridge(req.Name); err != nil {
+	def, err := defProvider.LoadBridge(ctx, scope, req.Name)
+	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
-	Unregister(req.Name)
+	if err := defProvider.RemoveBridge(ctx, scope, req.Name); err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	UnregisterByID(def.Id)
 
 	rsp.Success, rsp.Reason = true, "success"
 	return rsp, nil
@@ -223,7 +244,7 @@ type TestBridgeResponse struct {
 	Elapse  string `json:"elapse"`
 }
 
-func (s *Service) TestBridge(ctx context.Context, req *TestBridgeRequest) (*TestBridgeResponse, error) {
+func (s *Service) TestBridge(ctx context.Context, scope model.UserScope, req *TestBridgeRequest) (*TestBridgeResponse, error) {
 	defer func() {
 		if o := recover(); o != nil {
 			fmt.Printf("panic %s\n%s", o, debug.Stack())
@@ -235,7 +256,7 @@ func (s *Service) TestBridge(ctx context.Context, req *TestBridgeRequest) (*Test
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	br, err := GetBridge(req.Name)
+	br, err := GetBridge(ctx, scope, req.Name)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -281,7 +302,7 @@ type StatsBridgeResponse struct {
 	Appended uint64 `json:"appended"`
 }
 
-func (s *Service) StatsBridge(ctx context.Context, req *StatsBridgeRequest) (*StatsBridgeResponse, error) {
+func (s *Service) StatsBridge(ctx context.Context, scope model.UserScope, req *StatsBridgeRequest) (*StatsBridgeResponse, error) {
 	tick := time.Now()
 	rsp := &StatsBridgeResponse{Reason: "unspecified"}
 
@@ -292,7 +313,7 @@ func (s *Service) StatsBridge(ctx context.Context, req *StatsBridgeRequest) (*St
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	br, err := GetBridge(req.Name)
+	br, err := GetBridge(ctx, scope, req.Name)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil

@@ -23,8 +23,6 @@ func (e customShellIdError) Error() string {
 	return fmt.Sprintf("invalid shell id '%s'", e.id)
 }
 
-type ShellType string
-
 const (
 	SHELL_TERM = "term"
 )

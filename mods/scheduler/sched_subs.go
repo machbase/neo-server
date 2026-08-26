@@ -72,7 +72,10 @@ func (ent *SubscriberEntry) Start() error {
 	ent.ctx, ent.ctxCancel = context.WithCancel(context.Background())
 
 	ent.log.Infof("starting, bridge=%s, topic=%s", ent.Bridge, ent.Topic)
-	if br0, err := bridge.GetBridge(ent.Bridge); err != nil {
+	// TEMP: scheduler has no owning-user concept yet, so bridge lookups use a
+	// fixed "sys" scope until scheduler definitions move to _NEO_SCHEDULE_DEF
+	// and carry a real executing user (see plan-model-bridge.md).
+	if br0, err := bridge.GetBridge(ent.ctx, model.UserScope{User: "sys"}, ent.Bridge); err != nil {
 		ent.log.Tracef("get bridge, %s", err.Error())
 		ent.setStateError(FAILED, err)
 		return err
@@ -190,7 +193,7 @@ func (ent *SubscriberEntry) Stop() error {
 		return nil
 	}
 
-	if br0, err := bridge.GetBridge(ent.Bridge); err != nil {
+	if br0, err := bridge.GetBridge(ent.ctx, model.UserScope{User: "sys"}, ent.Bridge); err != nil {
 		ent.setStateError(FAILED, err)
 		return err
 	} else {

@@ -1465,15 +1465,45 @@ func TestSql_show_others(t *testing.T) {
 	}.run(t)
 }
 
+// taskTestBridgeDefProviderStub is a minimal BridgeDefProvider used by
+// tests that register an ad-hoc bridge directly (bypassing model.Provider).
+type taskTestBridgeDefProviderStub struct {
+	defs map[string]*model.BridgeDefinition
+}
+
+func (p *taskTestBridgeDefProviderStub) LoadBridge(_ context.Context, _ model.UserScope, name string) (*model.BridgeDefinition, error) {
+	def, ok := p.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("undefined bridge name '%s'", name)
+	}
+	return def, nil
+}
+
+func (p *taskTestBridgeDefProviderStub) LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *taskTestBridgeDefProviderStub) LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *taskTestBridgeDefProviderStub) SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error {
+	return nil
+}
+func (p *taskTestBridgeDefProviderStub) RemoveBridge(ctx context.Context, scope model.UserScope, name string) error {
+	return nil
+}
+
 func TestSql_bridge_sqlite(t *testing.T) {
-	if err := bridge.Register(&model.BridgeDefinition{
+	def := &model.BridgeDefinition{
+		Id:   1,
 		Type: model.BRIDGE_SQLITE,
 		Name: "sqlite",
 		Path: "file::memory:?cache=shared",
-	}); err == bridge.ErrBridgeDisabled {
+	}
+	bridge.SetBridgeProvider(&taskTestBridgeDefProviderStub{defs: map[string]*model.BridgeDefinition{"sqlite": def}})
+	if err := bridge.RegisterByID(def); err == bridge.ErrBridgeDisabled {
 		t.Fatal(err)
 	} else {
-		defer bridge.Unregister("sqlite")
+		defer bridge.UnregisterByID(def.Id)
 	}
 
 	TqlTestCase{

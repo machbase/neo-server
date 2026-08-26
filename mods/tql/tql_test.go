@@ -1608,18 +1608,48 @@ func (f TestRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 	return f(req), nil
 }
 
+// tqlBridgeDefProviderStub is a minimal BridgeDefProvider used by tests
+// that register an ad-hoc bridge directly (bypassing model.Provider).
+type tqlBridgeDefProviderStub struct {
+	defs map[string]*model.BridgeDefinition
+}
+
+func (p *tqlBridgeDefProviderStub) LoadBridge(_ context.Context, _ model.UserScope, name string) (*model.BridgeDefinition, error) {
+	def, ok := p.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("undefined bridge name '%s'", name)
+	}
+	return def, nil
+}
+
+func (p *tqlBridgeDefProviderStub) LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *tqlBridgeDefProviderStub) LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *tqlBridgeDefProviderStub) SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error {
+	return nil
+}
+func (p *tqlBridgeDefProviderStub) RemoveBridge(ctx context.Context, scope model.UserScope, name string) error {
+	return nil
+}
+
 func TestWhen(t *testing.T) {
-	err := bridge.Register(&model.BridgeDefinition{
+	def := &model.BridgeDefinition{
+		Id:   1,
 		Type: model.BRIDGE_SQLITE,
 		Name: "sqlite",
 		Path: "file::memory:?cache=shared",
-	})
+	}
+	bridge.SetBridgeProvider(&tqlBridgeDefProviderStub{defs: map[string]*model.BridgeDefinition{"sqlite": def}})
+	err := bridge.RegisterByID(def)
 	if err == bridge.ErrBridgeDisabled {
 		return
 	}
 	require.Nil(t, err)
 
-	br, _ := bridge.GetSqlBridge("sqlite")
+	br, _ := bridge.GetSqlBridge(context.Background(), model.UserScope{User: "sys"}, "sqlite")
 	conn, _ := br.Connect(t.Context())
 	conn.ExecContext(t.Context(), `create table if not exists test_when (
 		id INTEGER NOT NULL PRIMARY KEY,

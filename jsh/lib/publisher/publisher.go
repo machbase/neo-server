@@ -6,9 +6,10 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
-func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
+func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/publisher")
 	o := module.Get("exports").(*goja.Object)
 	// m.publisher({bridge: "name"})
@@ -20,7 +21,10 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 				cname = br.(string)
 			}
 		}
-		br, err := bridge.GetBridge(cname)
+		// TEMP: jsh has no exported way yet to resolve the actual logged-in
+		// session user from this native module's ctx, so a fixed "sys"
+		// scope is used until that wiring exists (see plan-model-bridge.md).
+		br, err := bridge.GetBridge(ctx, model.UserScope{User: "sys"}, cname)
 		if err != nil || br == nil {
 			return rt.NewGoError(fmt.Errorf("publisher: bridge '%s' not found", cname))
 		}
