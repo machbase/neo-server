@@ -1036,18 +1036,20 @@ func TestMachbaseSQLCompatibilityDatabase(t *testing.T) {
 	affected, err := result.RowsAffected()
 	require.NoError(t, err)
 	require.Equal(t, int64(1), affected)
-	// lastInsertID, err := result.LastInsertId()
-	// require.NoError(t, err)
-	// require.Equal(t, int64(1), lastInsertID)
+
+	lastInsertID, err := result.LastInsertId()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), lastInsertID)
 
 	result, err = dbConn.ExecContext(t.Context(), "INSERT INTO test_table (name) VALUES ('test2')")
 	require.NoError(t, err)
 	affected, err = result.RowsAffected()
 	require.NoError(t, err)
 	require.Equal(t, int64(1), affected)
-	// lastInsertID, err = result.LastInsertId()
-	// require.NoError(t, err)
-	// require.Equal(t, int64(2), lastInsertID)
+
+	lastInsertID, err = result.LastInsertId()
+	require.NoError(t, err)
+	require.Equal(t, int64(2), lastInsertID)
 
 	rows, err := testConn.QueryContext(t.Context(), "SELECT * FROM test_table")
 	require.NoError(t, err)
