@@ -301,7 +301,7 @@ func TestShowTables(t *testing.T) {
 		expects: [][]any{
 			{"NAME", "varchar", 80, "tag name", ""},
 			{"TIME", "datetime", 31, "base time", ""},
-			{"VALUE", "double", 17, "", ""},
+			{"VALUE", "double", 17, "summarized", ""},
 		},
 	}.runResultSetTestCases(t)
 	ResultSetTestCase{
@@ -311,7 +311,7 @@ func TestShowTables(t *testing.T) {
 		expects: [][]any{
 			{"NAME", "varchar", 80, "tag name", ""},
 			{"TIME", "datetime", 31, "base time", ""},
-			{"VALUE", "double", 17, "", ""},
+			{"VALUE", "double", 17, "summarized", ""},
 			{"_RID", "long", 20, "", ""},
 		},
 	}.runResultSetTestCases(t)
