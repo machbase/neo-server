@@ -89,7 +89,6 @@ type httpd struct {
 	writeBufSize           int
 	linger                 int
 	keepAlive              int
-	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
 
@@ -218,12 +217,6 @@ func WithHttpWebDir(path string) HttpOption {
 func WithHttpExperimentModeProvider(provider func() bool) HttpOption {
 	return func(s *httpd) {
 		s.experimentModeProvider = provider
-	}
-}
-
-func WithHttpWebShellProvider(provider model.ShellProvider) HttpOption {
-	return func(s *httpd) {
-		s.webShellProvider = provider
 	}
 }
 
@@ -991,8 +984,8 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.experimentModeProvider != nil {
 		rsp.ExperimentMode = svr.experimentModeProvider()
 	}
-	if svr.webShellProvider != nil {
-		rsp.Shells = svr.webShellProvider.GetAllShells(true)
+	if svr.authServer != nil && svr.authServer.models != nil {
+		rsp.Shells = svr.authServer.models.GetAllShells(true)
 	}
 	rsp.Elapse = time.Since(tick).String()
 

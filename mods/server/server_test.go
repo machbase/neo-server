@@ -130,10 +130,10 @@ func TestMain(m *testing.M) {
 			"--password", "manager",
 			"-v", fmt.Sprintf("/work=%s", fileDir),
 		}
-		server.models.ShellProvider().SetDefaultShellCommand(
+		server.models.SetDefaultShellCommand(
 			fmt.Sprintf("%q shell --server %s -v %q", binPath, httpServerAddress, fmt.Sprintf("/work=%s", fileDir)),
 		)
-		server.models.ShellProvider().SetDefaultJshCommand(
+		server.models.SetDefaultJshCommand(
 			fmt.Sprintf("%q jsh -v %q", binPath, fmt.Sprintf("/work=%s", fileDir)),
 		)
 	}()
@@ -2418,7 +2418,7 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	legacyDef, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+	legacyDef, err := svr.models.LoadSchedule(strings.ToLower(name))
 	require.NoError(t, err)
 	require.Equal(t, model.SCHEDULE_SUBSCRIBER, legacyDef.Type)
 	require.Equal(t, "test/topic", legacyDef.Topic)
@@ -2476,7 +2476,7 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			_ = svr.deleteSchedule(context.Background(), name)
 		})
 
-		def, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+		def, err := svr.models.LoadSchedule(strings.ToLower(name))
 		require.NoError(t, err)
 		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
 		require.Equal(t, "subject.>", def.Topic)
@@ -2502,7 +2502,7 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			_ = svr.deleteSchedule(context.Background(), name)
 		})
 
-		def, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+		def, err := svr.models.LoadSchedule(strings.ToLower(name))
 		require.NoError(t, err)
 		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
 		require.Equal(t, true, def.AutoStart)
@@ -2554,7 +2554,7 @@ func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
 
 func newShellTestServer(t *testing.T) *Server {
 	t.Helper()
-	models := model.NewService(model.WithConfigDirPath(t.TempDir()))
+	models := model.NewProvider(model.WithConfigDirPath(t.TempDir()))
 	require.NoError(t, models.Start())
 
 	return &Server{
@@ -2566,17 +2566,17 @@ func newShellTestServer(t *testing.T) *Server {
 
 func withReservedShellCommands(t *testing.T, svr *Server, shellCmd string, jshCmd string) {
 	t.Helper()
-	shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+	shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
 	require.NoError(t, err)
-	jshDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_JSH)
+	jshDef, err := svr.models.GetShell(model.SHELLID_JSH)
 	require.NoError(t, err)
 	prevShell := shellDef.Command
 	prevJsh := jshDef.Command
-	svr.models.ShellProvider().SetDefaultShellCommand(shellCmd)
-	svr.models.ShellProvider().SetDefaultJshCommand(jshCmd)
+	svr.models.SetDefaultShellCommand(shellCmd)
+	svr.models.SetDefaultJshCommand(jshCmd)
 	t.Cleanup(func() {
-		svr.models.ShellProvider().SetDefaultShellCommand(prevShell)
-		svr.models.ShellProvider().SetDefaultJshCommand(prevJsh)
+		svr.models.SetDefaultShellCommand(prevShell)
+		svr.models.SetDefaultJshCommand(prevJsh)
 	})
 }
 
@@ -2613,12 +2613,12 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "shell")
 		require.Contains(t, shellDef.Command, "-server 127.0.0.1:7777")
 
-		jshDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_JSH)
+		jshDef, err := svr.models.GetShell(model.SHELLID_JSH)
 		require.NoError(t, err)
 		require.Contains(t, jshDef.Command, "jsh")
 		require.NotContains(t, jshDef.Command, " -server ")
@@ -2632,7 +2632,7 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "-server 127.0.0.1:5655")
 	})
@@ -2645,7 +2645,7 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "-server 10.10.1.20:5655")
 	})
@@ -2658,11 +2658,11 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Equal(t, "keep-shell", shellDef.Command)
 
-		jshDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_JSH)
+		jshDef, err := svr.models.GetShell(model.SHELLID_JSH)
 		require.NoError(t, err)
 		require.Equal(t, "keep-jsh", jshDef.Command)
 	})
@@ -2715,7 +2715,7 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, addedID)
 
-		addedShell, err := svr.models.ShellProvider().GetShell(addedID)
+		addedShell, err := svr.models.GetShell(addedID)
 		require.NoError(t, err)
 		require.NotNil(t, addedShell)
 		require.Equal(t, "my-shell", addedShell.Label)
@@ -2732,7 +2732,7 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 		require.True(t, copiedShell.Attributes.Editable)
 		require.True(t, copiedShell.Attributes.Cloneable)
 
-		persistedCopiedShell, err := svr.models.ShellProvider().GetShell(copiedShell.Id)
+		persistedCopiedShell, err := svr.models.GetShell(copiedShell.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persistedCopiedShell)
 		require.Equal(t, copiedShell.Id, persistedCopiedShell.Id)
@@ -2752,7 +2752,7 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 		id, err := svr.addShell("old-name", command)
 		require.NoError(t, err)
 
-		shell, err := svr.models.ShellProvider().GetShell(id)
+		shell, err := svr.models.GetShell(id)
 		require.NoError(t, err)
 		require.NotNil(t, shell)
 
@@ -2763,7 +2763,7 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 		require.NotNil(t, updated)
 		require.Equal(t, "new-name", updated.Label)
 
-		persisted, err := svr.models.ShellProvider().GetShell(id)
+		persisted, err := svr.models.GetShell(id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
 		require.Equal(t, "new-name", persisted.Label)

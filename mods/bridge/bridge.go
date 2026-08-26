@@ -24,7 +24,14 @@ func NewService(opts ...Option) *Service {
 
 type Option func(*Service)
 
-func WithProvider(provider model.BridgeProvider) Option {
+type BridgeProvider interface {
+	LoadAllBridges() ([]*model.BridgeDefinition, error)
+	LoadBridge(name string) (*model.BridgeDefinition, error)
+	SaveBridge(def *model.BridgeDefinition) error
+	RemoveBridge(name string) error
+}
+
+func WithProvider(provider BridgeProvider) Option {
 	return func(s *Service) {
 		s.models = provider
 	}
@@ -34,7 +41,7 @@ type Service struct {
 	log    logging.Log
 	ctxMap cmap.ConcurrentMap[string, *rowsWrap]
 
-	models model.BridgeProvider
+	models BridgeProvider
 }
 
 func (s *Service) Start() error {

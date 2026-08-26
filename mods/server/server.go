@@ -71,7 +71,7 @@ type Server struct {
 
 	proxyMgr          *ProxyManager
 	serviceController *service.Controller
-	models            model.Service
+	models            *model.Provider
 
 	startupTime      time.Time
 	servicePorts     map[string][]*model.ServicePort
@@ -739,7 +739,7 @@ func (s *Server) startModelService() error {
 	if !s.hasHead {
 		return nil
 	}
-	s.models = model.NewService(
+	s.models = model.NewProvider(
 		model.WithConfigDirPath(s.prefDirPath),
 		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
 	)
@@ -843,12 +843,12 @@ func (s *Server) runInitScripts() error {
 func (s *Server) startBridgeAndSchedulerService() error {
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
-		scheduler.WithProvider(s.models.ScheduleProvider()),
+		scheduler.WithProvider(s.models),
 		scheduler.WithTqlLoader(tql.NewLoader()),
 	)
 
 	s.bridgeSvc = bridge.NewService(
-		bridge.WithProvider(s.models.BridgeProvider()),
+		bridge.WithProvider(s.models),
 	)
 
 	if err := s.bridgeSvc.Start(); err != nil {
@@ -934,7 +934,6 @@ func (s *Server) startHttpServer() error {
 		WithHttpServerSideFileSystem(ssfs.Default()),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
-		WithHttpWebShellProvider(s.models.ShellProvider()),
 		WithHttpPathMap("data", s.homeDirPath),
 		WithHttpLinger(s.Http.Linger),
 		WithHttpWriteBufSize(s.Http.WriteBufSize),
@@ -1280,7 +1279,7 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 //
 // return: shell definitions
 func (s *Server) listShells() []*model.ShellDefinition {
-	lst := s.models.ShellProvider().GetAllShells(false)
+	lst := s.models.GetAllShells(false)
 	if lst == nil {
 		return []*model.ShellDefinition{}
 	}
@@ -1297,11 +1296,10 @@ func (s *Server) copyShell(srcId string) (*model.ShellDefinition, error) {
 	if srcId == "" {
 		return nil, fmt.Errorf("source shell id not specified")
 	}
-	provider := s.models.ShellProvider()
-	if provider == nil {
+	if s.models == nil {
 		return nil, fmt.Errorf("shell provider not available")
 	}
-	shell, err := provider.CopyShell(srcId)
+	shell, err := s.models.CopyShell(srcId)
 	if err != nil {
 		return nil, err
 	}
@@ -1327,11 +1325,10 @@ func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefiniti
 	if len(strings.TrimSpace(shell.Command)) == 0 {
 		return nil, fmt.Errorf("command not specified")
 	}
-	provider := s.models.ShellProvider()
-	if provider == nil {
+	if s.models == nil {
 		return nil, fmt.Errorf("shell provider not available")
 	}
-	if err := provider.SaveShell(shell); err != nil {
+	if err := s.models.SaveShell(shell); err != nil {
 		return nil, err
 	}
 	return shell, nil
@@ -1364,7 +1361,7 @@ func (s *Server) addShell(name string, command string) (string, error) {
 		def.Command = command
 	}
 
-	if err := s.models.ShellProvider().SaveShell(def); err != nil {
+	if err := s.models.SaveShell(def); err != nil {
 		return "", err
 	}
 	return def.Id, nil
@@ -1377,7 +1374,7 @@ func (s *Server) addShell(name string, command string) (string, error) {
 //
 // return: null on success
 func (s *Server) deleteShell(id string) error {
-	return s.models.ShellProvider().RemoveShell(id)
+	return s.models.RemoveShell(id)
 }
 
 // getBridge returns bridge configuration by name.
@@ -2983,12 +2980,12 @@ func (s *Server) initShellProvider() error {
 	cmdLine := strings.Join(shellCmd, " ")
 	// neo-shell require -server option
 	defaultShellCmd := strings.Replace(cmdLine, "[[shell]]", "shell", 1) + " -server " + candidate
-	s.models.ShellProvider().SetDefaultShellCommand(defaultShellCmd)
+	s.models.SetDefaultShellCommand(defaultShellCmd)
 	s.log.Trace("Set shell command:", defaultShellCmd)
 	// jsh
 	defaultJshCmd := strings.Replace(cmdLine, "[[shell]]", "jsh", 1)
 	s.log.Trace("Set jsh command:", defaultShellCmd)
-	s.models.ShellProvider().SetDefaultJshCommand(defaultJshCmd)
+	s.models.SetDefaultJshCommand(defaultJshCmd)
 	return nil
 }
 
@@ -3025,7 +3022,7 @@ func isAnyIfaceCandidate(candidate string) bool {
 // sshd shell provider
 func (s *Server) provideShellForSsh(user string, shellId string) *SshShell {
 	shellId = strings.ToUpper(shellId)
-	shellDef, _ := s.models.ShellProvider().GetShell(shellId)
+	shellDef, _ := s.models.GetShell(shellId)
 	if shellDef == nil {
 		return nil
 	}

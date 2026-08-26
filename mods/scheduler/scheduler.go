@@ -38,12 +38,20 @@ type Service struct {
 	tqlLoader tql.Loader
 	verbose   bool
 
-	models model.ScheduleProvider
+	models ScheduleProvider
 }
 
 type Option func(*Service)
 
-func WithProvider(provider model.ScheduleProvider) Option {
+type ScheduleProvider interface {
+	LoadAllSchedules() ([]*model.ScheduleDefinition, error)
+	LoadSchedule(name string) (*model.ScheduleDefinition, error)
+	SaveSchedule(def *model.ScheduleDefinition) error
+	RemoveSchedule(name string) error
+	UpdateSchedule(def *model.ScheduleDefinition) error
+}
+
+func WithProvider(provider ScheduleProvider) Option {
 	return func(s *Service) {
 		s.models = provider
 	}

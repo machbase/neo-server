@@ -3,8 +3,16 @@ package model
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type ShellType string
@@ -69,16 +77,6 @@ func (def *ShellDefinition) Clone() *ShellDefinition {
 	return ret
 }
 
-type ShellProvider interface {
-	SetDefaultShellCommand(cmd string)
-	SetDefaultJshCommand(cmd string)
-	GetAllShells(includeWebShells bool) []*ShellDefinition
-	GetShell(id string) (found *ShellDefinition, err error)
-	CopyShell(id string) (*ShellDefinition, error)
-	SaveShell(def *ShellDefinition) error
-	RemoveShell(id string) error
-}
-
 type ShellAttributes struct {
 	Removable bool `json:"removable"`
 	Cloneable bool `json:"cloneable"`
@@ -130,6 +128,189 @@ func (att *ShellAttributes) UnmarshalJSON(data []byte) error {
 			att.Cloneable = toBool(v)
 		} else if v, ok := m["editable"]; ok {
 			att.Editable = toBool(v)
+		}
+	}
+	return nil
+}
+
+func (s *Provider) SetDefaultShellCommand(cmd string) {
+	reservedWebShellDef[SHELLID_SHELL].Command = cmd
+}
+
+func (s *Provider) SetDefaultJshCommand(cmd string) {
+	reservedWebShellDef[SHELLID_JSH].Command = cmd
+}
+
+func (s *Provider) GetShell(id string) (*ShellDefinition, error) {
+	id = strings.ToUpper(id)
+	ret := reservedWebShellDef[id]
+	if ret != nil {
+		return ret, nil
+	}
+	s.iterateShellDefs(func(sd *ShellDefinition) bool {
+		if strings.ToUpper(sd.Id) == id {
+			ret = sd
+			return false
+		}
+		return true
+	})
+	return ret, nil
+}
+
+func (s *Provider) GetAllShells(includesWebShells bool) []*ShellDefinition {
+	var ret []*ShellDefinition
+	if includesWebShells {
+		ret = append(ret, reservedWebShellDef[SHELLID_SQL])
+		ret = append(ret, reservedWebShellDef[SHELLID_TQL])
+		ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
+		ret = append(ret, reservedWebShellDef[SHELLID_DSH])
+		ret = append(ret, reservedWebShellDef[SHELLID_WRK])
+		ret = append(ret, reservedWebShellDef[SHELLID_JSH])
+		ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
+	}
+	s.iterateShellDefs(func(def *ShellDefinition) bool {
+		ret = append(ret, def)
+		return true
+	})
+	return ret
+}
+
+func (s *Provider) CopyShell(id string) (*ShellDefinition, error) {
+	id = strings.ToUpper(id)
+	var ret *ShellDefinition
+	if _, ok := reservedWebShellDef[id]; ok {
+		ret = &ShellDefinition{}
+		ret.Type = SHELL_TERM
+		ret.Attributes = &ShellAttributes{Removable: true, Editable: true, Cloneable: true}
+		if exename, err := os.Executable(); err != nil {
+			ret.Command = fmt.Sprintf(`"%s" shell`, os.Args[0])
+		} else {
+			ret.Command = fmt.Sprintf(`"%s" shell`, exename)
+		}
+	} else {
+		d, err := s.GetShell(id)
+		if err != nil {
+			return nil, err
+		}
+		if d == nil {
+			s.log.Warnf("shell def not found '%s'", id)
+			return nil, fmt.Errorf("shell definition not found '%s'", id)
+		}
+		ret = d.Clone()
+	}
+	if ret == nil {
+		s.log.Warnf("shell def not found '%s'", id)
+		return nil, fmt.Errorf("shell definition not found '%s'", id)
+	}
+	uid, err := uuid.DefaultGenerator.NewV4()
+	if err != nil {
+		s.log.Warn("shell def new id,", err.Error())
+		return nil, err
+	}
+	ret.Id = uid.String()
+	ret.Label = "CUSTOM SHELL"
+	if err := s.SaveShell(ret); err != nil {
+		s.log.Warn("shell def not saved,", err.Error())
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (s *Provider) RemoveShell(id string) error {
+	path := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", strings.ToUpper(id)))
+	return os.Remove(path)
+}
+
+// Deprecated
+func (s *Provider) RenameWebShell(name string, newName string) error {
+	oldPath := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", strings.ToUpper(name)))
+	newPath := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", strings.ToUpper(newName)))
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("'%s' already exists", newName)
+	}
+	return os.Rename(oldPath, newPath)
+}
+
+func (s *Provider) SaveShell(def *ShellDefinition) error {
+	def.Id = strings.ToUpper(def.Id)
+	for _, n := range reservedShellNames {
+		if def.Id == n {
+			return fmt.Errorf("'%s' is not allowed for the custom shell name", def.Id)
+		}
+	}
+	if len(def.Command) == 0 {
+		return errors.New("invalid command for the custom shell")
+	}
+	args := util.SplitFields(def.Command, true)
+	if len(args) == 0 {
+		return errors.New("invalid command for the custom shell")
+	}
+	binpath := args[0]
+	if fi, err := os.Stat(binpath); err != nil {
+		return fmt.Errorf("'%s' is not accessible, %s", binpath, err.Error())
+	} else {
+		if fi.IsDir() {
+			return fmt.Errorf("'%s' is not executable", binpath)
+		}
+		if runtime.GOOS == "windows" {
+			if !strings.HasSuffix(strings.ToLower(binpath), ".exe") && !strings.HasSuffix(strings.ToLower(binpath), ".com") {
+				return fmt.Errorf("'%s' is not executable", binpath)
+			}
+		} else {
+			if fi.Mode().Perm()&0111 == 0 {
+				return fmt.Errorf("'%s' is not executable", binpath)
+			}
+		}
+	}
+	content, err := json.Marshal(def)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", def.Id))
+	return os.WriteFile(path, content, 0600)
+}
+
+func (s *Provider) iterateShellDefs(cb func(*ShellDefinition) bool) error {
+	if cb == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(s.shellDir)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.shellDir, entry.Name()))
+		if err != nil {
+			s.log.Error("ERR file access,", err.Error())
+			continue
+		}
+		def := &ShellDefinition{}
+		if err := json.Unmarshal(content, def); err != nil {
+			s.log.Warn("ERR invalid shell conf,", err.Error())
+			continue
+		}
+		def.Id = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
+		if def.Type == "" {
+			def.Type = SHELL_TERM
+			def.Label = def.Id
+		}
+		if def.Attributes == nil {
+			def.Attributes = &ShellAttributes{
+				Cloneable: true, Removable: true, Editable: true,
+			}
+		}
+		if def.Icon == "" {
+			def.Icon = "console-network-outline"
+		}
+		if def.Label == "" {
+			def.Label = "CUSTOM SHELL"
+		}
+		shouldContinue := cb(def)
+		if !shouldContinue {
+			break
 		}
 	}
 	return nil
