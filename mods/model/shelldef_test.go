@@ -19,6 +19,7 @@ import (
 const fakeShellDriverName = "model_shell_fake"
 
 var fakeShellDriverOnce sync.Once
+var fakeShellStores sync.Map
 
 func registerFakeShellDriver() {
 	fakeShellDriverOnce.Do(func() {
@@ -27,9 +28,10 @@ func registerFakeShellDriver() {
 }
 
 type fakeShellStore struct {
-	mu     sync.Mutex
-	nextID int64
-	rows   map[int64]fakeShellRow
+	mu           sync.Mutex
+	nextID       int64
+	rows         map[int64]fakeShellRow
+	connectUsers []string
 }
 
 type fakeShellRow struct {
@@ -50,7 +52,11 @@ func (d *fakeShellDriver) Open(name string) (driver.Conn, error) {
 }
 
 func (d *fakeShellDriver) OpenConnector(name string) (driver.Connector, error) {
-	return &fakeShellConnector{store: &fakeShellStore{nextID: 1, rows: map[int64]fakeShellRow{}}}, nil
+	storeAny, ok := fakeShellStores.Load(name)
+	if !ok {
+		return nil, errors.New("fake shell store not found")
+	}
+	return &fakeShellConnector{store: storeAny.(*fakeShellStore)}, nil
 }
 
 type fakeShellConnector struct {
@@ -245,19 +251,26 @@ func toInt64(value any) int64 {
 	}
 }
 
-func newFakeShellProvider(t *testing.T) (*Provider, func()) {
+func newFakeShellProvider(t *testing.T) (*Provider, *fakeShellStore, func()) {
 	t.Helper()
 	registerFakeShellDriver()
-	db, err := sql.Open(fakeShellDriverName, "")
+	store := &fakeShellStore{nextID: 1, rows: map[int64]fakeShellRow{}}
+	dsn := t.Name()
+	fakeShellStores.Store(dsn, store)
+	db, err := sql.Open(fakeShellDriverName, dsn)
 	require.NoError(t, err)
 	provider := NewProvider(WithConfigDirPath(t.TempDir()))
 	provider.connect = func(ctx context.Context, user string) (*sql.Conn, error) {
+		store.mu.Lock()
+		store.connectUsers = append(store.connectUsers, user)
+		store.mu.Unlock()
 		return db.Conn(ctx)
 	}
 	require.NoError(t, provider.Start())
-	return provider, func() {
+	return provider, store, func() {
 		provider.Stop()
 		require.NoError(t, db.Close())
+		fakeShellStores.Delete(dsn)
 	}
 }
 
@@ -294,7 +307,7 @@ func TestShellAttributesDBJSON(t *testing.T) {
 }
 
 func TestShellDefinitionTablePersistence(t *testing.T) {
-	provider, cleanup := newFakeShellProvider(t)
+	provider, store, cleanup := newFakeShellProvider(t)
 	defer cleanup()
 	ctx := context.Background()
 	alice := UserScope{User: "alice"}
@@ -344,6 +357,14 @@ func TestShellDefinitionTablePersistence(t *testing.T) {
 	loaded, err = provider.GetShell(ctx, alice, def.Id)
 	require.NoError(t, err)
 	require.Nil(t, loaded)
+
+	store.mu.Lock()
+	connectUsers := append([]string{}, store.connectUsers...)
+	store.mu.Unlock()
+	require.NotEmpty(t, connectUsers)
+	for _, user := range connectUsers {
+		require.Equal(t, "sys", user)
+	}
 }
 
 func TestShellDefinitionInvalidIds(t *testing.T) {
@@ -360,7 +381,7 @@ func TestShellDefinitionInvalidIds(t *testing.T) {
 }
 
 func TestShellDefinitionReservedLabelRejected(t *testing.T) {
-	provider, cleanup := newFakeShellProvider(t)
+	provider, _, cleanup := newFakeShellProvider(t)
 	defer cleanup()
 	exe, err := os.Executable()
 	require.NoError(t, err)

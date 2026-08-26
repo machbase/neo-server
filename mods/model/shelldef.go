@@ -335,7 +335,7 @@ func (s *Provider) shellConn(ctx context.Context, scope UserScope) (*sql.Conn, s
 	if s.connect == nil {
 		return nil, "", errors.New("database connect function is not configured")
 	}
-	conn, err := s.connect(ctx, user)
+	conn, err := s.connect(ctx, "sys")
 	if err != nil {
 		return nil, "", err
 	}
