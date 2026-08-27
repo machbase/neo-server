@@ -759,13 +759,8 @@ func (s *Server) startModelService() error {
 		return nil
 	}
 	s.models = model.NewProvider(
-		model.WithConfigDirPath(s.prefDirPath),
 		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
 	)
-	if err := s.models.Start(); err != nil {
-		return err
-	}
-	util.AddShutdownHook(func() { s.models.Stop() })
 	return nil
 }
 
@@ -1130,12 +1125,29 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("key.delete", s.deleteKey)
 	ctl.RegisterJsonRpcHandler("server.certificate.get", s.getServerCertificate)
 	ctl.RegisterJsonRpcHandler("schedule.list", s.listSchedules)
+	ctl.RegisterJsonRpcHandler("schedule.get", s.getSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.timer.add", s.addTimerSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.subscriber.add", s.addSubscriberSchedule)
+	ctl.RegisterJsonRpcHandler("schedule.update", s.updateTimerSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.delete", s.deleteSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.start", s.startSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.stop", s.stopSchedule)
-	// TODO: add schedule.update, schedule.status
+	// timer.*/subscriber.*: split namespace that new callers should migrate
+	// to; schedule.* above is kept for backward compatibility.
+	ctl.RegisterJsonRpcHandler("timer.list", s.listTimers)
+	ctl.RegisterJsonRpcHandler("timer.get", s.getTimer)
+	ctl.RegisterJsonRpcHandler("timer.add", s.addTimer)
+	ctl.RegisterJsonRpcHandler("timer.update", s.updateTimer)
+	ctl.RegisterJsonRpcHandler("timer.delete", s.deleteTimer)
+	ctl.RegisterJsonRpcHandler("timer.start", s.startTimer)
+	ctl.RegisterJsonRpcHandler("timer.stop", s.stopTimer)
+	ctl.RegisterJsonRpcHandler("subscriber.list", s.listSubscribers)
+	ctl.RegisterJsonRpcHandler("subscriber.get", s.getSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.add", s.addSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.delete", s.deleteSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.start", s.startSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.stop", s.stopSubscriber)
+	// TODO: add schedule.status
 	ctl.RegisterJsonRpcHandler("server.shutdown", s.Shutdown)
 	ctl.RegisterJsonRpcHandler("http.debug.set", s.setHttpDebug)
 	ctl.RegisterJsonRpcHandler("session.list", s.listSessions)
@@ -1905,6 +1917,180 @@ func (s *Server) listSchedules(ctx context.Context) ([]*scheduler.Schedule, erro
 	return rsp.Schedules, nil
 }
 
+// getSchedule returns a schedule (timer or subscriber) by name.
+//
+// params:
+//   - name: schedule name
+//
+// return: schedule
+func (s *Server) getSchedule(ctx context.Context, name string) (*scheduler.Schedule, error) {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.GetSchedule(ctx, &scheduler.GetScheduleRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Schedule, nil
+}
+
+// listTimers returns all timer schedules.
+//
+// params:
+//
+// return: timer schedule list
+func (s *Server) listTimers(ctx context.Context) ([]*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.ListTimer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp.Schedules) == 0 {
+		return []*scheduler.Schedule{}, nil
+	}
+	return rsp.Schedules, nil
+}
+
+// getTimer returns a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: timer schedule
+func (s *Server) getTimer(ctx context.Context, id int64) (*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.GetTimer(ctx, &scheduler.GetTimerRequest{Id: id})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Schedule, nil
+}
+
+// deleteTimer removes a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: null on success
+func (s *Server) deleteTimer(ctx context.Context, id int64) error {
+	rsp, err := s.schedSvc.DeleteTimer(ctx, &scheduler.DeleteTimerRequest{Id: id})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+// startTimer starts a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: null on success
+func (s *Server) startTimer(ctx context.Context, id int64) error {
+	def, err := s.models.LoadTimerByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.startSchedule(ctx, def.Name)
+}
+
+// stopTimer stops a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: null on success
+func (s *Server) stopTimer(ctx context.Context, id int64) error {
+	def, err := s.models.LoadTimerByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.stopSchedule(ctx, def.Name)
+}
+
+// listSubscribers returns all subscriber schedules.
+//
+// params:
+//
+// return: subscriber schedule list
+func (s *Server) listSubscribers(ctx context.Context) ([]*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.ListSubscriber(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp.Schedules) == 0 {
+		return []*scheduler.Schedule{}, nil
+	}
+	return rsp.Schedules, nil
+}
+
+// getSubscriber returns a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: subscriber schedule
+func (s *Server) getSubscriber(ctx context.Context, id int64) (*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.GetSubscriber(ctx, &scheduler.GetSubscriberRequest{Id: id})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Schedule, nil
+}
+
+// deleteSubscriber removes a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: null on success
+func (s *Server) deleteSubscriber(ctx context.Context, id int64) error {
+	rsp, err := s.schedSvc.DeleteSubscriber(ctx, &scheduler.DeleteSubscriberRequest{Id: id})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+// startSubscriber starts a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: null on success
+func (s *Server) startSubscriber(ctx context.Context, id int64) error {
+	def, err := s.models.LoadSubscriberByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.startSchedule(ctx, def.Name)
+}
+
+// stopSubscriber stops a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: null on success
+func (s *Server) stopSubscriber(ctx context.Context, id int64) error {
+	def, err := s.models.LoadSubscriberByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.stopSchedule(ctx, def.Name)
+}
+
 type addTimerScheduleRequest struct {
 	Name      string `json:"name"`
 	Spec      string `json:"spec"`
@@ -1919,12 +2105,17 @@ type addTimerScheduleRequest struct {
 //
 // return: null on success
 func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleRequest) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
 	scheduleReq := &scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
 		Type:      "TIMER",
 		AutoStart: req.AutoStart,
 		Schedule:  req.Spec,
 		Task:      req.Command,
+		ExecUser:  scope.User,
 	}
 	rsp, err := s.schedSvc.AddSchedule(ctx, scheduleReq)
 	if err != nil {
@@ -1936,6 +2127,34 @@ func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleReque
 	return nil
 }
 
+// addTimer creates a timer schedule and returns its ID.
+//
+// params:
+//   - req: timer schedule request
+//
+// return: created timer ID
+func (s *Server) addTimer(ctx context.Context, req addTimerScheduleRequest) (int64, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &scheduler.AddScheduleRequest{
+		Name:      strings.ToLower(req.Name),
+		Type:      "TIMER",
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
+		ExecUser:  scope.User,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if !rsp.Success {
+		return 0, errors.New(rsp.Reason)
+	}
+	return rsp.Id, nil
+}
+
 // addSubscriberSchedule creates a subscriber schedule using a structured payload.
 //
 // params:
@@ -1943,12 +2162,17 @@ func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleReque
 //
 // return: null on success
 func (s *Server) addSubscriberSchedule(ctx context.Context, req addSubscriberScheduleRequest) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
 	scheduleReq := scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
 		Type:      "SUBSCRIBER",
 		AutoStart: req.AutoStart,
 		Task:      req.Command,
 		Bridge:    req.Bridge,
+		ExecUser:  scope.User,
 	}
 	if req.Mqtt != nil {
 		scheduleReq.Opt.Mqtt = &scheduler.MqttOption{
@@ -1992,6 +2216,106 @@ type addSubscriberScheduleRequest struct {
 	AutoStart bool                             `json:"autoStart,omitempty"`
 	Mqtt      *addSubscriberScheduleMqttOption `json:"mqtt,omitempty"`
 	Nats      *addSubscriberScheduleNatsOption `json:"nats,omitempty"`
+}
+
+// addSubscriber creates a subscriber schedule and returns its ID.
+//
+// params:
+//   - req: subscriber schedule request with protocol-specific options
+//
+// return: created subscriber ID
+func (s *Server) addSubscriber(ctx context.Context, req addSubscriberScheduleRequest) (int64, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	scheduleReq := scheduler.AddScheduleRequest{
+		Name:      strings.ToLower(req.Name),
+		Type:      "SUBSCRIBER",
+		AutoStart: req.AutoStart,
+		Task:      req.Command,
+		Bridge:    req.Bridge,
+		ExecUser:  scope.User,
+	}
+	if req.Mqtt != nil {
+		scheduleReq.Opt.Mqtt = &scheduler.MqttOption{
+			Topic: req.Mqtt.Topic,
+			QoS:   int32(req.Mqtt.QoS),
+		}
+	}
+	if req.Nats != nil {
+		scheduleReq.Opt.Nats = &scheduler.NatsOption{
+			Subject:    req.Nats.Subject,
+			QueueName:  req.Nats.QueueName,
+			StreamName: req.Nats.StreamName,
+		}
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &scheduleReq)
+	if err != nil {
+		return 0, err
+	}
+	if !rsp.Success {
+		return 0, errors.New(rsp.Reason)
+	}
+	return rsp.Id, nil
+}
+
+type updateTimerScheduleRequest struct {
+	Name      string `json:"name"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+	Spec      string `json:"spec"`
+	Command   string `json:"command"`
+}
+
+// updateTimerSchedule updates an existing timer schedule.
+//
+// params:
+//   - req: timer schedule update request
+//
+// return: null on success
+func (s *Server) updateTimerSchedule(ctx context.Context, req updateTimerScheduleRequest) error {
+	rsp, err := s.schedSvc.UpdateSchedule(ctx, &scheduler.UpdateScheduleRequest{
+		Name:      strings.ToLower(req.Name),
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+type updateTimerRequest struct {
+	Id        int64  `json:"id"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+	Spec      string `json:"spec"`
+	Command   string `json:"command"`
+}
+
+// updateTimer updates an existing timer schedule by ID.
+//
+// params:
+//   - req: timer schedule update request
+//
+// return: null on success
+func (s *Server) updateTimer(ctx context.Context, req updateTimerRequest) error {
+	rsp, err := s.schedSvc.UpdateTimer(ctx, &scheduler.UpdateTimerRequest{
+		Id:        req.Id,
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
 }
 
 // deleteSchedule removes a schedule by name.

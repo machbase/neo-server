@@ -259,16 +259,14 @@ func newFakeShellProvider(t *testing.T) (*Provider, *fakeShellStore, func()) {
 	fakeShellStores.Store(dsn, store)
 	db, err := sql.Open(fakeShellDriverName, dsn)
 	require.NoError(t, err)
-	provider := NewProvider(WithConfigDirPath(t.TempDir()))
+	provider := NewProvider()
 	provider.connect = func(ctx context.Context, user string) (*sql.Conn, error) {
 		store.mu.Lock()
 		store.connectUsers = append(store.connectUsers, user)
 		store.mu.Unlock()
 		return db.Conn(ctx)
 	}
-	require.NoError(t, provider.Start())
 	return provider, store, func() {
-		provider.Stop()
 		require.NoError(t, db.Close())
 		fakeShellStores.Delete(dsn)
 	}

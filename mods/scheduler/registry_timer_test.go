@@ -129,27 +129,22 @@ func TestRegisterTimerAndSubscriber(t *testing.T) {
 	t.Cleanup(UnregisterAll)
 
 	svc := &Service{crons: cron.New(), tqlLoader: schedulerLoaderStub{}}
-	timer := &model.ScheduleDefinition{
+	timer := &model.TimerDefinition{
 		Name:     "timer_one",
-		Type:     model.SCHEDULE_TIMER,
 		Task:     "timer.tql",
 		Schedule: "*/5 * * * *",
 	}
-	require.NoError(t, Register(svc, timer))
+	require.NoError(t, RegisterTimer(svc, timer))
 	require.NotNil(t, GetEntry("TIMER_ONE"))
 
-	subscriber := &model.ScheduleDefinition{
+	subscriber := &model.SubscriberDefinition{
 		Name:   "subscriber_one",
-		Type:   model.SCHEDULE_SUBSCRIBER,
 		Task:   "db/append/table",
 		Bridge: "missing",
 		Topic:  "topic/a",
 	}
-	require.NoError(t, Register(svc, subscriber))
+	require.NoError(t, RegisterSubscriber(svc, subscriber))
 	require.NotNil(t, GetEntry("subscriber_one"))
-
-	unknown := &model.ScheduleDefinition{Name: "bad", Type: "bad"}
-	require.EqualError(t, Register(svc, unknown), "undefined schedule type")
 }
 
 func TestRegisterTimerLoadFailure(t *testing.T) {
@@ -159,30 +154,29 @@ func TestRegisterTimerLoadFailure(t *testing.T) {
 	t.Cleanup(UnregisterAll)
 
 	svc := &Service{crons: cron.New(), tqlLoader: schedulerLoaderStub{err: errors.New("load failed")}}
-	def := &model.ScheduleDefinition{
+	def := &model.TimerDefinition{
 		Name:     "timer_fail",
-		Type:     model.SCHEDULE_TIMER,
 		Task:     "missing.tql",
 		Schedule: "*/5 * * * *",
 	}
-	require.EqualError(t, Register(svc, def), "load failed")
+	require.EqualError(t, RegisterTimer(svc, def), "load failed")
 	require.Equal(t, FAILED, GetEntry("timer_fail").Status())
 }
 
 func TestTimerEntryValidationAndStop(t *testing.T) {
 	svc := &Service{crons: cron.New()}
 
-	missingSchedule, err := NewTimerEntry(svc, &model.ScheduleDefinition{Name: "missing_schedule", Task: "task.tql"})
+	missingSchedule, err := NewTimerEntry(svc, &model.TimerDefinition{Name: "missing_schedule", Task: "task.tql"})
 	require.NoError(t, err)
 	require.EqualError(t, missingSchedule.Start(), "invalid configure - missing Schedule")
 	require.Equal(t, FAILED, missingSchedule.Status())
 
-	missingTask, err := NewTimerEntry(svc, &model.ScheduleDefinition{Name: "missing_task", Schedule: "*/5 * * * *"})
+	missingTask, err := NewTimerEntry(svc, &model.TimerDefinition{Name: "missing_task", Schedule: "*/5 * * * *"})
 	require.NoError(t, err)
 	require.EqualError(t, missingTask.Start(), "invalid configure - missing Task")
 	require.Equal(t, FAILED, missingTask.Status())
 
-	valid, err := NewTimerEntry(svc, &model.ScheduleDefinition{Name: "valid", Task: "task.tql", Schedule: "*/5 * * * *"})
+	valid, err := NewTimerEntry(svc, &model.TimerDefinition{Name: "valid", Task: "task.tql", Schedule: "*/5 * * * *"})
 	require.NoError(t, err)
 	require.NoError(t, valid.Start())
 	require.Equal(t, RUNNING, valid.Status())
@@ -192,7 +186,7 @@ func TestTimerEntryValidationAndStop(t *testing.T) {
 
 func TestTimerEntryDoTaskLoadFailure(t *testing.T) {
 	svc := &Service{crons: cron.New(), tqlLoader: schedulerLoaderStub{err: errors.New("load failed")}}
-	ent, err := NewTimerEntry(svc, &model.ScheduleDefinition{Name: "task_fail", Task: "task.tql", Schedule: "*/5 * * * *"})
+	ent, err := NewTimerEntry(svc, &model.TimerDefinition{Name: "task_fail", Task: "task.tql", Schedule: "*/5 * * * *"})
 	require.NoError(t, err)
 	require.NoError(t, ent.Start())
 	require.Equal(t, RUNNING, ent.Status())
@@ -208,7 +202,7 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	defStub := &schedulerBridgeDefProviderStub{defs: map[string]int64{}}
 	bridge.SetBridgeProvider(defStub)
 
-	ent, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
+	ent, err := NewSubscriberEntry(&Service{}, &model.SubscriberDefinition{
 		Name:   "subscriber",
 		Task:   "db/append/table",
 		Bridge: "missing",
@@ -225,7 +219,7 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	mqttSubDef := &model.BridgeDefinition{Id: 1, Type: model.BRIDGE_MQTT, Name: "mqtt_sub"}
 	defStub.defs["mqtt_sub"] = mqttSubDef.Id
 	require.NoError(t, bridge.RegisterByID(mqttSubDef))
-	emptyTopic, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
+	emptyTopic, err := NewSubscriberEntry(&Service{}, &model.SubscriberDefinition{
 		Name:   "empty_topic",
 		Task:   "db/append/table",
 		Bridge: "mqtt_sub",
@@ -236,7 +230,7 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	require.NoError(t, emptyTopic.Stop())
 	require.Equal(t, STOP, emptyTopic.Status())
 
-	stopMissingBridge, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
+	stopMissingBridge, err := NewSubscriberEntry(&Service{}, &model.SubscriberDefinition{
 		Name:   "stop_missing_bridge",
 		Task:   "db/append/table",
 		Bridge: "missing_stop",
@@ -250,7 +244,7 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	mqttWaitDef := &model.BridgeDefinition{Id: 2, Type: model.BRIDGE_MQTT, Name: "mqtt_wait"}
 	defStub.defs["mqtt_wait"] = mqttWaitDef.Id
 	require.NoError(t, bridge.RegisterByID(mqttWaitDef))
-	waitingMqtt, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
+	waitingMqtt, err := NewSubscriberEntry(&Service{}, &model.SubscriberDefinition{
 		Name:   "waiting_mqtt",
 		Task:   "db/append/table",
 		Bridge: "mqtt_wait",
@@ -265,7 +259,7 @@ func TestSubscriberEntryStartStopValidation(t *testing.T) {
 	natsSubDef := &model.BridgeDefinition{Id: 3, Type: model.BRIDGE_NATS, Name: "nats_sub"}
 	defStub.defs["nats_sub"] = natsSubDef.Id
 	require.NoError(t, bridge.RegisterByID(natsSubDef))
-	natsEntry, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
+	natsEntry, err := NewSubscriberEntry(&Service{}, &model.SubscriberDefinition{
 		Name:      "nats_entry",
 		Task:      "db/append/table",
 		Bridge:    "nats_sub",
@@ -305,7 +299,7 @@ func TestSubscriberEntryTasksHandleTqlLoadError(t *testing.T) {
 }
 
 func TestSubscriberEntryMqttOnConnectUnavailable(t *testing.T) {
-	entry, err := NewSubscriberEntry(&Service{}, &model.ScheduleDefinition{
+	entry, err := NewSubscriberEntry(&Service{}, &model.SubscriberDefinition{
 		Name:   "mqtt_connect",
 		Task:   "db/append/table",
 		Bridge: "mqtt",

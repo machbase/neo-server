@@ -113,51 +113,63 @@ func (e *BaseEntry) statusError() (State, error) {
 var registry = map[string]Entry{}
 var registryLock sync.RWMutex
 
-func Register(s *Service, def *model.ScheduleDefinition) error {
+// RegisterTimer registers (or re-registers) a timer entry in the runtime
+// registry, restarting it if it was previously running.
+func RegisterTimer(s *Service, def *model.TimerDefinition) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
-	var initRegister bool = false
-	var stateRunning bool = false
-	var ent Entry
-	var err error
-	switch def.Type {
-	case model.SCHEDULE_TIMER:
-		if ent, ok := registry[strings.ToUpper(def.Name)]; ok {
-			status := ent.Status()
-			if status == RUNNING {
-				if err := ent.Stop(); err != nil {
-					return err
-				}
-				stateRunning = true
+	name := strings.ToUpper(def.Name)
+	var initRegister, stateRunning bool
+	if old, ok := registry[name]; ok {
+		if old.Status() == RUNNING {
+			if err := old.Stop(); err != nil {
+				return err
 			}
-		} else {
-			initRegister = true
+			stateRunning = true
 		}
-		ent, err = NewTimerEntry(s, def)
-	case model.SCHEDULE_SUBSCRIBER:
-		if _, ok := registry[strings.ToUpper(def.Name)]; !ok {
-			initRegister = true
-		}
-		ent, err = NewSubscriberEntry(s, def)
-	default:
-		err = errors.New("undefined schedule type")
+	} else {
+		initRegister = true
 	}
+
+	ent, err := NewTimerEntry(s, def)
 	if err != nil {
 		return err
 	}
-	name := strings.ToUpper(ent.Name())
 	registry[name] = ent
 
-	if be, ok := ent.(*TimerEntry); ok {
-		prevState := ent.Status()
-		if _, err := s.tqlLoader.Load(def.Task); err != nil {
-			be.setState(FAILED)
-			return err
-		}
-		be.setState(prevState)
+	prevState := ent.Status()
+	if _, err := s.tqlLoader.Load(def.Task); err != nil {
+		ent.setState(FAILED)
+		return err
+	}
+	ent.setState(prevState)
+
+	return finishRegister(s, ent, initRegister, stateRunning)
+}
+
+// RegisterSubscriber registers (or re-registers) a subscriber entry in the
+// runtime registry.
+func RegisterSubscriber(s *Service, def *model.SubscriberDefinition) error {
+	registryLock.Lock()
+	defer registryLock.Unlock()
+
+	name := strings.ToUpper(def.Name)
+	var initRegister bool
+	if _, ok := registry[name]; !ok {
+		initRegister = true
 	}
 
+	ent, err := NewSubscriberEntry(s, def)
+	if err != nil {
+		return err
+	}
+	registry[name] = ent
+
+	return finishRegister(s, ent, initRegister, false)
+}
+
+func finishRegister(s *Service, ent Entry, initRegister bool, stateRunning bool) error {
 	if initRegister {
 		if !ent.AutoStart() {
 			return nil

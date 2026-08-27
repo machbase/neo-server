@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,40 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/robfig/cron/v3"
 )
+
+// ScheduleType distinguishes the two kinds of schedule entries. It exists
+// only at the scheduler package level: the persistence layer stores timer
+// and subscriber definitions in separate tables/structs
+// (model.TimerDefinition / model.SubscriberDefinition).
+type ScheduleType string
+
+const (
+	SCHEDULE_UNDEFINED  ScheduleType = ""
+	SCHEDULE_TIMER      ScheduleType = "timer"
+	SCHEDULE_SUBSCRIBER ScheduleType = "subscriber"
+)
+
+func (typ ScheduleType) String() string {
+	switch typ {
+	default:
+		return "UNDEFINED"
+	case SCHEDULE_TIMER:
+		return "TIMER"
+	case SCHEDULE_SUBSCRIBER:
+		return "SUBSCRIBER"
+	}
+}
+
+func ParseScheduleType(typ string) ScheduleType {
+	switch strings.ToUpper(typ) {
+	default:
+		return SCHEDULE_UNDEFINED
+	case "TIMER":
+		return SCHEDULE_TIMER
+	case "SUBSCRIBER":
+		return SCHEDULE_SUBSCRIBER
+	}
+}
 
 func NewService(opts ...Option) *Service {
 	ret := &Service{
@@ -43,12 +78,31 @@ type Service struct {
 
 type Option func(*Service)
 
+// TimerProvider is the persistence-layer dependency for timer definitions.
+// It is satisfied by *model.Provider.
+type TimerProvider interface {
+	LoadAllTimers(ctx context.Context) ([]*model.TimerDefinition, error)
+	LoadTimer(ctx context.Context, name string) (*model.TimerDefinition, error)
+	LoadTimerByID(ctx context.Context, id int64) (*model.TimerDefinition, error)
+	SaveTimer(ctx context.Context, def *model.TimerDefinition) error
+	RemoveTimer(ctx context.Context, name string) error
+	RemoveTimerByID(ctx context.Context, id int64) error
+}
+
+// SubscriberProvider is the persistence-layer dependency for subscriber
+// definitions. It is satisfied by *model.Provider.
+type SubscriberProvider interface {
+	LoadAllSubscribers(ctx context.Context) ([]*model.SubscriberDefinition, error)
+	LoadSubscriber(ctx context.Context, name string) (*model.SubscriberDefinition, error)
+	LoadSubscriberByID(ctx context.Context, id int64) (*model.SubscriberDefinition, error)
+	SaveSubscriber(ctx context.Context, def *model.SubscriberDefinition) error
+	RemoveSubscriber(ctx context.Context, name string) error
+	RemoveSubscriberByID(ctx context.Context, id int64) error
+}
+
 type ScheduleProvider interface {
-	LoadAllSchedules() ([]*model.ScheduleDefinition, error)
-	LoadSchedule(name string) (*model.ScheduleDefinition, error)
-	SaveSchedule(def *model.ScheduleDefinition) error
-	RemoveSchedule(name string) error
-	UpdateSchedule(def *model.ScheduleDefinition) error
+	TimerProvider
+	SubscriberProvider
 }
 
 func WithProvider(provider ScheduleProvider) Option {
@@ -70,15 +124,27 @@ func WithVerbose(flag bool) Option {
 }
 
 func (s *Service) Start() error {
-	lst, err := s.models.LoadAllSchedules()
+	ctx := context.Background()
+	timers, err := s.models.LoadAllTimers(ctx)
 	if err != nil {
 		return err
 	}
-	for _, define := range lst {
-		if err := Register(s, define); err == nil {
-			s.log.Infof("add schedule %s type=%s", define.Name, define.Type)
+	for _, define := range timers {
+		if err := RegisterTimer(s, define); err == nil {
+			s.log.Infof("add schedule %s type=TIMER", define.Name)
 		} else {
-			s.log.Errorf("fail to add schedule %s type=%s, %s", define.Name, define.Type, err.Error())
+			s.log.Errorf("fail to add schedule %s type=TIMER, %s", define.Name, err.Error())
+		}
+	}
+	subs, err := s.models.LoadAllSubscribers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, define := range subs {
+		if err := RegisterSubscriber(s, define); err == nil {
+			s.log.Infof("add schedule %s type=SUBSCRIBER", define.Name)
+		} else {
+			s.log.Errorf("fail to add schedule %s type=SUBSCRIBER, %s", define.Name, err.Error())
 		}
 	}
 	go s.crons.Run()

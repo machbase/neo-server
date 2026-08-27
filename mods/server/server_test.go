@@ -2404,7 +2404,7 @@ func TestServerCoverage_StartMachbaseCliErrorPaths(t *testing.T) {
 
 func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	svr := coverageRunningServer(t)
-	ctx := context.Background()
+	ctx := contextWithModelUser(context.Background(), "sys")
 
 	name := fmt.Sprintf("cov_sub_%d", time.Now().UnixNano())
 	err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
@@ -2418,9 +2418,8 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	legacyDef, err := svr.models.LoadSchedule(strings.ToLower(name))
+	legacyDef, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 	require.NoError(t, err)
-	require.Equal(t, model.SCHEDULE_SUBSCRIBER, legacyDef.Type)
 	require.Equal(t, "test/topic", legacyDef.Topic)
 	require.Equal(t, 1, legacyDef.QoS)
 	t.Cleanup(func() {
@@ -2455,7 +2454,7 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 
 func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 	svr := coverageRunningServer(t)
-	ctx := context.Background()
+	ctx := contextWithModelUser(context.Background(), "sys")
 
 	t.Run("nats_only", func(t *testing.T) {
 		name := fmt.Sprintf("cov_sub_v2_nats_%d", time.Now().UnixNano())
@@ -2476,9 +2475,8 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			_ = svr.deleteSchedule(context.Background(), name)
 		})
 
-		def, err := svr.models.LoadSchedule(strings.ToLower(name))
+		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 		require.NoError(t, err)
-		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
 		require.Equal(t, "subject.>", def.Topic)
 		require.Equal(t, "workers", def.QueueName)
 		require.Equal(t, "orders", def.StreamName)
@@ -2502,9 +2500,8 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			_ = svr.deleteSchedule(context.Background(), name)
 		})
 
-		def, err := svr.models.LoadSchedule(strings.ToLower(name))
+		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 		require.NoError(t, err)
-		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
 		require.Equal(t, true, def.AutoStart)
 		require.Equal(t, "factory/#", def.Topic)
 		require.Equal(t, 2, def.QoS)
@@ -2540,7 +2537,6 @@ func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
 
 	require.NoError(t, svr.startModelService())
 	require.NotNil(t, svr.models)
-	defer svr.models.Stop()
 
 	require.NoError(t, svr.startBackupService())
 	if svr.bakd != nil {
@@ -2554,9 +2550,7 @@ func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
 
 func newShellTestServer(t *testing.T) *Server {
 	t.Helper()
-	models := model.NewProvider(model.WithConfigDirPath(t.TempDir()))
-	require.NoError(t, models.Start())
-
+	models := model.NewProvider()
 	return &Server{
 		log:    logging.GetLog("svrshells-test"),
 		models: models,
