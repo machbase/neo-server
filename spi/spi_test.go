@@ -2,6 +2,7 @@ package spi_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	_ "embed"
@@ -23,6 +24,33 @@ import (
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
 )
+
+// spiTestBridgeDefProviderStub is a minimal BridgeDefProvider used by tests
+// that register an ad-hoc bridge directly (bypassing model.Provider).
+type spiTestBridgeDefProviderStub struct {
+	defs map[string]*model.BridgeDefinition
+}
+
+func (p *spiTestBridgeDefProviderStub) LoadBridge(_ context.Context, _ model.UserScope, name string) (*model.BridgeDefinition, error) {
+	def, ok := p.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("undefined bridge name '%s'", name)
+	}
+	return def, nil
+}
+
+func (p *spiTestBridgeDefProviderStub) LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *spiTestBridgeDefProviderStub) LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *spiTestBridgeDefProviderStub) SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error {
+	return nil
+}
+func (p *spiTestBridgeDefProviderStub) RemoveBridge(ctx context.Context, scope model.UserScope, name string) error {
+	return nil
+}
 
 var testServer *machsvr.TestServer
 
@@ -158,21 +186,24 @@ func TestBridge(t *testing.T) {
 		},
 	}
 
-	if err := bridge.Register(&model.BridgeDefinition{
+	def := &model.BridgeDefinition{
+		Id:   1,
 		Type: model.BRIDGE_SQLITE,
 		Name: "sqlite",
 		Path: "file::memory:?cache=shared",
-	}); err == bridge.ErrBridgeDisabled {
+	}
+	bridge.SetBridgeProvider(&spiTestBridgeDefProviderStub{defs: map[string]*model.BridgeDefinition{"sqlite": def}})
+	if err := bridge.RegisterByID(def); err == bridge.ErrBridgeDisabled {
 		t.Fatal(err)
 	} else {
-		defer bridge.Unregister("sqlite")
+		defer bridge.UnregisterByID(def.Id)
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx := t.Context()
 
-			db, err := bridge.GetSqlBridge(tc.Bridge)
+			db, err := bridge.GetSqlBridge(ctx, model.UserScope{User: "sys"}, tc.Bridge)
 			require.NoError(t, err)
 
 			conn, err := db.Connect(ctx)
@@ -1160,7 +1191,7 @@ func TestBitTable(t *testing.T) {
 	require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
 	require.Nil(t, rows, "select bit table BITAND(i4, 1) should fail")
 	// https://github.com/machbase/neo/issues/956
-	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type does not match.", err.Error())
 	if rows != nil {
 		rows.Close()
 	}
@@ -1169,7 +1200,7 @@ func TestBitTable(t *testing.T) {
 	require.Error(t, err, "select bit table BITAND(i1, i3) should fail")
 	require.Nil(t, rows, "select bit table BITAND(i1, i3) should fail")
 	// https://github.com/machbase/neo/issues/956
-	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type does not match.", err.Error())
 	if rows != nil {
 		rows.Close()
 	}

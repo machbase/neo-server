@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -16,22 +17,28 @@ func TestSqlite3(t *testing.T) {
 	BRIDGE_NAME := "sqlite"
 
 	define := model.BridgeDefinition{
+		Id:   1,
 		Type: model.BRIDGE_SQLITE,
 		Name: BRIDGE_NAME,
 		Path: "file:../../tmp/connector_sqlite3.db?cache=shared",
 	}
 
-	Register(&define)
-	defer Unregister(BRIDGE_NAME)
+	RegisterByID(&define)
+	defer UnregisterByID(define.Id)
 
-	br, err := GetBridge(BRIDGE_NAME)
+	prev := defProvider
+	SetBridgeProvider(&testDefProviderStub{defs: map[string]int64{BRIDGE_NAME: define.Id}})
+	t.Cleanup(func() { SetBridgeProvider(prev) })
+
+	ctx := t.Context()
+	scope := model.UserScope{User: "sys"}
+
+	br, err := GetBridge(ctx, scope, BRIDGE_NAME)
 	require.Nil(t, err)
 	require.NotNil(t, br)
 	_, ok := br.(SqlBridge)
 	require.True(t, ok)
 	require.Equal(t, BRIDGE_NAME, br.Name())
-
-	ctx := t.Context()
 
 	sqlBr := br.(SqlBridge)
 	conn, err := sqlBr.Connect(ctx)
@@ -115,34 +122,90 @@ type statsBridgeStub struct {
 
 func (s *statsBridgeStub) StatsSnapshot() BridgeTrafficStats { return s.s }
 
+// testDefProviderStub is a minimal BridgeDefProvider that maps a bridge name
+// directly to a registry ID, without any owner/scope enforcement. It is used
+// by tests that only care about the runtime registry behavior.
+type testDefProviderStub struct {
+	mu   sync.Mutex
+	defs map[string]int64
+}
+
+func (p *testDefProviderStub) LoadBridge(ctx context.Context, scope model.UserScope, name string) (*model.BridgeDefinition, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	id, ok := p.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("undefined bridge name '%s'", name)
+	}
+	return &model.BridgeDefinition{Id: id, Name: name}, nil
+}
+
+func (p *testDefProviderStub) LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *testDefProviderStub) LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error) {
+	return []*model.BridgeDefinition{}, nil
+}
+func (p *testDefProviderStub) SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error {
+	return nil
+}
+func (p *testDefProviderStub) RemoveBridge(ctx context.Context, scope model.UserScope, name string) error {
+	return nil
+}
+
+var testBridgeIDSeq int64
+
+func nextTestBridgeID() int64 {
+	testBridgeIDSeq++
+	return testBridgeIDSeq
+}
+
 func setSingleBridgeForTest(t *testing.T, name string, br Bridge) {
 	t.Helper()
+	id := nextTestBridgeID()
+
 	registryLock.Lock()
-	prev := registry
-	registry = map[string]Bridge{name: br}
+	prevRegistry := registry
+	registry = map[int64]Bridge{id: br}
 	registryLock.Unlock()
+
+	prevProvider := defProvider
+	SetBridgeProvider(&testDefProviderStub{defs: map[string]int64{name: id}})
+
 	t.Cleanup(func() {
 		registryLock.Lock()
-		registry = prev
+		registry = prevRegistry
 		registryLock.Unlock()
+		SetBridgeProvider(prevProvider)
+	})
+}
+
+func clearRegistryForTest(t *testing.T) {
+	t.Helper()
+	registryLock.Lock()
+	prevRegistry := registry
+	registry = map[int64]Bridge{}
+	registryLock.Unlock()
+
+	prevProvider := defProvider
+	SetBridgeProvider(&testDefProviderStub{defs: map[string]int64{}})
+
+	t.Cleanup(func() {
+		registryLock.Lock()
+		registry = prevRegistry
+		registryLock.Unlock()
+		SetBridgeProvider(prevProvider)
 	})
 }
 
 func TestServiceTestBridgeBranches(t *testing.T) {
 	svc := &Service{}
 	ctx := context.Background()
+	scope := model.UserScope{User: "sys"}
 
-	registryLock.Lock()
-	prev := registry
-	registry = map[string]Bridge{}
-	registryLock.Unlock()
-	t.Cleanup(func() {
-		registryLock.Lock()
-		registry = prev
-		registryLock.Unlock()
-	})
+	clearRegistryForTest(t)
 
-	missingRsp, err := svc.TestBridge(ctx, &TestBridgeRequest{Name: "missing"})
+	missingRsp, err := svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "missing"})
 	require.NoError(t, err)
 	require.False(t, missingRsp.Success)
 	require.Equal(t, "undefined bridge name 'missing'", missingRsp.Reason)
@@ -158,14 +221,14 @@ func TestServiceTestBridgeBranches(t *testing.T) {
 
 	sqlGood := &sqlBridgeStub{bridgeBaseStub: bridgeBaseStub{name: "sql_good"}, conn: goodConn}
 	setSingleBridgeForTest(t, "sql_good", sqlGood)
-	rsp, err := svc.TestBridge(ctx, &TestBridgeRequest{Name: "sql_good"})
+	rsp, err := svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "sql_good"})
 	require.NoError(t, err)
 	require.True(t, rsp.Success)
 	require.Equal(t, "success", rsp.Reason)
 
 	sqlFailConnect := &sqlBridgeStub{bridgeBaseStub: bridgeBaseStub{name: "sql_fail_connect"}, connErr: fmt.Errorf("connect failed")}
 	setSingleBridgeForTest(t, "sql_fail_connect", sqlFailConnect)
-	rsp, err = svc.TestBridge(ctx, &TestBridgeRequest{Name: "sql_fail_connect"})
+	rsp, err = svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "sql_fail_connect"})
 	require.NoError(t, err)
 	require.False(t, rsp.Success)
 	require.Equal(t, "connect failed", rsp.Reason)
@@ -175,21 +238,21 @@ func TestServiceTestBridgeBranches(t *testing.T) {
 	require.NoError(t, badConn.Close())
 	sqlPingFail := &sqlBridgeStub{bridgeBaseStub: bridgeBaseStub{name: "sql_ping_fail"}, conn: badConn}
 	setSingleBridgeForTest(t, "sql_ping_fail", sqlPingFail)
-	rsp, err = svc.TestBridge(ctx, &TestBridgeRequest{Name: "sql_ping_fail"})
+	rsp, err = svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "sql_ping_fail"})
 	require.NoError(t, err)
 	require.False(t, rsp.Success)
 	require.NotEmpty(t, rsp.Reason)
 
 	ct := &connectionTestBridgeStub{bridgeBaseStub: bridgeBaseStub{name: "ct"}, ok: true, reason: "ok"}
 	setSingleBridgeForTest(t, "ct", ct)
-	rsp, err = svc.TestBridge(ctx, &TestBridgeRequest{Name: "ct"})
+	rsp, err = svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "ct"})
 	require.NoError(t, err)
 	require.True(t, rsp.Success)
 	require.Equal(t, "ok", rsp.Reason)
 
 	plain := &bridgeBaseStub{name: "plain"}
 	setSingleBridgeForTest(t, "plain", plain)
-	rsp, err = svc.TestBridge(ctx, &TestBridgeRequest{Name: "plain"})
+	rsp, err = svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "plain"})
 	require.NoError(t, err)
 	require.False(t, rsp.Success)
 	require.Equal(t, "bridge 'plain' does not support testing", rsp.Reason)
@@ -198,13 +261,16 @@ func TestServiceTestBridgeBranches(t *testing.T) {
 func TestServiceStatsBridgeBranches(t *testing.T) {
 	svc := &Service{}
 	ctx := context.Background()
+	scope := model.UserScope{User: "sys"}
+
+	clearRegistryForTest(t)
 
 	st := &statsBridgeStub{
 		bridgeBaseStub: bridgeBaseStub{name: "stats"},
 		s:              BridgeTrafficStats{InMsgs: 1, InBytes: 2, OutMsgs: 3, OutBytes: 4, Inserted: 5, Appended: 6},
 	}
 	setSingleBridgeForTest(t, "stats", st)
-	rsp, err := svc.StatsBridge(ctx, &StatsBridgeRequest{Name: "stats"})
+	rsp, err := svc.StatsBridge(ctx, scope, &StatsBridgeRequest{Name: "stats"})
 	require.NoError(t, err)
 	require.True(t, rsp.Success)
 	require.Equal(t, uint64(1), rsp.InMsgs)
@@ -216,14 +282,17 @@ func TestServiceStatsBridgeBranches(t *testing.T) {
 
 	plain := &bridgeBaseStub{name: "plain"}
 	setSingleBridgeForTest(t, "plain", plain)
-	rsp, err = svc.StatsBridge(ctx, &StatsBridgeRequest{Name: "plain"})
+	rsp, err = svc.StatsBridge(ctx, scope, &StatsBridgeRequest{Name: "plain"})
 	require.NoError(t, err)
 	require.False(t, rsp.Success)
 	require.Equal(t, "bridge 'plain' does not support stats", rsp.Reason)
 }
 
+// bridgeProviderStub is a fake BridgeProvider (persistence layer) used to
+// drive the Service methods end-to-end without a real database.
 type bridgeProviderStub struct {
 	defs        map[string]*model.BridgeDefinition
+	nextId      int64
 	loadAllErr  error
 	loadErr     error
 	saveErr     error
@@ -236,12 +305,20 @@ func newBridgeProviderStub(defs ...*model.BridgeDefinition) *bridgeProviderStub 
 	ret := &bridgeProviderStub{defs: map[string]*model.BridgeDefinition{}}
 	for _, def := range defs {
 		cloned := *def
+		if cloned.Id == 0 {
+			ret.nextId++
+			cloned.Id = ret.nextId
+		}
 		ret.defs[def.Name] = &cloned
 	}
 	return ret
 }
 
-func (p *bridgeProviderStub) LoadAllBridges() ([]*model.BridgeDefinition, error) {
+func (p *bridgeProviderStub) LoadAllBridgesForBootstrap(ctx context.Context) ([]*model.BridgeDefinition, error) {
+	return p.LoadAllBridges(ctx, model.UserScope{})
+}
+
+func (p *bridgeProviderStub) LoadAllBridges(ctx context.Context, scope model.UserScope) ([]*model.BridgeDefinition, error) {
 	if p.loadAllErr != nil {
 		return nil, p.loadAllErr
 	}
@@ -253,7 +330,7 @@ func (p *bridgeProviderStub) LoadAllBridges() ([]*model.BridgeDefinition, error)
 	return ret, nil
 }
 
-func (p *bridgeProviderStub) LoadBridge(name string) (*model.BridgeDefinition, error) {
+func (p *bridgeProviderStub) LoadBridge(ctx context.Context, scope model.UserScope, name string) (*model.BridgeDefinition, error) {
 	if p.loadErr != nil {
 		return nil, p.loadErr
 	}
@@ -265,9 +342,13 @@ func (p *bridgeProviderStub) LoadBridge(name string) (*model.BridgeDefinition, e
 	return &cloned, nil
 }
 
-func (p *bridgeProviderStub) SaveBridge(def *model.BridgeDefinition) error {
+func (p *bridgeProviderStub) SaveBridge(ctx context.Context, scope model.UserScope, def *model.BridgeDefinition) error {
 	if p.saveErr != nil {
 		return p.saveErr
+	}
+	if def.Id == 0 {
+		p.nextId++
+		def.Id = p.nextId
 	}
 	cloned := *def
 	p.lastSaved = &cloned
@@ -275,7 +356,7 @@ func (p *bridgeProviderStub) SaveBridge(def *model.BridgeDefinition) error {
 	return nil
 }
 
-func (p *bridgeProviderStub) RemoveBridge(name string) error {
+func (p *bridgeProviderStub) RemoveBridge(ctx context.Context, scope model.UserScope, name string) error {
 	if p.removeErr != nil {
 		return p.removeErr
 	}
@@ -289,6 +370,13 @@ func sqliteBridgePath(t *testing.T) string {
 	return "file:" + filepath.Join(t.TempDir(), "bridge.db") + "?cache=shared"
 }
 
+func withDefProvider(t *testing.T, p BridgeProvider) {
+	t.Helper()
+	prev := defProvider
+	SetBridgeProvider(p)
+	t.Cleanup(func() { SetBridgeProvider(prev) })
+}
+
 func TestServiceStartStop(t *testing.T) {
 	UnregisterAll()
 	sqlitePath := sqliteBridgePath(t) // register TempDir cleanup before UnregisterAll (LIFO fix)
@@ -299,16 +387,18 @@ func TestServiceStartStop(t *testing.T) {
 		Type: model.BRIDGE_SQLITE,
 		Path: sqlitePath,
 	})
-	svc := NewService(WithProvider(provider))
+	withDefProvider(t, provider)
+	svc := NewService()
+	scope := model.UserScope{User: "sys"}
 
 	require.NoError(t, svc.Start())
-	registered, err := GetBridge("bridge_start_stop")
+	registered, err := GetBridge(context.Background(), scope, "bridge_start_stop")
 	require.NoError(t, err)
 	require.Equal(t, "bridge_start_stop", registered.Name())
 
 	svc.Stop()
-	_, err = GetBridge("bridge_start_stop")
-	require.EqualError(t, err, "undefined bridge name 'bridge_start_stop'")
+	_, err = GetBridge(context.Background(), scope, "bridge_start_stop")
+	require.EqualError(t, err, "undefined bridge id '1'")
 }
 
 func TestServiceSqliteLifecycle(t *testing.T) {
@@ -317,11 +407,13 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	t.Cleanup(UnregisterAll)
 
 	provider := newBridgeProviderStub()
-	svc := NewService(WithProvider(provider))
+	withDefProvider(t, provider)
+	svc := NewService()
 	ctx := context.Background()
+	scope := model.UserScope{User: "sys"}
 	name := "bridge_service_sqlite"
 
-	addRsp, err := svc.AddBridge(ctx, &AddBridgeRequest{
+	addRsp, err := svc.AddBridge(ctx, scope, &AddBridgeRequest{
 		Name: name,
 		Type: "sqlite",
 		Path: sqlitePath,
@@ -333,7 +425,7 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	require.NotNil(t, provider.lastSaved)
 	require.Equal(t, name, provider.lastSaved.Name)
 
-	listRsp, err := svc.ListBridge(ctx)
+	listRsp, err := svc.ListBridge(ctx, scope)
 	require.NoError(t, err)
 	require.True(t, listRsp.Success)
 	require.Equal(t, "success", listRsp.Reason)
@@ -341,17 +433,17 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	require.Equal(t, name, listRsp.Bridges[0].Name)
 	require.Equal(t, "sqlite", listRsp.Bridges[0].Type)
 
-	getRsp, err := svc.GetBridge(ctx, &GetBridgeRequest{Name: name})
+	getRsp, err := svc.GetBridge(ctx, scope, &GetBridgeRequest{Name: name})
 	require.NoError(t, err)
 	require.True(t, getRsp.Success)
 	require.Equal(t, name, getRsp.Bridge.Name)
 
-	testRsp, err := svc.TestBridge(ctx, &TestBridgeRequest{Name: name})
+	testRsp, err := svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: name})
 	require.NoError(t, err)
 	require.True(t, testRsp.Success)
 	require.Equal(t, "success", testRsp.Reason)
 
-	createRsp, err := svc.Exec(ctx, &ExecRequest{
+	createRsp, err := svc.Exec(ctx, scope, &ExecRequest{
 		Name: name,
 		Command: ExecCommand{
 			SqlExec: &SqlRequest{SqlText: `CREATE TABLE example(id INTEGER PRIMARY KEY, name TEXT)`},
@@ -362,7 +454,7 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	require.EqualValues(t, 0, createRsp.Result.SqlExecResult.RowsAffected)
 	require.EqualValues(t, 0, createRsp.Result.SqlExecResult.LastInsertedId)
 
-	insertRsp, err := svc.Exec(ctx, &ExecRequest{
+	insertRsp, err := svc.Exec(ctx, scope, &ExecRequest{
 		Name: name,
 		Command: ExecCommand{
 			SqlExec: &SqlRequest{SqlText: `INSERT INTO example(id, name) VALUES(?, ?)`, Params: []any{1, "alpha"}},
@@ -373,7 +465,7 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	require.EqualValues(t, 1, insertRsp.Result.SqlExecResult.RowsAffected)
 	require.EqualValues(t, 1, insertRsp.Result.SqlExecResult.LastInsertedId)
 
-	queryRsp, err := svc.Exec(ctx, &ExecRequest{
+	queryRsp, err := svc.Exec(ctx, scope, &ExecRequest{
 		Name: name,
 		Command: ExecCommand{
 			SqlQuery: &SqlRequest{SqlText: `SELECT id, name FROM example ORDER BY id`},
@@ -407,36 +499,38 @@ func TestServiceSqliteLifecycle(t *testing.T) {
 	require.False(t, missingHandleRsp.Success)
 	require.Equal(t, fmt.Sprintf("SqlBridge: handle '%s' not found", queryRsp.Result.SqlQueryResult.Handle), missingHandleRsp.Reason)
 
-	statsRsp, err := svc.StatsBridge(ctx, &StatsBridgeRequest{Name: name})
+	statsRsp, err := svc.StatsBridge(ctx, scope, &StatsBridgeRequest{Name: name})
 	require.NoError(t, err)
 	require.False(t, statsRsp.Success)
 	require.Equal(t, fmt.Sprintf("bridge '%s' does not support stats", name), statsRsp.Reason)
 
-	delRsp, err := svc.DelBridge(ctx, &DelBridgeRequest{Name: name})
+	delRsp, err := svc.DelBridge(ctx, scope, &DelBridgeRequest{Name: name})
 	require.NoError(t, err)
 	require.True(t, delRsp.Success)
 	require.Equal(t, name, provider.lastRemoved)
 
-	_, err = GetBridge(name)
-	require.EqualError(t, err, fmt.Sprintf("undefined bridge name '%s'", name))
+	_, err = GetBridge(ctx, scope, name)
+	require.Equal(t, fmt.Sprintf("bridge '%s' not found", name), err.Error())
 }
 
 func TestServiceErrorPaths(t *testing.T) {
 	UnregisterAll()
 	t.Cleanup(UnregisterAll)
+	scope := model.UserScope{User: "sys"}
 
 	t.Run("list and get failures", func(t *testing.T) {
 		provider := newBridgeProviderStub()
 		provider.loadAllErr = fmt.Errorf("load all failed")
 		provider.loadErr = fmt.Errorf("load failed")
-		svc := NewService(WithProvider(provider))
+		withDefProvider(t, provider)
+		svc := NewService()
 
-		listRsp, err := svc.ListBridge(context.Background())
+		listRsp, err := svc.ListBridge(context.Background(), scope)
 		require.NoError(t, err)
 		require.False(t, listRsp.Success)
 		require.Equal(t, "load all failed", listRsp.Reason)
 
-		getRsp, err := svc.GetBridge(context.Background(), &GetBridgeRequest{Name: "missing"})
+		getRsp, err := svc.GetBridge(context.Background(), scope, &GetBridgeRequest{Name: "missing"})
 		require.NoError(t, err)
 		require.False(t, getRsp.Success)
 		require.Equal(t, "load failed", getRsp.Reason)
@@ -444,41 +538,42 @@ func TestServiceErrorPaths(t *testing.T) {
 
 	t.Run("add validations and persistence failure", func(t *testing.T) {
 		provider := newBridgeProviderStub()
-		svc := NewService(WithProvider(provider))
+		withDefProvider(t, provider)
+		svc := NewService()
 		ctx := context.Background()
 
-		tooLongRsp, err := svc.AddBridge(ctx, &AddBridgeRequest{Name: "01234567890123456789012345678901234567890", Type: "sqlite", Path: sqliteBridgePath(t)})
+		tooLongRsp, err := svc.AddBridge(ctx, scope, &AddBridgeRequest{Name: "01234567890123456789012345678901234567890", Type: "sqlite", Path: sqliteBridgePath(t)})
 		require.NoError(t, err)
 		require.False(t, tooLongRsp.Success)
 		require.Equal(t, "name is too long, should be shorter than 40 characters", tooLongRsp.Reason)
 
-		invalidTypeRsp, err := svc.AddBridge(ctx, &AddBridgeRequest{Name: "bad_type", Type: "invalid", Path: sqliteBridgePath(t)})
+		invalidTypeRsp, err := svc.AddBridge(ctx, scope, &AddBridgeRequest{Name: "bad_type", Type: "invalid", Path: sqliteBridgePath(t)})
 		require.NoError(t, err)
 		require.False(t, invalidTypeRsp.Success)
 		require.Equal(t, "unsupported bridge type: invalid", invalidTypeRsp.Reason)
 
-		emptyPathRsp, err := svc.AddBridge(ctx, &AddBridgeRequest{Name: "empty_path", Type: "sqlite"})
+		emptyPathRsp, err := svc.AddBridge(ctx, scope, &AddBridgeRequest{Name: "empty_path", Type: "sqlite"})
 		require.NoError(t, err)
 		require.False(t, emptyPathRsp.Success)
 		require.Equal(t, "path is empty, it should be specified", emptyPathRsp.Reason)
 
 		provider.saveErr = fmt.Errorf("save failed")
-		saveFailRsp, err := svc.AddBridge(ctx, &AddBridgeRequest{Name: "save_fail", Type: "sqlite", Path: sqliteBridgePath(t)})
+		saveFailRsp, err := svc.AddBridge(ctx, scope, &AddBridgeRequest{Name: "save_fail", Type: "sqlite", Path: sqliteBridgePath(t)})
 		require.NoError(t, err)
 		require.False(t, saveFailRsp.Success)
 		require.Equal(t, "save failed", saveFailRsp.Reason)
-
-		Unregister("save_fail")
 	})
 
 	t.Run("exec fetch close and test missing bridge", func(t *testing.T) {
-		svc := NewService(WithProvider(newBridgeProviderStub()))
+		provider := newBridgeProviderStub()
+		withDefProvider(t, provider)
+		svc := NewService()
 		ctx := context.Background()
 
-		execRsp, err := svc.Exec(ctx, &ExecRequest{Name: "missing"})
+		execRsp, err := svc.Exec(ctx, scope, &ExecRequest{Name: "missing"})
 		require.NoError(t, err)
 		require.False(t, execRsp.Success)
-		require.Equal(t, "undefined bridge name 'missing'", execRsp.Reason)
+		require.Equal(t, "bridge 'missing' not found", execRsp.Reason)
 
 		fetchRsp, err := svc.SqlQueryResultFetch(ctx, &SqlQueryResult{Handle: "missing"})
 		require.NoError(t, err)
@@ -490,18 +585,19 @@ func TestServiceErrorPaths(t *testing.T) {
 		require.False(t, closeRsp.Success)
 		require.Equal(t, "handle 'missing' not found", closeRsp.Reason)
 
-		testRsp, err := svc.TestBridge(ctx, &TestBridgeRequest{Name: "missing"})
+		testRsp, err := svc.TestBridge(ctx, scope, &TestBridgeRequest{Name: "missing"})
 		require.NoError(t, err)
 		require.False(t, testRsp.Success)
-		require.Equal(t, "undefined bridge name 'missing'", testRsp.Reason)
+		require.Equal(t, "bridge 'missing' not found", testRsp.Reason)
 	})
 
 	t.Run("remove failure", func(t *testing.T) {
-		provider := newBridgeProviderStub()
+		provider := newBridgeProviderStub(&model.BridgeDefinition{Id: 1, Name: "missing", Type: model.BRIDGE_SQLITE, Path: sqliteBridgePath(t)})
 		provider.removeErr = fmt.Errorf("remove failed")
-		svc := NewService(WithProvider(provider))
+		withDefProvider(t, provider)
+		svc := NewService()
 
-		delRsp, err := svc.DelBridge(context.Background(), &DelBridgeRequest{Name: "missing"})
+		delRsp, err := svc.DelBridge(context.Background(), scope, &DelBridgeRequest{Name: "missing"})
 		require.NoError(t, err)
 		require.False(t, delRsp.Success)
 		require.Equal(t, "remove failed", delRsp.Reason)

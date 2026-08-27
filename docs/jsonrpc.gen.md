@@ -511,7 +511,7 @@ getServicePorts returns service listener addresses.
 
 *Return*
 
-- `array<object<model.ServicePort>>|error - service ports sorted by service and address`
+- `array<object<spi.ServicePort>>|error - service ports sorted by service and address`
   - `[].Service` *string*
   - `[].Address` *string*
 
@@ -1103,9 +1103,13 @@ listBridges returns all bridge configurations.
 *Return*
 
 - `array<object<bridge.BridgeInfo>>|error - bridge list`
+  - `[].id` *int64*
   - `[].name` *string*
   - `[].type` *string*
   - `[].path` *string*
+  - `[].owner` *string*
+  - `[].isPublic` *bool*
+  - `[].allowedUser` *string, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1153,9 +1157,13 @@ getBridge returns bridge configuration by name.
 *Return*
 
 - `object<bridge.BridgeInfo>|error - bridge information`
+  - `id` *int64*
   - `name` *string*
   - `type` *string*
   - `path` *string*
+  - `owner` *string*
+  - `isPublic` *bool*
+  - `allowedUser` *string, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -1972,6 +1980,7 @@ listSchedules returns all scheduler entries.
 *Return*
 
 - `array<object<scheduler.Schedule>>|error - schedule list`
+  - `[].id` *int64, optional*
   - `[].name` *string, optional*
   - `[].type` *string, optional*
   - `[].autoStart` *bool, optional*
@@ -2010,6 +2019,65 @@ listSchedules returns all scheduler entries.
         "jsonrpc": "2.0",
         "id": 20,
         "result": []
+    }
+}
+```
+
+</details>
+
+#### schedule.get
+
+getSchedule returns a schedule (timer or subscriber) by name.
+
+`schedule.get(name)`
+
+*Params*
+- `name` *string* - schedule name
+
+*Return*
+
+- `object<scheduler.Schedule>|error - schedule`
+  - `id` *int64, optional*
+  - `name` *string, optional*
+  - `type` *string, optional*
+  - `autoStart` *bool, optional*
+  - `state` *string, optional*
+  - `task` *string, optional*
+  - `schedule` *string, optional*
+  - `bridge` *string, optional*
+  - `topic` *string, optional*
+  - `QoS` *int32, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "schedule.get",
+        "params": [
+            "string"
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
     }
 }
 ```
@@ -2132,6 +2200,67 @@ return: null on success
                     "streamName": "string",
                     "subject": "string"
                 }
+            }
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+#### schedule.update
+
+updateTimerSchedule updates an existing timer schedule.
+
+
+return: null on success
+
+`schedule.update(req)`
+
+*Params*
+- `req` *object* - timer schedule update request
+  - `req.name` *string*
+  - `req.autoStart` *bool, optional*
+  - `req.spec` *string*
+  - `req.command` *string*
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "schedule.update",
+        "params": [
+            {
+                "autoStart": false,
+                "command": "string",
+                "name": "string",
+                "spec": "string"
             }
         ]
     }
@@ -2289,6 +2418,751 @@ return: null on success
         "method": "schedule.stop",
         "params": [
             "string"
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+
+### Timer
+
+#### timer.list
+
+listTimers returns all timer schedules.
+
+`timer.list()`
+
+*Params*
+
+- none
+
+*Return*
+
+- `array<object<scheduler.Schedule>>|error - timer schedule list`
+  - `[].id` *int64, optional*
+  - `[].name` *string, optional*
+  - `[].type` *string, optional*
+  - `[].autoStart` *bool, optional*
+  - `[].state` *string, optional*
+  - `[].task` *string, optional*
+  - `[].schedule` *string, optional*
+  - `[].bridge` *string, optional*
+  - `[].topic` *string, optional*
+  - `[].QoS` *int32, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.list",
+        "params": []
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": []
+    }
+}
+```
+
+</details>
+
+#### timer.get
+
+getTimer returns a timer schedule by ID.
+
+`timer.get(id)`
+
+*Params*
+- `id` *int64* - timer ID
+
+*Return*
+
+- `object<scheduler.Schedule>|error - timer schedule`
+  - `id` *int64, optional*
+  - `name` *string, optional*
+  - `type` *string, optional*
+  - `autoStart` *bool, optional*
+  - `state` *string, optional*
+  - `task` *string, optional*
+  - `schedule` *string, optional*
+  - `bridge` *string, optional*
+  - `topic` *string, optional*
+  - `QoS` *int32, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.get",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
+#### timer.add
+
+addTimer creates a timer schedule and returns its ID.
+
+`timer.add(req)`
+
+*Params*
+- `req` *object* - timer schedule request
+  - `req.name` *string*
+  - `req.spec` *string*
+  - `req.command` *string*
+  - `req.autoStart` *bool, optional*
+
+*Return*
+
+- `int64|error - created timer ID`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.add",
+        "params": [
+            {
+                "autoStart": false,
+                "command": "string",
+                "name": "string",
+                "spec": "string"
+            }
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": 0
+    }
+}
+```
+
+</details>
+
+#### timer.update
+
+updateTimer updates an existing timer schedule by ID.
+
+
+return: null on success
+
+`timer.update(req)`
+
+*Params*
+- `req` *object* - timer schedule update request
+  - `req.id` *int64*
+  - `req.autoStart` *bool, optional*
+  - `req.spec` *string*
+  - `req.command` *string*
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.update",
+        "params": [
+            {
+                "autoStart": false,
+                "command": "string",
+                "id": 0,
+                "spec": "string"
+            }
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+#### timer.delete
+
+deleteTimer removes a timer schedule by ID.
+
+
+return: null on success
+
+`timer.delete(id)`
+
+*Params*
+- `id` *int64* - timer ID
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.delete",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+#### timer.start
+
+startTimer starts a timer schedule by ID.
+
+
+return: null on success
+
+`timer.start(id)`
+
+*Params*
+- `id` *int64* - timer ID
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.start",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+#### timer.stop
+
+stopTimer stops a timer schedule by ID.
+
+
+return: null on success
+
+`timer.stop(id)`
+
+*Params*
+- `id` *int64* - timer ID
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "timer.stop",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+
+### Subscriber
+
+#### subscriber.list
+
+listSubscribers returns all subscriber schedules.
+
+`subscriber.list()`
+
+*Params*
+
+- none
+
+*Return*
+
+- `array<object<scheduler.Schedule>>|error - subscriber schedule list`
+  - `[].id` *int64, optional*
+  - `[].name` *string, optional*
+  - `[].type` *string, optional*
+  - `[].autoStart` *bool, optional*
+  - `[].state` *string, optional*
+  - `[].task` *string, optional*
+  - `[].schedule` *string, optional*
+  - `[].bridge` *string, optional*
+  - `[].topic` *string, optional*
+  - `[].QoS` *int32, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.list",
+        "params": []
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": []
+    }
+}
+```
+
+</details>
+
+#### subscriber.get
+
+getSubscriber returns a subscriber schedule by ID.
+
+`subscriber.get(id)`
+
+*Params*
+- `id` *int64* - subscriber ID
+
+*Return*
+
+- `object<scheduler.Schedule>|error - subscriber schedule`
+  - `id` *int64, optional*
+  - `name` *string, optional*
+  - `type` *string, optional*
+  - `autoStart` *bool, optional*
+  - `state` *string, optional*
+  - `task` *string, optional*
+  - `schedule` *string, optional*
+  - `bridge` *string, optional*
+  - `topic` *string, optional*
+  - `QoS` *int32, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.get",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
+#### subscriber.add
+
+addSubscriber creates a subscriber schedule and returns its ID.
+
+`subscriber.add(req)`
+
+*Params*
+- `req` *object* - subscriber schedule request with protocol-specific options
+  - `req.name` *string*
+  - `req.bridge` *string*
+  - `req.command` *string*
+  - `req.autoStart` *bool, optional*
+  - `req.mqtt` *object, optional*
+  - `req.mqtt.topic` *string*
+  - `req.mqtt.qos` *int, optional*
+  - `req.nats` *object, optional*
+  - `req.nats.subject` *string*
+  - `req.nats.queueName` *string, optional*
+  - `req.nats.streamName` *string, optional*
+
+*Return*
+
+- `int64|error - created subscriber ID`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.add",
+        "params": [
+            {
+                "autoStart": false,
+                "bridge": "string",
+                "command": "string",
+                "mqtt": {
+                    "qos": 0,
+                    "topic": "string"
+                },
+                "name": "string",
+                "nats": {
+                    "queueName": "string",
+                    "streamName": "string",
+                    "subject": "string"
+                }
+            }
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": 0
+    }
+}
+```
+
+</details>
+
+#### subscriber.delete
+
+deleteSubscriber removes a subscriber schedule by ID.
+
+
+return: null on success
+
+`subscriber.delete(id)`
+
+*Params*
+- `id` *int64* - subscriber ID
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.delete",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+#### subscriber.start
+
+startSubscriber starts a subscriber schedule by ID.
+
+
+return: null on success
+
+`subscriber.start(id)`
+
+*Params*
+- `id` *int64* - subscriber ID
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.start",
+        "params": [
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+#### subscriber.stop
+
+stopSubscriber stops a subscriber schedule by ID.
+
+
+return: null on success
+
+`subscriber.stop(id)`
+
+*Params*
+- `id` *int64* - subscriber ID
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.stop",
+        "params": [
+            0
         ]
     }
 }

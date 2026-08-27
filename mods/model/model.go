@@ -1,28 +1,26 @@
 package model
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
+	"sync"
 
-	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/mods/logging"
-	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/spi"
 )
 
-type ServicePort struct {
-	Service string
-	Address string
+type UserScope struct {
+	User string
 }
 
-func NewService(opts ...Option) Service {
-	ret := &svr{
-		log: logging.GetLog("scheduler"),
+type connectFunc func(context.Context, string) (*sql.Conn, error)
+
+func NewProvider(opts ...Option) *Provider {
+	ret := &Provider{
+		log:     logging.GetLog("model"),
+		connect: spi.Connect,
 	}
 	for _, o := range opts {
 		o(ret)
@@ -30,434 +28,86 @@ func NewService(opts ...Option) Service {
 	return ret
 }
 
-type Service interface {
-	ShellProvider() ShellProvider
-	BridgeProvider() BridgeProvider
-	ScheduleProvider() ScheduleProvider
-	Start() error
-	Stop()
-}
+type Option func(*Provider)
 
-type Option func(*svr)
+type Provider struct {
+	log logging.Log
 
-var _ Service = &svr{}
+	connect connectFunc
 
-type svr struct {
-	log       logging.Log
-	configDir string
+	shellTableMu    sync.Mutex
+	shellTableReady bool
 
-	schedDir  string
-	bridgeDir string
-	shellDir  string
+	bridgeTableMu    sync.Mutex
+	bridgeTableReady bool
+
+	timerTableMu    sync.Mutex
+	timerTableReady bool
+
+	subscriberTableMu    sync.Mutex
+	subscriberTableReady bool
 
 	experimentMode func() bool
 }
 
-func WithConfigDirPath(path string) Option {
-	return func(s *svr) {
-		s.configDir = path
-	}
-}
-
 func WithExperimentModeProvider(provider func() bool) Option {
-	return func(s *svr) {
+	return func(s *Provider) {
 		s.experimentMode = provider
 	}
 }
 
-func (s *svr) Start() error {
-	s.bridgeDir = filepath.Join(s.configDir, "bridges")
-	if err := s.mkDirIfNotExists(s.bridgeDir, 0755); err != nil {
-		return fmt.Errorf("bridge defs, %s", err.Error())
-	}
-	s.schedDir = filepath.Join(s.configDir, "schedules")
-	if err := s.mkDirIfNotExists(s.schedDir, 0755); err != nil {
-		return fmt.Errorf("schedule defs, %s", err.Error())
-	}
-	s.shellDir = filepath.Join(s.configDir, "shell")
-	if err := s.mkDirIfNotExists(s.shellDir, 0700); err != nil {
-		return fmt.Errorf("shell defs, %s", err.Error())
-	}
-	return nil
+// scheduleRowScanner is satisfied by both *sql.Row and *sql.Rows.
+type scheduleRowScanner interface {
+	Scan(dest ...any) error
 }
 
-func (s *svr) Stop() {
-}
-
-func (s *svr) ShellProvider() ShellProvider {
-	return s
-}
-
-func (s *svr) BridgeProvider() BridgeProvider {
-	return s
-}
-
-func (s *svr) ScheduleProvider() ScheduleProvider {
-	return s
-}
-
-func (s *svr) LoadAllSchedules() ([]*ScheduleDefinition, error) {
-	ret := []*ScheduleDefinition{}
-	err := s.iterateScheduleDefs(func(define *ScheduleDefinition) bool {
-		ret = append(ret, define)
-		return true
-	})
-	return ret, err
-}
-
-func (s *svr) LoadSchedule(name string) (*ScheduleDefinition, error) {
-	name = strings.ToUpper(name)
-	path := filepath.Join(s.schedDir, fmt.Sprintf("%s.json", name))
-	content, err := os.ReadFile(path)
-	if err != nil {
-		s.log.Warn("schedule load def file", err.Error())
+// scheduleConn opens a SYS connection and ensures both the timer and the
+// subscriber tables exist, since schedule names share a single global
+// namespace across the two tables.
+func (s *Provider) scheduleConn(ctx context.Context) (*sql.Conn, error) {
+	if err := s.normalizeContext(ctx); err != nil {
 		return nil, err
 	}
-	def := &ScheduleDefinition{}
-	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warn("schedule load def format", err.Error())
+	if s.connect == nil {
+		return nil, errors.New("database connect function is not configured")
+	}
+	conn, err := s.connect(ctx, "sys")
+	if err != nil {
 		return nil, err
 	}
-	def.Name = name
-	return def, nil
-}
-
-func (s *svr) SaveSchedule(def *ScheduleDefinition) error {
-	buf, err := json.MarshalIndent(def, "", "\t")
-	if err != nil {
-		s.log.Warn("schedule save def file", err.Error())
-		return err
-	}
-	name := strings.ToUpper(def.Name)
-	name = strings.ReplaceAll(name, "/", "_")
-	name = strings.ReplaceAll(name, "\\", "_")
-	name = strings.ReplaceAll(name, "'", "_")
-	name = strings.ReplaceAll(name, "$", "_")
-	name = strings.ReplaceAll(name, "*", "_")
-	name = strings.ReplaceAll(name, "?", "_")
-	path := filepath.Join(s.schedDir, fmt.Sprintf("%s.json", name))
-	return os.WriteFile(path, buf, 00600)
-}
-
-func (s *svr) RemoveSchedule(name string) error {
-	name = strings.ToUpper(name)
-	path := filepath.Join(s.schedDir, fmt.Sprintf("%s.json", name))
-	return os.Remove(path)
-}
-
-func (s *svr) UpdateSchedule(def *ScheduleDefinition) error {
-	model, err := s.LoadSchedule(def.Name)
-	if err != nil {
-		return err
-	}
-	model.AutoStart = def.AutoStart
-	model.Task = def.Task
-	model.Schedule = def.Schedule
-	return s.SaveSchedule(model)
-}
-
-func (s *svr) LoadAllBridges() ([]*BridgeDefinition, error) {
-	ret := []*BridgeDefinition{}
-	err := s.iterateBridgeDefs(func(define *BridgeDefinition) bool {
-		ret = append(ret, define)
-		return true
-	})
-	return ret, err
-}
-
-func (s *svr) LoadBridge(name string) (*BridgeDefinition, error) {
-	path := filepath.Join(s.bridgeDir, fmt.Sprintf("%s.json", name))
-	content, err := os.ReadFile(path)
-	if err != nil {
-		s.log.Warn("bridge load def file", err.Error())
+	if err := s.ensureTimerTable(ctx, conn); err != nil {
+		conn.Close()
 		return nil, err
 	}
-	def := &BridgeDefinition{}
-	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warn("bridge load def format", err.Error())
+	if err := s.ensureSubscriberTable(ctx, conn); err != nil {
+		conn.Close()
 		return nil, err
 	}
-	return def, nil
+	return conn, nil
 }
 
-func (s *svr) SaveBridge(def *BridgeDefinition) error {
-	buf, err := json.MarshalIndent(def, "", "\t")
-	if err != nil {
-		s.log.Warn("bridge save def file", err.Error())
-		return err
+// scheduleNameExists reports whether name is already used by a timer or a
+// subscriber definition. Schedule names are a single global namespace
+// shared across both tables, so callers must check both before inserting.
+func (s *Provider) scheduleNameExists(ctx context.Context, conn *sql.Conn, name string) (bool, error) {
+	var count int64
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM _NEO_TIMER_DEF WHERE NAME = ?`, name).Scan(&count); err != nil {
+		return false, err
 	}
-
-	path := filepath.Join(s.bridgeDir, fmt.Sprintf("%s.json", def.Name))
-	return os.WriteFile(path, buf, 00600)
+	if count > 0 {
+		return true, nil
+	}
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM _NEO_SUBSCRIBER_DEF WHERE NAME = ?`, name).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
-func (s *svr) RemoveBridge(name string) error {
-	path := filepath.Join(s.bridgeDir, fmt.Sprintf("%s.json", name))
-	return os.Remove(path)
-}
-
-func (s *svr) SetDefaultShellCommand(cmd string) {
-	reservedWebShellDef[SHELLID_SHELL].Command = cmd
-}
-
-func (s *svr) SetDefaultJshCommand(cmd string) {
-	reservedWebShellDef[SHELLID_JSH].Command = cmd
-}
-
-func (s *svr) GetShell(id string) (*ShellDefinition, error) {
-	id = strings.ToUpper(id)
-	ret := reservedWebShellDef[id]
-	if ret != nil {
-		return ret, nil
-	}
-	s.iterateShellDefs(func(sd *ShellDefinition) bool {
-		if strings.ToUpper(sd.Id) == id {
-			ret = sd
-			return false
-		}
-		return true
-	})
-	return ret, nil
-}
-
-func (s *svr) GetAllShells(includesWebShells bool) []*ShellDefinition {
-	var ret []*ShellDefinition
-	if includesWebShells {
-		ret = append(ret, reservedWebShellDef[SHELLID_SQL])
-		ret = append(ret, reservedWebShellDef[SHELLID_TQL])
-		ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
-		ret = append(ret, reservedWebShellDef[SHELLID_DSH])
-		ret = append(ret, reservedWebShellDef[SHELLID_WRK])
-		ret = append(ret, reservedWebShellDef[SHELLID_JSH])
-		ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
-	}
-	s.iterateShellDefs(func(def *ShellDefinition) bool {
-		ret = append(ret, def)
-		return true
-	})
-	return ret
-}
-
-func (s *svr) CopyShell(id string) (*ShellDefinition, error) {
-	id = strings.ToUpper(id)
-	var ret *ShellDefinition
-	if _, ok := reservedWebShellDef[id]; ok {
-		ret = &ShellDefinition{}
-		ret.Type = SHELL_TERM
-		ret.Attributes = &ShellAttributes{Removable: true, Editable: true, Cloneable: true}
-		if exename, err := os.Executable(); err != nil {
-			ret.Command = fmt.Sprintf(`"%s" shell`, os.Args[0])
-		} else {
-			ret.Command = fmt.Sprintf(`"%s" shell`, exename)
-		}
-	} else {
-		d, err := s.GetShell(id)
-		if err != nil {
-			return nil, err
-		}
-		if d == nil {
-			s.log.Warnf("shell def not found '%s'", id)
-			return nil, fmt.Errorf("shell definition not found '%s'", id)
-		}
-		ret = d.Clone()
-	}
-	if ret == nil {
-		s.log.Warnf("shell def not found '%s'", id)
-		return nil, fmt.Errorf("shell definition not found '%s'", id)
-	}
-	uid, err := uuid.DefaultGenerator.NewV4()
-	if err != nil {
-		s.log.Warn("shell def new id,", err.Error())
-		return nil, err
-	}
-	ret.Id = uid.String()
-	ret.Label = "CUSTOM SHELL"
-	if err := s.SaveShell(ret); err != nil {
-		s.log.Warn("shell def not saved,", err.Error())
-		return nil, err
-	}
-	return ret, nil
-}
-
-func (s *svr) RemoveShell(id string) error {
-	path := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", strings.ToUpper(id)))
-	return os.Remove(path)
-}
-
-// Deprecated
-func (s *svr) RenameWebShell(name string, newName string) error {
-	oldPath := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", strings.ToUpper(name)))
-	newPath := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", strings.ToUpper(newName)))
-	if _, err := os.Stat(newPath); err == nil {
-		return fmt.Errorf("'%s' already exists", newName)
-	}
-	return os.Rename(oldPath, newPath)
-}
-
-func (s *svr) SaveShell(def *ShellDefinition) error {
-	def.Id = strings.ToUpper(def.Id)
-	for _, n := range reservedShellNames {
-		if def.Id == n {
-			return fmt.Errorf("'%s' is not allowed for the custom shell name", def.Id)
-		}
-	}
-	if len(def.Command) == 0 {
-		return errors.New("invalid command for the custom shell")
-	}
-	args := util.SplitFields(def.Command, true)
-	if len(args) == 0 {
-		return errors.New("invalid command for the custom shell")
-	}
-	binpath := args[0]
-	if fi, err := os.Stat(binpath); err != nil {
-		return fmt.Errorf("'%s' is not accessible, %s", binpath, err.Error())
-	} else {
-		if fi.IsDir() {
-			return fmt.Errorf("'%s' is not executable", binpath)
-		}
-		if runtime.GOOS == "windows" {
-			if !strings.HasSuffix(strings.ToLower(binpath), ".exe") && !strings.HasSuffix(strings.ToLower(binpath), ".com") {
-				return fmt.Errorf("'%s' is not executable", binpath)
-			}
-		} else {
-			if fi.Mode().Perm()&0111 == 0 {
-				return fmt.Errorf("'%s' is not executable", binpath)
-			}
-		}
-	}
-	content, err := json.Marshal(def)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(s.shellDir, fmt.Sprintf("%s.json", def.Id))
-	return os.WriteFile(path, content, 0600)
-}
-
-type OldShellDef struct {
-	Args []string `json:"args,omitempty"`
-}
-
-func (s *svr) mkDirIfNotExists(path string, mode fs.FileMode) error {
-	_, err := os.Stat(path)
-	if err != nil && os.IsNotExist(err) {
-		if err := os.Mkdir(path, mode); err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *svr) iterateShellDefs(cb func(*ShellDefinition) bool) error {
-	if cb == nil {
+// attributesToDB converts a forward-compatible JSON attributes blob into a
+// value bindable to the ATTRIBUTES column, or nil when empty.
+func attributesToDB(attr json.RawMessage) any {
+	if len(attr) == 0 {
 		return nil
 	}
-	entries, err := os.ReadDir(s.shellDir)
-	if err != nil {
-		return nil
-	}
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(s.shellDir, entry.Name()))
-		if err != nil {
-			s.log.Error("ERR file access,", err.Error())
-			continue
-		}
-		def := &ShellDefinition{}
-		if err := json.Unmarshal(content, def); err != nil {
-			s.log.Warn("ERR invalid shell conf,", err.Error())
-			continue
-		}
-		def.Id = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
-		// compatibility old version
-		if def.Type == "" {
-			def.Type = SHELL_TERM
-			def.Label = def.Id
-			old := &OldShellDef{}
-			if err := json.Unmarshal(content, old); err == nil && len(old.Args) > 0 {
-				def.Command = strings.Join(old.Args, " ")
-			}
-			if def.Attributes == nil {
-				def.Attributes = &ShellAttributes{
-					Cloneable: true, Removable: true, Editable: true,
-				}
-			}
-		}
-		if def.Icon == "" {
-			def.Icon = "console-network-outline"
-		}
-		if def.Label == "" {
-			def.Label = "CUSTOM SHELL"
-		}
-		shouldContinue := cb(def)
-		if !shouldContinue {
-			break
-		}
-	}
-	return nil
-}
-
-func (s *svr) iterateBridgeDefs(cb func(*BridgeDefinition) bool) error {
-	if cb == nil {
-		return nil
-	}
-	entries, err := os.ReadDir(s.bridgeDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(s.bridgeDir, entry.Name()))
-		if err != nil {
-			s.log.Warn(" %s", err.Error())
-			continue
-		}
-		def := &BridgeDefinition{}
-		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warn("bridge def format", err.Error())
-			continue
-		}
-		flag := cb(def)
-		if !flag {
-			break
-		}
-	}
-	return nil
-}
-
-func (s *svr) iterateScheduleDefs(cb func(*ScheduleDefinition) bool) error {
-	if cb == nil {
-		return nil
-	}
-	entries, err := os.ReadDir(s.schedDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(s.schedDir, entry.Name()))
-		if err != nil {
-			s.log.Warn("schedule iterate def file", err.Error())
-			continue
-		}
-		def := &ScheduleDefinition{}
-		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warn("schedule iterate def format", err.Error())
-			continue
-		}
-		def.Name = strings.TrimSuffix(entry.Name(), ".json")
-		def.Type = ScheduleType(strings.ToLower(string(def.Type)))
-		flag := cb(def)
-		if !flag {
-			break
-		}
-	}
-	return nil
+	return string(attr)
 }

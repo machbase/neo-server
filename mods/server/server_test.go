@@ -130,10 +130,10 @@ func TestMain(m *testing.M) {
 			"--password", "manager",
 			"-v", fmt.Sprintf("/work=%s", fileDir),
 		}
-		server.models.ShellProvider().SetDefaultShellCommand(
+		server.models.SetDefaultShellCommand(
 			fmt.Sprintf("%q shell --server %s -v %q", binPath, httpServerAddress, fmt.Sprintf("/work=%s", fileDir)),
 		)
-		server.models.ShellProvider().SetDefaultJshCommand(
+		server.models.SetDefaultJshCommand(
 			fmt.Sprintf("%q jsh -v %q", binPath, fmt.Sprintf("/work=%s", fileDir)),
 		)
 	}()
@@ -266,22 +266,22 @@ func TestRepresentativePort(t *testing.T) {
 
 func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
 	authSvc := &Server{
-		rpcController: &service.Controller{},
+		serviceController: &service.Controller{},
 	}
 	authSvc.registerJsonRpcHandlers()
 
 	httpSvc, err := NewHttp(WithHttpAuthServer(authSvc, false))
 	require.NoError(t, err)
-	require.Same(t, authSvc.rpcController, httpSvc.rpcController)
+	require.Same(t, authSvc.serviceController, httpSvc.serviceController)
 
-	result, rpcErr := httpSvc.rpcController.CallJsonRpc("markdown.render", []any{"# Hello", false}, nil)
+	result, rpcErr := httpSvc.serviceController.CallJsonRpc("markdown.render", []any{"# Hello", false}, nil)
 	require.Nil(t, rpcErr)
 	require.Contains(t, result.(string), "Hello")
 }
 
 func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
+		servicePorts: map[string][]*spi.ServicePort{
 			"mach": {
 				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
 				{Service: "mach", Address: "tcp://192.168.0.10:5656"},
@@ -297,7 +297,7 @@ func TestGetBestMachPortPrefersRemoteAddress(t *testing.T) {
 
 func TestGetBestMachPortFallsBackToLoopback(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
+		servicePorts: map[string][]*spi.ServicePort{
 			"mach": {
 				{Service: "mach", Address: "tcp://127.0.0.1:5656"},
 			},
@@ -312,7 +312,7 @@ func TestGetBestMachPortFallsBackToLoopback(t *testing.T) {
 
 func TestGetBestMachPortReturnsErrorWhenUnavailable(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{},
+		servicePorts: map[string][]*spi.ServicePort{},
 	}
 
 	_, _, err := svr.getBestMachPort()
@@ -321,7 +321,7 @@ func TestGetBestMachPortReturnsErrorWhenUnavailable(t *testing.T) {
 
 func TestGetBestMachPortSkipsInvalidEntries(t *testing.T) {
 	svr := &Server{
-		servicePorts: map[string][]*model.ServicePort{
+		servicePorts: map[string][]*spi.ServicePort{
 			"mach": {
 				{Service: "mach", Address: "tcp://bad-host"},
 				{Service: "mach", Address: "unix:///tmp/mach.sock"},
@@ -514,11 +514,6 @@ type ShellTestCase struct {
 
 func (tt ShellTestCase) runShellTestCase(t *testing.T) {
 	t.Helper()
-	runShellTestCase(t, tt)
-}
-
-func runShellTestCase(t *testing.T, tt ShellTestCase) {
-	t.Helper()
 	t.Run(tt.name, func(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(tt.args[0], tt.args[1:]...)
@@ -556,51 +551,41 @@ func runShellTestCase(t *testing.T, tt ShellTestCase) {
 }
 
 func TestSharedInfo(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name: "share_boot_json",
-			args: append(shellArgs, "/sbin/cat", "/proc/share/boot.json"),
-			expectFunc: func(t *testing.T, output string) error {
-				require.Contains(t, output, `"http": {`)
-				require.Contains(t, output, `"mqtt": {`)
-				require.Contains(t, output, `"process": {`)
-				require.Contains(t, output, `"machbase": {`)
-				return nil
-			},
+	ShellTestCase{
+		name: "share_boot_json",
+		args: append(shellArgs, "/sbin/cat", "/proc/share/boot.json"),
+		expectFunc: func(t *testing.T, output string) error {
+			require.Contains(t, output, `"http": {`)
+			require.Contains(t, output, `"mqtt": {`)
+			require.Contains(t, output, `"process": {`)
+			require.Contains(t, output, `"machbase": {`)
+			return nil
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellShow(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name: "show_license",
-			args: append(shellArgs, "show", "license", "--box-style", "simple"),
-			expect: []string{
-				"+--------+----------+-----------+----------+---------+--------------+---------------------+------------+--------+",
-				"| ROWNUM | ID       | TYPE      | CUSTOMER | PROJECT | COUNTRY_CODE | INSTALL_DATE        | ISSUE_DATE | STATUS |",
-				"+--------+----------+-----------+----------+---------+--------------+---------------------+------------+--------+",
-				`/r/|      1 | 00000000 | COMMUNITY | NONE     | NONE    | KR           | [0-9\- :]+ | 20991231   | VALID  |`,
-				"+--------+----------+-----------+----------+---------+--------------+---------------------+------------+--------+",
-			},
+	ShellTestCase{
+		name: "show_license",
+		args: append(shellArgs, "show", "license", "--box-style", "simple"),
+		expect: []string{
+			"+--------+----------+-----------+----------+---------+--------------+---------------------+------------+--------+",
+			"| ROWNUM | ID       | TYPE      | CUSTOMER | PROJECT | COUNTRY_CODE | INSTALL_DATE        | ISSUE_DATE | STATUS |",
+			"+--------+----------+-----------+----------+---------+--------------+---------------------+------------+--------+",
+			`/r/|      1 | 00000000 | COMMUNITY | NONE     | NONE    | KR           | [0-9\- :]+ | 20991231   | VALID  |`,
+			"+--------+----------+-----------+----------+---------+--------------+---------------------+------------+--------+",
 		},
-		{
-			name: "show_tables",
-			args: append(shellArgs, "show", "table", "--format", "csv", "example"),
-			expect: []string{
-				"ROWNUM,COLUMN,TYPE,LENGTH,FLAG,INDEX",
-				"1,NAME,varchar,40,tag name,",
-				"2,TIME,datetime,31,base time,",
-				"3,VALUE,double,17,summarized,",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "show_tables",
+		args: append(shellArgs, "show", "table", "--format", "csv", "example"),
+		expect: []string{
+			"ROWNUM,COLUMN,TYPE,LENGTH,FLAG,INDEX",
+			"1,NAME,varchar,40,tag name,",
+			"2,TIME,datetime,31,base time,",
+			"3,VALUE,double,17,summarized,",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellUser(t *testing.T) {
@@ -642,69 +627,64 @@ func TestShellUser(t *testing.T) {
 
 	scriptPath := "/work/" + filepath.Base(scriptFile.Name())
 
-	tests := []ShellTestCase{
-		{
-			name: "run_user_script",
-			args: append(shellArgs, "run", scriptPath),
-			expect: []string{
-				"create user user_x identified by 'password'",
-				"user created.",
-				"",
-				"connect user_x/password",
-				"",
-				"create table table_x (id integer)",
-				"table created.",
-				"",
-				"insert into table_x values (1)",
-				"a row inserted.",
-				"",
-				"insert into table_x values (2)",
-				"a row inserted.",
-				"",
-				"insert into table_x values (3)",
-				"a row inserted.",
-				"",
-				"select * from table_x",
-				"┌────────┬────┐",
-				"│ ROWNUM │ ID │",
-				"├────────┼────┤",
-				"│      1 │  1 │",
-				"│      2 │  2 │",
-				"│      3 │  3 │",
-				"└────────┴────┘",
-				"3 rows selected.",
-				"",
-				"connect sys/manager",
-				"",
-				"env NEOSHELL_USER",
-				"NEOSHELL_USER=sys",
-				"",
-				"sql --format csv select * from table_x",
-				"Error:  MACHCLI-ERR-2025, Table TABLE_X does not exist.",
-				"",
-				"insert into user_x.table_x values (4)",
-				"a row inserted.",
-				"",
-				"sql --format csv select * from user_x.table_x",
-				"ROWNUM,ID",
-				"1,1",
-				"2,2",
-				"3,3",
-				"4,4",
-				"4 rows selected.",
-				"",
-				"drop table user_x.table_x",
-				"table dropped.",
-				"",
-				"drop user user_x",
-				"user dropped.",
-				"",
-			},
+	ShellTestCase{
+		name: "run_user_script",
+		args: append(shellArgs, "run", scriptPath),
+		expect: []string{
+			"create user user_x identified by 'password'",
+			"user created.",
+			"",
+			"connect user_x/password",
+			"",
+			"create table table_x (id integer)",
+			"table created.",
+			"",
+			"insert into table_x values (1)",
+			"a row inserted.",
+			"",
+			"insert into table_x values (2)",
+			"a row inserted.",
+			"",
+			"insert into table_x values (3)",
+			"a row inserted.",
+			"",
+			"select * from table_x",
+			"┌────────┬────┐",
+			"│ ROWNUM │ ID │",
+			"├────────┼────┤",
+			"│      1 │  1 │",
+			"│      2 │  2 │",
+			"│      3 │  3 │",
+			"└────────┴────┘",
+			"3 rows selected.",
+			"",
+			"connect sys/manager",
+			"",
+			"env NEOSHELL_USER",
+			"NEOSHELL_USER=sys",
+			"",
+			"sql --format csv select * from table_x",
+			"Error:  MACHCLI-ERR-2025, Table TABLE_X does not exist.",
+			"",
+			"insert into user_x.table_x values (4)",
+			"a row inserted.",
+			"",
+			"sql --format csv select * from user_x.table_x",
+			"ROWNUM,ID",
+			"1,1",
+			"2,2",
+			"3,3",
+			"4,4",
+			"4 rows selected.",
+			"",
+			"drop table user_x.table_x",
+			"table dropped.",
+			"",
+			"drop user user_x",
+			"user dropped.",
+			"",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellImportExport(t *testing.T) {
@@ -1092,316 +1072,305 @@ scrape_configs:
 }
 
 func shellBridgeSqliteTest(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name: "bridge_list",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	ShellTestCase{
+		name: "bridge_list",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_sqlite",
-			args: append(shellArgs, "bridge", "add", "br-sqlite", "--type", "sqlite", "file::memory:?cache=shared"),
-			expect: []string{
-				"Adding bridge... br-sqlite type: sqlite path: file::memory:?cache=shared",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_add_sqlite",
+		args: append(shellArgs, "bridge", "add", "br-sqlite", "--type", "sqlite", "file::memory:?cache=shared"),
+		expect: []string{
+			"Adding bridge... br-sqlite type: sqlite path: file::memory:?cache=shared",
 		},
-		{
-			name: "bridge_list_after_add",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬───────────┬────────┬────────────────────────────┐",
-				"│ ROWNUM │ NAME      │ TYPE   │ CONNECTION                 │",
-				"├────────┼───────────┼────────┼────────────────────────────┤",
-				"│      1 │ br-sqlite │ sqlite │ file::memory:?cache=shared │",
-				"└────────┴───────────┴────────┴────────────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_add",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬───────────┬───────────┬──────────────┬────────┬────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME      │ IS_PUBLIC │ ALLOWED_USER │ TYPE   │ CONNECTION                 │",
+			"├────────┼────┼───────────┼───────────┼──────────────┼────────┼────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-sqlite │ false     │ NULL         │ sqlite │ file::memory:\\?cache=shared │$",
+			"└────────┴────┴───────────┴───────────┴──────────────┴────────┴────────────────────────────┘",
 		},
-		{
-			name: "bridge_test_sqlite",
-			args: append(shellArgs, "bridge", "test", "br-sqlite"),
-			expect: []string{
-				"Testing bridge... br-sqlite",
-				"OK.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_test_sqlite",
+		args: append(shellArgs, "bridge", "test", "br-sqlite"),
+		expect: []string{
+			"Testing bridge... br-sqlite",
+			"OK.",
 		},
-		{
-			name: "bridge_exec_sqlite_create_table",
-			args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS ids(id INTEGER NOT NULL PRIMARY KEY, memo TEXT)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_create_table",
+		args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS ids(id INTEGER NOT NULL PRIMARY KEY, memo TEXT)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_sqlite_insert_1",
-			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(1, 'test-1')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_insert_1",
+		args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(1, 'test-1')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_sqlite_insert_2",
-			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(2, 'test-2')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_insert_2",
+		args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO ids(id, memo) VALUES(2, 'test-2')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_sqlite_query",
-			args: append(shellArgs, "bridge", "query", "br-sqlite", "SELECT * FROM ids ORDER BY id"),
-			expect: []string{
-				"┌────────┬────┬────────┐",
-				"│ ROWNUM │ ID │ MEMO   │",
-				"├────────┼────┼────────┤",
-				"│      1 │  1 │ test-1 │",
-				"│      2 │  2 │ test-2 │",
-				"└────────┴────┴────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_query",
+		args: append(shellArgs, "bridge", "query", "br-sqlite", "SELECT * FROM ids ORDER BY id"),
+		expect: []string{
+			"┌────────┬────┬────────┐",
+			"│ ROWNUM │ ID │ MEMO   │",
+			"├────────┼────┼────────┤",
+			"│      1 │  1 │ test-1 │",
+			"│      2 │  2 │ test-2 │",
+			"└────────┴────┴────────┘",
 		},
-		{
-			name: "bridge_exec_sqlite_create_supported_table",
-			args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS typed_ids(id INTEGER NOT NULL PRIMARY KEY, event_bool BOOLEAN, event_integer INTEGER, event_real REAL, event_text TEXT, event_blob BLOB, event_datetime DATETIME)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_create_supported_table",
+		args: append(shellArgs, "bridge", "exec", "br-sqlite", "CREATE TABLE IF NOT EXISTS typed_ids(id INTEGER NOT NULL PRIMARY KEY, event_bool BOOLEAN, event_integer INTEGER, event_real REAL, event_text TEXT, event_blob BLOB, event_datetime DATETIME)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_sqlite_insert_supported_row",
-			args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO typed_ids(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES(1, TRUE, 42, 3.25, 'sqlite-text', X'0A0B0C', '2026-03-14 05:29:01')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_insert_supported_row",
+		args: append(shellArgs, "bridge", "exec", "br-sqlite", "INSERT INTO typed_ids(id, event_bool, event_integer, event_real, event_text, event_blob, event_datetime) VALUES(1, TRUE, 42, 3.25, 'sqlite-text', X'0A0B0C', '2026-03-14 05:29:01')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_sqlite_query_supported_types",
-			args: append(shellArgs, "bridge", "query", "br-sqlite", "SELECT id, event_bool, event_integer, event_real, event_text, HEX(event_blob) AS event_blob_hex, strftime('%Y-%m-%d %H:%M:%S', event_datetime) AS event_datetime FROM typed_ids ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INTEGER │ EVENT_REAL │ EVENT_TEXT  │ EVENT_BLOB_HEX │ EVENT_DATETIME\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ (true|1)\\s+│\\s+42\\s+│\\s+3\\.25\\s+│ sqlite-text │ 0A0B0C\\s+│ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_sqlite_query_supported_types",
+		args: append(shellArgs, "bridge", "query", "br-sqlite", "SELECT id, event_bool, event_integer, event_real, event_text, HEX(event_blob) AS event_blob_hex, strftime('%Y-%m-%d %H:%M:%S', event_datetime) AS event_datetime FROM typed_ids ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INTEGER │ EVENT_REAL │ EVENT_TEXT  │ EVENT_BLOB_HEX │ EVENT_DATETIME\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ (true|1)\\s+│\\s+42\\s+│\\s+3\\.25\\s+│ sqlite-text │ 0A0B0C\\s+│ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_del_sqlite",
-			args: append(shellArgs, "bridge", "del", "br-sqlite"),
-			expect: []string{
-				"Deleted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_del_sqlite",
+		args: append(shellArgs, "bridge", "del", "br-sqlite"),
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "bridge_list_after_del",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_del",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func shellBridgePostgresTest(t *testing.T, dsn string) {
-	tests := []ShellTestCase{
-		{
-			name: "bridge_list",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	ShellTestCase{
+		name: "bridge_list",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_postgres",
-			args: append(shellArgs, "bridge", "add", "br-postgres", "--type", "postgres", dsn),
-			expect: []string{
-				"Adding bridge... br-postgres type: postgres path: " + dsn,
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_add_postgres",
+		args: append(shellArgs, "bridge", "add", "br-postgres", "--type", "postgres", dsn),
+		expect: []string{
+			"Adding bridge... br-postgres type: postgres path: " + dsn,
 		},
-		{
-			name: "bridge_list_after_add",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬─────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME        │ TYPE     │ CONNECTION                                                                      │",
-				"├────────┼─────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────┤",
-				"│      1 │ br-postgres │ postgres │ " + dsn + " │",
-				"└────────┴─────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_add",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬─────────────┬───────────┬──────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME        │ IS_PUBLIC │ ALLOWED_USER │ TYPE     │ CONNECTION                                                                      │",
+			"├────────┼────┼─────────────┼───────────┼──────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-postgres │ false     │ NULL         │ postgres │ " + dsn + " │",
+			"└────────┴────┴─────────────┴───────────┴──────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────┘",
 		},
-		{
-			name: "bridge_test_postgres",
-			args: append(shellArgs, "bridge", "test", "br-postgres"),
-			expect: []string{
-				"Testing bridge... br-postgres",
-				"OK.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_test_postgres",
+		args: append(shellArgs, "bridge", "test", "br-postgres"),
+		expect: []string{
+			"Testing bridge... br-postgres",
+			"OK.",
 		},
-		{
-			name: "bridge_exec_postgres_create_table",
-			args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_create_table",
+		args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_insert_1",
-			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-1')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_insert_1",
+		args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-1')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_insert_2",
-			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-2')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_insert_2",
+		args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO ids(memo) VALUES('pg-2')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_query",
-			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT * FROM ids ORDER BY id"),
-			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"│      1 │  1 │ pg-1 │",
-				"│      2 │  2 │ pg-2 │",
-				"└────────┴────┴──────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_query",
+		args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT * FROM ids ORDER BY id"),
+		expect: []string{
+			"┌────────┬────┬──────┐",
+			"│ ROWNUM │ ID │ MEMO │",
+			"├────────┼────┼──────┤",
+			"│      1 │  1 │ pg-1 │",
+			"│      2 │  2 │ pg-2 │",
+			"└────────┴────┴──────┘",
 		},
-		{
-			name: "bridge_exec_postgres_create_supported_table",
-			args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS typed_ids(id SERIAL PRIMARY KEY, event_bool BOOLEAN, event_int INTEGER, event_bigint BIGINT, event_real REAL, event_text TEXT, event_uuid UUID, event_date DATE, event_timestamp TIMESTAMP, event_timestamptz TIMESTAMPTZ)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_create_supported_table",
+		args: append(shellArgs, "bridge", "exec", "br-postgres", "CREATE TABLE IF NOT EXISTS typed_ids(id SERIAL PRIMARY KEY, event_bool BOOLEAN, event_int INTEGER, event_bigint BIGINT, event_real REAL, event_text TEXT, event_uuid UUID, event_date DATE, event_timestamp TIMESTAMP, event_timestamptz TIMESTAMPTZ)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_insert_supported_row",
-			args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO typed_ids(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES(TRUE, 42, 4200000000, 3.25, 'pg-text', '550e8400-e29b-41d4-a716-446655440000', DATE '2026-03-14', TIMESTAMP '2026-03-14 05:29:01', TIMESTAMPTZ '2026-03-14 05:29:01+00')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_insert_supported_row",
+		args: append(shellArgs, "bridge", "exec", "br-postgres", "INSERT INTO typed_ids(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES(TRUE, 42, 4200000000, 3.25, 'pg-text', '550e8400-e29b-41d4-a716-446655440000', DATE '2026-03-14', TIMESTAMP '2026-03-14 05:29:01', TIMESTAMPTZ '2026-03-14 05:29:01+00')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_query_supported_types",
-			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, event_bool, event_int, event_bigint, event_real, event_text, event_uuid::text AS event_uuid, TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS') AS event_timestamp, TO_CHAR(event_timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS event_timestamptz FROM typed_ids ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INT │ EVENT_BIGINT │ EVENT_REAL │ EVENT_TEXT │ EVENT_UUID\\s+│ EVENT_DATE │ EVENT_TIMESTAMP\\s+│ EVENT_TIMESTAMPTZ\\s+│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ true\\s+│\\s+42\\s+│\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+3\\.25\\s+│ pg-text\\s+│ 550e8400-e29b-41d4-a716-446655440000 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_query_supported_types",
+		args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, event_bool, event_int, event_bigint, event_real, event_text, event_uuid::text AS event_uuid, TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS') AS event_timestamp, TO_CHAR(event_timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS event_timestamptz FROM typed_ids ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INT │ EVENT_BIGINT │ EVENT_REAL │ EVENT_TEXT │ EVENT_UUID\\s+│ EVENT_DATE │ EVENT_TIMESTAMP\\s+│ EVENT_TIMESTAMPTZ\\s+│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ true\\s+│\\s+42\\s+│\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+3\\.25\\s+│ pg-text\\s+│ 550e8400-e29b-41d4-a716-446655440000 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_postgres_query_timestamp_string",
-			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, memo, TO_CHAR(TIMESTAMP '2026-03-14 05:29:01', 'YYYY-MM-DD HH24:MI:SS') AS ts FROM ids WHERE id = 1 ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ pg-1 │ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_query_timestamp_string",
+		args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, memo, TO_CHAR(TIMESTAMP '2026-03-14 05:29:01', 'YYYY-MM-DD HH24:MI:SS') AS ts FROM ids WHERE id = 1 ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ pg-1 │ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_postgres_query_null_timestamp",
-			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, memo, CAST(NULL AS TIMESTAMP) AS ts FROM ids WHERE id = 1 ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ pg-1 │ NULL\\s*│$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_query_null_timestamp",
+		args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT id, memo, CAST(NULL AS TIMESTAMP) AS ts FROM ids WHERE id = 1 ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ pg-1 │ NULL\\s*│$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_postgres_query_no_rows",
-			args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
-			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"└────────┴────┴──────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_postgres_query_no_rows",
+		args: append(shellArgs, "bridge", "query", "br-postgres", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
+		expect: []string{
+			"┌────────┬────┬──────┐",
+			"│ ROWNUM │ ID │ MEMO │",
+			"├────────┼────┼──────┤",
+			"└────────┴────┴──────┘",
 		},
-		{
-			name: "bridge_del_postgres",
-			args: append(shellArgs, "bridge", "del", "br-postgres"),
-			expect: []string{
-				"Deleted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_del_postgres",
+		args: append(shellArgs, "bridge", "del", "br-postgres"),
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "bridge_list_after_del",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_del",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func shellBridgeMSSqlTest(t *testing.T, dsn string) {
-	tests := []ShellTestCase{
-		{
-			name: "bridge_list",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	ShellTestCase{
+		name: "bridge_list",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_mssql",
-			args: append(shellArgs, "bridge", "add", "br-ms", "--type", "mssql", dsn),
-			expect: []string{
-				"Adding bridge... br-ms type: mssql path: " + dsn,
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_add_mssql",
+		args: append(shellArgs, "bridge", "add", "br-ms", "--type", "mssql", dsn),
+		expect: []string{
+			"Adding bridge... br-ms type: mssql path: " + dsn,
 		},
-		{
-			name: "bridge_list_after_add",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬───────┬───────┬──────────────────────────────────────────────────────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME  │ TYPE  │ CONNECTION                                                                               │",
-				"├────────┼───────┼───────┼──────────────────────────────────────────────────────────────────────────────────────────┤",
-				"│      1 │ br-ms │ mssql │ " + dsn + " │",
-				"└────────┴───────┴───────┴──────────────────────────────────────────────────────────────────────────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_add",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬───────┬───────────┬──────────────┬───────┬──────────────────────────────────────────────────────────────────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME  │ IS_PUBLIC │ ALLOWED_USER │ TYPE  │ CONNECTION                                                                               │",
+			"├────────┼────┼───────┼───────────┼──────────────┼───────┼──────────────────────────────────────────────────────────────────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-ms │ false     │ NULL         │ mssql │ " + dsn + " │",
+			"└────────┴────┴───────┴───────────┴──────────────┴───────┴──────────────────────────────────────────────────────────────────────────────────────────┘",
 		},
-		{
-			name: "bridge_test_mssql",
-			args: append(shellArgs, "bridge", "test", "br-ms"),
-			expect: []string{
-				"Testing bridge... br-ms",
-				"OK.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_test_mssql",
+		args: append(shellArgs, "bridge", "test", "br-ms"),
+		expect: []string{
+			"Testing bridge... br-ms",
+			"OK.",
 		},
-		{
-			name: "bridge_exec_mssql_create_table",
-			args: append(shellArgs, "bridge", "exec", "br-ms", `
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_create_table",
+		args: append(shellArgs, "bridge", "exec", "br-ms", `
 				CREATE TABLE ids(
 					id INT NOT NULL PRIMARY KEY,
 					company VARCHAR(50) UNIQUE NOT NULL,
@@ -1413,686 +1382,648 @@ func shellBridgeMSSqlTest(t *testing.T, dsn string) {
 					CONSTRAINT uk_company UNIQUE(company)
 				)
 			`),
-			expect: []string{
-				"executed.",
-			},
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mssql_insert_1",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, company, discount, pricePlan, code, memo, created_on) "+
-				"VALUES(1, 'acme', 0.1, 100.00, 0x01, 'ms-1', '2026-03-14 05:29:01')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_insert_1",
+		args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, company, discount, pricePlan, code, memo, created_on) "+
+			"VALUES(1, 'acme', 0.1, 100.00, 0x01, 'ms-1', '2026-03-14 05:29:01')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mssql_insert_2",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, company, memo, created_on) VALUES(2, 'company', 'ms-2', '2026-03-14 05:29:01')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_insert_2",
+		args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO ids(id, company, memo, created_on) VALUES(2, 'company', 'ms-2', '2026-03-14 05:29:01')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mssql_query",
-			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids ORDER BY id"),
-			expect: []string{
-				"┌────────┬────┬─────────┬──────────┬───────────┬──────┬──────┬──────────────────────┐",
-				"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON           │",
-				"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼──────────────────────┤",
-				"│      1 │  1 │ acme    │ 0.1      │ 100       │ AQ== │ ms-1 │ 2026-03-14T05:29:01Z │",
-				"│      2 │  2 │ company │ NULL     │ NULL      │ NULL │ ms-2 │ 2026-03-14T05:29:01Z │",
-				"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴──────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_query",
+		args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids ORDER BY id"),
+		expect: []string{
+			"┌────────┬────┬─────────┬──────────┬───────────┬──────┬──────┬──────────────────────┐",
+			"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON           │",
+			"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼──────────────────────┤",
+			"│      1 │  1 │ acme    │ 0.1      │ 100       │ AQ== │ ms-1 │ 2026-03-14T05:29:01Z │",
+			"│      2 │  2 │ company │ NULL     │ NULL      │ NULL │ ms-2 │ 2026-03-14T05:29:01Z │",
+			"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴──────────────────────┘",
 		},
-		{
-			name: "bridge_exec_mssql_create_supported_table",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "CREATE TABLE typed_ids(id INT NOT NULL PRIMARY KEY, event_smallint SMALLINT NULL, event_decimal DECIMAL(10,2) NULL, event_real REAL NULL, event_varchar VARCHAR(100) NULL, event_text TEXT NULL, event_datetime DATETIME NULL)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_create_supported_table",
+		args: append(shellArgs, "bridge", "exec", "br-ms", "CREATE TABLE typed_ids(id INT NOT NULL PRIMARY KEY, event_smallint SMALLINT NULL, event_decimal DECIMAL(10,2) NULL, event_real REAL NULL, event_varchar VARCHAR(100) NULL, event_text TEXT NULL, event_datetime DATETIME NULL)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mssql_insert_supported_row",
-			args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO typed_ids(id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime) VALUES(1, 7, 123.45, 9.5, 'ms-varchar', 'ms-text', '2026-03-14 05:29:01')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_insert_supported_row",
+		args: append(shellArgs, "bridge", "exec", "br-ms", "INSERT INTO typed_ids(id, event_smallint, event_decimal, event_real, event_varchar, event_text, event_datetime) VALUES(1, 7, 123.45, 9.5, 'ms-varchar', 'ms-text', '2026-03-14 05:29:01')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mssql_query_supported_types",
-			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT id, event_smallint, event_decimal, event_real, event_varchar, event_text, CONVERT(VARCHAR(19), event_datetime, 120) AS event_datetime FROM typed_ids ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ EVENT_SMALLINT │ EVENT_DECIMAL │ EVENT_REAL │ EVENT_VARCHAR │ EVENT_TEXT │ EVENT_DATETIME\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │\\s+7\\s+│\\s+123\\.45\\s+│\\s+9\\.5\\s+│ ms-varchar\\s+│ ms-text\\s+│ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_query_supported_types",
+		args: append(shellArgs, "bridge", "query", "br-ms", "SELECT id, event_smallint, event_decimal, event_real, event_varchar, event_text, CONVERT(VARCHAR(19), event_datetime, 120) AS event_datetime FROM typed_ids ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ EVENT_SMALLINT │ EVENT_DECIMAL │ EVENT_REAL │ EVENT_VARCHAR │ EVENT_TEXT │ EVENT_DATETIME\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │\\s+7\\s+│\\s+123\\.45\\s+│\\s+9\\.5\\s+│ ms-varchar\\s+│ ms-text\\s+│ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_mssql_query_null_datetime",
-			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT id, memo, CAST(NULL AS DATETIME) AS dt FROM ids WHERE id = 1 ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ ms-1 │ NULL\\s*│$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_query_null_datetime",
+		args: append(shellArgs, "bridge", "query", "br-ms", "SELECT id, memo, CAST(NULL AS DATETIME) AS dt FROM ids WHERE id = 1 ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ ms-1 │ NULL\\s*│$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_mssql_query_no_rows",
-			args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
-			expect: []string{
-				"┌────────┬────┬─────────┬──────────┬───────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON │",
-				"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼────────────┤",
-				"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mssql_query_no_rows",
+		args: append(shellArgs, "bridge", "query", "br-ms", "SELECT * FROM ids WHERE id < 0 ORDER BY id"),
+		expect: []string{
+			"┌────────┬────┬─────────┬──────────┬───────────┬──────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ COMPANY │ DISCOUNT │ PRICEPLAN │ CODE │ MEMO │ CREATED_ON │",
+			"├────────┼────┼─────────┼──────────┼───────────┼──────┼──────┼────────────┤",
+			"└────────┴────┴─────────┴──────────┴───────────┴──────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_del_mssql",
-			args: append(shellArgs, "bridge", "del", "br-ms"),
-			expect: []string{
-				"Deleted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_del_mssql",
+		args: append(shellArgs, "bridge", "del", "br-ms"),
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "bridge_list_after_del",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_del",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func shellBridgeMySqlTest(t *testing.T, dsn string) {
-	tests := []ShellTestCase{
-		{
-			name: "bridge_list",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	ShellTestCase{
+		name: "bridge_list",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_mysql",
-			args: append(shellArgs, "bridge", "add", "br-my", "--type", "mysql", dsn),
-			expect: []string{
-				"Adding bridge... br-my type: mysql path: " + dsn,
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_add_mysql",
+		args: append(shellArgs, "bridge", "add", "br-my", "--type", "mysql", dsn),
+		expect: []string{
+			"Adding bridge... br-my type: mysql path: " + dsn,
 		},
-		{
-			name: "bridge_list_after_add",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬───────┬───────┬──────────────────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME  │ TYPE  │ CONNECTION                                           │",
-				"├────────┼───────┼───────┼──────────────────────────────────────────────────────┤",
-				"│      1 │ br-my │ mysql │ " + dsn + " │",
-				"└────────┴───────┴───────┴──────────────────────────────────────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_add",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬───────┬───────────┬──────────────┬───────┬──────────────────────────────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME  │ IS_PUBLIC │ ALLOWED_USER │ TYPE  │ CONNECTION                                           │",
+			"├────────┼────┼───────┼───────────┼──────────────┼───────┼──────────────────────────────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-my │ false     │ NULL         │ mysql │ \\S+ │$",
+			"└────────┴────┴───────┴───────────┴──────────────┴───────┴──────────────────────────────────────────────────────┘",
 		},
-		{
-			name: "bridge_test_mysql",
-			args: append(shellArgs, "bridge", "test", "br-my"),
-			expect: []string{
-				"Testing bridge... br-my",
-				"OK.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_test_mysql",
+		args: append(shellArgs, "bridge", "test", "br-my"),
+		expect: []string{
+			"Testing bridge... br-my",
+			"OK.",
 		},
-		{
-			name: "bridge_exec_mysql_create_table",
-			args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, memo TEXT, event_date DATE, event_datetime DATETIME, event_timestamp TIMESTAMP NULL)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_create_table",
+		args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, memo TEXT, event_date DATE, event_datetime DATETIME, event_timestamp TIMESTAMP NULL)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mysql_insert_1",
-			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-1', '2026-03-14', '2026-03-14 05:29:01', '2026-03-14 05:29:01')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_insert_1",
+		args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-1', '2026-03-14', '2026-03-14 05:29:01', '2026-03-14 05:29:01')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mysql_insert_2",
-			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-2', '2026-03-15', '2026-03-15 06:30:02', '2026-03-15 06:30:02')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_insert_2",
+		args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-2', '2026-03-15', '2026-03-15 06:30:02', '2026-03-15 06:30:02')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mysql_insert_3_null_timestamp",
-			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-3', '2026-03-16', '2026-03-16 07:31:03', NULL)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_insert_3_null_timestamp",
+		args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO ids(memo, event_date, event_datetime, event_timestamp) VALUES('my-3', '2026-03-16', '2026-03-16 07:31:03', NULL)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mysql_query",
-			args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, memo, DATE_FORMAT(event_date, '%Y-%m-%d') AS dt, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS dttm, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS ts FROM ids ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s+│ DTTM\\s+│ TS\\s+│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ my-1 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
-				"/r/^│\\s+2 │\\s+2 │ my-2 │ 2026-03-15 │ 2026-03-15 06:30:02 │ 2026-03-15 06:30:02 │$",
-				"/r/^│\\s+3 │\\s+3 │ my-3 │ 2026-03-16 │ 2026-03-16 07:31:03 │ NULL\\s*│$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_query",
+		args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, memo, DATE_FORMAT(event_date, '%Y-%m-%d') AS dt, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS dttm, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS ts FROM ids ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s+│ DTTM\\s+│ TS\\s+│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ my-1 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+			"/r/^│\\s+2 │\\s+2 │ my-2 │ 2026-03-15 │ 2026-03-15 06:30:02 │ 2026-03-15 06:30:02 │$",
+			"/r/^│\\s+3 │\\s+3 │ my-3 │ 2026-03-16 │ 2026-03-16 07:31:03 │ NULL\\s*│$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_mysql_create_supported_table",
-			args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS typed_ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, event_bigint BIGINT, event_int INT, event_smallint SMALLINT, event_double DOUBLE, event_varchar VARCHAR(64), event_char CHAR(4), event_text TEXT, event_blob BLOB, event_date DATE, event_datetime DATETIME, event_timestamp TIMESTAMP NULL)"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_create_supported_table",
+		args: append(shellArgs, "bridge", "exec", "br-my", "CREATE TABLE IF NOT EXISTS typed_ids(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, event_bigint BIGINT, event_int INT, event_smallint SMALLINT, event_double DOUBLE, event_varchar VARCHAR(64), event_char CHAR(4), event_text TEXT, event_blob BLOB, event_date DATE, event_datetime DATETIME, event_timestamp TIMESTAMP NULL)"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mysql_insert_supported_row",
-			args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO typed_ids(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(4200000000, 123456, 12, 3.5, 'my-varchar', 'ABCD', 'my-text', X'010203', '2026-03-14', '2026-03-14 05:29:01', '2026-03-14 05:29:01')"),
-			expect: []string{
-				"executed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_insert_supported_row",
+		args: append(shellArgs, "bridge", "exec", "br-my", "INSERT INTO typed_ids(event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, event_blob, event_date, event_datetime, event_timestamp) VALUES(4200000000, 123456, 12, 3.5, 'my-varchar', 'ABCD', 'my-text', X'010203', '2026-03-14', '2026-03-14 05:29:01', '2026-03-14 05:29:01')"),
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_mysql_query_supported_types",
-			args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, TO_BASE64(event_blob) AS event_blob_b64, DATE_FORMAT(event_date, '%Y-%m-%d') AS event_date, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS event_datetime, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS event_timestamp FROM typed_ids ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ EVENT_BIGINT │ EVENT_INT │ EVENT_SMALLINT │ EVENT_DOUBLE │ EVENT_VARCHAR │ EVENT_CHAR │ EVENT_TEXT │ EVENT_BLOB_B64 │ EVENT_DATE │ EVENT_DATETIME\\s+│ EVENT_TIMESTAMP\\s+│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+123456\\s+│\\s+12\\s+│\\s+3\\.5\\s+│ my-varchar\\s+│ ABCD\\s+│ my-text\\s+│ AQID\\s+│ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_query_supported_types",
+		args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, event_bigint, event_int, event_smallint, event_double, event_varchar, event_char, event_text, TO_BASE64(event_blob) AS event_blob_b64, DATE_FORMAT(event_date, '%Y-%m-%d') AS event_date, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS event_datetime, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS event_timestamp FROM typed_ids ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ EVENT_BIGINT │ EVENT_INT │ EVENT_SMALLINT │ EVENT_DOUBLE │ EVENT_VARCHAR │ EVENT_CHAR │ EVENT_TEXT │ EVENT_BLOB_B64 │ EVENT_DATE │ EVENT_DATETIME\\s+│ EVENT_TIMESTAMP\\s+│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+123456\\s+│\\s+12\\s+│\\s+3\\.5\\s+│ my-varchar\\s+│ ABCD\\s+│ my-text\\s+│ AQID\\s+│ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_mysql_query_no_rows",
-			args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, memo, DATE_FORMAT(event_date, '%Y-%m-%d') AS dt, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS dttm, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS ts FROM ids WHERE id < 0 ORDER BY id"),
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s*│ DTTM\\s*│ TS\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^└.*┘$",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_exec_mysql_query_no_rows",
+		args: append(shellArgs, "bridge", "query", "br-my", "SELECT id, memo, DATE_FORMAT(event_date, '%Y-%m-%d') AS dt, DATE_FORMAT(event_datetime, '%Y-%m-%d %H:%i:%s') AS dttm, DATE_FORMAT(event_timestamp, '%Y-%m-%d %H:%i:%s') AS ts FROM ids WHERE id < 0 ORDER BY id"),
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ DT\\s*│ DTTM\\s*│ TS\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_del_mysql",
-			args: append(shellArgs, "bridge", "del", "br-my"),
-			expect: []string{
-				"Deleted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_del_mysql",
+		args: append(shellArgs, "bridge", "del", "br-my"),
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "bridge_list_after_del",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_del",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func shellBridgeMqttTest(t *testing.T, broker string) {
-	tests := []ShellTestCase{
-		{
-			name: "bridge_list",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	ShellTestCase{
+		name: "bridge_list",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_mqtt",
-			args: append(shellArgs, "bridge", "add", "br-mqtt", "--type", "mqtt", fmt.Sprintf("broker=%s", broker)),
-			expect: []string{
-				"Adding bridge... br-mqtt type: mqtt path: " + fmt.Sprintf("broker=%s", broker),
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_add_mqtt",
+		args: append(shellArgs, "bridge", "add", "br-mqtt", "--type", "mqtt", fmt.Sprintf("broker=%s", broker)),
+		expect: []string{
+			"Adding bridge... br-mqtt type: mqtt path: " + fmt.Sprintf("broker=%s", broker),
 		},
-		{
-			name: "bridge_list_after_add",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬─────────┬──────┬────────────────────────┐",
-				"│ ROWNUM │ NAME    │ TYPE │ CONNECTION             │",
-				"├────────┼─────────┼──────┼────────────────────────┤",
-				"│      1 │ br-mqtt │ mqtt │ broker=" + broker + " │",
-				"└────────┴─────────┴──────┴────────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_add",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬─────────┬───────────┬──────────────┬──────┬────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME    │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION             │",
+			"├────────┼────┼─────────┼───────────┼──────────────┼──────┼────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-mqtt │ false     │ NULL         │ mqtt │ broker=" + strings.ReplaceAll(broker, "?", "\\?") + " │",
+			"└────────┴────┴─────────┴───────────┴──────────────┴──────┴────────────────────────┘",
 		},
-		{
-			name: "subscriber_add",
-			args: append(shellArgs, "subscriber", "add", "--autostart", "--qos", "1", "sub-mqtt", "br-mqtt", "test/topic", "db/write/example"),
-			expect: []string{
-				"Subscriber 'sub-mqtt' added successfully.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_add",
+		args: append(shellArgs, "subscriber", "add", "--autostart", "--qos", "1", "sub-mqtt", "br-mqtt", "test/topic", "db/write/example"),
+		expect: []string{
+			"Subscriber 'sub-mqtt' added successfully.",
 		},
-		{
-			name:   "wait_for_mqtt_subscribe",
-			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
-			expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name:   "wait_for_mqtt_subscribe",
+		args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
+		expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_list_after_add",
+		args: append(shellArgs, "subscriber", "list"),
+		expect: []string{
+			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+			"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
+			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
 		},
-		{
-			name: "subscriber_list_after_add",
-			args: append(shellArgs, "subscriber", "list"),
-			expect: []string{
-				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
-				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
-				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
-				"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
-				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "mqtt_pub",
+		args: append(shellArgs, "mqtt_pub",
+			"--broker", broker,
+			"--topic", "test/topic",
+			"--message", `[["mqtt-test",1773466141000000000,42],["mqtt-test",1773466142000000000,43]]`),
+		expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name:   "wait_for_mqtt_publish",
+		args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
+		expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "mqtt_pub_result",
+		args: append(shellArgs, "sql", "--tz", "GMT", "SELECT * FROM example WHERE name='mqtt-test' ORDER BY time"),
+		expect: []string{
+			"┌────────┬───────────┬─────────────────────┬───────┐",
+			"│ ROWNUM │ NAME      │ TIME                │ VALUE │",
+			"├────────┼───────────┼─────────────────────┼───────┤",
+			"│      1 │ mqtt-test │ 2026-03-14 05:29:01 │    42 │",
+			"│      2 │ mqtt-test │ 2026-03-14 05:29:02 │    43 │",
+			"└────────┴───────────┴─────────────────────┴───────┘",
+			"2 rows selected.",
 		},
-		{
-			name: "mqtt_pub",
-			args: append(shellArgs, "mqtt_pub",
-				"--broker", broker,
-				"--topic", "test/topic",
-				"--message", `[["mqtt-test",1773466141000000000,42],["mqtt-test",1773466142000000000,43]]`),
-			expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "mqtt_pub_clean",
+		args: append(shellArgs, "sql", "DELETE FROM example WHERE name='mqtt-test'"),
+		expect: []string{
+			"2 rows deleted.",
 		},
-		{
-			name:   "wait_for_mqtt_publish",
-			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
-			expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_stop",
+		args: append(shellArgs, "subscriber", "stop", "sub-mqtt"),
+		expect: []string{
+			"Subscriber 'sub-mqtt' stopped successfully.",
 		},
-		{
-			name: "mqtt_pub_result",
-			args: append(shellArgs, "sql", "--tz", "GMT", "SELECT * FROM example WHERE name='mqtt-test' ORDER BY time"),
-			expect: []string{
-				"┌────────┬───────────┬─────────────────────┬───────┐",
-				"│ ROWNUM │ NAME      │ TIME                │ VALUE │",
-				"├────────┼───────────┼─────────────────────┼───────┤",
-				"│      1 │ mqtt-test │ 2026-03-14 05:29:01 │    42 │",
-				"│      2 │ mqtt-test │ 2026-03-14 05:29:02 │    43 │",
-				"└────────┴───────────┴─────────────────────┴───────┘",
-				"2 rows selected.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_list_after_stop",
+		args: append(shellArgs, "subscriber", "list"),
+		expect: []string{
+			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+			"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
+			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 		},
-		{
-			name: "mqtt_pub_clean",
-			args: append(shellArgs, "sql", "DELETE FROM example WHERE name='mqtt-test'"),
-			expect: []string{
-				"2 rows deleted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_del",
+		args: append(shellArgs, "subscriber", "del", "sub-mqtt"),
+		expect: []string{
+			"Subscriber 'sub-mqtt' deleted successfully.",
 		},
-		{
-			name: "subscriber_stop",
-			args: append(shellArgs, "subscriber", "stop", "sub-mqtt"),
-			expect: []string{
-				"Subscriber 'sub-mqtt' stopped successfully.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_del_mqtt",
+		args: append(shellArgs, "bridge", "del", "br-mqtt"),
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "subscriber_list_after_stop",
-			args: append(shellArgs, "subscriber", "list"),
-			expect: []string{
-				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
-				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
-				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
-				"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
-				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_del",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "subscriber_del",
-			args: append(shellArgs, "subscriber", "del", "sub-mqtt"),
-			expect: []string{
-				"Subscriber 'sub-mqtt' deleted successfully.",
-			},
-		},
-		{
-			name: "bridge_del_mqtt",
-			args: append(shellArgs, "bridge", "del", "br-mqtt"),
-			expect: []string{
-				"Deleted.",
-			},
-		},
-		{
-			name: "bridge_list_after_del",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
-		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
-	tests := []ShellTestCase{
-		{
-			name: "bridge_list",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	ShellTestCase{
+		name: "bridge_list",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_nats",
-			args: append(shellArgs, "bridge", "add", "br-nats", "--type", "nats", fmt.Sprintf("server=%s name=nats-client", natsHostPort)),
-			expect: []string{
-				"Adding bridge... br-nats type: nats path: " + fmt.Sprintf("server=%s name=nats-client", natsHostPort),
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_add_nats",
+		args: append(shellArgs, "bridge", "add", "br-nats", "--type", "nats", fmt.Sprintf("server=%s name=nats-client", natsHostPort)),
+		expect: []string{
+			"Adding bridge... br-nats type: nats path: " + fmt.Sprintf("server=%s name=nats-client", natsHostPort),
 		},
-		{
-			name: "bridge_list_after_add",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬─────────┬──────┬─────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME    │ TYPE │ CONNECTION                              │",
-				"├────────┼─────────┼──────┼─────────────────────────────────────────┤",
-				"│      1 │ br-nats │ nats │ server=" + natsHostPort + " name=nats-client │",
-				"└────────┴─────────┴──────┴─────────────────────────────────────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_add",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬─────────┬───────────┬──────────────┬──────┬─────────────────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME    │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION                              │",
+			"├────────┼────┼─────────┼───────────┼──────────────┼──────┼─────────────────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-nats │ false     │ NULL         │ nats │ server=" + natsHostPort + " name=nats-client │",
+			"└────────┴────┴─────────┴───────────┴──────────────┴──────┴─────────────────────────────────────────┘",
 		},
-		{
-			name: "subscriber_add",
-			args: append(shellArgs, "subscriber", "add", "--autostart", "sub-nats", "br-nats", "iot.sensor", "db/write/example"),
-			expect: []string{
-				"Subscriber 'sub-nats' added successfully.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_add",
+		args: append(shellArgs, "subscriber", "add", "--autostart", "sub-nats", "br-nats", "iot.sensor", "db/write/example"),
+		expect: []string{
+			"Subscriber 'sub-nats' added successfully.",
 		},
-		{
-			name:   "wait_for_nats_subscribe", // wait for subscriber to start and subscribe before publishing
-			args:   append(shellArgs, "sleep", "3"),
-			expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name:   "wait_for_nats_subscribe", // wait for subscriber to start and subscribe before publishing
+		args:   append(shellArgs, "sleep", "3"),
+		expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_list_after_add",
+		args: append(shellArgs, "subscriber", "list"),
+		expect: []string{
+			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+			"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
+			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
 		},
-		{
-			name: "subscriber_list_after_add",
-			args: append(shellArgs, "subscriber", "list"),
-			expect: []string{
-				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
-				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
-				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
-				"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
-				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "nats_pub",
+		args: append(shellArgs, "nats_pub",
+			"--broker", natsHostPort,
+			"--topic", "iot.sensor",
+			"--message", `[["nats-test",1773466141000000000,42],["nats-test",1773466142000000000,43]]`),
+		expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name:   "wait_for_nats_publish",
+		args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
+		expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "nats_pub_result",
+		args: append(shellArgs, "sql", "--tz", "GMT", "SELECT * FROM example WHERE name='nats-test' ORDER BY time"),
+		expect: []string{
+			"┌────────┬───────────┬─────────────────────┬───────┐",
+			"│ ROWNUM │ NAME      │ TIME                │ VALUE │",
+			"├────────┼───────────┼─────────────────────┼───────┤",
+			"│      1 │ nats-test │ 2026-03-14 05:29:01 │    42 │",
+			"│      2 │ nats-test │ 2026-03-14 05:29:02 │    43 │",
+			"└────────┴───────────┴─────────────────────┴───────┘",
+			"2 rows selected.",
 		},
-		{
-			name: "nats_pub",
-			args: append(shellArgs, "nats_pub",
-				"--broker", natsHostPort,
-				"--topic", "iot.sensor",
-				"--message", `[["nats-test",1773466141000000000,42],["nats-test",1773466142000000000,43]]`),
-			expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "nats_pub_clean",
+		args: append(shellArgs, "sql", "DELETE FROM example WHERE name='nats-test'"),
+		expect: []string{
+			"2 rows deleted.",
 		},
-		{
-			name:   "wait_for_nats_publish",
-			args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
-			expect: []string{},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_stop",
+		args: append(shellArgs, "subscriber", "stop", "sub-nats"),
+		expect: []string{
+			"Subscriber 'sub-nats' stopped successfully.",
 		},
-		{
-			name: "nats_pub_result",
-			args: append(shellArgs, "sql", "--tz", "GMT", "SELECT * FROM example WHERE name='nats-test' ORDER BY time"),
-			expect: []string{
-				"┌────────┬───────────┬─────────────────────┬───────┐",
-				"│ ROWNUM │ NAME      │ TIME                │ VALUE │",
-				"├────────┼───────────┼─────────────────────┼───────┤",
-				"│      1 │ nats-test │ 2026-03-14 05:29:01 │    42 │",
-				"│      2 │ nats-test │ 2026-03-14 05:29:02 │    43 │",
-				"└────────┴───────────┴─────────────────────┴───────┘",
-				"2 rows selected.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_list_after_stop",
+		args: append(shellArgs, "subscriber", "list"),
+		expect: []string{
+			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+			"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
+			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 		},
-		{
-			name: "nats_pub_clean",
-			args: append(shellArgs, "sql", "DELETE FROM example WHERE name='nats-test'"),
-			expect: []string{
-				"2 rows deleted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "subscriber_del",
+		args: append(shellArgs, "subscriber", "del", "sub-nats"),
+		expect: []string{
+			"Subscriber 'sub-nats' deleted successfully.",
 		},
-		{
-			name: "subscriber_stop",
-			args: append(shellArgs, "subscriber", "stop", "sub-nats"),
-			expect: []string{
-				"Subscriber 'sub-nats' stopped successfully.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_del_nats",
+		args: append(shellArgs, "bridge", "del", "br-nats"),
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "subscriber_list_after_stop",
-			args: append(shellArgs, "subscriber", "list"),
-			expect: []string{
-				"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
-				"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
-				"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
-				"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
-				"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "bridge_list_after_del",
+		args: append(shellArgs, "bridge", "list"),
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "subscriber_del",
-			args: append(shellArgs, "subscriber", "del", "sub-nats"),
-			expect: []string{
-				"Subscriber 'sub-nats' deleted successfully.",
-			},
-		},
-		{
-			name: "bridge_del_nats",
-			args: append(shellArgs, "bridge", "del", "br-nats"),
-			expect: []string{
-				"Deleted.",
-			},
-		},
-		{
-			name: "bridge_list_after_del",
-			args: append(shellArgs, "bridge", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
-		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellTimer(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name: "timer_list",
-			args: append(shellArgs, "timer", "list"),
-			expect: []string{
-				"┌────────┬──────┬──────┬─────┬───────────┬───────┐",
-				"│ ROWNUM │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
-				"├────────┼──────┼──────┼─────┼───────────┼───────┤",
-				"└────────┴──────┴──────┴─────┴───────────┴───────┘",
-			},
+	ShellTestCase{
+
+		name: "timer_list",
+		args: append(shellArgs, "timer", "list"),
+		expect: []string{
+			"┌────────┬──────┬──────┬─────┬───────────┬───────┐",
+			"│ ROWNUM │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
+			"├────────┼──────┼──────┼─────┼───────────┼───────┤",
+			"└────────┴──────┴──────┴─────┴───────────┴───────┘",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellKey(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name: "key_list",
-			args: append(shellArgs, "key", "list"),
-			expect: []string{
-				"┌────────┬────┬──────────────────┬─────────────────┐",
-				"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
-				"├────────┼────┼──────────────────┼─────────────────┤",
-				"└────────┴────┴──────────────────┴─────────────────┘",
-			},
+	ShellTestCase{
+		name: "key_list",
+		args: append(shellArgs, "key", "list"),
+		expect: []string{
+			"┌────────┬────┬──────────────────┬─────────────────┐",
+			"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
+			"├────────┼────┼──────────────────┼─────────────────┤",
+			"└────────┴────┴──────────────────┴─────────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellRun(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name:      "run_invalid_command",
-			args:      append(shellArgs, "run", "invalid-command"),
-			expectErr: "ENOENT: no such file or directory, open '/work/invalid-command'",
+	ShellTestCase{
+		name:      "run_invalid_command",
+		args:      append(shellArgs, "run", "invalid-command"),
+		expectErr: "ENOENT: no such file or directory, open '/work/invalid-command'",
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "shell_run.txt",
+		args: append(shellArgs, "run", "shell_run.txt"),
+		expect: []string{
+			"desc example",
+			"┌────────┬────────┬──────────┬────────┬────────────┬───────┐",
+			"│ ROWNUM │ COLUMN │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
+			"├────────┼────────┼──────────┼────────┼────────────┼───────┤",
+			"│      1 │ NAME   │ varchar  │     40 │ tag name   │       │",
+			"│      2 │ TIME   │ datetime │     31 │ base time  │       │",
+			"│      3 │ VALUE  │ double   │     17 │ summarized │       │",
+			"└────────┴────────┴──────────┴────────┴────────────┴───────┘",
+			"",
+			"INSERT INTO EXAMPLE VALUES('shell_run', 1773722371000000000, 1.234)",
+			"a row inserted.",
+			"",
+			"exec table_flush(example)",
+			"table flushed.",
+			"",
+			"sql --timeformat kitchen --tz Asia/Seoul -Z --no-pause",
+			"SELECT",
+			"    *",
+			"FROM",
+			"    EXAMPLE",
+			"WHERE",
+			"    NAME = 'shell_run'",
+			"┌────────┬───────────┬──────────────────┬───────┐",
+			"│ ROWNUM │ NAME      │ TIME(ASIA/SEOUL) │ VALUE │",
+			"├────────┼───────────┼──────────────────┼───────┤",
+			"│      1 │ shell_run │ 1:39PM           │ 1.234 │",
+			"└────────┴───────────┴──────────────────┴───────┘",
+			"a row selected.",
+			"",
+			"DELETE FROM EXAMPLE WHERE NAME = 'shell_run'",
+			"a row deleted.",
+			"",
 		},
-		{
-			name: "shell_run.txt",
-			args: append(shellArgs, "run", "shell_run.txt"),
-			expect: []string{
-				"desc example",
-				"┌────────┬────────┬──────────┬────────┬────────────┬───────┐",
-				"│ ROWNUM │ COLUMN │ TYPE     │ LENGTH │ FLAG       │ INDEX │",
-				"├────────┼────────┼──────────┼────────┼────────────┼───────┤",
-				"│      1 │ NAME   │ varchar  │     40 │ tag name   │       │",
-				"│      2 │ TIME   │ datetime │     31 │ base time  │       │",
-				"│      3 │ VALUE  │ double   │     17 │ summarized │       │",
-				"└────────┴────────┴──────────┴────────┴────────────┴───────┘",
-				"",
-				"INSERT INTO EXAMPLE VALUES('shell_run', 1773722371000000000, 1.234)",
-				"a row inserted.",
-				"",
-				"exec table_flush(example)",
-				"table flushed.",
-				"",
-				"sql --timeformat kitchen --tz Asia/Seoul -Z --no-pause",
-				"SELECT",
-				"    *",
-				"FROM",
-				"    EXAMPLE",
-				"WHERE",
-				"    NAME = 'shell_run'",
-				"┌────────┬───────────┬──────────────────┬───────┐",
-				"│ ROWNUM │ NAME      │ TIME(ASIA/SEOUL) │ VALUE │",
-				"├────────┼───────────┼──────────────────┼───────┤",
-				"│      1 │ shell_run │ 1:39PM           │ 1.234 │",
-				"└────────┴───────────┴──────────────────┴───────┘",
-				"a row selected.",
-				"",
-				"DELETE FROM EXAMPLE WHERE NAME = 'shell_run'",
-				"a row deleted.",
-				"",
-			},
-		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestShellSql(t *testing.T) {
-	tests := []ShellTestCase{
-		{
-			name:      "sql_invalid_query",
-			args:      append(shellArgs, "sql", "SELECT * FROM non_existent_table"),
-			expectErr: "MACHCLI-ERR-2025, Table NON_EXISTENT_TABLE does not exist.",
+	ShellTestCase{
+		name:      "sql_invalid_query",
+		args:      append(shellArgs, "sql", "SELECT * FROM non_existent_table"),
+		expectErr: "MACHCLI-ERR-2025, Table NON_EXISTENT_TABLE does not exist.",
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_valid_query",
+		args: append(shellArgs, "sql", "SELECT 1 AS COL1, 'test' AS COL2"),
+		expect: []string{
+			"┌────────┬──────┬──────┐",
+			"│ ROWNUM │ COL1 │ COL2 │",
+			"├────────┼──────┼──────┤",
+			"│      1 │    1 │ test │",
+			"└────────┴──────┴──────┘",
+			"a row selected.",
 		},
-		{
-			name: "sql_valid_query",
-			args: append(shellArgs, "sql", "SELECT 1 AS COL1, 'test' AS COL2"),
-			expect: []string{
-				"┌────────┬──────┬──────┐",
-				"│ ROWNUM │ COL1 │ COL2 │",
-				"├────────┼──────┼──────┤",
-				"│      1 │    1 │ test │",
-				"└────────┴──────┴──────┘",
-				"a row selected.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_insert",
+		args: append(shellArgs, "sql", "INSERT INTO example VALUES('my-crd', to_date('2023-08-03'), 1.2345)"),
+		expect: []string{
+			"a row inserted.",
 		},
-		{
-			name: "sql_crud_insert",
-			args: append(shellArgs, "sql", "INSERT INTO example VALUES('my-crd', to_date('2023-08-03'), 1.2345)"),
-			expect: []string{
-				"a row inserted.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_flush",
+		args: append(shellArgs, "sql", "EXEC table_flush(example)"),
+		expect: []string{
+			"table flushed.",
 		},
-		{
-			name: "sql_crud_flush",
-			args: append(shellArgs, "sql", "EXEC table_flush(example)"),
-			expect: []string{
-				"table flushed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_select",
+		args: append(shellArgs, "sql", "SELECT * FROM example WHERE name='my-crd'"),
+		expect: []string{
+			"┌────────┬────────┬─────────────────────┬────────┐",
+			"│ ROWNUM │ NAME   │ TIME                │  VALUE │",
+			"├────────┼────────┼─────────────────────┼────────┤",
+			"│      1 │ my-crd │ 2023-08-03 00:00:00 │ 1.2345 │",
+			"└────────┴────────┴─────────────────────┴────────┘",
+			"a row selected.",
 		},
-		{
-			name: "sql_crud_select",
-			args: append(shellArgs, "sql", "SELECT * FROM example WHERE name='my-crd'"),
-			expect: []string{
-				"┌────────┬────────┬─────────────────────┬────────┐",
-				"│ ROWNUM │ NAME   │ TIME                │  VALUE │",
-				"├────────┼────────┼─────────────────────┼────────┤",
-				"│      1 │ my-crd │ 2023-08-03 00:00:00 │ 1.2345 │",
-				"└────────┴────────┴─────────────────────┴────────┘",
-				"a row selected.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_select",
+		args: append(shellArgs, "SELECT time, value FROM example WHERE name='my-crd'"),
+		expect: []string{
+			"┌────────┬─────────────────────┬────────┐",
+			"│ ROWNUM │ TIME                │  VALUE │",
+			"├────────┼─────────────────────┼────────┤",
+			"│      1 │ 2023-08-03 00:00:00 │ 1.2345 │",
+			"└────────┴─────────────────────┴────────┘",
+			"a row selected.",
 		},
-		{
-			name: "sql_crud_select",
-			args: append(shellArgs, "SELECT time, value FROM example WHERE name='my-crd'"),
-			expect: []string{
-				"┌────────┬─────────────────────┬────────┐",
-				"│ ROWNUM │ TIME                │  VALUE │",
-				"├────────┼─────────────────────┼────────┤",
-				"│      1 │ 2023-08-03 00:00:00 │ 1.2345 │",
-				"└────────┴─────────────────────┴────────┘",
-				"a row selected.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_delete",
+		args: append(shellArgs, "sql", "DELETE FROM example WHERE name='my-crd'"),
+		expect: []string{
+			"a row deleted.",
+			"",
 		},
-		{
-			name: "sql_crud_delete",
-			args: append(shellArgs, "sql", "DELETE FROM example WHERE name='my-crd'"),
-			expect: []string{
-				"a row deleted.",
-				"",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_flush_after_delete",
+		args: append(shellArgs, "EXEC table_flush(example)"),
+		expect: []string{
+			"table flushed.",
 		},
-		{
-			name: "sql_crud_flush_after_delete",
-			args: append(shellArgs, "EXEC table_flush(example)"),
-			expect: []string{
-				"table flushed.",
-			},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "sql_crud_select_after_delete",
+		args: append(shellArgs, "SELECT count(*) FROM example WHERE name='my-crd'"),
+		expect: []string{
+			"┌────────┬──────────┐",
+			"│ ROWNUM │ COUNT(*) │",
+			"├────────┼──────────┤",
+			"│      1 │        0 │",
+			"└────────┴──────────┘",
+			"a row selected.",
 		},
-		{
-			name: "sql_crud_select_after_delete",
-			args: append(shellArgs, "SELECT count(*) FROM example WHERE name='my-crd'"),
-			expect: []string{
-				"┌────────┬──────────┐",
-				"│ ROWNUM │ COUNT(*) │",
-				"├────────┼──────────┤",
-				"│      1 │        0 │",
-				"└────────┴──────────┘",
-				"a row selected.",
-			},
-		},
-	}
-	for _, tt := range tests {
-		runShellTestCase(t, tt)
-	}
+	}.runShellTestCase(t)
 }
 
 func TestParseMachbaseAddress(t *testing.T) {
@@ -2348,7 +2279,7 @@ func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
 			Mqtt:  MqttConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
 			Shell: ShellConfig{Listeners: []string{"tcp://127.0.0.1:0"}},
 		},
-		servicePorts: make(map[string][]*model.ServicePort),
+		servicePorts: make(map[string][]*spi.ServicePort),
 		hasEngine:    true,
 		hasHead:      false,
 	}
@@ -2404,7 +2335,7 @@ func TestServerCoverage_StartMachbaseCliErrorPaths(t *testing.T) {
 
 func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	svr := coverageRunningServer(t)
-	ctx := context.Background()
+	ctx := contextWithModelUser(context.Background(), "sys")
 
 	name := fmt.Sprintf("cov_sub_%d", time.Now().UnixNano())
 	err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
@@ -2418,9 +2349,8 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	legacyDef, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+	legacyDef, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 	require.NoError(t, err)
-	require.Equal(t, model.SCHEDULE_SUBSCRIBER, legacyDef.Type)
 	require.Equal(t, "test/topic", legacyDef.Topic)
 	require.Equal(t, 1, legacyDef.QoS)
 	t.Cleanup(func() {
@@ -2455,7 +2385,7 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 
 func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 	svr := coverageRunningServer(t)
-	ctx := context.Background()
+	ctx := contextWithModelUser(context.Background(), "sys")
 
 	t.Run("nats_only", func(t *testing.T) {
 		name := fmt.Sprintf("cov_sub_v2_nats_%d", time.Now().UnixNano())
@@ -2476,9 +2406,8 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			_ = svr.deleteSchedule(context.Background(), name)
 		})
 
-		def, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 		require.NoError(t, err)
-		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
 		require.Equal(t, "subject.>", def.Topic)
 		require.Equal(t, "workers", def.QueueName)
 		require.Equal(t, "orders", def.StreamName)
@@ -2502,9 +2431,8 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			_ = svr.deleteSchedule(context.Background(), name)
 		})
 
-		def, err := svr.models.ScheduleProvider().LoadSchedule(strings.ToLower(name))
+		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 		require.NoError(t, err)
-		require.Equal(t, model.SCHEDULE_SUBSCRIBER, def.Type)
 		require.Equal(t, true, def.AutoStart)
 		require.Equal(t, "factory/#", def.Topic)
 		require.Equal(t, 2, def.QoS)
@@ -2540,7 +2468,6 @@ func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
 
 	require.NoError(t, svr.startModelService())
 	require.NotNil(t, svr.models)
-	defer svr.models.Stop()
 
 	require.NoError(t, svr.startBackupService())
 	if svr.bakd != nil {
@@ -2554,9 +2481,7 @@ func TestServerCoverage_StartModelAndBackupAndMqttTlsError(t *testing.T) {
 
 func newShellTestServer(t *testing.T) *Server {
 	t.Helper()
-	models := model.NewService(model.WithConfigDirPath(t.TempDir()))
-	require.NoError(t, models.Start())
-
+	models := model.NewProvider()
 	return &Server{
 		log:    logging.GetLog("svrshells-test"),
 		models: models,
@@ -2566,17 +2491,18 @@ func newShellTestServer(t *testing.T) *Server {
 
 func withReservedShellCommands(t *testing.T, svr *Server, shellCmd string, jshCmd string) {
 	t.Helper()
-	shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+	scope := model.UserScope{User: "sys"}
+	shellDef, err := svr.models.GetShell(context.Background(), scope, model.SHELLID_SHELL)
 	require.NoError(t, err)
-	jshDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_JSH)
+	jshDef, err := svr.models.GetShell(context.Background(), scope, model.SHELLID_JSH)
 	require.NoError(t, err)
 	prevShell := shellDef.Command
 	prevJsh := jshDef.Command
-	svr.models.ShellProvider().SetDefaultShellCommand(shellCmd)
-	svr.models.ShellProvider().SetDefaultJshCommand(jshCmd)
+	svr.models.SetDefaultShellCommand(shellCmd)
+	svr.models.SetDefaultJshCommand(jshCmd)
 	t.Cleanup(func() {
-		svr.models.ShellProvider().SetDefaultShellCommand(prevShell)
-		svr.models.ShellProvider().SetDefaultJshCommand(prevJsh)
+		svr.models.SetDefaultShellCommand(prevShell)
+		svr.models.SetDefaultJshCommand(prevJsh)
 	})
 }
 
@@ -2613,12 +2539,12 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "shell")
 		require.Contains(t, shellDef.Command, "-server 127.0.0.1:7777")
 
-		jshDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_JSH)
+		jshDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_JSH)
 		require.NoError(t, err)
 		require.Contains(t, jshDef.Command, "jsh")
 		require.NotContains(t, jshDef.Command, " -server ")
@@ -2632,7 +2558,7 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "-server 127.0.0.1:5655")
 	})
@@ -2645,7 +2571,7 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Contains(t, shellDef.Command, "-server 10.10.1.20:5655")
 	})
@@ -2658,11 +2584,11 @@ func TestInitShellProvider(t *testing.T) {
 		err := svr.initShellProvider()
 		require.NoError(t, err)
 
-		shellDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_SHELL)
+		shellDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_SHELL)
 		require.NoError(t, err)
 		require.Equal(t, "keep-shell", shellDef.Command)
 
-		jshDef, err := svr.models.ShellProvider().GetShell(model.SHELLID_JSH)
+		jshDef, err := svr.models.GetShell(context.Background(), model.UserScope{User: "sys"}, model.SHELLID_JSH)
 		require.NoError(t, err)
 		require.Equal(t, "keep-jsh", jshDef.Command)
 	})
@@ -2711,17 +2637,18 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 	command := fmt.Sprintf("%q --help", exePath)
 
 	t.Run("add_and_copy_shell", func(t *testing.T) {
-		addedID, err := svr.addShell("my-shell", command)
+		ctx := contextWithModelUser(context.Background(), "sys")
+		addedID, err := svr.addShell(ctx, "my-shell", command)
 		require.NoError(t, err)
 		require.NotEmpty(t, addedID)
 
-		addedShell, err := svr.models.ShellProvider().GetShell(addedID)
+		addedShell, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, addedID)
 		require.NoError(t, err)
 		require.NotNil(t, addedShell)
 		require.Equal(t, "my-shell", addedShell.Label)
 		require.Equal(t, command, addedShell.Command)
 
-		copiedShell, err := svr.copyShell(addedID)
+		copiedShell, err := svr.copyShell(ctx, addedID)
 		require.NoError(t, err)
 		require.NotNil(t, copiedShell)
 		require.NotEqual(t, addedID, copiedShell.Id)
@@ -2732,38 +2659,40 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 		require.True(t, copiedShell.Attributes.Editable)
 		require.True(t, copiedShell.Attributes.Cloneable)
 
-		persistedCopiedShell, err := svr.models.ShellProvider().GetShell(copiedShell.Id)
+		persistedCopiedShell, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, copiedShell.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persistedCopiedShell)
 		require.Equal(t, copiedShell.Id, persistedCopiedShell.Id)
 	})
 
 	t.Run("copy_shell_validation", func(t *testing.T) {
-		_, err := svr.copyShell("")
+		ctx := contextWithModelUser(context.Background(), "sys")
+		_, err := svr.copyShell(ctx, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "source shell id not specified")
 
-		_, err = svr.copyShell("missing-shell")
+		_, err = svr.copyShell(ctx, "missing-shell")
 		require.Error(t, err)
-		require.Contains(t, strings.ToLower(err.Error()), "not found")
+		require.Contains(t, strings.ToLower(err.Error()), "invalid shell id")
 	})
 
 	t.Run("update_shell", func(t *testing.T) {
-		id, err := svr.addShell("old-name", command)
+		ctx := contextWithModelUser(context.Background(), "sys")
+		id, err := svr.addShell(ctx, "old-name", command)
 		require.NoError(t, err)
 
-		shell, err := svr.models.ShellProvider().GetShell(id)
+		shell, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, id)
 		require.NoError(t, err)
 		require.NotNil(t, shell)
 
 		shell.Label = "new-name"
 		shell.Command = command
-		updated, err := svr.updateShell(shell)
+		updated, err := svr.updateShell(ctx, shell)
 		require.NoError(t, err)
 		require.NotNil(t, updated)
 		require.Equal(t, "new-name", updated.Label)
 
-		persisted, err := svr.models.ShellProvider().GetShell(id)
+		persisted, err := svr.models.GetShell(ctx, model.UserScope{User: "sys"}, id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
 		require.Equal(t, "new-name", persisted.Label)
@@ -2771,15 +2700,16 @@ func TestShellManagementRpcHandlers(t *testing.T) {
 	})
 
 	t.Run("update_shell_validation", func(t *testing.T) {
-		_, err := svr.updateShell(nil)
+		ctx := contextWithModelUser(context.Background(), "sys")
+		_, err := svr.updateShell(ctx, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "shell definition not specified")
 
-		_, err = svr.updateShell(&model.ShellDefinition{Label: strings.Repeat("a", 17), Command: command})
+		_, err = svr.updateShell(ctx, &model.ShellDefinition{Label: strings.Repeat("a", 17), Command: command})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "name is too long")
 
-		_, err = svr.updateShell(&model.ShellDefinition{Label: "ok-name", Command: "   "})
+		_, err = svr.updateShell(ctx, &model.ShellDefinition{Label: "ok-name", Command: "   "})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "command not specified")
 	})

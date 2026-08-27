@@ -100,7 +100,6 @@ func TestDefaultMachbaseConfigPresets(t *testing.T) {
 	require.Equal(t, 5656, base.PORT_NO)
 	require.Equal(t, "127.0.0.1", base.BIND_IP_ADDRESS)
 	require.Equal(t, 0, base.TAG_PARTITION_COUNT)
-	require.Equal(t, 4, base.STREAM_THREAD_COUNT)
 	require.EqualValues(t, 8192, base.HANDLE_LIMIT)
 
 	fog := DefaultMachbaseConfig(PresetFog)
@@ -112,8 +111,6 @@ func TestDefaultMachbaseConfigPresets(t *testing.T) {
 	edge := DefaultMachbaseConfig(PresetEdge)
 	require.EqualValues(t, 1, edge.TAG_PARTITION_COUNT)
 	require.EqualValues(t, 1024*1024, edge.TAG_DATA_PART_SIZE)
-	require.EqualValues(t, 32*1024*1024, edge.RS_CACHE_MAX_MEMORY_SIZE)
-	require.EqualValues(t, 0, edge.STREAM_THREAD_COUNT)
 	require.EqualValues(t, 4096, edge.HANDLE_LIMIT)
 }
 

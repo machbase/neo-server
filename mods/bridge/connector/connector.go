@@ -203,3 +203,36 @@ func UnsetDatabase(name string) {
 	defer databasesLock.Unlock()
 	delete(databases, name)
 }
+
+// databasesByID mirrors registered (named/persisted) SqlBridge instances,
+// keyed by the stable _NEO_BRIDGE_DEF.ID. It is intentionally a separate
+// map from `databases` (which also holds on-the-fly connection specs keyed
+// by their literal DSN string), so that bridge names that are no longer
+// globally unique (owner-scoped) cannot collide with each other or with
+// on-the-fly specs.
+var databasesByID = map[int64]*sql.DB{}
+var databasesByIDLock sync.RWMutex
+
+func SetDatabaseByID(id int64, db *sql.DB) {
+	if db == nil {
+		panic("db is nil")
+	}
+	databasesByIDLock.Lock()
+	defer databasesByIDLock.Unlock()
+	databasesByID[id] = db
+}
+
+func UnsetDatabaseByID(id int64) {
+	databasesByIDLock.Lock()
+	defer databasesByIDLock.Unlock()
+	delete(databasesByID, id)
+}
+
+func GetDatabaseByID(id int64) (*sql.DB, error) {
+	databasesByIDLock.RLock()
+	defer databasesByIDLock.RUnlock()
+	if db, ok := databasesByID[id]; ok {
+		return db, nil
+	}
+	return nil, fmt.Errorf("undefined bridge id '%d'", id)
+}

@@ -21,6 +21,7 @@ import (
 	jshdb "github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 func (node *Node) fmScript(args ...any) (any, error) {
@@ -580,6 +581,8 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 			}
 		}()
 		var node = ctx.node
+		var runtime = node.ensureRuntime()
+		var dbScope = model.UserScope{User: runtime.ConsoleUser()}
 		var dbObj = vm.NewObject()
 
 		dbOpts := jshdb.ClientOptions{
@@ -624,7 +627,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 			copy(queryArgs, call.Arguments)
 
 			queryObj.Set("yield", func(call goja.FunctionCall) goja.Value {
-				jshClient := jshdb.NewClientWithOptions(vm, dbOpts)
+				jshClient := jshdb.NewClientWithOptions(runtime.Context(), dbScope, vm, dbOpts)
 				conn := jshClient.Connect(goja.FunctionCall{})
 				defer conn.Close(goja.FunctionCall{})
 				rows := conn.Query(goja.FunctionCall{Arguments: queryArgs})
@@ -651,7 +654,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 			})
 
 			queryObj.Set("forEach", func(callback goja.Callable) goja.Value {
-				jshClient := jshdb.NewClientWithOptions(vm, dbOpts)
+				jshClient := jshdb.NewClientWithOptions(runtime.Context(), dbScope, vm, dbOpts)
 				conn := jshClient.Connect(goja.FunctionCall{})
 				defer conn.Close(goja.FunctionCall{})
 				rows := conn.Query(goja.FunctionCall{Arguments: queryArgs})
@@ -696,7 +699,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 
 		// $.db().exec(sql, params...)
 		dbObj.Set("exec", func(call goja.FunctionCall) goja.Value {
-			client := jshdb.NewClientWithOptions(vm, dbOpts)
+			client := jshdb.NewClientWithOptions(runtime.Context(), dbScope, vm, dbOpts)
 			conn := client.Connect(goja.FunctionCall{})
 			defer conn.Close(goja.FunctionCall{})
 			return conn.Exec(call)

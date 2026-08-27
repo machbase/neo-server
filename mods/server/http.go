@@ -72,10 +72,10 @@ type httpd struct {
 	listeners  []net.Listener
 	jwtCache   JwtCache
 
-	authServer    *Server
-	rpcController *service.Controller
-	tqlLoader     tql.Loader
-	serverFs      *ssfs.SSFS
+	authServer        *Server
+	serviceController *service.Controller
+	tqlLoader         tql.Loader
+	serverFs          *ssfs.SSFS
 
 	eulaPassed             bool
 	eulaFilePath           string
@@ -89,7 +89,6 @@ type httpd struct {
 	writeBufSize           int
 	linger                 int
 	keepAlive              int
-	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
 
@@ -116,8 +115,8 @@ func WithHttpAuthServer(authSvc *Server, enabled bool) HttpOption {
 	return func(s *httpd) {
 		s.authServer = authSvc
 		s.enableTokenAuth = enabled
-		if authSvc != nil && authSvc.rpcController != nil {
-			s.rpcController = authSvc.rpcController
+		if authSvc != nil && authSvc.serviceController != nil {
+			s.serviceController = authSvc.serviceController
 		}
 		if enabled {
 			s.log.Infof("HTTP token authentication enabled")
@@ -218,12 +217,6 @@ func WithHttpWebDir(path string) HttpOption {
 func WithHttpExperimentModeProvider(provider func() bool) HttpOption {
 	return func(s *httpd) {
 		s.experimentModeProvider = provider
-	}
-}
-
-func WithHttpWebShellProvider(provider model.ShellProvider) HttpOption {
-	return func(s *httpd) {
-		s.webShellProvider = provider
 	}
 }
 
@@ -991,8 +984,15 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.experimentModeProvider != nil {
 		rsp.ExperimentMode = svr.experimentModeProvider()
 	}
-	if svr.webShellProvider != nil {
-		rsp.Shells = svr.webShellProvider.GetAllShells(true)
+	if svr.authServer != nil && svr.authServer.models != nil {
+		shells, err := svr.authServer.models.GetAllShells(ctx, model.UserScope{User: claim.Subject}, true)
+		if err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		rsp.Shells = shells
 	}
 	rsp.Elapse = time.Since(tick).String()
 
@@ -1328,7 +1328,7 @@ func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 		return
 	}
 
-	cons := NewWebConsole(claim.Subject, consoleId, conn, svr.rpcController)
+	cons := NewWebConsole(claim.Subject, consoleId, conn, svr.serviceController)
 	cons.Run()
 }
 
@@ -1690,11 +1690,11 @@ type WebConsole struct {
 	closeOnce sync.Once
 	closed    atomic.Bool
 
-	messages      []*eventbus.Event
-	lastFlushTime time.Time
-	flushPeriod   time.Duration
-	processor     WebConsoleProcessor
-	rpcController *service.Controller
+	messages          []*eventbus.Event
+	lastFlushTime     time.Time
+	flushPeriod       time.Duration
+	processor         WebConsoleProcessor
+	serviceController *service.Controller
 }
 
 type webConsoleRpcNotifier struct {
@@ -1714,19 +1714,19 @@ func (n *webConsoleRpcNotifier) NotifyJsonRpc(session string, payload map[string
 	})
 }
 
-func NewWebConsole(username string, consoleId string, conn *websocket.Conn, rpcController *service.Controller) *WebConsole {
-	if rpcController == nil {
-		rpcController = defaultJsonRpcController
+func NewWebConsole(username string, consoleId string, conn *websocket.Conn, serviceController *service.Controller) *WebConsole {
+	if serviceController == nil {
+		serviceController = defaultJsonRpcController
 	}
 	ret := &WebConsole{
-		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
-		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
-		username:      username,
-		consoleId:     consoleId,
-		conn:          conn,
-		lastFlushTime: time.Now(),
-		flushPeriod:   300 * time.Millisecond,
-		rpcController: rpcController,
+		log:               logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
+		topic:             fmt.Sprintf("console:%s:%s", username, consoleId),
+		username:          username,
+		consoleId:         consoleId,
+		conn:              conn,
+		lastFlushTime:     time.Now(),
+		flushPeriod:       300 * time.Millisecond,
+		serviceController: serviceController,
 	}
 	eventbus.Default.SubscribeAsync(ret.topic, ret.Send, true)
 	return ret
@@ -1852,12 +1852,13 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
 	rpcCtx := service.WithJsonRpcNotificationWriter(ctx, &webConsoleRpcNotifier{cons: cons})
 	rpcCtx = service.WithJsonRpcSession(rpcCtx, session)
+	rpcCtx = contextWithModelUser(rpcCtx, cons.username)
 
 	rsp := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      evt.ID,
 	}
-	result, rpcErr := cons.rpcController.CallJsonRpc(evt.Method, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
+	result, rpcErr := cons.serviceController.CallJsonRpc(evt.Method, evt.Params, func(paramType reflect.Type) (reflect.Value, bool) {
 		switch {
 		case paramType == webConsoleType:
 			return reflect.ValueOf(cons), true
@@ -2470,9 +2471,13 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 		"id":      req.ID,
 	}
 
-	ctl := svr.rpcController
+	ctl := svr.serviceController
 	if ctl == nil {
 		ctl = defaultJsonRpcController
+	}
+	rpcCtx := context.Context(ctx)
+	if claim, exists := svr.getJwtClaim(ctx); exists && claim != nil {
+		rpcCtx = contextWithModelUser(rpcCtx, claim.Subject)
 	}
 	result, rpcErr := ctl.CallJsonRpc(req.Method, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
 		switch {
@@ -2480,7 +2485,7 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 			return reflect.ValueOf(ctx), true
 		case paramType == contextType:
 			// Pass gin.Context as context.Context to preserve requester information.
-			return reflect.ValueOf(ctx), true
+			return reflect.ValueOf(rpcCtx), true
 		default:
 			return reflect.Value{}, false
 		}

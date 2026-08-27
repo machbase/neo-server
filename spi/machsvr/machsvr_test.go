@@ -1545,7 +1545,7 @@ func TestBitTypeColumn(t *testing.T) {
 	// https://github.com/machbase/neo/issues/956
 	rows, err = conn.QueryContext(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
 	require.Error(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
-	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type does not match.", err.Error())
 
 	if rows != nil {
 		rows.Close()
@@ -1554,7 +1554,7 @@ func TestBitTypeColumn(t *testing.T) {
 	// https://github.com/machbase/neo/issues/956
 	rows, err = conn.QueryContext(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
 	require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
-	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type does not match.", err.Error())
 	if rows != nil {
 		rows.Close()
 	}

@@ -143,9 +143,9 @@ function listBridges(config, args) {
     client.listBridges()
         .then((lst) => {
             let box = pretty.Table(config);
-            box.appendHeader(['NAME', 'TYPE', 'CONNECTION']);
+            box.appendHeader(['ID', 'NAME', 'IS_PUBLIC', 'ALLOWED_USER', 'TYPE', 'CONNECTION']);
             for (const br of lst) {
-                box.append([br.name, br.type, br.path]);
+                box.append([br.id, br.name, br.isPublic, br.allowedUser, br.type, br.path]);
             }
             console.println(box.render());
         })

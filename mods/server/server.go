@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -69,15 +68,12 @@ type Server struct {
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
-	proxyMgr *ProxyManager
-
+	proxyMgr          *ProxyManager
 	serviceController *service.Controller
-	rpcController     *service.Controller
-
-	models model.Service
+	models            *model.Provider
 
 	startupTime      time.Time
-	servicePorts     map[string][]*model.ServicePort
+	servicePorts     map[string][]*spi.ServicePort
 	servicePortsLock sync.RWMutex
 
 	certDirPath           string
@@ -96,6 +92,26 @@ var binExecutable string
 var serverAfterStartC = make(chan struct{})
 var serverBeforeStopC = make(chan struct{})
 
+type modelUserContextKey struct{}
+
+func contextWithModelUser(ctx context.Context, user string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, modelUserContextKey{}, user)
+}
+
+func modelUserScopeFromContext(ctx context.Context) (model.UserScope, error) {
+	if ctx == nil {
+		return model.UserScope{}, errors.New("context is nil")
+	}
+	user, _ := ctx.Value(modelUserContextKey{}).(string)
+	if strings.TrimSpace(user) == "" {
+		return model.UserScope{}, errors.New("model user is not specified")
+	}
+	return model.UserScope{User: user}, nil
+}
+
 func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
 		if port, err := strconv.ParseInt(navelCord, 10, 64); err == nil {
@@ -105,10 +121,9 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	return &Server{
-		Config:        *conf,
-		servicePorts:  make(map[string][]*model.ServicePort),
-		proxyMgr:      NewProxyManager(),
-		rpcController: &service.Controller{},
+		Config:       *conf,
+		servicePorts: make(map[string][]*spi.ServicePort),
+		proxyMgr:     NewProxyManager(),
 	}, nil
 }
 
@@ -560,21 +575,21 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 				lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
 				s.servicePortsLock.Lock()
 				lst := s.servicePorts[svc]
-				lst = append(lst, &model.ServicePort{Service: svc, Address: lsnrPort})
+				lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
 				s.servicePorts[svc] = lst
 				s.servicePortsLock.Unlock()
 			}
 		} else {
 			s.servicePortsLock.Lock()
 			lst := s.servicePorts[svc]
-			lst = append(lst, &model.ServicePort{Service: svc, Address: addr})
+			lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
 			s.servicePorts[svc] = lst
 			s.servicePortsLock.Unlock()
 		}
 	} else {
 		s.servicePortsLock.Lock()
 		lst := s.servicePorts[svc]
-		lst = append(lst, &model.ServicePort{Service: svc, Address: addr})
+		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
 		s.servicePorts[svc] = lst
 		s.servicePortsLock.Unlock()
 	}
@@ -743,14 +758,9 @@ func (s *Server) startModelService() error {
 	if !s.hasHead {
 		return nil
 	}
-	s.models = model.NewService(
-		model.WithConfigDirPath(s.prefDirPath),
+	s.models = model.NewProvider(
 		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
 	)
-	if err := s.models.Start(); err != nil {
-		return err
-	}
-	util.AddShutdownHook(func() { s.models.Stop() })
 	return nil
 }
 
@@ -847,13 +857,12 @@ func (s *Server) runInitScripts() error {
 func (s *Server) startBridgeAndSchedulerService() error {
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
-		scheduler.WithProvider(s.models.ScheduleProvider()),
+		scheduler.WithProvider(s.models),
 		scheduler.WithTqlLoader(tql.NewLoader()),
 	)
 
-	s.bridgeSvc = bridge.NewService(
-		bridge.WithProvider(s.models.BridgeProvider()),
-	)
+	s.bridgeSvc = bridge.NewService()
+	bridge.SetBridgeProvider(s.models)
 
 	if err := s.bridgeSvc.Start(); err != nil {
 		return err
@@ -938,7 +947,6 @@ func (s *Server) startHttpServer() error {
 		WithHttpServerSideFileSystem(ssfs.Default()),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
-		WithHttpWebShellProvider(s.models.ShellProvider()),
 		WithHttpPathMap("data", s.homeDirPath),
 		WithHttpLinger(s.Http.Linger),
 		WithHttpWriteBufSize(s.Http.WriteBufSize),
@@ -1047,13 +1055,11 @@ func (s *Server) initServiceController() error {
 		}
 	})
 	s.serviceController = ctrl
-	s.rpcController = ctrl
 	s.registerJsonRpcHandlers()
 	if err := ctrl.Start(func(sc *service.Config, action string, err error) {
 		s.log.Infof("service %s %s, error: %v", sc.Name, action, err)
 	}); err != nil {
 		s.serviceController = nil
-		s.rpcController = nil
 		return err
 	}
 	s.AddServicePort("servicectl", ctrl.Address())
@@ -1080,7 +1086,7 @@ func (s *Server) addVStatFile(name string, fn func() []byte) {
 }
 
 func (s *Server) registerJsonRpcHandlers() {
-	ctl := s.rpcController
+	ctl := s.serviceController
 	if ctl == nil {
 		return
 	}
@@ -1119,12 +1125,29 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("key.delete", s.deleteKey)
 	ctl.RegisterJsonRpcHandler("server.certificate.get", s.getServerCertificate)
 	ctl.RegisterJsonRpcHandler("schedule.list", s.listSchedules)
+	ctl.RegisterJsonRpcHandler("schedule.get", s.getSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.timer.add", s.addTimerSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.subscriber.add", s.addSubscriberSchedule)
+	ctl.RegisterJsonRpcHandler("schedule.update", s.updateTimerSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.delete", s.deleteSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.start", s.startSchedule)
 	ctl.RegisterJsonRpcHandler("schedule.stop", s.stopSchedule)
-	// TODO: add schedule.update, schedule.status
+	// timer.*/subscriber.*: split namespace that new callers should migrate
+	// to; schedule.* above is kept for backward compatibility.
+	ctl.RegisterJsonRpcHandler("timer.list", s.listTimers)
+	ctl.RegisterJsonRpcHandler("timer.get", s.getTimer)
+	ctl.RegisterJsonRpcHandler("timer.add", s.addTimer)
+	ctl.RegisterJsonRpcHandler("timer.update", s.updateTimer)
+	ctl.RegisterJsonRpcHandler("timer.delete", s.deleteTimer)
+	ctl.RegisterJsonRpcHandler("timer.start", s.startTimer)
+	ctl.RegisterJsonRpcHandler("timer.stop", s.stopTimer)
+	ctl.RegisterJsonRpcHandler("subscriber.list", s.listSubscribers)
+	ctl.RegisterJsonRpcHandler("subscriber.get", s.getSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.add", s.addSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.delete", s.deleteSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.start", s.startSubscriber)
+	ctl.RegisterJsonRpcHandler("subscriber.stop", s.stopSubscriber)
+	// TODO: add schedule.status
 	ctl.RegisterJsonRpcHandler("server.shutdown", s.Shutdown)
 	ctl.RegisterJsonRpcHandler("http.debug.set", s.setHttpDebug)
 	ctl.RegisterJsonRpcHandler("session.list", s.listSessions)
@@ -1255,11 +1278,11 @@ func scoreMachHost(host string, ifAddrs []*util.InterfaceAddr) int {
 //   - svc: service name filter; empty string returns all services
 //
 // return: service ports sorted by service and address
-func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
+func (s *Server) getServicePorts(svc string) ([]*spi.ServicePort, error) {
 	s.servicePortsLock.RLock()
 	defer s.servicePortsLock.RUnlock()
 
-	ports := []*model.ServicePort{}
+	ports := []*spi.ServicePort{}
 	for k, s := range s.servicePorts {
 		if svc != "" {
 			if strings.ToLower(svc) != k {
@@ -1275,7 +1298,7 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 		return ports[i].Service < ports[j].Service
 	})
 	if ports == nil {
-		ports = []*model.ServicePort{}
+		ports = []*spi.ServicePort{}
 	}
 	return ports, nil
 }
@@ -1285,12 +1308,19 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 // params:
 //
 // return: shell definitions
-func (s *Server) listShells() []*model.ShellDefinition {
-	lst := s.models.ShellProvider().GetAllShells(false)
-	if lst == nil {
-		return []*model.ShellDefinition{}
+func (s *Server) listShells(ctx context.Context) ([]*model.ShellDefinition, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return lst
+	lst, err := s.models.GetAllShells(ctx, scope, false)
+	if err != nil {
+		return nil, err
+	}
+	if lst == nil {
+		return []*model.ShellDefinition{}, nil
+	}
+	return lst, nil
 }
 
 // copyShell copies a shell definition by identifier.
@@ -1299,15 +1329,18 @@ func (s *Server) listShells() []*model.ShellDefinition {
 //   - srcId: source shell identifier
 //
 // return: copied shell definition
-func (s *Server) copyShell(srcId string) (*model.ShellDefinition, error) {
+func (s *Server) copyShell(ctx context.Context, srcId string) (*model.ShellDefinition, error) {
 	if srcId == "" {
 		return nil, fmt.Errorf("source shell id not specified")
 	}
-	provider := s.models.ShellProvider()
-	if provider == nil {
+	if s.models == nil {
 		return nil, fmt.Errorf("shell provider not available")
 	}
-	shell, err := provider.CopyShell(srcId)
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	shell, err := s.models.CopyShell(ctx, scope, srcId)
 	if err != nil {
 		return nil, err
 	}
@@ -1323,7 +1356,7 @@ func (s *Server) copyShell(srcId string) (*model.ShellDefinition, error) {
 //   - shell: shell definition
 //
 // return: updated shell definition
-func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefinition, error) {
+func (s *Server) updateShell(ctx context.Context, shell *model.ShellDefinition) (*model.ShellDefinition, error) {
 	if shell == nil {
 		return nil, fmt.Errorf("shell definition not specified")
 	}
@@ -1333,11 +1366,14 @@ func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefiniti
 	if len(strings.TrimSpace(shell.Command)) == 0 {
 		return nil, fmt.Errorf("command not specified")
 	}
-	provider := s.models.ShellProvider()
-	if provider == nil {
+	if s.models == nil {
 		return nil, fmt.Errorf("shell provider not available")
 	}
-	if err := provider.SaveShell(shell); err != nil {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.models.SaveShell(ctx, scope, shell); err != nil {
 		return nil, err
 	}
 	return shell, nil
@@ -1350,16 +1386,11 @@ func (s *Server) updateShell(shell *model.ShellDefinition) (*model.ShellDefiniti
 //   - command: shell launch command
 //
 // return: created shell identifier
-func (s *Server) addShell(name string, command string) (string, error) {
+func (s *Server) addShell(ctx context.Context, name string, command string) (string, error) {
 	def := &model.ShellDefinition{}
 	if len(name) > 16 {
 		return "", fmt.Errorf("name is too long, should be shorter than 16 characters")
 	}
-	uid, err := uuid.DefaultGenerator.NewV4()
-	if err != nil {
-		return "", err
-	}
-	def.Id = uid.String()
 	def.Label = name
 	def.Type = model.SHELL_TERM
 	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
@@ -1370,7 +1401,11 @@ func (s *Server) addShell(name string, command string) (string, error) {
 		def.Command = command
 	}
 
-	if err := s.models.ShellProvider().SaveShell(def); err != nil {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := s.models.SaveShell(ctx, scope, def); err != nil {
 		return "", err
 	}
 	return def.Id, nil
@@ -1382,8 +1417,12 @@ func (s *Server) addShell(name string, command string) (string, error) {
 //   - id: shell identifier
 //
 // return: null on success
-func (s *Server) deleteShell(id string) error {
-	return s.models.ShellProvider().RemoveShell(id)
+func (s *Server) deleteShell(ctx context.Context, id string) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	return s.models.RemoveShell(ctx, scope, id)
 }
 
 // getBridge returns bridge configuration by name.
@@ -1392,9 +1431,12 @@ func (s *Server) deleteShell(id string) error {
 //   - name: bridge name
 //
 // return: bridge information
-func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.GetBridge(ctx, &bridge.GetBridgeRequest{
+func (s *Server) getBridge(ctx context.Context, name string) (*bridge.BridgeInfo, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rsp, err := s.bridgeSvc.GetBridge(ctx, scope, &bridge.GetBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1411,9 +1453,12 @@ func (s *Server) getBridge(name string) (*bridge.BridgeInfo, error) {
 // params:
 //
 // return: bridge list
-func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
-	ctx := context.Background()
-	if rsp, err := s.bridgeSvc.ListBridge(ctx); err != nil {
+func (s *Server) listBridges(ctx context.Context) ([]*bridge.BridgeInfo, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if rsp, err := s.bridgeSvc.ListBridge(ctx, scope); err != nil {
 		return nil, err
 	} else {
 		if rsp.Bridges == nil {
@@ -1431,9 +1476,12 @@ func (s *Server) listBridges() ([]*bridge.BridgeInfo, error) {
 //   - conn: bridge connection string
 //
 // return: null on success
-func (s *Server) addBridge(name string, typ string, conn string) error {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.AddBridge(ctx, &bridge.AddBridgeRequest{
+func (s *Server) addBridge(ctx context.Context, name string, typ string, conn string) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	rsp, err := s.bridgeSvc.AddBridge(ctx, scope, &bridge.AddBridgeRequest{
 		Name: name,
 		Type: typ,
 		Path: conn,
@@ -1453,8 +1501,11 @@ func (s *Server) addBridge(name string, typ string, conn string) error {
 //   - name: bridge name
 //
 // return: null on success
-func (s *Server) deleteBridge(name string) error {
-	ctx := context.Background()
+func (s *Server) deleteBridge(ctx context.Context, name string) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	listRsp, err := s.schedSvc.ListSchedule(ctx)
 	if err != nil {
@@ -1474,7 +1525,7 @@ func (s *Server) deleteBridge(name string) error {
 		return fmt.Errorf("bridge %q has subscribers, %s", name, strings.Join(subscribers, ","))
 	}
 
-	rsp, err := s.bridgeSvc.DelBridge(ctx, &bridge.DelBridgeRequest{
+	rsp, err := s.bridgeSvc.DelBridge(ctx, scope, &bridge.DelBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1492,9 +1543,12 @@ func (s *Server) deleteBridge(name string) error {
 //   - name: bridge name
 //
 // return: true when the bridge test succeeds
-func (s *Server) testBridge(name string) (bool, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.TestBridge(ctx, &bridge.TestBridgeRequest{
+func (s *Server) testBridge(ctx context.Context, name string) (bool, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	rsp, err := s.bridgeSvc.TestBridge(ctx, scope, &bridge.TestBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -1521,12 +1575,15 @@ type BridgeStats struct {
 //   - name: bridge name
 //
 // return: bridge statistics
-func (s *Server) statsBridge(name string) (BridgeStats, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.StatsBridge(ctx, &bridge.StatsBridgeRequest{
+func (s *Server) statsBridge(ctx context.Context, name string) (BridgeStats, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	ret := BridgeStats{}
+	if err != nil {
+		return ret, err
+	}
+	rsp, err := s.bridgeSvc.StatsBridge(ctx, scope, &bridge.StatsBridgeRequest{
 		Name: name,
 	})
-	ret := BridgeStats{}
 	if err != nil {
 		return ret, err
 	}
@@ -1555,9 +1612,13 @@ type BridgeExecResult struct {
 //   - command: SQL statement for exec
 //
 // return: execution result
-func (s *Server) execBridge(name string, command string) (BridgeExecResult, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
+func (s *Server) execBridge(ctx context.Context, name string, command string) (BridgeExecResult, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	ret := BridgeExecResult{}
+	if err != nil {
+		return ret, err
+	}
+	rsp, err := s.bridgeSvc.Exec(ctx, scope, &bridge.ExecRequest{
 		Name: name,
 		Command: bridge.ExecCommand{
 			SqlExec: &bridge.SqlRequest{
@@ -1565,7 +1626,6 @@ func (s *Server) execBridge(name string, command string) (BridgeExecResult, erro
 			},
 		},
 	})
-	ret := BridgeExecResult{}
 	if err != nil {
 		return ret, err
 	}
@@ -1598,9 +1658,13 @@ type BridgeQueryColumn struct {
 //   - query: SQL query statement
 //
 // return: query handle and column metadata
-func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, error) {
-	ctx := context.Background()
-	rsp, err := s.bridgeSvc.Exec(ctx, &bridge.ExecRequest{
+func (s *Server) queryBridge(ctx context.Context, name string, query string) (BridgeQueryResult, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	ret := BridgeQueryResult{}
+	if err != nil {
+		return ret, err
+	}
+	rsp, err := s.bridgeSvc.Exec(ctx, scope, &bridge.ExecRequest{
 		Name: name,
 		Command: bridge.ExecCommand{
 			SqlQuery: &bridge.SqlRequest{
@@ -1608,7 +1672,6 @@ func (s *Server) queryBridge(name string, query string) (BridgeQueryResult, erro
 			},
 		},
 	})
-	ret := BridgeQueryResult{}
 	if err != nil {
 		return ret, err
 	}
@@ -1854,6 +1917,180 @@ func (s *Server) listSchedules(ctx context.Context) ([]*scheduler.Schedule, erro
 	return rsp.Schedules, nil
 }
 
+// getSchedule returns a schedule (timer or subscriber) by name.
+//
+// params:
+//   - name: schedule name
+//
+// return: schedule
+func (s *Server) getSchedule(ctx context.Context, name string) (*scheduler.Schedule, error) {
+	name = strings.ToLower(name)
+	rsp, err := s.schedSvc.GetSchedule(ctx, &scheduler.GetScheduleRequest{Name: name})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Schedule, nil
+}
+
+// listTimers returns all timer schedules.
+//
+// params:
+//
+// return: timer schedule list
+func (s *Server) listTimers(ctx context.Context) ([]*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.ListTimer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp.Schedules) == 0 {
+		return []*scheduler.Schedule{}, nil
+	}
+	return rsp.Schedules, nil
+}
+
+// getTimer returns a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: timer schedule
+func (s *Server) getTimer(ctx context.Context, id int64) (*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.GetTimer(ctx, &scheduler.GetTimerRequest{Id: id})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Schedule, nil
+}
+
+// deleteTimer removes a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: null on success
+func (s *Server) deleteTimer(ctx context.Context, id int64) error {
+	rsp, err := s.schedSvc.DeleteTimer(ctx, &scheduler.DeleteTimerRequest{Id: id})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+// startTimer starts a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: null on success
+func (s *Server) startTimer(ctx context.Context, id int64) error {
+	def, err := s.models.LoadTimerByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.startSchedule(ctx, def.Name)
+}
+
+// stopTimer stops a timer schedule by ID.
+//
+// params:
+//   - id: timer ID
+//
+// return: null on success
+func (s *Server) stopTimer(ctx context.Context, id int64) error {
+	def, err := s.models.LoadTimerByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.stopSchedule(ctx, def.Name)
+}
+
+// listSubscribers returns all subscriber schedules.
+//
+// params:
+//
+// return: subscriber schedule list
+func (s *Server) listSubscribers(ctx context.Context) ([]*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.ListSubscriber(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rsp.Schedules) == 0 {
+		return []*scheduler.Schedule{}, nil
+	}
+	return rsp.Schedules, nil
+}
+
+// getSubscriber returns a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: subscriber schedule
+func (s *Server) getSubscriber(ctx context.Context, id int64) (*scheduler.Schedule, error) {
+	rsp, err := s.schedSvc.GetSubscriber(ctx, &scheduler.GetSubscriberRequest{Id: id})
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, errors.New(rsp.Reason)
+	}
+	return rsp.Schedule, nil
+}
+
+// deleteSubscriber removes a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: null on success
+func (s *Server) deleteSubscriber(ctx context.Context, id int64) error {
+	rsp, err := s.schedSvc.DeleteSubscriber(ctx, &scheduler.DeleteSubscriberRequest{Id: id})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+// startSubscriber starts a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: null on success
+func (s *Server) startSubscriber(ctx context.Context, id int64) error {
+	def, err := s.models.LoadSubscriberByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.startSchedule(ctx, def.Name)
+}
+
+// stopSubscriber stops a subscriber schedule by ID.
+//
+// params:
+//   - id: subscriber ID
+//
+// return: null on success
+func (s *Server) stopSubscriber(ctx context.Context, id int64) error {
+	def, err := s.models.LoadSubscriberByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.stopSchedule(ctx, def.Name)
+}
+
 type addTimerScheduleRequest struct {
 	Name      string `json:"name"`
 	Spec      string `json:"spec"`
@@ -1868,12 +2105,17 @@ type addTimerScheduleRequest struct {
 //
 // return: null on success
 func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleRequest) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
 	scheduleReq := &scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
 		Type:      "TIMER",
 		AutoStart: req.AutoStart,
 		Schedule:  req.Spec,
 		Task:      req.Command,
+		ExecUser:  scope.User,
 	}
 	rsp, err := s.schedSvc.AddSchedule(ctx, scheduleReq)
 	if err != nil {
@@ -1885,6 +2127,34 @@ func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleReque
 	return nil
 }
 
+// addTimer creates a timer schedule and returns its ID.
+//
+// params:
+//   - req: timer schedule request
+//
+// return: created timer ID
+func (s *Server) addTimer(ctx context.Context, req addTimerScheduleRequest) (int64, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &scheduler.AddScheduleRequest{
+		Name:      strings.ToLower(req.Name),
+		Type:      "TIMER",
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
+		ExecUser:  scope.User,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if !rsp.Success {
+		return 0, errors.New(rsp.Reason)
+	}
+	return rsp.Id, nil
+}
+
 // addSubscriberSchedule creates a subscriber schedule using a structured payload.
 //
 // params:
@@ -1892,12 +2162,17 @@ func (s *Server) addTimerSchedule(ctx context.Context, req addTimerScheduleReque
 //
 // return: null on success
 func (s *Server) addSubscriberSchedule(ctx context.Context, req addSubscriberScheduleRequest) error {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return err
+	}
 	scheduleReq := scheduler.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
 		Type:      "SUBSCRIBER",
 		AutoStart: req.AutoStart,
 		Task:      req.Command,
 		Bridge:    req.Bridge,
+		ExecUser:  scope.User,
 	}
 	if req.Mqtt != nil {
 		scheduleReq.Opt.Mqtt = &scheduler.MqttOption{
@@ -1941,6 +2216,106 @@ type addSubscriberScheduleRequest struct {
 	AutoStart bool                             `json:"autoStart,omitempty"`
 	Mqtt      *addSubscriberScheduleMqttOption `json:"mqtt,omitempty"`
 	Nats      *addSubscriberScheduleNatsOption `json:"nats,omitempty"`
+}
+
+// addSubscriber creates a subscriber schedule and returns its ID.
+//
+// params:
+//   - req: subscriber schedule request with protocol-specific options
+//
+// return: created subscriber ID
+func (s *Server) addSubscriber(ctx context.Context, req addSubscriberScheduleRequest) (int64, error) {
+	scope, err := modelUserScopeFromContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	scheduleReq := scheduler.AddScheduleRequest{
+		Name:      strings.ToLower(req.Name),
+		Type:      "SUBSCRIBER",
+		AutoStart: req.AutoStart,
+		Task:      req.Command,
+		Bridge:    req.Bridge,
+		ExecUser:  scope.User,
+	}
+	if req.Mqtt != nil {
+		scheduleReq.Opt.Mqtt = &scheduler.MqttOption{
+			Topic: req.Mqtt.Topic,
+			QoS:   int32(req.Mqtt.QoS),
+		}
+	}
+	if req.Nats != nil {
+		scheduleReq.Opt.Nats = &scheduler.NatsOption{
+			Subject:    req.Nats.Subject,
+			QueueName:  req.Nats.QueueName,
+			StreamName: req.Nats.StreamName,
+		}
+	}
+	rsp, err := s.schedSvc.AddSchedule(ctx, &scheduleReq)
+	if err != nil {
+		return 0, err
+	}
+	if !rsp.Success {
+		return 0, errors.New(rsp.Reason)
+	}
+	return rsp.Id, nil
+}
+
+type updateTimerScheduleRequest struct {
+	Name      string `json:"name"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+	Spec      string `json:"spec"`
+	Command   string `json:"command"`
+}
+
+// updateTimerSchedule updates an existing timer schedule.
+//
+// params:
+//   - req: timer schedule update request
+//
+// return: null on success
+func (s *Server) updateTimerSchedule(ctx context.Context, req updateTimerScheduleRequest) error {
+	rsp, err := s.schedSvc.UpdateSchedule(ctx, &scheduler.UpdateScheduleRequest{
+		Name:      strings.ToLower(req.Name),
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
+}
+
+type updateTimerRequest struct {
+	Id        int64  `json:"id"`
+	AutoStart bool   `json:"autoStart,omitempty"`
+	Spec      string `json:"spec"`
+	Command   string `json:"command"`
+}
+
+// updateTimer updates an existing timer schedule by ID.
+//
+// params:
+//   - req: timer schedule update request
+//
+// return: null on success
+func (s *Server) updateTimer(ctx context.Context, req updateTimerRequest) error {
+	rsp, err := s.schedSvc.UpdateTimer(ctx, &scheduler.UpdateTimerRequest{
+		Id:        req.Id,
+		AutoStart: req.AutoStart,
+		Schedule:  req.Spec,
+		Task:      req.Command,
+	})
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
+	}
+	return nil
 }
 
 // deleteSchedule removes a schedule by name.
@@ -2989,12 +3364,12 @@ func (s *Server) initShellProvider() error {
 	cmdLine := strings.Join(shellCmd, " ")
 	// neo-shell require -server option
 	defaultShellCmd := strings.Replace(cmdLine, "[[shell]]", "shell", 1) + " -server " + candidate
-	s.models.ShellProvider().SetDefaultShellCommand(defaultShellCmd)
+	s.models.SetDefaultShellCommand(defaultShellCmd)
 	s.log.Trace("Set shell command:", defaultShellCmd)
 	// jsh
 	defaultJshCmd := strings.Replace(cmdLine, "[[shell]]", "jsh", 1)
 	s.log.Trace("Set jsh command:", defaultShellCmd)
-	s.models.ShellProvider().SetDefaultJshCommand(defaultJshCmd)
+	s.models.SetDefaultJshCommand(defaultJshCmd)
 	return nil
 }
 
@@ -3031,7 +3406,7 @@ func isAnyIfaceCandidate(candidate string) bool {
 // sshd shell provider
 func (s *Server) provideShellForSsh(user string, shellId string) *SshShell {
 	shellId = strings.ToUpper(shellId)
-	shellDef, _ := s.models.ShellProvider().GetShell(shellId)
+	shellDef, _ := s.models.GetShell(context.Background(), model.UserScope{User: user}, shellId)
 	if shellDef == nil {
 		return nil
 	}

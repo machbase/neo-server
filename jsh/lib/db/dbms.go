@@ -8,21 +8,26 @@ import (
 
 	"github.com/dop251/goja"
 	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
-func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
+func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m = require("@jsh/db")
-	o := module.Get("exports").(*goja.Object)
+	exports := module.Get("exports").(*goja.Object)
 
 	// db = new dbms.Client()
-	o.Set("Client", new_client(rt))
+	exports.Set("Client", new_client(ctx, rt))
 }
 
-func new_client(rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
+func new_client(ctx context.Context, rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
 	return func(call goja.ConstructorCall) *goja.Object {
-		client := NewClient(rt, call.Arguments)
+		// TODO: jsh has no exported way yet to resolve the actual logged-in
+		// session user from this native module's ctx, so a fixed "sys" scope
+		// is used until that wiring exists.
+		client := NewClient(ctx, model.UserScope{User: "sys"}, rt, call.Arguments)
 		ret := rt.NewObject()
 		ret.Set("connect", client.jsConnect)
 		ret.Set("supportAppend", client.supportAppend)
@@ -47,17 +52,17 @@ type Client struct {
 	LowerCaseColumns bool            `json:"lowerCaseColumns"`
 }
 
-func NewClient(rt *goja.Runtime, optValue []goja.Value) *Client {
+func NewClient(ctx context.Context, scope model.UserScope, rt *goja.Runtime, optValue []goja.Value) *Client {
 	opts := ClientOptions{}
 	if len(optValue) > 0 {
 		if err := rt.ExportTo(optValue[0], &opts); err != nil {
 			panic(rt.NewGoError(err))
 		}
 	}
-	return NewClientWithOptions(rt, opts)
+	return NewClientWithOptions(ctx, scope, rt, opts)
 }
 
-func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
+func NewClientWithOptions(ctx context.Context, scope model.UserScope, rt *goja.Runtime, opts ClientOptions) *Client {
 	ret := &Client{
 		ctx:              context.Background(),
 		rt:               rt,
@@ -67,7 +72,7 @@ func NewClientWithOptions(rt *goja.Runtime, opts ClientOptions) *Client {
 		supportAppend:    true,
 	}
 	if opts.BridgeName != "" {
-		if db, err := connector.New(opts.BridgeName); err == nil {
+		if db, err := bridge.ResolveSqlDB(ctx, scope, opts.BridgeName); err == nil {
 			ret.db = db
 		} else {
 			panic(rt.NewGoError(err))

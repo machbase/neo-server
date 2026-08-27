@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 type rowsWrap struct {
@@ -70,10 +72,10 @@ type SqlQueryResultField struct {
 
 // ////////////////////////////
 // runtime service
-func (s *Service) Exec(ctx context.Context, req *ExecRequest) (*ExecResponse, error) {
+func (s *Service) Exec(ctx context.Context, scope model.UserScope, req *ExecRequest) (*ExecResponse, error) {
 	rsp := &ExecResponse{}
 	tick := time.Now()
-	conn, err := GetBridge(req.Name)
+	conn, err := GetBridge(ctx, scope, req.Name)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
