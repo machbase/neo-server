@@ -26,6 +26,11 @@ class CSVParser extends Transform {
         this.trimLeadingSpace = options.trimLeadingSpace !== false;
         // 'object' emits {header: value}, 'array' emits the raw field list (much cheaper).
         this.rowMode = options.rowMode === 'array' ? 'array' : 'object';
+        this.valueTypes = Array.isArray(options.valueTypes) ? options.valueTypes : null;
+        this.timeformat = options.timeformat || '';
+        this.tz = options.tz || 'local';
+        this.nullValue = options.nullValue || '';
+        this.convertAfterRows = options.convertAfterRows || 0;
 
         // Internal state
         this.lineNumber = 0;
@@ -34,6 +39,7 @@ class CSVParser extends Transform {
         this.bytesWritten = 0;
         this.bytesRead = 0;
         this._decoder = null;
+        this._convertCurrentBatch = false;
     }
 
     // The decoder is created lazily so that options assigned after construction are honored.
@@ -47,9 +53,41 @@ class CSVParser extends Transform {
                 skipComments: !!this.skipComments,
                 trimLeadingSpace: this.trimLeadingSpace,
                 skipLines: this.skipLines,
+                valueTypes: this.valueTypes,
+                timeformat: this.timeformat,
+                tz: this.tz,
+                nullValue: this.nullValue,
+                convertAfterRows: this.convertAfterRows,
             });
         }
         return this._decoder;
+    }
+
+    setValueTypes(valueTypes, options) {
+        options = options || {};
+        this.valueTypes = valueTypes;
+        if (Object.prototype.hasOwnProperty.call(options, 'timeformat')) {
+            this.timeformat = options.timeformat;
+        }
+        if (Object.prototype.hasOwnProperty.call(options, 'tz')) {
+            this.tz = options.tz;
+        }
+        if (Object.prototype.hasOwnProperty.call(options, 'nullValue')) {
+            this.nullValue = options.nullValue;
+        }
+        if (Object.prototype.hasOwnProperty.call(options, 'convertAfterRows')) {
+            this.convertAfterRows = options.convertAfterRows;
+        }
+        if (this._decoder) {
+            this._decoder.configureValues({
+                valueTypes: this.valueTypes,
+                timeformat: this.timeformat,
+                tz: this.tz,
+                nullValue: this.nullValue,
+                convertAfterRows: this.convertAfterRows,
+            });
+            this._convertCurrentBatch = true;
+        }
     }
 
     _transform(chunk, encoding, callback) {
@@ -108,7 +146,7 @@ class CSVParser extends Transform {
         if (fast) {
             for (; i < count; i++) {
                 try {
-                    fast.call(this, records[i]);
+                    fast.call(this, this._convertCurrentBatch ? decoder.convertRecord(records[i]) : records[i]);
                 } catch (err) {
                     if (!this._events['error']) {
                         throw err;
@@ -116,6 +154,7 @@ class CSVParser extends Transform {
                     this.emit('error', err);
                 }
             }
+            this._convertCurrentBatch = false;
             this.lineNumber = decoder.lineNumber();
             return null;
         }

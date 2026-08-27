@@ -78,6 +78,11 @@ for (let i = 0; i < colDefs.length; i++) {
 const csvParser = parser.csv({
     separator: config.format === 'tsv' ? '\t' : ',',
     rowMode: 'array',
+    valueTypes: config.header === 'columns' ? null : columnTypes,
+    timeformat: config.timeformat,
+    tz: config.tz,
+    nullValue: config.nullValue,
+    convertAfterRows: config.header === 'skip' ? 1 : 0,
 })
 
 switch (config.header) {
@@ -150,6 +155,11 @@ inputFile.on('headers', (headers) => {
     }
     // rebind the appender to the column order of the input file
     appender = appender.withInputColumns(...columnNames);
+    csvParser.setValueTypes(columnTypes, {
+        timeformat: config.timeformat,
+        tz: config.tz,
+        nullValue: config.nullValue,
+    });
 });
 inputFile.on('data', (row) => {
     nRows++;
@@ -160,19 +170,7 @@ inputFile.on('data', (row) => {
         // skip header row, do nothing
         return;
     }
-    const rec = new Array(columnTypes.length);
-    for (let i = 0; i < columnTypes.length; i++) {
-        let value = row[i];
-        switch (columnTypes[i]) {
-            case 'datetime':
-                value = pretty.parseTime(value, config.timeformat, config.tz);
-                break;
-            case 'double':
-                value = parseFloat(value);
-                break;
-        }
-        rec[i] = value === config.nullValue ? null : value;
-    }
+    const rec = row;
     if (config.dryRun) {
         if (config.verbose) {
             console.println(`Dry run #${nRows}:`, rec);

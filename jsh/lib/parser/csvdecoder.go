@@ -2,6 +2,11 @@ package parser
 
 import (
 	"bytes"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/dop251/goja"
 )
@@ -18,14 +23,21 @@ type CSVDecoder struct {
 	skipComments     bool
 	trimLeadingSpace bool
 	skipLines        int64
+	valueTypes       []string
+	timeFormat       string
+	timeZone         string
+	nullValue        string
+	convertAfterRows int64
 
 	carry        []byte
 	fieldBuf     []byte
 	skippedLines int64
+	recordNumber int64
 	lineNumber   int64
 	bytesWritten int64
 	bytesRead    int64
 	recordLines  []int64
+	location     *time.Location
 }
 
 func optByte(options map[string]any, key string, def byte) byte {
@@ -56,7 +68,50 @@ func NewCSVDecoder(options map[string]any) *CSVDecoder {
 	if v, ok := options["skipLines"].(int64); ok {
 		d.skipLines = v
 	}
+	d.ConfigureValues(options)
 	return d
+}
+
+// ConfigureValues enables optional per-field value conversion for future records.
+func (d *CSVDecoder) ConfigureValues(options map[string]any) {
+	if options == nil {
+		return
+	}
+	if types, ok := csvStringSlice(options["valueTypes"]); ok {
+		d.valueTypes = types
+	}
+	if v, ok := options["timeformat"].(string); ok {
+		d.timeFormat = v
+	}
+	if v, ok := options["tz"].(string); ok {
+		d.timeZone = v
+		d.location = nil
+	}
+	if v, ok := options["nullValue"].(string); ok {
+		d.nullValue = v
+	}
+	if v, ok := options["convertAfterRows"].(int64); ok {
+		d.convertAfterRows = v
+	}
+}
+
+func csvStringSlice(value any) ([]string, bool) {
+	switch v := value.(type) {
+	case nil:
+		return nil, false
+	case []string:
+		out := make([]string, len(v))
+		copy(out, v)
+		return out, true
+	case []any:
+		out := make([]string, len(v))
+		for i, it := range v {
+			out[i] = fmt.Sprint(it)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func csvChunkBytes(chunk any) []byte {
@@ -106,13 +161,143 @@ func (d *CSVDecoder) toJS(records [][]string) goja.Value {
 	}
 	rows := make([]any, len(records))
 	for i, rec := range records {
-		fields := make([]any, len(rec))
-		for j, f := range rec {
-			fields[j] = f
+		d.recordNumber++
+		fields, err := d.convertFields(rec, true)
+		if err != nil {
+			panic(d.rt.NewGoError(err))
+		}
+		if fields == nil {
+			fields = make([]any, len(rec))
+			for j, f := range rec {
+				fields[j] = f
+			}
 		}
 		rows[i] = d.rt.NewArray(fields...)
 	}
 	return d.rt.NewArray(rows...)
+}
+
+// ConvertRecord converts a single JavaScript array after header-driven types are discovered.
+func (d *CSVDecoder) ConvertRecord(record goja.Value) goja.Value {
+	if d.rt == nil || goja.IsNull(record) || goja.IsUndefined(record) {
+		return record
+	}
+	obj := record.ToObject(d.rt)
+	length := int(obj.Get("length").ToInteger())
+	rec := make([]string, length)
+	for i := 0; i < length; i++ {
+		rec[i] = obj.Get(strconv.Itoa(i)).String()
+	}
+	fields, err := d.convertFields(rec, false)
+	if err != nil {
+		panic(d.rt.NewGoError(err))
+	}
+	if fields == nil {
+		return record
+	}
+	return d.rt.NewArray(fields...)
+}
+
+func (d *CSVDecoder) convertFields(rec []string, honorConvertAfterRows bool) ([]any, error) {
+	if len(d.valueTypes) == 0 || (honorConvertAfterRows && d.recordNumber <= d.convertAfterRows) {
+		return nil, nil
+	}
+	fields := make([]any, len(rec))
+	for i, f := range rec {
+		if d.nullValue != "" && f == d.nullValue {
+			fields[i] = nil
+			continue
+		}
+		if i >= len(d.valueTypes) {
+			fields[i] = f
+			continue
+		}
+		switch d.valueTypes[i] {
+		case "datetime":
+			v, err := d.parseTime(f)
+			if err != nil {
+				return nil, err
+			}
+			fields[i] = v
+		case "double":
+			v, err := strconv.ParseFloat(f, 64)
+			if err != nil {
+				v = math.NaN()
+			}
+			fields[i] = v
+		default:
+			fields[i] = f
+		}
+	}
+	return fields, nil
+}
+
+func (d *CSVDecoder) parseTime(value string) (time.Time, error) {
+	switch d.timeFormat {
+	case "ns":
+		i, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to parse time '%s' as integer: %v", value, err)
+		}
+		return time.Unix(0, i), nil
+	case "us":
+		i, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to parse time '%s' as integer: %v", value, err)
+		}
+		return time.Unix(0, i*1000), nil
+	case "ms":
+		i, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to parse time '%s' as integer: %v", value, err)
+		}
+		return time.Unix(0, i*1000000), nil
+	case "s":
+		i, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to parse time '%s' as integer: %v", value, err)
+		}
+		return time.Unix(i, 0), nil
+	}
+	loc, err := d.parseLocation()
+	if err != nil {
+		return time.Time{}, err
+	}
+	if d.timeFormat == "" {
+		if t, err := time.ParseInLocation(time.RFC3339, value, loc); err == nil {
+			return t, nil
+		} else {
+			return time.Time{}, fmt.Errorf("failed to parse time '%s' with RFC3339: %v", value, err)
+		}
+	}
+	if t, err := time.ParseInLocation(d.timeFormat, value, loc); err == nil {
+		return t, nil
+	} else {
+		return time.Time{}, fmt.Errorf("failed to parse time '%s' with format '%s': %v", value, d.timeFormat, err)
+	}
+}
+
+func (d *CSVDecoder) parseLocation() (*time.Location, error) {
+	if d.location != nil {
+		return d.location, nil
+	}
+	loc := time.UTC
+	if d.timeZone != "" {
+		switch strings.ToLower(d.timeZone) {
+		case "local":
+			loc = time.Local
+		case "utc":
+			loc = time.UTC
+		default:
+			l, err := time.LoadLocation(d.timeZone)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load location '%s': %v", d.timeZone, err)
+			}
+			loc = l
+		}
+	}
+	d.location = loc
+	return loc, nil
 }
 
 // Decode feeds a chunk and returns the records of every complete line it contains.
