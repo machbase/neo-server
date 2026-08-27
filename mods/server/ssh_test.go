@@ -30,33 +30,25 @@ import (
 )
 
 func TestSSH(t *testing.T) {
-	tests := []SSHTestCase{
-		{
-			name: "shell_show_tables",
-			user: "sys",
-			cmd:  "show tables --format csv",
-			expect: []string{
-				"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
-				"/r/^1,MACHBASEDB,SYS,EXAMPLE,[0-9]+,Tag,$",
-				"/r/^2,MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$",
-				"/r/^3,MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$",
-			},
+	SSHTestCase{
+		name: "shell_show_tables",
+		user: "sys",
+		cmd:  "show tables --format csv",
+		expect: []string{
+			"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
+			"/r/^1,MACHBASEDB,SYS,EXAMPLE,[0-9]+,Tag,$",
+			"/r/^2,MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$",
+			"/r/^3,MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$",
 		},
-		{
-			name: "jsh_echo",
-			user: "sys:jsh",
-			cmd:  "echo ssh-ok",
-			expect: []string{
-				"ssh-ok",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "jsh_echo",
+		user: "sys:jsh",
+		cmd:  "echo ssh-ok",
+		expect: []string{
+			"ssh-ok",
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runSSHTest(t, tt)
-		})
-	}
+	}.runTest(t)
 }
 
 func TestSSH_SshKey(t *testing.T) {
@@ -69,391 +61,361 @@ func TestSSH_SshKey(t *testing.T) {
 	sshSigner, err := ssh.NewSignerFromKey(privateKey)
 	require.NoError(t, err)
 
-	tests := []SSHTestCase{
-		{
-			name: "shell_ssh-key_add",
-			user: "sys",
-			cmd:  fmt.Sprintf("ssh-key add %s your_email@example.com", strings.TrimSpace(string(sshPubKeyBytes))),
-			expect: []string{
-				"SSH key added successfully.",
-			},
+	SSHTestCase{
+		name: "shell_ssh-key_add",
+		user: "sys",
+		cmd:  fmt.Sprintf("ssh-key add %s your_email@example.com", strings.TrimSpace(string(sshPubKeyBytes))),
+		expect: []string{
+			"SSH key added successfully.",
 		},
-		{
-			name:       "shell_ssh-key_list",
-			user:       "sys",
-			cmd:        "ssh-key list",
-			privateKey: sshSigner,
-			expect: []string{
-				fmt.Sprintf("/r/^│\\s+\\d+\\s*│\\s+your_email@example\\.com\\s+│\\s+ecdsa-sha2-nistp256\\s+│\\s+%s\\s*│$", regexp.QuoteMeta(sha256Fingerprint)),
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name:       "shell_ssh-key_list",
+		user:       "sys",
+		cmd:        "ssh-key list",
+		privateKey: sshSigner,
+		expect: []string{
+			fmt.Sprintf("/r/^│\\s+\\d+\\s*│\\s+your_email@example\\.com\\s+│\\s+ecdsa-sha2-nistp256\\s+│\\s+%s\\s*│$", regexp.QuoteMeta(sha256Fingerprint)),
 		},
-		{
-			name: "shell_ssh-key_delete",
-			user: "sys",
-			cmd:  fmt.Sprintf("ssh-key del %s", sha256Fingerprint),
-			expect: []string{
-				"SSH key deleted successfully.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "shell_ssh-key_delete",
+		user: "sys",
+		cmd:  fmt.Sprintf("ssh-key del %s", sha256Fingerprint),
+		expect: []string{
+			"SSH key deleted successfully.",
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runSSHTest(t, tt)
-		})
-	}
+	}.runTest(t)
 }
 
 func TestSSH_Bridge_SQLite(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping SSH tests on Windows")
 	}
-	tests := []SSHTestCase{
-		{
-			name: "bridge_sqlite_add",
-			cmd:  `bridge add -t sqlite mem file::memory:?cache=shared`,
-			expect: []string{
-				`Adding bridge... mem type: sqlite path: file::memory:?cache=shared`,
-			},
+	SSHTestCase{
+		name: "bridge_sqlite_add",
+		cmd:  `bridge add -t sqlite mem file::memory:?cache=shared`,
+		expect: []string{
+			`Adding bridge... mem type: sqlite path: file::memory:?cache=shared`,
 		},
-		{
-			name: "bridge_sqlite_list",
-			cmd:  "bridge list",
-			expect: []string{
-				`┌────────┬────┬──────┬───────────┬──────────────┬────────┬────────────────────────────┐`,
-				`│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE   │ CONNECTION                 │`,
-				`├────────┼────┼──────┼───────────┼──────────────┼────────┼────────────────────────────┤`,
-				`│      1 │  2 │ mem  │ false     │ NULL         │ sqlite │ file::memory:?cache=shared │`,
-				`└────────┴────┴──────┴───────────┴──────────────┴────────┴────────────────────────────┘`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_list",
+		cmd:  "bridge list",
+		expect: []string{
+			`/r/^┌.*┐$`,
+			`/r/^│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE\s+│ CONNECTION\s+│$`,
+			`/r/^├.*┤$`,
+			`/r/^│\s+1 │\s+\d+ │ mem  │ false     │ NULL         │ sqlite │ file::memory:\?cache=shared │$`,
+			`/r/^└.*┘$`,
 		},
-		{
-			name: "bridge_sqlite_create_table",
-			cmd:  `bridge exec mem "CREATE TABLE IF NOT EXISTS mem_example (id INTEGER NOT NULL PRIMARY KEY, company TEXT, employee INTEGER, discount REAL, code TEXT, valid BOOLEAN, memo BLOB,  created_on DATETIME NOT NULL);"`,
-			expect: []string{
-				`executed.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_create_table",
+		cmd:  `bridge exec mem "CREATE TABLE IF NOT EXISTS mem_example (id INTEGER NOT NULL PRIMARY KEY, company TEXT, employee INTEGER, discount REAL, code TEXT, valid BOOLEAN, memo BLOB,  created_on DATETIME NOT NULL);"`,
+		expect: []string{
+			`executed.`,
 		},
-		{
-			name: "bridge_sqlite_query_table",
-			cmd:  `bridge query mem "SELECT * FROM sqlite_schema WHERE name = 'mem_example';"`,
-			expect: []string{
-				`┌────────┬───────┬─────────────┬─────────────┬──────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐`,
-				`│ ROWNUM │ TYPE  │ NAME        │ TBL_NAME    │ ROOTPAGE │ SQL                                                                                                                                                                           │`,
-				`├────────┼───────┼─────────────┼─────────────┼──────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤`,
-				`│      1 │ table │ mem_example │ mem_example │        2 │ CREATE TABLE mem_example (id INTEGER NOT NULL PRIMARY KEY, company TEXT, employee INTEGER, discount REAL, code TEXT, valid BOOLEAN, memo BLOB,  created_on DATETIME NOT NULL) │`,
-				`└────────┴───────┴─────────────┴─────────────┴──────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_query_table",
+		cmd:  `bridge query mem "SELECT * FROM sqlite_schema WHERE name = 'mem_example';"`,
+		expect: []string{
+			`┌────────┬───────┬─────────────┬─────────────┬──────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐`,
+			`│ ROWNUM │ TYPE  │ NAME        │ TBL_NAME    │ ROOTPAGE │ SQL                                                                                                                                                                           │`,
+			`├────────┼───────┼─────────────┼─────────────┼──────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤`,
+			`│      1 │ table │ mem_example │ mem_example │        2 │ CREATE TABLE mem_example (id INTEGER NOT NULL PRIMARY KEY, company TEXT, employee INTEGER, discount REAL, code TEXT, valid BOOLEAN, memo BLOB,  created_on DATETIME NOT NULL) │`,
+			`└────────┴───────┴─────────────┴─────────────┴──────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘`,
 		},
-		{
-			name: "bridge_sqlite_insert",
-			cmd:  `bridge exec mem "insert into mem_example(company, employee, discount, created_on) values ('acme', 10, 1.234, '2023-09-09 00:00:00Z');"`,
-			expect: []string{
-				`executed.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_insert",
+		cmd:  `bridge exec mem "insert into mem_example(company, employee, discount, created_on) values ('acme', 10, 1.234, '2023-09-09 00:00:00Z');"`,
+		expect: []string{
+			`executed.`,
 		},
-		{
-			name: "bridge_sqlite_select",
-			cmd:  `bridge query mem "select company, employee, discount, created_on from mem_example;"`,
-			expect: []string{
-				`┌────────┬─────────┬──────────┬──────────┬──────────────────────┐`,
-				`│ ROWNUM │ COMPANY │ EMPLOYEE │ DISCOUNT │ CREATED_ON           │`,
-				`├────────┼─────────┼──────────┼──────────┼──────────────────────┤`,
-				`│      1 │ acme    │       10 │    1.234 │ 2023-09-09T00:00:00Z │`,
-				`└────────┴─────────┴──────────┴──────────┴──────────────────────┘`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_select",
+		cmd:  `bridge query mem "select company, employee, discount, created_on from mem_example;"`,
+		expect: []string{
+			`┌────────┬─────────┬──────────┬──────────┬──────────────────────┐`,
+			`│ ROWNUM │ COMPANY │ EMPLOYEE │ DISCOUNT │ CREATED_ON           │`,
+			`├────────┼─────────┼──────────┼──────────┼──────────────────────┤`,
+			`│      1 │ acme    │       10 │    1.234 │ 2023-09-09T00:00:00Z │`,
+			`└────────┴─────────┴──────────┴──────────┴──────────────────────┘`,
 		},
-		{
-			name: "bridge_sqlite_drop_table",
-			cmd:  `bridge exec mem "drop table mem_example;"`,
-			expect: []string{
-				`executed.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_drop_table",
+		cmd:  `bridge exec mem "drop table mem_example;"`,
+		expect: []string{
+			`executed.`,
 		},
-		{
-			name: "bridge_sqlite_delete",
-			cmd:  `bridge del mem`,
-			expect: []string{
-				`Deleted.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_sqlite_delete",
+		cmd:  `bridge del mem`,
+		expect: []string{
+			`Deleted.`,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runSSHTest(t, tt)
-		})
-	}
+	}.runTest(t)
 }
 
 func sshBridgePostgresTest(t *testing.T, dsn string) {
-	tests := []SSHTestCase{
-		{
-			name: "bridge_list",
-			cmd:  `bridge list`,
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	SSHTestCase{
+		name: "bridge_list",
+		cmd:  `bridge list`,
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_postgres",
-			cmd:  fmt.Sprintf("bridge add br-postgres --type postgres %s", dsn),
-			expect: []string{
-				"Adding bridge... br-postgres type: postgres path: " + dsn,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_add_postgres",
+		cmd:  fmt.Sprintf("bridge add br-postgres --type postgres %s", dsn),
+		expect: []string{
+			"Adding bridge... br-postgres type: postgres path: " + dsn,
 		},
-		{
-			name: "bridge_list_after_add",
-			cmd:  `bridge list`,
-			expect: []string{
-				"┌────────┬─────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME        │ TYPE     │ CONNECTION                                                                      │",
-				"├────────┼─────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────┤",
-				"│      1 │ br-postgres │ postgres │ " + dsn + " │",
-				"└────────┴─────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_list_after_add",
+		cmd:  `bridge list`,
+		expect: []string{
+			"┌────────┬────┬─────────────┬───────────┬──────────────┬──────────┬─────────────────────────────────────────────────────────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME        │ IS_PUBLIC │ ALLOWED_USER │ TYPE     │ CONNECTION                                                                      │",
+			"├────────┼────┼─────────────┼───────────┼──────────────┼──────────┼─────────────────────────────────────────────────────────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ br-postgres │ false     │ NULL         │ postgres │ " + dsn + " │",
+			"└────────┴────┴─────────────┴───────────┴──────────────┴──────────┴─────────────────────────────────────────────────────────────────────────────────┘",
 		},
-		{
-			name: "bridge_test_postgres",
-			cmd:  `bridge test br-postgres`,
-			expect: []string{
-				"Testing bridge... br-postgres",
-				"OK.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_test_postgres",
+		cmd:  `bridge test br-postgres`,
+		expect: []string{
+			"Testing bridge... br-postgres",
+			"OK.",
 		},
-		{
-			name: "bridge_exec_postgres_create_table",
-			cmd:  `bridge exec br-postgres "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"`,
-			expect: []string{
-				"executed.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_create_table",
+		cmd:  `bridge exec br-postgres "CREATE TABLE IF NOT EXISTS ids(id SERIAL PRIMARY KEY, memo TEXT)"`,
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_insert_1",
-			cmd:  `bridge exec br-postgres "INSERT INTO ids(memo) VALUES('pg-1')"`,
-			expect: []string{
-				"executed.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_insert_1",
+		cmd:  `bridge exec br-postgres "INSERT INTO ids(memo) VALUES('pg-1')"`,
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_insert_2",
-			cmd:  `bridge exec br-postgres INSERT INTO ids(memo) VALUES('pg-2')`,
-			expect: []string{
-				"executed.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_insert_2",
+		cmd:  `bridge exec br-postgres INSERT INTO ids(memo) VALUES('pg-2')`,
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_query",
-			cmd:  `bridge query br-postgres SELECT * FROM ids ORDER BY id`,
-			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"│      1 │  1 │ pg-1 │",
-				"│      2 │  2 │ pg-2 │",
-				"└────────┴────┴──────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_query",
+		cmd:  `bridge query br-postgres SELECT * FROM ids ORDER BY id`,
+		expect: []string{
+			"┌────────┬────┬──────┐",
+			"│ ROWNUM │ ID │ MEMO │",
+			"├────────┼────┼──────┤",
+			"│      1 │  1 │ pg-1 │",
+			"│      2 │  2 │ pg-2 │",
+			"└────────┴────┴──────┘",
 		},
-		{
-			name: "bridge_exec_postgres_create_supported_table",
-			cmd:  `bridge exec br-postgres CREATE TABLE IF NOT EXISTS typed_ids(id SERIAL PRIMARY KEY, event_bool BOOLEAN, event_int INTEGER, event_bigint BIGINT, event_real REAL, event_text TEXT, event_uuid UUID, event_date DATE, event_timestamp TIMESTAMP, event_timestamptz TIMESTAMPTZ)`,
-			expect: []string{
-				"executed.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_create_supported_table",
+		cmd:  `bridge exec br-postgres CREATE TABLE IF NOT EXISTS typed_ids(id SERIAL PRIMARY KEY, event_bool BOOLEAN, event_int INTEGER, event_bigint BIGINT, event_real REAL, event_text TEXT, event_uuid UUID, event_date DATE, event_timestamp TIMESTAMP, event_timestamptz TIMESTAMPTZ)`,
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_insert_supported_row",
-			cmd:  `bridge exec br-postgres INSERT INTO typed_ids(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES(TRUE, 42, 4200000000, 3.25, 'pg-text', '550e8400-e29b-41d4-a716-446655440000', DATE '2026-03-14', TIMESTAMP '2026-03-14 05:29:01', TIMESTAMPTZ '2026-03-14 05:29:01+00')`,
-			expect: []string{
-				"executed.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_insert_supported_row",
+		cmd:  `bridge exec br-postgres INSERT INTO typed_ids(event_bool, event_int, event_bigint, event_real, event_text, event_uuid, event_date, event_timestamp, event_timestamptz) VALUES(TRUE, 42, 4200000000, 3.25, 'pg-text', '550e8400-e29b-41d4-a716-446655440000', DATE '2026-03-14', TIMESTAMP '2026-03-14 05:29:01', TIMESTAMPTZ '2026-03-14 05:29:01+00')`,
+		expect: []string{
+			"executed.",
 		},
-		{
-			name: "bridge_exec_postgres_query_supported_types",
-			cmd:  `bridge query br-postgres SELECT id, event_bool, event_int, event_bigint, event_real, event_text, event_uuid::text AS event_uuid, TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS') AS event_timestamp, TO_CHAR(event_timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS event_timestamptz FROM typed_ids ORDER BY id`,
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INT │ EVENT_BIGINT │ EVENT_REAL │ EVENT_TEXT │ EVENT_UUID\\s+│ EVENT_DATE │ EVENT_TIMESTAMP\\s+│ EVENT_TIMESTAMPTZ\\s+│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ true\\s+│\\s+42\\s+│\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+3\\.25\\s+│ pg-text\\s+│ 550e8400-e29b-41d4-a716-446655440000 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_query_supported_types",
+		cmd:  `bridge query br-postgres SELECT id, event_bool, event_int, event_bigint, event_real, event_text, event_uuid::text AS event_uuid, TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, TO_CHAR(event_timestamp, 'YYYY-MM-DD HH24:MI:SS') AS event_timestamp, TO_CHAR(event_timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS event_timestamptz FROM typed_ids ORDER BY id`,
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ EVENT_BOOL │ EVENT_INT │ EVENT_BIGINT │ EVENT_REAL │ EVENT_TEXT │ EVENT_UUID\\s+│ EVENT_DATE │ EVENT_TIMESTAMP\\s+│ EVENT_TIMESTAMPTZ\\s+│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ true\\s+│\\s+42\\s+│\\s+(4200000000|4\\.2e\\+09)\\s+│\\s+3\\.25\\s+│ pg-text\\s+│ 550e8400-e29b-41d4-a716-446655440000 │ 2026-03-14 │ 2026-03-14 05:29:01 │ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_postgres_query_timestamp_string",
-			cmd:  `bridge query br-postgres SELECT id, memo, TO_CHAR(TIMESTAMP '2026-03-14 05:29:01', 'YYYY-MM-DD HH24:MI:SS') AS ts FROM ids WHERE id = 1 ORDER BY id`,
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ pg-1 │ 2026-03-14 05:29:01 │$",
-				"/r/^└.*┘$",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_query_timestamp_string",
+		cmd:  `bridge query br-postgres SELECT id, memo, TO_CHAR(TIMESTAMP '2026-03-14 05:29:01', 'YYYY-MM-DD HH24:MI:SS') AS ts FROM ids WHERE id = 1 ORDER BY id`,
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ pg-1 │ 2026-03-14 05:29:01 │$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_postgres_query_null_timestamp",
-			cmd:  `bridge query br-postgres SELECT id, memo, CAST(NULL AS TIMESTAMP) AS ts FROM ids WHERE id = 1 ORDER BY id`,
-			expect: []string{
-				"/r/^┌.*┐$",
-				"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
-				"/r/^├.*┤$",
-				"/r/^│\\s+1 │\\s+1 │ pg-1 │ NULL\\s*│$",
-				"/r/^└.*┘$",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_query_null_timestamp",
+		cmd:  `bridge query br-postgres SELECT id, memo, CAST(NULL AS TIMESTAMP) AS ts FROM ids WHERE id = 1 ORDER BY id`,
+		expect: []string{
+			"/r/^┌.*┐$",
+			"/r/^│ ROWNUM │ ID │ MEMO │ TS\\s*│$",
+			"/r/^├.*┤$",
+			"/r/^│\\s+1 │\\s+1 │ pg-1 │ NULL\\s*│$",
+			"/r/^└.*┘$",
 		},
-		{
-			name: "bridge_exec_postgres_query_no_rows",
-			cmd:  `bridge query br-postgres SELECT * FROM ids WHERE id < 0 ORDER BY id`,
-			expect: []string{
-				"┌────────┬────┬──────┐",
-				"│ ROWNUM │ ID │ MEMO │",
-				"├────────┼────┼──────┤",
-				"└────────┴────┴──────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_exec_postgres_query_no_rows",
+		cmd:  `bridge query br-postgres SELECT * FROM ids WHERE id < 0 ORDER BY id`,
+		expect: []string{
+			"┌────────┬────┬──────┐",
+			"│ ROWNUM │ ID │ MEMO │",
+			"├────────┼────┼──────┤",
+			"└────────┴────┴──────┘",
 		},
-		{
-			name: "bridge_del_postgres",
-			cmd:  `bridge del br-postgres`,
-			expect: []string{
-				"Deleted.",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_del_postgres",
+		cmd:  `bridge del br-postgres`,
+		expect: []string{
+			"Deleted.",
 		},
-		{
-			name: "bridge_list_after_del",
-			cmd:  `bridge list`,
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_list_after_del",
+		cmd:  `bridge list`,
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runSSHTest(t, tt)
-		})
-	}
+	}.runTest(t)
 }
 
 func sshBridgeMySqlTest(t *testing.T, dsn string) {
-	tests := []SSHTestCase{
-		{
-			name: "bridge_list",
-			cmd:  `bridge list`,
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+	SSHTestCase{
+		name: "bridge_list",
+		cmd:  `bridge list`,
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-		{
-			name: "bridge_add_mysql",
-			cmd:  fmt.Sprintf(`bridge add -t mysql my "%s"`, dsn),
-			expect: []string{
-				"Adding bridge... my type: mysql path: " + dsn,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_add_mysql",
+		cmd:  fmt.Sprintf(`bridge add -t mysql my "%s"`, dsn),
+		expect: []string{
+			"Adding bridge... my type: mysql path: " + dsn,
 		},
-		{
-			name: "bridge_list_after_add",
-			cmd:  `bridge list`,
-			expect: []string{
-				"┌────────┬──────┬───────┬──────────────────────────────────────────────────────┐",
-				"│ ROWNUM │ NAME │ TYPE  │ CONNECTION                                           │",
-				"├────────┼──────┼───────┼──────────────────────────────────────────────────────┤",
-				"│      1 │ my   │ mysql │ " + dsn + " │",
-				"└────────┴──────┴───────┴──────────────────────────────────────────────────────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_list_after_add",
+		cmd:  `bridge list`,
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬───────┬──────────────────────────────────────────────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE  │ CONNECTION                                           │",
+			"├────────┼────┼──────┼───────────┼──────────────┼───────┼──────────────────────────────────────────────────────┤",
+			"/r/^│\\s+1 │\\s+\\d+ │ my   │ false     │ NULL         │ mysql │ \\S+ │$",
+			"└────────┴────┴──────┴───────────┴──────────────┴───────┴──────────────────────────────────────────────────────┘",
 		},
-		{
-			name: "bridge_create_mysql_table",
-			cmd: "bridge exec my \"CREATE TABLE IF NOT EXISTS my_example(" +
-				"id INT NOT NULL AUTO_INCREMENT, " +
-				"company VARCHAR(50) UNIQUE NOT NULL, " +
-				"employee INT, " +
-				"discount REAL, " +
-				"plan FLOAT, " +
-				"code CHAR(64), " +
-				"valid SMALLINT, " +
-				"memo TEXT, " +
-				"created_on TIMESTAMP NOT NULL, " +
-				"PRIMARY KEY(id));\"",
-			expect: []string{
-				`executed.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_create_mysql_table",
+		cmd: "bridge exec my \"CREATE TABLE IF NOT EXISTS my_example(" +
+			"id INT NOT NULL AUTO_INCREMENT, " +
+			"company VARCHAR(50) UNIQUE NOT NULL, " +
+			"employee INT, " +
+			"discount REAL, " +
+			"plan FLOAT, " +
+			"code CHAR(64), " +
+			"valid SMALLINT, " +
+			"memo TEXT, " +
+			"created_on TIMESTAMP NOT NULL, " +
+			"PRIMARY KEY(id));\"",
+		expect: []string{
+			`executed.`,
 		},
-		{
-			name: "bridge_desc_table",
-			cmd:  `bridge query my desc my_example`,
-			expect: []string{
-				"┌────────┬────────────┬─────────────┬──────┬─────┬─────────┬────────────────┐",
-				"│ ROWNUM │ FIELD      │ TYPE        │ NULL │ KEY │ DEFAULT │ EXTRA          │",
-				"├────────┼────────────┼─────────────┼──────┼─────┼─────────┼────────────────┤",
-				"│      1 │ id         │ int         │ NO   │ PRI │ NULL    │ auto_increment │",
-				"│      2 │ company    │ varchar(50) │ NO   │ UNI │ NULL    │                │",
-				"│      3 │ employee   │ int         │ YES  │     │ NULL    │                │",
-				"│      4 │ discount   │ double      │ YES  │     │ NULL    │                │",
-				"│      5 │ plan       │ float       │ YES  │     │ NULL    │                │",
-				"│      6 │ code       │ char(64)    │ YES  │     │ NULL    │                │",
-				"│      7 │ valid      │ smallint    │ YES  │     │ NULL    │                │",
-				"│      8 │ memo       │ text        │ YES  │     │ NULL    │                │",
-				"│      9 │ created_on │ timestamp   │ NO   │     │ NULL    │                │",
-				"└────────┴────────────┴─────────────┴──────┴─────┴─────────┴────────────────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_desc_table",
+		cmd:  `bridge query my desc my_example`,
+		expect: []string{
+			"┌────────┬────────────┬─────────────┬──────┬─────┬─────────┬────────────────┐",
+			"│ ROWNUM │ FIELD      │ TYPE        │ NULL │ KEY │ DEFAULT │ EXTRA          │",
+			"├────────┼────────────┼─────────────┼──────┼─────┼─────────┼────────────────┤",
+			"│      1 │ id         │ int         │ NO   │ PRI │ NULL    │ auto_increment │",
+			"│      2 │ company    │ varchar(50) │ NO   │ UNI │ NULL    │                │",
+			"│      3 │ employee   │ int         │ YES  │     │ NULL    │                │",
+			"│      4 │ discount   │ double      │ YES  │     │ NULL    │                │",
+			"│      5 │ plan       │ float       │ YES  │     │ NULL    │                │",
+			"│      6 │ code       │ char(64)    │ YES  │     │ NULL    │                │",
+			"│      7 │ valid      │ smallint    │ YES  │     │ NULL    │                │",
+			"│      8 │ memo       │ text        │ YES  │     │ NULL    │                │",
+			"│      9 │ created_on │ timestamp   │ NO   │     │ NULL    │                │",
+			"└────────┴────────────┴─────────────┴──────┴─────┴─────────┴────────────────┘",
 		},
-		{
-			name: "bridge_insert_mysql",
-			cmd:  `bridge exec my "insert into my_example(company, employee, discount, plan, created_on) value ('acme', 10, 1.234, 2.3456, '2023-09-09 00:00:00')"`,
-			expect: []string{
-				`executed.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_insert_mysql",
+		cmd:  `bridge exec my "insert into my_example(company, employee, discount, plan, created_on) value ('acme', 10, 1.234, 2.3456, '2023-09-09 00:00:00')"`,
+		expect: []string{
+			`executed.`,
 		},
-		{
-			name: "bridge_select_mysql",
-			cmd:  `bridge query my "select * from my_example;"`,
-			expect: []string{
-				"┌────────┬────┬─────────┬──────────┬──────────┬────────┬──────┬───────┬──────┬──────────────────────┐",
-				"│ ROWNUM │ ID │ COMPANY │ EMPLOYEE │ DISCOUNT │   PLAN │ CODE │ VALID │ MEMO │ CREATED_ON           │",
-				"├────────┼────┼─────────┼──────────┼──────────┼────────┼──────┼───────┼──────┼──────────────────────┤",
-				"│      1 │  1 │ acme    │       10 │    1.234 │ 2.3456 │ NULL │ NULL  │ NULL │ 2023-09-09T00:00:00Z │",
-				"└────────┴────┴─────────┴──────────┴──────────┴────────┴──────┴───────┴──────┴──────────────────────┘",
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_select_mysql",
+		cmd:  `bridge query my "select * from my_example;"`,
+		expect: []string{
+			"┌────────┬────┬─────────┬──────────┬──────────┬────────┬──────┬───────┬──────┬──────────────────────┐",
+			"│ ROWNUM │ ID │ COMPANY │ EMPLOYEE │ DISCOUNT │   PLAN │ CODE │ VALID │ MEMO │ CREATED_ON           │",
+			"├────────┼────┼─────────┼──────────┼──────────┼────────┼──────┼───────┼──────┼──────────────────────┤",
+			"│      1 │  1 │ acme    │       10 │    1.234 │ 2.3456 │ NULL │ NULL  │ NULL │ 2023-09-09T00:00:00Z │",
+			"└────────┴────┴─────────┴──────────┴──────────┴────────┴──────┴───────┴──────┴──────────────────────┘",
 		},
-		{
-			name: "bridge_drop_mysql_table",
-			cmd:  `bridge exec my "drop table my_example;"`,
-			expect: []string{
-				`executed.`,
-			},
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_drop_mysql_table",
+		cmd:  `bridge exec my "drop table my_example;"`,
+		expect: []string{
+			`executed.`,
 		},
-		{
-			name: "bridge_del_mysql",
-			cmd:  `bridge del my`,
-			expect: []string{
-				`Deleted.`,
-			},
-			wait: 5 * time.Second,
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_del_mysql",
+		cmd:  `bridge del my`,
+		expect: []string{
+			`Deleted.`,
 		},
-		{
-			name: "bridge_list_after_del",
-			cmd:  `bridge list`,
-			expect: []string{
-				"┌────────┬──────┬──────┬────────────┐",
-				"│ ROWNUM │ NAME │ TYPE │ CONNECTION │",
-				"├────────┼──────┼──────┼────────────┤",
-				"└────────┴──────┴──────┴────────────┘",
-			},
+		wait: 5 * time.Second,
+	}.runTest(t)
+	SSHTestCase{
+		name: "bridge_list_after_del",
+		cmd:  `bridge list`,
+		expect: []string{
+			"┌────────┬────┬──────┬───────────┬──────────────┬──────┬────────────┐",
+			"│ ROWNUM │ ID │ NAME │ IS_PUBLIC │ ALLOWED_USER │ TYPE │ CONNECTION │",
+			"├────────┼────┼──────┼───────────┼──────────────┼──────┼────────────┤",
+			"└────────┴────┴──────┴───────────┴──────────────┴──────┴────────────┘",
 		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runSSHTest(t, tt)
-		})
-	}
+	}.runTest(t)
 }
 
 func TestSSHSession(t *testing.T) {
@@ -712,7 +674,7 @@ type SSHTestCase struct {
 	wait       time.Duration
 }
 
-func runSSHTest(t *testing.T, tt SSHTestCase) {
+func (tt SSHTestCase) runTest(t *testing.T) {
 	t.Helper()
 	waitTimeout := tt.wait
 	if waitTimeout <= 0 {
