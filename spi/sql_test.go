@@ -1173,18 +1173,18 @@ func newTagScanFixture(t *testing.T) *tagScanFixture {
 
 	tableName := fmt.Sprintf("TAG_SCAN_%d", time.Now().UnixNano())
 	_, err = db.ExecContext(t.Context(),
-		fmt.Sprintf(`CREATE TABLE %s (ID LONG, NAME VARCHAR(100), VALUE DOUBLE, BINDATA BINARY)`, tableName))
+		fmt.Sprintf(`CREATE TABLE %s (ID LONG, NAME VARCHAR(100), VALUE DOUBLE, BINDATA BINARY, JSONDATA JSON)`, tableName))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = db.ExecContext(context.Background(), fmt.Sprintf(`DROP TABLE %s`, tableName))
 	})
 
-	insert := fmt.Sprintf(`INSERT INTO %s VALUES(?, ?, ?, ?)`, tableName)
-	_, err = db.ExecContext(t.Context(), insert, int64(1), "neo", 1.5, []byte{0x01, 0x02, 0xfe})
+	insert := fmt.Sprintf(`INSERT INTO %s VALUES(?, ?, ?, ?, ?)`, tableName)
+	_, err = db.ExecContext(t.Context(), insert, int64(1), "neo", 1.5, []byte{0x01, 0x02, 0xfe}, api.JSONString(`{"key":"value1"}`))
 	require.NoError(t, err)
-	_, err = db.ExecContext(t.Context(), insert, int64(2), "machbase", 2.5, []byte("mach"))
+	_, err = db.ExecContext(t.Context(), insert, int64(2), "machbase", 2.5, []byte("mach"), `{"key":"value2"}`)
 	require.NoError(t, err)
-	_, err = db.ExecContext(t.Context(), insert, int64(3), nil, 3.5, nil)
+	_, err = db.ExecContext(t.Context(), insert, int64(3), nil, 3.5, nil, nil)
 	require.NoError(t, err)
 
 	return &tagScanFixture{db: db, tableName: tableName}
@@ -1199,9 +1199,10 @@ func (f *tagScanFixture) query(t *testing.T, sqlText string, args ...any) *sql.R
 }
 
 type tagScanRow struct {
-	ID    int64   `db:"ID"`
-	Name  *string `db:"NAME"`
-	Value float64 `db:"VALUE"`
+	ID       int64           `db:"ID"`
+	Name     *string         `db:"NAME"`
+	Value    float64         `db:"VALUE"`
+	JsonData *api.JSONString `db:"JSONDATA"`
 }
 
 type pointerReceiverValuer struct {
@@ -1216,7 +1217,7 @@ func TestScanByTag(t *testing.T) {
 	fixture := newTagScanFixture(t)
 
 	t.Run("scan all", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		items, err := client.ScanAll[tagScanRow](rows)
@@ -1228,10 +1229,13 @@ func TestScanByTag(t *testing.T) {
 		// a NULL VARCHAR arrives as a nil pointer
 		require.Nil(t, items[2].Name)
 		require.Equal(t, 3.5, items[2].Value)
+		require.Equal(t, api.JSONString(`{"key":"value1"}`), *items[0].JsonData)
+		require.Equal(t, api.JSONString(`{"key":"value2"}`), *items[1].JsonData)
+		require.Nil(t, items[2].JsonData)
 	})
 
 	t.Run("scan all into pointer slice", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		items, err := client.ScanAll[*tagScanRow](rows)
@@ -1241,7 +1245,7 @@ func TestScanByTag(t *testing.T) {
 	})
 
 	t.Run("scan one", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s WHERE ID = ?`, int64(2))
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s WHERE ID = ?`, int64(2))
 		defer rows.Close()
 
 		item, err := client.ScanOne[tagScanRow](rows)
@@ -1251,7 +1255,7 @@ func TestScanByTag(t *testing.T) {
 	})
 
 	t.Run("scan one returns ErrNoRows", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s WHERE ID = ?`, int64(9999))
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s WHERE ID = ?`, int64(9999))
 		defer rows.Close()
 
 		_, err := client.ScanOne[tagScanRow](rows)
@@ -1259,7 +1263,7 @@ func TestScanByTag(t *testing.T) {
 	})
 
 	t.Run("scan struct on current row", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		require.True(t, rows.Next())
@@ -1269,7 +1273,7 @@ func TestScanByTag(t *testing.T) {
 	})
 
 	t.Run("scan row", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		var item tagScanRow
@@ -1278,7 +1282,7 @@ func TestScanByTag(t *testing.T) {
 	})
 
 	t.Run("scan rows into slice", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		var items []tagScanRow
@@ -1612,7 +1616,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	fixture := newTagScanFixture(t)
 
 	t.Run("scan each", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		var ids []int64
@@ -1624,7 +1628,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	})
 
 	t.Run("scan each stops on error", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		stop := errors.New("stop")
@@ -1638,7 +1642,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	})
 
 	t.Run("cursor", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		cursor, err := client.NewCursor[tagScanRow](rows)
@@ -1652,7 +1656,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	})
 
 	t.Run("max rows", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		_, err := client.ScanAll[tagScanRow](rows, client.WithMaxRows(2))
@@ -1661,7 +1665,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	})
 
 	t.Run("max rows disabled", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		items, err := client.ScanAll[tagScanRow](rows, client.WithMaxRows(0))
@@ -1670,7 +1674,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	})
 
 	t.Run("max rows on ScanRows", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 		defer rows.Close()
 
 		var items []tagScanRow
@@ -1679,7 +1683,7 @@ func TestScanByTagStreaming(t *testing.T) {
 	})
 
 	t.Run("rows stay open for the caller", func(t *testing.T) {
-		rows := fixture.query(t, `SELECT ID, NAME, VALUE FROM %s ORDER BY ID`)
+		rows := fixture.query(t, `SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`)
 
 		_, err := client.ScanAll[tagScanRow](rows)
 		require.NoError(t, err)
@@ -1693,21 +1697,21 @@ func TestScanByTagQueryHelpers(t *testing.T) {
 
 	t.Run("select", func(t *testing.T) {
 		items, err := client.Select[tagScanRow](t.Context(), fixture.db,
-			fmt.Sprintf(`SELECT ID, NAME, VALUE FROM %s ORDER BY ID`, fixture.tableName))
+			fmt.Sprintf(`SELECT ID, NAME, VALUE, JSONDATA FROM %s ORDER BY ID`, fixture.tableName))
 		require.NoError(t, err)
 		require.Len(t, items, 3)
 	})
 
 	t.Run("get", func(t *testing.T) {
 		item, err := client.Get[tagScanRow](t.Context(), fixture.db,
-			fmt.Sprintf(`SELECT ID, NAME, VALUE FROM %s WHERE ID = ?`, fixture.tableName), int64(2))
+			fmt.Sprintf(`SELECT ID, NAME, VALUE, JSONDATA FROM %s WHERE ID = ?`, fixture.tableName), int64(2))
 		require.NoError(t, err)
 		require.Equal(t, int64(2), item.ID)
 	})
 
 	t.Run("get returns ErrNoRows", func(t *testing.T) {
 		_, err := client.Get[tagScanRow](t.Context(), fixture.db,
-			fmt.Sprintf(`SELECT ID, NAME, VALUE FROM %s WHERE ID = ?`, fixture.tableName), int64(9999))
+			fmt.Sprintf(`SELECT ID, NAME, VALUE, JSONDATA FROM %s WHERE ID = ?`, fixture.tableName), int64(9999))
 		require.ErrorIs(t, err, sql.ErrNoRows)
 	})
 }
@@ -1762,7 +1766,7 @@ func TestNamedArgs(t *testing.T) {
 		args, err := client.NamedArgs(map[string]any{"id": int64(2)})
 		require.NoError(t, err)
 
-		query := fmt.Sprintf(`SELECT ID, NAME, VALUE FROM %s WHERE ID = :id`, fixture.tableName)
+		query := fmt.Sprintf(`SELECT ID, NAME, VALUE, JSONDATA FROM %s WHERE ID = :id`, fixture.tableName)
 		rows, err := fixture.db.QueryContext(t.Context(), query, args...)
 		if !supported {
 			if err == nil {
@@ -1793,7 +1797,7 @@ func TestNamedArgs(t *testing.T) {
 		args, err := client.NamedArgs(cond{ID: 1})
 		require.NoError(t, err)
 
-		query := fmt.Sprintf(`SELECT ID, NAME, VALUE FROM %s WHERE ID = :id`, fixture.tableName)
+		query := fmt.Sprintf(`SELECT ID, NAME, VALUE, JSONDATA FROM %s WHERE ID = :id`, fixture.tableName)
 		rows, err := fixture.db.QueryContext(t.Context(), query, args...)
 		require.NoError(t, err)
 		defer rows.Close()

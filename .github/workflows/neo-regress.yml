@@ -38,7 +38,7 @@ jobs:
       - name: rm git repo
         run: cd ~/work; rm -rf neo-server; rm -rf neo-test;
       - name: clone neo-server
-        run: cd ~/work; git clone --branch dev-v85x git@github.com:machbase/neo-server.git;
+        run: cd ~/work; git clone git@github.com:machbase/neo-server.git;
       - name: clone neo-test
         run: cd ~/work; git clone git@github.com:machbase/neo-test.git;
       - name: build machbase-neo
