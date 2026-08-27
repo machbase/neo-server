@@ -46,6 +46,11 @@ func TestNormalizeShellArgs(t *testing.T) {
 			args: []string{"SELECT time, value FROM example WHERE name='my-car'"},
 			want: []string{"sql", "SELECT time, value FROM example WHERE name='my-car'"},
 		},
+		{
+			name: "cte prepends sql",
+			args: []string{"WITH recent AS (SELECT * FROM example)", "SELECT", "*", "FROM", "recent"},
+			want: []string{"sql", "WITH recent AS (SELECT * FROM example)", "SELECT", "*", "FROM", "recent"},
+		},
 	}
 
 	for _, tc := range testCases {

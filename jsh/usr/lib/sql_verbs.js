@@ -19,6 +19,7 @@ const SQL_VERBS = new Set([
     "TRUNCATE",
     "UNMOUNT",
     "UPDATE",
+    "WITH",
 ]);
 
 module.exports = {
