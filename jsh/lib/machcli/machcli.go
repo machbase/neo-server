@@ -98,7 +98,7 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 	if obj.Database != "" {
 		opts = append(opts, "database="+obj.Database)
 	}
-	if obj.IdentityFile == "" {
+	if obj.Password != "" {
 		opts = append(opts, "password="+obj.Password)
 	} else {
 		if strings.HasPrefix(obj.IdentityFile, "@") {

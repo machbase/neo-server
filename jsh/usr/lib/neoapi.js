@@ -101,14 +101,22 @@ class _Client {
                     return;
                 }
                 switch (res.headers['Content-Type']) {
-                    case 'application/json':
-                        resolve(res.json());
+                    case 'application/json': {
+                        const result = res.json();
+                        // TQL runtime errors (e.g. f(SQL) failures) are reported with
+                        // HTTP 200 and a {success:false, reason:"..."} body instead of
+                        // a non-2xx status, so they must be checked explicitly here.
+                        if (result && result.success === false) {
+                            reject(new Error(result.reason || 'TQL execution failed'));
+                            return;
+                        }
+                        resolve(result);
                         break;
+                    }
                     default:
                         resolve(res.text());
                         break;
                 }
-                resolve(res);
             });
             req.on('error', (err) => {
                 reject(err);

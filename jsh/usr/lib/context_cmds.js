@@ -8,6 +8,7 @@
 // implementation is shared between both execution modes. usr/bin/help.js also
 // consults it so "help connect"/"help use" don't need a standalone executable.
 const session = require('@jsh/session');
+const machcli = require('machcli');
 
 const commands = {
     connect: {
@@ -52,6 +53,26 @@ function printHelp(name) {
 // Used by help.js to list context commands alongside other commands.
 function describeAll() {
     return Object.keys(commands).map((name) => ({ name, description: commands[name].description }));
+}
+
+// verifyMachConnect(config) -> string|null
+// Opens a short-lived mach connection with the given host/user/password/database and
+// closes it immediately. Returns null on success, or the driver's error message on
+// failure (e.g. missing CONNECT privilege on a database). A successful HTTP login
+// (session.switchUser/reconnect) does not guarantee mach-level database privileges,
+// so connect/use call this before committing their change to the session and env.
+function verifyMachConnect(config) {
+    let db, conn;
+    try {
+        db = new machcli.Client(config);
+        conn = db.connect();
+        return null;
+    } catch (e) {
+        return e.message;
+    } finally {
+        try { conn && conn.close(); } catch (_) { }
+        try { db && db.close(); } catch (_) { }
+    }
 }
 
 // parseConnection(connection, env) -> { host, user, password, hostChanged }
@@ -103,6 +124,9 @@ function connectHandler(args, env) {
     }
     const connection = args[0] || '';
     const { host, user, password, hostChanged } = parseConnection(connection, env);
+    const prevHost = env.get('NEOSHELL_HOST');
+    const prevUser = env.get('NEOSHELL_USER') || 'sys';
+    const prevPassword = env.get('NEOSHELL_PASSWORD') || 'manager';
     try {
         const err = hostChanged ? session.reconnect(host, user, password) : session.switchUser(user, password);
         if (err !== undefined) {
@@ -113,6 +137,26 @@ function connectHandler(args, env) {
         console.println("Error: failed to connect:", e.message);
         return 1;
     }
+
+    // A successful HTTP login above only proves the credentials are valid; it does not
+    // prove the new user can actually open a mach connection to the currently selected
+    // database (if any), so verify that before committing the change to env. If this
+    // fails, best-effort revert the in-process session back to the previous user so
+    // this process's state does not silently diverge from what env reports.
+    const database = env.get('NEOSHELL_DATABASE');
+    const verifyErr = verifyMachConnect({ ...session.getMachCliConfig(), database });
+    if (verifyErr) {
+        console.println("Error: failed to connect:", verifyErr);
+        try {
+            if (hostChanged) {
+                session.reconnect(prevHost, prevUser, prevPassword);
+            } else {
+                session.switchUser(prevUser, prevPassword);
+            }
+        } catch (_) { }
+        return 1;
+    }
+
     if (hostChanged) {
         env.set('NEOSHELL_HOST', host);
     }
@@ -134,6 +178,11 @@ function useHandler(args, env) {
         return 1;
     }
     const database = args[0];
+    const verifyErr = verifyMachConnect({ ...session.getMachCliConfig(), database });
+    if (verifyErr) {
+        console.println("Error: failed to use database:", verifyErr);
+        return 1;
+    }
     session.useDatabase(database);
     env.set('NEOSHELL_DATABASE', database);
     return 0;

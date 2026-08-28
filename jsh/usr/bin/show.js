@@ -326,6 +326,14 @@ function _show(line, config) {
             JSON(timeformat('${timeformat}'), tz('${tz}'))
         `)
         .then((rsp) => {
+            // Defense in depth: executeTql() rejects on {success:false} bodies, but a
+            // response whose Content-Type carries a charset suffix (e.g. the IsDbSink
+            // path) still resolves here instead of parsing as JSON, so surface the
+            // server-reported reason before falling back to the generic message.
+            if (rsp && rsp.success === false) {
+                console.println('Error:', rsp.reason || 'TQL execution failed');
+                return;
+            }
             if (!rsp || !rsp.data || !rsp.data.rows) {
                 console.println('Invalid response from server');
                 return;
