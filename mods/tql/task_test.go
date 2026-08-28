@@ -621,7 +621,7 @@ func TestSql_show_users(t *testing.T) {
 		`,
 		ExpectCSV: []string{
 			"MESSAGE",
-			"Created successfully.",
+			"user created.",
 			"", "",
 		},
 	}.run(t)
@@ -646,7 +646,7 @@ func TestSql_show_users(t *testing.T) {
 		`,
 		ExpectText: []string{
 			"MESSAGE",
-			"Dropped successfully.",
+			"user dropped.",
 			"", "",
 		},
 	}.run(t)
@@ -661,7 +661,7 @@ func TestSql_show_databases(t *testing.T) {
 		`,
 		ExpectCSV: []string{
 			"MESSAGE",
-			"Created successfully.",
+			"database created.",
 			"", "",
 		},
 	}.run(t)
@@ -689,7 +689,7 @@ func TestSql_show_databases(t *testing.T) {
 		`,
 		ExpectCSV: []string{
 			"MESSAGE",
-			"Dropped successfully.",
+			"database dropped.",
 			"", "",
 		},
 	}.run(t)
@@ -1128,7 +1128,7 @@ func TestSql_show_others(t *testing.T) {
 		ExpectText: []string{
 			`|MESSAGE|`,
 			`|:-----|`,
-			`|executed.|`,
+			`|table flushed.|`,
 			``,
 		},
 	}.run(t)
@@ -1238,11 +1238,11 @@ func TestSql_show_others(t *testing.T) {
 			BOX()
 			`,
 		ExpectText: []string{
-			"+-----------+",
-			"| MESSAGE   |",
-			"+-----------+",
-			"| executed. |",
-			"+-----------+",
+			"+----------------+",
+			"| MESSAGE        |",
+			"+----------------+",
+			"| table flushed. |",
+			"+----------------+",
 			"",
 		},
 	}.run(t)
@@ -1342,11 +1342,11 @@ func TestSql_show_others(t *testing.T) {
 			BOX()
 			`,
 		ExpectText: []string{
-			"+-----------+",
-			"| MESSAGE   |",
-			"+-----------+",
-			"| executed. |",
-			"+-----------+",
+			"+----------------+",
+			"| MESSAGE        |",
+			"+----------------+",
+			"| table flushed. |",
+			"+----------------+",
 			"",
 		},
 	}.run(t)
@@ -1386,11 +1386,11 @@ func TestSql_show_others(t *testing.T) {
 			BOX()
 			`,
 		ExpectText: []string{
-			"+-----------+",
-			"| MESSAGE   |",
-			"+-----------+",
-			"| executed. |",
-			"+-----------+",
+			"+----------------+",
+			"| MESSAGE        |",
+			"+----------------+",
+			"| table flushed. |",
+			"+----------------+",
 			"",
 		},
 	}.run(t)

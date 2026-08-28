@@ -364,7 +364,7 @@ func TestHttpQueryMutation(t *testing.T) {
 		execMutation(t,
 			"mutation_create_table",
 			fmt.Sprintf(`CREATE TAG TABLE IF NOT EXISTS %s (name varchar(40) primary key, time datetime basetime, value double summarized)`, mutationTable),
-			"Created successfully.")
+			"table created.")
 	})
 
 	t.Run("mutation_insert_data_1", func(t *testing.T) {
@@ -399,7 +399,7 @@ func TestHttpQueryMutation(t *testing.T) {
 		execMutation(t,
 			"mutation_drop_table",
 			fmt.Sprintf(`DROP TABLE %s`, mutationTable),
-			"Dropped successfully.")
+			"table dropped.")
 	})
 }
 

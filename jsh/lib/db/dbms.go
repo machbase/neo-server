@@ -254,17 +254,21 @@ func (c *CONN) Exec(call goja.FunctionCall) goja.Value {
 		}
 	}
 
-	result, err := c.conn.ExecContext(c.db.ctx, sqlText, params...)
-	_ = result
+	meta := client.Meta{}
+	ctx := context.WithValue(c.db.ctx, client.MetaKey, &meta)
+	result, err := c.conn.ExecContext(ctx, sqlText, params...)
 	if err != nil {
 		panic(c.db.rt.NewGoError(err))
 	}
-	sqlType := spi.DetectSQLStatementType(sqlText)
 	affected, err := result.RowsAffected()
 	if err != nil {
 		panic(c.db.rt.NewGoError(err))
 	}
-	message := spi.MakeUserMessage(sqlType, affected)
+	var message string
+	if message = meta.Message(); message == "" {
+		sqlType := spi.DetectSQLStatementType(sqlText)
+		message = spi.MakeUserMessage(sqlType, affected)
+	}
 	return c.db.rt.ToValue(map[string]any{
 		"message":      message,
 		"rowsAffected": affected,

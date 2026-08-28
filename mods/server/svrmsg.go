@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -204,6 +205,9 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		hook.SetContentEncoding(req.Compress)
 	}
 
+	var meta client.Meta
+	ctx = context.WithValue(ctx, client.MetaKey, &meta)
+
 	if !stmtType.IsFetch() {
 		result, err := conn.ExecContext(ctx, req.SqlText, req.Params...)
 		if err != nil {
@@ -216,8 +220,12 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 			hook.SetStatusCode(http.StatusOK)
 		}
 		if hook.SetUserMessage != nil {
-			rows, _ := result.RowsAffected()
-			hook.SetUserMessage(spi.MakeUserMessage(stmtType, rows))
+			if userMsg := meta.Message(); userMsg == "" {
+				rows, _ := result.RowsAffected()
+				hook.SetUserMessage(spi.MakeUserMessage(stmtType, rows))
+			} else {
+				hook.SetUserMessage(userMsg)
+			}
 		}
 		return nil
 	}
@@ -276,7 +284,11 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		hook.SetStatusCode(http.StatusOK)
 	}
 	if hook.SetUserMessage != nil {
-		hook.SetUserMessage(spi.MakeUserMessage(stmtType, nrows))
+		if userMsg := meta.Message(); userMsg == "" {
+			hook.SetUserMessage(spi.MakeUserMessage(stmtType, nrows))
+		} else {
+			hook.SetUserMessage(userMsg)
+		}
 	}
 	return nil
 }
