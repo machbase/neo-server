@@ -15,5 +15,6 @@
   "SELECT",
   "TRUNCATE",
   "UNMOUNT",
-  "UPDATE"
+  "UPDATE",
+  "WITH"
 ]

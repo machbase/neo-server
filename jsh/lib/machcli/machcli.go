@@ -63,6 +63,7 @@ type Config struct {
 	IdentityFile    string `json:"identityFile,omitempty"`
 	AlternativeHost string `json:"alternativeHost,omitempty"`
 	AlternativePort int    `json:"alternativePort,omitempty"`
+	Database        string `json:"database,omitempty"`
 }
 
 type Database struct {
@@ -94,7 +95,10 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 	if obj.AlternativeHost != "" && obj.AlternativePort != 0 {
 		opts = append(opts, fmt.Sprintf("alternative_servers=%s:%d", obj.AlternativeHost, obj.AlternativePort))
 	}
-	if obj.IdentityFile == "" {
+	if obj.Database != "" {
+		opts = append(opts, "database="+obj.Database)
+	}
+	if obj.Password != "" {
 		opts = append(opts, "password="+obj.Password)
 	} else {
 		if strings.HasPrefix(obj.IdentityFile, "@") {

@@ -34,10 +34,6 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: '1.26'
-      - name: Setup zig
-        if: matrix.platform == 'ubuntu-22.04'
-        shell: bash
-        run: bash ./scripts/setup-zig-linux-amd64-for-arm32.sh
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Test
@@ -53,6 +49,3 @@ jobs:
         uses: codecov/codecov-action@v7
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      - name: Test arm32
-        if: matrix.platform == 'ubuntu-22.04'
-        run: go run mage.go buildx machbase-neo linux arm

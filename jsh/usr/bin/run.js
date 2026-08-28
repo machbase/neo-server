@@ -4,7 +4,7 @@ const fs = require('fs');
 const process = require('process');
 const parseArgs = require('util/parseArgs');
 const { splitCmdLine, splitBatchLines } = require('/usr/lib/cmdline')
-const { switchUser } = require('@jsh/session');
+const contextCommands = require('/usr/lib/context_cmds');
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
@@ -85,37 +85,13 @@ function runSqlStatements(statements, stopOnError = false) {
                 continue;
             }
             let exitCode = 0;
-            if (fields[0].toLowerCase() === 'connect') {
-                // connect user/password
-                //
-                // internal command it should change the current user context 
-                // for following statements, so it won't be executed via "process.exec" 
-                // but directly handled in this script
-                let connection = fields[1] || '';
-                const slashIdx = connection.indexOf('/');
-                if (slashIdx <= 0) {
-                    console.println("Error: invalid user/password format");
-                    exitCode = 1;
-                } else {
-                    const user = connection.substring(0, slashIdx);
-                    const password = connection.substring(slashIdx + 1);
-                    try {
-                        let ret = switchUser(user, password);
-                        if (ret !== undefined) {
-                            console.println("Fail: failed to switch user:", ret);
-                            exitCode = 1;
-                        } else {
-                            process.env.set('NEOSHELL_USER', user);
-                            process.env.set('NEOSHELL_PASSWORD', password);
-                        }
-                    } catch (err) {
-                        console.println("Error: failed to switch user");
-                        console.println(err.message);
-                        exitCode = 1;
-                    }
-                }
+            // Context commands (connect/use) mutate the current process's session
+            // in-place so subsequent statements pick up the new context; everything
+            // else is delegated to a child process as before.
+            const contextExitCode = contextCommands.tryHandle(fields, process.env);
+            if (contextExitCode !== null) {
+                exitCode = contextExitCode;
             } else {
-                // Execute neo-shell commands
                 exitCode = process.exec(fields[0].toLowerCase(), ...fields.slice(1));
             }
             if (exitCode !== 0 && stopOnError) {

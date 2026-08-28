@@ -20,4 +20,5 @@ var implicitSQLVerbs = map[string]struct{}{
 	"TRUNCATE":  {},
 	"UNMOUNT":   {},
 	"UPDATE":    {},
+	"WITH":      {},
 }

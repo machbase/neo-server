@@ -46,6 +46,11 @@ func TestNormalizeShellArgs(t *testing.T) {
 			args: []string{"SELECT time, value FROM example WHERE name='my-car'"},
 			want: []string{"sql", "SELECT time, value FROM example WHERE name='my-car'"},
 		},
+		{
+			name: "cte prepends sql",
+			args: []string{"WITH recent AS (SELECT * FROM example)", "SELECT", "*", "FROM", "recent"},
+			want: []string{"sql", "WITH recent AS (SELECT * FROM example)", "SELECT", "*", "FROM", "recent"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -637,9 +642,84 @@ func TestModuleRegistersExports(t *testing.T) {
 
 	Module(context.Background(), rt, module)
 
-	for _, name := range []string{"getHttpConfig", "setHttpToken", "getHttpAccessToken", "getHttpRefreshToken", "getMachCliConfig"} {
+	for _, name := range []string{"getHttpConfig", "setHttpToken", "getHttpAccessToken", "getHttpRefreshToken", "getMachCliConfig", "switchUser", "reconnect", "useDatabase", "getCurrentDatabase"} {
 		if exports.Get(name) == nil {
 			t.Errorf("exports.%s is not set", name)
 		}
+	}
+}
+
+func TestUseDatabaseAndGetCurrentDatabase(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+	defaultSession = Config{}
+
+	if got := GetCurrentDatabase(); got != "" {
+		t.Fatalf("GetCurrentDatabase() = %q, want empty before use", got)
+	}
+
+	UseDatabase("DATABASE_A")
+	if got := GetCurrentDatabase(); got != "DATABASE_A" {
+		t.Fatalf("GetCurrentDatabase() = %q, want DATABASE_A", got)
+	}
+
+	mach := GetMachCliConfig()
+	if mach.Database != "DATABASE_A" {
+		t.Fatalf("GetMachCliConfig().Database = %q, want DATABASE_A", mach.Database)
+	}
+}
+
+func TestReconnectReplacesSession(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+
+	var gotLoginName string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var payload map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode login payload: %v", err)
+		}
+		gotLoginName = payload["loginName"]
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"accessToken":  "reconnect-access-token",
+			"refreshToken": "reconnect-refresh-token",
+		})
+	})
+	mux.HandleFunc("/web/api/rpc", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]string{
+				{"Service": "mach", "Address": "tcp://127.0.0.1:5656"},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	defaultSession = Config{IdentityFile: "/tmp/id_rsa"}
+
+	serverAddr := strings.TrimPrefix(srv.URL, "http://")
+	if err := Reconnect(serverAddr, "demo", "secret"); err != nil {
+		t.Fatalf("Reconnect() error = %v", err)
+	}
+	if gotLoginName != "demo" {
+		t.Fatalf("loginName = %q, want demo", gotLoginName)
+	}
+	if defaultSession.Server != serverAddr {
+		t.Fatalf("defaultSession.Server = %q, want %q", defaultSession.Server, serverAddr)
+	}
+	if defaultSession.User != "demo" || defaultSession.Password != "secret" {
+		t.Fatalf("defaultSession user/password = %q/%q, want demo/secret", defaultSession.User, defaultSession.Password)
+	}
+	if defaultSession.IdentityFile != "/tmp/id_rsa" {
+		t.Fatalf("defaultSession.IdentityFile = %q, want preserved /tmp/id_rsa", defaultSession.IdentityFile)
+	}
+	if defaultSession.accessToken != "reconnect-access-token" {
+		t.Fatalf("defaultSession.accessToken = %q, want reconnect-access-token", defaultSession.accessToken)
 	}
 }

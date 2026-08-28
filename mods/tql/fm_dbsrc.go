@@ -390,7 +390,7 @@ loop:
 	if use != "" {
 		_, err := conn.ExecContext(runtime.Context(), fmt.Sprintf("USE %s", use))
 		if err != nil {
-			return nil, fmt.Errorf("f(SQL) failed to use database %s: %v", use, err)
+			return nil, err
 		}
 	}
 
