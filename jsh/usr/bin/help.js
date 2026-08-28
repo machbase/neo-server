@@ -2,6 +2,7 @@
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
+const contextCommands = require('/usr/lib/context_cmds');
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
@@ -46,7 +47,6 @@ const helpObjects = [
 
 const helpCommands = [
     { name: 'bridge', description: 'Manage bridges' },
-    { name: 'connect', description: 'Connect to a database' },
     { name: 'explain', description: 'Explain a query plan' },
     { name: 'import', description: 'Import data into a table' },
     { name: 'key', description: 'Manage X.509 keys and auth-tokens' },
@@ -59,7 +59,8 @@ const helpCommands = [
     { name: 'ssh-key', description: 'Manage SSH keys' },
     { name: 'subscriber', description: 'Manage subscribers' },
     { name: 'timer', description: 'Manage database tables' },
-];
+    ...contextCommands.describeAll(),
+].sort((a, b) => a.name.localeCompare(b.name));
 
 if ((!objectName) || objectName.length === 0) {
     console.println('\nUse "help <object|command>;" to get more information.');
@@ -90,7 +91,7 @@ if ((!objectName) || objectName.length === 0) {
         helpTimeformat();
     } else if (objectName === 'tz') {
         helpTz();
-    } else {
+    } else if (!contextCommands.printHelp(objectName)) {
         process.exec(objectName, '-h');
     }
 }

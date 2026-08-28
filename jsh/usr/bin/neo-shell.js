@@ -3,27 +3,35 @@
 const { ReadLine } = require('readline');
 const process = require('process');
 const { splitCmdLine } = require('/usr/lib/cmdline');
+const contextCommands = require('/usr/lib/context_cmds');
+const { getCurrentDatabase } = require('@jsh/session');
 const env = process.env;
 
 const actor = {};
-if (!actor.user) {
-    actor.user = env.get('NEOSHELL_USER');
-    if (!actor.user) {
-        actor.user = 'sys';
-    } else {
-        actor.user = actor.user.toLowerCase();
+
+// resolveDisplayUser() reads the current user from env every time it is called
+// (rather than caching it once) so that an in-process `connect` immediately
+// updates the prompt.
+function resolveDisplayUser() {
+    let user = env.get('NEOSHELL_USER');
+    if (!user) {
+        return 'sys';
     }
-    // If actor.user is `sys as <other>`, extract the proxy username part after "as"
-    const asIndex = actor.user.indexOf(' as ');
+    user = user.toLowerCase();
+    // If user is `sys as <other>`, extract the proxy username part after "as"
+    const asIndex = user.indexOf(' as ');
     if (asIndex !== -1) {
-        actor.user = actor.user.substring(asIndex + 4).trim();
+        user = user.substring(asIndex + 4).trim();
     }
+    return user;
 }
-if (!actor.password) {
-    actor.password = env.get('NEOSHELL_PASSWORD');
-    if (!actor.password) {
-        actor.password = 'manager';
-    }
+
+// resolveDisplayDatabase() mirrors resolveDisplayUser(): read live so an in-process
+// `use <database>` immediately updates the prompt. Returns '' when no database was
+// selected (i.e. the server's default database applies), so the prompt stays as-is.
+function resolveDisplayDatabase() {
+    const database = getCurrentDatabase();
+    return database ? database.toLowerCase() : '';
 }
 
 actor.prompt = (lineno) => {
@@ -31,7 +39,9 @@ actor.prompt = (lineno) => {
         let n = new Date();
         let date = n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, '0') + "-" + String(n.getDate()).padStart(2, '0');
         let datetime = date + " " + n.toLocaleTimeString();
-        return `\x1b[33m${actor.user} \x1b[32mmachbase-neo\x1b[0m \x1b[34m${datetime}\x1b[0m\n\x1b[31m>\x1b[0m `;
+        const database = resolveDisplayDatabase();
+        const who = database ? `${resolveDisplayUser()}\x1b[36m@${database}\x1b[33m` : resolveDisplayUser();
+        return `\x1b[33m${who} \x1b[32mmachbase-neo\x1b[0m \x1b[34m${datetime}\x1b[0m\n\x1b[31m>\x1b[0m `;
     } else {
         //return "\x1b[31m>\x1b[0m ";
         return "  ";
@@ -82,7 +92,16 @@ actor.process = (line) => {
             // Execute js command (backslash prefix without semicolon)
             const command = firstField.substring(1);
             const args = fields.slice(1);
+            if (contextCommands.tryHandle([command, ...args], env) !== null) {
+                return;
+            }
             process.exec(command.toLowerCase(), ...args);
+            return;
+        }
+
+        // Context commands (connect/use) mutate the current process's session
+        // in-place instead of being delegated to a child process.
+        if (contextCommands.tryHandle(fields, env) !== null) {
             return;
         }
 

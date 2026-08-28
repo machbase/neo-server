@@ -4,6 +4,7 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const machcli = require('machcli');
+const { getCurrentDatabase } = require('@jsh/session');
 const { parseAndRun, newMachCliClient } = require('/usr/lib/opts');
 
 const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
@@ -59,6 +60,18 @@ const usersConfig = {
     command: 'users',
     usage: 'show users',
     description: 'List all database users',
+    allowNegative: true,
+    options: {
+        help: optionHelp,
+        ...pretty.TableArgOptions,
+    },
+};
+
+const databasesConfig = {
+    func: showDatabases,
+    command: 'databases',
+    usage: 'show databases',
+    description: 'List all databases',
     allowNegative: true,
     options: {
         help: optionHelp,
@@ -281,6 +294,7 @@ parseAndRun(process.argv.slice(2), defaultConfig, [
     licenseConfig,
     portsConfig,
     usersConfig,
+    databasesConfig,
     tablesConfig,
     tableConfig,
     metaTablesConfig,
@@ -303,8 +317,12 @@ function _show(line, config) {
     const timeformat = config.timeformat || 'DATETIME';
     const tz = config.tz || 'Local';
     const client = new neoapi.Client(config);
+    // executeTql() runs on the server over HTTP, independent of this process's mach
+    // DSN, so the shell's `use <database>` selection must be forwarded explicitly.
+    const database = getCurrentDatabase();
+    const useArg = database ? `use('${database}'), ` : '';
     client.executeTql(`
-            SQL('show ${line}')
+            SQL(${useArg}'show ${line}')
             JSON(timeformat('${timeformat}'), tz('${tz}'))
         `)
         .then((rsp) => {
@@ -373,6 +391,10 @@ function showUsers(config, args) {
     _show('users', config);
 }
 
+function showDatabases(config, args) {
+    _show(`databases`, config);
+}
+
 function showTables(config, args) {
     _show(`tables ${config.all ? '--all' : ''}`, config);
 }
@@ -380,7 +402,6 @@ function showTables(config, args) {
 function showTable(config, args) {
     _show(`table ${config.all ? '--all' : ''} ${args.table}`, config);
 }
-
 
 function showMetaTables(config, args) {
     _show(`meta-tables`, config);

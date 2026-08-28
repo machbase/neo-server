@@ -307,6 +307,28 @@ func TestNewDatabaseCoverage(t *testing.T) {
 	})
 }
 
+func TestNewDatabaseAppliesDatabaseDSNOption(t *testing.T) {
+	cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"sys","password":"manager","database":"MACHBASEDB"}`,
+		machcliTestServer.MachPort(),
+	)
+	db, err := machcli.NewDatabase(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	conn, err := db.Connect()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn.Close())
+	})
+
+	var currentDatabase string
+	row := conn.QueryRowContext(context.Background(), "select current_database()")
+	require.NoError(t, row.Scan(&currentDatabase))
+	require.Equal(t, "MACHBASEDB", currentDatabase)
+}
+
 func TestClientLoadsSharedConfigAndMergesCallerConfig(t *testing.T) {
 	sharedDir := t.TempDir()
 	sharedConfig := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"demo","password":"demo"}`,

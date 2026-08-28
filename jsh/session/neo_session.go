@@ -26,6 +26,9 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("getHttpRefreshToken", GetHttpRefreshToken)
 	exports.Set("getMachCliConfig", GetMachCliConfig)
 	exports.Set("switchUser", SwitchUser)
+	exports.Set("reconnect", Reconnect)
+	exports.Set("useDatabase", UseDatabase)
+	exports.Set("getCurrentDatabase", GetCurrentDatabase)
 }
 
 type Config struct {
@@ -33,6 +36,11 @@ type Config struct {
 	User         string
 	Password     string
 	IdentityFile string
+
+	// Database is the machbase database selected by the `use <database>`
+	// shell command. It is propagated into every new mach connection's DSN
+	// (see machcli.Config.Database) instead of running "USE .." per statement.
+	Database string
 
 	httpProto string
 	httpHost  string
@@ -304,6 +312,7 @@ type MachCliConfig struct {
 	User         string `json:"user"`
 	Password     string `json:"password"`
 	IdentityFile string `json:"identityFile,omitempty"`
+	Database     string `json:"database,omitempty"`
 }
 
 func GetMachCliConfig() MachCliConfig {
@@ -320,6 +329,7 @@ func GetMachCliConfig() MachCliConfig {
 		User:         defaultSession.User,
 		Password:     password,
 		IdentityFile: identityFile,
+		Database:     defaultSession.Database,
 	}
 }
 
@@ -336,6 +346,33 @@ func SwitchUser(user, password string) error {
 	defaultSession.accessToken = result.accessToken
 	defaultSession.refreshToken = result.refreshToken
 	return nil
+}
+
+// Reconnect re-authenticates against server/user/password and replaces the current
+// session in-place, redoing the entry-time discovery (mach host/port, SERVICE_CONTROLLER)
+// that Configure() performs. It is used by the `connect` shell command so that changing
+// the host no longer requires spawning a nested child shell process.
+func Reconnect(server, user, password string) error {
+	return Configure(Config{
+		Server:       server,
+		User:         user,
+		Password:     password,
+		IdentityFile: defaultSession.IdentityFile,
+	})
+}
+
+// UseDatabase records the database selected by the `use <database>` shell command.
+// It does not validate the name or contact the server; the mach driver validates it
+// (and reports an error) the next time a connection is opened with this database in
+// its DSN.
+func UseDatabase(name string) {
+	defaultSession.Database = name
+}
+
+// GetCurrentDatabase returns the database most recently selected via UseDatabase,
+// or "" if none was selected (i.e. the server's default database applies).
+func GetCurrentDatabase() string {
+	return defaultSession.Database
 }
 
 type LoginResult struct {

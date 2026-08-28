@@ -23,6 +23,7 @@ func NeoShellMain(flags *flag.FlagSet, executable []string, args []string) int {
 		{flag: "user", comment: "user name (default: sys)", envKey: "NEOSHELL_USER"},
 		{flag: "password", comment: "password (default: manager)", envKey: "NEOSHELL_PASSWORD"},
 		{flag: "identity-file", comment: "path to private key file for authentication (default: empty)", envKey: "NEOSHELL_IDENTITY_FILE"},
+		{flag: "database", comment: "current database (default: server default)", envKey: "NEOSHELL_DATABASE"},
 	}
 	extConfig := &ExtConfig{
 		flags:          extFlags,
@@ -131,6 +132,15 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 			}
 		}
 
+		if ef = extFlags.Get("database"); ef != nil && ef.value == "" {
+			if envValue, ok := conf.Env["NEOSHELL_DATABASE"].(string); ok {
+				ef.value = envValue
+				if ef.value == "" {
+					ef.value = os.Getenv("NEOSHELL_DATABASE")
+				}
+			}
+		}
+
 		conf.Default = "/usr/bin/neo-shell.js"
 		conf.ProcRecord = true
 		if len(executables) > 0 {
@@ -143,6 +153,7 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 		conf.Env["NEOSHELL_USER"] = extFlags.Get("user").value
 		conf.Env["NEOSHELL_PASSWORD"] = engine.SecureString(extFlags.Get("password").value)
 		conf.Env["NEOSHELL_IDENTITY_FILE"] = extFlags.Get("identity-file").value
+		conf.Env["NEOSHELL_DATABASE"] = extFlags.Get("database").value
 
 		conf.Aliases["jsh"] = "/sbin/shell.js"
 		conf.Aliases["describe"] = "show table"
@@ -155,6 +166,7 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 			User:         extFlags.Get("user").value,
 			Password:     extFlags.Get("password").value,
 			IdentityFile: extFlags.Get("identity-file").value,
+			Database:     extFlags.Get("database").value,
 			env:          map[string]any{},
 		}); err != nil {
 			if err == ErrUserOrPasswordIncorrect {
