@@ -327,6 +327,11 @@ func (x *Node) fmUse(dbname string) *useDatabase {
 	return &useDatabase{use: dbname}
 }
 
+// named("name", "value")
+func (x *Node) fmNamed(name string, value any) sql.NamedArg {
+	return sql.NamedArg{Name: name, Value: value}
+}
+
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
 func (x *Node) fmSql(args ...any) (any, error) {

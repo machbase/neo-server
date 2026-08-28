@@ -2075,6 +2075,19 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 		Description: "TODO",
 		Markdown: "# moment\n\n## Kind\n\nhelper\n\n## Category\n\nconversion\n\n## Signatures\n\n```text\nmoment(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nmoment()\n```\n\n## Related\n\nTODO",
 	},
+	"named": {
+		Label: "named",
+		Kind: "helper",
+		Category: "named parameters",
+		Signatures: []tqlDocSignature{
+			{Label: "named(...)"},
+		},
+		Slots: []tqlDocSlot{
+			{Name: "args", Required: false, Repeat: true, Accepts: "expression"},
+		},
+		Description: "TODO",
+		Markdown: "# named\n\n## Kind\n\nhelper\n\n## Category\n\nnamed parameters\n\n## Signatures\n\n```text\nnamed(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nnamed()\n```\n\n## Related\n\nTODO",
+	},
 	"noWait": {
 		Label: "noWait",
 		Kind: "helper",

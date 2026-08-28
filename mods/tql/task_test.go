@@ -1172,6 +1172,34 @@ func TestSql_show_others(t *testing.T) {
 		},
 	}.run(t)
 	TqlTestCase{
+		Name: "SQL_select-from-table-bind-params",
+		Script: `
+			SQL("select TIME, VALUE from tag_simple where name = ?", 'tag1')
+			CSV( precision(3), header(true) )
+			`,
+		ExpectCSV: []string{
+			"TIME,VALUE",
+			"1692686707380411000,0.100",
+			"1692686708380411000,0.200",
+			"\n",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_select-from-table-named-bind-params",
+		Script: `
+			SQL("select TIME, VALUE from tag_simple where name = :name limit :one, :one",
+				named("name", "tag1"),
+				named("one", 1))
+			CSV( precision(3), header(true) )
+			`,
+		ExpectCSV: []string{
+			"TIME,VALUE",
+			"1692686708380411000,0.200",
+			"\n",
+		},
+	}.run(t)
+
+	TqlTestCase{
 		Name: "SQL_select-from-table-rownum",
 		Script: `
 			SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
