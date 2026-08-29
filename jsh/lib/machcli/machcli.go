@@ -36,6 +36,9 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("Explain", Explain)
 	exports.Set("Message", Message)
 	exports.Set("IsFetchable", IsFetchable)
+	exports.Set("Named", func(name string, value any) sql.NamedArg {
+		return sql.Named(name, value)
+	})
 }
 
 func Unbox(value any) any {
