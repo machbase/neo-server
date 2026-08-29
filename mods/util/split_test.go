@@ -183,6 +183,116 @@ func TestSplitSqlStatementsDoubleDashFlags(t *testing.T) {
 	}
 }
 
+func TestSplitSqlStatementsEnv(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect []*util.SqlStatement
+	}{
+		{
+			name:  "bridge",
+			input: "-- env: bridge=sqlite\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: bridge=sqlite", Env: &util.SqlStatementEnv{Bridge: "sqlite"}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{Bridge: "sqlite"}},
+			},
+		},
+		{
+			name:  "bridge and use accumulate",
+			input: "-- env: bridge=sqlite\n-- env: use=mydb\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: bridge=sqlite", Env: &util.SqlStatementEnv{Bridge: "sqlite"}},
+				{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- env: use=mydb", Env: &util.SqlStatementEnv{Bridge: "sqlite", Use: "mydb"}},
+				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{Bridge: "sqlite", Use: "mydb"}},
+			},
+		},
+		{
+			name:  "reset clears env",
+			input: "-- env: bridge=sqlite use=mydb\n-- env: reset\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: bridge=sqlite use=mydb", Env: &util.SqlStatementEnv{Bridge: "sqlite", Use: "mydb"}},
+				{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- env: reset", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{}},
+			},
+		},
+		{
+			name:  "unknown env key",
+			input: "-- env: foo=bar\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: foo=bar", Env: &util.SqlStatementEnv{Error: "unknown env: foo"}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{Error: "unknown env: foo"}},
+			},
+		},
+		{
+			name:  "non env comment is ignored",
+			input: "-- just a comment\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- just a comment", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{}},
+			},
+		},
+		{
+			name:  "named single pair",
+			input: `-- env: named.name=Alice` + "\n" + `select * from example where name = :name;`,
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.name=Alice", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Alice"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from example where name = :name;", StmtType: "select", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Alice"}}},
+			},
+		},
+		{
+			name:  "named multiple pairs with quoted values",
+			input: `-- env: named.name=Alice named.from="2024-01-01" named.to="2024-01-08"` + "\n" + `select * from example where name = :name and time between :from and :to;`,
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: `-- env: named.name=Alice named.from="2024-01-01" named.to="2024-01-08"`, Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Alice", "from": "2024-01-01", "to": "2024-01-08"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from example where name = :name and time between :from and :to;", StmtType: "select", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Alice", "from": "2024-01-01", "to": "2024-01-08"}}},
+			},
+		},
+		{
+			name:  "named accumulates across lines and merges with bridge/use",
+			input: "-- env: bridge=sqlite named.name=Alice\n-- env: use=mydb named.from=2024-01-01\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: bridge=sqlite named.name=Alice", Env: &util.SqlStatementEnv{Bridge: "sqlite", Named: map[string]string{"name": "Alice"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- env: use=mydb named.from=2024-01-01", Env: &util.SqlStatementEnv{Bridge: "sqlite", Use: "mydb", Named: map[string]string{"name": "Alice", "from": "2024-01-01"}}},
+				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{Bridge: "sqlite", Use: "mydb", Named: map[string]string{"name": "Alice", "from": "2024-01-01"}}},
+			},
+		},
+		{
+			name:  "named key overwrites earlier value",
+			input: "-- env: named.name=Alice\n-- env: named.name=Bob\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.name=Alice", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Alice"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- env: named.name=Bob", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Bob"}}},
+				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Bob"}}},
+			},
+		},
+		{
+			name:  "reset clears named",
+			input: "-- env: named.name=Alice\n-- env: reset\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.name=Alice", Env: &util.SqlStatementEnv{Named: map[string]string{"name": "Alice"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- env: reset", Env: &util.SqlStatementEnv{}},
+				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{}},
+			},
+		},
+		{
+			name:  "named without bind name is an error",
+			input: "-- env: named.=Alice\nSELECT 1;",
+			expect: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.=Alice", Env: &util.SqlStatementEnv{Error: "unknown env: named."}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &util.SqlStatementEnv{Error: "unknown env: named."}},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			statements, err := util.SplitSqlStatements(strings.NewReader(tc.input))
+			require.NoError(t, err)
+			require.EqualValues(t, tc.expect, statements)
+		})
+	}
+}
+
 func TestSplitSqlStatements(t *testing.T) {
 	tests := []struct {
 		inputFile  string

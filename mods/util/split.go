@@ -15,15 +15,17 @@ import (
 )
 
 type SqlStatementEnv struct {
-	Error  string `json:"error,omitempty"`
-	Bridge string `json:"bridge,omitempty"`
-	Use    string `json:"use,omitempty"`
+	Error  string            `json:"error,omitempty"`
+	Bridge string            `json:"bridge,omitempty"`
+	Use    string            `json:"use,omitempty"`
+	Named  map[string]string `json:"named,omitempty"`
 }
 
 func (sse *SqlStatementEnv) Reset() {
 	sse.Error = ""
 	sse.Bridge = ""
 	sse.Use = ""
+	sse.Named = nil
 }
 
 type SqlStatement struct {
@@ -260,6 +262,7 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 	// -- env: bridge=sqlite
 	// -- env: reset
 	// -- env: use=mydb
+	// -- env: named.name=Alice named.from="2024-01-01" named.to="2024-01-08"
 	text = strings.TrimSpace(strings.TrimPrefix(text, "env:"))
 	pairs := ParseNameValuePairs(text)
 	if len(pairs) == 0 {
@@ -267,14 +270,32 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 	}
 	env := &SqlStatementEnv{}
 	*env = *prev
+	namedCloned := false
 	for _, pair := range pairs {
-		switch pair.Name {
-		case "bridge":
+		switch {
+		case pair.Name == "bridge":
 			env.Bridge = pair.Value
-		case "use":
+		case pair.Name == "use":
 			env.Use = pair.Value
-		case "reset":
+		case pair.Name == "reset":
 			env.Reset()
+			namedCloned = true
+		case strings.HasPrefix(pair.Name, "named."):
+			bindName := strings.TrimPrefix(pair.Name, "named.")
+			if bindName == "" {
+				env.Error = fmt.Sprintf("unknown env: %s", pair.Name)
+				continue
+			}
+			if !namedCloned {
+				// copy-on-write: keep prev.Named untouched until the first mutation
+				named := make(map[string]string, len(prev.Named)+1)
+				for k, v := range prev.Named {
+					named[k] = v
+				}
+				env.Named = named
+				namedCloned = true
+			}
+			env.Named[bindName] = pair.Value
 		default:
 			env.Error = fmt.Sprintf("unknown env: %s", pair.Name)
 		}
