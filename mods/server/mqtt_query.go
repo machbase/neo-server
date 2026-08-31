@@ -57,6 +57,7 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	if req.ReplyTo != "" {
 		replyTopic = req.ReplyTo
 	}
+	req.ExecUser = s.getClientUser(cl.ID)
 
 	hook := &QueryHook{
 		SetContentType: func(contentType string) {

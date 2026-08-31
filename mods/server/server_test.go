@@ -1887,10 +1887,10 @@ func TestShellKey(t *testing.T) {
 		name: "key_list",
 		args: append(shellArgs, "key", "list"),
 		expect: []string{
-			"┌────────┬────┬──────────────────┬─────────────────┐",
-			"│ ROWNUM │ ID │ NOT VALID BEFORE │ NOT VALID AFTER │",
-			"├────────┼────┼──────────────────┼─────────────────┤",
-			"└────────┴────┴──────────────────┴─────────────────┘",
+			"┌────────┬────┬──────┬──────────────────┬─────────────────┐",
+			"│ ROWNUM │ ID │ NAME │ NOT VALID BEFORE │ NOT VALID AFTER │",
+			"├────────┼────┼──────┼──────────────────┼─────────────────┤",
+			"└────────┴────┴──────┴──────────────────┴─────────────────┘",
 		},
 	}.runShellTestCase(t)
 }
@@ -2183,12 +2183,130 @@ func TestServerCoverage_RunSqlScriptWrappers(t *testing.T) {
 	require.NoError(t, svr.runSqlScriptFile("cov-file", scriptPath))
 }
 
+func TestApiTokenCodec(t *testing.T) {
+	secret, err := NewApiTokenSecret()
+	require.NoError(t, err)
+	require.Len(t, secret, 43)
+	token := FormatApiToken(1234, secret)
+	id, parsedSecret, ok := ParseApiToken(token)
+	require.True(t, ok)
+	require.Equal(t, int64(1234), id)
+	require.Equal(t, secret, parsedSecret)
+	require.Equal(t, HashApiTokenSecret(secret), HashApiTokenSecret(secret))
+	require.Equal(t, "nt_ya_"+secret[:4]+"****"+secret[len(secret)-4:], HintApiToken(1234, secret))
+
+	for _, invalid := range []string{"", "client:b:signature", "nt__" + secret, "nt_bad!_" + secret, "nt_1_short", "nt_0_" + secret, "nt_1_" + strings.Repeat("-", 43)} {
+		_, _, ok := ParseApiToken(invalid)
+		require.False(t, ok, invalid)
+	}
+}
+
+func TestApiTokenVerifier(t *testing.T) {
+	server := coverageRunningServer(t)
+	ctx := contextWithModelUser(context.Background(), "sys")
+	secret, err := NewApiTokenSecret()
+	require.NoError(t, err)
+	definition := &model.ApiTokenDefinition{
+		Name:      "verifier-test",
+		TokenHash: HashApiTokenSecret(secret),
+		TokenHint: "pending",
+		CreatedAt: time.Now(),
+		NotBefore: time.Now().Add(-time.Minute),
+		NotAfter:  time.Now().Add(time.Hour),
+	}
+	require.NoError(t, server.models.SaveApiToken(ctx, model.UserScope{User: "sys"}, definition))
+	require.NoError(t, server.models.UpdateApiTokenHint(ctx, model.UserScope{User: "sys"}, definition.Id, HintApiToken(definition.Id, secret)))
+
+	user, ok, err := server.apiTokenVerifier.Verify(ctx, FormatApiToken(definition.Id, secret))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "SYS", user)
+
+	_, ok, err = server.apiTokenVerifier.Verify(ctx, FormatApiToken(definition.Id, strings.Repeat("a", 43)))
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	require.NoError(t, server.models.RemoveApiToken(ctx, model.UserScope{User: "sys"}, definition.Id))
+	server.apiTokenVerifier.Invalidate(definition.Id)
+	_, ok, err = server.apiTokenVerifier.Verify(ctx, FormatApiToken(definition.Id, secret))
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
+func TestApiTokenRPC(t *testing.T) {
+	server := coverageRunningServer(t)
+	alice := contextWithModelUser(context.Background(), "alice")
+	bob := contextWithModelUser(context.Background(), "bob")
+
+	generated, err := server.generateApiToken(alice, "ci", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, generated.Token)
+	require.NotEmpty(t, generated.Hint)
+	require.Equal(t, "ALICE", generated.User)
+
+	list, err := server.listApiTokens(alice)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	_, err = server.listApiTokens(bob)
+	require.NoError(t, err)
+	require.Error(t, server.deleteApiToken(bob, generated.Id))
+	require.NoError(t, server.deleteApiToken(alice, generated.Id))
+	list, err = server.listApiTokens(alice)
+	require.NoError(t, err)
+	require.Empty(t, list)
+
+	_, err = server.generateApiToken(context.Background(), "missing-user", 0)
+	require.Error(t, err)
+	_, err = server.generateApiToken(alice, "", 0)
+	require.Error(t, err)
+}
+
+func TestX509CertVerifier(t *testing.T) {
+	server := coverageRunningServer(t)
+	ctx := contextWithModelUser(context.Background(), "sys")
+	ec := NewEllipticCurveP256()
+	privateKey, publicKey, err := ec.GenerateKeys()
+	require.NoError(t, err)
+	certificatePEM, err := GenerateServerCertificate(privateKey, publicKey)
+	require.NoError(t, err)
+	certificate, err := parseCertificatePEM(certificatePEM)
+	require.NoError(t, err)
+	hash, err := HashCertificate(certificate)
+	require.NoError(t, err)
+	definition := &model.X509CertDefinition{Name: "certificate-test", CertPEM: string(certificatePEM), CertHash: hash, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour)}
+	require.NoError(t, server.models.SaveX509Cert(ctx, model.UserScope{User: "sys"}, definition))
+	t.Cleanup(func() {
+		_, _ = server.models.RemoveX509Cert(ctx, model.UserScope{User: "sys"}, definition.Id)
+		server.x509CertVerifier.Invalidate(hash)
+	})
+
+	record, ok, err := server.x509CertVerifier.Resolve(ctx, hash)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "SYS", record.UserName)
+	ok, err = server.x509CertVerifier.Validate(ctx, "wrong-hash")
+	require.NoError(t, err)
+	require.False(t, ok)
+	_, ok, err = server.x509CertVerifier.Resolve(ctx, "missing-hash")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	definition.NotAfter = time.Now().Add(-time.Minute)
+	_, err = server.models.RemoveX509Cert(ctx, model.UserScope{User: "sys"}, definition.Id)
+	require.NoError(t, err)
+	require.NoError(t, server.models.SaveX509Cert(ctx, model.UserScope{User: "sys"}, definition))
+	server.x509CertVerifier.Invalidate(hash)
+	_, ok, err = server.x509CertVerifier.Resolve(ctx, hash)
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
 func TestServerCoverage_ValidateClientCertificate(t *testing.T) {
-	svr := &Server{authorizedKeysDir: t.TempDir()}
+	svr := coverageRunningServer(t)
 
 	ok, err := svr.ValidateClientCertificate("missing", "hash")
 	require.False(t, ok)
-	require.Error(t, err)
+	require.NoError(t, err)
 
 	ec := NewEllipticCurveP256()
 	pri, pub, err := ec.GenerateKeys()
@@ -2196,13 +2314,19 @@ func TestServerCoverage_ValidateClientCertificate(t *testing.T) {
 
 	certPem, err := GenerateServerCertificate(pri, pub)
 	require.NoError(t, err)
-	require.NoError(t, svr.SetAuthorizedCertificate("client-a", certPem))
-
-	cert, err := svr.AuthorizedCertificate("client-a")
+	cert, err := parseCertificatePEM(certPem)
 	require.NoError(t, err)
-
 	hash, err := HashCertificate(cert)
 	require.NoError(t, err)
+	ctx := contextWithModelUser(t.Context(), "sys")
+	definition := &model.X509CertDefinition{
+		Name: "client-a", CertPEM: string(certPem), CertHash: hash, NotBefore: cert.NotBefore, NotAfter: cert.NotAfter,
+	}
+	require.NoError(t, svr.models.SaveX509Cert(ctx, model.UserScope{User: "sys"}, definition))
+	t.Cleanup(func() {
+		_, _ = svr.models.RemoveX509Cert(ctx, model.UserScope{User: "sys"}, definition.Id)
+		svr.x509CertVerifier.Invalidate(hash)
+	})
 
 	ok, err = svr.ValidateClientCertificate("client-a", hash)
 	require.NoError(t, err)

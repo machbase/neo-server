@@ -43,6 +43,7 @@ func NewMqtt(opts ...MqttOption) (*mqttd, error) {
 			Capabilities:           caps,
 		}),
 		authHook:          &AuthHook{},
+		clientUsers:       make(map[string]string),
 		defaultReplyTopic: "db/reply",
 	}
 	for _, opt := range opts {
@@ -184,6 +185,13 @@ func WithMqttAuthServer(authSvc AuthServer, enableTokenAuth bool) MqttOption {
 	}
 }
 
+func WithMqttX509CertVerifier(verifier *X509CertVerifier) MqttOption {
+	return func(s *mqttd) error {
+		s.certVerifier = verifier
+		return nil
+	}
+}
+
 func WithMqttBadgerPersistent(badgerPath string) MqttOption {
 	return func(s *mqttd) error {
 		badgerOpts := badgerdb.DefaultOptions(badgerPath) // BadgerDB options. Adjust according to your actual scenario.
@@ -245,10 +253,34 @@ type mqttd struct {
 	authServer        AuthServer
 	authHook          *AuthHook
 	enableTokenAuth   bool
+	certVerifier      *X509CertVerifier
+	clientUsers       map[string]string
+	clientUsersMu     sync.RWMutex
 	tqlLoader         tql.Loader
 	defaultReplyTopic string
 	wsListener        *WsListener
 	restrictTopics    bool
+}
+
+func (s *mqttd) setClientUser(clientID string, user string) {
+	s.clientUsersMu.Lock()
+	if s.clientUsers == nil {
+		s.clientUsers = make(map[string]string)
+	}
+	s.clientUsers[clientID] = user
+	s.clientUsersMu.Unlock()
+}
+
+func (s *mqttd) getClientUser(clientID string) string {
+	s.clientUsersMu.RLock()
+	defer s.clientUsersMu.RUnlock()
+	return s.clientUsers[clientID]
+}
+
+func (s *mqttd) clearClientUser(clientID string) {
+	s.clientUsersMu.Lock()
+	delete(s.clientUsers, clientID)
+	s.clientUsersMu.Unlock()
 }
 
 func (s *mqttd) Start() error {
@@ -333,6 +365,7 @@ func (s *mqttd) onConnect(cl *mqtt.Client, pk packets.Packet) error {
 
 func (s *mqttd) onDisconnect(cl *mqtt.Client, err error, expire bool) {
 	s.log.Debugf("%s disconnected listener=%s expired=%t err=%v", cl.Net.Remote, cl.Net.Listener, expire, err)
+	s.clearClientUser(cl.ID)
 }
 
 type AuthHook struct {
@@ -389,9 +422,37 @@ func (h *AuthHook) OnPacketEncode(cl *mqtt.Client, pk packets.Packet) packets.Pa
 	return pk
 }
 
+// isMqttTlsListener reports whether the listener id was created with TLS enabled.
+// See WithMqttTcpListener/WithMqttWebsocketListener for the "mqtt-tls-*"/"mqtt-wss-*" naming.
+func isMqttTlsListener(listenerID string) bool {
+	return strings.HasPrefix(listenerID, "mqtt-tls-") || strings.HasPrefix(listenerID, "mqtt-wss-")
+}
+
 // OnConnectAuthenticate returns true if the connecting client has rules which provide access
 // in the auth ledger.
 func (h *AuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) bool {
+	// Certificate verification only applies to listeners that actually terminate TLS;
+	// non-TLS listeners (e.g. the internal unix socket) must not be rejected here.
+	if h.svr.certVerifier != nil && isMqttTlsListener(cl.Net.Listener) {
+		tlsConn, ok := cl.Net.Conn.(*tls.Conn)
+		if !ok {
+			return false
+		}
+		state := tlsConn.ConnectionState()
+		if len(state.PeerCertificates) == 0 {
+			return false
+		}
+		leaf := state.PeerCertificates[0]
+		hash, err := HashCertificate(leaf)
+		if err != nil {
+			return false
+		}
+		record, ok, err := h.svr.certVerifier.Resolve(context.Background(), hash)
+		if err != nil || !ok || record.UserName == "" {
+			return false
+		}
+		h.svr.setClientUser(cl.ID, record.UserName)
+	}
 	if h.svr.enableTokenAuth {
 		if h.svr.authServer == nil {
 			h.svr.log.Warn("token auth is enabled but auth server is not set.")
@@ -410,7 +471,7 @@ func (h *AuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) boo
 		// if !strings.HasPrefix(username, clientId) {
 		// 	return false
 		// }
-		pass, err := h.svr.authServer.ValidateClientToken(username)
+		user, pass, err := h.svr.authServer.ValidateClientToken(context.Background(), username)
 		if err != nil {
 			h.svr.log.Warn("fail to validate token", err)
 			return false
@@ -418,6 +479,10 @@ func (h *AuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) boo
 		if !pass {
 			return false
 		}
+		if user == "" {
+			return false
+		}
+		h.svr.setClientUser(cl.ID, user)
 	}
 	return true
 }

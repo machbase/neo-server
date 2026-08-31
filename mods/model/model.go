@@ -47,6 +47,12 @@ type Provider struct {
 	subscriberTableMu    sync.Mutex
 	subscriberTableReady bool
 
+	apiTokenTableMu    sync.Mutex
+	apiTokenTableReady bool
+
+	x509CertTableMu    sync.Mutex
+	x509CertTableReady bool
+
 	experimentMode func() bool
 }
 

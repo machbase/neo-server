@@ -21,7 +21,8 @@ import (
 )
 
 type QueryRequest struct {
-	SqlText string `json:"q"`
+	SqlText  string `json:"q"`
+	ExecUser string `json:"-"`
 	// Params holds bind parameters. It accepts a JSON array (positional binds for `?`)
 	// or a JSON object (named binds for `:name`, converted to sql.Named).
 	Params             any    `json:"p,omitempty"`
@@ -191,7 +192,11 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		opts.RowsArray(req.RowsArray),
 		opts.Transpose(req.Transpose),
 	)
-	conn, err := spi.Connect(ctx, "sys")
+	user := "sys"
+	if req.ExecUser != "" {
+		user = req.ExecUser
+	}
+	conn, err := spi.Connect(ctx, user)
 	if err != nil {
 		if hook.SetStatusCode != nil {
 			hook.SetStatusCode(http.StatusServiceUnavailable)

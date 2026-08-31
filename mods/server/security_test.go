@@ -469,45 +469,6 @@ func newTestSSHKeyFixture(t *testing.T) sshTestFixture {
 	}
 }
 
-func TestClientTokenRSA(t *testing.T) {
-	rc, err := rsa.GenerateKey(rand.Reader, 4096)
-	require.Nil(t, err)
-
-	token, err := GenerateClientToken("abcdefg", rc, "b")
-	require.Nil(t, err)
-	require.True(t, len(token) > 0)
-	// t.Logf("Token: %s", token)
-
-	pass, err := VerifyClientToken(token, &rc.PublicKey)
-	require.Nil(t, err)
-	require.True(t, pass)
-
-	pass, err = VerifyClientToken(token+"wrong", rc)
-	require.NotNil(t, err)
-	require.False(t, pass)
-}
-
-func TestClientTokenECDSA(t *testing.T) {
-	ec := NewEllipticCurveP256()
-	pri, pub, err := ec.GenerateKeys()
-	require.Nil(t, err)
-	require.NotNil(t, pri)
-	require.NotNil(t, pub)
-
-	token, err := GenerateClientToken("abcdefg", pri, "b")
-	require.Nil(t, err)
-	require.True(t, len(token) > 0)
-	t.Logf("Token: %s", token)
-
-	pass, err := VerifyClientToken(token, &pri.PublicKey)
-	require.Nil(t, err)
-	require.True(t, pass)
-
-	pass, err = VerifyClientToken(token+"wrong", pri)
-	require.NotNil(t, err)
-	require.False(t, pass)
-}
-
 func TestConvertUserAuthInfoToAuthorizedSshKey(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)

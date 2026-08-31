@@ -924,9 +924,9 @@ type mqttTestAuthServer struct {
 	allowErr error
 }
 
-func (s *mqttTestAuthServer) ValidateClientToken(token string) (bool, error) {
+func (s *mqttTestAuthServer) ValidateClientToken(_ context.Context, token string) (string, bool, error) {
 	s.token = token
-	return s.allow, s.allowErr
+	return "SYS", s.allow, s.allowErr
 }
 
 func (s *mqttTestAuthServer) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
@@ -1068,6 +1068,29 @@ func TestAuthHookOnConnectAuthenticate(t *testing.T) {
 		hook := &AuthHook{svr: &mqttd{log: log, enableTokenAuth: true, authServer: &mqttTestAuthServer{allowErr: errors.New("boom")}}}
 		require.False(t, hook.OnConnectAuthenticate(client, pk))
 	})
+
+	t.Run("cert_verifier_bypassed_on_non_tls_listener", func(t *testing.T) {
+		// e.g. the internal unix socket listener must not be rejected when
+		// EnableTls is set for the TCP/WS listeners of the same broker.
+		unixClient := &mqtt.Client{ID: "client-unix", Net: mqtt.ClientConnection{Listener: "mqtt-unix-0"}}
+		hook := &AuthHook{svr: &mqttd{log: log, certVerifier: NewX509CertVerifier(nil)}}
+		require.True(t, hook.OnConnectAuthenticate(unixClient, pk))
+	})
+
+	t.Run("cert_verifier_rejects_non_tls_conn_on_tls_listener", func(t *testing.T) {
+		tlsClient := &mqtt.Client{ID: "client-tls", Net: mqtt.ClientConnection{Listener: "mqtt-tls-0"}}
+		hook := &AuthHook{svr: &mqttd{log: log, certVerifier: NewX509CertVerifier(nil)}}
+		require.False(t, hook.OnConnectAuthenticate(tlsClient, pk))
+	})
+}
+
+func TestIsMqttTlsListener(t *testing.T) {
+	require.True(t, isMqttTlsListener("mqtt-tls-0"))
+	require.True(t, isMqttTlsListener("mqtt-wss-0"))
+	require.False(t, isMqttTlsListener("mqtt-tcp-0"))
+	require.False(t, isMqttTlsListener("mqtt-ws-0"))
+	require.False(t, isMqttTlsListener("mqtt-unix-0"))
+	require.False(t, isMqttTlsListener("mqtt2-ws"))
 }
 
 func TestLoadTlsConfigErrorsAndTcpHelper(t *testing.T) {

@@ -565,8 +565,10 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	if !exist {
 		tok := ctx.Query("token")
 		if tok != "" {
-			result, err := svr.authServer.ValidateClientToken(tok)
+			user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
 			if err == nil && result {
+				ctx.Set("api-token-user", user)
+				ctx.Set("api-token-authenticated", true)
 				return
 			}
 		}
@@ -580,11 +582,13 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 			continue
 		}
 		tok := h[7:]
-		result, err := svr.authServer.ValidateClientToken(tok)
+		user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
 		if err != nil {
 			svr.log.Errorf("client private key %s", err.Error())
 		}
 		if result {
+			ctx.Set("api-token-user", user)
+			ctx.Set("api-token-authenticated", true)
 			found = true
 			break
 		}
@@ -2662,6 +2666,21 @@ var ignoreAccessLog = []struct {
 	{pathSuffix: "/web/api/check", method: http.MethodGet},
 }
 
+// maskLogQueryToken replaces the value of a "token" query parameter with "****"
+// so API tokens are never written to the access log.
+func maskLogQueryToken(rawQuery string) string {
+	if rawQuery == "" {
+		return rawQuery
+	}
+	parts := strings.Split(rawQuery, "&")
+	for i, part := range parts {
+		if key, _, ok := strings.Cut(part, "="); ok && key == "token" {
+			parts[i] = key + "=****"
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
 func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
@@ -2689,7 +2708,7 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 		}
 
 		url := c.Request.Host + c.Request.URL.Path
-		raw := c.Request.URL.RawQuery
+		raw := maskLogQueryToken(c.Request.URL.RawQuery)
 		if len(raw) > 0 {
 			url = url + "?" + raw
 		}
