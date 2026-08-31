@@ -341,6 +341,99 @@ func TestHttpQuery(t *testing.T) {
 	}
 }
 
+// TestHttpQueryWithDatabaseParam verifies /db/query "db" parameter support for
+// multiple-database queries (machbase/neo#1483): a request-scoped `USE <db>`
+// is executed on the checked-out connection before the query, and pooled
+// connections must not leak database state across unrelated requests.
+func TestHttpQueryWithDatabaseParam(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	dbName := fmt.Sprintf("HTTPQUERYDB%d", time.Now().UnixNano()%1000000)
+	tableName := fmt.Sprintf("HTTP_QUERY_DB_T_%d", time.Now().UnixNano())
+
+	doQuery := func(t *testing.T, sqlText string, db string) (*http.Response, []byte) {
+		t.Helper()
+		params := url.Values{"q": []string{sqlText}}
+		if db != "" {
+			params.Set("db", db)
+		}
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		return rsp, body
+	}
+
+	rsp, body := doQuery(t, "CREATE DATABASE IF NOT EXISTS "+dbName, "")
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	t.Cleanup(func() {
+		rsp, body := doQuery(t, "DROP DATABASE "+dbName+" CASCADE", "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+
+	rsp, body = doQuery(t, fmt.Sprintf(`CREATE TABLE %s (id LONG PRIMARY KEY, name VARCHAR(40))`, tableName), "")
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	t.Cleanup(func() {
+		rsp, body := doQuery(t, "DROP TABLE "+tableName, "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+
+	rsp, body = doQuery(t, fmt.Sprintf(`CREATE TABLE %s (id LONG PRIMARY KEY, name VARCHAR(40))`, tableName), dbName)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+	rsp, body = doQuery(t, fmt.Sprintf(`INSERT INTO %s VALUES(1, 'default-db')`, tableName), "")
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+	rsp, body = doQuery(t, fmt.Sprintf(`INSERT INTO %s VALUES(1, 'other-db')`, tableName), dbName)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+	t.Run("select_from_default_database", func(t *testing.T) {
+		rsp, body := doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "default-db")
+		require.NotContains(t, string(body), "other-db")
+	})
+
+	t.Run("select_from_other_database", func(t *testing.T) {
+		rsp, body := doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), dbName)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "other-db")
+		require.NotContains(t, string(body), "default-db")
+	})
+
+	t.Run("no_database_leak_across_reused_connections", func(t *testing.T) {
+		// Repeatedly alternate the "db" param over the pooled connection to make sure the
+		// driver resets the database back to default when the connection is reused.
+		for i := 0; i < 5; i++ {
+			rsp, body := doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), dbName)
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+			require.Contains(t, string(body), "other-db")
+
+			rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), "")
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+			require.Contains(t, string(body), "default-db")
+		}
+	})
+
+	t.Run("empty_db_param_uses_default_database", func(t *testing.T) {
+		rsp, body := doQuery(t, "SELECT 1", "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+
+	t.Run("invalid_db_name_returns_400", func(t *testing.T) {
+		rsp, body := doQuery(t, "SELECT 1", "bad db;name")
+		require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(body))
+	})
+
+	t.Run("nonexistent_db_returns_500", func(t *testing.T) {
+		rsp, body := doQuery(t, "SELECT 1", "no_such_database_xyz")
+		require.Equal(t, http.StatusInternalServerError, rsp.StatusCode, string(body))
+	})
+}
+
 func TestHttpQueryMutation(t *testing.T) {
 	mutationTable := fmt.Sprintf("HTTP_QUERY_MUT_%d", time.Now().UnixNano())
 	baseTime := testTimeTick.UnixNano() + 123456789

@@ -271,8 +271,8 @@ github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
-github.com/machbase/neo-client/v2 v2.0.0-20260828143639-96ae5efad8d1 h1:oNw+m8Hss9BC4XNu1TSecqjLpQmTMvW/nDjneeXbNMY=
-github.com/machbase/neo-client/v2 v2.0.0-20260828143639-96ae5efad8d1/go.mod h1:5DmIxqFEwDV3LATPXQKxEwVcepjLxnUDPbDHPfkkVZM=
+github.com/machbase/neo-client/v2 v2.0.0-20260831234605-d3155baca5d6 h1:hL3xwdlzfONw4SJeCzv0KQuO2O7gEUs1H/cx5AEUqsE=
+github.com/machbase/neo-client/v2 v2.0.0-20260831234605-d3155baca5d6/go.mod h1:5DmIxqFEwDV3LATPXQKxEwVcepjLxnUDPbDHPfkkVZM=
 github.com/machbase/neo-engine/v8 v8.5.11-0.20260825141658-fe9aa668f0bc h1:Mg+HTcf7BQrzl9G6+WV9znM1GenpFsKzqOmMPRDro5U=
 github.com/machbase/neo-engine/v8 v8.5.11-0.20260825141658-fe9aa668f0bc/go.mod h1:b4epDziTEbSEgO2xEWBZpGcTkVT+H2/aVc+EnnfdLYw=
 github.com/magefile/mage v1.16.0 h1:2naaPmNwrMicCdLBCRDw288hcyClO9lmnm6FMpXyJ5I=

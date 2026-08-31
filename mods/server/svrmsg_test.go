@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -40,6 +41,58 @@ func TestDecodeQueryRequestJSONRejectsCompositeNamedParam(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid p")
 	require.Contains(t, err.Error(), "scalar")
+}
+
+func TestDecodeQueryRequestJSONDB(t *testing.T) {
+	req := &QueryRequest{}
+	err := req.DecodeJSON(strings.NewReader(`{"q":"select 1","db":"testdb"}`))
+	require.NoError(t, err)
+	require.Equal(t, "testdb", req.DB)
+}
+
+func TestDecodeQueryRequestQueryDB(t *testing.T) {
+	req := &QueryRequest{}
+	ctx, _ := newTestHTTPContext(http.MethodGet, "/db/query?q=select+1&db=testdb", nil)
+	err := req.DecodeQuery(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "testdb", req.DB)
+}
+
+func TestDecodeQueryRequestPostFormDB(t *testing.T) {
+	req := &QueryRequest{}
+	ctx, _ := newTestHTTPContext(http.MethodPost, "/db/query", []byte("q=select+1&db=testdb"))
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	err := req.DecodePostForm(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "testdb", req.DB)
+}
+
+func TestValidateDatabaseName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "simple", input: "testdb"},
+		{name: "with underscore and digits", input: "_test_db2"},
+		{name: "empty", input: "", wantErr: true},
+		{name: "starts with digit", input: "2db", wantErr: true},
+		{name: "contains space", input: "test db", wantErr: true},
+		{name: "contains quote", input: `test"db`, wantErr: true},
+		{name: "contains semicolon", input: "testdb;drop table x", wantErr: true},
+		{name: "too long", input: strings.Repeat("a", 41), wantErr: true},
+		{name: "max length", input: strings.Repeat("a", 40)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateDatabaseName(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestParseQueryParams(t *testing.T) {
