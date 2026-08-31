@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -13,6 +14,341 @@ import (
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
+
+type ShowOption func(*showOptions)
+
+type showOptions struct {
+	database    string
+	user        string
+	like        string
+	hasDatabase bool
+	hasUser     bool
+	hasLike     bool
+}
+
+func WithDatabase(database string) ShowOption {
+	return func(options *showOptions) {
+		options.database = strings.ToUpper(database)
+		options.hasDatabase = true
+	}
+}
+
+func WithUser(user string) ShowOption {
+	return func(options *showOptions) {
+		options.user = strings.ToUpper(user)
+		options.hasUser = true
+	}
+}
+
+func WithLike(pattern string) ShowOption {
+	return func(options *showOptions) {
+		options.like = pattern
+		options.hasLike = true
+	}
+}
+
+func newShowOptions(options ...ShowOption) showOptions {
+	var result showOptions
+	for _, option := range options {
+		option(&result)
+	}
+	return result
+}
+
+func (options *showOptions) validate() error {
+	if options.hasLike {
+		if options.like == "" {
+			return fmt.Errorf("LIKE pattern must not be empty")
+		}
+		_, _, _, err := parseLikePattern(options.like)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resolveShowScope(ctx context.Context, conn *sql.Conn, options *showOptions) error {
+	if err := options.validate(); err != nil {
+		return err
+	}
+
+	var database string
+	if err := conn.QueryRowContext(ctx, "SELECT current_database()").Scan(&database); err != nil {
+		return err
+	}
+	user, err := currentShowUser(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if !options.hasDatabase {
+		options.database = strings.ToUpper(database)
+	}
+	if !options.hasUser {
+		options.user = strings.ToUpper(user)
+	}
+	if !options.hasDatabase {
+		return nil
+	}
+
+	var exists int
+	err = conn.QueryRowContext(ctx, "SELECT 1 FROM V$DATABASES WHERE UPPER(NAME) = ?", options.database).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("database %q does not exist", options.database)
+	}
+	return err
+}
+
+// TODO: Replace the temporary SYS fallback with SELECT current_user() after
+// https://github.com/machbase/dbms-nfx/issues/4131 is available in the engine.
+func currentShowUser(context.Context, *sql.Conn) (string, error) {
+	return "SYS", nil
+}
+
+func (options *showOptions) likeClause(column string, args *[]any) string {
+	if !options.hasLike {
+		return ""
+	}
+	_, pattern, hasWildcard, _ := parseLikePattern(options.like)
+	if !hasWildcard {
+		*args = append(*args, strings.ToUpper(pattern))
+		return fmt.Sprintf("AND UPPER(%s) = ?", column)
+	}
+	*args = append(*args, strings.ToUpper(options.like))
+	return fmt.Sprintf("AND UPPER(%s) LIKE ?", column)
+}
+
+func (options *showOptions) databaseClause(column string, args *[]any) string {
+	*args = append(*args, options.database)
+	return fmt.Sprintf("AND UPPER(%s) = ?", column)
+}
+
+func (options *showOptions) userClause(column string, args *[]any) string {
+	*args = append(*args, options.user)
+	return fmt.Sprintf("AND UPPER(%s) = ?", column)
+}
+
+func LikeMatch(pattern string, value string) bool {
+	regex, _, _, err := parseLikePattern(pattern)
+	if err != nil {
+		return false
+	}
+	return regex.MatchString(value)
+}
+
+func parseLikePattern(pattern string) (*regexp.Regexp, string, bool, error) {
+	var expression strings.Builder
+	var literal strings.Builder
+	expression.WriteString("(?i)^")
+	hasWildcard := false
+	for index := 0; index < len(pattern); index++ {
+		character := pattern[index]
+		if character == '\\' {
+			if index+1 == len(pattern) {
+				return nil, "", false, fmt.Errorf("LIKE pattern must not end with an escape character")
+			}
+			index++
+			expression.WriteString(regexp.QuoteMeta(string(pattern[index])))
+			literal.WriteByte(pattern[index])
+			continue
+		}
+		switch character {
+		case '%':
+			expression.WriteString(".*")
+			hasWildcard = true
+		case '_':
+			expression.WriteByte('.')
+			hasWildcard = true
+		default:
+			expression.WriteString(regexp.QuoteMeta(string(character)))
+			literal.WriteByte(character)
+		}
+	}
+	expression.WriteString("$")
+	regex, err := regexp.Compile(expression.String())
+	return regex, literal.String(), hasWildcard, err
+}
+
+type ShowStatement struct {
+	Command string
+	Args    []string
+	All     bool
+
+	HasFrom  bool
+	Database string
+	User     string
+
+	HasLike bool
+	Like    string
+}
+
+type showToken struct {
+	value  string
+	quoted bool
+}
+
+func ParseShowStatement(text string) (*ShowStatement, error) {
+	tokens, err := tokenizeShowStatement(text)
+	if err != nil {
+		return nil, err
+	}
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("f(SQL) empty SHOW statement")
+	}
+	if !strings.EqualFold(tokens[0].value, "show") {
+		return nil, fmt.Errorf("f(SQL) invalid SHOW statement")
+	}
+
+	statement := &ShowStatement{}
+	seenWith := false
+	for index := 1; index < len(tokens); index++ {
+		token := tokens[index]
+		switch strings.ToLower(token.value) {
+		case "from", "in":
+			if statement.HasFrom {
+				return nil, fmt.Errorf("f(SQL) show %s: FROM specified more than once", showCommandName(statement))
+			}
+			if index+1 >= len(tokens) || tokens[index+1].quoted {
+				return nil, fmt.Errorf("f(SQL) show %s: missing database after %s", showCommandName(statement), strings.ToUpper(token.value))
+			}
+			database, user, err := parseShowScope(tokens[index+1].value)
+			if err != nil {
+				return nil, err
+			}
+			statement.HasFrom = true
+			statement.Database = database
+			statement.User = user
+			index++
+		case "like":
+			if statement.HasLike {
+				return nil, fmt.Errorf("f(SQL) show %s: LIKE specified more than once", showCommandName(statement))
+			}
+			if index+1 >= len(tokens) || !tokens[index+1].quoted {
+				return nil, fmt.Errorf("f(SQL) show %s: LIKE pattern must be quoted", showCommandName(statement))
+			}
+			if tokens[index+1].value == "" {
+				return nil, fmt.Errorf("f(SQL) show %s: LIKE pattern must not be empty", showCommandName(statement))
+			}
+			statement.HasLike = true
+			statement.Like = tokens[index+1].value
+			index++
+		case "with":
+			if seenWith {
+				return nil, fmt.Errorf("f(SQL) show %s: WITH specified more than once", showCommandName(statement))
+			}
+			if index+1 >= len(tokens) {
+				return nil, fmt.Errorf("f(SQL) show %s: missing option after WITH", showCommandName(statement))
+			}
+			if !strings.EqualFold(tokens[index+1].value, "all") && !strings.EqualFold(tokens[index+1].value, "hidden") {
+				return nil, fmt.Errorf("f(SQL) show %s: unsupported WITH option %q", showCommandName(statement), tokens[index+1].value)
+			}
+			seenWith = true
+			statement.All = true
+			index++
+		case "-a", "--all":
+			if seenWith {
+				return nil, fmt.Errorf("f(SQL) show %s: WITH specified more than once", showCommandName(statement))
+			}
+			seenWith = true
+			statement.All = true
+		default:
+			if strings.HasPrefix(token.value, "-") {
+				return nil, fmt.Errorf("f(SQL) unsupported show option %q", token.value)
+			}
+			if statement.Command == "" {
+				statement.Command = strings.ToLower(token.value)
+			} else {
+				statement.Args = append(statement.Args, token.value)
+			}
+		}
+	}
+	if statement.Command == "" {
+		return nil, fmt.Errorf("f(SQL) missing show command")
+	}
+	return statement, nil
+}
+
+func (statement *ShowStatement) ShowOptions() []ShowOption {
+	options := make([]ShowOption, 0, 3)
+	if statement.HasFrom {
+		options = append(options, WithDatabase(statement.Database))
+		if statement.User != "" {
+			options = append(options, WithUser(statement.User))
+		}
+	}
+	if statement.HasLike {
+		options = append(options, WithLike(statement.Like))
+	}
+	return options
+}
+
+func parseShowScope(value string) (string, string, error) {
+	parts := strings.Split(value, ".")
+	if len(parts) > 2 || parts[0] == "" || (len(parts) == 2 && parts[1] == "") {
+		return "", "", fmt.Errorf("f(SQL) invalid database scope %q", value)
+	}
+	database := strings.ToUpper(parts[0])
+	if len(parts) == 1 {
+		return database, "", nil
+	}
+	return database, strings.ToUpper(parts[1]), nil
+}
+
+func showCommandName(statement *ShowStatement) string {
+	if statement.Command == "" {
+		return ""
+	}
+	return statement.Command
+}
+
+func tokenizeShowStatement(text string) ([]showToken, error) {
+	text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text), ";"))
+	var tokens []showToken
+	for index := 0; index < len(text); {
+		for index < len(text) && (text[index] == ' ' || text[index] == '\t' || text[index] == '\n' || text[index] == '\r') {
+			index++
+		}
+		if index == len(text) {
+			break
+		}
+		if text[index] != '\'' && text[index] != '"' {
+			start := index
+			for index < len(text) && !strings.ContainsRune(" \t\n\r", rune(text[index])) {
+				index++
+			}
+			tokens = append(tokens, showToken{value: text[start:index]})
+			continue
+		}
+
+		quote := text[index]
+		index++
+		var value strings.Builder
+		closed := false
+		for index < len(text) {
+			if text[index] != quote {
+				value.WriteByte(text[index])
+				index++
+				continue
+			}
+			if index+1 < len(text) && text[index+1] == quote {
+				value.WriteByte(quote)
+				index += 2
+				continue
+			}
+			index++
+			closed = true
+			break
+		}
+		if !closed {
+			return nil, fmt.Errorf("f(SQL) unterminated quoted string in SHOW statement")
+		}
+		if index < len(text) && !strings.ContainsRune(" \t\n\r", rune(text[index])) {
+			return nil, fmt.Errorf("f(SQL) invalid quoted string in SHOW statement")
+		}
+		tokens = append(tokens, showToken{value: value.String(), quoted: true})
+	}
+	return tokens, nil
+}
 
 type ServicePort struct {
 	Service string
@@ -195,8 +531,14 @@ func (si *ShowUsersResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowUsers(ctx context.Context, conn *sql.Conn) *ShowUsersResultSet {
-	rows, err := conn.QueryContext(ctx, "SELECT USER_ID, NAME FROM M$SYS_USERS ORDER BY USER_ID")
+func ShowUsers(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowUsersResultSet {
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		return &ShowUsersResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
+	sqlText := SqlTidy("SELECT USER_ID, NAME FROM M$SYS_USERS WHERE 1 = 1", options.likeClause("NAME", &args), "ORDER BY USER_ID")
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowUsersResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -255,8 +597,13 @@ func (di *ShowDatabasesResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowDatabases(ctx context.Context, conn *sql.Conn) *ShowDatabasesResultSet {
-	rows, err := conn.QueryContext(ctx, `SELECT
+func ShowDatabases(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowDatabasesResultSet {
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		return &ShowDatabasesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
+	sqlText := SqlTidy(`SELECT
 		DATABASE_ID,
 		TABLESPACE_ID,
 		SOURCE_DATABASE_ID,
@@ -268,7 +615,8 @@ func ShowDatabases(ctx context.Context, conn *sql.Conn) *ShowDatabasesResultSet 
 		IS_DEFAULT
 	FROM
 		V$DATABASES
-	ORDER BY DATABASE_ID`)
+	WHERE 1 = 1`, options.likeClause("NAME", &args), `ORDER BY DATABASE_ID`)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowDatabasesResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -314,16 +662,15 @@ func (ti *ShowTablesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowTables(ctx context.Context, conn *sql.Conn, showAll bool) *ShowTablesResultSet {
+func ShowTables(ctx context.Context, conn *sql.Conn, showAll bool, opts ...ShowOption) *ShowTablesResultSet {
 	var list = []*TableInfo{}
-	var err error
-	ListTablesWalk(ctx, conn, showAll, func(t *TableInfo, err error) bool {
+	err := ListTablesWalk(ctx, conn, showAll, func(t *TableInfo, err error) bool {
 		if err != nil {
 			return false
 		}
 		list = append(list, t)
 		return true
-	})
+	}, opts...)
 	return &ShowTablesResultSet{ResultSetBase: ResultSetBase{err: err}, list: list}
 }
 
@@ -375,12 +722,16 @@ func (tr *ShowTableResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowTable(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, all bool) *ShowTableResultSet {
+func ShowTable(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, all bool, opts ...ShowOption) *ShowTableResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowTableResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
 	if fallbackDatabaseName == "" {
-		fallbackDatabaseName = "MACHBASEDB"
+		fallbackDatabaseName = options.database
 	}
 	if fallbackUserName == "" {
-		fallbackUserName = "SYS"
+		fallbackUserName = options.user
 	}
 	databaseName := fallbackDatabaseName
 	userName := fallbackUserName
@@ -428,10 +779,15 @@ func (ti *ShowMetaTablesResultSet) Iter(callback func(values []interface{}) bool
 	}
 }
 
-func ShowMetaTables(ctx context.Context, conn *sql.Conn) *ShowMetaTablesResultSet {
+func ShowMetaTables(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowMetaTablesResultSet {
 	var list = []*TableInfo{}
-	var err error
-	rows, err := conn.QueryContext(ctx, "SELECT ID, NAME, TYPE FROM M$TABLES ORDER BY ID")
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		return &ShowMetaTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
+	sqlText := SqlTidy("SELECT ID, NAME, TYPE FROM M$TABLES WHERE 1 = 1", options.likeClause("NAME", &args), "ORDER BY ID")
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowMetaTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -474,10 +830,15 @@ func (ti *ShowVirtualTablesResultSet) Iter(callback func(values []interface{}) b
 	}
 }
 
-func ShowVirtualTables(ctx context.Context, conn *sql.Conn) *ShowVirtualTablesResultSet {
+func ShowVirtualTables(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowVirtualTablesResultSet {
 	var list = []*TableInfo{}
-	var err error
-	rows, err := conn.QueryContext(ctx, "SELECT ID, NAME, TYPE FROM V$TABLES ORDER BY ID")
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		return &ShowVirtualTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
+	sqlText := SqlTidy("SELECT ID, NAME, TYPE FROM V$TABLES WHERE 1 = 1", options.likeClause("NAME", &args), "ORDER BY ID")
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowVirtualTablesResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -518,10 +879,17 @@ func (sri *ShowSessionsResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowSessions(ctx context.Context, conn *sql.Conn) *ShowSessionsResultSet {
+func ShowSessions(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowSessionsResultSet {
 	ret := &ShowSessionsResultSet{}
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		ret.err = err
+		return ret
+	}
 	func() {
-		rows, err := conn.QueryContext(ctx, "SELECT ID, USER_ID, LOGIN_TIME, CLIENT_TYPE, USER_NAME, USER_IP, MAX_QPX_MEM FROM V$SESSION")
+		args := []any{}
+		sqlText := SqlTidy("SELECT ID, USER_ID, LOGIN_TIME, CLIENT_TYPE, USER_NAME, USER_IP, MAX_QPX_MEM FROM V$SESSION WHERE 1 = 1", options.likeClause("USER_NAME", &args))
+		rows, err := conn.QueryContext(ctx, sqlText, args...)
 		if err != nil {
 			ret.err = err
 			return
@@ -551,7 +919,9 @@ func ShowSessions(ctx context.Context, conn *sql.Conn) *ShowSessionsResultSet {
 		return ret
 	}
 	func() {
-		rows, err := conn.QueryContext(ctx, "SELECT ID, USER_ID, USER_NAME FROM V$NEO_SESSION")
+		args := []any{}
+		sqlText := SqlTidy("SELECT ID, USER_ID, USER_NAME FROM V$NEO_SESSION WHERE 1 = 1", options.likeClause("USER_NAME", &args))
+		rows, err := conn.QueryContext(ctx, sqlText, args...)
 		if err != nil {
 			ret.err = err
 			return
@@ -618,8 +988,14 @@ func (sri *ShowStatementsResultSet) Iter(callback func(values []interface{}) boo
 	}
 }
 
-func ShowStatements(ctx context.Context, conn *sql.Conn) *ShowStatementsResultSet {
-	stmtRows, err := conn.QueryContext(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
+func ShowStatements(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowStatementsResultSet {
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		return &ShowStatementsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
+	sqlText := SqlTidy("SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT WHERE 1 = 1", options.likeClause("QUERY", &args))
+	stmtRows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowStatementsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -687,11 +1063,23 @@ func (ii *ShowIndexesResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowIndexes(ctx context.Context, conn *sql.Conn) *ShowIndexesResultSet {
-	return showIndexes(ctx, conn, "")
+func ShowIndexes(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowIndexesResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	return showIndexes(ctx, conn, "", &options)
 }
 
-func showIndexes(ctx context.Context, conn *sql.Conn, indexName string) *ShowIndexesResultSet {
+func showIndexes(ctx context.Context, conn *sql.Conn, indexName string, options *showOptions) *ShowIndexesResultSet {
+	args := []any{}
+	indexClause := func() string {
+		if indexName == "" {
+			return ""
+		}
+		args = append(args, indexName)
+		return "AND b.name = ?"
+	}
 	var listIndexesSql = SqlTidy(`
 		SELECT
 			j.DB_NAME as DATABASE_NAME,
@@ -732,19 +1120,21 @@ func showIndexes(ctx context.Context, conn *sql.Conn, indexName string) *ShowInd
 					a.USER_ID as USER_ID
 				from
 					M$SYS_TABLES a
+				where
+					1 = 1`,
+		options.databaseClause("a.DATABASE_NAME", &args), `
 			) as j
 		WHERE
 			j.TABLE_ID = b.TABLE_ID
-		AND j.USER_ID = u.USER_ID
-		` + ifThenElse(indexName != "", "AND b.name = ?", "") + `
+		AND j.DATABASE_ID = b.DATABASE_ID
+		AND j.USER_ID = u.USER_ID`,
+		options.userClause("u.NAME", &args),
+		indexClause(),
+		options.likeClause("b.NAME", &args), `
 		ORDER BY
 			j.DATABASE_ID, u.USER_ID, j.TABLE_NAME, b.ID
 	`)
 
-	args := []any{}
-	if indexName != "" {
-		args = append(args, indexName)
-	}
 	rows, err := conn.QueryContext(ctx, listIndexesSql, args...)
 	if err != nil {
 		return &ShowIndexesResultSet{ResultSetBase: ResultSetBase{err: err}}
@@ -825,8 +1215,12 @@ func (qir *ShowIndexResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowIndex(ctx context.Context, conn *sql.Conn, indexName string) *ShowIndexResultSet {
-	r := showIndexes(ctx, conn, indexName)
+func ShowIndex(ctx context.Context, conn *sql.Conn, indexName string, opts ...ShowOption) *ShowIndexResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	r := showIndexes(ctx, conn, indexName, &options)
 	if r.err != nil {
 		return &ShowIndexResultSet{ResultSetBase: ResultSetBase{err: r.err}}
 	}
@@ -871,7 +1265,12 @@ func (sui *ShowStorageResultSet) Iter(callback func(values []interface{}) bool) 
 	}
 }
 
-func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
+func ShowStorage(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowStorageResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
 	sqlText := SqlTidy(`
 		SELECT
 			a.database_id as DATABASE_ID,
@@ -892,21 +1291,30 @@ func ShowStorage(ctx context.Context, conn *sql.Conn) *ShowStorageResultSet {
 				a.id as table_id,
 				a.name as table_name,
 				sum(b.storage_usage) as data_size
-			from m$sys_tables a, v$storage_tables b
+			from m$sys_tables a, v$storage_tables b, m$sys_users u
 			where a.id = b.id
+			and a.tablespace_id = b.tablespace_id
+			and a.user_id = u.user_id`,
+		options.databaseClause("a.database_name", &args),
+		options.userClause("u.name", &args),
+		options.likeClause("a.name", &args), `
 			group by a.database_id, a.database_name, a.id, a.name
 		) as a
 		left outer join (
-			select
-				a.name, sum(b.disk_file_size) as index_size
-			from m$sys_tables a, v$storage_dc_table_indexes b
+			select a.database_id, a.id as table_id, sum(b.disk_file_size) as index_size
+			from m$sys_tables a, v$storage_dc_table_indexes b, m$sys_users u
 			where a.id = b.table_id
-			group by a.name
+			and a.tablespace_id = b.tablespace_id
+			and a.user_id = u.user_id`,
+		options.databaseClause("a.database_name", &args),
+		options.userClause("u.name", &args),
+		options.likeClause("a.name", &args), `
+			group by a.database_id, a.id
 		) as b
-		on a.table_name = b.name
+		on a.database_id = b.database_id and a.table_id = b.table_id
 		order by a.database_name, a.table_name`)
 
-	rows, err := conn.QueryContext(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowStorageResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -956,44 +1364,33 @@ func (tui *ShowTableUsageResultSet) Iter(callback func(values []interface{}) boo
 	}
 }
 
-func ShowTableUsage(ctx context.Context, conn *sql.Conn) *ShowTableUsageResultSet {
+func ShowTableUsage(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowTableUsageResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
 	sqlText := SqlTidy(`
 		SELECT
-			j.DATABASE_NAME as DATABASE_NAME,
+			a.DATABASE_NAME as DATABASE_NAME,
 			u.NAME as USER_NAME,
-			j.NAME as TABLE_NAME,
+			a.NAME as TABLE_NAME,
 			s.STORAGE_USAGE
 		FROM
 			M$SYS_USERS u,
 			V$STORAGE_TABLES s,
-			(
-				SELECT
-					a.ID as ID,
-					a.NAME as NAME,
-					a.USER_ID as USER_ID,
-					a.DATABASE_ID,
-					case a.DATABASE_ID
-						when 1 then 'MACHBASEDB'
-						else d.MOUNTDB
-					end as DATABASE_NAME,
-					case a.DATABASE_ID
-						when 1 then 'Normal'
-						else 'Mounted'
-					end as STATUS
-				FROM
-					M$SYS_TABLES a
-				LEFT JOIN
-					V$STORAGE_MOUNT_DATABASES d
-				ON a.DATABASE_NAME = d.MOUNTDB
-			) j
+			M$SYS_TABLES a
 		WHERE
-			u.USER_ID = j.USER_ID
-		AND s.ID = j.ID
-		AND s.STATUS = j.STATUS
-		ORDER BY j.DATABASE_ID, u.USER_ID, s.ID
+			u.USER_ID = a.USER_ID
+		AND s.ID = a.ID
+		AND s.TABLESPACE_ID = a.TABLESPACE_ID`,
+		options.databaseClause("a.DATABASE_NAME", &args),
+		options.userClause("u.NAME", &args),
+		options.likeClause("a.NAME", &args), `
+		ORDER BY a.DATABASE_ID, u.USER_ID, s.ID
 	`)
 
-	rows, err := conn.QueryContext(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowTableUsageResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1046,20 +1443,27 @@ func (li *ShowLsmResultSet) Iter(callback func(values []interface{}) bool) {
 	}
 }
 
-func ShowLsm(ctx context.Context, conn *sql.Conn) *ShowLsmResultSet {
-	sqlText := `select 
+func ShowLsm(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowLsmResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
+	sqlText := SqlTidy(`select
 		b.name as TABLE_NAME,
 		c.name as INDEX_NAME,
 		a.level as LEVEL,
 		a.end_rid - a.begin_rid as COUNT
 	from
 		v$storage_dc_lsmindex_levels a,
-		m$sys_tables b, m$sys_indexes c
+		m$sys_tables b, m$sys_indexes c, m$sys_users u
 	where
-		c.id = a.index_id 
+		c.id = a.index_id
+	and c.tablespace_id = a.tablespace_id
 	and b.id = a.table_id
-	order by 1, 2, 3`
-	rows, err := conn.QueryContext(ctx, sqlText)
+	and b.database_id = c.database_id
+	and b.user_id = u.user_id`, options.databaseClause("b.database_name", &args), options.userClause("u.name", &args), options.likeClause("b.name", &args), `order by 1, 2, 3`)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowLsmResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1111,7 +1515,12 @@ func (igi *ShowIndexGapResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowIndexGap(ctx context.Context, conn *sql.Conn) *ShowIndexGapResultSet {
+func ShowIndexGap(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowIndexGapResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
 	sqlText := SqlTidy(`select
 		c.id,
 		b.name as TABLE_NAME, 
@@ -1120,13 +1529,16 @@ func ShowIndexGap(ctx context.Context, conn *sql.Conn) *ShowIndexGapResultSet {
 	from
 		v$storage_dc_table_indexes a,
 		m$sys_tables b,
-		m$sys_indexes c
+		m$sys_indexes c,
+		m$sys_users u
 	where
-		a.id = c.id 
-	and c.table_id = b.id 
-	order by 3 desc`)
+		a.id = c.id
+	and a.tablespace_id = c.tablespace_id
+	and c.table_id = b.id
+	and c.database_id = b.database_id
+	and b.user_id = u.user_id`, options.databaseClause("b.database_name", &args), options.userClause("u.name", &args), options.likeClause("b.name", &args), `order by 3 desc, 1, 2`)
 
-	rows, err := conn.QueryContext(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1181,7 +1593,12 @@ func (tigi *TagIndexGapResultSet) Iter(callback func(values []interface{}) bool)
 	}
 }
 
-func ShowTagIndexGap(ctx context.Context, conn *sql.Conn) *TagIndexGapResultSet {
+func ShowTagIndexGap(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *TagIndexGapResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
 	sqlText := SqlTidy(`SELECT
 			t.ID AS ID,
             t.NAME AS TABLE_NAME,
@@ -1190,12 +1607,13 @@ func ShowTagIndexGap(ctx context.Context, conn *sql.Conn) *TagIndexGapResultSet 
             i.TABLE_END_RID - i.MEMORY_INDEX_END_RID AS MEMORY_GAP
         from
             M$SYS_TABLES t,
-            V$STORAGE_TAG_INDEX i
+			V$STORAGE_TAG_INDEX i,
+			M$SYS_USERS u
         where
             t.ID = i.TABLE_ID
-        order by id`)
+		AND t.USER_ID = u.USER_ID`, options.databaseClause("t.DATABASE_NAME", &args), options.userClause("u.NAME", &args), options.likeClause("t.NAME", &args), `order by id`)
 
-	rows, err := conn.QueryContext(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &TagIndexGapResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1264,7 +1682,12 @@ func (rgi *ShowRollupGapResultSet) Iter(callback func(values []interface{}) bool
 	}
 }
 
-func ShowRollupGap(ctx context.Context, conn *sql.Conn) *ShowRollupGapResultSet {
+func ShowRollupGap(ctx context.Context, conn *sql.Conn, opts ...ShowOption) *ShowRollupGapResultSet {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	args := []any{}
 	sqlText := SqlTidy(`SELECT
             U.NAME AS USER_NAME,
             C.ROLLUP_NAME AS ROLLUP_NAME,
@@ -1284,14 +1707,16 @@ func ShowRollupGap(ctx context.Context, conn *sql.Conn) *ShowRollupGapResultSet 
             M$SYS_USERS U
         WHERE 
 			A.DATABASE_ID=C.DATABASE_ID
-		AND C.DATABASE_NAME=CURRENT_DATABASE()
         AND A.ID=B.ID
         AND A.USER_ID=C.USER_ID
         AND A.NAME=C.SOURCE_TABLE
-        AND U.USER_ID=C.USER_ID
-        ORDER BY U.USER_ID, SRC_TABLE`)
+		AND U.USER_ID=C.USER_ID`,
+		options.databaseClause("C.DATABASE_NAME", &args),
+		options.userClause("U.NAME", &args),
+		options.likeClause("C.SOURCE_TABLE", &args),
+		`ORDER BY U.USER_ID, SRC_TABLE`)
 
-	rows, err := conn.QueryContext(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return &ShowRollupGapResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
@@ -1317,6 +1742,8 @@ type ShowTagsResultSet struct {
 	conn      *sql.Conn
 	tableName string
 	tagNames  []string
+	like      string
+	hasLike   bool
 	desc      *TableDescription
 }
 
@@ -1347,6 +1774,9 @@ func (tr *ShowTagsResultSet) Iter(callback func(values []interface{}) bool) {
 			if !slices.Contains(tr.tagNames, tagInfo.Name) {
 				return true // skip this tag
 			}
+		}
+		if tr.hasLike && !LikeMatch(tr.like, tagInfo.Name) {
+			return true
 		}
 		tagInfo.Summarized = tr.desc.Summarized
 		if stat, err := QueryTagStat(ctx, tr.conn, tr.tableName, tagInfo.Name); err != nil {
@@ -1382,11 +1812,33 @@ func (tr *ShowTagsResultSet) Iter(callback func(values []interface{}) bool) {
 }
 
 func ShowTags(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, tagNames ...string) *ShowTagsResultSet {
-	if fallbackDatabaseName == "" {
-		fallbackDatabaseName = "MACHBASEDB"
+	return ShowTagsWithOptions(ctx, conn, fallbackDatabaseName, fallbackUserName, tableName, tagNames)
+}
+
+func ShowTagsWithOptions(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, fallbackUserName string, tableName string, tagNames []string, opts ...ShowOption) *ShowTagsResultSet {
+	if len(tagNames) > 0 {
+		for _, option := range opts {
+			options := newShowOptions(option)
+			if options.hasLike {
+				return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: fmt.Errorf("cannot use LIKE with explicit tag names")}}
+			}
+		}
 	}
-	if fallbackUserName == "" {
-		fallbackUserName = "SYS"
+
+	options := newShowOptions(opts...)
+	if err := options.validate(); err != nil {
+		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+	}
+	if fallbackDatabaseName == "" || fallbackUserName == "" || len(opts) > 0 {
+		if err := resolveShowScope(ctx, conn, &options); err != nil {
+			return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
+		}
+		if fallbackDatabaseName == "" || options.hasDatabase {
+			fallbackDatabaseName = options.database
+		}
+		if fallbackUserName == "" || options.hasUser {
+			fallbackUserName = options.user
+		}
 	}
 	originalTableName := strings.ToUpper(tableName)
 	databaseName := fallbackDatabaseName
@@ -1410,7 +1862,7 @@ func ShowTags(ctx context.Context, conn *sql.Conn, fallbackDatabaseName string, 
 		err := fmt.Errorf("table '%s' is not a tag table", originalTableName)
 		return &ShowTagsResultSet{ResultSetBase: ResultSetBase{err: err}}
 	}
-	return &ShowTagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, desc: rs.Description}
+	return &ShowTagsResultSet{conn: conn, tableName: tableName, tagNames: tagNames, like: options.like, hasLike: options.hasLike, desc: rs.Description}
 }
 
 type TagInfo struct {

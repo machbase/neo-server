@@ -672,7 +672,12 @@ func ifThenElse(cond bool, a, b string) string {
 	return b
 }
 
-func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback func(*TableInfo, error) bool) {
+func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback func(*TableInfo, error) bool, opts ...ShowOption) error {
+	options := newShowOptions(opts...)
+	if err := resolveShowScope(ctx, conn, &options); err != nil {
+		return err
+	}
+	args := []any{}
 	descriptiveType := false
 	sqlText := SqlTidy(
 		`SELECT
@@ -713,17 +718,20 @@ func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback 
 				from
 					M$SYS_TABLES
 				where
-					DATABASE_NAME = current_database()
+					1 = 1`,
+		options.databaseClause("DATABASE_NAME", &args),
+		`
 			) as j
 		WHERE
 			u.USER_ID = j.USER_ID`,
+		options.userClause("u.NAME", &args),
 		ifThenElse(showAll, "", `AND j.NAME NOT LIKE '\_%'`),
+		options.likeClause("j.NAME", &args),
 		`ORDER by j.NAME`)
 
-	rows, err := conn.QueryContext(ctx, sqlText)
+	rows, err := conn.QueryContext(ctx, sqlText, args...)
 	if err != nil {
-		callback(nil, err)
-		return
+		return err
 	}
 	defer rows.Close()
 
@@ -731,12 +739,13 @@ func ListTablesWalk(ctx context.Context, conn *sql.Conn, showAll bool, callback 
 		ti := &TableInfo{}
 		err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
 		if !callback(ti, err) {
-			return
+			return nil
 		}
 	}
 	if err := rows.Err(); err != nil {
-		callback(nil, err)
+		return err
 	}
+	return nil
 }
 
 func QueryTableType(ctx context.Context, conn *sql.Conn, fullTableName string) (client.TableType, error) {
