@@ -26,6 +26,22 @@ func TestDecodeQueryRequestJSONRejectsCompositeParam(t *testing.T) {
 	require.Contains(t, err.Error(), "scalar")
 }
 
+func TestDecodeQueryRequestJSONNormalizesNamedParams(t *testing.T) {
+	req := &QueryRequest{}
+	err := req.DecodeJSON(strings.NewReader(`{"q":"select * from t where a = :name","p":{"name":"neo"}}`))
+	require.NoError(t, err)
+	require.Equal(t, "select * from t where a = :name", req.SqlText)
+	require.Equal(t, []any{sql.Named("name", "neo")}, req.Params)
+}
+
+func TestDecodeQueryRequestJSONRejectsCompositeNamedParam(t *testing.T) {
+	req := &QueryRequest{}
+	err := req.DecodeJSON(strings.NewReader(`{"q":"select * from t","p":{"name":["neo"]}}`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid p")
+	require.Contains(t, err.Error(), "scalar")
+}
+
 func TestParseQueryParams(t *testing.T) {
 	params, err := parseQueryParams("   ")
 	require.NoError(t, err)
@@ -35,9 +51,35 @@ func TestParseQueryParams(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []any{int64(1), 2.5, false, "x"}, params)
 
-	_, err = parseQueryParams(`{"not":"an array"}`)
+	params, err = parseQueryParams(`{"name":"neo","from":1,"to":2.5}`)
+	require.NoError(t, err)
+	require.Equal(t, []any{sql.Named("from", int64(1)), sql.Named("name", "neo"), sql.Named("to", 2.5)}, params)
+
+	_, err = parseQueryParams(`{"nested":["x"]}`)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid p")
+
+	_, err = parseQueryParams(`123`)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid p")
+}
+
+func TestNormalizeQueryParams(t *testing.T) {
+	params, err := normalizeQueryParams(nil)
+	require.NoError(t, err)
+	require.Nil(t, params)
+
+	params, err = normalizeQueryParams([]any{})
+	require.NoError(t, err)
+	require.Nil(t, params)
+
+	params, err = normalizeQueryParams(map[string]any{})
+	require.NoError(t, err)
+	require.Nil(t, params)
+
+	_, err = normalizeQueryParams("not an array or object")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "p must be an array or object")
 }
 
 func TestNormalizeQueryParamValue(t *testing.T) {

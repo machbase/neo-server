@@ -42,6 +42,11 @@ type TestCase struct {
 	ExecBuilder engine.ExecBuilderFunc
 }
 
+func (tc TestCase) RunTest(t *testing.T) {
+	t.Helper()
+	RunTest(t, tc)
+}
+
 func RunTest(t *testing.T, tc TestCase) {
 	t.Helper()
 	t.Run(tc.Name, func(t *testing.T) {

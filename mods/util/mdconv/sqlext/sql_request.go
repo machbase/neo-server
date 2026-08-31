@@ -759,15 +759,6 @@ func makeEllipsisRow(columnCount int) []any {
 	return row
 }
 
-func describeToShowTableQuery(sqlText string) string {
-	trimmed := strings.TrimSpace(sqlText)
-	trimmed = strings.TrimPrefix(strings.ToUpper(trimmed), "DESCRIBE")
-	trimmed = strings.TrimSpace(trimmed)
-	trimmed = strings.TrimPrefix(trimmed, "DESC")
-	trimmed = strings.TrimSpace(trimmed)
-	return "SHOW TABLE " + trimmed
-}
-
 func userMessageForStatement(stmtType spi.SQLStatementType, rowCount int64) string {
 	switch stmtType {
 	case spi.SQLStatementTypeShow, spi.SQLStatementTypeExplain:

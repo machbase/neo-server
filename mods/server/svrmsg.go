@@ -3,14 +3,17 @@ package server
 import (
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -18,8 +21,10 @@ import (
 )
 
 type QueryRequest struct {
-	SqlText            string `json:"q"`
-	Params             []any  `json:"p,omitempty"`
+	SqlText string `json:"q"`
+	// Params holds bind parameters. It accepts a JSON array (positional binds for `?`)
+	// or a JSON object (named binds for `:name`, converted to sql.Named).
+	Params             any    `json:"p,omitempty"`
 	ReplyTo            string `json:"reply,omitempty"`              // for mqtt query only
 	RowsFlatten        bool   `json:"rowsFlatten,omitempty"`        // json output only for http, mqtt
 	RowsArray          bool   `json:"rowsArray,omitempty"`          // json output only for http, mqtt
@@ -204,8 +209,12 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		hook.SetContentEncoding(req.Compress)
 	}
 
+	var meta client.Meta
+	ctx = context.WithValue(ctx, client.MetaKey, &meta)
+
+	params, _ := req.Params.([]any)
 	if !stmtType.IsFetch() {
-		result, err := conn.ExecContext(ctx, req.SqlText, req.Params...)
+		result, err := conn.ExecContext(ctx, req.SqlText, params...)
 		if err != nil {
 			if hook.SetStatusCode != nil {
 				hook.SetStatusCode(http.StatusInternalServerError)
@@ -216,13 +225,17 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 			hook.SetStatusCode(http.StatusOK)
 		}
 		if hook.SetUserMessage != nil {
-			rows, _ := result.RowsAffected()
-			hook.SetUserMessage(spi.MakeUserMessage(stmtType, rows))
+			if userMsg := meta.Message(); userMsg == "" {
+				rows, _ := result.RowsAffected()
+				hook.SetUserMessage(spi.MakeUserMessage(stmtType, rows))
+			} else {
+				hook.SetUserMessage(userMsg)
+			}
 		}
 		return nil
 	}
 
-	rows, err := conn.QueryContext(ctx, req.SqlText, req.Params...)
+	rows, err := conn.QueryContext(ctx, req.SqlText, params...)
 	if err != nil {
 		if hook.SetStatusCode != nil {
 			hook.SetStatusCode(http.StatusInternalServerError)
@@ -276,7 +289,11 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		hook.SetStatusCode(http.StatusOK)
 	}
 	if hook.SetUserMessage != nil {
-		hook.SetUserMessage(spi.MakeUserMessage(stmtType, nrows))
+		if userMsg := meta.Message(); userMsg == "" {
+			hook.SetUserMessage(spi.MakeUserMessage(stmtType, nrows))
+		} else {
+			hook.SetUserMessage(userMsg)
+		}
 	}
 	return nil
 }
@@ -287,26 +304,58 @@ func parseQueryParams(raw string) ([]any, error) {
 	}
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
-	var params []any
+	var params any
 	if err := dec.Decode(&params); err != nil {
 		return nil, fmt.Errorf("invalid p, %w", err)
 	}
-	return normalizeQueryParams(params)
-}
-
-func normalizeQueryParams(params []any) ([]any, error) {
-	if len(params) == 0 {
-		return params, nil
-	}
-	ret := make([]any, len(params))
-	for i, param := range params {
-		value, err := normalizeQueryParamValue(param)
-		if err != nil {
-			return nil, err
-		}
-		ret[i] = value
+	ret, err := normalizeQueryParams(params)
+	if err != nil {
+		return nil, fmt.Errorf("invalid p, %w", err)
 	}
 	return ret, nil
+}
+
+// normalizeQueryParams accepts either a JSON array (positional binds for `?`)
+// or a JSON object (named binds for `:name`) and returns args ready to pass
+// to database/sql, converting object entries to sql.Named in sorted key order.
+func normalizeQueryParams(raw any) ([]any, error) {
+	switch params := raw.(type) {
+	case nil:
+		return nil, nil
+	case []any:
+		if len(params) == 0 {
+			return nil, nil
+		}
+		ret := make([]any, len(params))
+		for i, param := range params {
+			value, err := normalizeQueryParamValue(param)
+			if err != nil {
+				return nil, err
+			}
+			ret[i] = value
+		}
+		return ret, nil
+	case map[string]any:
+		if len(params) == 0 {
+			return nil, nil
+		}
+		names := make([]string, 0, len(params))
+		for name := range params {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		ret := make([]any, 0, len(names))
+		for _, name := range names {
+			value, err := normalizeQueryParamValue(params[name])
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, sql.Named(name, value))
+		}
+		return ret, nil
+	default:
+		return nil, fmt.Errorf("p must be an array or object, got %T", raw)
+	}
 }
 
 func normalizeQueryParamValue(value any) (any, error) {

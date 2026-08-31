@@ -156,6 +156,8 @@ func NewNode(task *Task) *Node {
 		"bridge": x.gen_bridge,
 		// use
 		"use": x.gen_use,
+		// named parameters
+		"named": x.gen_named,
 		// fourier transform
 		"minHz": x.gen_minHz,
 		"maxHz": x.gen_maxHz,
@@ -2203,6 +2205,25 @@ func (x *Node) gen_use(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmUse(p0)
+	return ret, nil
+}
+
+// gen_named
+//
+// syntax: named(string, )
+func (x *Node) gen_named(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("named", 2, len(args))
+	}
+	p0, err := convString(args, 0, "named", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "named", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmNamed(p0, p1)
 	return ret, nil
 }
 

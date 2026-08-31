@@ -31,239 +31,269 @@ func TestMain(m *testing.M) {
 
 func TestDatabase(t *testing.T) {
 	tick, _ := time.ParseInLocation(time.DateTime, "2025-12-17 16:49:28", time.Local)
-
-	tests := []test_engine.TestCase{
-		{
-			Name: "mach_exec",
-			Script: `
-				const {Client} = require('machcli');
-				const conf = require("process").env.get("conf");
-				const tick = require("process").env.get("tick");
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					result = conn.exec("CREATE TAG TABLE IF NOT EXISTS TAG (NAME VARCHAR(100) primary key, TIME DATETIME basetime, VALUE DOUBLE, JSON_VALUE JSON)");
-					console.println("Created Table Message:", result.message);
-
-					// null record max test, sql.Null[uint64]
-					const rows = conn.query("select max(_id) as max_id from _tag_meta")
-					const rec = rows.next()
-					console.println("done:", rec.done);
-					console.println("rows.max_id:", rec.max_id); // expect null
-					rows.close();
-
-					result = conn.exec("CREATE VIEW TAGVIEW as select * from TAG where name='jsh'");
-					console.println("Created View Message:", result.message);
-
-					result = conn.exec("INSERT INTO TAG values(?, ?, ?, ?)", 'jsh', tick, 123, '{"key": "value"}');
-					console.println("Inserted rows:", result.rowsAffected, "Message:", result.message);
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			Output: []string{
-				"Created Table Message: table created.",
-				"done: false",
-				"rows.max_id: null",
-				"Created View Message: view created.",
-				"Inserted rows: 1 Message: a row inserted.",
-			},
+	vars := map[string]any{
+		"conf": map[string]any{
+			"host":     "127.0.0.1",
+			"port":     machcliTestServer.MachPort(),
+			"user":     "sys",
+			"password": "manager",
 		},
-		{
-			Name: "mach_table_types",
-			Script: `
-				const {Client, stringTableType} = require('machcli');
-				const conf = require("process").env.get("conf");
+		"tick": tick,
+	}
+
+	test_engine.TestCase{
+		Name: "mach_exec",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			const tick = require("process").env.get("tick");
+			try {
 				db = new Client(conf);
 				conn = db.connect();
-				rows = conn.query("SELECT NAME, TYPE from M$SYS_TABLES ORDER BY NAME");
-				for (const row of rows) {
-					if (row.NAME.startsWith("_")) continue;
-					console.println("TABLE:", row.NAME, "TYPE:", stringTableType(row.TYPE));
-				}
-				rows.close();
-				conn.close();
-				db.close();
-			`,
-			Output: []string{
-				"TABLE: TAG TYPE: Tag",
-				"TABLE: TAGVIEW TYPE: View",
-			},
-		},
-		{
-			Name: "mach_append",
-			Script: `
-				const {Client} = require('machcli');
-				const {now} = require("process");
-				const conf = require("process").env.get("conf");
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					appender = conn.append("TAG");
-					for (let i = 0; i < 99; i++) {
-						appender.append('jsh', now(), 123 + i, '{"append":${i}}');
-					}
-					appender.flush();
-					result = appender.close();
-					console.println("Appended rows:", ...result);
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			Output: []string{
-				"Appended rows: 99 0",
-			},
-		},
-		{
-			Name: "mach_exec_flush",
-			Script: `
-				const {Client} = require('machcli');
-				const conf = require("process").env.get("conf");
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					result = conn.exec('exec table_flush(TAG)');
-					console.println("result:", result.message);
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			Output: []string{
-				"result: table flushed.",
-			},
-		},
-		{
-			Name: "mach_query_row",
-			Script: `
-				const {Client} = require('machcli');
-				const conf = require("process").env.get("conf");
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					row = conn.queryRow("SELECT count(*) from TAG");
-					console.println("ROWNUM:", row._ROWNUM, "Count:", row["count(*)"]);
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			Output: []string{
-				"ROWNUM: 1 Count: 100",
-			},
-		},
-		{
-			Name: "mach_query",
-			Script: `
-				const {Client} = require('machcli');
-				const conf = require("process").env.get("conf");
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					rows = conn.query("SELECT * from TAG order by time limit ?", 1);
-					for (const row of rows) {
-						console.println("NAME:", row.NAME, "TIME:", row.TIME, "VALUE:", row.VALUE, "JSON_VALUE:", typeof row.JSON_VALUE);
-					}
-					console.println(rows.message());
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					rows && rows.close();
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			Output: []string{
-				fmt.Sprintf("NAME: jsh TIME: %s VALUE: 123 JSON_VALUE: string", tick.Local().Format(time.DateTime)),
-				"a row selected.",
-			},
-		},
-		{
-			Name: "mach_query_stat",
-			Script: `
-				const {Client} = require('machcli');
-				const conf = require("process").env.get("conf");
-				var db, conn, rows;
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					rows = conn.query("SELECT * from v$TAG_STAT order by name");
-					console.println("{\"rows\": [");
-					for (const row of rows) {
-						console.println(JSON.stringify(row), ",");
-					}
-					console.println("], \"reason\":", "\"" + rows.message() + "\"");
-					console.println("}");
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					rows && rows.close();
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "jsh", gjson.Get(result, "rows.0.NAME").String(), result)
-				require.Equal(t, int64(100), gjson.Get(result, "rows.0.ROW_COUNT").Int(), result)
-				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MIN_TIME").String(), result)
-				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MAX_TIME").String(), result)
-				require.Contains(t, result, "\"MIN_VALUE\":null", result)
-				require.Contains(t, result, "\"MIN_VALUE_TIME\":null", result)
-				require.Contains(t, result, "\"MAX_VALUE\":null", result)
-				require.Contains(t, result, "\"MAX_VALUE_TIME\":null", result)
-				require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.RECENT_ROW_TIME").String(), result)
-				require.Equal(t, "a row selected.", gjson.Get(result, "reason").String(), result)
-			},
-		},
-		{
-			Name: "mach_explain",
-			Script: `
-				const {Client} = require('machcli');
-				const conf = require('process').env.get('conf');
-				try {
-					db = new Client(conf);
-					conn = db.connect();
-					result = conn.explain("SELECT * from TAG order by time limit 1");
-					console.println(result);
-				} catch(err) {
-					console.println("Error: ", err.message);
-				} finally {
-					conn && conn.close();
-				 	db && db.close();
-				}
-			`,
-			Output: []string{
-				" PROJECT",
-				"  LIMIT SORT",
-				"   TAG READ (RAW)",
-				"    KEYVALUE FULL SCAN (_TAG_DATA_0)",
-				"    VOLATILE FULL SCAN (_TAG_META)",
-			},
-		},
-	}
+				result = conn.exec("CREATE TAG TABLE IF NOT EXISTS TAG (NAME VARCHAR(100) primary key, TIME DATETIME basetime, VALUE DOUBLE, JSON_VALUE JSON)");
+				console.println("Created Table Message:", result.message);
 
-	for _, tc := range tests {
-		tc.Vars = map[string]any{
-			"conf": map[string]any{
-				"host":     "127.0.0.1",
-				"port":     machcliTestServer.MachPort(),
-				"user":     "sys",
-				"password": "manager",
-			},
-			"tick": tick,
-		}
-		test_engine.RunTest(t, tc)
-	}
+				// null record max test, sql.Null[uint64]
+				const rows = conn.query("select max(_id) as max_id from _tag_meta")
+				const rec = rows.next()
+				console.println("done:", rec.done);
+				console.println("rows.max_id:", rec.max_id); // expect null
+				rows.close();
+
+				result = conn.exec("CREATE VIEW TAGVIEW as select * from TAG where name='jsh'");
+				console.println("Created View Message:", result.message);
+
+				result = conn.exec("INSERT INTO TAG values(?, ?, ?, ?)", 'jsh', tick, 123, '{"key": "value"}');
+				console.println("Inserted rows:", result.rowsAffected, "Message:", result.message);
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			"Created Table Message: table created.",
+			"done: false",
+			"rows.max_id: null",
+			"Created View Message: view created.",
+			"Inserted rows: 1 Message: a row inserted.",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_table_types",
+		Vars: vars,
+		Script: `
+			const {Client, stringTableType} = require('machcli');
+			const conf = require("process").env.get("conf");
+			db = new Client(conf);
+			conn = db.connect();
+			rows = conn.query("SELECT NAME, TYPE from M$SYS_TABLES ORDER BY NAME");
+			for (const row of rows) {
+				if (row.NAME.startsWith("_")) continue;
+				console.println("TABLE:", row.NAME, "TYPE:", stringTableType(row.TYPE));
+			}
+			rows.close();
+			conn.close();
+			db.close();
+		`,
+		Output: []string{
+			"TABLE: TAG TYPE: Tag",
+			"TABLE: TAGVIEW TYPE: View",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_append",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const {now} = require("process");
+			const conf = require("process").env.get("conf");
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				appender = conn.append("TAG");
+				for (let i = 0; i < 99; i++) {
+					appender.append('jsh', now(), 123 + i, '{"append":${i}}');
+				}
+				appender.flush();
+				result = appender.close();
+				console.println("Appended rows:", ...result);
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			"Appended rows: 99 0",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_exec_flush",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				result = conn.exec('exec table_flush(TAG)');
+				console.println("result:", result.message);
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			"result: table flushed.",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_query_row",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				row = conn.queryRow("SELECT count(*) from TAG");
+				console.println("ROWNUM:", row._ROWNUM, "Count:", row["count(*)"]);
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			"ROWNUM: 1 Count: 100",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_query",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				rows = conn.query("SELECT * from TAG order by time limit ?", 1);
+				for (const row of rows) {
+					console.println("NAME:", row.NAME, "TIME:", row.TIME, "VALUE:", row.VALUE, "JSON_VALUE:", typeof row.JSON_VALUE);
+				}
+				console.println(rows.message());
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				rows && rows.close();
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			fmt.Sprintf("NAME: jsh TIME: %s VALUE: 123 JSON_VALUE: string", tick.Local().Format(time.DateTime)),
+			"a row selected.",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_query_named_params",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			var db, conn, rows;
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				rows = conn.query("SELECT * from TAG where name = :name order by time limit :one", {one: 1, name: "jsh"});
+				for (const row of rows) {
+					console.println("NAME:", row.NAME, "TIME:", row.TIME, "VALUE:", row.VALUE, "JSON_VALUE:", row.JSON_VALUE);
+				}
+				console.println(rows.message());
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				rows && rows.close();
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			fmt.Sprintf("NAME: jsh TIME: %s VALUE: 123 JSON_VALUE: {\"key\": \"value\"}", tick.Local().Format(time.DateTime)),
+			"a row selected.",
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_query_stat",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			var db, conn, rows;
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				rows = conn.query("SELECT * from v$TAG_STAT order by name");
+				console.println("{\"rows\": [");
+				for (const row of rows) {
+					console.println(JSON.stringify(row), ",");
+				}
+				console.println("], \"reason\":", "\"" + rows.message() + "\"");
+				console.println("}");
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				rows && rows.close();
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "jsh", gjson.Get(result, "rows.0.NAME").String(), result)
+			require.Equal(t, int64(100), gjson.Get(result, "rows.0.ROW_COUNT").Int(), result)
+			require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MIN_TIME").String(), result)
+			require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.MAX_TIME").String(), result)
+			require.Contains(t, result, "\"MIN_VALUE\":null", result)
+			require.Contains(t, result, "\"MIN_VALUE_TIME\":null", result)
+			require.Contains(t, result, "\"MAX_VALUE\":null", result)
+			require.Contains(t, result, "\"MAX_VALUE_TIME\":null", result)
+			require.Regexp(t, `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*`, gjson.Get(result, "rows.0.RECENT_ROW_TIME").String(), result)
+			require.Equal(t, "a row selected.", gjson.Get(result, "reason").String(), result)
+		},
+	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_explain",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require('process').env.get('conf');
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				result = conn.explain("SELECT * from TAG order by time limit 1");
+				console.println(result);
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			" PROJECT",
+			"  LIMIT SORT",
+			"   TAG READ (RAW)",
+			"    KEYVALUE FULL SCAN (_TAG_DATA_0)",
+			"    VOLATILE FULL SCAN (_TAG_META)",
+		},
+	}.RunTest(t)
 }
 
 func TestNewDatabaseCoverage(t *testing.T) {

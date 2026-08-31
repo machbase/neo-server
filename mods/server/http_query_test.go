@@ -110,6 +110,24 @@ func TestHttpQuery(t *testing.T) {
 			},
 		},
 		{
+			name:    "select_v$example_named_bind_params",
+			sqlText: `select (MIN(MIN_TIME)),(MAX(MAX_TIME)) from v$EXAMPLE_stat where name = :name`,
+			params: url.Values{
+				"p": []string{`{"name":"temp"}`},
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
 			name:    "select_v$example_transpose",
 			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
 			params: url.Values{
@@ -240,7 +258,7 @@ func TestHttpQuery(t *testing.T) {
 			for k, v := range tc.params {
 				switch k {
 				case "p":
-					var bindParams []any
+					var bindParams any
 					err := json.Unmarshal([]byte(v[0]), &bindParams)
 					require.NoError(t, err)
 					params[k] = bindParams
@@ -277,7 +295,7 @@ func TestHttpQuery(t *testing.T) {
 			for k, v := range tc.params {
 				switch k {
 				case "p":
-					var bindParams []any
+					var bindParams any
 					err := json.Unmarshal([]byte(v[0]), &bindParams)
 					require.NoError(t, err)
 					params[k] = bindParams
@@ -290,7 +308,7 @@ func TestHttpQuery(t *testing.T) {
 			payload := url.Values{}
 			for k, v := range params {
 				switch val := v.(type) {
-				case []any:
+				case []any, map[string]any:
 					jsonVal, _ := json.Marshal(val)
 					payload.Set(k, string(jsonVal))
 				case bool:
@@ -364,7 +382,7 @@ func TestHttpQueryMutation(t *testing.T) {
 		execMutation(t,
 			"mutation_create_table",
 			fmt.Sprintf(`CREATE TAG TABLE IF NOT EXISTS %s (name varchar(40) primary key, time datetime basetime, value double summarized)`, mutationTable),
-			"Created successfully.")
+			"table created.")
 	})
 
 	t.Run("mutation_insert_data_1", func(t *testing.T) {
@@ -399,7 +417,7 @@ func TestHttpQueryMutation(t *testing.T) {
 		execMutation(t,
 			"mutation_drop_table",
 			fmt.Sprintf(`DROP TABLE %s`, mutationTable),
-			"Dropped successfully.")
+			"table dropped.")
 	})
 }
 

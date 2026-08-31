@@ -327,6 +327,11 @@ func (x *Node) fmUse(dbname string) *useDatabase {
 	return &useDatabase{use: dbname}
 }
 
+// named("name", "value")
+func (x *Node) fmNamed(name string, value any) sql.NamedArg {
+	return sql.NamedArg{Name: name, Value: value}
+}
+
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
 func (x *Node) fmSql(args ...any) (any, error) {
@@ -437,13 +442,18 @@ loop:
 func sqlExec(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText string, sqlParams ...any) string {
 	runtime := node.ensureRuntime()
 	var userMsg string
-	result, err := conn.ExecContext(runtime.Context(), sqlText, sqlParams...)
+	var meta client.Meta
+	ctx := context.WithValue(runtime.Context(), client.MetaKey, &meta)
+	result, err := conn.ExecContext(ctx, sqlText, sqlParams...)
 	if err != nil {
 		userMsg = err.Error()
 		node.emit(ErrorRecord(err))
 	} else {
-		nrows, _ := result.RowsAffected()
-		userMsg = spi.MakeUserMessage(stmtType, nrows)
+		userMsg = meta.Message()
+		if userMsg == "" { // when *sql.Conn is a bridged connection
+			nrows, _ := result.RowsAffected()
+			userMsg = spi.MakeUserMessage(stmtType, nrows)
+		}
 		runtime.SetResultColumns(client.Columns{
 			client.MakeColumnRownum(),
 			client.MakeColumnString("MESSAGE"),
@@ -456,7 +466,9 @@ func sqlExec(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText 
 func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText string, sqlParams ...any) string {
 	runtime := node.ensureRuntime()
 	var userMsg string
-	rows, err := conn.QueryContext(runtime.Context(), sqlText, sqlParams...)
+	var meta client.Meta
+	ctx := context.WithValue(runtime.Context(), client.MetaKey, &meta)
+	rows, err := conn.QueryContext(ctx, sqlText, sqlParams...)
 	if err != nil {
 		userMsg = err.Error()
 		node.emit(ErrorRecord(err))
@@ -477,7 +489,10 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 			for rows.Next() {
 				nrow++
 				if runtime.ShouldStop() {
-					userMsg = spi.MakeUserMessage(stmtType, nrow) + ", cancelled"
+					if userMsg = meta.Message(); userMsg == "" {
+						userMsg = spi.MakeUserMessage(stmtType, nrow)
+					}
+					userMsg = userMsg + ", cancelled"
 					break
 				}
 				values := spi.MakeBuffer(columnTypes)
@@ -491,7 +506,10 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 				}
 				node.emit(NewRecord(nrow, values))
 			}
-			userMsg = spi.MakeUserMessage(stmtType, nrow)
+			userMsg = meta.Message()
+			if userMsg == "" {
+				userMsg = spi.MakeUserMessage(stmtType, nrow)
+			}
 		}
 	}
 	return userMsg

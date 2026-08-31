@@ -54,7 +54,17 @@ class Connection {
     // IMPORTANT: caller should call rows.close() after using rows
     query() {
         let ctx = _machcli.Context(this.ctx);
-        let rows = this.conn.queryContext(ctx, ...arguments);
+        let args;
+        if (arguments.length === 2 && typeof arguments[1] === 'object' && typeof arguments[0] === 'string' && arguments[0].indexOf(':') >= 0) {
+            // so it is a named parameter object. We need to convert it to an array of values.
+            const sql = arguments[0];
+            const namedParams = arguments[1];
+            const paramValues = Object.keys(namedParams).map(key => _machcli.Named(key, namedParams[key]));
+            args = [sql, ...paramValues];
+        } else {
+            args = Array.from(arguments);
+        }
+        let rows = this.conn.queryContext(ctx, ...args);
         return new Rows(ctx, rows);
     }
     queryRow() {
