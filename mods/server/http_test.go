@@ -1523,7 +1523,7 @@ func TestHttpWrite(t *testing.T) {
 			rsp.Body.Close()
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
-			spi.FlushAppendWorkers()
+			spi.FlushAppendWorkers("", "")
 			conn, err := spi.Connect(t.Context(), "sys")
 			require.NoError(t, err)
 			_, err = conn.ExecContext(t.Context(), `EXEC table_flush(test_w)`)

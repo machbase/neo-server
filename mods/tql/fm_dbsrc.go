@@ -1203,7 +1203,7 @@ type appender struct {
 }
 
 func (app *appender) Open(runtime *executionRuntime) (err error) {
-	aw, err := spi.GetAppendWorker(runtime.Context(), app.table.Name)
+	aw, err := spi.GetAppendWorker(runtime.Context(), "", "", app.table.Name)
 	if err != nil {
 		return
 	}

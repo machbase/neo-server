@@ -555,6 +555,25 @@ func (svr *httpd) getJwtClaim(ctx *gin.Context) (Claim, bool) {
 	}
 }
 
+// resolveExecUser resolves the authenticated execution user (API token user or JWT
+// subject) for /db/query and /db/write requests (#1483/#1468). An empty execUser
+// means the caller should fall back to the default "sys" user. errReason is non-empty
+// only when the request is API-token authenticated but the token has no user set.
+func (svr *httpd) resolveExecUser(ctx *gin.Context) (execUser string, errReason string) {
+	if authenticated, _ := ctx.Get("api-token-authenticated"); authenticated == true {
+		user, _ := ctx.Get("api-token-user")
+		execUser, _ = user.(string)
+		if execUser == "" {
+			return "", "authorization user is missing"
+		}
+		return execUser, ""
+	}
+	if claim, ok := svr.getJwtClaim(ctx); ok && claim != nil {
+		execUser = claim.Subject
+	}
+	return execUser, ""
+}
+
 func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	if svr.authServer == nil {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "no auth server"})

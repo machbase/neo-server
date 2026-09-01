@@ -31,11 +31,11 @@ var appenders map[string]*AppendWorker
 var appendersLock sync.Mutex
 var appendersFlusher chan struct{}
 var appendersFlusherWg sync.WaitGroup
-var appendersControl chan *AppendWorkerControl // send table name to stop the appender
+var appendersControl chan *AppendWorkerControl // send normalized worker key to stop the appender
 
 type AppendWorkerControl struct {
-	TableName string
-	ack       chan struct{}
+	Key string
+	ack chan struct{}
 }
 
 var AppendWorkerMaxIdleTimeout = 5 * time.Second
@@ -65,9 +65,9 @@ func StartAppendWorkers() {
 				appendersLock.Unlock()
 			case control := <-appendersControl:
 				appendersLock.Lock()
-				if value, exists := appenders[control.TableName]; exists {
+				if value, exists := appenders[control.Key]; exists {
 					value.Stop()
-					delete(appenders, control.TableName)
+					delete(appenders, control.Key)
 				}
 				appendersLock.Unlock()
 				close(control.ack)
@@ -86,21 +86,22 @@ func StopAppendWorkers() {
 	}
 }
 
-// StopAppendWorker stops the append worker for the specified table
-// and returns a channel to wait for the stop to complete
-func StopAppendWorker(tableName string) chan struct{} {
+// StopAppendWorker stops the append worker for the given database, user and table
+// (same resolution rules as GetAppendWorker) and returns a channel to wait for the
+// stop to complete.
+func StopAppendWorker(db, user, table string) chan struct{} {
 	ack := make(chan struct{})
 	appendersControl <- &AppendWorkerControl{
-		TableName: strings.ToLower(tableName),
-		ack:       ack,
+		Key: appendWorkerKey(db, user, table),
+		ack: ack,
 	}
 	return ack
 }
 
-// FlushAppendWorkers flushes all append workers
-// tables: table names to flush
-// if tables is empty, flush all append workers
-func FlushAppendWorkers(tables ...string) {
+// FlushAppendWorkers flushes append workers for the given database, user and table
+// names (same resolution rules as GetAppendWorker). If tables is empty, db and user
+// are ignored and every append worker is flushed.
+func FlushAppendWorkers(db, user string, tables ...string) {
 	appendersLock.Lock()
 	defer appendersLock.Unlock()
 	if len(tables) == 0 {
@@ -110,29 +111,93 @@ func FlushAppendWorkers(tables ...string) {
 		appenders = make(map[string]*AppendWorker)
 	} else {
 		var deleting []string
-		for _, tableName := range tables {
-			tableName = strings.ToLower(tableName)
-			if value, exists := appenders[tableName]; exists {
+		for _, table := range tables {
+			key := appendWorkerKey(db, user, table)
+			if value, exists := appenders[key]; exists {
 				value.Stop()
-				deleting = append(deleting, tableName)
+				deleting = append(deleting, key)
 			}
 		}
-		for _, tableName := range deleting {
-			delete(appenders, tableName)
+		for _, key := range deleting {
+			delete(appenders, key)
 		}
 	}
 }
 
-func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, error) {
+// splitAppendWorkerName parses a possibly qualified "db.user.table" / "user.table" /
+// "table" string into its parts. When name carries no "." qualifier, db and user are
+// both returned empty and table is returned unchanged.
+func splitAppendWorkerName(name string) (db, user, table string) {
+	parts := strings.SplitN(name, ".", 3)
+	switch len(parts) {
+	case 3:
+		return parts[0], parts[1], parts[2]
+	case 2:
+		return "", parts[0], parts[1]
+	default:
+		return "", "", name
+	}
+}
+
+// normalizeAppendWorkerParts fills in the default database (MACHBASEDB) and user
+// (SYS) for empty inputs and upper-cases all three parts.
+func normalizeAppendWorkerParts(db, user, table string) (normDB, normUser, normTable string) {
+	normDB = strings.ToUpper(strings.TrimSpace(db))
+	if normDB == "" {
+		normDB = "MACHBASEDB"
+	}
+	normUser = strings.ToUpper(strings.TrimSpace(user))
+	if normUser == "" {
+		normUser = "SYS"
+	}
+	normTable = strings.ToUpper(strings.TrimSpace(table))
+	return
+}
+
+// resolveAppendWorkerParts applies explicit db/user (when non-empty) over any
+// "user.table"/"db.user.table" qualifier embedded in table, then normalizes empty
+// parts to MACHBASEDB/SYS. GetAppendWorker, StopAppendWorker and FlushAppendWorkers
+// all resolve through this so the same inputs always produce the same cache key.
+func resolveAppendWorkerParts(db, user, table string) (normDB, normUser, normTable string) {
+	if parsedDB, parsedUser, parsedTable := splitAppendWorkerName(table); parsedTable != table {
+		if db == "" {
+			db = parsedDB
+		}
+		if user == "" {
+			user = parsedUser
+		}
+		table = parsedTable
+	}
+	return normalizeAppendWorkerParts(db, user, table)
+}
+
+// appendWorkerKey computes the normalized "db.user.table" cache key for the given
+// database, user and table (used by StopAppendWorker/FlushAppendWorkers).
+func appendWorkerKey(db, user, table string) string {
+	normDB, normUser, normTable := resolveAppendWorkerParts(db, user, table)
+	return strings.ToLower(normDB + "." + normUser + "." + normTable)
+}
+
+// GetAppendWorker returns a cached AppendWorker for the given database, user and
+// table, creating one if it doesn't exist. The worker map key is normalized as
+// "db.user.table" (empty db/user default to MACHBASEDB/SYS). For callers that
+// haven't split a qualified name themselves, table may still carry a legacy
+// "user.table" or "db.user.table" qualifier, but explicit db/user arguments always
+// take precedence over it.
+func GetAppendWorker(ctx context.Context, db, user, table string) (*AppendWorker, error) {
 	appendersLock.Lock()
 	defer appendersLock.Unlock()
 
-	tableName = strings.ToLower(tableName)
-	if aw, exists := appenders[tableName]; exists {
+	normDB, normUser, normTable := resolveAppendWorkerParts(db, user, table)
+	key := strings.ToLower(normDB + "." + normUser + "." + normTable)
+
+	if aw, exists := appenders[key]; exists {
 		aw.lastTime = time.Now()
 		atomic.AddInt32(&aw.refCount, 1)
 		return aw, nil
 	}
+
+	qualifiedTableName := fmt.Sprintf("%s.%s.%s", normDB, normUser, normTable)
 
 	trustConn, err := Connect(ctx, "sys")
 	if err != nil {
@@ -140,31 +205,40 @@ func GetAppendWorker(ctx context.Context, tableName string) (*AppendWorker, erro
 	}
 	defer trustConn.Close()
 
-	tableDesc, err := DescribeTable(ctx, trustConn, tableName, false)
+	tableDesc, err := DescribeTable(ctx, trustConn, qualifiedTableName, false)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
+	workerCtx, ctxCancel := context.WithCancel(context.Background())
 
 	appender := &client.Appender{}
-	dsn := DefaultDSN(map[string]string{"user": "sys"})
-	err = appender.Connect(ctx, dsn, tableName)
-	if err != nil {
+	// The auth key belongs to "sys"; connecting directly as normUser would fail
+	// authentication, so proxy via "sys as <normUser>" unless the target is sys itself.
+	dsnUser := "sys"
+	if !strings.EqualFold(normUser, "sys") {
+		dsnUser = fmt.Sprintf("sys as %s", normUser)
+	}
+	// This connection lives exactly as long as the AppendWorker, so select the target
+	// database directly in the DSN (Connector.Connect's own initial "USE <db>") instead
+	// of switching it at runtime inside Appender.Connect, which would require holding
+	// the connection's session lock reentrantly.
+	dsn := DefaultDSN(map[string]string{"user": dsnUser, "db": normDB})
+	if err := appender.Connect(workerCtx, dsn, normUser+"."+normTable); err != nil {
 		ctxCancel()
 		return nil, err
 	}
 
 	ret := &AppendWorker{
-		ctx:       ctx,
+		ctx:       workerCtx,
 		ctxCancel: ctxCancel,
 		appender:  appender,
 		tableDesc: tableDesc,
 		lastTime:  time.Now(),
 		refCount:  1,
-		log:       logging.GetLog(fmt.Sprintf("appender-%s", tableName)),
+		log:       logging.GetLog(fmt.Sprintf("appender-%s", key)),
 	}
-	appenders[tableName] = ret
+	appenders[key] = ret
 	ret.Start()
 	return ret, nil
 }

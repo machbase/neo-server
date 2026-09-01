@@ -10,6 +10,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDecodeWriteRequestJSONDB(t *testing.T) {
+	wr := &WriteRequest{}
+	err := json.Unmarshal([]byte(`{"table":"t","db":"testdb","data":{"columns":["a"],"rows":[[1]]}}`), wr)
+	require.NoError(t, err)
+	require.Equal(t, "testdb", wr.DB)
+	require.Equal(t, "t", wr.Table)
+}
+
+func TestDecodeWriteRequestJSONDBOmitted(t *testing.T) {
+	wr := &WriteRequest{}
+	err := json.Unmarshal([]byte(`{"table":"t","data":{"columns":["a"],"rows":[[1]]}}`), wr)
+	require.NoError(t, err)
+	require.Empty(t, wr.DB)
+}
+
 func TestDecodeQueryRequestJSONNormalizesParams(t *testing.T) {
 	req := &QueryRequest{}
 	err := req.DecodeJSON(strings.NewReader(`{"q":"select * from t where a = ?","p":[1,1.5,true,"neo"],"binaryformat":"base64"}`))

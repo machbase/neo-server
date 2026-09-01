@@ -492,7 +492,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.appender == nil {
-		dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
+		dsn := spi.DefaultDSN(map[string]string{"user": "sys", "db": "MACHBASEDB"})
 		ap := &client.Appender{}
 		err := ap.Connect(ent.ctx, dsn, ent.wd.Table)
 		if err != nil {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
@@ -64,6 +65,296 @@ func buildMultipartTestRequest(target string, fields map[string]string, files ..
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req, nil
+}
+
+func TestResolveExecUser(t *testing.T) {
+	svr := newTestHTTPServer(t)
+
+	t.Run("api_token_authenticated_with_user", func(t *testing.T) {
+		ctx, _ := newTestHTTPContext(http.MethodPost, "/db/write/t", nil)
+		ctx.Set("api-token-authenticated", true)
+		ctx.Set("api-token-user", "alice")
+		execUser, errReason := svr.resolveExecUser(ctx)
+		require.Empty(t, errReason)
+		require.Equal(t, "alice", execUser)
+	})
+
+	t.Run("api_token_authenticated_without_user", func(t *testing.T) {
+		ctx, _ := newTestHTTPContext(http.MethodPost, "/db/write/t", nil)
+		ctx.Set("api-token-authenticated", true)
+		execUser, errReason := svr.resolveExecUser(ctx)
+		require.Empty(t, execUser)
+		require.Equal(t, "authorization user is missing", errReason)
+	})
+
+	t.Run("not_authenticated", func(t *testing.T) {
+		ctx, _ := newTestHTTPContext(http.MethodPost, "/db/write/t", nil)
+		execUser, errReason := svr.resolveExecUser(ctx)
+		require.Empty(t, errReason)
+		require.Empty(t, execUser)
+	})
+}
+
+// TestHttpWriteWithDatabaseParam verifies /db/write "db" parameter support for
+// multiple-database writes (machbase/neo#1484): insert and append both accept a
+// request-scoped "db" and write to the correct database without leaking state.
+func TestHttpWriteWithDatabaseParam(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	dbName := fmt.Sprintf("HTTPWRITEDB%d", time.Now().UnixNano()%1000000)
+	tableName := fmt.Sprintf("HTTP_WRITE_DB_T_%d", time.Now().UnixNano())
+
+	doQuery := func(t *testing.T, sqlText string, db string) (*http.Response, []byte) {
+		t.Helper()
+		params := url.Values{"q": []string{sqlText}}
+		if db != "" {
+			params.Set("db", db)
+		}
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		return rsp, body
+	}
+
+	doWrite := func(t *testing.T, method string, db string, payload string) (*http.Response, []byte) {
+		t.Helper()
+		target := httpServerAddress + "/db/write/" + tableName + "?method=" + method
+		if db != "" {
+			target += "&db=" + url.QueryEscape(db)
+		}
+		req, _ := http.NewRequest(http.MethodPost, target, strings.NewReader(payload))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		req.Header.Set("Content-Type", "application/json")
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		return rsp, body
+	}
+
+	rsp, body := doQuery(t, "CREATE DATABASE IF NOT EXISTS "+dbName, "")
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	t.Cleanup(func() {
+		rsp, body := doQuery(t, "DROP DATABASE "+dbName+" CASCADE", "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+
+	creTable := fmt.Sprintf(`CREATE TAG TABLE %s (name varchar(40) primary key, time datetime basetime, value double)`, tableName)
+	rsp, body = doQuery(t, creTable, "")
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	t.Cleanup(func() {
+		rsp, body := doQuery(t, "DROP TABLE "+tableName, "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+
+	rsp, body = doQuery(t, creTable, dbName)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+	t.Run("insert_isolates_by_database", func(t *testing.T) {
+		payload := `{"data":{"columns":["name","time","value"],"rows":[["default-db",` +
+			fmt.Sprintf("%d", testTimeTick.UnixNano()) + `,1.5]]}}`
+		rsp, body := doWrite(t, "insert", "", payload)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		payload = `{"data":{"columns":["name","time","value"],"rows":[["other-db",` +
+			fmt.Sprintf("%d", testTimeTick.UnixNano()+1) + `,2.5]]}}`
+		rsp, body = doWrite(t, "insert", dbName, payload)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "default-db")
+		require.NotContains(t, string(body), "other-db")
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), dbName)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "other-db")
+		require.NotContains(t, string(body), "default-db")
+	})
+
+	t.Run("append_isolates_by_database", func(t *testing.T) {
+		payload := `{"data":{"columns":["name","time","value"],"rows":[["append-default",` +
+			fmt.Sprintf("%d", testTimeTick.UnixNano()+2) + `,3.5]]}}`
+		rsp, body := doWrite(t, "append", "", payload)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		payload = `{"data":{"columns":["name","time","value"],"rows":[["append-other",` +
+			fmt.Sprintf("%d", testTimeTick.UnixNano()+3) + `,4.5]]}}`
+		rsp, body = doWrite(t, "append", dbName, payload)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		spi.FlushAppendWorkers("", "", tableName)
+		spi.FlushAppendWorkers(dbName, "", tableName)
+
+		// TAG table appends are not visible to query until table_flush runs.
+		rsp, body = doQuery(t, fmt.Sprintf(`EXEC table_flush(%s)`, tableName), "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		rsp, body = doQuery(t, fmt.Sprintf(`EXEC table_flush(%s)`, tableName), dbName)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s WHERE NAME = 'append-default'`, tableName), "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "append-default")
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s WHERE NAME = 'append-other'`, tableName), dbName)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "append-other")
+	})
+
+	t.Run("invalid_db_name_returns_400", func(t *testing.T) {
+		rsp, body := doWrite(t, "insert", "bad db;name", `{"data":{"columns":["name","time","value"],"rows":[]}}`)
+		require.Equal(t, http.StatusBadRequest, rsp.StatusCode, string(body))
+	})
+
+	t.Run("nonexistent_db_returns_error", func(t *testing.T) {
+		rsp, body := doWrite(t, "insert", "no_such_database_xyz", `{"data":{"columns":["name","time","value"],"rows":[]}}`)
+		require.NotEqual(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+}
+
+// TestHttpWriteQualifiedTableNamePrecedence verifies that a "db.user.table"/
+// "user.table" qualifier embedded in the URL path takes precedence over the "db"
+// query parameter, for both insert and append, keeping /db/write consistent with
+// how /db/query resolves the same qualifier.
+func TestHttpWriteQualifiedTableNamePrecedence(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	db1 := fmt.Sprintf("HTTPWRITEQDB1%d", time.Now().UnixNano()%1000000)
+	db2 := fmt.Sprintf("HTTPWRITEQDB2%d", time.Now().UnixNano()%1000000)
+	tableName := fmt.Sprintf("HTTP_WRITE_Q_T_%d", time.Now().UnixNano())
+
+	doQuery := func(t *testing.T, sqlText string, db string) (*http.Response, []byte) {
+		t.Helper()
+		params := url.Values{"q": []string{sqlText}}
+		if db != "" {
+			params.Set("db", db)
+		}
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		return rsp, body
+	}
+
+	doWrite := func(t *testing.T, path string, method string, db string, payload string) (*http.Response, []byte) {
+		t.Helper()
+		target := httpServerAddress + "/db/write/" + path + "?method=" + method
+		if db != "" {
+			target += "&db=" + url.QueryEscape(db)
+		}
+		req, _ := http.NewRequest(http.MethodPost, target, strings.NewReader(payload))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		req.Header.Set("Content-Type", "application/json")
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		return rsp, body
+	}
+
+	for _, db := range []string{db1, db2} {
+		rsp, body := doQuery(t, "CREATE DATABASE IF NOT EXISTS "+db, "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		db := db // capture
+		t.Cleanup(func() {
+			rsp, body := doQuery(t, "DROP DATABASE "+db+" CASCADE", "")
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		})
+	}
+
+	creTable := fmt.Sprintf(`CREATE TAG TABLE %s (name varchar(40) primary key, time datetime basetime, value double)`, tableName)
+	for _, db := range []string{"", db1, db2} {
+		rsp, body := doQuery(t, creTable, db)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	}
+	t.Cleanup(func() {
+		rsp, body := doQuery(t, "DROP TABLE "+tableName, "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	})
+
+	payload := func(name string, offset int64) string {
+		return fmt.Sprintf(`{"data":{"columns":["name","time","value"],"rows":[["%s",%d,1.5]]}}`,
+			name, testTimeTick.UnixNano()+offset)
+	}
+
+	t.Run("insert_user_dot_table_with_db_param", func(t *testing.T) {
+		// /db/write/SYS.<table>?db=<db1>
+		rsp, body := doWrite(t, "SYS."+tableName, "insert", db1, payload("qp-user-table", 10))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "qp-user-table")
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.NotContains(t, string(body), "qp-user-table")
+	})
+
+	t.Run("insert_db_dot_user_dot_table_without_param", func(t *testing.T) {
+		// /db/write/<db1>.SYS.<table>, no "db" query param
+		rsp, body := doWrite(t, db1+".SYS."+tableName, "insert", "", payload("path-qualified", 20))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "path-qualified")
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), "")
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.NotContains(t, string(body), "path-qualified")
+	})
+
+	t.Run("path_db_wins_over_query_param", func(t *testing.T) {
+		// /db/write/<db1>.SYS.<table>?db=<db2> -> db1 (path) wins, db2 (query) is ignored
+		rsp, body := doWrite(t, db1+".SYS."+tableName, "insert", db2, payload("path-wins", 30))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "path-wins")
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db2)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.NotContains(t, string(body), "path-wins")
+	})
+
+	t.Run("append_user_dot_table_with_db_param", func(t *testing.T) {
+		// /db/write/SYS.<table>?method=append&db=<db1>
+		rsp, body := doWrite(t, "SYS."+tableName, "append", db1, payload("append-qp-user-table", 40))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		spi.FlushAppendWorkers(db1, "SYS", tableName)
+
+		rsp, body = doQuery(t, fmt.Sprintf(`EXEC table_flush(%s)`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "append-qp-user-table")
+	})
+
+	t.Run("append_path_db_wins_over_query_param", func(t *testing.T) {
+		// /db/write/<db1>.SYS.<table>?method=append&db=<db2> -> db1 (path) wins
+		rsp, body := doWrite(t, db1+".SYS."+tableName, "append", db2, payload("append-path-wins", 50))
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		spi.FlushAppendWorkers(db1, "SYS", tableName)
+
+		rsp, body = doQuery(t, fmt.Sprintf(`EXEC table_flush(%s)`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db1)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.Contains(t, string(body), "append-path-wins")
+
+		rsp, body = doQuery(t, fmt.Sprintf(`SELECT NAME FROM %s`, tableName), db2)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		require.NotContains(t, string(body), "append-path-wins")
+	})
 }
 
 func TestHandleFileWriteRejectsInvalidContentType(t *testing.T) {
@@ -346,7 +637,7 @@ func TestWriteBinaryFormat(t *testing.T) {
 
 	// drop table
 	defer func() {
-		done := spi.StopAppendWorker("wbin")
+		done := spi.StopAppendWorker("", "", "wbin")
 		<-done
 
 		sql := "DROP TABLE wbin"
@@ -405,7 +696,7 @@ func TestWriteBinaryFormat(t *testing.T) {
 			// flush appender to make sure data is visible to query,
 			// since the test is using method=append,
 			// the data is not immediately visible to query until the appender is flushed or closed.
-			spi.FlushAppendWorkers("wbin")
+			spi.FlushAppendWorkers("", "", "wbin")
 
 			// flush to make sure data is visible to query
 			flush := httpServerAddress + "/db/query?q=" + url.QueryEscape("exec table_flush(wbin)")

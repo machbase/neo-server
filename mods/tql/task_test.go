@@ -1452,7 +1452,7 @@ func TestSql_show_others(t *testing.T) {
 			APPEND( table('tag_simple') )
 			`,
 		ExpectFunc: func(t *testing.T, result string) {
-			spi.FlushAppendWorkers("tag_simple")
+			spi.FlushAppendWorkers("", "", "tag_simple")
 			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 			require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 			// since we are using api.AppendWorker, the success and fail count is always same as the number of records
@@ -1982,7 +1982,7 @@ func TestBinary(t *testing.T) {
 			require.Contains(t, result, "append 5 rows (success 5, fail 0)")
 
 			// flush appender
-			spi.FlushAppendWorkers("tqlbin")
+			spi.FlushAppendWorkers("", "", "tqlbin")
 
 			// flush table
 			conn, _ := spi.Connect(t.Context(), "sys")
@@ -2015,7 +2015,7 @@ func TestBinary(t *testing.T) {
 			DISCARD()`,
 		ExpectFunc: func(t *testing.T, result string) {
 			// flush appender workers to ensure all pending writes are done
-			spi.FlushAppendWorkers("tqlbin")
+			spi.FlushAppendWorkers("", "", "tqlbin")
 
 			// flush table
 			conn, _ := spi.Connect(t.Context(), "sys")

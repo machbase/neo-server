@@ -77,25 +77,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	default:
 	}
 
-	conn, err := spi.Connect(ctx, "sys")
-	if err != nil {
-		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
-		rsp.Reason = "service unavailable"
-		rsp.Elapse = time.Since(tick).String()
-		ctx.Header("Retry-After", "1")
-		ctx.JSON(http.StatusServiceUnavailable, rsp)
-		return
-	}
-	defer conn.Close()
-
-	var desc *spi.TableDescription
-	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", tableName, false); rs.Err() != nil {
-		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, rs.Err().Error()))
-		return
-	} else {
-		desc = rs.Description
-	}
-
 	var in io.Reader
 	if compress == "gzip" {
 		gr, err := gzip.NewReader(ctx.Request.Body)
@@ -106,6 +87,83 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		in = bufio.NewReader(gr)
 	} else {
 		in = ctx.Request.Body
+	}
+
+	// Peek "db" from the JSON body ahead of connecting, since USE <db> must run
+	// right after the connection is established. CSV/NDJSON bodies have no such
+	// struct, so the "db" query parameter is their only way to select a database.
+	wr := WriteRequest{}
+	if format == "json" {
+		bs, err := io.ReadAll(in)
+		if err != nil {
+			errRsp(http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := json.NewDecoder(bytes.NewBuffer(bs)).Decode(&wr); err != nil {
+			errRsp(http.StatusBadRequest, err.Error())
+			return
+		}
+		in = bytes.NewBuffer(bs)
+	}
+	// A "db.user.table"/"user.table" qualifier embedded in the URL path always
+	// takes precedence over the "db" query/body parameter, matching the append
+	// path's existing precedence for its "user.table" qualifier.
+	pathDB, pathUser, pathTable := splitWriteTableName(tableName)
+	db := pathDB
+	if db == "" {
+		db = strString(ctx.Query("db"), wr.DB)
+	}
+	if db != "" {
+		if err := validateDatabaseName(db); err != nil {
+			errRsp(http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	execUser, errReason := svr.resolveExecUser(ctx)
+	if errReason != "" {
+		errRsp(http.StatusUnauthorized, errReason)
+		return
+	}
+	user := "sys"
+	if execUser != "" {
+		user = execUser
+	}
+	conn, err := spi.Connect(ctx, user)
+	if err != nil {
+		svr.log.Warnf("query pooled connection unavailable: %s", err.Error())
+		rsp.Reason = "service unavailable"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.Header("Retry-After", "1")
+		ctx.JSON(http.StatusServiceUnavailable, rsp)
+		return
+	}
+	defer conn.Close()
+
+	if db != "" {
+		if _, err := conn.ExecContext(ctx, "USE "+client.QuoteIdentifier(db)); err != nil {
+			errRsp(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	// When "db" comes from the query/body parameter (the path itself wasn't
+	// db-qualified), describe the table against the resolved database explicitly
+	// instead of the "MACHBASEDB" fallback, which would otherwise ignore it.
+	descTableName := tableName
+	if pathDB == "" && db != "" {
+		descUser := pathUser
+		if descUser == "" {
+			descUser = strings.ToUpper(user)
+		}
+		descTableName = db + "." + descUser + "." + pathTable
+	}
+	var desc *spi.TableDescription
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", descTableName, false); rs.Err() != nil {
+		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, rs.Err().Error()))
+		return
+	} else {
+		desc = rs.Description
 	}
 
 	codecOpts := []opts.Option{
@@ -122,7 +180,13 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	var insertQuery string
 
 	if method == "append" {
-		if aw, err := spi.GetAppendWorker(ctx, tableName); err != nil {
+		// A "user.table" qualifier embedded in the path takes precedence over the
+		// resolved execUser; otherwise the append runs as the authenticated user.
+		apUser := pathUser
+		if apUser == "" {
+			apUser = user
+		}
+		if aw, err := spi.GetAppendWorker(ctx, db, apUser, pathTable); err != nil {
 			errRsp(http.StatusInternalServerError, err.Error())
 			return
 		} else {
@@ -144,42 +208,27 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	} else { // insert
 		var columnNames []string
 		var columnTypes []api.DataType
-		if format == "json" {
-			bs, err := io.ReadAll(in)
-			if err != nil {
-				errRsp(http.StatusBadRequest, err.Error())
-				return
-			}
-
-			wr := WriteRequest{}
-			dec := json.NewDecoder(bytes.NewBuffer(bs))
-			if err := dec.Decode(&wr); err != nil {
-				errRsp(http.StatusBadRequest, err.Error())
-				return
-			}
-			if wr.Data != nil && len(wr.Data.Columns) > 0 {
-				columnNames = wr.Data.Columns
-				columnTypes = make([]api.DataType, 0, len(columnNames))
-				_hold := make([]string, 0, len(columnNames))
-				for _, colName := range columnNames {
-					_hold = append(_hold, "?")
-					_type := api.ColumnTypeUnknown
-					for _, d := range desc.Columns {
-						if d.Name == strings.ToUpper(colName) {
-							_type = d.Type
-							break
-						}
+		if wr.Data != nil && len(wr.Data.Columns) > 0 {
+			columnNames = wr.Data.Columns
+			columnTypes = make([]api.DataType, 0, len(columnNames))
+			_hold := make([]string, 0, len(columnNames))
+			for _, colName := range columnNames {
+				_hold = append(_hold, "?")
+				_type := api.ColumnTypeUnknown
+				for _, d := range desc.Columns {
+					if d.Name == strings.ToUpper(colName) {
+						_type = d.Type
+						break
 					}
-					if _type == api.ColumnTypeUnknown {
-						errRsp(http.StatusBadRequest, fmt.Sprintf("column %q not found in the table %q", colName, tableName))
-						return
-					}
-					columnTypes = append(columnTypes, _type.DataType())
 				}
-				valueHolder := strings.Join(_hold, ",")
-				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
+				if _type == api.ColumnTypeUnknown {
+					errRsp(http.StatusBadRequest, fmt.Sprintf("column %q not found in the table %q", colName, tableName))
+					return
+				}
+				columnTypes = append(columnTypes, _type.DataType())
 			}
-			in = bytes.NewBuffer(bs)
+			valueHolder := strings.Join(_hold, ",")
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
 		}
 		if len(columnNames) == 0 {
 			columnNames = desc.Columns.Names()
@@ -272,7 +321,34 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		return
 	}
 
-	conn, err := spi.Connect(ctx, "sys")
+	// A "db.user.table"/"user.table" qualifier embedded in the URL path always
+	// takes precedence over the "db" query parameter, matching handleWrite.
+	pathDB, pathUser, pathTable := splitWriteTableName(tableName)
+	db := pathDB
+	if db == "" {
+		db = ctx.Query("db")
+	}
+	if db != "" {
+		if err := validateDatabaseName(db); err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
+	}
+
+	execUser, errReason := svr.resolveExecUser(ctx)
+	if errReason != "" {
+		rsp.Reason = errReason
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+	user := "sys"
+	if execUser != "" {
+		user = execUser
+	}
+	conn, err := spi.Connect(ctx, user)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -280,6 +356,15 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		return
 	}
 	defer conn.Close()
+
+	if db != "" {
+		if _, err := conn.ExecContext(ctx, "USE "+client.QuoteIdentifier(db)); err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+	}
 
 	tableType, err := spi.QueryTableType(ctx, conn, tableName)
 	if err != nil {
@@ -295,8 +380,19 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		return
 	}
 
+	// When "db" comes from the query parameter (the path itself wasn't
+	// db-qualified), describe the table against the resolved database explicitly
+	// instead of the "MACHBASEDB" fallback, which would otherwise ignore it.
+	descTableName := tableName
+	if pathDB == "" && db != "" {
+		descUser := pathUser
+		if descUser == "" {
+			descUser = strings.ToUpper(user)
+		}
+		descTableName = db + "." + descUser + "." + pathTable
+	}
 	var desc *spi.TableDescription
-	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", tableName, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", descTableName, false); rs.Err() != nil {
 		err = rs.Err()
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()

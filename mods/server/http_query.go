@@ -60,15 +60,11 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			return
 		}
 	}
-	if authenticated, _ := ctx.Get("api-token-authenticated"); authenticated == true {
-		user, _ := ctx.Get("api-token-user")
-		req.ExecUser, _ = user.(string)
-		if req.ExecUser == "" {
-			ctx.JSON(http.StatusUnauthorized, &QueryResponse{Success: false, Reason: "authorization user is missing"})
-			return
-		}
-	} else if claim, ok := svr.getJwtClaim(ctx); ok && claim != nil {
-		req.ExecUser = claim.Subject
+	if execUser, errReason := svr.resolveExecUser(ctx); errReason != "" {
+		ctx.JSON(http.StatusUnauthorized, &QueryResponse{Success: false, Reason: errReason})
+		return
+	} else {
+		req.ExecUser = execUser
 	}
 
 	// golang json decoder case-insensitive for struct field names,

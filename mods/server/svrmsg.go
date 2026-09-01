@@ -332,6 +332,21 @@ func validateDatabaseName(name string) error {
 	return nil
 }
 
+// splitWriteTableName parses a possibly qualified "db.user.table" / "user.table" /
+// "table" path segment into its parts. An unqualified name returns db and user as
+// empty strings.
+func splitWriteTableName(name string) (db, user, table string) {
+	parts := strings.SplitN(name, ".", 3)
+	switch len(parts) {
+	case 3:
+		return parts[0], parts[1], parts[2]
+	case 2:
+		return "", parts[0], parts[1]
+	default:
+		return "", "", name
+	}
+}
+
 func parseQueryParams(raw string) ([]any, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
@@ -435,6 +450,7 @@ type QueryData struct {
 
 type WriteRequest struct {
 	Table   string            `json:"table"`
+	DB      string            `json:"db,omitempty"`    // target database name (multiple-database)
 	ReplyTo string            `json:"reply,omitempty"` // for mqtt query only
 	Data    *WriteRequestData `json:"data"`
 }
