@@ -152,7 +152,7 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 		db: c.db,
 	}
 
-	dsn := spi.DefaultDSN(map[string]string{"user": "sys"})
+	dsn := spi.DefaultDSN(map[string]string{"user": "sys", "db": "MACHBASEDB"})
 	ap := &client.Appender{}
 	err := ap.Connect(c.db.ctx, dsn, tableName, columns...)
 	if err != nil {

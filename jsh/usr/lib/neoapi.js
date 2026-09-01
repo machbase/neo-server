@@ -370,6 +370,21 @@ class Client extends _Client {
             return this._rpcRequest('key.delete', [id]);
         });
     }
+    listTokens() {
+        return this._executeWithAuth(() => {
+            return this._rpcRequest('token.list', []);
+        });
+    }
+    generateToken(name, notAfter = 0) {
+        return this._executeWithAuth(() => {
+            return this._rpcRequest('token.generate', [name, notAfter]);
+        });
+    }
+    deleteToken(id) {
+        return this._executeWithAuth(() => {
+            return this._rpcRequest('token.delete', [id]);
+        });
+    }
     getServerCertificate() {
         return this._executeWithAuth(() => {
             return this._rpcRequest('server.certificate.get', []);

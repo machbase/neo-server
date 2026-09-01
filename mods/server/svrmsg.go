@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +22,9 @@ import (
 )
 
 type QueryRequest struct {
-	SqlText string `json:"q"`
+	SqlText  string `json:"q"`
+	DB       string `json:"db,omitempty"` // target database name (multiple-database)
+	ExecUser string `json:"-"`
 	// Params holds bind parameters. It accepts a JSON array (positional binds for `?`)
 	// or a JSON object (named binds for `:name`, converted to sql.Named).
 	Params             any    `json:"p,omitempty"`
@@ -87,6 +90,7 @@ func (req *QueryRequest) DecodeJSON(r io.Reader) error {
 
 func (req *QueryRequest) DecodeQuery(ctx *gin.Context) error {
 	req.SqlText = ctx.Query("q")
+	req.DB = strString(ctx.Query("db"), req.DB)
 	if p, err := parseQueryParams(ctx.Query("p")); err != nil {
 		return err
 	} else {
@@ -114,6 +118,7 @@ func (req *QueryRequest) DecodeQuery(ctx *gin.Context) error {
 
 func (req *QueryRequest) DecodePostForm(ctx *gin.Context) error {
 	req.SqlText = ctx.PostForm("q")
+	req.DB = strString(ctx.PostForm("db"), req.DB)
 	if p, err := parseQueryParams(ctx.PostForm("p")); err != nil {
 		return err
 	} else {
@@ -191,7 +196,11 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		opts.RowsArray(req.RowsArray),
 		opts.Transpose(req.Transpose),
 	)
-	conn, err := spi.Connect(ctx, "sys")
+	user := "sys"
+	if req.ExecUser != "" {
+		user = req.ExecUser
+	}
+	conn, err := spi.Connect(ctx, user)
 	if err != nil {
 		if hook.SetStatusCode != nil {
 			hook.SetStatusCode(http.StatusServiceUnavailable)
@@ -199,6 +208,21 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		return err
 	}
 	defer conn.Close()
+
+	if req.DB != "" {
+		if err := validateDatabaseName(req.DB); err != nil {
+			if hook.SetStatusCode != nil {
+				hook.SetStatusCode(http.StatusBadRequest)
+			}
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "USE "+client.QuoteIdentifier(req.DB)); err != nil {
+			if hook.SetStatusCode != nil {
+				hook.SetStatusCode(http.StatusInternalServerError)
+			}
+			return err
+		}
+	}
 
 	stmtType := spi.DetectSQLStatementType(req.SqlText)
 
@@ -296,6 +320,31 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		}
 	}
 	return nil
+}
+
+var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,39}$`)
+
+// validateDatabaseName rejects values that cannot safely be embedded in `USE <name>`.
+func validateDatabaseName(name string) error {
+	if !databaseNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid db name: %q", name)
+	}
+	return nil
+}
+
+// splitWriteTableName parses a possibly qualified "db.user.table" / "user.table" /
+// "table" path segment into its parts. An unqualified name returns db and user as
+// empty strings.
+func splitWriteTableName(name string) (db, user, table string) {
+	parts := strings.SplitN(name, ".", 3)
+	switch len(parts) {
+	case 3:
+		return parts[0], parts[1], parts[2]
+	case 2:
+		return "", parts[0], parts[1]
+	default:
+		return "", "", name
+	}
 }
 
 func parseQueryParams(raw string) ([]any, error) {
@@ -401,6 +450,7 @@ type QueryData struct {
 
 type WriteRequest struct {
 	Table   string            `json:"table"`
+	DB      string            `json:"db,omitempty"`    // target database name (multiple-database)
 	ReplyTo string            `json:"reply,omitempty"` // for mqtt query only
 	Data    *WriteRequestData `json:"data"`
 }

@@ -16,9 +16,9 @@ import (
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
-	mach "github.com/machbase/neo-engine/v8"
+	"github.com/machbase/neo-server/v8/spi/mach"
 
-	"github.com/machbase/neo-engine/v8/native"
+	"github.com/machbase/neo-server/v8/spi/mach/native"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sony/sonyflake"
 )
@@ -29,10 +29,6 @@ func LinkInfo() string {
 
 func LinkVersion() string {
 	return native.Version
-}
-
-func LinkGitHash() string {
-	return native.GitHash
 }
 
 type InitOption int

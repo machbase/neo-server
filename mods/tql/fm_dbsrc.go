@@ -556,42 +556,24 @@ func sqlExplain(node *Node, conn *sql.Conn, sqlText string) string {
 
 func sqlShow(node *Node, conn *sql.Conn, text string) string {
 	runtime := node.ensureRuntime()
-	trimmed := strings.TrimSuffix(strings.TrimSpace(text), ";")
-	fields := strings.Fields(trimmed)
-	if len(fields) == 0 {
-		err := fmt.Errorf("f(SQL) Empty SQL text")
+	stmt, err := spi.ParseShowStatement(text)
+	if err != nil {
 		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
-	if !strings.EqualFold(fields[0], "show") {
-		err := fmt.Errorf("f(SQL) invalid SHOW statement")
+	command := stmt.Command
+	args := stmt.Args
+	showOpts := stmt.ShowOptions()
+
+	supportsFrom := command == "tables" || command == "indexes" || command == "table" || command == "index" || command == "tags" || command == "lsm" || command == "indexgap" || command == "tagindexgap" || command == "rollupgap" || command == "storage" || command == "table-usage"
+	supportsLike := command == "tables" || command == "indexes" || command == "users" || command == "databases" || command == "meta-tables" || command == "virtual-tables" || command == "sessions" || command == "statements" || command == "tags" || command == "lsm" || command == "indexgap" || command == "tagindexgap" || command == "rollupgap" || command == "storage" || command == "table-usage"
+	if stmt.HasFrom && !supportsFrom {
+		err = fmt.Errorf("f(SQL) show %s does not support FROM", command)
 		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
-
-	showAll := false
-	command := ""
-	args := make([]string, 0, len(fields)-1)
-	for _, raw := range fields[1:] {
-		switch strings.ToLower(raw) {
-		case "-a", "--all":
-			showAll = true
-		default:
-			if strings.HasPrefix(raw, "-") {
-				err := fmt.Errorf("f(SQL) unsupported show option %q", raw)
-				node.emit(ErrorRecord(err))
-				return err.Error()
-			}
-			if command == "" {
-				command = strings.ToLower(raw)
-			} else {
-				args = append(args, raw)
-			}
-		}
-	}
-
-	if command == "" {
-		err := fmt.Errorf("f(SQL) missing show command")
+	if stmt.HasLike && !supportsLike {
+		err = fmt.Errorf("f(SQL) show %s does not support LIKE", command)
 		node.emit(ErrorRecord(err))
 		return err.Error()
 	}
@@ -603,13 +585,12 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 		return nil
 	}
 	validateNoAll := func() error {
-		if showAll {
-			return fmt.Errorf("f(SQL) show %s does not support -a/--all", command)
+		if stmt.All {
+			return fmt.Errorf("f(SQL) show %s does not support WITH ALL", command)
 		}
 		return nil
 	}
 
-	var err error
 	switch command {
 	case "info":
 		err = validateNoAll()
@@ -646,7 +627,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowUsers(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowUsers(runtime.Context(), conn, showOpts...))
 		}
 	case "databases":
 		err = validateNoAll()
@@ -654,27 +635,30 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowDatabases(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowDatabases(runtime.Context(), conn, showOpts...))
 		}
 	case "tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTables(runtime.Context(), conn, showAll))
+			return yieldResultSet(node, spi.ShowTables(runtime.Context(), conn, stmt.All, showOpts...))
 		}
 	case "meta-tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowMetaTables(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowMetaTables(runtime.Context(), conn, showOpts...))
 		}
 	case "virtual-tables":
 		err = validateArgs(command, 0)
 		if err == nil {
-			return yieldResultSet(node, spi.ShowVirtualTables(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowVirtualTables(runtime.Context(), conn, showOpts...))
 		}
 	case "table":
 		err = validateArgs(command, 1)
+		if err == nil && stmt.HasFrom && strings.Contains(args[0], ".") {
+			err = fmt.Errorf("f(SQL) show table: cannot use FROM with a qualified name %q", args[0])
+		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTable(runtime.Context(), conn, "MACHBASEDB", runtime.ConsoleUser(), args[0], showAll))
+			return yieldResultSet(node, spi.ShowTable(runtime.Context(), conn, "", "", args[0], stmt.All, showOpts...))
 		}
 	case "indexes":
 		err = validateNoAll()
@@ -682,7 +666,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndexes(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowIndexes(runtime.Context(), conn, showOpts...))
 		}
 	case "index":
 		err = validateNoAll()
@@ -690,7 +674,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 1)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndex(runtime.Context(), conn, args[0]))
+			return yieldResultSet(node, spi.ShowIndex(runtime.Context(), conn, args[0], showOpts...))
 		}
 	case "lsm":
 		err = validateNoAll()
@@ -698,15 +682,21 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowLsm(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowLsm(runtime.Context(), conn, showOpts...))
 		}
 	case "tags":
 		err = validateNoAll()
 		if err == nil && len(args) < 1 {
 			err = fmt.Errorf("f(SQL) show tags expects at least 1 argument, got %d", len(args))
 		}
+		if err == nil && stmt.HasFrom && strings.Contains(args[0], ".") {
+			err = fmt.Errorf("f(SQL) show tags: cannot use FROM with a qualified name %q", args[0])
+		}
+		if err == nil && stmt.HasLike && len(args) > 1 {
+			err = fmt.Errorf("f(SQL) show tags: cannot use LIKE with explicit tag names")
+		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTags(runtime.Context(), conn, "MACHBASEDB", runtime.ConsoleUser(), args[0], args[1:]...))
+			return yieldResultSet(node, spi.ShowTagsWithOptions(runtime.Context(), conn, "", "", args[0], args[1:], showOpts...))
 		}
 	case "indexgap":
 		err = validateNoAll()
@@ -714,7 +704,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowIndexGap(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowIndexGap(runtime.Context(), conn, showOpts...))
 		}
 	case "tagindexgap":
 		err = validateNoAll()
@@ -722,7 +712,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTagIndexGap(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowTagIndexGap(runtime.Context(), conn, showOpts...))
 		}
 	case "rollupgap":
 		err = validateNoAll()
@@ -730,7 +720,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowRollupGap(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowRollupGap(runtime.Context(), conn, showOpts...))
 		}
 	case "sessions":
 		err = validateNoAll()
@@ -738,7 +728,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowSessions(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowSessions(runtime.Context(), conn, showOpts...))
 		}
 	case "statements":
 		err = validateNoAll()
@@ -746,7 +736,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowStatements(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowStatements(runtime.Context(), conn, showOpts...))
 		}
 	case "storage":
 		err = validateNoAll()
@@ -754,7 +744,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowStorage(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowStorage(runtime.Context(), conn, showOpts...))
 		}
 	case "table-usage":
 		err = validateNoAll()
@@ -762,7 +752,7 @@ func sqlShow(node *Node, conn *sql.Conn, text string) string {
 			err = validateArgs(command, 0)
 		}
 		if err == nil {
-			return yieldResultSet(node, spi.ShowTableUsage(runtime.Context(), conn))
+			return yieldResultSet(node, spi.ShowTableUsage(runtime.Context(), conn, showOpts...))
 		}
 	default:
 		err = fmt.Errorf("f(SQL) unsupported show command %q", command)
@@ -1213,7 +1203,7 @@ type appender struct {
 }
 
 func (app *appender) Open(runtime *executionRuntime) (err error) {
-	aw, err := spi.GetAppendWorker(runtime.Context(), app.table.Name)
+	aw, err := spi.GetAppendWorker(runtime.Context(), "", "", app.table.Name)
 	if err != nil {
 		return
 	}

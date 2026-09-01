@@ -6,7 +6,7 @@
 # machbase-neo
 
 Machbase is a blazing fast time-series database designed specifically for IoT applications and implemented in C.
-`machbase-neo` is an IoT Database Server that embeds the Machbase engine and offers essential and convenient features for building IoT platforms,
+Based on the high-performance Machbase database, `machbase-neo` is a data platform that offers essential and convenient features for processing large-scale time-series data,
 including MQTT and HTTP APIs. It is highly versatile and can be installed on a wide range of machines,
 from Raspberry Pi devices to high-performance servers.
 
@@ -67,6 +67,7 @@ docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages centos-build-env
 - Require a C compiler and linker (e.g., gcc)
 - Checkout `machbase/neo-server`
 - Execute `go run mage.go install-neo-web` to download the web-UI package
+- Execute `go run mage.go install-neo-engine` to download the machbase engine
 - Execute `go run mage.go machbase-neo` to build `machbase-neo`
 - Find the executable binary in `./tmp/machbase-neo`
 

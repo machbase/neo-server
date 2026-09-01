@@ -29,10 +29,10 @@ func TestAppendWorkerRegistryStopsByLowerCaseName(t *testing.T) {
 
 	worker := newAppendWorkerForTest("sensor")
 	appendersLock.Lock()
-	appenders["sensor"] = worker
+	appenders["machbasedb.sys.sensor"] = worker
 	appendersLock.Unlock()
 
-	ack := StopAppendWorker("SENSOR")
+	ack := StopAppendWorker("", "", "SENSOR")
 	select {
 	case <-ack:
 	case <-time.After(time.Second):
@@ -40,7 +40,7 @@ func TestAppendWorkerRegistryStopsByLowerCaseName(t *testing.T) {
 	}
 
 	appendersLock.Lock()
-	_, exists := appenders["sensor"]
+	_, exists := appenders["machbasedb.sys.sensor"]
 	appendersLock.Unlock()
 	require.False(t, exists)
 }
@@ -52,20 +52,20 @@ func TestFlushAppendWorkersMatchesNamesCaseInsensitively(t *testing.T) {
 	sensor := newAppendWorkerForTest("sensor")
 	metric := newAppendWorkerForTest("metric")
 	appendersLock.Lock()
-	appenders["sensor"] = sensor
-	appenders["metric"] = metric
+	appenders["machbasedb.sys.sensor"] = sensor
+	appenders["machbasedb.sys.metric"] = metric
 	appendersLock.Unlock()
 
-	FlushAppendWorkers("SENSOR")
+	FlushAppendWorkers("", "", "SENSOR")
 
 	appendersLock.Lock()
-	_, sensorExists := appenders["sensor"]
-	_, metricExists := appenders["metric"]
+	_, sensorExists := appenders["machbasedb.sys.sensor"]
+	_, metricExists := appenders["machbasedb.sys.metric"]
 	appendersLock.Unlock()
 	require.False(t, sensorExists)
 	require.True(t, metricExists)
 
-	FlushAppendWorkers()
+	FlushAppendWorkers("", "")
 	require.Empty(t, appenders)
 }
 
@@ -75,13 +75,38 @@ func TestGetAppendWorkerReusesRegisteredWorkerCaseInsensitively(t *testing.T) {
 
 	worker := newAppendWorkerForTest("sensor")
 	appendersLock.Lock()
-	appenders["sensor"] = worker
+	appenders["machbasedb.sys.sensor"] = worker
 	appendersLock.Unlock()
 
-	got, err := GetAppendWorker(context.Background(), "SENSOR")
+	got, err := GetAppendWorker(context.Background(), "", "", "SENSOR")
 	require.NoError(t, err)
 	require.Same(t, worker, got)
 	require.Equal(t, int32(1), atomic.LoadInt32(&got.refCount))
+}
+
+func TestAppendWorkerKeyNormalization(t *testing.T) {
+	require.Equal(t, "machbasedb.sys.sensor", appendWorkerKey("", "", "sensor"))
+	require.Equal(t, "machbasedb.sys.sensor", appendWorkerKey("", "", "SYS.SENSOR"))
+	require.Equal(t, "machbasedb.alice.sensor", appendWorkerKey("", "", "MACHBASEDB.ALICE.SENSOR"))
+	require.Equal(t, "machbasedb.alice.sensor", appendWorkerKey("", "alice", "sensor"))
+	require.Equal(t, "testdb.alice.sensor", appendWorkerKey("testdb", "", "alice.sensor"))
+	// explicit db/user take precedence over any qualifier embedded in table
+	require.Equal(t, "machbasedb.bob.sensor", appendWorkerKey("", "bob", "alice.sensor"))
+
+	db, user, table := splitAppendWorkerName("testdb.alice.sensor")
+	require.Equal(t, "testdb", db)
+	require.Equal(t, "alice", user)
+	require.Equal(t, "sensor", table)
+
+	db, user, table = splitAppendWorkerName("alice.sensor")
+	require.Empty(t, db)
+	require.Equal(t, "alice", user)
+	require.Equal(t, "sensor", table)
+
+	db, user, table = splitAppendWorkerName("sensor")
+	require.Empty(t, db)
+	require.Empty(t, user)
+	require.Equal(t, "sensor", table)
 }
 
 func TestAppenderWithWorkerInputColumnsUpperCase(t *testing.T) {

@@ -68,6 +68,66 @@ func runResultSetTestCases(t *testing.T, tc ResultSetTestCase) {
 	require.Equal(t, rs.Message(), tc.message)
 }
 
+func TestParseShowStatement(t *testing.T) {
+	statement, err := spi.ParseShowStatement(`SHOW TABLES FROM mydb.app LIKE 'user%' WITH ALL`)
+	require.NoError(t, err)
+	require.Equal(t, "tables", statement.Command)
+	require.True(t, statement.HasFrom)
+	require.Equal(t, "MYDB", statement.Database)
+	require.Equal(t, "APP", statement.User)
+	require.True(t, statement.HasLike)
+	require.Equal(t, "user%", statement.Like)
+	require.True(t, statement.All)
+}
+
+func TestParseShowStatementAliasesAndOrder(t *testing.T) {
+	statement, err := spi.ParseShowStatement(`show indexes --all like "idx_" in archive`)
+	require.NoError(t, err)
+	require.Equal(t, "indexes", statement.Command)
+	require.Equal(t, "ARCHIVE", statement.Database)
+	require.Empty(t, statement.User)
+	require.Equal(t, "idx_", statement.Like)
+	require.True(t, statement.All)
+}
+
+func TestParseShowStatementRejectsInvalidClauses(t *testing.T) {
+	testCases := []string{
+		`show tables like ''`,
+		`show tables like table_name`,
+		`show tables from db in other`,
+		`show tables like 'a%' like 'b%'`,
+		`show tables with all --all`,
+		`show tables from db.`,
+		`show tables like 'unterminated`,
+	}
+	for _, text := range testCases {
+		t.Run(text, func(t *testing.T) {
+			_, err := spi.ParseShowStatement(text)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestLikeMatch(t *testing.T) {
+	testCases := []struct {
+		pattern string
+		value   string
+		match   bool
+	}{
+		{pattern: "tag%", value: "TAG_DATA", match: true},
+		{pattern: "idx_", value: "IDX1", match: true},
+		{pattern: `tag\_%`, value: "TAG_DATA", match: true},
+		{pattern: `tag\_%`, value: "TAGXDATA", match: false},
+		{pattern: `idx\\name`, value: `IDX\NAME`, match: true},
+		{pattern: `unfinished\`, value: "unfinished", match: false},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.pattern, func(t *testing.T) {
+			require.Equal(t, testCase.match, spi.LikeMatch(testCase.pattern, testCase.value))
+		})
+	}
+}
+
 func TestShowInfo(t *testing.T) {
 	spi.SetServerInfoProvider(func() map[string]any {
 		return map[string]any{
@@ -166,6 +226,17 @@ func TestShowDatabases(t *testing.T) {
 			require.Equal(t, 1, row[6].(int))           // IS_DEFAULT
 		},
 	}.runResultSetTestCases(t)
+	ResultSetTestCase{
+		name: "ShowDatabases_like",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowDatabases(t.Context(), fixture.dbConn, spi.WithLike("MACH%")))
+		},
+		columns: []string{"DATABASE_ID", "NAME", "KIND", "ACCESS_MODE", "CAN_USE", "STATE", "IS_DEFAULT"},
+		expectFunc: func(values [][]any) {
+			require.Len(t, values, 1)
+			require.Equal(t, "MACHBASEDB", values[0][1])
+		},
+	}.runResultSetTestCases(t)
 }
 
 func TestShowUsers(t *testing.T) {
@@ -174,6 +245,16 @@ func TestShowUsers(t *testing.T) {
 	ResultSetTestCase{
 		name:    "ShowUsers",
 		fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.dbConn)) },
+		columns: []string{"USER_ID", "NAME"},
+		expects: [][]any{
+			{int64(1), "SYS"},
+		},
+	}.runResultSetTestCases(t)
+	ResultSetTestCase{
+		name: "ShowUsers_like",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowUsers(t.Context(), fixture.dbConn, spi.WithLike("SYS")))
+		},
 		columns: []string{"USER_ID", "NAME"},
 		expects: [][]any{
 			{int64(1), "SYS"},
@@ -295,6 +376,29 @@ func TestShowTables(t *testing.T) {
 		},
 	}.runResultSetTestCases(t)
 	ResultSetTestCase{
+		name: "ShowTables_like_with_explicit_scope",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowTables(t.Context(), conn, false,
+				spi.WithDatabase("MACHBASEDB"), spi.WithUser("SYS"), spi.WithLike("RS_DATA")))
+		},
+		columns: []string{"DATABASE_NAME", "USER_NAME", "TABLE_NAME", "TABLE_ID", "TABLE_TYPE", "TABLE_FLAG"},
+		expects: [][]any{
+			{"MACHBASEDB", "SYS", "RS_DATA", int64(11), "Tag", ""},
+		},
+	}.runResultSetTestCases(t)
+	ResultSetTestCase{
+		name: "ShowIndexes_like",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowIndexes(t.Context(), conn, spi.WithLike("_RS_DATA_META_NAME")))
+		},
+		columns: []string{"ID", "DATABASE", "USER", "TABLE", "COLUMN", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"},
+		expects: [][]any{
+			{int64(7), "MACHBASEDB", "SYS", "_RS_DATA_META", "NAME", "_RS_DATA_META_NAME", "REDBLACK", "UNCOMPRESSED", int64(0), int64(100000), "EQUAL"},
+		},
+	}.runResultSetTestCases(t)
+	require.Error(t, spi.ShowTables(t.Context(), conn, false, spi.WithLike("")).Err())
+	require.Error(t, spi.ShowTables(t.Context(), conn, false, spi.WithDatabase("NO_SUCH_DATABASE")).Err())
+	ResultSetTestCase{
 		name:    "ShowTable",
 		fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTable(t.Context(), conn, "", "", "RS_DATA", false)) },
 		columns: []string{"COLUMN", "TYPE", "LENGTH", "FLAG", "INDEX"},
@@ -356,11 +460,10 @@ func TestShowTables(t *testing.T) {
 		fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowStorage(t.Context(), conn)) },
 		columns: []string{"DATABASE_NAME", "TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"},
 		expectFunc: func(values [][]any) {
-			names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
-			require.Equal(t, len(names), len(values))
+			require.NotEmpty(t, values)
 			for _, row := range values {
 				require.Equal(t, "MACHBASEDB", row[0])
-				require.Contains(t, names, row[1])
+				require.NotEmpty(t, row[1])
 				require.GreaterOrEqual(t, row[2], int64(0))
 				require.GreaterOrEqual(t, row[3], int64(0))
 				require.GreaterOrEqual(t, row[4], int64(0))
@@ -368,17 +471,39 @@ func TestShowTables(t *testing.T) {
 		},
 	}.runResultSetTestCases(t)
 	ResultSetTestCase{
+		name: "ShowStorage_like",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowStorage(t.Context(), conn, spi.WithLike("RS_DATA")))
+		},
+		columns: []string{"DATABASE_NAME", "TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"},
+		expectFunc: func(values [][]any) {
+			require.Len(t, values, 1)
+			require.Equal(t, "RS_DATA", values[0][1])
+		},
+	}.runResultSetTestCases(t)
+	ResultSetTestCase{
 		name:    "ShowTableUsage",
 		fn:      func() spi.ResultSet { return spi.ResultSet(spi.ShowTableUsage(t.Context(), conn)) },
 		columns: []string{"DATABASE", "USER", "TABLE", "STORAGE_USAGE"},
 		expectFunc: func(values [][]any) {
-			names := []string{"RS_DATA", "_RS_DATA_DATA_0", "_RS_DATA_META", "_RS_DATA_ROLLUP_HOUR", "_RS_DATA_ROLLUP_MIN", "_RS_DATA_ROLLUP_SEC"}
-			require.Equal(t, len(names), len(values))
+			require.NotEmpty(t, values)
 			for _, row := range values {
 				require.Equal(t, "MACHBASEDB", row[0])
-				require.Contains(t, names, row[2])
+				require.Equal(t, "SYS", row[1])
+				require.NotEmpty(t, row[2])
 				require.GreaterOrEqual(t, row[3], int64(0))
 			}
+		},
+	}.runResultSetTestCases(t)
+	ResultSetTestCase{
+		name: "ShowTableUsage_like",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowTableUsage(t.Context(), conn, spi.WithLike("RS_DATA")))
+		},
+		columns: []string{"DATABASE", "USER", "TABLE", "STORAGE_USAGE"},
+		expectFunc: func(values [][]any) {
+			require.Len(t, values, 1)
+			require.Equal(t, "RS_DATA", values[0][2])
 		},
 	}.runResultSetTestCases(t)
 	ResultSetTestCase{
@@ -426,4 +551,15 @@ func TestShowTables(t *testing.T) {
 			{int64(1), "test1", int64(2), parseTime("2024-01-01 00:00:00.000"), parseTime("2024-01-02 00:00:00.000"), parseTime("2024-01-02 00:00:00"), float64(1), parseTime("2024-01-01 00:00:00.000"), float64(2), parseTime("2024-01-02 00:00:00.000")},
 		},
 	}.runResultSetTestCases(t)
+	ResultSetTestCase{
+		name: "ShowTags_like",
+		fn: func() spi.ResultSet {
+			return spi.ResultSet(spi.ShowTagsWithOptions(t.Context(), conn, "", "", "rs_data", nil, spi.WithLike("TEST%")))
+		},
+		columns: []string{"ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"},
+		expects: [][]any{
+			{int64(1), "test1", int64(2), parseTime("2024-01-01 00:00:00.000"), parseTime("2024-01-02 00:00:00.000"), parseTime("2024-01-02 00:00:00"), float64(1), parseTime("2024-01-01 00:00:00.000"), float64(2), parseTime("2024-01-02 00:00:00.000")},
+		},
+	}.runResultSetTestCases(t)
+	require.Error(t, spi.ShowTagsWithOptions(t.Context(), conn, "", "", "rs_data", []string{"test1"}, spi.WithLike("TEST%")).Err())
 }

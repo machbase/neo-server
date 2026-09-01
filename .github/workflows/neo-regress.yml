@@ -46,6 +46,7 @@ jobs:
              cd ~/work/neo-server
              go mod download
              go run mage.go install-neo-web
+             go run mage.go install-neo-engine
              go run mage.go machbase-neo
       - name: run test
         run:  |

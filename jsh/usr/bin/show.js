@@ -65,6 +65,9 @@ const usersConfig = {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const databasesConfig = {
@@ -77,12 +80,15 @@ const databasesConfig = {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const tablesConfig = {
     func: showTables,
     command: 'tables',
-    usage: 'show tables [-a]',
+    usage: 'show tables [-a] [FROM <db>[.<user>]] [LIKE <pattern>] [WITH ALL]',
     description: 'List tables',
     allowNegative: true,
     options: {
@@ -90,6 +96,9 @@ const tablesConfig = {
         all: { type: 'boolean', short: 'a', description: 'Show all hidden tables', default: false },
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const tableConfig = {
@@ -118,6 +127,9 @@ const metaTablesConfig = {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const virtualTablesConfig = {
@@ -130,6 +142,9 @@ const virtualTablesConfig = {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const sessionsConfig = {
@@ -142,6 +157,9 @@ const sessionsConfig = {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const statementsConfig = {
@@ -155,18 +173,24 @@ const statementsConfig = {
         long: { type: 'boolean', short: 'l', description: 'Show full SQL statements', default: false },
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const indexesConfig = {
     func: showIndexes,
     command: 'indexes',
-    usage: 'show indexes',
+    usage: 'show indexes [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'List all indexes',
     allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const indexConfig = {
@@ -187,55 +211,67 @@ const indexConfig = {
 const storageConfig = {
     func: showStorage,
     command: 'storage',
-    usage: 'show storage',
+    usage: 'show storage [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'Show storage statistics',
     allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const tableUsageConfig = {
     func: showTableUsage,
     command: 'table-usage',
-    usage: 'show table-usage',
+    usage: 'show table-usage [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'Show storage usage by table',
     allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const lsmConfig = {
     func: showLsm,
     command: 'lsm',
-    usage: 'show lsm',
+    usage: 'show lsm [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'Show LSM index status',
     allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const indexgapConfig = {
     func: showIndexGap,
     command: 'indexgap',
-    usage: 'show indexgap',
+    usage: 'show indexgap [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'Show index gap information',
     allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const rollupgapConfig = {
     func: showRollupGap,
     command: 'rollupgap',
-    usage: 'show rollupgap',
+    usage: 'show rollupgap [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'Show rollup gap information',
     allowNegative: true,
     options: {
@@ -243,18 +279,24 @@ const rollupgapConfig = {
         long: { type: 'boolean', short: 'l', description: 'Show running state', default: false },
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const tagindexgapConfig = {
     func: showTagIndexGap,
     command: 'tagindexgap',
-    usage: 'show tagindexgap',
+    usage: 'show tagindexgap [FROM <db>[.<user>]] [LIKE <pattern>]',
     description: 'Show tag index gap information',
     allowNegative: true,
     options: {
         help: optionHelp,
         ...pretty.TableArgOptions,
     },
+    positionals: [
+        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
+    ],
 };
 
 const tagsConfig = {
@@ -317,12 +359,13 @@ function _show(line, config) {
     const timeformat = config.timeformat || 'DATETIME';
     const tz = config.tz || 'Local';
     const client = new neoapi.Client(config);
+    const showText = String(line).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     // executeTql() runs on the server over HTTP, independent of this process's mach
     // DSN, so the shell's `use <database>` selection must be forwarded explicitly.
     const database = getCurrentDatabase();
     const useArg = database ? `use('${database}'), ` : '';
     client.executeTql(`
-            SQL(${useArg}'show ${line}')
+            SQL(${useArg}'show ${showText}')
             JSON(timeformat('${timeformat}'), tz('${tz}'))
         `)
         .then((rsp) => {
@@ -396,15 +439,15 @@ function showPorts(config, args) {
 }
 
 function showUsers(config, args) {
-    _show('users', config);
+    _show(`users${showClauses(args.clause)}`, config);
 }
 
 function showDatabases(config, args) {
-    _show(`databases`, config);
+    _show(`databases${showClauses(args.clause)}`, config);
 }
 
 function showTables(config, args) {
-    _show(`tables ${config.all ? '--all' : ''}`, config);
+    _show(`tables${showClauses(args.clause)}${config.all ? ' WITH ALL' : ''}`, config);
 }
 
 function showTable(config, args) {
@@ -412,15 +455,15 @@ function showTable(config, args) {
 }
 
 function showMetaTables(config, args) {
-    _show(`meta-tables`, config);
+    _show(`meta-tables${showClauses(args.clause)}`, config);
 }
 
 function showVirtualTables(config, args) {
-    _show(`virtual-tables`, config);
+    _show(`virtual-tables${showClauses(args.clause)}`, config);
 }
 
 function showSessions(config, args) {
-    _show('sessions', config);
+    _show(`sessions${showClauses(args.clause)}`, config);
 }
 
 function showStatements(config, args) {
@@ -448,11 +491,32 @@ function showStatements(config, args) {
         'RECORD_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) },
         'QUERY': { align: pretty.Align.left, alignHeader: pretty.Align.left, formatter: queryFormat },
     }
-    _show('statements', config);
+    _show(`statements${showClauses(args.clause)}`, config);
 }
 
 function showIndexes(config, args) {
-    _show('indexes', config);
+    _show(`indexes${showClauses(args.clause)}`, config);
+}
+
+function showClauses(clauses) {
+    if (!clauses || clauses.length === 0) return '';
+    const output = [];
+    for (let index = 0; index < clauses.length; index++) {
+        const clause = String(clauses[index]);
+        if (clause.toLowerCase() === 'like') {
+            if (index + 1 >= clauses.length) {
+                throw new Error('LIKE pattern must not be empty');
+            }
+            const pattern = String(clauses[++index]);
+            if (pattern.length === 0) {
+                throw new Error('LIKE pattern must not be empty');
+            }
+            output.push(`LIKE '${pattern.replace(/'/g, "''")}'`);
+            continue;
+        }
+        output.push(clause);
+    }
+    return ` ${output.join(' ')}`;
 }
 
 function showIndex(config, args) {
@@ -466,7 +530,7 @@ function showStorage(config, args) {
         'INDEX_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) },
         'TOTAL_SIZE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) }
     };
-    _show('storage', config);
+    _show(`storage${showClauses(args.clause)}`, config);
 }
 
 function showTableUsage(config, args) {
@@ -474,11 +538,11 @@ function showTableUsage(config, args) {
         'TABLE_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
         'STORAGE_USAGE': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Bytes(v) }
     };
-    _show('table-usage', config);
+    _show(`table-usage${showClauses(args.clause)}`, config);
 }
 
 function showLsm(config, args) {
-    _show('lsm', config);
+    _show(`lsm${showClauses(args.clause)}`, config);
 }
 
 function showIndexGap(config, args) {
@@ -488,7 +552,7 @@ function showIndexGap(config, args) {
         'INDEX_NAME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
         'GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
     };
-    _show('indexgap', config);
+    _show(`indexgap${showClauses(args.clause)}`, config);
 }
 
 function showTagIndexGap(config, args) {
@@ -499,7 +563,7 @@ function showTagIndexGap(config, args) {
         'DISK_GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
         'MEMORY_GAP': { align: pretty.Align.right, alignHeader: pretty.Align.left, formatter: (v) => pretty.Ints(v) },
     };
-    _show('tagindexgap', config);
+    _show(`tagindexgap${showClauses(args.clause)}`, config);
 }
 
 function showRollupGap(config, args) {
@@ -534,7 +598,7 @@ function showRollupGap(config, args) {
         'LAST_WAKEUP_TIME': { align: pretty.Align.right, alignHeader: pretty.Align.left, hidden: !config.long, formatter: lasttimeFormatter },  // LAST_WAKEUP_TIME
         'NEXT_WAKEUP_TIME': { align: pretty.Align.right, alignHeader: pretty.Align.left, hidden: !config.long, formatter: lasttimeFormatter },  // NEXT_WAKEUP_TIME
     };
-    _show('rollupgap', config);
+    _show(`rollupgap${showClauses(args.clause)}`, config);
 }
 
 function showTagStat(config, args) {
@@ -548,5 +612,5 @@ function showTags(config, args) {
         'MAX_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
         'RECENT_ROW_TIME': { align: pretty.Align.left, alignHeader: pretty.Align.left },
     };
-    _show(`tags ${args.table} ${args.tag && args.tag.length > 0 ? args.tag.join(' ') : ''}`, config);
+    _show(`tags ${args.table}${showClauses(args.tag)}`, config);
 }

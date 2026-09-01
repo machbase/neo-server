@@ -27,8 +27,9 @@ import (
 )
 
 type MqttTestCase struct {
-	Ver  uint
-	Name string
+	Ver      uint
+	Name     string
+	ClientID string
 
 	Topic      string
 	Payload    []byte
@@ -50,6 +51,10 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 
 	var recvPayload []byte
 
+	clientID := tc.ClientID
+	if clientID == "" {
+		clientID = "mqtt-test-cli"
+	}
 	cliCfg := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{brokerUrl},
 		KeepAlive:                     20,
@@ -74,7 +79,7 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 		OnConnectError: func(err error) { fmt.Printf("error whilst attempting connection: %s\n", err) },
 		// eclipse/paho.golang/paho provides base mqtt functionality, the below config will be passed in for each connection
 		ClientConfig: paho.ClientConfig{
-			ClientID: "mqtt-test-cli",
+			ClientID: clientID,
 			// OnPublishReceived is a slice of functions that will be called when a message is received.
 			// You can write the function(s) yourself or use the supplied Router
 			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
@@ -145,6 +150,37 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 		require.Equal(t, hex.Dump(tc.ExpectBin), hex.Dump(recvPayload))
 		return
 	}
+}
+
+func TestMqttQueryUsesMappedCurrentUser(t *testing.T) {
+	username := fmt.Sprintf("mqtt_query_user_%d", time.Now().UnixNano())
+	clientID := "mqtt-current-user"
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	_, err = conn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+	require.NoError(t, err)
+	conn.Close()
+	mqttServer.setClientUser(clientID, username)
+	t.Cleanup(func() {
+		mqttServer.clearClientUser(clientID)
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	runMqttTest(t, &MqttTestCase{
+		Name:      "mapped_current_user",
+		ClientID:  clientID,
+		Topic:     "db/query",
+		Payload:   []byte(`{"q":"SELECT current_user()"}`),
+		Subscribe: "db/reply",
+		ExpectFunc: func(t *testing.T, payload []byte) {
+			require.Equal(t, strings.ToUpper(username), gjson.GetBytes(payload, "data.rows.0.0").String(), string(payload))
+		},
+	})
 }
 
 func TestMqttQuery(t *testing.T) {
@@ -605,6 +641,199 @@ func TestMqttWrite(t *testing.T) {
 	}
 }
 
+// TestMqttWriteWithDatabaseParam verifies the MQTT v5 "db" user property support
+// for multiple-database writes (machbase/neo#1484).
+func TestMqttWriteWithDatabaseParam(t *testing.T) {
+	dbName := fmt.Sprintf("MQTTWRITEDB%d", time.Now().UnixNano()%1000000)
+	tableName := fmt.Sprintf("MQTT_WRITE_DB_T_%d", time.Now().UnixNano())
+
+	doQuery := func(t *testing.T, sqlText string, db string) *http.Response {
+		t.Helper()
+		params := url.Values{"q": []string{sqlText}}
+		if db != "" {
+			params.Set("db", db)
+		}
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		rsp.Body.Close()
+		return rsp
+	}
+
+	require.Equal(t, http.StatusOK, doQuery(t, "CREATE DATABASE IF NOT EXISTS "+dbName, "").StatusCode)
+	t.Cleanup(func() {
+		require.Equal(t, http.StatusOK, doQuery(t, "DROP DATABASE "+dbName+" CASCADE", "").StatusCode)
+	})
+
+	creTable := fmt.Sprintf(`create tag table %s (name varchar(200) primary key, time datetime basetime, value double)`, tableName)
+	require.Equal(t, http.StatusOK, doQuery(t, creTable, "").StatusCode)
+	t.Cleanup(func() {
+		require.Equal(t, http.StatusOK, doQuery(t, "drop table "+tableName, "").StatusCode)
+	})
+	require.Equal(t, http.StatusOK, doQuery(t, creTable, dbName).StatusCode)
+
+	runMqttTest(t, &MqttTestCase{
+		Ver:        5,
+		Name:       "mqtt-write-db-param",
+		Topic:      "db/write/" + tableName,
+		Properties: map[string]string{"db": dbName},
+		Payload:    []byte(`[["mqtt-other-db", 1705291859000000000, 1.5]]`),
+	})
+
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	defer conn.Close()
+	_, err = conn.ExecContext(t.Context(), "USE "+dbName)
+	require.NoError(t, err)
+	_, err = conn.ExecContext(t.Context(), "EXEC table_flush("+tableName+")")
+	require.NoError(t, err)
+	var count int
+	require.NoError(t, conn.QueryRowContext(t.Context(), "select count(*) from "+tableName+" where name = 'mqtt-other-db'").Scan(&count))
+	require.Equal(t, 1, count)
+	_, err = conn.ExecContext(t.Context(), "USE MACHBASEDB")
+	require.NoError(t, err)
+	require.NoError(t, conn.QueryRowContext(t.Context(), "select count(*) from "+tableName+" where name = 'mqtt-other-db'").Scan(&count))
+	require.Equal(t, 0, count)
+}
+
+// TestMqttWriteQualifiedTableNamePrecedence verifies that a "db.user.table"/
+// "user.table" qualifier embedded in the MQTT topic takes precedence over the
+// "db" v5 user property, for both insert and append, and that the qualifier
+// works even over plain MQTT v3.1 (no user properties) topics.
+func TestMqttWriteQualifiedTableNamePrecedence(t *testing.T) {
+	db1 := fmt.Sprintf("MQTTWRITEQDB1%d", time.Now().UnixNano()%1000000)
+	db2 := fmt.Sprintf("MQTTWRITEQDB2%d", time.Now().UnixNano()%1000000)
+	tableName := fmt.Sprintf("MQTT_WRITE_Q_T_%d", time.Now().UnixNano())
+
+	doQuery := func(t *testing.T, sqlText string, db string) *http.Response {
+		t.Helper()
+		params := url.Values{"q": []string{sqlText}}
+		if db != "" {
+			params.Set("db", db)
+		}
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params.Encode(), nil)
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		rsp.Body.Close()
+		return rsp
+	}
+
+	for _, db := range []string{db1, db2} {
+		require.Equal(t, http.StatusOK, doQuery(t, "CREATE DATABASE IF NOT EXISTS "+db, "").StatusCode)
+		db := db // capture
+		t.Cleanup(func() {
+			require.Equal(t, http.StatusOK, doQuery(t, "DROP DATABASE "+db+" CASCADE", "").StatusCode)
+		})
+	}
+
+	creTable := fmt.Sprintf(`create tag table %s (name varchar(200) primary key, time datetime basetime, value double)`, tableName)
+	for _, db := range []string{"", db1, db2} {
+		require.Equal(t, http.StatusOK, doQuery(t, creTable, db).StatusCode)
+	}
+	t.Cleanup(func() {
+		require.Equal(t, http.StatusOK, doQuery(t, "drop table "+tableName, "").StatusCode)
+	})
+
+	// countIn counts rows with the given name in the given database, after
+	// flushing the TAG table's index (needed for both plain insert and append,
+	// since TAG tables only update their index lazily).
+	countIn := func(t *testing.T, db string, name string) int {
+		t.Helper()
+		conn, err := spi.Connect(t.Context(), "sys")
+		require.NoError(t, err)
+		defer conn.Close()
+		if db != "" {
+			_, err = conn.ExecContext(t.Context(), "USE "+db)
+			require.NoError(t, err)
+		}
+		_, err = conn.ExecContext(t.Context(), "EXEC table_flush("+tableName+")")
+		require.NoError(t, err)
+		var count int
+		require.NoError(t, conn.QueryRowContext(t.Context(),
+			"select count(*) from "+tableName+" where name = '"+name+"'").Scan(&count))
+		return count
+	}
+
+	t.Run("insert_v3_topic_db_user_table", func(t *testing.T) {
+		// Plain MQTT v3.1 topic (no user properties): db/write/<db1>.SYS.<table>
+		runMqttTest(t, &MqttTestCase{
+			Ver:     4,
+			Name:    "mqtt-insert-v3-db-user-table",
+			Topic:   "db/write/" + db1 + ".SYS." + tableName,
+			Payload: []byte(`[["v3-path-qualified", 1705291859000000000, 1.5]]`),
+		})
+		require.Equal(t, 1, countIn(t, db1, "v3-path-qualified"))
+		require.Equal(t, 0, countIn(t, "", "v3-path-qualified"))
+	})
+
+	t.Run("insert_v5_user_table_with_db_property", func(t *testing.T) {
+		// db/write/SYS.<table> with the "db" user property -> db1
+		runMqttTest(t, &MqttTestCase{
+			Ver:        5,
+			Name:       "mqtt-insert-v5-user-table-db-property",
+			Topic:      "db/write/SYS." + tableName,
+			Properties: map[string]string{"db": db1},
+			Payload:    []byte(`[["v5-property-db", 1705291860000000000, 1.5]]`),
+		})
+		require.Equal(t, 1, countIn(t, db1, "v5-property-db"))
+		require.Equal(t, 0, countIn(t, "", "v5-property-db"))
+	})
+
+	t.Run("insert_path_db_wins_over_property", func(t *testing.T) {
+		// db/write/<db1>.SYS.<table> with "db" user property db2 -> db1 wins
+		runMqttTest(t, &MqttTestCase{
+			Ver:        5,
+			Name:       "mqtt-insert-path-wins",
+			Topic:      "db/write/" + db1 + ".SYS." + tableName,
+			Properties: map[string]string{"db": db2},
+			Payload:    []byte(`[["insert-path-wins", 1705291861000000000, 1.5]]`),
+		})
+		require.Equal(t, 1, countIn(t, db1, "insert-path-wins"))
+		require.Equal(t, 0, countIn(t, db2, "insert-path-wins"))
+	})
+
+	t.Run("append_v3_topic_db_user_table", func(t *testing.T) {
+		// Plain MQTT v3.1 topic (no user properties): db/append/<db1>.SYS.<table>
+		runMqttTest(t, &MqttTestCase{
+			Ver:     4,
+			Name:    "mqtt-append-v3-db-user-table",
+			Topic:   "db/append/" + db1 + ".SYS." + tableName,
+			Payload: []byte(`["append-v3-path-qualified", 1705291862000000000, 1.5]`),
+		})
+		spi.FlushAppendWorkers(db1, "SYS", tableName)
+		require.Equal(t, 1, countIn(t, db1, "append-v3-path-qualified"))
+		require.Equal(t, 0, countIn(t, "", "append-v3-path-qualified"))
+	})
+
+	t.Run("append_v5_user_table_with_db_property", func(t *testing.T) {
+		// db/append/SYS.<table> with the "db" user property -> db1
+		runMqttTest(t, &MqttTestCase{
+			Ver:        5,
+			Name:       "mqtt-append-v5-user-table-db-property",
+			Topic:      "db/append/SYS." + tableName,
+			Properties: map[string]string{"db": db1},
+			Payload:    []byte(`["append-v5-property-db", 1705291863000000000, 1.5]`),
+		})
+		spi.FlushAppendWorkers(db1, "SYS", tableName)
+		require.Equal(t, 1, countIn(t, db1, "append-v5-property-db"))
+		require.Equal(t, 0, countIn(t, "", "append-v5-property-db"))
+	})
+
+	t.Run("append_path_db_wins_over_property", func(t *testing.T) {
+		// db/append/<db1>.SYS.<table> with "db" user property db2 -> db1 wins
+		runMqttTest(t, &MqttTestCase{
+			Ver:        5,
+			Name:       "mqtt-append-path-wins",
+			Topic:      "db/append/" + db1 + ".SYS." + tableName,
+			Properties: map[string]string{"db": db2},
+			Payload:    []byte(`["append-path-wins", 1705291864000000000, 1.5]`),
+		})
+		spi.FlushAppendWorkers(db1, "SYS", tableName)
+		require.Equal(t, 1, countIn(t, db1, "append-path-wins"))
+		require.Equal(t, 0, countIn(t, db2, "append-path-wins"))
+	})
+}
+
 func TestMqttWriteFailures(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")
 	require.NoError(t, err)
@@ -924,9 +1153,9 @@ type mqttTestAuthServer struct {
 	allowErr error
 }
 
-func (s *mqttTestAuthServer) ValidateClientToken(token string) (bool, error) {
+func (s *mqttTestAuthServer) ValidateClientToken(_ context.Context, token string) (string, bool, error) {
 	s.token = token
-	return s.allow, s.allowErr
+	return "SYS", s.allow, s.allowErr
 }
 
 func (s *mqttTestAuthServer) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
@@ -1068,6 +1297,29 @@ func TestAuthHookOnConnectAuthenticate(t *testing.T) {
 		hook := &AuthHook{svr: &mqttd{log: log, enableTokenAuth: true, authServer: &mqttTestAuthServer{allowErr: errors.New("boom")}}}
 		require.False(t, hook.OnConnectAuthenticate(client, pk))
 	})
+
+	t.Run("cert_verifier_bypassed_on_non_tls_listener", func(t *testing.T) {
+		// e.g. the internal unix socket listener must not be rejected when
+		// EnableTls is set for the TCP/WS listeners of the same broker.
+		unixClient := &mqtt.Client{ID: "client-unix", Net: mqtt.ClientConnection{Listener: "mqtt-unix-0"}}
+		hook := &AuthHook{svr: &mqttd{log: log, certVerifier: NewX509CertVerifier(nil)}}
+		require.True(t, hook.OnConnectAuthenticate(unixClient, pk))
+	})
+
+	t.Run("cert_verifier_rejects_non_tls_conn_on_tls_listener", func(t *testing.T) {
+		tlsClient := &mqtt.Client{ID: "client-tls", Net: mqtt.ClientConnection{Listener: "mqtt-tls-0"}}
+		hook := &AuthHook{svr: &mqttd{log: log, certVerifier: NewX509CertVerifier(nil)}}
+		require.False(t, hook.OnConnectAuthenticate(tlsClient, pk))
+	})
+}
+
+func TestIsMqttTlsListener(t *testing.T) {
+	require.True(t, isMqttTlsListener("mqtt-tls-0"))
+	require.True(t, isMqttTlsListener("mqtt-wss-0"))
+	require.False(t, isMqttTlsListener("mqtt-tcp-0"))
+	require.False(t, isMqttTlsListener("mqtt-ws-0"))
+	require.False(t, isMqttTlsListener("mqtt-unix-0"))
+	require.False(t, isMqttTlsListener("mqtt2-ws"))
 }
 
 func TestLoadTlsConfigErrorsAndTcpHelper(t *testing.T) {

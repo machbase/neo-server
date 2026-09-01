@@ -31,6 +31,7 @@ var Aliases = map[string]any{
 	"cleanpackage":       CleanPackage,
 	"buildversion":       BuildVersion,
 	"install-neo-web":    InstallNeoWeb,
+	"install-neo-engine": InstallNeoEngine,
 }
 
 var vLastVersion string
@@ -74,6 +75,7 @@ func Build(target string, strip bool) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		"-X", fmt.Sprintf("%s/spi/mach/native.Version=%s", mod, strings.TrimSpace(neo_engine_version)),
 	}, " ")
 	if strip {
 		// this may reduce binary size about (110M -> 86M)
@@ -180,6 +182,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		"-X", fmt.Sprintf("%s/spi/mach/native.Version=%s", mod, strings.TrimSpace(neo_engine_version)),
 	}, " ")
 	args = append(args, "-ldflags", ldflags)
 
@@ -581,6 +584,47 @@ func InstallNeoWebX(ver string) error {
 		return err
 	}
 	if err := unzip(dst, uiDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+//go:embed neo-engine-version.txt
+var neo_engine_version string
+
+func InstallNeoEngine() error {
+	return InstallNeoEngineX(neo_engine_version)
+}
+
+func InstallNeoEngineX(ver string) error {
+	mg.Deps(CheckTmp)
+
+	ver = strings.TrimSpace(ver)
+	archiveOS := runtime.GOOS
+	archiveArch := runtime.GOARCH
+	if archiveOS == "linux" && archiveArch == "arm" {
+		archiveArch = "arm32"
+	}
+	archiveName := fmt.Sprintf("libmachengine_standard_%s_%s.zip", archiveOS, archiveArch)
+	url := fmt.Sprintf("https://github.com/machbase/packages/releases/download/%s/%s", ver, archiveName)
+	dst := filepath.Join("./tmp", archiveName)
+	nativeDir := "./spi/mach/native"
+
+	if runtime.GOOS == "windows" {
+		if err := wget(url, dst); err != nil {
+			return err
+		}
+	} else {
+		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
+			return err
+		}
+	}
+
+	if err := os.MkdirAll(nativeDir, 0755); err != nil {
+		return err
+	}
+	_ = os.Remove(filepath.Join(nativeDir, strings.TrimSuffix(archiveName, ".zip")+".a"))
+	if err := unzip(dst, nativeDir); err != nil {
 		return err
 	}
 	return nil

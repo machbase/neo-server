@@ -60,6 +60,12 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			return
 		}
 	}
+	if execUser, errReason := svr.resolveExecUser(ctx); errReason != "" {
+		ctx.JSON(http.StatusUnauthorized, &QueryResponse{Success: false, Reason: errReason})
+		return
+	} else {
+		req.ExecUser = execUser
+	}
 
 	// golang json decoder case-insensitive for struct field names,
 	// as result, it accepts both "q" and "Q" into req.SqlText

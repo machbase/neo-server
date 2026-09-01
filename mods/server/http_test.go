@@ -4,17 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -738,33 +732,12 @@ func TestIsErrTokenExpired(t *testing.T) {
 	require.False(t, IsErrTokenExpired(fmt.Errorf("other error")))
 }
 
-func makeAuthorizedClientToken(t *testing.T) (*Server, string) {
-	t.Helper()
-
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			CommonName: "client1",
-		},
-		NotBefore: time.Now().Add(-time.Hour),
-		NotAfter:  time.Now().Add(time.Hour),
-	}
-
-	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
-	require.NoError(t, err)
-
-	server := &Server{
-		authorizedKeysDir: t.TempDir(),
-	}
-	require.NoError(t, server.SetAuthorizedCertificate("client1", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})))
-
-	token, err := GenerateClientToken("client1", privateKey, "b")
-	require.NoError(t, err)
-
-	return server, token
+func TestMaskLogQueryToken(t *testing.T) {
+	require.Equal(t, "", maskLogQueryToken(""))
+	require.Equal(t, "token=****", maskLogQueryToken("token=nt_abc123"))
+	require.Equal(t, "a=1&token=****&b=2", maskLogQueryToken("a=1&token=nt_abc123&b=2"))
+	require.Equal(t, "a=1&b=2", maskLogQueryToken("a=1&b=2"))
+	require.Equal(t, "nottoken=nt_abc123", maskLogQueryToken("nottoken=nt_abc123"))
 }
 
 func TestHandleAuthToken(t *testing.T) {
@@ -802,16 +775,15 @@ func TestHandleAuthToken(t *testing.T) {
 		require.True(t, ctx.IsAborted())
 	})
 
-	t.Run("accepts valid query token", func(t *testing.T) {
-		authServer, token := makeAuthorizedClientToken(t)
-		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: authServer}
-		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files?token="+url.QueryEscape(token), nil)
+	t.Run("rejects legacy signed query token", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{}}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files?token="+url.QueryEscape("client1:b:deadbeef"), nil)
 
 		svr.handleAuthToken(ctx)
 
-		require.False(t, ctx.IsAborted())
-		require.Equal(t, http.StatusOK, writer.Code)
-		require.Empty(t, writer.Body.String())
+		require.True(t, ctx.IsAborted())
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "missing authorization token")
 	})
 }
 
@@ -1551,7 +1523,7 @@ func TestHttpWrite(t *testing.T) {
 			rsp.Body.Close()
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
-			spi.FlushAppendWorkers()
+			spi.FlushAppendWorkers("", "")
 			conn, err := spi.Connect(t.Context(), "sys")
 			require.NoError(t, err)
 			_, err = conn.ExecContext(t.Context(), `EXEC table_flush(test_w)`)
@@ -2685,13 +2657,14 @@ Host: localhost:8080`},
 	}
 	require.NotNil(t, originalSessionLimit)
 
+	var generatedKeyId int64
 	JsonRpcTestCase{
 		name:   "listKeys_beforeGenerate",
 		method: "key.list",
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			for _, item := range rsp.Get("result").Array() {
-				require.NotEqual(t, generatedKeyID, item.Get("id").String(), rsp.String())
+				require.NotEqual(t, generatedKeyID, item.Get("name").String(), rsp.String())
 			}
 		},
 	}.run(t, at)
@@ -2701,12 +2674,14 @@ Host: localhost:8080`},
 		params: []interface{}{generatedKeyID, "ecdsa", 0, 0, true},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			result := rsp.Get("result")
-			require.Equal(t, generatedKeyID, result.Get("id").String(), rsp.String())
+			require.Equal(t, generatedKeyID, result.Get("name").String(), rsp.String())
+			require.NotZero(t, result.Get("id").Int(), rsp.String())
+			generatedKeyId = result.Get("id").Int()
 			require.Contains(t, result.Get("certificate").String(), "BEGIN CERTIFICATE", rsp.String())
 			privateKey := result.Get("key").String()
 			require.Contains(t, privateKey, "BEGIN ", rsp.String())
 			require.Contains(t, privateKey, "PRIVATE KEY", rsp.String())
-			require.NotEmpty(t, result.Get("token").String(), rsp.String())
+			require.Empty(t, result.Get("token").String(), rsp.String())
 			require.NotEmpty(t, result.Get("zip").String(), rsp.String())
 			require.NotEmpty(t, result.Get("serverKey").String(), rsp.String())
 		},
@@ -2718,7 +2693,7 @@ Host: localhost:8080`},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			found := false
 			for _, item := range rsp.Get("result").Array() {
-				if item.Get("id").String() == generatedKeyID {
+				if item.Get("name").String() == generatedKeyID {
 					found = true
 					break
 				}
@@ -2729,7 +2704,7 @@ Host: localhost:8080`},
 	JsonRpcTestCase{
 		name:   "deleteKey",
 		method: "key.delete",
-		params: []interface{}{generatedKeyID},
+		params: []interface{}{generatedKeyId},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.True(t, rsp.Get("result").Exists(), rsp.String())
 		},
@@ -2740,7 +2715,7 @@ Host: localhost:8080`},
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			for _, item := range rsp.Get("result").Array() {
-				require.NotEqual(t, generatedKeyID, item.Get("id").String(), rsp.String())
+				require.NotEqual(t, generatedKeyID, item.Get("name").String(), rsp.String())
 			}
 		},
 	}.run(t, at)

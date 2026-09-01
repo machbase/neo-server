@@ -64,6 +64,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	delimiter := ","
 	timeformat := "ns"
 	tz := time.UTC
+	db := ""
 
 	writePath := strings.ToUpper(strings.TrimPrefix(pk.TopicName, "db/write/"))
 	wp, err := util.ParseWritePath(writePath)
@@ -90,6 +91,8 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 				timeformat = p.Val
 			case "tz":
 				tz, _ = util.ParseTimeLocation(p.Val, time.UTC)
+			case "db":
+				db = p.Val
 			case "header":
 				switch strings.ToLower(p.Val) {
 				case "skip":
@@ -130,17 +133,42 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		s.log.Warn(cl.Net.Remote, pk.TopicName, rsp.Reason)
 		return
 	}
+	// A "db.user.table"/"user.table" qualifier embedded in the topic path always
+	// takes precedence over the "db" user property.
+	pathDB, pathUser, pathTable := splitWriteTableName(wp.Table)
+	if pathDB != "" {
+		db = pathDB
+	}
+	if db != "" {
+		if err := validateDatabaseName(db); err != nil {
+			rsp.Reason = err.Error()
+			s.log.Warn(cl.Net.Remote, pk.TopicName, rsp.Reason)
+			return
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := spi.Connect(ctx, "sys")
+	user := "sys"
+	if execUser := s.getClientUser(cl.ID); execUser != "" {
+		user = execUser
+	}
+	conn, err := spi.Connect(ctx, user)
 	if err != nil {
 		rsp.Reason = err.Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
 		return
 	}
 	defer conn.Close()
+
+	if db != "" {
+		if _, err := conn.ExecContext(ctx, "USE "+client.QuoteIdentifier(db)); err != nil {
+			rsp.Reason = err.Error()
+			s.log.Warn(cl.Net.Remote, rsp.Reason)
+			return
+		}
+	}
 
 	exists, err := spi.ExistsTable(ctx, conn, wp.Table)
 	if err != nil {
@@ -153,8 +181,19 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 
+	// When "db" comes from the user property (the topic path itself wasn't
+	// db-qualified), describe the table against the resolved database explicitly
+	// instead of the "MACHBASEDB" fallback, which would otherwise ignore it.
+	descTableName := wp.Table
+	if pathDB == "" && db != "" {
+		descUser := pathUser
+		if descUser == "" {
+			descUser = strings.ToUpper(user)
+		}
+		descTableName = db + "." + descUser + "." + pathTable
+	}
 	var desc *spi.TableDescription
-	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", wp.Table, false); rs.Err() != nil {
+	if rs := spi.ShowTable(ctx, conn, "MACHBASEDB", "SYS", descTableName, false); rs.Err() != nil {
 		rsp.Reason = rs.Err().Error()
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
 		return
@@ -321,6 +360,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	delimiter := ","
 	timeformat := "ns"
 	tz := time.UTC
+	db := ""
 
 	if pk.ProtocolVersion == 5 {
 		for _, p := range pk.Properties.User {
@@ -339,6 +379,8 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 				timeformat = p.Val
 			case "tz":
 				tz, _ = util.ParseTimeLocation(p.Val, time.UTC)
+			case "db":
+				db = p.Val
 			case "header":
 				switch strings.ToLower(p.Val) {
 				case "skip":
@@ -373,17 +415,26 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 
-	tableNameFields := strings.SplitN(wp.Table, ".", 2)
-	tableUser := "SYS"
-	if len(tableNameFields) == 2 {
-		tableUser = strings.ToUpper(tableNameFields[0])
-		wp.Table = strings.ToUpper(tableNameFields[1])
-	} else {
-		wp.Table = strings.ToUpper(wp.Table)
+	// A "db.user.table"/"user.table" qualifier embedded in the topic path always
+	// takes precedence over the "db" user property and the authenticated MQTT
+	// client user, matching the same precedence rule used by handleWrite.
+	pathDB, pathUser, pathTable := splitWriteTableName(wp.Table)
+	if pathDB != "" {
+		db = pathDB
 	}
-	var appenderName = tableUser + "." + wp.Table
+	wp.Table = pathTable
+	tableUser := pathUser
+	if tableUser == "" {
+		tableUser = s.getClientUser(cl.ID)
+	}
+	if db != "" {
+		if err := validateDatabaseName(db); err != nil {
+			s.log.Warn(cl.Net.Remote, "invalid db:", err.Error())
+			return
+		}
+	}
 	var appender spi.Appender
-	if aw, err := spi.GetAppendWorker(context.TODO(), appenderName); err != nil {
+	if aw, err := spi.GetAppendWorker(context.TODO(), db, tableUser, wp.Table); err != nil {
 		s.log.Warn(cl.Net.Remote, "fail to get append worker,", err.Error())
 		return
 	} else {

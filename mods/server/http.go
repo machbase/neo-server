@@ -555,6 +555,25 @@ func (svr *httpd) getJwtClaim(ctx *gin.Context) (Claim, bool) {
 	}
 }
 
+// resolveExecUser resolves the authenticated execution user (API token user or JWT
+// subject) for /db/query and /db/write requests (#1483/#1468). An empty execUser
+// means the caller should fall back to the default "sys" user. errReason is non-empty
+// only when the request is API-token authenticated but the token has no user set.
+func (svr *httpd) resolveExecUser(ctx *gin.Context) (execUser string, errReason string) {
+	if authenticated, _ := ctx.Get("api-token-authenticated"); authenticated == true {
+		user, _ := ctx.Get("api-token-user")
+		execUser, _ = user.(string)
+		if execUser == "" {
+			return "", "authorization user is missing"
+		}
+		return execUser, ""
+	}
+	if claim, ok := svr.getJwtClaim(ctx); ok && claim != nil {
+		execUser = claim.Subject
+	}
+	return execUser, ""
+}
+
 func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	if svr.authServer == nil {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "no auth server"})
@@ -565,8 +584,10 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	if !exist {
 		tok := ctx.Query("token")
 		if tok != "" {
-			result, err := svr.authServer.ValidateClientToken(tok)
+			user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
 			if err == nil && result {
+				ctx.Set("api-token-user", user)
+				ctx.Set("api-token-authenticated", true)
 				return
 			}
 		}
@@ -580,11 +601,13 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 			continue
 		}
 		tok := h[7:]
-		result, err := svr.authServer.ValidateClientToken(tok)
+		user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
 		if err != nil {
 			svr.log.Errorf("client private key %s", err.Error())
 		}
 		if result {
+			ctx.Set("api-token-user", user)
+			ctx.Set("api-token-authenticated", true)
 			found = true
 			break
 		}
@@ -2662,6 +2685,21 @@ var ignoreAccessLog = []struct {
 	{pathSuffix: "/web/api/check", method: http.MethodGet},
 }
 
+// maskLogQueryToken replaces the value of a "token" query parameter with "****"
+// so API tokens are never written to the access log.
+func maskLogQueryToken(rawQuery string) string {
+	if rawQuery == "" {
+		return rawQuery
+	}
+	parts := strings.Split(rawQuery, "&")
+	for i, part := range parts {
+		if key, _, ok := strings.Cut(part, "="); ok && key == "token" {
+			parts[i] = key + "=****"
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
 func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
@@ -2689,7 +2727,7 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 		}
 
 		url := c.Request.Host + c.Request.URL.Path
-		raw := c.Request.URL.RawQuery
+		raw := maskLogQueryToken(c.Request.URL.RawQuery)
 		if len(raw) > 0 {
 			url = url + "?" + raw
 		}

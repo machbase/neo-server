@@ -71,6 +71,8 @@ type Server struct {
 	proxyMgr          *ProxyManager
 	serviceController *service.Controller
 	models            *model.Provider
+	apiTokenVerifier  *ApiTokenVerifier
+	x509CertVerifier  *X509CertVerifier
 
 	startupTime      time.Time
 	servicePorts     map[string][]*spi.ServicePort
@@ -761,6 +763,8 @@ func (s *Server) startModelService() error {
 	s.models = model.NewProvider(
 		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
 	)
+	s.apiTokenVerifier = NewApiTokenVerifier(s.models)
+	s.x509CertVerifier = NewX509CertVerifier(s.models)
 	return nil
 }
 
@@ -901,6 +905,12 @@ func (s *Server) startMqttServer() error {
 		WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
 		WithMqttTqlLoader(tql.NewLoader()),
 		WithMqttWsHandleListener(s.Http.Listeners),
+	}
+	if s.Mqtt.EnableTls {
+		if s.x509CertVerifier == nil {
+			return errors.New("x509 certificate verifier is not available")
+		}
+		opts = append(opts, WithMqttX509CertVerifier(s.x509CertVerifier))
 	}
 	if s.Mqtt.EnablePersistence {
 		mqtt_dir := filepath.Join(s.homeDirPath, "mqtt", "data")
@@ -1123,6 +1133,9 @@ func (s *Server) registerJsonRpcHandlers() {
 	ctl.RegisterJsonRpcHandler("key.list", s.listKeys)
 	ctl.RegisterJsonRpcHandler("key.generate", s.genKey)
 	ctl.RegisterJsonRpcHandler("key.delete", s.deleteKey)
+	ctl.RegisterJsonRpcHandler("token.list", s.listApiTokens)
+	ctl.RegisterJsonRpcHandler("token.generate", s.generateApiToken)
+	ctl.RegisterJsonRpcHandler("token.delete", s.deleteApiToken)
 	ctl.RegisterJsonRpcHandler("server.certificate.get", s.getServerCertificate)
 	ctl.RegisterJsonRpcHandler("schedule.list", s.listSchedules)
 	ctl.RegisterJsonRpcHandler("schedule.get", s.getSchedule)
@@ -1746,25 +1759,31 @@ func (s *Server) closeResultBridge(handle string) error {
 //
 // return: key information list
 func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
-	rsp, err := s.ListKey(ctx)
+	if s.models == nil {
+		return nil, errors.New("model provider is not available")
+	}
+	scope, err := modelUserScopeFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if !rsp.Success {
-		return nil, errors.New(rsp.Reason)
+	definitions, err := s.models.GetAllX509Certs(ctx, scope)
+	if err != nil {
+		return nil, err
 	}
-	if rsp.Keys == nil {
-		return []*KeyInfo{}, nil
+	result := make([]*KeyInfo, 0, len(definitions))
+	for index, definition := range definitions {
+		result = append(result, &KeyInfo{Idx: index, Id: definition.Id, Name: definition.Name, NotBefore: definition.NotBefore.Unix(), NotAfter: definition.NotAfter.Unix()})
 	}
-	return rsp.Keys, nil
+	return result, nil
 }
 
 // genKey generates a new key pair and returns the key information.
-// It returns the key information including the identifier, certificate, private key, and token if successful.
-// The return type is map[string]string with keys "id", "certificate", "key", and "token".
+// It returns the key information including the management id, name (CommonName),
+// certificate, and private key if successful.
 //
 // params:
-//   - id: the identifier for the key pair, must be alphanumeric and can include _.@-
+//   - name: the CommonName for the key pair, must be alphanumeric and can include _.@-;
+//     duplicates across owners (or reissued certificates) are allowed
 //   - typ: the type of key to generate, must be RSA or ECDSA
 //   - notBefore: the start time of the key's validity period in Unix timestamp (sec.)
 //     if not specified or 0, the current time will be used
@@ -1773,17 +1792,17 @@ func (s *Server) listKeys(ctx context.Context) ([]*KeyInfo, error) {
 //   - store: whether to store the key pair in the server's key store
 //
 // return: the generated key information
-//   - "id": the identifier of the key pair
+//   - "id": the management id of the key pair (0 when store is false)
+//   - "name": the CommonName of the key pair
 //   - "certificate": the certificate of the key pair
 //   - "key": the private key of the key pair
-//   - "token": the token associated with the key pair
 //   - "serverKey": the server's certificate (if store is true)
 //   - "zip": a zip archive containing the key pair and server certificate (if store is true)
-func (s *Server) genKey(ctx context.Context, id string, typ string, notBefore int64, notAfter int64, store bool) (any, error) {
-	id = strings.ToLower(id)
-	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", id)
+func (s *Server) genKey(ctx context.Context, name string, typ string, notBefore int64, notAfter int64, store bool) (any, error) {
+	name = strings.ToLower(name)
+	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", name)
 	if !pass {
-		return nil, fmt.Errorf("id contains invalid letter, use only alphnum and _.@-")
+		return nil, fmt.Errorf("name contains invalid letter, use only alphnum and _.@-")
 	}
 	typ = strings.ToLower(typ)
 	if !strings.HasPrefix(typ, "rsa") && !strings.HasPrefix(typ, "ec") {
@@ -1796,7 +1815,7 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, notBefore in
 		notAfter = notBefore + 10*365*24*60*60 // 10 years in seconds
 	}
 	rsp, err := s.GenKey(ctx, &GenKeyRequest{
-		Id:        id,
+		Name:      name,
 		Type:      typ,
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
@@ -1810,9 +1829,9 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, notBefore in
 	}
 	ret := map[string]any{
 		"id":          rsp.Id,
+		"name":        rsp.Name,
 		"certificate": rsp.Certificate,
 		"key":         rsp.Key,
-		"token":       rsp.Token,
 	}
 	if store {
 		serverKey, err := s.ServerKey(ctx, nil)
@@ -1822,7 +1841,7 @@ func (s *Server) genKey(ctx context.Context, id string, typ string, notBefore in
 		if !serverKey.Success {
 			return nil, errors.New(serverKey.Reason)
 		}
-		buf, err := archiveGeneratedKey(id, rsp, serverKey.Certificate)
+		buf, err := archiveGeneratedKey(name, rsp, serverKey.Certificate)
 		if err != nil {
 			return nil, err
 		}
@@ -1842,7 +1861,6 @@ func archiveGeneratedKey(name string, rsp *GenKeyResponse, serverCert string) ([
 		{"server.pem", serverCert},
 		{name + "_cert.pem", rsp.Certificate},
 		{name + "_key.pem", rsp.Key},
-		{name + "_token.txt", rsp.Token},
 	}
 
 	for _, file := range files {
@@ -1868,10 +1886,10 @@ func archiveGeneratedKey(name string, rsp *GenKeyResponse, serverCert string) ([
 // deleteKey deletes a key pair from the server key store.
 //
 // params:
-//   - id: key pair identifier
+//   - id: management id of the key pair, as returned by key.list/key.generate
 //
 // return: null on success
-func (s *Server) deleteKey(ctx context.Context, id string) error {
+func (s *Server) deleteKey(ctx context.Context, id int64) error {
 	rsp, err := s.DelKey(ctx, &DelKeyRequest{
 		Id: id,
 	})
@@ -2631,56 +2649,6 @@ func (s *Server) checkListenPort(address string) error {
 	return nil
 }
 
-// AuthorizedCertificate returns client's X.509 certificate, it returns nil if not found with the given id
-func (s *Server) AuthorizedCertificate(id string) (*x509.Certificate, error) {
-	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
-	nfo, err := os.Stat(path)
-	if err != nil {
-		return nil, os.ErrNotExist
-	}
-	if nfo.IsDir() || nfo.Size() == 0 {
-		return nil, os.ErrExist
-	}
-	buff, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	block, _ := pem.Decode(buff)
-	return x509.ParseCertificate(block.Bytes)
-}
-
-func (s *Server) IterateAuthorizedCertificates(cb func(id string) bool) error {
-	if cb == nil {
-		return nil
-	}
-	entries, err := os.ReadDir(s.authorizedKeysDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), "_cert.pem") || entry.IsDir() {
-			continue
-		}
-
-		id := strings.TrimSuffix(entry.Name(), "_cert.pem")
-		flag := cb(id)
-		if !flag {
-			break
-		}
-	}
-	return nil
-}
-
-func (s *Server) SetAuthorizedCertificate(id string, pemBytes []byte) error {
-	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
-	return os.WriteFile(path, pemBytes, 00600)
-}
-
-func (s *Server) RemoveAuthorizedCertificate(id string) error {
-	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
-	return os.Remove(path)
-}
-
 func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
 	buff, err := os.ReadFile(s.ServerPrivateKeyPath())
 	if err != nil {
@@ -3076,33 +3044,19 @@ func mkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 
 var _ AuthServer = (*Server)(nil)
 
-func (s *Server) ValidateClientToken(token string) (bool, error) {
-	parts := strings.SplitN(token, ":", 3)
-	if len(parts) == 0 {
-		return false, errors.New("invalid token")
+func (s *Server) ValidateClientToken(ctx context.Context, token string) (string, bool, error) {
+	if s.apiTokenVerifier == nil {
+		return "", false, errors.New("api token verifier is not available")
 	}
-	cliCert, err := s.AuthorizedCertificate(parts[0])
-	if err != nil {
-		return false, err
-	}
-	return VerifyClientToken(token, cliCert.PublicKey)
+	return s.apiTokenVerifier.Verify(ctx, token)
 }
 
-func (s *Server) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
-	cert, err := s.AuthorizedCertificate(clientId)
-	if err != nil {
-		if err == os.ErrNotExist {
-			return false, fmt.Errorf("client-id %s not found", clientId)
-		} else {
-			return false, err
-		}
+// clientId is unused: certificates are looked up by their unique CERT_HASH, not by CN.
+func (s *Server) ValidateClientCertificate(_ string, certHash string) (bool, error) {
+	if s.x509CertVerifier == nil {
+		return false, errors.New("x509 certificate verifier is not available")
 	}
-
-	hash, err := HashCertificate(cert)
-	if err != nil {
-		return false, err
-	}
-	return hash == certHash, nil
+	return s.x509CertVerifier.Validate(context.Background(), certHash)
 }
 
 func ConvertSshPublicKeyToPem(publicKey ssh.PublicKey) (string, error) {

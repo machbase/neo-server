@@ -42,6 +42,62 @@ func TestSSH(t *testing.T) {
 		},
 	}.runTest(t)
 	SSHTestCase{
+		name: "shell_show_tables_like_all",
+		user: "sys",
+		cmd:  "show tables -a from MACHBASEDB.SYS like '_TAG_DATA%' --format csv",
+		expect: []string{
+			"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
+			"/r/^1,MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$",
+			"/r/^2,MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$",
+		},
+	}.runTest(t)
+	SSHTestCase{
+		name: "shell_show_tables_with_all",
+		user: "sys",
+		cmd:  "show tables with all like '_TAG_DATA%' --format csv",
+		expect: []string{
+			"ROWNUM,DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
+			"/r/^1,MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$",
+			"/r/^2,MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$",
+		},
+	}.runTest(t)
+	SSHTestCase{
+		name: "shell_show_indexes_from_like",
+		user: "sys",
+		cmd:  "show indexes from MACHBASEDB.SYS like '_TAG_DATA_META_NAME' --format csv",
+		expect: []string{
+			"ROWNUM,ID,DATABASE,USER,TABLE,COLUMN,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
+			"/r/^1,[0-9]+,MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESSED,0,100000,EQUAL$",
+		},
+	}.runTest(t)
+	SSHTestCase{
+		name: "shell_show_users_like",
+		user: "sys",
+		cmd:  "show users like SYS --format csv",
+		expect: []string{
+			"ROWNUM,USER_ID,NAME",
+			"1,1,SYS",
+		},
+	}.runTest(t)
+	SSHTestCase{
+		name: "shell_show_storage_like",
+		user: "sys",
+		cmd:  "show storage like LOG_DATA --format csv",
+		expect: []string{
+			"ROWNUM,DATABASE_NAME,TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE",
+			"1,MACHBASEDB,LOG_DATA,0B,0B,0B",
+		},
+	}.runTest(t)
+	SSHTestCase{
+		name: "shell_show_table_usage_like",
+		user: "sys",
+		cmd:  "show table-usage like LOG_DATA --format csv",
+		expect: []string{
+			"ROWNUM,DATABASE,USER,TABLE,STORAGE_USAGE",
+			"1,MACHBASEDB,SYS,LOG_DATA,0B",
+		},
+	}.runTest(t)
+	SSHTestCase{
 		name: "jsh_echo",
 		user: "sys:jsh",
 		cmd:  "echo ssh-ok",

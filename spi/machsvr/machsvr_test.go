@@ -17,8 +17,8 @@ import (
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/mach"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,7 +119,6 @@ func TestDatabaseError(t *testing.T) {
 func TestPackageMetadataFunctions(t *testing.T) {
 	require.IsType(t, "", LinkInfo())
 	require.IsType(t, "", LinkVersion())
-	require.IsType(t, "", LinkGitHash())
 }
 
 func TestResultMessageBranches(t *testing.T) {

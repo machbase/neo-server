@@ -1,13 +1,35 @@
 package server
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+func TestDecodeWriteRequestJSONDB(t *testing.T) {
+	wr := &WriteRequest{}
+	err := json.Unmarshal([]byte(`{"table":"t","db":"testdb","data":{"columns":["a"],"rows":[[1]]}}`), wr)
+	require.NoError(t, err)
+	require.Equal(t, "testdb", wr.DB)
+	require.Equal(t, "t", wr.Table)
+}
+
+func TestDecodeWriteRequestJSONDBOmitted(t *testing.T) {
+	wr := &WriteRequest{}
+	err := json.Unmarshal([]byte(`{"table":"t","data":{"columns":["a"],"rows":[[1]]}}`), wr)
+	require.NoError(t, err)
+	require.Empty(t, wr.DB)
+}
 
 func TestDecodeQueryRequestJSONNormalizesParams(t *testing.T) {
 	req := &QueryRequest{}
@@ -40,6 +62,83 @@ func TestDecodeQueryRequestJSONRejectsCompositeNamedParam(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid p")
 	require.Contains(t, err.Error(), "scalar")
+}
+
+func TestDecodeQueryRequestJSONDB(t *testing.T) {
+	req := &QueryRequest{}
+	err := req.DecodeJSON(strings.NewReader(`{"q":"select 1","db":"testdb"}`))
+	require.NoError(t, err)
+	require.Equal(t, "testdb", req.DB)
+}
+
+func TestDecodeQueryRequestQueryDB(t *testing.T) {
+	req := &QueryRequest{}
+	ctx, _ := newTestHTTPContext(http.MethodGet, "/db/query?q=select+1&db=testdb", nil)
+	err := req.DecodeQuery(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "testdb", req.DB)
+}
+
+func TestDecodeQueryRequestPostFormDB(t *testing.T) {
+	req := &QueryRequest{}
+	ctx, _ := newTestHTTPContext(http.MethodPost, "/db/query", []byte("q=select+1&db=testdb"))
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	err := req.DecodePostForm(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "testdb", req.DB)
+}
+
+func TestQueryRequestExecuteUsesExecUser(t *testing.T) {
+	ctx := context.Background()
+	user := fmt.Sprintf("QUERY_EXEC_USER_%d", time.Now().UnixNano())
+	sysConn, err := spi.Connect(ctx, "sys")
+	require.NoError(t, err)
+	_, err = sysConn.ExecContext(ctx, fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", user))
+	require.NoError(t, err)
+	sysConn.Close()
+	t.Cleanup(func() {
+		conn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.ExecContext(context.Background(), "DROP USER "+user)
+	})
+
+	req := NewQueryRequest()
+	req.SqlText = "SELECT current_user()"
+	req.ExecUser = user
+	output := &bytes.Buffer{}
+	require.NoError(t, req.Execute(ctx, output, nil))
+	require.Equal(t, user, gjson.GetBytes(output.Bytes(), "data.rows.0.0").String())
+}
+
+func TestValidateDatabaseName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "simple", input: "testdb"},
+		{name: "with underscore and digits", input: "_test_db2"},
+		{name: "empty", input: "", wantErr: true},
+		{name: "starts with digit", input: "2db", wantErr: true},
+		{name: "contains space", input: "test db", wantErr: true},
+		{name: "contains quote", input: `test"db`, wantErr: true},
+		{name: "contains semicolon", input: "testdb;drop table x", wantErr: true},
+		{name: "too long", input: strings.Repeat("a", 41), wantErr: true},
+		{name: "max length", input: strings.Repeat("a", 40)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateDatabaseName(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestParseQueryParams(t *testing.T) {

@@ -431,6 +431,18 @@ func TestSql_explain(t *testing.T) {
 			require.Contains(t, result, "EXECUTE")
 		},
 	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_storage_like",
+		Script: `
+			SQL("show storage like 'LOG_DATA'")
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"DATABASE_NAME,TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE",
+			"MACHBASEDB,LOG_DATA,0,0,0",
+			"", "",
+		},
+	}.run(t)
 }
 
 func TestSql_insert_flush_select(t *testing.T) {
@@ -523,6 +535,18 @@ func TestSql_insert_flush_select(t *testing.T) {
 			"|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|:-----|",
 			`|sql_test|2026-07-10 17:10:20|3.142000|-123|123|-1234|1234|-12345|12345|STR|{"json":true}|192.168.0.1|2001:db8::1|0x010203|`,
 			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_table_usage_like",
+		Script: `
+			SQL("show table-usage like 'LOG_DATA'")
+			CSV(header(true))
+		`,
+		ExpectCSV: []string{
+			"DATABASE,USER,TABLE,STORAGE_USAGE",
+			"MACHBASEDB,SYS,LOG_DATA,0",
+			"", "",
 		},
 	}.run(t)
 }
@@ -729,6 +753,34 @@ func TestSql_show_tables(t *testing.T) {
 			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$`), lines[5])
 			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,[0-9]+,KeyValue,Data$`), lines[6])
 			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_SIMPLE_META,[0-9]+,Lookup,Meta$`), lines[7])
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tables_like",
+		Script: `
+			SQL("show tables like 'TAG%'")
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 3)
+			require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[1])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[2])
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_show_tables_with_all",
+		Script: `
+			SQL("show tables with all like '_TAG_DATA%'")
+			CSV(header(true))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
+			require.GreaterOrEqual(t, len(lines), 3)
+			require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$`), lines[1])
+			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$`), lines[2])
 		},
 	}.run(t)
 }
@@ -1400,7 +1452,7 @@ func TestSql_show_others(t *testing.T) {
 			APPEND( table('tag_simple') )
 			`,
 		ExpectFunc: func(t *testing.T, result string) {
-			spi.FlushAppendWorkers("tag_simple")
+			spi.FlushAppendWorkers("", "", "tag_simple")
 			require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 			require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 			// since we are using api.AppendWorker, the success and fail count is always same as the number of records
@@ -1930,7 +1982,7 @@ func TestBinary(t *testing.T) {
 			require.Contains(t, result, "append 5 rows (success 5, fail 0)")
 
 			// flush appender
-			spi.FlushAppendWorkers("tqlbin")
+			spi.FlushAppendWorkers("", "", "tqlbin")
 
 			// flush table
 			conn, _ := spi.Connect(t.Context(), "sys")
@@ -1963,7 +2015,7 @@ func TestBinary(t *testing.T) {
 			DISCARD()`,
 		ExpectFunc: func(t *testing.T, result string) {
 			// flush appender workers to ensure all pending writes are done
-			spi.FlushAppendWorkers("tqlbin")
+			spi.FlushAppendWorkers("", "", "tqlbin")
 
 			// flush table
 			conn, _ := spi.Connect(t.Context(), "sys")

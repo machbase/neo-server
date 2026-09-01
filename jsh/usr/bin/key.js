@@ -29,16 +29,16 @@ const genConfig = {
     func: doGen,
     command: 'gen',
     usage: 'key gen [options]',
-    description: 'Generate new key with the given id',
+    description: 'Generate new key with the given name',
     allowNegative: true,
     options: {
         help: optionHelp,
-        output: { type: 'string', short: "o", description: 'Output file for the new key and token files', default: '-' },
+        output: { type: 'string', short: "o", description: 'Output directory for the new key files', default: '-' },
         type: { type: 'string', short: "t", description: 'Type of key to generate (RSA or ECDSA)', default: 'ECDSA' },
         store: { type: 'boolean', short: "s", description: 'Whether to store the generated key in the server', default: true },
     },
     positionals: [
-        { name: 'id', description: 'The identifier for the new key' },
+        { name: 'name', description: 'The CommonName for the new key; duplicates are allowed' },
     ],
 }
 
@@ -51,7 +51,7 @@ const delConfig = {
         help: optionHelp,
     },
     positionals: [
-        { name: 'id', description: 'The identifier for the key to delete' },
+        { name: 'id', description: 'The management id of the key to delete, as shown by key list' },
     ],
 }
 
@@ -78,11 +78,11 @@ function doList(config, args) {
     client.listKeys()
         .then((keys) => {
             let box = pretty.Table(config);
-            box.appendHeader(["ID", "NOT VALID BEFORE", "NOT VALID AFTER"]);
+            box.appendHeader(["ID", "NAME", "NOT VALID BEFORE", "NOT VALID AFTER"]);
             for (const key of keys) {
                 const nb = new Date(key.notBefore * 1000);
                 const na = new Date(key.notAfter * 1000);
-                box.append([key.id, nb, na]);
+                box.append([key.id, key.name, nb, na]);
             }
             console.println(box.render());
         })
@@ -92,10 +92,10 @@ function doList(config, args) {
 }
 
 function doGen(config, args) {
-    const name = args.id;
+    const name = args.name;
     // check if name is match with /^[a-zA-Z][a-zA-Z0-9_.@-]+$/
     if (!/^[a-zA-Z][a-zA-Z0-9_.@-]+$/.test(name)) {
-        console.println('Invalid key id. It must start with a letter and contain only letters, digits, underscores, dots, at signs, or hyphens.');
+        console.println('Invalid key name. It must start with a letter and contain only letters, digits, underscores, dots, at signs, or hyphens.');
         return;
     }
     const output = config.output;
@@ -103,32 +103,26 @@ function doGen(config, args) {
     const store = !!config.store
     const client = new neoapi.Client(config);
     client.genKey(name, type, store)
-        .then(({ certificate, key, token }) => {
+        .then(({ id, certificate, key }) => {
             if (output && output !== '-' && output !== '') {
                 const fs = require('fs');
                 const path = require('path');
                 const basePath = path.resolve(output);
                 const certPath = `${basePath}_cert.pem`;
                 const keyPath = `${basePath}_key.pem`;
-                const tokenPath = `${basePath}_token.txt`;
-
                 fs.mkdirSync(basePath);
                 fs.writeFileSync(certPath, certificate);
                 fs.writeFileSync(keyPath, key);
-                fs.writeFileSync(tokenPath, token);
 
-                console.println(`Key generated successfully.`);
+                console.println(`Key generated successfully. id=${id}`);
                 console.println(`Save certificate: ${certPath}`);
                 console.println(`Save private Key: ${keyPath}`);
-                console.println(`Save token: ${tokenPath}`);
                 return;
             } else {
+                console.println(`id=${id}`);
                 console.println(certificate);
                 console.println(key);
-                console.println('-----BEGIN TOKEN-----');
-                console.println(token);
-                console.println('-----END TOKEN-----');
-                console.println('\nCaution:\n  This is the last chance to copy and store PRIVATE KEY and TOKEN.');
+                console.println('\nCaution:\n  This is the last chance to copy and store the PRIVATE KEY.');
                 console.println('  It will not be shown again.\n');
             }
         })
@@ -143,9 +137,9 @@ function doGen(config, args) {
 }
 
 function doDel(config, args) {
-    const name = args.id;
+    const id = Number(args.id);
     const client = new neoapi.Client(config);
-    client.deleteKey(name)
+    client.deleteKey(id)
         .then(() => {
             console.println('Key deleted successfully.');
         })
