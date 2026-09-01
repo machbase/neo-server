@@ -21,6 +21,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric/input"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/mach"
+	mach_native "github.com/machbase/neo-server/v8/spi/mach/native"
 )
 
 var statzLog = logging.GetLog("server-statz")
@@ -280,6 +281,7 @@ type Version struct {
 	BuildTimestamp string `json:"buildTimestamp"`
 	BuildCompiler  string `json:"buildCompiler"`
 	Engine         string `json:"engine"`
+	EngineVersion  string `json:"engineVersion"`
 }
 
 type Runtime struct {
@@ -315,6 +317,7 @@ func (s *Server) getServerInfo() (*ServerInfoResponse, error) {
 	rsp := &ServerInfoResponse{
 		Version: &Version{
 			Engine:         mach.LinkInfo(),
+			EngineVersion:  mach_native.Version,
 			Major:          int32(ver.Major),
 			Minor:          int32(ver.Minor),
 			Patch:          int32(ver.Patch),

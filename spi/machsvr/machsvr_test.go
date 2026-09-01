@@ -119,7 +119,6 @@ func TestDatabaseError(t *testing.T) {
 func TestPackageMetadataFunctions(t *testing.T) {
 	require.IsType(t, "", LinkInfo())
 	require.IsType(t, "", LinkVersion())
-	require.IsType(t, "", LinkGitHash())
 }
 
 func TestResultMessageBranches(t *testing.T) {

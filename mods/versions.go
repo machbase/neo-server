@@ -100,7 +100,7 @@ func GenBanner() string {
 	logo = strings.ReplaceAll(logo, "\r\n", "\n")
 	lines := strings.Split(logo, "\n")
 	lines[6] = lines[6] + fmt.Sprintf("  %s", VersionString())
-	lines[7] = lines[7] + fmt.Sprintf("  engine v%s (%s)", machsvr.LinkVersion(), machsvr.LinkGitHash())
+	lines[7] = lines[7] + fmt.Sprintf("  engine %s", machsvr.LinkVersion())
 	lines[8] = lines[8] + fmt.Sprintf("  %s %s", machsvr.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n")
 }

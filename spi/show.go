@@ -73,12 +73,8 @@ func resolveShowScope(ctx context.Context, conn *sql.Conn, options *showOptions)
 		return err
 	}
 
-	var database string
-	if err := conn.QueryRowContext(ctx, "SELECT current_database()").Scan(&database); err != nil {
-		return err
-	}
-	user, err := currentShowUser(ctx, conn)
-	if err != nil {
+	var database, user string
+	if err := conn.QueryRowContext(ctx, "SELECT current_database(), current_user()").Scan(&database, &user); err != nil {
 		return err
 	}
 	if !options.hasDatabase {
@@ -92,17 +88,11 @@ func resolveShowScope(ctx context.Context, conn *sql.Conn, options *showOptions)
 	}
 
 	var exists int
-	err = conn.QueryRowContext(ctx, "SELECT 1 FROM V$DATABASES WHERE UPPER(NAME) = ?", options.database).Scan(&exists)
+	err := conn.QueryRowContext(ctx, "SELECT 1 FROM V$DATABASES WHERE UPPER(NAME) = ?", options.database).Scan(&exists)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("database %q does not exist", options.database)
 	}
 	return err
-}
-
-// TODO: Replace the temporary SYS fallback with SELECT current_user() after
-// https://github.com/machbase/dbms-nfx/issues/4131 is available in the engine.
-func currentShowUser(context.Context, *sql.Conn) (string, error) {
-	return "SYS", nil
 }
 
 func (options *showOptions) likeClause(column string, args *[]any) string {

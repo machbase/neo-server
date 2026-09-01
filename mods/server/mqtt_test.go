@@ -27,8 +27,9 @@ import (
 )
 
 type MqttTestCase struct {
-	Ver  uint
-	Name string
+	Ver      uint
+	Name     string
+	ClientID string
 
 	Topic      string
 	Payload    []byte
@@ -50,6 +51,10 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 
 	var recvPayload []byte
 
+	clientID := tc.ClientID
+	if clientID == "" {
+		clientID = "mqtt-test-cli"
+	}
 	cliCfg := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{brokerUrl},
 		KeepAlive:                     20,
@@ -74,7 +79,7 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 		OnConnectError: func(err error) { fmt.Printf("error whilst attempting connection: %s\n", err) },
 		// eclipse/paho.golang/paho provides base mqtt functionality, the below config will be passed in for each connection
 		ClientConfig: paho.ClientConfig{
-			ClientID: "mqtt-test-cli",
+			ClientID: clientID,
 			// OnPublishReceived is a slice of functions that will be called when a message is received.
 			// You can write the function(s) yourself or use the supplied Router
 			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
@@ -145,6 +150,37 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 		require.Equal(t, hex.Dump(tc.ExpectBin), hex.Dump(recvPayload))
 		return
 	}
+}
+
+func TestMqttQueryUsesMappedCurrentUser(t *testing.T) {
+	username := fmt.Sprintf("mqtt_query_user_%d", time.Now().UnixNano())
+	clientID := "mqtt-current-user"
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	_, err = conn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+	require.NoError(t, err)
+	conn.Close()
+	mqttServer.setClientUser(clientID, username)
+	t.Cleanup(func() {
+		mqttServer.clearClientUser(clientID)
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	runMqttTest(t, &MqttTestCase{
+		Name:      "mapped_current_user",
+		ClientID:  clientID,
+		Topic:     "db/query",
+		Payload:   []byte(`{"q":"SELECT current_user()"}`),
+		Subscribe: "db/reply",
+		ExpectFunc: func(t *testing.T, payload []byte) {
+			require.Equal(t, strings.ToUpper(username), gjson.GetBytes(payload, "data.rows.0.0").String(), string(payload))
+		},
+	})
 }
 
 func TestMqttQuery(t *testing.T) {

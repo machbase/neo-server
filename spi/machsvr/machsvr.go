@@ -31,10 +31,6 @@ func LinkVersion() string {
 	return native.Version
 }
 
-func LinkGitHash() string {
-	return native.GitHash
-}
-
 type InitOption int
 
 const (

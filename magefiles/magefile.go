@@ -75,6 +75,7 @@ func Build(target string, strip bool) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		"-X", fmt.Sprintf("%s/spi/mach/native.Version=%s", mod, strings.TrimSpace(neo_engine_version)),
 	}, " ")
 	if strip {
 		// this may reduce binary size about (110M -> 86M)
@@ -181,6 +182,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		"-X", fmt.Sprintf("%s/spi/mach/native.Version=%s", mod, strings.TrimSpace(neo_engine_version)),
 	}, " ")
 	args = append(args, "-ldflags", ldflags)
 

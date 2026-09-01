@@ -1,13 +1,19 @@
 package server
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestDecodeWriteRequestJSONDB(t *testing.T) {
@@ -80,6 +86,31 @@ func TestDecodeQueryRequestPostFormDB(t *testing.T) {
 	err := req.DecodePostForm(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "testdb", req.DB)
+}
+
+func TestQueryRequestExecuteUsesExecUser(t *testing.T) {
+	ctx := context.Background()
+	user := fmt.Sprintf("QUERY_EXEC_USER_%d", time.Now().UnixNano())
+	sysConn, err := spi.Connect(ctx, "sys")
+	require.NoError(t, err)
+	_, err = sysConn.ExecContext(ctx, fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", user))
+	require.NoError(t, err)
+	sysConn.Close()
+	t.Cleanup(func() {
+		conn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.ExecContext(context.Background(), "DROP USER "+user)
+	})
+
+	req := NewQueryRequest()
+	req.SqlText = "SELECT current_user()"
+	req.ExecUser = user
+	output := &bytes.Buffer{}
+	require.NoError(t, req.Execute(ctx, output, nil))
+	require.Equal(t, user, gjson.GetBytes(output.Bytes(), "data.rows.0.0").String())
 }
 
 func TestValidateDatabaseName(t *testing.T) {

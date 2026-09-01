@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,11 +20,111 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestHttpQueryUsesJWTCurrentUser(t *testing.T) {
+	username := fmt.Sprintf("query_user_%d", time.Now().UnixNano())
+	password := "query_password"
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	_, err = conn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY '%s'", username, password))
+	require.NoError(t, err)
+	conn.Close()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	accessToken, _, err := jwtLogin(username, password)
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/query?q="+url.QueryEscape("SELECT current_user()"), nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	require.Equal(t, strings.ToUpper(username), gjson.GetBytes(body, "data.rows.0.0").String())
+}
+
+// TestHttpQueryApiTokenExecUser exercises the real handleAuthToken -> handleQuery
+// chain with a generated API token, complementing the JWT/MQTT current_user()
+// coverage in TestHttpQueryUsesJWTCurrentUser and TestMqttQueryUsesMappedCurrentUser.
+func TestHttpQueryApiTokenExecUser(t *testing.T) {
+	server := coverageRunningServer(t)
+
+	username := fmt.Sprintf("token_query_user_%d", time.Now().UnixNano())
+	ownTable := username + "_own_table"
+	sysConn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+	require.NoError(t, err)
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP TABLE "+ownTable)
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	ownConn, err := spi.Connect(t.Context(), username)
+	require.NoError(t, err)
+	_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf("CREATE TAG TABLE %s (name varchar(100) primary key, time datetime basetime, value double)", ownTable))
+	require.NoError(t, err)
+	_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s VALUES ('temp', now, 1.0)", ownTable))
+	require.NoError(t, err)
+	ownConn.Close()
+
+	generated, err := server.generateApiToken(contextWithModelUser(context.Background(), username), "e2e-test", 0)
+	require.NoError(t, err)
+	require.Equal(t, strings.ToUpper(username), generated.User)
+	t.Cleanup(func() {
+		_ = server.deleteApiToken(contextWithModelUser(context.Background(), username), generated.Id)
+	})
+
+	testHttpd := &httpd{log: logging.GetLog("http-token-e2e-test"), authServer: server, enableTokenAuth: true}
+	doQuery := func(sqlText string) []byte {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query?q="+url.QueryEscape(sqlText), nil)
+		ctx.Request.Header.Set("Authorization", "Bearer "+generated.Token)
+		testHttpd.handleAuthToken(ctx)
+		require.False(t, ctx.IsAborted(), writer.Body.String())
+		testHttpd.handleQuery(ctx)
+		return writer.Body.Bytes()
+	}
+
+	t.Run("current_user_matches_token_owner", func(t *testing.T) {
+		body := doQuery("SELECT current_user()")
+		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
+		require.Equal(t, strings.ToUpper(username), gjson.GetBytes(body, "data.rows.0.0").String())
+	})
+
+	t.Run("sys_owned_table_rejected", func(t *testing.T) {
+		body := doQuery("SELECT * FROM _NEO_API_TOKEN")
+		require.False(t, gjson.GetBytes(body, "success").Bool(), string(body))
+		require.NotEmpty(t, gjson.GetBytes(body, "reason").String())
+	})
+
+	t.Run("own_table_succeeds", func(t *testing.T) {
+		body := doQuery("SELECT name FROM " + ownTable)
+		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
+		require.Equal(t, "temp", gjson.GetBytes(body, "data.rows.0.0").String())
+	})
+}
 
 func TestHttpQuery(t *testing.T) {
 	tests := []struct {
