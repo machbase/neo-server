@@ -282,6 +282,13 @@ func AddInputFunc(f func(*metric.Gather) error) {
 	collector.AddInputFunc(f)
 }
 
+func AddOutputFunc(f func(metric.Product) error) {
+	if collector == nil {
+		return
+	}
+	collector.AddOutputFunc(f)
+}
+
 func AddMetrics(m ...metric.Measure) {
 	if collector == nil {
 		return

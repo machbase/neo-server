@@ -34,7 +34,7 @@ func startServerMetrics(s *Server) {
 	spi.AddInputFunc(collectDefaultPoolStatz)
 	spi.AddInputFunc(collectMqttStatz(s))
 	spi.AddInputFunc(collectTqlCacheStatz)
-
+	spi.AddOutputFunc(storeStatz)
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
 	spi.SetMetricsDestTable(s.Config.StatzOut)
@@ -42,6 +42,162 @@ func startServerMetrics(s *Server) {
 
 func stopServerMetrics() {
 	spi.StopMetrics()
+}
+
+var metricLog = logging.GetLog("statz")
+var statzStoreExists bool
+
+type statzRecord struct {
+	Name  string
+	Time  int64
+	Value float64
+}
+
+func storeStatz(pd metric.Product) error {
+
+	if !statzStoreExists {
+		ctx := context.Background()
+		conn, err := spi.Connect(ctx, "sys")
+		if err != nil {
+			statzLog.Errorf("failed to connect to machbase: %v", err)
+			return err
+		}
+		defer conn.Close()
+		// check table existence
+		if err := conn.QueryRowContext(ctx, "SELECT 1 FROM _NEO_STATZ LIMIT 1").Scan(new(int)); err != nil {
+			// table does not exist, create it
+			_, err = conn.ExecContext(ctx, `
+				CREATE TABLE IF NOT EXISTS _NEO_STATZ (
+					NAME varchar(100) NOT NULL,
+					TIME datetime NOT NULL,
+					VALUE double NOT NULL
+				);
+			`)
+			if err != nil {
+				statzLog.Errorf("failed to create table _NEO_STATZ: %v", err)
+				return err
+			}
+			_, err = conn.ExecContext(ctx, `
+				CREATE UNIQUE INDEX IF NOT EXISTS _NEO_STATZ_UK ON _NEO_STATZ(NAME, TIME);
+			`)
+			if err != nil {
+				statzLog.Errorf("failed to create index _NEO_STATZ_UK: %v", err)
+				return err
+			}
+		}
+		statzStoreExists = true
+	}
+
+	// insert only finest resolution
+	if pd.SeriesID != spi.SERIES_ID_FINEST {
+		return nil
+	}
+	var result []statzRecord
+	switch p := pd.Value.(type) {
+	case *metric.CounterValue:
+		if p.Samples == 0 {
+			return nil // Skip zero counters
+		}
+		result = []statzRecord{{
+			Name:  fmt.Sprintf("%s", pd.Name),
+			Time:  pd.Time.UnixNano(),
+			Value: p.Value,
+		}}
+	case *metric.GaugeValue:
+		if p.Samples == 0 {
+			return nil // Skip zero gauges
+		}
+		result = []statzRecord{{
+			Name:  fmt.Sprintf("%s", pd.Name),
+			Time:  pd.Time.UnixNano(),
+			Value: p.Value,
+		}}
+	case *metric.MeterValue:
+		if p.Samples == 0 {
+			return nil // Skip zero meters
+		}
+		result = []statzRecord{
+			{
+				Name:  fmt.Sprintf("%s:min", pd.Name),
+				Time:  pd.Time.UnixNano(),
+				Value: p.Min,
+			},
+			{
+				Name:  fmt.Sprintf("%s:max", pd.Name),
+				Time:  pd.Time.UnixNano(),
+				Value: p.Max,
+			},
+			{
+				Name:  fmt.Sprintf("%s:avg", pd.Name),
+				Time:  pd.Time.UnixNano(),
+				Value: p.Sum / float64(p.Samples),
+			},
+		}
+	case *metric.HistogramValue:
+		if p.Samples == 0 {
+			return nil // Skip zero samples
+		}
+		result = append(result, statzRecord{
+			Name:  fmt.Sprintf("%s", pd.Name),
+			Time:  pd.Time.UnixNano(),
+			Value: float64(p.Samples),
+		})
+		for i, x := range p.P {
+			pct := fmt.Sprintf("%d", int(x*1000))
+			if pct[len(pct)-1] == '0' {
+				pct = pct[:len(pct)-1]
+			}
+			result = append(result, statzRecord{
+				Name:  fmt.Sprintf("%s:p%s", pd.Name, pct),
+				Time:  pd.Time.UnixNano(),
+				Value: p.Values[i],
+			})
+		}
+	case *metric.OdometerValue:
+		if p.Samples == 0 {
+			return nil // Skip zero odometers
+		}
+		result = append(result, statzRecord{
+			Name:  fmt.Sprintf("%s", pd.Name),
+			Time:  pd.Time.UnixNano(),
+			Value: p.Diff(),
+		})
+	default:
+		metricLog.Errorf("metrics unknown type: %T", p)
+		return nil
+	}
+
+	go func(result []statzRecord) {
+		ctx := context.Background()
+		conn, err := spi.Connect(ctx, "sys")
+		if err != nil {
+			statzLog.Errorf("failed to connect to machbase: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		sqlText := "INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?)"
+		for _, m := range result {
+			result, err := conn.ExecContext(ctx, sqlText, m.Name, m.Time, m.Value)
+			if err != nil {
+				metricLog.Errorf("metrics writing: %v", err)
+				return
+			}
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
+				metricLog.Warnf("metrics writing: no rows affected for %v", m)
+			}
+		}
+		sqlText = "DELETE FROM _NEO_STATZ WHERE TIME < ?"
+		if result, err := conn.ExecContext(ctx, sqlText, time.Now().Add(-24*time.Hour).UnixNano()); err != nil {
+			metricLog.Errorf("metrics cleanup: %v", err)
+		} else {
+			rowsAffected, _ := result.RowsAffected()
+			if rowsAffected > 0 {
+				metricLog.Tracef("metrics %d rows purged", rowsAffected)
+			}
+		}
+	}(result)
+	return nil
 }
 
 func collectSysStatz(g *metric.Gather) error {
