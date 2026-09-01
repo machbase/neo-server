@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unsafe"
 
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
@@ -173,4 +174,11 @@ func (s *TestServer) MachKeyPEM() (string, error) {
 
 func (s *TestServer) MachSvr() *Database {
 	return s.machsvrDatabase
+}
+
+func (s *TestServer) SvrEnv() unsafe.Pointer {
+	if s.machsvrDatabase == nil {
+		return nil
+	}
+	return s.machsvrDatabase.handle
 }

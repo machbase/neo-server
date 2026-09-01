@@ -17,8 +17,8 @@ import (
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/mach"
 	"github.com/stretchr/testify/require"
 )
 

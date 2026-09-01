@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -21,6 +20,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/metric/input"
 	"github.com/machbase/neo-server/v8/spi"
+	"github.com/machbase/neo-server/v8/spi/mach"
 )
 
 var statzLog = logging.GetLog("server-statz")

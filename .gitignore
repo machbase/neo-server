@@ -26,6 +26,7 @@ vendor/
 examples/**/target
 testsuite_tmp/
 
+spi/mach/native/*.a
 mods/service/httpd/web/ui/*
 mods/server/web/ui/*
 mach-grpc.sock
