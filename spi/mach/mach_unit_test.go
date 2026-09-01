@@ -3,6 +3,7 @@ package mach
 import (
 	"errors"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 )
@@ -227,5 +228,133 @@ func TestAppendBufferAcceptedConversionsBeforeValidationError(t *testing.T) {
 	}
 	if got, want := err.Error(), "MachAppendData unknown column type 'unknown'"; got != want {
 		t.Fatalf("Append() error was %q, want %q", got, want)
+	}
+}
+
+func TestAppendBufferAcceptedValueTypes(t *testing.T) {
+	now := time.Unix(1_700_000_000, 123)
+	intValue := int(1)
+	uintValue := uint(2)
+	int16Value := int16(3)
+	uint16Value := uint16(4)
+	int32Value := int32(5)
+	uint32Value := uint32(6)
+	int64Value := int64(7)
+	uint64Value := uint64(8)
+	float32Value := float32(9.5)
+	float64Value := float64(10.5)
+	text := "neo"
+	emptyText := ""
+
+	tests := []struct {
+		name       string
+		columnType string
+		value      any
+	}{
+		{name: "null", columnType: "short", value: nil},
+		{name: "short_uint16", columnType: "short", value: uint16Value},
+		{name: "short_uint16_pointer", columnType: "short", value: &uint16Value},
+		{name: "short_int16", columnType: "short", value: int16Value},
+		{name: "short_int16_pointer", columnType: "short", value: &int16Value},
+		{name: "short_uint32", columnType: "short", value: uint32Value},
+		{name: "short_uint32_pointer", columnType: "short", value: &uint32Value},
+		{name: "short_int32", columnType: "short", value: int32Value},
+		{name: "short_int32_pointer", columnType: "short", value: &int32Value},
+		{name: "short_float64", columnType: "short", value: float64Value},
+		{name: "short_float64_pointer", columnType: "short", value: &float64Value},
+		{name: "short_float32", columnType: "short", value: float32Value},
+		{name: "short_float32_pointer", columnType: "short", value: &float32Value},
+		{name: "integer_int16", columnType: "integer", value: int16Value},
+		{name: "integer_int16_pointer", columnType: "integer", value: &int16Value},
+		{name: "integer_uint16", columnType: "integer", value: uint16Value},
+		{name: "integer_uint16_pointer", columnType: "integer", value: &uint16Value},
+		{name: "integer_int32", columnType: "integer", value: int32Value},
+		{name: "integer_int32_pointer", columnType: "integer", value: &int32Value},
+		{name: "integer_uint32", columnType: "integer", value: uint32Value},
+		{name: "integer_uint32_pointer", columnType: "integer", value: &uint32Value},
+		{name: "integer_int", columnType: "integer", value: intValue},
+		{name: "integer_int_pointer", columnType: "integer", value: &intValue},
+		{name: "integer_uint", columnType: "integer", value: uintValue},
+		{name: "integer_uint_pointer", columnType: "integer", value: &uintValue},
+		{name: "integer_float64", columnType: "integer", value: float64Value},
+		{name: "integer_float64_pointer", columnType: "integer", value: &float64Value},
+		{name: "integer_float32", columnType: "integer", value: float32Value},
+		{name: "integer_float32_pointer", columnType: "integer", value: &float32Value},
+		{name: "long_int16", columnType: "long", value: int16Value},
+		{name: "long_int16_pointer", columnType: "long", value: &int16Value},
+		{name: "long_uint16", columnType: "long", value: uint16Value},
+		{name: "long_uint16_pointer", columnType: "long", value: &uint16Value},
+		{name: "long_int32", columnType: "long", value: int32Value},
+		{name: "long_int32_pointer", columnType: "long", value: &int32Value},
+		{name: "long_uint32", columnType: "long", value: uint32Value},
+		{name: "long_uint32_pointer", columnType: "long", value: &uint32Value},
+		{name: "long_int", columnType: "long", value: intValue},
+		{name: "long_int_pointer", columnType: "long", value: &intValue},
+		{name: "long_uint", columnType: "long", value: uintValue},
+		{name: "long_uint_pointer", columnType: "long", value: &uintValue},
+		{name: "long_int64", columnType: "long", value: int64Value},
+		{name: "long_int64_pointer", columnType: "long", value: &int64Value},
+		{name: "long_uint64", columnType: "long", value: uint64Value},
+		{name: "long_uint64_pointer", columnType: "long", value: &uint64Value},
+		{name: "long_float64", columnType: "long", value: float64Value},
+		{name: "long_float64_pointer", columnType: "long", value: &float64Value},
+		{name: "long_float32", columnType: "long", value: float32Value},
+		{name: "long_float32_pointer", columnType: "long", value: &float32Value},
+		{name: "float_int", columnType: "float", value: intValue},
+		{name: "float_int_pointer", columnType: "float", value: &intValue},
+		{name: "float_int16", columnType: "float", value: int16Value},
+		{name: "float_int16_pointer", columnType: "float", value: &int16Value},
+		{name: "float_int32", columnType: "float", value: int32Value},
+		{name: "float_int32_pointer", columnType: "float", value: &int32Value},
+		{name: "float_int64", columnType: "float", value: int64Value},
+		{name: "float_int64_pointer", columnType: "float", value: &int64Value},
+		{name: "float_float32", columnType: "float", value: float32Value},
+		{name: "float_float32_pointer", columnType: "float", value: &float32Value},
+		{name: "double_int", columnType: "double", value: intValue},
+		{name: "double_int_pointer", columnType: "double", value: &intValue},
+		{name: "double_int16", columnType: "double", value: int16Value},
+		{name: "double_int16_pointer", columnType: "double", value: &int16Value},
+		{name: "double_int32", columnType: "double", value: int32Value},
+		{name: "double_int32_pointer", columnType: "double", value: &int32Value},
+		{name: "double_int64", columnType: "double", value: int64Value},
+		{name: "double_int64_pointer", columnType: "double", value: &int64Value},
+		{name: "double_float32", columnType: "double", value: float32Value},
+		{name: "double_float32_pointer", columnType: "double", value: &float32Value},
+		{name: "double_float64", columnType: "double", value: float64Value},
+		{name: "double_float64_pointer", columnType: "double", value: &float64Value},
+		{name: "datetime_time", columnType: "datetime", value: now},
+		{name: "datetime_time_pointer", columnType: "datetime", value: &now},
+		{name: "datetime_int", columnType: "datetime", value: intValue},
+		{name: "datetime_int16", columnType: "datetime", value: int16Value},
+		{name: "datetime_int32", columnType: "datetime", value: int32Value},
+		{name: "datetime_int64", columnType: "datetime", value: int64Value},
+		{name: "datetime_float64", columnType: "datetime", value: float64Value},
+		{name: "ipv4_ip", columnType: "ipv4", value: net.IPv4(127, 0, 0, 1)},
+		{name: "ipv4_string", columnType: "ipv4", value: "127.0.0.1"},
+		{name: "ipv6_ip", columnType: "ipv6", value: net.IPv6loopback},
+		{name: "ipv6_string", columnType: "ipv6", value: "::1"},
+		{name: "varchar_string", columnType: "varchar", value: text},
+		{name: "varchar_empty_string", columnType: "varchar", value: ""},
+		{name: "varchar_string_pointer", columnType: "varchar", value: &text},
+		{name: "varchar_empty_string_pointer", columnType: "varchar", value: &emptyText},
+		{name: "binary_string", columnType: "binary", value: text},
+		{name: "binary_empty_string", columnType: "binary", value: ""},
+		{name: "binary_string_pointer", columnType: "binary", value: &text},
+		{name: "binary_empty_string_pointer", columnType: "binary", value: &emptyText},
+		{name: "binary_bytes", columnType: "binary", value: []byte("neo")},
+		{name: "binary_empty_bytes", columnType: "binary", value: []byte{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buffer := EngMakeAppendBuffer(nil, []string{"VALUE", "STOP"}, []string{tc.columnType, "unknown"})
+			err := buffer.Append(tc.value, true)
+			if err == nil {
+				t.Fatal("Append() returned nil error")
+			}
+			if got, want := err.Error(), "MachAppendData unknown column type 'unknown'"; got != want {
+				t.Fatalf("Append() error was %q, want %q", got, want)
+			}
+		})
 	}
 }
