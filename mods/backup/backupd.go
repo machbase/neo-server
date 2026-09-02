@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/spi"
 )
@@ -109,6 +110,7 @@ type backupState struct {
 
 type BackupArchive struct {
 	Type      string `json:"type" binding:"required"`
+	Database  string `json:"database"`
 	TableName string `json:"tableName"`
 	Duration  struct {
 		Type  string `json:"type" binding:"required"`
@@ -161,7 +163,16 @@ func (s *Backupd) handleArchive(ctx *gin.Context) {
 	switch strings.ToLower(copyArchive.Type) {
 	case "database":
 		backupTarget = "DATABASE"
+		if copyArchive.Database != "" {
+			backupTarget = fmt.Sprintf("DATABASE %s", client.QuoteIdentifier(copyArchive.Database))
+		}
 	case "table":
+		if copyArchive.Database != "" {
+			rsp["reason"] = "database is only supported for database backup"
+			rsp["elapse"] = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
 		if copyArchive.TableName == "" {
 			rsp["reason"] = "table name is empty"
 			rsp["elapse"] = time.Since(tick).String()

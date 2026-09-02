@@ -52,7 +52,7 @@ func isBackupHelperProcess() bool {
 }
 
 func setupDefaultSPI() error {
-	testServer := &machsvr.TestServer{}
+	testServer = &machsvr.TestServer{}
 	testHomeDir = mustAbsPath(filepath.Join("tmp", "machbase_default"))
 	if err := os.RemoveAll(testHomeDir); err != nil {
 		return err
@@ -326,6 +326,82 @@ func TestBackupdHandleArchiveConnectPaths(t *testing.T) {
 		w := performBackupRequest(t, s.handleArchive, http.MethodPost, "/api/backup/archive", payload)
 		require.Equal(t, http.StatusOK, w.Code)
 		waitBackupSettled(t, s, 5*time.Second)
+	})
+}
+
+func TestBackupdHandleArchiveDatabaseTarget(t *testing.T) {
+	origConnector := connectDefault
+	t.Cleanup(func() { connectDefault = origConnector })
+
+	t.Run("uses the requested database for every duration type", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			payload string
+		}{
+			{name: "full", payload: `{"type":"database","database":"FACTORY_A","duration":{"type":"full"},"path":"backup/full"}`},
+			{name: "incremental", payload: `{"type":"database","database":"FACTORY_A","duration":{"type":"incremental","after":"backup/full"},"path":"backup/incremental"}`},
+			{name: "time", payload: `{"type":"database","database":"FACTORY_A","duration":{"type":"time","from":"1700000000","to":"1700000600"},"path":"backup/time"}`},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				capturedSQL := ""
+				started := make(chan struct{})
+				release := make(chan struct{})
+				connectDefault = func(context.Context) (*sql.Conn, error) {
+					return newMockSQLConn(t, sqlMockBehavior{
+						onExec: func(sqlText string) {
+							capturedSQL = sqlText
+							close(started)
+							<-release
+						},
+					}), nil
+				}
+
+				s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
+				w := performBackupRequest(t, s.handleArchive, http.MethodPost, "/api/backup/archive", tc.payload)
+				require.Equal(t, http.StatusOK, w.Code)
+				<-started
+				require.Contains(t, capturedSQL, `BACKUP DATABASE "FACTORY_A"`)
+				require.Equal(t, "FACTORY_A", s.backup.Info.Database)
+				close(release)
+				waitBackupSettled(t, s, 5*time.Second)
+			})
+		}
+	})
+
+	t.Run("keeps the unnamed database backup compatible", func(t *testing.T) {
+		capturedSQL := ""
+		started := make(chan struct{})
+		release := make(chan struct{})
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				onExec: func(sqlText string) {
+					capturedSQL = sqlText
+					close(started)
+					<-release
+				},
+			}), nil
+		}
+
+		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
+		w := performBackupRequest(t, s.handleArchive, http.MethodPost, "/api/backup/archive", `{"type":"database","duration":{"type":"full"},"path":"backup/full"}`)
+		require.Equal(t, http.StatusOK, w.Code)
+		<-started
+		require.Contains(t, capturedSQL, "BACKUP DATABASE INTO DISK")
+		require.NotContains(t, capturedSQL, `BACKUP DATABASE "`)
+		close(release)
+		waitBackupSettled(t, s, 5*time.Second)
+	})
+
+	t.Run("rejects a database target for table backup", func(t *testing.T) {
+		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
+		payload := `{"type":"table","database":"FACTORY_A","tableName":"demo_table","duration":{"type":"full"},"path":"backup/table"}`
+		w := performBackupRequest(t, s.handleArchive, http.MethodPost, "/api/backup/archive", payload)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		body := decodeJSONBody(t, w)
+		require.Equal(t, "database is only supported for database backup", body["reason"])
 	})
 }
 
@@ -710,7 +786,7 @@ func TestBackupRestoreHelper(t *testing.T) {
 		os.Exit(2)
 	}
 
-	if err := machsvr.Initialize(homeDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
+	if err := machsvr.Initialize(homeDir, freeTCPPort(t), machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		fmt.Fprintln(os.Stderr, "initialize:", err)
 		os.Exit(3)
 	}
@@ -751,7 +827,7 @@ func TestBackupVerifyHelper(t *testing.T) {
 		os.Exit(2)
 	}
 
-	if err := machsvr.Initialize(homeDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
+	if err := machsvr.Initialize(homeDir, freeTCPPort(t), machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		fmt.Fprintln(os.Stderr, "verify initialize:", err)
 		os.Exit(3)
 	}
