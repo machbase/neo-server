@@ -67,6 +67,7 @@ type Config struct {
 	AlternativeHost string `json:"alternativeHost,omitempty"`
 	AlternativePort int    `json:"alternativePort,omitempty"`
 	Database        string `json:"database,omitempty"`
+	DB              string `json:"db,omitempty"` // alias of Database
 }
 
 type Database struct {
@@ -89,6 +90,9 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 	} // default values
 	if err := json.Unmarshal([]byte(data), &obj); err != nil {
 		return nil, err
+	}
+	if obj.Database == "" {
+		obj.Database = obj.DB
 	}
 	opts := []string{
 		"host=" + obj.Host,
