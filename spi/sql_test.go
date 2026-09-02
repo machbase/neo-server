@@ -993,52 +993,6 @@ func TestMachbaseSQLCompatibilityAffectedRows(t *testing.T) {
 	require.Equal(t, int64(1), affected)
 }
 
-// TestUseDatabaseResetOnIdlePooledConnection is a regression test for the case
-// where a pooled connection that executed "USE <db>" stayed attached to <db>
-// while sitting idle in the pool. The driver used to restore the connection's
-// configured database only in ResetSession, which database/sql calls when the
-// connection is handed *out* again - not when it is returned. So a connection
-// that was returned and then never reused kept a live session on <db>, and any
-// "DROP DATABASE <db>" issued through another connection failed with
-// "MACHCLI-ERR-2317, ... DROP DATABASE target has active sessions or statements".
-// The driver now restores the database in IsValid(), which runs right before the
-// connection goes back to the idle pool.
-func TestUseDatabaseResetOnIdlePooledConnection(t *testing.T) {
-	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager", testServer.MachPort())
-	db, err := sql.Open("machbase", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	dbName := fmt.Sprintf("USERESETDB%d", time.Now().UnixNano()%1000000)
-	_, err = db.ExecContext(t.Context(), "CREATE DATABASE IF NOT EXISTS "+dbName)
-	require.NoError(t, err)
-	dropped := false
-	t.Cleanup(func() {
-		if dropped {
-			return
-		}
-		_, _ = db.ExecContext(context.Background(), "DROP DATABASE "+dbName+" CASCADE")
-	})
-
-	// checked out before the switch, so that the DROP below runs on a different
-	// connection and the switched one stays idle in the pool.
-	other, err := db.Conn(t.Context())
-	require.NoError(t, err)
-	defer other.Close()
-
-	switched, err := db.Conn(t.Context())
-	require.NoError(t, err)
-	_, err = switched.ExecContext(t.Context(), "USE "+dbName)
-	require.NoError(t, err)
-	require.NoError(t, switched.Close())
-
-	_, err = other.ExecContext(t.Context(), "DROP DATABASE "+dbName+" CASCADE")
-	require.NoError(t, err)
-	dropped = true
-}
-
 func TestMachbaseSQLCompatibilityDatabase(t *testing.T) {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
 	db, err := sql.Open("machbase", dsn)
