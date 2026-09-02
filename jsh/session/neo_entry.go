@@ -181,6 +181,7 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 				conf.Env[k] = v
 			}
 		}
+		conf.Context = UserScopeContext(context.Background())
 		return nil
 	}
 }

@@ -15,6 +15,39 @@ type UserScope struct {
 	User string
 }
 
+type userScopeContextKey struct{}
+
+// ContextWithUserScope returns a copy of ctx that carries a fixed scope,
+// retrievable via UserScopeFromContext. Used to thread the calling user's
+// identity into jsh native modules (e.g. @jsh/db, @jsh/publisher) invoked
+// from TQL's SCRIPT({}) node, which otherwise have no way to resolve it from
+// ctx alone.
+func ContextWithUserScope(ctx context.Context, scope UserScope) context.Context {
+	return ContextWithUserScopeFunc(ctx, func() UserScope { return scope })
+}
+
+// ContextWithUserScopeFunc is like ContextWithUserScope, but scope is
+// resolved lazily by calling fn on every UserScopeFromContext lookup instead
+// of being snapshotted once. Use this when the identity can change after the
+// context is created (e.g. jsh's interactive `connect`/`login` shell command
+// re-authenticating mid-session via jsh/session.SwitchUser) so that later
+// lookups see the current identity instead of a stale one baked in at
+// context-creation time.
+func ContextWithUserScopeFunc(ctx context.Context, fn func() UserScope) context.Context {
+	return context.WithValue(ctx, userScopeContextKey{}, fn)
+}
+
+// UserScopeFromContext retrieves the UserScope previously attached via
+// ContextWithUserScope or ContextWithUserScopeFunc. ok is false if ctx
+// carries no scope.
+func UserScopeFromContext(ctx context.Context) (scope UserScope, ok bool) {
+	fn, ok := ctx.Value(userScopeContextKey{}).(func() UserScope)
+	if !ok {
+		return UserScope{}, false
+	}
+	return fn(), true
+}
+
 type connectFunc func(context.Context, string) (*sql.Conn, error)
 
 func NewProvider(opts ...Option) *Provider {

@@ -59,7 +59,79 @@ func TestHttpQueryUsesJWTCurrentUser(t *testing.T) {
 	require.Equal(t, strings.ToUpper(username), gjson.GetBytes(body, "data.rows.0.0").String())
 }
 
-// TestHttpQueryApiTokenExecUser exercises the real handleAuthToken -> handleQuery
+// TestHandleWatchQueryRejectsMissingExecUser guards against handleWatchQuery
+// (machbase/neo#1468) silently falling back to connecting as "sys" for
+// API-token-authenticated requests whose token carries no user: it must
+// reject with resolveExecUser's error instead of proceeding to spi.NewWatcher.
+func TestHandleWatchQueryRejectsMissingExecUser(t *testing.T) {
+	svr := newTestHTTPServer(t)
+
+	ctx, writer := newTestHTTPContext(http.MethodGet, "/db/watch/any_table", nil)
+	ctx.Set("api-token-authenticated", true)
+	svr.handleWatchQuery(ctx)
+
+	require.Equal(t, http.StatusUnauthorized, writer.Code, writer.Body.String())
+	require.Equal(t, "authorization user is missing", gjson.GetBytes(writer.Body.Bytes(), "reason").String())
+}
+
+// TestHttpWatchQueryExecUserScope verifies /db/watch/:table (machbase/neo#1468)
+// connects using the authenticated request's own user scope rather than a fixed
+// "sys" connection: a non-sys user must be able to watch their own table end to
+// end through spi.Connect(ctx, execUser).
+func TestHttpWatchQueryExecUserScope(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skip test on windows")
+	}
+
+	username := fmt.Sprintf("watch_scope_user_%d", time.Now().UnixNano())
+	table := username + ".OWN_TBL"
+
+	sysConn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+	require.NoError(t, err)
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP TABLE "+table)
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	ownConn, err := spi.Connect(t.Context(), username)
+	require.NoError(t, err)
+	_, err = ownConn.ExecContext(t.Context(),
+		"CREATE TAG TABLE OWN_TBL (NAME VARCHAR(40) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE SUMMARIZED)")
+	require.NoError(t, err)
+	ownConn.Close()
+
+	accessToken, _, err := jwtLogin(username, "password")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	params := url.Values{"tag": {"any"}, "period": {"1s"}, "keep-alive": {"1s"}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpServerAddress+"/db/watch/"+table+"?"+params.Encode(), nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	if rsp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(rsp.Body)
+		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	}
+	// a keep-alive line proves the SSE stream (and thus spi.NewWatcher, connected
+	// as the JWT's own user) started successfully.
+	reader := bufio.NewReader(rsp.Body)
+	line, err := reader.ReadString('\n')
+	require.NoError(t, err)
+	require.Equal(t, ": keep-alive", strings.TrimSpace(line))
+}
+
 // chain with a generated API token, complementing the JWT/MQTT current_user()
 // coverage in TestHttpQueryUsesJWTCurrentUser and TestMqttQueryUsesMappedCurrentUser.
 func TestHttpQueryApiTokenExecUser(t *testing.T) {
@@ -1221,6 +1293,66 @@ func TestHandleTqlFile(t *testing.T) {
 		require.Contains(t, string(body), `"jsAssets"`)
 		require.Contains(t, string(body), `"jsCodeAssets"`)
 	})
+}
+
+// TestHandleTqlFileExecUserScope guards handleTqlFile (machbase/neo#1468): a
+// stored .tql file executed via /web/api/tql/*path must run as the JWT's own
+// user (task.SetConsole), not always "sys".
+func TestHandleTqlFileExecUserScope(t *testing.T) {
+	oldDefault := ssfs.Default()
+	ssfs.SetDefault(httpServer.serverFs)
+	t.Cleanup(func() { ssfs.SetDefault(oldDefault) })
+
+	username := fmt.Sprintf("tqlfile_scope_user_%d", time.Now().UnixNano())
+	table := "OWN_TQLFILE_TBL"
+
+	sysConn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+	require.NoError(t, err)
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), fmt.Sprintf("DROP TABLE %s.%s", username, table))
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	ownConn, err := spi.Connect(t.Context(), username)
+	require.NoError(t, err)
+	_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf(
+		"CREATE TAG TABLE %s (NAME VARCHAR(40) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE SUMMARIZED)", table))
+	require.NoError(t, err)
+	ownConn.Close()
+
+	const scriptPath = "/query_test_scope.tql"
+	require.NoError(t, httpServer.serverFs.Set(scriptPath, []byte(fmt.Sprintf(
+		"FAKE(json({[1]}))\nSQL(\"insert into %s(NAME,TIME,VALUE) values(current_user(), now, 1)\")\n", table))))
+	t.Cleanup(func() { _ = httpServer.serverFs.Remove(scriptPath) })
+
+	accessToken, _, err := jwtLogin(username, "password")
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/tql"+scriptPath, nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	body, err := io.ReadAll(rsp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+
+	checkConn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	defer checkConn.Close()
+	var name string
+	require.NoError(t, checkConn.QueryRowContext(t.Context(),
+		fmt.Sprintf("select name from %s.%s", username, table)).Scan(&name))
+	require.Equal(t, strings.ToUpper(username), name)
 }
 
 func TestQueryBinaryFormat(t *testing.T) {

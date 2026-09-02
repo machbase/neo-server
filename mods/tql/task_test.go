@@ -192,6 +192,7 @@ type TqlTestCase struct {
 	Params             map[string][]string
 	LogLevel           *tql.Level
 	CtxTimeout         time.Duration
+	ExecUser           string
 	ExpectErr          string
 	ExpectCSV          []string
 	ExpectText         []string
@@ -221,6 +222,9 @@ func (tc TqlTestCase) run(t *testing.T) {
 	log := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
 	task.SetLogWriter(log)
+	if tc.ExecUser != "" {
+		task.SetConsole(tc.ExecUser, "", "")
+	}
 	if tc.LogLevel != nil {
 		task.SetLogLevel(*tc.LogLevel)
 	}
@@ -4683,6 +4687,65 @@ func TestSCRIPT_db(t *testing.T) {
 			require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
 		},
 	}.run(t)
+}
+
+// TestSCRIPT_jshDbUserScope guards the ExecUser -> ConsoleUser() -> jsh context
+// wiring (machbase/neo#1468): a SCRIPT({}) node's require("@jsh/db") must
+// connect as the task's own user, not always "sys".
+func TestSCRIPT_jshDbUserScope(t *testing.T) {
+	ctx := context.Background()
+	username := fmt.Sprintf("tql_script_scope_user_%d", time.Now().UnixNano())
+	table := "TQL_SCRIPT_SCOPE_TBL"
+
+	sysConn, err := spi.Connect(ctx, "sys")
+	require.NoError(t, err)
+	_, err = sysConn.ExecContext(ctx, fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+	require.NoError(t, err)
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), fmt.Sprintf("DROP TABLE %s.%s", username, table))
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	ownConn, err := spi.Connect(ctx, username)
+	require.NoError(t, err)
+	_, err = ownConn.ExecContext(ctx, fmt.Sprintf(
+		"CREATE TAG TABLE %s (NAME VARCHAR(40) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE SUMMARIZED)", table))
+	require.NoError(t, err)
+	ownConn.Close()
+
+	TqlTestCase{
+		Name:     "jsh-db-user-scope",
+		ExecUser: username,
+		Script: fmt.Sprintf(`
+			SCRIPT("js", {
+				db = require("@jsh/db");
+			},{
+				client = new db.Client();
+				conn = client.connect();
+				appender = conn.appender("%s.%s", "name", "time", "value");
+				appender.append("scoped", new Date(), 1.0);
+				appender.close();
+				conn.close();
+				$.yield("done");
+			})
+			CSV()
+		`, username, table),
+		ExpectCSV: []string{"done", "", ""},
+	}.run(t)
+
+	checkConn, err := spi.Connect(ctx, "sys")
+	require.NoError(t, err)
+	defer checkConn.Close()
+	var name string
+	require.NoError(t, checkConn.QueryRowContext(ctx,
+		fmt.Sprintf("select name from %s.%s", username, table)).Scan(&name))
+	require.Equal(t, "scoped", name)
 }
 
 func TestSCRIPT_opcua(t *testing.T) {

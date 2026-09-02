@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/machbase/neo-server/v8/jsh/test_engine"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/machbase/neo-server/v8/test"
@@ -207,6 +208,151 @@ func TestDBMS(t *testing.T) {
 			"client.supportAppend: true",
 			"appender: 100 0",
 		},
+	}.RunTest(t)
+}
+
+// TestDBMSUserScope guards new_client's context wiring (machbase/neo#1468): a
+// non-sys UserScope threaded into the jsh engine's context via
+// model.ContextWithUserScope must be applied to the Appender's DSN, instead of
+// always defaulting to "sys".
+func TestDBMSUserScope(t *testing.T) {
+	ctx := context.Background()
+	username := fmt.Sprintf("dbms_scope_user_%d", time.Now().UnixNano())
+	table := "DBMS_SCOPE_TBL"
+
+	sysConn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sysConn.ExecContext(ctx, fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username)); err != nil {
+		t.Fatal(err)
+	}
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, err := spi.Connect(context.Background(), "sys")
+		if err != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), fmt.Sprintf("DROP TABLE %s.%s", username, table))
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	ownConn, err := spi.Connect(ctx, username)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ownConn.ExecContext(ctx, fmt.Sprintf(
+		"CREATE TAG TABLE %s (NAME VARCHAR(40) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE SUMMARIZED)", table)); err != nil {
+		t.Fatal(err)
+	}
+	ownConn.Close()
+
+	test_engine.TestCase{
+		Name:    "dbms-append-user-scope",
+		Context: model.ContextWithUserScope(ctx, model.UserScope{User: username}),
+		Script: fmt.Sprintf(`
+			const db = require("@jsh/db");
+			const client = new db.Client();
+			const conn = client.connect();
+			const appender = conn.appender("%s.%s", "name", "time", "value");
+			appender.append("scoped", new Date(), 1.0);
+			appender.close();
+			conn.close();
+		`, username, table),
+	}.RunTest(t)
+
+	checkConn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checkConn.Close()
+	var count int
+	if err := checkConn.QueryRowContext(ctx,
+		fmt.Sprintf("select count(*) from %s.%s", username, table)).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 row scoped under %s.%s, got %d", username, table, count)
+	}
+}
+
+// TestDBMSDefaultPoolRespectsContextScope guards new_client's default-pool
+// branch (machbase/neo#1468): a plain `new db.Client()` (no bridge/driver
+// option) must query using the ctx-derived user scope, not always the shared
+// "sys" pool, so SCRIPT({})/CLI shell scoping also applies to conn.query/exec,
+// not just Appender.
+func TestDBMSDefaultPoolRespectsContextScope(t *testing.T) {
+	ctx := context.Background()
+	username := fmt.Sprintf("dbms_scope_pool_%d", time.Now().UnixNano())
+
+	sysConn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sysConn.ExecContext(ctx, fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username)); err != nil {
+		t.Fatal(err)
+	}
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, err := spi.Connect(context.Background(), "sys")
+		if err != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	test_engine.TestCase{
+		Name:    "dbms-default-pool-context-scope",
+		Context: model.ContextWithUserScope(ctx, model.UserScope{User: username}),
+		Script: `
+			const db = require("@jsh/db");
+			const conn = new db.Client().connect();
+			const row = conn.queryRow("select current_user()");
+			console.println("current_user:", row.values["current_user()"]);
+			conn.close();
+		`,
+		Output: []string{"current_user: " + strings.ToUpper(username)},
+	}.RunTest(t)
+}
+
+// TestDBMSClientExplicitUserOption guards ClientOptions.User (machbase/neo#1468):
+// a script author must be able to declare the connection's user scope
+// explicitly (e.g. from CLI jsh/cgi-bin, which have no wired context),
+// overriding whatever (if any) scope ctx carries.
+func TestDBMSClientExplicitUserOption(t *testing.T) {
+	ctx := context.Background()
+	username := fmt.Sprintf("dbms_scope_explicit_%d", time.Now().UnixNano())
+
+	sysConn, err := spi.Connect(ctx, "sys")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sysConn.ExecContext(ctx, fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username)); err != nil {
+		t.Fatal(err)
+	}
+	sysConn.Close()
+	t.Cleanup(func() {
+		cleanupConn, err := spi.Connect(context.Background(), "sys")
+		if err != nil {
+			return
+		}
+		defer cleanupConn.Close()
+		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+	})
+
+	test_engine.TestCase{
+		// no Context set: mirrors CLI jsh/cgi-bin, which have no wired identity.
+		Name: "dbms-client-explicit-user-option",
+		Script: fmt.Sprintf(`
+			const db = require("@jsh/db");
+			const conn = new db.Client({user: "%s"}).connect();
+			const row = conn.queryRow("select current_user()");
+			console.println("current_user:", row.values["current_user()"]);
+			conn.close();
+		`, username),
+		Output: []string{"current_user: " + strings.ToUpper(username)},
 	}.RunTest(t)
 }
 

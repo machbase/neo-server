@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -29,6 +30,17 @@ func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("reconnect", Reconnect)
 	exports.Set("useDatabase", UseDatabase)
 	exports.Set("getCurrentDatabase", GetCurrentDatabase)
+}
+
+// UserScopeContext returns a copy of ctx that resolves model.UserScope from
+// the live defaultSession.User on every lookup (via model.ContextWithUserScopeFunc),
+// so jsh native modules (e.g. @jsh/db, @jsh/publisher) see the session's
+// current user even after it changes mid-session via SwitchUser/Reconnect
+// (the `connect`/`login` shell commands).
+func UserScopeContext(ctx context.Context) context.Context {
+	return model.ContextWithUserScopeFunc(ctx, func() model.UserScope {
+		return model.UserScope{User: defaultSession.User}
+	})
 }
 
 type Config struct {

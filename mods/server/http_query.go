@@ -121,6 +121,16 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 		}
 	}()
 
+	execUser, errReason := svr.resolveExecUser(ctx)
+	if errReason != "" {
+		ctx.JSON(http.StatusUnauthorized, &QueryResponse{Success: false, Reason: errReason})
+		return
+	}
+	user := "sys"
+	if execUser != "" {
+		user = execUser
+	}
+
 	var period time.Duration
 	if p, err := time.ParseDuration(ctx.Query("period")); err == nil {
 		period = p
@@ -147,7 +157,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 
 	watch, err := spi.NewWatcher(ctx,
 		spi.WatcherConfig{
-			ConnProvider: func() (*sql.Conn, error) { return spi.Connect(ctx, "sys") },
+			ConnProvider: func() (*sql.Conn, error) { return spi.Connect(ctx, user) },
 			TableName:    ctx.Param("table"),
 			TagNames:     ctx.QueryArray("tag"),
 			Timeformat:   timeformat,
@@ -839,6 +849,11 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 		handleError(ctx, http.StatusNotFound, "tql not found", tick)
 		return
 	}
+	execUser, errReason := svr.resolveExecUser(ctx)
+	if errReason != "" {
+		handleError(ctx, http.StatusUnauthorized, errReason, tick)
+		return
+	}
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
 	if err != nil {
 		svr.log.Error("tql params error", path, err.Error())
@@ -854,6 +869,7 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	}
 
 	task := tql.NewTaskContext(ctx)
+	task.SetConsole(execUser, "", "")
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
 	task.SetLogWriter(logging.GetLog(filepath.Base(path)))

@@ -105,41 +105,62 @@ func DefaultKey() crypto.PrivateKey {
 	return defaultDatabaseKey
 }
 
-func Connect(ctx context.Context, user string) (*sql.Conn, error) {
+// DSNUser returns the DSN "user" value that connects as the given user scope
+// via the default database user's proxy authentication (e.g. "sys as alice").
+// The machbase driver only honors the "X AS Y" proxy syntax when X is "sys"
+// (see neo-client's parseUserName); if defaultDatabaseUser is anything other
+// than "sys" (e.g. a custom admin user configured for CLI mode), the returned
+// DSN silently authenticates as defaultDatabaseUser without proxying to user.
+// This mirrors the same pre-existing constraint in Connect below. An empty or
+// default-user scope returns the default database user unchanged.
+func DSNUser(user string) string {
 	user = strings.ToLower(user)
-	var connectDB *sql.DB
-	// user can be empty, where the caller is from SQL() function in TQL.
 	if user == defaultDatabaseUser || user == "" {
-		pool, err := DefaultPool()
-		if err != nil {
-			return nil, err
-		}
-		connectDB = pool
-	} else {
-		userPoolsLock.Lock()
-		defer userPoolsLock.Unlock()
-		if db, ok := userPools[user]; ok {
-			connectDB = db
-		} else {
-			conf := DefaultDSN(map[string]string{"user": fmt.Sprintf("%s as %s", defaultDatabaseUser, user)})
-			if db, err := sql.Open("machbase", conf); err != nil {
-				return nil, err
-			} else {
-				if len(userPools) == 0 {
-					util.AddShutdownHook(func() {
-						for _, p := range userPools {
-							p.Close()
-						}
-					})
-				}
-				db.SetConnMaxIdleTime(20 * time.Second)
-				db.SetConnMaxLifetime(1 * time.Minute)
-				userPools[user] = db
-				connectDB = db
-			}
-		}
+		return defaultDatabaseUser
+	}
+	return fmt.Sprintf("%s as %s", defaultDatabaseUser, user)
+}
+
+func Connect(ctx context.Context, user string) (*sql.Conn, error) {
+	connectDB, err := Pool(user)
+	if err != nil {
+		return nil, err
 	}
 	return connectDB.Conn(ctx)
+}
+
+// Pool returns the shared *sql.DB pool scoped to user: DefaultPool() for the
+// default database user (or an empty user), otherwise a lazily-created
+// per-user pool connecting via the "sys as <user>" proxy DSN (see DSNUser).
+// Unlike Connect, which checks out a single *sql.Conn, Pool exposes the
+// underlying pool itself for callers (e.g. jsh's @jsh/db module) that need to
+// hand a *sql.DB to code expecting one.
+func Pool(user string) (*sql.DB, error) {
+	user = strings.ToLower(user)
+	if user == defaultDatabaseUser || user == "" {
+		return DefaultPool()
+	}
+	userPoolsLock.Lock()
+	defer userPoolsLock.Unlock()
+	if db, ok := userPools[user]; ok {
+		return db, nil
+	}
+	conf := DefaultDSN(map[string]string{"user": DSNUser(user)})
+	db, err := sql.Open("machbase", conf)
+	if err != nil {
+		return nil, err
+	}
+	if len(userPools) == 0 {
+		util.AddShutdownHook(func() {
+			for _, p := range userPools {
+				p.Close()
+			}
+		})
+	}
+	db.SetConnMaxIdleTime(20 * time.Second)
+	db.SetConnMaxLifetime(1 * time.Minute)
+	userPools[user] = db
+	return db, nil
 }
 
 // IssueToken returns signed current timestamp.

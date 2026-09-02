@@ -24,10 +24,26 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 
 func new_client(ctx context.Context, rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
 	return func(call goja.ConstructorCall) *goja.Object {
-		// TODO: jsh has no exported way yet to resolve the actual logged-in
-		// session user from this native module's ctx, so a fixed "sys" scope
-		// is used until that wiring exists.
-		client := NewClient(ctx, model.UserScope{User: "sys"}, rt, call.Arguments)
+		opts := ClientOptions{}
+		if len(call.Arguments) > 0 {
+			if err := rt.ExportTo(call.Arguments[0], &opts); err != nil {
+				panic(rt.NewGoError(err))
+			}
+		}
+		// Resolve the user scope for this connection, in order of precedence:
+		//  1. explicit `user` option: lets the script author declare scope
+		//     themselves, which entry points with no wired context (CLI jsh,
+		//     cgi-bin) must use since there is no ambient identity to fall back on.
+		//  2. ctx-derived scope (TQL SCRIPT({}), CLI machbase-neo shell; see
+		//     model.ContextWithUserScope/ContextWithUserScopeFunc).
+		//  3. "sys" fallback.
+		scope := model.UserScope{User: "sys"}
+		if opts.User != "" {
+			scope = model.UserScope{User: opts.User}
+		} else if ctxScope, ok := model.UserScopeFromContext(ctx); ok && ctxScope.User != "" {
+			scope = ctxScope
+		}
+		client := NewClientWithOptions(ctx, scope, rt, opts)
 		ret := rt.NewObject()
 		ret.Set("connect", client.jsConnect)
 		ret.Set("supportAppend", client.supportAppend)
@@ -40,6 +56,9 @@ type ClientOptions struct {
 	LowerCaseColumns bool   `json:"lowerCaseColumns"`
 	Driver           string `json:"driver"`
 	DataSource       string `json:"dataSource"`
+	// User, when set, overrides the ambient (context-derived) user scope for
+	// this client's default-pool/append connections. See new_client.
+	User string `json:"user"`
 }
 
 type Client struct {
@@ -47,6 +66,7 @@ type Client struct {
 	rt               *goja.Runtime   `json:"-"`
 	db               *sql.DB         `json:"-"`
 	supportAppend    bool            `json:"-"`
+	scope            model.UserScope `json:"-"`
 	BridgeName       string          `json:"bridge"`
 	Driver           string          `json:"driver"`
 	LowerCaseColumns bool            `json:"lowerCaseColumns"`
@@ -66,6 +86,7 @@ func NewClientWithOptions(ctx context.Context, scope model.UserScope, rt *goja.R
 	ret := &Client{
 		ctx:              context.Background(),
 		rt:               rt,
+		scope:            scope,
 		BridgeName:       opts.BridgeName,
 		Driver:           opts.Driver,
 		LowerCaseColumns: opts.LowerCaseColumns,
@@ -84,7 +105,7 @@ func NewClientWithOptions(ctx context.Context, scope model.UserScope, rt *goja.R
 			panic(rt.NewGoError(err))
 		}
 	} else {
-		if db, err := spi.DefaultPool(); err == nil {
+		if db, err := spi.Pool(scope.User); err == nil {
 			ret.db = db
 		} else {
 			panic(rt.NewGoError(err))
@@ -152,7 +173,7 @@ func (c *CONN) Appender(call goja.FunctionCall) goja.Value {
 		db: c.db,
 	}
 
-	dsn := spi.DefaultDSN(map[string]string{"user": "sys", "db": "MACHBASEDB"})
+	dsn := spi.DefaultDSN(map[string]string{"user": spi.DSNUser(c.db.scope.User), "db": "MACHBASEDB"})
 	ap := &client.Appender{}
 	err := ap.Connect(c.db.ctx, dsn, tableName, columns...)
 	if err != nil {
