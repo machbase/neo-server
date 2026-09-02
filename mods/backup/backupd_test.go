@@ -52,7 +52,7 @@ func isBackupHelperProcess() bool {
 }
 
 func setupDefaultSPI() error {
-	testServer := &machsvr.TestServer{}
+	testServer = &machsvr.TestServer{}
 	testHomeDir = mustAbsPath(filepath.Join("tmp", "machbase_default"))
 	if err := os.RemoveAll(testHomeDir); err != nil {
 		return err
@@ -786,7 +786,7 @@ func TestBackupRestoreHelper(t *testing.T) {
 		os.Exit(2)
 	}
 
-	if err := machsvr.Initialize(homeDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
+	if err := machsvr.Initialize(homeDir, freeTCPPort(t), machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		fmt.Fprintln(os.Stderr, "initialize:", err)
 		os.Exit(3)
 	}
@@ -827,7 +827,7 @@ func TestBackupVerifyHelper(t *testing.T) {
 		os.Exit(2)
 	}
 
-	if err := machsvr.Initialize(homeDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
+	if err := machsvr.Initialize(homeDir, freeTCPPort(t), machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		fmt.Fprintln(os.Stderr, "verify initialize:", err)
 		os.Exit(3)
 	}
