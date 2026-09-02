@@ -206,6 +206,7 @@ func StartMetrics() {
 		metric.WithSeries(m2d12h),
 		metric.WithPrefix(prefix),
 		metric.WithInputBuffer(50),
+		metric.WithInflightOutput(),
 	)
 	collector.AddOutputFunc(onProduct)
 	collector.Start()
@@ -398,6 +399,9 @@ func onProduct(pd metric.Product) error {
 		defer conn.Close()
 		sqlText := fmt.Sprintf("INSERT INTO %s (NAME, TIME, VALUE) VALUES (?, ?, ?)", table)
 		for _, m := range result {
+			if pd.Inflight {
+				continue // Skip inflight metrics, only write finalized metrics
+			}
 			result, err := conn.ExecContext(ctx, sqlText, m.Name, m.Time, m.Value)
 			if err != nil {
 				metricLog.Errorf("metrics writing: %v", err)

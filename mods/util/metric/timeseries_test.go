@@ -14,11 +14,11 @@ func TestTimeseries(t *testing.T) {
 
 	expectIdx := 0
 	expectProducts := []Product{
-		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 5, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 1, Min: 1, First: 1, Last: 1, Sum: 1}},
-		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 2, Min: 2, First: 2, Last: 2, Sum: 2}},
-		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 3, Min: 3, First: 3, Last: 3, Sum: 3}},
-		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 8, 0, time.UTC), Value: &MeterValue{Samples: 3, Max: 5, Min: 4, First: 4, Last: 4.8, Sum: 13.8}},
-		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 10, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 6, Min: 6, First: 6, Last: 6, Sum: 6}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 4, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 1, Min: 1, First: 1, Last: 1, Sum: 1}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 5, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 2, Min: 2, First: 2, Last: 2, Sum: 2}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 3, Min: 3, First: 3, Last: 3, Sum: 3}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC), Value: &MeterValue{Samples: 3, Max: 5, Min: 4, First: 4, Last: 4.8, Sum: 13.8}},
+		{Name: "", Time: time.Date(2023, 10, 1, 12, 4, 9, 0, time.UTC), Value: &MeterValue{Samples: 1, Max: 6, Min: 6, First: 6, Last: 6, Sum: 6}},
 	}
 	ts := NewTimeSeries(time.Second, 3, NewMeter(), WithListener(func(p Product) {
 		require.Equal(t, expectProducts[expectIdx], p, "unexpected product at index %d", expectIdx)
@@ -30,8 +30,8 @@ func TestTimeseries(t *testing.T) {
 	ts.Add(2.0)
 
 	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 12:04:05","value":{"samples":1,"max":1,"min":1,"first":1,"last":1,"sum":1}},`+
-		`{"ts":"2023-10-01 12:04:06","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
+		`{"ts":"2023-10-01 12:04:04","value":{"samples":1,"max":1,"min":1,"first":1,"last":1,"sum":1}},`+
+		`{"ts":"2023-10-01 12:04:05","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
 		`]`, ts.String())
 
 	now = now.Add(time.Second)
@@ -42,9 +42,9 @@ func TestTimeseries(t *testing.T) {
 
 	times, values := ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2023, time.October, 1, 12, 4, 5, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
@@ -60,9 +60,9 @@ func TestTimeseries(t *testing.T) {
 
 	times, values = ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2023, time.October, 1, 12, 4, 5, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
@@ -75,9 +75,9 @@ func TestTimeseries(t *testing.T) {
 
 	times, values = ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 9, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 10, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 4, Max: 5, First: 4, Last: 4.8, Sum: 13.8, Samples: 3},
@@ -89,7 +89,7 @@ func TestTimeseries(t *testing.T) {
 	ts.Add(7.0)
 
 	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 12:04:15","value":{"samples":1,"max":7,"min":7,"first":7,"last":7,"sum":7}}`+
+		`{"ts":"2023-10-01 12:04:14","value":{"samples":1,"max":7,"min":7,"first":7,"last":7,"sum":7}}`+
 		`]`, ts.String())
 	require.Equal(t, len(expectProducts), expectIdx)
 }
@@ -109,20 +109,21 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 	}
 
 	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 12:04:06","value":{"value":55,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:07","value":{"value":155,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:08","value":{"value":255,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:09","value":{"value":355,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:10","value":{"value":455,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:11","value":{"value":555,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:12","value":{"value":655,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:13","value":{"value":755,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:14","value":{"value":855,"samples":10}},`+
-		`{"ts":"2023-10-01 12:04:15","value":{"value":955,"samples":10}}`+
+		`{"ts":"2023-10-01 12:04:05","value":{"value":55,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:06","value":{"value":155,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:07","value":{"value":255,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:08","value":{"value":355,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:09","value":{"value":455,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:10","value":{"value":555,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:11","value":{"value":655,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:12","value":{"value":755,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:13","value":{"value":855,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:14","value":{"value":955,"samples":10}}`+
 		`]`, ts.String())
 
 	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
+		time.Date(2023, 10, 1, 12, 4, 5, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 8, 0, time.UTC),
@@ -132,7 +133,6 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 		time.Date(2023, 10, 1, 12, 4, 12, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&CounterValue{Value: 55, Samples: 10},
@@ -151,19 +151,35 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 
 	ptTime, ptValue := ts.Last()
 	require.Equal(t, &CounterValue{Value: 955, Samples: 10}, ptValue)
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTime)
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC), ptTime)
 
 	ptTimes, _ := ts.LastN(20)
 	require.Equal(t, 10, len(ptTimes))
 
-	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC))
+	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 12, 0, time.UTC))
 	require.Equal(t, 3, len(ptTimes))
 	require.Equal(t, &CounterValue{Value: 755, Samples: 10}, ptValues[0])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC), ptTimes[0])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 12, 0, time.UTC), ptTimes[0])
 	require.Equal(t, &CounterValue{Value: 855, Samples: 10}, ptValues[1])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC), ptTimes[1])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC), ptTimes[1])
 	require.Equal(t, &CounterValue{Value: 955, Samples: 10}, ptValues[2])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTimes[2])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC), ptTimes[2])
+}
+
+func TestTimeSeriesUsesBucketStartTime(t *testing.T) {
+	var products []Product
+	ts := NewTimeSeries(time.Minute, 10, NewCounter(), WithListener(func(product Product) {
+		products = append(products, product)
+	}))
+
+	start := time.Date(2026, time.January, 1, 10, 1, 10, 0, time.UTC)
+	ts.AddTime(start, 1)
+	ts.AddTime(start.Add(time.Minute), 1)
+
+	require.Len(t, products, 1)
+	require.Equal(t, time.Date(2026, time.January, 1, 10, 1, 0, 0, time.UTC), products[0].Time)
+	lastTime, _ := ts.Last()
+	require.Equal(t, time.Date(2026, time.January, 1, 10, 2, 0, 0, time.UTC), lastTime)
 }
 
 func TestMultiTimeSeries(t *testing.T) {
@@ -183,6 +199,7 @@ func TestMultiTimeSeries(t *testing.T) {
 
 	times, values := mts[0].LastN(0)
 	require.Equal(t, []time.Time{
+		time.Date(2023, 10, 1, 12, 8, 55, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 56, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 57, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 58, 0, time.UTC),
@@ -192,7 +209,6 @@ func TestMultiTimeSeries(t *testing.T) {
 		time.Date(2023, 10, 1, 12, 9, 02, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 03, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 04, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 9, 05, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2901, Max: 2910, First: 2901, Last: 2910, Sum: 29055, Samples: 10},
@@ -209,12 +225,12 @@ func TestMultiTimeSeries(t *testing.T) {
 
 	times, values = mts[1].All()
 	require.Equal(t, []time.Time{
+		time.Date(2023, 10, 1, 12, 8, 10, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 20, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 30, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 40, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 50, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 00, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 9, 10, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2451, Max: 2550, First: 2451, Last: 2550, Sum: 250050, Samples: 100},
@@ -227,11 +243,11 @@ func TestMultiTimeSeries(t *testing.T) {
 
 	times, values = mts[2].All()
 	require.Equal(t, []time.Time{
+		time.Date(2023, 10, 1, 12, 5, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 6, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 7, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 0, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 10, 0, 0, time.UTC),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 551, Max: 1150, First: 551, Last: 1150, Sum: 510300, Samples: 600},
@@ -258,6 +274,7 @@ func TestTimeSeriesCounter(t *testing.T) {
 
 	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -267,7 +284,6 @@ func TestTimeSeriesCounter(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, []Value{
 		&CounterValue{Samples: 10, Value: 55},
@@ -304,6 +320,7 @@ func TestTimeSeriesCounterWithSlidingWindow(t *testing.T) {
 
 	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -313,7 +330,6 @@ func TestTimeSeriesCounterWithSlidingWindow(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, &CounterValue{Samples: 10, Value: 55, DerivedValues: map[string]Value{
 		"ma3": &CounterValue{Samples: 10, Value: 55},
@@ -372,6 +388,7 @@ func TestTimeSeriesGauge(t *testing.T) {
 	}
 	times, values := ts.LastN(-1)
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -381,7 +398,6 @@ func TestTimeSeriesGauge(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, []Value{
 		&GaugeValue{Samples: 10, Sum: 55, Value: 10},
@@ -417,6 +433,7 @@ func TestTimeSeriesGaugeWithSlidingWindow(t *testing.T) {
 	}
 	times, values := ts.LastN(-1)
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -426,7 +443,6 @@ func TestTimeSeriesGaugeWithSlidingWindow(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, &GaugeValue{Samples: 10, Sum: 55, Value: 10, DerivedValues: map[string]Value{
 		"ma3": &GaugeValue{Samples: 10, Sum: 55, Value: 10},
@@ -486,6 +502,7 @@ func TestTimeSeriesMeter(t *testing.T) {
 
 	times, values := ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -495,7 +512,6 @@ func TestTimeSeriesMeter(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10},
@@ -532,6 +548,7 @@ func TestTimeSeriesMeterWithSlidingWindow(t *testing.T) {
 
 	times, values := ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -541,7 +558,6 @@ func TestTimeSeriesMeterWithSlidingWindow(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, &MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10, DerivedValues: map[string]Value{
 		"ma3": &MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10},
@@ -601,6 +617,7 @@ func TestTimeSeriesTimer(t *testing.T) {
 
 	times, values := ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -610,7 +627,6 @@ func TestTimeSeriesTimer(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, []Value{
 		&TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10},
@@ -645,6 +661,7 @@ func TestTimeSeriesTimerWithSlidingWindow(t *testing.T) {
 
 	times, values := ts.All()
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -654,7 +671,6 @@ func TestTimeSeriesTimerWithSlidingWindow(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, &TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10, DerivedValues: map[string]Value{
 		"ma3": &TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10},
@@ -714,6 +730,7 @@ func TestTimeSeriesHistogram(t *testing.T) {
 
 	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -723,7 +740,6 @@ func TestTimeSeriesHistogram(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, []Value{
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}},
@@ -758,6 +774,7 @@ func TestTimeSeriesHistogramWithSlidingWindow(t *testing.T) {
 
 	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -767,7 +784,6 @@ func TestTimeSeriesHistogramWithSlidingWindow(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}, DerivedValues: map[string]Value{
 		"ma3": &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}},

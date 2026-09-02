@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/viz"
@@ -24,9 +25,12 @@ import (
 	mach_native "github.com/machbase/neo-server/v8/spi/mach/native"
 )
 
-var statzLog = logging.GetLog("server-statz")
+var statzLog logging.Log
 
 func startServerMetrics(s *Server) {
+	if statzLog == nil {
+		statzLog = logging.GetLog("statz")
+	}
 	spi.StartMetrics()
 	spi.AddInput(&input.Runtime{})
 	spi.AddInput(&input.Netstat{})
@@ -44,8 +48,11 @@ func stopServerMetrics() {
 	spi.StopMetrics()
 }
 
-var metricLog = logging.GetLog("statz")
 var statzStoreExists bool
+var statzCleanupLast atomic.Int64
+var statzMaxLifetime = (24 * 8) * time.Hour // keep statz for 8 days
+
+const statzCleanupInterval = 15 * time.Minute
 
 type statzRecord struct {
 	Name  string
@@ -54,7 +61,6 @@ type statzRecord struct {
 }
 
 func storeStatz(pd metric.Product) error {
-
 	if !statzStoreExists {
 		ctx := context.Background()
 		conn, err := spi.Connect(ctx, "sys")
@@ -163,7 +169,7 @@ func storeStatz(pd metric.Product) error {
 			Value: p.Diff(),
 		})
 	default:
-		metricLog.Errorf("metrics unknown type: %T", p)
+		statzLog.Errorf("metrics unknown type: %T", p)
 		return nil
 	}
 
@@ -176,24 +182,28 @@ func storeStatz(pd metric.Product) error {
 		}
 		defer conn.Close()
 
-		sqlText := "INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?)"
 		for _, m := range result {
-			result, err := conn.ExecContext(ctx, sqlText, m.Name, m.Time, m.Value)
+			result, err := conn.ExecContext(ctx,
+				"INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SET VALUE = ?",
+				m.Name, m.Time, m.Value, m.Value)
 			if err != nil {
-				metricLog.Errorf("metrics writing: %v", err)
+				statzLog.Errorf("metrics writing: %v", err)
 				return
 			}
 			if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
-				metricLog.Warnf("metrics writing: no rows affected for %v", m)
+				statzLog.Warnf("metrics writing: no rows affected for %v", m)
 			}
 		}
-		sqlText = "DELETE FROM _NEO_STATZ WHERE TIME < ?"
-		if result, err := conn.ExecContext(ctx, sqlText, time.Now().Add(-24*time.Hour).UnixNano()); err != nil {
-			metricLog.Errorf("metrics cleanup: %v", err)
-		} else {
-			rowsAffected, _ := result.RowsAffected()
-			if rowsAffected > 0 {
-				metricLog.Tracef("metrics %d rows purged", rowsAffected)
+		now := time.Now()
+		lastCleanup := statzCleanupLast.Load()
+		if now.UnixNano()-lastCleanup >= statzCleanupInterval.Nanoseconds() && statzCleanupLast.CompareAndSwap(lastCleanup, now.UnixNano()) {
+			if result, err := conn.ExecContext(ctx, "DELETE FROM _NEO_STATZ WHERE TIME < ?", now.Add(-statzMaxLifetime).UnixNano()); err != nil {
+				statzLog.Errorf("metrics cleanup: %v", err)
+			} else {
+				rowsAffected, _ := result.RowsAffected()
+				if rowsAffected > 0 {
+					statzLog.Tracef("metrics %d rows purged", rowsAffected)
+				}
 			}
 		}
 	}(result)
