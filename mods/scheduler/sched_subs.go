@@ -30,7 +30,7 @@ type SubscriberEntry struct {
 	TaskTql  string
 	Bridge   string
 	Topic    string
-	ExecUser string // creator, used as the bridge lookup scope
+	ExecUser string // creator, used as the user scope for bridge lookup and db connections
 
 	QoS        int    // mqtt only
 	QueueName  string // nats only, Queue Group
@@ -68,13 +68,22 @@ func NewSubscriberEntry(s *Service, def *model.SubscriberDefinition) (*Subscribe
 	return ret, nil
 }
 
+// execUser returns the user scope for bridge lookups and db connections,
+// falling back to "sys" for legacy subscriber definitions without ExecUser.
+func (ent *SubscriberEntry) execUser() string {
+	if ent.ExecUser == "" {
+		return "sys"
+	}
+	return ent.ExecUser
+}
+
 func (ent *SubscriberEntry) Start() error {
 	ent.setStateError(STARTING, nil)
 	ent.shouldSubscribe = true
 	ent.ctx, ent.ctxCancel = context.WithCancel(context.Background())
 
 	ent.log.Infof("starting, bridge=%s, topic=%s", ent.Bridge, ent.Topic)
-	if br0, err := bridge.GetBridge(ent.ctx, model.UserScope{User: ent.ExecUser}, ent.Bridge); err != nil {
+	if br0, err := bridge.GetBridge(ent.ctx, model.UserScope{User: ent.execUser()}, ent.Bridge); err != nil {
 		ent.log.Tracef("get bridge, %s", err.Error())
 		ent.setStateError(FAILED, err)
 		return err
@@ -192,7 +201,7 @@ func (ent *SubscriberEntry) Stop() error {
 		return nil
 	}
 
-	if br0, err := bridge.GetBridge(ent.ctx, model.UserScope{User: ent.ExecUser}, ent.Bridge); err != nil {
+	if br0, err := bridge.GetBridge(ent.ctx, model.UserScope{User: ent.execUser()}, ent.Bridge); err != nil {
 		ent.setStateError(FAILED, err)
 		return err
 	} else {
@@ -290,6 +299,7 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 		return
 	}
 	task := tql.NewTaskContext(context.TODO())
+	task.SetConsole(ent.execUser(), "", "")
 	task.SetInputReader(bytes.NewBuffer(payload))
 	task.SetOutputWriterJson(io.Discard, true)
 	task.SetLogWriter(ent.log)
@@ -330,7 +340,7 @@ func extractColumns(payload []byte) []string {
 
 func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
-		if conn, err := spi.Connect(ent.ctx, "sys"); err != nil {
+		if conn, err := spi.Connect(ent.ctx, ent.execUser()); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 			return
@@ -492,7 +502,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.appender == nil {
-		dsn := spi.DefaultDSN(map[string]string{"user": "sys", "db": "MACHBASEDB"})
+		dsn := spi.DefaultDSN(map[string]string{"user": spi.DSNUser(ent.execUser()), "db": "MACHBASEDB"})
 		ap := &client.Appender{}
 		err := ap.Connect(ent.ctx, dsn, ent.wd.Table)
 		if err != nil {

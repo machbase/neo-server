@@ -2,6 +2,7 @@ package test_engine
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -40,6 +41,9 @@ type TestCase struct {
 	Err         string
 	Vars        map[string]any
 	ExecBuilder engine.ExecBuilderFunc
+	// Context, when set, is threaded into the jsh engine's context so native
+	// modules can read values attached via context.WithValue (e.g. model.UserScope).
+	Context context.Context
 }
 
 func (tc TestCase) RunTest(t *testing.T) {
@@ -71,6 +75,7 @@ func RunTest(t *testing.T, tc TestCase) {
 				{MountPoint: "/lib", FS: lib.LibFS()},
 			},
 			Env:         env,
+			Context:     tc.Context,
 			ExecBuilder: tc.ExecBuilder,
 			Reader:      &bytes.Buffer{},
 			Writer:      &bytes.Buffer{},

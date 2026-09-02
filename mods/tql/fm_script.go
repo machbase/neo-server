@@ -123,7 +123,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	conf := engine.Config{
 		Name:    "SCRIPT",
 		Code:    `(()=>{})()`,
-		Context: node.runtime.Context(),
+		Context: model.ContextWithUserScope(node.runtime.Context(), model.UserScope{User: node.runtime.ConsoleUser()}),
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
@@ -144,7 +144,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 
 	// create ctx
 	ctx := &JSContext{
-		Context: node.runtime.Context(),
+		Context: conf.Context,
 		engine:  jr,
 		node:    node,
 	}
@@ -156,7 +156,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	}
 
 	// it should run before the init code, so that the init code can use the native modules.
-	if err := jr.RunContext(node.runtime.Context()); err != nil {
+	if err := jr.RunContext(conf.Context); err != nil {
 		return nil, fmt.Errorf("SCRIPT runtime, %s", err.Error())
 	}
 

@@ -15,16 +15,30 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	// m.publisher({bridge: "name"})
 	o.Set("publisher", func(optObj map[string]any) goja.Value {
 		var cname string
+		var explicitUser string
 		if len(optObj) > 0 {
 			// parse db options `$.publisher({bridge: "name"})`
 			if br, ok := optObj["bridge"]; ok {
 				cname = br.(string)
 			}
+			// optional `user` overrides the ambient scope, for entry points
+			// with no wired context (CLI jsh, cgi-bin); see @jsh/db's ClientOptions.User.
+			if u, ok := optObj["user"]; ok {
+				explicitUser, _ = u.(string)
+			}
 		}
-		// TEMP: jsh has no exported way yet to resolve the actual logged-in
-		// session user from this native module's ctx, so a fixed "sys"
-		// scope is used until that wiring exists (see plan-model-bridge.md).
-		br, err := bridge.GetBridge(ctx, model.UserScope{User: "sys"}, cname)
+		// Resolve the user scope for this bridge lookup, in order of precedence:
+		//  1. explicit `user` option (script author's own responsibility).
+		//  2. ctx-derived scope (TQL SCRIPT({}), CLI machbase-neo shell; see
+		//     model.ContextWithUserScope/ContextWithUserScopeFunc).
+		//  3. "sys" fallback.
+		scope := model.UserScope{User: "sys"}
+		if explicitUser != "" {
+			scope = model.UserScope{User: explicitUser}
+		} else if ctxScope, ok := model.UserScopeFromContext(ctx); ok && ctxScope.User != "" {
+			scope = ctxScope
+		}
+		br, err := bridge.GetBridge(ctx, scope, cname)
 		if err != nil || br == nil {
 			return rt.NewGoError(fmt.Errorf("publisher: bridge '%s' not found", cname))
 		}

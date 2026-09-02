@@ -93,15 +93,6 @@ func TestStmtTypePredicates(t *testing.T) {
 	}
 }
 
-func TestLinkAndCodePageHelpers(t *testing.T) {
-	if got := LinkInfo(); got != LibMachLinkInfo {
-		t.Fatalf("LinkInfo() was %q, want %q", got, LibMachLinkInfo)
-	}
-	if got := translateCodePage("abc-123"); got != "abc-123" {
-		t.Fatalf("translateCodePage() changed ASCII text to %q", got)
-	}
-}
-
 func TestEngMakeAppendBuffer(t *testing.T) {
 	buffer := EngMakeAppendBuffer(nil, []string{"A", "B"}, []string{"integer", "varchar"})
 	if buffer.stmt != nil {

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/dop251/goja"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 func TestNormalizeShellArgs(t *testing.T) {
@@ -261,6 +262,50 @@ func TestSwitchUserUpdatesDefaultSession(t *testing.T) {
 	}
 	if defaultSession.refreshToken != "new-refresh-token" {
 		t.Fatalf("defaultSession.refreshToken = %q, want new-refresh-token", defaultSession.refreshToken)
+	}
+}
+
+// TestUserScopeContextReflectsSwitchUser guards ContextWithUserScopeFunc
+// (machbase/neo#1468): a context built once via UserScopeContext must reflect
+// a later SwitchUser call (the `connect`/`login` shell command) instead of
+// staying pinned to the identity that was active when the context was created.
+func TestUserScopeContextReflectsSwitchUser(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"accessToken":  "new-access-token",
+			"refreshToken": "new-refresh-token",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	defaultSession = Config{
+		Server:   strings.TrimPrefix(srv.URL, "http://"),
+		User:     "sys",
+		Password: "manager",
+	}
+
+	ctx := UserScopeContext(context.Background())
+
+	scope, ok := model.UserScopeFromContext(ctx)
+	if !ok || scope.User != "sys" {
+		t.Fatalf("UserScopeFromContext before SwitchUser = %+v, ok=%v, want sys/true", scope, ok)
+	}
+
+	if err := SwitchUser("demo", "secret"); err != nil {
+		t.Fatalf("SwitchUser() error = %v", err)
+	}
+
+	scope, ok = model.UserScopeFromContext(ctx)
+	if !ok || scope.User != "demo" {
+		t.Fatalf("UserScopeFromContext after SwitchUser = %+v, ok=%v, want demo/true (same ctx must not be stale)", scope, ok)
 	}
 }
 

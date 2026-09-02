@@ -17,11 +17,9 @@ type TimerEntry struct {
 	BaseEntry
 	TaskTql  string
 	Schedule string
-	// ExecUser is the schedule's creator, carried through to the point
-	// where the TQL task is executed. Applying it as the actual execution
-	// identity (e.g. via task.SetConsole) is intentionally left for a
-	// separate follow-up (see plan-model-schedule.md); this field alone
-	// does not change task execution behavior.
+	// ExecUser is the schedule's creator, applied as the TQL task's execution
+	// identity via task.SetConsole so that spi.Connect/bridge lookups inside
+	// the task run under this user's scope instead of always defaulting to sys.
 	ExecUser string
 	entryId  cron.EntryID
 	s        *Service
@@ -97,6 +95,7 @@ func (ent *TimerEntry) doTask() {
 		return
 	}
 	task := tql.NewTaskContext(context.TODO())
+	task.SetConsole(ent.ExecUser, "", "")
 	task.SetParams(nil)
 	task.SetInputReader(nil)
 	task.SetOutputWriterJson(io.Discard, true)
