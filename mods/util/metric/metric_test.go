@@ -80,3 +80,27 @@ func TestCollectorSendNonBlockingWhenBufferFull(t *testing.T) {
 
 	require.Equal(t, uint64(1), c.DroppedCount())
 }
+
+func TestCollectorPublishesInflightProduct(t *testing.T) {
+	seriesID, err := NewSeriesID("METRIC_1S", "1s", time.Second, 10)
+	require.NoError(t, err)
+
+	var products []Product
+	c := NewCollector(WithSeries(seriesID), WithInflightOutput())
+	c.AddOutputFunc(func(product Product) error {
+		products = append(products, product)
+		return nil
+	})
+
+	timestamp := time.Date(2026, time.January, 1, 1, 0, 0, 0, time.UTC)
+	c.receive(&Gather{ts: timestamp, measures: []Measure{{Name: "requests", Value: 1, Type: CounterType(UnitShort)}}})
+	c.receive(&Gather{ts: timestamp.Add(time.Second), measures: []Measure{{Name: "requests", Value: 1, Type: CounterType(UnitShort)}}})
+
+	require.Len(t, products, 3)
+	require.True(t, products[0].Inflight)
+	require.False(t, products[1].Inflight)
+	require.True(t, products[2].Inflight)
+	require.Equal(t, timestamp, products[0].Time)
+	require.Equal(t, timestamp, products[1].Time)
+	require.Equal(t, timestamp.Add(time.Second), products[2].Time)
+}
