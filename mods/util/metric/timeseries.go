@@ -153,8 +153,9 @@ func WithMeta(meta any) TimeSeriesOption {
 	}
 }
 
+// roundTime returns the start of the aggregation bucket [start, start+interval).
 func (ts *TimeSeries) roundTime(t time.Time) time.Time {
-	return t.Add(ts.interval / 2).Round(ts.interval)
+	return t.Truncate(ts.interval)
 }
 
 func (ts *TimeSeries) Meta() any {

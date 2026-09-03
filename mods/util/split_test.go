@@ -457,6 +457,24 @@ func ExampleParseNameValuePairs() {
 	// log-level=info
 }
 
+func ExampleParseNameValuePairs_singleQuote() {
+	singleQuoted := `named.name='sys:pool:idle' named.from='it\'s here'`
+	doubleQuoted := `named.name="sys:pool:idle" named.from="it's here"`
+
+	for _, input := range []string{singleQuoted, doubleQuoted} {
+		result := util.ParseNameValuePairs(input)
+		for _, pair := range result {
+			fmt.Printf("%s=%s\n", pair.Name, pair.Value)
+		}
+	}
+
+	// Output:
+	// named.name=sys:pool:idle
+	// named.from=it's here
+	// named.name=sys:pool:idle
+	// named.from=it's here
+}
+
 func ExampleSplitHttpStatements() {
 	input := `
 POST /api/echo HTTP/1.1

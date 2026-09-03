@@ -97,6 +97,9 @@ type Collector struct {
 
 	// persistent storage
 	storage Storage
+
+	// publishInflight sends the current, not-yet-complete bucket to outputs.
+	publishInflight bool
 }
 
 // NewCollector creates a new Collector with the specified interval.
@@ -139,6 +142,13 @@ func WithSeries(seriesID ...SeriesID) CollectorOption {
 func WithTimeseriesFilter(filter Filter) CollectorOption {
 	return func(c *Collector) {
 		c.timeseriesFilter = filter
+	}
+}
+
+// WithInflightOutput publishes the current collecting bucket to outputs after each sample.
+func WithInflightOutput() CollectorOption {
+	return func(c *Collector) {
+		c.publishInflight = true
 	}
 }
 
@@ -462,12 +472,20 @@ func (c *Collector) receive(m *Gather) {
 			expvar.Publish(publishName, mts)
 		}
 		mts.AddTime(m.ts, measure.Value)
+		if c.publishInflight {
+			for _, ts := range mts {
+				tb, meta := ts.LastBin()
+				prd := ToProduct(tb, meta)
+				prd.Inflight = true
+				c.onProduct(prd)
+			}
+		}
 	}
 }
 
 type Product struct {
 	Name        string        `json:"name"`
-	Time        time.Time     `json:"ts"`
+	Time        time.Time     `json:"ts"` // start time of the aggregation bucket [start, start+Period)
 	Value       Value         `json:"value,omitempty"`
 	IsNull      bool          `json:"isNull,omitempty"`
 	SeriesID    string        `json:"series_id,omitempty"`
@@ -475,6 +493,7 @@ type Product struct {
 	Period      time.Duration `json:"period,omitempty"`
 	Type        string        `json:"type,omitempty"`
 	Unit        Unit          `json:"unit,omitempty"`
+	Inflight    bool          `json:"inflight,omitempty"`
 }
 
 func (p Product) String() string {

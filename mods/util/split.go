@@ -464,7 +464,7 @@ var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.
 // where values can contain whitespace within single or double quotation marks.
 //
 //	func main() {
-//	    input := `name1=value1 name2="value \"with\" spaces" name3=value3 name4 `
+//	    input := `name1=value1 name2="value \"with\" spaces" name3='value3' name4 `
 //	    result := tokenize(input)
 //	    for k, v := range result {
 //	        fmt.Printf("%s=%s\n", k, v)
