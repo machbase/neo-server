@@ -1648,6 +1648,9 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 			"Subscriber 'sub-mqtt' added successfully.",
 		},
 	}.runShellTestCase(t)
+	mqttSubscriber, err := httpServer.authServer.models.LoadSubscriber(contextWithModelUser(context.Background(), "sys"), "sub-mqtt")
+	require.NoError(t, err)
+	mqttSubscriberId := strconv.FormatInt(mqttSubscriber.Id, 10)
 	ShellTestCase{
 		name:   "wait_for_mqtt_subscribe",
 		args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
@@ -1657,11 +1660,11 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 		name: "subscriber_list_after_add",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
-			"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+			"/r/^│\\s+1 │\\s+" + mqttSubscriberId + " │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1699,27 +1702,27 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_stop",
-		args: append(shellArgs, "subscriber", "stop", "3"),
+		args: append(shellArgs, "subscriber", "stop", mqttSubscriberId),
 		expect: []string{
-			"Subscriber '3' stopped successfully.",
+			"Subscriber '" + mqttSubscriberId + "' stopped successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_list_after_stop",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
-			"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+			"/r/^│\\s+1 │\\s+" + mqttSubscriberId + " │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_del",
-		args: append(shellArgs, "subscriber", "del", "3"),
+		args: append(shellArgs, "subscriber", "del", mqttSubscriberId),
 		expect: []string{
-			"Subscriber '3' deleted successfully.",
+			"Subscriber '" + mqttSubscriberId + "' deleted successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1777,6 +1780,9 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 			"Subscriber 'sub-nats' added successfully.",
 		},
 	}.runShellTestCase(t)
+	natsSubscriber, err := httpServer.authServer.models.LoadSubscriber(contextWithModelUser(context.Background(), "sys"), "sub-nats")
+	require.NoError(t, err)
+	natsSubscriberId := strconv.FormatInt(natsSubscriber.Id, 10)
 	ShellTestCase{
 		name:   "wait_for_nats_subscribe", // wait for subscriber to start and subscribe before publishing
 		args:   append(shellArgs, "sleep", "3"),
@@ -1786,11 +1792,11 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 		name: "subscriber_list_after_add",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
-			"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+			"/r/^│\\s+1 │\\s+" + natsSubscriberId + " │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1828,27 +1834,27 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_stop",
-		args: append(shellArgs, "subscriber", "stop", "4"),
+		args: append(shellArgs, "subscriber", "stop", natsSubscriberId),
 		expect: []string{
-			"Subscriber '4' stopped successfully.",
+			"Subscriber '" + natsSubscriberId + "' stopped successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_list_after_stop",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
-			"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+			"/r/^│\\s+1 │\\s+" + natsSubscriberId + " │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_del",
-		args: append(shellArgs, "subscriber", "del", "4"),
+		args: append(shellArgs, "subscriber", "del", natsSubscriberId),
 		expect: []string{
-			"Subscriber '4' deleted successfully.",
+			"Subscriber '" + natsSubscriberId + "' deleted successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{

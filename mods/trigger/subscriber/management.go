@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Info struct {
@@ -102,8 +103,14 @@ func (service *Service) Add(ctx context.Context, scope model.UserScope, request 
 	if request.Name == "" || len(request.Name) > 40 || request.Task == "" || request.Bridge == "" || request.Topic == "" {
 		return response(start, fmt.Errorf("subscriber name, task, bridge, and topic are required")), nil
 	}
-	if _, err := service.tqlLoader.Load(request.Task); err != nil {
+	writeDescriptor, err := util.NewWriteDescriptor(request.Task)
+	if err != nil {
 		return response(start, err), nil
+	}
+	if writeDescriptor.IsTqlDestination() {
+		if _, err := service.tqlLoader.Load(request.Task); err != nil {
+			return response(start, err), nil
+		}
 	}
 	execUser := request.ExecUser
 	if scope.User != "SYS" && scope.User != "sys" || execUser == "" {

@@ -128,7 +128,7 @@ function doAdd(config, args) {
     const destination = args.destination;
     const autostart = config.autostart || false;
     const qos = config.qos || 0;
-    client.addSubscriber({ name: name, bridge: bridge, command: destination, autoStart: autostart, mqtt: { topic: topic, qos: qos } })
+    client.addSubscriber({ name: name, bridge: bridge, command: destination, autoStart: autostart, topic: topic, qos: qos })
         .then(() => {
             console.println(`Subscriber '${name}' added successfully.`);
         })
