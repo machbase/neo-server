@@ -212,6 +212,13 @@ func TestSubscriberRegistryServiceAndManagement(t *testing.T) {
 	if bad.Success {
 		t.Fatal("invalid add succeeded")
 	}
+	service.tqlLoader = subscriberLoaderStub{err: errors.New("missing task")}
+	definitionCount := len(provider.definitions)
+	missing, _ := service.Add(ctx, user, &AddRequest{Name: "missing", Task: "missing.tql", Bridge: "missing", Topic: "topic"})
+	if missing.Success || len(provider.definitions) != definitionCount {
+		t.Fatal("missing task add was persisted")
+	}
+	service.tqlLoader = subscriberLoaderStub{}
 	added, _ := service.Add(ctx, user, &AddRequest{Name: "sub", Task: "task.tql", Bridge: "missing", Topic: "topic", ExecUser: "bob"})
 	if !added.Success || provider.definitions[added.Id].ExecUser != "alice" || provider.savedScope != user {
 		t.Fatal("user scope was not preserved")
@@ -538,7 +545,7 @@ func TestSubscriberStopAndRegisterErrors(t *testing.T) {
 func TestSubscriberManagementErrorsAndDatabaseTaskWrappers(t *testing.T) {
 	resetSubscriberRegistry(t)
 	provider := &subscriberProviderStub{definitions: map[int64]*model.SubscriberDefinition{1: {Id: 1}}, loadErr: errors.New("load failed")}
-	service := NewService(WithProvider(provider))
+	service := NewService(WithProvider(provider), WithTqlLoader(subscriberLoaderStub{}))
 	ctx := context.Background()
 	if response, _ := service.List(ctx, model.UserScope{}); response.Success || response.Reason == "" {
 		t.Fatal("List did not report provider failure")

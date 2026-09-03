@@ -102,6 +102,9 @@ func (service *Service) Add(ctx context.Context, scope model.UserScope, request 
 	if request.Name == "" || len(request.Name) > 40 || request.Task == "" || request.Bridge == "" || request.Topic == "" {
 		return response(start, fmt.Errorf("subscriber name, task, bridge, and topic are required")), nil
 	}
+	if _, err := service.tqlLoader.Load(request.Task); err != nil {
+		return response(start, err), nil
+	}
 	execUser := request.ExecUser
 	if scope.User != "SYS" && scope.User != "sys" || execUser == "" {
 		execUser = scope.User

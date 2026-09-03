@@ -1876,10 +1876,10 @@ func TestShellTimer(t *testing.T) {
 		name: "timer_list",
 		args: append(shellArgs, "timer", "list"),
 		expect: []string{
-			"┌────────┬──────┬──────┬─────┬───────────┬───────┐",
-			"│ ROWNUM │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
-			"├────────┼──────┼──────┼─────┼───────────┼───────┤",
-			"└────────┴──────┴──────┴─────┴───────────┴───────┘",
+			"┌────────┬────┬──────┬──────┬─────┬───────────┬───────┐",
+			"│ ROWNUM │ ID │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
+			"├────────┼────┼──────┼──────┼─────┼───────────┼───────┤",
+			"└────────┴────┴──────┴──────┴─────┴───────────┴───────┘",
 		},
 	}.runShellTestCase(t)
 }
@@ -2458,7 +2458,7 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	id, err := svr.addSubscriber(ctx, addSubscriberRequest{
 		Name:      name,
 		Bridge:    "missing-bridge",
-		Command:   "select 1",
+		Command:   "csv_map.tql",
 		AutoStart: false,
 		Topic:     "test/topic",
 		QoS:       1,
@@ -2507,7 +2507,7 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 		id, err := svr.addSubscriber(ctx, addSubscriberRequest{
 			Name:      name,
 			Bridge:    "missing-bridge",
-			Command:   "select 1",
+			Command:   "csv_map.tql",
 			AutoStart: false,
 			Topic:     "subject.>",
 		})
@@ -2524,10 +2524,15 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 
 	t.Run("mqtt_only", func(t *testing.T) {
 		name := fmt.Sprintf("cov_sub_v2_mqtt_%d", time.Now().UnixNano())
+		bridgeName := fmt.Sprintf("cov_mqtt_%d", time.Now().UnixNano())
+		require.NoError(t, svr.addBridge(ctx, bridgeName, "mqtt", fmt.Sprintf("broker=%s", mqttServerAddress)))
+		t.Cleanup(func() {
+			_ = svr.deleteBridge(ctx, bridgeName)
+		})
 		id, err := svr.addSubscriber(ctx, addSubscriberRequest{
 			Name:      name,
-			Bridge:    "missing-bridge",
-			Command:   "select 1",
+			Bridge:    bridgeName,
+			Command:   "csv_map.tql",
 			AutoStart: true,
 			Topic:     "factory/#",
 			QoS:       2,

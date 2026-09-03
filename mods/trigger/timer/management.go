@@ -102,6 +102,9 @@ func (service *Service) Add(ctx context.Context, scope model.UserScope, request 
 	if _, err := parseSchedule(request.Schedule); err != nil {
 		return response(start, err), nil
 	}
+	if _, err := service.tqlLoader.Load(request.Task); err != nil {
+		return response(start, err), nil
+	}
 	execUser := request.ExecUser
 	if scope.User != "SYS" && scope.User != "sys" || execUser == "" {
 		execUser = scope.User
