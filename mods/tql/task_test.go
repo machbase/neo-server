@@ -555,6 +555,101 @@ func TestSql_insert_flush_select(t *testing.T) {
 	}.run(t)
 }
 
+func TestSql_insert_bind_args(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_insert-with-named-params",
+		Script: `
+			FAKE(once(1))
+			SQL("insert into tag_data (name,time,value,short_value,ushort_value,int_value,uint_value,long_value,ulong_value,str_value,json_value,ipv4_value,ipv6_value,bin_value) "+
+				"values(:name,:time,:value,:short_value,:ushort_value,:int_value,:uint_value,:long_value,:ulong_value,:str_value,:json_value,:ipv4_value,:ipv6_value,:bin_value)",
+				named("name", "named-strings"),
+				named("time", "2024-06-01 00:00:00"),
+				named("value", 1.2345),
+				named("short_value", -123),
+				named("ushort_value", 123),
+				named("int_value", -1234),
+				named("uint_value", 1234),
+				named("long_value", -12345),
+				named("ulong_value", 12345),
+				named("str_value", "STRING"),
+				named("json_value", "{\"json\":true}"),
+				named("ipv4_value", "192.168.0.1"),
+				named("ipv6_value", "2001:db8::1"),
+				named("bin_value", "0x010203"))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_insert-with-named-params-all-strings",
+		Script: `
+			FAKE(once(1))
+			SQL("insert into tag_data (name,time,value,short_value,ushort_value,int_value,uint_value,long_value,ulong_value,str_value,json_value,ipv4_value,ipv6_value,bin_value) "+
+				"values(:name,:time,:value,:short_value,:ushort_value,:int_value,:uint_value,:long_value,:ulong_value,:str_value,:json_value,:ipv4_value,:ipv6_value,:bin_value)",
+				named("name", "named-strings"),
+				named("time", "2024-06-01 00:00:01"),
+				named("value", "3.1415"),
+				named("short_value", "-123"),
+				named("ushort_value", "123"),
+				named("int_value", "-1234"),
+				named("uint_value", "1234"),
+				named("long_value", "-12345"),
+				named("ulong_value", "12345"),
+				named("str_value", "STRING"),
+				named("json_value", "{\"json\":true}"),
+				named("ipv4_value", "192.168.0.1"),
+				named("ipv6_value", "2001:db8::1"),
+				named("bin_value", "0x010203"))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_insert-with-named-params-all-strings-flush",
+		Script: `
+			FAKE(once(1))
+			SQL("exec table_flush(tag_data)")
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "executed.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_insert-with-named-params-all-strings-verify",
+		Script: `
+			SQL("select * from tag_data where name = 'named-strings'")
+			CSV(header(true), timeformat('default'), tz('Local'))
+			`,
+		ExpectCSV: []string{
+			"NAME,TIME,VALUE,SHORT_VALUE,USHORT_VALUE,INT_VALUE,UINT_VALUE,LONG_VALUE,ULONG_VALUE,STR_VALUE,JSON_VALUE,IPV4_VALUE,IPV6_VALUE,BIN_VALUE",
+			`named-strings,2024-06-01 00:00:00,1.2345,-123,123,-1234,1234,-12345,12345,STRING,"{""json"":true}",192.168.0.1,2001:db8::1,0x010203`,
+			`named-strings,2024-06-01 00:00:01,3.1415,-123,123,-1234,1234,-12345,12345,STRING,"{""json"":true}",192.168.0.1,2001:db8::1,0x010203`,
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_delete-with-named-bind-params",
+		Script: `
+			SQL("delete from tag_data where name = :name",
+				named("name", "named-strings"))
+			BOX()
+			`,
+		ExpectCSV: []string{
+			"+-----------------+",
+			"| MESSAGE         |",
+			"+-----------------+",
+			"| 2 rows deleted. |",
+			"+-----------------+",
+			"",
+		},
+	}.run(t)
+}
+
 func TestSql_show_wrong(t *testing.T) {
 	TqlTestCase{
 		Name: "SQL_show_wrong",
