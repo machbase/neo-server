@@ -458,10 +458,10 @@ func (v *NameValuePair) String() string {
 	}
 }
 
-var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
+var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|'([^'\\]*(\\.[^'\\]*)*)'|[^ ]+))?`)
 
 // ParseNameValuePairs parses multiple name=value pairs
-// where values can contain whitespace within double quotation marks.
+// where values can contain whitespace within single or double quotation marks.
 //
 //	func main() {
 //	    input := `name1=value1 name2="value \"with\" spaces" name3=value3 name4 `
@@ -479,9 +479,13 @@ func ParseNameValuePairs(input string) []NameValuePair {
 		value := match[2]
 		if value == "" {
 			value = ""
-		} else if value[0] == '"' && value[len(value)-1] == '"' {
+		} else if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
 			value = value[1 : len(value)-1]
-			value = strings.ReplaceAll(value, `\"`, `"`)
+			if match[2][0] == '"' {
+				value = strings.ReplaceAll(value, `\"`, `"`)
+			} else {
+				value = strings.ReplaceAll(value, `\'`, `'`)
+			}
 		}
 		pairs = append(pairs, NameValuePair{key, value})
 	}

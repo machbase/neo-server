@@ -240,6 +240,14 @@ func TestSplitSqlStatementsEnv(t *testing.T) {
 			},
 		},
 		{
+			name:  "named values accept unquoted single quoted and double quoted forms",
+			input: "-- env: named.first=my-car named.second=\"my-car\" named.third='my-car'\nSELECT :first, :second, :third;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.first=my-car named.second=\"my-car\" named.third='my-car'", Env: &SqlStatementEnv{Named: map[string]string{"first": "my-car", "second": "my-car", "third": "my-car"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT :first, :second, :third;", StmtType: "select", Env: &SqlStatementEnv{Named: map[string]string{"first": "my-car", "second": "my-car", "third": "my-car"}}},
+			},
+		},
+		{
 			name:  "named multiple pairs with quoted values",
 			input: `-- env: named.name=Alice named.from="2024-01-01" named.to="2024-01-08"` + "\n" + `select * from example where name = :name and time between :from and :to;`,
 			expect: []*SqlStatement{
