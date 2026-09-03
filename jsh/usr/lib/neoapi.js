@@ -390,6 +390,20 @@ class Client extends _Client {
             return this._rpcRequest('server.certificate.get', []);
         });
     }
+    listTimers() { return this._executeWithAuth(() => this._rpcRequest('timer.list', [])); }
+    getTimer(id) { return this._executeWithAuth(() => this._rpcRequest('timer.get', [id])); }
+    addTimer(timer) { return this._executeWithAuth(() => this._rpcRequest('timer.add', [timer])); }
+    updateTimer(timer) { return this._executeWithAuth(() => this._rpcRequest('timer.update', [timer])); }
+    deleteTimer(id) { return this._executeWithAuth(() => this._rpcRequest('timer.delete', [id])); }
+    startTimer(id) { return this._executeWithAuth(() => this._rpcRequest('timer.start', [id])); }
+    stopTimer(id) { return this._executeWithAuth(() => this._rpcRequest('timer.stop', [id])); }
+    listSubscribers() { return this._executeWithAuth(() => this._rpcRequest('subscriber.list', [])); }
+    getSubscriber(id) { return this._executeWithAuth(() => this._rpcRequest('subscriber.get', [id])); }
+    addSubscriber(subscriber) { return this._executeWithAuth(() => this._rpcRequest('subscriber.add', [subscriber])); }
+    updateSubscriber(subscriber) { return this._executeWithAuth(() => this._rpcRequest('subscriber.update', [subscriber])); }
+    deleteSubscriber(id) { return this._executeWithAuth(() => this._rpcRequest('subscriber.delete', [id])); }
+    startSubscriber(id) { return this._executeWithAuth(() => this._rpcRequest('subscriber.start', [id])); }
+    stopSubscriber(id) { return this._executeWithAuth(() => this._rpcRequest('subscriber.stop', [id])); }
     listSchedules() {
         return this._executeWithAuth(() => {
             return this._rpcRequest('schedule.list', []);

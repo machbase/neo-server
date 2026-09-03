@@ -1648,6 +1648,9 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 			"Subscriber 'sub-mqtt' added successfully.",
 		},
 	}.runShellTestCase(t)
+	mqttSubscriber, err := httpServer.authServer.models.LoadSubscriber(contextWithModelUser(context.Background(), "sys"), "sub-mqtt")
+	require.NoError(t, err)
+	mqttSubscriberId := strconv.FormatInt(mqttSubscriber.Id, 10)
 	ShellTestCase{
 		name:   "wait_for_mqtt_subscribe",
 		args:   append(shellArgs, "sleep", "3"), // wait for data to arrive and be processed
@@ -1657,11 +1660,11 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 		name: "subscriber_list_after_add",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
-			"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+			"/r/^│\\s+1 │\\s+" + mqttSubscriberId + " │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ RUNNING │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1699,27 +1702,27 @@ func shellBridgeMqttTest(t *testing.T, broker string) {
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_stop",
-		args: append(shellArgs, "subscriber", "stop", "sub-mqtt"),
+		args: append(shellArgs, "subscriber", "stop", mqttSubscriberId),
 		expect: []string{
-			"Subscriber 'sub-mqtt' stopped successfully.",
+			"Subscriber '" + mqttSubscriberId + "' stopped successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_list_after_stop",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
-			"│      1 │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+			"/r/^│\\s+1 │\\s+" + mqttSubscriberId + " │ SUB-MQTT │ br-mqtt │ test/topic │ db/write/example │ YES       │ STOP  │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_del",
-		args: append(shellArgs, "subscriber", "del", "sub-mqtt"),
+		args: append(shellArgs, "subscriber", "del", mqttSubscriberId),
 		expect: []string{
-			"Subscriber 'sub-mqtt' deleted successfully.",
+			"Subscriber '" + mqttSubscriberId + "' deleted successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1777,6 +1780,9 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 			"Subscriber 'sub-nats' added successfully.",
 		},
 	}.runShellTestCase(t)
+	natsSubscriber, err := httpServer.authServer.models.LoadSubscriber(contextWithModelUser(context.Background(), "sys"), "sub-nats")
+	require.NoError(t, err)
+	natsSubscriberId := strconv.FormatInt(natsSubscriber.Id, 10)
 	ShellTestCase{
 		name:   "wait_for_nats_subscribe", // wait for subscriber to start and subscribe before publishing
 		args:   append(shellArgs, "sleep", "3"),
@@ -1786,11 +1792,11 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 		name: "subscriber_list_after_add",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
-			"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬─────────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE   │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼─────────┤",
+			"/r/^│\\s+1 │\\s+" + natsSubscriberId + " │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ RUNNING │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴─────────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1828,27 +1834,27 @@ func shellBridgeNatsTest(t *testing.T, natsHostPort string) {
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_stop",
-		args: append(shellArgs, "subscriber", "stop", "sub-nats"),
+		args: append(shellArgs, "subscriber", "stop", natsSubscriberId),
 		expect: []string{
-			"Subscriber 'sub-nats' stopped successfully.",
+			"Subscriber '" + natsSubscriberId + "' stopped successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_list_after_stop",
 		args: append(shellArgs, "subscriber", "list"),
 		expect: []string{
-			"┌────────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
-			"│ ROWNUM │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
-			"├────────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
-			"│      1 │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
-			"└────────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
+			"┌────────┬────┬──────────┬─────────┬────────────┬──────────────────┬───────────┬───────┐",
+			"│ ROWNUM │ ID │ NAME     │ BRIDGE  │ TOPIC      │ DESTINATION      │ AUTOSTART │ STATE │",
+			"├────────┼────┼──────────┼─────────┼────────────┼──────────────────┼───────────┼───────┤",
+			"/r/^│\\s+1 │\\s+" + natsSubscriberId + " │ SUB-NATS │ br-nats │ iot.sensor │ db/write/example │ YES       │ STOP  │",
+			"└────────┴────┴──────────┴─────────┴────────────┴──────────────────┴───────────┴───────┘",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
 		name: "subscriber_del",
-		args: append(shellArgs, "subscriber", "del", "sub-nats"),
+		args: append(shellArgs, "subscriber", "del", natsSubscriberId),
 		expect: []string{
-			"Subscriber 'sub-nats' deleted successfully.",
+			"Subscriber '" + natsSubscriberId + "' deleted successfully.",
 		},
 	}.runShellTestCase(t)
 	ShellTestCase{
@@ -1876,10 +1882,10 @@ func TestShellTimer(t *testing.T) {
 		name: "timer_list",
 		args: append(shellArgs, "timer", "list"),
 		expect: []string{
-			"┌────────┬──────┬──────┬─────┬───────────┬───────┐",
-			"│ ROWNUM │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
-			"├────────┼──────┼──────┼─────┼───────────┼───────┤",
-			"└────────┴──────┴──────┴─────┴───────────┴───────┘",
+			"┌────────┬────┬──────┬──────┬─────┬───────────┬───────┐",
+			"│ ROWNUM │ ID │ NAME │ SPEC │ TQL │ AUTOSTART │ STATE │",
+			"├────────┼────┼──────┼──────┼─────┼───────────┼───────┤",
+			"└────────┴────┴──────┴──────┴─────┴───────────┴───────┘",
 		},
 	}.runShellTestCase(t)
 }
@@ -2138,10 +2144,10 @@ func coverageRunningServer(t *testing.T) *Server {
 
 func TestServerCoverage_ScheduleWrappers(t *testing.T) {
 	svr := coverageRunningServer(t)
-	ctx := context.Background()
+	ctx := contextWithModelUser(context.Background(), "sys")
 
 	name := fmt.Sprintf("cov_timer_%d", time.Now().UnixNano())
-	err := svr.addTimerSchedule(ctx, addTimerScheduleRequest{
+	_, err := svr.addTimer(ctx, addTimerRequest{
 		Name:      name,
 		Spec:      "@every 1m",
 		Command:   "definitely_not_existing_command",
@@ -2149,16 +2155,7 @@ func TestServerCoverage_ScheduleWrappers(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	err = svr.startSchedule(ctx, name)
-	_ = err
-
-	err = svr.stopSchedule(ctx, name)
-	_ = err
-
-	err = svr.deleteSchedule(ctx, name)
-	_ = err
-
-	_, err = svr.listSchedules(ctx)
+	_, err = svr.listTimers(ctx)
 	require.NoError(t, err)
 }
 
@@ -2464,15 +2461,12 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	ctx := contextWithModelUser(context.Background(), "sys")
 
 	name := fmt.Sprintf("cov_sub_%d", time.Now().UnixNano())
-	err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
+	id, err := svr.addSubscriber(ctx, addSubscriberRequest{
 		Name:      name,
 		Bridge:    "missing-bridge",
-		Command:   "select 1",
+		Command:   "csv_map.tql",
 		AutoStart: false,
-		Mqtt: &addSubscriberScheduleMqttOption{
-			Topic: "test/topic",
-			QoS:   1,
-		},
+		MQTT:      &subscriberMqttRequest{Topic: "test/topic", QoS: 1},
 	})
 	require.NoError(t, err)
 	legacyDef, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
@@ -2480,8 +2474,8 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 	require.Equal(t, "test/topic", legacyDef.Topic)
 	require.Equal(t, 1, legacyDef.QoS)
 	t.Cleanup(func() {
-		_ = svr.stopSchedule(context.Background(), name)
-		_ = svr.deleteSchedule(context.Background(), name)
+		_ = svr.stopSubscriber(ctx, id)
+		_ = svr.deleteSubscriber(ctx, id)
 	})
 
 	origCreated := svr.databaseCreated
@@ -2515,46 +2509,44 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 
 	t.Run("nats_only", func(t *testing.T) {
 		name := fmt.Sprintf("cov_sub_v2_nats_%d", time.Now().UnixNano())
-		err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
+		id, err := svr.addSubscriber(ctx, addSubscriberRequest{
 			Name:      name,
 			Bridge:    "missing-bridge",
-			Command:   "select 1",
+			Command:   "csv_map.tql",
 			AutoStart: false,
-			Nats: &addSubscriberScheduleNatsOption{
-				Subject:    "subject.>",
-				QueueName:  "workers",
-				StreamName: "orders",
-			},
+			NATS:      &subscriberNatsRequest{Subject: "subject.>", Queue: "workers", Stream: "events"},
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			_ = svr.stopSchedule(context.Background(), name)
-			_ = svr.deleteSchedule(context.Background(), name)
+			_ = svr.stopSubscriber(ctx, id)
+			_ = svr.deleteSubscriber(ctx, id)
 		})
 
 		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 		require.NoError(t, err)
 		require.Equal(t, "subject.>", def.Topic)
 		require.Equal(t, "workers", def.QueueName)
-		require.Equal(t, "orders", def.StreamName)
+		require.Equal(t, "events", def.StreamName)
 	})
 
 	t.Run("mqtt_only", func(t *testing.T) {
 		name := fmt.Sprintf("cov_sub_v2_mqtt_%d", time.Now().UnixNano())
-		err := svr.addSubscriberSchedule(ctx, addSubscriberScheduleRequest{
+		bridgeName := fmt.Sprintf("cov_mqtt_%d", time.Now().UnixNano())
+		require.NoError(t, svr.addBridge(ctx, bridgeName, "mqtt", fmt.Sprintf("broker=%s", mqttServerAddress)))
+		t.Cleanup(func() {
+			_ = svr.deleteBridge(ctx, bridgeName)
+		})
+		id, err := svr.addSubscriber(ctx, addSubscriberRequest{
 			Name:      name,
-			Bridge:    "missing-bridge",
-			Command:   "select 1",
+			Bridge:    bridgeName,
+			Command:   "csv_map.tql",
 			AutoStart: true,
-			Mqtt: &addSubscriberScheduleMqttOption{
-				Topic: "factory/#",
-				QoS:   2,
-			},
+			MQTT:      &subscriberMqttRequest{Topic: "factory/#", QoS: 2},
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			_ = svr.stopSchedule(context.Background(), name)
-			_ = svr.deleteSchedule(context.Background(), name)
+			_ = svr.stopSubscriber(ctx, id)
+			_ = svr.deleteSubscriber(ctx, id)
 		})
 
 		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))

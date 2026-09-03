@@ -303,10 +303,10 @@ func TestDocgenHelpers(t *testing.T) {
 	require.Equal(t, "jsonrpc.gen.md", pathBase("/tmp/jsonrpc.gen.md"))
 	require.Equal(t, "neo", pathBase("github.com/machbase/neo-server/v8/neo"))
 
-	importSpec := &ast.ImportSpec{Path: &ast.BasicLit{Value: `"github.com/machbase/neo-server/v8/mods/scheduler"`}}
-	require.Equal(t, "scheduler", importAlias(importSpec, "github.com/machbase/neo-server/v8/mods/scheduler"))
+	importSpec := &ast.ImportSpec{Path: &ast.BasicLit{Value: `"github.com/machbase/neo-server/v8/mods/trigger/timer"`}}
+	require.Equal(t, "timer", importAlias(importSpec, "github.com/machbase/neo-server/v8/mods/trigger/timer"))
 	importSpec.Name = &ast.Ident{Name: "sched"}
-	require.Equal(t, "sched", importAlias(importSpec, "github.com/machbase/neo-server/v8/mods/scheduler"))
+	require.Equal(t, "sched", importAlias(importSpec, "github.com/machbase/neo-server/v8/mods/trigger/timer"))
 
 	require.Equal(t, "Server", normalizeReceiverType(&ast.Ident{Name: "Server"}))
 	require.Equal(t, "Server", normalizeReceiverType(&ast.StarExpr{X: &ast.Ident{Name: "Server"}}))

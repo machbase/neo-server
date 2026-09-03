@@ -192,6 +192,7 @@ getServerInfo returns runtime and version information.
   - `version.buildTimestamp` *string*
   - `version.buildCompiler` *string*
   - `version.engine` *string*
+  - `version.engineVersion` *string*
   - `runtime` *object, optional*
   - `runtime.OS` *string, optional*
   - `runtime.arch` *string, optional*
@@ -1807,7 +1808,8 @@ listKeys returns server-managed key pairs.
 
 - `array<object<KeyInfo>>|error - key information list`
   - `[].idx` *int*
-  - `[].id` *string*
+  - `[].id` *int64*
+  - `[].name` *string*
   - `[].notBefore` *int64*
   - `[].notAfter` *int64*
 
@@ -1848,13 +1850,14 @@ listKeys returns server-managed key pairs.
 #### key.generate
 
 genKey generates a new key pair and returns the key information.
-It returns the key information including the identifier, certificate, private key, and token if successful.
-The return type is map[string]string with keys "id", "certificate", "key", and "token".
+It returns the key information including the management id, name (CommonName),
+certificate, and private key if successful.
 
-`key.generate(id, typ, notBefore, notAfter, store)`
+`key.generate(name, typ, notBefore, notAfter, store)`
 
 *Params*
-- `id` *string* - the identifier for the key pair, must be alphanumeric and can include _.@-
+- `name` *string* - the CommonName for the key pair, must be alphanumeric and can include _.@-;
+    duplicates across owners (or reissued certificates) are allowed
 - `typ` *string* - the type of key to generate, must be RSA or ECDSA
 - `notBefore` *int64* - the start time of the key's validity period in Unix timestamp (sec.)
     if not specified or 0, the current time will be used
@@ -1865,10 +1868,10 @@ The return type is map[string]string with keys "id", "certificate", "key", and "
 *Return*
 
 - `any|error - the generated key information`
-  - `id`: the identifier of the key pair
+  - `id`: the management id of the key pair (0 when store is false)
+  - `name`: the CommonName of the key pair
   - `certificate`: the certificate of the key pair
   - `key`: the private key of the key pair
-  - `token`: the token associated with the key pair
   - `serverKey`: the server's certificate (if store is true)
   - `zip`: a zip archive containing the key pair and server certificate (if store is true)
 
@@ -1922,7 +1925,7 @@ return: null on success
 `key.delete(id)`
 
 *Params*
-- `id` *string* - key pair identifier
+- `id` *int64* - management id of the key pair, as returned by key.list/key.generate
 
 *Return*
 
@@ -1942,7 +1945,7 @@ return: null on success
         "id": 20,
         "method": "key.delete",
         "params": [
-            "string"
+            0
         ]
     }
 }
@@ -1965,13 +1968,13 @@ return: null on success
 </details>
 
 
-### Schedule
+### Token
 
-#### schedule.list
+#### token.list
 
-listSchedules returns all scheduler entries.
+listApiTokens returns the caller's own API tokens.
 
-`schedule.list()`
+`token.list()`
 
 *Params*
 
@@ -1979,17 +1982,14 @@ listSchedules returns all scheduler entries.
 
 *Return*
 
-- `array<object<scheduler.Schedule>>|error - schedule list`
-  - `[].id` *int64, optional*
-  - `[].name` *string, optional*
-  - `[].type` *string, optional*
-  - `[].autoStart` *bool, optional*
-  - `[].state` *string, optional*
-  - `[].task` *string, optional*
-  - `[].schedule` *string, optional*
-  - `[].bridge` *string, optional*
-  - `[].topic` *string, optional*
-  - `[].QoS` *int32, optional*
+- `array<object<ApiTokenInfo>>|error - API token information list`
+  - `[].id` *int64*
+  - `[].name` *string*
+  - `[].user` *string*
+  - `[].hint` *string*
+  - `[].createdAt` *int64*
+  - `[].notAfter` *int64*
+  - `[].lastUsedAt` *int64, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2003,7 +2003,7 @@ listSchedules returns all scheduler entries.
     "rpc": {
         "jsonrpc": "2.0",
         "id": 20,
-        "method": "schedule.list",
+        "method": "token.list",
         "params": []
     }
 }
@@ -2025,28 +2025,20 @@ listSchedules returns all scheduler entries.
 
 </details>
 
-#### schedule.get
+#### token.generate
 
-getSchedule returns a schedule (timer or subscriber) by name.
+generateApiToken generates a new API token owned by the caller.
 
-`schedule.get(name)`
+`token.generate(name, notAfter)`
 
 *Params*
-- `name` *string* - schedule name
+- `name` *string* - a label for the token
+- `notAfter` *int64* - expiration unix epoch in seconds; 0 uses the default of 10 years from now
 
 *Return*
 
-- `object<scheduler.Schedule>|error - schedule`
-  - `id` *int64, optional*
-  - `name` *string, optional*
-  - `type` *string, optional*
-  - `autoStart` *bool, optional*
-  - `state` *string, optional*
-  - `task` *string, optional*
-  - `schedule` *string, optional*
-  - `bridge` *string, optional*
-  - `topic` *string, optional*
-  - `QoS` *int32, optional*
+- `object<GeneratedApiToken>|error - the generated API token, including the one-time plaintext token value`
+  - `token` *string*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2060,9 +2052,10 @@ getSchedule returns a schedule (timer or subscriber) by name.
     "rpc": {
         "jsonrpc": "2.0",
         "id": 20,
-        "method": "schedule.get",
+        "method": "token.generate",
         "params": [
-            "string"
+            "string",
+            0
         ]
     }
 }
@@ -2084,21 +2077,17 @@ getSchedule returns a schedule (timer or subscriber) by name.
 
 </details>
 
-#### schedule.timer.add
+#### token.delete
 
-addTimerSchedule creates a timer schedule.
+deleteApiToken deletes one of the caller's own API tokens.
 
 
 return: null on success
 
-`schedule.timer.add(req)`
+`token.delete(id)`
 
 *Params*
-- `req` *object* - timer schedule request
-  - `req.name` *string*
-  - `req.spec` *string*
-  - `req.command` *string*
-  - `req.autoStart` *bool, optional*
+- `id` *int64* - API token identifier
 
 *Return*
 
@@ -2116,308 +2105,9 @@ return: null on success
     "rpc": {
         "jsonrpc": "2.0",
         "id": 20,
-        "method": "schedule.timer.add",
+        "method": "token.delete",
         "params": [
-            {
-                "autoStart": false,
-                "command": "string",
-                "name": "string",
-                "spec": "string"
-            }
-        ]
-    }
-}
-```
-
-*Response*
-
-```json
-{
-    "type": "rpc_rsp",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "result": null
-    }
-}
-```
-
-</details>
-
-#### schedule.subscriber.add
-
-addSubscriberSchedule creates a subscriber schedule using a structured payload.
-
-
-return: null on success
-
-`schedule.subscriber.add(req)`
-
-*Params*
-- `req` *object* - subscriber schedule request with protocol-specific options
-  - `req.name` *string*
-  - `req.bridge` *string*
-  - `req.command` *string*
-  - `req.autoStart` *bool, optional*
-  - `req.mqtt` *object, optional*
-  - `req.mqtt.topic` *string*
-  - `req.mqtt.qos` *int, optional*
-  - `req.nats` *object, optional*
-  - `req.nats.subject` *string*
-  - `req.nats.queueName` *string, optional*
-  - `req.nats.streamName` *string, optional*
-
-*Return*
-
-- `null|error`
-
-<details>
-<summary>Request/Response JSON</summary>
-
-*Request*
-
-```json
-{
-    "type": "rpc_req",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "method": "schedule.subscriber.add",
-        "params": [
-            {
-                "autoStart": false,
-                "bridge": "string",
-                "command": "string",
-                "mqtt": {
-                    "qos": 0,
-                    "topic": "string"
-                },
-                "name": "string",
-                "nats": {
-                    "queueName": "string",
-                    "streamName": "string",
-                    "subject": "string"
-                }
-            }
-        ]
-    }
-}
-```
-
-*Response*
-
-```json
-{
-    "type": "rpc_rsp",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "result": null
-    }
-}
-```
-
-</details>
-
-#### schedule.update
-
-updateTimerSchedule updates an existing timer schedule.
-
-
-return: null on success
-
-`schedule.update(req)`
-
-*Params*
-- `req` *object* - timer schedule update request
-  - `req.name` *string*
-  - `req.autoStart` *bool, optional*
-  - `req.spec` *string*
-  - `req.command` *string*
-
-*Return*
-
-- `null|error`
-
-<details>
-<summary>Request/Response JSON</summary>
-
-*Request*
-
-```json
-{
-    "type": "rpc_req",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "method": "schedule.update",
-        "params": [
-            {
-                "autoStart": false,
-                "command": "string",
-                "name": "string",
-                "spec": "string"
-            }
-        ]
-    }
-}
-```
-
-*Response*
-
-```json
-{
-    "type": "rpc_rsp",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "result": null
-    }
-}
-```
-
-</details>
-
-#### schedule.delete
-
-deleteSchedule removes a schedule by name.
-
-
-return: null on success
-
-`schedule.delete(name)`
-
-*Params*
-- `name` *string* - schedule name
-
-*Return*
-
-- `null|error`
-
-<details>
-<summary>Request/Response JSON</summary>
-
-*Request*
-
-```json
-{
-    "type": "rpc_req",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "method": "schedule.delete",
-        "params": [
-            "string"
-        ]
-    }
-}
-```
-
-*Response*
-
-```json
-{
-    "type": "rpc_rsp",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "result": null
-    }
-}
-```
-
-</details>
-
-#### schedule.start
-
-startSchedule starts a schedule.
-
-
-return: null on success
-
-`schedule.start(name)`
-
-*Params*
-- `name` *string* - schedule name
-
-*Return*
-
-- `null|error`
-
-<details>
-<summary>Request/Response JSON</summary>
-
-*Request*
-
-```json
-{
-    "type": "rpc_req",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "method": "schedule.start",
-        "params": [
-            "string"
-        ]
-    }
-}
-```
-
-*Response*
-
-```json
-{
-    "type": "rpc_rsp",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "result": null
-    }
-}
-```
-
-</details>
-
-#### schedule.stop
-
-stopSchedule stops a schedule.
-
-
-return: null on success
-
-`schedule.stop(name)`
-
-*Params*
-- `name` *string* - schedule name
-
-*Return*
-
-- `null|error`
-
-<details>
-<summary>Request/Response JSON</summary>
-
-*Request*
-
-```json
-{
-    "type": "rpc_req",
-    "session": "client-session-#1",
-    "rpc": {
-        "jsonrpc": "2.0",
-        "id": 20,
-        "method": "schedule.stop",
-        "params": [
-            "string"
+            0
         ]
     }
 }
@@ -2454,17 +2144,15 @@ listTimers returns all timer schedules.
 
 *Return*
 
-- `array<object<scheduler.Schedule>>|error - timer schedule list`
+- `array<object<timer.Info>>|error - timer schedule list`
   - `[].id` *int64, optional*
+  - `[].userName` *string, optional*
+  - `[].execUser` *string, optional*
   - `[].name` *string, optional*
-  - `[].type` *string, optional*
   - `[].autoStart` *bool, optional*
   - `[].state` *string, optional*
   - `[].task` *string, optional*
   - `[].schedule` *string, optional*
-  - `[].bridge` *string, optional*
-  - `[].topic` *string, optional*
-  - `[].QoS` *int32, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2511,17 +2199,15 @@ getTimer returns a timer schedule by ID.
 
 *Return*
 
-- `object<scheduler.Schedule>|error - timer schedule`
+- `object<timer.Info>|error - timer schedule`
   - `id` *int64, optional*
+  - `userName` *string, optional*
+  - `execUser` *string, optional*
   - `name` *string, optional*
-  - `type` *string, optional*
   - `autoStart` *bool, optional*
   - `state` *string, optional*
   - `task` *string, optional*
   - `schedule` *string, optional*
-  - `bridge` *string, optional*
-  - `topic` *string, optional*
-  - `QoS` *int32, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2849,17 +2535,19 @@ listSubscribers returns all subscriber schedules.
 
 *Return*
 
-- `array<object<scheduler.Schedule>>|error - subscriber schedule list`
+- `array<object<subscriber.Info>>|error - subscriber schedule list`
   - `[].id` *int64, optional*
+  - `[].userName` *string, optional*
+  - `[].execUser` *string, optional*
   - `[].name` *string, optional*
-  - `[].type` *string, optional*
   - `[].autoStart` *bool, optional*
   - `[].state` *string, optional*
   - `[].task` *string, optional*
-  - `[].schedule` *string, optional*
   - `[].bridge` *string, optional*
   - `[].topic` *string, optional*
-  - `[].QoS` *int32, optional*
+  - `[].qos` *int32, optional*
+  - `[].queue` *string, optional*
+  - `[].stream` *string, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2906,17 +2594,19 @@ getSubscriber returns a subscriber schedule by ID.
 
 *Return*
 
-- `object<scheduler.Schedule>|error - subscriber schedule`
+- `object<subscriber.Info>|error - subscriber schedule`
   - `id` *int64, optional*
+  - `userName` *string, optional*
+  - `execUser` *string, optional*
   - `name` *string, optional*
-  - `type` *string, optional*
   - `autoStart` *bool, optional*
   - `state` *string, optional*
   - `task` *string, optional*
-  - `schedule` *string, optional*
   - `bridge` *string, optional*
   - `topic` *string, optional*
-  - `QoS` *int32, optional*
+  - `qos` *int32, optional*
+  - `queue` *string, optional*
+  - `stream` *string, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2968,11 +2658,11 @@ addSubscriber creates a subscriber schedule and returns its ID.
   - `req.autoStart` *bool, optional*
   - `req.mqtt` *object, optional*
   - `req.mqtt.topic` *string*
-  - `req.mqtt.qos` *int, optional*
+  - `req.mqtt.qos` *int32, optional*
   - `req.nats` *object, optional*
   - `req.nats.subject` *string*
-  - `req.nats.queueName` *string, optional*
-  - `req.nats.streamName` *string, optional*
+  - `req.nats.queue` *string, optional*
+  - `req.nats.stream` *string, optional*
 
 *Return*
 
@@ -3002,8 +2692,8 @@ addSubscriber creates a subscriber schedule and returns its ID.
                 },
                 "name": "string",
                 "nats": {
-                    "queueName": "string",
-                    "streamName": "string",
+                    "queue": "string",
+                    "stream": "string",
                     "subject": "string"
                 }
             }
@@ -3022,6 +2712,80 @@ addSubscriber creates a subscriber schedule and returns its ID.
         "jsonrpc": "2.0",
         "id": 20,
         "result": 0
+    }
+}
+```
+
+</details>
+
+#### subscriber.update
+
+updateSubscriber updates a subscriber schedule by ID.
+
+`subscriber.update(req)`
+
+*Params*
+- `req` *object*
+  - `req.id` *int64*
+  - `req.autoStart` *bool, optional*
+  - `req.command` *string*
+  - `req.bridge` *string*
+  - `req.mqtt` *object, optional*
+  - `req.mqtt.topic` *string*
+  - `req.mqtt.qos` *int32, optional*
+  - `req.nats` *object, optional*
+  - `req.nats.subject` *string*
+  - `req.nats.queue` *string, optional*
+  - `req.nats.stream` *string, optional*
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "subscriber.update",
+        "params": [
+            {
+                "autoStart": false,
+                "bridge": "string",
+                "command": "string",
+                "id": 0,
+                "mqtt": {
+                    "qos": 0,
+                    "topic": "string"
+                },
+                "nats": {
+                    "queue": "string",
+                    "stream": "string",
+                    "subject": "string"
+                }
+            }
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
     }
 }
 ```
