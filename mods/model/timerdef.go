@@ -176,13 +176,6 @@ func (s *Provider) SaveTimer(ctx context.Context, def *TimerDefinition) error {
 	defer conn.Close()
 
 	if def.Id == 0 {
-		exists, err := s.scheduleNameExists(ctx, conn, name)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return fmt.Errorf("schedule name '%s' already exists", name)
-		}
 		result, err := conn.ExecContext(ctx, `INSERT INTO _NEO_TIMER_DEF (USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			def.UserName, name, def.ExecUser, boolToShort(def.AutoStart), boolToShort(def.Disabled), nullIfEmpty(def.LastError), nullTime(def.LastErrorAt), def.Task, def.Schedule, attributesToDB(def.Attributes))
 		if err != nil {
@@ -296,6 +289,105 @@ func (s *Provider) RemoveTimerByID(ctx context.Context, id int64) error {
 		return err
 	} else if affected == 0 {
 		return os.ErrNotExist
+	}
+	return nil
+}
+
+// LoadTimers returns only definitions owned by scope.User. EXEC_USER is not
+// an access grant: it controls runtime execution, while USER_NAME controls
+// who may manage the definition.
+func (s *Provider) LoadTimers(ctx context.Context, scope UserScope) ([]*TimerDefinition, error) {
+	user, err := s.normalizeUserScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.scheduleConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	rows, err := conn.QueryContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE USER_NAME = ? ORDER BY ID`, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	definitions := []*TimerDefinition{}
+	for rows.Next() {
+		definition, err := scanTimerDefinition(rows)
+		if err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, definition)
+	}
+	return definitions, rows.Err()
+}
+
+// LoadTimerForUser loads a timer only when its USER_NAME matches scope.User.
+func (s *Provider) LoadTimerForUser(ctx context.Context, scope UserScope, id int64) (*TimerDefinition, error) {
+	user, err := s.normalizeUserScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.scheduleConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	definition, err := scanTimerDefinition(conn.QueryRowContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE ID = ? AND USER_NAME = ?`, id, user))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("timer id '%d' not found", id)
+	}
+	return definition, err
+}
+
+// LoadTimerByNameForUser is retained only while schedule.* accepts names.
+func (s *Provider) LoadTimerByNameForUser(ctx context.Context, scope UserScope, name string) (*TimerDefinition, error) {
+	user, err := s.normalizeUserScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := s.scheduleConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	definition, err := scanTimerDefinition(conn.QueryRowContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE NAME = ? AND USER_NAME = ?`, name, user))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("timer '%s' not found", name)
+	}
+	return definition, err
+}
+
+// SaveTimerForUser forces USER_NAME to scope.User before writing. Callers
+// cannot claim another user's definition by supplying UserName in the payload.
+func (s *Provider) SaveTimerForUser(ctx context.Context, scope UserScope, definition *TimerDefinition) error {
+	user, err := s.normalizeUserScope(scope)
+	if err != nil {
+		return err
+	}
+	definition.UserName = user
+	return s.SaveTimer(ctx, definition)
+}
+
+// RemoveTimerForUser deletes a timer only when it is owned by scope.User.
+func (s *Provider) RemoveTimerForUser(ctx context.Context, scope UserScope, id int64) error {
+	user, err := s.normalizeUserScope(scope)
+	if err != nil {
+		return err
+	}
+	conn, err := s.scheduleConn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	result, err := conn.ExecContext(ctx, `DELETE FROM _NEO_TIMER_DEF WHERE ID = ? AND USER_NAME = ?`, id, user)
+	if err != nil {
+		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return err
+	} else if affected == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

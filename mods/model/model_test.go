@@ -52,3 +52,21 @@ func TestUserScopeContext(t *testing.T) {
 		require.Equal(t, "bob", scope.User, "UserScopeFromContext must re-invoke fn, not return a stale snapshot")
 	})
 }
+
+func TestProviderInputValidation(t *testing.T) {
+	provider := NewProvider()
+	var nilContext context.Context
+	require.EqualError(t, provider.normalizeContext(nilContext), "context is nil")
+	require.NoError(t, provider.normalizeContext(context.Background()))
+	_, err := provider.normalizeUserScope(UserScope{})
+	require.EqualError(t, err, "user scope is empty")
+	user, err := provider.normalizeUserScope(UserScope{User: "  Alice "})
+	require.NoError(t, err)
+	require.Equal(t, "ALICE", user)
+
+	require.EqualError(t, provider.SaveTimer(context.Background(), nil), "timer definition not specified")
+	require.EqualError(t, provider.SaveSubscriber(context.Background(), nil), "subscriber definition not specified")
+	require.EqualError(t, provider.SaveBridge(context.Background(), UserScope{User: "sys"}, nil), "bridge definition not specified")
+	require.Error(t, provider.SetTimerRuntimeError(context.Background(), 1, "error"))
+	require.Error(t, provider.SetSubscriberRuntimeError(context.Background(), 1, "error"))
+}
