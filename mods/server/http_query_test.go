@@ -76,13 +76,22 @@ func TestHandleWatchQueryRejectsMissingExecUser(t *testing.T) {
 
 // TestHttpWatchQueryExecUserScope verifies /db/watch/:table (machbase/neo#1468)
 // connects using the authenticated request's own user scope rather than a fixed
-// "sys" connection: a non-sys user must be able to watch their own table end to
-// end through spi.Connect(ctx, execUser).
+// "sys" connection.
+//
+// /db/watch, like /db/query, is an API-token endpoint: neo-web never calls it
+// (it has no watch feature at all), and its own editor sends a JWT bearer only
+// to /web/api/query, never to /db/*. External API clients are the intended
+// caller here (see neo-web/src/components/securityKey/{apiToken,createToken}.tsx
+// for the documented "Authorization: Bearer $TOKEN" + /db/query curl example),
+// so this test authenticates with a generated API token, not a JWT — a JWT
+// bearer on /db/* isn't parsed by any middleware and would only prove the
+// (uninteresting) fact that the "sys" fallback can watch any table.
 func TestHttpWatchQueryExecUserScope(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip test on windows")
 	}
 
+	server := coverageRunningServer(t)
 	username := fmt.Sprintf("watch_scope_user_%d", time.Now().UnixNano())
 	table := username + ".OWN_TBL"
 
@@ -108,28 +117,47 @@ func TestHttpWatchQueryExecUserScope(t *testing.T) {
 	require.NoError(t, err)
 	ownConn.Close()
 
-	accessToken, _, err := jwtLogin(username, "password")
+	generated, err := server.generateApiToken(contextWithModelUser(context.Background(), username), "watch-scope-test", 0)
 	require.NoError(t, err)
+	require.Equal(t, strings.ToUpper(username), generated.User)
+	t.Cleanup(func() {
+		_ = server.deleteApiToken(contextWithModelUser(context.Background(), username), generated.Id)
+	})
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	params := url.Values{"tag": {"any"}, "period": {"1s"}, "keep-alive": {"1s"}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpServerAddress+"/db/watch/"+table+"?"+params.Encode(), nil)
-	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	rsp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer rsp.Body.Close()
-	if rsp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(rsp.Body)
-		require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+	watch := func(reqCtx context.Context, targetTable string) *http.Response {
+		params := url.Values{"tag": {"any"}, "period": {"1s"}, "keep-alive": {"1s"}}
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, httpServerAddress+"/db/watch/"+targetTable+"?"+params.Encode(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+generated.Token)
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		return rsp
 	}
-	// a keep-alive line proves the SSE stream (and thus spi.NewWatcher, connected
-	// as the JWT's own user) started successfully.
-	reader := bufio.NewReader(rsp.Body)
-	line, err := reader.ReadString('\n')
-	require.NoError(t, err)
-	require.Equal(t, ": keep-alive", strings.TrimSpace(line))
+
+	t.Run("own_table_succeeds", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		rsp := watch(ctx, table)
+		defer rsp.Body.Close()
+		if rsp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(rsp.Body)
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+		}
+		// a keep-alive line proves the SSE stream (and thus spi.NewWatcher, connected
+		// as the token's own user) started successfully.
+		reader := bufio.NewReader(rsp.Body)
+		line, err := reader.ReadString('\n')
+		require.NoError(t, err)
+		require.Equal(t, ": keep-alive", strings.TrimSpace(line))
+	})
+
+	t.Run("other_users_table_rejected", func(t *testing.T) {
+		// proves the request truly runs as the token owner rather than "sys":
+		// "sys" could watch _NEO_API_TOKEN, but the token owner has no such grant.
+		rsp := watch(t.Context(), "_NEO_API_TOKEN")
+		defer rsp.Body.Close()
+		require.NotEqual(t, http.StatusOK, rsp.StatusCode)
+	})
 }
 
 // chain with a generated API token, complementing the JWT/MQTT current_user()
@@ -169,7 +197,8 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 		_ = server.deleteApiToken(contextWithModelUser(context.Background(), username), generated.Id)
 	})
 
-	testHttpd := &httpd{log: logging.GetLog("http-token-e2e-test"), authServer: server, enableTokenAuth: true}
+	testHttpd := &httpd{log: logging.GetLog("http-token-e2e-test"), authServer: server}
+	testHttpd.enableTokenAuth.Store(true)
 	doQuery := func(sqlText string) []byte {
 		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query?q="+url.QueryEscape(sqlText), nil)
 		ctx.Request.Header.Set("Authorization", "Bearer "+generated.Token)
@@ -195,6 +224,17 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 		body := doQuery("SELECT name FROM " + ownTable)
 		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
 		require.Equal(t, "temp", gjson.GetBytes(body, "data.rows.0.0").String())
+	})
+
+	t.Run("optional_mode_still_honors_a_valid_bearer_token", func(t *testing.T) {
+		// Http.EnableTokenAuth=false: a request without any token still runs as
+		// "sys", but a request carrying a valid API token must use its scope.
+		testHttpd.enableTokenAuth.Store(false)
+		defer testHttpd.enableTokenAuth.Store(true)
+
+		body := doQuery("SELECT current_user()")
+		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
+		require.Equal(t, strings.ToUpper(username), gjson.GetBytes(body, "data.rows.0.0").String())
 	})
 }
 

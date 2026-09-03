@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -151,14 +152,7 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 		case ";":
 			if !inString {
 				statementText := buffer.String() + ";"
-				statements = append(statements, &SqlStatement{
-					Text:      statementText,
-					BeginLine: statementStartLine,
-					EndLine:   lineNumber,
-					IsComment: false,
-					StmtType:  detectSqlStatementType(statementText),
-					Env:       env,
-				})
+				statements = append(statements, newSqlStatement(statementText, statementStartLine, lineNumber, env))
 				buffer.Reset()
 				statementStartLine = lineNumber
 				continue
@@ -185,17 +179,165 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 
 	if len(strings.TrimSpace(buffer.String())) > 0 {
 		statementText := buffer.String()
-		statements = append(statements, &SqlStatement{
-			Text:      statementText,
-			BeginLine: statementStartLine,
-			EndLine:   lineNumber,
-			IsComment: false,
-			StmtType:  detectSqlStatementType(statementText),
-			Env:       env,
-		})
+		statements = append(statements, newSqlStatement(statementText, statementStartLine, lineNumber, env))
 	}
 
 	return statements, scanner.Err()
+}
+
+func newSqlStatement(text string, beginLine, endLine int, env *SqlStatementEnv) *SqlStatement {
+	return &SqlStatement{
+		Text:      text,
+		BeginLine: beginLine,
+		EndLine:   endLine,
+		IsComment: false,
+		StmtType:  detectSqlStatementType(text),
+		Env:       envForSqlStatement(env, namedMarkers(text)),
+	}
+}
+
+func envForSqlStatement(env *SqlStatementEnv, markers []string) *SqlStatementEnv {
+	if env == nil {
+		env = &SqlStatementEnv{}
+	}
+	ret := &SqlStatementEnv{
+		Error:  env.Error,
+		Bridge: env.Bridge,
+		Use:    env.Use,
+	}
+	if len(markers) == 0 {
+		return ret
+	}
+
+	values := make(map[string]string, len(env.Named))
+	for name, value := range env.Named {
+		values[strings.ToLower(name)] = value
+	}
+	missing := make([]string, 0)
+	for _, marker := range markers {
+		value, ok := values[strings.ToLower(marker)]
+		if !ok {
+			missing = append(missing, marker)
+			continue
+		}
+		if ret.Named == nil {
+			ret.Named = make(map[string]string, len(markers))
+		}
+		ret.Named[marker] = value
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		message := namedMarkerError(missing)
+		if ret.Error == "" {
+			ret.Error = message
+		} else {
+			ret.Error += "; " + message
+		}
+	}
+	return ret
+}
+
+func namedMarkerError(markers []string) string {
+	if len(markers) == 1 {
+		return fmt.Sprintf("named parameter %q is not defined in the environment", markers[0])
+	}
+	quoted := make([]string, len(markers))
+	for i, marker := range markers {
+		quoted[i] = fmt.Sprintf("%q", marker)
+	}
+	return fmt.Sprintf("named parameters %s are not defined in the environment", strings.Join(quoted, ", "))
+}
+
+func namedMarkers(statement string) []string {
+	var markers []string
+	seen := make(map[string]struct{})
+	for idx := 0; idx < len(statement); {
+		switch statement[idx] {
+		case '\'', '"':
+			idx = skipSqlQuotedString(statement, idx, statement[idx])
+		case '-':
+			if idx+1 < len(statement) && statement[idx+1] == '-' {
+				idx = skipSqlLineComment(statement, idx+2)
+			} else {
+				idx++
+			}
+		case '/':
+			if idx+1 < len(statement) && statement[idx+1] == '/' {
+				idx = skipSqlLineComment(statement, idx+2)
+			} else if idx+1 < len(statement) && statement[idx+1] == '*' {
+				idx = skipSqlBlockComment(statement, idx+2)
+			} else {
+				idx++
+			}
+		case ':':
+			if idx > 0 && statement[idx-1] == ':' || idx+1 >= len(statement) || !isNamedMarkerStart(statement[idx+1]) {
+				idx++
+				continue
+			}
+			end := idx + 2
+			for end < len(statement) && isNamedMarkerPart(statement[end]) {
+				end++
+			}
+			if end < len(statement) && statement[end] == '-' {
+				idx = end
+				continue
+			}
+			marker := statement[idx+1 : end]
+			key := strings.ToLower(marker)
+			if _, ok := seen[key]; !ok {
+				seen[key] = struct{}{}
+				markers = append(markers, marker)
+			}
+			idx = end
+		default:
+			idx++
+		}
+	}
+	return markers
+}
+
+func isNamedMarkerStart(char byte) bool {
+	return char == '_' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z'
+}
+
+func isNamedMarkerPart(char byte) bool {
+	return isNamedMarkerStart(char) || char >= '0' && char <= '9'
+}
+
+func skipSqlQuotedString(text string, start int, quote byte) int {
+	for idx := start + 1; idx < len(text); idx++ {
+		if text[idx] == '\\' && idx+1 < len(text) {
+			idx++
+			continue
+		}
+		if text[idx] != quote {
+			continue
+		}
+		if idx+1 < len(text) && text[idx+1] == quote {
+			idx++
+			continue
+		}
+		return idx + 1
+	}
+	return len(text)
+}
+
+func skipSqlLineComment(text string, start int) int {
+	for idx := start; idx < len(text); idx++ {
+		if text[idx] == '\n' {
+			return idx + 1
+		}
+	}
+	return len(text)
+}
+
+func skipSqlBlockComment(text string, start int) int {
+	for idx := start; idx+1 < len(text); idx++ {
+		if text[idx] == '*' && text[idx+1] == '/' {
+			return idx + 2
+		}
+	}
+	return len(text)
 }
 
 func detectSqlStatementType(statement string) string {
@@ -316,7 +458,7 @@ func (v *NameValuePair) String() string {
 	}
 }
 
-var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("(?:[^"\\]*(?:\\.[^"\\]*)*)"|'(?:[^'\\]*(?:\\.[^'\\]*)*)'|[^ ]+))?`)
+var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|'([^'\\]*(\\.[^'\\]*)*)'|[^ ]+))?`)
 
 // ParseNameValuePairs parses multiple name=value pairs
 // where values can contain whitespace within single or double quotation marks.
@@ -337,9 +479,13 @@ func ParseNameValuePairs(input string) []NameValuePair {
 		value := match[2]
 		if value == "" {
 			value = ""
-		} else if quote := value[0]; len(value) >= 2 && (quote == '"' || quote == '\'') && value[len(value)-1] == quote {
+		} else if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
 			value = value[1 : len(value)-1]
-			value = strings.ReplaceAll(value, `\`+string(quote), string(quote))
+			if match[2][0] == '"' {
+				value = strings.ReplaceAll(value, `\"`, `"`)
+			} else {
+				value = strings.ReplaceAll(value, `\'`, `'`)
+			}
 		}
 		pairs = append(pairs, NameValuePair{key, value})
 	}
@@ -473,7 +619,7 @@ func StringFields(values []any, timeformat string, timeLocation *time.Location, 
 			if o, ok := r.(Stringify); ok {
 				cols[i] = o.String()
 			} else {
-				cols[i] = fmt.Sprintf("%T", r)
+				cols[i] = fmt.Sprintf("%#v", r)
 			}
 		}
 	}

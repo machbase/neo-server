@@ -412,6 +412,32 @@ func TestBridgeDefinitionHelpers(t *testing.T) {
 	require.ErrorContains(t, err, "unsupported bridge type")
 }
 
+func TestParseBridgeTypeAliasesAndInvalid(t *testing.T) {
+	tests := []struct {
+		input string
+		want  BridgeType
+	}{
+		{input: "sqlite", want: BRIDGE_SQLITE},
+		{input: "sqlite3", want: BRIDGE_SQLITE},
+		{input: "postgres", want: BRIDGE_POSTGRES},
+		{input: "postgresql", want: BRIDGE_POSTGRES},
+		{input: "mysql", want: BRIDGE_MYSQL},
+		{input: "mssql", want: BRIDGE_MSSQL},
+		{input: "mqtt", want: BRIDGE_MQTT},
+		{input: "nats", want: BRIDGE_NATS},
+	}
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			got, err := ParseBridgeType(test.input)
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
+		})
+	}
+
+	_, err := ParseBridgeType("unsupported")
+	require.EqualError(t, err, "unsupported bridge type: unsupported")
+}
+
 func bridgeToString(value any) string {
 	if value == nil {
 		return ""

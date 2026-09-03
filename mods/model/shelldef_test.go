@@ -391,3 +391,53 @@ func TestShellDefinitionReservedLabelRejected(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not allowed")
 }
+
+func TestShellDefinitionHelpers(t *testing.T) {
+	original := &ShellDefinition{
+		Id:         "7",
+		Type:       SHELL_TERM,
+		Icon:       "terminal",
+		Label:      "custom",
+		Theme:      "dark",
+		Command:    "/bin/sh",
+		Attributes: &ShellAttributes{Removable: true, Cloneable: true, Editable: true},
+	}
+	clone := original.Clone()
+	require.Equal(t, original, clone)
+	clone.Attributes.Removable = false
+	require.True(t, original.Attributes.Removable)
+
+	defaults := normalizeShellDefinition(&ShellDefinition{})
+	require.Equal(t, SHELL_TERM, defaults.Type)
+	require.Equal(t, "console-network-outline", defaults.Icon)
+	require.Equal(t, "CUSTOM SHELL", defaults.Label)
+	require.Equal(t, &ShellAttributes{Removable: true, Cloneable: true, Editable: true}, defaults.Attributes)
+
+	id, err := parseCustomShellId(" 42 ")
+	require.NoError(t, err)
+	require.Equal(t, int64(42), id)
+	_, err = parseCustomShellId("0")
+	require.Error(t, err)
+	_, err = parseCustomShellId("-1")
+	require.Error(t, err)
+}
+
+func TestShellAttributesCompatibility(t *testing.T) {
+	attrs := &ShellAttributes{}
+	require.NoError(t, json.Unmarshal([]byte(`{"removable":"true","cloneable":"false","editable":1}`), attrs))
+	require.True(t, attrs.Removable)
+	require.False(t, attrs.Cloneable)
+	require.False(t, attrs.Editable)
+
+	_, err := unmarshalShellAttributesFromDB("not-json")
+	require.Error(t, err)
+	attrs, err = unmarshalShellAttributesFromDB("  ")
+	require.NoError(t, err)
+	require.Nil(t, attrs)
+
+	provider := NewProvider()
+	provider.SetDefaultShellCommand("/bin/sh")
+	provider.SetDefaultJshCommand("/bin/echo")
+	require.Equal(t, "/bin/sh", reservedWebShellDef[SHELLID_SHELL].Command)
+	require.Equal(t, "/bin/echo", reservedWebShellDef[SHELLID_JSH].Command)
+}

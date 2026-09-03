@@ -228,7 +228,7 @@ func TestWithHttpAuthServer(t *testing.T) {
 		WithHttpAuthServer(authSvc, true)(h)
 
 		require.Same(t, authSvc, h.authServer)
-		require.True(t, h.enableTokenAuth)
+		require.True(t, h.enableTokenAuth.Load())
 		require.Same(t, authSvc.serviceController, h.serviceController)
 	})
 
@@ -239,7 +239,7 @@ func TestWithHttpAuthServer(t *testing.T) {
 		WithHttpAuthServer(nil, false)(h)
 
 		require.Nil(t, h.authServer)
-		require.False(t, h.enableTokenAuth)
+		require.False(t, h.enableTokenAuth.Load())
 		require.NotNil(t, h.serviceController)
 	})
 }
@@ -754,6 +754,7 @@ func TestHandleAuthToken(t *testing.T) {
 
 	t.Run("rejects when token is missing", func(t *testing.T) {
 		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir()}}
+		svr.enableTokenAuth.Store(true)
 		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files", nil)
 
 		svr.handleAuthToken(ctx)
@@ -765,6 +766,7 @@ func TestHandleAuthToken(t *testing.T) {
 
 	t.Run("rejects invalid bearer token", func(t *testing.T) {
 		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir()}}
+		svr.enableTokenAuth.Store(true)
 		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files", nil)
 		ctx.Request.Header.Set("Authorization", "Bearer invalid-token")
 
@@ -777,13 +779,49 @@ func TestHandleAuthToken(t *testing.T) {
 
 	t.Run("rejects legacy signed query token", func(t *testing.T) {
 		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{}}
+		svr.enableTokenAuth.Store(true)
 		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files?token="+url.QueryEscape("client1:b:deadbeef"), nil)
 
 		svr.handleAuthToken(ctx)
 
 		require.True(t, ctx.IsAborted())
 		require.Equal(t, http.StatusUnauthorized, writer.Code)
-		require.Contains(t, writer.Body.String(), "missing authorization token")
+		require.Contains(t, writer.Body.String(), "missing valid token")
+	})
+
+	t.Run("optional mode passes through without a token", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir()}}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query", nil)
+
+		svr.handleAuthToken(ctx)
+
+		require.False(t, ctx.IsAborted(), writer.Body.String())
+		_, ok := ctx.Get("api-token-authenticated")
+		require.False(t, ok)
+	})
+
+	t.Run("optional mode rejects an invalid token", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir()}}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query", nil)
+		ctx.Request.Header.Set("Authorization", "Bearer "+FormatApiToken(999999999, strings.Repeat("a", 43)))
+
+		svr.handleAuthToken(ctx)
+
+		require.Equal(t, http.StatusUnauthorized, writer.Code)
+		require.Contains(t, writer.Body.String(), "missing valid token")
+		require.True(t, ctx.IsAborted())
+	})
+
+	t.Run("optional mode ignores a non-api-token bearer (e.g. JWT)", func(t *testing.T) {
+		svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: &Server{authorizedKeysDir: t.TempDir()}}
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query", nil)
+		ctx.Request.Header.Set("Authorization", "Bearer not-an-api-token")
+
+		svr.handleAuthToken(ctx)
+
+		require.False(t, ctx.IsAborted(), writer.Body.String())
+		_, ok := ctx.Get("api-token-authenticated")
+		require.False(t, ok)
 	})
 }
 
@@ -2620,6 +2658,34 @@ func TestHttpRpc(t *testing.T) {
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			result := rsp.Get("result")
 			require.JSONEq(t, `[{"text":"select * from second;","beginLine":2,"endLine":2,"isComment":false,"stmtType":"select","env":{}}]`, result.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "splitSql_filters_named_environment_per_statement",
+		method: "sql.split",
+		params: []interface{}{`-- env: named.name=my-car named.value=1.5432
+INSERT INTO example VALUES(:name, now, :value);
+SELECT * FROM example WHERE name = :name;`},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Len(t, result.Array(), 3, rsp.String())
+			require.Equal(t, "my-car", result.Get("1.env.named.name").String(), rsp.String())
+			require.Equal(t, "1.5432", result.Get("1.env.named.value").String(), rsp.String())
+			require.Equal(t, "my-car", result.Get("2.env.named.name").String(), rsp.String())
+			require.False(t, result.Get("2.env.named.value").Exists(), rsp.String())
+			require.False(t, result.Get("2.env.error").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "splitSql_reports_missing_named_environment_value",
+		method: "sql.split",
+		params: []interface{}{`-- env: named.name=my-car
+SELECT * FROM example WHERE name = :name2;`},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Len(t, result.Array(), 2, rsp.String())
+			require.False(t, result.Get("1.env.named").Exists(), rsp.String())
+			require.Equal(t, `named parameter "name2" is not defined in the environment`, result.Get("1.env.error").String(), rsp.String())
 		},
 	}.run(t, at)
 	JsonRpcTestCase{

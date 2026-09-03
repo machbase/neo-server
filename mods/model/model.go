@@ -101,8 +101,7 @@ type scheduleRowScanner interface {
 }
 
 // scheduleConn opens a SYS connection and ensures both the timer and the
-// subscriber tables exist, since schedule names share a single global
-// namespace across the two tables.
+// subscriber tables exist.
 func (s *Provider) scheduleConn(ctx context.Context) (*sql.Conn, error) {
 	if err := s.normalizeContext(ctx); err != nil {
 		return nil, err
@@ -123,23 +122,6 @@ func (s *Provider) scheduleConn(ctx context.Context) (*sql.Conn, error) {
 		return nil, err
 	}
 	return conn, nil
-}
-
-// scheduleNameExists reports whether name is already used by a timer or a
-// subscriber definition. Schedule names are a single global namespace
-// shared across both tables, so callers must check both before inserting.
-func (s *Provider) scheduleNameExists(ctx context.Context, conn *sql.Conn, name string) (bool, error) {
-	var count int64
-	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM _NEO_TIMER_DEF WHERE NAME = ?`, name).Scan(&count); err != nil {
-		return false, err
-	}
-	if count > 0 {
-		return true, nil
-	}
-	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM _NEO_SUBSCRIBER_DEF WHERE NAME = ?`, name).Scan(&count); err != nil {
-		return false, err
-	}
-	return count > 0, nil
 }
 
 // attributesToDB converts a forward-compatible JSON attributes blob into a
