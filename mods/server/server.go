@@ -2163,13 +2163,28 @@ func (s *Server) addTimer(ctx context.Context, req addTimerRequest) (int64, erro
 	return rsp.Id, nil
 }
 
+type subscriberMqttRequest struct {
+	Topic string `json:"topic"`
+	QoS   int32  `json:"qos,omitempty"`
+}
+
+type subscriberNatsRequest struct {
+	Subject string `json:"subject"`
+	Queue   string `json:"queue,omitempty"`
+	Stream  string `json:"stream,omitempty"`
+}
+
 type addSubscriberRequest struct {
-	Name      string `json:"name"`
-	Bridge    string `json:"bridge"`
-	Command   string `json:"command"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Topic     string `json:"topic"`
-	QoS       int32  `json:"qos,omitempty"`
+	Name      string                 `json:"name"`
+	Bridge    string                 `json:"bridge"`
+	Command   string                 `json:"command"`
+	AutoStart bool                   `json:"autoStart,omitempty"`
+	MQTT      *subscriberMqttRequest `json:"mqtt,omitempty"`
+	NATS      *subscriberNatsRequest `json:"nats,omitempty"`
+}
+
+func (req addSubscriberRequest) triggerOptions() (topic string, qos int32, queue string, stream string, err error) {
+	return subscriberTriggerOptions(req.MQTT, req.NATS)
 }
 
 // addSubscriber creates a subscriber schedule and returns its ID.
@@ -2183,14 +2198,20 @@ func (s *Server) addSubscriber(ctx context.Context, req addSubscriberRequest) (i
 	if err != nil {
 		return 0, err
 	}
+	topic, qos, queue, stream, err := req.triggerOptions()
+	if err != nil {
+		return 0, err
+	}
 	rsp, err := s.subscriberSvc.Add(ctx, scope, &subscriber.AddRequest{
-		Name:      strings.ToLower(req.Name),
-		AutoStart: req.AutoStart,
-		Task:      req.Command,
-		Bridge:    req.Bridge,
-		Topic:     req.Topic,
-		QoS:       req.QoS,
-		ExecUser:  scope.User,
+		Name:       strings.ToLower(req.Name),
+		AutoStart:  req.AutoStart,
+		Task:       req.Command,
+		Bridge:     req.Bridge,
+		Topic:      topic,
+		QoS:        qos,
+		QueueName:  queue,
+		StreamName: stream,
+		ExecUser:   scope.User,
 	})
 	if err != nil {
 		return 0, err
@@ -2209,12 +2230,29 @@ type updateTimerRequest struct {
 }
 
 type updateSubscriberRequest struct {
-	Id        int64  `json:"id"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Command   string `json:"command"`
-	Bridge    string `json:"bridge"`
-	Topic     string `json:"topic"`
-	QoS       int32  `json:"qos,omitempty"`
+	Id        int64                  `json:"id"`
+	AutoStart bool                   `json:"autoStart,omitempty"`
+	Command   string                 `json:"command"`
+	Bridge    string                 `json:"bridge"`
+	MQTT      *subscriberMqttRequest `json:"mqtt,omitempty"`
+	NATS      *subscriberNatsRequest `json:"nats,omitempty"`
+}
+
+func (req updateSubscriberRequest) triggerOptions() (topic string, qos int32, queue string, stream string, err error) {
+	return subscriberTriggerOptions(req.MQTT, req.NATS)
+}
+
+func subscriberTriggerOptions(mqtt *subscriberMqttRequest, nats *subscriberNatsRequest) (topic string, qos int32, queue string, stream string, err error) {
+	if mqtt != nil && nats != nil {
+		return "", 0, "", "", errors.New("mqtt and nats options are mutually exclusive")
+	}
+	if mqtt != nil {
+		return mqtt.Topic, mqtt.QoS, "", "", nil
+	}
+	if nats != nil {
+		return nats.Subject, 0, nats.Queue, nats.Stream, nil
+	}
+	return "", 0, "", "", nil
 }
 
 // updateSubscriber updates a subscriber schedule by ID.
@@ -2223,13 +2261,19 @@ func (s *Server) updateSubscriber(ctx context.Context, req updateSubscriberReque
 	if err != nil {
 		return err
 	}
+	topic, qos, queue, stream, err := req.triggerOptions()
+	if err != nil {
+		return err
+	}
 	rsp, err := s.subscriberSvc.Update(ctx, scope, &subscriber.UpdateRequest{
-		Id:        req.Id,
-		AutoStart: req.AutoStart,
-		Task:      req.Command,
-		Bridge:    req.Bridge,
-		Topic:     req.Topic,
-		QoS:       req.QoS,
+		Id:         req.Id,
+		AutoStart:  req.AutoStart,
+		Task:       req.Command,
+		Bridge:     req.Bridge,
+		Topic:      topic,
+		QoS:        qos,
+		QueueName:  queue,
+		StreamName: stream,
 	})
 	if err != nil {
 		return err

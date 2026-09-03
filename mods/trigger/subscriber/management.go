@@ -10,16 +10,18 @@ import (
 )
 
 type Info struct {
-	Id        int64  `json:"id,omitempty"`
-	UserName  string `json:"userName,omitempty"`
-	ExecUser  string `json:"execUser,omitempty"`
-	Name      string `json:"name,omitempty"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	State     string `json:"state,omitempty"`
-	Task      string `json:"task,omitempty"`
-	Bridge    string `json:"bridge,omitempty"`
-	Topic     string `json:"topic,omitempty"`
-	QoS       int32  `json:"qos,omitempty"`
+	Id         int64  `json:"id,omitempty"`
+	UserName   string `json:"userName,omitempty"`
+	ExecUser   string `json:"execUser,omitempty"`
+	Name       string `json:"name,omitempty"`
+	AutoStart  bool   `json:"autoStart,omitempty"`
+	State      string `json:"state,omitempty"`
+	Task       string `json:"task,omitempty"`
+	Bridge     string `json:"bridge,omitempty"`
+	Topic      string `json:"topic,omitempty"`
+	QoS        int32  `json:"qos,omitempty"`
+	QueueName  string `json:"queue,omitempty"`
+	StreamName string `json:"stream,omitempty"`
 }
 
 type Response struct {
@@ -40,23 +42,27 @@ type GetResponse struct {
 }
 
 type AddRequest struct {
-	Name      string `json:"name,omitempty"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Task      string `json:"task,omitempty"`
-	Bridge    string `json:"bridge,omitempty"`
-	Topic     string `json:"topic,omitempty"`
-	QoS       int32  `json:"qos,omitempty"`
-	ExecUser  string `json:"execUser,omitempty"`
+	Name       string `json:"name,omitempty"`
+	AutoStart  bool   `json:"autoStart,omitempty"`
+	Task       string `json:"task,omitempty"`
+	Bridge     string `json:"bridge,omitempty"`
+	Topic      string `json:"topic,omitempty"`
+	QoS        int32  `json:"qos,omitempty"`
+	QueueName  string `json:"queue,omitempty"`
+	StreamName string `json:"stream,omitempty"`
+	ExecUser   string `json:"execUser,omitempty"`
 }
 
 type UpdateRequest struct {
-	Id        int64  `json:"id"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Task      string `json:"task,omitempty"`
-	Bridge    string `json:"bridge,omitempty"`
-	Topic     string `json:"topic,omitempty"`
-	QoS       int32  `json:"qos,omitempty"`
-	ExecUser  string `json:"execUser,omitempty"`
+	Id         int64  `json:"id"`
+	AutoStart  bool   `json:"autoStart,omitempty"`
+	Task       string `json:"task,omitempty"`
+	Bridge     string `json:"bridge,omitempty"`
+	Topic      string `json:"topic,omitempty"`
+	QoS        int32  `json:"qos,omitempty"`
+	QueueName  string `json:"queue,omitempty"`
+	StreamName string `json:"stream,omitempty"`
+	ExecUser   string `json:"execUser,omitempty"`
 }
 
 func info(definition *model.SubscriberDefinition) *Info {
@@ -67,7 +73,7 @@ func info(definition *model.SubscriberDefinition) *Info {
 			state = fmt.Sprintf("%s, %s", state, err)
 		}
 	}
-	return &Info{Id: definition.Id, UserName: definition.UserName, ExecUser: definition.ExecUser, Name: definition.Name, AutoStart: definition.AutoStart, State: state, Task: definition.Task, Bridge: definition.Bridge, Topic: definition.Topic, QoS: int32(definition.QoS)}
+	return &Info{Id: definition.Id, UserName: definition.UserName, ExecUser: definition.ExecUser, Name: definition.Name, AutoStart: definition.AutoStart, State: state, Task: definition.Task, Bridge: definition.Bridge, Topic: definition.Topic, QoS: int32(definition.QoS), QueueName: definition.QueueName, StreamName: definition.StreamName}
 }
 
 func response(start time.Time, err error) *Response {
@@ -116,7 +122,7 @@ func (service *Service) Add(ctx context.Context, scope model.UserScope, request 
 	if scope.User != "SYS" && scope.User != "sys" || execUser == "" {
 		execUser = scope.User
 	}
-	definition := &model.SubscriberDefinition{Name: request.Name, ExecUser: execUser, AutoStart: request.AutoStart, Task: request.Task, Bridge: request.Bridge, Topic: request.Topic, QoS: int(request.QoS)}
+	definition := &model.SubscriberDefinition{Name: request.Name, ExecUser: execUser, AutoStart: request.AutoStart, Task: request.Task, Bridge: request.Bridge, Topic: request.Topic, QoS: int(request.QoS), QueueName: request.QueueName, StreamName: request.StreamName}
 	if err := service.models.SaveSubscriberForUser(ctx, scope, definition); err != nil {
 		return response(start, err), nil
 	}
@@ -131,6 +137,7 @@ func (service *Service) Update(ctx context.Context, scope model.UserScope, reque
 		return response(start, err), nil
 	}
 	definition.AutoStart, definition.Task, definition.Bridge, definition.Topic, definition.QoS = request.AutoStart, request.Task, request.Bridge, request.Topic, int(request.QoS)
+	definition.QueueName, definition.StreamName = request.QueueName, request.StreamName
 	if (scope.User == "SYS" || scope.User == "sys") && request.ExecUser != "" {
 		definition.ExecUser = request.ExecUser
 	}

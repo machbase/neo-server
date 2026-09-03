@@ -2546,6 +2546,8 @@ listSubscribers returns all subscriber schedules.
   - `[].bridge` *string, optional*
   - `[].topic` *string, optional*
   - `[].qos` *int32, optional*
+  - `[].queue` *string, optional*
+  - `[].stream` *string, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2603,6 +2605,8 @@ getSubscriber returns a subscriber schedule by ID.
   - `bridge` *string, optional*
   - `topic` *string, optional*
   - `qos` *int32, optional*
+  - `queue` *string, optional*
+  - `stream` *string, optional*
 
 <details>
 <summary>Request/Response JSON</summary>
@@ -2652,8 +2656,13 @@ addSubscriber creates a subscriber schedule and returns its ID.
   - `req.bridge` *string*
   - `req.command` *string*
   - `req.autoStart` *bool, optional*
-  - `req.topic` *string*
-  - `req.qos` *int32, optional*
+  - `req.mqtt` *object, optional*
+  - `req.mqtt.topic` *string*
+  - `req.mqtt.qos` *int32, optional*
+  - `req.nats` *object, optional*
+  - `req.nats.subject` *string*
+  - `req.nats.queue` *string, optional*
+  - `req.nats.stream` *string, optional*
 
 *Return*
 
@@ -2677,9 +2686,16 @@ addSubscriber creates a subscriber schedule and returns its ID.
                 "autoStart": false,
                 "bridge": "string",
                 "command": "string",
+                "mqtt": {
+                    "qos": 0,
+                    "topic": "string"
+                },
                 "name": "string",
-                "qos": 0,
-                "topic": "string"
+                "nats": {
+                    "queue": "string",
+                    "stream": "string",
+                    "subject": "string"
+                }
             }
         ]
     }
@@ -2714,8 +2730,13 @@ updateSubscriber updates a subscriber schedule by ID.
   - `req.autoStart` *bool, optional*
   - `req.command` *string*
   - `req.bridge` *string*
-  - `req.topic` *string*
-  - `req.qos` *int32, optional*
+  - `req.mqtt` *object, optional*
+  - `req.mqtt.topic` *string*
+  - `req.mqtt.qos` *int32, optional*
+  - `req.nats` *object, optional*
+  - `req.nats.subject` *string*
+  - `req.nats.queue` *string, optional*
+  - `req.nats.stream` *string, optional*
 
 *Return*
 
@@ -2740,8 +2761,15 @@ updateSubscriber updates a subscriber schedule by ID.
                 "bridge": "string",
                 "command": "string",
                 "id": 0,
-                "qos": 0,
-                "topic": "string"
+                "mqtt": {
+                    "qos": 0,
+                    "topic": "string"
+                },
+                "nats": {
+                    "queue": "string",
+                    "stream": "string",
+                    "subject": "string"
+                }
             }
         ]
     }

@@ -2466,8 +2466,7 @@ func TestServerCoverage_AddSubscriberScheduleAndRunInitScripts(t *testing.T) {
 		Bridge:    "missing-bridge",
 		Command:   "csv_map.tql",
 		AutoStart: false,
-		Topic:     "test/topic",
-		QoS:       1,
+		MQTT:      &subscriberMqttRequest{Topic: "test/topic", QoS: 1},
 	})
 	require.NoError(t, err)
 	legacyDef, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
@@ -2515,7 +2514,7 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			Bridge:    "missing-bridge",
 			Command:   "csv_map.tql",
 			AutoStart: false,
-			Topic:     "subject.>",
+			NATS:      &subscriberNatsRequest{Subject: "subject.>", Queue: "workers", Stream: "events"},
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -2526,6 +2525,8 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 		def, err := svr.models.LoadSubscriber(ctx, strings.ToLower(name))
 		require.NoError(t, err)
 		require.Equal(t, "subject.>", def.Topic)
+		require.Equal(t, "workers", def.QueueName)
+		require.Equal(t, "events", def.StreamName)
 	})
 
 	t.Run("mqtt_only", func(t *testing.T) {
@@ -2540,8 +2541,7 @@ func TestServerCoverage_AddSubscriberSchedule(t *testing.T) {
 			Bridge:    bridgeName,
 			Command:   "csv_map.tql",
 			AutoStart: true,
-			Topic:     "factory/#",
-			QoS:       2,
+			MQTT:      &subscriberMqttRequest{Topic: "factory/#", QoS: 2},
 		})
 		require.NoError(t, err)
 		t.Cleanup(func() {

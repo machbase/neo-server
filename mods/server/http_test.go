@@ -3387,8 +3387,10 @@ func TestHttpRpc_bridgeAndSubscriber(t *testing.T) {
 			"autoStart": false,
 			"command":   "csv_map.tql",
 			"bridge":    "mqtt-test",
-			"topic":     "test/topic",
-			"qos":       0,
+			"mqtt": map[string]any{
+				"topic": "test/topic",
+				"qos":   0,
+			},
 		}},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.False(t, rsp.Get("error").Exists(), rsp.String())
@@ -3425,6 +3427,39 @@ func TestHttpRpc_bridgeAndSubscriber(t *testing.T) {
 			require.Equal(t, "csv_map.tql", result.Get("task").String(), rsp.String())
 			require.Equal(t, "mqtt-test", result.Get("bridge").String(), rsp.String())
 			require.Equal(t, "test/topic", result.Get("topic").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "updateMqttSubscriber",
+		method: "subscriber.update",
+		params: []interface{}{map[string]any{
+			"id":        addedSubscriberId,
+			"autoStart": false,
+			"command":   "csv_map.tql",
+			"bridge":    "mqtt-test",
+			"mqtt": map[string]any{
+				"topic": "test/topic-updated",
+				"qos":   1,
+			},
+		}},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			require.Nil(t, rsp.Get("result").Value(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "getMqttSubscriber_afterUpdate",
+		method: "subscriber.get",
+		params: []interface{}{addedSubscriberId},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.False(t, rsp.Get("error").Exists(), rsp.String())
+			result := rsp.Get("result")
+			require.Equal(t, addedSubscriberId, result.Get("id").Int(), rsp.String())
+			require.Equal(t, "MQTT-SUBSCRIBER", result.Get("name").String(), rsp.String())
+			require.Equal(t, "csv_map.tql", result.Get("task").String(), rsp.String())
+			require.Equal(t, "mqtt-test", result.Get("bridge").String(), rsp.String())
+			require.Equal(t, "test/topic-updated", result.Get("topic").String(), rsp.String())
+			require.Equal(t, int64(1), result.Get("qos").Int(), rsp.String())
 		},
 	}.run(t, at)
 	JsonRpcTestCase{
@@ -3475,8 +3510,10 @@ func TestHttpRpc_bridgeAndSubscriber(t *testing.T) {
 			"autoStart": false,
 			"command":   "csv_map.tql",
 			"bridge":    "mqtt-test2",
-			"topic":     "test/topic2",
-			"qos":       0,
+			"mqtt": map[string]any{
+				"topic": "test/topic2",
+				"qos":   0,
+			},
 		}},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.False(t, rsp.Get("error").Exists(), rsp.String())

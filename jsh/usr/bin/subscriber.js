@@ -128,7 +128,21 @@ function doAdd(config, args) {
     const destination = args.destination;
     const autostart = config.autostart || false;
     const qos = config.qos || 0;
-    client.addSubscriber({ name: name, bridge: bridge, command: destination, autoStart: autostart, topic: topic, qos: qos })
+    client.listBridges()
+        .then((bridges) => {
+            const found = (bridges || []).find((item) => {
+                const bridgeName = item.name || item.Name;
+                return bridgeName === bridge;
+            });
+            const bridgeType = ((found && (found.type || found.Type)) || '').toLowerCase();
+            const request = { name: name, bridge: bridge, command: destination, autoStart: autostart };
+            if (bridgeType === 'nats') {
+                request.nats = { subject: topic };
+            } else {
+                request.mqtt = { topic: topic, qos: qos };
+            }
+            return client.addSubscriber(request);
+        })
         .then(() => {
             console.println(`Subscriber '${name}' added successfully.`);
         })
