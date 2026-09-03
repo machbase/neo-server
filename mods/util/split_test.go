@@ -462,7 +462,7 @@ func ExampleParseNameValuePairs_singleQuote() {
 	doubleQuoted := `named.name="sys:pool:idle" named.from="it's here"`
 
 	for _, input := range []string{singleQuoted, doubleQuoted} {
-		result := util.ParseNameValuePairs(input)
+		result := ParseNameValuePairs(input)
 		for _, pair := range result {
 			fmt.Printf("%s=%s\n", pair.Name, pair.Value)
 		}
