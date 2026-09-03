@@ -2623,6 +2623,34 @@ func TestHttpRpc(t *testing.T) {
 		},
 	}.run(t, at)
 	JsonRpcTestCase{
+		name:   "splitSql_filters_named_environment_per_statement",
+		method: "sql.split",
+		params: []interface{}{`-- env: named.name=my-car named.value=1.5432
+INSERT INTO example VALUES(:name, now, :value);
+SELECT * FROM example WHERE name = :name;`},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Len(t, result.Array(), 3, rsp.String())
+			require.Equal(t, "my-car", result.Get("1.env.named.name").String(), rsp.String())
+			require.Equal(t, "1.5432", result.Get("1.env.named.value").String(), rsp.String())
+			require.Equal(t, "my-car", result.Get("2.env.named.name").String(), rsp.String())
+			require.False(t, result.Get("2.env.named.value").Exists(), rsp.String())
+			require.False(t, result.Get("2.env.error").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "splitSql_reports_missing_named_environment_value",
+		method: "sql.split",
+		params: []interface{}{`-- env: named.name=my-car
+SELECT * FROM example WHERE name = :name2;`},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			result := rsp.Get("result")
+			require.Len(t, result.Array(), 2, rsp.String())
+			require.False(t, result.Get("1.env.named").Exists(), rsp.String())
+			require.Equal(t, `named parameter "name2" is not defined in the environment`, result.Get("1.env.error").String(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
 		name:   "httpSplit_simple_get",
 		method: "http.split",
 		params: []interface{}{`GET /web/api/tables HTTP/1.1
