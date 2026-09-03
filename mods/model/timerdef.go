@@ -8,19 +8,26 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // TimerDefinition is a custom cron-style timer schedule persisted in
-// _NEO_TIMER_DEF. Like bridge, timer has no reserved definitions, so its
+// _NEO_TIMER_DEF. USER_NAME controls definition management, EXEC_USER is the
+// runtime identity, Disabled is the desired start state, and LastError holds
+// runtime diagnostics. Like bridge, timer has no reserved definitions, so its
 // Id is exposed as int64 directly instead of a string.
 type TimerDefinition struct {
-	Id         int64           `json:"id"`
-	Name       string          `json:"name"`
-	ExecUser   string          `json:"execUser"`
-	AutoStart  bool            `json:"autoStart"`
-	Task       string          `json:"task"`
-	Schedule   string          `json:"schedule"`
-	Attributes json.RawMessage `json:"attributes,omitempty"`
+	Id          int64           `json:"id"`
+	UserName    string          `json:"userName"`
+	Name        string          `json:"name"`
+	ExecUser    string          `json:"execUser"`
+	AutoStart   bool            `json:"autoStart"`
+	Disabled    bool            `json:"disabled"`
+	LastError   string          `json:"lastError,omitempty"`
+	LastErrorAt time.Time       `json:"lastErrorAt,omitempty"`
+	Task        string          `json:"task"`
+	Schedule    string          `json:"schedule"`
+	Attributes  json.RawMessage `json:"attributes,omitempty"`
 }
 
 func (s *Provider) ensureTimerTable(ctx context.Context, conn *sql.Conn) error {
@@ -29,16 +36,19 @@ func (s *Provider) ensureTimerTable(ctx context.Context, conn *sql.Conn) error {
 	if s.timerTableReady {
 		return nil
 	}
-	_, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS _NEO_TIMER_DEF (
+	if err := ensureScheduleTable(ctx, conn, "_NEO_TIMER_DEF", `CREATE TABLE IF NOT EXISTS _NEO_TIMER_DEF (
 ID LONG PRIMARY KEY AUTO_INCREMENT,
+USER_NAME VARCHAR(64) NOT NULL,
 NAME VARCHAR(40) NOT NULL,
 EXEC_USER VARCHAR(64) NOT NULL,
 AUTO_START SHORT NOT NULL,
+DISABLED SHORT NOT NULL,
+LAST_ERROR VARCHAR(1024),
+LAST_ERROR_AT DATETIME,
 TASK VARCHAR(4096) NOT NULL,
 SCHEDULE VARCHAR(128) NOT NULL,
 ATTRIBUTES JSON
-)`)
-	if err != nil {
+	)`); err != nil {
 		return err
 	}
 	s.timerTableReady = true
@@ -47,19 +57,24 @@ ATTRIBUTES JSON
 
 func scanTimerDefinition(scanner scheduleRowScanner) (*TimerDefinition, error) {
 	var id int64
-	var autoStart int64
-	var name, execUser, task, schedule sql.NullString
-	var attrs sql.NullString
-	if err := scanner.Scan(&id, &name, &execUser, &autoStart, &task, &schedule, &attrs); err != nil {
+	var autoStart, disabled int64
+	var userName, name, execUser, task, schedule sql.NullString
+	var lastError, attrs sql.NullString
+	var lastErrorAt sql.NullTime
+	if err := scanner.Scan(&id, &userName, &name, &execUser, &autoStart, &disabled, &lastError, &lastErrorAt, &task, &schedule, &attrs); err != nil {
 		return nil, err
 	}
 	def := &TimerDefinition{
-		Id:        id,
-		Name:      name.String,
-		ExecUser:  execUser.String,
-		AutoStart: autoStart != 0,
-		Task:      task.String,
-		Schedule:  schedule.String,
+		Id:          id,
+		UserName:    userName.String,
+		Name:        name.String,
+		ExecUser:    execUser.String,
+		AutoStart:   autoStart != 0,
+		Disabled:    disabled != 0,
+		LastError:   lastError.String,
+		Task:        task.String,
+		Schedule:    schedule.String,
+		LastErrorAt: lastErrorAt.Time,
 	}
 	if attrs.Valid && strings.TrimSpace(attrs.String) != "" {
 		def.Attributes = json.RawMessage(attrs.String)
@@ -74,7 +89,7 @@ func (s *Provider) LoadAllTimers(ctx context.Context) ([]*TimerDefinition, error
 		return nil, err
 	}
 	defer conn.Close()
-	rows, err := conn.QueryContext(ctx, `SELECT ID, NAME, EXEC_USER, AUTO_START, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF ORDER BY ID`)
+	rows, err := conn.QueryContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF ORDER BY ID`)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +119,7 @@ func (s *Provider) LoadTimer(ctx context.Context, name string) (*TimerDefinition
 	}
 	defer conn.Close()
 	name = strings.ToUpper(strings.TrimSpace(name))
-	row := conn.QueryRowContext(ctx, `SELECT ID, NAME, EXEC_USER, AUTO_START, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE NAME = ?`, name)
+	row := conn.QueryRowContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE NAME = ?`, name)
 	def, err := scanTimerDefinition(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("timer '%s' not found", name)
@@ -122,7 +137,7 @@ func (s *Provider) LoadTimerByID(ctx context.Context, id int64) (*TimerDefinitio
 		return nil, err
 	}
 	defer conn.Close()
-	row := conn.QueryRowContext(ctx, `SELECT ID, NAME, EXEC_USER, AUTO_START, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE ID = ?`, id)
+	row := conn.QueryRowContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES FROM _NEO_TIMER_DEF WHERE ID = ?`, id)
 	def, err := scanTimerDefinition(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("timer id '%d' not found", id)
@@ -168,8 +183,8 @@ func (s *Provider) SaveTimer(ctx context.Context, def *TimerDefinition) error {
 		if exists {
 			return fmt.Errorf("schedule name '%s' already exists", name)
 		}
-		result, err := conn.ExecContext(ctx, `INSERT INTO _NEO_TIMER_DEF (NAME, EXEC_USER, AUTO_START, TASK, SCHEDULE, ATTRIBUTES) VALUES (?, ?, ?, ?, ?, ?)`,
-			name, def.ExecUser, boolToShort(def.AutoStart), def.Task, def.Schedule, attributesToDB(def.Attributes))
+		result, err := conn.ExecContext(ctx, `INSERT INTO _NEO_TIMER_DEF (USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, SCHEDULE, ATTRIBUTES) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			def.UserName, name, def.ExecUser, boolToShort(def.AutoStart), boolToShort(def.Disabled), nullIfEmpty(def.LastError), nullTime(def.LastErrorAt), def.Task, def.Schedule, attributesToDB(def.Attributes))
 		if err != nil {
 			return err
 		}
@@ -182,8 +197,8 @@ func (s *Provider) SaveTimer(ctx context.Context, def *TimerDefinition) error {
 		return nil
 	}
 
-	result, err := conn.ExecContext(ctx, `UPDATE _NEO_TIMER_DEF SET NAME = ?, AUTO_START = ?, TASK = ?, SCHEDULE = ?, ATTRIBUTES = ? WHERE ID = ?`,
-		name, boolToShort(def.AutoStart), def.Task, def.Schedule, attributesToDB(def.Attributes), def.Id)
+	result, err := conn.ExecContext(ctx, `UPDATE _NEO_TIMER_DEF SET NAME = ?, EXEC_USER = ?, AUTO_START = ?, DISABLED = ?, LAST_ERROR = ?, LAST_ERROR_AT = ?, TASK = ?, SCHEDULE = ?, ATTRIBUTES = ? WHERE ID = ? AND USER_NAME = ?`,
+		name, def.ExecUser, boolToShort(def.AutoStart), boolToShort(def.Disabled), nullIfEmpty(def.LastError), nullTime(def.LastErrorAt), def.Task, def.Schedule, attributesToDB(def.Attributes), def.Id, def.UserName)
 	if err != nil {
 		return err
 	}
@@ -194,6 +209,53 @@ func (s *Provider) SaveTimer(ctx context.Context, def *TimerDefinition) error {
 	}
 	def.Name = name
 	return nil
+}
+
+// SetTimerRuntimeError records scheduler diagnostics without applying a user
+// ownership scope. An empty error clears the diagnostic.
+func (s *Provider) SetTimerRuntimeError(ctx context.Context, id int64, lastError string) error {
+	conn, err := s.scheduleConn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	var lastErrorAt any
+	if lastError != "" {
+		lastErrorAt = time.Now()
+	}
+	_, err = conn.ExecContext(ctx, `UPDATE _NEO_TIMER_DEF SET LAST_ERROR = ?, LAST_ERROR_AT = ? WHERE ID = ?`, nullIfEmpty(lastError), lastErrorAt, id)
+	return err
+}
+
+func ensureScheduleTable(ctx context.Context, conn *sql.Conn, table, ddl string) error {
+	if _, err := conn.ExecContext(ctx, ddl); err != nil {
+		return err
+	}
+	rows, err := conn.QueryContext(ctx, "SELECT USER_NAME FROM "+table+" WHERE 1=0")
+	if err == nil {
+		return rows.Close()
+	}
+	if !isMissingUserNameColumn(err) {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, "DROP TABLE "+table); err != nil {
+		return err
+	}
+	_, err = conn.ExecContext(ctx, ddl)
+	return err
+}
+
+func isMissingUserNameColumn(err error) bool {
+	message := strings.ToUpper(err.Error())
+	return strings.Contains(message, "USER_NAME") &&
+		(strings.Contains(message, "COLUMN") || strings.Contains(message, "UNKNOWN") || strings.Contains(message, "INVALID"))
+}
+
+func nullTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value
 }
 
 // RemoveTimer deletes a timer definition by name.

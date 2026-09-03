@@ -51,39 +51,39 @@ const addConfig = {
 const delConfig = {
     func: doDel,
     command: 'del',
-    usage: 'subscriber del <name>',
+    usage: 'subscriber del <id>',
     description: 'Delete a subscriber by name',
     options: {
         help: optionHelp,
     },
     positionals: [
-        { name: 'name', description: 'name of the subscriber to delete' },
+        { name: 'id', description: 'ID of the subscriber to delete' },
     ],
 }
 
 const startConfig = {
     func: doStart,
     command: 'start',
-    usage: 'subscriber start <name>',
+    usage: 'subscriber start <id>',
     description: 'Start a subscriber by name',
     options: {
         help: optionHelp,
     },
     positionals: [
-        { name: 'name', description: 'name of the subscriber to start' },
+        { name: 'id', description: 'ID of the subscriber to start' },
     ],
 }
 
 const stopConfig = {
     func: doStop,
     command: 'stop',
-    usage: 'subscriber stop <name>',
+    usage: 'subscriber stop <id>',
     description: 'Stop a subscriber by name',
     options: {
         help: optionHelp,
     },
     positionals: [
-        { name: 'name', description: 'name of the subscriber to stop' },
+        { name: 'id', description: 'ID of the subscriber to stop' },
     ],
 }
 
@@ -97,15 +97,13 @@ parseAndRun(process.argv.slice(2), defaultConfig, [
 
 function doList(config, args) {
     const client = new neoapi.Client(config);
-    client.listSchedules()
+    client.listSubscribers()
         .then((lst) => {
             let box = pretty.Table(config);
-            box.appendHeader(["NAME", "BRIDGE", "TOPIC", "DESTINATION", "AUTOSTART", "STATE"]);
+            box.appendHeader(["ID", "NAME", "BRIDGE", "TOPIC", "DESTINATION", "AUTOSTART", "STATE"]);
             for (const subs of lst) {
-                if (subs.type !== 'SUBSCRIBER') {
-                    continue;
-                }
                 box.append([
+                    subs.id,
                     subs.name,
                     subs.bridge,
                     subs.topic,
@@ -130,7 +128,7 @@ function doAdd(config, args) {
     const destination = args.destination;
     const autostart = config.autostart || false;
     const qos = config.qos || 0;
-    client.addSchedule({ name: name, type: 'SUBSCRIBER', bridge: bridge, topic: topic, task: destination, autostart: autostart, qos: qos })
+    client.addSubscriber({ name: name, bridge: bridge, command: destination, autoStart: autostart, mqtt: { topic: topic, qos: qos } })
         .then(() => {
             console.println(`Subscriber '${name}' added successfully.`);
         })
@@ -146,9 +144,9 @@ function doAdd(config, args) {
 
 function doDel(config, args) {
     const client = new neoapi.Client();
-    client.deleteSchedule(args.name)
+    client.deleteSubscriber(Number(args.id))
         .then(() => {
-            console.println(`Subscriber '${args.name}' deleted successfully.`);
+            console.println(`Subscriber '${args.id}' deleted successfully.`);
         })
         .catch((err) => {
             console.println('Error deleting subscriber:', err.message);
@@ -157,9 +155,9 @@ function doDel(config, args) {
 
 function doStart(config, args) {
     const client = new neoapi.Client();
-    client.startSchedule(args.name)
+    client.startSubscriber(Number(args.id))
         .then(() => {
-            console.println(`Subscriber '${args.name}' started successfully.`);
+            console.println(`Subscriber '${args.id}' started successfully.`);
         })
         .catch((err) => {
             console.println('Error starting subscriber:', err.message);
@@ -168,9 +166,9 @@ function doStart(config, args) {
 
 function doStop(config, args) {
     const client = new neoapi.Client();
-    client.stopSchedule(args.name)
+    client.stopSubscriber(Number(args.id))
         .then(() => {
-            console.println(`Subscriber '${args.name}' stopped successfully.`);
+            console.println(`Subscriber '${args.id}' stopped successfully.`);
         })
         .catch((err) => {
             console.println('Error stopping subscriber:', err.message);

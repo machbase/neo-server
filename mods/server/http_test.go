@@ -2777,7 +2777,7 @@ Host: localhost:8080`},
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "listTimers_beforeAdd",
-		method: "schedule.list",
+		method: "timer.list",
 		params: []interface{}{},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.Empty(t, rsp.Get("result").Array(), rsp.String())
@@ -2785,12 +2785,12 @@ Host: localhost:8080`},
 	}.run(t, at)
 	JsonRpcTestCase{
 		name:   "addTimer_not_exists",
-		method: "schedule.timer.add",
+		method: "timer.add",
 		params: []interface{}{map[string]any{
 			"name":      "test-timer",
 			"spec":      "*/1 * * * * *",
 			"command":   "test-timer-not_exists.tql",
-			"authStart": true,
+			"autoStart": true,
 		}},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.Equal(t, -32000, int(rsp.Get("error.code").Int()), rsp.String())
@@ -2804,7 +2804,7 @@ Host: localhost:8080`},
 			"name":      "test-timer",
 			"spec":      "0 30 * * * *",
 			"command":   "csv_map.tql",
-			"authStart": true,
+			"autoStart": true,
 		}},
 		expectFunc: func(t *testing.T, rsp gjson.Result) {
 			require.False(t, rsp.Get("error").Exists(), rsp.String())

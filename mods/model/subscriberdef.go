@@ -8,19 +8,26 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // SubscriberDefinition is a custom mqtt/nats subscriber schedule persisted
 // in _NEO_SUBSCRIBER_DEF. Like bridge, subscriber has no reserved
-// definitions, so its Id is exposed as int64 directly instead of a string.
+// definitions. USER_NAME controls definition management, EXEC_USER is the
+// runtime identity, Disabled is the desired start state, and LastError holds
+// runtime diagnostics. Its Id is exposed as int64 directly instead of a string.
 type SubscriberDefinition struct {
-	Id        int64  `json:"id"`
-	Name      string `json:"name"`
-	ExecUser  string `json:"execUser"`
-	AutoStart bool   `json:"autoStart"`
-	Task      string `json:"task"`
-	Bridge    string `json:"bridge"`
-	Topic     string `json:"topic"`
+	Id          int64     `json:"id"`
+	UserName    string    `json:"userName"`
+	Name        string    `json:"name"`
+	ExecUser    string    `json:"execUser"`
+	AutoStart   bool      `json:"autoStart"`
+	Disabled    bool      `json:"disabled"`
+	LastError   string    `json:"lastError,omitempty"`
+	LastErrorAt time.Time `json:"lastErrorAt,omitempty"`
+	Task        string    `json:"task"`
+	Bridge      string    `json:"bridge"`
+	Topic       string    `json:"topic"`
 
 	QoS        int    `json:"qos,omitempty"`    // mqtt only
 	QueueName  string `json:"queue,omitempty"`  // nats only
@@ -35,11 +42,15 @@ func (s *Provider) ensureSubscriberTable(ctx context.Context, conn *sql.Conn) er
 	if s.subscriberTableReady {
 		return nil
 	}
-	_, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS _NEO_SUBSCRIBER_DEF (
+	if err := ensureScheduleTable(ctx, conn, "_NEO_SUBSCRIBER_DEF", `CREATE TABLE IF NOT EXISTS _NEO_SUBSCRIBER_DEF (
 ID LONG PRIMARY KEY AUTO_INCREMENT,
+USER_NAME VARCHAR(64) NOT NULL,
 NAME VARCHAR(40) NOT NULL,
 EXEC_USER VARCHAR(64) NOT NULL,
 AUTO_START SHORT NOT NULL,
+DISABLED SHORT NOT NULL,
+LAST_ERROR VARCHAR(1024),
+LAST_ERROR_AT DATETIME,
 TASK VARCHAR(4096) NOT NULL,
 BRIDGE VARCHAR(128) NOT NULL,
 TOPIC VARCHAR(512) NOT NULL,
@@ -47,8 +58,7 @@ QOS INTEGER,
 QUEUE_NAME VARCHAR(128),
 STREAM_NAME VARCHAR(128),
 ATTRIBUTES JSON
-)`)
-	if err != nil {
+)`); err != nil {
 		return err
 	}
 	s.subscriberTableReady = true
@@ -57,24 +67,29 @@ ATTRIBUTES JSON
 
 func scanSubscriberDefinition(scanner scheduleRowScanner) (*SubscriberDefinition, error) {
 	var id int64
-	var autoStart int64
+	var autoStart, disabled int64
 	var qos sql.NullInt64
-	var name, execUser, task, brdg, topic, queueName, streamName sql.NullString
-	var attrs sql.NullString
-	if err := scanner.Scan(&id, &name, &execUser, &autoStart, &task, &brdg, &topic, &qos, &queueName, &streamName, &attrs); err != nil {
+	var userName, name, execUser, task, brdg, topic, queueName, streamName sql.NullString
+	var lastError, attrs sql.NullString
+	var lastErrorAt sql.NullTime
+	if err := scanner.Scan(&id, &userName, &name, &execUser, &autoStart, &disabled, &lastError, &lastErrorAt, &task, &brdg, &topic, &qos, &queueName, &streamName, &attrs); err != nil {
 		return nil, err
 	}
 	def := &SubscriberDefinition{
-		Id:         id,
-		Name:       name.String,
-		ExecUser:   execUser.String,
-		AutoStart:  autoStart != 0,
-		Task:       task.String,
-		Bridge:     brdg.String,
-		Topic:      topic.String,
-		QoS:        int(qos.Int64),
-		QueueName:  queueName.String,
-		StreamName: streamName.String,
+		Id:          id,
+		UserName:    userName.String,
+		Name:        name.String,
+		ExecUser:    execUser.String,
+		AutoStart:   autoStart != 0,
+		Disabled:    disabled != 0,
+		LastError:   lastError.String,
+		LastErrorAt: lastErrorAt.Time,
+		Task:        task.String,
+		Bridge:      brdg.String,
+		Topic:       topic.String,
+		QoS:         int(qos.Int64),
+		QueueName:   queueName.String,
+		StreamName:  streamName.String,
 	}
 	if attrs.Valid && strings.TrimSpace(attrs.String) != "" {
 		def.Attributes = json.RawMessage(attrs.String)
@@ -89,7 +104,7 @@ func (s *Provider) LoadAllSubscribers(ctx context.Context) ([]*SubscriberDefinit
 		return nil, err
 	}
 	defer conn.Close()
-	rows, err := conn.QueryContext(ctx, `SELECT ID, NAME, EXEC_USER, AUTO_START, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES FROM _NEO_SUBSCRIBER_DEF ORDER BY ID`)
+	rows, err := conn.QueryContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES FROM _NEO_SUBSCRIBER_DEF ORDER BY ID`)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +134,7 @@ func (s *Provider) LoadSubscriber(ctx context.Context, name string) (*Subscriber
 	}
 	defer conn.Close()
 	name = strings.ToUpper(strings.TrimSpace(name))
-	row := conn.QueryRowContext(ctx, `SELECT ID, NAME, EXEC_USER, AUTO_START, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES FROM _NEO_SUBSCRIBER_DEF WHERE NAME = ?`, name)
+	row := conn.QueryRowContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES FROM _NEO_SUBSCRIBER_DEF WHERE NAME = ?`, name)
 	def, err := scanSubscriberDefinition(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("subscriber '%s' not found", name)
@@ -138,7 +153,7 @@ func (s *Provider) LoadSubscriberByID(ctx context.Context, id int64) (*Subscribe
 		return nil, err
 	}
 	defer conn.Close()
-	row := conn.QueryRowContext(ctx, `SELECT ID, NAME, EXEC_USER, AUTO_START, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES FROM _NEO_SUBSCRIBER_DEF WHERE ID = ?`, id)
+	row := conn.QueryRowContext(ctx, `SELECT ID, USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES FROM _NEO_SUBSCRIBER_DEF WHERE ID = ?`, id)
 	def, err := scanSubscriberDefinition(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("subscriber id '%d' not found", id)
@@ -187,8 +202,8 @@ func (s *Provider) SaveSubscriber(ctx context.Context, def *SubscriberDefinition
 		if exists {
 			return fmt.Errorf("schedule name '%s' already exists", name)
 		}
-		result, err := conn.ExecContext(ctx, `INSERT INTO _NEO_SUBSCRIBER_DEF (NAME, EXEC_USER, AUTO_START, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			name, def.ExecUser, boolToShort(def.AutoStart), def.Task, def.Bridge, def.Topic, def.QoS, nullIfEmpty(def.QueueName), nullIfEmpty(def.StreamName), attributesToDB(def.Attributes))
+		result, err := conn.ExecContext(ctx, `INSERT INTO _NEO_SUBSCRIBER_DEF (USER_NAME, NAME, EXEC_USER, AUTO_START, DISABLED, LAST_ERROR, LAST_ERROR_AT, TASK, BRIDGE, TOPIC, QOS, QUEUE_NAME, STREAM_NAME, ATTRIBUTES) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			def.UserName, name, def.ExecUser, boolToShort(def.AutoStart), boolToShort(def.Disabled), nullIfEmpty(def.LastError), nullTime(def.LastErrorAt), def.Task, def.Bridge, def.Topic, def.QoS, nullIfEmpty(def.QueueName), nullIfEmpty(def.StreamName), attributesToDB(def.Attributes))
 		if err != nil {
 			return err
 		}
@@ -201,8 +216,8 @@ func (s *Provider) SaveSubscriber(ctx context.Context, def *SubscriberDefinition
 		return nil
 	}
 
-	result, err := conn.ExecContext(ctx, `UPDATE _NEO_SUBSCRIBER_DEF SET NAME = ?, AUTO_START = ?, TASK = ?, BRIDGE = ?, TOPIC = ?, QOS = ?, QUEUE_NAME = ?, STREAM_NAME = ?, ATTRIBUTES = ? WHERE ID = ?`,
-		name, boolToShort(def.AutoStart), def.Task, def.Bridge, def.Topic, def.QoS, nullIfEmpty(def.QueueName), nullIfEmpty(def.StreamName), attributesToDB(def.Attributes), def.Id)
+	result, err := conn.ExecContext(ctx, `UPDATE _NEO_SUBSCRIBER_DEF SET NAME = ?, EXEC_USER = ?, AUTO_START = ?, DISABLED = ?, LAST_ERROR = ?, LAST_ERROR_AT = ?, TASK = ?, BRIDGE = ?, TOPIC = ?, QOS = ?, QUEUE_NAME = ?, STREAM_NAME = ?, ATTRIBUTES = ? WHERE ID = ? AND USER_NAME = ?`,
+		name, def.ExecUser, boolToShort(def.AutoStart), boolToShort(def.Disabled), nullIfEmpty(def.LastError), nullTime(def.LastErrorAt), def.Task, def.Bridge, def.Topic, def.QoS, nullIfEmpty(def.QueueName), nullIfEmpty(def.StreamName), attributesToDB(def.Attributes), def.Id, def.UserName)
 	if err != nil {
 		return err
 	}
@@ -213,6 +228,22 @@ func (s *Provider) SaveSubscriber(ctx context.Context, def *SubscriberDefinition
 	}
 	def.Name = name
 	return nil
+}
+
+// SetSubscriberRuntimeError records scheduler diagnostics without applying a
+// user ownership scope. An empty error clears the diagnostic.
+func (s *Provider) SetSubscriberRuntimeError(ctx context.Context, id int64, lastError string) error {
+	conn, err := s.scheduleConn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	var lastErrorAt any
+	if lastError != "" {
+		lastErrorAt = time.Now()
+	}
+	_, err = conn.ExecContext(ctx, `UPDATE _NEO_SUBSCRIBER_DEF SET LAST_ERROR = ?, LAST_ERROR_AT = ? WHERE ID = ?`, nullIfEmpty(lastError), lastErrorAt, id)
+	return err
 }
 
 // RemoveSubscriber deletes a subscriber definition by name.

@@ -192,6 +192,7 @@ getServerInfo returns runtime and version information.
   - `version.buildTimestamp` *string*
   - `version.buildCompiler` *string*
   - `version.engine` *string*
+  - `version.engineVersion` *string*
   - `runtime` *object, optional*
   - `runtime.OS` *string, optional*
   - `runtime.arch` *string, optional*
@@ -1807,7 +1808,8 @@ listKeys returns server-managed key pairs.
 
 - `array<object<KeyInfo>>|error - key information list`
   - `[].idx` *int*
-  - `[].id` *string*
+  - `[].id` *int64*
+  - `[].name` *string*
   - `[].notBefore` *int64*
   - `[].notAfter` *int64*
 
@@ -1848,13 +1850,14 @@ listKeys returns server-managed key pairs.
 #### key.generate
 
 genKey generates a new key pair and returns the key information.
-It returns the key information including the identifier, certificate, private key, and token if successful.
-The return type is map[string]string with keys "id", "certificate", "key", and "token".
+It returns the key information including the management id, name (CommonName),
+certificate, and private key if successful.
 
-`key.generate(id, typ, notBefore, notAfter, store)`
+`key.generate(name, typ, notBefore, notAfter, store)`
 
 *Params*
-- `id` *string* - the identifier for the key pair, must be alphanumeric and can include _.@-
+- `name` *string* - the CommonName for the key pair, must be alphanumeric and can include _.@-;
+    duplicates across owners (or reissued certificates) are allowed
 - `typ` *string* - the type of key to generate, must be RSA or ECDSA
 - `notBefore` *int64* - the start time of the key's validity period in Unix timestamp (sec.)
     if not specified or 0, the current time will be used
@@ -1865,10 +1868,10 @@ The return type is map[string]string with keys "id", "certificate", "key", and "
 *Return*
 
 - `any|error - the generated key information`
-  - `id`: the identifier of the key pair
+  - `id`: the management id of the key pair (0 when store is false)
+  - `name`: the CommonName of the key pair
   - `certificate`: the certificate of the key pair
   - `key`: the private key of the key pair
-  - `token`: the token associated with the key pair
   - `serverKey`: the server's certificate (if store is true)
   - `zip`: a zip archive containing the key pair and server certificate (if store is true)
 
@@ -1922,7 +1925,7 @@ return: null on success
 `key.delete(id)`
 
 *Params*
-- `id` *string* - key pair identifier
+- `id` *int64* - management id of the key pair, as returned by key.list/key.generate
 
 *Return*
 
@@ -1942,7 +1945,169 @@ return: null on success
         "id": 20,
         "method": "key.delete",
         "params": [
-            "string"
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": null
+    }
+}
+```
+
+</details>
+
+
+### Token
+
+#### token.list
+
+listApiTokens returns the caller's own API tokens.
+
+`token.list()`
+
+*Params*
+
+- none
+
+*Return*
+
+- `array<object<ApiTokenInfo>>|error - API token information list`
+  - `[].id` *int64*
+  - `[].name` *string*
+  - `[].user` *string*
+  - `[].hint` *string*
+  - `[].createdAt` *int64*
+  - `[].notAfter` *int64*
+  - `[].lastUsedAt` *int64, optional*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "token.list",
+        "params": []
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": []
+    }
+}
+```
+
+</details>
+
+#### token.generate
+
+generateApiToken generates a new API token owned by the caller.
+
+`token.generate(name, notAfter)`
+
+*Params*
+- `name` *string* - a label for the token
+- `notAfter` *int64* - expiration unix epoch in seconds; 0 uses the default of 10 years from now
+
+*Return*
+
+- `object<GeneratedApiToken>|error - the generated API token, including the one-time plaintext token value`
+  - `token` *string*
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "token.generate",
+        "params": [
+            "string",
+            0
+        ]
+    }
+}
+```
+
+*Response*
+
+```json
+{
+    "type": "rpc_rsp",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "result": {}
+    }
+}
+```
+
+</details>
+
+#### token.delete
+
+deleteApiToken deletes one of the caller's own API tokens.
+
+
+return: null on success
+
+`token.delete(id)`
+
+*Params*
+- `id` *int64* - API token identifier
+
+*Return*
+
+- `null|error`
+
+<details>
+<summary>Request/Response JSON</summary>
+
+*Request*
+
+```json
+{
+    "type": "rpc_req",
+    "session": "client-session-#1",
+    "rpc": {
+        "jsonrpc": "2.0",
+        "id": 20,
+        "method": "token.delete",
+        "params": [
+            0
         ]
     }
 }
@@ -1981,6 +2146,8 @@ listSchedules returns all scheduler entries.
 
 - `array<object<scheduler.Schedule>>|error - schedule list`
   - `[].id` *int64, optional*
+  - `[].userName` *string, optional*
+  - `[].execUser` *string, optional*
   - `[].name` *string, optional*
   - `[].type` *string, optional*
   - `[].autoStart` *bool, optional*
@@ -2038,6 +2205,8 @@ getSchedule returns a schedule (timer or subscriber) by name.
 
 - `object<scheduler.Schedule>|error - schedule`
   - `id` *int64, optional*
+  - `userName` *string, optional*
+  - `execUser` *string, optional*
   - `name` *string, optional*
   - `type` *string, optional*
   - `autoStart` *bool, optional*
@@ -2456,6 +2625,8 @@ listTimers returns all timer schedules.
 
 - `array<object<scheduler.Schedule>>|error - timer schedule list`
   - `[].id` *int64, optional*
+  - `[].userName` *string, optional*
+  - `[].execUser` *string, optional*
   - `[].name` *string, optional*
   - `[].type` *string, optional*
   - `[].autoStart` *bool, optional*
@@ -2513,6 +2684,8 @@ getTimer returns a timer schedule by ID.
 
 - `object<scheduler.Schedule>|error - timer schedule`
   - `id` *int64, optional*
+  - `userName` *string, optional*
+  - `execUser` *string, optional*
   - `name` *string, optional*
   - `type` *string, optional*
   - `autoStart` *bool, optional*
@@ -2851,6 +3024,8 @@ listSubscribers returns all subscriber schedules.
 
 - `array<object<scheduler.Schedule>>|error - subscriber schedule list`
   - `[].id` *int64, optional*
+  - `[].userName` *string, optional*
+  - `[].execUser` *string, optional*
   - `[].name` *string, optional*
   - `[].type` *string, optional*
   - `[].autoStart` *bool, optional*
@@ -2908,6 +3083,8 @@ getSubscriber returns a subscriber schedule by ID.
 
 - `object<scheduler.Schedule>|error - subscriber schedule`
   - `id` *int64, optional*
+  - `userName` *string, optional*
+  - `execUser` *string, optional*
   - `name` *string, optional*
   - `type` *string, optional*
   - `autoStart` *bool, optional*
