@@ -64,7 +64,7 @@ type httpd struct {
 	alive bool
 
 	listenAddresses []string
-	enableTokenAuth bool
+	enableTokenAuth atomic.Bool // read per-request; safe to flip at runtime
 	mqttWsHandler   func(*gin.Context)
 
 	httpServer *http.Server
@@ -113,7 +113,7 @@ func WithHttpListenAddress(addrs ...string) HttpOption {
 func WithHttpAuthServer(authSvc *Server, enabled bool) HttpOption {
 	return func(s *httpd) {
 		s.authServer = authSvc
-		s.enableTokenAuth = enabled
+		s.enableTokenAuth.Store(enabled)
 		if authSvc != nil && authSvc.serviceController != nil {
 			s.serviceController = authSvc.serviceController
 		}
@@ -388,7 +388,7 @@ func (svr *httpd) Router() *gin.Engine {
 	})
 	// prefix '/metrics' for influx line protocol
 	metricsGroup := r.Group("/metrics")
-	if svr.enableTokenAuth && svr.authServer != nil {
+	if svr.authServer != nil {
 		metricsGroup.Use(svr.handleAuthToken)
 	}
 	metricsGroup.POST("/:oper", svr.handleLineProtocol)
@@ -396,7 +396,7 @@ func (svr *httpd) Router() *gin.Engine {
 
 	// prefix '/db' for machbase
 	dbGroup := r.Group("/db")
-	if svr.enableTokenAuth && svr.authServer != nil {
+	if svr.authServer != nil {
 		dbGroup.Use(svr.handleAuthToken)
 	}
 	dbGroup.GET("/query", svr.handleQuery)
@@ -576,43 +576,51 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 		ctx.Abort()
 		return
 	}
-	auth, exist := ctx.Request.Header["Authorization"]
-	if !exist {
-		tok := ctx.Query("token")
-		if tok != "" {
-			user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
-			if err == nil && result {
-				ctx.Set("api-token-user", user)
-				ctx.Set("api-token-authenticated", true)
-				return
-			}
+	strict := svr.enableTokenAuth.Load()
+	tok, present := svr.extractBearerToken(ctx)
+	if !present {
+		if strict {
+			ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization token"})
+			ctx.Abort()
 		}
-		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization token"})
-		ctx.Abort()
+		// token auth is not enforced and no credential was offered, proceed as "sys"
 		return
 	}
-	found := false
-	for _, h := range auth {
-		if !strings.HasPrefix(strings.ToUpper(h), "BEARER ") {
-			continue
-		}
-		tok := h[7:]
-		user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
-		if err != nil {
-			svr.log.Errorf("client private key %s", err.Error())
-		}
-		if result {
-			ctx.Set("api-token-user", user)
-			ctx.Set("api-token-authenticated", true)
-			found = true
-			break
+	if !strict {
+		if _, _, ok := ParseApiToken(tok); !ok {
+			// token auth is optional and the bearer value doesn't even look like an
+			// API token (e.g. it's a JWT meant for another auth layer); leave it
+			// alone instead of rejecting the request, proceed as "sys".
+			return
 		}
 	}
-	if !found {
+	user, result, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), tok)
+	if err != nil {
+		svr.log.Errorf("client token auth %s", err.Error())
+	}
+	if !result {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing valid token"})
 		ctx.Abort()
 		return
 	}
+	ctx.Set("api-token-user", user)
+	ctx.Set("api-token-authenticated", true)
+}
+
+// extractBearerToken returns the token carried by the "Authorization: Bearer <token>"
+// header or the "token" query parameter, and whether any such token was present at all.
+func (svr *httpd) extractBearerToken(ctx *gin.Context) (tok string, present bool) {
+	if auth, exist := ctx.Request.Header["Authorization"]; exist {
+		for _, h := range auth {
+			if strings.HasPrefix(strings.ToUpper(h), "BEARER ") {
+				return h[7:], true
+			}
+		}
+	}
+	if q := ctx.Query("token"); q != "" {
+		return q, true
+	}
+	return "", false
 }
 
 func (svr *httpd) corsHandler() gin.HandlerFunc {

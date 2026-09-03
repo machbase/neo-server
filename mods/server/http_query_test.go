@@ -169,7 +169,8 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 		_ = server.deleteApiToken(contextWithModelUser(context.Background(), username), generated.Id)
 	})
 
-	testHttpd := &httpd{log: logging.GetLog("http-token-e2e-test"), authServer: server, enableTokenAuth: true}
+	testHttpd := &httpd{log: logging.GetLog("http-token-e2e-test"), authServer: server}
+	testHttpd.enableTokenAuth.Store(true)
 	doQuery := func(sqlText string) []byte {
 		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query?q="+url.QueryEscape(sqlText), nil)
 		ctx.Request.Header.Set("Authorization", "Bearer "+generated.Token)
@@ -195,6 +196,17 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 		body := doQuery("SELECT name FROM " + ownTable)
 		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
 		require.Equal(t, "temp", gjson.GetBytes(body, "data.rows.0.0").String())
+	})
+
+	t.Run("optional_mode_still_honors_a_valid_bearer_token", func(t *testing.T) {
+		// Http.EnableTokenAuth=false: a request without any token still runs as
+		// "sys", but a request carrying a valid API token must use its scope.
+		testHttpd.enableTokenAuth.Store(false)
+		defer testHttpd.enableTokenAuth.Store(true)
+
+		body := doQuery("SELECT current_user()")
+		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
+		require.Equal(t, strings.ToUpper(username), gjson.GetBytes(body, "data.rows.0.0").String())
 	})
 }
 
