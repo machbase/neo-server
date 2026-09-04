@@ -315,6 +315,30 @@ func TestSplitSqlStatementsEnv(t *testing.T) {
 				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &SqlStatementEnv{Error: "unknown env: named."}},
 			},
 		},
+		{
+			name:  "named dense array literal",
+			input: "-- env: named.arr=[1,2,3,4]\nSELECT * FROM example WHERE arr = :arr;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.arr=[1,2,3,4]", Env: &SqlStatementEnv{Named: map[string]string{"arr": "[1,2,3,4]"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT * FROM example WHERE arr = :arr;", StmtType: "select", Env: &SqlStatementEnv{Named: map[string]string{"arr": "[1,2,3,4]"}}},
+			},
+		},
+		{
+			name:  "named sparse array literal with spaces",
+			input: "-- env: named.arr=[1=>1.0, 2=>2.1, 11=>3.14]\nSELECT * FROM example WHERE arr = :arr;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.arr=[1=>1.0, 2=>2.1, 11=>3.14]", Env: &SqlStatementEnv{Named: map[string]string{"arr": "[1=>1.0, 2=>2.1, 11=>3.14]"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT * FROM example WHERE arr = :arr;", StmtType: "select", Env: &SqlStatementEnv{Named: map[string]string{"arr": "[1=>1.0, 2=>2.1, 11=>3.14]"}}},
+			},
+		},
+		{
+			name:  "named array literal followed by another pair",
+			input: "-- env: named.arr=[1,2,3,4] named.name=Alice\nSELECT 1;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.arr=[1,2,3,4] named.name=Alice", Env: &SqlStatementEnv{Named: map[string]string{"arr": "[1,2,3,4]", "name": "Alice"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &SqlStatementEnv{}},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -455,6 +479,18 @@ func ExampleParseNameValuePairs() {
 	// name3=value3
 	// name4=
 	// log-level=info
+}
+
+func ExampleParseNameValuePairs_array() {
+	input := `named.dense=[1,2,3,4] named.sparse=[1=>1.0, 2=>2.1, 11=>3.14]`
+	result := ParseNameValuePairs(input)
+	for _, pair := range result {
+		fmt.Printf("%s=%s\n", pair.Name, pair.Value)
+	}
+
+	// Output:
+	// named.dense=[1,2,3,4]
+	// named.sparse=[1=>1.0, 2=>2.1, 11=>3.14]
 }
 
 func ExampleParseNameValuePairs_singleQuote() {

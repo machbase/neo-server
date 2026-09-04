@@ -92,6 +92,17 @@ func createTestTables() {
 	if err != nil {
 		panic(err)
 	}
+	_, err = conn.ExecContext(ctx, `
+		create table if not exists array_data(
+			id  long primary key auto_increment,
+			dd  double[4],
+			ii  int[4],
+			amt decimal(10,2)
+		)
+	`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func dropTestTables() {
@@ -110,6 +121,10 @@ func dropTestTables() {
 		panic(err)
 	}
 	_, err = conn.ExecContext(ctx, "DROP TABLE log_data")
+	if err != nil {
+		panic(err)
+	}
+	_, err = conn.ExecContext(ctx, "DROP TABLE array_data")
 	if err != nil {
 		panic(err)
 	}
@@ -650,6 +665,86 @@ func TestSql_insert_bind_args(t *testing.T) {
 	}.run(t)
 }
 
+func TestSql_array_columns(t *testing.T) {
+	TqlTestCase{
+		Name: "SQL_array-insert-dense",
+		Script: `
+			FAKE(once(1))
+			SQL("insert into array_data(dd, ii, amt) values(:dd, :ii, :amt)",
+				named("dd", "[1.1,2.2,3.3,4.4]"),
+				named("ii", "[1,2,3,4]"),
+				named("amt", "12.34"))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_array-insert-sparse-and-null",
+		Script: `
+			FAKE(once(1))
+			SQL("insert into array_data(ii) values(:ii)",
+				named("ii", "[3=>40]"))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_array-select-json",
+		Script: `
+			SQL("select dd, ii, amt from array_data order by id")
+			JSON()
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, []any{"double_array", "int32_array", "decimal"}, gjson.Get(result, "data.types").Value())
+			rows := gjson.Get(result, "data.rows").Array()
+			require.Len(t, rows, 2)
+
+			row0 := rows[0].Array()
+			require.Equal(t, []any{1.1, 2.2, 3.3, 4.4}, row0[0].Value())
+			require.Equal(t, []any{1.0, 2.0, 3.0, 4.0}, row0[1].Value())
+			require.Equal(t, "12.34", row0[2].String())
+
+			row1 := rows[1].Array()
+			require.True(t, row1[0].Type == gjson.Null)
+			require.Equal(t, []any{nil, nil, nil, 40.0}, row1[1].Value())
+			require.True(t, row1[2].Type == gjson.Null)
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_array-select-constant-literal",
+		Script: `
+			SQL("select [1,2,3]")
+			JSON()
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, []any{"int32_array"}, gjson.Get(result, "data.types").Value())
+			rows := gjson.Get(result, "data.rows").Array()
+			require.Len(t, rows, 1)
+			require.Equal(t, []any{1.0, 2.0, 3.0}, rows[0].Array()[0].Value())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "SQL_array-select-constant-literal-double",
+		Script: `
+			SQL("select [1.1, 2.2, 3.3]")
+			JSON()
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, []any{"double_array"}, gjson.Get(result, "data.types").Value())
+			rows := gjson.Get(result, "data.rows").Array()
+			require.Len(t, rows, 1)
+			require.Equal(t, []any{1.1, 2.2, 3.3}, rows[0].Array()[0].Value())
+		},
+	}.run(t)
+}
+
 func TestSql_show_wrong(t *testing.T) {
 	TqlTestCase{
 		Name: "SQL_show_wrong",
@@ -829,9 +924,10 @@ func TestSql_show_tables(t *testing.T) {
 			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 			require.GreaterOrEqual(t, len(lines), 4)
 			require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
+			body := strings.Join(lines[1:], "\n")
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), body)
 		},
 	}.run(t)
 	TqlTestCase{
@@ -844,14 +940,15 @@ func TestSql_show_tables(t *testing.T) {
 			lines := strings.Split(strings.TrimSuffix(result, "\n\n"), "\n")
 			require.GreaterOrEqual(t, len(lines), 4)
 			require.Equal(t, "DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG", lines[0])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), lines[1])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), lines[2])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), lines[3])
 			require.GreaterOrEqual(t, len(lines), 8)
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$`), lines[4])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$`), lines[5])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,[0-9]+,KeyValue,Data$`), lines[6])
-			require.Regexp(t, regexp.MustCompile(`^MACHBASEDB,SYS,_TAG_SIMPLE_META,[0-9]+,Lookup,Meta$`), lines[7])
+			body := strings.Join(lines[1:], "\n")
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,LOG_DATA,[0-9]+,Log,$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,TAG_DATA,[0-9]+,Tag,$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,TAG_SIMPLE,[0-9]+,Tag,$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,_TAG_DATA_DATA_0,[0-9]+,KeyValue,Data$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,_TAG_DATA_META,[0-9]+,Lookup,Meta$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,[0-9]+,KeyValue,Data$`), body)
+			require.Regexp(t, regexp.MustCompile(`(?m)^MACHBASEDB,SYS,_TAG_SIMPLE_META,[0-9]+,Lookup,Meta$`), body)
 		},
 	}.run(t)
 	TqlTestCase{

@@ -347,6 +347,26 @@ func ColumnTypesToDataTypes(columnTypes []*sql.ColumnType) []api.DataType {
 			dataTypes[i] = api.DataTypeIPv4
 		case "IPV6":
 			dataTypes[i] = api.DataTypeIPv6
+		case "DECIMAL":
+			dataTypes[i] = api.DataTypeDecimal
+		case "INT16_ARRAY":
+			dataTypes[i] = api.DataTypeInt16Array
+		case "UINT16_ARRAY":
+			dataTypes[i] = api.DataTypeUInt16Array
+		case "INT32_ARRAY":
+			dataTypes[i] = api.DataTypeInt32Array
+		case "UINT32_ARRAY":
+			dataTypes[i] = api.DataTypeUInt32Array
+		case "INT64_ARRAY":
+			dataTypes[i] = api.DataTypeInt64Array
+		case "UINT64_ARRAY":
+			dataTypes[i] = api.DataTypeUInt64Array
+		case "FLOAT_ARRAY":
+			dataTypes[i] = api.DataTypeFloatArray
+		case "DOUBLE_ARRAY":
+			dataTypes[i] = api.DataTypeDoubleArray
+		case "DECIMAL_ARRAY":
+			dataTypes[i] = api.DataTypeDecimalArray
 		default:
 			dataTypes[i] = api.DataType(dbType)
 		}
@@ -454,6 +474,8 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			buffer[i] = new(sql.NullTime)
 		case "sql.RawBytes":
 			buffer[i] = new(sql.RawBytes)
+		case "api.Array":
+			buffer[i] = makeArrayScanBuffer(colType)
 		default:
 			switch colType.DatabaseTypeName() {
 			case "INT", "BIGINT", "SMALLINT", "TINYINT":
@@ -474,6 +496,30 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 		}
 	}
 	return buffer
+}
+
+// makeArrayScanBuffer preconfigures an *api.Array scan destination with the
+// column's cardinality/precision/scale so Array.Scan preserves the exact
+// element type instead of inferring it from the canonical text spelling.
+// It falls back to a zero-value *api.Array when the driver does not expose
+// that metadata (e.g. a non-machbase database/sql driver).
+func makeArrayScanBuffer(colType *sql.ColumnType) *api.Array {
+	elementType := api.ParseColumnType(strings.ToLower(colType.DatabaseTypeName())).ToSqlType().ElementType()
+	cardinality, ok := colType.Length()
+	if !ok || cardinality <= 0 {
+		return new(api.Array)
+	}
+	precision, scale := 0, 0
+	if elementType == api.SqlTypeDecimal {
+		if p, s, ok := colType.DecimalSize(); ok {
+			precision, scale = int(p), int(s)
+		}
+	}
+	arr, err := api.NewSparseArrayWithMeta(elementType, int(cardinality), precision, scale)
+	if err != nil {
+		return new(api.Array)
+	}
+	return arr
 }
 
 func MakeUserMessage(smtType SQLStatementType, rowsCount int64) string {

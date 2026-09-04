@@ -1,6 +1,7 @@
 package tql
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -146,4 +147,30 @@ func TestDatabaseStatementHelpers(t *testing.T) {
 		_, err = node.fmAppend()
 		require.EqualError(t, err, "f(APPEND) arg(0) table is not specified")
 	})
+}
+
+// TestFmNamedArrayLiteralPassthrough locks in the contract that named()
+// forwards an ARRAY literal string unchanged as a sql.NamedArg value. The
+// actual "[1,2,3,10=>4]" text is parsed into an api.Array only later, at
+// neo-client bind time (see plan-tql-array-literal.md); the tql layer itself
+// performs no parsing.
+func TestFmNamedArrayLiteralPassthrough(t *testing.T) {
+	node := NewNode(NewTask())
+
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{"dense", "[1,2,3,4]"},
+		{"sparse", "[1=>1.0, 2=>2.1, 11=>3.14]"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			arg := node.fmNamed("arr", tc.value)
+			require.Equal(t, sql.NamedArg{Name: "arr", Value: tc.value}, arg)
+			// unquoted [1,2,3,4] and quoted "[1,2,3,4]" both arrive here as the
+			// same Go string; there is no separate "array literal" tql type.
+			require.IsType(t, "", arg.Value)
+		})
+	}
 }

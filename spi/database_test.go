@@ -344,6 +344,10 @@ func TestColumnTypesToDataTypes(t *testing.T) {
 		{name: "c7", dbType: "IPV4", scanType: reflect.TypeOf(net.IP{})},
 		{name: "c8", dbType: "IPV6", scanType: reflect.TypeOf(net.IP{})},
 		{name: "c9", dbType: "CUSTOM", scanType: reflect.TypeOf("")},
+		{name: "c10", dbType: "DECIMAL", scanType: reflect.TypeOf("")},
+		{name: "c11", dbType: "INT32_ARRAY", scanType: reflect.TypeOf(api.Array{})},
+		{name: "c12", dbType: "DOUBLE_ARRAY", scanType: reflect.TypeOf(api.Array{})},
+		{name: "c13", dbType: "DECIMAL_ARRAY", scanType: reflect.TypeOf(api.Array{})},
 	})
 
 	got := ColumnTypesToDataTypes(colTypes)
@@ -357,7 +361,30 @@ func TestColumnTypesToDataTypes(t *testing.T) {
 		api.DataTypeIPv4,
 		api.DataTypeIPv6,
 		api.DataType("CUSTOM"),
+		api.DataTypeDecimal,
+		api.DataTypeInt32Array,
+		api.DataTypeDoubleArray,
+		api.DataTypeDecimalArray,
 	}, got)
+}
+
+func TestMakeBufferArrayAndDecimal(t *testing.T) {
+	colTypes := makeColumnTypesForTest(t, []testColumnMeta{
+		{name: "amt", dbType: "DECIMAL", scanType: reflect.TypeOf("")},
+		{name: "dd", dbType: "DOUBLE_ARRAY", scanType: reflect.TypeOf(api.Array{})},
+		{name: "ii", dbType: "INT32_ARRAY", scanType: reflect.TypeOf(api.Array{})},
+	})
+
+	got := MakeBuffer(colTypes)
+	require.Len(t, got, len(colTypes))
+
+	// DECIMAL is unaffected by this change: still scanned as a plain string.
+	require.IsType(t, new(string), got[0])
+
+	// ARRAY columns get a *api.Array scan destination (falls back to a
+	// zero-value Array since this fake driver exposes no cardinality metadata).
+	require.IsType(t, &api.Array{}, got[1])
+	require.IsType(t, &api.Array{}, got[2])
 }
 
 func TestMakeBuffer(t *testing.T) {

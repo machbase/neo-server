@@ -405,6 +405,8 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 	// -- env: reset
 	// -- env: use=mydb
 	// -- env: named.name=Alice named.from="2024-01-01" named.to="2024-01-08"
+	// -- env: named.arr=[1,2,3,4]
+	// -- env: named.arr=[1=>1.0, 2=>2.1, 11=>3.14]
 	text = strings.TrimSpace(strings.TrimPrefix(text, "env:"))
 	pairs := ParseNameValuePairs(text)
 	if len(pairs) == 0 {
@@ -458,10 +460,11 @@ func (v *NameValuePair) String() string {
 	}
 }
 
-var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|'([^'\\]*(\\.[^'\\]*)*)'|[^ ]+))?`)
+var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|'([^'\\]*(\\.[^'\\]*)*)'|\[[^\]]*\]|[^ ]+))?`)
 
 // ParseNameValuePairs parses multiple name=value pairs
-// where values can contain whitespace within single or double quotation marks.
+// where values can contain whitespace within single or double quotation marks,
+// or within a bracketed ARRAY literal such as [1,2,3,4] or [1=>1.0, 2=>2.1].
 //
 //	func main() {
 //	    input := `name1=value1 name2="value \"with\" spaces" name3='value3' name4 `
