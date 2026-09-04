@@ -572,7 +572,7 @@ func InstallNeoWebX(ver string) error {
 			return err
 		}
 	} else {
-		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
+		if err := sh.RunV("curl", "-f", "-o", dst, "-L", url); err != nil {
 			return err
 		}
 	}
@@ -615,7 +615,7 @@ func InstallNeoEngineX(ver string) error {
 			return err
 		}
 	} else {
-		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
+		if err := sh.RunV("curl", "-f", "-o", dst, "-L", url); err != nil {
 			return err
 		}
 	}

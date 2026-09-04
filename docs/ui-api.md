@@ -129,49 +129,6 @@ All user interface API are authorizing client with JWT based authentication.
 | taz  | tag analyzer     |
 | term | terminal         |
 
-## SHELL & TERMINAL
-
-### ws:///web/api/term/:term_id/data
-
-Web socket for terminal
-
-### POST /web/api/term/:term_id/windowsize
-
-Change terminal size
-
-`TerminalSize`
-
-```json
-{
-    "rows": 24,
-    "cols": 80
-}
-```
-
-### GET /web/api/shell/:id
-
-Returns `ShellDefinition` for the given id
-
-### POST /web/api/shell/:id
-
-Update the `ShellDefinition` of the given id
-
-### GET /web/api/shell/:id/copy
-
-Returns `ShellDefinition` for a new copy of the shell of the given id
-
-### DELETE /web/api/shell/:id
-
-Delete the shell of the given id
-
-```json
-{
-    "success": true,
-    "reason": "success of error message",
-    "elapse": "time represents in text"
-}
-```
-
 ## SERVER EVENTS
 
 ### ws:/web/api/console/:console_id/data
@@ -239,69 +196,6 @@ It works as same as `/db/query` API, the difference is the way of authentication
 The `/db/query` authorize the client by API Token (for client applications).
 But `/web/machbase` checks JWT (for human interactions).
 
-
-## GET /web/api/tables?showall=false
-
-Return table list
-
-- `showall` returns includes all hidden tables if set `true`
-
-```json
-{
-    "success": true,
-    "reason": "success or other message",
-    "elapse": "elapse time in string format",
-    "data": {
-        "columns": ["ROWNUM", "DB", "USER", "NAME", "TYPE"],
-        "types": ["int32", "string", "string", "string", "string"],
-        "rows":[
-            [1, "MACHBASE", "SYS", "TABLENAME", "TAG TABLE"],
-        ]
-    }
-}
-```
-
-## GET /web/api/tables/:table/tags?name=prefix
-
-Returns tag list of the table
-
-- `name` returns only tags those name starts with the given prefix
-
-```json
-{
-    "success": true,
-    "reason": "success or other message",
-    "elapse": "elapse time in string format",
-    "data": {
-        "columns": ["ROWNUM", "NAME"],
-        "types": ["int32", "string"],
-        "rows":[
-            [1, "temperature"],
-        ]
-    }
-}
-```
-
-## GET /web/api/tables/:table/:tag/stat
-
-Returns the stat of tag of the table
-
-```json
-{
-    "success": true,
-    "reason": "success or other message",
-    "elapse": "elapse time in string format",
-    "data": {
-        "columns": ["ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
-			"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"],
-        "types": ["int32", "string", "int64", "datetime", "datetime","double", 
-            "datetime", "double", , "datetime",, "datetime"],
-        "rows":[
-            ["...omit...."],
-        ]
-    }
-}
-```
 
 ## GET,POST /web/api/files/*path
 
@@ -407,7 +301,3 @@ Delete the file at the `path`, if the path is pointing a directory and is not em
 ## POST /web/api/license
 
 Install license file
-
-## Deprecated
-
-- GET,POST /web/api/chart
