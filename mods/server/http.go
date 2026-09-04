@@ -2283,6 +2283,9 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
+		if svr.experimentModeProvider != nil && svr.experimentModeProvider() {
+			cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "dsh", Title: "neo dashboard", Addr: "./tutorials/neo_statz.dsh"})
+		}
 
 		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatSheets}
 		rsp.Success, rsp.Reason = true, "success"
