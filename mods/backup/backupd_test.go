@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -363,7 +364,7 @@ func TestBackupdHandleArchiveDatabaseTarget(t *testing.T) {
 				require.Equal(t, http.StatusOK, w.Code)
 				<-started
 				require.Contains(t, capturedSQL, `BACKUP DATABASE "FACTORY_A"`)
-				require.Equal(t, "FACTORY_A", s.backup.Info.Database)
+				require.Equal(t, "FACTORY_A", s.backupSnapshot().Info.Database)
 				close(release)
 				waitBackupSettled(t, s, 5*time.Second)
 			})
@@ -394,14 +395,68 @@ func TestBackupdHandleArchiveDatabaseTarget(t *testing.T) {
 		waitBackupSettled(t, s, 5*time.Second)
 	})
 
-	t.Run("rejects a database target for table backup", func(t *testing.T) {
+	t.Run("switches database before backing up a table in it", func(t *testing.T) {
+		// Regression test for machbase/neo#1496: a table backup targeting a non-default
+		// database used to be rejected outright ("database is only supported for database
+		// backup"). BACKUP TABLE always resolves the table name against the connection's
+		// current database, so the fix is to USE the target database first.
+		var mu sync.Mutex
+		var capturedSQL []string
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				onExec: func(sqlText string) {
+					mu.Lock()
+					capturedSQL = append(capturedSQL, sqlText)
+					mu.Unlock()
+				},
+			}), nil
+		}
+
 		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
 		payload := `{"type":"table","database":"FACTORY_A","tableName":"demo_table","duration":{"type":"full"},"path":"backup/table"}`
 		w := performBackupRequest(t, s.handleArchive, http.MethodPost, "/api/backup/archive", payload)
+		require.Equal(t, http.StatusOK, w.Code)
 
-		require.Equal(t, http.StatusBadRequest, w.Code)
-		body := decodeJSONBody(t, w)
-		require.Equal(t, "database is only supported for database backup", body["reason"])
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(capturedSQL) >= 2
+		}, 5*time.Second, 10*time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Equal(t, `USE "FACTORY_A"`, capturedSQL[0])
+		require.Contains(t, capturedSQL[1], "BACKUP TABLE demo_table INTO DISK")
+	})
+
+	t.Run("does not switch database for a table backup without one", func(t *testing.T) {
+		var mu sync.Mutex
+		var capturedSQL []string
+		connectDefault = func(context.Context) (*sql.Conn, error) {
+			return newMockSQLConn(t, sqlMockBehavior{
+				onExec: func(sqlText string) {
+					mu.Lock()
+					capturedSQL = append(capturedSQL, sqlText)
+					mu.Unlock()
+				},
+			}), nil
+		}
+
+		s := NewBackupd(WithBackupdBaseDir(newBackupWorkDir(t)))
+		payload := `{"type":"table","tableName":"demo_table","duration":{"type":"full"},"path":"backup/table"}`
+		w := performBackupRequest(t, s.handleArchive, http.MethodPost, "/api/backup/archive", payload)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(capturedSQL) >= 1
+		}, 5*time.Second, 10*time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Len(t, capturedSQL, 1)
+		require.Contains(t, capturedSQL[0], "BACKUP TABLE demo_table INTO DISK")
 	})
 }
 
@@ -766,6 +821,27 @@ func TestBackupLifecycleScenarioHelper(t *testing.T) {
 	require.True(t, queryOK, "mounted table query failed with all known candidates, mountdb=%s", mountedDB)
 	require.Equal(t, 2, mountedCount)
 
+	// 7-1) switch the session to the mounted database and confirm it is read-only.
+	// Regression test for machbase/neo#1487 (fixed by machbase/dbms-nfx#4171): USE against a
+	// mounted backup database used to fail, so the mounted table was unreachable without
+	// a fully qualified name.
+	result = conn.Exec(ctx, fmt.Sprintf("USE %s", mountedDB))
+	require.NoError(t, result.Err(), result.Message())
+
+	var probe int
+	err = conn.QueryRow(ctx, fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", tableName)).Scan(&probe)
+	require.NoError(t, err, "select on the mounted table must be allowed after USE %s", mountedDB)
+	require.Equal(t, 1, probe)
+
+	// writes must be rejected while the mounted (read-only) database is in use
+	result = conn.Exec(ctx, fmt.Sprintf("INSERT INTO %s VALUES(3, 'gamma')", tableName))
+	require.Error(t, result.Err(), "insert into the mounted table must be rejected")
+	require.Contains(t, result.Err().Error(), "is not an active database")
+
+	// restore the session to the default database
+	result = conn.Exec(ctx, "USE MACHBASEDB")
+	require.NoError(t, result.Err(), result.Message())
+
 	// 8) shutdown
 	require.NoError(t, conn.Close())
 	require.NoError(t, db.Shutdown())
@@ -923,7 +999,7 @@ func waitBackupSettled(t *testing.T, s *Backupd, timeout time.Duration) {
 	start := time.Now()
 	deadline := start.Add(timeout)
 	for {
-		running := s.backup.IsRunning
+		running := s.backupSnapshot().IsRunning
 		if running {
 			// This test is validating the archive request reaches the async backup worker,
 			// not that the DB backup finishes within a narrow CI budget. In CI, the actual

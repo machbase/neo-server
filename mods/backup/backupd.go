@@ -39,7 +39,24 @@ type Backupd struct {
 	baseDir string
 	cutset  string
 	backup  backupState
+	stateMu sync.RWMutex // guards backup; mutex below only serializes backup runs
 	mutex   sync.Mutex
+}
+
+// backupSnapshot returns a copy of the current backup state, safe to read
+// concurrently with the async worker in backupManager.
+func (s *Backupd) backupSnapshot() backupState {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.backup
+}
+
+// mutateBackup applies fn to the backup state under the state lock, safe to
+// call concurrently with backupSnapshot and other mutateBackup callers.
+func (s *Backupd) mutateBackup(fn func(*backupState)) {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	fn(&s.backup)
 }
 
 func WithBackupdBaseDir(baseDir string) Option {
@@ -84,7 +101,7 @@ func (s *Backupd) handleArchiveStatus(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	status := s.backup
+	status := s.backupSnapshot()
 	if !status.IsRunning {
 		if status.err != nil {
 			rsp["reason"] = status.Message
@@ -134,7 +151,7 @@ func (s *Backupd) handleArchive(ctx *gin.Context) {
 	}
 	copyArchive := originArchive
 
-	if s.backup.IsRunning {
+	if s.backupSnapshot().IsRunning {
 		rsp["reason"] = "backup is running."
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
@@ -167,12 +184,6 @@ func (s *Backupd) handleArchive(ctx *gin.Context) {
 			backupTarget = fmt.Sprintf("DATABASE %s", client.QuoteIdentifier(copyArchive.Database))
 		}
 	case "table":
-		if copyArchive.Database != "" {
-			rsp["reason"] = "database is only supported for database backup"
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusBadRequest, rsp)
-			return
-		}
 		if copyArchive.TableName == "" {
 			rsp["reason"] = "table name is empty"
 			rsp["elapse"] = time.Since(tick).String()
@@ -249,20 +260,43 @@ func (s *Backupd) backupManager(conn *sql.Conn, archive BackupArchive, sqlText s
 
 		if isLock := s.mutex.TryLock(); isLock {
 			defer s.mutex.Unlock()
-			s.backup.IsRunning = true
-			s.backup.Info = archive
+			s.mutateBackup(func(b *backupState) {
+				b.IsRunning = true
+				b.Info = archive
+			})
 
-			if _, err := conn.ExecContext(context.Background(), sqlText); err != nil {
-				s.backup.err = err
-				s.backup.Message = err.Error()
-			} else {
-				s.backup.err = nil
-				s.backup.Info = BackupArchive{}
-				s.backup.Message = ""
+			ctx := context.Background()
+			// BACKUP TABLE only accepts a bare table name and always resolves it against the
+			// connection's current database, so switch database first for a non-default target.
+			if strings.ToLower(archive.Type) == "table" && archive.Database != "" {
+				if _, err := conn.ExecContext(ctx, "USE "+client.QuoteIdentifier(archive.Database)); err != nil {
+					s.mutateBackup(func(b *backupState) {
+						b.err = err
+						b.Message = err.Error()
+						b.IsRunning = false
+					})
+					return
+				}
 			}
-			s.backup.IsRunning = false
+
+			if _, err := conn.ExecContext(ctx, sqlText); err != nil {
+				s.mutateBackup(func(b *backupState) {
+					b.err = err
+					b.Message = err.Error()
+					b.IsRunning = false
+				})
+			} else {
+				s.mutateBackup(func(b *backupState) {
+					b.err = nil
+					b.Info = BackupArchive{}
+					b.Message = ""
+					b.IsRunning = false
+				})
+			}
 		} else {
-			s.backup.IsRunning = true
+			s.mutateBackup(func(b *backupState) {
+				b.IsRunning = true
+			})
 		}
 	}()
 }
