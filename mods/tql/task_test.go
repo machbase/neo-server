@@ -745,6 +745,150 @@ func TestSql_array_columns(t *testing.T) {
 	}.run(t)
 }
 
+// TestSql_complex_array_decimal_encode verifies that CSV/MARKDOWN/BOX render
+// ARRAY and DECIMAL columns as their text form (e.g. "[1.1,2.2,3.3,4.4]")
+// instead of the Go type name of the flattened []any value.
+func TestSql_complex_array_decimal_encode(t *testing.T) {
+	TqlTestCase{
+		Name: "complex-create-table",
+		Script: `
+			SQL("create table complex(id long primary key auto_increment, amt decimal(10,2), dd double[4], ii int[4])")
+			BOX()
+			`,
+		ExpectText: []string{
+			"+----------------+",
+			"| MESSAGE        |",
+			"+----------------+",
+			"| table created. |",
+			"+----------------+",
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-insert-full-row",
+		Script: `
+			FAKE(once(1))
+			SQL("insert into complex(amt, dd, ii) values(:amt, :dd, :ii)",
+				named("amt", "123.46"),
+				named("dd", "[1.1,2.2,3.3,4.4]"),
+				named("ii", "[1,2,3,4]"))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-insert-sparse-null-row",
+		Script: `
+			FAKE(once(1))
+			SQL("insert into complex(dd, ii) values(:dd, :ii)",
+				named("dd", "[0=>10.5]"),
+				named("ii", "[0=>1,1=>2,2=>3]"))
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-csv",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			CSV(header(true))
+			`,
+		ExpectCSV: []string{
+			"id,amt,dd,ii",
+			`1,123.46,"[1.1,2.2,3.3,4.4]","[1,2,3,4]"`,
+			`2,NULL,"[10.5,null,null,null]","[1,2,3,null]"`,
+			"", "",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-markdown",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			MARKDOWN()
+			`,
+		ExpectText: []string{
+			"|id|amt|dd|ii|",
+			"|:-----|:-----|:-----|:-----|",
+			"|1|123.46|[1.1,2.2,3.3,4.4]|[1,2,3,4]|",
+			"|2|NULL|[10.5,null,null,null]|[1,2,3,null]|",
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-box",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			BOX()
+			`,
+		ExpectText: []string{
+			"+----+--------+-----------------------+--------------+",
+			"| ID | AMT    | DD                    | II           |",
+			"+----+--------+-----------------------+--------------+",
+			"| 1  | 123.46 | [1.1,2.2,3.3,4.4]     | [1,2,3,4]    |",
+			"| 2  | NULL   | [10.5,null,null,null] | [1,2,3,null] |",
+			"+----+--------+-----------------------+--------------+",
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-json",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			JSON()
+			`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.True(t, gjson.Get(result, "success").Bool())
+			require.Equal(t, []any{"int64", "decimal", "double_array", "int32_array"}, gjson.Get(result, "data.types").Value())
+			rows := gjson.Get(result, "data.rows").Array()
+			require.Len(t, rows, 2)
+
+			row0 := rows[0].Array()
+			require.Equal(t, int64(1), row0[0].Int())
+			require.Equal(t, "123.46", row0[1].String())
+			require.Equal(t, []any{1.1, 2.2, 3.3, 4.4}, row0[2].Value())
+			require.Equal(t, []any{1.0, 2.0, 3.0, 4.0}, row0[3].Value())
+
+			row1 := rows[1].Array()
+			require.Equal(t, int64(2), row1[0].Int())
+			require.True(t, row1[1].Type == gjson.Null)
+			require.Equal(t, []any{10.5, nil, nil, nil}, row1[2].Value())
+			require.Equal(t, []any{1.0, 2.0, 3.0, nil}, row1[3].Value())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-ndjson",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			NDJSON()
+			`,
+		ExpectText: []string{
+			`{"id":1,"amt":"123.46","dd":[1.1,2.2,3.3,4.4],"ii":[1,2,3,4]}`,
+			`{"id":2,"amt":null,"dd":[10.5,null,null,null],"ii":[1,2,3,null]}`,
+			"",
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-drop-table",
+		Script: `
+			SQL("drop table complex")
+			BOX()
+			`,
+		ExpectText: []string{
+			"+----------------+",
+			"| MESSAGE        |",
+			"+----------------+",
+			"| table dropped. |",
+			"+----------------+",
+			"",
+		},
+	}.run(t)
+}
+
 func TestSql_show_wrong(t *testing.T) {
 	TqlTestCase{
 		Name: "SQL_show_wrong",
@@ -4041,11 +4185,11 @@ func TestBOXPLOT(t *testing.T) {
 			CSV(header(true))`,
 		ExpectCSV: []string{
 			"CATEGORY,BOXPLOT,OUTLIER",
-			"A,[]interface {},[]interface {}",
-			"D,[]interface {},[]interface {}",
-			"C,[]interface {},[]interface {}",
-			"B,[]interface {},[]interface {}",
-			"E,[]interface {},[]interface {}",
+			`A,"[655,850,930,980,1175]",[[A 650]]`,
+			`D,"[610,760,810,860,1010]",[]`,
+			`C,"[780,840,850,880,940]","[[C 620],[C 720],[C 720],[C 950],[C 970]]"`,
+			`B,"[680,800,840,880,1000]",[]`,
+			`E,"[695,800,810,870,975]",[]`,
 			"\n",
 		},
 	}.run(t)

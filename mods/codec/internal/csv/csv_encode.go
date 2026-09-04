@@ -151,6 +151,10 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]string, len(values))
 
 	for i, value := range values {
+		if arr, ok := client.Unbox(value).([]any); ok {
+			cols[i] = internal.FormatArray(arr)
+			continue
+		}
 		treatIntValueAsFloat := false
 		if ex.precision > 0 && i < len(ex.colTypes) && (ex.colTypes[i] == api.DataTypeFloat64 || ex.colTypes[i] == api.DataTypeFloat32) {
 			treatIntValueAsFloat = true

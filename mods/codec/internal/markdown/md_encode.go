@@ -281,7 +281,12 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = nullAlt
 			continue
 		}
-		switch v := client.Unbox(r).(type) {
+		unboxed := client.Unbox(r)
+		if arr, ok := unboxed.([]any); ok {
+			cols[i] = internal.FormatArray(arr)
+			continue
+		}
+		switch v := unboxed.(type) {
 		case bool:
 			cols[i] = strconv.FormatBool(v)
 		case string:

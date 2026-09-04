@@ -182,7 +182,12 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
 	for i, r := range values {
-		switch v := client.Unbox(r).(type) {
+		unboxed := client.Unbox(r)
+		if arr, ok := unboxed.([]any); ok {
+			cols[i] = internal.FormatArray(arr)
+			continue
+		}
+		switch v := unboxed.(type) {
 		case string:
 			cols[i] = v
 		case []byte:
