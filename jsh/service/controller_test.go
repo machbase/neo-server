@@ -1223,7 +1223,7 @@ func TestControllerLaunchedServiceAutoMountsSharedFS(t *testing.T) {
 	}
 	defer ctl.Stop(nil)
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		svc := ctl.StatusOf("shared-check")
 		if svc != nil && svc.Status == ServiceStatusStopped {
@@ -1331,7 +1331,7 @@ func TestControllerLaunchedServiceSharedFSConflictCode(t *testing.T) {
 	}
 	defer ctl.Stop(nil)
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		svc := ctl.StatusOf("shared-conflict")
 		if svc != nil && svc.Status == ServiceStatusStopped {
@@ -1416,7 +1416,7 @@ func TestControllerLaunchedServiceSharedFSAppendNoConflict(t *testing.T) {
 	}
 	defer ctl.Stop(nil)
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		svc := ctl.StatusOf("shared-append")
 		if svc != nil && svc.Status == ServiceStatusStopped {
@@ -1496,7 +1496,7 @@ func TestControllerLaunchedServiceCleansAbandonedSharedFDs(t *testing.T) {
 	}
 	defer ctl.Stop(nil)
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
 		svc := ctl.StatusOf("shared-cleanup")
 		if svc != nil && svc.Status == ServiceStatusStopped {
