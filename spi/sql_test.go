@@ -209,10 +209,10 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 	tableName := fixture.tableName
 
 	t.Run("transactions are supported", func(t *testing.T) {
-		// TODO: implement transaction support in neo-client/driver (Begin/BeginTx, Commit, Rollback).
 		tx, err := db.BeginTx(t.Context(), nil)
 		require.NoError(t, err)
 		require.NotNil(t, tx)
+		require.NoError(t, tx.Rollback())
 	})
 
 	t.Run("named parameters are supported", func(t *testing.T) {
@@ -236,6 +236,149 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 		_, err = res.LastInsertId()
 		require.Error(t, err)
 		require.Contains(t, strings.ToLower(err.Error()), "not implemented")
+	})
+}
+
+func countRows(t *testing.T, db *sql.DB, tableName string) int {
+	t.Helper()
+	var n int
+	require.NoError(t,
+		db.QueryRowContext(t.Context(),
+			fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)).Scan(&n))
+	return n
+}
+
+func TestClientTxHelper(t *testing.T) {
+	fixture := newSQLCompatFixture(t)
+	db := fixture.db
+	tableName := fixture.tableName
+	// fixture seeds 3 rows: (1,'neo'), (2,'machbase'), (99,NULL)
+
+	t.Run("commit on nil error", func(t *testing.T) {
+		before := countRows(t, db, tableName)
+		err := client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+				int64(100), "tx-commit")
+			return err
+		})
+		require.NoError(t, err)
+		require.Equal(t, before+1, countRows(t, db, tableName))
+	})
+
+	t.Run("rollback on error and errors.Is is preserved", func(t *testing.T) {
+		sentinel := errors.New("intentional rollback")
+		before := countRows(t, db, tableName)
+		err := client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+				int64(101), "tx-rollback")
+			require.NoError(t, err)
+			return sentinel
+		})
+		require.ErrorIs(t, err, sentinel)
+		require.Equal(t, before, countRows(t, db, tableName))
+	})
+
+	t.Run("rollback on error inside tx", func(t *testing.T) {
+		before := countRows(t, db, tableName)
+		err := client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+				int64(102), "tx-fail")
+			require.NoError(t, err)
+			// NAME column is VARCHAR(100); a type mismatch on ID forces an
+			// engine-side error that must trigger rollback of the insert above.
+			_, err = tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+				"not-a-number", "bad")
+			return err
+		})
+		require.Error(t, err)
+		require.Equal(t, before, countRows(t, db, tableName))
+	})
+
+	t.Run("delete rollback restores rows", func(t *testing.T) {
+		before := countRows(t, db, tableName)
+		err := client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("DELETE FROM %s WHERE ID = ?", tableName), int64(1))
+			require.NoError(t, err)
+			return errors.New("abort delete")
+		})
+		require.Error(t, err)
+		require.Equal(t, before, countRows(t, db, tableName))
+	})
+
+	t.Run("panic rolls back and re-panics", func(t *testing.T) {
+		before := countRows(t, db, tableName)
+		require.PanicsWithValue(t, "boom", func() {
+			_ = client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+				_, err := tx.ExecContext(t.Context(),
+					fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+					int64(103), "tx-panic")
+				require.NoError(t, err)
+				panic("boom")
+			})
+		})
+		require.Equal(t, before, countRows(t, db, tableName))
+	})
+
+	t.Run("tx conn commits on the same connection", func(t *testing.T) {
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, conn.Close())
+		})
+
+		before := countRows(t, db, tableName)
+		err = client.TxConn(t.Context(), conn, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+				int64(104), "txconn-commit")
+			return err
+		})
+		require.NoError(t, err)
+		require.Equal(t, before+1, countRows(t, db, tableName))
+	})
+
+	t.Run("tx conn rolls back on error", func(t *testing.T) {
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, conn.Close())
+		})
+
+		sentinel := errors.New("txconn rollback")
+		before := countRows(t, db, tableName)
+		err = client.TxConn(t.Context(), conn, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+				int64(105), "txconn-rollback")
+			require.NoError(t, err)
+			return sentinel
+		})
+		require.ErrorIs(t, err, sentinel)
+		require.Equal(t, before, countRows(t, db, tableName))
+	})
+
+	t.Run("tag table does not support transactions", func(t *testing.T) {
+		tagTable := fmt.Sprintf("SQL_COMPAT_TAG_%d", time.Now().UnixNano())
+		_, err := db.ExecContext(t.Context(), fmt.Sprintf(
+			`CREATE TAG TABLE %s (NAME VARCHAR(100) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE)`, tagTable))
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = db.ExecContext(t.Context(), fmt.Sprintf(`DROP TABLE %s`, tagTable))
+		})
+
+		err = client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("INSERT INTO %s VALUES(?, ?, ?)", tagTable),
+				"tag", time.Now(), 1.0)
+			return err
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "MACHCLI-ERR-2362")
 	})
 }
 
