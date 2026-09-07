@@ -345,6 +345,24 @@ func TestDatabase(t *testing.T) {
 	}.RunTest(t)
 }
 
+func TestQueryRowUnsupportedTarget(t *testing.T) {
+	_, err := machcli.QueryRow(context.Background(), 42, "SELECT 1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported query target")
+}
+
+func TestExplainUnsupportedTarget(t *testing.T) {
+	_, err := machcli.Explain(context.Background(), 42, "SELECT 1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "explain is not supported")
+}
+
+func TestBeginTxUnsupportedTarget(t *testing.T) {
+	_, err := machcli.BeginTx(context.Background(), 42)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported target for BeginTx")
+}
+
 func TestNewDatabaseCoverage(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		db, err := machcli.NewDatabase("{invalid")
