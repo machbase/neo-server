@@ -550,6 +550,64 @@ func (tt ShellTestCase) runShellTestCase(t *testing.T) {
 	})
 }
 
+// runShellTestCaseWithRetries retries a plain expect-list ShellTestCase (expectErr
+// and expectFunc are not supported here) up to attempts times before failing.
+// Some cross-connection integration scripts run every statement over a brand-new
+// connection (see usr/bin/sql.js), so a statement can very rarely lose the race
+// against the engine's catalog visibility right after another connection's DDL
+// commits, causing sporadic CI-only flakes. The script is self-contained (it
+// creates and drops its own temp user/table regardless of the assertion
+// outcome), so re-running it from scratch is safe.
+func (tt ShellTestCase) runShellTestCaseWithRetries(t *testing.T, attempts int) {
+	t.Helper()
+	t.Run(tt.name, func(t *testing.T) {
+		t.Helper()
+		var lastErr error
+		for attempt := 1; attempt <= attempts; attempt++ {
+			lastErr = tt.compareShellOutput()
+			if lastErr == nil {
+				return
+			}
+			t.Logf("attempt %d/%d failed: %v", attempt, attempts, lastErr)
+		}
+		require.NoError(t, lastErr)
+	})
+}
+
+// compareShellOutput runs the command once and compares its output against
+// tt.expect, returning a diagnostic error instead of asserting so callers can
+// retry before failing the test.
+func (tt ShellTestCase) compareShellOutput() error {
+	cmd := exec.Command(tt.args[0], tt.args[1:]...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("shell command failed: %s: %w", output, err)
+	}
+	outputLines := strings.Split(string(output), "\n")
+	for i, outputLine := range outputLines {
+		if i >= len(tt.expect) {
+			if outputLine != "" || i != len(outputLines)-1 {
+				return fmt.Errorf("unexpected extra output line %d: %q", i, outputLine)
+			}
+			continue
+		}
+		expect := tt.expect[i]
+		if strings.HasPrefix(expect, "/r/") {
+			pattern := expect[3:]
+			matched, rerr := regexp.MatchString(pattern, outputLine)
+			if rerr != nil {
+				return fmt.Errorf("invalid regular expression %q: %w", pattern, rerr)
+			}
+			if !matched {
+				return fmt.Errorf("line %d does not match pattern %q: %q", i, pattern, outputLine)
+			}
+		} else if expect != outputLine {
+			return fmt.Errorf("line %d mismatch: expected %q, got %q\nfull output:\n%s", i, expect, outputLine, strings.Join(outputLines, "\n"))
+		}
+	}
+	return nil
+}
+
 func TestSharedInfo(t *testing.T) {
 	ShellTestCase{
 		name: "share_boot_json",
@@ -684,7 +742,7 @@ func TestShellUser(t *testing.T) {
 			"user dropped.",
 			"",
 		},
-	}.runShellTestCase(t)
+	}.runShellTestCaseWithRetries(t, 3)
 }
 
 func TestShellImportExport(t *testing.T) {

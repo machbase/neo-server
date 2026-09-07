@@ -294,6 +294,73 @@ func TestDatabase(t *testing.T) {
 			"    VOLATILE FULL SCAN (_TAG_META)",
 		},
 	}.RunTest(t)
+	test_engine.TestCase{
+		Name: "mach_tx",
+		Vars: vars,
+		Script: `
+			const {Client} = require('machcli');
+			const conf = require("process").env.get("conf");
+			var db, conn;
+			try {
+				db = new Client(conf);
+				conn = db.connect();
+				conn.exec("CREATE TABLE IF NOT EXISTS TX_TEST (ID LONG, NAME VARCHAR(100))");
+
+				// conn.tx(): commit persists the insert.
+				conn.tx(function(tx) {
+					tx.exec("INSERT INTO TX_TEST VALUES(?, ?)", 1, "committed");
+				});
+				console.println("after commit:", conn.queryRow("SELECT count(*) from TX_TEST")["count(*)"]);
+
+				// conn.tx(): a thrown error rolls back the insert and re-throws.
+				try {
+					conn.tx(function(tx) {
+						tx.exec("INSERT INTO TX_TEST VALUES(?, ?)", 2, "rolledback");
+						throw new Error("abort");
+					});
+				} catch (e) {
+					console.println("rollback error:", e.message);
+				}
+				console.println("after rollback:", conn.queryRow("SELECT count(*) from TX_TEST")["count(*)"]);
+
+				// db.tx(): runs on a connection acquired from the pool.
+				db.tx(function(tx) {
+					tx.exec("INSERT INTO TX_TEST VALUES(?, ?)", 3, "pool-committed");
+				});
+				console.println("after pool commit:", conn.queryRow("SELECT count(*) from TX_TEST")["count(*)"]);
+			} catch(err) {
+				console.println("Error: ", err.message);
+			} finally {
+				conn && conn.exec("DROP TABLE TX_TEST");
+				conn && conn.close();
+				db && db.close();
+			}
+		`,
+		Output: []string{
+			"after commit: 1",
+			"rollback error: abort",
+			"after rollback: 1",
+			"after pool commit: 2",
+		},
+	}.RunTest(t)
+}
+
+func TestQueryRowUnsupportedTarget(t *testing.T) {
+	_, err := machcli.QueryRow(context.Background(), 42, "SELECT 1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported query target")
+}
+
+func TestExplainUnsupportedTarget(t *testing.T) {
+	_, err := machcli.Explain(context.Background(), 42, "SELECT 1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "explain is not supported")
+}
+
+func TestBeginTxUnsupportedTarget(t *testing.T) {
+	_, err := machcli.BeginTx(context.Background(), 42)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported target for BeginTx")
 }
 
 func TestNewDatabaseCoverage(t *testing.T) {

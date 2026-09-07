@@ -138,6 +138,30 @@ func TestMachbaseSQLCompatibilitySupported(t *testing.T) {
 		require.Equal(t, int64(1), execAffected)
 	})
 
+	t.Run("last insert id is supported for auto increment primary key", func(t *testing.T) {
+		autoIncTable := fmt.Sprintf("SQL_COMPAT_AUTOINC_%d", time.Now().UnixNano())
+		_, err := db.ExecContext(t.Context(),
+			fmt.Sprintf(`CREATE TABLE %s (ID LONG PRIMARY KEY AUTO_INCREMENT, NAME VARCHAR(100))`, autoIncTable))
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = db.ExecContext(t.Context(), fmt.Sprintf(`DROP TABLE %s`, autoIncTable))
+		})
+
+		res, err := db.ExecContext(t.Context(),
+			fmt.Sprintf("INSERT INTO %s (NAME) VALUES(?)", autoIncTable), "first")
+		require.NoError(t, err)
+		id, err := res.LastInsertId()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), id)
+
+		res, err = db.ExecContext(t.Context(),
+			fmt.Sprintf("INSERT INTO %s (NAME) VALUES(?)", autoIncTable), "second")
+		require.NoError(t, err)
+		id, err = res.LastInsertId()
+		require.NoError(t, err)
+		require.Equal(t, int64(2), id)
+	})
+
 	t.Run("sql conn raw exposes optional driver interfaces", func(t *testing.T) {
 		conn, err := db.Conn(t.Context())
 		require.NoError(t, err)
@@ -224,8 +248,7 @@ func TestMachbaseSQLCompatibilityGaps(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("last insert id is not implemented", func(t *testing.T) {
-		// TODO: provide LastInsertId mapping if machbase engine can expose deterministic inserted row identifier.
+	t.Run("last insert id is not implemented without an auto increment primary key", func(t *testing.T) {
 		res, err := db.ExecContext(
 			t.Context(),
 			fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
@@ -264,6 +287,22 @@ func TestClientTxHelper(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, before+1, countRows(t, db, tableName))
+	})
+
+	t.Run("commit persists multiple inserts issued in a single closure", func(t *testing.T) {
+		before := countRows(t, db, tableName)
+		err := client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			for i, name := range []string{"tx-multi-1", "tx-multi-2", "tx-multi-3"} {
+				if _, err := tx.ExecContext(t.Context(),
+					fmt.Sprintf("INSERT INTO %s VALUES(?, ?)", tableName),
+					int64(110+i), name); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, before+3, countRows(t, db, tableName))
 	})
 
 	t.Run("rollback on error and errors.Is is preserved", func(t *testing.T) {
@@ -308,6 +347,17 @@ func TestClientTxHelper(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Equal(t, before, countRows(t, db, tableName))
+	})
+
+	t.Run("delete commit removes rows", func(t *testing.T) {
+		before := countRows(t, db, tableName)
+		err := client.Tx(t.Context(), db, func(tx *sql.Tx) error {
+			_, err := tx.ExecContext(t.Context(),
+				fmt.Sprintf("DELETE FROM %s WHERE ID = ?", tableName), int64(2))
+			return err
+		})
+		require.NoError(t, err)
+		require.Equal(t, before-1, countRows(t, db, tableName))
 	})
 
 	t.Run("panic rolls back and re-panics", func(t *testing.T) {
@@ -504,9 +554,7 @@ func TestMachbaseSQLCompatibilityAdvanced(t *testing.T) {
 
 		nullableID, okID := types[0].Nullable()
 		require.True(t, okID)
-		// TODO: verify NOT NULL fidelity for machbase metadata path. ID is declared NOT NULL,
-		// but current metadata can report nullable=true depending on backend metadata source.
-		_ = nullableID
+		require.False(t, nullableID)
 
 		nullableName, okName := types[1].Nullable()
 		require.True(t, okName)

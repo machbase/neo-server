@@ -36,6 +36,7 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 	exports.Set("Explain", Explain)
 	exports.Set("Message", Message)
 	exports.Set("IsFetchable", IsFetchable)
+	exports.Set("BeginTx", BeginTx)
 	exports.Set("Named", func(name string, value any) sql.NamedArg {
 		return sql.Named(name, value)
 	})
@@ -145,6 +146,22 @@ func (db *Database) Connect() (*sql.Conn, error) {
 	return db.pool.Conn(db.Ctx)
 }
 
+// BeginTx starts a transaction on target, which must be either a *Database
+// (a pooled connection is acquired implicitly, mirroring client.Tx) or a
+// *sql.Conn (the transaction runs on that specific connection, mirroring
+// client.TxConn). machbase does not support transaction options, so the
+// default options are always used.
+func BeginTx(ctx context.Context, target any) (*sql.Tx, error) {
+	switch t := target.(type) {
+	case *Database:
+		return t.pool.BeginTx(ctx, nil)
+	case *sql.Conn:
+		return t.BeginTx(ctx, nil)
+	default:
+		return nil, fmt.Errorf("unsupported target for BeginTx: %T", target)
+	}
+}
+
 func (db *Database) Appender(ctx context.Context, table string, columns ...string) (*client.Appender, error) {
 	ret := &client.Appender{}
 	if err := ret.Connect(ctx, db.dsn, table, columns...); err != nil {
@@ -166,8 +183,18 @@ func (db *Database) NormalizeTableName(tableName string) [3]string {
 	return [3]string{"", "", tableName}
 }
 
-func QueryRow(ctx context.Context, conn *sql.Conn, sqlText string, args ...any) (map[string]any, error) {
-	rows, err := conn.QueryContext(ctx, sqlText, args...)
+// queryContexter is satisfied by both *sql.Conn and *sql.Tx, so QueryRow works
+// the same way inside a Tx() closure as it does on a plain connection.
+type queryContexter interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func QueryRow(ctx context.Context, conn any, sqlText string, args ...any) (map[string]any, error) {
+	q, ok := conn.(queryContexter)
+	if !ok {
+		return nil, fmt.Errorf("unsupported query target: %T", conn)
+	}
+	rows, err := q.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -213,8 +240,12 @@ type Explainer interface {
 	Explain(ctx context.Context, sqlText string, full bool) (string, error)
 }
 
-func Explain(ctx context.Context, conn *sql.Conn, sqlText string, args ...any) (plan string, err error) {
-	conn.Raw(func(driverConn any) error {
+func Explain(ctx context.Context, conn any, sqlText string, args ...any) (plan string, err error) {
+	dbConn, ok := conn.(*sql.Conn)
+	if !ok {
+		return "", fmt.Errorf("explain is not supported on %T", conn)
+	}
+	dbConn.Raw(func(driverConn any) error {
 		if c, ok := driverConn.(Explainer); ok {
 			full := false
 			if len(args) > 0 {
