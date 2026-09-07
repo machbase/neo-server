@@ -36,6 +36,15 @@ class Client {
     user() {
         return this.db.user();
     }
+    // tx runs fn inside a transaction on a connection acquired from the pool.
+    // Mirrors neo-client's client.Tx: fn is called with a Connection bound to
+    // the transaction; returning normally commits, throwing rolls back and
+    // re-throws.
+    tx(fn) {
+        let ctx = _machcli.Context(this.ctx);
+        let dbTx = _machcli.BeginTx(ctx, this.db);
+        return runTx(this.ctx, this.db, dbTx, fn);
+    }
 }
 
 class Connection {
@@ -85,6 +94,34 @@ class Connection {
         let appender = this.db.appender(_machcli.Context(this.ctx), ...arguments);
         return appender;
     }
+    // tx runs fn inside a transaction on this specific connection. Mirrors
+    // neo-client's client.TxConn. See Client.tx() for commit/rollback semantics.
+    tx(fn) {
+        let ctx = _machcli.Context(this.ctx);
+        let dbTx = _machcli.BeginTx(ctx, this.conn);
+        return runTx(this.ctx, this.db, dbTx, fn);
+    }
+}
+
+// runTx is the shared commit/rollback/re-throw logic behind Client.tx() and
+// Connection.tx(), mirroring neo-client's Tx/TxConn helpers: fn is invoked
+// with a Connection wrapping the *sql.Tx; a normal return commits, and a
+// thrown error/panic rolls back before propagating.
+function runTx(ctx, db, dbTx, fn) {
+    let txConn = new Connection(ctx, db, dbTx);
+    let result;
+    try {
+        result = fn(txConn);
+    } catch (e) {
+        try {
+            dbTx.rollback();
+        } catch (rollbackErr) {
+            throw new Error(`${e} (rollback error: ${rollbackErr})`);
+        }
+        throw e;
+    }
+    dbTx.commit();
+    return result;
 }
 
 class Rows {
