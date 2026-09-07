@@ -2768,3 +2768,129 @@ func Example_namedArgs() {
 	// Output:
 	// machbase 2.5
 }
+
+// newAbortPoolFixture opens a dedicated pool limited to a single connection so
+// that connection reuse is directly observable through db.Stats().
+func newAbortPoolFixture(t *testing.T) *sql.DB {
+	t.Helper()
+	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager", testServer.MachPort())
+	db, err := sql.Open("machbase", dsn)
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	require.NoError(t, db.PingContext(t.Context()))
+	return db
+}
+
+// abortOnRawConn runs a statement on the raw driver connection with an expired
+// context. Going through the raw connection is deliberate: database/sql refuses
+// to hand out a connection for an already-expired context, so the abort would
+// never reach the wire otherwise. The callback returns nil so that the
+// connection is released to the pool through the normal path; that is what puts
+// the pool's validity check (Conn.IsValid) under test rather than the
+// driver.ErrBadConn shortcut.
+func abortOnRawConn(t *testing.T, conn *sql.Conn, query string) (abortErr error, validAfter bool) {
+	t.Helper()
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := conn.Raw(func(dc any) error {
+		queryer, ok := dc.(driver.QueryerContext)
+		require.True(t, ok, "driver connection must implement QueryerContext")
+		rows, qerr := queryer.QueryContext(expired, query, nil)
+		if rows != nil {
+			_ = rows.Close()
+		}
+		abortErr = qerr
+		validator, ok := dc.(driver.Validator)
+		require.True(t, ok, "driver connection must implement Validator")
+		validAfter = validator.IsValid()
+		return nil
+	})
+	require.NoError(t, err)
+	return abortErr, validAfter
+}
+
+func TestPooledConnSurvivesSuccessfulStatement(t *testing.T) {
+	db := newAbortPoolFixture(t)
+
+	var value int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT 1 FROM v$version").Scan(&value))
+	require.Equal(t, 1, value)
+	require.Equal(t, 1, db.Stats().OpenConnections, "a healthy connection must stay in the pool")
+
+	conn, err := db.Conn(t.Context())
+	require.NoError(t, err)
+	var valid bool
+	require.NoError(t, conn.Raw(func(dc any) error {
+		valid = dc.(driver.Validator).IsValid()
+		return nil
+	}))
+	require.True(t, valid)
+	require.NoError(t, conn.Close())
+	require.Equal(t, 1, db.Stats().OpenConnections)
+}
+
+func TestContextAbortedConnIsDiscardedFromPool(t *testing.T) {
+	db := newAbortPoolFixture(t)
+	require.Equal(t, 1, db.Stats().OpenConnections)
+
+	conn, err := db.Conn(t.Context())
+	require.NoError(t, err)
+
+	abortErr, validAfter := abortOnRawConn(t, conn, "SELECT 1 FROM v$version")
+	require.Error(t, abortErr, "an expired context must abort the statement")
+	require.False(t, validAfter, "a context-aborted connection must not report itself valid")
+
+	require.NoError(t, conn.Close())
+	require.Equal(t, 0, db.Stats().OpenConnections, "the aborted connection must be discarded, not pooled")
+}
+
+func TestPoolRecoversAfterContextAbort(t *testing.T) {
+	db := newAbortPoolFixture(t)
+
+	for i := 0; i < 3; i++ {
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		abortErr, validAfter := abortOnRawConn(t, conn, "SELECT 1 FROM v$version")
+		require.Error(t, abortErr)
+		require.False(t, validAfter)
+		require.NoError(t, conn.Close())
+
+		// The single pooled connection was just discarded; the next statement
+		// must transparently open a fresh one and return correct results
+		// instead of reading a stale frame from the aborted connection.
+		var value int
+		require.NoError(t, db.QueryRowContext(t.Context(), "SELECT 1 FROM v$version").Scan(&value))
+		require.Equal(t, 1, value)
+
+		var count int
+		require.NoError(t, db.QueryRowContext(t.Context(), "SELECT count(*) FROM v$version").Scan(&count))
+		require.Equal(t, 1, count)
+	}
+}
+
+func TestContextAbortDoesNotLeakToConcurrentConnections(t *testing.T) {
+	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager", testServer.MachPort())
+	db, err := sql.Open("machbase", dsn)
+	require.NoError(t, err)
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	keep, err := db.Conn(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = keep.Close() })
+
+	victim, err := db.Conn(t.Context())
+	require.NoError(t, err)
+	_, validAfter := abortOnRawConn(t, victim, "SELECT 1 FROM v$version")
+	require.False(t, validAfter)
+	require.NoError(t, victim.Close())
+
+	// Aborting one connection must not disturb another one that is already
+	// checked out of the same pool.
+	var value int
+	require.NoError(t, keep.QueryRowContext(t.Context(), "SELECT 1 FROM v$version").Scan(&value))
+	require.Equal(t, 1, value)
+}
