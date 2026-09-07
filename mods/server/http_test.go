@@ -761,6 +761,7 @@ func TestHandleAuthToken(t *testing.T) {
 
 		require.Equal(t, http.StatusUnauthorized, writer.Code)
 		require.Contains(t, writer.Body.String(), "missing authorization token")
+		require.Equal(t, apiTokenChallenge, writer.Header().Get("WWW-Authenticate"))
 		require.True(t, ctx.IsAborted())
 	})
 
@@ -774,6 +775,7 @@ func TestHandleAuthToken(t *testing.T) {
 
 		require.Equal(t, http.StatusUnauthorized, writer.Code)
 		require.Contains(t, writer.Body.String(), "missing valid token")
+		require.Equal(t, apiTokenInvalidChallenge, writer.Header().Get("WWW-Authenticate"))
 		require.True(t, ctx.IsAborted())
 	})
 
@@ -796,6 +798,7 @@ func TestHandleAuthToken(t *testing.T) {
 		svr.handleAuthToken(ctx)
 
 		require.False(t, ctx.IsAborted(), writer.Body.String())
+		require.Empty(t, writer.Header().Get("WWW-Authenticate"))
 		_, ok := ctx.Get("api-token-authenticated")
 		require.False(t, ok)
 	})
@@ -809,6 +812,7 @@ func TestHandleAuthToken(t *testing.T) {
 
 		require.Equal(t, http.StatusUnauthorized, writer.Code)
 		require.Contains(t, writer.Body.String(), "missing valid token")
+		require.Equal(t, apiTokenInvalidChallenge, writer.Header().Get("WWW-Authenticate"))
 		require.True(t, ctx.IsAborted())
 	})
 

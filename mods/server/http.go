@@ -570,6 +570,13 @@ func (svr *httpd) resolveExecUser(ctx *gin.Context) (execUser string, errReason 
 	return execUser, ""
 }
 
+// RFC 7235 challenge advertised on 401 so that a client can tell "an API token is
+// required" apart from other authorization failures without parsing the reason text.
+const (
+	apiTokenChallenge        = `Bearer realm="machbase-neo"`
+	apiTokenInvalidChallenge = `Bearer realm="machbase-neo", error="invalid_token"`
+)
+
 func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	if svr.authServer == nil {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "no auth server"})
@@ -580,6 +587,7 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	tok, present := svr.extractBearerToken(ctx)
 	if !present {
 		if strict {
+			ctx.Header("WWW-Authenticate", apiTokenChallenge)
 			ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization token"})
 			ctx.Abort()
 		}
@@ -599,6 +607,7 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 		svr.log.Errorf("client token auth %s", err.Error())
 	}
 	if !result {
+		ctx.Header("WWW-Authenticate", apiTokenInvalidChallenge)
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing valid token"})
 		ctx.Abort()
 		return
