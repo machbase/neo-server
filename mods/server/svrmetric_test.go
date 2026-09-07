@@ -319,9 +319,9 @@ func TestFlushStatzBatchAndEnsureTable(t *testing.T) {
 	})
 
 	t.Run("ensure_table_cached", func(t *testing.T) {
-		statzStoreExists = true
+		statzStoreExists.Store(true)
 		t.Cleanup(func() {
-			statzStoreExists = false
+			statzStoreExists.Store(false)
 		})
 		err := ensureStatzTable(context.Background(), nil)
 		require.NoError(t, err)

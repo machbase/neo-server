@@ -54,10 +54,10 @@ func stopServerMetrics() {
 }
 
 const (
-	statzQueueCapacity = 2048
-	statzBatchLimit    = 100
-	statzFlushInterval = 200 * time.Millisecond
-	statzDBTimeout     = 5 * time.Second
+	statzQueueCapacity  = 2048
+	statzBatchLimit     = 100
+	statzFlushInterval  = 200 * time.Millisecond
+	statzConnectTimeout = 5 * time.Second
 )
 
 var (
@@ -65,11 +65,21 @@ var (
 	statzQueue       chan []statzRecord
 	statzStopC       chan struct{}
 	statzDoneC       chan struct{}
-	statzStoreExists bool
+	statzStoreExists atomic.Bool
 	statzTableInitMu sync.Mutex
 	statzCleanupLast atomic.Int64
 	statzMaxLifetime = (24 * 8) * time.Hour // keep statz for 8 days
 )
+
+// connectStatz bounds only the pool checkout. The returned connection is used
+// with a deadline-free context on purpose: a deadline firing mid-statement
+// aborts the wire protocol and leaves the pooled connection desynchronized for
+// whoever checks it out next.
+func connectStatz() (*sql.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), statzConnectTimeout)
+	defer cancel()
+	return spi.Connect(ctx, "sys")
+}
 
 const statzCleanupInterval = 15 * time.Minute
 
@@ -148,12 +158,12 @@ func statzWorkerLoop(queue <-chan []statzRecord, stopC <-chan struct{}, doneC ch
 }
 
 func ensureStatzTable(ctx context.Context, conn *sql.Conn) error {
-	if statzStoreExists {
+	if statzStoreExists.Load() {
 		return nil
 	}
 	statzTableInitMu.Lock()
 	defer statzTableInitMu.Unlock()
-	if statzStoreExists {
+	if statzStoreExists.Load() {
 		return nil
 	}
 	if err := conn.QueryRowContext(ctx, "SELECT 1 FROM _NEO_STATZ LIMIT 1").Scan(new(int)); err != nil {
@@ -174,7 +184,7 @@ func ensureStatzTable(ctx context.Context, conn *sql.Conn) error {
 			return err
 		}
 	}
-	statzStoreExists = true
+	statzStoreExists.Store(true)
 	return nil
 }
 
@@ -182,10 +192,9 @@ func flushStatzBatch(records []statzRecord) {
 	if len(records) == 0 {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), statzDBTimeout)
-	defer cancel()
+	ctx := context.Background()
 
-	conn, err := spi.Connect(ctx, "sys")
+	conn, err := connectStatz()
 	if err != nil {
 		if statzLog != nil {
 			statzLog.Errorf("failed to connect to machbase for statz: %v", err)
@@ -342,9 +351,8 @@ func storeStatz(pd metric.Product) error {
 }
 
 func collectSysStatz(g *metric.Gather) error {
-	ctx, cancel := context.WithTimeout(context.Background(), statzDBTimeout)
-	defer cancel()
-	conn, err := spi.Connect(ctx, "sys")
+	ctx := context.Background()
+	conn, err := connectStatz()
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
 		return err
