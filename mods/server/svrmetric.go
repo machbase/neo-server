@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,9 @@ func startServerMetrics(s *Server) {
 	if statzLog == nil {
 		statzLog = logging.GetLog("statz")
 	}
+
+	startStatzWorker()
+
 	spi.StartMetrics()
 	spi.AddInput(&input.Runtime{})
 	spi.AddInput(&input.Netstat{})
@@ -46,11 +50,36 @@ func startServerMetrics(s *Server) {
 
 func stopServerMetrics() {
 	spi.StopMetrics()
+	stopStatzWorker()
 }
 
-var statzStoreExists bool
-var statzCleanupLast atomic.Int64
-var statzMaxLifetime = (24 * 8) * time.Hour // keep statz for 8 days
+const (
+	statzQueueCapacity  = 2048
+	statzBatchLimit     = 100
+	statzFlushInterval  = 200 * time.Millisecond
+	statzConnectTimeout = 5 * time.Second
+)
+
+var (
+	statzWorkerMu    sync.Mutex
+	statzQueue       chan []statzRecord
+	statzStopC       chan struct{}
+	statzDoneC       chan struct{}
+	statzStoreExists atomic.Bool
+	statzTableInitMu sync.Mutex
+	statzCleanupLast atomic.Int64
+	statzMaxLifetime = (24 * 8) * time.Hour // keep statz for 8 days
+)
+
+// connectStatz bounds only the pool checkout. The returned connection is used
+// with a deadline-free context on purpose: a deadline firing mid-statement
+// aborts the wire protocol and leaves the pooled connection desynchronized for
+// whoever checks it out next.
+func connectStatz() (*sql.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), statzConnectTimeout)
+	defer cancel()
+	return spi.Connect(ctx, "sys")
+}
 
 const statzCleanupInterval = 15 * time.Minute
 
@@ -60,69 +89,188 @@ type statzRecord struct {
 	Value float64
 }
 
-func storeStatz(pd metric.Product) error {
-	if !statzStoreExists {
-		ctx := context.Background()
-		conn, err := spi.Connect(ctx, "sys")
-		if err != nil {
-			statzLog.Errorf("failed to connect to machbase: %v", err)
-			return err
+func startStatzWorker() {
+	statzWorkerMu.Lock()
+	defer statzWorkerMu.Unlock()
+	if statzQueue != nil {
+		return
+	}
+	statzQueue = make(chan []statzRecord, statzQueueCapacity)
+	statzStopC = make(chan struct{})
+	statzDoneC = make(chan struct{})
+	go statzWorkerLoop(statzQueue, statzStopC, statzDoneC)
+}
+
+func stopStatzWorker() {
+	statzWorkerMu.Lock()
+	if statzQueue == nil {
+		statzWorkerMu.Unlock()
+		return
+	}
+	stopC := statzStopC
+	doneC := statzDoneC
+	statzQueue = nil
+	statzStopC = nil
+	statzDoneC = nil
+	statzWorkerMu.Unlock()
+
+	close(stopC)
+	<-doneC
+}
+
+func statzWorkerLoop(queue <-chan []statzRecord, stopC <-chan struct{}, doneC chan<- struct{}) {
+	defer close(doneC)
+	ticker := time.NewTicker(statzFlushInterval)
+	defer ticker.Stop()
+
+	var batch []statzRecord
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
 		}
-		defer conn.Close()
-		// check table existence
-		if err := conn.QueryRowContext(ctx, "SELECT 1 FROM _NEO_STATZ LIMIT 1").Scan(new(int)); err != nil {
-			// table does not exist, create it
-			_, err = conn.ExecContext(ctx, `
-				CREATE TABLE IF NOT EXISTS _NEO_STATZ (
-					NAME varchar(100) NOT NULL,
-					TIME datetime NOT NULL,
-					VALUE double NOT NULL
-				);
-			`)
-			if err != nil {
-				statzLog.Errorf("failed to create table _NEO_STATZ: %v", err)
-				return err
-			}
-			_, err = conn.ExecContext(ctx, `
-				CREATE UNIQUE INDEX IF NOT EXISTS _NEO_STATZ_UK ON _NEO_STATZ(NAME, TIME);
-			`)
-			if err != nil {
-				statzLog.Errorf("failed to create index _NEO_STATZ_UK: %v", err)
-				return err
-			}
-		}
-		statzStoreExists = true
+		records := batch
+		batch = nil
+		flushStatzBatch(records)
 	}
 
-	// insert only finest resolution
+	for {
+		select {
+		case <-stopC:
+			for {
+				select {
+				case recs := <-queue:
+					batch = append(batch, recs...)
+				default:
+					flush()
+					return
+				}
+			}
+		case recs := <-queue:
+			batch = append(batch, recs...)
+			if len(batch) >= statzBatchLimit {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
+}
+
+func ensureStatzTable(ctx context.Context, conn *sql.Conn) error {
+	if statzStoreExists.Load() {
+		return nil
+	}
+	statzTableInitMu.Lock()
+	defer statzTableInitMu.Unlock()
+	if statzStoreExists.Load() {
+		return nil
+	}
+	if err := conn.QueryRowContext(ctx, "SELECT 1 FROM _NEO_STATZ LIMIT 1").Scan(new(int)); err != nil {
+		_, err = conn.ExecContext(ctx, `
+			CREATE TABLE IF NOT EXISTS _NEO_STATZ (
+				NAME varchar(100) NOT NULL,
+				TIME datetime NOT NULL,
+				VALUE double NOT NULL
+			);
+		`)
+		if err != nil {
+			return err
+		}
+		_, err = conn.ExecContext(ctx, `
+			CREATE UNIQUE INDEX IF NOT EXISTS _NEO_STATZ_UK ON _NEO_STATZ(NAME, TIME);
+		`)
+		if err != nil {
+			return err
+		}
+	}
+	statzStoreExists.Store(true)
+	return nil
+}
+
+func flushStatzBatch(records []statzRecord) {
+	if len(records) == 0 {
+		return
+	}
+	ctx := context.Background()
+
+	conn, err := connectStatz()
+	if err != nil {
+		if statzLog != nil {
+			statzLog.Errorf("failed to connect to machbase for statz: %v", err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	if err := ensureStatzTable(ctx, conn); err != nil {
+		if statzLog != nil {
+			statzLog.Errorf("failed to ensure _NEO_STATZ table: %v", err)
+		}
+		return
+	}
+
+	for _, m := range records {
+		result, err := conn.ExecContext(ctx,
+			"INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SET VALUE = ?",
+			m.Name, m.Time, m.Value, m.Value)
+		if err != nil {
+			if statzLog != nil {
+				statzLog.Errorf("metrics writing: %v", err)
+			}
+			return
+		}
+		if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
+			if statzLog != nil {
+				statzLog.Warnf("metrics writing: no rows affected for %v", m)
+			}
+		}
+	}
+
+	now := time.Now()
+	lastCleanup := statzCleanupLast.Load()
+	if now.UnixNano()-lastCleanup >= statzCleanupInterval.Nanoseconds() && statzCleanupLast.CompareAndSwap(lastCleanup, now.UnixNano()) {
+		if result, err := conn.ExecContext(ctx, "DELETE FROM _NEO_STATZ WHERE TIME < ?", now.Add(-statzMaxLifetime).UnixNano()); err != nil {
+			if statzLog != nil {
+				statzLog.Errorf("metrics cleanup: %v", err)
+			}
+		} else {
+			rowsAffected, _ := result.RowsAffected()
+			if rowsAffected > 0 && statzLog != nil {
+				statzLog.Tracef("metrics %d rows purged", rowsAffected)
+			}
+		}
+	}
+}
+
+func extractStatzRecords(pd metric.Product) []statzRecord {
 	if pd.SeriesID != spi.SERIES_ID_FINEST {
 		return nil
 	}
-	var result []statzRecord
 	switch p := pd.Value.(type) {
 	case *metric.CounterValue:
 		if p.Samples == 0 {
-			return nil // Skip zero counters
+			return nil
 		}
-		result = []statzRecord{{
+		return []statzRecord{{
 			Name:  fmt.Sprintf("%s", pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
 	case *metric.GaugeValue:
 		if p.Samples == 0 {
-			return nil // Skip zero gauges
+			return nil
 		}
-		result = []statzRecord{{
+		return []statzRecord{{
 			Name:  fmt.Sprintf("%s", pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
 	case *metric.MeterValue:
 		if p.Samples == 0 {
-			return nil // Skip zero meters
+			return nil
 		}
-		result = []statzRecord{
+		return []statzRecord{
 			{
 				Name:  fmt.Sprintf("%s:min", pd.Name),
 				Time:  pd.Time.UnixNano(),
@@ -141,8 +289,9 @@ func storeStatz(pd metric.Product) error {
 		}
 	case *metric.HistogramValue:
 		if p.Samples == 0 {
-			return nil // Skip zero samples
+			return nil
 		}
+		result := make([]statzRecord, 0, 1+len(p.P))
 		result = append(result, statzRecord{
 			Name:  fmt.Sprintf("%s", pd.Name),
 			Time:  pd.Time.UnixNano(),
@@ -159,61 +308,51 @@ func storeStatz(pd metric.Product) error {
 				Value: p.Values[i],
 			})
 		}
+		return result
 	case *metric.OdometerValue:
 		if p.Samples == 0 {
-			return nil // Skip zero odometers
+			return nil
 		}
-		result = append(result, statzRecord{
+		return []statzRecord{{
 			Name:  fmt.Sprintf("%s", pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: p.Diff(),
-		})
+		}}
 	default:
-		statzLog.Errorf("metrics unknown type: %T", p)
+		if statzLog != nil {
+			statzLog.Errorf("metrics unknown type: %T", p)
+		}
+		return nil
+	}
+}
+
+func storeStatz(pd metric.Product) error {
+	records := extractStatzRecords(pd)
+	if len(records) == 0 {
 		return nil
 	}
 
-	go func(result []statzRecord) {
-		ctx := context.Background()
-		conn, err := spi.Connect(ctx, "sys")
-		if err != nil {
-			statzLog.Errorf("failed to connect to machbase: %v", err)
-			return
-		}
-		defer conn.Close()
+	statzWorkerMu.Lock()
+	q := statzQueue
+	statzWorkerMu.Unlock()
 
-		for _, m := range result {
-			result, err := conn.ExecContext(ctx,
-				"INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SET VALUE = ?",
-				m.Name, m.Time, m.Value, m.Value)
-			if err != nil {
-				statzLog.Errorf("metrics writing: %v", err)
-				return
-			}
-			if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
-				statzLog.Warnf("metrics writing: no rows affected for %v", m)
-			}
+	if q == nil {
+		return nil
+	}
+
+	select {
+	case q <- records:
+	default:
+		if statzLog != nil {
+			statzLog.Warnf("statz queue is full, dropping %d records", len(records))
 		}
-		now := time.Now()
-		lastCleanup := statzCleanupLast.Load()
-		if now.UnixNano()-lastCleanup >= statzCleanupInterval.Nanoseconds() && statzCleanupLast.CompareAndSwap(lastCleanup, now.UnixNano()) {
-			if result, err := conn.ExecContext(ctx, "DELETE FROM _NEO_STATZ WHERE TIME < ?", now.Add(-statzMaxLifetime).UnixNano()); err != nil {
-				statzLog.Errorf("metrics cleanup: %v", err)
-			} else {
-				rowsAffected, _ := result.RowsAffected()
-				if rowsAffected > 0 {
-					statzLog.Tracef("metrics %d rows purged", rowsAffected)
-				}
-			}
-		}
-	}(result)
+	}
 	return nil
 }
 
 func collectSysStatz(g *metric.Gather) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	conn, err := spi.Connect(ctx, "sys")
+	ctx := context.Background()
+	conn, err := connectStatz()
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
 		return err
