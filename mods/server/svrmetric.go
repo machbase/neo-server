@@ -421,18 +421,26 @@ func addDefaultPoolStatz(g *metric.Gather, stat sql.DBStats) {
 
 func addExecuteStatz(ctx context.Context, conn *sql.Conn, g *metric.Gather) error {
 	var count int64
-	var min, max, avg float64
-	row := conn.QueryRowContext(ctx, "select count, min_msec, max_msec, avg_msec from v$systime where name=?", "EXECUTE")
+	var max, avg float64
+	row := conn.QueryRowContext(ctx, "select avg(accum_msec), max(max_msec) from v$sestime")
 	if err := row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
 		return err
 	}
-	if err := row.Scan(&count, &min, &max, &avg); err != nil {
+	if err := row.Scan(&avg, &max); err != nil {
+		statzLog.Error("failed to scan machbase: %v", err)
+		return err
+	}
+	row = conn.QueryRowContext(ctx, "select count from v$systime where name=?", "EXECUTE")
+	if err := row.Err(); err != nil {
+		statzLog.Error("failed to query machbase: %v", err)
+		return err
+	}
+	if err := row.Scan(&count); err != nil {
 		statzLog.Error("failed to scan machbase: %v", err)
 		return err
 	}
 	g.Add("sys:execute:count", float64(count), metric.OdometerType(metric.UnitShort))
-	g.Add("sys:execute:time:min", float64(time.Duration(min*float64(time.Millisecond))), metric.GaugeType(metric.UnitDuration))
 	g.Add("sys:execute:time:max", float64(time.Duration(max*float64(time.Millisecond))), metric.GaugeType(metric.UnitDuration))
 	g.Add("sys:execute:time:avg", float64(time.Duration(avg*float64(time.Millisecond))), metric.GaugeType(metric.UnitDuration))
 	return nil
