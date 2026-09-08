@@ -183,7 +183,7 @@ func (ex *Exporter) AddRow(values []any) error {
 					if i > 0 {
 						fmt.Fprint(ex.output, " ")
 					}
-					fmt.Fprint(ex.output, client.Unbox(val))
+					fmt.Fprint(ex.output, templateValue(val))
 				}
 				fmt.Fprintln(ex.output)
 			}
@@ -198,7 +198,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		}
 	}
 	for i, val := range values {
-		values[i] = client.Unbox(val)
+		values[i] = templateValue(val)
 	}
 	ex.record = &Record{
 		values:   values,
@@ -208,6 +208,17 @@ func (ex *Exporter) AddRow(values []any) error {
 		colNames: ex.colNames,
 	}
 	return nil
+}
+
+func templateValue(val any) any {
+	unboxed := client.Unbox(val)
+	if unboxed == nil {
+		return "null"
+	}
+	if arr, ok := unboxed.([]any); ok {
+		return internal.FormatArray(arr)
+	}
+	return unboxed
 }
 
 type Record struct {

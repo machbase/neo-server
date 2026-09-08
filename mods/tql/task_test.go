@@ -752,7 +752,7 @@ func TestSql_array_columns(t *testing.T) {
 	}.run(t)
 }
 
-// TestSql_complex_array_decimal_encode verifies that CSV/MARKDOWN/BOX render
+// TestSql_complex_array_decimal_encode verifies that CSV/MARKDOWN/BOX/TEXT render
 // ARRAY and DECIMAL columns as their text form (e.g. "[1.1,2.2,3.3,4.4]")
 // instead of the Go type name of the flattened []any value.
 func TestSql_complex_array_decimal_encode(t *testing.T) {
@@ -823,6 +823,28 @@ func TestSql_complex_array_decimal_encode(t *testing.T) {
 			"|1|123.46|[1.1,2.2,3.3,4.4]|[1,2,3,4]|",
 			"|2|NULL|[10.5,null,null,null]|[1,2,3,null]|",
 			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-text",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			TEXT()
+			`,
+		ExpectText: []string{
+			"1 123.46 [1.1,2.2,3.3,4.4] [1,2,3,4]",
+			"2 null [10.5,null,null,null] [1,2,3,null]",
+			"",
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "complex-select-html",
+		Script: `
+			SQL("select id, amt, dd, ii from complex order by id")
+			HTML({<pre>{{.V.id}} {{.V.amt}} {{.V.dd}} {{.V.ii}}</pre>})
+			`,
+		ExpectText: []string{
+			"<pre>1 123.46 [1.1,2.2,3.3,4.4] [1,2,3,4]</pre><pre>2 null [10.5,null,null,null] [1,2,3,null]</pre>",
 		},
 	}.run(t)
 	TqlTestCase{
