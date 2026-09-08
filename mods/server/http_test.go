@@ -973,7 +973,7 @@ func TestRefsFiles(t *testing.T) {
 	err = json.Unmarshal(result, &obj)
 	require.Nil(t, err)
 
-	require.Equal(t, 3, len(obj.Data.Refs))
+	require.Equal(t, 4, len(obj.Data.Refs))
 	require.Equal(t, obj.Data.Refs[0].Label, "REFERENCES")
 	require.Equal(t, 5, len(obj.Data.Refs[0].Items))
 
@@ -982,6 +982,9 @@ func TestRefsFiles(t *testing.T) {
 
 	require.Equal(t, obj.Data.Refs[2].Label, "CHEAT SHEETS")
 	require.Equal(t, 3, len(obj.Data.Refs[2].Items))
+
+	require.Equal(t, obj.Data.Refs[3].Label, "TEMPLATES")
+	require.Equal(t, 1, len(obj.Data.Refs[3].Items))
 }
 
 func HttpTestLogin(t *testing.T, username, password string) *LoginRsp {
