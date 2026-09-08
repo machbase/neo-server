@@ -14,6 +14,17 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+func TestGatherAccessors(t *testing.T) {
+	timestamp := time.Date(2026, time.January, 1, 1, 0, 0, 0, time.UTC)
+	gather := &Gather{
+		ts:       timestamp,
+		interval: 5 * time.Second,
+	}
+
+	require.Equal(t, timestamp, gather.Timestamp())
+	require.Equal(t, 5*time.Second, gather.SamplingInterval())
+}
+
 func TestMetric(t *testing.T) {
 	var wg sync.WaitGroup
 	var out string
