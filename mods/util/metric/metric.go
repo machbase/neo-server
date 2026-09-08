@@ -23,6 +23,7 @@ type OutputFunc func(Product) error
 type Gather struct {
 	measures []Measure
 	ts       time.Time
+	interval time.Duration
 	noop     bool
 }
 
@@ -38,6 +39,14 @@ func (g *Gather) Filter(filter Filter) {
 		}
 	}
 	g.measures = ms
+}
+
+func (g *Gather) Timestamp() time.Time {
+	return g.ts
+}
+
+func (g *Gather) SamplingInterval() time.Duration {
+	return g.interval
 }
 
 type Measure struct {
@@ -425,12 +434,14 @@ func (c *Collector) runInputs(ts time.Time) {
 	}()
 
 	for _, input := range c.inputs {
-		gather := &Gather{}
+		gather := &Gather{
+			ts:       ts,
+			interval: c.samplingInterval,
+		}
 		if err := input.Gather(gather); err != nil {
 			slog.Error("Error gathering metrics", "error", err)
 			continue
 		}
-		gather.ts = ts
 		if !c.enqueue(gather) {
 			atomic.AddUint64(&c.droppedCount, 1)
 		}

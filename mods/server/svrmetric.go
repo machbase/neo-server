@@ -442,7 +442,8 @@ func addRollupGapMetric(ctx context.Context, conn *sql.Conn, g *metric.Gather) e
 	const sqlRollupGap = `SELECT
     R.ROLLUP_TABLE NAME,
     SUM(S.TABLE_END_RID - R.END_RID) GAP,
-    MAX(R.LAST_ELAPSED_MSEC) MSEC
+    MAX(R.LAST_ELAPSED_MSEC) MSEC,
+	MAX(R.LAST_WAKEUP_TIME) WAKEUP_TIME
 FROM
     M$SYS_TABLES T,
     V$ROLLUP R,
@@ -455,6 +456,7 @@ GROUP BY NAME
 ORDER BY NAME`
 
 	var totalGap, count int64
+	var lastWakeupTime time.Time
 	var maxMsec float64
 	var msec float64
 	var name string
@@ -465,24 +467,27 @@ ORDER BY NAME`
 	}
 	defer rows.Close()
 	for rows.Next() {
-		if err := rows.Scan(&name, &count, &msec); err != nil {
+		if err := rows.Scan(&name, &count, &msec, &lastWakeupTime); err != nil {
 			statzLog.Error("failed to scan rollup gap: %v", err)
 			continue
 		}
 		name = strings.ToLower(name)
 
 		g.Add("sys:rollup:"+name+":gap", float64(count), metric.GaugeType(metric.UnitShort))
-		g.Add("sys:rollup:"+name+":last_elapse", float64(msec*1000), metric.GaugeType(metric.UnitDuration))
-		if msec > maxMsec {
-			maxMsec = msec
-		}
+		g.Add("sys:rollup:"+name+":last_elapse", float64(msec*float64(time.Millisecond)), metric.GaugeType(metric.UnitDuration))
 		totalGap += count
 		rollups++
+		// find the maximum elapsed time among rollup tables after the last gather timestamp
+		// Determine the time range for considering the last wakeup time relative to the gather timestamp.
+		ts := g.Timestamp().Add(-1 * g.SamplingInterval())
+		if lastWakeupTime.Compare(ts) >= 0 && msec > maxMsec {
+			maxMsec = msec
+		}
 	}
 	// only when there are rollup tables, add global rollup metrics
 	if rollups > 0 {
 		g.Add("sys:rollup_global:gap", float64(totalGap), metric.GaugeType(metric.UnitShort))
-		g.Add("sys:rollup_global:last_elapse", float64(maxMsec*1000), metric.GaugeType(metric.UnitDuration))
+		g.Add("sys:rollup_global:last_elapse", float64(maxMsec*float64(time.Millisecond)), metric.GaugeType(metric.UnitDuration))
 	}
 	return nil
 }
