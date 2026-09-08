@@ -88,6 +88,8 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 	inSingleSlash := false
 	lineNumber := 1
 	statementStartLine := 1
+	statementEndLine := 1
+	commentStartLine := 1
 
 	for scanner.Scan() {
 		char := scanner.Text()
@@ -96,6 +98,10 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 			if char == "\n" {
 				inSingleLineComment = false
 				commentText := commentBuffer.String()
+				if isStatementEnvComment(commentText) && len(strings.TrimSpace(buffer.String())) > 0 {
+					statements = append(statements, newSqlStatement(strings.TrimRight(buffer.String(), " \t\r\n"), statementStartLine, statementEndLine, env))
+					buffer.Reset()
+				}
 				if newEnv, err := ParseStatementEnv(env, commentText); err != nil {
 					return nil, fmt.Errorf("line %d: %w", lineNumber, err)
 				} else {
@@ -103,7 +109,7 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				}
 				statements = append(statements, &SqlStatement{
 					Text:      commentText,
-					BeginLine: statementStartLine,
+					BeginLine: commentStartLine,
 					EndLine:   lineNumber,
 					IsComment: true,
 					Env:       env,
@@ -111,6 +117,7 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				lineNumber++
 				if strings.TrimSpace(buffer.String()) == "" {
 					statementStartLine = lineNumber
+					statementEndLine = lineNumber
 				}
 			}
 			if char != "\r" {
@@ -127,11 +134,13 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				if inSingleDash {
 					if treatDoubleDashAsFlag(buffer.String()) {
 						buffer.WriteString("--")
+						statementEndLine = lineNumber
 						inSingleDash = false
 						continue
 					}
 					commentBuffer.Reset()
 					inSingleLineComment = true
+					commentStartLine = lineNumber
 					commentBuffer.WriteString("--")
 					inSingleDash = false
 					continue
@@ -144,6 +153,7 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				if inSingleSlash {
 					commentBuffer.Reset()
 					inSingleLineComment = true
+					commentStartLine = lineNumber
 					commentBuffer.WriteString("//")
 				}
 				inSingleSlash = !inSingleSlash
@@ -155,6 +165,7 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				statements = append(statements, newSqlStatement(statementText, statementStartLine, lineNumber, env))
 				buffer.Reset()
 				statementStartLine = lineNumber
+				statementEndLine = lineNumber
 				continue
 			}
 		case "\r":
@@ -174,6 +185,9 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				inSingleSlash = false
 			}
 			buffer.WriteString(char)
+			if !strings.ContainsAny(char, " \t\r\n") {
+				statementEndLine = lineNumber
+			}
 		}
 	}
 
@@ -183,6 +197,11 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 	}
 
 	return statements, scanner.Err()
+}
+
+func isStatementEnvComment(text string) bool {
+	text = strings.TrimSpace(strings.TrimPrefix(text, "--"))
+	return strings.HasPrefix(text, "env:")
 }
 
 func newSqlStatement(text string, beginLine, endLine int, env *SqlStatementEnv) *SqlStatement {

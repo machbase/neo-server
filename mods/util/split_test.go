@@ -216,6 +216,17 @@ func TestSplitSqlStatementsEnv(t *testing.T) {
 			},
 		},
 		{
+			name:  "env comment separates unterminated previous statement",
+			input: "-- env: named.name=EXECUTE\nselect 1;\nselect 2\n-- env: reset\n\nselect 3;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: named.name=EXECUTE", Env: &SqlStatementEnv{Named: map[string]string{"name": "EXECUTE"}}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select 1;", StmtType: "select", Env: &SqlStatementEnv{}},
+				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "select 2", StmtType: "select", Env: &SqlStatementEnv{}},
+				{BeginLine: 4, EndLine: 4, IsComment: true, Text: "-- env: reset", Env: &SqlStatementEnv{}},
+				{BeginLine: 6, EndLine: 6, IsComment: false, Text: "select 3;", StmtType: "select", Env: &SqlStatementEnv{}},
+			},
+		},
+		{
 			name:  "unknown env key",
 			input: "-- env: foo=bar\nSELECT 1;",
 			expect: []*SqlStatement{
