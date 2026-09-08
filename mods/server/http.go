@@ -2276,7 +2276,7 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 	if path == "/" {
 		references := &WebReferenceGroup{Label: "REFERENCES"}
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://docs.machbase.com/neo", Target: "_blank"})
-		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/dbms/sql-reference/", Target: "_docs_machbase"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/dbms/reference/sql/", Target: "_docs_machbase"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_home_machbase"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Tutorials", Addr: "https://github.com/machbase/neo-tutorials", Target: "_blank"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Demo web app", Addr: "https://github.com/machbase/neo-apps"})
@@ -2292,11 +2292,11 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
-		if svr.experimentModeProvider != nil && svr.experimentModeProvider() {
-			cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "dsh", Title: "neo dashboard", Addr: "./tutorials/neo_statz.dsh"})
-		}
 
-		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatSheets}
+		templates := &WebReferenceGroup{Label: "TEMPLATES"}
+		templates.Items = append(templates.Items, ReferenceItem{Type: "dsh", Title: "neo statz", Addr: "./tutorials/neo_statz.dsh"})
+
+		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatSheets, templates}
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusOK, rsp)
