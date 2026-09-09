@@ -383,7 +383,7 @@ func collectSysStatz(g *metric.Gather) error {
 	} else {
 		g.Add("sys:append:data:failure", float64(value), metric.OdometerType(metric.UnitShort))
 	}
-	if value, err := queryRowInt64(ctx, conn, "select count(*) from v$session"); err != nil {
+	if value, err := queryRowInt64(ctx, conn, "select count(*) from v$session where closed = 0"); err != nil {
 		return err
 	} else {
 		g.Add("sys:session:count", float64(value), metric.GaugeType(metric.UnitShort))

@@ -2294,7 +2294,7 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
 
 		templates := &WebReferenceGroup{Label: "TEMPLATES"}
-		templates.Items = append(templates.Items, ReferenceItem{Type: "dsh", Title: "neo statz", Addr: "./tutorials/neo_statz.dsh"})
+		templates.Items = append(templates.Items, ReferenceItem{Type: "dsh", Title: "neo_statz", Addr: "./tutorials/neo_statz.dsh"})
 
 		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatSheets, templates}
 		rsp.Success, rsp.Reason = true, "success"
