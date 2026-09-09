@@ -46,6 +46,7 @@ COPY . /app
 
 RUN go mod download && \
     go run mage.go install-neo-web && \
+    go run mage.go install-neo-engine && \
     go run mage.go machbase-neo && \
     mkdir -p /opt && \
     cp ./tmp/machbase-neo /opt/machbase-neo && \
