@@ -422,7 +422,7 @@ func addDefaultPoolStatz(g *metric.Gather, stat sql.DBStats) {
 func addExecuteStatz(ctx context.Context, conn *sql.Conn, g *metric.Gather) error {
 	var count int64
 	var max, avg float64
-	row := conn.QueryRowContext(ctx, "select avg(accum_msec), max(max_msec) from v$sestime")
+	row := conn.QueryRowContext(ctx, "select avg(max_msec), max(max_msec) from v$sestime")
 	if err := row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
 		return err
