@@ -2846,6 +2846,49 @@ func TestContextAbortedConnIsDiscardedFromPool(t *testing.T) {
 	require.Equal(t, 0, db.Stats().OpenConnections, "the aborted connection must be discarded, not pooled")
 }
 
+func TestMachbaseJSONTypeOf(t *testing.T) {
+	fixture := newSQLCompatFixture(t)
+	db := fixture.db
+	var jsonType0 string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('{\"a\":1}', '$')").Scan(&jsonType0))
+	require.Equal(t, "Object", jsonType0)
+
+	var jsonTypeArray string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('[1,2,3]', '$')").Scan(&jsonTypeArray))
+	require.Equal(t, "Array", jsonTypeArray)
+
+	var jsonTypeTrue string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('true', '$')").Scan(&jsonTypeTrue))
+	require.Equal(t, "True", jsonTypeTrue)
+
+	var jsonTypeFalse string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('false', '$')").Scan(&jsonTypeFalse))
+	require.Equal(t, "False", jsonTypeFalse)
+
+	var jsonTypeInteger string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('42', '$')").Scan(&jsonTypeInteger))
+	require.Equal(t, "Integer", jsonTypeInteger)
+
+	var jsonTypeReal string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('43.21', '$')").Scan(&jsonTypeReal))
+	require.Equal(t, "Real", jsonTypeReal)
+
+	var jsonTypeString string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('\"hello\"', '$')").Scan(&jsonTypeString))
+	require.Equal(t, "String", jsonTypeString)
+
+	var jsonTypeNull string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('null', '$')").Scan(&jsonTypeNull))
+	require.Equal(t, "Null", jsonTypeNull)
+
+	// Issue dbms-nfx#4214
+	var jsonTypeOfErr string
+	err := db.QueryRowContext(t.Context(), "SELECT JSON_TYPEOF('{\"a\":1}')").Scan(&jsonTypeOfErr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "MACHCLI-ERR-2036")
+	require.Contains(t, err.Error(), "Function [JSON_TYPEOF] has an invalid argument")
+}
+
 func TestPoolRecoversAfterContextAbort(t *testing.T) {
 	db := newAbortPoolFixture(t)
 
