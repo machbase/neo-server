@@ -1216,14 +1216,11 @@ func TestProcessExecParentSignalForwarding(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("process.exec parent signal forwarding integration is only covered on unix-like platforms")
 	}
-	if info, err := os.Stdin.Stat(); err != nil || (info.Mode()&os.ModeCharDevice) == 0 {
-		t.Skip("parent signal forwarding test requires interactive TTY stdin")
-	}
 
-	const signalName = "SIGINT"
+	const signalName = "SIGTERM"
 	lines, cmd, childPID, stderr := startProcessExecSignalHelper(t, signalName)
 
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+	if err := cmd.Process.Signal(testSignalByName(signalName)); err != nil {
 		_ = cmd.Process.Kill()
 		t.Fatalf("send %s to parent %d: %v", signalName, cmd.Process.Pid, err)
 	}
@@ -1247,8 +1244,7 @@ func TestProcessExecParentSignalForwarding(t *testing.T) {
 
 	finalLines := collectRemainingLines(lines)
 	assertLinePresent(t, finalLines, fmt.Sprintf("child-ready: %d", childPID))
-	// Parent must survive SIGINT delivery while process.exec() is waiting.
-	// Child behavior may vary by platform/session (caught handler or default terminate).
+	assertLinePresent(t, finalLines, "caught: "+signalName)
 	assertLineAbsent(t, finalLines, "panic:")
 	assertLineAbsent(t, finalLines, "Interrupted:")
 	hasParentExitLine := false

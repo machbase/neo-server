@@ -49,6 +49,11 @@ type ServiceLifecycleEvent struct {
 
 var errServiceMustBeStopped = errors.New("service must be stopped before uninstall")
 
+const (
+	serviceStopGracePeriod = 5 * time.Second
+	serviceOutputWaitDelay = 500 * time.Millisecond
+)
+
 func NewController(opt *ControllerConfig) (*Controller, error) {
 	fs := engine.NewFS()
 	if !opt.Mounts.HasMountPoint("/") {
@@ -426,6 +431,7 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 	if svc.cmd == nil {
 		return
 	}
+	svc.cmd.WaitDelay = serviceOutputWaitDelay
 	stdoutWriter := newServiceOutputWriter(svc)
 	stderrWriter := newServiceOutputWriter(svc)
 	svc.cmd.Stdout = stdoutWriter
@@ -513,14 +519,25 @@ func (ctl *Controller) stopServiceInstance(svc *Service, sc *Config) {
 	}
 
 	svc.Status = ServiceStatusStopping
-	if err := svc.cmd.Process.Kill(); err != nil {
+	if err := terminateServiceProcess(svc.cmd.Process); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		sc.StopError = fmt.Errorf("failed to stop service: %w", err)
 		svc.Config.StopError = sc.StopError
 		svc.Status = ServiceStatusFailed
 		svc.Error = sc.StopError
 		return
 	}
-	<-svc.stopCh
+	select {
+	case <-svc.stopCh:
+	case <-time.After(serviceStopGracePeriod):
+		if err := svc.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			sc.StopError = fmt.Errorf("failed to kill service: %w", err)
+			svc.Config.StopError = sc.StopError
+			svc.Status = ServiceStatusFailed
+			svc.Error = sc.StopError
+			return
+		}
+		<-svc.stopCh
+	}
 	svc.Status = ServiceStatusStopped
 	svc.Error = nil
 	ctl.emitServiceLifecycle(ServiceLifecycleEvent{Name: serviceName, Action: ServiceLifecycleStopped})
