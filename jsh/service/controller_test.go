@@ -221,6 +221,53 @@ func TestControllerStopServiceNoDeadlockOnWaitGoroutineLockContention(t *testing
 	}
 }
 
+func TestControllerStopServiceDoesNotWaitForDescendantOutputPipe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skip on windows due to shell command compatibility")
+	}
+
+	ctl := &Controller{
+		launcher: []string{"env"},
+		services: map[string]*Service{
+			"svc-a": {
+				Config: Config{
+					Name:       "svc-a",
+					Enable:     true,
+					Executable: "sh",
+					Args:       []string{"-c", "sleep 5 & echo ready; wait"},
+				},
+				Status: ServiceStatusStopped,
+			},
+		},
+	}
+
+	if _, err := ctl.StartService("svc-a"); err != nil {
+		t.Fatalf("StartService() error: %v", err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for !strings.Contains(strings.Join(ctl.services["svc-a"].outputSnapshot(), "\n"), "ready") {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for descendant startup")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := ctl.StopService("svc-a")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("StopService() error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StopService() blocked while a descendant held its output pipe")
+	}
+}
+
 func TestControllerStartServiceReturnsUpdatedStatus(t *testing.T) {
 	ctl := &Controller{
 		services: map[string]*Service{

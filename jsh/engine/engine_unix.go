@@ -14,6 +14,8 @@ import (
 	"unsafe"
 )
 
+const processSignalGracePeriod = 5 * time.Second
+
 func forwardSignalToChildGroup(ex *exec.Cmd, sig os.Signal) {
 	if ex == nil || ex.Process == nil {
 		return
@@ -89,29 +91,39 @@ func (jr *JSRuntime) exec0(ex *exec.Cmd, opts ExecOptions) (int, error) {
 		}
 	}
 
-	var parentSignalCh chan os.Signal
-	var forwardDone chan struct{}
+	parentSignalCh := make(chan os.Signal, 3)
 	if isTTY {
-		// In interactive/TTY mode, SIGINT can be delivered to the parent shell
-		// process directly (instead of the foreground child). While waiting for the
-		// child, forward interrupt/quit to the child process group.
-		parentSignalCh = make(chan os.Signal, 2)
-		signal.Notify(parentSignalCh, os.Interrupt, syscall.SIGQUIT)
-		defer signal.Stop(parentSignalCh)
+		// Interactive shells also forward terminal interrupts to the foreground
+		// child. SIGTERM is always forwarded so service launchers stop descendants.
+		signal.Notify(parentSignalCh, os.Interrupt, syscall.SIGQUIT, syscall.SIGTERM)
+	} else {
+		signal.Notify(parentSignalCh, syscall.SIGTERM)
+	}
+	defer signal.Stop(parentSignalCh)
 
-		forwardDone = make(chan struct{})
-		defer close(forwardDone)
-		go func() {
-			for {
-				select {
-				case <-forwardDone:
-					return
-				case sig := <-parentSignalCh:
-					forwardSignalToChildGroup(ex, sig)
+	forwardDone := make(chan struct{})
+	defer close(forwardDone)
+	go func() {
+		for {
+			select {
+			case <-forwardDone:
+				return
+			case sig := <-parentSignalCh:
+				forwardSignalToChildGroup(ex, sig)
+				if sig == syscall.SIGTERM {
+					go func() {
+						timer := time.NewTimer(processSignalGracePeriod)
+						defer timer.Stop()
+						select {
+						case <-forwardDone:
+						case <-timer.C:
+							forwardSignalToChildGroup(ex, syscall.SIGKILL)
+						}
+					}()
 				}
 			}
-		}()
-	}
+		}
+	}()
 
 	var procEntryWarn error
 	procEntry, err := jr.createProcessEntry(ex)
