@@ -41,6 +41,27 @@ docker pull machbase/machbase-neo
 
 https://hub.docker.com/r/machbase/machbase-neo
 
+### Deploy to Kubernetes (including air-gapped / closed networks)
+
+[scripts/build-k8s-offline-bundle.sh](scripts/build-k8s-offline-bundle.sh) pulls the published
+`machbase/machbase-neo` image, saves it as a tar archive, and generates ready-to-use Kubernetes
+manifests (`Namespace`/`Service`/`StatefulSet`) plus a README under `scripts/tmp/k8s/`.
+
+```sh
+./scripts/build-k8s-offline-bundle.sh --tag v8.7.0 --registry <your-registry-host:port>
+```
+
+The `--registry` option only matters if you plan to push the image into your own private/closed-network
+registry; the generated manifests' `image:` field is set to `<registry>/machbase/machbase-neo:<tag>`.
+If your cluster can pull directly from Docker Hub, skip `load-image.sh` and either drop `--registry`
+(it only affects the generated manifests, not the pulled/saved image itself) or edit the `image:` field
+in `scripts/tmp/k8s/manifests/02-statefulset.yaml` back to `machbase/machbase-neo:<tag>` before applying.
+
+The generated `scripts/tmp/k8s/images/load-image.sh` loads the tar and pushes it to your private
+registry, and `scripts/tmp/k8s/manifests/*.yaml` can be applied with `kubectl apply -f`. See
+`scripts/tmp/k8s/README.md` (generated from [scripts/build-k8s-offline-bundle.md](scripts/build-k8s-offline-bundle.md))
+for the full step-by-step guide, including transferring the image into a closed network.
+
 ### Build using docker
 
 It is recommended to build machbase-neo using a container to ensure a consistent and reproducible build environment.

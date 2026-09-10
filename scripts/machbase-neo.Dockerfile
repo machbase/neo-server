@@ -76,10 +76,5 @@ EXPOSE 5652-5656
 
 VOLUME ["/data", "/file", "/backups"]
 
-ENTRYPOINT ["/opt/machbase-neo", \
-    "serve", \
-    "--host", "0.0.0.0", \
-    "--data", "/data", \
-    "--file", "/file", \
-    "--backup-dir", "/backups"]
-
+ENTRYPOINT ["/opt/machbase-neo", "serve"]
+CMD ["--host", "0.0.0.0", "--data", "/data", "--file", "/file", "--backup-dir", "/backups"]
