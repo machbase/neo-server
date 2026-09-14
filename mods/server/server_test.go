@@ -1949,6 +1949,15 @@ func TestShellTimer(t *testing.T) {
 }
 
 func TestShellKey(t *testing.T) {
+	const keyName = "shell_key_test"
+	var keyID int64
+	t.Cleanup(func() {
+		if keyID != 0 {
+			args := append(shellArgs, "key", "del", strconv.FormatInt(keyID, 10))
+			_ = exec.Command(args[0], args[1:]...).Run()
+		}
+	})
+
 	ShellTestCase{
 		name: "key_list",
 		args: append(shellArgs, "key", "list"),
@@ -1957,6 +1966,104 @@ func TestShellKey(t *testing.T) {
 			"│ ROWNUM │ ID │ NAME │ NOT VALID BEFORE │ NOT VALID AFTER │",
 			"├────────┼────┼──────┼──────────────────┼─────────────────┤",
 			"└────────┴────┴──────┴──────────────────┴─────────────────┘",
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "key_gen_ecdsa",
+		args: append(shellArgs, "key", "gen", "-t", "ecdsa", keyName),
+		expectFunc: func(t *testing.T, output string) error {
+			require.NotContains(t, output, "Error generating key:")
+			require.Contains(t, output, "BEGIN CERTIFICATE")
+			require.Contains(t, output, "PRIVATE KEY")
+			matches := regexp.MustCompile(`(?m)^id=(\d+)$`).FindStringSubmatch(output)
+			require.Len(t, matches, 2, "output:\n%s", output)
+			var err error
+			keyID, err = strconv.ParseInt(matches[1], 10, 64)
+			return err
+		},
+	}.runShellTestCase(t)
+	require.NotZero(t, keyID)
+
+	ShellTestCase{
+		name: "key_list_after_gen",
+		args: append(shellArgs, "key", "list", "--format", "csv"),
+		expectFunc: func(t *testing.T, output string) error {
+			require.Contains(t, output, keyName)
+			require.Contains(t, output, strconv.FormatInt(keyID, 10))
+			return nil
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "key_del",
+		args: append(shellArgs, "key", "del", strconv.FormatInt(keyID, 10)),
+		expect: []string{
+			"Key deleted successfully.",
+		},
+	}.runShellTestCase(t)
+
+	keyID = 0
+	ShellTestCase{
+		name: "key_list_after_del",
+		args: append(shellArgs, "key", "list", "--format", "csv"),
+		expectFunc: func(t *testing.T, output string) error {
+			require.NotContains(t, output, keyName)
+			return nil
+		},
+	}.runShellTestCase(t)
+}
+
+func TestShellToken(t *testing.T) {
+	const tokenName = "shell_token_test"
+	var tokenID int64
+	t.Cleanup(func() {
+		if tokenID != 0 {
+			args := append(shellArgs, "token", "del", strconv.FormatInt(tokenID, 10))
+			_ = exec.Command(args[0], args[1:]...).Run()
+		}
+	})
+
+	ShellTestCase{
+		name: "token_gen",
+		args: append(shellArgs, "token", "gen", tokenName),
+		expectFunc: func(t *testing.T, output string) error {
+			require.NotContains(t, output, "Error:")
+			for _, field := range strings.Fields(output) {
+				id, _, ok := ParseApiToken(field)
+				if ok {
+					tokenID = id
+					break
+				}
+			}
+			require.NotZero(t, tokenID, "output:\n%s", output)
+			return nil
+		},
+	}.runShellTestCase(t)
+	require.NotZero(t, tokenID)
+
+	ShellTestCase{
+		name: "token_list",
+		args: append(shellArgs, "token", "list", "--format", "csv"),
+		expectFunc: func(t *testing.T, output string) error {
+			require.Contains(t, output, tokenName)
+			require.Contains(t, output, strconv.FormatInt(tokenID, 10))
+			return nil
+		},
+	}.runShellTestCase(t)
+	ShellTestCase{
+		name: "token_del",
+		args: append(shellArgs, "token", "del", strconv.FormatInt(tokenID, 10)),
+		expect: []string{
+			"Token deleted successfully.",
+		},
+	}.runShellTestCase(t)
+
+	tokenID = 0
+	ShellTestCase{
+		name: "token_list_after_del",
+		args: append(shellArgs, "token", "list", "--format", "csv"),
+		expectFunc: func(t *testing.T, output string) error {
+			require.NotContains(t, output, tokenName)
+			return nil
 		},
 	}.runShellTestCase(t)
 }
