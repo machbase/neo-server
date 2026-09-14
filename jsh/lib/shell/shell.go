@@ -99,8 +99,6 @@ var banner = "\n" +
 	"\x1B[0m" + "\n"
 
 var betaWarn = "" +
-	"    This is a JSH command-line runtime in BETA stage.\n" +
-	"    Commands and features are subject to change without notice.\n" +
 	"    Enter 'exit' to quit the shell.\n"
 
 func (sh *Shell) Run(env *engine.Env) int {

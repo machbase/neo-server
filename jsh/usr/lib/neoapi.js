@@ -360,9 +360,9 @@ class Client extends _Client {
             return this._rpcRequest('key.list', []);
         });
     }
-    genKey(id, type, store = true) {
+    genKey(name, type, notBefore = 0, notAfter = 0, store = true) {
         return this._executeWithAuth(() => {
-            return this._rpcRequest('key.generate', [id, type, store]);
+            return this._rpcRequest('key.generate', [name, type, notBefore, notAfter, store]);
         });
     }
     deleteKey(id) {

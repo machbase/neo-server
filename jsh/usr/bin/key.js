@@ -102,7 +102,7 @@ function doGen(config, args) {
     const type = config.type.toLowerCase();
     const store = !!config.store
     const client = new neoapi.Client(config);
-    client.genKey(name, type, store)
+    client.genKey(name, type, 0, 0, store)
         .then(({ id, certificate, key }) => {
             if (output && output !== '-' && output !== '') {
                 const fs = require('fs');
