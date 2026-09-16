@@ -409,6 +409,7 @@ func (svr *httpd) Router() *gin.Engine {
 	dbGroup.POST("/tql/*path", svr.handleTqlFile)
 	dbGroup.GET("/tql", svr.handleTqlQuery)
 	dbGroup.POST("/tql", svr.handleTqlQuery)
+	dbGroup.POST("/rpc", svr.handleDbRpc)
 	svr.log.Infof("HTTP path %s for machbase api", "/db")
 
 	// prefix '/web' for web ui
@@ -2366,37 +2367,112 @@ func rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, 
 	return w.String(), nil
 }
 
-// handleHttpRpc handles HTTP POST requests for JSON-RPC
+// handleHttpRpc handles HTTP POST requests for JSON-RPC. It is JWT-authenticated
+// (webGroup) and reaches the full RPC surface (no method allowlist).
 func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
-	var req eventbus.RPC
+	svr.handleRpcCore(ctx, nil)
+}
 
-	// Parse JSON-RPC request
+// dbRpcAllowedMethods lists the JSON-RPC methods reachable via the API-token
+// authenticated /db/rpc endpoint. Unlike /web/api/rpc (JWT-only), this route
+// is meant for non-interactive clients (e.g. neo-mcp) that only hold an API
+// token. Each entry below was individually verified to scope its DB access to
+// the calling user (via modelUserScopeFromContext / UserScope ownership
+// checks in the model layer) rather than acting as a global admin operation:
+//   - shell.* reads/writes only the caller's own shell definitions
+//     (server.go listShells/addShell/copyShell/updateShell/deleteShell).
+//   - bridge.* enforces OWNER_NAME/IS_PUBLIC/ALLOWED_USER at the model layer
+//     (mods/model/bridgedef.go), so a caller can only reach bridges they own,
+//     that are public, or that explicitly allow them.
+//   - bridge.result.fetch/close only require a handle from a prior, already
+//     scoped bridge.query call; they carry no resource name of their own.
+//   - timer.*/subscriber.*/token.* are all scoped via modelUserScopeFromContext
+//     (server.go listTimers/.../deleteSubscriber, apitoken.go listApiTokens/
+//     generateApiToken/deleteApiToken), so a caller only sees/manages its own
+//     timers, subscribers, and API tokens.
+//   - markdown.render is a pure text-to-HTML transform with no DB/scope access.
+//   - server.info.get returns read-only server/runtime metadata (version,
+//     pid, uptime, memory stats) with no per-caller state to leak.
+//
+// Methods intentionally excluded: proxy.* and sshkey.add have no per-caller
+// scope at all (proxy.* takes no UserScope; addSshKey always acts as "sys"
+// regardless of caller), and server.info.statz/query/keys expose broader
+// server-wide operational metrics. None of those are safe to expose here.
+var dbRpcAllowedMethods = map[string]bool{
+	"service.port.list":   true,
+	"shell.list":          true,
+	"shell.add":           true,
+	"shell.copy":          true,
+	"shell.update":        true,
+	"shell.delete":        true,
+	"bridge.list":         true,
+	"bridge.get":          true,
+	"bridge.add":          true,
+	"bridge.delete":       true,
+	"bridge.test":         true,
+	"bridge.stats":        true,
+	"bridge.exec":         true,
+	"bridge.query":        true,
+	"bridge.result.fetch": true,
+	"bridge.result.close": true,
+	"markdown.render":     true,
+	"server.info.get":     true,
+	"timer.list":          true,
+	"timer.get":           true,
+	"timer.add":           true,
+	"timer.update":        true,
+	"timer.delete":        true,
+	"timer.start":         true,
+	"timer.stop":          true,
+	"subscriber.list":     true,
+	"subscriber.get":      true,
+	"subscriber.add":      true,
+	"subscriber.update":   true,
+	"subscriber.delete":   true,
+	"subscriber.start":    true,
+	"subscriber.stop":     true,
+	"token.list":          true,
+	"token.generate":      true,
+	"token.delete":        true,
+}
+
+// handleDbRpc is the API-token authenticated counterpart of handleHttpRpc,
+// restricted to dbRpcAllowedMethods so it cannot be used to reach the
+// administrative RPC surface (proxy/sshkey management, server info, etc.).
+func (svr *httpd) handleDbRpc(ctx *gin.Context) {
+	svr.handleRpcCore(ctx, dbRpcAllowedMethods)
+}
+
+// handleRpcCore is the shared JSON-RPC dispatch used by handleHttpRpc (no
+// allowlist) and handleDbRpc (allowedMethods enforced). allowedMethods == nil
+// means every registered method is reachable.
+func (svr *httpd) handleRpcCore(ctx *gin.Context, allowedMethods map[string]bool) {
+	var req eventbus.RPC
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		// Invalid JSON-RPC request format
-		rsp := map[string]any{
+		ctx.JSON(http.StatusOK, map[string]any{
 			"jsonrpc": "2.0",
 			"id":      nil,
-			"error": map[string]any{
-				"code":    -32700,
-				"message": "Parse error",
-			},
-		}
-		ctx.JSON(http.StatusOK, rsp)
+			"error":   map[string]any{"code": -32700, "message": "Parse error"},
+		})
 		return
 	}
-
-	rsp := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      req.ID,
+	rsp := map[string]any{"jsonrpc": "2.0", "id": req.ID}
+	if allowedMethods != nil && !allowedMethods[req.Method] {
+		rsp["error"] = map[string]any{"code": -32601, "message": "Method not found"}
+		ctx.JSON(http.StatusOK, rsp)
+		return
 	}
 
 	ctl := svr.serviceController
 	if ctl == nil {
 		ctl = defaultJsonRpcController
 	}
+	// resolveExecUser covers both API-token (dbGroup) and JWT (webGroup) callers,
+	// so shell.*/bridge.*/timer.*/subscriber.*/token.* ownership checks
+	// (modelUserScopeFromContext) scope to the caller regardless of auth method.
 	rpcCtx := context.Context(ctx)
-	if claim, exists := svr.getJwtClaim(ctx); exists && claim != nil {
-		rpcCtx = contextWithModelUser(rpcCtx, claim.Subject)
+	if execUser, errReason := svr.resolveExecUser(ctx); errReason == "" && execUser != "" {
+		rpcCtx = contextWithModelUser(rpcCtx, execUser)
 	}
 	result, rpcErr := ctl.CallJsonRpc(req.Method, req.Params, func(paramType reflect.Type) (reflect.Value, bool) {
 		switch {
