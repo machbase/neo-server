@@ -15,9 +15,9 @@ import (
 	"unsafe"
 
 	"github.com/machbase/neo-client/api"
-	mach "github.com/machbase/neo-engine/v8"
+	"github.com/machbase/neo-server/v8/spi/mach"
 
-	"github.com/machbase/neo-engine/v8/native"
+	"github.com/machbase/neo-server/v8/spi/mach/native"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sony/sonyflake"
 )

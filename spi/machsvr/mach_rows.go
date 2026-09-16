@@ -9,7 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/machbase/neo-client/api"
-	mach "github.com/machbase/neo-engine/v8"
+	"github.com/machbase/neo-server/v8/spi/mach"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
