@@ -1,64 +1,33 @@
 package mach_test
 
 import (
-	_ "embed"
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/machbase/neo-server/v8/spi/mach"
+	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
-var machPort = 15656
-
-//go:embed mach_test.conf
-var machbase_conf []byte
+var testServer *machsvr.TestServer
 
 var global = struct {
 	SvrEnv unsafe.Pointer
 }{}
 
 func TestMain(m *testing.M) {
-	homePath, err := filepath.Abs(filepath.Join(".", "tmp", "machbase"))
-	if err != nil {
-		panic(err)
-	}
-	confPath := filepath.Join(homePath, "conf", "machbase.conf")
+	testServer = &machsvr.TestServer{}
+	testServer.StartServer("./tmp")
+	global.SvrEnv = testServer.SvrEnv()
 
-	os.RemoveAll(homePath)
-	os.MkdirAll(homePath, 0755)
-	os.MkdirAll(filepath.Join(homePath, "conf"), 0755)
-	os.MkdirAll(filepath.Join(homePath, "trc"), 0755)
-	os.MkdirAll(filepath.Join(homePath, "dbs"), 0755)
-	os.WriteFile(confPath, machbase_conf, 0644)
+	code := m.Run()
 
-	var svrEnvHandle unsafe.Pointer
-	if err := mach.EngInitialize(homePath, machPort, 0x0, &svrEnvHandle); err != nil {
-		panic(err)
-	}
-	global.SvrEnv = svrEnvHandle
-
-	if !mach.EngExistsDatabase(global.SvrEnv) {
-		mach.EngCreateDatabase(global.SvrEnv)
-	}
-
-	if err := mach.EngStartup(global.SvrEnv); err != nil {
-		panic(err)
-	}
-	time.Sleep(time.Millisecond * 4000)
-
-	m.Run()
-
-	if err := mach.EngShutdown(global.SvrEnv); err != nil {
-		panic(err)
-	}
-	mach.EngFinalize(global.SvrEnv)
-	os.RemoveAll(homePath)
+	testServer.StopServer()
+	os.Exit(code)
 }
 
 func TestAll(t *testing.T) {
@@ -69,6 +38,7 @@ func TestAll(t *testing.T) {
 	}{
 		{name: "SvrSimpleTagInsert", tc: SvrSimpleTagInsert},
 		{name: "SvrTagTableInsertAndSelect", tc: SvrTagTableInsertAndSelect},
+		{name: "SvrAdditionalEngineWrappers", tc: SvrAdditionalEngineWrappers},
 	}
 
 	for _, tc := range tests {
@@ -420,10 +390,33 @@ func SvrTagTableInsertAndSelect(t *testing.T) {
 	stmtType, err := mach.EngStmtType(stmt)
 	require.NoError(t, err, "stmt type fail")
 	require.Equal(t, 512, stmtType)
+	columnCount, err := mach.EngColumnCount(stmt)
+	require.NoError(t, err, "column count fail")
+	require.Equal(t, 13, columnCount)
+
+	var columnName string
+	var columnType int
+	var columnSize int
+	var columnLength int
+	err = mach.EngColumnInfo(stmt, 0, &columnName, &columnType, &columnSize, &columnLength)
+	require.NoError(t, err, "column info fail")
+	require.Equal(t, "NAME", columnName)
+	require.Equal(t, int(mach.MACHCLI_SQL_TYPE_STRING), columnType)
+
+	columnName, err = mach.EngColumnName(stmt, 0)
+	require.NoError(t, err, "column name fail")
+	require.Equal(t, "NAME", columnName)
+	columnType, columnSize, err = mach.EngColumnType(stmt, 0)
+	require.NoError(t, err, "column type fail")
+	require.Equal(t, int(mach.MACHCLI_SQL_TYPE_STRING), columnType)
+	require.Greater(t, columnSize, 0)
 
 	next, err := mach.EngFetch(stmt)
 	require.NoError(t, err, "fetch fail")
 	require.True(t, next, "fetch fail")
+	columnLength, err = mach.EngColumnLength(stmt, 0)
+	require.NoError(t, err, "column length fail")
+	require.Greater(t, columnLength, 0)
 
 	// name
 	if v, isValid, err := mach.EngColumnDataString(stmt, 0); err != nil || !isValid {
@@ -530,4 +523,164 @@ func SvrTagTableInsertAndSelect(t *testing.T) {
 	}
 	err = mach.EngFreeStmt(stmt)
 	require.NoError(t, err, "close fail")
+}
+
+func SvrAdditionalEngineWrappers(t *testing.T) {
+	require.GreaterOrEqual(t, mach.EngConnectionCount(global.SvrEnv), 0)
+
+	ok, err := mach.EngUserAuth(global.SvrEnv, "sys", "manager")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = mach.EngUserAuth(global.SvrEnv, "sys", "wrong-password")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = mach.EngUserAuth(global.SvrEnv, "missing_user", "manager")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	var cancelConn unsafe.Pointer
+	err = mach.EngConnect(global.SvrEnv, "sys", "manager", &cancelConn)
+	require.NoError(t, err)
+	require.NoError(t, mach.EngCancel(cancelConn))
+	require.NoError(t, mach.EngDisconnect(cancelConn))
+
+	var conn unsafe.Pointer
+	err = mach.EngConnect(global.SvrEnv, "sys", "manager", &conn)
+	require.NoError(t, err)
+	defer mach.EngDisconnect(conn)
+
+	var stmt unsafe.Pointer
+	err = mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	err = mach.EngPrepare(stmt, "select * from simple_tag")
+	require.NoError(t, err)
+	plan, err := mach.EngExplain(stmt, false)
+	require.NoError(t, err)
+	require.Contains(t, plan, "PROJECT")
+	require.NoError(t, mach.EngFreeStmt(stmt))
+
+	prepareInvalidSQL(t, conn)
+	executeCleanSimpleSelect(t, conn)
+	insertLogWithPreparedBindings(t, conn)
+	selectLogBoundValues(t, conn)
+	appendSimpleTagWithAppender(t, conn)
+}
+
+func prepareInvalidSQL(t *testing.T, conn unsafe.Pointer) {
+	t.Helper()
+
+	var stmt unsafe.Pointer
+	err := mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	defer mach.EngFreeStmt(stmt)
+	err = mach.EngPrepare(stmt, "select * from missing_table_for_error_coverage")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "MACH-ERR")
+}
+
+func executeCleanSimpleSelect(t *testing.T, conn unsafe.Pointer) {
+	t.Helper()
+
+	var stmt unsafe.Pointer
+	err := mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	defer mach.EngFreeStmt(stmt)
+	require.NoError(t, mach.EngPrepare(stmt, "select 1"))
+	require.NoError(t, mach.EngExecuteClean(stmt))
+}
+
+func insertLogWithPreparedBindings(t *testing.T, conn unsafe.Pointer) {
+	t.Helper()
+
+	var stmt unsafe.Pointer
+	err := mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	defer mach.EngFreeStmt(stmt)
+
+	err = mach.EngPrepare(stmt, `insert into log_data values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) `)
+	require.NoError(t, err)
+	require.NoError(t, mach.EngBindInt64(stmt, 0, time.Now().UnixNano()))
+	require.NoError(t, mach.EngBindInt32(stmt, 1, 11))
+	require.NoError(t, mach.EngBindInt32(stmt, 2, 12))
+	require.NoError(t, mach.EngBindInt32(stmt, 3, 13))
+	require.NoError(t, mach.EngBindInt32(stmt, 4, 14))
+	require.NoError(t, mach.EngBindInt64(stmt, 5, 15))
+	require.NoError(t, mach.EngBindInt64(stmt, 6, 16))
+	require.NoError(t, mach.EngBindFloat64(stmt, 7, 17.25))
+	require.NoError(t, mach.EngBindFloat64(stmt, 8, 18.5))
+	require.NoError(t, mach.EngBindString(stmt, 9, "eng-api-cover"))
+	require.NoError(t, mach.EngBindString(stmt, 10, `{"ok":true}`))
+	require.NoError(t, mach.EngBindString(stmt, 11, "127.0.0.2"))
+	require.NoError(t, mach.EngBindString(stmt, 12, "::2"))
+	require.NoError(t, mach.EngBindNull(stmt, 13))
+	require.NoError(t, mach.EngBindBinary(stmt, 14, []byte("eng-binary")))
+	require.NoError(t, mach.EngExecute(stmt))
+}
+
+func selectLogBoundValues(t *testing.T, conn unsafe.Pointer) {
+	t.Helper()
+
+	var stmt unsafe.Pointer
+	err := mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	defer mach.EngFreeStmt(stmt)
+
+	err = mach.EngDirectExecute(stmt, "select int_value, float_value, bin_value, text_value from log_data where str_value = 'eng-api-cover'")
+	require.NoError(t, err)
+	next, err := mach.EngFetch(stmt)
+	require.NoError(t, err)
+	require.True(t, next)
+
+	var intValue int32
+	valid, err := mach.EngColumnData(stmt, 0, unsafe.Pointer(&intValue), 4)
+	require.NoError(t, err)
+	require.True(t, valid)
+	require.Equal(t, int32(13), intValue)
+
+	floatValue, valid, err := mach.EngColumnDataFloat32(stmt, 1)
+	require.NoError(t, err)
+	require.True(t, valid)
+	require.InDelta(t, float32(18.5), floatValue, 0.001)
+
+	binaryValue, valid, err := mach.EngColumnDataBinary(stmt, 2)
+	require.NoError(t, err)
+	require.True(t, valid)
+	require.Equal(t, []byte("eng-binary"), binaryValue)
+
+	textValue, valid, err := mach.EngColumnDataString(stmt, 3)
+	require.NoError(t, err)
+	require.False(t, valid)
+	require.Empty(t, textValue)
+}
+
+func appendSimpleTagWithAppender(t *testing.T, conn unsafe.Pointer) {
+	t.Helper()
+
+	var stmt unsafe.Pointer
+	err := mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	defer mach.EngFreeStmt(stmt)
+
+	require.NoError(t, mach.EngAppendOpen(stmt, "simple_tag"))
+	buffer := mach.EngMakeAppendBuffer(stmt,
+		[]string{"NAME", "TIME", "VALUE"},
+		[]string{"string", "datetime", "double"},
+	)
+	require.NoError(t, buffer.Append(fmt.Sprintf("append-cover-%d", time.Now().UnixNano()), time.Now().UnixNano(), 42.5))
+	successCount, failureCount, err := mach.EngAppendClose(stmt)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), successCount)
+	require.Equal(t, int64(0), failureCount)
+
+	flushStmt(t, conn, "simple_tag")
+}
+
+func flushStmt(t *testing.T, conn unsafe.Pointer, tableName string) {
+	t.Helper()
+
+	var stmt unsafe.Pointer
+	err := mach.EngAllocStmt(conn, &stmt)
+	require.NoError(t, err)
+	defer mach.EngFreeStmt(stmt)
+	require.NoError(t, mach.EngDirectExecute(stmt, fmt.Sprintf("EXEC table_flush(%s)", tableName)))
 }
