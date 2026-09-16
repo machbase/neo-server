@@ -2277,6 +2277,22 @@ func TestHandleFiles(t *testing.T) {
 	})
 }
 
+func TestRouterRegistersApiTokenFileEndpoint(t *testing.T) {
+	svr := newTestHTTPServer(t)
+	routes := svr.Router().Routes()
+
+	found := map[string]bool{}
+	for _, route := range routes {
+		if route.Path == "/db/files/*path" {
+			found[route.Method] = true
+		}
+	}
+
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
+		require.True(t, found[method], "missing /db/files route for %s", method)
+	}
+}
+
 func newTestWebsocketPair(t *testing.T) (*websocket.Conn, *websocket.Conn) {
 	t.Helper()
 
