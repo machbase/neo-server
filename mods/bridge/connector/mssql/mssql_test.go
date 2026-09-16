@@ -31,7 +31,7 @@ func TestMSSQLDatetimeTypes(t *testing.T) {
 	hostPort := resource.GetHostPort("1433/tcp")
 	dsn := fmt.Sprintf("server=%s user=sa password=Your_password123 database=master encrypt=disable", hostPort)
 
-	err := pool.Retry(t.Context(), 60*time.Second, func() error {
+	err := pool.Retry(t.Context(), 180*time.Second, func() error {
 		db, err := sql.Open("sqlserver", fmt.Sprintf("sqlserver://sa:Your_password123@%s?database=master", hostPort))
 		if err != nil {
 			return err
