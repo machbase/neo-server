@@ -235,6 +235,7 @@ func (svr *sshd) shell(user string, shellId string) *SshShell {
 const (
 	sshContextPasswordKey = "ssh-password"
 	sshContextUserKey     = "ssh-user"
+	sshTokenOnlyUser      = "neo-mcp"
 )
 
 func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
@@ -259,7 +260,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		if !valid || tokenUser == "" {
 			return false
 		}
-		if !strings.EqualFold(user, tokenUser) {
+		if !strings.EqualFold(user, sshTokenOnlyUser) && !strings.EqualFold(user, tokenUser) {
 			svr.log.Warnf("token user mismatch for SSH user %s", user)
 			return false
 		}

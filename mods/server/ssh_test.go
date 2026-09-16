@@ -129,6 +129,14 @@ func TestSSHPasswordHandlerApiToken(t *testing.T) {
 	require.True(t, ok)
 	require.True(t, strings.HasPrefix(password, "$otp$"))
 
+	reserved := &testSSHContext{
+		Context: context.Background(),
+		user:    "neo-mcp:jsh",
+		values:  make(map[any]any),
+	}
+	require.True(t, sshdServer.passwordHandler(reserved, generated.Token))
+	require.Equal(t, "SYS", reserved.Value(sshContextUserKey))
+
 	mismatch := &testSSHContext{
 		Context: context.Background(),
 		user:    "manager:jsh",
