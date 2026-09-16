@@ -2390,7 +2390,9 @@ func (svr *httpd) handleHttpRpc(ctx *gin.Context) {
 //     (server.go listTimers/.../deleteSubscriber, apitoken.go listApiTokens/
 //     generateApiToken/deleteApiToken), so a caller only sees/manages its own
 //     timers, subscribers, and API tokens.
-//   - markdown.render is a pure text-to-HTML transform with no DB/scope access.
+//   - markdown.render transforms Markdown to HTML and can execute fenced SQL,
+//     JSH, and HTTP blocks. It has no per-caller ownership scope; side effects
+//     are governed by the rendered block and its execution environment.
 //   - server.info.get returns read-only server/runtime metadata (version,
 //     pid, uptime, memory stats) with no per-caller state to leak.
 //
