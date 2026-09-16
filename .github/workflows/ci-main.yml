@@ -43,6 +43,8 @@ jobs:
         run: bash ./scripts/setup-zig-linux-amd64-for-arm32.sh
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
+      - name: Install Neo Engine
+        run: go run mage.go InstallNeoEngine
       - name: Install Neo Launcher
         if: matrix.os != 'linux'
         run: go run mage.go InstallNeoLauncher
