@@ -714,7 +714,13 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
-	claim, _ := svr.getJwtClaim(ctx)
+	execUser, errReason := svr.resolveExecUser(ctx)
+	if errReason != "" {
+		rsp.Reason = errReason
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
 	consoleInfo := parseConsoleId(ctx)
 
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
@@ -771,12 +777,15 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	task.SetInputReader(input)
 	task.SetLogWriter(logging.GetLog("anonymous.tql"))
 	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
-	if claim != nil && consoleInfo.consoleId != "" {
+	if execUser != "" {
+		task.SetConsole(execUser, "", "")
+	}
+	if execUser != "" && consoleInfo.consoleId != "" {
 		if svr.authServer == nil {
-			task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
+			task.SetConsole(execUser, consoleInfo.consoleId, "")
 		} else {
 			otp := spi.IssueToken()
-			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$"+otp)
+			task.SetConsole(execUser, consoleInfo.consoleId, "$otp$"+otp)
 		}
 	}
 	headerWriter := &tqlHTTPHeaderWriter{writer: ctx.Writer, task: task}

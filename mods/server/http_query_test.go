@@ -236,6 +236,19 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
 		require.Equal(t, strings.ToUpper(username), gjson.GetBytes(body, "data.rows.0.0").String())
 	})
+
+	t.Run("tql_uses_token_owner_as_execution_user", func(t *testing.T) {
+		tqlServer := &httpd{log: logging.GetLog("http-tql-token-e2e-test"), authServer: server}
+		tqlServer.enableTokenAuth.Store(false)
+		ctx, writer := newTestHTTPContext(http.MethodPost, "/db/tql", []byte("SQL(\"SELECT current_user()\")\nCSV()"))
+		ctx.Request.Header.Set("Authorization", "Bearer "+generated.Token)
+		tqlServer.handleAuthToken(ctx)
+		require.False(t, ctx.IsAborted(), writer.Body.String())
+		tqlServer.handleTqlQuery(ctx)
+
+		require.Equal(t, http.StatusOK, writer.Code, writer.Body.String())
+		require.Contains(t, writer.Body.String(), strings.ToUpper(username))
+	})
 }
 
 func TestHttpQuery(t *testing.T) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -12,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,6 +25,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	gliderssh "github.com/gliderlabs/ssh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/require"
@@ -106,6 +109,79 @@ func TestSSH(t *testing.T) {
 		},
 	}.runTest(t)
 }
+
+func TestSSHPasswordHandlerApiToken(t *testing.T) {
+	svr := coverageRunningServer(t)
+	ownerCtx := contextWithModelUser(context.Background(), "sys")
+	generated, err := svr.generateApiToken(ownerCtx, "ssh-auth-test", 0)
+	require.NoError(t, err)
+
+	sshdServer := &sshd{authServer: svr, log: logging.GetLog("ssh-auth-test")}
+	ctx := &testSSHContext{
+		Context: context.Background(),
+		user:    "sys:jsh",
+		values:  make(map[any]any),
+	}
+
+	require.True(t, sshdServer.passwordHandler(ctx, generated.Token))
+	require.Equal(t, "SYS", ctx.Value(sshContextUserKey))
+	password, ok := ctx.Value(sshContextPasswordKey).(string)
+	require.True(t, ok)
+	require.True(t, strings.HasPrefix(password, "$otp$"))
+
+	reserved := &testSSHContext{
+		Context: context.Background(),
+		user:    "neo-mcp:jsh",
+		values:  make(map[any]any),
+	}
+	require.True(t, sshdServer.passwordHandler(reserved, generated.Token))
+	require.Equal(t, "SYS", reserved.Value(sshContextUserKey))
+
+	mismatch := &testSSHContext{
+		Context: context.Background(),
+		user:    "manager:jsh",
+		values:  make(map[any]any),
+	}
+	require.False(t, sshdServer.passwordHandler(mismatch, generated.Token))
+
+	invalid := &testSSHContext{
+		Context: context.Background(),
+		user:    "sys:jsh",
+		values:  make(map[any]any),
+	}
+	require.False(t, sshdServer.passwordHandler(invalid, FormatApiToken(generated.Id, strings.Repeat("a", 43))))
+}
+
+type testSSHContext struct {
+	context.Context
+	sync.Mutex
+	user   string
+	values map[any]any
+}
+
+func (c *testSSHContext) User() string { return c.user }
+
+func (c *testSSHContext) SessionID() string { return "test-session" }
+
+func (c *testSSHContext) ClientVersion() string { return "test-client" }
+
+func (c *testSSHContext) ServerVersion() string { return "test-server" }
+
+func (c *testSSHContext) RemoteAddr() net.Addr { return testSSHAddr("remote") }
+
+func (c *testSSHContext) LocalAddr() net.Addr { return testSSHAddr("local") }
+
+func (c *testSSHContext) Permissions() *gliderssh.Permissions { return &gliderssh.Permissions{} }
+
+func (c *testSSHContext) SetValue(key, value any) { c.values[key] = value }
+
+func (c *testSSHContext) Value(key any) any { return c.values[key] }
+
+type testSSHAddr string
+
+func (a testSSHAddr) Network() string { return "tcp" }
+
+func (a testSSHAddr) String() string { return string(a) }
 
 func TestSSH_SshKey(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), crand.Reader)
