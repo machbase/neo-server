@@ -232,7 +232,10 @@ func (svr *sshd) shell(user string, shellId string) *SshShell {
 	return svr.authServer.provideShellForSsh(user, shellId)
 }
 
-const sshContextPasswordKey = "ssh-password"
+const (
+	sshContextPasswordKey = "ssh-password"
+	sshContextUserKey     = "ssh-user"
+)
 
 func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 	if svr.authServer == nil {
@@ -247,12 +250,36 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		user = username.Login
 	}
 
+	if _, _, looksLikeToken := ParseApiToken(password); looksLikeToken {
+		tokenUser, valid, err := svr.authServer.ValidateClientToken(ctx, password)
+		if err != nil {
+			svr.log.Errorf("token auth", err.Error())
+			return false
+		}
+		if !valid || tokenUser == "" {
+			return false
+		}
+		if !strings.EqualFold(user, tokenUser) {
+			svr.log.Warnf("token user mismatch for SSH user %s", user)
+			return false
+		}
+		otp := spi.IssueToken()
+		if otp == "" {
+			svr.log.Warnf("issue token failed for user %s", tokenUser)
+			return false
+		}
+		ctx.SetValue(sshContextUserKey, tokenUser)
+		ctx.SetValue(sshContextPasswordKey, "$otp$"+otp)
+		return true
+	}
+
 	if valid, _, err := svr.authServer.ValidateUserPassword(ctx, user, password); err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
 	} else if !valid {
 		return false
 	}
+	ctx.SetValue(sshContextUserKey, user)
 	// pass the password to the ssh session context for later use in shell environment variable.
 	// it is needed for the neo-shell/jsh to work with database connection.
 	ctx.SetValue(sshContextPasswordKey, password)
@@ -278,6 +305,7 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 	} else if !valid {
 		return false
 	}
+	ctx.SetValue(sshContextUserKey, user)
 
 	// If public key auth is successful,
 	token := spi.IssueToken()
@@ -344,6 +372,9 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
 		user = username.Proxy
 	}
 	uc := svr.splitUserAndShell(user)
+	if authenticatedUser, ok := ss.Context().Value(sshContextUserKey).(string); ok && authenticatedUser != "" {
+		uc.user = authenticatedUser
+	}
 	user, shellId, command = uc.user, uc.shellId, uc.command
 	if command != "" {
 		shell = &SshShell{
