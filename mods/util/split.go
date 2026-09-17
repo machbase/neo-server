@@ -16,16 +16,22 @@ import (
 )
 
 type SqlStatementEnv struct {
-	Error  string            `json:"error,omitempty"`
-	Bridge string            `json:"bridge,omitempty"`
-	Use    string            `json:"use,omitempty"`
-	Named  map[string]string `json:"named,omitempty"`
+	Error        string            `json:"error,omitempty"`
+	Bridge       string            `json:"bridge,omitempty"`
+	Use          string            `json:"use,omitempty"`
+	Timeformat   string            `json:"timeformat,omitempty"`
+	Tz           string            `json:"tz,omitempty"`
+	BinaryFormat string            `json:"binaryformat,omitempty"`
+	Named        map[string]string `json:"named,omitempty"`
 }
 
 func (sse *SqlStatementEnv) Reset() {
 	sse.Error = ""
 	sse.Bridge = ""
 	sse.Use = ""
+	sse.Timeformat = ""
+	sse.Tz = ""
+	sse.BinaryFormat = ""
 	sse.Named = nil
 }
 
@@ -220,9 +226,12 @@ func envForSqlStatement(env *SqlStatementEnv, markers []string) *SqlStatementEnv
 		env = &SqlStatementEnv{}
 	}
 	ret := &SqlStatementEnv{
-		Error:  env.Error,
-		Bridge: env.Bridge,
-		Use:    env.Use,
+		Error:        env.Error,
+		Bridge:       env.Bridge,
+		Use:          env.Use,
+		Timeformat:   env.Timeformat,
+		Tz:           env.Tz,
+		BinaryFormat: env.BinaryFormat,
 	}
 	if len(markers) == 0 {
 		return ret
@@ -423,6 +432,7 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 	// -- env: bridge=sqlite
 	// -- env: reset
 	// -- env: use=mydb
+	// -- env: timeformat=default tz=Asia/Seoul binaryformat=hex
 	// -- env: named.name=Alice named.from="2024-01-01" named.to="2024-01-08"
 	// -- env: named.arr=[1,2,3,4]
 	// -- env: named.arr=[1=>1.0, 2=>2.1, 11=>3.14]
@@ -440,6 +450,12 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 			env.Bridge = pair.Value
 		case pair.Name == "use":
 			env.Use = pair.Value
+		case pair.Name == "timeformat":
+			env.Timeformat = pair.Value
+		case pair.Name == "tz":
+			env.Tz = pair.Value
+		case pair.Name == "binaryformat":
+			env.BinaryFormat = pair.Value
 		case pair.Name == "reset":
 			env.Reset()
 			namedCloned = true

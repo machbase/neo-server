@@ -207,10 +207,26 @@ func TestSplitSqlStatementsEnv(t *testing.T) {
 			},
 		},
 		{
-			name:  "reset clears env",
-			input: "-- env: bridge=sqlite use=mydb\n-- env: reset\nSELECT 1;",
+			name:  "output formats",
+			input: "-- env: timeformat=default tz=Asia/Seoul binaryformat=hex\nSELECT 1;",
 			expect: []*SqlStatement{
-				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: bridge=sqlite use=mydb", Env: &SqlStatementEnv{Bridge: "sqlite", Use: "mydb"}},
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: timeformat=default tz=Asia/Seoul binaryformat=hex", Env: &SqlStatementEnv{Timeformat: "default", Tz: "Asia/Seoul", BinaryFormat: "hex"}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &SqlStatementEnv{Timeformat: "default", Tz: "Asia/Seoul", BinaryFormat: "hex"}},
+			},
+		},
+		{
+			name:  "quoted output format value",
+			input: "-- env: timeformat=\"2006-01-02 15:04:05\" tz=UTC binaryformat=base64\nSELECT 1;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: timeformat=\"2006-01-02 15:04:05\" tz=UTC binaryformat=base64", Env: &SqlStatementEnv{Timeformat: "2006-01-02 15:04:05", Tz: "UTC", BinaryFormat: "base64"}},
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &SqlStatementEnv{Timeformat: "2006-01-02 15:04:05", Tz: "UTC", BinaryFormat: "base64"}},
+			},
+		},
+		{
+			name:  "reset clears env",
+			input: "-- env: bridge=sqlite use=mydb timeformat=default tz=Asia/Seoul binaryformat=hex\n-- env: reset\nSELECT 1;",
+			expect: []*SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: true, Text: "-- env: bridge=sqlite use=mydb timeformat=default tz=Asia/Seoul binaryformat=hex", Env: &SqlStatementEnv{Bridge: "sqlite", Use: "mydb", Timeformat: "default", Tz: "Asia/Seoul", BinaryFormat: "hex"}},
 				{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- env: reset", Env: &SqlStatementEnv{}},
 				{BeginLine: 3, EndLine: 3, IsComment: false, Text: "SELECT 1;", StmtType: "select", Env: &SqlStatementEnv{}},
 			},
