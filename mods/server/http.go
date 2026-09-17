@@ -409,6 +409,7 @@ func (svr *httpd) Router() *gin.Engine {
 	dbGroup.POST("/tql/*path", svr.handleTqlFile)
 	dbGroup.GET("/tql", svr.handleTqlQuery)
 	dbGroup.POST("/tql", svr.handleTqlQuery)
+	dbGroup.Any("/files/*path", svr.handleFiles)
 	dbGroup.POST("/rpc", svr.handleDbRpc)
 	svr.log.Infof("HTTP path %s for machbase api", "/db")
 
