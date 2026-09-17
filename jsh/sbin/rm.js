@@ -4,28 +4,15 @@
     const process = require('process');
     const fs = require('fs');
     const parseArgs = require('util/parseArgs');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/rm');
     const pwd = process.env.get('PWD') || '/';
 
-    const config = {
-        usage: 'Usage: rm [OPTION]... FILE...',
-        description: 'Remove files or directories.',
-        options: {
-            recursive: { type: 'boolean', short: 'r', description: 'Remove directories and their contents recursively', default: false },
-            dir: { type: 'boolean', short: 'd', description: 'Remove empty directories', default: false },
-            force: { type: 'boolean', short: 'f', description: 'Ignore nonexistent files and arguments, never prompt', default: false },
-            verbose: { type: 'boolean', short: 'v', description: 'Print a message for each removed path', default: false },
-            help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
-        },
-        allowPositionals: true,
-        strict: false,
-        positionals: [{ name: 'paths', variadic: true }],
-    };
-
     const argv = normalizeArgs(process.argv.slice(2));
-    const { values, positionals } = parseArgs(argv, config);
+    const { values, positionals } = parseArgs(argv, metadata);
 
     if (values.help) {
-        console.println(parseArgs.formatHelp(config));
+        console.println(help.format(metadata));
         process.exit(0);
     }
 

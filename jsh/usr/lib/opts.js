@@ -2,15 +2,37 @@
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
-const session = require('@jsh/session');
+const help = require('help');
 
 function getMachCliConfig(conf = {}) {
+    const session = require('@jsh/session');
     return { ...session.getMachCliConfig(), ...conf };
 }
 
 function newMachCliClient(conf = {}) {
     const machCliConf = getMachCliConfig(conf);
     return new (require('machcli').Client)(machCliConf);
+}
+
+function formatCommandHelp(argv, defaultConfig, configs) {
+    if (defaultConfig.commands) {
+        if (argv.length > 0) {
+            const commandHelp = defaultConfig.commands[argv[0].toLowerCase()];
+            if (commandHelp) {
+                return help.format(commandHelp);
+            }
+        }
+        return help.format(defaultConfig);
+    }
+    if (argv.length > 0) {
+        const cmd = argv[0].toLowerCase();
+        for (const config of configs) {
+            if (config.command.toLowerCase() === cmd) {
+                return parseArgs.formatHelp(config);
+            }
+        }
+    }
+    return parseArgs.formatHelp(defaultConfig, ...configs);
 }
 
 function parseAndRun(argv, defaultConfig, configs) {
@@ -34,20 +56,7 @@ function parseAndRun(argv, defaultConfig, configs) {
 
 
     function printHelp() {
-        if (argv.length > 0) {
-            const cmd = argv[0].toLowerCase();
-            for (const c of configs) {
-                if (c.command.toLowerCase() === cmd) {
-                    const help = parseArgs.formatHelp(
-                        c
-                    );
-                    console.println(help);
-                    return;
-                }
-            }
-        }
-        const help = parseArgs.formatHelp(defaultConfig, ...configs);
-        console.println(help);
+        console.println(formatCommandHelp(argv, defaultConfig, configs));
     }
 
     if (showHelp || !command) {
@@ -76,6 +85,7 @@ function parseAndRun(argv, defaultConfig, configs) {
 }
 
 module.exports = {
+    formatCommandHelp,
     getMachCliConfig,
     newMachCliClient,
     parseAndRun,

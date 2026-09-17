@@ -7,35 +7,13 @@
     const pretty = require('pretty');
     const serviceModule = require('service');
     const parseArgs = require('util/parseArgs');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/servicectl');
     const statusOutputMaxLines = 20;
-
-    const options = {
-        controller: { type: 'string', short: 'c', description: 'Controller address in host:port format', default: serviceModule.resolveController() },
-        help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
-        name: { type: 'string', short: 'n', description: 'Service name for inline install', default: '' },
-        enable: { type: 'boolean', description: 'Enable the service for inline install', default: false },
-        workingDir: { type: 'string', short: 'w', description: 'Working directory for inline install', default: '' },
-        executable: { type: 'string', short: 'x', description: 'Executable path for inline install', default: '' },
-        arg: { type: 'string', short: 'a', description: 'Executable argument for inline install', multiple: true },
-        env: { type: 'string', short: 'e', description: 'Environment variable KEY=VALUE for inline install', multiple: true },
-        detailType: { type: 'string', description: 'Detail value type for details set: string, number, boolean/bool, object/json', default: '' },
-        format: { type: 'string', description: 'Output format for details get: box or json', default: 'box' },
-        stripPrefix: { type: 'string', description: 'Public path prefix to strip for proxy register', default: '' },
-        healthPath: { type: 'string', description: 'Health check path metadata for proxy register', default: '' },
-        timeout: { type: 'integer', short: 't', description: 'RPC timeout in milliseconds', default: 5000 },
-    };
 
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), {
-            options,
-            allowPositionals: true,
-            strict: true,
-            positionals: [
-                { name: 'command', optional: true },
-                { name: 'args', variadic: true, optional: true },
-            ],
-        });
+        parsed = parseArgs(process.argv.slice(2), metadata);
     } catch (err) {
         console.println(err.message);
         printHelp();
@@ -80,39 +58,7 @@
     });
 
     function printHelp() {
-        console.println(parseArgs.formatHelp({
-            usage: 'Usage: servicectl.js --controller=<host:port|tcp://host:port|unix://path> <command> [args...]',
-            options,
-            positionals: [
-                { name: 'command', description: 'Command to execute' },
-                { name: 'args', description: 'Command arguments', optional: true, variadic: true },
-            ],
-        }));
-        console.println('Commands:');
-        console.println('  read');
-        console.println('  update');
-        console.println('  reload');
-        console.println('  install <config.json>');
-        console.println('  install --name <name> --executable <path> [--arg <arg> ...] [--working-dir <dir>] [--enable] [--env KEY=VALUE ...]');
-        console.println('  uninstall <service_name>');
-        console.println('  status [service_name]');
-        console.println('  start <service_name>');
-        console.println('  stop <service_name>');
-        console.println('  details get <service_name> [key]');
-        console.println('  details set <service_name> <key> <value> [--detail-type <string|number|boolean|bool|object|json>]');
-        console.println('  details delete <service_name> <key>');
-        console.println('  proxy list [service_name]');
-        console.println('  proxy get <service_name> <prefix>');
-        console.println('  proxy register <service_name> <prefix> <target> [--strip-prefix <path>] [--health-path <path>]');
-        console.println('  proxy unregister <service_name> [prefix]');
-        console.println('  controller [metrics|get|reset]');
-        console.println('Examples:');
-        console.println('  servicectl details get alpha --format json');
-        console.println('  servicectl details set alpha retries 3 --detail-type number');
-        console.println('  servicectl details set alpha enabled true --detail-type boolean');
-        console.println("  servicectl details set alpha labels '{\"tier\":\"gold\"}' --detail-type object");
-        console.println('  servicectl proxy list github.com/acme/chart');
-        console.println('  servicectl proxy register github.com/acme/chart /api/ http://127.0.0.1:18080 --health-path /healthz');
+        console.println(help.format(metadata));
     }
 
     function fail(message) {

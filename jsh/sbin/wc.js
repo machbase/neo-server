@@ -2,31 +2,14 @@
     const fs = require('fs');
     const process = require('process');
     const { parseArgs } = require('util');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/wc');
     const pwd = process.env.get('PWD');
 
-    const { values, positionals } = parseArgs(process.argv.slice(2), {
-        options: {
-            lines: { type: 'boolean', short: 'l', default: false },
-            words: { type: 'boolean', short: 'w', default: false },
-            bytes: { type: 'boolean', short: 'c', default: false },
-            chars: { type: 'boolean', short: 'm', default: false },
-            help: { type: 'boolean', short: 'h', default: false },
-        },
-        strict: false,
-        allowPositionals: true,
-    });
+    const { values, positionals } = parseArgs(process.argv.slice(2), metadata);
 
     if (values.help) {
-        console.println('Usage: wc [OPTION]... [FILE]...');
-        console.println('Count lines, words, bytes, and characters for each FILE.');
-        console.println('Read standard input when no FILE is given or when FILE is -.');
-        console.println('');
-        console.println('Options:');
-        console.println('  -l, --lines           print the line counts');
-        console.println('  -w, --words           print the word counts');
-        console.println('  -c, --bytes           print the byte counts');
-        console.println('  -m, --chars           print the character counts');
-        console.println('  -h, --help            display this help and exit');
+        console.println(help.format(metadata));
         process.exit(0);
     }
 

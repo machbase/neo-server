@@ -4,96 +4,22 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/subscriber');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
-
-const defaultConfig = {
-    usage: 'Usage: subscriber <command> [options]',
-    options: {
-        help: optionHelp,
-    }
+const commandFunctions = {
+    list: doList,
+    add: doAdd,
+    del: doDel,
+    start: doStart,
+    stop: doStop,
 };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const listConfig = {
-    func: doList,
-    command: 'list',
-    usage: 'subscriber list',
-    description: 'List all registered subscribers',
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    }
-}
-
-const addConfig = {
-    func: doAdd,
-    command: 'add',
-    usage: 'subscriber add [options] <name> <bridge> <topic> <destination>',
-    description: 'Add a new subscriber to the topic via pre-defined bridge',
-    options: {
-        help: optionHelp,
-        autostart: { type: 'boolean', description: 'Enable autostart for the subscriber', default: false },
-        qos: { type: 'integer', description: 'QoS level for MQTT bridge (0, 1, or 2)', default: 0 },
-    },
-    allowNegative: false,
-    positionals: [
-        { name: 'name', description: 'Name of the subscriber' },
-        { name: 'bridge', description: 'Name of the pre-defined bridge to use' },
-        { name: 'topic', description: 'Topic to subscribe to' },
-        { name: 'destination', description: 'Destination to forward messages to (e.g., tql path, writing path descriptor)' },
-    ],
-    longDescription: `  ex)
-    subscriber add --autostart --qos=1 my_lsnr my_mqtt outer/events /my_event.tql
-    subscriber add my_append nats_bridge stream.in db/append/EXAMPLE:json
-    subscriber add my_writer nats_bridge topic.in  db/write/EXAMPLE:csv:gzip
-    `,
-}
-const delConfig = {
-    func: doDel,
-    command: 'del',
-    usage: 'subscriber del <id>',
-    description: 'Delete a subscriber by name',
-    options: {
-        help: optionHelp,
-    },
-    positionals: [
-        { name: 'id', description: 'ID of the subscriber to delete' },
-    ],
-}
-
-const startConfig = {
-    func: doStart,
-    command: 'start',
-    usage: 'subscriber start <id>',
-    description: 'Start a subscriber by name',
-    options: {
-        help: optionHelp,
-    },
-    positionals: [
-        { name: 'id', description: 'ID of the subscriber to start' },
-    ],
-}
-
-const stopConfig = {
-    func: doStop,
-    command: 'stop',
-    usage: 'subscriber stop <id>',
-    description: 'Stop a subscriber by name',
-    options: {
-        help: optionHelp,
-    },
-    positionals: [
-        { name: 'id', description: 'ID of the subscriber to stop' },
-    ],
-}
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    listConfig,
-    addConfig,
-    delConfig,
-    startConfig,
-    stopConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function doList(config, args) {
     const client = new neoapi.Client(config);

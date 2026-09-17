@@ -2,23 +2,14 @@
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-}
-const positionals = [
-    { name: 'sec', type: 'integer', variadic: true, description: 'Number of seconds to sleep' }
-];
+const help = require('help');
+const metadata = require('/usr/share/help/jsh/sleep');
 
 let showHelp = true;
 let config = {};
 let args = {};
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-        positionals,
-        allowPositionals: true,
-    });
+    const parsed = parseArgs(process.argv.slice(2), metadata);
     config = parsed.values;
     args = parsed.namedPositionals;
     showHelp = config.help
@@ -28,11 +19,7 @@ catch (err) {
 }
 
 if (showHelp) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: sleep [options] <sec...>',
-        options,
-        positionals,
-    }));
+    console.println(help.format(metadata));
     process.exit(showHelp ? 0 : 1);
 }
 

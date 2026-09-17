@@ -5,21 +5,21 @@
 // delegated to a child process via process.exec(). Both the batch runner
 // (usr/bin/run.js) and the interactive shell (usr/bin/neo-shell.js) consult
 // this registry before falling back to process.exec(), so that a single
-// implementation is shared between both execution modes. usr/bin/help.js also
-// consults it so "help connect"/"help use" don't need a standalone executable.
+// implementation is shared between both execution modes.
 const session = require('@jsh/session');
 const machcli = require('machcli');
+const help = require('help');
+const connectHelp = require('/usr/share/help/neo-shell/connect');
+const useHelp = require('/usr/share/help/neo-shell/use');
 
 const commands = {
     connect: {
         run: connectHandler,
-        description: 'Connect to a database',
-        usage: 'Usage: connect [options] [user:password@]host[:port]',
+        help: connectHelp,
     },
     use: {
         run: useHandler,
-        description: 'Select the current database',
-        usage: 'Usage: use <database>',
+        help: useHelp,
     },
 };
 
@@ -35,24 +35,6 @@ function tryHandle(fields, env) {
         return null;
     }
     return command.run(fields.slice(1), env);
-}
-
-// printHelp(name) -> boolean
-// Prints the usage text for a context command and returns true, or returns
-// false if `name` is not a context command (caller should look elsewhere).
-function printHelp(name) {
-    const command = commands[name && name.toLowerCase()];
-    if (!command) {
-        return false;
-    }
-    console.println(command.usage);
-    return true;
-}
-
-// describeAll() -> [{ name, description }]
-// Used by help.js to list context commands alongside other commands.
-function describeAll() {
-    return Object.keys(commands).map((name) => ({ name, description: commands[name].description }));
 }
 
 // verifyMachConnect(config) -> string|null
@@ -119,7 +101,7 @@ function parseConnection(connection, env) {
 // re-runs the full entry-time discovery (session.reconnect).
 function connectHandler(args, env) {
     if (args.includes('-h') || args.includes('--help')) {
-        console.println(commands.connect.usage);
+        console.println(help.format(commands.connect.help));
         return 0;
     }
     const connection = args[0] || '';
@@ -170,11 +152,11 @@ function connectHandler(args, env) {
 // connections (in this process and its child processes) will open against.
 function useHandler(args, env) {
     if (args && (args[0] === '-h' || args[0] === '--help')) {
-        console.println(commands.use.usage);
+        console.println(help.format(commands.use.help));
         return 0;
     }
     if (!args || args.length === 0) {
-        console.println(commands.use.usage);
+        console.println(help.format(commands.use.help));
         return 1;
     }
     const database = args[0];
@@ -188,4 +170,4 @@ function useHandler(args, env) {
     return 0;
 }
 
-module.exports = { tryHandle, printHelp, describeAll };
+module.exports = { tryHandle };

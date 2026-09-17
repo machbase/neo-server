@@ -61,6 +61,15 @@ var events_js []byte
 //go:embed fs.js
 var fs_js []byte
 
+//go:embed help.js
+var help_js []byte
+
+//go:embed help/table_options.js
+var help_table_options_js []byte
+
+//go:embed help/config.js
+var help_config_js []byte
+
 //go:embed path.js
 var path_js []byte
 
@@ -72,11 +81,14 @@ var service_js []byte
 
 func libFiles() map[string][]byte {
 	return map[string][]byte{
-		"events.js":  events_js,
-		"fs.js":      fs_js,
-		"path.js":    path_js,
-		"process.js": process_js,
-		"service.js": service_js,
+		"events.js":             events_js,
+		"fs.js":                 fs_js,
+		"help.js":               help_js,
+		"help/config.js":        help_config_js,
+		"help/table_options.js": help_table_options_js,
+		"path.js":               path_js,
+		"process.js":            process_js,
+		"service.js":            service_js,
 	}
 }
 

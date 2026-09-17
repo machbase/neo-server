@@ -1,0 +1,2 @@
+'use strict';
+module.exports = { name: 'unsetenv', description: 'Unset an environment variable', usage: 'Usage: unsetenv NAME', options: {}, positionals: [{ name: 'name', description: 'Environment variable name' }] };

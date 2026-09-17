@@ -4,23 +4,13 @@ const process = require('process');
 const fs = require('fs');
 const mqtt = require('mqtt');
 const parseArgs = require('util/parseArgs');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    debug: { type: 'boolean', short: 'd', description: "Enable debug mode", default: false },
-    topic: { type: 'string', short: 't', description: "Topic to publish to", default: '' },
-    broker: { type: 'string', short: 'b', description: "MQTT broker address", default: 'tcp://localhost:5653' },
-    message: { type: 'string', short: 'm', description: "Message to publish", default: '' },
-    file: { type: 'string', short: 'f', description: "File containing message to publish", default: '' },
-    qos: { type: 'integer', short: 'q', description: "QoS level for MQTT message (0, 1, or 2)", default: 0 },
-}
+const help = require('help');
+const metadata = require('/usr/share/help/jsh/mqtt_pub');
 
 let showHelp = true;
 let config = {};
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-    });
+    const parsed = parseArgs(process.argv.slice(2), metadata);
     config = parsed.values;
     showHelp = config.help
 }
@@ -29,10 +19,7 @@ catch (err) {
 }
 
 if (showHelp) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: mqtt_pub [options]',
-        options,
-    }));
+    console.println(help.format(metadata));
     process.exit(showHelp ? 0 : 1);
 }
 

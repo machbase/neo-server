@@ -1,11 +1,14 @@
 'use strict';
 
 const http = require('http');
-const { getHttpConfig, setHttpToken, getHttpAccessToken, getHttpRefreshToken } = require('@jsh/session');
+
+function session() {
+    return require('@jsh/session');
+}
 
 class _Client {
     constructor(options = {}) {
-        this.options = { ...getHttpConfig(), ...options }
+        this.options = { ...session().getHttpConfig(), ...options }
     }
     login() {
         return new Promise((resolve, reject) => {
@@ -25,7 +28,7 @@ class _Client {
                     reject(new Error('Login failed: ' + result.reason));
                     return;
                 }
-                setHttpToken(result.accessToken, result.refreshToken);
+                session().setHttpToken(result.accessToken, result.refreshToken);
                 resolve(result.reason);
             });
             req.on('error', (err) => {
@@ -41,7 +44,7 @@ class _Client {
     }
     relogin() {
         return new Promise((resolve, reject) => {
-            if (!getHttpRefreshToken()) {
+            if (!session().getHttpRefreshToken()) {
                 reject(new Error('No refresh token available'));
                 return;
             }
@@ -61,14 +64,14 @@ class _Client {
                     reject(new Error('Relogin failed: ' + result.reason));
                     return;
                 }
-                setHttpToken(result.accessToken, result.refreshToken);
+                session().setHttpToken(result.accessToken, result.refreshToken);
                 resolve(result.reason);
             });
             req.on('error', (err) => {
                 reject(err);
             });
             const body = JSON.stringify({
-                refreshToken: getHttpRefreshToken()
+                refreshToken: session().getHttpRefreshToken()
             });
             req.write(body);
             req.end();
@@ -91,7 +94,7 @@ class _Client {
                 path: '/web/api/tql',
                 headers: {
                     'Content-Type': 'text/plain',
-                    'Authorization': `Bearer ${getHttpAccessToken()}`,
+                    'Authorization': `Bearer ${session().getHttpAccessToken()}`,
                     'X-Console-Id': 'user1',
                 }
             });
@@ -147,7 +150,7 @@ class _Client {
         };
 
         // Attempt login if accessToken is not available
-        if (!getHttpAccessToken()) {
+        if (!session().getHttpAccessToken()) {
             return this.login().then(() => {
                 return executeRequest();
             }).catch((err) => {
@@ -174,7 +177,7 @@ class _Client {
                 path: '/web/api/rpc',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${getHttpAccessToken()}`
+                    'Authorization': `Bearer ${session().getHttpAccessToken()}`
                 }
             });
             req.on('response', (res) => {

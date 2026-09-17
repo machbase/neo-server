@@ -5,36 +5,22 @@
     const fs = require('fs');
     const parseArgs = require('util/parseArgs');
     const tail = require('util/tail');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/tail');
 
     const pwd = process.env.get('PWD');
 
-    const options = {
-        follow: { type: 'boolean', short: 'f', description: 'Follow the file as it grows', default: false },
-        lines: { type: 'string', short: 'n', description: 'Number of lines to print (default: 10)', default: '10' },
-        help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    };
-    const positionals_spec = [
-        { name: 'file', type: 'string', description: 'File to tail' },
-    ];
-
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), {
-            options,
-            allowPositionals: true,
-        });
+        parsed = parseArgs(process.argv.slice(2), metadata);
     } catch (err) {
         process.stderr.write(err.message + '\n');
+        console.println(help.format(metadata));
         process.exit(1);
     }
 
-    if (parsed.values.help || parsed.positionals.length === 0) {
-        console.println(parseArgs.formatHelp({
-            usage: 'Usage: tail [options] <file>',
-            description: 'Output the last part of a file.',
-            options,
-            positionals: positionals_spec,
-        }));
+    if (parsed.values.help) {
+        console.println(help.format(metadata));
         process.exit(parsed.values.help ? 0 : 1);
     }
 
@@ -42,7 +28,7 @@
     const lineCount = (isNaN(numLines) || numLines < 0) ? 10 : numLines;
     const follow = parsed.values.follow;
 
-    const rawPath = parsed.positionals[0];
+    const rawPath = parsed.namedPositionals.file;
     const filePath = rawPath.startsWith('/') ? rawPath : pwd + '/' + rawPath;
 
     // Read file and collect last n lines into lineBuffer callback(err, lines[])

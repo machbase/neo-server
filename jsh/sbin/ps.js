@@ -5,34 +5,20 @@
     const path = require('path');
     const process = require('process');
     const parseArgs = require('util/parseArgs');
-
-    const options = {
-        help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-        json: { type: 'boolean', short: 'j', description: 'Print process entries as JSON', default: false },
-    };
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/ps');
 
     let parsed;
     try {
-        parsed = parseArgs(process.argv.slice(2), {
-            options: options,
-            allowPositionals: false,
-        });
+        parsed = parseArgs(process.argv.slice(2), metadata);
     } catch (err) {
         console.println(err.message);
-        console.println(parseArgs.formatHelp({
-            usage: 'Usage: ps [options]',
-            description: 'List JSH process entries under /proc/process.',
-            options: options,
-        }));
+        console.println(help.format(metadata));
         process.exit(1);
     }
 
     if (parsed.values.help) {
-        console.println(parseArgs.formatHelp({
-            usage: 'Usage: ps [options]',
-            description: 'List JSH process entries under /proc/process.',
-            options: options,
-        }));
+        console.println(help.format(metadata));
         process.exit(0);
     }
 

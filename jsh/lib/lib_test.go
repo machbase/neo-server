@@ -22,6 +22,156 @@ func TestUserModuleFilesIncludesPublicWrappers(t *testing.T) {
 	}
 }
 
+func TestHelpModule(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "find namespaced command without session module",
+			Script: `
+				const help = require('help');
+				console.println(typeof require('/usr/lib/neoapi').Client);
+				const parseArgs = require('util/parseArgs');
+				const found = help.find(['neo-shell'], ['neo-shell:sql']);
+				console.println(found.namespace);
+				console.println(found.metadata.usage);
+				console.println(help.format(found.metadata) === parseArgs.formatHelp(found.metadata));
+				const tableOptions = require('help/table_options');
+				console.println(JSON.stringify(found.metadata.options.format) === JSON.stringify(tableOptions.format));
+				const parsed = parseArgs(['-h'], found.metadata);
+				console.println(parsed.values.help, parsed.namedPositionals.sql.length);
+			`,
+			Output: []string{
+				"function",
+				"neo-shell",
+				"Usage: sql [options] <sql>",
+				"true",
+				"true",
+				"true 0",
+			},
+		},
+		{
+			Name: "suggest similar command",
+			Script: `
+				const help = require('help');
+				help.print(['neo-shell'], ['sqp']);
+			`,
+			Output: []string{
+				"No help document found for 'sqp'.",
+				"",
+				"Did you mean?",
+				"  neo-shell:sql",
+			},
+		},
+		{
+			Name: "help option shows builtin help",
+			Script: `
+				const help = require('help');
+				console.println('exit:', help.tryHandle(['help', '-h'], ['jsh']));
+			`,
+			Output: []string{
+				"Usage: help [namespace:]command [subcommand...]",
+				"",
+				"Options:",
+				"  -h, --help  Show this help message",
+				"exit: 0",
+			},
+		},
+		{
+			Name: "find and suggest nested command",
+			Script: `
+				const help = require('help');
+				const found = help.find(['neo-shell'], ['show', 'tables']);
+				console.println(found.metadata.usage);
+				help.print(['neo-shell'], ['show', 'tabels']);
+			`,
+			Output: []string{
+				"show tables [-a] [FROM <db>[.<user>]] [LIKE <pattern>] [WITH ALL]",
+				"No help document found for 'show tabels'.",
+				"",
+				"Did you mean?",
+				"  neo-shell:show table",
+				"  neo-shell:show tables",
+			},
+		},
+		{
+			Name: "command and builtin output use the same formatter",
+			Script: `
+				const help = require('help');
+				const { formatCommandHelp } = require('/usr/lib/opts');
+				const sql = require('/usr/share/help/neo-shell/sql');
+				const show = require('/usr/share/help/neo-shell/show');
+				const configs = Object.keys(show.commands).map((name) => ({ ...show.commands[name], command: name }));
+				console.println(formatCommandHelp(['-h'], sql, []) === help.format(sql));
+				console.println(formatCommandHelp(['-h'], show, configs) === help.format(show));
+				console.println(formatCommandHelp(['tables', '-h'], show, configs) === help.format(show.commands.tables));
+			`,
+			Output: []string{
+				"true",
+				"true",
+				"true",
+			},
+		},
+		{
+			Name: "format static topic",
+			Script: `
+				const help = require('help');
+				const found = help.find(['neo-shell'], ['tz']);
+				console.println(found.metadata.kind);
+				console.println(help.format(found.metadata).includes('America/New_York'));
+			`,
+			Output: []string{
+				"topic",
+				"true",
+			},
+		},
+		{
+			Name: "format migrated nested commands",
+			Script: `
+				const help = require('help');
+				const { formatCommandHelp } = require('/usr/lib/opts');
+				for (const [name, child] of [['bridge', 'add'], ['key', 'server-cert'], ['timer', 'add'], ['subscriber', 'add']]) {
+					const metadata = require('/usr/share/help/neo-shell/' + name);
+					const configs = Object.keys(metadata.commands).map((command) => ({ ...metadata.commands[command], command }));
+					console.println(name, formatCommandHelp([child, '-h'], metadata, configs) === help.format(metadata.commands[child]));
+				}
+			`,
+			Output: []string{
+				"bridge true",
+				"key true",
+				"timer true",
+				"subscriber true",
+			},
+		},
+		{
+			Name: "list all neo shell commands",
+			Script: `
+				const help = require('help');
+				console.println(help.list(['neo-shell']).filter((entry) => entry.kind === 'command').map((entry) => entry.name).join(','));
+			`,
+			Output: []string{
+				"bridge,connect,explain,export,http,import,key,ping,run,session,shell,show,shutdown,sql,ssh-key,statz,subscriber,timer,token,use",
+			},
+		},
+		{
+			Name: "list all jsh commands",
+			Script: `
+				const fs = require('fs');
+				const help = require('help');
+				const names = help.list(['jsh']).map((entry) => entry.name);
+				console.println(names.join(','));
+				const missing = fs.readdirSync('/sbin').filter((name) => name.endsWith('.js')).map((name) => name.slice(0, -3)).filter((name) => !names.includes(name));
+				console.println('missing:', missing.join(','));
+			`,
+			Output: []string{
+				"ai,ai_kpi,alias,authkey,cat,cd,echo,env,exit,help,ls,mkdir,mqtt_pub,nats_pub,pkg,ps,pwd,quit,repl,rm,servicectl,setenv,shell,sleep,tail,unsetenv,viz,wc,which",
+				"missing: ",
+			},
+		},
+	}
+	for _, test := range tests {
+		test_engine.RunTest(t, test)
+	}
+}
+
 func TestFS_Module(t *testing.T) {
 	script := `
 		// Example usage of the fs module

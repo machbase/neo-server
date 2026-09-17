@@ -4,60 +4,16 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/ssh-key');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
+const commandFunctions = { list: doList, add: doAdd, del: doDel };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const defaultConfig = {
-    usage: 'Usage: ssh-key <command> [options]',
-    options: {
-        help: optionHelp,
-    }
-};
-
-const listConfig = {
-    func: doList,
-    command: 'list',
-    usage: 'ssh-key list',
-    description: 'List all registered ssh keys',
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    }
-}
-
-const addConfig = {
-    func: doAdd,
-    command: 'add',
-    usage: 'ssh-key add <type> <key> [comment]',
-    description: 'Add a new ssh key',
-    options: {
-        help: optionHelp,
-    },
-    positionals: [
-        { name: 'type', description: 'Type of the ssh key (e.g., rsa, dsa, ecdsa, ed25519)' },
-        { name: 'key', description: 'The public key string' },
-        { name: 'comment', variadic: true, description: 'A comment for the key (e.g., email or identifier)' },
-    ],
-}
-
-const delConfig = {
-    func: doDel,
-    command: 'del',
-    usage: 'ssh-key del <fingerprint>',
-    description: 'Delete an existing ssh key',
-    options: {
-        help: optionHelp,
-    },
-    positionals: [
-        { name: 'fingerprint', description: 'The fingerprint of the ssh key to delete' },
-    ],
-}
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    listConfig,
-    addConfig,
-    delConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function doList(config, args) {
     const client = new neoapi.Client(config);

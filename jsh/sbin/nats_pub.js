@@ -5,26 +5,13 @@ const fs = require('fs');
 const nats = require('nats');
 const { UUID } = require('uuid');
 const parseArgs = require('util/parseArgs');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    debug: { type: 'boolean', short: 'd', description: 'Enable debug mode', default: false },
-    topic: { type: 'string', short: 't', description: 'Subject to publish to', default: '' },
-    subject: { type: 'string', short: 's', description: 'Subject to publish to', default: '' },
-    broker: { type: 'string', short: 'b', description: 'NATS broker address', default: 'nats://localhost:4222' },
-    message: { type: 'string', short: 'm', description: 'Message to publish', default: '' },
-    file: { type: 'string', short: 'f', description: 'File containing message to publish', default: '' },
-    reply: { type: 'string', short: 'r', description: 'Reply subject to wait for', default: '' },
-    request: { type: 'boolean', description: 'Generate a temporary reply subject and wait for one response', default: false },
-    timeout: { type: 'integer', description: 'Timeout in milliseconds for connect and reply wait', default: 10 * 1000 },
-};
+const help = require('help');
+const metadata = require('/usr/share/help/jsh/nats_pub');
 
 let showHelp = true;
 let config = {};
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-    });
+    const parsed = parseArgs(process.argv.slice(2), metadata);
     config = parsed.values;
     showHelp = config.help;
 } catch (err) {
@@ -32,10 +19,7 @@ try {
 }
 
 if (showHelp) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: nats_pub [options]',
-        options,
-    }));
+    console.println(help.format(metadata));
     process.exit(showHelp ? 0 : 1);
 }
 

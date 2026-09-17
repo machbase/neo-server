@@ -1,0 +1,2 @@
+'use strict';
+module.exports = { name: 'echo', description: 'Display a line of text', usage: 'Usage: echo [text...]', options: {}, positionals: [{ name: 'text', variadic: true, optional: true, description: 'Text to display' }] };

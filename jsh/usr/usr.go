@@ -4,5 +4,5 @@ import (
 	"embed"
 )
 
-//go:embed bin/* lib/*
+//go:embed bin/* lib/* share/help/jsh/* share/help/neo-shell/*
 var Files embed.FS

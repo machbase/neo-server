@@ -1,0 +1,49 @@
+'use strict';
+
+module.exports = {
+    name: 'timeformat',
+    kind: 'topic',
+    description: 'Time formats',
+    content: `    epoch
+      ns             nanoseconds
+      us             microseconds
+      ms             milliseconds
+      s              seconds
+      s_ns           sec.nanoseconds
+      s_us           sec.microseconds
+      s_ms           sec.milliseconds
+      s.ns           sec.nanoseconds (zero padding)
+      s.us           sec.microseconds (zero padding)
+      s.ms           sec.milliseconds (zero padding)
+    abbreviations
+      Default,-      2006-01-02 15:04:05.999
+      Default_ms     2006-01-02 15:04:05.999
+      Default_us     2006-01-02 15:04:05.999999
+      Default_ns     2006-01-02 15:04:05.999999999
+      Default.ms     2006-01-02 15:04:05.000
+      Default.us     2006-01-02 15:04:05.000000
+      Default.ns     2006-01-02 15:04:05.000000000
+      Numeric        01/02 03:04:05PM '06 -0700
+      Ansic          Mon Jan _2 15:04:05 2006
+      Unix           Mon Jan _2 15:04:05 MST 2006
+      Ruby           Mon Jan 02 15:04:05 -0700 2006
+      RFC822         02 Jan 06 15:04 MST
+      RFC822Z        02 Jan 06 15:04 -0700
+      RFC850         Monday, 02-Jan-06 15:04:05 MST
+      RFC1123        Mon, 02 Jan 2006 15:04:05 MST
+      RFC1123Z       Mon, 02 Jan 2006 15:04 -0700
+      RFC3339        2006-01-02T15:04:05Z07:00
+      RFC3339Nano    2006-01-02T15:04:05.999999999Z07:00
+      Kitchen        3:04:05PM
+      Stamp          Jan _2 15:04:05
+      StampMilli     Jan _2 15:04:05.000
+      StampMicro     Jan _2 15:04:05.000000
+      StampNano      Jan _2 15:04:05.000000000
+    custom format
+      year           2006
+      month          01
+      day            02
+      hour           03 or 15
+      minute         04
+      second         05 or with sub-seconds '05.999999'`,
+};

@@ -2,366 +2,50 @@
 
 const process = require('process');
 const pretty = require('pretty');
-const neoapi = require('/usr/lib/neoapi');
-const machcli = require('machcli');
-const { getCurrentDatabase } = require('@jsh/session');
 const { parseAndRun, newMachCliClient } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/show');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
-
-const defaultConfig = {
-    usage: 'Usage: show <command> [options]',
-    options: {
-        help: optionHelp,
-    }
+const commandFunctions = {
+    info: showInfo,
+    license: showLicense,
+    ports: showPorts,
+    users: showUsers,
+    databases: showDatabases,
+    tables: showTables,
+    table: showTable,
+    'meta-tables': showMetaTables,
+    'virtual-tables': showVirtualTables,
+    sessions: showSessions,
+    statements: showStatements,
+    indexes: showIndexes,
+    index: showIndex,
+    storage: showStorage,
+    'table-usage': showTableUsage,
+    lsm: showLsm,
+    indexgap: showIndexGap,
+    rollupgap: showRollupGap,
+    tagindexgap: showTagIndexGap,
+    tags: showTags,
+    tagstat: showTagStat,
 };
 
-const infoConfig = {
-    func: showInfo,
-    command: 'info',
-    usage: 'show info',
-    description: 'Display server information',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    }
-};
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const licenseConfig = {
-    func: showLicense,
-    command: 'license',
-    usage: 'show license',
-    description: 'Display license information',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    }
-};
-
-const portsConfig = {
-    func: showPorts,
-    command: 'ports',
-    usage: 'show ports [service]',
-    description: 'Display service ports configuration',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'service', optional: true, description: 'Service name to filter' }
-    ],
-};
-
-const usersConfig = {
-    func: showUsers,
-    command: 'users',
-    usage: 'show users',
-    description: 'List all database users',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const databasesConfig = {
-    func: showDatabases,
-    command: 'databases',
-    usage: 'show databases',
-    description: 'List all databases',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const tablesConfig = {
-    func: showTables,
-    command: 'tables',
-    usage: 'show tables [-a] [FROM <db>[.<user>]] [LIKE <pattern>] [WITH ALL]',
-    description: 'List tables',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        all: { type: 'boolean', short: 'a', description: 'Show all hidden tables', default: false },
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const tableConfig = {
-    func: showTable,
-    command: 'table',
-    usage: 'show table [-a] <table>',
-    description: 'Show table schema and details',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        all: { type: 'boolean', short: 'a', description: 'Show all hidden columns', default: false },
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'table', description: 'Table name' }
-    ],
-};
-
-const metaTablesConfig = {
-    func: showMetaTables,
-    command: 'meta-tables',
-    usage: 'show meta-tables',
-    description: 'List meta/system tables',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const virtualTablesConfig = {
-    func: showVirtualTables,
-    command: 'virtual-tables',
-    usage: 'show virtual-tables',
-    description: 'List virtual tables',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const sessionsConfig = {
-    func: showSessions,
-    command: 'sessions',
-    usage: 'show sessions',
-    description: 'List active database sessions',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const statementsConfig = {
-    func: showStatements,
-    command: 'statements',
-    usage: 'show statements',
-    description: 'List currently running SQL statements',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        long: { type: 'boolean', short: 'l', description: 'Show full SQL statements', default: false },
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const indexesConfig = {
-    func: showIndexes,
-    command: 'indexes',
-    usage: 'show indexes [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'List all indexes',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const indexConfig = {
-    func: showIndex,
-    command: 'index',
-    usage: 'show index <index>',
-    description: 'Show index structure and details',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'index', description: 'Index name' }
-    ],
-};
-
-const storageConfig = {
-    func: showStorage,
-    command: 'storage',
-    usage: 'show storage [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'Show storage statistics',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const tableUsageConfig = {
-    func: showTableUsage,
-    command: 'table-usage',
-    usage: 'show table-usage [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'Show storage usage by table',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const lsmConfig = {
-    func: showLsm,
-    command: 'lsm',
-    usage: 'show lsm [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'Show LSM index status',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const indexgapConfig = {
-    func: showIndexGap,
-    command: 'indexgap',
-    usage: 'show indexgap [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'Show index gap information',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const rollupgapConfig = {
-    func: showRollupGap,
-    command: 'rollupgap',
-    usage: 'show rollupgap [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'Show rollup gap information',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        long: { type: 'boolean', short: 'l', description: 'Show running state', default: false },
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const tagindexgapConfig = {
-    func: showTagIndexGap,
-    command: 'tagindexgap',
-    usage: 'show tagindexgap [FROM <db>[.<user>]] [LIKE <pattern>]',
-    description: 'Show tag index gap information',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'clause', variadic: true, optional: true, description: 'SHOW clauses' }
-    ],
-};
-
-const tagsConfig = {
-    func: showTags,
-    command: 'tags',
-    usage: 'show tags <table> [tag...]',
-    description: 'List all/specific tags in the specified table',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'table', description: 'Table name' },
-        { name: 'tag', variadic: true, optional: true, description: 'Tag names' }
-    ],
-};
-
-const tagstatConfig = {
-    func: showTagStat,
-    command: 'tagstat',
-    usage: 'show tagstat <table> [tag...]',
-    description: 'Show statistics for the specific tags',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'table', description: 'Table name' },
-        { name: 'tag', variadic: true, optional: true, description: 'Tag names' }
-    ],
-};
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    infoConfig,
-    licenseConfig,
-    portsConfig,
-    usersConfig,
-    databasesConfig,
-    tablesConfig,
-    tableConfig,
-    metaTablesConfig,
-    virtualTablesConfig,
-    sessionsConfig,
-    statementsConfig,
-    indexesConfig,
-    indexConfig,
-    storageConfig,
-    tableUsageConfig,
-    lsmConfig,
-    indexgapConfig,
-    rollupgapConfig,
-    tagindexgapConfig,
-    tagsConfig,
-    tagstatConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function _show(line, config) {
+    const neoapi = require('/usr/lib/neoapi');
     const timeformat = config.timeformat || 'DATETIME';
     const tz = config.tz || 'Local';
     const client = new neoapi.Client(config);
     const showText = String(line).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     // executeTql() runs on the server over HTTP, independent of this process's mach
     // DSN, so the shell's `use <database>` selection must be forwarded explicitly.
+    const { getCurrentDatabase } = require('@jsh/session');
     const database = getCurrentDatabase();
     const useArg = database ? `use('${database}'), ` : '';
     client.executeTql(`

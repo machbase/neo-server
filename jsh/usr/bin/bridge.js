@@ -4,139 +4,24 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/bridge');
 
-// '-t' ('--type') is duplicated in pretty.TableArgOptions, so remove it here
-const prettyTableOptions = delete pretty.TableArgOptions['timeformat'];
-
-// Global options (available for all commands)
-const globalOptions = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message' },
-    ...prettyTableOptions,
+const commandFunctions = {
+    list: listBridges,
+    add: addBridge,
+    del: delBridge,
+    test: testBridge,
+    stats: statsBridge,
+    exec: execBridge,
+    query: queryBridge,
 };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-// Sub-command configurations
-const listConfig = {
-    func: listBridges,
-    command: 'list',
-    usage: 'bridge list',
-    description: 'Show registered bridges',
-    options: {
-        ...globalOptions
-    }
-};
-
-const addConfig = {
-    func: addBridge,
-    command: 'add',
-    usage: 'bridge add <name> <connection>',
-    description: 'Add a new bridge',
-    options: {
-        ...globalOptions,
-        type: { type: 'string', short: 't', description: 'Bridge type [sqlite|postgres|mysql|mssql|mqtt|nats]' }
-    },
-    positionals: [
-        { name: 'name', description: 'Name of the bridge' },
-        { name: 'connection', variadic: true, description: 'Connection string' }
-    ],
-    longDescription: `
-  Bridge types (-t, --type for 'add' command):
-    sqlite        SQLite            https://sqlite.org
-        ex) bridge add -t sqlite my_memory file::memory:?cache=shared
-            bridge add -t sqlite my_sqlite file:/tmp/sqlitefile.db
-    postgres      PostgreSQL        https://postgresql.org
-        ex) bridge add -t postgres my_pg "host=127.0.0.1 port=5432 user=dbuser dbname=postgres sslmode=disable"
-    mysql         MySQL             https://mysql.com
-        ex) bridge add -t mysql my_sql "root:passwd@tcp(127.0.0.1:3306)/testdb?parseTime=true"
-    mqtt          MQTT (v3.1.1)     https://mqtt.org
-        ex) bridge add -t mqtt my_mqtt "broker=127.0.0.1:1883 id=client-id"
-    nats          NATS              https://nats.io
-        ex) bridge add -t nats my_nats "server=nats://127.0.0.1:3000 name=client-name"
-`
-};
-
-const delConfig = {
-    func: delBridge,
-    command: 'del',
-    usage: 'bridge del <name>',
-    description: 'Remove a bridge',
-    options: {
-        ...globalOptions
-    },
-    positionals: [
-        { name: 'name', description: 'Name of the bridge to remove' }
-    ],
-};
-
-const testConfig = {
-    func: testBridge,
-    command: 'test',
-    usage: 'bridge test <name>',
-    description: 'Test connectivity of a bridge',
-    options: {
-        ...globalOptions
-    },
-    positionals: [
-        { name: 'name', description: 'Name of the bridge to test' }
-    ],
-};
-
-const statsConfig = {
-    func: statsBridge,
-    command: 'stats',
-    usage: 'bridge stats <name>',
-    description: 'Show bridge statistics',
-    options: {
-        ...globalOptions
-    },
-    positionals: [
-        { name: 'name', description: 'Name of the bridge' }
-    ],
-};
-
-const execConfig = {
-    func: execBridge,
-    command: 'exec',
-    usage: 'bridge exec <name> <command>',
-    description: 'Execute command on the bridge',
-    options: {
-        ...globalOptions
-    },
-    positionals: [
-        { name: 'name', description: 'Name of the bridge' },
-        { name: 'command', variadic: true, description: 'Command to execute' }
-    ],
-};
-
-const queryConfig = {
-    func: queryBridge,
-    command: 'query',
-    usage: 'bridge query <name> <command>',
-    description: 'Query the bridge with command',
-    options: {
-        ...globalOptions
-    },
-    positionals: [
-        { name: 'name', description: 'Name of the bridge' },
-        { name: 'command', variadic: true, description: 'Query command' }
-    ],
-};
-
-const defaultConfig = {
-    usage: 'Usage: bridge <command> [options]',
-    options: {
-        help: { type: 'boolean', short: 'h', description: 'Show this help message' }
-    }
-};
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    listConfig,
-    addConfig,
-    delConfig,
-    testConfig,
-    statsConfig,
-    execConfig,
-    queryConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function listBridges(config, args) {
     const client = new neoapi.Client(config);
