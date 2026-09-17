@@ -18,18 +18,28 @@ import (
 )
 
 func New(conf Config) (*JSRuntime, error) {
+	var writer io.Writer = os.Stdout
+	if conf.Writer != nil {
+		writer = conf.Writer
+	}
+
 	// Build filesystem from FSTabs
 	filesystem := NewFS()
 	for _, tab := range conf.FSTabs {
 		if tab.FS == nil {
 			if fsDir, err := DirFS(filepath.FromSlash(tab.Source)); err != nil {
 				return nil, fmt.Errorf("error mounting %s to %s: %v", tab.Source, tab.MountPoint, err)
-			} else {
-				filesystem.Mount(tab.MountPoint, fsDir)
+			} else if err := filesystem.Mount(tab.MountPoint, fsDir); err != nil {
+				return nil, fmt.Errorf("error mounting %s to %s: %v", tab.Source, tab.MountPoint, err)
 			}
 		} else {
-			filesystem.Mount(tab.MountPoint, tab.FS)
+			if err := filesystem.Mount(tab.MountPoint, tab.FS); err != nil {
+				return nil, fmt.Errorf("error mounting %s: %v", tab.MountPoint, err)
+			}
 		}
+	}
+	for _, warning := range filesystem.MountWarnings() {
+		fmt.Fprintln(writer, warning)
 	}
 	controllerAddr := envStringValue(conf.Env, ControllerAddressEnv)
 	if controllerAddr != "" {
@@ -52,10 +62,6 @@ func New(conf Config) (*JSRuntime, error) {
 	var reader io.Reader = os.Stdin
 	if conf.Reader != nil {
 		reader = conf.Reader
-	}
-	var writer io.Writer = os.Stdout
-	if conf.Writer != nil {
-		writer = conf.Writer
 	}
 	var errorWriter io.Writer = os.Stderr
 	if conf.ErrorWriter != nil {
