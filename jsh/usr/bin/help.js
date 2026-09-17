@@ -2,7 +2,16 @@
 
 const process = require('process');
 const parseArgs = require('util/parseArgs');
-const contextCommands = require('/usr/lib/context_cmds');
+let contextCommands;
+try {
+    // neo-shell registers @jsh/session for in-process context commands, while
+    // plain jsh intentionally runs without that session layer. context_cmds
+    // requires @jsh/session at load time, but help must still work in plain jsh
+    // and list the commands available in that execution layer.
+    contextCommands = require('/usr/lib/context_cmds');
+} catch (_) {
+    contextCommands = null;
+}
 
 const options = {
     help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
@@ -59,7 +68,7 @@ const helpCommands = [
     { name: 'ssh-key', description: 'Manage SSH keys' },
     { name: 'subscriber', description: 'Manage subscribers' },
     { name: 'timer', description: 'Manage database tables' },
-    ...contextCommands.describeAll(),
+    ...(contextCommands ? contextCommands.describeAll() : []),
 ].sort((a, b) => a.name.localeCompare(b.name));
 
 if ((!objectName) || objectName.length === 0) {
@@ -91,7 +100,7 @@ if ((!objectName) || objectName.length === 0) {
         helpTimeformat();
     } else if (objectName === 'tz') {
         helpTz();
-    } else if (!contextCommands.printHelp(objectName)) {
+    } else if (!contextCommands || !contextCommands.printHelp(objectName)) {
         process.exec(objectName, '-h');
     }
 }
