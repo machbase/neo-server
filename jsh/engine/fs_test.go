@@ -80,8 +80,10 @@ func TestFS_Mount_Conflicts(t *testing.T) {
 		wantErr     bool
 	}{
 		{"exact duplicate", "/foo", "/foo", true},
-		{"parent-child", "/foo", "/foo/bar", true},
-		{"child-parent", "/foo/bar", "/foo", true},
+		// Nested mounts (parent-child, in either registration order) are allowed
+		// as long as there is no real, physical directory conflict.
+		{"parent-child", "/foo", "/foo/bar", false},
+		{"child-parent", "/foo/bar", "/foo", false},
 		{"siblings", "/foo", "/bar", false},
 		{"different nested", "/foo/bar", "/foo/baz", false},
 	}
@@ -516,10 +518,122 @@ func TestFS_ReadDir_NestedMountPoints(t *testing.T) {
 		t.Fatalf("Mount /usr failed: %v", err)
 	}
 
-	// This should fail due to conflict (parent-child relationship)
-	err := mfs.Mount("/usr/local", usrLocalFS)
-	if err == nil {
-		t.Fatal("Expected mount to fail due to parent-child conflict")
+	// /usr/local nests inside /usr; since usrFS has no real "local" entry,
+	// the nested mount is allowed.
+	if err := mfs.Mount("/usr/local", usrLocalFS); err != nil {
+		t.Fatalf("Expected nested mount to succeed, got: %v", err)
+	}
+
+	f, err := mfs.Open("/usr/local/local.txt")
+	if err != nil {
+		t.Fatalf("Open(/usr/local/local.txt) failed: %v", err)
+	}
+	f.Close()
+}
+
+func TestFS_Mount_NestedRealPathConflict(t *testing.T) {
+	// Ancestor mount backed by a real OS directory that already contains a
+	// physical entry at the path of the would-be nested mount.
+	tmpDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tmpDir, "data"), 0755); err != nil {
+		t.Fatalf("Mkdir failed: %v", err)
+	}
+	nestedFS := fstest.MapFS{
+		"nested.txt": &fstest.MapFile{Data: []byte("nested")},
+	}
+
+	t.Run("ancestor mounted first", func(t *testing.T) {
+		mfs := NewFS()
+		if err := mfs.Mount("/work", os.DirFS(tmpDir)); err != nil {
+			t.Fatalf("Mount /work failed: %v", err)
+		}
+		// Nested mount at /work/data conflicts with the real "data" directory.
+		if err := mfs.Mount("/work/data", nestedFS); err != nil {
+			t.Fatalf("Mount /work/data should not return an error, got: %v", err)
+		}
+		if _, ok := mfs.mounts["/work/data"]; ok {
+			t.Fatal("expected /work/data to not be mounted due to real path conflict")
+		}
+		warnings := mfs.MountWarnings()
+		if len(warnings) != 1 {
+			t.Fatalf("expected 1 warning, got %d: %v", len(warnings), warnings)
+		}
+	})
+
+	t.Run("nested mounted first", func(t *testing.T) {
+		mfs := NewFS()
+		if err := mfs.Mount("/work/data", nestedFS); err != nil {
+			t.Fatalf("Mount /work/data failed: %v", err)
+		}
+		// Mounting the ancestor afterwards should win over the previously
+		// registered nested mount, since the ancestor has a real "data" dir.
+		if err := mfs.Mount("/work", os.DirFS(tmpDir)); err != nil {
+			t.Fatalf("Mount /work failed: %v", err)
+		}
+		if _, ok := mfs.mounts["/work/data"]; ok {
+			t.Fatal("expected /work/data mount to be dropped due to real path conflict")
+		}
+		if _, ok := mfs.mounts["/work"]; !ok {
+			t.Fatal("expected /work to be mounted")
+		}
+		warnings := mfs.MountWarnings()
+		if len(warnings) != 1 {
+			t.Fatalf("expected 1 warning, got %d: %v", len(warnings), warnings)
+		}
+	})
+}
+
+func TestFS_VirtualMountDir(t *testing.T) {
+	rootFS := fstest.MapFS{
+		"file.txt": &fstest.MapFile{Data: []byte("root")},
+	}
+	dataFS := fstest.MapFS{
+		"info.txt": &fstest.MapFile{Data: []byte("data")},
+	}
+
+	mfs := NewFS()
+	if err := mfs.Mount("/", rootFS); err != nil {
+		t.Fatalf("Mount / failed: %v", err)
+	}
+	// Mount a nested path without mounting its parent "/work" directly.
+	if err := mfs.Mount("/work/data", dataFS); err != nil {
+		t.Fatalf("Mount /work/data failed: %v", err)
+	}
+
+	// /work should behave as an implied (virtual) directory.
+	f, err := mfs.Open("/work")
+	if err != nil {
+		t.Fatalf("Open(/work) failed: %v", err)
+	}
+	info, err := f.Stat()
+	f.Close()
+	if err != nil {
+		t.Fatalf("Stat(/work) failed: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("expected /work to be a directory")
+	}
+
+	entries, err := mfs.ReadDir("/work")
+	if err != nil {
+		t.Fatalf("ReadDir(/work) failed: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Name() == "data" && e.IsDir() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected 'data' entry in ReadDir(/work), got %+v", entries)
+	}
+
+	// A completely unrelated, unmounted path must still fail.
+	if _, err := mfs.Open("/nowhere"); err == nil {
+		t.Fatal("expected Open(/nowhere) to fail")
+	}
+	if _, err := mfs.ReadDir("/nowhere"); err == nil {
+		t.Fatal("expected ReadDir(/nowhere) to fail")
 	}
 }
 

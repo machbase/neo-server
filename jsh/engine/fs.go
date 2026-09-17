@@ -3,6 +3,7 @@ package engine
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -115,10 +116,11 @@ func (h *readOnlyFDHandle) Chown(_, _ int) error        { return fs.ErrPermissio
 
 // FS allows mounting multiple fs.FS at different paths
 type FS struct {
-	mounts map[string]fs.FS
-	fds    map[int]fdHandle
-	nextFD int
-	fdMu   sync.Mutex
+	mounts   map[string]fs.FS
+	fds      map[int]fdHandle
+	nextFD   int
+	fdMu     sync.Mutex
+	warnings []string
 }
 
 var _ fs.FS = (*FS)(nil)
@@ -134,8 +136,17 @@ func NewFS() *FS {
 	}
 }
 
-// Mount mounts an fs.FS at a given virtual path
-// Returns error if mountPoint is invalid or already exists
+// Mount mounts an fs.FS at a given virtual path.
+//
+// Nested mount points are allowed regardless of the order they are mounted in
+// (e.g. "/work" and "/work/data" can both be mounted, in either order). If a
+// nested mount point's relative path already exists as a real, physical entry
+// inside an ancestor mount, the nested mount is considered conflicting: it is
+// skipped (or, if it was registered earlier, dropped) in favor of the real
+// directory, and a human-readable warning is recorded and retrievable via
+// MountWarnings.
+//
+// Returns error if mountPoint is invalid or already mounted exactly.
 func (m *FS) Mount(mountPoint string, filesystem fs.FS) error {
 	if filesystem == nil {
 		return fs.ErrInvalid
@@ -143,23 +154,122 @@ func (m *FS) Mount(mountPoint string, filesystem fs.FS) error {
 
 	mountPoint = CleanPath(mountPoint)
 
-	// Check for conflicting mounts
-	for existing := range m.mounts {
+	for existing, existingFS := range m.mounts {
 		if mountPoint == existing {
 			return fs.ErrExist
 		}
-		// Check if new mount would shadow existing mount
-		if mountPoint != "/" && strings.HasPrefix(existing, mountPoint+"/") {
-			return fs.ErrExist
+		if mountPoint == "/" || existing == "/" {
+			// The root mount point never conflicts with any other mount point.
+			continue
 		}
-		// Check if existing mount would shadow new mount
-		if existing != "/" && strings.HasPrefix(mountPoint, existing+"/") {
-			return fs.ErrExist
+		if strings.HasPrefix(existing, mountPoint+"/") {
+			// mountPoint is an ancestor of an already-registered, deeper mount.
+			relPath := getRelativePath(existing, mountPoint)
+			if realPathExists(filesystem, relPath) {
+				// The ancestor's real directory already has this path; it wins
+				// over the previously registered nested mount.
+				delete(m.mounts, existing)
+				m.warnings = append(m.warnings, fmt.Sprintf(
+					"mount: %q conflicts with a real directory under %q; dropping the mount at %q",
+					existing, mountPoint, existing))
+			}
+			continue
+		}
+		if strings.HasPrefix(mountPoint, existing+"/") {
+			// mountPoint is nested inside an already-registered, shallower mount.
+			relPath := getRelativePath(mountPoint, existing)
+			if realPathExists(existingFS, relPath) {
+				// The ancestor's real directory already has this path; keep it
+				// and skip mounting the conflicting nested mount.
+				m.warnings = append(m.warnings, fmt.Sprintf(
+					"mount: %q conflicts with a real directory under %q; skipping mount at %q",
+					mountPoint, existing, mountPoint))
+				return nil
+			}
+			continue
 		}
 	}
 
 	m.mounts[mountPoint] = filesystem
 	return nil
+}
+
+// MountWarnings returns and clears any warnings recorded by Mount while
+// resolving conflicts between nested mount points.
+func (m *FS) MountWarnings() []string {
+	w := m.warnings
+	m.warnings = nil
+	return w
+}
+
+// realPathExists reports whether filesystem physically contains an entry at
+// relPath. It uses the OS filesystem when possible (e.g. os.DirFS-backed
+// mounts), falling back to a generic fs.Stat for other fs.FS implementations.
+func realPathExists(filesystem fs.FS, relPath string) bool {
+	if osPath, err := getOSPath(filesystem, relPath); err == nil {
+		_, statErr := os.Stat(osPath)
+		return statErr == nil
+	}
+	_, err := fs.Stat(filesystem, relPath)
+	return err == nil
+}
+
+// isVirtualMountDir reports whether name is an implied directory that has no
+// mount of its own but exists only because a deeper mount point is nested
+// under it (e.g. "/work" when only "/work/data" is mounted).
+func (m *FS) isVirtualMountDir(name string) bool {
+	prefix := name
+	if prefix != "/" {
+		prefix += "/"
+	}
+	for mountPoint := range m.mounts {
+		if mountPoint == name {
+			continue
+		}
+		if strings.HasPrefix(mountPoint, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// virtualMountDirFile represents a synthetic directory with no backing
+// filesystem of its own; it exists solely as an implied parent of one or more
+// nested mount points.
+type virtualMountDirFile struct {
+	fs   *FS
+	name string
+}
+
+func (f *virtualMountDirFile) baseName() string {
+	if f.name == "/" {
+		return "/"
+	}
+	if idx := strings.LastIndex(f.name, "/"); idx >= 0 {
+		return f.name[idx+1:]
+	}
+	return f.name
+}
+
+func (f *virtualMountDirFile) Stat() (fs.FileInfo, error) {
+	return &dotFileInfo{name: f.baseName(), isDir: true}, nil
+}
+
+func (f *virtualMountDirFile) Read(_ []byte) (int, error) {
+	return 0, &fs.PathError{Op: "read", Path: f.name, Err: fmt.Errorf("is a directory")}
+}
+
+func (f *virtualMountDirFile) Close() error { return nil }
+
+func (f *virtualMountDirFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	entries, err := f.fs.ReadDir(f.name)
+	if err != nil {
+		return nil, err
+	}
+	if n <= 0 || n > len(entries) {
+		return entries, nil
+	}
+	return entries[:n], nil
 }
 
 // Unmount removes a mounted filesystem at the given path
@@ -355,11 +465,21 @@ func (m *FS) Open(name string) (fs.File, error) {
 	// Find the longest matching mount point
 	bestFS, bestMatch := m.bestMatch(name)
 
-	if bestFS == nil {
+	if bestFS != nil {
+		f, err := bestFS.Open(getRelativePath(name, bestMatch))
+		if err == nil {
+			return f, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) || !m.isVirtualMountDir(name) {
+			return nil, err
+		}
+	} else if !m.isVirtualMountDir(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
 
-	return bestFS.Open(getRelativePath(name, bestMatch))
+	// name has no real backing entry, but a deeper mount point is nested
+	// under it, so it exists as an implied (virtual) directory.
+	return &virtualMountDirFile{fs: m, name: name}, nil
 }
 
 func (m *FS) CleanPath(name string) string {
@@ -831,56 +951,61 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 	// Find the longest matching mount point
 	bestFS, bestMatch := m.bestMatch(name)
+	isVirtual := m.isVirtualMountDir(name)
 
-	if bestFS == nil {
+	if bestFS == nil && !isVirtual {
 		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrNotExist}
 	}
 
-	relPath := getRelativePath(name, bestMatch)
-
-	// Read base directory entries
 	var entries []fs.DirEntry
-	if readDirFS, ok := bestFS.(fs.ReadDirFS); ok {
-		var err error
-		entries, err = readDirFS.ReadDir(relPath)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		var err error
-		entries, err = fs.ReadDir(bestFS, relPath)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Get current directory info for "." entry
 	var currentInfo fs.FileInfo
-	if f, err := bestFS.Open(relPath); err == nil {
-		currentInfo, _ = f.Stat()
-		f.Close()
-	}
-
-	// Get parent directory info for ".." entry
 	var parentInfo fs.FileInfo
-	parentRelPath := relPath
-	if relPath == "." {
-		// Already at the root of this mount, use root info for parent
-		if f, err := bestFS.Open("."); err == nil {
-			parentInfo, _ = f.Stat()
-			f.Close()
-		}
-	} else {
-		// Get parent directory
-		lastSlash := strings.LastIndex(relPath, "/")
-		if lastSlash > 0 {
-			parentRelPath = relPath[:lastSlash]
+
+	if bestFS != nil {
+		relPath := getRelativePath(name, bestMatch)
+
+		// Read base directory entries
+		var err error
+		if readDirFS, ok := bestFS.(fs.ReadDirFS); ok {
+			entries, err = readDirFS.ReadDir(relPath)
 		} else {
-			parentRelPath = "."
+			entries, err = fs.ReadDir(bestFS, relPath)
 		}
-		if f, err := bestFS.Open(parentRelPath); err == nil {
-			parentInfo, _ = f.Stat()
+		if err != nil {
+			if !isVirtual || !errors.Is(err, fs.ErrNotExist) {
+				return nil, err
+			}
+			// name has no real backing entry, but it exists as an implied
+			// (virtual) directory because of a deeper nested mount point.
+			entries = nil
+		}
+
+		// Get current directory info for "." entry
+		if f, err := bestFS.Open(relPath); err == nil {
+			currentInfo, _ = f.Stat()
 			f.Close()
+		}
+
+		// Get parent directory info for ".." entry
+		parentRelPath := relPath
+		if relPath == "." {
+			// Already at the root of this mount, use root info for parent
+			if f, err := bestFS.Open("."); err == nil {
+				parentInfo, _ = f.Stat()
+				f.Close()
+			}
+		} else {
+			// Get parent directory
+			lastSlash := strings.LastIndex(relPath, "/")
+			if lastSlash > 0 {
+				parentRelPath = relPath[:lastSlash]
+			} else {
+				parentRelPath = "."
+			}
+			if f, err := bestFS.Open(parentRelPath); err == nil {
+				parentInfo, _ = f.Stat()
+				f.Close()
+			}
 		}
 	}
 
