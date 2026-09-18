@@ -898,8 +898,11 @@ func TestShellBridge(t *testing.T) {
 	}
 
 	// wait for mssql to be ready
+	// MSSQL's own startup can occasionally exceed 180s on a busy shared CI
+	// runner (e.g. when several other DB containers/tests run concurrently),
+	// so give it more headroom than the other services.
 	var mssqlDSN string
-	err = pool.Retry(t.Context(), 180*time.Second, func() error {
+	err = pool.Retry(t.Context(), 300*time.Second, func() error {
 		hostPort := mssql.GetHostPort("1433/tcp")
 		db, err := sql.Open("sqlserver", fmt.Sprintf("sqlserver://sa:Your_password123@%s?database=master", hostPort))
 		if err != nil {
