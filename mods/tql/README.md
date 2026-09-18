@@ -84,7 +84,7 @@ Map nodes read until one of these conditions occurs:
 - runtime context is canceled: task cancellation or terminal failure
 - directional stop applies to this node: upstream early stop
 
-On normal completion, a node runs `finalizeCallback` before closing its output. Stateful operations such as `GROUP`, `TIMEWINDOW`, filters, and `SCRIPT` use this hook to flush final records.
+On normal completion, a node runs `finalizeCallback` before closing its output. Stateful operations such as `GROUP`, `GROUP(timewindow(...))`, filters, and `SCRIPT` use this hook to flush final records.
 
 ### Sink
 

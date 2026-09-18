@@ -827,19 +827,6 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 		Description: "TODO",
 		Markdown: "# THROTTLE\n\n## Kind\n\nstatement map\n\n## Category\n\narrays and dictionaries\n\n## Signatures\n\n```text\nTHROTTLE(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nTHROTTLE()\n```\n\n## Related\n\nTODO",
 	},
-	"TIMEWINDOW": {
-		Label: "TIMEWINDOW",
-		Kind: "statement map",
-		Category: "map monad",
-		Signatures: []tqlDocSignature{
-			{Label: "TIMEWINDOW(...)"},
-		},
-		Slots: []tqlDocSlot{
-			{Name: "args", Required: false, Repeat: true, Accepts: "expression"},
-		},
-		Description: "TODO",
-		Markdown: "# TIMEWINDOW\n\n## Kind\n\nstatement map\n\n## Category\n\nmap monad\n\n## Signatures\n\n```text\nTIMEWINDOW(...)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| args | no | yes | expression | TODO |\n\n## Description\n\nTODO\n\n## Examples\n\n### Basic\n\n```js\nTIMEWINDOW()\n```\n\n## Related\n\nTODO",
-	},
 	"TRANSPOSE": {
 		Label: "TRANSPOSE",
 		Kind: "statement map",

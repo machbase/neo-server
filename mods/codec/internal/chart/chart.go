@@ -17,12 +17,16 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 )
 
+const defaultChartPointLimit = 5000000
+
 type Chart struct {
 	internal.RowsEncoderBase
 	output       io.Writer
 	toJsonOutput bool
 	option       string
 	data         [][]any
+	points       int
+	limit        int
 	plugins      []string
 
 	logger             facility.Logger
@@ -138,6 +142,12 @@ func (c *Chart) SetChartDispatchAction(action string) {
 	c.DispatchAction = action
 }
 
+func (c *Chart) SetLimit(limit int) {
+	if limit > 0 {
+		c.limit = limit
+	}
+}
+
 func (c *Chart) JSAssetsNoEscaped() template.HTML {
 	lst := []string{}
 	for _, itm := range c.JSAssets {
@@ -183,6 +193,13 @@ func (c *Chart) AddRow(values []any) error {
 	if c.data == nil {
 		c.data = [][]any{}
 	}
+	limit := c.limit
+	if limit <= 0 {
+		limit = defaultChartPointLimit
+	}
+	if c.points+len(values) > limit {
+		return fmt.Errorf("CHART points exceeded: count=%d limit=%d", c.points+len(values), limit)
+	}
 	for i, val := range values {
 		if len(c.data) < i+1 {
 			c.data = append(c.data, []any{})
@@ -196,6 +213,7 @@ func (c *Chart) AddRow(values []any) error {
 			c.typeHint[i] = hint
 		}
 	}
+	c.points += len(values)
 	return nil
 }
 

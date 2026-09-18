@@ -181,7 +181,6 @@ var FxDefinitions = []Definition{
 	{"MAP_DISTANCE", defTask.fmGeoDistance},
 	{"TRANSPOSE", defTask.fmTranspose},
 	{"fixed", defTask.fmFixed},
-	{"TIMEWINDOW", defTask.fmTimeWindow}, // deprecated
 	{"SCRIPT", defTask.fmScript},
 	{"SHELL", defTask.fmShell},
 	// arrays and dictionaries

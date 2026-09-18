@@ -29,7 +29,7 @@ var scanDirs = []string{
 
 // add function names here not to generate
 var ignores = []string{
-	// "SetXYZ",
+	"SetLimit",
 }
 
 func main() {

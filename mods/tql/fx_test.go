@@ -288,7 +288,7 @@ func TestGeneratedNodeWrapperValidation(t *testing.T) {
 		"parseTime", "timeAdd", "roundTime", "range", "sqlTimeformat", "ansiTimeformat",
 		"HISTOGRAM", "bins", "boxplotInterp", "boxplotOutput", "category",
 		"FILTER", "FILTER_CHANGED", "retain", "useFirstWithLast", "MAPKEY", "PUSHVALUE", "MAPVALUE",
-		"MAP_AVG", "MAP_MOVAVG", "MAP_LOWPASS", "MAP_KALMAN", "MAP_DIFF", "MAP_ABSDIFF", "MAP_NONEGDIFF", "TIMEWINDOW",
+		"MAP_AVG", "MAP_MOVAVG", "MAP_LOWPASS", "MAP_KALMAN", "MAP_DIFF", "MAP_ABSDIFF", "MAP_NONEGDIFF",
 		"glob", "regexp", "strTime", "strTrimSpace", "strTrimPrefix", "strTrimSuffix", "strReplace", "strReplaceAll", "strSprintf", "strSub", "strIndex", "strLastIndex", "strToUpper", "strToLower",
 		"by", "timewindow", "where", "predict", "weight", "first", "last", "min", "max", "sum", "mean", "variance", "cdf", "correlation", "quantile", "median", "medianInterpolated", "stddev", "stderr", "entropy", "mode", "moment", "avg", "rss", "rms", "lrs",
 	} {
