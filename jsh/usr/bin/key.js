@@ -4,74 +4,21 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/key');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
-
-const defaultConfig = {
-    usage: 'Usage: key <command> [options]',
-    options: {
-        help: optionHelp,
-    }
+const commandFunctions = {
+    list: doList,
+    gen: doGen,
+    del: doDel,
+    'server-cert': doServerCert,
 };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const listConfig = {
-    func: doList,
-    command: 'list',
-    usage: 'key list',
-    description: 'List all registered keys',
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    }
-}
-
-const genConfig = {
-    func: doGen,
-    command: 'gen',
-    usage: 'key gen [options]',
-    description: 'Generate new key with the given name',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        output: { type: 'string', short: "o", description: 'Output directory for the new key files', default: '-' },
-        type: { type: 'string', short: "t", description: 'Type of key to generate (RSA or ECDSA)', default: 'ECDSA' },
-        store: { type: 'boolean', short: "s", description: 'Whether to store the generated key in the server', default: true },
-    },
-    positionals: [
-        { name: 'name', description: 'The CommonName for the new key; duplicates are allowed' },
-    ],
-}
-
-const delConfig = {
-    func: doDel,
-    command: 'del',
-    usage: 'key del <id>',
-    description: 'Delete an existing key',
-    options: {
-        help: optionHelp,
-    },
-    positionals: [
-        { name: 'id', description: 'The management id of the key to delete, as shown by key list' },
-    ],
-}
-
-const serverCertConfig = {
-    func: doServerCert,
-    command: 'server-cert',
-    usage: 'key server-cert',
-    description: 'Retrieve server certificate',
-    options: {
-        help: optionHelp,
-        output: { type: 'string', short: "o", description: 'Output file for the server certificate', default: '-' },
-    },
-}
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    listConfig,
-    genConfig,
-    delConfig,
-    serverCertConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function doList(config, args) {
     const client = new neoapi.Client(config);

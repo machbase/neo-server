@@ -3,34 +3,13 @@
 const process = require('process');
 const parseArgs = require('util/parseArgs');
 const { newMachCliClient } = require('/usr/lib/opts');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    output: { type: 'string', short: 'o', description: "output file (default:'-' stdout)", default: '-' },
-    compress: { type: 'string', description: "compression type (none, gzip)", default: 'none' },
-    format: { type: 'string', short: 'f', description: "output format (box, csv, tsv, json, ndjson)", default: 'csv' },
-    timeformat: { type: 'string', short: 't', description: "time format [ns|us|ms|s|<timeformat>]", default: 'ns' },
-    tz: { type: 'string', description: "time zone for handling datetime (default: time zone)", default: 'local' },
-    precision: { type: 'integer', short: 'p', description: "set precision of float value to force round", default: -1 },
-    header: { type: 'boolean', description: "print header", default: false },
-    nullValue: { type: 'string', description: "string to represent null values", default: '' },
-    silent: { type: 'boolean', description: "suppress progress output", default: false },
-}
-
-const positionals = [
-    { name: 'table', type: 'string', description: 'table name to read' }
-];
+const help = require('/usr/share/help/neo-shell/export');
 
 let showHelp = true;
 let config = {};
 let tableName = '';
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-        allowPositionals: true,
-        allowNegative: true,
-        positionals: positionals
-    });
+    const parsed = parseArgs(process.argv.slice(2), help);
     config = parsed.values;
     tableName = parsed.namedPositionals.table;
     showHelp = config.help
@@ -40,11 +19,7 @@ catch (err) {
 }
 
 if (showHelp || (!tableName) || tableName.length === 0) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: export [options] <table>',
-        options,
-        positionals: positionals
-    }));
+    console.println(parseArgs.formatHelp(help));
     process.exit(showHelp ? 0 : 1);
 }
 

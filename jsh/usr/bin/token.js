@@ -4,39 +4,16 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/token');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false };
+const commandFunctions = { list: doList, gen: doGen, del: doDel };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const listConfig = {
-    func: doList,
-    command: 'list',
-    usage: 'token list',
-    description: 'List your API tokens',
-    options: { help: optionHelp, ...pretty.TableArgOptions },
-};
-
-const genConfig = {
-    func: doGen,
-    command: 'gen',
-    usage: 'token gen <name> [--not-after <date>]',
-    description: 'Generate an API token',
-    options: {
-        help: optionHelp,
-        'not-after': { type: 'string', description: 'Expiration date in ISO-8601 format', default: '' },
-    },
-    positionals: [{ name: 'name', description: 'A label for the token' }],
-};
-
-const delConfig = {
-    func: doDel,
-    command: 'del',
-    usage: 'token del <id>',
-    description: 'Delete one of your API tokens',
-    options: { help: optionHelp },
-    positionals: [{ name: 'id', description: 'Token ID' }],
-};
-
-parseAndRun(process.argv.slice(2), { usage: 'Usage: token <command> [options]', options: { help: optionHelp } }, [listConfig, genConfig, delConfig]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function doList(config) {
     new neoapi.Client(config).listTokens()

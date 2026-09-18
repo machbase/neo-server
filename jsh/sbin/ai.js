@@ -14,60 +14,16 @@ const { ai } = require('@jsh/shell');
 const { buildSystemPrompt, listSegments } = require('ai/prompt');
 const { extractRunnableCandidates, hasRunnableFence, detectAnalysisIntent, buildEvidenceGatePrompt, buildGroundedReportPrompt, detectUngroundedReport, executeBlock, formatResults, isSqlEvidence, isRenderEnvelope, collectExecutionEvidence, formatEvidencePrompt, collectEditStats, extractErrorLocation, collectErrorDiagnostics, formatDiagnosticsPrompt, buildPatchGuardrailPrompt, buildAutoPatchSuggestionPrompt, detectPatchFirstViolation } = require('ai/executor');
 const { saveTranscript } = require('ai/transcript');
+const help = require('help');
+const metadata = require('/usr/share/help/jsh/ai');
 
 // ─── CLI options ──────────────────────────────────────────────────────────────
-
-const options = {
-    eval: {
-        type: 'string',
-        short: 'e',
-        description: 'One-shot prompt (non-interactive, prints response and exits)',
-    },
-    provider: {
-        type: 'string',
-        short: 'p',
-        description: 'LLM provider name (default: from config, e.g. "claude")',
-    },
-    model: {
-        type: 'string',
-        short: 'm',
-        description: 'Model name override',
-    },
-    maxTokens: {
-        type: 'string',
-        description: 'Maximum response tokens (default: from config)',
-    },
-    noExec: {
-        type: 'boolean',
-        description: 'Disable jsh-run code execution prompts (safe mode)',
-        default: false,
-    },
-    timeout: {
-        type: 'string',
-        description: 'jsh code execution timeout in ms (default: 30000)',
-    },
-    maxRows: {
-        type: 'string',
-        description: 'Query max rows (default: 1000)',
-    },
-    out: {
-        type: 'string',
-        description: 'Output format: text|json (default: text)',
-        default: 'text',
-    },
-    help: {
-        type: 'boolean',
-        short: 'h',
-        description: 'Show this help message',
-        default: false,
-    },
-};
 
 var values = {};
 var positionals = [];
 var parseError = null;
 try {
-    var parsed = parseArgs(process.argv.slice(2), { options, allowPositionals: true });
+    var parsed = parseArgs(process.argv.slice(2), metadata);
     values = parsed.values;
     positionals = parsed.positionals || [];
 } catch (err) {
@@ -78,30 +34,7 @@ if (parseError || values.help) {
     if (parseError) {
         console.println('Error:', parseError.message);
     }
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: ai [options] [prompt]',
-        description: 'Interactive LLM chat with machbase-neo context.\n' +
-            'LLM can query your database via the agent API.',
-        options: options,
-    }));
-    console.println('');
-    console.println('Slash commands (during interactive session, prefix with "\\" or "/"):');
-    console.println('  /provider [name]       Show or switch active LLM provider');
-    console.println('  /model <name>          Change model for current provider');
-    console.println('  /prompt                List active system prompt segments');
-    console.println('  /prompt show           Print assembled system prompt');
-    console.println('  /prompt add <segment>  Add a prompt segment');
-    console.println('  /prompt rm <segment>   Remove a prompt segment');
-    console.println('  /prompt list           List all available segments');
-    console.println('  /config show           Print config file contents');
-    console.println('  /config set <k> <v>    Set a config value (dot-notation)');
-    console.println('  /config edit           Edit config file in host editor');
-    console.println('  /config path           Print config file path');
-    console.println('  /metrics [reset]       Show or reset session KPI metrics');
-    console.println('  /clear                 Clear conversation history');
-    console.println('  /save <file_path>      Save the current session as Markdown (.md recommended)');
-    console.println('  /help                  Show this help');
-    console.println('  /bye /exit /quit       Exit');
+    console.println(help.format(metadata));
     process.exit(parseError ? 1 : 0);
 }
 

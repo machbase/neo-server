@@ -4,25 +4,14 @@
     const process = require('process');
     const fs = require('fs');
     const parseArgs = require('util/parseArgs');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/mkdir');
     const pwd = process.env.get('PWD') || '/';
 
-    const config = {
-        usage: 'Usage: mkdir [OPTION]... DIRECTORY...',
-        description: 'Create the DIRECTORY(ies), if they do not already exist.',
-        options: {
-            parents: { type: 'boolean', short: 'p', description: 'Make parent directories as needed', default: false },
-            verbose: { type: 'boolean', short: 'v', description: 'Print a message for each created directory', default: false },
-            help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
-        },
-        allowPositionals: true,
-        strict: false,
-        positionals: [{ name: 'paths', variadic: true }],
-    };
-
-    const { values, positionals } = parseArgs(process.argv.slice(2), config);
+    const { values, positionals } = parseArgs(process.argv.slice(2), metadata);
 
     if (values.help) {
-        console.println(parseArgs.formatHelp(config));
+        console.println(help.format(metadata));
         process.exit(0);
     }
 

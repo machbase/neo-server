@@ -22,6 +22,235 @@ func TestUserModuleFilesIncludesPublicWrappers(t *testing.T) {
 	}
 }
 
+func TestHelpModule(t *testing.T) {
+	tests := []test_engine.TestCase{
+		{
+			Name: "find namespaced command without session module",
+			Script: `
+				const help = require('help');
+				console.println(typeof require('/usr/lib/neoapi').Client);
+				const parseArgs = require('util/parseArgs');
+				const found = help.find(['neo-shell'], ['neo-shell:sql']);
+				console.println(found.namespace);
+				console.println(found.metadata.usage);
+				console.println(help.format(found.metadata) === parseArgs.formatHelp(found.metadata));
+				const tableOptions = require('help/table_options');
+				console.println(JSON.stringify(found.metadata.options.format) === JSON.stringify(tableOptions.format));
+				const parsed = parseArgs(['-h'], found.metadata);
+				console.println(parsed.values.help, parsed.namedPositionals.sql.length);
+			`,
+			Output: []string{
+				"function",
+				"neo-shell",
+				"Usage: sql [options] <sql>",
+				"true",
+				"true",
+				"true 0",
+			},
+		},
+		{
+			Name: "suggest similar command",
+			Script: `
+				const help = require('help');
+				help.print(['neo-shell'], ['sqp']);
+			`,
+			Output: []string{
+				"No help document found for 'sqp'.",
+				"",
+				"Did you mean?",
+				"  neo-shell:sql",
+			},
+		},
+		{
+			Name: "help option shows builtin help",
+			Script: `
+				const help = require('help');
+				console.println('exit:', help.tryHandle(['help', '-h'], ['jsh']));
+			`,
+			Output: []string{
+				"Usage: help [namespace:]command [subcommand...]",
+				"",
+				"Options:",
+				"  -h, --help  Show this help message",
+				"exit: 0",
+			},
+		},
+		{
+			Name: "find and suggest nested command",
+			Script: `
+				const help = require('help');
+				const found = help.find(['neo-shell'], ['show', 'tables']);
+				console.println(found.metadata.usage);
+				help.print(['neo-shell'], ['show', 'tabels']);
+			`,
+			Output: []string{
+				"show tables [-a] [FROM <db>[.<user>]] [LIKE <pattern>] [WITH ALL]",
+				"No help document found for 'show tabels'.",
+				"",
+				"Did you mean?",
+				"  neo-shell:show table",
+				"  neo-shell:show tables",
+			},
+		},
+		{
+			Name: "command and builtin output use the same formatter",
+			Script: `
+				const help = require('help');
+				const { formatCommandHelp } = require('/usr/lib/opts');
+				const sql = require('/usr/share/help/neo-shell/sql');
+				const show = require('/usr/share/help/neo-shell/show');
+				const configs = Object.keys(show.commands).map((name) => ({ ...show.commands[name], command: name }));
+				console.println(formatCommandHelp(['-h'], sql, []) === help.format(sql));
+				console.println(formatCommandHelp(['-h'], show, configs) === help.format(show));
+				console.println(formatCommandHelp(['tables', '-h'], show, configs) === help.format(show.commands.tables));
+			`,
+			Output: []string{
+				"true",
+				"true",
+				"true",
+			},
+		},
+		{
+			Name: "format static topic",
+			Script: `
+				const help = require('help');
+				const found = help.find(['neo-shell'], ['tz']);
+				console.println(found.metadata.kind);
+				console.println(help.format(found.metadata).includes('America/New_York'));
+			`,
+			Output: []string{
+				"topic",
+				"true",
+			},
+		},
+		{
+			Name: "format migrated nested commands",
+			Script: `
+				const help = require('help');
+				const { formatCommandHelp } = require('/usr/lib/opts');
+				for (const [name, child] of [['bridge', 'add'], ['key', 'server-cert'], ['timer', 'add'], ['subscriber', 'add']]) {
+					const metadata = require('/usr/share/help/neo-shell/' + name);
+					const configs = Object.keys(metadata.commands).map((command) => ({ ...metadata.commands[command], command }));
+					console.println(name, formatCommandHelp([child, '-h'], metadata, configs) === help.format(metadata.commands[child]));
+				}
+			`,
+			Output: []string{
+				"bridge true",
+				"key true",
+				"timer true",
+				"subscriber true",
+			},
+		},
+		{
+			Name: "list all neo shell commands",
+			Script: `
+				const help = require('help');
+				console.println(help.list(['neo-shell']).filter((entry) => entry.kind === 'command').map((entry) => entry.name).join(','));
+			`,
+			Output: []string{
+				"bridge,connect,explain,export,http,import,key,ping,run,session,shell,show,shutdown,sql,ssh-key,statz,subscriber,timer,token,use",
+			},
+		},
+		{
+			Name: "list all jsh commands",
+			Script: `
+				const fs = require('fs');
+				const help = require('help');
+				const names = help.list(['jsh']).map((entry) => entry.name);
+				console.println(names.join(','));
+				const missing = fs.readdirSync('/sbin').filter((name) => name.endsWith('.js')).map((name) => name.slice(0, -3)).filter((name) => !names.includes(name));
+				console.println('missing:', missing.join(','));
+			`,
+			Output: []string{
+				"ai,ai_kpi,alias,authkey,cat,cd,echo,env,exit,help,ls,mkdir,mqtt_pub,nats_pub,pkg,ps,pwd,quit,repl,rm,servicectl,setenv,shell,sleep,tail,unsetenv,viz,wc,which",
+				"missing: ",
+			},
+		},
+		{
+			Name: "all help metadata files load and satisfy their contract",
+			Script: `
+				const fs = require('fs');
+				const help = require('help');
+
+				function validateMetadata(namespace, name, metadata) {
+					if (metadata.name !== name) {
+						throw new Error(namespace + ':' + name + ' has mismatched name');
+					}
+					if (typeof metadata.description !== 'string' || metadata.description.length === 0) {
+						throw new Error(namespace + ':' + name + ' is missing description');
+					}
+					if (metadata.kind === 'topic') {
+						if (typeof metadata.content !== 'string' || metadata.content.length === 0) {
+							throw new Error(namespace + ':' + name + ' is missing topic content');
+						}
+						return;
+					}
+					if (typeof metadata.usage !== 'string' || metadata.usage.length === 0) {
+						throw new Error(namespace + ':' + name + ' is missing usage');
+					}
+					if (!metadata.options || typeof metadata.options !== 'object') {
+						throw new Error(namespace + ':' + name + ' is missing options');
+					}
+					for (const [childName, child] of Object.entries(metadata.commands || {})) {
+						validateMetadata(namespace, name + ' ' + childName, { ...child, name: name + ' ' + childName });
+					}
+				}
+
+				for (const namespace of ['jsh', 'neo-shell']) {
+					const listed = new Set(help.list([namespace]).map((entry) => entry.name));
+					for (const filename of fs.readdirSync('/usr/share/help/' + namespace)) {
+						if (!filename.endsWith('.js')) continue;
+						const name = filename.slice(0, -3);
+						const metadata = require('/usr/share/help/' + namespace + '/' + name);
+						validateMetadata(namespace, name, metadata);
+						if (!listed.has(name)) {
+							throw new Error(namespace + ':' + name + ' was not returned by help.list');
+						}
+						if (help.format(metadata).length === 0) {
+							throw new Error(namespace + ':' + name + ' produced empty help');
+						}
+					}
+				}
+				console.println('validated help metadata');
+			`,
+			Output: []string{
+				"validated help metadata",
+			},
+		},
+		{
+			Name: "help namespace selection remains compatible",
+			Script: `
+				const help = require('help');
+				const jsh = help.list(['jsh']).map((entry) => entry.name);
+				const neoShell = help.list(['neo-shell']).map((entry) => entry.name);
+				const combined = help.list(['neo-shell', 'jsh']).map((entry) => entry.name);
+				if (!jsh.includes('help') || jsh.includes('connect')) {
+					throw new Error('plain jsh namespace has unexpected commands');
+				}
+				if (!neoShell.includes('connect') || !neoShell.includes('use')) {
+					throw new Error('neo-shell namespace is missing context commands');
+				}
+				if (!combined.includes('connect') || !combined.includes('help')) {
+					throw new Error('combined namespace is incomplete');
+				}
+				if (help.find(['jsh'], ['connect']) !== null) {
+					throw new Error('plain jsh unexpectedly exposes connect help');
+				}
+				if (help.find(['neo-shell'], ['connect']) === null) {
+					throw new Error('neo-shell does not expose connect help');
+				}
+				console.println('validated help namespaces');
+			`,
+			Output: []string{
+				"validated help namespaces",
+			},
+		},
+	}
+	for _, test := range tests {
+		test_engine.RunTest(t, test)
+	}
+}
+
 func TestFS_Module(t *testing.T) {
 	script := `
 		// Example usage of the fs module

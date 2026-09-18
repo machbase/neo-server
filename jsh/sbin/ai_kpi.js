@@ -7,73 +7,15 @@ const parseArgs = require('util/parseArgs');
 const { ai } = require('@jsh/shell');
 const { buildSystemPrompt } = require('ai/prompt');
 const { extractCodeBlocks, executeBlock, collectEditStats } = require('ai/executor');
+const help = require('help');
+const metadata = require('/usr/share/help/jsh/ai_kpi');
 
 (() => {
-    const options = {
-        scenarios: {
-            type: 'string',
-            short: 's',
-            description: 'Scenario file path (JSONL or plain text lines)',
-        },
-        out: {
-            type: 'string',
-            short: 'o',
-            description: 'Output report path (default: ai-kpi-report.json)',
-            default: 'ai-kpi-report.json',
-        },
-        outNdjson: {
-            type: 'string',
-            description: 'Optional NDJSON output path for per-scenario entries',
-        },
-        outCsv: {
-            type: 'string',
-            description: 'Optional CSV output path for per-scenario entries',
-        },
-        provider: {
-            type: 'string',
-            short: 'p',
-            description: 'LLM provider override',
-        },
-        model: {
-            type: 'string',
-            short: 'm',
-            description: 'LLM model override',
-        },
-        timeout: {
-            type: 'string',
-            description: 'Execution timeout in ms (default: 30000)',
-        },
-        maxRows: {
-            type: 'string',
-            description: 'Max query rows (default: 1000)',
-        },
-        maxOutputBytes: {
-            type: 'string',
-            description: 'Max execution output bytes (default: 65536)',
-        },
-        noExec: {
-            type: 'boolean',
-            description: 'Disable runnable block execution',
-            default: false,
-        },
-        dryRun: {
-            type: 'boolean',
-            description: 'Do not call provider; only parse and report scenario metadata',
-            default: false,
-        },
-        help: {
-            type: 'boolean',
-            short: 'h',
-            description: 'Show this help message',
-            default: false,
-        },
-    };
-
     let values = {};
     let positionals = [];
     let parseError = null;
     try {
-        const parsed = parseArgs(process.argv.slice(2), { options, allowPositionals: true });
+        const parsed = parseArgs(process.argv.slice(2), metadata);
         values = parsed.values;
         positionals = parsed.positionals || [];
     } catch (err) {
@@ -84,15 +26,7 @@ const { extractCodeBlocks, executeBlock, collectEditStats } = require('ai/execut
         if (parseError) {
             console.println('Error:', parseError.message);
         }
-        console.println(parseArgs.formatHelp({
-            usage: 'Usage: ai_kpi [options]',
-            description: 'Run scenario batches and emit KPI report for AI harness evaluation.',
-            options: options,
-        }));
-        console.println('');
-        console.println('Scenario file format:');
-        console.println('  - JSON line: {"id":"s1","prompt":"..."}');
-        console.println('  - Plain line: prompt text');
+        console.println(help.format(metadata));
         process.exit(parseError ? 1 : 0);
     }
 

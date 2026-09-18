@@ -4,28 +4,14 @@ const fs = require('fs');
 const process = require('process');
 const parseArgs = require('util/parseArgs');
 const { splitCmdLine, splitBatchLines } = require('/usr/lib/cmdline')
-const contextCommands = require('/usr/lib/context_cmds');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    stopOnError: { type: 'boolean', short: 'e', description: 'Stop executing if any statement returns a non-zero exit code', default: false },
-    verbose: { type: 'boolean', short: 'v', description: 'Enable verbose output', default: false },
-}
-
-const positionals = [
-    { name: 'filename', type: 'string', description: 'script file path to run' }
-];
+const help = require('help');
+const metadata = require('/usr/share/help/neo-shell/run');
 
 let showHelp = true;
 let config = {};
 let filename = '';
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-        allowPositionals: true,
-        allowNegative: true,
-        positionals: positionals
-    });
+    const parsed = parseArgs(process.argv.slice(2), metadata);
     config = parsed.values;
     filename = parsed.namedPositionals.filename;
     showHelp = config.help
@@ -35,14 +21,11 @@ catch (err) {
 }
 
 if (showHelp || (!filename) || filename.length === 0) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: run [options] <filename>',
-        options,
-        positionals: positionals
-    }));
+    console.println(help.format(metadata));
     process.exit(showHelp ? 0 : 1);
 }
 
+const contextCommands = require('/usr/lib/context_cmds');
 
 if (!filename.startsWith("/") && !filename.startsWith("@")) {
     filename = process.cwd() + "/" + filename;
@@ -85,6 +68,15 @@ function runSqlStatements(statements, stopOnError = false) {
                 continue;
             }
             let exitCode = 0;
+            const helpExitCode = help.tryHandle(fields, ['neo-shell', 'jsh']);
+            if (helpExitCode !== null) {
+                exitCode = helpExitCode;
+                console.println();
+                if (exitCode !== 0 && stopOnError) {
+                    process.exit(exitCode);
+                }
+                continue;
+            }
             // Context commands (connect/use) mutate the current process's session
             // in-place so subsequent statements pick up the new context; everything
             // else is delegated to a child process as before.

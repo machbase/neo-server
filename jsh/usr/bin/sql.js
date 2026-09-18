@@ -4,29 +4,17 @@ const process = require('process');
 const pretty = require('pretty');
 const parseArgs = require('util/parseArgs');
 const { newMachCliClient } = require('/usr/lib/opts');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    output: { type: 'string', short: 'o', description: "output file (default:'-' stdout)", default: '-' },
-    compress: { type: 'string', description: "compression type (none, gzip)", default: 'none' },
-    timing: { type: 'boolean', short: 'T', description: "print elapsed time", default: false },
-    showTz: { type: 'boolean', short: 'Z', description: "show time zone in datetime column header", default: false },
-    progress: { type: 'integer', description: "the expected maximum progress value (0: unknown, -1: disable)", default: 0 },
-    ...pretty.TableArgOptions,
-}
-const positionals = [
-    { name: 'sql', type: 'string', variadic: true, description: 'SQL query to execute' }
-];
+const help = require('/usr/share/help/neo-shell/sql');
 
 let showHelp = true;
 let config = {};
 let args = {};
 try {
     const parsed = parseArgs(process.argv.slice(2), {
-        options,
+        options: help.options,
         allowPositionals: true,
         allowNegative: true,
-        positionals: positionals
+        positionals: help.positionals
     });
     config = parsed.values;
     args = parsed.namedPositionals;
@@ -37,11 +25,7 @@ catch (err) {
 }
 
 if (showHelp || (!args.sql) || args.sql.length === 0) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: sql [options] <sql>',
-        options,
-        positionals: positionals
-    }));
+    console.println(parseArgs.formatHelp(help));
     process.exit(showHelp ? 0 : 1);
 }
 

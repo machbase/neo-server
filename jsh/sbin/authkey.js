@@ -6,18 +6,13 @@
     const path = require('path');
     const parseArgs = require('util/parseArgs');
     const crypto = require('crypto');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/authkey');
 
     const argv = process.argv.slice(2);
-    const rootConfig = {
-        usage: 'Usage: authkey <command> [options]',
-        description: 'Generate auth key files for Machbase challenge authentication.',
-    };
 
     if (argv.length === 0 || argv[0] === '-h' || argv[0] === '--help') {
-        console.println(`${rootConfig.usage}\n\n${rootConfig.description}`);
-        console.println('');
-        console.println('Commands:');
-        console.println('  gen      Generate key files (<output> and <output>.pub)');
+        console.println(help.format(metadata));
         process.exit(0);
     }
 
@@ -30,22 +25,12 @@
         process.exit(1);
     }
 
-    const genConfig = {
-        usage: 'Usage: authkey gen -t [rsa|ecdsa] -o OUTPUT_PATH',
-        description: 'Generate auth private/public key files.',
-        options: {
-            type: { type: 'string', short: 't', description: 'key type: rsa or ecdsa', default: 'ecdsa' },
-            output: { type: 'string', short: 'o', description: 'output base path (prefix with @ for host OS path)' },
-            help: { type: 'boolean', short: 'h', description: 'Show help', default: false },
-        },
-        allowPositionals: false,
-        strict: false,
-    };
+    const genConfig = metadata.commands.gen;
 
     const { values } = parseArgs(subArgs, genConfig);
 
     if (values.help) {
-        console.println(parseArgs.formatHelp(genConfig));
+        console.println(help.format(genConfig));
         process.exit(0);
     }
 

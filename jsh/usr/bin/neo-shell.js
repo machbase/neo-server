@@ -4,6 +4,7 @@ const { ReadLine } = require('readline');
 const process = require('process');
 const { splitCmdLine } = require('/usr/lib/cmdline');
 const contextCommands = require('/usr/lib/context_cmds');
+const help = require('help');
 const { getCurrentDatabase } = require('@jsh/session');
 const env = process.env;
 
@@ -50,7 +51,7 @@ actor.prompt = (lineno) => {
 
 actor.submitOnEnterWhen = (lines, idx) => {
     let maybe = lines.join('').trim().toLowerCase();
-    if (maybe === 'exit' || maybe === 'quit' || maybe === 'help') {
+    if (maybe === 'exit' || maybe === 'quit' || maybe === 'help' || maybe.startsWith('help ')) {
         return true;
     }
     if (lines.length == 1 && (maybe == "" || maybe.startsWith('\\'))) {
@@ -92,10 +93,17 @@ actor.process = (line) => {
             // Execute js command (backslash prefix without semicolon)
             const command = firstField.substring(1);
             const args = fields.slice(1);
+            if (help.tryHandle([command, ...args], ['neo-shell', 'jsh']) !== null) {
+                return;
+            }
             if (contextCommands.tryHandle([command, ...args], env) !== null) {
                 return;
             }
             process.exec(command.toLowerCase(), ...args);
+            return;
+        }
+
+        if (help.tryHandle(fields, ['neo-shell', 'jsh']) !== null) {
             return;
         }
 

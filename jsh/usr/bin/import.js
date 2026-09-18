@@ -7,34 +7,13 @@ const parser = require('parser');
 const zlib = require('zlib');
 const parseArgs = require('util/parseArgs');
 const { newMachCliClient } = require('/usr/lib/opts');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    input: { type: 'string', short: 'i', description: "input file (default:'-' stdin)", default: '-' },
-    compress: { type: 'string', description: "compression type (none, gzip)", default: 'none' },
-    format: { type: 'string', short: 'f', description: "input format (csv, tsv, ndjson)", default: 'csv' },
-    timeformat: { type: 'string', short: 't', description: "time format [ns|us|ms|s|<timeformat>]", default: 'ns' },
-    tz: { type: 'string', description: "time zone for handling datetime (default: time zone)", default: 'local' },
-    header: { type: 'string', description: "header option [skip|columns|none]", default: 'none' },
-    nullValue: { type: 'string', description: "string to represent null values", default: 'NULL' },
-    dryRun: { type: 'boolean', description: "run in dry mode", default: false },
-    verbose: { type: 'boolean', description: "verbose mode, it works only with --dry-run", default: false },
-}
-
-const positionals = [
-    { name: 'table', type: 'string', description: 'table name to read' }
-];
+const help = require('/usr/share/help/neo-shell/import');
 
 let showHelp = true;
 let config = {};
 let tableName = '';
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-        allowPositionals: true,
-        allowNegative: true,
-        positionals: positionals
-    });
+    const parsed = parseArgs(process.argv.slice(2), help);
     config = parsed.values;
     tableName = parsed.namedPositionals.table;
     showHelp = config.help
@@ -44,11 +23,7 @@ catch (err) {
 }
 
 if (showHelp || (!tableName) || tableName.length === 0) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: import [options] <table>',
-        options,
-        positionals: positionals
-    }));
+    console.println(parseArgs.formatHelp(help));
     process.exit(showHelp ? 0 : 1);
 }
 

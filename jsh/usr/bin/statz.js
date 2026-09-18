@@ -3,63 +3,18 @@
 const process = require('process');
 const pretty = require('pretty');
 const viz = require('vizspec');
-const parseArgs = require('util/parseArgs');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/statz');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false };
+const commandFunctions = { list: statzKeys, get: statzGet, viz: statzViz };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const defaultConfig = {
-    usage: 'Usage: statz <command> [options]',
-    options: {
-        help: optionHelp,
-    }
-};
-
-const listConfig = {
-    func: statzKeys,
-    command: 'list',
-    usage: 'statz list <name>',
-    description: 'List available statz metrics matching the given pattern',
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'names', variadic: true, optional: true, description: 'The names of the statz metrics to list' }
-    ],
-};
-
-const getConfig = {
-    func: statzGet,
-    command: 'get',
-    usage: 'statz get [name]',
-    description: 'Get the specified statz metrics',
-    options: {
-        help: optionHelp,
-        nrow: { type: 'integer', short: 'n', description: "number of rows to retrieve", default: 1 },
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'names', variadic: true, description: 'The names of the statz metrics to retrieve' }
-    ],
-};
-
-const vizConfig = {
-    func: statzViz,
-    command: 'viz',
-    usage: 'statz viz [name]',
-    description: 'Get the specified statz metrics and render them as a visualization',
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    },
-    positionals: [
-        { name: 'names', variadic: true, description: 'The names of the statz metrics to retrieve' }
-    ],
-};
-
-parseAndRun(process.argv.slice(2), defaultConfig, [listConfig, getConfig, vizConfig]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function statzKeys(config, args) {
     const client = new neoapi.Client(config);

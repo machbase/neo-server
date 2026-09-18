@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -47,6 +48,17 @@ func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {
 	if pipe.Command == "exit" || pipe.Command == "quit" {
 		return 0, false
 	}
+	if pipe.Command == "help" {
+		if len(pipe.Assignments) > 0 {
+			sh.printShellError("temporary environment for internal commands is not supported")
+			return 1, true
+		}
+		if pipe.Stdin != nil || pipe.Stdout != nil || pipe.Stderr != nil {
+			log.Printf("redirection is not implemented for internal command: %s\n", pipe.Command)
+			return 1, true
+		}
+		return sh.runHelp(pipe.Args), true
+	}
 
 	// Reject assignment-only statements (no command)
 	if pipe.Command == "" && len(pipe.Assignments) > 0 {
@@ -72,6 +84,20 @@ func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {
 	}
 
 	return sh.runExternalPipelineStage(pipe), true
+}
+
+func (sh *Shell) runHelp(args []string) int {
+	fields, err := json.Marshal(append([]string{"help"}, args...))
+	if err != nil {
+		sh.printShellError("help: %s", err.Error())
+		return 1
+	}
+	result, err := sh.rt.RunString(fmt.Sprintf(`require("help").tryHandle(%s, ["jsh"])`, fields))
+	if err != nil {
+		sh.printShellError("help: %s", err.Error())
+		return 1
+	}
+	return int(result.ToInteger())
 }
 
 func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {

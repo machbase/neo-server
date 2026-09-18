@@ -6,85 +6,13 @@
     const pretty = require('pretty');
     const parseArgs = require('util/parseArgs');
     const vizspec = require('vizspec');
-
-    const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
-
-    const defaultConfig = {
-        usage: 'Usage: viz <command> [options]',
-        options: {
-            help: optionHelp,
-        },
-    };
-
-    const viewConfig = {
-        command: 'view',
-        usage: 'viz view [options] [filename]',
-        description: 'Render a VIZSPEC file or stdin as TUI blocks',
-        options: {
-            help: optionHelp,
-            compact: { type: 'boolean', description: 'Hide series summary and raw data tables', default: false },
-            rows: { type: 'integer', description: 'Limit detail rows per block', default: 8 },
-            verboseMeta: { type: 'boolean', description: 'Show block metadata', default: false },
-            width: { type: 'integer', description: 'Width for sparkline, bars, and timelines', default: 40 },
-            ...pretty.TableArgOptions,
-        },
-        positionals: [
-            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
-        ],
-    };
-
-    const linesConfig = {
-        command: 'lines',
-        usage: 'viz lines [options] [filename]',
-        description: 'Render a VIZSPEC file or stdin as TUI chart lines',
-        options: {
-            help: optionHelp,
-            height: { type: 'integer', description: 'Chart height for sparkline-style lines', default: 3 },
-            width: { type: 'integer', description: 'Width for sparkline and band lines', default: 40 },
-            series: { type: 'string', description: 'Series id to render. Defaults to the first compatible series.', default: '' },
-            timeformat: { type: 'string', short: 't', description: 'Output time format [rfc3339|ns|us|ms|s]', default: 'rfc3339' },
-            tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
-        },
-        positionals: [
-            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
-        ],
-    };
-
-    const validateConfig = {
-        command: 'validate',
-        usage: 'viz validate [filename]',
-        description: 'Validate a VIZSPEC file or stdin',
-        options: {
-            help: optionHelp,
-        },
-        positionals: [
-            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
-        ],
-    };
-
-    const exportConfig = {
-        command: 'export',
-        usage: 'viz export [options] [filename]',
-        description: 'Export a VIZSPEC file or stdin to SVG or PNG',
-        options: {
-            help: optionHelp,
-            format: { type: 'string', description: 'Export format', default: 'svg' },
-            output: { type: 'string', short: 'o', description: 'Output file path', default: '' },
-            width: { type: 'integer', description: 'Export width in pixels', default: 0 },
-            height: { type: 'integer', description: 'Export height in pixels', default: 0 },
-            padding: { type: 'integer', description: 'Export padding in pixels', default: 0 },
-            title: { type: 'string', description: 'Optional export title', default: '' },
-            background: { type: 'string', description: 'Export background color', default: '' },
-            fontFamily: { type: 'string', description: 'SVG font family', default: '' },
-            fontSize: { type: 'integer', description: 'Export base font size', default: 0 },
-            hideLegend: { type: 'boolean', description: 'Suppress legend rendering', default: false },
-            timeformat: { type: 'string', short: 't', description: 'Output time format [rfc3339|ns|us|ms|s]', default: 'rfc3339' },
-            tz: { type: 'string', description: 'Output timezone for rendered time values', default: '' },
-        },
-        positionals: [
-            { name: 'filename', description: 'VIZSPEC JSON file path', optional: true },
-        ],
-    };
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/viz');
+    const defaultConfig = metadata;
+    const viewConfig = { ...metadata.commands.view, command: 'view' };
+    const linesConfig = { ...metadata.commands.lines, command: 'lines' };
+    const validateConfig = { ...metadata.commands.validate, command: 'validate' };
+    const exportConfig = { ...metadata.commands.export, command: 'export' };
 
     let parsed;
     try {
@@ -130,23 +58,7 @@
     process.exit(1);
 
     function printHelp(command) {
-        if (command === 'view') {
-            console.println(parseArgs.formatHelp(viewConfig));
-            return;
-        }
-        if (command === 'validate') {
-            console.println(parseArgs.formatHelp(validateConfig));
-            return;
-        }
-        if (command === 'lines') {
-            console.println(parseArgs.formatHelp(linesConfig));
-            return;
-        }
-        if (command === 'export') {
-            console.println(parseArgs.formatHelp(exportConfig));
-            return;
-        }
-        console.println(parseArgs.formatHelp(defaultConfig, viewConfig, linesConfig, validateConfig, exportConfig));
+        console.println(help.format(command ? metadata.commands[command] : metadata));
     }
 
     function doView(config, filename) {

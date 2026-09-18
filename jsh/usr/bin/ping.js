@@ -4,21 +4,13 @@ const process = require('process');
 const pretty = require('pretty');
 const parseArgs = require('util/parseArgs');
 const { newMachCliClient } = require('/usr/lib/opts');
-
-const options = {
-    help: { type: 'boolean', short: 'h', description: 'Show this help message', default: false },
-    repeat: { type: 'integer', short: 'n', description: "Number of times to repeat the ping", default: '1' },
-}
+const help = require('/usr/share/help/neo-shell/ping');
 
 let showHelp = true;
 let config = {};
 let args = {};
 try {
-    const parsed = parseArgs(process.argv.slice(2), {
-        options,
-        allowPositionals: true,
-        allowNegative: true,
-    });
+    const parsed = parseArgs(process.argv.slice(2), help);
     config = parsed.values;
     args = parsed.namedPositionals;
     showHelp = config.help
@@ -28,10 +20,7 @@ catch (err) {
 }
 
 if (showHelp) {
-    console.println(parseArgs.formatHelp({
-        usage: 'Usage: ping [options]',
-        options,
-    }));
+    console.println(parseArgs.formatHelp(help));
     process.exit(showHelp ? 0 : 1);
 }
 

@@ -1,0 +1,2 @@
+'use strict';
+module.exports = { name: 'cd', description: 'Change the current directory', usage: 'Usage: cd [directory]', options: {}, positionals: [{ name: 'directory', optional: true, description: 'Target directory' }] };

@@ -2,20 +2,17 @@
     const process = require('process');
     const pretty = require('pretty');
     const parseArgs = require('util/parseArgs');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/ls');
     const pwd = process.env.get("PWD");
     const fs = process.env.filesystem();
     // Parse command line arguments
-    const { values, positionals } = parseArgs(process.argv.slice(2), {
-        options: {
-            long: { type: 'boolean', short: 'l', default: false },
-            all: { type: 'boolean', short: 'a', default: false },
-            time: { type: 'boolean', short: 't', default: false },
-            recursive: { type: 'boolean', short: 'R', default: false }
-        },
-        allowPositionals: true,
-        strict: false,
-        positionals: [{ name: 'paths', variadic: true, optional: true }],
-    });
+    const { values, positionals } = parseArgs(process.argv.slice(2), metadata);
+
+    if (values.help) {
+        console.println(help.format(metadata));
+        process.exit(0);
+    }
 
     // ANSI color codes
     const colors = {

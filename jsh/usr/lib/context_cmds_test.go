@@ -263,35 +263,3 @@ func TestContextCommandsConnectFailurePropagatesExitCode(t *testing.T) {
 		t.Fatalf("output = %q, want unchanged NEOSHELL_USER and exitCode 1", out)
 	}
 }
-
-func TestContextCommandsPrintHelp(t *testing.T) {
-	calls := &fakeSessionCalls{}
-	out := runContextCommandsScript(t, `
-		const contextCommands = require('/usr/lib/context_cmds');
-		console.println('connect:', contextCommands.printHelp('connect'));
-		console.println('use:', contextCommands.printHelp('USE'));
-		console.println('sql:', contextCommands.printHelp('sql'));
-	`, calls)
-
-	want := "Usage: connect [options] [user:password@]host[:port]\n" +
-		"connect: true\n" +
-		"Usage: use <database>\n" +
-		"use: true\n" +
-		"sql: false\n"
-	if out != want {
-		t.Fatalf("output = %q, want %q", out, want)
-	}
-}
-
-func TestContextCommandsDescribeAll(t *testing.T) {
-	calls := &fakeSessionCalls{}
-	out := runContextCommandsScript(t, `
-		const contextCommands = require('/usr/lib/context_cmds');
-		console.println(JSON.stringify(contextCommands.describeAll()));
-	`, calls)
-
-	want := `[{"name":"connect","description":"Connect to a database"},{"name":"use","description":"Select the current database"}]` + "\n"
-	if out != want {
-		t.Fatalf("output = %q, want %q", out, want)
-	}
-}

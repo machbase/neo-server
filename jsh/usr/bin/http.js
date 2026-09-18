@@ -4,33 +4,11 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/http');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
+const commandConfigs = [{ ...help.commands.debug, command: 'debug', func: httpDebug }];
 
-const defaultConfig = {
-    usage: 'Usage: http <command> [options]',
-    options: {
-        help: optionHelp,
-    }
-};
-
-const debugConfig = {
-    func: httpDebug,
-    command: 'debug',
-    usage: 'http debug',
-    description: 'Show or set HTTP debug mode configuration',
-    options: {
-        help: optionHelp,
-        enable: { type: 'string', description: 'Set debug mode (true/false)', default: '' },
-        logLatency: { type: 'string', description: 'Log requests that take longer than the specified duration (e.g., 100ms)', default: '-1' },
-        ...pretty.TableArgOptions,
-    }
-};
-
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    debugConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function httpDebug(config, args) {
     const newConfig = {};

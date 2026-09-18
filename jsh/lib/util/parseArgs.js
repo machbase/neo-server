@@ -478,7 +478,7 @@ function parseArgs(args, ...configs) {
                 if (posIndex < result.positionals.length) {
                     result.namedPositionals[toCamelCase(def.name)] = result.positionals[posIndex];
                     posIndex++;
-                } else if (!def.optional) {
+                } else if (!def.optional && !result.values.help) {
                     throw new TypeError(`Missing required argument: ${def.name}`);
                 } else if ('default' in def) {
                     result.namedPositionals[toCamelCase(def.name)] = def.default;
@@ -490,7 +490,7 @@ function parseArgs(args, ...configs) {
     } else if (positionalDefs) {
         // No positionals provided, apply defaults
         for (const def of positionalDefs) {
-            if (!def.optional) {
+            if (!def.optional && !result.values.help) {
                 throw new TypeError(`Missing required positional argument: ${def.name}`);
             } else if (def.variadic) {
                 result.namedPositionals[toCamelCase(def.name)] = [];

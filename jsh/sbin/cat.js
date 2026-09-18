@@ -2,39 +2,16 @@
     const process = require('process');
     const fs = require('fs');
     const { parseArgs } = require('util');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/cat');
     const pwd = process.env.get("PWD");
 
     // Parse command line arguments
-    const { values, positionals } = parseArgs(process.argv.slice(2), {
-        options: {
-            number: { type: 'boolean', short: 'n', default: false },
-            showEnds: { type: 'boolean', short: 'E', default: false },
-            showTabs: { type: 'boolean', short: 'T', default: false },
-            squeeze: { type: 'boolean', short: 's', default: false },
-            color: { type: 'boolean', short: 'c', default: false },
-            help: { type: 'boolean', short: 'h', default: false }
-        },
-        strict: false,
-        allowPositionals: true
-    });
+    const { values, positionals } = parseArgs(process.argv.slice(2), metadata);
 
     // Show help if requested
     if (values.help) {
-        console.println("Usage: cat [OPTION]... [FILE]...");
-        console.println("Concatenate FILE(s) to standard output.\n");
-        console.println("Options:");
-        console.println("  -n, --number          number all output lines");
-        console.println("  -E, --showEnds        display $ at end of each line");
-        console.println("  -T, --showTabs        display TAB characters as ^I");
-        console.println("  -s, --squeeze         suppress repeated empty output lines");
-        console.println("  -c, --color           enable syntax highlighting");
-        console.println("  -h, --help            display this help and exit\n");
-        console.println("Syntax highlighting (with -c) is supported for:");
-        console.println("  .js, .json, .ndjson, .sql, .csv, .yaml, .yml, .toml\n");
-        console.println("Examples:");
-        console.println("  cat -c file.js        Display file.js with syntax highlighting");
-        console.println("  cat -n data.json      Display data.json with line numbers");
-        console.println("  cat -cs file1.txt     Squeeze blank lines with colors");
+        console.println(help.format(metadata));
         process.exit(0);
     }
 

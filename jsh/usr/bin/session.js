@@ -4,89 +4,22 @@ const process = require('process');
 const pretty = require('pretty');
 const neoapi = require('/usr/lib/neoapi');
 const { parseAndRun, newMachCliClient } = require('/usr/lib/opts');
+const help = require('/usr/share/help/neo-shell/session');
 
-const optionHelp = { type: 'boolean', short: 'h', description: 'Show this help message', default: false }
-
-const defaultConfig = {
-    usage: 'Usage: session <command> [options]',
-    options: {
-        help: optionHelp,
-    }
+const commandFunctions = {
+    list: doList,
+    kill: doKill,
+    stat: doStat,
+    limit: doLimit,
+    'set-limit': doSetLimit,
 };
+const commandConfigs = Object.keys(help.commands).map((name) => ({
+    ...help.commands[name],
+    command: name,
+    func: commandFunctions[name],
+}));
 
-const listConfig = {
-    func: doList,
-    command: 'list',
-    usage: 'session list',
-    description: 'List all sessions',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        all: { type: 'boolean', description: 'Include details' },
-        ...pretty.TableArgOptions,
-    }
-}
-
-const killConfig = {
-    func: doKill,
-    command: 'kill',
-    usage: 'session kill <id>',
-    description: 'Force to close the session by session ID',
-    options: {
-        help: optionHelp,
-        force: { type: 'boolean', description: 'Force kill the session', default: false },
-    },
-    positionals: [
-        { name: 'id', description: 'ID of the session to kill' },
-    ],
-}
-
-const statConfig = {
-    func: doStat,
-    command: 'stat',
-    usage: 'session stat [options]',
-    description: 'Show detailed information about sessions',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        reset: { type: 'boolean', description: 'Reset statistics after showing', default: false },
-        ...pretty.TableArgOptions,
-    }
-}
-
-const limitConfig = {
-    func: doLimit,
-    command: 'limit',
-    usage: 'session limit',
-    description: 'Get session limits',
-    allowNegative: true,
-    options: {
-        help: optionHelp,
-        ...pretty.TableArgOptions,
-    }
-}
-
-const setLimitConfig = {
-    func: doSetLimit,
-    command: 'set-limit',
-    usage: 'session set-limit [options]',
-    description: 'Set session limits',
-    options: {
-        help: optionHelp,
-        maxOpenConn: { type: 'integer', description: 'Maximum number of open connections to the database' },
-        maxIdleConn: { type: 'integer', description: 'Maximum number of idle connections to the database' },
-        connMaxIdletime: { type: 'string', description: 'Maximum idle time for a connection (e.g., "30s", "5m")' },
-        connMaxLifetime: { type: 'string', description: 'Maximum lifetime for a connection (e.g., "1h", "24h")' },
-    }
-}
-
-parseAndRun(process.argv.slice(2), defaultConfig, [
-    listConfig,
-    killConfig,
-    statConfig,
-    limitConfig,
-    setLimitConfig,
-]);
+parseAndRun(process.argv.slice(2), help, commandConfigs);
 
 function doList(config, args) {
     const client = new neoapi.Client(config);

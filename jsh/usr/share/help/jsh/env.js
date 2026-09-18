@@ -1,0 +1,2 @@
+'use strict';
+module.exports = { name: 'env', description: 'Display environment variables', usage: 'Usage: env [name...]', options: {}, positionals: [{ name: 'name', variadic: true, optional: true, description: 'Environment variable names' }] };

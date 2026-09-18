@@ -12,6 +12,8 @@
     const tar = require('archive/tar');
     const zlib = require('zlib');
     const semver = require('semver');
+    const help = require('help');
+    const metadata = require('/usr/share/help/jsh/pkg');
 
     const LOCK_FILE_NAME = 'package-lock.json';
     const GLOBAL_PROJECT_DIR = '/work';
@@ -19,86 +21,12 @@
     const GLOBAL_MANIFEST_FILE = 'manifest.json';
     const GLOBAL_LOCK_FILE = 'lock.json';
     const GLOBAL_PROJECT_POLICY_MESSAGE = `${GLOBAL_PROJECT_DIR} is reserved for pkg --global operations and must not be used as a normal project root. Use a subdirectory for project installs, or use -g.`;
-    const optionHelp = { type: 'boolean', short: 'h', description: 'Show help', default: false };
-    const optionProjectDir = { type: 'string', short: 'C', description: 'Use this project directory instead of the current working directory' };
-    const optionGlobal = { type: 'boolean', short: 'g', description: `Install into the reserved global package directory ${GLOBAL_PROJECT_DIR} and ignore --dir`, default: false };
-    const optionForce = { type: 'boolean', short: 'f', description: 'Proceed even if the destination directory is not empty', default: false };
-
-    const defaultConfig = {
-        usage: 'Usage: pkg <command> [options]',
-        options: {
-            help: optionHelp,
-        },
-    };
-
-    const initConfig = {
-        command: 'init',
-        usage: 'pkg init [options] <name>',
-        description: 'Create a package.json in the selected project directory',
-        options: {
-            help: optionHelp,
-            dir: optionProjectDir,
-        },
-        positionals: [
-            { name: 'name', description: 'Package name for the current project' },
-        ],
-    };
-
-    const installConfig = {
-        command: 'install',
-        usage: 'pkg install [options] [name]',
-        description: 'Install dependencies into the selected project directory and maintain package-lock.json',
-        options: {
-            help: optionHelp,
-            dir: optionProjectDir,
-            global: optionGlobal,
-        },
-        positionals: [
-            { name: 'name', description: 'Optional package name to add or update', optional: true },
-        ],
-    };
-
-    const uninstallConfig = {
-        command: 'uninstall',
-        usage: 'pkg uninstall [options] <name>',
-        description: 'Remove a dependency and its generated package command wrapper from the selected project directory',
-        options: {
-            help: optionHelp,
-            dir: optionProjectDir,
-            global: optionGlobal,
-        },
-        positionals: [
-            { name: 'name', description: 'Package name to remove' },
-        ],
-    };
-
-    const copyConfig = {
-        command: 'copy',
-        usage: 'pkg copy [options] <source> <dest>',
-        description: 'Copy a GitHub package source into the selected destination and install project dependencies in place',
-        options: {
-            help: optionHelp,
-            force: optionForce,
-        },
-        positionals: [
-            { name: 'source', description: 'GitHub repository package source to copy' },
-            { name: 'dest', description: 'Destination directory path resolved from the current working directory' },
-        ],
-    };
-
-    const runConfig = {
-        command: 'run',
-        usage: 'pkg run [options] <key> [...args]',
-        description: 'Run a package.json script from the selected project directory',
-        options: {
-            help: optionHelp,
-            dir: optionProjectDir,
-        },
-        positionals: [
-            { name: 'key', description: 'Script name in package.json' },
-            { name: 'args', description: 'Additional arguments to append to the script', optional: true, variadic: true },
-        ],
-    };
+    const defaultConfig = metadata;
+    const initConfig = { ...metadata.commands.init, command: 'init' };
+    const installConfig = { ...metadata.commands.install, command: 'install' };
+    const uninstallConfig = { ...metadata.commands.uninstall, command: 'uninstall' };
+    const copyConfig = { ...metadata.commands.copy, command: 'copy' };
+    const runConfig = { ...metadata.commands.run, command: 'run' };
 
     const GITHUB_DEFAULT_BASE_URL = 'https://github.com';
     const GITHUB_DEFAULT_API_URL = 'https://api.github.com';
@@ -153,27 +81,7 @@
     process.exit(1);
 
     function printHelp(command) {
-        if (command === 'init') {
-            console.println(parseArgs.formatHelp(initConfig));
-            return;
-        }
-        if (command === 'install') {
-            console.println(parseArgs.formatHelp(installConfig));
-            return;
-        }
-        if (command === 'uninstall') {
-            console.println(parseArgs.formatHelp(uninstallConfig));
-            return;
-        }
-        if (command === 'copy') {
-            console.println(parseArgs.formatHelp(copyConfig));
-            return;
-        }
-        if (command === 'run') {
-            console.println(parseArgs.formatHelp(runConfig));
-            return;
-        }
-        console.println(parseArgs.formatHelp(defaultConfig, initConfig, installConfig, uninstallConfig, copyConfig, runConfig));
+        console.println(help.format(command ? metadata.commands[command] : metadata));
     }
 
     function doInit(name, initDir) {
