@@ -31,11 +31,13 @@ import (
 func TestHttpQueryUsesJWTCurrentUser(t *testing.T) {
 	username := fmt.Sprintf("query_user_%d", time.Now().UnixNano())
 	password := "query_password"
-	conn, err := spi.Connect(t.Context(), "sys")
-	require.NoError(t, err)
-	_, err = conn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY '%s'", username, password))
-	require.NoError(t, err)
-	conn.Close()
+	func() {
+		conn, err := spi.Connect(t.Context(), "sys")
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY '%s'", username, password))
+		require.NoError(t, err)
+	}()
 	t.Cleanup(func() {
 		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
 		if connectErr != nil {
@@ -95,27 +97,44 @@ func TestHttpWatchQueryExecUserScope(t *testing.T) {
 	username := fmt.Sprintf("watch_scope_user_%d", time.Now().UnixNano())
 	table := username + ".OWN_TBL"
 
-	sysConn, err := spi.Connect(t.Context(), "sys")
-	require.NoError(t, err)
-	_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
-	require.NoError(t, err)
-	sysConn.Close()
+	func() {
+		sysConn, err := spi.Connect(t.Context(), "sys")
+		require.NoError(t, err)
+		defer sysConn.Close()
+		_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+		require.NoError(t, err)
+	}()
 	t.Cleanup(func() {
 		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
 		if connectErr != nil {
+			t.Errorf("connect for user cleanup: %v", connectErr)
 			return
 		}
 		defer cleanupConn.Close()
-		_, _ = cleanupConn.ExecContext(context.Background(), "DROP TABLE "+table)
-		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+		if _, dropErr := cleanupConn.ExecContext(context.Background(), "DROP USER "+username); dropErr != nil {
+			t.Errorf("drop user %s: %v", username, dropErr)
+		}
 	})
 
-	ownConn, err := spi.Connect(t.Context(), username)
-	require.NoError(t, err)
-	_, err = ownConn.ExecContext(t.Context(),
-		"CREATE TAG TABLE OWN_TBL (NAME VARCHAR(40) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE SUMMARIZED)")
-	require.NoError(t, err)
-	ownConn.Close()
+	func() {
+		ownConn, err := spi.Connect(t.Context(), username)
+		require.NoError(t, err)
+		defer ownConn.Close()
+		_, err = ownConn.ExecContext(t.Context(),
+			"CREATE TAG TABLE OWN_TBL (NAME VARCHAR(40) PRIMARY KEY, TIME DATETIME BASETIME, VALUE DOUBLE SUMMARIZED)")
+		require.NoError(t, err)
+	}()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			t.Errorf("connect for table cleanup: %v", connectErr)
+			return
+		}
+		defer cleanupConn.Close()
+		if _, dropErr := cleanupConn.ExecContext(context.Background(), "DROP TABLE "+table); dropErr != nil {
+			t.Errorf("drop table %s: %v", table, dropErr)
+		}
+	})
 
 	generated, err := server.generateApiToken(contextWithModelUser(context.Background(), username), "watch-scope-test", 0)
 	require.NoError(t, err)
@@ -167,28 +186,46 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 
 	username := fmt.Sprintf("token_query_user_%d", time.Now().UnixNano())
 	ownTable := username + "_own_table"
-	sysConn, err := spi.Connect(t.Context(), "sys")
-	require.NoError(t, err)
-	_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
-	require.NoError(t, err)
-	sysConn.Close()
+	func() {
+		sysConn, err := spi.Connect(t.Context(), "sys")
+		require.NoError(t, err)
+		defer sysConn.Close()
+		_, err = sysConn.ExecContext(t.Context(), fmt.Sprintf("CREATE USER %s IDENTIFIED BY 'password'", username))
+		require.NoError(t, err)
+	}()
 	t.Cleanup(func() {
 		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
 		if connectErr != nil {
+			t.Errorf("connect for user cleanup: %v", connectErr)
 			return
 		}
 		defer cleanupConn.Close()
-		_, _ = cleanupConn.ExecContext(context.Background(), "DROP TABLE "+ownTable)
-		_, _ = cleanupConn.ExecContext(context.Background(), "DROP USER "+username)
+		if _, dropErr := cleanupConn.ExecContext(context.Background(), "DROP USER "+username); dropErr != nil {
+			t.Errorf("drop user %s: %v", username, dropErr)
+		}
 	})
 
-	ownConn, err := spi.Connect(t.Context(), username)
-	require.NoError(t, err)
-	_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf("CREATE TAG TABLE %s (name varchar(100) primary key, time datetime basetime, value double)", ownTable))
-	require.NoError(t, err)
-	_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s VALUES ('temp', now, 1.0)", ownTable))
-	require.NoError(t, err)
-	ownConn.Close()
+	func() {
+		ownConn, err := spi.Connect(t.Context(), username)
+		require.NoError(t, err)
+		defer ownConn.Close()
+		_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf("CREATE TAG TABLE %s (name varchar(100) primary key, time datetime basetime, value double)", ownTable))
+		require.NoError(t, err)
+		_, err = ownConn.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s VALUES ('temp', now, 1.0)", ownTable))
+		require.NoError(t, err)
+	}()
+	t.Cleanup(func() {
+		cleanupConn, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr != nil {
+			t.Errorf("connect for table cleanup: %v", connectErr)
+			return
+		}
+		defer cleanupConn.Close()
+		qualifiedTable := username + "." + ownTable
+		if _, dropErr := cleanupConn.ExecContext(context.Background(), "DROP TABLE "+qualifiedTable); dropErr != nil {
+			t.Errorf("drop table %s: %v", qualifiedTable, dropErr)
+		}
+	})
 
 	generated, err := server.generateApiToken(contextWithModelUser(context.Background(), username), "e2e-test", 0)
 	require.NoError(t, err)

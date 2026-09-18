@@ -166,6 +166,85 @@ func TestHelpModule(t *testing.T) {
 				"missing: ",
 			},
 		},
+		{
+			Name: "all help metadata files load and satisfy their contract",
+			Script: `
+				const fs = require('fs');
+				const help = require('help');
+
+				function validateMetadata(namespace, name, metadata) {
+					if (metadata.name !== name) {
+						throw new Error(namespace + ':' + name + ' has mismatched name');
+					}
+					if (typeof metadata.description !== 'string' || metadata.description.length === 0) {
+						throw new Error(namespace + ':' + name + ' is missing description');
+					}
+					if (metadata.kind === 'topic') {
+						if (typeof metadata.content !== 'string' || metadata.content.length === 0) {
+							throw new Error(namespace + ':' + name + ' is missing topic content');
+						}
+						return;
+					}
+					if (typeof metadata.usage !== 'string' || metadata.usage.length === 0) {
+						throw new Error(namespace + ':' + name + ' is missing usage');
+					}
+					if (!metadata.options || typeof metadata.options !== 'object') {
+						throw new Error(namespace + ':' + name + ' is missing options');
+					}
+					for (const [childName, child] of Object.entries(metadata.commands || {})) {
+						validateMetadata(namespace, name + ' ' + childName, { ...child, name: name + ' ' + childName });
+					}
+				}
+
+				for (const namespace of ['jsh', 'neo-shell']) {
+					const listed = new Set(help.list([namespace]).map((entry) => entry.name));
+					for (const filename of fs.readdirSync('/usr/share/help/' + namespace)) {
+						if (!filename.endsWith('.js')) continue;
+						const name = filename.slice(0, -3);
+						const metadata = require('/usr/share/help/' + namespace + '/' + name);
+						validateMetadata(namespace, name, metadata);
+						if (!listed.has(name)) {
+							throw new Error(namespace + ':' + name + ' was not returned by help.list');
+						}
+						if (help.format(metadata).length === 0) {
+							throw new Error(namespace + ':' + name + ' produced empty help');
+						}
+					}
+				}
+				console.println('validated help metadata');
+			`,
+			Output: []string{
+				"validated help metadata",
+			},
+		},
+		{
+			Name: "help namespace selection remains compatible",
+			Script: `
+				const help = require('help');
+				const jsh = help.list(['jsh']).map((entry) => entry.name);
+				const neoShell = help.list(['neo-shell']).map((entry) => entry.name);
+				const combined = help.list(['neo-shell', 'jsh']).map((entry) => entry.name);
+				if (!jsh.includes('help') || jsh.includes('connect')) {
+					throw new Error('plain jsh namespace has unexpected commands');
+				}
+				if (!neoShell.includes('connect') || !neoShell.includes('use')) {
+					throw new Error('neo-shell namespace is missing context commands');
+				}
+				if (!combined.includes('connect') || !combined.includes('help')) {
+					throw new Error('combined namespace is incomplete');
+				}
+				if (help.find(['jsh'], ['connect']) !== null) {
+					throw new Error('plain jsh unexpectedly exposes connect help');
+				}
+				if (help.find(['neo-shell'], ['connect']) === null) {
+					throw new Error('neo-shell does not expose connect help');
+				}
+				console.println('validated help namespaces');
+			`,
+			Output: []string{
+				"validated help namespaces",
+			},
+		},
 	}
 	for _, test := range tests {
 		test_engine.RunTest(t, test)
