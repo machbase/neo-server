@@ -18,6 +18,8 @@ import (
 	"github.com/paulmach/orb/geojson"
 )
 
+const defaultLayerLimit = 1000000
+
 type GeoMap struct {
 	internal.RowsEncoderBase
 	output io.Writer
@@ -49,6 +51,7 @@ type GeoMap struct {
 	crs    string
 	layers []*Layer
 	icons  []*Icon
+	limit  int
 }
 
 func New() *GeoMap {
@@ -128,6 +131,12 @@ func (gm *GeoMap) SetTileGrayscale(grayscale float64) {
 	gm.tileGrayscale = grayscale
 }
 
+func (gm *GeoMap) SetMaxRows(maxRows int) {
+	if maxRows > 0 {
+		gm.limit = maxRows
+	}
+}
+
 func (gm *GeoMap) TileGrayscale() int {
 	scale := gm.tileGrayscale
 	if scale < 0 {
@@ -183,6 +192,9 @@ func (gm *GeoMap) AddRow(values []any) error {
 			if err != nil {
 				return err
 			}
+			if err := gm.checkLayerLimit(1); err != nil {
+				return err
+			}
 			gm.layers = append(gm.layers, layer)
 		} else if fc, ok := val.(*geojson.FeatureCollection); ok {
 			for _, feat := range fc.Features {
@@ -190,6 +202,9 @@ func (gm *GeoMap) AddRow(values []any) error {
 				b := feat.Geometry.Bound()
 				gm.extendBound(b.Min.Lat(), b.Min.Lon())
 				gm.extendBound(b.Max.Lat(), b.Max.Lon())
+				if err := gm.checkLayerLimit(1); err != nil {
+					return err
+				}
 				gm.layers = append(gm.layers, layer)
 			}
 		} else if feat, ok := val.(*geojson.Feature); ok {
@@ -197,16 +212,33 @@ func (gm *GeoMap) AddRow(values []any) error {
 			b := feat.Geometry.Bound()
 			gm.extendBound(b.Min.Lat(), b.Min.Lon())
 			gm.extendBound(b.Max.Lat(), b.Max.Lon())
+			if err := gm.checkLayerLimit(1); err != nil {
+				return err
+			}
 			gm.layers = append(gm.layers, layer)
 		} else if geom, ok := val.(geojson.Geometry); ok {
 			layer := &Layer{Type: "geoJSON", Coordinates: geom}
 			b := geom.Geometry().Bound()
 			gm.extendBound(b.Min.Lat(), b.Min.Lon())
 			gm.extendBound(b.Max.Lat(), b.Max.Lon())
+			if err := gm.checkLayerLimit(1); err != nil {
+				return err
+			}
 			gm.layers = append(gm.layers, layer)
 		} else {
 			gm.logger.LogWarnf("GEOMAP unsupported value type: %T", val)
 		}
+	}
+	return nil
+}
+
+func (gm *GeoMap) checkLayerLimit(next int) error {
+	limit := gm.limit
+	if limit <= 0 {
+		limit = defaultLayerLimit
+	}
+	if len(gm.layers)+next > limit {
+		return fmt.Errorf("GEOMAP layers exceeded: count=%d limit=%d", len(gm.layers)+next, limit)
 	}
 	return nil
 }

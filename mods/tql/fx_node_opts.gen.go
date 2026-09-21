@@ -45,6 +45,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "markAreaNameCoord", Func: opts.MarkAreaNameCoord},
 	{Name: "markLineXAxisCoord", Func: opts.MarkLineXAxisCoord},
 	{Name: "markLineYAxisCoord", Func: opts.MarkLineYAxisCoord},
+	{Name: "maxRows", Func: opts.MaxRows},
 	{Name: "opacity", Func: opts.Opacity},
 	{Name: "outputStream", Func: opts.OutputStream},
 	{Name: "plugins", Func: opts.Plugins},

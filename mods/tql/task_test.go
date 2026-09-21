@@ -2430,6 +2430,100 @@ func TestSHELL(t *testing.T) {
 	}.run(t)
 }
 
+func TestShellLineRange(t *testing.T) {
+	tql.ShellExecutable = func(addr, path string) ([]string, error) {
+		return []string{"/bin/bash", path}, nil
+	}
+	for _, tc := range []TqlTestCase{
+		{
+			Name: "SHELL_tail_range",
+			Script: `
+				FAKE( once(1) )
+				SHELL("seq", "1", "5", lineRange(-2))
+				CSV()`,
+			ExpectCSV: []string{"4", "5", "", ""},
+		},
+		{
+			Name: "SHELL_forward_range",
+			Script: `
+				FAKE( once(1) )
+				SHELL("seq", "1", "5", lineRange(1, 2))
+				CSV()`,
+			ExpectCSV: []string{"2", "3", "", ""},
+		},
+	} {
+		tc.RunCondition = func() bool { return runtime.GOOS != "windows" }
+		t.Run(tc.Name, func(t *testing.T) {
+			tc.run(t)
+		})
+	}
+}
+
+func TestBufferLimitErrors(t *testing.T) {
+	for _, tc := range []TqlTestCase{
+		{
+			Name: "GROUPBYKEY_limit",
+			Script: `
+				FAKE( linspace(0, 2, 3) )
+				MAPKEY('k')
+				GROUPBYKEY(maxRows(2))
+				CSV()`,
+			ExpectErr: "GROUPBYKEY buffered records exceeded: count=3 limit=2",
+		},
+		{
+			Name: "GROUP_limit",
+			Script: `
+				FAKE( linspace(0, 2, 3) )
+				PUSHKEY('k')
+				GROUP(by(value(0)), list(value(1)), maxRows(2))
+				CSV()`,
+			ExpectErr: "GROUP buffered records exceeded: count=3 limit=2",
+		},
+		{
+			Name: "FFT_limit",
+			Script: `
+				FAKE( oscillator(freq(1, 1), range('now', '20s', '1s')) )
+				MAPKEY('fft')
+				GROUPBYKEY()
+				FFT(maxRows(16))
+				CSV()`,
+			ExpectErr: "FFT samples exceeded: count=20 limit=16",
+		},
+		{
+			Name: "JSON_transpose_limit",
+			Script: `
+				FAKE( linspace(0, 2, 3) )
+				JSON(transpose(true), maxRows(2))`,
+			ExpectErr: "JSON transpose rows exceeded: count=3 limit=2",
+		},
+		{
+			Name: "CHART_limit",
+			Script: `
+				FAKE( linspace(0, 2, 3) )
+				CHART(maxRows(2))`,
+			ExpectErr: "CHART points exceeded: count=3 limit=2",
+		},
+		{
+			Name: "GEOMAP_limit",
+			Script: `
+				SCRIPT("js", {
+					for (var i = 0; i < 3; i++) {
+						$.yield({
+							type: "Feature",
+							geometry: { type: "Point", coordinates: [127 + i, 37] }
+						});
+					}
+				})
+				GEOMAP(maxRows(2))`,
+			ExpectErr: "GEOMAP layers exceeded: count=3 limit=2",
+		},
+	} {
+		t.Run(tc.Name, func(t *testing.T) {
+			tc.run(t)
+		})
+	}
+}
+
 func TestCSV(t *testing.T) {
 	TqlTestCase{
 		Name: "CSV_CSV",

@@ -123,9 +123,9 @@ func NewNode(task *Task) *Node {
 		"MAP_DISTANCE":     x.gen_MAP_DISTANCE,
 		"TRANSPOSE":        x.gen_TRANSPOSE,
 		"fixed":            x.gen_fixed,
-		"TIMEWINDOW":       x.gen_TIMEWINDOW,
 		"SCRIPT":           x.gen_SCRIPT,
 		"SHELL":            x.gen_SHELL,
+		"lineRange":        x.gen_lineRange,
 		// arrays and dictionaries
 		"list":      x.gen_list,
 		"dict":      x.gen_dict,
@@ -306,6 +306,7 @@ func NewNode(task *Task) *Node {
 		"markAreaNameCoord":   x.gen_markAreaNameCoord,
 		"markLineXAxisCoord":  x.gen_markLineXAxisCoord,
 		"markLineYAxisCoord":  x.gen_markLineYAxisCoord,
+		"maxRows":             x.gen_maxRows,
 		"opacity":             x.gen_opacity,
 		"outputStream":        x.gen_outputStream,
 		"plugins":             x.gen_plugins,
@@ -1703,37 +1704,6 @@ func (x *Node) gen_fixed(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_TIMEWINDOW
-//
-// syntax: TIMEWINDOW(, , , ...interface {})
-func (x *Node) gen_TIMEWINDOW(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, ErrInvalidNumOfArgs("TIMEWINDOW", 3, len(args))
-	}
-	p0, err := convAny(args, 0, "TIMEWINDOW", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convAny(args, 1, "TIMEWINDOW", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convAny(args, 2, "TIMEWINDOW", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3 := []interface{}{}
-	for n := 3; n < len(args); n++ {
-		argv, err := convAny(args, n, "TIMEWINDOW", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p3 = append(p3, argv)
-	}
-	ret := x.fmTimeWindow(p0, p1, p2, p3...)
-	return ret, nil
-}
-
 // gen_SCRIPT
 //
 // syntax: SCRIPT(...interface {})
@@ -1751,7 +1721,7 @@ func (x *Node) gen_SCRIPT(args ...any) (any, error) {
 
 // gen_SHELL
 //
-// syntax: SHELL(string, ...string)
+// syntax: SHELL(string, ...interface {})
 func (x *Node) gen_SHELL(args ...any) (any, error) {
 	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("SHELL", 1, len(args))
@@ -1760,9 +1730,9 @@ func (x *Node) gen_SHELL(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p1 := []string{}
+	p1 := []interface{}{}
 	for n := 1; n < len(args); n++ {
-		argv, err := convString(args, n, "SHELL", "...string")
+		argv, err := convAny(args, n, "SHELL", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
@@ -1770,6 +1740,21 @@ func (x *Node) gen_SHELL(args ...any) (any, error) {
 	}
 	x.fmShell(p0, p1...)
 	return nil, nil
+}
+
+// gen_lineRange
+//
+// syntax: lineRange(...int)
+func (x *Node) gen_lineRange(args ...any) (any, error) {
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "lineRange", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmLineRange(p0...)
 }
 
 // gen_list
@@ -4693,6 +4678,21 @@ func (x *Node) gen_markLineYAxisCoord(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.MarkLineYAxisCoord(p0, p1)
+	return ret, nil
+}
+
+// gen_maxRows
+//
+// syntax: maxRows(int)
+func (x *Node) gen_maxRows(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("maxRows", 1, len(args))
+	}
+	p0, err := convInt(args, 0, "maxRows", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MaxRows(p0)
 	return ret, nil
 }
 

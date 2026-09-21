@@ -1,17 +1,44 @@
 package tql
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
+
+const defaultShellTailLines = 1000
+
+type lineRangeOption struct {
+	offset int
+	count  int
+}
+
+func (node *Node) fmLineRange(args ...int) (lineRangeOption, error) {
+	if len(args) == 1 {
+		if args[0] >= 0 {
+			return lineRangeOption{}, fmt.Errorf("lineRange with one argument should be negative")
+		}
+		return lineRangeOption{offset: args[0]}, nil
+	}
+	if len(args) == 2 {
+		if args[0] < 0 {
+			return lineRangeOption{}, fmt.Errorf("lineRange offset should not be negative when count is specified")
+		}
+		if args[1] <= 0 {
+			return lineRangeOption{}, fmt.Errorf("lineRange count should be greater than 0")
+		}
+		return lineRangeOption{offset: args[0], count: args[1]}, nil
+	}
+	return lineRangeOption{}, ErrInvalidNumOfArgs("lineRange", 2, len(args))
+}
 
 var _httpServer string
 
@@ -46,11 +73,25 @@ func SetServerKeyPath(path string) {
 	_serverKeyPath = path
 }
 
-func (node *Node) fmShell(cmd0 string, args0 ...string) {
+func (node *Node) fmShell(cmd0 string, args0 ...any) {
 	stripQuote := false
 	subCmdList := []string{}
 	subArgs := [][]string{}
-	if len(args0) == 0 {
+	lineRange := lineRangeOption{offset: -defaultShellTailLines}
+	cmdArgs := []string{}
+	for _, arg := range args0 {
+		switch v := arg.(type) {
+		case string:
+			cmdArgs = append(cmdArgs, v)
+		case lineRangeOption:
+			lineRange = v
+		default:
+			node.emit(ErrorRecord(fmt.Errorf("SHELL invalid argument %T", arg)))
+			return
+		}
+	}
+
+	if len(cmdArgs) == 0 {
 		buff := []string{}
 		for _, line := range strings.Split(cmd0, "\n") {
 			line = strings.TrimSpace(line)
@@ -78,7 +119,7 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		}
 	} else {
 		subCmdList = append(subCmdList, cmd0)
-		subArgs = append(subArgs, args0)
+		subArgs = append(subArgs, cmdArgs)
 	}
 
 	tmpFile, err := os.CreateTemp("", "runner*.sql")
@@ -109,7 +150,6 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		cmd = exec.Command(args[0], args[1:]...)
 		cmd.Env = append(os.Environ(), "NEOSHELL_USER="+node.ensureRuntime().ConsoleUser())
 		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.ensureRuntime().ConsoleOTP())
-		cmd.Stderr = &bytes.Buffer{}
 		if _, ok := node.GetValue("shell"); !ok {
 			cols := []*client.Column{
 				client.MakeColumnRownum(),
@@ -117,20 +157,129 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 			}
 			node.ensureRuntime().SetResultColumns(cols)
 		}
-		if output, err := cmd.Output(); err != nil {
-			if cmd.Stderr != nil {
-				if bs, _ := io.ReadAll(cmd.Stderr.(*bytes.Buffer)); len(bs) > 0 {
-					err = fmt.Errorf("%s", string(bs))
-				}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			node.emit(ErrorRecord(err))
+			return
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			node.emit(ErrorRecord(err))
+			return
+		}
+		if err := cmd.Start(); err != nil {
+			node.emit(ErrorRecord(err))
+			return
+		}
+
+		var wg sync.WaitGroup
+		var output []string
+		var errOutput []string
+		var outputErr error
+		var errOutputErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			output, _, outputErr = shellReadLines(stdout, lineRange)
+		}()
+		go func() {
+			defer wg.Done()
+			errOutput, _, errOutputErr = shellReadLines(stderr, lineRange)
+		}()
+
+		waitErr := cmd.Wait()
+		wg.Wait()
+		if outputErr != nil {
+			node.emit(ErrorRecord(outputErr))
+			return
+		}
+		if errOutputErr != nil {
+			node.emit(ErrorRecord(errOutputErr))
+			return
+		}
+		if waitErr != nil {
+			err := waitErr
+			if len(errOutput) > 0 {
+				err = fmt.Errorf("%s", strings.Join(errOutput, "\n"))
 			}
 			node.ensureRuntime().LogError(err.Error())
 			node.emit(ErrorRecord(err))
 		} else {
 			var rowNum = 1
-			for _, ln := range strings.Split(string(output), "\n") {
+			for _, ln := range output {
 				node.emit(NewRecord(rowNum, ln))
 				rowNum++
 			}
+		}
+	}
+}
+
+func shellReadLines(reader io.Reader, lineRange lineRangeOption) ([]string, int, error) {
+	if lineRange.offset < 0 {
+		return shellTailLines(reader, -lineRange.offset)
+	}
+	return shellRangeLines(reader, lineRange.offset, lineRange.count)
+}
+
+func shellTailLines(reader io.Reader, limit int) ([]string, int, error) {
+	buffered := make([]string, 0, limit)
+	total := 0
+	scanner := bufio.NewReader(reader)
+	lastHadNewLine := false
+	for {
+		line, err := scanner.ReadString('\n')
+		if len(line) > 0 {
+			total++
+			lastHadNewLine = strings.HasSuffix(line, "\n")
+			line = strings.TrimRight(line, "\r\n")
+			if len(buffered) < limit {
+				buffered = append(buffered, line)
+			} else {
+				copy(buffered, buffered[1:])
+				buffered[len(buffered)-1] = line
+			}
+		}
+		if err == io.EOF {
+			if lastHadNewLine && len(buffered) < limit {
+				total++
+				buffered = append(buffered, "")
+			}
+			return buffered, total, nil
+		}
+		if err != nil {
+			return buffered, total, err
+		}
+	}
+}
+
+func shellRangeLines(reader io.Reader, offset, count int) ([]string, int, error) {
+	buffered := make([]string, 0, count)
+	total := 0
+	lineIndex := 0
+	scanner := bufio.NewReader(reader)
+	lastHadNewLine := false
+	for {
+		line, err := scanner.ReadString('\n')
+		if len(line) > 0 {
+			total++
+			lastHadNewLine = strings.HasSuffix(line, "\n")
+			line = strings.TrimRight(line, "\r\n")
+			if lineIndex >= offset && len(buffered) < count {
+				buffered = append(buffered, line)
+			}
+			lineIndex++
+		}
+		if err == io.EOF {
+			if lastHadNewLine {
+				total++
+				if lineIndex >= offset && len(buffered) < count {
+					buffered = append(buffered, "")
+				}
+			}
+			return buffered, total, nil
+		}
+		if err != nil {
+			return buffered, total, err
 		}
 	}
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
+const defaultTransposeRowLimit = 1000000
+
 type Exporter struct {
 	internal.RowsEncoderBase
 	tick time.Time
@@ -36,6 +38,7 @@ type Exporter struct {
 	series      [][]any
 	values      []any
 	buffer      *bytes.Buffer
+	limit       int
 }
 
 func NewEncoder() *Exporter {
@@ -107,6 +110,12 @@ func (ex *Exporter) SetRowsFlatten(flag bool) {
 
 func (ex *Exporter) SetRowsArray(flag bool) {
 	ex.rowsArray = flag
+}
+
+func (ex *Exporter) SetMaxRows(maxRows int) {
+	if maxRows > 0 {
+		ex.limit = maxRows
+	}
 }
 
 func (ex *Exporter) Open() error {
@@ -249,6 +258,13 @@ func (ex *Exporter) AddRow(source []any) error {
 		}
 		ex.output.Write(recJson)
 	} else if ex.transpose {
+		limit := ex.limit
+		if limit <= 0 {
+			limit = defaultTransposeRowLimit
+		}
+		if ex.nrow > limit {
+			return fmt.Errorf("JSON transpose rows exceeded: count=%d limit=%d", ex.nrow, limit)
+		}
 		if ex.series == nil {
 			ex.series = make([][]any, len(ex.values)-1)
 		}

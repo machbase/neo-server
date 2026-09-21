@@ -27,6 +27,30 @@ import (
 	"gonum.org/v1/gonum/stat"
 )
 
+const defaultBufferedLimit = 1000000
+
+type maxRowsOptionReceiver struct {
+	value int
+	set   bool
+}
+
+func (r *maxRowsOptionReceiver) SetMaxRows(maxRows int) {
+	r.value = maxRows
+	r.set = true
+}
+
+func maxRowsOptionValue(funcName string, option opts.Option) (int, bool, error) {
+	receiver := &maxRowsOptionReceiver{}
+	option(receiver)
+	if !receiver.set {
+		return 0, false, nil
+	}
+	if receiver.value <= 0 {
+		return 0, true, fmt.Errorf("%s maxRows should be greater than 0", funcName)
+	}
+	return receiver.value, true, nil
+}
+
 type maxHzOption float64
 
 func (x *Node) fmMaxHz(freq float64) maxHzOption {
@@ -42,6 +66,7 @@ func (node *Node) fmMinHz(freq float64) minHzOption {
 func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 	minHz := math.NaN()
 	maxHz := math.NaN()
+	limit := defaultBufferedLimit
 	// options
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -49,6 +74,12 @@ func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 			minHz = float64(v)
 		case maxHzOption:
 			maxHz = float64(v)
+		case opts.Option:
+			if maxRows, ok, err := maxRowsOptionValue("FFT", v); err != nil {
+				return nil, err
+			} else if ok {
+				limit = maxRows
+			}
 		}
 	}
 
@@ -69,6 +100,9 @@ func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 		// fmt.Errorf("f(FFT) samples should be more than 16")
 		// drop input, instead of raising error
 		return nil, nil
+	}
+	if lenSamples > limit {
+		return nil, fmt.Errorf("FFT samples exceeded: count=%d limit=%d", lenSamples, limit)
 	}
 
 	sampleTimes := make([]time.Time, lenSamples)
@@ -458,6 +492,7 @@ func (node *Node) fmGroup(args ...any) any {
 			buffer:    map[any][]GroupColumn{},
 			filler:    []GroupFiller{},
 			chunkMode: true,
+			limit:     defaultBufferedLimit,
 		}
 		node.SetValue("group", gr)
 		node.SetFinalize(gr.onEOF)
@@ -490,6 +525,12 @@ func (node *Node) fmGroup(args ...any) any {
 			}
 		case *lazyOption:
 			gr.lazy = v.flag
+		case opts.Option:
+			if maxRows, ok, err := maxRowsOptionValue("GROUP", v); err != nil {
+				return ErrorRecord(err)
+			} else if ok {
+				gr.limit = maxRows
+			}
 		default:
 			return ErrorRecord(fmt.Errorf("GROUP() unknown type '%T' in arguments", v))
 		}
@@ -529,9 +570,13 @@ func (node *Node) fmGroup(args ...any) any {
 		}
 	}
 	if gr.chunkMode {
-		gr.pushChunk(node, by)
+		if err := gr.pushChunk(node, by); err != nil {
+			return ErrorRecord(err)
+		}
 	} else {
-		gr.push(node, by, columns)
+		if err := gr.push(node, by, columns); err != nil {
+			return ErrorRecord(err)
+		}
 	}
 	return nil
 }
@@ -542,6 +587,8 @@ type Group struct {
 	filler    []GroupFiller
 	curKey    any
 	chunkMode bool
+	limit     int
+	buffered  int
 
 	byTimeWindow bool
 	twFrom       time.Time
@@ -581,7 +628,7 @@ func (gr *Group) onEOF(node *Node) {
 
 const __group_by_all = "__group_by_all__"
 
-func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
+func (gr *Group) pushChunk(node *Node, by *GroupAggregate) error {
 	var chunk *GroupColumnChunk
 	if by == nil {
 		if cs, ok := gr.buffer[__group_by_all]; ok {
@@ -600,12 +647,20 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 	}
 	inflight := node.Inflight()
 	if inflight == nil {
-		return
+		return nil
 	}
-	chunk.Append(inflight.Value())
+	if err := gr.appendBuffered(node.Name(), chunk, inflight.Value()); err != nil {
+		return err
+	}
 	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
 		if ret, ok := gr.buffer[gr.curKey]; ok {
 			r := ret[0].Result()
+			if chunk, ok := ret[0].(*GroupColumnChunk); ok {
+				gr.buffered -= chunk.lastResultLen
+				if gr.buffered < 0 {
+					gr.buffered = 0
+				}
+			}
 			if v, ok := r.([]any); ok {
 				gr.yield(node, gr.curKey, v, false)
 			} else {
@@ -617,9 +672,10 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 	if by != nil {
 		gr.curKey = by.Value
 	}
+	return nil
 }
 
-func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) {
+func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) error {
 	var buffers []GroupColumn
 	if by == nil {
 		if cs, ok := gr.buffer[__group_by_all]; ok {
@@ -630,7 +686,7 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 					buffers = append(buffers, buff)
 				} else {
 					node.ensureRuntime().LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
-					return
+					return nil
 				}
 			}
 			gr.buffer[__group_by_all] = buffers
@@ -644,7 +700,7 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 					buffers = append(buffers, buff)
 				} else {
 					node.ensureRuntime().LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
-					return
+					return nil
 				}
 			}
 			gr.buffer[by.Value] = buffers
@@ -653,7 +709,9 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 
 	for i, c := range columns {
 		if c.where {
-			buffers[i].Append(c.Value)
+			if err := gr.appendBuffered(node.Name(), buffers[i], c.Value); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -670,6 +728,17 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 	if by != nil {
 		gr.curKey = by.Value
 	}
+	return nil
+}
+
+func (gr *Group) appendBuffered(nodeName string, column GroupColumn, value any) error {
+	if column.Buffered() {
+		gr.buffered++
+		if gr.limit > 0 && gr.buffered > gr.limit {
+			return fmt.Errorf("%s buffered records exceeded: count=%d limit=%d", strings.TrimSuffix(nodeName, "()"), gr.buffered, gr.limit)
+		}
+	}
+	return column.Append(value)
 }
 
 func (gr *Group) yield(node *Node, key any, values []any, isLast bool) {
@@ -1105,6 +1174,7 @@ func (node *Node) fmGroupByKey(args ...any) any {
 		gr = &Group{
 			buffer:    map[any][]GroupColumn{},
 			chunkMode: true,
+			limit:     defaultBufferedLimit,
 		}
 		node.SetValue("group", gr)
 		node.SetFinalize(gr.onEOF)
@@ -1112,6 +1182,12 @@ func (node *Node) fmGroupByKey(args ...any) any {
 			switch v := arg.(type) {
 			case *lazyOption:
 				gr.lazy = v.flag
+			case opts.Option:
+				if maxRows, ok, err := maxRowsOptionValue("GROUPBYKEY", v); err != nil {
+					return ErrorRecord(err)
+				} else if ok {
+					gr.limit = maxRows
+				}
 			}
 		}
 	}
@@ -1122,7 +1198,9 @@ func (node *Node) fmGroupByKey(args ...any) any {
 	key := inflight.Key()
 	agg, _ := node.fmBy(key, "KEY")
 	by := agg.(*GroupAggregate)
-	gr.pushChunk(node, by)
+	if err := gr.pushChunk(node, by); err != nil {
+		return ErrorRecord(err)
+	}
 	return nil
 }
 
@@ -1248,6 +1326,7 @@ func (p *GroupFillerPredict) Predict(x any) any {
 type GroupColumn interface {
 	Append(any) error
 	Result() any
+	Buffered() bool
 }
 
 var (
@@ -1263,12 +1342,14 @@ var (
 
 // chunk
 type GroupColumnChunk struct {
-	name   string
-	values []any
+	name          string
+	values        []any
+	lastResultLen int
 }
 
 func (gc *GroupColumnChunk) Result() any {
 	ret := gc.values
+	gc.lastResultLen = len(ret)
 	gc.values = []any{}
 	return ret
 }
@@ -1277,6 +1358,8 @@ func (gc *GroupColumnChunk) Append(v any) error {
 	gc.values = append(gc.values, v)
 	return nil
 }
+
+func (gc *GroupColumnChunk) Buffered() bool { return true }
 
 // const
 type GroupColumnConst struct {
@@ -1291,6 +1374,8 @@ func (gc *GroupColumnConst) Append(v any) error {
 	return nil
 }
 
+func (gc *GroupColumnConst) Buffered() bool { return false }
+
 // timewindow
 type GroupColumnTimeWindow struct {
 	value any
@@ -1303,6 +1388,8 @@ func (gt *GroupColumnTimeWindow) Result() any {
 func (gt *GroupColumnTimeWindow) Append(v any) error {
 	return nil
 }
+
+func (gt *GroupColumnTimeWindow) Buffered() bool { return false }
 
 // lrs, correlation, covariance
 type GroupColumnRelation struct {
@@ -1356,6 +1443,8 @@ func (cr *GroupColumnRelation) Append(value any) error {
 	}
 }
 
+func (cr *GroupColumnRelation) Buffered() bool { return true }
+
 // "moment"
 type GroupColumnMoment struct {
 	name   string
@@ -1400,6 +1489,8 @@ func (cm *GroupColumnMoment) Append(value any) error {
 	cm.wv = append(cm.wv, nums.WeightedFloat64ValueWeight(v, w))
 	return nil
 }
+
+func (cm *GroupColumnMoment) Buffered() bool { return true }
 
 // "mean", "variance", "cdf", "quantile", "stddev", "stderr", "entropy", "mode"
 type GroupColumnContainer struct {
@@ -1495,6 +1586,8 @@ func (gc *GroupColumnContainer) Append(value any) error {
 	return nil
 }
 
+func (gc *GroupColumnContainer) Buffered() bool { return true }
+
 // count, avg, rss, rms
 type GroupColumnCounter struct {
 	name  string
@@ -1545,6 +1638,8 @@ func (gc *GroupColumnCounter) Append(v any) error {
 	}
 	return nil
 }
+
+func (gc *GroupColumnCounter) Buffered() bool { return false }
 
 // first, last, min, max, sum
 type GroupColumnSingle struct {
@@ -1602,6 +1697,8 @@ func (gc *GroupColumnSingle) Append(v any) error {
 	}
 	return nil
 }
+
+func (gc *GroupColumnSingle) Buffered() bool { return false }
 
 // Drop Key, then make the first element of value to promote as a key,
 // decrease dimension of vector as result if the input is not multiple dimension vector.
