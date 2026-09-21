@@ -142,9 +142,9 @@ func (c *Chart) SetChartDispatchAction(action string) {
 	c.DispatchAction = action
 }
 
-func (c *Chart) SetLimit(limit int) {
-	if limit > 0 {
-		c.limit = limit
+func (c *Chart) SetMaxRows(maxRows int) {
+	if maxRows > 0 {
+		c.limit = maxRows
 	}
 }
 

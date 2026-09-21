@@ -29,17 +29,26 @@ import (
 
 const defaultBufferedLimit = 1000000
 
-func tqlLimitValue(funcName string, limit *QueryLimit, defaultLimit int) (int, error) {
-	if limit == nil {
-		return defaultLimit, nil
+type maxRowsOptionReceiver struct {
+	value int
+	set   bool
+}
+
+func (r *maxRowsOptionReceiver) SetMaxRows(maxRows int) {
+	r.value = maxRows
+	r.set = true
+}
+
+func maxRowsOptionValue(funcName string, option opts.Option) (int, bool, error) {
+	receiver := &maxRowsOptionReceiver{}
+	option(receiver)
+	if !receiver.set {
+		return 0, false, nil
 	}
-	if limit.Offset != 0 {
-		return 0, fmt.Errorf("%s limit offset is not supported", funcName)
+	if receiver.value <= 0 {
+		return 0, true, fmt.Errorf("%s maxRows should be greater than 0", funcName)
 	}
-	if limit.Limit <= 0 {
-		return 0, fmt.Errorf("%s limit should be greater than 0", funcName)
-	}
-	return limit.Limit, nil
+	return receiver.value, true, nil
 }
 
 type maxHzOption float64
@@ -65,12 +74,12 @@ func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 			minHz = float64(v)
 		case maxHzOption:
 			maxHz = float64(v)
-		case *QueryLimit:
-			parsed, err := tqlLimitValue("FFT", v, defaultBufferedLimit)
-			if err != nil {
+		case opts.Option:
+			if maxRows, ok, err := maxRowsOptionValue("FFT", v); err != nil {
 				return nil, err
+			} else if ok {
+				limit = maxRows
 			}
-			limit = parsed
 		}
 	}
 
@@ -516,12 +525,12 @@ func (node *Node) fmGroup(args ...any) any {
 			}
 		case *lazyOption:
 			gr.lazy = v.flag
-		case *QueryLimit:
-			limit, err := tqlLimitValue("GROUP", v, defaultBufferedLimit)
-			if err != nil {
+		case opts.Option:
+			if maxRows, ok, err := maxRowsOptionValue("GROUP", v); err != nil {
 				return ErrorRecord(err)
+			} else if ok {
+				gr.limit = maxRows
 			}
-			gr.limit = limit
 		default:
 			return ErrorRecord(fmt.Errorf("GROUP() unknown type '%T' in arguments", v))
 		}
@@ -1173,12 +1182,12 @@ func (node *Node) fmGroupByKey(args ...any) any {
 			switch v := arg.(type) {
 			case *lazyOption:
 				gr.lazy = v.flag
-			case *QueryLimit:
-				limit, err := tqlLimitValue("GROUPBYKEY", v, defaultBufferedLimit)
-				if err != nil {
+			case opts.Option:
+				if maxRows, ok, err := maxRowsOptionValue("GROUPBYKEY", v); err != nil {
 					return ErrorRecord(err)
+				} else if ok {
+					gr.limit = maxRows
 				}
-				gr.limit = limit
 			}
 		}
 	}

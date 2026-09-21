@@ -2430,22 +2430,33 @@ func TestSHELL(t *testing.T) {
 	}.run(t)
 }
 
-func TestShellLimitKeepsTailLines(t *testing.T) {
+func TestShellLineRange(t *testing.T) {
 	tql.ShellExecutable = func(addr, path string) ([]string, error) {
 		return []string{"/bin/bash", path}, nil
 	}
-	TqlTestCase{
-		Name: "SHELL_tail_limit",
-		Script: `
-			FAKE( once(1) )
-			SHELL("seq", "1", "5", limit(2))
-			CSV()
-			`,
-		ExpectCSV: []string{"4", "5", "", ""},
-		RunCondition: func() bool {
-			return runtime.GOOS != "windows"
+	for _, tc := range []TqlTestCase{
+		{
+			Name: "SHELL_tail_range",
+			Script: `
+				FAKE( once(1) )
+				SHELL("seq", "1", "5", lineRange(-2))
+				CSV()`,
+			ExpectCSV: []string{"4", "5", "", ""},
 		},
-	}.run(t)
+		{
+			Name: "SHELL_forward_range",
+			Script: `
+				FAKE( once(1) )
+				SHELL("seq", "1", "5", lineRange(1, 2))
+				CSV()`,
+			ExpectCSV: []string{"2", "3", "", ""},
+		},
+	} {
+		tc.RunCondition = func() bool { return runtime.GOOS != "windows" }
+		t.Run(tc.Name, func(t *testing.T) {
+			tc.run(t)
+		})
+	}
 }
 
 func TestBufferLimitErrors(t *testing.T) {
@@ -2455,7 +2466,7 @@ func TestBufferLimitErrors(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 2, 3) )
 				MAPKEY('k')
-				GROUPBYKEY(limit(2))
+				GROUPBYKEY(maxRows(2))
 				CSV()`,
 			ExpectErr: "GROUPBYKEY buffered records exceeded: count=3 limit=2",
 		},
@@ -2464,7 +2475,7 @@ func TestBufferLimitErrors(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 2, 3) )
 				PUSHKEY('k')
-				GROUP(by(value(0)), list(value(1)), limit(2))
+				GROUP(by(value(0)), list(value(1)), maxRows(2))
 				CSV()`,
 			ExpectErr: "GROUP buffered records exceeded: count=3 limit=2",
 		},
@@ -2474,7 +2485,7 @@ func TestBufferLimitErrors(t *testing.T) {
 				FAKE( oscillator(freq(1, 1), range('now', '20s', '1s')) )
 				MAPKEY('fft')
 				GROUPBYKEY()
-				FFT(limit(16))
+				FFT(maxRows(16))
 				CSV()`,
 			ExpectErr: "FFT samples exceeded: count=20 limit=16",
 		},
@@ -2482,14 +2493,14 @@ func TestBufferLimitErrors(t *testing.T) {
 			Name: "JSON_transpose_limit",
 			Script: `
 				FAKE( linspace(0, 2, 3) )
-				JSON(transpose(true), limit(2))`,
+				JSON(transpose(true), maxRows(2))`,
 			ExpectErr: "JSON transpose rows exceeded: count=3 limit=2",
 		},
 		{
 			Name: "CHART_limit",
 			Script: `
 				FAKE( linspace(0, 2, 3) )
-				CHART(limit(2))`,
+				CHART(maxRows(2))`,
 			ExpectErr: "CHART points exceeded: count=3 limit=2",
 		},
 		{
@@ -2503,7 +2514,7 @@ func TestBufferLimitErrors(t *testing.T) {
 						});
 					}
 				})
-				GEOMAP(limit(2))`,
+				GEOMAP(maxRows(2))`,
 			ExpectErr: "GEOMAP layers exceeded: count=3 limit=2",
 		},
 	} {

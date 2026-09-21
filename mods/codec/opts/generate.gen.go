@@ -596,6 +596,23 @@ func MarkLineYAxisCoord(yAxis any, name string) Option {
 	}
 }
 
+// SetMaxRows
+//
+//	mods/codec/internal/chart/chart.go:145:1
+//	mods/codec/internal/geomap/geomap.go:134:1
+//	mods/codec/internal/json/json_encode.go:115:1
+type CanSetMaxRows interface {
+	SetMaxRows(maxRows int)
+}
+
+func MaxRows(maxRows int) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMaxRows); ok {
+			_o.SetMaxRows(maxRows)
+		}
+	}
+}
+
 // SetOpacity
 //
 //	mods/codec/internal/chart/chartcompat.go:229:1

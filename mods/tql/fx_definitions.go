@@ -183,6 +183,7 @@ var FxDefinitions = []Definition{
 	{"fixed", defTask.fmFixed},
 	{"SCRIPT", defTask.fmScript},
 	{"SHELL", defTask.fmShell},
+	{"lineRange", defTask.fmLineRange},
 	// arrays and dictionaries
 	{"// arrays and dictionaries", nil},
 	{"list", defTask.fmList},

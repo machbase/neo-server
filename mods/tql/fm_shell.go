@@ -16,6 +16,30 @@ import (
 
 const defaultShellTailLines = 1000
 
+type lineRangeOption struct {
+	offset int
+	count  int
+}
+
+func (node *Node) fmLineRange(args ...int) (lineRangeOption, error) {
+	if len(args) == 1 {
+		if args[0] >= 0 {
+			return lineRangeOption{}, fmt.Errorf("lineRange with one argument should be negative")
+		}
+		return lineRangeOption{offset: args[0]}, nil
+	}
+	if len(args) == 2 {
+		if args[0] < 0 {
+			return lineRangeOption{}, fmt.Errorf("lineRange offset should not be negative when count is specified")
+		}
+		if args[1] <= 0 {
+			return lineRangeOption{}, fmt.Errorf("lineRange count should be greater than 0")
+		}
+		return lineRangeOption{offset: args[0], count: args[1]}, nil
+	}
+	return lineRangeOption{}, ErrInvalidNumOfArgs("lineRange", 2, len(args))
+}
+
 var _httpServer string
 
 func SetHttpAddresses(addrs []string) {
@@ -53,19 +77,14 @@ func (node *Node) fmShell(cmd0 string, args0 ...any) {
 	stripQuote := false
 	subCmdList := []string{}
 	subArgs := [][]string{}
-	tailLines := defaultShellTailLines
+	lineRange := lineRangeOption{offset: -defaultShellTailLines}
 	cmdArgs := []string{}
 	for _, arg := range args0 {
 		switch v := arg.(type) {
 		case string:
 			cmdArgs = append(cmdArgs, v)
-		case *QueryLimit:
-			limit, err := tqlLimitValue("SHELL", v, defaultShellTailLines)
-			if err != nil {
-				node.emit(ErrorRecord(err))
-				return
-			}
-			tailLines = limit
+		case lineRangeOption:
+			lineRange = v
 		default:
 			node.emit(ErrorRecord(fmt.Errorf("SHELL invalid argument %T", arg)))
 			return
@@ -161,11 +180,11 @@ func (node *Node) fmShell(cmd0 string, args0 ...any) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			output, _, outputErr = shellTailLines(stdout, tailLines)
+			output, _, outputErr = shellReadLines(stdout, lineRange)
 		}()
 		go func() {
 			defer wg.Done()
-			errOutput, _, errOutputErr = shellTailLines(stderr, tailLines)
+			errOutput, _, errOutputErr = shellReadLines(stderr, lineRange)
 		}()
 
 		waitErr := cmd.Wait()
@@ -195,10 +214,14 @@ func (node *Node) fmShell(cmd0 string, args0 ...any) {
 	}
 }
 
-func shellTailLines(reader io.Reader, limit int) ([]string, int, error) {
-	if limit <= 0 {
-		limit = defaultShellTailLines
+func shellReadLines(reader io.Reader, lineRange lineRangeOption) ([]string, int, error) {
+	if lineRange.offset < 0 {
+		return shellTailLines(reader, -lineRange.offset)
 	}
+	return shellRangeLines(reader, lineRange.offset, lineRange.count)
+}
+
+func shellTailLines(reader io.Reader, limit int) ([]string, int, error) {
 	buffered := make([]string, 0, limit)
 	total := 0
 	scanner := bufio.NewReader(reader)
@@ -220,6 +243,38 @@ func shellTailLines(reader io.Reader, limit int) ([]string, int, error) {
 			if lastHadNewLine && len(buffered) < limit {
 				total++
 				buffered = append(buffered, "")
+			}
+			return buffered, total, nil
+		}
+		if err != nil {
+			return buffered, total, err
+		}
+	}
+}
+
+func shellRangeLines(reader io.Reader, offset, count int) ([]string, int, error) {
+	buffered := make([]string, 0, count)
+	total := 0
+	lineIndex := 0
+	scanner := bufio.NewReader(reader)
+	lastHadNewLine := false
+	for {
+		line, err := scanner.ReadString('\n')
+		if len(line) > 0 {
+			total++
+			lastHadNewLine = strings.HasSuffix(line, "\n")
+			line = strings.TrimRight(line, "\r\n")
+			if lineIndex >= offset && len(buffered) < count {
+				buffered = append(buffered, line)
+			}
+			lineIndex++
+		}
+		if err == io.EOF {
+			if lastHadNewLine {
+				total++
+				if lineIndex >= offset && len(buffered) < count {
+					buffered = append(buffered, "")
+				}
 			}
 			return buffered, total, nil
 		}

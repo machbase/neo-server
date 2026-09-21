@@ -112,9 +112,9 @@ func (ex *Exporter) SetRowsArray(flag bool) {
 	ex.rowsArray = flag
 }
 
-func (ex *Exporter) SetLimit(limit int) {
-	if limit > 0 {
-		ex.limit = limit
+func (ex *Exporter) SetMaxRows(maxRows int) {
+	if maxRows > 0 {
+		ex.limit = maxRows
 	}
 }
 

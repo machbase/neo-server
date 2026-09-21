@@ -125,6 +125,7 @@ func NewNode(task *Task) *Node {
 		"fixed":            x.gen_fixed,
 		"SCRIPT":           x.gen_SCRIPT,
 		"SHELL":            x.gen_SHELL,
+		"lineRange":        x.gen_lineRange,
 		// arrays and dictionaries
 		"list":      x.gen_list,
 		"dict":      x.gen_dict,
@@ -305,6 +306,7 @@ func NewNode(task *Task) *Node {
 		"markAreaNameCoord":   x.gen_markAreaNameCoord,
 		"markLineXAxisCoord":  x.gen_markLineXAxisCoord,
 		"markLineYAxisCoord":  x.gen_markLineYAxisCoord,
+		"maxRows":             x.gen_maxRows,
 		"opacity":             x.gen_opacity,
 		"outputStream":        x.gen_outputStream,
 		"plugins":             x.gen_plugins,
@@ -1738,6 +1740,21 @@ func (x *Node) gen_SHELL(args ...any) (any, error) {
 	}
 	x.fmShell(p0, p1...)
 	return nil, nil
+}
+
+// gen_lineRange
+//
+// syntax: lineRange(...int)
+func (x *Node) gen_lineRange(args ...any) (any, error) {
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "lineRange", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmLineRange(p0...)
 }
 
 // gen_list
@@ -4661,6 +4678,21 @@ func (x *Node) gen_markLineYAxisCoord(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.MarkLineYAxisCoord(p0, p1)
+	return ret, nil
+}
+
+// gen_maxRows
+//
+// syntax: maxRows(int)
+func (x *Node) gen_maxRows(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("maxRows", 1, len(args))
+	}
+	p0, err := convInt(args, 0, "maxRows", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MaxRows(p0)
 	return ret, nil
 }
 

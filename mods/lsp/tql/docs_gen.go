@@ -1755,6 +1755,22 @@ var generatedTqlDocs = map[string]tqlDocInfo{
 		Markdown: "# limit\n\n## Kind\n\nhelper\n\n## Category\n\ndatabase source\n\n## Signatures\n\n```text\nlimit(count)\nlimit(offset, count)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| offset | no | no | literal:number | 0 |\n| count | yes | no | literal:number | 1000 |\n\n## Description\n\n`limit()` supplies the LIMIT clause to `SQL_SELECT()`. With one argument it is treated as count; with two arguments it is offset and count.\n\n## Examples\n\n### Basic\n\n```js\nSQL_SELECT('time', 'value', from('example', 'temperature'), between('last-10s', 'last'), limit(1000))\nCSV()\n```\n\n## Related\n\nSQL_SELECT, from, between",
 		Related: []string{"SQL_SELECT", "from", "between"},
 	},
+	"lineRange": {
+		Label: "lineRange",
+		Kind: "helper",
+		Category: "arrays and dictionaries",
+		Signatures: []tqlDocSignature{
+			{Label: "lineRange(-count)", Parameters: []string{"-count"}},
+			{Label: "lineRange(offset, count)", Parameters: []string{"offset", "count"}},
+		},
+		Slots: []tqlDocSlot{
+			{Name: "offset", Required: true, Repeat: false, Accepts: "integer", Suggestions: []string{"`-1000`", "`0`", "`100`"}},
+			{Name: "count", Required: false, Repeat: false, Accepts: "integer", Suggestions: []string{"`10`", "`100`"}},
+		},
+		Description: "Selects the lines retained from `SHELL()` command output.\n\n- `lineRange(-count)` keeps the last `count` lines.\n- `lineRange(offset, count)` skips `offset` lines, then keeps the next `count` lines.\n\n`offset` is zero-based. A negative offset is valid only in the one-argument tail form.",
+		Markdown: "# lineRange\n\n## Kind\n\nhelper\n\n## Category\n\narrays and dictionaries\n\n## Signatures\n\n```text\nlineRange(-count)\nlineRange(offset, count)\n```\n\n## Slots\n\n| Slot | Required | Repeat | Accepts | Suggestions |\n| --- | --- | --- | --- | --- |\n| offset | yes | no | integer | `-1000`, `0`, `100` |\n| count | no | no | integer | `10`, `100` |\n\n## Description\n\nSelects the lines retained from `SHELL()` command output.\n\n- `lineRange(-count)` keeps the last `count` lines.\n- `lineRange(offset, count)` skips `offset` lines, then keeps the next `count` lines.\n\n`offset` is zero-based. A negative offset is valid only in the one-argument tail form.\n\n## Examples\n\n### Basic\n\n```js\nSHELL(\"journalctl\", \"-n\", \"10000\", lineRange(-1000))\n```\n\n### Forward Range\n\n```js\nSHELL(\"seq\", \"1\", \"100\", lineRange(10, 5))\n```\n\n## Related\n\nSHELL",
+		Related: []string{"SHELL"},
+	},
 	"linspace": {
 		Label: "linspace",
 		Kind: "helper",

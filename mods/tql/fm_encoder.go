@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -26,20 +25,6 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 			} else {
 				return nil, fmt.Errorf("encoder '%s' does not support cache", format)
 			}
-		case *QueryLimit:
-			limit, err := tqlLimitValue(strings.ToUpper(format), v, 0)
-			if err != nil {
-				return nil, err
-			}
-			if slices.Contains([]string{"json", "echart", "echart.line", "echart.scatter", "echart.bar", "echart.line3d", "echart.bar3d", "echart.surface3d", "echart.scatter3d", "geomap"}, format) {
-				ret.opts = append(ret.opts, func(obj any) {
-					if limited, ok := obj.(interface{ SetLimit(int) }); ok {
-						limited.SetLimit(limit)
-					}
-				})
-				continue
-			}
-			return nil, fmt.Errorf("encoder '%s' does not support limit", format)
 		}
 
 		if opt, ok := arg.(opts.Option); ok {

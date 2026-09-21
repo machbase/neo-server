@@ -131,9 +131,9 @@ func (gm *GeoMap) SetTileGrayscale(grayscale float64) {
 	gm.tileGrayscale = grayscale
 }
 
-func (gm *GeoMap) SetLimit(limit int) {
-	if limit > 0 {
-		gm.limit = limit
+func (gm *GeoMap) SetMaxRows(maxRows int) {
+	if maxRows > 0 {
+		gm.limit = maxRows
 	}
 }
 
