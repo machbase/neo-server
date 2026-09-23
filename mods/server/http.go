@@ -2284,7 +2284,7 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Demo web app", Addr: "https://github.com/machbase/neo-apps"})
 
 		sdk := &WebReferenceGroup{Label: "SDK"}
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK", Addr: "https://docs.machbase.com/dbms/sdk-integration/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK", Addr: "https://docs.machbase.com/dbms/development-tools-integration/", Target: "_docs_machbase"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://www.nuget.org/packages/UniMachNetConnector", Target: "_blank"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "Python", Addr: "https://pypi.org/project/machbaseapi/", Target: "_blank"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "Node.js", Addr: "https://www.npmjs.com/package/@machbase/ts-client", Target: "_blank"})
