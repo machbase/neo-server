@@ -1290,6 +1290,7 @@ function arch() {
 module.exports = {
     resolvePath: _fs.resolvePath,
     resolveAbsPath: _fs.resolveAbsPath,
+    resolveHostPath: _fs.resolveHostPath,
 
     // File operations
     readFileSync,

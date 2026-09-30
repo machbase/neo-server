@@ -1133,6 +1133,7 @@ func (jr *JSRuntime) Filesystem(_ context.Context, vm *goja.Runtime, module *goj
 
 	exports.Set("resolvePath", func(path string) string { return jr.Env.ResolvePath(path) })
 	exports.Set("resolveAbsPath", func(path string) string { return jr.Env.ResolveAbsPath(path) })
+	exports.Set("resolveHostPath", func(path string) (string, error) { return jr.filesystem.ResolveHostPath(path) })
 	exports.Set("readFile", func(path string) ([]byte, error) { return jr.filesystem.ReadFile(path) })
 	exports.Set("writeFile", func(path string, data []byte) error { return jr.filesystem.WriteFile(path, data) })
 	exports.Set("appendFile", func(path string, data []byte) error { return jr.filesystem.AppendFile(path, data) })
