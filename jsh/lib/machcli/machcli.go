@@ -69,6 +69,8 @@ type Config struct {
 	AlternativePort int    `json:"alternativePort,omitempty"`
 	Database        string `json:"database,omitempty"`
 	DB              string `json:"db,omitempty"` // alias of Database
+	Timezone        string `json:"timezone,omitempty"`
+	TZ              string `json:"tz,omitempty"` // alias of Timezone
 }
 
 type Database struct {
@@ -105,6 +107,13 @@ func newDatabase(ctx context.Context, data string) (*Database, error) {
 	}
 	if obj.Database != "" {
 		opts = append(opts, "database="+obj.Database)
+	}
+	timezone := obj.Timezone
+	if timezone == "" {
+		timezone = obj.TZ
+	}
+	if timezone != "" {
+		opts = append(opts, "timezone="+timezone)
 	}
 	if obj.Password != "" {
 		opts = append(opts, "password="+obj.Password)

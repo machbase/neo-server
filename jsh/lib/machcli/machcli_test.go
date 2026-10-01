@@ -478,6 +478,40 @@ func TestClientLoadsSharedConfigAndMergesCallerConfig(t *testing.T) {
 	require.Equal(t, "shared-user: DEMO\nmerged-user: SYS\nconnected: true\n", writer.String())
 }
 
+func TestClientTimezoneOptions(t *testing.T) {
+	writer := &bytes.Buffer{}
+	jr, err := engine.New(engine.Config{
+		Name: "machcli_timezone_options",
+		Code: `
+			const { Client } = require('machcli');
+			for (const key of ["timezone", "tz"]) {
+				const conf = { host: "127.0.0.1", port: 5656, user: "sys", password: "manager" };
+				conf[key] = "Invalid/Timezone";
+				try {
+					const db = new Client(conf);
+					console.println(key + ": ignored");
+					db.close();
+				} catch (err) {
+					console.println(key + ": " + err.message.includes("invalid timezone"));
+				}
+			}
+		`,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			{MountPoint: "/lib", FS: lib.LibFS()},
+		},
+		Env: map[string]any{
+			"LIBRARY_PATH": "/lib",
+		},
+		Writer: writer,
+	})
+	require.NoError(t, err)
+	lib.Enable(jr)
+	require.NoError(t, jr.Run())
+
+	require.Equal(t, "timezone: true\ntz: true\n", writer.String())
+}
+
 func TestNormalizeTableNameCoverage(t *testing.T) {
 	cfg := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"demo","password":"demo"}`,
 		machcliTestServer.MachPort(),
