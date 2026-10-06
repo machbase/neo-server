@@ -27,7 +27,7 @@ type PrintKind interface {
 }
 
 // SetDefaultWriter atomically swaps the console default output writer and returns
-// the previous one. Use this to temporarily redirect console output during eval.
+// the previous one. It does not redirect VM-bound console output.
 func SetDefaultWriter(w io.Writer) io.Writer {
 	defaultWriterMu.Lock()
 	defer defaultWriterMu.Unlock()
@@ -37,10 +37,6 @@ func SetDefaultWriter(w io.Writer) io.Writer {
 }
 
 func SetConsole(vm *goja.Runtime, w io.Writer) *goja.Object {
-	defaultWriterMu.Lock()
-	defaultWriter = w
-	defaultWriterMu.Unlock()
-
 	con := vm.NewObject()
 	if s, ok := w.(LogKind); ok {
 		con.Set("log", func(args ...interface{}) { s.Log(slog.LevelInfo, args...) })
@@ -49,20 +45,20 @@ func SetConsole(vm *goja.Runtime, w io.Writer) *goja.Object {
 		con.Set("warn", func(args ...interface{}) { s.Log(slog.LevelWarn, args...) })
 		con.Set("error", func(args ...interface{}) { s.Log(slog.LevelError, args...) })
 	} else {
-		con.Set("log", makeConsoleLog(slog.LevelInfo))
-		con.Set("debug", makeConsoleLog(slog.LevelDebug))
-		con.Set("info", makeConsoleLog(slog.LevelInfo))
-		con.Set("warn", makeConsoleLog(slog.LevelWarn))
-		con.Set("error", makeConsoleLog(slog.LevelError))
+		con.Set("log", makeConsoleLog(w, slog.LevelInfo))
+		con.Set("debug", makeConsoleLog(w, slog.LevelDebug))
+		con.Set("info", makeConsoleLog(w, slog.LevelInfo))
+		con.Set("warn", makeConsoleLog(w, slog.LevelWarn))
+		con.Set("error", makeConsoleLog(w, slog.LevelError))
 	}
 	if s, ok := w.(PrintKind); ok {
 		con.Set("println", func(args ...interface{}) { s.Println(args...) })
 		con.Set("print", func(args ...interface{}) { s.Print(args...) })
 		con.Set("printf", func(format string, args ...interface{}) { s.Printf(format, args...) })
 	} else {
-		con.Set("println", doPrintln)
-		con.Set("print", doPrint)
-		con.Set("printf", doPrintf)
+		con.Set("println", makePrintln(w))
+		con.Set("print", makePrint(w))
+		con.Set("printf", makePrintf(w))
 	}
 	con.Set("writer", w) // expose writer for advanced usage, it used in pretty box.SetOutput()
 	return con
@@ -94,32 +90,40 @@ func Log(level slog.Level, args ...interface{}) {
 	fmt.Fprintln(defaultWriter, strLevel, fmt.Sprint(args...))
 }
 
-func doPrint(call goja.FunctionCall) goja.Value {
-	Print(argsValues(call)...)
-	return goja.Undefined()
-}
-
-func doPrintln(call goja.FunctionCall) goja.Value {
-	Println(argsValues(call)...)
-	return goja.Undefined()
-}
-
-func doPrintf(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) == 0 {
+func makePrint(w io.Writer) func(call goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		fmt.Fprint(w, argsValues(call)...)
 		return goja.Undefined()
 	}
-	format := call.Arguments[0].String()
-	args := make([]interface{}, len(call.Arguments)-1)
-	for i := 1; i < len(call.Arguments); i++ {
-		args[i-1] = valueToPrintable(call.Arguments[i])
-	}
-	Printf(format, args...)
-	return goja.Undefined()
 }
 
-func makeConsoleLog(level slog.Level) func(call goja.FunctionCall) goja.Value {
+func makePrintln(w io.Writer) func(call goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
-		Log(level, argsValues(call)...)
+		fmt.Fprintln(w, argsValues(call)...)
+		return goja.Undefined()
+	}
+}
+
+func makePrintf(w io.Writer) func(call goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 {
+			return goja.Undefined()
+		}
+		format := call.Arguments[0].String()
+		args := make([]interface{}, len(call.Arguments)-1)
+		for i := 1; i < len(call.Arguments); i++ {
+			args[i-1] = valueToPrintable(call.Arguments[i])
+		}
+		fmt.Fprintf(w, format, args...)
+		return goja.Undefined()
+	}
+}
+
+func makeConsoleLog(w io.Writer, level slog.Level) func(call goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		strLevel := level.String()
+		strLevel = strLevel + strings.Repeat(" ", 5-len(strLevel))
+		fmt.Fprintln(w, strLevel, fmt.Sprint(argsValues(call)...))
 		return goja.Undefined()
 	}
 }

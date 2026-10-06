@@ -15,7 +15,57 @@ import (
 	"testing/fstest"
 
 	"github.com/dop251/goja"
+	jshlog "github.com/machbase/neo-server/v8/jsh/log"
 )
+
+func TestExecAgentCodeConsoleIsolation(t *testing.T) {
+	for _, startupFailure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("startup_failure_%t", startupFailure), func(t *testing.T) {
+			t.Parallel()
+			rt := goja.New()
+			var output strings.Builder
+			originalConsole := jshlog.SetConsole(rt, &output)
+			rt.Set("console", originalConsole)
+			rt.Set("require", func(name string) *goja.Object {
+				if startupFailure {
+					panic(rt.NewGoError(fmt.Errorf("startup failed: %s", name)))
+				}
+				return rt.NewObject()
+			})
+			results, err := ExecAgentCode(rt, `console.log("captured"); 42;`, AgentExecOptions{})
+			if startupFailure {
+				if err == nil {
+					t.Fatal("expected startup failure")
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				foundPrint := false
+				for _, result := range results {
+					if result["type"] == "print" && result["value"] == "captured" {
+						foundPrint = true
+					}
+				}
+				if !foundPrint {
+					t.Errorf("console output not captured: %v", results)
+				}
+			}
+			if rt.Get("console") != originalConsole {
+				t.Fatal("original console was not restored")
+			}
+			if output.Len() != 0 {
+				t.Errorf("agent output leaked to original console: %q", output.String())
+			}
+			if _, err := rt.RunString(`console.println("restored")`); err != nil {
+				t.Fatal(err)
+			}
+			if actual := output.String(); actual != "restored\n" {
+				t.Errorf("restored output = %q, want %q", actual, "restored\n")
+			}
+		})
+	}
+}
 
 // ─── Config Tests ─────────────────────────────────────────────────────────────
 

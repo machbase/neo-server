@@ -10,7 +10,6 @@ import (
 	"github.com/dop251/goja"
 	"github.com/hymkor/go-multiline-ny"
 	"github.com/machbase/neo-server/v8/jsh/engine"
-	"github.com/machbase/neo-server/v8/jsh/log"
 	"github.com/mattn/go-colorable"
 	"github.com/nyaosorg/go-readline-ny"
 	"github.com/nyaosorg/go-readline-ny/keys"
@@ -121,29 +120,29 @@ func (sh *Shell) Run(env *engine.Env) int {
 	ed := ses.Editor
 	sh.history = ses.History
 	if err := ses.Start(sh.rt); err != nil {
-		log.Printf("Error starting session: %v\n", err)
+		sh.printShellError("Error starting session: %v", err)
 		return 1
 	}
 	var loopErr error
 	defer func() {
 		if err := ses.Stop(loopErr); err != nil {
-			log.Printf("Error stopping session: %v\n", err)
+			sh.printShellError("Error stopping session: %v", err)
 		}
 	}()
 	ctx := context.Background()
 	if msg := ses.Banner(); msg != "" {
-		log.Print(msg)
+		fmt.Fprint(env.Writer(), msg)
 	}
 	for {
 		var line string
 		var forHistory string
 		if input, err := ed.Read(ctx); err != nil {
 			if err == readline.CtrlC || err == io.EOF {
-				log.Println(err.Error())
+				sh.printShellError("%s", err.Error())
 				continue
 			}
 			loopErr = err
-			log.Printf("Error input: %v\n", err)
+			sh.printShellError("Error input: %v", err)
 			return 1
 		} else {
 			forHistory = strings.Join(input, "\n")
