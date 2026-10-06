@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +94,39 @@ func withTestJwtConfig(t *testing.T, conf *JwtConfig) {
 	t.Cleanup(func() {
 		JwtConfigure(prev)
 	})
+}
+
+func TestLoadOrCreateJwtSecret(t *testing.T) {
+	prefDir := t.TempDir()
+
+	secret, err := loadOrCreateJwtSecret(prefDir)
+	require.NoError(t, err)
+	decoded, err := hex.DecodeString(secret)
+	require.NoError(t, err)
+	require.Len(t, decoded, jwtSecretSize)
+
+	secretPath := filepath.Join(prefDir, jwtSecretFileName)
+	storedSecret, err := os.ReadFile(secretPath)
+	require.NoError(t, err)
+	require.Equal(t, secret+"\n", string(storedSecret))
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(secretPath)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	}
+
+	loadedSecret, err := loadOrCreateJwtSecret(prefDir)
+	require.NoError(t, err)
+	require.Equal(t, secret, loadedSecret)
+}
+
+func TestLoadOrCreateJwtSecretRejectsInvalidFile(t *testing.T) {
+	prefDir := t.TempDir()
+	secretPath := filepath.Join(prefDir, jwtSecretFileName)
+	require.NoError(t, os.WriteFile(secretPath, []byte("weak-secret\n"), 0600))
+
+	_, err := loadOrCreateJwtSecret(prefDir)
+	require.ErrorContains(t, err, "invalid JWT secret file")
 }
 
 func TestJwtMemCacheLifecycle(t *testing.T) {

@@ -190,6 +190,13 @@ func (s *Server) Start() error {
 	if err := s.preparePrefDir(); err != nil {
 		return err
 	}
+	if s.Jwt.Secret == "" {
+		secret, err := loadOrCreateJwtSecret(s.prefDirPath)
+		if err != nil {
+			return fmt.Errorf("jwt secret: %w", err)
+		}
+		s.Jwt.Secret = secret
+	}
 
 	if err := s.prepareHomeDir(); err != nil {
 		return err

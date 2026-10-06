@@ -144,7 +144,7 @@ module "machbase.com/neo-server" {
         Jwt = {
             AtDuration = flag("--jwt-at-expire", "5m")
             RtDuration = flag("--jwt-rt-expire", "60m")
-            Secret     = flag("--jwt-secret", "__secret__")
+            Secret     = flag("--jwt-secret", "")
         }
     }
 }
