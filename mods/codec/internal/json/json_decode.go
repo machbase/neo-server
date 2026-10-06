@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/v2/api"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Decoder struct {
 	columnTypes  []api.DataType
 	reader       *gojson.Decoder
 	dataDepth    int
+	pending      [][]any
 	nrow         int64
 	input        io.Reader
 	timeformat   string
@@ -67,7 +69,15 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			values[i] = nil
 			continue
 		}
-		values[i], err = dec.columnTypes[i].Apply(field, dec.timeformat, dec.timeLocation)
+		if dec.columnTypes[i] == api.DataTypeVector {
+			if array, ok := field.([]any); ok {
+				values[i], err = util.VectorFromJSON(array)
+			} else {
+				values[i], err = dec.columnTypes[i].Apply(field, dec.timeformat, dec.timeLocation)
+			}
+		} else {
+			values[i], err = dec.columnTypes[i].Apply(field, dec.timeformat, dec.timeLocation)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("rows[%d] column[%d] is not a %s, but %T", dec.nrow, i, dec.columnTypes[i], field)
 		}
@@ -120,52 +130,76 @@ func (dec *Decoder) nextRow0() ([]any, error) {
 				}
 				dec.dataDepth = 1
 			} else if delim == '[' {
-				// top level is '[', means rows only format
-				dec.dataDepth = 1
+				// Keep rows-only input streaming; a scalar first item means one row.
+				if !dec.reader.More() {
+					if _, err := dec.reader.Token(); err != nil {
+						return nil, err
+					}
+				} else {
+					first, err := dec.reader.Token()
+					if err != nil {
+						return nil, err
+					}
+					if first == gojson.Delim('[') {
+						var row []any
+						for dec.reader.More() {
+							var field any
+							if err := dec.reader.Decode(&field); err != nil {
+								return nil, err
+							}
+							row = append(row, field)
+						}
+						if end, err := dec.reader.Token(); err != nil || end != gojson.Delim(']') {
+							return nil, errors.New("invalid rows-only JSON array")
+						}
+						dec.pending = append(dec.pending, row)
+						dec.dataDepth = 1
+					} else if _, ok := first.(gojson.Delim); ok {
+						return nil, errors.New("invalid top level JSON row")
+					} else {
+						row := []any{first}
+						for dec.reader.More() {
+							var field any
+							if err := dec.reader.Decode(&field); err != nil {
+								return nil, err
+							}
+							row = append(row, field)
+						}
+						if end, err := dec.reader.Token(); err != nil || end != gojson.Delim(']') {
+							return nil, errors.New("invalid single JSON row")
+						}
+						dec.pending = append(dec.pending, row)
+					}
+				}
 			} else {
 				return nil, errors.New("invalid top level delimiter")
 			}
 		}
+	}
+	if len(dec.pending) > 0 {
+		row := dec.pending[0]
+		dec.pending = dec.pending[1:]
+		return row, nil
 	}
 
 	if dec.dataDepth == 0 {
 		return nil, io.EOF
 	}
 
-	tuple := make([]any, 0)
-	for dec.reader.More() {
-		tok, err := dec.reader.Token()
-		if err != nil {
+	if dec.reader.More() {
+		var tuple []any
+		if err := dec.reader.Decode(&tuple); err != nil {
 			return nil, err
 		}
-		if delim, ok := tok.(gojson.Delim); ok {
-			if delim == '[' {
-				dec.dataDepth++
-			} else if delim == '{' {
-				return nil, fmt.Errorf("invalid data format at %d", dec.reader.InputOffset())
-			}
-			tuple = tuple[:0]
-			continue
-		} else {
-			// append element of tuple
-			tuple = append(tuple, tok)
-		}
+		return tuple, nil
 	}
-
 	tok, err := dec.reader.Token()
 	if err != nil {
 		return nil, err
 	}
-	if delim, ok := tok.(gojson.Delim); ok {
-		if delim == ']' {
-			dec.dataDepth--
-		}
-	} else {
+	if tok != gojson.Delim(']') {
 		return nil, fmt.Errorf("invalid syntax at %d", dec.reader.InputOffset())
 	}
-
-	if len(tuple) == 0 {
-		return nil, io.EOF
-	}
-	return tuple, nil
+	dec.dataDepth = 0
+	return nil, io.EOF
 }

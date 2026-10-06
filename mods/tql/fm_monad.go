@@ -268,7 +268,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 		bf = v.(*BufferedFilter)
 	} else {
 		bf = &BufferedFilter{
-			last: client.Unbox(value),
+			last: util.Unbox(value),
 		}
 		if retain != nil {
 			bf.lastTimestamp = retain.timestamp
@@ -285,7 +285,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 		return inflight
 	}
 
-	val := client.Unbox(value)
+	val := util.Unbox(value)
 	if retain != nil {
 		if bf.last != val {
 			var ret *Record
@@ -820,7 +820,7 @@ func (node *Node) fmBy(value any, args ...any) (any, error) {
 		ret.Name = "GROUP"
 	}
 
-	ret.Value = client.Unbox(value)
+	ret.Value = util.Unbox(value)
 	if ret.Type == GroupByTimeWindow {
 		ts, err := util.ToTime(ret.Value)
 		if err != nil {

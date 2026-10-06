@@ -401,6 +401,7 @@ func (svr *httpd) Router() *gin.Engine {
 	}
 	dbGroup.GET("/query", svr.handleQuery)
 	dbGroup.POST("/query", svr.handleQuery)
+	dbGroup.POST("/embed", svr.handleEmbed)
 	dbGroup.POST("/write", svr.handleWrite)
 	dbGroup.POST("/write/:table", svr.handleWrite)
 	dbGroup.GET("/query/file/:table/:column/:id", svr.handleFileQuery)

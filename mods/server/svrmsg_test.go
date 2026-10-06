@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -48,6 +49,18 @@ func TestDecodeQueryRequestJSONRejectsCompositeParam(t *testing.T) {
 	require.Contains(t, err.Error(), "scalar")
 }
 
+func TestDecodeQueryRequestJSONVectorParams(t *testing.T) {
+	req := &QueryRequest{}
+	err := req.DecodeJSON(strings.NewReader(`{"q":"select * from t where v = ?","p":[[0.25,-1,2]]}`))
+	require.NoError(t, err)
+	require.Equal(t, []any{api.Vector{0.25, -1, 2}}, req.Params)
+
+	req = &QueryRequest{}
+	err = req.DecodeJSON(strings.NewReader(`{"q":"select * from t where v = :v","p":{"v":[0.25,-1,2]}}`))
+	require.NoError(t, err)
+	require.Equal(t, []any{sql.Named("v", api.Vector{0.25, -1, 2})}, req.Params)
+}
+
 func TestDecodeQueryRequestJSONNormalizesNamedParams(t *testing.T) {
 	req := &QueryRequest{}
 	err := req.DecodeJSON(strings.NewReader(`{"q":"select * from t where a = :name","p":{"name":"neo"}}`))
@@ -56,12 +69,12 @@ func TestDecodeQueryRequestJSONNormalizesNamedParams(t *testing.T) {
 	require.Equal(t, []any{sql.Named("name", "neo")}, req.Params)
 }
 
-func TestDecodeQueryRequestJSONRejectsCompositeNamedParam(t *testing.T) {
+func TestDecodeQueryRequestJSONRejectsInvalidVectorNamedParam(t *testing.T) {
 	req := &QueryRequest{}
 	err := req.DecodeJSON(strings.NewReader(`{"q":"select * from t","p":{"name":["neo"]}}`))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid p")
-	require.Contains(t, err.Error(), "scalar")
+	require.Contains(t, err.Error(), "not numeric")
 }
 
 func TestDecodeQueryRequestJSONDB(t *testing.T) {
@@ -196,7 +209,8 @@ func TestNormalizeQueryParamValue(t *testing.T) {
 		{name: "json integer", input: json.Number("42"), want: int64(42)},
 		{name: "json float", input: json.Number("3.14"), want: 3.14},
 		{name: "invalid json number", input: json.Number("nope"), wantErr: "invalid syntax"},
-		{name: "slice", input: []any{"x"}, wantErr: "scalar"},
+		{name: "vector", input: []any{json.Number("1"), json.Number("-2.5")}, want: api.Vector{1, -2.5}},
+		{name: "invalid vector", input: []any{"x"}, wantErr: "not numeric"},
 		{name: "map", input: map[string]any{"x": 1}, wantErr: "scalar"},
 		{name: "struct", input: struct{ Value string }{Value: "x"}, wantErr: "unsupported bind parameter type"},
 	}

@@ -2,6 +2,7 @@ package csv
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -11,7 +12,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/nums"
@@ -151,7 +151,7 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]string, len(values))
 
 	for i, value := range values {
-		if arr, ok := client.Unbox(value).([]any); ok {
+		if arr, ok := util.Unbox(value).([]any); ok {
 			cols[i] = internal.FormatArray(arr)
 			continue
 		}
@@ -159,11 +159,17 @@ func (ex *Exporter) AddRow(values []any) error {
 		if ex.precision > 0 && i < len(ex.colTypes) && (ex.colTypes[i] == api.DataTypeFloat64 || ex.colTypes[i] == api.DataTypeFloat32) {
 			treatIntValueAsFloat = true
 		}
-		val := client.Unbox(value)
+		val := util.Unbox(value)
 		if val == nil {
 			val = ex.nullAlternative
 		}
 		switch val := val.(type) {
+		case []float32:
+			encoded, err := json.Marshal(val)
+			if err != nil {
+				return err
+			}
+			cols[i] = string(encoded)
 		case bool:
 			cols[i] = strconv.FormatBool(val)
 		case net.IP:

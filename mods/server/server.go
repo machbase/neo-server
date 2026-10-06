@@ -34,6 +34,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/embedding"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -199,6 +200,12 @@ func (s *Server) Start() error {
 	}
 
 	if err := s.prepareHomeDir(); err != nil {
+		return err
+	}
+	if s.Embedding.CacheDir == "" {
+		s.Embedding.CacheDir = filepath.Join(s.prefDirPath, "models")
+	}
+	if err := embedding.Configure(s.Embedding); err != nil {
 		return err
 	}
 

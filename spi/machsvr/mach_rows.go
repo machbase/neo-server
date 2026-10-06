@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/spi/mach"
 
 	"golang.org/x/text/language"
@@ -129,7 +130,9 @@ func (row *Row) Scan(cols ...any) error {
 		}
 		var isNull = row.values[i] == nil
 		if isNull {
-			cols[i] = nil
+			if !client.ScanNull(cols[i]) {
+				cols[i] = nil
+			}
 		} else if row.err = client.Scan(row.values[i], cols[i], row.timeLocation); row.err != nil {
 			return row.err
 		}
@@ -302,6 +305,8 @@ func (rows *Rows) FetchSync() ([]any, bool, error) {
 		}
 		if isNull {
 			values[i] = nil
+		} else {
+			values[i] = vectorScanValue(values[i])
 		}
 	}
 	return values, next, nil
@@ -357,7 +362,9 @@ func (rows *Rows) Scan(cols ...any) error {
 			return err
 		}
 		if isNull {
-			cols[i] = nil
+			if !client.ScanNull(cols[i]) {
+				cols[i] = nil
+			}
 		}
 	}
 	return nil
@@ -485,8 +492,27 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *
 		if nonNull {
 			return client.Scan(v, dst, loc)
 		}
+	case ColumnRawTypeVector:
+		v, nonNull, err := mach.EngColumnDataVector(stmt, idx)
+		if err != nil {
+			return ErrDatabaseScanTypeName("vector", err)
+		}
+		*isNull = !nonNull
+		if nonNull {
+			return client.Scan(api.Vector(v), dst, loc)
+		}
 	default:
 		return ErrDatabaseScanUnsupportedType(dst)
 	}
 	return nil
+}
+
+func vectorScanValue(value any) any {
+	if ptr, ok := value.(**api.Vector); ok {
+		if ptr == nil || *ptr == nil {
+			return nil
+		}
+		return append(api.Vector(nil), (**ptr)...)
+	}
+	return value
 }

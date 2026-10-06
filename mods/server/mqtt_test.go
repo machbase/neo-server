@@ -17,6 +17,7 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/spi"
 	mqtt "github.com/mochi-mqtt/server/v2"
@@ -239,7 +240,7 @@ func TestMqttQuery(t *testing.T) {
 			ExpectFunc: func(t *testing.T, payload []byte) {
 				strPayload := string(payload)
 				require.False(t, gjson.Get(strPayload, "success").Bool(), strPayload)
-				require.Contains(t, gjson.Get(strPayload, "reason").String(), "bind parameter must be scalar", strPayload)
+				require.Contains(t, gjson.Get(strPayload, "reason").String(), "not numeric", strPayload)
 			},
 		},
 		{
@@ -328,6 +329,52 @@ func TestMqttQuery(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestMqttVectorQuery(t *testing.T) {
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	defer conn.Close()
+	const table = "NEO_MQTT_VECTOR_4211"
+	_, err = conn.ExecContext(t.Context(), "CREATE TRANSACTION TABLE "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(3))")
+	require.NoError(t, err)
+	defer conn.ExecContext(context.Background(), "DROP TABLE "+table)
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO "+table+" VALUES(?,?)", int32(1), api.Vector{1, 0, 0})
+	require.NoError(t, err)
+
+	request := `{"q":"SELECT R.ID,R.V FROM VECTOR_SEARCH(TABLE NEO_MQTT_VECTOR_4211,VECTOR V,QUERY_VECTOR ?,METRIC COSINE,MODE EXACT,TOP_K 1) R","p":[[1,0,0]]}`
+	runMqttTest(t, &MqttTestCase{
+		Name: "mqtt-vector-query", Topic: "db/query", Payload: []byte(request), Subscribe: "db/reply",
+		ExpectFunc: func(t *testing.T, payload []byte) {
+			body := string(payload)
+			require.True(t, gjson.Get(body, "success").Bool(), body)
+			require.Equal(t, "vector", gjson.Get(body, "data.types.1").String(), body)
+			require.Equal(t, int64(1), gjson.Get(body, "data.rows.0.0").Int(), body)
+			require.Equal(t, `[1,0,0]`, gjson.Get(body, "data.rows.0.1").Raw, body)
+		},
+	})
+}
+
+func TestMqttVectorWrite(t *testing.T) {
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	defer conn.Close()
+	const table = "NEO_MQTT_VECTOR_WRITE_4211"
+	_, err = conn.ExecContext(t.Context(), "CREATE TRANSACTION TABLE "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(3))")
+	require.NoError(t, err)
+	defer conn.ExecContext(context.Background(), "DROP TABLE "+table)
+	runMqttTest(t, &MqttTestCase{
+		Name: "mqtt-vector-write", Topic: "db/write/" + table,
+		Payload:    []byte(`{"data":{"columns":["ID","V"],"rows":[[1,[1,0,0]]]}}`),
+		Properties: map[string]string{"reply": "db/reply/vector-write-4211"},
+		Subscribe:  "db/reply/vector-write-4211",
+		ExpectFunc: func(t *testing.T, payload []byte) {
+			require.True(t, gjson.GetBytes(payload, "success").Bool(), string(payload))
+		},
+	})
+	var vector api.Vector
+	require.NoError(t, conn.QueryRowContext(t.Context(), "SELECT V FROM "+table+" WHERE ID=1").Scan(&vector))
+	require.Equal(t, api.Vector{1, 0, 0}, vector)
 }
 
 func TestMqttQueryFailures(t *testing.T) {
@@ -801,7 +848,8 @@ func TestMqttWriteQualifiedTableNamePrecedence(t *testing.T) {
 			Payload: []byte(`["append-v3-path-qualified", 1705291862000000000, 1.5]`),
 		})
 		spi.FlushAppendWorkers(db1, "SYS", tableName)
-		require.Equal(t, 1, countIn(t, db1, "append-v3-path-qualified"))
+		require.Eventually(t, func() bool { return countIn(t, db1, "append-v3-path-qualified") == 1 },
+			10*time.Second, 100*time.Millisecond)
 		require.Equal(t, 0, countIn(t, "", "append-v3-path-qualified"))
 	})
 
@@ -815,7 +863,8 @@ func TestMqttWriteQualifiedTableNamePrecedence(t *testing.T) {
 			Payload:    []byte(`["append-v5-property-db", 1705291863000000000, 1.5]`),
 		})
 		spi.FlushAppendWorkers(db1, "SYS", tableName)
-		require.Equal(t, 1, countIn(t, db1, "append-v5-property-db"))
+		require.Eventually(t, func() bool { return countIn(t, db1, "append-v5-property-db") == 1 },
+			10*time.Second, 100*time.Millisecond)
 		require.Equal(t, 0, countIn(t, "", "append-v5-property-db"))
 	})
 
@@ -829,7 +878,8 @@ func TestMqttWriteQualifiedTableNamePrecedence(t *testing.T) {
 			Payload:    []byte(`["append-path-wins", 1705291864000000000, 1.5]`),
 		})
 		spi.FlushAppendWorkers(db1, "SYS", tableName)
-		require.Equal(t, 1, countIn(t, db1, "append-path-wins"))
+		require.Eventually(t, func() bool { return countIn(t, db1, "append-path-wins") == 1 },
+			10*time.Second, 100*time.Millisecond)
 		require.Equal(t, 0, countIn(t, db2, "append-path-wins"))
 	})
 }

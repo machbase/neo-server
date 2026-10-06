@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	jsonEnc "github.com/machbase/neo-server/v8/mods/codec/internal/json"
@@ -118,7 +117,7 @@ func (ex *Exporter) AddRow(source []any) error {
 		ex.values = ex.values[:len(source)]
 	}
 	for i, field := range source {
-		switch v := client.Unbox(field).(type) {
+		switch v := util.Unbox(field).(type) {
 		case time.Time:
 			ex.values[i] = ex.timeformat.FormatEpoch(v)
 		case []byte:

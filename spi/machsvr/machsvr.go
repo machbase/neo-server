@@ -777,6 +777,8 @@ func (ps *PreparedStmt) QueryRow(ctx context.Context, params ...any) *Row {
 			}
 			if isNull {
 				row.values[i] = nil
+			} else {
+				row.values[i] = vectorScanValue(row.values[i])
 			}
 		}
 	}
@@ -904,6 +906,7 @@ const (
 	ColumnRawTypeUInt64       = 12
 	ColumnRawTypeText         = 13
 	ColumnRawTypeJSON         = 14
+	ColumnRawTypeVector       = 16
 )
 
 func columnRawTypeToDataType(rawType int) (api.DataType, error) {
@@ -938,6 +941,8 @@ func columnRawTypeToDataType(rawType int) (api.DataType, error) {
 		return api.DataTypeString, nil
 	case ColumnRawTypeJSON:
 		return api.DataTypeString, nil
+	case ColumnRawTypeVector:
+		return api.DataTypeVector, nil
 	default:
 		return "", ErrDatabaseUnsupportedType("ColumnType", rawType)
 	}
@@ -971,6 +976,8 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 		return ColumnRawTypeString, nil
 	case api.DataTypeBinary:
 		return ColumnRawTypeBinary, nil
+	case api.DataTypeVector:
+		return ColumnRawTypeVector, nil
 	default:
 		return 0, ErrDatabaseUnsupportedTypeName("DataType", string(typ))
 	}
@@ -1064,6 +1071,8 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) *
 		}
 		if isNull {
 			row.values[i] = nil
+		} else {
+			row.values[i] = vectorScanValue(row.values[i])
 		}
 	}
 
@@ -1204,6 +1213,27 @@ func bind(stmt unsafe.Pointer, idx int, c any) error {
 		}
 	case *time.Time:
 		if err := mach.EngBindInt64(stmt, idx, cv.UnixNano()); err != nil {
+			return ErrDatabaseBind(idx, c, err)
+		}
+	case api.Vector:
+		if cv == nil {
+			return mach.EngBindNull(stmt, idx)
+		}
+		if err := mach.EngBindVector(stmt, idx, []float32(cv)); err != nil {
+			return ErrDatabaseBind(idx, c, err)
+		}
+	case *api.Vector:
+		if cv == nil || *cv == nil {
+			return mach.EngBindNull(stmt, idx)
+		}
+		if err := mach.EngBindVector(stmt, idx, []float32(*cv)); err != nil {
+			return ErrDatabaseBind(idx, c, err)
+		}
+	case []float32:
+		if cv == nil {
+			return mach.EngBindNull(stmt, idx)
+		}
+		if err := mach.EngBindVector(stmt, idx, cv); err != nil {
 			return ErrDatabaseBind(idx, c, err)
 		}
 	default:

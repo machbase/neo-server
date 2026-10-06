@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/lib/crypto"
 	"github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/lib/dbus"
+	jsembedding "github.com/machbase/neo-server/v8/jsh/lib/embedding"
 	"github.com/machbase/neo-server/v8/jsh/lib/git"
 	"github.com/machbase/neo-server/v8/jsh/lib/http"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
@@ -152,6 +153,7 @@ func Enable(n *engine.JSRuntime) {
 	n.RegisterNativeModule("@jsh/crypto", crypto.Module)
 	addFiles(crypto.Files())
 	n.RegisterNativeModule("@jsh/db", db.Module)
+	n.RegisterNativeModule("@jsh/embedding", jsembedding.Module)
 	n.RegisterNativeModule("@jsh/dbus", dbus.Module)
 	addFiles(dbus.Files())
 	n.RegisterNativeModule("@jsh/git", git.ModuleWithFS(n.MountedFS()))

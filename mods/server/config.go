@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/mods/embedding"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
@@ -75,6 +76,7 @@ type Config struct {
 	Grpc           GrpcConfig // deprecated, left for previous version's configuration file compatibility
 	Http           HttpConfig
 	Mqtt           MqttConfig
+	Embedding      embedding.Config
 	Jwt            JwtConfig
 	NavelCord      *NavelCordConfig
 
@@ -117,6 +119,7 @@ func NewConfig() *Config {
 		}
 	}
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
+	conf.Embedding = embedding.DefaultConfig()
 	return &conf
 }
 

@@ -10,8 +10,10 @@ import (
 	"time"
 
 	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -302,7 +304,7 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			break
 		}
 		for i := range values {
-			values[i] = client.Unbox(values[i])
+			values[i] = util.Unbox(values[i])
 		}
 		node.emit(NewRecord(nrow, values))
 	}
@@ -502,7 +504,7 @@ func sqlQuery(node *Node, stmtType spi.SQLStatementType, conn *sql.Conn, sqlText
 					break
 				}
 				for i := range values {
-					values[i] = client.Unbox(values[i])
+					values[i] = util.Unbox(values[i])
 				}
 				node.emit(NewRecord(nrow, values))
 			}
@@ -1247,7 +1249,18 @@ func (app *appender) AddRow(values []any) error {
 		if values[idx] == nil {
 			continue
 		}
-		val, err := col.DataType.Apply(values[idx], timeformat, timeLocation)
+		var val any
+		var err error
+		if col.DataType == api.DataTypeVector {
+			switch values[idx].(type) {
+			case []any, []float32, []float64:
+				val, err = util.VectorFromJSON(values[idx])
+			default:
+				val, err = col.DataType.Apply(values[idx], timeformat, timeLocation)
+			}
+		} else {
+			val, err = col.DataType.Apply(values[idx], timeformat, timeLocation)
+		}
 		if err != nil {
 			return fmt.Errorf("invalid value for column %s: %v, error: %s", col.Name, values[idx], err.Error())
 		} else {

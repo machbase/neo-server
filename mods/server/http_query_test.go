@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -27,6 +28,44 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestHttpExplainVector(t *testing.T) {
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	defer conn.Close()
+	const table = "NEO_HTTP_VECTOR_PLAN"
+	_, err = conn.ExecContext(t.Context(), "CREATE TRANSACTION TABLE "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(3))")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanup, connectErr := spi.Connect(context.Background(), "sys")
+		if connectErr == nil {
+			defer cleanup.Close()
+			_, _ = cleanup.ExecContext(context.Background(), "DROP TABLE "+table)
+		}
+	})
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO "+table+" VALUES(?,?)", int32(1), api.Vector{1, 0, 0})
+	require.NoError(t, err)
+
+	statement := "EXPLAIN FULL SELECT R.ID FROM VECTOR_SEARCH(TABLE " + table +
+		",VECTOR V,QUERY_VECTOR TO_VECTOR('[1,0,0]',3),METRIC COSINE,MODE EXACT,TOP_K 1) R"
+	body, err := json.Marshal(map[string]any{"q": statement})
+	require.NoError(t, err)
+	request, err := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewReader(body))
+	require.NoError(t, err)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	var result QueryResponse
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+	require.True(t, result.Success, result.Reason)
+	require.Equal(t, []string{"PLAN"}, result.Data.Columns)
+	require.Equal(t, []string{"string"}, result.Data.Types)
+	plan, err := json.Marshal(result.Data.Rows)
+	require.NoError(t, err)
+	require.Contains(t, string(plan), "VECTOR SEARCH")
+}
 
 func TestHttpQueryUsesJWTCurrentUser(t *testing.T) {
 	username := fmt.Sprintf("query_user_%d", time.Now().UnixNano())
@@ -844,7 +883,7 @@ func TestHttpQueryBindParamInvalid(t *testing.T) {
 	err = json.Unmarshal(result, &resultObj)
 	require.NoError(t, err)
 	require.Equal(t, false, resultObj["success"])
-	require.Contains(t, resultObj["reason"], "bind parameter must be scalar")
+	require.Contains(t, resultObj["reason"], "not numeric")
 }
 
 func TestHttpQueryUnsupportedContentType(t *testing.T) {

@@ -2,6 +2,7 @@ package mach
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -431,6 +432,43 @@ func EngBindNull(stmt unsafe.Pointer, idx int) error {
 	return nil
 }
 
+func EngBindVector(stmt unsafe.Pointer, idx int, values []float32) error {
+	if err := validateVector(values); err != nil {
+		return err
+	}
+	size := C.size_t(len(values)) * C.size_t(C.sizeof_float)
+	data := C.malloc(size)
+	if data == nil {
+		return fmt.Errorf("allocate VECTOR bind: out of memory")
+	}
+	defer C.free(data)
+	C.memcpy(data, unsafe.Pointer(&values[0]), size)
+	var param C.MachEngineBindParam
+	param.mType = C.MACH_DATA_TYPE_VECTOR
+	vector := (*C.MachEngineAppendVectorStruct)(unsafe.Pointer(&param.mData[0]))
+	vector.mDimension = C.uint(len(values))
+	vector.mData = (*C.float)(data)
+	if rt := C.MachBindParam(stmt, C.int(idx), &param); rt != 0 {
+		if stmtErr := EngError(stmt); stmtErr != nil {
+			return stmtErr
+		}
+		return ErrDatabaseReturnsAtIdx("MachBindParam(VECTOR)", idx, int(rt))
+	}
+	return nil
+}
+
+func validateVector(values []float32) error {
+	if len(values) < 1 || len(values) > 65536 {
+		return fmt.Errorf("VECTOR dimension out of range: %d", len(values))
+	}
+	for i, value := range values {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return fmt.Errorf("VECTOR element %d is not finite FLOAT32", i)
+		}
+	}
+	return nil
+}
+
 func EngColumnCount(stmt unsafe.Pointer) (int, error) {
 	var count C.int = 0
 	if rt := C.MachColumnCount(stmt, &count); rt != 0 {
@@ -704,6 +742,42 @@ func EngColumnDataString(stmt unsafe.Pointer, idx int) (string, bool, error) {
 		}
 	}
 	return string(buf), isNull == 0, nil
+}
+
+func EngColumnDataVector(stmt unsafe.Pointer, idx int) ([]float32, bool, error) {
+	length, err := EngColumnLength(stmt, idx)
+	if err != nil {
+		return nil, false, err
+	}
+	if length < 0 || length%4 != 0 || length/4 > 65536 {
+		return nil, false, fmt.Errorf("invalid VECTOR payload length: %d", length)
+	}
+	var dimension C.uint
+	var isNull C.char
+	if length == 0 {
+		if rt := C.MachColumnDataVector(stmt, C.int(idx), nil, 0, &dimension, &isNull); rt != 0 {
+			return nil, false, ErrDatabaseReturnsAtIdx("MachColumnDataVector", idx, int(rt))
+		}
+		return nil, false, nil
+	}
+	buffer := make([]C.float, length/4)
+	if rt := C.MachColumnDataVector(stmt, C.int(idx), &buffer[0], C.uint(len(buffer)), &dimension, &isNull); rt != 0 {
+		if stmtErr := EngError(stmt); stmtErr != nil {
+			return nil, false, stmtErr
+		}
+		return nil, false, ErrDatabaseReturnsAtIdx("MachColumnDataVector", idx, int(rt))
+	}
+	if isNull != 0 {
+		return nil, false, nil
+	}
+	if dimension == 0 || int(dimension) > len(buffer) {
+		return nil, false, fmt.Errorf("invalid VECTOR dimension: %d", dimension)
+	}
+	values := make([]float32, dimension)
+	for i := range values {
+		values[i] = float32(buffer[i])
+	}
+	return values, true, nil
 }
 
 // returns []byte and true if NOT NULL, false if NULL
@@ -1080,6 +1154,31 @@ func (ab *AppendBuffer) Append(vals ...any) error {
 					(*C.MachEngineAppendVarStruct)(unsafe.Pointer(&buffer[i].mData[0])).mData = unsafe.Pointer(&v[0])
 				}
 			}
+		case "vector":
+			var values []float32
+			switch vector := val.(type) {
+			case []float32:
+				values = vector
+			case *[]float32:
+				if vector != nil {
+					values = *vector
+				}
+			default:
+				return ErrDatabaseAppendWrongType(val, cName, cType)
+			}
+			if err := validateVector(values); err != nil {
+				return err
+			}
+			size := C.size_t(len(values)) * C.size_t(C.sizeof_float)
+			data := C.malloc(size)
+			if data == nil {
+				return fmt.Errorf("allocate VECTOR append: out of memory")
+			}
+			defer C.free(data)
+			C.memcpy(data, unsafe.Pointer(&values[0]), size)
+			item := (*C.MachEngineAppendVectorStruct)(unsafe.Pointer(&buffer[i].mData[0]))
+			item.mDimension = C.uint(len(values))
+			item.mData = (*C.float)(data)
 		}
 	}
 

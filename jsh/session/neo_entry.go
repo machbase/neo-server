@@ -8,11 +8,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	jshservice "github.com/machbase/neo-server/v8/jsh/service"
+	"github.com/machbase/neo-server/v8/spi"
 	"github.com/nyaosorg/go-readline-ny"
 	"golang.org/x/term"
 )
@@ -176,6 +178,22 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 			}
 			os.Exit(1)
 		}
+		machConfig := GetMachCliConfig()
+		dsn := map[string]string{
+			"host": machConfig.Host,
+			"port": strconv.Itoa(machConfig.Port),
+			"user": machConfig.User,
+		}
+		if machConfig.IdentityFile != "" {
+			dsn["auth_key_file"] = machConfig.IdentityFile
+		} else {
+			dsn["password"] = machConfig.Password
+		}
+		if machConfig.Database != "" {
+			dsn["db"] = machConfig.Database
+		}
+		spi.SetDefaultKey(machConfig.User, nil)
+		spi.SetDefaultDSN(dsn)
 		for k, v := range defaultSession.env {
 			if _, ok := conf.Env[k]; !ok {
 				conf.Env[k] = v

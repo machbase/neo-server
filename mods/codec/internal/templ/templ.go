@@ -9,7 +9,6 @@ import (
 	txtTemplate "text/template"
 	"time"
 
-	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
@@ -211,7 +210,7 @@ func (ex *Exporter) AddRow(values []any) error {
 }
 
 func templateValue(val any) any {
-	unboxed := client.Unbox(val)
+	unboxed := util.Unbox(val)
 	if unboxed == nil {
 		return "null"
 	}

@@ -85,7 +85,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 				return nil, fmt.Errorf("table '%s' does not exist, %s", strings.ToUpper(appender.tableName), err.Error())
 			}
 		}
-		if tableType != client.TableTypeLog && tableType != client.TableTypeTag {
+		if tableType != client.TableTypeLog && tableType != client.TableTypeTag && tableType != client.TableTypeTransaction {
 			return nil, fmt.Errorf("%s '%s' doesn't support append", tableType.String(), appender.tableName)
 		}
 		appender.tableType = client.TableType(tableType)
@@ -274,6 +274,8 @@ func (ap *Appender) Append(values ...any) error {
 			colsWithTime = append([]any{time.Time{}}, values...)
 		}
 		return ap.append(colsWithTime...)
+	} else if ap.tableType == client.TableTypeTransaction {
+		return ap.append(values...)
 	} else {
 		return fmt.Errorf("%s can not be appended", ap.tableName)
 	}
@@ -310,6 +312,31 @@ func (ap *Appender) append(values ...any) error {
 	}
 	if ap.conn == nil || !ap.conn.Connected() {
 		return ErrDatabaseNoConnection
+	}
+	for i, column := range ap.columns {
+		if column.DataType != api.DataTypeVector {
+			continue
+		}
+		switch vector := values[i].(type) {
+		case api.Vector:
+			if vector == nil {
+				values[i] = nil
+			} else {
+				values[i] = []float32(vector)
+			}
+		case *api.Vector:
+			if vector == nil || *vector == nil {
+				values[i] = nil
+			} else {
+				values[i] = []float32(*vector)
+			}
+		case string:
+			parsed, err := api.ParseVector(vector)
+			if err != nil {
+				return err
+			}
+			values[i] = []float32(parsed)
+		}
 	}
 
 	return ap.buffer.Append(values...)

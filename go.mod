@@ -28,7 +28,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.12.3
-	github.com/machbase/neo-client/v2 v2.0.1-0.20261001003917-5f097ac96ea0
+	github.com/machbase/neo-client/v2 v2.0.1-0.20261002053242-3c1c286ca470
 	github.com/magefile/mage v1.16.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-sqlite3 v1.14.24
@@ -49,8 +49,10 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/sony/sonyflake v1.3.0
 	github.com/stretchr/testify v1.11.1
+	github.com/tggo/goSentencePiece v1.1.0
 	github.com/tidwall/gjson v1.19.0
 	github.com/wroge/wgs84 v1.1.7
+	github.com/yalue/onnxruntime_go v1.29.0
 	github.com/yuin/goldmark v1.8.4
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	github.com/zclconf/go-cty v1.17.0

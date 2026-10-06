@@ -84,3 +84,15 @@ func TestJsonDecoder(t *testing.T) {
 		}
 	}
 }
+
+func TestJsonDecoderVectorArray(t *testing.T) {
+	dec := json.NewDecoder()
+	dec.SetInputStream(bytes.NewBufferString(`{"data":{"rows":[[1,[0.25,-1,2]],[2,null]]}}`))
+	dec.SetColumnTypes(api.DataTypeInt32, api.DataTypeVector)
+	first, _, err := dec.NextRow()
+	require.NoError(t, err)
+	require.Equal(t, []any{int32(1), api.Vector{0.25, -1, 2}}, first)
+	second, _, err := dec.NextRow()
+	require.NoError(t, err)
+	require.Equal(t, []any{int32(2), nil}, second)
+}

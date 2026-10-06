@@ -23,6 +23,12 @@ API and Interfaces
 
 [https://docs.machbase.com/neo](https://docs.machbase.com/neo)
 
+The `nfx-4211-vector-support` development branch documents VECTOR columns,
+BM25/HNSW/IVF search, JSH, and embedding providers in
+[the VECTOR guide](docs/vector-search.md).
+Implementation and runtime checks are recorded in the
+[VECTOR validation report](docs/vector-validation.md).
+
 ## Install Prebuilt Binary
 
 - Download

@@ -13,7 +13,6 @@ import (
 	txtTemplate "text/template"
 	"time"
 
-	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
@@ -260,7 +259,7 @@ func (ex *Exporter) AddRow(values []any) error {
 			ex.executeTemplate(ex.record)
 		}
 		for i, val := range values {
-			values[i] = client.Unbox(val)
+			values[i] = util.Unbox(val)
 		}
 		ex.record = &Record{
 			values:     values,
@@ -281,7 +280,7 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = nullAlt
 			continue
 		}
-		unboxed := client.Unbox(r)
+		unboxed := util.Unbox(r)
 		if arr, ok := unboxed.([]any); ok {
 			cols[i] = internal.FormatArray(arr)
 			continue

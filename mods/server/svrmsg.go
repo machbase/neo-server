@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -237,6 +238,15 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 	ctx = context.WithValue(ctx, client.MetaKey, &meta)
 
 	params, _ := req.Params.([]any)
+	if stmtType == spi.SQLStatementTypeExplain {
+		if len(params) != 0 {
+			if hook.SetStatusCode != nil {
+				hook.SetStatusCode(http.StatusBadRequest)
+			}
+			return fmt.Errorf("EXPLAIN does not accept bind parameters")
+		}
+		return executeExplain(ctx, conn, req.SqlText, encoder, hook)
+	}
 	if !stmtType.IsFetch() {
 		result, err := conn.ExecContext(ctx, req.SqlText, params...)
 		if err != nil {
@@ -318,6 +328,59 @@ func (req *QueryRequest) Execute(ctx context.Context, w io.Writer, hook *QueryHo
 		} else {
 			hook.SetUserMessage(userMsg)
 		}
+	}
+	return nil
+}
+
+func executeExplain(ctx context.Context, conn *sql.Conn, statement string, encoder codec.RowsEncoder, hook *QueryHook) error {
+	query := strings.TrimSpace(statement)
+	if len(query) < len("EXPLAIN") {
+		return fmt.Errorf("EXPLAIN requires a SQL statement")
+	}
+	query = strings.TrimSpace(query[len("EXPLAIN"):])
+	full := false
+	if strings.HasPrefix(strings.ToUpper(query), "FULL ") {
+		full = true
+		query = strings.TrimSpace(query[len("FULL"):])
+	}
+	if query == "" {
+		return fmt.Errorf("EXPLAIN requires a SQL statement")
+	}
+	var plan string
+	err := conn.Raw(func(raw any) error {
+		explainer, ok := raw.(interface {
+			Explain(context.Context, string, bool) (string, error)
+		})
+		if !ok {
+			return fmt.Errorf("EXPLAIN is unavailable for this driver")
+		}
+		var explainErr error
+		plan, explainErr = explainer.Explain(ctx, query, full)
+		return explainErr
+	})
+	if err != nil {
+		if hook.SetStatusCode != nil {
+			hook.SetStatusCode(http.StatusInternalServerError)
+		}
+		return err
+	}
+	if columns, ok := encoder.(opts.CanSetColumns); ok {
+		columns.SetColumns("PLAN")
+	}
+	if types, ok := encoder.(opts.CanSetColumnTypes); ok {
+		types.SetColumnTypes(api.DataTypeString)
+	}
+	if err := encoder.Open(); err != nil {
+		return err
+	}
+	defer encoder.Close()
+	for _, line := range strings.Split(strings.TrimSuffix(plan, "\n"), "\n") {
+		if err := encoder.AddRow([]any{line}); err != nil {
+			return err
+		}
+	}
+	if hook.SetStatusCode != nil {
+		hook.SetStatusCode(http.StatusOK)
 	}
 	return nil
 }
@@ -425,7 +488,13 @@ func normalizeQueryParamValue(value any) (any, error) {
 			return nil, err
 		}
 		return n, nil
-	case []any, map[string]any:
+	case []any:
+		vector, err := util.VectorFromJSON(v)
+		if err != nil {
+			return nil, err
+		}
+		return vector, nil
+	case map[string]any:
 		return nil, fmt.Errorf("bind parameter must be scalar, got %T", value)
 	default:
 		return nil, fmt.Errorf("unsupported bind parameter type %T", value)
