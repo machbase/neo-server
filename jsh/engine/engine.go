@@ -85,6 +85,9 @@ func (jr *JSRuntime) RunContext(ctx context.Context) error {
 	if ctx == nil {
 		return jr.Run()
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	prevCtx := jr.currentContext()
 	jr.setContext(ctx)
@@ -116,6 +119,7 @@ func (jr *JSRuntime) RunContext(ctx context.Context) error {
 		if vm := jr.vmRef.Load(); vm != nil {
 			vm.Interrupt(ctx.Err())
 		}
+		<-resultCh
 		return ctx.Err()
 	}
 }
@@ -173,6 +177,9 @@ func (jr *JSRuntime) Run() error {
 	jr.eventLoop.Run(func(vm *goja.Runtime) {
 		// Store vm reference so RunContext can call vm.Interrupt() from a goroutine.
 		jr.vmRef.Store(vm)
+		if runCtx := jr.currentContext(); runCtx != nil && runCtx.Err() != nil {
+			vm.Interrupt(runCtx.Err())
+		}
 		buffer.Enable(vm)
 		url.Enable(vm)
 		vm.SetFieldNameMapper(goja.UncapFieldNameMapper())

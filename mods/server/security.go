@@ -7,10 +7,13 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -108,17 +111,112 @@ type JwtConfig struct {
 	Secret     string
 }
 
-var jwtConf = &JwtConfig{
-	AtDuration: 5 * time.Minute,
-	RtDuration: 60 * time.Minute,
-	Secret:     "__secr3t__",
-}
+const (
+	jwtSecretFileName = "jwt.secret"
+	jwtSecretSize     = 32
+)
+
+var jwtConf = func() *JwtConfig {
+	secret, err := generateJwtSecret()
+	if err != nil {
+		panic(fmt.Sprintf("generate default JWT secret: %v", err))
+	}
+	return &JwtConfig{
+		AtDuration: 5 * time.Minute,
+		RtDuration: 60 * time.Minute,
+		Secret:     secret,
+	}
+}()
 
 func JwtConfigure(conf *JwtConfig) error {
 	if conf != nil && conf.AtDuration > 0 && conf.RtDuration > 0 {
+		if strings.TrimSpace(conf.Secret) == "" {
+			return errors.New("JWT secret must not be empty")
+		}
 		jwtConf = conf
 	}
 	return nil
+}
+
+func generateJwtSecret() (string, error) {
+	randomBytes := make([]byte, jwtSecretSize)
+	if _, err := io.ReadFull(rand.Reader, randomBytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(randomBytes), nil
+}
+
+func readJwtSecret(secretPath string) (string, error) {
+	info, err := os.Lstat(secretPath)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("JWT secret path is not a regular file: %s", secretPath)
+	}
+	if info.Mode().Perm()&0077 != 0 {
+		if err := os.Chmod(secretPath, 0600); err != nil {
+			return "", fmt.Errorf("restrict JWT secret file permissions: %w", err)
+		}
+	}
+
+	data, err := os.ReadFile(secretPath)
+	if err != nil {
+		return "", err
+	}
+	secret := strings.TrimSpace(string(data))
+	decoded, err := hex.DecodeString(secret)
+	if err != nil || len(decoded) != jwtSecretSize {
+		return "", fmt.Errorf("invalid JWT secret file %s: expected a %d-byte hex key", secretPath, jwtSecretSize)
+	}
+	return secret, nil
+}
+
+func loadOrCreateJwtSecret(prefDir string) (string, error) {
+	secretPath := filepath.Join(prefDir, jwtSecretFileName)
+	secret, err := readJwtSecret(secretPath)
+	if err == nil {
+		return secret, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("read JWT secret file: %w", err)
+	}
+
+	secret, err = generateJwtSecret()
+	if err != nil {
+		return "", fmt.Errorf("generate JWT secret: %w", err)
+	}
+
+	tempFile, err := os.CreateTemp(prefDir, ".jwt-secret-*")
+	if err != nil {
+		return "", fmt.Errorf("create temporary JWT secret file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+
+	if err := tempFile.Chmod(0600); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("restrict temporary JWT secret file permissions: %w", err)
+	}
+	if _, err := tempFile.WriteString(secret + "\n"); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("write temporary JWT secret file: %w", err)
+	}
+	if err := tempFile.Sync(); err != nil {
+		tempFile.Close()
+		return "", fmt.Errorf("sync temporary JWT secret file: %w", err)
+	}
+	if err := tempFile.Close(); err != nil {
+		return "", fmt.Errorf("close temporary JWT secret file: %w", err)
+	}
+
+	if err := os.Link(tempPath, secretPath); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return readJwtSecret(secretPath)
+		}
+		return "", fmt.Errorf("install JWT secret file: %w", err)
+	}
+	return secret, nil
 }
 
 var idgen = uuid.NewGen()
