@@ -10,9 +10,11 @@
 | 링크한 정적 archive | `machbase_home/lib/libmachengine.a`, SHA-256 `711aae01a485b25d5079e92be0fc6cf59cb9f8120a7d88f62526f8b534e83c7d` |
 | Neo에 반영한 C 헤더 | `spi/mach/native/machEngine.h`, SHA-256 `3b714dcfbbb5887e80e14d8de175fb4cd58943912d14a3e19379d60f16d95811` |
 | Go 클라이언트 | `neo-client/v2` VECTOR 커밋 `3c1c286`; Neo `go.mod`도 해당 pseudo-version 사용 |
-| Neo 실행 파일 | `go run mage.go machbase-neo` 성공, `tmp/machbase-neo`, SHA-256 `727e82c0c80596dd76234894b3130354e77c010312592ef41c92fcaba13b1f52` |
+| Neo 실행 파일 | 커밋 `1962dafd` 후 `go run mage.go machbase-neo` 재빌드 성공, `tmp/machbase-neo`, SHA-256 `405e5af99a142443f8ef2e144b5e7678b13c8944347e8b3f5199d8f288bbeed5` |
 
 링크 대상 archive는 [스크립트](../scripts/link-nfx-4211-engine.sh)로 지정했으며, 최종 실행 파일에 `MachBindParam`·`MachColumnDataVector` 심볼이 있음을 확인했다. `sqlite_fts5` 태그가 없는 Neo 빌드에서는 새 엔진의 `qrdFtsRegister`가 실패하므로 Mage 빌드·테스트에 태그를 적용했다. 모델 파일과 런타임 DB는 Git에 추가하지 않았다.
+`version`의 `engine 8.7.1` 문구는 Neo 패키지의 버전 문자열이다. 실제 링크 대상은 위 #4211 archive SHA와 실행 파일 심볼로 대조했다.
+커밋 뒤 다시 빌드한 위 SHA의 바이너리 자체를 기동해 `/db/query` VECTOR·IVF 검색과 기본 BGE-M3 JSH 예제를 재실행했고 모두 통과했다. 격리 서버는 검증 후 정상 종료했다.
 
 ## 자동 테스트
 
