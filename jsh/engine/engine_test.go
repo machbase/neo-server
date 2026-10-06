@@ -422,6 +422,19 @@ func nilContextForTest() context.Context {
 }
 
 func TestRunContext(t *testing.T) {
+	t.Run("already cancelled ctx does not start script", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		jr, err := engine.New(engine.Config{Code: `while(true) {}`})
+		if err != nil {
+			t.Fatalf("engine.New: %v", err)
+		}
+		if runErr := jr.RunContext(ctx); runErr != context.Canceled {
+			t.Fatalf("RunContext error = %v, want context.Canceled", runErr)
+		}
+	})
+
 	t.Run("nil ctx falls through to Run", func(t *testing.T) {
 		var buf bytes.Buffer
 		jr, err := engine.New(engine.Config{
@@ -553,11 +566,22 @@ func TestRunContext(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 
+		var childCmd *exec.Cmd
+		t.Cleanup(func() {
+			if childCmd != nil && childCmd.Process != nil {
+				killProcessForTest(childCmd.Process.Pid)
+			}
+		})
+
 		jr, err := engine.New(engine.Config{
 			Code: `
 				const process = require("process");
-				process.exec("@/bin/sh", "-c", "trap '' TERM; while :; do sleep 1; done");
+				process.exec("/bin/sh", "-c", "trap '' TERM; while :; do sleep 1; done");
 			`,
+			ExecBuilder: func(source string, args []string, env map[string]any) (*exec.Cmd, error) {
+				childCmd = exec.Command(args[0], args[1:]...)
+				return childCmd, nil
+			},
 			FSTabs: []engine.FSTab{
 				root.RootFSTab(),
 				lib.LibFSTab(),
@@ -580,6 +604,12 @@ func TestRunContext(t *testing.T) {
 		}
 		if elapsed > 5*time.Second {
 			t.Fatalf("RunContext cancellation took too long: %v", elapsed)
+		}
+		if childCmd == nil || childCmd.Process == nil {
+			t.Fatal("process.exec child was not started")
+		}
+		if processExistsForTest(childCmd.Process.Pid) {
+			t.Fatalf("process.exec child %d is still alive after RunContext returned", childCmd.Process.Pid)
 		}
 	})
 }
