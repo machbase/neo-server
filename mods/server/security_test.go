@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -90,10 +91,176 @@ func TestParseProxyLoginName(t *testing.T) {
 func withTestJwtConfig(t *testing.T, conf *JwtConfig) {
 	t.Helper()
 	prev := jwtConf
-	JwtConfigure(conf)
+	require.NoError(t, JwtConfigure(conf))
 	t.Cleanup(func() {
-		JwtConfigure(prev)
+		require.NoError(t, JwtConfigure(prev))
 	})
+}
+
+func TestJwtConfigure(t *testing.T) {
+	withTestJwtConfig(t, &JwtConfig{AtDuration: time.Minute, RtDuration: time.Hour, Secret: "original-secret"})
+	original := jwtConf
+	for _, conf := range []*JwtConfig{
+		nil,
+		{AtDuration: 0, RtDuration: time.Hour, Secret: "ignored"},
+		{AtDuration: time.Minute, RtDuration: -time.Hour, Secret: "ignored"},
+	} {
+		require.NoError(t, JwtConfigure(conf))
+		require.Same(t, original, jwtConf)
+	}
+	for _, secret := range []string{"", " \t\n"} {
+		err := JwtConfigure(&JwtConfig{AtDuration: time.Minute, RtDuration: time.Hour, Secret: secret})
+		require.ErrorContains(t, err, "JWT secret must not be empty")
+		require.Same(t, original, jwtConf)
+	}
+	updated := &JwtConfig{AtDuration: 2 * time.Minute, RtDuration: 2 * time.Hour, Secret: "updated-secret"}
+	require.NoError(t, JwtConfigure(updated))
+	require.Same(t, updated, jwtConf)
+}
+
+type jwtTestReader func([]byte) (int, error)
+
+func (reader jwtTestReader) Read(data []byte) (int, error) {
+	return reader(data)
+}
+
+func TestGenerateJwtSecret(t *testing.T) {
+	first, err := generateJwtSecret()
+	require.NoError(t, err)
+	second, err := generateJwtSecret()
+	require.NoError(t, err)
+	require.NotEqual(t, first, second)
+	decoded, err := hex.DecodeString(first)
+	require.NoError(t, err)
+	require.Len(t, decoded, jwtSecretSize)
+}
+
+func TestJwtSecretRandomFailure(t *testing.T) {
+	original := rand.Reader
+	t.Cleanup(func() { rand.Reader = original })
+	wantErr := errors.New("random source unavailable")
+	rand.Reader = jwtTestReader(func([]byte) (int, error) { return 0, wantErr })
+	secret, err := generateJwtSecret()
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, secret)
+	secret, err = loadOrCreateJwtSecret(t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+	require.ErrorContains(t, err, "generate JWT secret")
+	require.Empty(t, secret)
+}
+
+func TestReadJwtSecret(t *testing.T) {
+	validSecret := strings.Repeat("ab", jwtSecretSize)
+	for _, test := range []struct {
+		name    string
+		content string
+		valid   bool
+	}{
+		{name: "whitespace", content: " \t" + validSecret + "\r\n", valid: true},
+		{name: "empty"},
+		{name: "invalid hex", content: strings.Repeat("zz", jwtSecretSize)},
+		{name: "short key", content: "abcd"},
+		{name: "long key", content: validSecret + "ab"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			secretPath := filepath.Join(t.TempDir(), jwtSecretFileName)
+			require.NoError(t, os.WriteFile(secretPath, []byte(test.content), 0600))
+			secret, err := readJwtSecret(secretPath)
+			if test.valid {
+				require.NoError(t, err)
+				require.Equal(t, validSecret, secret)
+			} else {
+				require.ErrorContains(t, err, "invalid JWT secret file")
+				require.Empty(t, secret)
+			}
+		})
+	}
+	t.Run("permissions", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("POSIX file permissions are required")
+		}
+		secretPath := filepath.Join(t.TempDir(), jwtSecretFileName)
+		require.NoError(t, os.WriteFile(secretPath, []byte(validSecret), 0600))
+		require.NoError(t, os.Chmod(secretPath, 0644))
+		secret, err := readJwtSecret(secretPath)
+		require.NoError(t, err)
+		require.Equal(t, validSecret, secret)
+		info, err := os.Stat(secretPath)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	})
+	t.Run("directory", func(t *testing.T) {
+		prefDir := t.TempDir()
+		require.NoError(t, os.Mkdir(filepath.Join(prefDir, jwtSecretFileName), 0700))
+		secret, err := loadOrCreateJwtSecret(prefDir)
+		require.ErrorContains(t, err, "read JWT secret file")
+		require.ErrorContains(t, err, "not a regular file")
+		require.Empty(t, secret)
+	})
+	t.Run("symlink", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlink creation may require elevated privileges")
+		}
+		prefDir := t.TempDir()
+		target := filepath.Join(prefDir, "target")
+		require.NoError(t, os.WriteFile(target, []byte(validSecret), 0600))
+		require.NoError(t, os.Symlink(target, filepath.Join(prefDir, jwtSecretFileName)))
+		secret, err := loadOrCreateJwtSecret(prefDir)
+		require.ErrorContains(t, err, "not a regular file")
+		require.Empty(t, secret)
+	})
+	t.Run("unreadable", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Getuid() == 0 {
+			t.Skip("unprivileged POSIX file permissions are required")
+		}
+		secretPath := filepath.Join(t.TempDir(), jwtSecretFileName)
+		require.NoError(t, os.WriteFile(secretPath, []byte(validSecret), 0600))
+		require.NoError(t, os.Chmod(secretPath, 0000))
+		t.Cleanup(func() { require.NoError(t, os.Chmod(secretPath, 0600)) })
+		secret, err := readJwtSecret(secretPath)
+		require.ErrorIs(t, err, os.ErrPermission)
+		require.Empty(t, secret)
+	})
+}
+
+func TestLoadOrCreateJwtSecretMissingDirectory(t *testing.T) {
+	secret, err := loadOrCreateJwtSecret(filepath.Join(t.TempDir(), "missing"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.ErrorContains(t, err, "create temporary JWT secret file")
+	require.Empty(t, secret)
+}
+
+func TestLoadOrCreateJwtSecretConcurrentInstall(t *testing.T) {
+	for _, invalid := range []bool{false, true} {
+		t.Run(fmt.Sprintf("invalid=%t", invalid), func(t *testing.T) {
+			prefDir := t.TempDir()
+			secretPath := filepath.Join(prefDir, jwtSecretFileName)
+			winner := strings.Repeat("cd", jwtSecretSize)
+			if invalid {
+				winner = "invalid-secret"
+			}
+			original := rand.Reader
+			t.Cleanup(func() { rand.Reader = original })
+			rand.Reader = jwtTestReader(func(data []byte) (int, error) {
+				require.NoError(t, os.WriteFile(secretPath, []byte(winner), 0600))
+				return io.ReadFull(original, data)
+			})
+			secret, err := loadOrCreateJwtSecret(prefDir)
+			if invalid {
+				require.ErrorContains(t, err, "invalid JWT secret file")
+				require.Empty(t, secret)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, winner, secret)
+			}
+			stored, err := os.ReadFile(secretPath)
+			require.NoError(t, err)
+			require.Equal(t, winner, string(stored))
+			temporary, err := filepath.Glob(filepath.Join(prefDir, ".jwt-secret-*"))
+			require.NoError(t, err)
+			require.Empty(t, temporary)
+		})
+	}
 }
 
 func TestLoadOrCreateJwtSecret(t *testing.T) {
