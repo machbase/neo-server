@@ -19,6 +19,7 @@ func (sh *Shell) printShellError(format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
 	if sh != nil && sh.env != nil && sh.env.Writer() != nil {
 		_, _ = fmt.Fprintln(sh.env.Writer(), message)
+		return
 	}
 	log.Println(message)
 }
@@ -54,7 +55,7 @@ func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {
 			return 1, true
 		}
 		if pipe.Stdin != nil || pipe.Stdout != nil || pipe.Stderr != nil {
-			log.Printf("redirection is not implemented for internal command: %s\n", pipe.Command)
+			sh.printShellError("redirection is not implemented for internal command: %s", pipe.Command)
 			return 1, true
 		}
 		return sh.runHelp(pipe.Args), true
@@ -72,13 +73,13 @@ func (sh *Shell) runSinglePipeline(pipe *Pipeline) (int, bool) {
 			return 1, true
 		}
 		if pipe.Stdin != nil || pipe.Stdout != nil || pipe.Stderr != nil {
-			log.Printf("redirection is not implemented for internal command: %s\n", pipe.Command)
+			sh.printShellError("redirection is not implemented for internal command: %s", pipe.Command)
 			return 1, true
 		}
 		if exitCode, ok := internal.Run(sh.env, sh.env.Writer(), pipe.Command, pipe.Args...); ok {
 			return exitCode, true
 		} else {
-			log.Printf("command not found: %s\n", pipe.Command)
+			sh.printShellError("command not found: %s", pipe.Command)
 			return 1, true
 		}
 	}
@@ -102,29 +103,29 @@ func (sh *Shell) runHelp(args []string) int {
 
 func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	if sh.env == nil {
-		log.Println("pipeline execution requires shell environment")
+		sh.printShellError("pipeline execution requires shell environment")
 		return 1
 	}
 	sharedOutput := newSynchronizedWriter(sh.env.Writer())
 	for i, pipe := range pipelines {
 		if pipe.Command == "exit" || pipe.Command == "quit" {
-			log.Printf("command cannot be used in pipeline: %s\n", pipe.Command)
+			sh.printShellError("command cannot be used in pipeline: %s", pipe.Command)
 			return 1
 		}
 		if internal.IsCommand(pipe.Command) {
-			log.Printf("command cannot be used in pipeline: %s\n", pipe.Command)
+			sh.printShellError("command cannot be used in pipeline: %s", pipe.Command)
 			return 1
 		}
 		if pipe.Stdin != nil && i != 0 {
-			log.Println("stdin redirection is only supported on the first pipeline stage")
+			sh.printShellError("stdin redirection is only supported on the first pipeline stage")
 			return 1
 		}
 		if pipe.Stdout != nil && i != len(pipelines)-1 {
-			log.Println("stdout redirection is only supported on the final pipeline stage")
+			sh.printShellError("stdout redirection is only supported on the final pipeline stage")
 			return 1
 		}
 		if pipe.Stderr != nil && pipe.Stderr.Type != "2>" && pipe.Stderr.Type != "2>>" && pipe.Stderr.Type != "2>&1" {
-			log.Printf("stderr redirection is not implemented: %s\n", pipe.Stderr.Type)
+			sh.printShellError("stderr redirection is not implemented: %s", pipe.Stderr.Type)
 			return 1
 		}
 	}
@@ -136,7 +137,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	for _, pipe := range pipelines {
 		cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args, pipe.Assignments)
 		if err != nil {
-			log.Println(strings.TrimPrefix(err.Error(), "Error: "))
+			sh.printShellError("%s", strings.TrimPrefix(err.Error(), "Error: "))
 			return 1
 		}
 		cmds = append(cmds, cmd)
@@ -152,7 +153,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	for i := 0; i < len(cmds)-1; i++ {
 		reader, writer, err := os.Pipe()
 		if err != nil {
-			log.Printf("pipeline pipe error: %v\n", err)
+			sh.printShellError("pipeline pipe error: %v", err)
 			closeFiles(pipeReaders)
 			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
@@ -170,7 +171,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 			closeFiles(pipeReaders)
 			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
-			log.Printf("pipeline input redirection error: %v\n", err)
+			sh.printShellError("pipeline input redirection error: %v", err)
 			return 1
 		}
 		cmds[0].Stdin = reader
@@ -182,7 +183,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 			closeFiles(pipeReaders)
 			closeFiles(pipeWriters)
 			closeResources(redirectClosers)
-			log.Printf("pipeline output redirection error: %v\n", err)
+			sh.printShellError("pipeline output redirection error: %v", err)
 			return 1
 		}
 		cmds[last].Stdout = writer
@@ -195,7 +196,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 				closeFiles(pipeReaders)
 				closeFiles(pipeWriters)
 				closeResources(redirectClosers)
-				log.Printf("pipeline stderr redirection error: %v\n", err)
+				sh.printShellError("pipeline stderr redirection error: %v", err)
 				return 1
 			}
 			cmds[i].Stderr = writer
@@ -211,7 +212,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 			closeResources(redirectClosers)
 			killStarted(started)
 			waitStarted(started)
-			log.Printf("pipeline start error: %v\n", err)
+			sh.printShellError("pipeline start error: %v", err)
 			return 1
 		}
 		started = append(started, cmd)
@@ -236,7 +237,7 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 	for i, cmd := range started {
 		exitCode, err := waitCommand(cmd)
 		if err != nil {
-			log.Printf("pipeline wait error: %v\n", err)
+			sh.printShellError("pipeline wait error: %v", err)
 		}
 		// TODO:
 		// Consider a pipefail-style result so failures in non-final stages
@@ -251,12 +252,12 @@ func (sh *Shell) runStreamingPipeline(pipelines []*Pipeline) int {
 
 func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 	if sh.env == nil {
-		log.Println("command execution requires shell environment")
+		sh.printShellError("command execution requires shell environment")
 		return 1
 	}
 	cmd, err := sh.buildExternalExecCmd(pipe.Command, pipe.Args, pipe.Assignments)
 	if err != nil {
-		log.Println(strings.TrimPrefix(err.Error(), "Error: "))
+		sh.printShellError("%s", strings.TrimPrefix(err.Error(), "Error: "))
 		return 1
 	}
 
@@ -269,7 +270,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 	if pipe.Stdin != nil {
 		reader, closeFn, err := openInputRedirect(sh.env, pipe.Stdin)
 		if err != nil {
-			log.Printf("input redirection error: %v\n", err)
+			sh.printShellError("input redirection error: %v", err)
 			return 1
 		}
 		cmd.Stdin = reader
@@ -279,7 +280,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 		writer, closeFn, err := openOutputRedirect(sh.env, pipe.Stdout)
 		if err != nil {
 			closeResources(redirectClosers)
-			log.Printf("output redirection error: %v\n", err)
+			sh.printShellError("output redirection error: %v", err)
 			return 1
 		}
 		cmd.Stdout = writer
@@ -289,7 +290,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 		writer, closeFn, err := openErrorRedirect(sh.env, pipe.Stderr, cmd.Stdout)
 		if err != nil {
 			closeResources(redirectClosers)
-			log.Printf("stderr redirection error: %v\n", err)
+			sh.printShellError("stderr redirection error: %v", err)
 			return 1
 		}
 		cmd.Stderr = writer
@@ -298,7 +299,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 
 	if err := cmd.Start(); err != nil {
 		closeResources(redirectClosers)
-		log.Printf("command start error: %v\n", err)
+		sh.printShellError("command start error: %v", err)
 		return 1
 	}
 	stopForwarder := startInterruptForwarder(shouldForwardInterrupts(sh.env.Reader()), func() []*exec.Cmd {
@@ -308,7 +309,7 @@ func (sh *Shell) runExternalPipelineStage(pipe *Pipeline) int {
 	exitCode, err := waitCommand(cmd)
 	closeResources(redirectClosers)
 	if err != nil {
-		log.Printf("command wait error: %v\n", err)
+		sh.printShellError("command wait error: %v", err)
 		return 1
 	}
 	return exitCode

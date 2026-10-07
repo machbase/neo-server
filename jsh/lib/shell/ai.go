@@ -1278,16 +1278,16 @@ func ExecAgentCode(rt *goja.Runtime, code string, opts AgentExecOptions) ([]map[
 
 	var buf bytes.Buffer
 	var consoleBuf bytes.Buffer
-	oldWriter := jshlog.SetDefaultWriter(&consoleBuf)
+	oldConsole := rt.Get("console")
+	rt.Set("console", jshlog.SetConsole(rt, &consoleBuf))
+	defer rt.Set("console", oldConsole)
 
 	r := &Repl{rt: rt, cfg: cfg}
 	r.registerBuiltinCommands()
 	if err := cfg.Profile.RunStartup(r.rt); err != nil {
-		jshlog.SetDefaultWriter(oldWriter)
 		return nil, err
 	}
 	r.runEval(code, true, &buf, cfg.Renderer, opts.TimeoutMs)
-	jshlog.SetDefaultWriter(oldWriter)
 
 	var combined bytes.Buffer
 	if consoleBuf.Len() > 0 {

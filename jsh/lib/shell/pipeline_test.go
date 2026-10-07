@@ -186,7 +186,7 @@ func TestProcessRedirection(t *testing.T) {
 		{
 			name:       "mid pipeline stdout redirection rejected",
 			line:       "echo hello > redir-mid.txt | cat",
-			wantOutput: "",
+			wantOutput: "stdout redirection is only supported on the final pipeline stage",
 			exit:       1,
 			alive:      true,
 		},

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/stretchr/testify/require"
 )
 
@@ -475,33 +476,33 @@ func TestCgiBinWriterHTTPConcurrentStress(t *testing.T) {
 	router := gin.New()
 	router.GET("/public/app/cgi-bin/test", func(ctx *gin.Context) {
 		writer := &CgiBinWriter{ctx: ctx, router: router}
-
-		// Simulate fragmented CGI output from a script runtime.
-		_, err := writer.Write([]byte("Content-Type: text/plain\r\n"))
+		capture := newLimitedCaptureWriter(cgiDiagnosticMaxBytes)
+		marker := "request-" + ctx.Query("id")
+		jr, err := engine.New(engine.Config{
+			Writer: io.MultiWriter(writer, capture),
+			Code: fmt.Sprintf(`
+				console.print("Content-Type: text/plain\r\n");
+				console.println("X-Load: high\r\n");
+				for (let line = 0; line < 32; line++) {
+					console.printf("%%s\n", %q);
+				}
+			`, marker),
+		})
 		if err != nil {
-			ctx.String(http.StatusInternalServerError, "write header failed: %v", err)
+			ctx.String(http.StatusInternalServerError, "engine error: %v", err)
 			return
 		}
-		_, err = writer.Write([]byte("X-Load: high\r\n"))
-		if err != nil {
-			ctx.String(http.StatusInternalServerError, "write extension header failed: %v", err)
+		if err := jr.RunContext(ctx.Request.Context()); err != nil {
+			ctx.String(http.StatusInternalServerError, "run error: %v", err)
 			return
-		}
-		_, err = writer.Write([]byte("\r\n"))
-		if err != nil {
-			ctx.String(http.StatusInternalServerError, "write header separator failed: %v", err)
-			return
-		}
-
-		for i := 0; i < 32; i++ {
-			_, err = writer.Write([]byte("payload-line\n"))
-			if err != nil {
-				ctx.String(http.StatusInternalServerError, "write body failed: %v", err)
-				return
-			}
 		}
 		if err := writer.Finalize(); err != nil {
 			ctx.String(http.StatusInternalServerError, "finalize failed: %v", err)
+			return
+		}
+		expected := "Content-Type: text/plain\r\nX-Load: high\r\n\n" + strings.Repeat(marker+"\n", 32)
+		if actual := capture.String(); actual != expected {
+			t.Errorf("request %s capture mismatch: got %q, want %q", marker, actual, expected)
 			return
 		}
 	})
@@ -526,7 +527,7 @@ func TestCgiBinWriterHTTPConcurrentStress(t *testing.T) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			resp, err := client.Get(server.URL + "/public/app/cgi-bin/test")
+			resp, err := client.Get(fmt.Sprintf("%s/public/app/cgi-bin/test?id=%d", server.URL, id))
 			if err != nil {
 				errCh <- fmt.Errorf("request %d get error: %w", id, err)
 				return
@@ -546,8 +547,9 @@ func TestCgiBinWriterHTTPConcurrentStress(t *testing.T) {
 				errCh <- fmt.Errorf("request %d content-type=%q", id, got)
 				return
 			}
-			if got := strings.Count(string(body), "payload-line\n"); got != 32 {
-				errCh <- fmt.Errorf("request %d payload lines=%d", id, got)
+			expected := strings.Repeat(fmt.Sprintf("request-%d\n", id), 32)
+			if got := string(body); got != expected {
+				errCh <- fmt.Errorf("request %d body=%q, want %q", id, got, expected)
 				return
 			}
 		}(i)

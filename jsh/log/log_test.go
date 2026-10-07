@@ -1,11 +1,14 @@
 package log
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,6 +99,83 @@ func TestSetConsole(t *testing.T) {
 		if con.Get(method) == nil {
 			t.Errorf("console.%s is not set", method)
 		}
+	}
+}
+
+func TestConsoleWriterIsolation(t *testing.T) {
+	const runtimeCount = 8
+	const iterations = 20
+	originalWriter := SetDefaultWriter(io.Discard)
+	t.Cleanup(func() { SetDefaultWriter(originalWriter) })
+	var ready sync.WaitGroup
+	var workers sync.WaitGroup
+	ready.Add(runtimeCount)
+	workers.Add(runtimeCount)
+	start := make(chan struct{})
+	for index := 0; index < runtimeCount; index++ {
+		go func() {
+			defer workers.Done()
+			vm := goja.New()
+			output := &bytes.Buffer{}
+			capture := &bytes.Buffer{}
+			vm.Set("console", SetConsole(vm, io.MultiWriter(output, capture)))
+			marker := fmt.Sprintf("runtime-%d", index)
+			vm.Set("marker", marker)
+			ready.Done()
+			<-start
+			for iteration := 0; iteration < iterations; iteration++ {
+				_, err := vm.RunString(`
+					console.print(marker);
+					console.println(marker);
+					console.printf("%s\n", marker);
+					console.log(marker);
+					console.debug(marker);
+					console.info(marker);
+					console.warn(marker);
+					console.error(marker);
+				`)
+				if err != nil {
+					t.Errorf("runtime %d: %v", index, err)
+					return
+				}
+			}
+			expected := strings.Repeat(fmt.Sprintf("%s%s\n%s\nINFO  %s\nDEBUG %s\nINFO  %s\nWARN  %s\nERROR %s\n",
+				marker, marker, marker, marker, marker, marker, marker, marker), iterations)
+			if actual := output.String(); actual != expected {
+				t.Errorf("runtime %d output mismatch: got %q, want %q", index, actual, expected)
+			}
+			if actual := capture.String(); actual != expected {
+				t.Errorf("runtime %d capture mismatch: got %q, want %q", index, actual, expected)
+			}
+		}()
+	}
+	ready.Wait()
+	close(start)
+	workers.Wait()
+}
+
+func TestConsoleCompletedWriterIsolation(t *testing.T) {
+	var defaultOutput bytes.Buffer
+	originalWriter := SetDefaultWriter(&defaultOutput)
+	t.Cleanup(func() { SetDefaultWriter(originalWriter) })
+	var activeOutput bytes.Buffer
+	activeVM := goja.New()
+	activeVM.Set("console", SetConsole(activeVM, &activeOutput))
+	completedVM := goja.New()
+	completedWriter := bufio.NewWriterSize(io.Discard, 16)
+	SetConsole(completedVM, io.MultiWriter(completedWriter, io.Discard))
+	completedWriter.Reset(nil)
+	marker := strings.Repeat("active", 32)
+	activeVM.Set("marker", marker)
+	if _, err := activeVM.RunString(`console.println(marker)`); err != nil {
+		t.Fatal(err)
+	}
+	Println(marker)
+	if actual := activeOutput.String(); actual != marker+"\n" {
+		t.Errorf("active console output = %q, want %q", actual, marker+"\n")
+	}
+	if actual := defaultOutput.String(); actual != marker+"\n" {
+		t.Errorf("default output = %q, want %q", actual, marker+"\n")
 	}
 }
 
