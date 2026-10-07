@@ -1,7 +1,6 @@
 package box
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -182,18 +182,12 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
 	for i, r := range values {
-		unboxed := util.Unbox(r)
+		unboxed := client.Unbox(r)
 		if arr, ok := unboxed.([]any); ok {
 			cols[i] = internal.FormatArray(arr)
 			continue
 		}
 		switch v := unboxed.(type) {
-		case []float32:
-			encoded, err := json.Marshal(v)
-			if err != nil {
-				return err
-			}
-			cols[i] = string(encoded)
 		case string:
 			cols[i] = v
 		case []byte:

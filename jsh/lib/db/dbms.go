@@ -4,16 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/dop251/goja"
 	client "github.com/machbase/neo-client/v2"
-	"github.com/machbase/neo-client/v2/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -23,54 +20,6 @@ func Module(ctx context.Context, rt *goja.Runtime, module *goja.Object) {
 
 	// db = new dbms.Client()
 	exports.Set("Client", new_client(ctx, rt))
-	exports.Set("vector", func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) != 1 {
-			panic(rt.NewGoError(fmt.Errorf("vector() requires one numeric array")))
-		}
-		var numbers []any
-		if err := rt.ExportTo(call.Arguments[0], &numbers); err != nil {
-			panic(rt.NewGoError(err))
-		}
-		values := make(api.Vector, len(numbers))
-		for i, number := range numbers {
-			var value float64
-			switch n := number.(type) {
-			case int:
-				value = float64(n)
-			case int64:
-				value = float64(n)
-			case float64:
-				value = n
-			case float32:
-				value = float64(n)
-			default:
-				panic(rt.NewGoError(fmt.Errorf("VECTOR element %d is not numeric", i)))
-			}
-			if math.IsNaN(value) || math.IsInf(value, 0) || math.Abs(value) > math.MaxFloat32 {
-				panic(rt.NewGoError(fmt.Errorf("VECTOR element %d is not finite FLOAT32", i)))
-			}
-			values[i] = float32(value)
-		}
-		if err := values.Validate(); err != nil {
-			panic(rt.NewGoError(err))
-		}
-		return rt.ToValue(&vectorParam{value: values})
-	})
-}
-
-type vectorParam struct {
-	value api.Vector
-}
-
-func exportParam(rt *goja.Runtime, value goja.Value) (any, error) {
-	if vector, ok := value.Export().(*vectorParam); ok {
-		return append(api.Vector(nil), vector.value...), nil
-	}
-	var result any
-	if err := rt.ExportTo(value, &result); err != nil {
-		return nil, err
-	}
-	return result, nil
 }
 
 func new_client(ctx context.Context, rt *goja.Runtime) func(call goja.ConstructorCall) *goja.Object {
@@ -180,7 +129,6 @@ func (c *Client) jsConnect(call goja.FunctionCall) goja.Value {
 	ret.Set("exec", connection.Exec)
 	ret.Set("query", connection.jsQuery)
 	ret.Set("queryRow", connection.jsQueryRow)
-	ret.Set("explain", connection.Explain)
 	if c.supportAppend {
 		ret.Set("appender", connection.Appender)
 	}
@@ -273,11 +221,9 @@ func (apd *APPENDER) Append(call goja.FunctionCall) goja.Value {
 	}
 	values := make([]any, len(call.Arguments))
 	for i := 0; i < len(call.Arguments); i++ {
-		value, err := exportParam(apd.db.rt, call.Arguments[i])
-		if err != nil {
+		if err := apd.db.rt.ExportTo(call.Arguments[i], &values[i]); err != nil {
 			panic(apd.db.rt.ToValue(err.Error()))
 		}
-		values[i] = value
 	}
 	err := apd.appender.Append(values...)
 	if err != nil {
@@ -314,30 +260,6 @@ func (c *CONN) Close(call goja.FunctionCall) goja.Value {
 	return goja.Undefined()
 }
 
-func (c *CONN) Explain(call goja.FunctionCall) goja.Value {
-	if len(call.Arguments) < 1 || len(call.Arguments) > 2 {
-		panic(c.db.rt.NewGoError(fmt.Errorf("explain(sql, full) requires SQL and optional boolean")))
-	}
-	query := call.Arguments[0].String()
-	full := len(call.Arguments) == 2 && call.Arguments[1].ToBoolean()
-	var plan string
-	err := c.conn.Raw(func(raw any) error {
-		explainer, ok := raw.(interface {
-			Explain(context.Context, string, bool) (string, error)
-		})
-		if !ok {
-			return fmt.Errorf("explain is unavailable for this driver")
-		}
-		var explainErr error
-		plan, explainErr = explainer.Explain(c.db.ctx, query, full)
-		return explainErr
-	})
-	if err != nil {
-		panic(c.db.rt.NewGoError(err))
-	}
-	return c.db.rt.ToValue(plan)
-}
-
 func (c *CONN) Exec(call goja.FunctionCall) goja.Value {
 	var sqlText string
 	var params []any
@@ -348,11 +270,9 @@ func (c *CONN) Exec(call goja.FunctionCall) goja.Value {
 	sqlText = call.Arguments[0].String()
 	params = make([]any, len(call.Arguments)-1)
 	for i := 1; i < len(call.Arguments); i++ {
-		value, err := exportParam(c.db.rt, call.Arguments[i])
-		if err != nil {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &params[i-1]); err != nil {
 			panic(c.db.rt.NewGoError(err))
 		}
-		params[i-1] = value
 	}
 
 	meta := client.Meta{}
@@ -386,11 +306,9 @@ func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
 	sqlText = call.Arguments[0].String()
 	params = make([]any, len(call.Arguments)-1)
 	for i := 1; i < len(call.Arguments); i++ {
-		value, err := exportParam(c.db.rt, call.Arguments[i])
-		if err != nil {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &params[i-1]); err != nil {
 			panic(c.db.rt.NewGoError(err))
 		}
-		params[i-1] = value
 	}
 
 	ret := c.db.rt.NewObject()
@@ -448,7 +366,7 @@ func (c *CONN) jsQueryRow(call goja.FunctionCall) goja.Value {
 		if v == nil {
 			values.Set(names[i], goja.Null())
 		} else {
-			values.Set(names[i], util.Unbox(v))
+			values.Set(names[i], client.Unbox(v))
 		}
 	}
 	ret.Set("values", values)
@@ -466,11 +384,9 @@ func (c *CONN) QueryRow(call goja.FunctionCall) *sql.Row {
 	sqlText = call.Arguments[0].String()
 	params = make([]any, len(call.Arguments)-1)
 	for i := 1; i < len(call.Arguments); i++ {
-		value, err := exportParam(c.db.rt, call.Arguments[i])
-		if err != nil {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &params[i-1]); err != nil {
 			panic(c.db.rt.NewGoError(err))
 		}
-		params[i-1] = value
 	}
 
 	return c.conn.QueryRowContext(c.db.ctx, sqlText, params...)
@@ -498,11 +414,9 @@ func (c *CONN) Query(call goja.FunctionCall) *ROWS {
 	sqlText = call.Arguments[0].String()
 	params = make([]any, len(call.Arguments)-1)
 	for i := 1; i < len(call.Arguments); i++ {
-		value, err := exportParam(c.db.rt, call.Arguments[i])
-		if err != nil {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &params[i-1]); err != nil {
 			panic(c.db.rt.NewGoError(err))
 		}
-		params[i-1] = value
 	}
 
 	var rows *ROWS
@@ -575,10 +489,7 @@ func (r *ROWS) jsIterator(call goja.FunctionCall) goja.Value {
 
 func (r *ROWS) ensureColumns() {
 	if r.cols == nil {
-		types, err := r.rows.ColumnTypes()
-		if err != nil {
-			panic(r.db.rt.NewGoError(err))
-		}
+		types, _ := r.rows.ColumnTypes()
 		r.cols = types
 	}
 }
@@ -628,10 +539,6 @@ func (r *ROWS) ColumnTypes(call goja.FunctionCall) []string {
 }
 
 func (r *ROWS) jsNext(call goja.FunctionCall) goja.Value {
-	if r.rows == nil {
-		panic(r.db.rt.ToValue("invalid rows"))
-	}
-	r.ensureColumns()
 	var values []any
 	if values = r.Next(call); len(values) == 0 {
 		return goja.Null()
@@ -642,7 +549,7 @@ func (r *ROWS) jsNext(call goja.FunctionCall) goja.Value {
 	var rec = vm.NewObject()
 	for i, col := range r.cols {
 		if i < len(values) {
-			rec.Set(col.Name(), vm.ToValue(util.Unbox(values[i])))
+			rec.Set(col.Name(), vm.ToValue(client.Unbox(values[i])))
 		} else {
 			rec.Set(col.Name(), goja.Null())
 		}
@@ -661,21 +568,16 @@ func (r *ROWS) Next(call goja.FunctionCall) []any {
 		panic(r.db.rt.ToValue("invalid rows"))
 	}
 	if !r.rows.Next() {
-		if err := r.rows.Err(); err != nil {
-			panic(r.db.rt.NewGoError(err))
-		}
 		return nil
 	}
 	values := spi.MakeBuffer(r.cols)
-	if err := r.rows.Scan(values...); err != nil {
-		panic(r.db.rt.NewGoError(err))
-	}
+	r.rows.Scan(values...)
 	r.rownum++
 	for i, v := range values {
 		if v == nil {
 			continue
 		}
-		values[i] = util.Unbox(v)
+		values[i] = client.Unbox(v)
 	}
 	return values
 }

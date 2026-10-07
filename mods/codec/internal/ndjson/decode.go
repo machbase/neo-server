@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/v2/api"
-	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Decoder struct {
@@ -98,15 +97,7 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			dec.values = append(dec.values, nil)
 			continue
 		}
-		if dec.columnTypes[idx] == api.DataTypeVector {
-			if array, ok := field.([]any); ok {
-				value, err = util.VectorFromJSON(array)
-			} else {
-				value, err = dec.columnTypes[idx].Apply(field, dec.timeformat, dec.timeLocation)
-			}
-		} else {
-			value, err = dec.columnTypes[idx].Apply(field, dec.timeformat, dec.timeLocation)
-		}
+		value, err = dec.columnTypes[idx].Apply(field, dec.timeformat, dec.timeLocation)
 		if err != nil {
 			return nil, nil, fmt.Errorf("rows[%d] field[%s] is not a %s, but %T", dec.nrow, colName, dec.columnTypes[idx], field)
 		}

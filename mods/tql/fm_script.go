@@ -22,7 +22,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func (node *Node) fmScript(args ...any) (any, error) {
@@ -673,7 +672,7 @@ func (ctx *JSContext) jsFuncDB(vm *goja.Runtime) func(call map[string]any) goja.
 					var rec = map[string]any{}
 					for i, col := range names {
 						if i < len(values) {
-							rec[col] = vm.ToValue(util.Unbox(values[i]))
+							rec[col] = vm.ToValue(client.Unbox(values[i]))
 						} else {
 							rec[col] = goja.Null()
 						}

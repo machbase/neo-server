@@ -130,14 +130,3 @@ func TestNDJsonDecoder(t *testing.T) {
 		}
 	}
 }
-
-func TestNDJsonDecoderVectorArray(t *testing.T) {
-	dec := ndjson.NewDecoder()
-	dec.SetInputStream(bytes.NewBufferString("{\"ID\":1,\"V\":[0.25,-1,2]}\n"))
-	dec.SetColumns("ID", "V")
-	dec.SetColumnTypes(api.DataTypeInt32, api.DataTypeVector)
-	fields, columns, err := dec.NextRow()
-	require.NoError(t, err)
-	require.Equal(t, []string{"ID", "V"}, columns)
-	require.Equal(t, []any{int32(1), api.Vector{0.25, -1, 2}}, fields)
-}

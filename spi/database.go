@@ -72,8 +72,8 @@ func DefaultPool() (*sql.DB, error) {
 			defaultPoolErr = errors.New("default DSN is not configured")
 			return
 		}
-		if defaultDSN["auth_key_pem"] == "" && defaultDSN["auth_key_file"] == "" && defaultDSN["password"] == "" {
-			defaultPoolErr = errors.New("default credentials are not configured")
+		if defaultDSN["auth_key_pem"] == "" && defaultDSN["auth_key_file"] == "" {
+			defaultPoolErr = errors.New("default key is not configured")
 			return
 		}
 		defaultPoolDB, defaultPoolErr = sql.Open("machbase", DefaultDSN(nil))
@@ -367,8 +367,6 @@ func ColumnTypesToDataTypes(columnTypes []*sql.ColumnType) []api.DataType {
 			dataTypes[i] = api.DataTypeDoubleArray
 		case "DECIMAL_ARRAY":
 			dataTypes[i] = api.DataTypeDecimalArray
-		case "VECTOR":
-			dataTypes[i] = api.DataTypeVector
 		default:
 			dataTypes[i] = api.DataType(dbType)
 		}
@@ -478,12 +476,8 @@ func MakeBuffer(columnTypes []*sql.ColumnType) []interface{} {
 			buffer[i] = new(sql.RawBytes)
 		case "api.Array":
 			buffer[i] = makeArrayScanBuffer(colType)
-		case "api.Vector":
-			buffer[i] = new(*api.Vector)
 		default:
 			switch colType.DatabaseTypeName() {
-			case "VECTOR":
-				buffer[i] = new(*api.Vector)
 			case "INT", "BIGINT", "SMALLINT", "TINYINT":
 				buffer[i] = new(sql.NullInt64)
 			case "FLOAT", "DOUBLE", "REAL":

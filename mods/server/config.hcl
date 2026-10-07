@@ -141,18 +141,6 @@ module "machbase.com/neo-server" {
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
             EnablePersistence   = VARS_MQTT_PERSISTENCE
         }
-        Embedding = {
-            DefaultProvider   = flag("--embedding-provider", "bge-m3")
-            CacheDir          = flag("--embedding-cache", "")
-            RuntimeLibrary    = flag("--embedding-runtime-lib", "")
-            MaxTokens         = flag("--embedding-max-tokens", 1024)
-            ExternalURL       = flag("--embedding-external-url", "")
-            ExternalModel     = flag("--embedding-external-model", "")
-            ExternalSpace     = flag("--embedding-external-space", "")
-            ExternalDimension = flag("--embedding-external-dimension", 0)
-            ExternalAPIKeyEnv = flag("--embedding-external-key-env", "NEO_EMBED_EXTERNAL_API_KEY")
-            ExternalTimeout   = "60s"
-        }
         Jwt = {
             AtDuration = flag("--jwt-at-expire", "5m")
             RtDuration = flag("--jwt-rt-expire", "60m")

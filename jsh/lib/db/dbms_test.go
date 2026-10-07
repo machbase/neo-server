@@ -211,42 +211,6 @@ func TestDBMS(t *testing.T) {
 	}.RunTest(t)
 }
 
-func TestDBMSVector(t *testing.T) {
-	test_engine.TestCase{
-		Name: "dbms-vector",
-		Script: `
-			const db = require("@jsh/db");
-			const conn = new db.Client().connect();
-			conn.exec("CREATE TRANSACTION TABLE NEO_JSH_VECTOR_4211(ID INTEGER PRIMARY KEY,V VECTOR(3))");
-			try {
-				let rejected = 0;
-				for (const value of [[], [NaN], [1, null]]) {
-					try { db.vector(value); } catch (_) { rejected++; }
-				}
-				console.println("invalid:", rejected);
-				conn.exec("INSERT INTO NEO_JSH_VECTOR_4211 VALUES(?,?)", 1, db.vector([1,0,0]));
-				const appender = conn.appender("NEO_JSH_VECTOR_4211", "ID", "V");
-				appender.append(2, db.vector([0,1,0]));
-				appender.close();
-				console.println("append:", appender.result().success);
-				const row = conn.queryRow("SELECT V FROM NEO_JSH_VECTOR_4211 WHERE ID=1");
-				console.println("vector:", JSON.stringify(row.values.V));
-				const directRows = conn.query("SELECT V FROM NEO_JSH_VECTOR_4211 WHERE ID=1");
-				console.println("next:", JSON.stringify(directRows.next().V));
-				directRows.close();
-				const rows = conn.query("SELECT R.ID FROM VECTOR_SEARCH(TABLE NEO_JSH_VECTOR_4211,VECTOR V,QUERY_VECTOR ?,METRIC COSINE,MODE EXACT,TOP_K 1) R", db.vector([1,0,0]));
-				for (const result of rows) console.println("id:", result.ID);
-				const plan = conn.explain("SELECT ID FROM NEO_JSH_VECTOR_4211", false);
-				console.println("explain:", plan.length > 0);
-			} finally {
-				conn.exec("DROP TABLE NEO_JSH_VECTOR_4211");
-				conn.close();
-			}
-		`,
-		Output: []string{"invalid: 3", "append: 1", "vector: [1,0,0]", "next: [1,0,0]", "id: 1", "explain: true"},
-	}.RunTest(t)
-}
-
 // TestDBMSUserScope guards new_client's context wiring (machbase/neo#1468): a
 // non-sys UserScope threaded into the jsh engine's context via
 // model.ContextWithUserScope must be applied to the Appender's DSN, instead of

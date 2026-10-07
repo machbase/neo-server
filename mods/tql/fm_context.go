@@ -8,7 +8,6 @@ import (
 
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type NodeContext struct {
@@ -32,7 +31,7 @@ func (node *Node) GetRecordKey() any {
 	if inflight == nil {
 		return nil
 	}
-	return util.Unbox(inflight.key)
+	return client.Unbox(inflight.key)
 }
 
 // tql function: value()
@@ -63,10 +62,10 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 		if idx >= len(val) {
 			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d) in %s", idx, len(val), node.Name()))
 		}
-		return util.Unbox(val[idx]), nil
+		return client.Unbox(val[idx]), nil
 	case any:
 		if idx == 0 {
-			return util.Unbox(val), nil
+			return client.Unbox(val), nil
 		} else {
 			return nil, ErrArgs("value", 0, "out of index value tuple in "+node.Name())
 		}
@@ -154,7 +153,7 @@ func (node *Node) fmArgsParam(args ...any) (any, error) {
 		if idx >= len(argValues) {
 			return nil, ErrArgs("arg", 0, fmt.Sprintf("%d is out of range of the arg(len:%d)", idx, len(argValues)))
 		}
-		ret = util.Unbox(argValues[idx])
+		ret = client.Unbox(argValues[idx])
 	}
 
 	if node.Name() == "FAKE()" {

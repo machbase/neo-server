@@ -82,23 +82,16 @@ func Build(target string, strip bool) error {
 		ldflags += " -s -w"
 	}
 	args = append(args, "-ldflags", ldflags)
-	tags := []string{}
-	if target == "machbase-neo" {
-		tags = append(tags, "sqlite_fts5")
-	}
 
 	// executable file
 	if runtime.GOOS == "windows" {
-		tags = append(tags, "timetzdata")
+		args = append(args, "-tags=timetzdata")
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s.exe", target))
 	} else if runtime.GOOS == "linux" && !strip {
-		tags = append(tags, "debug")
+		args = append(args, "-tags=debug")
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
 	} else {
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
-	}
-	if len(tags) > 0 {
-		args = append(args, "-tags="+strings.Join(tags, ","))
 	}
 	// source directory
 	args = append(args, fmt.Sprintf("./cmd/%s", target))
@@ -183,10 +176,6 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	}
 
 	args := []string{"build"}
-	tags := []string{}
-	if target == "machbase-neo" {
-		tags = append(tags, "sqlite_fts5")
-	}
 	ldflags := strings.Join([]string{
 		"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
 		"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
@@ -199,13 +188,10 @@ func BuildX(target string, targetOS string, targetArch string) error {
 
 	// executable file
 	if targetOS == "windows" {
-		tags = append(tags, "timetzdata")
+		args = append(args, "-tags=timetzdata")
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s.exe", target))
 	} else {
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
-	}
-	if len(tags) > 0 {
-		args = append(args, "-tags="+strings.Join(tags, ","))
 	}
 	// source directory
 	args = append(args, fmt.Sprintf("./cmd/%s", target))
@@ -251,7 +237,6 @@ func runTest(extraArgs ...string) error {
 
 	testArgs := []string{
 		"test",
-		"-tags=sqlite_fts5",
 	}
 	testArgs = append(testArgs, extraArgs...)
 	testArgs = append(testArgs,

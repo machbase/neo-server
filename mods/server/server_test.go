@@ -2609,9 +2609,7 @@ func TestServerCoverage_StartMachbaseCliErrorPaths(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			require.Contains(t, err.Error(), "No connection could be made because the target machine actively refused it")
 		} else {
-			// The client may exhaust its dial deadline before the OS returns ECONNREFUSED.
-			require.True(t, strings.Contains(err.Error(), "connection refused") ||
-				strings.Contains(err.Error(), "i/o timeout"), err.Error())
+			require.Contains(t, err.Error(), "connection refused")
 		}
 	})
 
