@@ -17,6 +17,7 @@ type Service struct {
 	Status         ServiceStatus  `json:"status"`
 	ExitCode       int            `json:"exit_code"`
 	Error          error          `json:"error"`
+	WaitError      error          `json:"-"`
 	Runtime        ServiceRuntime `json:"runtime"`
 	sharedClientID string
 	cmd            *exec.Cmd

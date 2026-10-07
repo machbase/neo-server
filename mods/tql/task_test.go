@@ -2412,6 +2412,8 @@ func TestBinary(t *testing.T) {
 }
 
 func TestSHELL(t *testing.T) {
+	originalExecutable := tql.ShellExecutable
+	t.Cleanup(func() { tql.ShellExecutable = originalExecutable })
 	tql.ShellExecutable = func(addr, path string) ([]string, error) {
 		return []string{"/bin/bash", path}, nil
 	}
@@ -2431,6 +2433,8 @@ func TestSHELL(t *testing.T) {
 }
 
 func TestShellLineRange(t *testing.T) {
+	originalExecutable := tql.ShellExecutable
+	t.Cleanup(func() { tql.ShellExecutable = originalExecutable })
 	tql.ShellExecutable = func(addr, path string) ([]string, error) {
 		return []string{"/bin/bash", path}, nil
 	}
@@ -2448,6 +2452,30 @@ func TestShellLineRange(t *testing.T) {
 			Script: `
 				FAKE( once(1) )
 				SHELL("seq", "1", "5", lineRange(1, 2))
+				CSV()`,
+			ExpectCSV: []string{"2", "3", "", ""},
+		},
+		{
+			Name: "SHELL_stderr_exit",
+			Script: `
+				FAKE( once(1) )
+				SHELL("printf 'shell failure' >&2; false;")
+				CSV()`,
+			ExpectErr: "shell failure",
+		},
+		{
+			Name: "SHELL_large_tail_range",
+			Script: `
+				FAKE( once(1) )
+				SHELL("seq 1 100000; seq 1 100000 >&2;", lineRange(-2))
+				CSV()`,
+			ExpectCSV: []string{"99999", "100000", "", ""},
+		},
+		{
+			Name: "SHELL_large_forward_range",
+			Script: `
+				FAKE( once(1) )
+				SHELL("seq 1 100000; seq 1 100000 >&2;", lineRange(1, 2))
 				CSV()`,
 			ExpectCSV: []string{"2", "3", "", ""},
 		},
