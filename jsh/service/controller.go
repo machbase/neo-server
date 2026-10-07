@@ -360,11 +360,12 @@ func cloneServiceSnapshot(svc *Service) *Service {
 		return nil
 	}
 	clone := &Service{
-		Config:   svc.Config,
-		Status:   svc.Status,
-		ExitCode: svc.ExitCode,
-		Error:    svc.Error,
-		cmd:      svc.cmd,
+		Config:    svc.Config,
+		Status:    svc.Status,
+		ExitCode:  svc.ExitCode,
+		Error:     svc.Error,
+		WaitError: svc.WaitError,
+		cmd:       svc.cmd,
 	}
 	clone.Runtime.output = svc.outputSnapshot()
 	clone.Runtime.details = svc.detailsSnapshot()
@@ -424,6 +425,7 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 	svc.sharedClientID = newSharedClientID(sc.Name)
 	svc.Status = ServiceStatusRunning
 	svc.Error = nil
+	svc.WaitError = nil
 	svc.ExitCode = 0
 	svc.resetRuntime()
 
@@ -481,6 +483,7 @@ func (ctl *Controller) startServiceInstance(svc *Service, sc *Config) {
 		}
 		controlledStop := svc.Status == ServiceStatusStopping
 		svc.ExitCode = exitCode
+		svc.WaitError = err
 		svc.Status = ServiceStatusStopped
 		svc.sharedClientID = ""
 		ctl.mu.Unlock()
@@ -764,6 +767,7 @@ func (ctl *Controller) Reload(cb func(*Config, string, error)) {
 			svc.Config = *sc
 			svc.Status = ServiceStatusStopped
 			svc.Error = nil
+			svc.WaitError = nil
 			svc.ExitCode = 0
 		}
 	}

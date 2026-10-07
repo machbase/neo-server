@@ -221,6 +221,77 @@ func TestControllerStopServiceNoDeadlockOnWaitGoroutineLockContention(t *testing
 	}
 }
 
+func TestControllerStoppedServicePreservesWaitError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skip on windows due to shell command compatibility")
+	}
+	for _, tc := range []struct {
+		name          string
+		exitCode      int
+		existingError error
+	}{
+		{name: "exit_0", exitCode: 0},
+		{name: "exit_7", exitCode: 7},
+		{name: "preserve_error_on_success", exitCode: 0, existingError: errors.New("existing controller error")},
+		{name: "preserve_error_on_failure", exitCode: 7, existingError: errors.New("existing controller error")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctl := &Controller{
+				launcher: []string{"env"},
+				services: map[string]*Service{
+					"svc-a": {
+						Config: Config{
+							Name:       "svc-a",
+							Enable:     true,
+							Executable: "sh",
+							Args:       []string{"-c", fmt.Sprintf("printf 'child-output'; exit %d", tc.exitCode)},
+						},
+						Status:    ServiceStatusStopped,
+						WaitError: errors.New("previous wait error"),
+					},
+				},
+			}
+			events := make(chan ServiceLifecycleEvent, 1)
+			ctl.OnServiceLifecycle(func(event ServiceLifecycleEvent) { events <- event })
+			ctl.mu.Lock()
+			active := ctl.services["svc-a"]
+			ctl.startServiceInstance(active, &active.Config)
+			startErr := active.Config.StartError
+			resetWaitErr := active.WaitError
+			active.Error = tc.existingError
+			ctl.mu.Unlock()
+			require.NoError(t, startErr)
+			require.NoError(t, resetWaitErr)
+			t.Cleanup(func() { _, _ = ctl.StopService("svc-a") })
+			select {
+			case event := <-events:
+				svc := ctl.StatusOf("svc-a")
+				require.NotNil(t, svc)
+				require.Equal(t, ServiceStatusStopped, svc.Status)
+				require.Equal(t, tc.exitCode, svc.ExitCode)
+				if tc.existingError == nil {
+					require.NoError(t, svc.Error)
+				} else {
+					require.Same(t, tc.existingError, svc.Error)
+				}
+				require.Equal(t, []string{"child-output"}, svc.outputSnapshot())
+				require.Equal(t, ServiceLifecycleStopped, event.Action)
+				if tc.exitCode == 0 {
+					require.NoError(t, svc.WaitError)
+					require.NoError(t, event.Error)
+				} else {
+					var exitErr *exec.ExitError
+					require.ErrorAs(t, svc.WaitError, &exitErr)
+					require.Equal(t, tc.exitCode, exitErr.ExitCode())
+					require.Equal(t, event.Error, svc.WaitError)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for child service to stop")
+			}
+		})
+	}
+}
+
 func TestControllerStopServiceDoesNotWaitForDescendantOutputPipe(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip on windows due to shell command compatibility")
@@ -1381,10 +1452,16 @@ func TestControllerLaunchedServiceSharedFSConflictCode(t *testing.T) {
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		svc := ctl.StatusOf("shared-conflict")
+		if svc != nil && svc.Status == ServiceStatusFailed {
+			t.Fatalf("child service failed: error=%v, start error=%v, output=%v", svc.Error, svc.Config.StartError, svc.outputSnapshot())
+		}
 		if svc != nil && svc.Status == ServiceStatusStopped {
 			lines := svc.outputSnapshot()
+			if svc.ExitCode != 0 {
+				t.Fatalf("child service exit code=%d, error=%v, wait error=%v, output=%v", svc.ExitCode, svc.Error, svc.WaitError, lines)
+			}
 			if len(lines) != 1 {
-				t.Fatalf("output lines=%v, want 1 line", lines)
+				t.Fatalf("output lines=%v, want 1 line (exit code=%d, error=%v, wait error=%v)", lines, svc.ExitCode, svc.Error, svc.WaitError)
 			}
 			if lines[0] != "shared.conflict ECONFLICT" {
 				t.Fatalf("first output=%q, want %q", lines[0], "shared.conflict ECONFLICT")
@@ -1466,10 +1543,16 @@ func TestControllerLaunchedServiceSharedFSAppendNoConflict(t *testing.T) {
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		svc := ctl.StatusOf("shared-append")
+		if svc != nil && svc.Status == ServiceStatusFailed {
+			t.Fatalf("child service failed: error=%v, start error=%v, output=%v", svc.Error, svc.Config.StartError, svc.outputSnapshot())
+		}
 		if svc != nil && svc.Status == ServiceStatusStopped {
 			lines := svc.outputSnapshot()
+			if svc.ExitCode != 0 {
+				t.Fatalf("child service exit code=%d, error=%v, wait error=%v, output=%v", svc.ExitCode, svc.Error, svc.WaitError, lines)
+			}
 			if len(lines) != 1 {
-				t.Fatalf("output lines=%v, want 1 line", lines)
+				t.Fatalf("output lines=%v, want 1 line (exit code=%d, error=%v, wait error=%v)", lines, svc.ExitCode, svc.Error, svc.WaitError)
 			}
 			if lines[0] != "shared.append seed-one-two" {
 				t.Fatalf("first output=%q, want %q", lines[0], "shared.append seed-one-two")
