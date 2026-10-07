@@ -172,23 +172,23 @@ func (node *Node) fmShell(cmd0 string, args0 ...any) {
 			return
 		}
 
-		var wg sync.WaitGroup
 		var output []string
 		var errOutput []string
 		var outputErr error
 		var errOutputErr error
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			output, _, outputErr = shellReadLines(stdout, lineRange)
-		}()
-		go func() {
-			defer wg.Done()
-			errOutput, _, errOutputErr = shellReadLines(stderr, lineRange)
-		}()
-
-		waitErr := cmd.Wait()
-		wg.Wait()
+		waitErr := shellReadAndWait(func() {
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				output, _, outputErr = shellReadLines(stdout, lineRange)
+			}()
+			go func() {
+				defer wg.Done()
+				errOutput, _, errOutputErr = shellReadLines(stderr, lineRange)
+			}()
+			wg.Wait()
+		}, cmd.Wait)
 		if outputErr != nil {
 			node.emit(ErrorRecord(outputErr))
 			return
@@ -212,6 +212,11 @@ func (node *Node) fmShell(cmd0 string, args0 ...any) {
 			}
 		}
 	}
+}
+
+func shellReadAndWait(readOutput func(), wait func() error) error {
+	readOutput()
+	return wait()
 }
 
 func shellReadLines(reader io.Reader, lineRange lineRangeOption) ([]string, int, error) {
