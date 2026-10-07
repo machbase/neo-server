@@ -10,17 +10,21 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
@@ -1443,6 +1447,49 @@ func TestHandleTqlFileExecUserScope(t *testing.T) {
 	require.NoError(t, checkConn.QueryRowContext(t.Context(),
 		fmt.Sprintf("select name from %s.%s", username, table)).Scan(&name))
 	require.Equal(t, strings.ToUpper(username), name)
+}
+
+type requestContextDoneProbe struct {
+	context.Context
+	doneCalls atomic.Int64
+}
+
+func (ctx *requestContextDoneProbe) Done() <-chan struct{} {
+	ctx.doneCalls.Add(1)
+	return ctx.Context.Done()
+}
+
+func TestTqlRequestTaskDoesNotRetainGinContext(t *testing.T) {
+	engine := gin.New()
+	engine.ContextWithFallback = true
+
+	var ginContext *gin.Context
+	var legacyTask *tql.Task
+	var requestTask *tql.Task
+	var cancelDone <-chan struct{}
+	engine.GET("/tql", func(ctx *gin.Context) {
+		ginContext = ctx
+		legacyTask = tql.NewTaskContext(ctx)
+		requestTask, cancelDone = newTqlRequestTask(ctx.Request.Context())
+	})
+
+	requestContext, cancelRequest := context.WithCancel(context.Background())
+	defer cancelRequest()
+	request := httptest.NewRequest(http.MethodGet, "/tql", nil).WithContext(requestContext)
+	engine.ServeHTTP(httptest.NewRecorder(), request)
+	require.NotNil(t, ginContext)
+	require.NotNil(t, legacyTask)
+	require.NotNil(t, requestTask)
+
+	replacementContext := &requestContextDoneProbe{Context: context.Background()}
+	ginContext.Request = httptest.NewRequest(http.MethodGet, "/next", nil).WithContext(replacementContext)
+
+	legacyTask.Cancel()
+	require.Equal(t, int64(1), replacementContext.doneCalls.Load(), "Gin parent context must observe its replacement request")
+
+	cancelRequest()
+	<-cancelDone
+	require.Equal(t, int64(1), replacementContext.doneCalls.Load(), "request task cancellation must use the captured request context")
 }
 
 func TestQueryBinaryFormat(t *testing.T) {

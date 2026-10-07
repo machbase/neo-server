@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -707,6 +708,24 @@ func (svr *httpd) handleTqlQueryExec(ctx *gin.Context) {
 	svr.handleTqlQuery(ctx)
 }
 
+// newTqlRequestTask binds cancellation to the standard request context, not gin.Context.
+// Gin resets and pools its context after ServeHTTP returns. A TQL task retains its parent
+// context, and Task.Cancel may inspect that parent while unwinding cancellation; passing
+// gin.Context here can therefore race with its reset or observe a later request. Capture
+// Request.Context in the handler and use that same value for both the task and watcher.
+// The returned channel closes after the watcher calls Task.Cancel; tests use it to verify
+// cleanup without relying on timing.
+func newTqlRequestTask(requestContext context.Context) (*tql.Task, <-chan struct{}) {
+	task := tql.NewTaskContext(requestContext)
+	cancelDone := make(chan struct{})
+	go func() {
+		defer close(cancelDone)
+		<-requestContext.Done()
+		task.Cancel()
+	}()
+	return task, cancelDone
+}
+
 // POST "/tql"
 // POST "/tql?$=...."
 // GET  "/tql?$=...."
@@ -772,7 +791,8 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		return
 	}
 
-	task := tql.NewTaskContext(ctx)
+	requestContext := ctx.Request.Context()
+	task, _ := newTqlRequestTask(requestContext)
 	task.SetParams(params)
 	task.SetInputReader(input)
 	task.SetLogWriter(logging.GetLog("anonymous.tql"))
@@ -797,11 +817,6 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	go func() {
-		<-ctx.Request.Context().Done()
-		task.Cancel()
-	}()
-
 	result := task.Execute()
 	if result == nil {
 		svr.log.Error("tql execute return nil")
@@ -877,7 +892,8 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 		return
 	}
 
-	task := tql.NewTaskContext(ctx)
+	requestContext := ctx.Request.Context()
+	task, _ := newTqlRequestTask(requestContext)
 	task.SetConsole(execUser, "", "")
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
@@ -898,12 +914,6 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 		handleError(ctx, http.StatusInternalServerError, err.Error(), tick)
 		return
 	}
-
-	// Handle task cancellation
-	go func() {
-		<-ctx.Request.Context().Done()
-		task.Cancel()
-	}()
 
 	// Exeute the task
 	result := task.Execute()

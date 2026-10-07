@@ -2477,6 +2477,10 @@ func TestWebConsoleSend(t *testing.T) {
 	})
 }
 
+// This resize sequence reproduces gliderlabs/ssh#265 on v0.3.8. Re-run this test
+// with -race after upgrading gliderlabs/ssh and confirm the Pty/window-change race is fixed.
+// Upstream issue: https://github.com/gliderlabs/ssh/issues/265
+// Proposed fix: https://github.com/gliderlabs/ssh/pull/266
 func TestWebTermCoverage_NewSetWindowSizeClose(t *testing.T) {
 	hostPort := fmt.Sprintf("127.0.0.1:%d", shellPort)
 
@@ -2488,6 +2492,13 @@ func TestWebTermCoverage_NewSetWindowSizeClose(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 32, term.Rows)
 	require.Equal(t, 96, term.Cols)
+	for index := 0; index < 16; index++ {
+		rows := 33 + index
+		cols := 98 + index*2
+		require.NoError(t, term.SetWindowSize(rows, cols))
+	}
+	require.Equal(t, 48, term.Rows)
+	require.Equal(t, 128, term.Cols)
 
 	term.Close()
 }
