@@ -383,6 +383,35 @@ func TestSwitchUserRequiresConfiguredSession(t *testing.T) {
 	}
 }
 
+func TestSwitchUserLoginFailurePreservesSession(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	defaultSession = Config{
+		Server:       strings.TrimPrefix(srv.URL, "http://"),
+		User:         "sys",
+		Password:     "manager",
+		accessToken:  "old-access-token",
+		refreshToken: "old-refresh-token",
+	}
+
+	if err := SwitchUser("demo", "secret"); err == nil {
+		t.Fatal("SwitchUser() error = nil, want login failure")
+	}
+	if defaultSession.User != "sys" || defaultSession.Password != "manager" || defaultSession.accessToken != "old-access-token" || defaultSession.refreshToken != "old-refresh-token" {
+		t.Fatalf("session changed after failed login: %+v", defaultSession)
+	}
+}
+
 func TestConfigureRpcFails(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/web/api/login", func(w http.ResponseWriter, r *http.Request) {
@@ -521,6 +550,25 @@ func TestGetHttpConfigAndTokens(t *testing.T) {
 	mach := GetMachCliConfig()
 	if mach.Host != "machhost" || mach.Port != 5656 || mach.User != "admin" || mach.Password != "secret" {
 		t.Fatalf("GetMachCliConfig() = %+v", mach)
+	}
+}
+
+func TestGetMachCliConfigUsesIdentityFileForOtpPassword(t *testing.T) {
+	prev := defaultSession
+	t.Cleanup(func() {
+		defaultSession = prev
+	})
+	defaultSession = Config{
+		Password:     "$otp$123456",
+		IdentityFile: "/tmp/id_rsa",
+	}
+
+	got := GetMachCliConfig()
+	if got.Password != "" {
+		t.Fatalf("GetMachCliConfig().Password = %q, want empty for OTP with identity file", got.Password)
+	}
+	if got.IdentityFile != "/tmp/id_rsa" {
+		t.Fatalf("GetMachCliConfig().IdentityFile = %q, want /tmp/id_rsa", got.IdentityFile)
 	}
 }
 
