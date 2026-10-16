@@ -40,10 +40,12 @@ func (s stubSQLResult) RowsAffected() (int64, error) {
 
 func TestMetricsAndWatcherHelpers(t *testing.T) {
 	t.Run("metrics snapshot and filter helpers", func(t *testing.T) {
-		oldMetricsDest := metricsDest
+		oldMetricsDest := MetricsDestTable()
 		oldCollector := collector
 		defer func() {
+			metricsDestMu.Lock()
 			metricsDest = oldMetricsDest
+			metricsDestMu.Unlock()
 			collector = oldCollector
 		}()
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -192,6 +193,7 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 var collector *metric.Collector
 var prefix string = "machbase"
 var metricsDest string
+var metricsDestMu sync.RWMutex
 var prometheusBearerToken string
 
 const SERIES_ID_FINEST = "METRIC_2H"
@@ -232,6 +234,8 @@ func MetricsPrefix() string {
 }
 
 func MetricsDestTable() string {
+	metricsDestMu.RLock()
+	defer metricsDestMu.RUnlock()
 	return metricsDest
 }
 
@@ -265,7 +269,9 @@ func SetMetricsDestTable(destTable string) error {
 		}
 	}
 
+	metricsDestMu.Lock()
 	metricsDest = destTable
+	metricsDestMu.Unlock()
 	return nil
 }
 
@@ -304,7 +310,8 @@ type MetricRec struct {
 }
 
 func onProduct(pd metric.Product) error {
-	if metricsDest == "" {
+	destTable := MetricsDestTable()
+	if destTable == "" {
 		return nil
 	}
 	// insert only finest resolution
@@ -411,7 +418,7 @@ func onProduct(pd metric.Product) error {
 				metricLog.Warnf("metrics writing: no rows affected for %v", m)
 			}
 		}
-	}(result, metricsDest)
+	}(result, destTable)
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,41 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMetricsDestTableConcurrentAccess(t *testing.T) {
+	prevDest := MetricsDestTable()
+	t.Cleanup(func() {
+		metricsDestMu.Lock()
+		metricsDest = prevDest
+		metricsDestMu.Unlock()
+	})
+	require.NoError(t, SetMetricsDestTable(""))
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 1000 {
+				if err := SetMetricsDestTable(""); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+		wg.Go(func() {
+			for range 1000 {
+				if got := MetricsDestTable(); got != "" {
+					t.Errorf("unexpected metrics destination: %q", got)
+					return
+				}
+				if err := onProduct(metric.Product{SeriesID: SERIES_ID_FINEST}); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
 
 func TestHandleStatz(t *testing.T) {
 	metricKey := "custom:" + uuid.Must(uuid.NewV4()).String()
