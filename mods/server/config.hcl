@@ -34,8 +34,8 @@ define VARS {
     MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
     MQTT_PERSISTENCE  = flag("--mqtt-persistence", false)
 
-    HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
-    MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
+    HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", true)
+    MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", true)
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 
     HTTP_DEBUG_MODE       = flag("--http-debug", false)

@@ -95,6 +95,8 @@ func TestMain(m *testing.M) {
 			"--http-port", strconv.Itoa(httpPort),
 			"--mqtt-port", strconv.Itoa(mqttPort),
 			"--shell-port", strconv.Itoa(shellPort),
+			"--http-enable-token-auth", "false",
+			"--mqtt-enable-token-auth", "false",
 			"--jwt-secret", "__secr3t__",
 			"--machbase-init-option", "1",
 			"--http-query-cypher", "alg=AES key=1234567890abcdef pad=pkcs5",
