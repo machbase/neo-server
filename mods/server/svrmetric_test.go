@@ -335,10 +335,34 @@ func TestFlushStatzBatchAndEnsureTable(t *testing.T) {
 				Time:  now.UnixNano(),
 				Value: 123.456,
 			},
+			{
+				Name:  "test_metric_flush_second",
+				Time:  now.UnixNano(),
+				Value: 789,
+			},
 		}
-		require.NotPanics(t, func() {
-			flushStatzBatch(records)
-		})
+		flushStatzBatch(records)
+
+		conn, err := connectStatz()
+		require.NoError(t, err)
+		defer conn.Close()
+		for _, record := range records {
+			var value float64
+			err := conn.QueryRowContext(t.Context(),
+				"SELECT VALUE FROM _NEO_STATZ WHERE NAME = ? AND TIME = ?",
+				record.Name, record.Time).Scan(&value)
+			require.NoError(t, err)
+			require.Equal(t, record.Value, value)
+		}
+
+		records[0].Value = 654.321
+		flushStatzBatch(records)
+		var value float64
+		err = conn.QueryRowContext(t.Context(),
+			"SELECT VALUE FROM _NEO_STATZ WHERE NAME = ? AND TIME = ?",
+			records[0].Name, records[0].Time).Scan(&value)
+		require.NoError(t, err)
+		require.Equal(t, records[0].Value, value)
 	})
 }
 

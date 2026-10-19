@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/jsh/viz"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -210,21 +211,26 @@ func flushStatzBatch(records []statzRecord) {
 		return
 	}
 
-	for _, m := range records {
-		result, err := conn.ExecContext(ctx,
-			"INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SET VALUE = ?",
-			m.Name, m.Time, m.Value, m.Value)
-		if err != nil {
-			if statzLog != nil {
-				statzLog.Errorf("metrics writing: %v", err)
+	if err := client.TxConn(ctx, conn, func(tx *sql.Tx) error {
+		for _, m := range records {
+			result, err := tx.ExecContext(ctx,
+				"INSERT INTO _NEO_STATZ (NAME, TIME, VALUE) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SET VALUE = ?",
+				m.Name, m.Time, m.Value, m.Value)
+			if err != nil {
+				return err
 			}
-			return
-		}
-		if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
-			if statzLog != nil {
-				statzLog.Warnf("metrics writing: no rows affected for %v", m)
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
+				if statzLog != nil {
+					statzLog.Warnf("metrics writing: no rows affected for %v", m)
+				}
 			}
 		}
+		return nil
+	}); err != nil {
+		if statzLog != nil {
+			statzLog.Errorf("metrics batch transaction (records=%d): %v", len(records), err)
+		}
+		return
 	}
 
 	now := time.Now()
