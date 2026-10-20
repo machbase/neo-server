@@ -1038,6 +1038,18 @@ func (ctl *Controller) sharedMkdir(name string) error {
 	})
 }
 
+func (ctl *Controller) sharedRmdir(name string) error {
+	path := engine.CleanPath(name)
+	if path == "/" {
+		return fmt.Errorf("%w: rmdir /: operation not permitted", fs.ErrPermission)
+	}
+	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
+		return vfs.Rmdir(path)
+	}, func() error {
+		return ctl.persistSharedRmdir(path)
+	})
+}
+
 func (ctl *Controller) sharedRemove(name string) error {
 	path := engine.CleanPath(name)
 	if path == "/" {
@@ -1049,6 +1061,18 @@ func (ctl *Controller) sharedRemove(name string) error {
 		return ctl.persistSharedRemove(path)
 	})
 	return err
+}
+
+func (ctl *Controller) sharedUnlink(name string) error {
+	path := engine.CleanPath(name)
+	if path == "/" {
+		return fmt.Errorf("%w: unlink /: operation not permitted", fs.ErrPermission)
+	}
+	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
+		return vfs.Unlink(path)
+	}, func() error {
+		return ctl.persistSharedUnlink(path)
+	})
 }
 
 func (ctl *Controller) sharedRename(oldName string, newName string) error {

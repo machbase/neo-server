@@ -84,6 +84,37 @@ func TestControllerFS_MountedOnNewFS(t *testing.T) {
 	if _, err := fs.Stat(mfs, "/shared/cache/final.txt"); err == nil {
 		t.Fatal("removed remote file should not exist")
 	}
+
+	if err := mfs.WriteFile("/shared/cache/unlink.txt", []byte("unlink")); err != nil {
+		t.Fatalf("WriteFile(unlink) error: %v", err)
+	}
+	if err := mfs.WriteFile("/shared/cache/keep.txt", []byte("keep")); err != nil {
+		t.Fatalf("WriteFile(keep) error: %v", err)
+	}
+	if err := mfs.Unlink("/shared/cache/unlink.txt"); err != nil {
+		t.Fatalf("Unlink(file) error: %v", err)
+	}
+	if _, err := fs.Stat(mfs, "/shared/cache/unlink.txt"); err == nil {
+		t.Fatal("unlinked remote file should not exist")
+	}
+	if err := mfs.Unlink("/shared/cache"); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Unlink(directory) error=%v, want %v", err, fs.ErrInvalid)
+	}
+	if data, err := fs.ReadFile(mfs, "/shared/cache/keep.txt"); err != nil || string(data) != "keep" {
+		t.Fatalf("directory contents should remain after failed remote unlink: data=%q error=%v", data, err)
+	}
+	if err := mfs.Mkdir("/shared/cache/empty"); err != nil {
+		t.Fatalf("Mkdir(empty) error: %v", err)
+	}
+	if err := mfs.Rmdir("/shared/cache/empty"); err != nil {
+		t.Fatalf("Rmdir(empty) error: %v", err)
+	}
+	if err := mfs.Rmdir("/shared/cache"); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Rmdir(non-empty directory) error=%v, want %v", err, fs.ErrInvalid)
+	}
+	if data, err := fs.ReadFile(mfs, "/shared/cache/keep.txt"); err != nil || string(data) != "keep" {
+		t.Fatalf("directory contents should remain after failed remote rmdir: data=%q error=%v", data, err)
+	}
 }
 
 func TestControllerFS_RemoteDescriptorOperations(t *testing.T) {
@@ -504,12 +535,30 @@ func dispatchMockControllerFS(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD, n
 			return nil, err
 		}
 		return snapshotInfo(path, info), nil
+	case "fs.rmdir":
+		path, err := decodePath("path")
+		if err != nil {
+			return nil, err
+		}
+		if err := vfs.Rmdir(path); err != nil {
+			return nil, err
+		}
+		return true, nil
 	case "fs.remove":
 		path, err := decodePath("path")
 		if err != nil {
 			return nil, err
 		}
 		if err := vfs.Remove(path); err != nil {
+			return nil, err
+		}
+		return true, nil
+	case "fs.unlink":
+		path, err := decodePath("path")
+		if err != nil {
+			return nil, err
+		}
+		if err := vfs.Unlink(path); err != nil {
 			return nil, err
 		}
 		return true, nil

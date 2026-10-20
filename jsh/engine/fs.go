@@ -31,8 +31,16 @@ type mkdirFS interface {
 	Mkdir(name string) error
 }
 
+type rmdirFS interface {
+	Rmdir(name string) error
+}
+
 type removeFS interface {
 	Remove(name string) error
+}
+
+type unlinkFS interface {
+	Unlink(name string) error
 }
 
 type renameFS interface {
@@ -596,6 +604,13 @@ func (m *FS) Mkdir(name string) error {
 
 // Rmdir removes a directory at the specified path
 func (m *FS) Rmdir(name string) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if dirFS, ok := bestFS.(rmdirFS); ok {
+		return dirFS.Rmdir(relPath)
+	}
 	return m.performOSOperation(name, os.Remove)
 }
 
@@ -609,6 +624,32 @@ func (m *FS) Remove(name string) error {
 		return mutableFS.Remove(relPath)
 	}
 	return m.performOSOperation(name, os.Remove)
+}
+
+// Unlink removes a file or symbolic link without recursively removing directories.
+func (m *FS) Unlink(name string) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if fileFS, ok := bestFS.(unlinkFS); ok {
+		return fileFS.Unlink(relPath)
+	}
+	return m.performOSOperation(name, os.Remove)
+}
+
+// Lstat returns file information without following a final symbolic link.
+func (m *FS) Lstat(name string) (fs.FileInfo, error) {
+	name = CleanPath(name)
+	bestFS, bestMatch := m.bestMatch(name)
+	if bestFS == nil {
+		return nil, fs.ErrNotExist
+	}
+	relPath := getRelativePath(name, bestMatch)
+	if target, err := getOSPath(bestFS, relPath); err == nil {
+		return os.Lstat(target)
+	}
+	return fs.Stat(bestFS, relPath)
 }
 
 // Rename renames a file or directory from oldName to newName
@@ -1195,9 +1236,11 @@ func (jr *JSRuntime) Filesystem(_ context.Context, vm *goja.Runtime, module *goj
 	exports.Set("writeFile", func(path string, data []byte) error { return jr.filesystem.WriteFile(path, data) })
 	exports.Set("appendFile", func(path string, data []byte) error { return jr.filesystem.AppendFile(path, data) })
 	exports.Set("stat", func(path string) (fs.FileInfo, error) { return jr.filesystem.Stat(path) })
+	exports.Set("lstat", func(path string) (fs.FileInfo, error) { return jr.filesystem.Lstat(path) })
 	exports.Set("mkdir", func(path string) error { return jr.filesystem.Mkdir(path) })
 	exports.Set("rmdir", func(path string) error { return jr.filesystem.Rmdir(path) })
 	exports.Set("remove", func(path string) error { return jr.filesystem.Remove(path) })
+	exports.Set("unlink", func(path string) error { return jr.filesystem.Unlink(path) })
 	exports.Set("rename", func(oldPath, newPath string) error { return jr.filesystem.Rename(oldPath, newPath) })
 	exports.Set("readDir", func(path string) ([]fs.DirEntry, error) { return jr.filesystem.ReadDir(path) })
 	exports.Set("chmod", func(path string, mode uint32) error { return jr.filesystem.Chmod(path, mode) })

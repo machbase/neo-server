@@ -505,15 +505,16 @@ function statSync(path) {
         const info = _fs.stat(fullPath);
         const mode = info.mode();
         const modeStr = mode.string();
+        const modeType = modeStr.charAt(0).toLowerCase();
 
         return {
-            isFile: () => !modeStr.startsWith('d') && !modeStr.startsWith('l'),
-            isDirectory: () => modeStr.startsWith('d'),
-            isSymbolicLink: () => modeStr.startsWith('l'),
-            isBlockDevice: () => modeStr.startsWith('b'),
-            isCharacterDevice: () => modeStr.startsWith('c'),
-            isFIFO: () => modeStr.startsWith('p'),
-            isSocket: () => modeStr.startsWith('s'),
+            isFile: () => modeType === '-' || modeType === '',
+            isDirectory: () => modeType === 'd',
+            isSymbolicLink: () => modeType === 'l',
+            isBlockDevice: () => modeType === 'b',
+            isCharacterDevice: () => modeType === 'c',
+            isFIFO: () => modeType === 'p',
+            isSocket: () => modeType === 's',
             size: info.size(),
             mode: mode,
             mtime: info.modTime(),
@@ -546,13 +547,42 @@ function countLinesSync(path) {
 }
 
 /**
- * Get file or directory stats (follows symlinks)
+ * Get file or directory stats without following the final symbolic link
  * @param {string} path - File or directory path
  * @returns {object} Stats object
  */
 function lstatSync(path) {
-    // For now, same as statSync since we don't have explicit lstat support
-    return statSync(path);
+    const fullPath = _fs.resolvePath(path);
+
+    try {
+        const info = _fs.lstat(fullPath);
+        const mode = info.mode();
+        const modeType = mode.string().charAt(0).toLowerCase();
+
+        return {
+            isFile: () => modeType === '-' || modeType === '',
+            isDirectory: () => modeType === 'd',
+            isSymbolicLink: () => modeType === 'l',
+            isBlockDevice: () => modeType === 'b',
+            isCharacterDevice: () => modeType === 'c',
+            isFIFO: () => modeType === 'p',
+            isSocket: () => modeType === 's',
+            size: info.size(),
+            mode: mode,
+            mtime: info.modTime(),
+            atime: info.modTime(),
+            ctime: info.modTime(),
+            birthtime: info.modTime(),
+            name: info.name()
+        };
+    } catch (e) {
+        const error = new Error(`ENOENT: no such file or directory, lstat '${path}'`);
+        error.code = 'ENOENT';
+        error.errno = -2;
+        error.path = path;
+        error.syscall = 'lstat';
+        throw error;
+    }
 }
 
 /**
@@ -574,16 +604,17 @@ function readdirSync(path, options) {
                     const info = entry.info();
                     const mode = info.mode();
                     const modeStr = mode.string();
+                    const modeType = modeStr.charAt(0).toLowerCase();
 
                     return {
                         name: info.name(),
-                        isFile: () => !modeStr.startsWith('d') && !modeStr.startsWith('l'),
-                        isDirectory: () => modeStr.startsWith('d'),
-                        isSymbolicLink: () => modeStr.startsWith('l'),
-                        isBlockDevice: () => modeStr.startsWith('b'),
-                        isCharacterDevice: () => modeStr.startsWith('c'),
-                        isFIFO: () => modeStr.startsWith('p'),
-                        isSocket: () => modeStr.startsWith('s')
+                        isFile: () => modeType === '-' || modeType === '',
+                        isDirectory: () => modeType === 'd',
+                        isSymbolicLink: () => modeType === 'l',
+                        isBlockDevice: () => modeType === 'b',
+                        isCharacterDevice: () => modeType === 'c',
+                        isFIFO: () => modeType === 'p',
+                        isSocket: () => modeType === 's'
                     };
                 });
             } else {
@@ -615,20 +646,21 @@ function readdirSync(path, options) {
 
                     const mode = info.mode();
                     const modeStr = mode.string();
-                    const isDir = modeStr.startsWith('d');
+                    const modeType = modeStr.charAt(0).toLowerCase();
+                    const isDir = modeType === 'd';
 
                     const relativePath = dirPath ? `${dirPath}/${name}` : name;
 
                     if (options?.withFileTypes) {
                         results.push({
                             name: name,
-                            isFile: () => !isDir && !modeStr.startsWith('l'),
+                            isFile: () => modeType === '-' || modeType === '',
                             isDirectory: () => isDir,
-                            isSymbolicLink: () => modeStr.startsWith('l'),
-                            isBlockDevice: () => modeStr.startsWith('b'),
-                            isCharacterDevice: () => modeStr.startsWith('c'),
-                            isFIFO: () => modeStr.startsWith('p'),
-                            isSocket: () => modeStr.startsWith('s'),
+                            isSymbolicLink: () => modeType === 'l',
+                            isBlockDevice: () => modeType === 'b',
+                            isCharacterDevice: () => modeType === 'c',
+                            isFIFO: () => modeType === 'p',
+                            isSocket: () => modeType === 's',
                             path: dirPath || ''
                         });
                     } else {
@@ -736,7 +768,7 @@ function rmdirSync(path, options) {
  */
 function rmSync(path, options) {
     try {
-        const stats = statSync(path);
+        const stats = lstatSync(path);
         if (stats.isDirectory()) {
             rmdirSync(path, options);
         } else {
@@ -757,7 +789,7 @@ function unlinkSync(path) {
     const fullPath = _fs.resolvePath(path);
 
     try {
-        _fs.remove(fullPath);
+        _fs.unlink(fullPath);
     } catch (e) {
         const error = new Error(`ENOENT: no such file or directory, unlink '${path}'`);
         error.code = 'ENOENT';
@@ -1160,19 +1192,20 @@ function fstatSync(fd) {
         const info = _fs.fstat(fd);
         const mode = info.mode();
         const modeStr = mode.string();
+        const modeType = modeStr.charAt(0).toLowerCase();
 
         return {
             name: info.name(),
             size: info.size(),
             mode: mode,
             mtime: info.modTime(),
-            isFile: () => !modeStr.startsWith('d') && !modeStr.startsWith('l'),
-            isDirectory: () => modeStr.startsWith('d'),
-            isSymbolicLink: () => modeStr.startsWith('l'),
-            isBlockDevice: () => modeStr.startsWith('b'),
-            isCharacterDevice: () => modeStr.startsWith('c'),
-            isFIFO: () => modeStr.startsWith('p'),
-            isSocket: () => modeStr.startsWith('s')
+            isFile: () => modeType === '-' || modeType === '',
+            isDirectory: () => modeType === 'd',
+            isSymbolicLink: () => modeType === 'l',
+            isBlockDevice: () => modeType === 'b',
+            isCharacterDevice: () => modeType === 'c',
+            isFIFO: () => modeType === 'p',
+            isSocket: () => modeType === 's'
         };
     } catch (e) {
         const error = new Error(`EBADF: bad file descriptor, fstat`);

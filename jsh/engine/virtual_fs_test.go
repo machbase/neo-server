@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -114,6 +115,54 @@ func TestVirtualFS_RemoveFileAndTree(t *testing.T) {
 	must(vfs.Remove("root/sub"))
 	if _, err := fs.Stat(vfs, "root/sub/b.txt"); err == nil {
 		t.Fatalf("removed subtree file should not exist")
+	}
+}
+
+func TestVirtualFS_UnlinkDoesNotRemoveDirectories(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.AddFile("root/sub/keep.txt", "keep", VirtualFileProperty{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := vfs.Unlink("root/sub"); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Unlink(directory) error = %v, want %v", err, fs.ErrInvalid)
+	}
+	data, err := fs.ReadFile(vfs, "root/sub/keep.txt")
+	if err != nil {
+		t.Fatalf("directory contents should remain after failed unlink: %v", err)
+	}
+	if string(data) != "keep" {
+		t.Fatalf("unexpected file contents: %q", data)
+	}
+
+	if err := vfs.Unlink("root/sub/keep.txt"); err != nil {
+		t.Fatalf("Unlink(file) failed: %v", err)
+	}
+	if _, err := fs.Stat(vfs, "root/sub/keep.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("unlinked file Stat error = %v, want %v", err, fs.ErrNotExist)
+	}
+}
+
+func TestVirtualFS_RmdirRequiresEmptyDirectory(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.Mkdir("root/empty"); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.Rmdir("root/empty"); err != nil {
+		t.Fatalf("Rmdir(empty directory) failed: %v", err)
+	}
+	if _, err := vfs.Stat("root/empty"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("removed directory Stat error=%v, want %v", err, fs.ErrNotExist)
+	}
+
+	if err := vfs.AddFile("root/nonempty/keep.txt", "keep", VirtualFileProperty{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.Rmdir("root/nonempty"); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Rmdir(non-empty directory) error=%v, want %v", err, fs.ErrInvalid)
+	}
+	if data, err := fs.ReadFile(vfs, "root/nonempty/keep.txt"); err != nil || string(data) != "keep" {
+		t.Fatalf("non-empty directory contents should remain: data=%q error=%v", data, err)
 	}
 }
 

@@ -738,6 +738,48 @@ func TestFSModule(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_rm_symlink_preserves_directory_target",
+			Script: `
+				const fs = require('fs');
+				const target = '/tmp/rm_link_target';
+				const link = '/tmp/rm_link_target_link';
+				const unlinkLink = '/tmp/rm_unlink_target_link';
+				fs.rmSync(target, { recursive: true, force: true });
+				fs.rmSync(link, { recursive: true, force: true });
+				fs.rmSync(unlinkLink, { recursive: true, force: true });
+				fs.mkdirSync(target + '/nested', { recursive: true });
+				fs.writeFileSync(target + '/nested/keep.txt', 'keep');
+				fs.symlinkSync(target, unlinkLink);
+				const linkStats = fs.lstatSync(unlinkLink);
+				const targetStats = fs.statSync(unlinkLink);
+				console.println('Link stats:', linkStats.isSymbolicLink(), targetStats.isDirectory());
+				const linkEntry = fs.readdirSync('/tmp', { withFileTypes: true }).find((entry) => entry.name === 'rm_unlink_target_link');
+				console.println('Link dirent:', linkEntry.isSymbolicLink(), linkEntry.isFile());
+				fs.unlinkSync(unlinkLink);
+				console.println('Unlink target preserved:', fs.readFileSync(target + '/nested/keep.txt', 'utf8'));
+				fs.symlinkSync(target, link);
+				fs.rmSync(link, { recursive: true });
+				console.println('Link removed:', !fs.existsSync(link));
+				console.println('Target preserved:', fs.readFileSync(target + '/nested/keep.txt', 'utf8'));
+				let directoryUnlinkRejected = false;
+				try {
+					fs.unlinkSync(target);
+				} catch (e) {
+					directoryUnlinkRejected = true;
+				}
+				console.println('Directory unlink rejected:', directoryUnlinkRejected);
+				fs.rmSync(target, { recursive: true });
+			`,
+			Output: []string{
+				"Link stats: true true",
+				"Link dirent: true false",
+				"Unlink target preserved: keep",
+				"Link removed: true",
+				"Target preserved: keep",
+				"Directory unlink rejected: true",
+			},
+		},
+		{
 			Name: "fs_chown",
 			Script: `
 				const fs = require('fs');
@@ -1610,6 +1652,7 @@ func TestFSModule(t *testing.T) {
 					console.println('Name:', entry.name);
 					console.println('  isFile:', entry.isFile());
 					console.println('  isDirectory:', entry.isDirectory());
+					console.println('  isSymbolicLink:', entry.isSymbolicLink());
 				});
 
 				// Cleanup
@@ -1624,12 +1667,15 @@ func TestFSModule(t *testing.T) {
 				"Name: file.txt",
 				"  isFile: true",
 				"  isDirectory: false",
+				"  isSymbolicLink: false",
 				"Name: link.txt",
-				"  isFile: true",
+				"  isFile: false",
 				"  isDirectory: false",
+				"  isSymbolicLink: true",
 				"Name: subdir",
 				"  isFile: false",
 				"  isDirectory: true",
+				"  isSymbolicLink: false",
 				"=== Test Complete ===",
 			},
 		},

@@ -22,7 +22,9 @@ func controllerBuiltinRPCMethods(ctl *Controller) map[string]any {
 		"fs.chmod":                      ctl.rpcFSChmod,
 		"fs.chown":                      ctl.rpcFSChown,
 		"fs.mkdir":                      ctl.rpcFSMkdir,
+		"fs.rmdir":                      ctl.rpcFSRmdir,
 		"fs.remove":                     ctl.rpcFSRemove,
+		"fs.unlink":                     ctl.rpcFSUnlink,
 		"fs.rename":                     ctl.rpcFSRename,
 		"fs.open":                       ctl.rpcFSOpen,
 		"fs.read":                       ctl.rpcFSRead,
@@ -185,8 +187,22 @@ func (ctl *Controller) rpcFSMkdir(req sharedPathRequest) (SharedFileInfoSnapshot
 	return info, nil
 }
 
+func (ctl *Controller) rpcFSRmdir(req sharedPathRequest) (bool, error) {
+	if err := ctl.sharedRmdir(req.Path); err != nil {
+		return false, mapSharedFSError(err)
+	}
+	return true, nil
+}
+
 func (ctl *Controller) rpcFSRemove(req sharedPathRequest) (bool, error) {
 	if err := ctl.sharedRemove(req.Path); err != nil {
+		return false, mapSharedFSError(err)
+	}
+	return true, nil
+}
+
+func (ctl *Controller) rpcFSUnlink(req sharedPathRequest) (bool, error) {
+	if err := ctl.sharedUnlink(req.Path); err != nil {
 		return false, mapSharedFSError(err)
 	}
 	return true, nil

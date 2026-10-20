@@ -190,6 +190,14 @@ func (cfs *ControllerFS) Mkdir(name string) error {
 	return cfs.call("fs.mkdir", map[string]any{"path": path}, nil)
 }
 
+func (cfs *ControllerFS) Rmdir(name string) error {
+	path, err := normalizeControllerFSPath("rmdir", name, false)
+	if err != nil {
+		return err
+	}
+	return cfs.call("fs.rmdir", map[string]any{"path": path}, nil)
+}
+
 func (cfs *ControllerFS) Remove(name string) error {
 	trimmed := strings.TrimPrefix(name, "/")
 	if name == "" || trimmed == "" || trimmed == "." {
@@ -200,6 +208,14 @@ func (cfs *ControllerFS) Remove(name string) error {
 		return err
 	}
 	return cfs.call("fs.remove", map[string]any{"path": path}, nil)
+}
+
+func (cfs *ControllerFS) Unlink(name string) error {
+	path, err := normalizeControllerFSPath("unlink", name, false)
+	if err != nil {
+		return err
+	}
+	return cfs.call("fs.unlink", map[string]any{"path": path}, nil)
 }
 
 func (cfs *ControllerFS) Rename(oldName string, newName string) error {

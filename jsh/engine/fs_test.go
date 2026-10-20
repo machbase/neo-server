@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -62,6 +63,24 @@ func TestFS_Mount(t *testing.T) {
 				t.Errorf("Mount() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestFS_RmdirVirtualMount(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.Mkdir("empty"); err != nil {
+		t.Fatal(err)
+	}
+	mfs := NewFS()
+	if err := mfs.Mount("/virtual", vfs); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.Rmdir("/virtual/empty"); err != nil {
+		t.Fatalf("Rmdir on virtual mount failed: %v", err)
+	}
+	if _, err := vfs.Stat("empty"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("removed directory Stat error=%v, want %v", err, fs.ErrNotExist)
 	}
 }
 

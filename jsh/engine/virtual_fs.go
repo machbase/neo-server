@@ -370,6 +370,32 @@ func (vfs *VirtualFS) Rename(oldName, newName string) error {
 	return nil
 }
 
+func (vfs *VirtualFS) Rmdir(name string) error {
+	rel, err := normalizeVirtualPath("rmdir", name, true)
+	if err != nil {
+		return err
+	}
+	if rel == "." {
+		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrPermission}
+	}
+
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	if !vfs.hasDirLocked(rel) {
+		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrNotExist}
+	}
+	if _, exists := vfs.files[rel]; exists {
+		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrInvalid}
+	}
+	if len(vfs.readDirLocked(rel)) != 0 {
+		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrInvalid}
+	}
+	delete(vfs.dirs, rel)
+	vfs.cleanupParentDirsLocked(path.Dir(rel))
+	return nil
+}
+
 // Remove removes a virtual entry.
 // If name points to a directory, all descendant files are removed.
 func (vfs *VirtualFS) Remove(name string) error {
@@ -419,6 +445,26 @@ func (vfs *VirtualFS) Remove(name string) error {
 	}
 	vfs.cleanupParentDirsLocked(path.Dir(rel))
 	return nil
+}
+
+func (vfs *VirtualFS) Unlink(name string) error {
+	rel, err := normalizeVirtualPath("unlink", name, false)
+	if err != nil {
+		return err
+	}
+
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	if _, exists := vfs.files[rel]; exists {
+		delete(vfs.files, rel)
+		vfs.cleanupParentDirsLocked(path.Dir(rel))
+		return nil
+	}
+	if vfs.hasDirLocked(rel) {
+		return &fs.PathError{Op: "unlink", Path: name, Err: fs.ErrInvalid}
+	}
+	return &fs.PathError{Op: "unlink", Path: name, Err: fs.ErrNotExist}
 }
 
 func (vfs *VirtualFS) Open(name string) (fs.File, error) {
