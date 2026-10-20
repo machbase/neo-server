@@ -1101,7 +1101,9 @@ function readSync(fd, buffer, offset, length, position) {
     try {
         // _fs.read will copy data into the buffer (Array or Uint8Array)
         // at the specified offset
-        const bytesRead = _fs.read(fd, buffer, offset, length);
+        const bytesRead = position === undefined || position === null
+            ? _fs.read(fd, buffer, offset, length)
+            : _fs.readAt(fd, buffer, offset, length, position);
         return bytesRead;
     } catch (e) {
         const error = new Error(`EBADF: bad file descriptor, read`);
@@ -1138,7 +1140,7 @@ function writeSync(fd, buffer, offset, length, position) {
     const writeData = data.slice(offset, offset + length);
 
     try {
-        return _fs.write(fd, writeData);
+        return _fs.write(fd, writeData, position);
     } catch (e) {
         const error = new Error(`EBADF: bad file descriptor, write`);
         error.code = 'EBADF';

@@ -1006,8 +1006,17 @@ func TestFS_OSBackedDescriptorOperations(t *testing.T) {
 		}
 	}()
 
+	positionBuffer := make([]byte, 4)
+	n, err := mfs.ReadAtFD(fd, positionBuffer, 0, len(positionBuffer), 6)
+	if err != nil {
+		t.Fatalf("ReadAtFD failed: %v", err)
+	}
+	if n != 4 || string(positionBuffer) != "worl" {
+		t.Fatalf("ReadAtFD() n=%d buffer=%q, want 4 and %q", n, string(positionBuffer), "worl")
+	}
+
 	buf := make([]byte, 16)
-	n, err := mfs.ReadFD(fd, buf, 2, 5)
+	n, err = mfs.ReadFD(fd, buf, 2, 5)
 	if err != nil {
 		t.Fatalf("ReadFD failed: %v", err)
 	}

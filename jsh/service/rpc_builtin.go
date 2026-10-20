@@ -212,7 +212,7 @@ func (ctl *Controller) rpcFSOpen(req sharedOpenFDRequest) (SharedOpenFDResult, e
 }
 
 func (ctl *Controller) rpcFSRead(req sharedReadFDRequest) (SharedReadFDResult, error) {
-	result, err := ctl.sharedReadFD(req.FD, req.Length)
+	result, err := ctl.sharedReadFD(req.FD, req.Length, req.Position)
 	if err != nil {
 		return SharedReadFDResult{}, mapSharedFSError(err)
 	}
@@ -224,7 +224,7 @@ func (ctl *Controller) rpcFSWrite(req sharedWriteFDRequest) (SharedWriteFDResult
 	if err != nil {
 		return SharedWriteFDResult{}, invalidParamsError(err)
 	}
-	result, err := ctl.sharedWriteFD(req.FD, data)
+	result, err := ctl.sharedWriteFD(req.FD, data, req.Position)
 	if err != nil {
 		return SharedWriteFDResult{}, mapSharedFSError(err)
 	}

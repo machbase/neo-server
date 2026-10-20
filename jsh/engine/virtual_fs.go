@@ -736,6 +736,10 @@ func (f *virtualOpenFile) Read(p []byte) (int, error) {
 	return f.reader.Read(p)
 }
 
+func (f *virtualOpenFile) ReadAt(p []byte, off int64) (int, error) {
+	return f.reader.ReadAt(p, off)
+}
+
 func (f *virtualOpenFile) Close() error {
 	return nil
 }

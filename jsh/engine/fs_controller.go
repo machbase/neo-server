@@ -549,11 +549,41 @@ func (fd *controllerFSRemoteFD) Read(p []byte) (int, error) {
 	return result.BytesRead, nil
 }
 
+func (fd *controllerFSRemoteFD) ReadAt(p []byte, off int64) (int, error) {
+	var result controllerFSReadFDResult
+	if err := fd.fs.call("fs.read", map[string]any{"fd": fd.id, "length": len(p), "position": off}, &result); err != nil {
+		return 0, err
+	}
+	data, err := base64.StdEncoding.DecodeString(result.Data)
+	if err != nil {
+		return 0, err
+	}
+	copy(p, data)
+	if result.BytesRead < len(p) {
+		return result.BytesRead, io.EOF
+	}
+	return result.BytesRead, nil
+}
+
 func (fd *controllerFSRemoteFD) Write(p []byte) (int, error) {
 	var result struct {
 		BytesWritten int `json:"bytes_written"`
 	}
 	if err := fd.fs.call("fs.write", map[string]any{"fd": fd.id, "data": base64.StdEncoding.EncodeToString(p)}, &result); err != nil {
+		return 0, err
+	}
+	return result.BytesWritten, nil
+}
+
+func (fd *controllerFSRemoteFD) WriteAt(p []byte, off int64) (int, error) {
+	var result struct {
+		BytesWritten int `json:"bytes_written"`
+	}
+	if err := fd.fs.call("fs.write", map[string]any{
+		"fd":       fd.id,
+		"data":     base64.StdEncoding.EncodeToString(p),
+		"position": off,
+	}, &result); err != nil {
 		return 0, err
 	}
 	return result.BytesWritten, nil
@@ -582,4 +612,3 @@ func (fd *controllerFSRemoteFD) Chmod(mode fs.FileMode) error {
 func (fd *controllerFSRemoteFD) Chown(uid, gid int) error {
 	return fd.fs.call("fs.fchown", map[string]any{"fd": fd.id, "uid": uid, "gid": gid}, nil)
 }
-

@@ -155,6 +155,58 @@ func TestControllerFS_RemoteDescriptorOperations(t *testing.T) {
 	}
 }
 
+func TestControllerFS_RemotePositionedDescriptorOperations(t *testing.T) {
+	address, shutdown := startMockControllerFSServer(t)
+	defer shutdown()
+
+	remoteFS, err := NewControllerFS(address)
+	if err != nil {
+		t.Fatalf("NewControllerFS() error: %v", err)
+	}
+	mfs := NewFS()
+	if err := mfs.Mount("/shared", remoteFS); err != nil {
+		t.Fatalf("Mount() error: %v", err)
+	}
+	if err := mfs.WriteFile("/shared/position.txt", []byte("AAAABBBBCCCC")); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	fd, err := mfs.OpenFD("/shared/position.txt", os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("OpenFD(write) error: %v", err)
+	}
+	if n, err := mfs.WriteAtFD(fd, []byte("XXXX"), 4); err != nil || n != 4 {
+		t.Fatalf("WriteAtFD() = %d, %v; want 4, nil", n, err)
+	}
+	if n, err := mfs.WriteFD(fd, []byte("YYYY")); err != nil || n != 4 {
+		t.Fatalf("WriteFD() = %d, %v; want 4, nil", n, err)
+	}
+	if err := mfs.CloseFD(fd); err != nil {
+		t.Fatalf("CloseFD(write) error: %v", err)
+	}
+
+	data, err := mfs.ReadFile("/shared/position.txt")
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "YYYYXXXXCCCC" {
+		t.Fatalf("file content=%q, want %q", string(data), "YYYYXXXXCCCC")
+	}
+
+	fd, err = mfs.OpenFD("/shared/position.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatalf("OpenFD(read) error: %v", err)
+	}
+	defer mfs.CloseFD(fd)
+	buf := make([]byte, 4)
+	if n, err := mfs.ReadAtFD(fd, buf, 0, len(buf), 4); err != nil || n != 4 || string(buf) != "XXXX" {
+		t.Fatalf("ReadAtFD() = %d, %q, %v; want 4, XXXX, nil", n, string(buf), err)
+	}
+	if n, err := mfs.ReadFD(fd, buf, 0, len(buf)); err != nil || n != 4 || string(buf) != "YYYY" {
+		t.Fatalf("ReadFD() = %d, %q, %v; want 4, YYYY, nil", n, string(buf), err)
+	}
+}
+
 func startMockControllerFSServer(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -509,8 +561,9 @@ func dispatchMockControllerFS(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD, n
 		return map[string]any{"fd": fd}, nil
 	case "fs.read":
 		var req struct {
-			FD     int `json:"fd"`
-			Length int `json:"length"`
+			FD       int    `json:"fd"`
+			Length   int    `json:"length"`
+			Position *int64 `json:"position"`
 		}
 		if err := json.Unmarshal(params, &req); err != nil {
 			return nil, err
@@ -519,20 +572,30 @@ func dispatchMockControllerFS(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD, n
 		if !ok {
 			return nil, fs.ErrInvalid
 		}
-		if handle.offset >= len(handle.data) {
+		offset := int64(handle.offset)
+		if req.Position != nil {
+			if *req.Position < 0 {
+				return nil, fs.ErrInvalid
+			}
+			offset = *req.Position
+		}
+		if offset >= int64(len(handle.data)) {
 			return map[string]any{"data": "", "bytes_read": 0}, nil
 		}
-		end := handle.offset + req.Length
-		if end > len(handle.data) {
-			end = len(handle.data)
+		end := offset + int64(req.Length)
+		if end > int64(len(handle.data)) {
+			end = int64(len(handle.data))
 		}
-		chunk := append([]byte(nil), handle.data[handle.offset:end]...)
-		handle.offset = end
+		chunk := append([]byte(nil), handle.data[int(offset):int(end)]...)
+		if req.Position == nil {
+			handle.offset = int(end)
+		}
 		return map[string]any{"data": base64.StdEncoding.EncodeToString(chunk), "bytes_read": len(chunk)}, nil
 	case "fs.write":
 		var req struct {
-			FD   int    `json:"fd"`
-			Data string `json:"data"`
+			FD       int    `json:"fd"`
+			Data     string `json:"data"`
+			Position *int64 `json:"position"`
 		}
 		if err := json.Unmarshal(params, &req); err != nil {
 			return nil, err
@@ -545,17 +608,29 @@ func dispatchMockControllerFS(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD, n
 		if err != nil {
 			return nil, err
 		}
+		offset := int64(handle.offset)
 		if handle.append {
-			handle.offset = len(handle.data)
+			offset = int64(len(handle.data))
+		} else if req.Position != nil {
+			if *req.Position < 0 {
+				return nil, fs.ErrInvalid
+			}
+			offset = *req.Position
 		}
-		end := handle.offset + len(data)
-		if end > len(handle.data) {
-			grown := make([]byte, end)
+		maxInt := int64(int(^uint(0) >> 1))
+		if offset > maxInt-int64(len(data)) {
+			return nil, fs.ErrInvalid
+		}
+		end := offset + int64(len(data))
+		if end > int64(len(handle.data)) {
+			grown := make([]byte, int(end))
 			copy(grown, handle.data)
 			handle.data = grown
 		}
-		copy(handle.data[handle.offset:end], data)
-		handle.offset = end
+		copy(handle.data[int(offset):int(end)], data)
+		if handle.append || req.Position == nil {
+			handle.offset = int(end)
+		}
 		handle.dirty = true
 		return map[string]any{"bytes_written": len(data)}, nil
 	case "fs.close":

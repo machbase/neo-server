@@ -197,13 +197,15 @@ type sharedFDRequest struct {
 }
 
 type sharedReadFDRequest struct {
-	FD     int `json:"fd"`
-	Length int `json:"length"`
+	FD       int    `json:"fd"`
+	Length   int    `json:"length"`
+	Position *int64 `json:"position"`
 }
 
 type sharedWriteFDRequest struct {
-	FD   int    `json:"fd"`
-	Data string `json:"data"`
+	FD       int    `json:"fd"`
+	Data     string `json:"data"`
+	Position *int64 `json:"position"`
 }
 
 type ControllerRPCMetricsSnapshot struct {
@@ -1128,7 +1130,7 @@ func (ctl *Controller) sharedOpenFD(name string, flags int, mode uint32, owner s
 	return SharedOpenFDResult{FD: fd}, nil
 }
 
-func (ctl *Controller) sharedReadFD(fd int, length int) (SharedReadFDResult, error) {
+func (ctl *Controller) sharedReadFD(fd int, length int, positions ...*int64) (SharedReadFDResult, error) {
 	ctl.sharedMu.Lock()
 	defer ctl.sharedMu.Unlock()
 	handle, err := ctl.lookupSharedFDLocked(fd)
@@ -1141,19 +1143,32 @@ func (ctl *Controller) sharedReadFD(fd int, length int) (SharedReadFDResult, err
 	if length < 0 {
 		return SharedReadFDResult{}, fs.ErrInvalid
 	}
-	if handle.Offset >= len(handle.Data) || length == 0 {
+	var position *int64
+	if len(positions) > 0 {
+		position = positions[0]
+	}
+	offset := int64(handle.Offset)
+	if position != nil {
+		if *position < 0 {
+			return SharedReadFDResult{}, fs.ErrInvalid
+		}
+		offset = *position
+	}
+	if offset >= int64(len(handle.Data)) || length == 0 {
 		return SharedReadFDResult{Data: "", BytesRead: 0}, nil
 	}
-	end := handle.Offset + length
-	if end > len(handle.Data) {
-		end = len(handle.Data)
+	end := offset + int64(length)
+	if end > int64(len(handle.Data)) {
+		end = int64(len(handle.Data))
 	}
-	chunk := append([]byte(nil), handle.Data[handle.Offset:end]...)
-	handle.Offset = end
+	chunk := append([]byte(nil), handle.Data[int(offset):int(end)]...)
+	if position == nil {
+		handle.Offset = int(end)
+	}
 	return SharedReadFDResult{Data: base64.StdEncoding.EncodeToString(chunk), BytesRead: len(chunk)}, nil
 }
 
-func (ctl *Controller) sharedWriteFD(fd int, data []byte) (SharedWriteFDResult, error) {
+func (ctl *Controller) sharedWriteFD(fd int, data []byte, positions ...*int64) (SharedWriteFDResult, error) {
 	ctl.sharedMu.Lock()
 	defer ctl.sharedMu.Unlock()
 	handle, err := ctl.lookupSharedFDLocked(fd)
@@ -1163,17 +1178,33 @@ func (ctl *Controller) sharedWriteFD(fd int, data []byte) (SharedWriteFDResult, 
 	if !handle.Writable {
 		return SharedWriteFDResult{}, fs.ErrPermission
 	}
-	if handle.Append {
-		handle.Offset = len(handle.Data)
+	var position *int64
+	if len(positions) > 0 {
+		position = positions[0]
 	}
-	end := handle.Offset + len(data)
-	if end > len(handle.Data) {
-		grown := make([]byte, end)
+	offset := int64(handle.Offset)
+	if handle.Append {
+		offset = int64(len(handle.Data))
+	} else if position != nil {
+		if *position < 0 {
+			return SharedWriteFDResult{}, fs.ErrInvalid
+		}
+		offset = *position
+	}
+	maxInt := int64(int(^uint(0) >> 1))
+	if offset > maxInt-int64(len(data)) {
+		return SharedWriteFDResult{}, fs.ErrInvalid
+	}
+	end := offset + int64(len(data))
+	if end > int64(len(handle.Data)) {
+		grown := make([]byte, int(end))
 		copy(grown, handle.Data)
 		handle.Data = grown
 	}
-	copy(handle.Data[handle.Offset:end], data)
-	handle.Offset = end
+	copy(handle.Data[int(offset):int(end)], data)
+	if handle.Append || position == nil {
+		handle.Offset = int(end)
+	}
 	handle.Dirty = true
 	handle.ModTime = time.Now()
 	return SharedWriteFDResult{BytesWritten: len(data)}, nil

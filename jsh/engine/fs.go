@@ -57,7 +57,9 @@ type readlinkFS interface {
 
 type fdHandle interface {
 	io.Reader
+	io.ReaderAt
 	io.Writer
+	io.WriterAt
 	io.Closer
 	Stat() (fs.FileInfo, error)
 	Sync() error
@@ -70,7 +72,8 @@ type openFDFileSystem interface {
 }
 
 type localFDHandle struct {
-	file *os.File
+	file   *os.File
+	append bool
 }
 
 func (h *localFDHandle) Read(p []byte) (int, error) {
@@ -79,6 +82,17 @@ func (h *localFDHandle) Read(p []byte) (int, error) {
 
 func (h *localFDHandle) Write(p []byte) (int, error) {
 	return h.file.Write(p)
+}
+
+func (h *localFDHandle) ReadAt(p []byte, off int64) (int, error) {
+	return h.file.ReadAt(p, off)
+}
+
+func (h *localFDHandle) WriteAt(p []byte, off int64) (int, error) {
+	if h.append {
+		return h.file.Write(p)
+	}
+	return h.file.WriteAt(p, off)
 }
 
 func (h *localFDHandle) Close() error {
@@ -108,11 +122,19 @@ type readOnlyFDHandle struct {
 
 func (h *readOnlyFDHandle) Read(p []byte) (int, error)  { return h.file.Read(p) }
 func (h *readOnlyFDHandle) Write(_ []byte) (int, error) { return 0, fs.ErrPermission }
-func (h *readOnlyFDHandle) Close() error                { return h.file.Close() }
-func (h *readOnlyFDHandle) Stat() (fs.FileInfo, error)  { return h.file.Stat() }
-func (h *readOnlyFDHandle) Sync() error                 { return nil }
-func (h *readOnlyFDHandle) Chmod(_ fs.FileMode) error   { return fs.ErrPermission }
-func (h *readOnlyFDHandle) Chown(_, _ int) error        { return fs.ErrPermission }
+func (h *readOnlyFDHandle) ReadAt(p []byte, off int64) (int, error) {
+	reader, ok := h.file.(io.ReaderAt)
+	if !ok {
+		return 0, errors.ErrUnsupported
+	}
+	return reader.ReadAt(p, off)
+}
+func (h *readOnlyFDHandle) WriteAt(_ []byte, _ int64) (int, error) { return 0, fs.ErrPermission }
+func (h *readOnlyFDHandle) Close() error                           { return h.file.Close() }
+func (h *readOnlyFDHandle) Stat() (fs.FileInfo, error)             { return h.file.Stat() }
+func (h *readOnlyFDHandle) Sync() error                            { return nil }
+func (h *readOnlyFDHandle) Chmod(_ fs.FileMode) error              { return fs.ErrPermission }
+func (h *readOnlyFDHandle) Chown(_, _ int) error                   { return fs.ErrPermission }
 
 // FS allows mounting multiple fs.FS at different paths
 type FS struct {
@@ -776,7 +798,7 @@ func (m *FS) OpenFD(name string, flags int, mode uint32) (int, error) {
 		defer m.fdMu.Unlock()
 		fd := m.nextFD
 		m.nextFD++
-		m.fds[fd] = &localFDHandle{file: file}
+		m.fds[fd] = &localFDHandle{file: file, append: flags&os.O_APPEND != 0}
 		return fd, nil
 	}
 
@@ -844,7 +866,7 @@ func (m *FS) ReadFD(fd int, buffer []byte, offset int, length int) (int, error) 
 		return 0, fs.ErrInvalid
 	}
 
-	if offset < 0 || length < 0 || offset+length > len(buffer) {
+	if offset < 0 || length < 0 || offset > len(buffer) || length > len(buffer)-offset {
 		return 0, fs.ErrInvalid
 	}
 
@@ -853,6 +875,26 @@ func (m *FS) ReadFD(fd int, buffer []byte, offset int, length int) (int, error) 
 		return 0, err
 	}
 
+	return n, nil
+}
+
+// ReadAtFD reads from a file descriptor at a byte offset without changing its current position.
+func (m *FS) ReadAtFD(fd int, buffer []byte, offset int, length int, position int64) (int, error) {
+	m.fdMu.Lock()
+	file, ok := m.fds[fd]
+	m.fdMu.Unlock()
+
+	if !ok {
+		return 0, fs.ErrInvalid
+	}
+	if offset < 0 || length < 0 || offset > len(buffer) || length > len(buffer)-offset || position < 0 {
+		return 0, fs.ErrInvalid
+	}
+
+	n, err := file.ReadAt(buffer[offset:offset+length], position)
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
 	return n, nil
 }
 
@@ -867,6 +909,21 @@ func (m *FS) WriteFD(fd int, data []byte) (int, error) {
 	}
 
 	return file.Write(data)
+}
+
+// WriteAtFD writes to a file descriptor at a byte offset without changing its current position.
+func (m *FS) WriteAtFD(fd int, data []byte, position int64) (int, error) {
+	m.fdMu.Lock()
+	file, ok := m.fds[fd]
+	m.fdMu.Unlock()
+
+	if !ok {
+		return 0, fs.ErrInvalid
+	}
+	if position < 0 {
+		return 0, fs.ErrInvalid
+	}
+	return file.WriteAt(data, position)
 }
 
 // FstatFD gets file info for a file descriptor
@@ -1176,8 +1233,45 @@ func (jr *JSRuntime) Filesystem(_ context.Context, vm *goja.Runtime, module *goj
 
 		return vm.ToValue(bytesRead)
 	})
-	exports.Set("write", func(fd int, data []byte) (int, error) {
-		return jr.filesystem.WriteFD(fd, data)
+	exports.Set("readAt", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 5 {
+			panic(vm.NewTypeError("readAt requires 5 arguments: fd, buffer, offset, length, position"))
+		}
+		fd := int(call.Arguments[0].ToInteger())
+		buffer, ok := call.Arguments[1].Export().([]byte)
+		if !ok {
+			panic(vm.NewTypeError("buffer argument must be a Uint8Array"))
+		}
+		offset := int(call.Arguments[2].ToInteger())
+		length := int(call.Arguments[3].ToInteger())
+		position := call.Arguments[4].ToInteger()
+		bytesRead, err := jr.filesystem.ReadAtFD(fd, buffer, offset, length, position)
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+		return vm.ToValue(bytesRead)
+	})
+	exports.Set("write", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 2 {
+			panic(vm.NewTypeError("write requires 2 arguments: fd, data"))
+		}
+		fd := int(call.Arguments[0].ToInteger())
+		data, ok := call.Arguments[1].Export().([]byte)
+		if !ok {
+			panic(vm.NewTypeError("data argument must be a Uint8Array"))
+		}
+		var n int
+		var err error
+		position := call.Argument(2)
+		if position == nil || goja.IsUndefined(position) || goja.IsNull(position) {
+			n, err = jr.filesystem.WriteFD(fd, data)
+		} else {
+			n, err = jr.filesystem.WriteAtFD(fd, data, position.ToInteger())
+		}
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+		return vm.ToValue(n)
 	})
 	exports.Set("fstat", func(fd int) (fs.FileInfo, error) { return jr.filesystem.FstatFD(fd) })
 	exports.Set("fchmod", func(fd int, mode uint32) error { return jr.filesystem.FchmodFD(fd, mode) })

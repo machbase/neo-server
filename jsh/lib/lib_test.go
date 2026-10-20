@@ -915,6 +915,55 @@ func TestFSModule(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_file_descriptor_position",
+			Script: `
+				const fs = require('fs');
+				const file = '/work/fd_position_test.txt';
+
+				fs.writeFileSync(file, 'AAAA');
+				let fd = fs.openSync(file, 'r+');
+				fs.writeSync(fd, 'xBBBBz', 1, 4, 4);
+				fs.closeSync(fd);
+				console.println('Write at position:', fs.readFileSync(file, 'utf8'));
+
+				fs.writeFileSync(file, 'AAAABBBBCCCC');
+				fd = fs.openSync(file, 'r+');
+				fs.writeSync(fd, 'xXXXXz', 1, 4, 4);
+				fs.writeSync(fd, 'YYYY', 0, 4, null);
+				fs.closeSync(fd);
+				console.println('Positioned write preserves cursor:', fs.readFileSync(file, 'utf8'));
+
+				fs.writeFileSync(file, 'AAAABBBBCCCC');
+				fd = fs.openSync(file, 'r');
+				const buffer = Buffer.alloc(4);
+				const positionedRead = fs.readSync(fd, buffer, 0, 4, 4);
+				console.println('Read at position:', String.fromCharCode(...buffer.subarray(0, positionedRead)));
+				const sequentialRead = fs.readSync(fd, buffer, 0, 4, null);
+				console.println('Positioned read preserves cursor:', String.fromCharCode(...buffer.subarray(0, sequentialRead)));
+
+				fs.readSync(fd, buffer, 0, 4, 0);
+				const readAfterZero = fs.readSync(fd, buffer, 0, 4);
+				console.println('Position zero preserves cursor:', String.fromCharCode(...buffer.subarray(0, readAfterZero)));
+				fs.closeSync(fd);
+
+				fs.writeFileSync(file, new Uint8Array(1024 * 1024).fill(65));
+				fd = fs.openSync(file, 'r+');
+				const tail = new Uint8Array(481365).fill(66);
+				fs.writeSync(fd, tail, 0, tail.length, 1024 * 1024);
+				fs.closeSync(fd);
+				console.println('Multipart file size:', fs.statSync(file).size);
+				fs.unlinkSync(file);
+			`,
+			Output: []string{
+				"Write at position: AAAABBBB",
+				"Positioned write preserves cursor: YYYYXXXXCCCC",
+				"Read at position: BBBB",
+				"Positioned read preserves cursor: AAAA",
+				"Position zero preserves cursor: BBBB",
+				"Multipart file size: 1529941",
+			},
+		},
+		{
 			Name: "fs_fchmod_fchown",
 			Script: `
 				const fs = require('fs');
