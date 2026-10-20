@@ -952,6 +952,12 @@ func TestFSModule(t *testing.T) {
 				fs.writeSync(fd, tail, 0, tail.length, 1024 * 1024);
 				fs.closeSync(fd);
 				console.println('Multipart file size:', fs.statSync(file).size);
+
+				fs.writeFileSync(file, '');
+				fd = fs.openSync(file, 'r+');
+				fs.writeSync(fd, [65, 66]);
+				fs.closeSync(fd);
+				console.println('Array write:', fs.readFileSync(file, 'utf8'));
 				fs.unlinkSync(file);
 			`,
 			Output: []string{
@@ -961,6 +967,7 @@ func TestFSModule(t *testing.T) {
 				"Positioned read preserves cursor: AAAA",
 				"Position zero preserves cursor: BBBB",
 				"Multipart file size: 1529941",
+				"Array write: AB",
 			},
 		},
 		{

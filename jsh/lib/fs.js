@@ -1137,7 +1137,7 @@ function writeSync(fd, buffer, offset, length, position) {
     }
 
     // Extract the portion to write
-    const writeData = data.slice(offset, offset + length);
+    const writeData = normalizeByteSource(data).slice(offset, offset + length);
 
     try {
         return _fs.write(fd, writeData, position);
