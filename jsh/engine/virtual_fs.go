@@ -296,7 +296,7 @@ func (vfs *VirtualFS) MkdirMode(name string, mode uint32) error {
 	parent := path.Dir(rel)
 	if parent != "." {
 		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: "mkdir", Path: name, Err: syscall.ENOTDIR}
+			return &fs.PathError{Op: "mkdir", Path: name, Err: ErrnoNotDir}
 		}
 		if !vfs.hasDirLocked(parent) {
 			return &fs.PathError{Op: "mkdir", Path: name, Err: fs.ErrNotExist}
@@ -429,7 +429,7 @@ func (vfs *VirtualFS) Rmdir(name string) error {
 	defer vfs.mu.Unlock()
 
 	if _, exists := vfs.files[rel]; exists {
-		return &fs.PathError{Op: "rmdir", Path: name, Err: syscall.ENOTDIR}
+		return &fs.PathError{Op: "rmdir", Path: name, Err: ErrnoNotDir}
 	}
 	if !vfs.hasDirLocked(rel) {
 		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrNotExist}
@@ -709,7 +709,7 @@ func (vfs *VirtualFS) hasDescendantLocked(rel string) bool {
 func (vfs *VirtualFS) checkNoFileParentLocked(op string, name string, rel string) error {
 	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
 		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: op, Path: name, Err: syscall.ENOTDIR}
+			return &fs.PathError{Op: op, Path: name, Err: ErrnoNotDir}
 		}
 	}
 	return nil

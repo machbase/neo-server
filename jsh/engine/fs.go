@@ -556,7 +556,7 @@ func (m *FS) Stat(name string) (fs.FileInfo, error) {
 
 var errnoCodes = map[syscall.Errno]string{
 	syscall.ENOENT:       "ENOENT",
-	syscall.ENOTDIR:      "ENOTDIR",
+	ErrnoNotDir:          "ENOTDIR",
 	syscall.EEXIST:       "EEXIST",
 	syscall.ENOTEMPTY:    "ENOTEMPTY",
 	syscall.EACCES:       "EACCES",
@@ -587,7 +587,7 @@ func FilesystemErrorCode(err error) string {
 		if code, ok := errnoCodes[errno]; ok {
 			return code
 		}
-		if code := platformErrnoCode(errno); code != "" {
+		if code := platformErrnoCode(err, errno); code != "" {
 			return code
 		}
 	}
@@ -792,7 +792,7 @@ func (m *FS) Rmdir(name string) error {
 			return err
 		}
 		if !info.IsDir() {
-			return &fs.PathError{Op: "rmdir", Path: target, Err: syscall.ENOTDIR}
+			return &fs.PathError{Op: "rmdir", Path: target, Err: ErrnoNotDir}
 		}
 		return rmdirOS(target)
 	})

@@ -127,8 +127,8 @@ func TestControllerFS_MountedOnNewFS(t *testing.T) {
 	if _, err := fs.Stat(mfs, "/shared/cache/unlink.txt"); err == nil {
 		t.Fatal("unlinked remote file should not exist")
 	}
-	if err := mfs.Unlink("/shared/cache"); !errors.Is(err, fs.ErrInvalid) {
-		t.Fatalf("Unlink(directory) error=%v, want %v", err, fs.ErrInvalid)
+	if err := mfs.Unlink("/shared/cache"); FilesystemErrorCode(err) != "EISDIR" {
+		t.Fatalf("Unlink(directory) error=%v code=%q, want EISDIR", err, FilesystemErrorCode(err))
 	}
 	if data, err := fs.ReadFile(mfs, "/shared/cache/keep.txt"); err != nil || string(data) != "keep" {
 		t.Fatalf("directory contents should remain after failed remote unlink: data=%q error=%v", data, err)
@@ -139,8 +139,8 @@ func TestControllerFS_MountedOnNewFS(t *testing.T) {
 	if err := mfs.Rmdir("/shared/cache/empty"); err != nil {
 		t.Fatalf("Rmdir(empty) error: %v", err)
 	}
-	if err := mfs.Rmdir("/shared/cache"); !errors.Is(err, fs.ErrInvalid) {
-		t.Fatalf("Rmdir(non-empty directory) error=%v, want %v", err, fs.ErrInvalid)
+	if err := mfs.Rmdir("/shared/cache"); FilesystemErrorCode(err) != "ENOTEMPTY" {
+		t.Fatalf("Rmdir(non-empty directory) error=%v code=%q, want ENOTEMPTY", err, FilesystemErrorCode(err))
 	}
 	if data, err := fs.ReadFile(mfs, "/shared/cache/keep.txt"); err != nil || string(data) != "keep" {
 		t.Fatalf("directory contents should remain after failed remote rmdir: data=%q error=%v", data, err)
@@ -446,7 +446,12 @@ func handleMockControllerFSConn(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD,
 	resp := map[string]any{"jsonrpc": "2.0", "id": 1}
 	result, rpcErr := dispatchMockControllerFS(vfs, sharedFDs, nextFD, req.Method, req.Params)
 	if rpcErr != nil {
-		resp["error"] = map[string]any{"code": -32000, "message": rpcErr.Error()}
+		rpcError := map[string]any{"code": -32000, "message": rpcErr.Error()}
+		// Like the service controller, relay the errno so the client keeps the exact code.
+		if code := FilesystemErrorCode(rpcErr); code != "" {
+			rpcError["data"] = map[string]any{"errno": code}
+		}
+		resp["error"] = rpcError
 	} else {
 		resp["result"] = result
 	}

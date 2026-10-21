@@ -58,7 +58,7 @@ func TestSharedFSRPCPreservesErrnoCodes(t *testing.T) {
 	}{
 		{"mkdir existing", remote.MkdirMode("dir", 0o755), "EEXIST", syscall.EEXIST},
 		{"rmdir non-empty", remote.Rmdir("dir"), "ENOTEMPTY", syscall.ENOTEMPTY},
-		{"rmdir file", remote.Rmdir("file.txt"), "ENOTDIR", syscall.ENOTDIR},
+		{"rmdir file", remote.Rmdir("file.txt"), "ENOTDIR", engine.ErrnoNotDir},
 		{"unlink directory", remote.Unlink("dir"), "EISDIR", syscall.EISDIR},
 		{"truncate oversized", remote.Truncate("file.txt", engine.MaxVirtualFileSize+1), "EFBIG", syscall.EFBIG},
 		{"mkdir missing parent", remote.MkdirMode("missing/child", 0o755), "ENOENT", syscall.ENOENT},

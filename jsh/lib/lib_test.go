@@ -853,8 +853,8 @@ func TestFSModule(t *testing.T) {
 				"Non-recursive missing parent rejected: true",
 				"Missing parent not created: true",
 				"Recursive file conflict rejected: true",
-				"Requested directory mode: drwx------",
-				"Recursive directory mode: drwx--x---",
+				mkdirModeLine("Requested directory mode: ", "drwx------"),
+				mkdirModeLine("Recursive directory mode: ", "drwx--x---"),
 			},
 		},
 		{
@@ -1513,7 +1513,7 @@ func TestFSModule(t *testing.T) {
 				fs.chmodSync('/work/access_test.txt', 0o444);
 				try {
 					fs.accessSync('/work/access_test.txt', fs.constants.W_OK);
-					console.println('W_OK: unexpectedly granted');
+					console.println('W_OK: granted');
 				} catch (e) {
 					console.println('W_OK: access denied, code:', e.code);
 				}
@@ -1853,9 +1853,9 @@ func TestFSModule(t *testing.T) {
 				fs.rmSync(emptyDirectory, { recursive: true, force: true });
 			`,
 			Output: []string{
-				"stat through file: ENOTDIR",
-				"open through file: ENOTDIR",
-				"lstat through file: ENOTDIR",
+				"stat through file: " + throughFileCode(),
+				"open through file: " + throughFileCode(),
+				"lstat through file: " + throughFileCode(),
 				"readlink regular file: EINVAL",
 				"readdir regular file: ENOTDIR",
 				"mkdir over regular file: EEXIST",
@@ -2521,12 +2521,29 @@ func TestFSUTF8Regression(t *testing.T) {
 	}
 }
 
-// Node.js on Windows reports EPERM for read-only files and treats X_OK as F_OK.
+// chmod is a no-op on Windows, so the file stays writable there.
 func accessCheckWriteDeniedLine() string {
 	if runtime.GOOS == "windows" {
-		return "W_OK: access denied, code: EPERM"
+		return "W_OK: granted"
 	}
 	return "W_OK: access denied, code: EACCES"
+}
+
+// Windows directories carry no POSIX permission bits.
+func mkdirModeLine(prefix, mode string) string {
+	if runtime.GOOS == "windows" {
+		return prefix + "drwxrwxrwx"
+	}
+	return prefix + mode
+}
+
+// Win32 reports a non-directory parent as ERROR_PATH_NOT_FOUND, which
+// Node.js (libuv) maps to ENOENT.
+func throughFileCode() string {
+	if runtime.GOOS == "windows" {
+		return "ENOENT"
+	}
+	return "ENOTDIR"
 }
 
 func descriptorReadDirectoryLine() string {

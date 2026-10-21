@@ -512,10 +512,10 @@ func TestVirtualFS_PosixErrorCodes(t *testing.T) {
 		err  error
 		want error
 	}{
-		{"rmdir file", vfs.Rmdir("file"), syscall.ENOTDIR},
+		{"rmdir file", vfs.Rmdir("file"), ErrnoNotDir},
 		{"rmdir non-empty", vfs.Rmdir("dir"), syscall.ENOTEMPTY},
 		{"unlink directory", vfs.Unlink("dir"), syscall.EISDIR},
-		{"mkdir under file", vfs.Mkdir("file/child"), syscall.ENOTDIR},
+		{"mkdir under file", vfs.Mkdir("file/child"), ErrnoNotDir},
 	}
 	for _, tc := range tests {
 		if !errors.Is(tc.err, tc.want) {

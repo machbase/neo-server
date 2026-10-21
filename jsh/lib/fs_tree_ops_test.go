@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -76,7 +78,12 @@ func TestFSRenameDirectoryIntoItselfIsInvalid(t *testing.T) {
 		}
 		fs.rmSync('/lib/zz-rename', { recursive: true });
 	`)
-	want := "/host rename EINVAL\n/host [a,a/b]\n/lib/zz-rename rename EINVAL\n/lib/zz-rename [a,a/b]\n"
+	hostCode := "EINVAL"
+	if runtime.GOOS == "windows" {
+		// MoveFileEx fails with ERROR_ACCESS_DENIED, which Node.js reports as EPERM.
+		hostCode = "EPERM"
+	}
+	want := "/host rename " + hostCode + "\n/host [a,a/b]\n/lib/zz-rename rename EINVAL\n/lib/zz-rename [a,a/b]\n"
 	if out != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", out, want)
 	}
@@ -138,6 +145,20 @@ func TestFSVirtualMountErrorsMatchHostMount(t *testing.T) {
 	`)
 	row := "ENOENT,ENOTDIR,ENOTDIR,EINVAL,ENOENT,ENOTDIR,EISDIR,ENOTDIR,EISDIR"
 	want := "host " + row + "\nlib " + row + "\n"
+	if runtime.GOOS == "windows" {
+		// Win32 codes for these host operations differ from Linux; the virtual
+		// mount must still report the Linux codes and every host call must fail.
+		lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+		if len(lines) != 2 || !strings.HasPrefix(lines[0], "host ") || lines[1] != "lib "+row {
+			t.Fatalf("output:\n%s\nwant lib row:\n%s", out, row)
+		}
+		for _, code := range strings.Split(strings.TrimPrefix(lines[0], "host "), ",") {
+			if code == "ok" || code == "" {
+				t.Fatalf("host operation unexpectedly succeeded:\n%s", out)
+			}
+		}
+		return
+	}
 	if out != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", out, want)
 	}

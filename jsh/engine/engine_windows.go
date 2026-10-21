@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -15,22 +16,45 @@ import (
 var ensureProcessExistsFn = ensureProcessExists
 var sendInterruptSignalFn = sendInterruptSignal
 
-// platformErrnoCode maps Win32 error codes to Node.js style codes, following libuv.
-func platformErrnoCode(errno syscall.Errno) string {
+// ErrnoNotDir is the errno JSH file systems report for a path component that
+// is not a directory. syscall.ENOTDIR cannot be used on Windows because it
+// aliases ERROR_PATH_NOT_FOUND, which Win32 reports for a missing parent.
+const ErrnoNotDir = syscall.Errno(267) // ERROR_DIRECTORY
+
+// platformErrnoCode maps Win32 error codes to Node.js style codes, following
+// libuv (src/win/error.c and the readlink special case in src/win/fs.c).
+// ERROR_DIRECTORY is not handled here: it is ErrnoNotDir and maps to ENOTDIR,
+// whereas libuv reports a raw ERROR_DIRECTORY as ENOENT.
+func platformErrnoCode(err error, errno syscall.Errno) string {
 	switch errno {
-	case syscall.ERROR_FILE_NOT_FOUND, syscall.ERROR_PATH_NOT_FOUND, 123 /* ERROR_INVALID_NAME */ :
+	case syscall.ERROR_PATH_NOT_FOUND:
+		// Win32 reports a missing or non-directory parent component with
+		// ERROR_PATH_NOT_FOUND. Go's readdir reports a non-directory with
+		// syscall.ENOTDIR, which has the same value.
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) && pathErr.Op == "readdir" {
+			return "ENOTDIR"
+		}
 		return "ENOENT"
-	case syscall.ERROR_ACCESS_DENIED:
+	case syscall.ERROR_FILE_NOT_FOUND, 123 /* ERROR_INVALID_NAME */, 161, /* ERROR_BAD_PATHNAME */
+		15 /* ERROR_INVALID_DRIVE */, 4392 /* ERROR_INVALID_REPARSE_DATA */ :
+		return "ENOENT"
+	case syscall.ERROR_ACCESS_DENIED, 1314 /* ERROR_PRIVILEGE_NOT_HELD */ :
 		return "EPERM"
+	case 740 /* ERROR_ELEVATION_REQUIRED */, 1920 /* ERROR_CANT_ACCESS_FILE */ :
+		return "EACCES"
 	case syscall.ERROR_ALREADY_EXISTS, syscall.ERROR_FILE_EXISTS:
 		return "EEXIST"
 	case syscall.ERROR_DIR_NOT_EMPTY:
 		return "ENOTEMPTY"
-	case 267 /* ERROR_DIRECTORY */ :
-		return "ENOTDIR"
-	case 206 /* ERROR_FILENAME_EXCED_RANGE */ :
+	case 1 /* ERROR_INVALID_FUNCTION */ :
+		return "EISDIR"
+	case 87 /* ERROR_INVALID_PARAMETER */, 13 /* ERROR_INVALID_DATA */, 122, /* ERROR_INSUFFICIENT_BUFFER */
+		1464 /* ERROR_SYMLINK_NOT_SUPPORTED */, 4390 /* ERROR_NOT_A_REPARSE_POINT */ :
+		return "EINVAL"
+	case 206 /* ERROR_FILENAME_EXCED_RANGE */, 111 /* ERROR_BUFFER_OVERFLOW */ :
 		return "ENAMETOOLONG"
-	case 112 /* ERROR_DISK_FULL */ :
+	case 112 /* ERROR_DISK_FULL */, 39 /* ERROR_HANDLE_DISK_FULL */, 82 /* ERROR_CANNOT_MAKE */ :
 		return "ENOSPC"
 	case 19 /* ERROR_WRITE_PROTECT */ :
 		return "EROFS"
@@ -44,6 +68,8 @@ func platformErrnoCode(errno syscall.Errno) string {
 		return "EXDEV"
 	case 6 /* ERROR_INVALID_HANDLE */ :
 		return "EBADF"
+	case 31 /* ERROR_GEN_FAILURE */, 110 /* ERROR_OPEN_FAILED */, 1117 /* ERROR_IO_DEVICE */ :
+		return "EIO"
 	}
 	return ""
 }

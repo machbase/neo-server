@@ -30,7 +30,7 @@ func TestFilesystemErrorCode(t *testing.T) {
 		{fmt.Errorf("wrapped: %w", errors.ErrUnsupported), "ENOTSUP"},
 		{fs.ErrInvalid, "EINVAL"},
 		{&fs.PathError{Op: "rmdir", Path: "/x", Err: syscall.ENOTEMPTY}, "ENOTEMPTY"},
-		{&fs.PathError{Op: "rmdir", Path: "/x", Err: syscall.ENOTDIR}, "ENOTDIR"},
+		{&fs.PathError{Op: "rmdir", Path: "/x", Err: ErrnoNotDir}, "ENOTDIR"},
 		{&fs.PathError{Op: "unlink", Path: "/x", Err: syscall.EISDIR}, "EISDIR"},
 		{&fs.PathError{Op: "truncate", Path: "/x", Err: syscall.EFBIG}, "EFBIG"},
 		{&fs.PathError{Op: "open", Path: "/x", Err: syscall.EPERM}, "EPERM"},

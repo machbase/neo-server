@@ -20,8 +20,12 @@ func accessOS(path string, mode uint32) error {
 	return syscall.Access(path, mode)
 }
 
+// ErrnoNotDir is the errno JSH file systems report for a path component that
+// is not a directory.
+const ErrnoNotDir = syscall.ENOTDIR
+
 // platformErrnoCode maps errno values that are not POSIX constants; none on Unix.
-func platformErrnoCode(_ syscall.Errno) string {
+func platformErrnoCode(_ error, _ syscall.Errno) string {
 	return ""
 }
 
