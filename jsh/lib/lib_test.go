@@ -1309,7 +1309,7 @@ func TestFSModule(t *testing.T) {
 				}
 
 				try {
-					const buffer = new Array(100);
+					const buffer = new Uint8Array(100);
 					fs.readSync(999, buffer, 0, 100);
 					console.println('readSync with bad fd: unexpected success');
 				} catch (e) {

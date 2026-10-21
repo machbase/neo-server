@@ -1263,23 +1263,34 @@ function closeSync(fd) {
 /**
  * Read from a file descriptor
  * @param {number} fd - File descriptor
- * @param {Array|Buffer} buffer - Buffer or Array to read into
- * @param {number} offset - Offset in buffer to start writing (default: 0)
+ * @param {Buffer|TypedArray|DataView} buffer - Buffer to read into
+ * @param {number} offset - Byte offset in buffer to start writing (default: 0)
  * @param {number} length - Number of bytes to read
  * @param {number} position - Position to read from (null = current position)
  * @returns {number} Number of bytes read
  */
 function readSync(fd, buffer, offset, length, position) {
-    offset = offset === undefined || offset === null ? 0 : offset;
-    length = length === undefined || length === null ? buffer.length - offset : length;
+    if (!ArrayBuffer.isView(buffer)) {
+        const received = buffer === null ? 'null' : Array.isArray(buffer) ? 'an instance of Array' : `type ${typeof buffer}`;
+        const error = new TypeError(`The "buffer" argument must be an instance of Buffer, TypedArray, or DataView. Received ${received}`);
+        error.code = 'ERR_INVALID_ARG_TYPE';
+        throw error;
+    }
+    // Offsets and lengths are byte based for every view type, as in Node.js.
+    const bytes = buffer instanceof Uint8Array
+        ? buffer
+        : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 
-    if (!Number.isInteger(offset) || offset < 0 || offset > buffer.length) {
+    offset = offset === undefined || offset === null ? 0 : offset;
+    length = length === undefined || length === null ? bytes.length - offset : length;
+
+    if (!Number.isInteger(offset) || offset < 0 || offset > bytes.length) {
         const error = new RangeError(`offset is out of range: ${offset}`);
         error.code = 'ERR_OUT_OF_RANGE';
         error.syscall = 'read';
         throw error;
     }
-    if (!Number.isInteger(length) || length < 0 || length > buffer.length - offset) {
+    if (!Number.isInteger(length) || length < 0 || length > bytes.length - offset) {
         const error = new RangeError(`length is out of range: ${length}`);
         error.code = 'ERR_OUT_OF_RANGE';
         error.syscall = 'read';
@@ -1296,8 +1307,8 @@ function readSync(fd, buffer, offset, length, position) {
         // _fs.read will copy data into the buffer (Array or Uint8Array)
         // at the specified offset
         const bytesRead = position === undefined || position === null
-            ? _fs.read(fd, buffer, offset, length)
-            : _fs.readAt(fd, buffer, offset, length, position);
+            ? _fs.read(fd, bytes, offset, length)
+            : _fs.readAt(fd, bytes, offset, length, position);
         return bytesRead;
     } catch (e) {
         throw createDescriptorError(e, 'read');

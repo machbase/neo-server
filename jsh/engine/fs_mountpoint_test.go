@@ -167,3 +167,35 @@ func TestVirtualFS_RmdirRootIsBusy(t *testing.T) {
 		t.Fatalf("VirtualFS.Rmdir(.) error=%v, want EBUSY", err)
 	}
 }
+
+func TestFS_AccessVirtualMountDirectoryMatchesStat(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		root fs.FS
+	}{
+		{"host root", os.DirFS(t.TempDir())},
+		{"virtual root", NewVirtualFS()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mfs := NewFS()
+			if err := mfs.Mount("/", tc.root); err != nil {
+				t.Fatal(err)
+			}
+			if err := mfs.Mount("/a/b", os.DirFS(t.TempDir())); err != nil {
+				t.Fatal(err)
+			}
+			info, err := mfs.Stat("/a")
+			if err != nil || !info.IsDir() {
+				t.Fatalf("Stat(/a) = %v, %v; want a directory", info, err)
+			}
+			for _, mode := range []uint32{0, 4, 1, 4 | 1} {
+				if err := mfs.Access("/a", mode); err != nil {
+					t.Fatalf("Access(/a, %d) error=%v, want nil", mode, err)
+				}
+			}
+			if err := mfs.Access("/a/missing", 0); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("Access(/a/missing) error=%v, want ENOENT", err)
+			}
+		})
+	}
+}

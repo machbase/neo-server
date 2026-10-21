@@ -624,7 +624,12 @@ func (m *FS) Access(name string, mode uint32) error {
 	}
 
 	if _, _, _, hostPath, err := m.resolveHostPath(name); err == nil {
-		return accessOS(hostPath, mode)
+		err = accessOS(hostPath, mode)
+		// A directory that exists only because of a nested mount is missing on
+		// the host but visible to Stat, so it is checked like a virtual directory.
+		if err == nil || !errors.Is(err, fs.ErrNotExist) || !m.isVirtualMountDir(CleanPath(name)) {
+			return err
+		}
 	}
 
 	info, err := m.Stat(name)

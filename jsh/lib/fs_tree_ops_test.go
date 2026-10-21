@@ -190,3 +190,38 @@ func TestFSCpFollowsNestedSymlinksSafely(t *testing.T) {
 		t.Fatalf("output:\n%s\nwant:\n%s", out, want)
 	}
 }
+
+func TestFSReadRequiresArrayBufferView(t *testing.T) {
+	out := runFSTreeScript(t, t.TempDir(), `
+		const fs = require('fs');
+		fs.writeFileSync('/r.txt', 'abcdefgh');
+		const fd = fs.openSync('/r.txt', 'r');
+		const run = (label, fn) => {
+			try {
+				console.println(label, JSON.stringify(fn()));
+			} catch (e) {
+				console.println(label, e.name, e.code);
+			}
+		};
+		run('array', () => fs.readSync(fd, [0, 0, 0, 0], 0, 4, 0));
+		run('array-pos', () => fs.readSync(fd, [0, 0], 0, 2));
+		run('string', () => fs.readSync(fd, 'abcd', 0, 4, 0));
+		run('buffer', () => { const b = Buffer.alloc(3); fs.readSync(fd, b, 0, 3, 1); return b.toString(); });
+		run('subarray', () => { const p = new Uint8Array(5); fs.readSync(fd, p.subarray(2), 0, 3, 0); return Array.from(p); });
+		run('int16', () => { const v = new Int16Array(2); const n = fs.readSync(fd, v, 0, 4, 0); return [n, Array.from(new Uint8Array(v.buffer))]; });
+		run('dataview', () => { const v = new DataView(new ArrayBuffer(3)); fs.readSync(fd, v, 1, 2, 0); return [v.getUint8(0), v.getUint8(1), v.getUint8(2)]; });
+		run('int16-range', () => fs.readSync(fd, new Int16Array(2), 0, 5, 0));
+		fs.closeSync(fd);
+	`)
+	want := "array TypeError ERR_INVALID_ARG_TYPE\n" +
+		"array-pos TypeError ERR_INVALID_ARG_TYPE\n" +
+		"string TypeError ERR_INVALID_ARG_TYPE\n" +
+		"buffer \"bcd\"\n" +
+		"subarray [0,0,97,98,99]\n" +
+		"int16 [4,[97,98,99,100]]\n" +
+		"dataview [0,97,98]\n" +
+		"int16-range RangeError ERR_OUT_OF_RANGE\n"
+	if out != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", out, want)
+	}
+}
