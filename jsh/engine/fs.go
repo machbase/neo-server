@@ -1213,7 +1213,7 @@ func (m *FS) FchmodFD(fd int, mode uint32) error {
 		return fs.ErrInvalid
 	}
 
-	if _, isHostFile := file.(*os.File); isHostFile && runtime.GOOS == "windows" {
+	if _, isHostFile := file.(*localFDHandle); isHostFile && runtime.GOOS == "windows" {
 		return nil // Fchmod is not supported on Windows host files
 	}
 
@@ -1230,7 +1230,7 @@ func (m *FS) FchownFD(fd int, uid, gid int) error {
 		return fs.ErrInvalid
 	}
 
-	if _, isHostFile := file.(*os.File); isHostFile && runtime.GOOS == "windows" {
+	if _, isHostFile := file.(*localFDHandle); isHostFile && runtime.GOOS == "windows" {
 		return nil // Fchown is not supported on Windows host files
 	}
 
