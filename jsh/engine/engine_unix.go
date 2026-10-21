@@ -16,6 +16,23 @@ import (
 
 const processSignalGracePeriod = 5 * time.Second
 
+func accessOS(path string, mode uint32) error {
+	return syscall.Access(path, mode)
+}
+
+// platformErrnoCode maps errno values that are not POSIX constants; none on Unix.
+func platformErrnoCode(_ syscall.Errno) string {
+	return ""
+}
+
+func unlinkOS(path string) error {
+	return syscall.Unlink(path)
+}
+
+func rmdirOS(path string) error {
+	return syscall.Rmdir(path)
+}
+
 func forwardSignalToChildGroup(ex *exec.Cmd, sig os.Signal) {
 	if ex == nil || ex.Process == nil {
 		return

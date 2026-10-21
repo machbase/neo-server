@@ -84,6 +84,161 @@ func TestFS_RmdirVirtualMount(t *testing.T) {
 	}
 }
 
+func TestFS_SymlinkReadlinkAcrossMounts(t *testing.T) {
+	firstDir := t.TempDir()
+	secondDir := t.TempDir()
+	outsideDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(secondDir, "target.txt"), []byte("target"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mfs := NewFS()
+	if err := mfs.Mount("/first", os.DirFS(firstDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mfs.Mount("/second", os.DirFS(secondDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mfs.Symlink("/second/target.txt", "/first/cross-mount-link"); err != nil {
+		t.Fatalf("Symlink across mounts failed: %v", err)
+	}
+	if got, err := mfs.Readlink("/first/cross-mount-link"); err != nil || got != "/second/target.txt" {
+		t.Fatalf("Readlink across mounts = (%q, %v), want (%q, nil)", got, err, "/second/target.txt")
+	}
+
+	outsideTarget := filepath.Join(outsideDir, "target.txt")
+	if err := os.WriteFile(outsideTarget, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideTarget, filepath.Join(firstDir, "outside-link")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mfs.Readlink("/first/outside-link"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Readlink outside mounted roots error=%v, want %v", err, fs.ErrNotExist)
+	}
+}
+
+func TestFS_SymlinkRelativeTargetMustStayInsideMounts(t *testing.T) {
+	rootDir := t.TempDir()
+	mountDir := filepath.Join(rootDir, "mount")
+	if err := os.MkdirAll(filepath.Join(mountDir, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "secret.txt"), []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mountDir, "target.txt"), []byte("target"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mfs := NewFS()
+	if err := mfs.Mount("/mnt", os.DirFS(mountDir)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.Symlink("../../secret.txt", "/mnt/dir/escape"); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("Symlink escaping mount error=%v, want %v", err, fs.ErrPermission)
+	}
+	if _, err := os.Lstat(filepath.Join(mountDir, "dir", "escape")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("escaping link must not be created: %v", err)
+	}
+
+	if err := mfs.Symlink("../target.txt", "/mnt/dir/inside"); err != nil {
+		t.Fatalf("Symlink relative inside mount failed: %v", err)
+	}
+	raw, err := os.Readlink(filepath.Join(mountDir, "dir", "inside"))
+	if err != nil || raw != filepath.FromSlash("../target.txt") {
+		t.Fatalf("relative target should be kept: (%q, %v)", raw, err)
+	}
+	if data, err := mfs.ReadFile("/mnt/dir/inside"); err != nil || string(data) != "target" {
+		t.Fatalf("ReadFile through relative link = (%q, %v)", data, err)
+	}
+}
+
+func TestFS_OSOperationsPreservePathErrors(t *testing.T) {
+	mfs := NewFS()
+	if err := mfs.Mount("/mnt", os.DirFS(t.TempDir())); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.Unlink("/mnt/missing.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Unlink(missing) error=%v, want %v", err, fs.ErrNotExist)
+	}
+	if err := mfs.Rename("/mnt/missing.txt", "/mnt/renamed.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Rename(missing) error=%v, want %v", err, fs.ErrNotExist)
+	}
+}
+
+func TestFS_AccessReadOnlyFilesystem(t *testing.T) {
+	mfs := NewFS()
+	if err := mfs.Mount("/embed", fstest.MapFS{
+		"file.txt": &fstest.MapFile{Data: []byte("read-only"), Mode: 0o444},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.Access("/embed/file.txt", 4); err != nil {
+		t.Fatalf("Access(read) error=%v, want nil", err)
+	}
+	if err := mfs.Access("/embed/file.txt", 2); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("Access(write) error=%v, want %v", err, fs.ErrPermission)
+	}
+	if err := mfs.Access("/embed/missing.txt", 0); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Access(missing) error=%v, want %v", err, fs.ErrNotExist)
+	}
+}
+
+func TestFS_MkdirAndMkdirAll(t *testing.T) {
+	mountDir := t.TempDir()
+	mfs := NewFS()
+	if err := mfs.Mount("/mnt", os.DirFS(mountDir)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.Mkdir("/mnt/missing/child"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Mkdir(missing parent) error=%v, want %v", err, fs.ErrNotExist)
+	}
+	if _, err := os.Stat(filepath.Join(mountDir, "missing")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Mkdir created missing parent: Stat error=%v", err)
+	}
+
+	if err := mfs.MkdirAll("/mnt/nested/child"); err != nil {
+		t.Fatalf("MkdirAll() failed: %v", err)
+	}
+	if err := mfs.Mkdir("/mnt/nested"); !errors.Is(err, fs.ErrExist) {
+		t.Fatalf("Mkdir(existing directory) error=%v, want %v", err, fs.ErrExist)
+	}
+}
+
+func TestFS_FsyncUnsupportedReadOnlyFilesystem(t *testing.T) {
+	mfs := NewFS()
+	testFS := fstest.MapFS{
+		"file.txt": &fstest.MapFile{Data: []byte("content")},
+	}
+	if err := mfs.Mount("/embed", testFS); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := mfs.OpenFD("/embed/file.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatalf("OpenFD() failed: %v", err)
+	}
+	defer mfs.CloseFD(fd)
+
+	if err := mfs.FsyncFD(fd); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("FsyncFD() error=%v, want %v", err, errors.ErrUnsupported)
+	}
+}
+
+func TestFS_WriteFDUnsupportedVirtualFilesystem(t *testing.T) {
+	mfs := NewFS()
+	if err := mfs.Mount("/virtual", NewVirtualFS()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mfs.OpenFD("/virtual/file.txt", os.O_CREATE|os.O_RDWR, 0o644); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("OpenFD(write) error=%v, want %v", err, errors.ErrUnsupported)
+	}
+}
+
 func TestFS_Mount_Conflicts(t *testing.T) {
 	testFS1 := fstest.MapFS{
 		"file1.txt": &fstest.MapFile{Data: []byte("content1")},
@@ -921,6 +1076,9 @@ func TestFS_OSBackedFileOperations(t *testing.T) {
 		t.Fatalf("renamed content = %q", string(renamed))
 	}
 
+	if err := mfs.Mkdir("/work/dir"); err != nil {
+		t.Fatalf("Mkdir(parent) failed: %v", err)
+	}
 	if err := mfs.Mkdir("/work/dir/subdir"); err != nil {
 		t.Fatalf("Mkdir failed: %v", err)
 	}

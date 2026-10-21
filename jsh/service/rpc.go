@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/machbase/neo-server/v8/jsh/engine"
@@ -137,6 +138,13 @@ type controllerRPCResponse struct {
 type controllerRPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+}
+
+// sharedFSErrorData carries the filesystem error code so that clients can
+// restore the errno instead of parsing the message text.
+type sharedFSErrorData struct {
+	Errno string `json:"errno"`
 }
 
 type JsonRpcError = controllerRPCError
@@ -162,6 +170,16 @@ type serviceRuntimeDetailRequest struct {
 
 type sharedPathRequest struct {
 	Path string `json:"path"`
+}
+
+type sharedMkdirRequest struct {
+	Path string  `json:"path"`
+	Mode *uint32 `json:"mode"`
+}
+
+type sharedTruncateRequest struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
 }
 
 type sharedWriteFileRequest struct {
@@ -851,13 +869,19 @@ func mapSharedFSError(err error) *controllerRPCError {
 	if errors.Is(err, errSharedWriteConflict) {
 		return &controllerRPCError{Code: jsonRPCConflict, Message: err.Error()}
 	}
-	if errors.Is(err, fs.ErrNotExist) {
-		return &controllerRPCError{Code: jsonRPCNotFound, Message: err.Error()}
+	var rpcErr *controllerRPCError
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		rpcErr = &controllerRPCError{Code: jsonRPCNotFound, Message: err.Error()}
+	case errors.Is(err, fs.ErrPermission):
+		rpcErr = &controllerRPCError{Code: jsonRPCForbidden, Message: err.Error()}
+	default:
+		rpcErr = invalidParamsError(err)
 	}
-	if errors.Is(err, fs.ErrPermission) {
-		return &controllerRPCError{Code: jsonRPCForbidden, Message: err.Error()}
+	if code := engine.FilesystemErrorCode(err); code != "" {
+		rpcErr.Data = sharedFSErrorData{Errno: code}
 	}
-	return invalidParamsError(err)
+	return rpcErr
 }
 
 func snapshotSharedFileInfo(path string, info fs.FileInfo) SharedFileInfoSnapshot {
@@ -1029,19 +1053,28 @@ func (ctl *Controller) sharedChown(name string, uid, gid int) error {
 	defer ctl.sharedMu.RUnlock()
 	return ctl.sharedFS.Chown(engine.CleanPath(name), uid, gid)
 }
-func (ctl *Controller) sharedMkdir(name string) error {
+func (ctl *Controller) sharedMkdir(name string, mode uint32) error {
 	path := engine.CleanPath(name)
 	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
-		return vfs.Mkdir(path)
+		return vfs.MkdirMode(path, mode)
 	}, func() error {
-		return ctl.persistSharedMkdir(path)
+		return ctl.persistSharedMkdir(path, mode)
+	})
+}
+
+func (ctl *Controller) sharedTruncate(name string, size int64) error {
+	path := engine.CleanPath(name)
+	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
+		return vfs.Truncate(path, size)
+	}, func() error {
+		return ctl.persistSharedTruncate(path, size)
 	})
 }
 
 func (ctl *Controller) sharedRmdir(name string) error {
 	path := engine.CleanPath(name)
 	if path == "/" {
-		return fmt.Errorf("%w: rmdir /: operation not permitted", fs.ErrPermission)
+		return &fs.PathError{Op: "rmdir", Path: path, Err: syscall.EBUSY}
 	}
 	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
 		return vfs.Rmdir(path)
@@ -1053,7 +1086,7 @@ func (ctl *Controller) sharedRmdir(name string) error {
 func (ctl *Controller) sharedRemove(name string) error {
 	path := engine.CleanPath(name)
 	if path == "/" {
-		return fmt.Errorf("%w: remove /: operation not permitted", fs.ErrPermission)
+		return &fs.PathError{Op: "remove", Path: path, Err: syscall.EBUSY}
 	}
 	err := ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
 		return vfs.Remove(path)
@@ -1066,7 +1099,7 @@ func (ctl *Controller) sharedRemove(name string) error {
 func (ctl *Controller) sharedUnlink(name string) error {
 	path := engine.CleanPath(name)
 	if path == "/" {
-		return fmt.Errorf("%w: unlink /: operation not permitted", fs.ErrPermission)
+		return &fs.PathError{Op: "unlink", Path: path, Err: syscall.EBUSY}
 	}
 	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
 		return vfs.Unlink(path)
@@ -1078,6 +1111,9 @@ func (ctl *Controller) sharedUnlink(name string) error {
 func (ctl *Controller) sharedRename(oldName string, newName string) error {
 	oldPath := engine.CleanPath(oldName)
 	newPath := engine.CleanPath(newName)
+	if oldPath == "/" || newPath == "/" {
+		return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: syscall.EBUSY}
+	}
 	return ctl.mutateSharedFS(func(vfs *engine.VirtualFS) error {
 		return vfs.Rename(oldPath, newPath)
 	}, func() error {
@@ -1215,9 +1251,12 @@ func (ctl *Controller) sharedWriteFD(fd int, data []byte, positions ...*int64) (
 		}
 		offset = *position
 	}
-	maxInt := int64(int(^uint(0) >> 1))
-	if offset > maxInt-int64(len(data)) {
-		return SharedWriteFDResult{}, fs.ErrInvalid
+	if len(data) == 0 {
+		// A zero-length write never changes the file, even past its end.
+		return SharedWriteFDResult{BytesWritten: 0}, nil
+	}
+	if offset > engine.MaxVirtualFileSize-int64(len(data)) {
+		return SharedWriteFDResult{}, &fs.PathError{Op: "write", Path: handle.Path, Err: syscall.EFBIG}
 	}
 	end := offset + int64(len(data))
 	if end > int64(len(handle.Data)) {

@@ -194,6 +194,11 @@ func (jr *JSRuntime) Run() error {
 				util[k] = u[k];
 			}
 		})();`)
+		// An interrupt raised while the init script runs is consumed by that
+		// script, so re-arm it before running the user program.
+		if runCtx := jr.currentContext(); runCtx != nil && runCtx.Err() != nil {
+			vm.Interrupt(runCtx.Err())
+		}
 		if _, err := vm.RunProgram(program); err != nil {
 			retErr = err
 			if ie, ok := err.(*goja.InterruptedError); ok {

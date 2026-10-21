@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"sort"
+	"syscall"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -124,8 +125,8 @@ func TestVirtualFS_UnlinkDoesNotRemoveDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := vfs.Unlink("root/sub"); !errors.Is(err, fs.ErrInvalid) {
-		t.Fatalf("Unlink(directory) error = %v, want %v", err, fs.ErrInvalid)
+	if err := vfs.Unlink("root/sub"); !errors.Is(err, syscall.EISDIR) {
+		t.Fatalf("Unlink(directory) error = %v, want %v", err, syscall.EISDIR)
 	}
 	data, err := fs.ReadFile(vfs, "root/sub/keep.txt")
 	if err != nil {
@@ -145,6 +146,9 @@ func TestVirtualFS_UnlinkDoesNotRemoveDirectories(t *testing.T) {
 
 func TestVirtualFS_RmdirRequiresEmptyDirectory(t *testing.T) {
 	vfs := NewVirtualFS()
+	if err := vfs.Mkdir("root"); err != nil {
+		t.Fatal(err)
+	}
 	if err := vfs.Mkdir("root/empty"); err != nil {
 		t.Fatal(err)
 	}
@@ -158,11 +162,69 @@ func TestVirtualFS_RmdirRequiresEmptyDirectory(t *testing.T) {
 	if err := vfs.AddFile("root/nonempty/keep.txt", "keep", VirtualFileProperty{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := vfs.Rmdir("root/nonempty"); !errors.Is(err, fs.ErrInvalid) {
-		t.Fatalf("Rmdir(non-empty directory) error=%v, want %v", err, fs.ErrInvalid)
+	if err := vfs.Rmdir("root/nonempty"); !errors.Is(err, syscall.ENOTEMPTY) {
+		t.Fatalf("Rmdir(non-empty directory) error=%v, want %v", err, syscall.ENOTEMPTY)
 	}
 	if data, err := fs.ReadFile(vfs, "root/nonempty/keep.txt"); err != nil || string(data) != "keep" {
 		t.Fatalf("non-empty directory contents should remain: data=%q error=%v", data, err)
+	}
+}
+
+func TestVirtualFS_MkdirRequiresExistingParent(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.MkdirMode("missing/child", 0); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("MkdirMode(missing parent) error=%v, want %v", err, fs.ErrNotExist)
+	}
+	if _, err := vfs.Stat("missing"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing parent Stat error=%v, want %v", err, fs.ErrNotExist)
+	}
+
+	if err := vfs.Mkdir("parent"); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.MkdirMode("parent/private", 0); err != nil {
+		t.Fatalf("MkdirMode(mode zero) failed: %v", err)
+	}
+	info, err := vfs.Stat("parent/private")
+	if err != nil {
+		t.Fatalf("Stat(private directory) failed: %v", err)
+	}
+	if info.Mode().Perm() != 0 {
+		t.Fatalf("MkdirMode(mode zero) mode=%o, want 0", info.Mode().Perm())
+	}
+	if err := vfs.Mkdir("parent/private"); !errors.Is(err, fs.ErrExist) {
+		t.Fatalf("Mkdir(existing directory) error=%v, want %v", err, fs.ErrExist)
+	}
+}
+
+func TestVirtualFS_Truncate(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.AddFile("file.txt", "abcdef", VirtualFileProperty{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.Truncate("file.txt", 3); err != nil {
+		t.Fatalf("Truncate(shrink) failed: %v", err)
+	}
+	data, err := vfs.ReadFile("file.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "abc" {
+		t.Fatalf("truncated content=%q, want %q", data, "abc")
+	}
+
+	if err := vfs.Truncate("file.txt", 5); err != nil {
+		t.Fatalf("Truncate(expand) failed: %v", err)
+	}
+	data, err = vfs.ReadFile("file.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 5 || data[3] != 0 || data[4] != 0 {
+		t.Fatalf("expanded data=%v, want zero-filled length 5", data)
+	}
+	if err := vfs.Truncate("file.txt", -1); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Truncate(negative) error=%v, want %v", err, fs.ErrInvalid)
 	}
 }
 
@@ -174,9 +236,17 @@ func TestVirtualFS_WriteAppendMkdirAndRename(t *testing.T) {
 		}
 	}
 
-	must(vfs.Mkdir("workspace/cache"))
+	must(vfs.Mkdir("workspace"))
+	must(vfs.MkdirMode("workspace/cache", 0700))
 	if _, err := fs.Stat(vfs, "workspace/cache"); err != nil {
 		t.Fatalf("mkdir should create explicit directory: %v", err)
+	}
+	info, err := fs.Stat(vfs, "workspace/cache")
+	if err != nil {
+		t.Fatalf("Stat(cache) failed: %v", err)
+	}
+	if info.Mode().Perm() != 0700 {
+		t.Fatalf("MkdirMode() mode=%o, want 0700", info.Mode().Perm())
 	}
 
 	must(vfs.WriteFile("workspace/cache/data.txt", []byte("neo")))
@@ -215,6 +285,9 @@ func TestVirtualFS_WriteAppendMkdirAndRename(t *testing.T) {
 
 func TestVirtualFS_EmptyDirPersists(t *testing.T) {
 	vfs := NewVirtualFS()
+	if err := vfs.Mkdir("empty"); err != nil {
+		t.Fatalf("Mkdir parent failed: %v", err)
+	}
 	if err := vfs.Mkdir("empty/child"); err != nil {
 		t.Fatalf("Mkdir failed: %v", err)
 	}
@@ -382,5 +455,155 @@ func TestVirtualFS_LazyLoaderFile(t *testing.T) {
 	// AddFile duplicate must still fail.
 	if err := vfs.AddFile("dynamic.txt", loader, VirtualFileProperty{}); err == nil {
 		t.Fatal("duplicate AddFile should fail")
+	}
+}
+
+func TestVirtualFS_RemovalPreservesParentDirectories(t *testing.T) {
+	vfs := NewVirtualFS()
+	for _, dir := range []string{"rmdir", "rmdir/child", "unlink", "remove", "remove/child", "rename", "dest"} {
+		if err := vfs.Mkdir(dir); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	for _, file := range []string{"unlink/file", "rename/file"} {
+		if err := vfs.WriteFile(file, []byte("x")); err != nil {
+			t.Fatalf("write %s: %v", file, err)
+		}
+	}
+
+	if err := vfs.Rmdir("rmdir/child"); err != nil {
+		t.Fatalf("rmdir: %v", err)
+	}
+	if err := vfs.Unlink("unlink/file"); err != nil {
+		t.Fatalf("unlink: %v", err)
+	}
+	if err := vfs.Remove("remove/child"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := vfs.Rename("rename/file", "dest/file"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	for _, dir := range []string{"rmdir", "unlink", "remove", "rename"} {
+		info, err := vfs.Stat(dir)
+		if err != nil {
+			t.Fatalf("parent %s should be preserved: %v", dir, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("parent %s should remain a directory", dir)
+		}
+	}
+}
+
+func TestVirtualFS_PosixErrorCodes(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.WriteFile("file", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.Mkdir("dir"); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.WriteFile("dir/child", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"rmdir file", vfs.Rmdir("file"), syscall.ENOTDIR},
+		{"rmdir non-empty", vfs.Rmdir("dir"), syscall.ENOTEMPTY},
+		{"unlink directory", vfs.Unlink("dir"), syscall.EISDIR},
+		{"mkdir under file", vfs.Mkdir("file/child"), syscall.ENOTDIR},
+	}
+	for _, tc := range tests {
+		if !errors.Is(tc.err, tc.want) {
+			t.Errorf("%s: got %v, want %v", tc.name, tc.err, tc.want)
+		}
+	}
+}
+
+func TestVirtualFS_TruncateRejectsOversizedFile(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.WriteFile("file", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []int64{MaxVirtualFileSize + 1, 1 << 62} {
+		err := vfs.Truncate("file", size)
+		if !errors.Is(err, syscall.EFBIG) {
+			t.Fatalf("truncate %d: got %v, want EFBIG", size, err)
+		}
+	}
+	data, err := vfs.ReadFile("file")
+	if err != nil || string(data) != "x" {
+		t.Fatalf("file must be unchanged: %q, %v", data, err)
+	}
+}
+
+func TestVirtualFS_RenameDirectoryIntoItselfIsInvalid(t *testing.T) {
+	vfs := NewVirtualFS()
+	if err := vfs.WriteFile("a/b/f.txt", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	err := vfs.Rename("a", "a/b/c")
+	if !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Rename into own subtree error = %v, want EINVAL", err)
+	}
+	if _, err := vfs.Stat("a/b/f.txt"); err != nil {
+		t.Fatalf("source tree must remain: %v", err)
+	}
+	if _, err := vfs.Stat("a/b/c"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("destination must not be created, stat err = %v", err)
+	}
+	if err := vfs.Rename("a/b", "a/bc"); err != nil {
+		t.Fatalf("Rename to sibling with shared prefix error = %v", err)
+	}
+}
+
+func TestVirtualFS_ErrorPrecedenceFollowsLinux(t *testing.T) {
+	newFS := func(t *testing.T) *VirtualFS {
+		t.Helper()
+		vfs := NewVirtualFS()
+		if err := vfs.WriteFile("d/sub/f.txt", []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		if err := vfs.WriteFile("file.txt", []byte("y")); err != nil {
+			t.Fatal(err)
+		}
+		return vfs
+	}
+	tests := []struct {
+		name string
+		op   func(vfs *VirtualFS) error
+		want string
+	}{
+		{"rename missing source into its own subtree", func(v *VirtualFS) error { return v.Rename("missing", "missing/x") }, "ENOENT"},
+		{"rename missing source to missing parent", func(v *VirtualFS) error { return v.Rename("missing", "nope/x") }, "ENOENT"},
+		{"rename file under itself", func(v *VirtualFS) error { return v.Rename("file.txt", "file.txt/y") }, "ENOTDIR"},
+		{"rename into a file parent", func(v *VirtualFS) error { return v.Rename("d", "file.txt/d") }, "ENOTDIR"},
+		{"rename directory into its own subtree", func(v *VirtualFS) error { return v.Rename("d", "d/sub/x") }, "EINVAL"},
+		{"rename directory into missing subtree parent", func(v *VirtualFS) error { return v.Rename("d", "d/nope/x") }, "ENOENT"},
+		{"writefile under a file", func(v *VirtualFS) error { return v.WriteFile("file.txt/x", []byte("z")) }, "ENOTDIR"},
+		{"writefile on a directory", func(v *VirtualFS) error { return v.WriteFile("d", []byte("z")) }, "EISDIR"},
+		{"appendfile under a file", func(v *VirtualFS) error { return v.AppendFile("file.txt/x", []byte("z")) }, "ENOTDIR"},
+		{"appendfile on a directory", func(v *VirtualFS) error { return v.AppendFile("d", []byte("z")) }, "EISDIR"},
+		{"addfile under a file", func(v *VirtualFS) error { return v.AddFile("file.txt/x", "z", VirtualFileProperty{}) }, "ENOTDIR"},
+		{"addfile on a directory", func(v *VirtualFS) error { return v.AddFile("d", "z", VirtualFileProperty{}) }, "EEXIST"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			vfs := newFS(t)
+			err := tc.op(vfs)
+			if got := FilesystemErrorCode(err); got != tc.want {
+				t.Fatalf("error = %v (%s), want %s", err, got, tc.want)
+			}
+			if _, err := vfs.Stat("d/sub/f.txt"); err != nil {
+				t.Fatalf("existing tree must remain: %v", err)
+			}
+			if data, err := vfs.ReadFile("file.txt"); err != nil || string(data) != "y" {
+				t.Fatalf("existing file must remain: %q, %v", data, err)
+			}
+		})
 	}
 }

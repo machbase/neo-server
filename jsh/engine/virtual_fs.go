@@ -8,14 +8,20 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
+
+// MaxVirtualFileSize limits the size of a memory-backed file so that a large
+// truncate length or write position cannot exhaust process memory.
+const MaxVirtualFileSize int64 = 1 << 30
 
 // VirtualFileProperty describes metadata for a virtual file.
 type VirtualFileProperty struct {
 	CreateTime time.Time
 	ModTime    time.Time
 	Mode       fs.FileMode
+	modeSet    bool
 }
 
 // VirtualFS is a programmable in-memory filesystem similar to fstest.MapFS,
@@ -112,23 +118,12 @@ func (vfs *VirtualFS) AddFile(name string, content any, prop VirtualFileProperty
 	}
 
 	// A file cannot be created under an existing file path.
-	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
-		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: "create", Path: name, Err: fs.ErrInvalid}
-		}
+	if err := vfs.checkNoFileParentLocked("create", name, rel); err != nil {
+		return err
 	}
-
 	// A file path cannot replace a virtual directory already implied by children.
-	prefix := rel + "/"
-	for dirPath := range vfs.dirs {
-		if dirPath == rel || strings.HasPrefix(dirPath, prefix) {
-			return &fs.PathError{Op: "create", Path: name, Err: fs.ErrInvalid}
-		}
-	}
-	for filePath := range vfs.files {
-		if strings.HasPrefix(filePath, prefix) {
-			return &fs.PathError{Op: "create", Path: name, Err: fs.ErrInvalid}
-		}
+	if vfs.hasDescendantLocked(rel) {
+		return &fs.PathError{Op: "create", Path: name, Err: fs.ErrExist}
 	}
 
 	prop = normalizeVirtualProperty(prop)
@@ -146,13 +141,11 @@ func (vfs *VirtualFS) WriteFile(name string, data []byte) error {
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()
 
-	if _, exists := vfs.dirs[rel]; exists {
-		return &fs.PathError{Op: "writefile", Path: name, Err: fs.ErrInvalid}
+	if err := vfs.checkNoFileParentLocked("writefile", name, rel); err != nil {
+		return err
 	}
-	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
-		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: "writefile", Path: name, Err: fs.ErrInvalid}
-		}
+	if vfs.hasDirLocked(rel) {
+		return &fs.PathError{Op: "writefile", Path: name, Err: syscall.EISDIR}
 	}
 	stamp := defaultTimestamp
 	mode := fs.FileMode(0)
@@ -182,12 +175,13 @@ func (vfs *VirtualFS) Chmod(name string, mode uint32) error {
 		return nil
 	}
 	if entry, exists := vfs.files[rel]; exists {
-		entry.prop.Mode = normalizeVirtualProperty(VirtualFileProperty{Mode: fs.FileMode(mode)}).Mode
+		entry.prop.Mode = normalizeVirtualProperty(VirtualFileProperty{Mode: fs.FileMode(mode), modeSet: true}).Mode
 		entry.prop.ModTime = defaultTimestamp
 		return nil
 	}
 	if prop, exists := vfs.dirs[rel]; exists {
 		prop.Mode = fs.FileMode(mode)
+		prop.modeSet = true
 		prop.ModTime = defaultTimestamp
 		vfs.dirs[rel] = normalizeVirtualProperty(prop)
 		return nil
@@ -197,6 +191,7 @@ func (vfs *VirtualFS) Chmod(name string, mode uint32) error {
 			CreateTime: defaultTimestamp,
 			ModTime:    defaultTimestamp,
 			Mode:       fs.FileMode(mode),
+			modeSet:    true,
 		})
 		return nil
 	}
@@ -219,6 +214,36 @@ func (vfs *VirtualFS) Chown(name string, uid, gid int) error {
 	return &fs.PathError{Op: "chown", Path: name, Err: fs.ErrNotExist}
 }
 
+func (vfs *VirtualFS) Truncate(name string, size int64) error {
+	rel, err := normalizeVirtualPath("truncate", name, false)
+	if err != nil {
+		return err
+	}
+	if size < 0 {
+		return &fs.PathError{Op: "truncate", Path: name, Err: fs.ErrInvalid}
+	}
+	if size > MaxVirtualFileSize {
+		return &fs.PathError{Op: "truncate", Path: name, Err: syscall.EFBIG}
+	}
+
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	entry, exists := vfs.files[rel]
+	if !exists {
+		return &fs.PathError{Op: "truncate", Path: name, Err: fs.ErrNotExist}
+	}
+	if entry.loader != nil {
+		return &fs.PathError{Op: "truncate", Path: name, Err: fs.ErrPermission}
+	}
+	data := make([]byte, int(size))
+	copy(data, entry.data)
+	entry.data = data
+	entry.prop.ModTime = defaultTimestamp
+	vfs.touchParentDirsLocked(rel, entry.prop.ModTime)
+	return nil
+}
+
 func (vfs *VirtualFS) AppendFile(name string, data []byte) error {
 	rel, err := normalizeVirtualPath("appendfile", name, false)
 	if err != nil {
@@ -228,13 +253,11 @@ func (vfs *VirtualFS) AppendFile(name string, data []byte) error {
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()
 
-	if _, exists := vfs.dirs[rel]; exists {
-		return &fs.PathError{Op: "appendfile", Path: name, Err: fs.ErrInvalid}
+	if err := vfs.checkNoFileParentLocked("appendfile", name, rel); err != nil {
+		return err
 	}
-	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
-		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: "appendfile", Path: name, Err: fs.ErrInvalid}
-		}
+	if vfs.hasDirLocked(rel) {
+		return &fs.PathError{Op: "appendfile", Path: name, Err: syscall.EISDIR}
 	}
 	if entry, exists := vfs.files[rel]; exists {
 		if entry.loader != nil {
@@ -252,6 +275,10 @@ func (vfs *VirtualFS) AppendFile(name string, data []byte) error {
 }
 
 func (vfs *VirtualFS) Mkdir(name string) error {
+	return vfs.MkdirMode(name, 0755)
+}
+
+func (vfs *VirtualFS) MkdirMode(name string, mode uint32) error {
 	rel, err := normalizeVirtualPath("mkdir", name, false)
 	if err != nil {
 		return err
@@ -263,12 +290,25 @@ func (vfs *VirtualFS) Mkdir(name string) error {
 	if _, exists := vfs.files[rel]; exists {
 		return &fs.PathError{Op: "mkdir", Path: name, Err: fs.ErrExist}
 	}
-	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
+	if vfs.hasDirLocked(rel) {
+		return &fs.PathError{Op: "mkdir", Path: name, Err: fs.ErrExist}
+	}
+	parent := path.Dir(rel)
+	if parent != "." {
 		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: "mkdir", Path: name, Err: fs.ErrInvalid}
+			return &fs.PathError{Op: "mkdir", Path: name, Err: syscall.ENOTDIR}
+		}
+		if !vfs.hasDirLocked(parent) {
+			return &fs.PathError{Op: "mkdir", Path: name, Err: fs.ErrNotExist}
 		}
 	}
 	vfs.ensureDirLocked(rel, defaultTimestamp)
+	vfs.dirs[rel] = normalizeVirtualProperty(VirtualFileProperty{
+		CreateTime: defaultTimestamp,
+		ModTime:    defaultTimestamp,
+		Mode:       fs.ModeDir | fs.FileMode(mode),
+		modeSet:    true,
+	})
 	return nil
 }
 
@@ -294,6 +334,23 @@ func (vfs *VirtualFS) Rename(oldName, newName string) error {
 		}
 		return &fs.PathError{Op: "rename", Path: oldName, Err: fs.ErrNotExist}
 	}
+	// Check in the same order as Linux rename(2): source lookup, destination
+	// parent lookup, moving a directory into its own subtree, then the target.
+	if oldRel == "." {
+		return &fs.PathError{Op: "rename", Path: oldName, Err: syscall.EBUSY}
+	}
+	_, srcIsFile := vfs.files[oldRel]
+	if !srcIsFile {
+		if _, exists := vfs.dirs[oldRel]; !exists && !vfs.hasDescendantLocked(oldRel) {
+			return &fs.PathError{Op: "rename", Path: oldName, Err: syscall.ENOENT}
+		}
+	}
+	if err := vfs.checkParentDirsLocked("rename", newName, newRel); err != nil {
+		return err
+	}
+	if strings.HasPrefix(newRel, oldRel+"/") {
+		return &fs.PathError{Op: "rename", Path: newName, Err: fs.ErrInvalid}
+	}
 	if _, exists := vfs.files[newRel]; exists {
 		return &fs.PathError{Op: "rename", Path: newName, Err: fs.ErrExist}
 	}
@@ -303,24 +360,13 @@ func (vfs *VirtualFS) Rename(oldName, newName string) error {
 	if vfs.hasDescendantLocked(newRel) {
 		return &fs.PathError{Op: "rename", Path: newName, Err: fs.ErrExist}
 	}
-	for parent := path.Dir(newRel); parent != "."; parent = path.Dir(parent) {
-		if _, exists := vfs.files[parent]; exists {
-			return &fs.PathError{Op: "rename", Path: newName, Err: fs.ErrInvalid}
-		}
-	}
-	if parent := path.Dir(newRel); parent != "." && !vfs.hasDirLocked(parent) {
-		return &fs.PathError{Op: "rename", Path: newName, Err: fs.ErrNotExist}
-	}
 
 	if entry, exists := vfs.files[oldRel]; exists {
 		delete(vfs.files, oldRel)
 		vfs.ensureParentDirsLocked(newRel, entry.prop.ModTime)
 		vfs.files[newRel] = entry
-		vfs.cleanupParentDirsLocked(path.Dir(oldRel))
+		vfs.ensureDirLocked(path.Dir(oldRel), defaultTimestamp)
 		return nil
-	}
-	if _, exists := vfs.dirs[oldRel]; !exists && !vfs.hasDescendantLocked(oldRel) {
-		return &fs.PathError{Op: "rename", Path: oldName, Err: fs.ErrNotExist}
 	}
 
 	vfs.ensureParentDirsLocked(newRel, defaultTimestamp)
@@ -366,7 +412,7 @@ func (vfs *VirtualFS) Rename(oldName, newName string) error {
 	for filePath, entry := range newFiles {
 		vfs.files[filePath] = entry
 	}
-	vfs.cleanupParentDirsLocked(path.Dir(oldRel))
+	vfs.ensureDirLocked(path.Dir(oldRel), defaultTimestamp)
 	return nil
 }
 
@@ -376,23 +422,23 @@ func (vfs *VirtualFS) Rmdir(name string) error {
 		return err
 	}
 	if rel == "." {
-		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrPermission}
+		return &fs.PathError{Op: "rmdir", Path: name, Err: syscall.EBUSY}
 	}
 
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()
 
+	if _, exists := vfs.files[rel]; exists {
+		return &fs.PathError{Op: "rmdir", Path: name, Err: syscall.ENOTDIR}
+	}
 	if !vfs.hasDirLocked(rel) {
 		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrNotExist}
 	}
-	if _, exists := vfs.files[rel]; exists {
-		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrInvalid}
-	}
 	if len(vfs.readDirLocked(rel)) != 0 {
-		return &fs.PathError{Op: "rmdir", Path: name, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "rmdir", Path: name, Err: syscall.ENOTEMPTY}
 	}
 	delete(vfs.dirs, rel)
-	vfs.cleanupParentDirsLocked(path.Dir(rel))
+	vfs.ensureDirLocked(path.Dir(rel), defaultTimestamp)
 	return nil
 }
 
@@ -418,7 +464,7 @@ func (vfs *VirtualFS) Remove(name string) error {
 
 	if _, exists := vfs.files[rel]; exists {
 		delete(vfs.files, rel)
-		vfs.cleanupParentDirsLocked(path.Dir(rel))
+		vfs.ensureDirLocked(path.Dir(rel), defaultTimestamp)
 		return nil
 	}
 
@@ -443,7 +489,7 @@ func (vfs *VirtualFS) Remove(name string) error {
 	if removed == 0 {
 		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrNotExist}
 	}
-	vfs.cleanupParentDirsLocked(path.Dir(rel))
+	vfs.ensureDirLocked(path.Dir(rel), defaultTimestamp)
 	return nil
 }
 
@@ -458,11 +504,11 @@ func (vfs *VirtualFS) Unlink(name string) error {
 
 	if _, exists := vfs.files[rel]; exists {
 		delete(vfs.files, rel)
-		vfs.cleanupParentDirsLocked(path.Dir(rel))
+		vfs.ensureDirLocked(path.Dir(rel), defaultTimestamp)
 		return nil
 	}
 	if vfs.hasDirLocked(rel) {
-		return &fs.PathError{Op: "unlink", Path: name, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "unlink", Path: name, Err: syscall.EISDIR}
 	}
 	return &fs.PathError{Op: "unlink", Path: name, Err: fs.ErrNotExist}
 }
@@ -659,6 +705,29 @@ func (vfs *VirtualFS) hasDescendantLocked(rel string) bool {
 	return false
 }
 
+// checkNoFileParentLocked reports ENOTDIR when any ancestor of rel is a file.
+func (vfs *VirtualFS) checkNoFileParentLocked(op string, name string, rel string) error {
+	for parent := path.Dir(rel); parent != "."; parent = path.Dir(parent) {
+		if _, exists := vfs.files[parent]; exists {
+			return &fs.PathError{Op: op, Path: name, Err: syscall.ENOTDIR}
+		}
+	}
+	return nil
+}
+
+// checkParentDirsLocked requires every ancestor of rel to be an existing
+// directory, like path lookup on Linux: a file ancestor is ENOTDIR and a
+// missing ancestor is ENOENT.
+func (vfs *VirtualFS) checkParentDirsLocked(op string, name string, rel string) error {
+	if err := vfs.checkNoFileParentLocked(op, name, rel); err != nil {
+		return err
+	}
+	if parent := path.Dir(rel); parent != "." && !vfs.hasDirLocked(parent) {
+		return &fs.PathError{Op: op, Path: name, Err: syscall.ENOENT}
+	}
+	return nil
+}
+
 func (vfs *VirtualFS) ensureParentDirsLocked(rel string, stamp time.Time) {
 	parent := path.Dir(rel)
 	if parent == "." {
@@ -695,20 +764,6 @@ func (vfs *VirtualFS) touchParentDirsLocked(rel string, stamp time.Time) {
 	}
 }
 
-func (vfs *VirtualFS) cleanupParentDirsLocked(rel string) {
-	for rel != "." {
-		if _, exists := vfs.dirs[rel]; !exists {
-			rel = path.Dir(rel)
-			continue
-		}
-		if vfs.hasDescendantLocked(rel) {
-			break
-		}
-		delete(vfs.dirs, rel)
-		rel = path.Dir(rel)
-	}
-}
-
 func normalizeVirtualPath(op string, name string, allowRoot bool) (string, error) {
 	if name == "" {
 		name = "."
@@ -736,7 +791,7 @@ func normalizeVirtualProperty(prop VirtualFileProperty) VirtualFileProperty {
 	if prop.CreateTime.IsZero() {
 		prop.CreateTime = prop.ModTime
 	}
-	if prop.Mode == 0 {
+	if prop.Mode == 0 && !prop.modeSet {
 		prop.Mode = 0644
 	}
 	prop.Mode &^= fs.ModeDir
@@ -859,11 +914,7 @@ type virtualFileInfo struct {
 
 func buildVirtualFileInfo(name string, isDir bool, size int64, modTime, createTime time.Time, mode fs.FileMode) fs.FileInfo {
 	if isDir {
-		perm := mode.Perm()
-		if perm == 0 {
-			perm = 0755
-		}
-		mode = fs.ModeDir | perm
+		mode = fs.ModeDir | mode.Perm()
 	}
 	return &virtualFileInfo{
 		name:       name,

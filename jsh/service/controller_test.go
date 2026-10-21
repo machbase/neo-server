@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -861,19 +862,24 @@ func TestControllerSharedFSBackendHydratesAfterRestart(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString([]byte("restart-ok"))
 	var fileInfo SharedFileInfoSnapshot
 	callControllerRPC(t, ctl.Address(), 201, "fs.writeFile", map[string]any{"path": "/notes/todo.txt", "data": payload}, &fileInfo)
+	var truncated bool
+	callControllerRPC(t, ctl.Address(), 202, "fs.truncate", map[string]any{"path": "/notes/todo.txt", "size": 7}, &truncated)
+	if !truncated {
+		t.Fatal("fs.truncate result=false, want true")
+	}
 	ctl.Stop(nil)
 
 	ctl = newController()
 	defer ctl.Stop(nil)
 
 	var fileResult SharedReadFileResult
-	callControllerRPC(t, ctl.Address(), 202, "fs.readFile", map[string]any{"path": "/notes/todo.txt"}, &fileResult)
+	callControllerRPC(t, ctl.Address(), 203, "fs.readFile", map[string]any{"path": "/notes/todo.txt"}, &fileResult)
 	decoded, err := base64.StdEncoding.DecodeString(fileResult.Data)
 	if err != nil {
 		t.Fatalf("DecodeString(restart) error: %v", err)
 	}
-	if string(decoded) != "restart-ok" {
-		t.Fatalf("restart content=%q, want %q", string(decoded), "restart-ok")
+	if string(decoded) != "restart" {
+		t.Fatalf("restart content=%q, want %q", string(decoded), "restart")
 	}
 }
 
@@ -2643,4 +2649,37 @@ func TestControllerReloadDoesNotClobberRestartedServices(t *testing.T) {
 	}
 
 	ctl.StopService("svc-a") //nolint:errcheck
+}
+
+func TestControllerSharedFSRejectsOversizedFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctl, err := NewController(&ControllerConfig{
+		ConfigDir: "/work/services",
+		Mounts: []engine.FSTab{
+			{MountPoint: "/work", FS: os.DirFS(tmpDir)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error: %v", err)
+	}
+	if err := ctl.sharedWriteFile("/large.txt", []byte("seed")); err != nil {
+		t.Fatalf("sharedWriteFile(seed) error: %v", err)
+	}
+	fd, err := ctl.sharedOpenFD("/large.txt", os.O_RDWR, 0, "")
+	if err != nil {
+		t.Fatalf("sharedOpenFD() error: %v", err)
+	}
+	for _, position := range []int64{engine.MaxVirtualFileSize, 1 << 62} {
+		position := position
+		if _, err := ctl.sharedWriteFD(fd.FD, []byte("x"), &position); !errors.Is(err, syscall.EFBIG) {
+			t.Fatalf("sharedWriteFD(position=%d) error = %v, want EFBIG", position, err)
+		}
+	}
+	if err := ctl.sharedTruncate("/large.txt", 1<<62); !errors.Is(err, syscall.EFBIG) {
+		t.Fatalf("sharedTruncate() error = %v, want EFBIG", err)
+	}
+	data, err := ctl.sharedReadFile("/large.txt")
+	if err != nil || string(data) != "seed" {
+		t.Fatalf("shared file must be unchanged: %q, %v", data, err)
+	}
 }

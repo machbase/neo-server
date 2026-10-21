@@ -228,11 +228,11 @@ func (ctl *Controller) sharedBackendPath(name string) string {
 	return engine.CleanPath(path.Join(ctl.backendDir, strings.TrimPrefix(name, "/")))
 }
 
-func (ctl *Controller) persistSharedMkdir(name string) error {
+func (ctl *Controller) persistSharedMkdir(name string, mode uint32) error {
 	if ctl.backendDir == "" {
 		return nil
 	}
-	return ctl.fs.Mkdir(ctl.sharedBackendPath(name))
+	return ctl.fs.MkdirMode(ctl.sharedBackendPath(name), mode)
 }
 
 func (ctl *Controller) persistSharedRmdir(name string) error {
@@ -259,11 +259,18 @@ func (ctl *Controller) persistSharedWriteFile(name string, data []byte) error {
 	}
 	parent := path.Dir(ctl.sharedBackendPath(name))
 	if parent != "/" {
-		if err := ctl.fs.Mkdir(parent); err != nil {
+		if err := ctl.fs.MkdirAll(parent); err != nil {
 			return err
 		}
 	}
 	return ctl.fs.WriteFile(ctl.sharedBackendPath(name), data)
+}
+
+func (ctl *Controller) persistSharedTruncate(name string, size int64) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	return ctl.fs.Truncate(ctl.sharedBackendPath(name), size)
 }
 
 func (ctl *Controller) persistSharedAppendFile(name string, data []byte) error {
@@ -272,7 +279,7 @@ func (ctl *Controller) persistSharedAppendFile(name string, data []byte) error {
 	}
 	parent := path.Dir(ctl.sharedBackendPath(name))
 	if parent != "/" {
-		if err := ctl.fs.Mkdir(parent); err != nil {
+		if err := ctl.fs.MkdirAll(parent); err != nil {
 			return err
 		}
 	}
@@ -325,7 +332,7 @@ func (ctl *Controller) persistSharedRename(oldName string, newName string) error
 	}
 	parent := path.Dir(ctl.sharedBackendPath(newName))
 	if parent != "/" {
-		if err := ctl.fs.Mkdir(parent); err != nil {
+		if err := ctl.fs.MkdirAll(parent); err != nil {
 			return err
 		}
 	}

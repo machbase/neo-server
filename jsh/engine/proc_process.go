@@ -114,7 +114,7 @@ func (jr *JSRuntime) createProcProcessEntry(meta procProcessMeta) (*procProcessE
 		_ = jr.cleanupStaleProcessEntries(mountPoint)
 	})
 
-	if err := jr.filesystem.Mkdir(entry.baseDir); err != nil {
+	if err := jr.filesystem.MkdirAll(entry.baseDir); err != nil {
 		return nil, err
 	}
 	procDebugLog("pid=%d Mkdir done: %s", meta.Pid, entry.baseDir)
@@ -231,6 +231,8 @@ func (entry *procProcessEntry) removeOwnedFiles() error {
 			return err
 		}
 	}
+	// Best-effort: keep the directory when another owner still has files in it.
+	_ = entry.jr.filesystem.Rmdir(entry.baseDir)
 	return nil
 }
 

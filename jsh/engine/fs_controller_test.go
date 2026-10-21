@@ -38,6 +38,16 @@ func TestControllerFS_MountedOnNewFS(t *testing.T) {
 	if err := mfs.Mkdir("/shared/cache"); err != nil {
 		t.Fatalf("Mkdir() error: %v", err)
 	}
+	if err := mfs.MkdirMode("/shared/cache/private", 0o700); err != nil {
+		t.Fatalf("MkdirMode() error: %v", err)
+	}
+	privateInfo, err := mfs.Stat("/shared/cache/private")
+	if err != nil {
+		t.Fatalf("Stat(private directory) error: %v", err)
+	}
+	if privateInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("MkdirMode() mode=%o, want 0700", privateInfo.Mode().Perm())
+	}
 	if err := mfs.WriteFile("/shared/cache/result.txt", []byte("alpha")); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
@@ -69,6 +79,26 @@ func TestControllerFS_MountedOnNewFS(t *testing.T) {
 	}
 	if string(finalBytes) != "alpha" {
 		t.Fatalf("final content=%q, want %q", string(finalBytes), "alpha")
+	}
+	if err := mfs.Truncate("/shared/cache/final.txt", 2); err != nil {
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	truncatedBytes, err := fs.ReadFile(mfs, "/shared/cache/final.txt")
+	if err != nil {
+		t.Fatalf("ReadFile(truncated) error: %v", err)
+	}
+	if string(truncatedBytes) != "al" {
+		t.Fatalf("truncated content=%q, want %q", truncatedBytes, "al")
+	}
+	if err := mfs.Truncate("/shared/cache/final.txt", 4); err != nil {
+		t.Fatalf("Truncate(expand) error: %v", err)
+	}
+	expandedInfo, err := fs.Stat(mfs, "/shared/cache/final.txt")
+	if err != nil {
+		t.Fatalf("Stat(expanded) error: %v", err)
+	}
+	if expandedInfo.Size() != 4 {
+		t.Fatalf("expanded size=%d, want 4", expandedInfo.Size())
 	}
 	finalInfo, err := fs.Stat(mfs, "/shared/cache/final.txt")
 	if err != nil {
@@ -497,6 +527,18 @@ func dispatchMockControllerFS(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD, n
 			return nil, err
 		}
 		return snapshotInfo(req["path"], info), nil
+	case "fs.truncate":
+		var req struct {
+			Path string `json:"path"`
+			Size int64  `json:"size"`
+		}
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, err
+		}
+		if err := vfs.Truncate(req.Path, req.Size); err != nil {
+			return nil, err
+		}
+		return true, nil
 	case "fs.chmod":
 		var req struct {
 			Path string `json:"path"`
@@ -523,18 +565,25 @@ func dispatchMockControllerFS(vfs *VirtualFS, sharedFDs map[int]*mockSharedFD, n
 		}
 		return true, nil
 	case "fs.mkdir":
-		path, err := decodePath("path")
+		var req struct {
+			Path string  `json:"path"`
+			Mode *uint32 `json:"mode"`
+		}
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, err
+		}
+		mode := uint32(0755)
+		if req.Mode != nil {
+			mode = *req.Mode
+		}
+		if err := vfs.MkdirMode(req.Path, mode); err != nil {
+			return nil, err
+		}
+		info, err := vfs.Stat(req.Path)
 		if err != nil {
 			return nil, err
 		}
-		if err := vfs.Mkdir(path); err != nil {
-			return nil, err
-		}
-		info, err := vfs.Stat(path)
-		if err != nil {
-			return nil, err
-		}
-		return snapshotInfo(path, info), nil
+		return snapshotInfo(req.Path, info), nil
 	case "fs.rmdir":
 		path, err := decodePath("path")
 		if err != nil {

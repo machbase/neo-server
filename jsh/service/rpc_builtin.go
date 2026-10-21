@@ -19,6 +19,7 @@ func controllerBuiltinRPCMethods(ctl *Controller) map[string]any {
 		"fs.readDir":                    ctl.rpcFSReadDir,
 		"fs.readFile":                   ctl.rpcFSReadFile,
 		"fs.writeFile":                  ctl.rpcFSWriteFile,
+		"fs.truncate":                   ctl.rpcFSTruncate,
 		"fs.chmod":                      ctl.rpcFSChmod,
 		"fs.chown":                      ctl.rpcFSChown,
 		"fs.mkdir":                      ctl.rpcFSMkdir,
@@ -162,6 +163,13 @@ func (ctl *Controller) rpcFSWriteFile(req sharedWriteFileRequest) (SharedFileInf
 	return info, nil
 }
 
+func (ctl *Controller) rpcFSTruncate(req sharedTruncateRequest) (bool, error) {
+	if err := ctl.sharedTruncate(req.Path, req.Size); err != nil {
+		return false, mapSharedFSError(err)
+	}
+	return true, nil
+}
+
 func (ctl *Controller) rpcFSChmod(req sharedChmodRequest) (bool, error) {
 	if err := ctl.sharedChmod(req.Path, req.Mode); err != nil {
 		return false, mapSharedFSError(err)
@@ -176,8 +184,12 @@ func (ctl *Controller) rpcFSChown(req sharedChownRequest) (bool, error) {
 	return true, nil
 }
 
-func (ctl *Controller) rpcFSMkdir(req sharedPathRequest) (SharedFileInfoSnapshot, error) {
-	if err := ctl.sharedMkdir(req.Path); err != nil {
+func (ctl *Controller) rpcFSMkdir(req sharedMkdirRequest) (SharedFileInfoSnapshot, error) {
+	mode := uint32(0755)
+	if req.Mode != nil {
+		mode = *req.Mode
+	}
+	if err := ctl.sharedMkdir(req.Path, mode); err != nil {
 		return SharedFileInfoSnapshot{}, mapSharedFSError(err)
 	}
 	info, err := ctl.sharedStat(req.Path)
