@@ -1213,8 +1213,8 @@ func (m *FS) FchmodFD(fd int, mode uint32) error {
 		return fs.ErrInvalid
 	}
 
-	if runtime.GOOS == "windows" {
-		return nil // Fchmod is not supported on Windows
+	if _, isHostFile := file.(*os.File); isHostFile && runtime.GOOS == "windows" {
+		return nil // Fchmod is not supported on Windows host files
 	}
 
 	return file.Chmod(fs.FileMode(mode))
@@ -1230,8 +1230,8 @@ func (m *FS) FchownFD(fd int, uid, gid int) error {
 		return fs.ErrInvalid
 	}
 
-	if runtime.GOOS == "windows" {
-		return nil // Fchown is not supported on Windows
+	if _, isHostFile := file.(*os.File); isHostFile && runtime.GOOS == "windows" {
+		return nil // Fchown is not supported on Windows host files
 	}
 
 	return file.Chown(uid, gid)
@@ -1293,6 +1293,13 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 			entries, err = fs.ReadDir(bestFS, relPath)
 		}
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				// Win32 reports a non-directory target with the same code as a
+				// missing path, so classify it from the entry itself.
+				if info, statErr := fs.Stat(bestFS, relPath); statErr == nil && !info.IsDir() {
+					return nil, &fs.PathError{Op: "readdir", Path: name, Err: ErrnoNotDir}
+				}
+			}
 			if !isVirtual || !errors.Is(err, fs.ErrNotExist) {
 				return nil, err
 			}

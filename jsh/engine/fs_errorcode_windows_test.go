@@ -40,8 +40,22 @@ func TestFilesystemErrorCodeWindowsPathNotFound(t *testing.T) {
 	if got := FilesystemErrorCode(err); got != "EINVAL" {
 		t.Fatalf("readlink regular file: FilesystemErrorCode(%v) = %q, want EINVAL", err, got)
 	}
-	_, err = os.ReadDir(file)
+	// Go opens directories with O_DIRECTORY, so Win32 reports a regular file
+	// with the same code as a missing path; FS.ReadDir must still say ENOTDIR.
+	mfs := NewFS()
+	if err := mfs.Mount("/", os.DirFS(dir)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = mfs.ReadDir("/file.txt")
 	if got := FilesystemErrorCode(err); got != "ENOTDIR" {
 		t.Fatalf("readdir regular file: FilesystemErrorCode(%v) = %q, want ENOTDIR", err, got)
+	}
+	_, err = mfs.ReadDir("/missing")
+	if got := FilesystemErrorCode(err); got != "ENOENT" {
+		t.Fatalf("readdir missing: FilesystemErrorCode(%v) = %q, want ENOENT", err, got)
+	}
+	_, err = mfs.ReadDir("/missing/child")
+	if got := FilesystemErrorCode(err); got != "ENOENT" {
+		t.Fatalf("readdir under missing parent: FilesystemErrorCode(%v) = %q, want ENOENT", err, got)
 	}
 }

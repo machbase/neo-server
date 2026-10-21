@@ -257,3 +257,43 @@ func TestErrnoForCodeRoundTrip(t *testing.T) {
 		t.Fatalf("ErrnoForCode(EBUSY) = %v, want EBUSY", errno)
 	}
 }
+
+// win32ReadDirFS mimics Go on Windows, where reading a regular file as a
+// directory fails with the same code as a missing path.
+type win32ReadDirFS struct{ fs.FS }
+
+func (w win32ReadDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if info, err := fs.Stat(w.FS, name); err == nil && !info.IsDir() {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	}
+	return fs.ReadDir(w.FS, name)
+}
+
+func TestFS_ReadDirRegularFileIsNotDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fsys fs.FS
+	}{
+		{"host", nil},
+		{"win32-like", win32ReadDirFS{fstest.MapFS{"file.txt": {Data: []byte("x")}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mfs := NewFS()
+			fsys := tc.fsys
+			if fsys == nil {
+				dir := t.TempDir()
+				if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				fsys = os.DirFS(dir)
+			}
+			if err := mfs.Mount("/", fsys); err != nil {
+				t.Fatal(err)
+			}
+			_, err := mfs.ReadDir("/file.txt")
+			requireFSCode(t, "readdir regular file", err, "ENOTDIR")
+			_, err = mfs.ReadDir("/missing")
+			requireFSCode(t, "readdir missing", err, "ENOENT")
+		})
+	}
+}
