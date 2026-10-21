@@ -23,7 +23,8 @@ const EventEmitter = require('events');
 // Polyfill for Buffer.isBuffer if not available
 if (!Buffer.isBuffer) {
     Buffer.isBuffer = function (obj) {
-        return obj && obj.constructor && obj.constructor.name === 'Buffer';
+        // goja_nodejs Buffer constructor names are Go function names, so use the prototype chain.
+        return obj instanceof Buffer;
     };
 }
 
@@ -323,11 +324,106 @@ function resolveFileEncoding(options) {
     return 'utf8';
 }
 
+function makeUnknownEncodingError(encoding) {
+    const error = new TypeError(`Unknown encoding: ${encoding}`);
+    error.code = 'ERR_UNKNOWN_ENCODING';
+    return error;
+}
+
+function singleByteStringToBytes(str) {
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) {
+        bytes[i] = str.charCodeAt(i) & 0xff;
+    }
+    return bytes;
+}
+
+function utf16leStringToBytes(str) {
+    const bytes = new Uint8Array(str.length * 2);
+    for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i);
+        bytes[i * 2] = code & 0xff;
+        bytes[i * 2 + 1] = code >> 8;
+    }
+    return bytes;
+}
+
+// Normalize a Node.js encoding name; returns undefined for unknown names.
+function normalizeEncodingName(encoding) {
+    switch (String(encoding).toLowerCase()) {
+        case 'utf8':
+        case 'utf-8':
+            return 'utf8';
+        case 'hex':
+            return 'hex';
+        case 'base64':
+            return 'base64';
+        case 'base64url':
+            return 'base64url';
+        case 'latin1':
+        case 'binary':
+            return 'latin1';
+        case 'ascii':
+            return 'ascii';
+        case 'ucs2':
+        case 'ucs-2':
+        case 'utf16le':
+        case 'utf-16le':
+            return 'utf16le';
+        default:
+            return undefined;
+    }
+}
+
+// Encode a string with a normalized Node.js encoding name.
+function encodeString(str, encoding) {
+    switch (encoding) {
+        case 'hex':
+            return viewToBytes(Buffer.from(str, 'hex'));
+        case 'base64':
+            return viewToBytes(Buffer.from(str, 'base64'));
+        case 'base64url':
+            // goja_nodejs registers this codec as 'base64Url'.
+            return viewToBytes(Buffer.from(str, 'base64Url'));
+        case 'latin1':
+        case 'ascii':
+            return singleByteStringToBytes(str);
+        case 'utf16le':
+            return utf16leStringToBytes(str);
+        default:
+            return stringToBytes(str);
+    }
+}
+
+// Convert writeFile/appendFile data to bytes: Node.js types plus JSH extensions (ArrayBuffer, byte Array).
+// The 'buffer' and null encodings are JSH conventions that mean UTF-8 for strings.
+function fileDataToBytes(data, encoding) {
+    const binary = binaryToBytes(data);
+    if (binary) {
+        return binary;
+    }
+    // JSH extension beyond Node.js: plain byte arrays, e.g. http readBodyBuffer().
+    if (Array.isArray(data)) {
+        return Uint8Array.from(data);
+    }
+    if (typeof data !== 'string') {
+        throw makeInvalidArgTypeError('data', 'of type string, Array, or an instance of Buffer, TypedArray, DataView, or ArrayBuffer', data);
+    }
+    if (encoding === null || encoding === undefined || encoding === 'buffer') {
+        return stringToBytes(data);
+    }
+    const name = normalizeEncodingName(encoding);
+    if (name === undefined) {
+        throw makeUnknownEncodingError(encoding);
+    }
+    return encodeString(data, name);
+}
+
 /**
  * Read file contents synchronously
  * @param {string} path - File path
  * @param {object} options - Options (encoding: 'utf8' or null for buffer)
- * @returns {string|Array} File contents as string or byte array
+ * @returns {string|Buffer} File contents as string or Buffer
  */
 function readFileSync(path, options) {
     const fullPath = _fs.resolveAbsPath(path);
@@ -335,7 +431,7 @@ function readFileSync(path, options) {
         const raw = _fs.readFile(fullPath);
         const encoding = resolveFileEncoding(options);
         if (encoding === null || encoding === 'buffer') {
-            return raw;
+            return Buffer.from(raw);
         }
         return bytesToString(raw);
     } catch (e) {
@@ -346,18 +442,13 @@ function readFileSync(path, options) {
 /**
  * Write file contents synchronously
  * @param {string} path - File path
- * @param {string|Array} data - Data to write (string or byte array)
- * @param {object} options - Options (encoding: 'utf8' or null for buffer)
+ * @param {string|Buffer|TypedArray|DataView} data - Data to write
+ * @param {object|string} options - Options or encoding for string data (default: 'utf8')
  */
 function writeFileSync(path, data, options) {
+    const bytes = fileDataToBytes(data, resolveFileEncoding(options));
     const fullPath = _fs.resolvePath(path);
     try {
-        const encoding = resolveFileEncoding(options);
-        const bytes = isByteLike(data)
-            ? normalizeByteSource(data)
-            : (encoding === null || encoding === 'buffer')
-                ? normalizeByteSource(data)
-                : stringToBytes(data);
         _fs.writeFile(fullPath, bytes);
     } catch (e) {
         throw createFilesystemError(e, 'open', path, 'EIO');
@@ -568,18 +659,13 @@ function createWriteStream(path, options) {
 /**
  * Append data to file synchronously
  * @param {string} path - File path
- * @param {string|Array} data - Data to append
- * @param {object} options - Options (encoding: 'utf8' or null for buffer)
+ * @param {string|Buffer|TypedArray|DataView} data - Data to append
+ * @param {object|string} options - Options or encoding for string data (default: 'utf8')
  */
 function appendFileSync(path, data, options) {
+    const newBytes = fileDataToBytes(data, resolveFileEncoding(options));
     const fullPath = _fs.resolvePath(path);
     try {
-        const encoding = resolveFileEncoding(options);
-        const newBytes = isByteLike(data)
-            ? normalizeByteSource(data)
-            : (encoding === null || encoding === 'buffer')
-                ? normalizeByteSource(data)
-                : stringToBytes(data);
         _fs.appendFile(fullPath, newBytes);
     } catch (e) {
         throw createFilesystemError(e, 'open', path, 'EIO');
@@ -1260,26 +1346,60 @@ function closeSync(fd) {
     }
 }
 
+function describeReceived(value) {
+    if (value === null || value === undefined) {
+        return `${value}`;
+    }
+    if (typeof value === 'function') {
+        return `function ${value.name || '<anonymous>'}`;
+    }
+    if (typeof value === 'object') {
+        const name = value.constructor && value.constructor.name;
+        return name ? `an instance of ${name}` : 'an object';
+    }
+    return `type ${typeof value} (${String(value)})`;
+}
+
+function makeInvalidArgTypeError(name, expected, value) {
+    const error = new TypeError(`The "${name}" argument must be ${expected}. Received ${describeReceived(value)}`);
+    error.code = 'ERR_INVALID_ARG_TYPE';
+    return error;
+}
+
+// Offsets and lengths are byte based for every view type, as in Node.js.
+function viewToBytes(view) {
+    return view instanceof Uint8Array
+        ? view
+        : new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+}
+
+// Returns a Uint8Array sharing memory with an ArrayBufferView or ArrayBuffer, or undefined.
+// Accepting ArrayBuffer is a JSH extension beyond Node.js because native modules
+// (zlib, archive, mqtt, ...) return ArrayBuffer.
+function binaryToBytes(value) {
+    if (ArrayBuffer.isView(value)) {
+        return viewToBytes(value);
+    }
+    if (value instanceof ArrayBuffer) {
+        return new Uint8Array(value);
+    }
+    return undefined;
+}
+
 /**
  * Read from a file descriptor
  * @param {number} fd - File descriptor
- * @param {Buffer|TypedArray|DataView} buffer - Buffer to read into
+ * @param {Buffer|TypedArray|DataView|ArrayBuffer} buffer - Buffer to read into
  * @param {number} offset - Byte offset in buffer to start writing (default: 0)
  * @param {number} length - Number of bytes to read
  * @param {number} position - Position to read from (null = current position)
  * @returns {number} Number of bytes read
  */
 function readSync(fd, buffer, offset, length, position) {
-    if (!ArrayBuffer.isView(buffer)) {
-        const received = buffer === null ? 'null' : Array.isArray(buffer) ? 'an instance of Array' : `type ${typeof buffer}`;
-        const error = new TypeError(`The "buffer" argument must be an instance of Buffer, TypedArray, or DataView. Received ${received}`);
-        error.code = 'ERR_INVALID_ARG_TYPE';
-        throw error;
+    const bytes = binaryToBytes(buffer);
+    if (!bytes) {
+        throw makeInvalidArgTypeError('buffer', 'an instance of Buffer, TypedArray, DataView, or ArrayBuffer', buffer);
     }
-    // Offsets and lengths are byte based for every view type, as in Node.js.
-    const bytes = buffer instanceof Uint8Array
-        ? buffer
-        : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 
     offset = offset === undefined || offset === null ? 0 : offset;
     length = length === undefined || length === null ? bytes.length - offset : length;
@@ -1315,50 +1435,81 @@ function readSync(fd, buffer, offset, length, position) {
     }
 }
 
+function makeWriteRangeError(name, value) {
+    const error = new RangeError(`${name} is out of range: ${value}`);
+    error.code = 'ERR_OUT_OF_RANGE';
+    error.syscall = 'write';
+    return error;
+}
+
 /**
- * Write to a file descriptor
+ * Write to a file descriptor.
+ *
+ * Supported forms (Node.js compatible):
+ *   writeSync(fd, buffer[, offset[, length[, position]]])
+ *   writeSync(fd, buffer[, options])  // options: { offset, length, position }
+ *   writeSync(fd, string[, position[, encoding]])
+ *   writeSync(fd, string, offset, length[, position])  // JSH legacy form (UTF-8 byte offset/length)
+ *
  * @param {number} fd - File descriptor
- * @param {Array|string} buffer - Data to write
- * @param {number} offset - Offset in buffer to start reading (default: 0)
- * @param {number} length - Number of bytes to write (default: buffer.length - offset)
- * @param {number} position - Position to write to (null = current position)
+ * @param {string|Buffer|TypedArray|DataView|ArrayBuffer|number[]} buffer - Data to write
+ * @param {number|object|null} offset - Buffer offset, options object, or file position for strings
+ * @param {number|string} length - Number of bytes to write, or encoding for strings
+ * @param {number|null} position - Position to write to (null = current position)
  * @returns {number} Number of bytes written
  */
 function writeSync(fd, buffer, offset, length, position) {
-    offset = offset === undefined || offset === null ? 0 : offset;
-
-    let data;
-    if (typeof buffer === 'string') {
+    // JSH extension beyond Node.js: plain byte arrays are written like Uint8Array.
+    let data = binaryToBytes(buffer) || (Array.isArray(buffer) ? Uint8Array.from(buffer) : undefined);
+    if (data) {
+        if (offset === null || typeof offset === 'object') {
+            const options = offset || {};
+            offset = options.offset === undefined ? 0 : options.offset;
+            length = options.length === undefined ? data.length - offset : options.length;
+            position = options.position === undefined ? null : options.position;
+        }
+        if (typeof offset !== 'number') {
+            offset = 0;
+        }
+        if (typeof length !== 'number') {
+            length = data.length - offset;
+        }
+    } else if (typeof buffer === 'string' && typeof length === 'number') {
+        // JSH extension: legacy form writeSync(fd, string, offset, length[, position]).
+        // Node.js treats the fourth argument as an encoding name, so a number never occurs there.
         data = stringToBytes(buffer);
+        if (typeof offset !== 'number') {
+            offset = 0;
+        }
+    } else if (typeof buffer === 'string') {
+        position = offset;
+        const name = length === undefined || length === null ? 'utf8' : normalizeEncodingName(length);
+        if (name === 'hex' && buffer.length % 2 !== 0) {
+            const error = new TypeError(`The argument 'encoding' is invalid for data of length ${buffer.length}. Received 'hex'`);
+            error.code = 'ERR_INVALID_ARG_VALUE';
+            throw error;
+        }
+        // Like Node.js, an unrecognized encoding for string writes falls back to UTF-8.
+        data = encodeString(buffer, name || 'utf8');
+        offset = 0;
+        length = data.length;
     } else {
-        data = normalizeByteSource(buffer);
+        throw makeInvalidArgTypeError('buffer', 'of type string, Array, or an instance of Buffer, TypedArray, DataView, or ArrayBuffer', buffer);
     }
 
     if (!Number.isInteger(offset) || offset < 0 || offset > data.length) {
-        const error = new RangeError(`offset is out of range: ${offset}`);
-        error.code = 'ERR_OUT_OF_RANGE';
-        error.syscall = 'write';
-        throw error;
-    }
-
-    if (length === undefined || length === null) {
-        length = data.length - offset;
+        throw makeWriteRangeError('offset', offset);
     }
     if (!Number.isInteger(length) || length < 0 || length > data.length - offset) {
-        const error = new RangeError(`length is out of range: ${length}`);
-        error.code = 'ERR_OUT_OF_RANGE';
-        error.syscall = 'write';
-        throw error;
+        throw makeWriteRangeError('length', length);
+    }
+    if (typeof position !== 'number') {
+        position = null;
+    } else if (!Number.isSafeInteger(position) || position < 0) {
+        throw makeWriteRangeError('position', position);
     }
 
-    if (position !== undefined && position !== null && (!Number.isSafeInteger(position) || position < 0)) {
-        const error = new RangeError(`position is out of range: ${position}`);
-        error.code = 'ERR_OUT_OF_RANGE';
-        error.syscall = 'write';
-        throw error;
-    }
-
-    const writeData = data.slice(offset, offset + length);
+    const writeData = offset === 0 && length === data.length ? data : data.subarray(offset, offset + length);
 
     try {
         return _fs.write(fd, writeData, position);

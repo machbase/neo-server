@@ -55,6 +55,29 @@ type ExecOptions struct {
 
 type NativeModuleLoader func(ctx context.Context, rt *goja.Runtime, module *goja.Object)
 
+// bufferCompatScript fills gaps in goja_nodejs Buffer so that Node.js idioms work.
+// goja_nodejs Buffer rejects new Buffer(size), which TypedArray methods such as
+// slice/map/filter call through Symbol.species. Like Node.js, Buffer.prototype.slice
+// returns a view that shares memory with the original buffer.
+const bufferCompatScript = `(() => {
+	const NativeBuffer = Buffer;
+	function BufferSpecies(arg, byteOffset, length) {
+		if (typeof arg === 'number') {
+			return NativeBuffer.alloc(arg);
+		}
+		return NativeBuffer.from(arg, byteOffset, length);
+	}
+	BufferSpecies.prototype = NativeBuffer.prototype;
+	Object.defineProperty(NativeBuffer, Symbol.species, { configurable: true, get: () => BufferSpecies });
+	Object.defineProperty(NativeBuffer.prototype, 'slice', {
+		configurable: true,
+		writable: true,
+		value: function slice(start, end) {
+			return this.subarray(start, end);
+		},
+	});
+})();`
+
 func (jr *JSRuntime) currentContext() context.Context {
 	jr.ctxMu.RLock()
 	defer jr.ctxMu.RUnlock()
@@ -181,6 +204,7 @@ func (jr *JSRuntime) Run() error {
 			vm.Interrupt(runCtx.Err())
 		}
 		buffer.Enable(vm)
+		vm.RunScript("buffer-compat", bufferCompatScript)
 		url.Enable(vm)
 		vm.SetFieldNameMapper(goja.UncapFieldNameMapper())
 		vm.Set("console", log.SetConsole(vm, jr.Env.Writer()))

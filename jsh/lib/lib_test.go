@@ -780,10 +780,10 @@ func TestFSModule(t *testing.T) {
 				const file = '/tmp/write_zero_length.txt';
 				fs.writeFileSync(file, 'preserve');
 				const fd = fs.openSync(file, 'r+');
-				const written = fs.writeSync(fd, 'overwrite', 0, 0, 0);
+				const written = fs.writeSync(fd, Buffer.from('overwrite'), 0, 0, 0);
 				let invalidRangeCode = '';
 				try {
-					fs.writeSync(fd, 'x', 0, 2, 0);
+					fs.writeSync(fd, Buffer.from('x'), 0, 2, 0);
 				} catch (e) {
 					invalidRangeCode = e.code;
 				}
@@ -1187,14 +1187,14 @@ func TestFSModule(t *testing.T) {
 
 				fs.writeFileSync(file, 'AAAA');
 				let fd = fs.openSync(file, 'r+');
-				fs.writeSync(fd, 'xBBBBz', 1, 4, 4);
+				fs.writeSync(fd, Buffer.from('xBBBBz'), 1, 4, 4);
 				fs.closeSync(fd);
 				console.println('Write at position:', fs.readFileSync(file, 'utf8'));
 
 				fs.writeFileSync(file, 'AAAABBBBCCCC');
 				fd = fs.openSync(file, 'r+');
-				fs.writeSync(fd, 'xXXXXz', 1, 4, 4);
-				fs.writeSync(fd, 'YYYY', 0, 4, null);
+				fs.writeSync(fd, Buffer.from('xXXXXz'), 1, 4, 4);
+				fs.writeSync(fd, 'YYYY', null);
 				fs.closeSync(fd);
 				console.println('Positioned write preserves cursor:', fs.readFileSync(file, 'utf8'));
 
@@ -1235,7 +1235,7 @@ func TestFSModule(t *testing.T) {
 
 				fs.writeFileSync(file, 'append');
 				fd = fs.openSync(file, 'a');
-				fs.writeSync(fd, '!', 0, 1, 0);
+				fs.writeSync(fd, '!', 0);
 				fs.closeSync(fd);
 				console.println('Append ignores position:', fs.readFileSync(file, 'utf8'));
 				fs.unlinkSync(file);
