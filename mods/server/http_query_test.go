@@ -240,6 +240,16 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 
 	testHttpd := &httpd{log: logging.GetLog("http-token-e2e-test"), authServer: server}
 	testHttpd.enableTokenAuth.Store(true)
+	router := testHttpd.Router()
+	validateToken := func(authorization, query string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/db/token/validate"+query, nil)
+		if authorization != "" {
+			request.Header.Set("Authorization", authorization)
+		}
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		return recorder
+	}
 	doQuery := func(sqlText string) []byte {
 		ctx, writer := newTestHTTPContext(http.MethodGet, "/db/query?q="+url.QueryEscape(sqlText), nil)
 		ctx.Request.Header.Set("Authorization", "Bearer "+generated.Token)
@@ -265,6 +275,26 @@ func TestHttpQueryApiTokenExecUser(t *testing.T) {
 		body := doQuery("SELECT name FROM " + ownTable)
 		require.True(t, gjson.GetBytes(body, "success").Bool(), string(body))
 		require.Equal(t, "temp", gjson.GetBytes(body, "data.rows.0.0").String())
+	})
+
+	t.Run("token_validation_requires_bearer_header_in_both_auth_modes", func(t *testing.T) {
+		defer testHttpd.enableTokenAuth.Store(true)
+		for _, enabled := range []bool{true, false} {
+			testHttpd.enableTokenAuth.Store(enabled)
+
+			recorder := validateToken("Bearer "+generated.Token, "")
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+			require.True(t, gjson.GetBytes(recorder.Body.Bytes(), "valid").Bool())
+			require.Equal(t, strings.ToUpper(username), gjson.GetBytes(recorder.Body.Bytes(), "user").String())
+
+			recorder = validateToken("", "?token="+url.QueryEscape(generated.Token))
+			require.Equal(t, http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+
+			recorder = validateToken("Bearer "+FormatApiToken(generated.Id, strings.Repeat("a", 43)), "")
+			require.Equal(t, http.StatusUnauthorized, recorder.Code, recorder.Body.String())
+			require.False(t, gjson.GetBytes(recorder.Body.Bytes(), "valid").Bool())
+		}
 	})
 
 	t.Run("optional_mode_still_honors_a_valid_bearer_token", func(t *testing.T) {

@@ -413,6 +413,11 @@ func (svr *httpd) Router() *gin.Engine {
 	dbGroup.POST("/rpc", svr.handleDbRpc)
 	svr.log.Infof("HTTP path %s for machbase api", "/db")
 
+	// Register outside dbGroup to avoid validating the same token twice. This
+	// endpoint enforces its own contract regardless of the token-auth mode:
+	// require a valid API token in the Authorization header.
+	r.POST("/db/token/validate", svr.handleValidateApiToken)
+
 	// prefix '/web' for web ui
 	webGroup := r.Group("/web")
 	contentBase := "/ui/"
@@ -632,6 +637,41 @@ func (svr *httpd) extractBearerToken(ctx *gin.Context) (tok string, present bool
 		return q, true
 	}
 	return "", false
+}
+
+func (svr *httpd) handleValidateApiToken(ctx *gin.Context) {
+	ctx.Header("Cache-Control", "no-store")
+
+	var token string
+	for _, header := range ctx.Request.Header.Values("Authorization") {
+		if strings.HasPrefix(strings.ToUpper(header), "BEARER ") {
+			token = header[len("Bearer "):]
+			break
+		}
+	}
+	if token == "" {
+		ctx.Header("WWW-Authenticate", apiTokenChallenge)
+		ctx.JSON(http.StatusUnauthorized, map[string]any{"valid": false})
+		return
+	}
+	if svr.authServer == nil {
+		ctx.JSON(http.StatusServiceUnavailable, map[string]any{"valid": false})
+		return
+	}
+
+	user, valid, err := svr.authServer.ValidateClientToken(ctx.Request.Context(), token)
+	if err != nil {
+		svr.log.Errorf("client token validation %s", err.Error())
+		ctx.JSON(http.StatusInternalServerError, map[string]any{"valid": false})
+		return
+	}
+	if !valid || user == "" {
+		ctx.Header("WWW-Authenticate", apiTokenInvalidChallenge)
+		ctx.JSON(http.StatusUnauthorized, map[string]any{"valid": false})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, map[string]any{"valid": true, "user": user})
 }
 
 func (svr *httpd) corsHandler() gin.HandlerFunc {
