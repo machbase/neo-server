@@ -829,6 +829,70 @@ func TestHandleAuthToken(t *testing.T) {
 	})
 }
 
+func TestHandleValidateApiTokenFailures(t *testing.T) {
+	tests := []struct {
+		name          string
+		authServer    *Server
+		authorization string
+		target        string
+		wantStatus    int
+		wantChallenge string
+	}{
+		{
+			name:          "missing authorization header",
+			authServer:    &Server{},
+			target:        "/db/token/validate",
+			wantStatus:    http.StatusUnauthorized,
+			wantChallenge: apiTokenChallenge,
+		},
+		{
+			name:          "non bearer authorization scheme",
+			authServer:    &Server{},
+			authorization: "Basic dXNlcjpwYXNz",
+			target:        "/db/token/validate",
+			wantStatus:    http.StatusUnauthorized,
+			wantChallenge: apiTokenChallenge,
+		},
+		{
+			name:          "query token is not accepted",
+			authServer:    &Server{},
+			target:        "/db/token/validate?token=" + url.QueryEscape(FormatApiToken(1, strings.Repeat("a", 43))),
+			wantStatus:    http.StatusUnauthorized,
+			wantChallenge: apiTokenChallenge,
+		},
+		{
+			name:          "auth server is unavailable",
+			authorization: "Bearer " + FormatApiToken(1, strings.Repeat("a", 43)),
+			target:        "/db/token/validate",
+			wantStatus:    http.StatusServiceUnavailable,
+		},
+		{
+			name:          "token validation fails internally",
+			authServer:    &Server{},
+			authorization: "Bearer " + FormatApiToken(1, strings.Repeat("a", 43)),
+			target:        "/db/token/validate",
+			wantStatus:    http.StatusInternalServerError,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svr := &httpd{log: logging.GetLog("httpd-fake"), authServer: test.authServer}
+			ctx, writer := newTestHTTPContext(http.MethodPost, test.target, nil)
+			if test.authorization != "" {
+				ctx.Request.Header.Set("Authorization", test.authorization)
+			}
+
+			svr.handleValidateApiToken(ctx)
+
+			require.Equal(t, test.wantStatus, writer.Code, writer.Body.String())
+			require.Equal(t, "no-store", writer.Header().Get("Cache-Control"))
+			require.Equal(t, test.wantChallenge, writer.Header().Get("WWW-Authenticate"))
+			require.False(t, gjson.GetBytes(writer.Body.Bytes(), "valid").Bool())
+		})
+	}
+}
+
 func TestHandleChangePassword(t *testing.T) {
 	newServer := func() *httpd {
 		return &httpd{
