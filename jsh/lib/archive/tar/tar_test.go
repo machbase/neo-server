@@ -198,7 +198,7 @@ func TestTarClass(t *testing.T) {
 					{ name: 'dir/a.txt', data: 'A' },
 					{ name: 'dir/b.txt', data: 'B' }
 				]);
-				fs.writeFileSync(base + '/file.tar', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.tar', new Uint8Array(archive), 'buffer');
 
 				const t = new tar.Tar(base + '/file.tar');
 				t.extractAllTo(base + '/out', true);
@@ -223,7 +223,7 @@ func TestTarClass(t *testing.T) {
 					{ name: 'keep.txt', data: 'KEEP' },
 					{ name: 'skip.txt', data: 'SKIP' }
 				]);
-				fs.writeFileSync(base + '/file.tar', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.tar', new Uint8Array(archive), 'buffer');
 				const t = new tar.Tar(base + '/file.tar');
 				t.extractAllTo(base + '/out', {
 					overwrite: true,
@@ -263,7 +263,7 @@ func TestTarClass(t *testing.T) {
 					{ name: 'one.txt', data: 'one' },
 					{ name: 'two.txt', data: 'two' }
 				]);
-				fs.writeFileSync(base + '/file.tar', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.tar', new Uint8Array(archive), 'buffer');
 				const t = new tar.Tar(base + '/file.tar');
 				const entries = t.getEntries();
 				console.println('entry count:', entries.length);

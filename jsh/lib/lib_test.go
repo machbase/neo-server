@@ -3,6 +3,7 @@ package lib_test
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 
 	jshlib "github.com/machbase/neo-server/v8/jsh/lib"
@@ -557,6 +558,41 @@ func TestFSModule(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_mount_point_is_busy",
+			Script: `
+				const fs = require('fs');
+				fs.mkdirSync('/tmp/a/b', { recursive: true });
+				fs.writeFileSync('/tmp/a/b/f.txt', 'x');
+				fs.writeFileSync('/tmp/top.txt', 'y');
+				const attempts = [
+					['rmdirSync', () => fs.rmdirSync('/tmp')],
+					['unlinkSync', () => fs.unlinkSync('/tmp')],
+					['renameSync', () => fs.renameSync('/tmp', '/tmp2')],
+					['renameSync dest', () => fs.renameSync('/tmp/a', '/tmp')],
+					['rmSync', () => fs.rmSync('/tmp', { recursive: true, force: true })],
+				];
+				for (const [name, fn] of attempts) {
+					try {
+						fn();
+						console.println(name, 'ok');
+					} catch (e) {
+						console.println(name, e.code, e.path);
+					}
+				}
+				console.println('exists', fs.existsSync('/tmp'), 'entries', fs.readdirSync('/tmp').filter((n) => n !== '.' && n !== '..').length);
+				console.println('lstat /', fs.lstatSync('/').isDirectory());
+			`,
+			Output: []string{
+				"rmdirSync EBUSY /tmp",
+				"unlinkSync EBUSY /tmp",
+				"renameSync EBUSY /tmp",
+				"renameSync dest EBUSY /tmp/a",
+				"rmSync EBUSY /tmp",
+				"exists true entries 0",
+				"lstat / true",
+			},
+		},
+		{
 			Name: "fs_resolve_abs_path",
 			Script: `
 				const fs = require('fs');
@@ -738,6 +774,186 @@ func TestFSModule(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_write_explicit_zero_length",
+			Script: `
+				const fs = require('fs');
+				const file = '/tmp/write_zero_length.txt';
+				fs.writeFileSync(file, 'preserve');
+				const fd = fs.openSync(file, 'r+');
+				const written = fs.writeSync(fd, Buffer.from('overwrite'), 0, 0, 0);
+				let invalidRangeCode = '';
+				try {
+					fs.writeSync(fd, Buffer.from('x'), 0, 2, 0);
+				} catch (e) {
+					invalidRangeCode = e.code;
+				}
+				fs.closeSync(fd);
+				console.println('Bytes written:', written);
+				console.println('Invalid range rejected:', invalidRangeCode);
+				console.println('File preserved:', fs.readFileSync(file, 'utf8'));
+				fs.unlinkSync(file);
+			`,
+			Output: []string{
+				"Bytes written: 0",
+				"Invalid range rejected: ERR_OUT_OF_RANGE",
+				"File preserved: preserve",
+			},
+		},
+		{
+			Name: "fs_fsync_unsupported_backend",
+			Script: `
+				const fs = require('fs');
+				const fd = fs.openSync('/lib/fs.js', 'r');
+				let code = '';
+				try {
+					fs.fsyncSync(fd);
+				} catch (e) {
+					code = e.code;
+				} finally {
+					fs.closeSync(fd);
+				}
+				console.println('Unsupported fsync:', code);
+			`,
+			Output: []string{
+				"Unsupported fsync: ENOTSUP",
+			},
+		},
+		{
+			Name: "fs_mkdir_recursive_contract",
+			Script: `
+				const fs = require('fs');
+				const base = '/tmp/mkdir_contract';
+				fs.rmSync(base, { recursive: true, force: true });
+				fs.mkdirSync(base);
+
+				let nonRecursiveFailed = false;
+				try {
+					fs.mkdirSync(base + '/missing/child');
+				} catch (e) {
+					nonRecursiveFailed = true;
+				}
+				console.println('Non-recursive missing parent rejected:', nonRecursiveFailed);
+				console.println('Missing parent not created:', !fs.existsSync(base + '/missing'));
+
+				fs.writeFileSync(base + '/blocker', 'file');
+				let recursiveFileConflictFailed = false;
+				try {
+					fs.mkdirSync(base + '/blocker', { recursive: true });
+				} catch (e) {
+					recursiveFileConflictFailed = true;
+				}
+				console.println('Recursive file conflict rejected:', recursiveFileConflictFailed);
+				fs.mkdirSync(base + '/private', { mode: 0o700 });
+				console.println('Requested directory mode:', fs.statSync(base + '/private').mode.string());
+				fs.mkdirSync(base + '/recursive/private', { recursive: true, mode: 0o710 });
+				console.println('Recursive directory mode:', fs.statSync(base + '/recursive/private').mode.string());
+				fs.rmSync(base, { recursive: true });
+			`,
+			Output: []string{
+				"Non-recursive missing parent rejected: true",
+				"Missing parent not created: true",
+				"Recursive file conflict rejected: true",
+				mkdirModeLine("Requested directory mode: ", "drwx------"),
+				mkdirModeLine("Recursive directory mode: ", "drwx--x---"),
+			},
+		},
+		{
+			Name: "fs_rm_recursive_preserves_partial_failure",
+			Script: `
+				const fs = require('fs');
+				const nativeFs = require('@jsh/fs');
+				const dir = '/tmp/rm_partial_failure';
+				const firstFile = dir + '/a.txt';
+				const failingFile = dir + '/z-fail.txt';
+				const outsideFile = '/tmp/rm_partial_failure_outside.txt';
+				fs.rmSync(dir, { recursive: true, force: true });
+				fs.rmSync(outsideFile, { force: true });
+				fs.mkdirSync(dir);
+				fs.writeFileSync(firstFile, 'first');
+				fs.writeFileSync(failingFile, 'failure');
+				fs.writeFileSync(outsideFile, 'outside');
+
+				const originalUnlink = nativeFs.unlink;
+				nativeFs.unlink = function(path) {
+					if (path === nativeFs.resolvePath(failingFile)) {
+						const error = new Error('injected unlink failure');
+						error.code = 'EIO';
+						throw error;
+					}
+					return originalUnlink(path);
+				};
+
+				let failureCode = '';
+				let failureSyscall = '';
+				let failurePath = '';
+				try {
+					fs.rmSync(dir, { recursive: true, force: true });
+				} catch (e) {
+					failureCode = e.code;
+					failureSyscall = e.syscall;
+					failurePath = e.path;
+				} finally {
+					nativeFs.unlink = originalUnlink;
+				}
+				console.println('Failure preserved:', failureCode, failureSyscall, failurePath);
+				console.println('Earlier entry removed:', !fs.existsSync(firstFile));
+				console.println('Failed entry preserved:', fs.readFileSync(failingFile, 'utf8'));
+				console.println('Directory preserved:', fs.existsSync(dir));
+				console.println('Outside entry preserved:', fs.readFileSync(outsideFile, 'utf8'));
+				fs.rmSync(dir, { recursive: true });
+				fs.unlinkSync(outsideFile);
+			`,
+			Output: []string{
+				"Failure preserved: EIO unlink /tmp/rm_partial_failure/z-fail.txt",
+				"Earlier entry removed: true",
+				"Failed entry preserved: failure",
+				"Directory preserved: true",
+				"Outside entry preserved: outside",
+			},
+		},
+		{
+			Name: "fs_rm_symlink_preserves_directory_target",
+			Script: `
+				const fs = require('fs');
+				const target = '/tmp/rm_link_target';
+				const link = '/tmp/rm_link_target_link';
+				const unlinkLink = '/tmp/rm_unlink_target_link';
+				fs.rmSync(target, { recursive: true, force: true });
+				fs.rmSync(link, { recursive: true, force: true });
+				fs.rmSync(unlinkLink, { recursive: true, force: true });
+				fs.mkdirSync(target + '/nested', { recursive: true });
+				fs.writeFileSync(target + '/nested/keep.txt', 'keep');
+				fs.symlinkSync(target, unlinkLink);
+				const linkStats = fs.lstatSync(unlinkLink);
+				const targetStats = fs.statSync(unlinkLink);
+				console.println('Link stats:', linkStats.isSymbolicLink(), targetStats.isDirectory());
+				const linkEntry = fs.readdirSync('/tmp', { withFileTypes: true }).find((entry) => entry.name === 'rm_unlink_target_link');
+				console.println('Link dirent:', linkEntry.isSymbolicLink(), linkEntry.isFile());
+				fs.unlinkSync(unlinkLink);
+				console.println('Unlink target preserved:', fs.readFileSync(target + '/nested/keep.txt', 'utf8'));
+				fs.symlinkSync(target, link);
+				fs.rmSync(link, { recursive: true });
+				console.println('Link removed:', !fs.existsSync(link));
+				console.println('Target preserved:', fs.readFileSync(target + '/nested/keep.txt', 'utf8'));
+				let directoryUnlinkRejected = false;
+				try {
+					fs.unlinkSync(target);
+				} catch (e) {
+					directoryUnlinkRejected = true;
+				}
+				console.println('Directory unlink rejected:', directoryUnlinkRejected);
+				fs.rmSync(target, { recursive: true });
+			`,
+			Output: []string{
+				"Link stats: true true",
+				"Link dirent: true false",
+				"Unlink target preserved: keep",
+				"Link removed: true",
+				"Target preserved: keep",
+				"Directory unlink rejected: true",
+			},
+		},
+		{
 			Name: "fs_chown",
 			Script: `
 				const fs = require('fs');
@@ -760,6 +976,55 @@ func TestFSModule(t *testing.T) {
 			`,
 			Output: []string{
 				"Chown succeeded",
+			},
+		},
+		{
+			Name: "fs_readdir_recursive_propagates_nested_error",
+			Script: `
+				const fs = require('fs');
+				const nativeFs = require('@jsh/fs');
+				const root = '/tmp/readdir_nested_failure';
+				const target = '/tmp/readdir_nested_failure_target';
+				fs.rmSync(root, { recursive: true, force: true });
+				fs.rmSync(target, { recursive: true, force: true });
+				fs.mkdirSync(root + '/nested', { recursive: true });
+				fs.mkdirSync(target);
+				fs.writeFileSync(root + '/nested/file.txt', 'nested');
+				fs.writeFileSync(target + '/target.txt', 'target');
+				fs.symlinkSync(target, root + '/link');
+
+				const originalReadDir = nativeFs.readDir;
+				nativeFs.readDir = function(path) {
+					if (path === nativeFs.resolvePath(root + '/nested')) {
+						const error = new Error('injected readdir failure');
+						error.code = 'EIO';
+						throw error;
+					}
+					return originalReadDir(path);
+				};
+
+				let failureCode = '';
+				let failurePath = '';
+				try {
+					fs.readdirSync(root, { recursive: true });
+				} catch (e) {
+					failureCode = e.code;
+					failurePath = e.path;
+				} finally {
+					nativeFs.readDir = originalReadDir;
+				}
+				console.println('Nested readdir error preserved:', failureCode, failurePath);
+
+				const entries = fs.readdirSync(root, { recursive: true });
+				console.println('Symlink listed:', entries.includes('link'));
+				console.println('Symlink target not traversed:', !entries.includes('link/target.txt'));
+				fs.rmSync(root, { recursive: true });
+				fs.rmSync(target, { recursive: true });
+			`,
+			Output: []string{
+				"Nested readdir error preserved: EIO /tmp/readdir_nested_failure/nested",
+				"Symlink listed: true",
+				"Symlink target not traversed: true",
 			},
 		},
 		{
@@ -915,6 +1180,80 @@ func TestFSModule(t *testing.T) {
 			},
 		},
 		{
+			Name: "fs_file_descriptor_position",
+			Script: `
+				const fs = require('fs');
+				const file = '/work/fd_position_test.txt';
+
+				fs.writeFileSync(file, 'AAAA');
+				let fd = fs.openSync(file, 'r+');
+				fs.writeSync(fd, Buffer.from('xBBBBz'), 1, 4, 4);
+				fs.closeSync(fd);
+				console.println('Write at position:', fs.readFileSync(file, 'utf8'));
+
+				fs.writeFileSync(file, 'AAAABBBBCCCC');
+				fd = fs.openSync(file, 'r+');
+				fs.writeSync(fd, Buffer.from('xXXXXz'), 1, 4, 4);
+				fs.writeSync(fd, 'YYYY', null);
+				fs.closeSync(fd);
+				console.println('Positioned write preserves cursor:', fs.readFileSync(file, 'utf8'));
+
+				fs.writeFileSync(file, 'AAAABBBBCCCC');
+				fd = fs.openSync(file, 'r');
+				const buffer = Buffer.alloc(4);
+				const positionedRead = fs.readSync(fd, buffer, 0, 4, 4);
+				console.println('Read at position:', String.fromCharCode(...buffer.subarray(0, positionedRead)));
+				const sequentialRead = fs.readSync(fd, buffer, 0, 4, null);
+				console.println('Positioned read preserves cursor:', String.fromCharCode(...buffer.subarray(0, sequentialRead)));
+
+				fs.readSync(fd, buffer, 0, 4, 0);
+				const zeroRead = fs.readSync(fd, buffer, 0, 0, 0);
+				console.println('Zero-length read:', zeroRead);
+				let invalidReadCode = '';
+				try {
+					fs.readSync(fd, buffer, 0, 5, 0);
+				} catch (e) {
+					invalidReadCode = e.code;
+				}
+				console.println('Invalid read range rejected:', invalidReadCode);
+				const readAfterZero = fs.readSync(fd, buffer, 0, 4);
+				console.println('Position zero preserves cursor:', String.fromCharCode(...buffer.subarray(0, readAfterZero)));
+				fs.closeSync(fd);
+
+				fs.writeFileSync(file, new Uint8Array(1024 * 1024).fill(65));
+				fd = fs.openSync(file, 'r+');
+				const tail = new Uint8Array(481365).fill(66);
+				fs.writeSync(fd, tail, 0, tail.length, 1024 * 1024);
+				fs.closeSync(fd);
+				console.println('Multipart file size:', fs.statSync(file).size);
+
+				fs.writeFileSync(file, '');
+				fd = fs.openSync(file, 'r+');
+				fs.writeSync(fd, [65, 66]);
+				fs.closeSync(fd);
+				console.println('Array write:', fs.readFileSync(file, 'utf8'));
+
+				fs.writeFileSync(file, 'append');
+				fd = fs.openSync(file, 'a');
+				fs.writeSync(fd, '!', 0);
+				fs.closeSync(fd);
+				console.println('Append ignores position:', fs.readFileSync(file, 'utf8'));
+				fs.unlinkSync(file);
+			`,
+			Output: []string{
+				"Write at position: AAAABBBB",
+				"Positioned write preserves cursor: YYYYXXXXCCCC",
+				"Read at position: BBBB",
+				"Positioned read preserves cursor: AAAA",
+				"Zero-length read: 0",
+				"Invalid read range rejected: ERR_OUT_OF_RANGE",
+				"Position zero preserves cursor: BBBB",
+				"Multipart file size: 1529941",
+				"Array write: AB",
+				"Append ignores position: append!",
+			},
+		},
+		{
 			Name: "fs_fchmod_fchown",
 			Script: `
 				const fs = require('fs');
@@ -970,7 +1309,7 @@ func TestFSModule(t *testing.T) {
 				}
 
 				try {
-					const buffer = new Array(100);
+					const buffer = new Uint8Array(100);
 					fs.readSync(999, buffer, 0, 100);
 					console.println('readSync with bad fd: unexpected success');
 				} catch (e) {
@@ -1171,6 +1510,26 @@ func TestFSModule(t *testing.T) {
 					console.println('R_OK: no read permission');
 				}
 
+				fs.chmodSync('/work/access_test.txt', 0o444);
+				try {
+					fs.accessSync('/work/access_test.txt', fs.constants.W_OK);
+					console.println('W_OK: granted');
+				} catch (e) {
+					console.println('W_OK: access denied, code:', e.code);
+				}
+				try {
+					fs.accessSync('/work/access_test.txt', fs.constants.X_OK);
+					console.println('X_OK: granted');
+				} catch (e) {
+					console.println('X_OK: access denied, code:', e.code);
+				}
+				try {
+					fs.accessSync('/work/access_test.txt', 8);
+					console.println('Invalid access mode: unexpected success');
+				} catch (e) {
+					console.println('Invalid access mode: error, code:', e.code);
+				}
+
 				// Cleanup
 				fs.unlinkSync('/work/access_test.txt');
 				console.println('=== Test Complete ===');
@@ -1180,6 +1539,9 @@ func TestFSModule(t *testing.T) {
 				"F_OK: file exists",
 				"Nonexistent file: error as expected, code: ENOENT",
 				"R_OK: read permission granted",
+				accessCheckWriteDeniedLine(),
+				accessCheckExecuteLine(),
+				"Invalid access mode: error, code: EINVAL",
 				"=== Test Complete ===",
 			},
 		},
@@ -1213,6 +1575,19 @@ func TestFSModule(t *testing.T) {
 				const content = fs.readFileSync('/work/truncate_test.txt', 'utf8');
 				console.println('Content after truncate:', content);
 
+				fs.truncateSync('/work/truncate_test.txt', 14);
+				const expanded = fs.readFileSync('/work/truncate_test.txt', { encoding: null });
+				console.println('Expanded size:', expanded.length);
+				console.println('Expanded bytes zero-filled:', expanded[11] === 0 && expanded[13] === 0);
+
+				let negativeLengthRejected = false;
+				try {
+					fs.truncateSync('/work/truncate_test.txt', -1);
+				} catch (e) {
+					negativeLengthRejected = true;
+				}
+				console.println('Negative length rejected:', negativeLengthRejected);
+
 				// Cleanup
 				fs.unlinkSync('/work/truncate_test.txt');
 				console.println('=== Test Complete ===');
@@ -1224,6 +1599,9 @@ func TestFSModule(t *testing.T) {
 				"After write, size: 17",
 				"After truncate to 11, size: 11",
 				"Content after truncate: New content",
+				"Expanded size: 14",
+				"Expanded bytes zero-filled: true",
+				"Negative length rejected: true",
 				"=== Test Complete ===",
 			},
 		},
@@ -1234,13 +1612,51 @@ func TestFSModule(t *testing.T) {
 
 				console.println('=== Testing Realpath ===');
 
+				fs.rmSync('/work/realpath_dir', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_dir_link', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_link.txt', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_relative_link.txt', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_dir/relative_up_link', { force: true });
+				fs.rmSync('/work/realpath_mount_link', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_cycle_a', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_cycle_b', { recursive: true, force: true });
+				fs.rmSync('/work/realpath_test.txt', { recursive: true, force: true });
+				fs.rmSync('/tmp/realpath_mount_target.txt', { recursive: true, force: true });
+
 				// Create test file and symlink
 				fs.writeFileSync('/work/realpath_test.txt', 'test');
+				fs.mkdirSync('/work/realpath_dir');
+				fs.writeFileSync('/work/realpath_dir/data.txt', 'nested');
+				fs.symlinkSync('../realpath_test.txt', '/work/realpath_dir/relative_up_link');
+				fs.symlinkSync('/work/realpath_dir', '/work/realpath_dir_link');
 				fs.symlinkSync('/work/realpath_test.txt', '/work/realpath_link.txt');
+				fs.symlinkSync('realpath_test.txt', '/work/realpath_relative_link.txt');
+				fs.writeFileSync('/tmp/realpath_mount_target.txt', 'mounted');
+				fs.symlinkSync('/tmp/realpath_mount_target.txt', '/work/realpath_mount_link');
+				fs.symlinkSync('/work/realpath_cycle_b', '/work/realpath_cycle_a');
+				fs.symlinkSync('/work/realpath_cycle_a', '/work/realpath_cycle_b');
 
 				// Get realpath of symlink
 				const realpath = fs.realpathSync('/work/realpath_link.txt');
 				console.println('Realpath of symlink:', realpath);
+				console.println('Realpath through directory link:', fs.realpathSync('/work/realpath_dir_link/data.txt'));
+				console.println('Realpath of relative link:', fs.realpathSync('/work/realpath_relative_link.txt'));
+				console.println('Realpath of parent-relative link:', fs.realpathSync('/work/realpath_dir/relative_up_link'));
+				console.println('Realpath across mounts:', fs.realpathSync('/work/realpath_mount_link'));
+				let cycleCode = '';
+				try {
+					fs.realpathSync('/work/realpath_cycle_a');
+				} catch (e) {
+					cycleCode = e.code;
+				}
+				console.println('Realpath cycle:', cycleCode);
+				let missingCode = '';
+				try {
+					fs.realpathSync('/work/realpath_missing.txt');
+				} catch (e) {
+					missingCode = e.code;
+				}
+				console.println('Realpath missing:', missingCode);
 
 				// Get realpath of regular file
 				const realpath2 = fs.realpathSync('/work/realpath_test.txt');
@@ -1248,14 +1664,209 @@ func TestFSModule(t *testing.T) {
 
 				// Cleanup
 				fs.unlinkSync('/work/realpath_link.txt');
+				fs.unlinkSync('/work/realpath_dir_link');
+				fs.unlinkSync('/work/realpath_relative_link.txt');
+				fs.unlinkSync('/work/realpath_dir/relative_up_link');
+				fs.unlinkSync('/work/realpath_mount_link');
+				fs.unlinkSync('/work/realpath_cycle_a');
+				fs.unlinkSync('/work/realpath_cycle_b');
+				fs.unlinkSync('/work/realpath_dir/data.txt');
+				fs.rmdirSync('/work/realpath_dir');
 				fs.unlinkSync('/work/realpath_test.txt');
+				fs.unlinkSync('/tmp/realpath_mount_target.txt');
 				console.println('=== Test Complete ===');
 			`,
 			Output: []string{
 				"=== Testing Realpath ===",
-				"Realpath of symlink: /work/realpath_link.txt",
+				"Realpath of symlink: /work/realpath_test.txt",
+				"Realpath through directory link: /work/realpath_dir/data.txt",
+				"Realpath of relative link: /work/realpath_test.txt",
+				"Realpath of parent-relative link: /work/realpath_test.txt",
+				"Realpath across mounts: /tmp/realpath_mount_target.txt",
+				"Realpath cycle: ELOOP",
+				"Realpath missing: ENOENT",
 				"Realpath of regular file: /work/realpath_test.txt",
 				"=== Test Complete ===",
+			},
+		},
+		{
+			Name: "fs_native_error_code",
+			Script: `
+				const fs = require('fs');
+				const file = '/lib/fs_native_error_code_probe.txt';
+				fs.writeFileSync(file, 'x');
+				let code = '';
+				let errno = 0;
+				try {
+					fs.truncateSync(file, 2 * 1024 * 1024 * 1024);
+				} catch (e) {
+					code = e.code;
+					errno = e.errno;
+				}
+				const size = fs.statSync(file).size;
+				fs.unlinkSync(file);
+				console.println(code, errno, size);
+			`,
+			Output: []string{
+				"EFBIG -27 1",
+			},
+		},
+		{
+			Name: "fs_descriptor_error_codes",
+			Script: `
+				const fs = require('fs');
+				function codeOf(fn) {
+					try {
+						fn();
+						return 'ok';
+					} catch (e) {
+						return e.code + ' ' + e.errno + ' ' + e.syscall + ' ' + (e.path === undefined);
+					}
+				}
+				const dir = '/tmp/fs_descriptor_error_codes_dir';
+				fs.mkdirSync(dir, { recursive: true });
+				const dirFD = fs.openSync(dir, 'r');
+				if (fs.platform() === 'windows') {
+					console.println('read dir: skipped');
+				} else {
+					console.println('read dir:', codeOf(() => fs.readSync(dirFD, new Uint8Array(4), 0, 4)));
+				}
+				fs.closeSync(dirFD);
+
+				const roFD = fs.openSync('/usr/lib/opts.js', 'r');
+				console.println('write readonly:', codeOf(() => fs.writeSync(roFD, 'x')));
+				console.println('fsync readonly:', codeOf(() => fs.fsyncSync(roFD)));
+				fs.closeSync(roFD);
+
+				console.println('read bad fd:', codeOf(() => fs.readSync(999, new Uint8Array(1), 0, 1)));
+				console.println('write bad fd:', codeOf(() => fs.writeSync(999, 'x')));
+				console.println('close bad fd:', codeOf(() => fs.closeSync(999)));
+			`,
+			Output: []string{
+				descriptorReadDirectoryLine(),
+				"write readonly: EBADF -9 write true",
+				"fsync readonly: ENOTSUP -95 fsync true",
+				"read bad fd: EBADF -9 read true",
+				"write bad fd: EBADF -9 write true",
+				"close bad fd: EBADF -9 close true",
+			},
+		},
+		{
+			Name: "fs_error_mapping",
+			Script: `
+				const fs = require('fs');
+				const file = '/work/fs_error_mapping_file';
+				const emptyDirectory = '/work/fs_error_mapping_empty_dir';
+				fs.rmSync(file, { recursive: true, force: true });
+				fs.rmSync(emptyDirectory, { recursive: true, force: true });
+				fs.writeFileSync(file, 'content');
+				fs.mkdirSync(emptyDirectory);
+
+				let statCode = '';
+				try {
+					fs.statSync(file + '/child');
+				} catch (e) {
+					statCode = e.code;
+				}
+				let openCode = '';
+				try {
+					fs.openSync(file + '/child', 'r');
+				} catch (e) {
+					openCode = e.code;
+				}
+				let lstatCode = '';
+				try {
+					fs.lstatSync(file + '/child');
+				} catch (e) {
+					lstatCode = e.code;
+				}
+				let readlinkCode = '';
+				try {
+					fs.readlinkSync(file);
+				} catch (e) {
+					readlinkCode = e.code;
+				}
+				let readdirCode = '';
+				try {
+					fs.readdirSync(file);
+				} catch (e) {
+					readdirCode = e.code;
+				}
+				let mkdirCode = '';
+				try {
+					fs.mkdirSync(file);
+				} catch (e) {
+					mkdirCode = e.code;
+				}
+				let unlinkCode = '';
+				try {
+					fs.unlinkSync(file + '-missing');
+				} catch (e) {
+					unlinkCode = e.code;
+				}
+				let symlinkCode = '';
+				try {
+					fs.symlinkSync('/work/unused-target', file);
+				} catch (e) {
+					symlinkCode = e.code;
+				}
+				let renameCode = '';
+				try {
+					fs.renameSync(file + '-missing', file + '-renamed');
+				} catch (e) {
+					renameCode = e.code;
+				}
+				let readOnlyWriteCode = '';
+				try {
+					fs.writeFileSync('/usr/fs_error_mapping_readonly.txt', 'content');
+				} catch (e) {
+					readOnlyWriteCode = e.code;
+				}
+				let rmdirFileCode = '';
+				try {
+					fs.rmdirSync(file);
+				} catch (e) {
+					rmdirFileCode = e.code;
+				}
+				let unlinkDirectoryCode = '';
+				try {
+					fs.unlinkSync(emptyDirectory);
+				} catch (e) {
+					unlinkDirectoryCode = e.code;
+				}
+
+				console.println('stat through file:', statCode);
+				console.println('open through file:', openCode);
+				console.println('lstat through file:', lstatCode);
+				console.println('readlink regular file:', readlinkCode);
+				console.println('readdir regular file:', readdirCode);
+				console.println('mkdir over regular file:', mkdirCode);
+				console.println('unlink missing file:', unlinkCode);
+				console.println('symlink over regular file:', symlinkCode);
+				console.println('rename missing file:', renameCode);
+				console.println('write to read-only mount:', readOnlyWriteCode);
+				console.println('rmdir regular file:', rmdirFileCode);
+				console.println('rmdir file preserved:', fs.existsSync(file));
+				console.println('unlink empty directory:', unlinkDirectoryCode);
+				console.println('unlink directory preserved:', fs.existsSync(emptyDirectory));
+				fs.rmSync(file, { recursive: true, force: true });
+				fs.rmSync(emptyDirectory, { recursive: true, force: true });
+			`,
+			Output: []string{
+				"stat through file: " + throughFileCode(),
+				"open through file: " + throughFileCode(),
+				"lstat through file: " + throughFileCode(),
+				"readlink regular file: EINVAL",
+				"readdir regular file: ENOTDIR",
+				"mkdir over regular file: EEXIST",
+				"unlink missing file: ENOENT",
+				"symlink over regular file: EEXIST",
+				"rename missing file: ENOENT",
+				"write to read-only mount: EACCES",
+				"rmdir regular file: ENOTDIR",
+				"rmdir file preserved: true",
+				"unlink empty directory: EISDIR",
+				"unlink directory preserved: true",
 			},
 		},
 		{
@@ -1554,6 +2165,7 @@ func TestFSModule(t *testing.T) {
 					console.println('Name:', entry.name);
 					console.println('  isFile:', entry.isFile());
 					console.println('  isDirectory:', entry.isDirectory());
+					console.println('  isSymbolicLink:', entry.isSymbolicLink());
 				});
 
 				// Cleanup
@@ -1568,12 +2180,15 @@ func TestFSModule(t *testing.T) {
 				"Name: file.txt",
 				"  isFile: true",
 				"  isDirectory: false",
+				"  isSymbolicLink: false",
 				"Name: link.txt",
-				"  isFile: true",
+				"  isFile: false",
 				"  isDirectory: false",
+				"  isSymbolicLink: true",
 				"Name: subdir",
 				"  isFile: false",
 				"  isDirectory: true",
+				"  isSymbolicLink: false",
 				"=== Test Complete ===",
 			},
 		},
@@ -1904,4 +2519,43 @@ func TestFSUTF8Regression(t *testing.T) {
 	for _, tc := range tests {
 		test_engine.RunTest(t, tc)
 	}
+}
+
+// chmod is a no-op on Windows, so the file stays writable there.
+func accessCheckWriteDeniedLine() string {
+	if runtime.GOOS == "windows" {
+		return "W_OK: granted"
+	}
+	return "W_OK: access denied, code: EACCES"
+}
+
+// Windows directories carry no POSIX permission bits.
+func mkdirModeLine(prefix, mode string) string {
+	if runtime.GOOS == "windows" {
+		return prefix + "drwxrwxrwx"
+	}
+	return prefix + mode
+}
+
+// Win32 reports a non-directory parent as ERROR_PATH_NOT_FOUND, which
+// Node.js (libuv) maps to ENOENT.
+func throughFileCode() string {
+	if runtime.GOOS == "windows" {
+		return "ENOENT"
+	}
+	return "ENOTDIR"
+}
+
+func descriptorReadDirectoryLine() string {
+	if runtime.GOOS == "windows" {
+		return "read dir: skipped"
+	}
+	return "read dir: EISDIR -21 read true"
+}
+
+func accessCheckExecuteLine() string {
+	if runtime.GOOS == "windows" {
+		return "X_OK: granted"
+	}
+	return "X_OK: access denied, code: EACCES"
 }

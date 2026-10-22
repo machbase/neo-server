@@ -19,10 +19,13 @@ func controllerBuiltinRPCMethods(ctl *Controller) map[string]any {
 		"fs.readDir":                    ctl.rpcFSReadDir,
 		"fs.readFile":                   ctl.rpcFSReadFile,
 		"fs.writeFile":                  ctl.rpcFSWriteFile,
+		"fs.truncate":                   ctl.rpcFSTruncate,
 		"fs.chmod":                      ctl.rpcFSChmod,
 		"fs.chown":                      ctl.rpcFSChown,
 		"fs.mkdir":                      ctl.rpcFSMkdir,
+		"fs.rmdir":                      ctl.rpcFSRmdir,
 		"fs.remove":                     ctl.rpcFSRemove,
+		"fs.unlink":                     ctl.rpcFSUnlink,
 		"fs.rename":                     ctl.rpcFSRename,
 		"fs.open":                       ctl.rpcFSOpen,
 		"fs.read":                       ctl.rpcFSRead,
@@ -160,6 +163,13 @@ func (ctl *Controller) rpcFSWriteFile(req sharedWriteFileRequest) (SharedFileInf
 	return info, nil
 }
 
+func (ctl *Controller) rpcFSTruncate(req sharedTruncateRequest) (bool, error) {
+	if err := ctl.sharedTruncate(req.Path, req.Size); err != nil {
+		return false, mapSharedFSError(err)
+	}
+	return true, nil
+}
+
 func (ctl *Controller) rpcFSChmod(req sharedChmodRequest) (bool, error) {
 	if err := ctl.sharedChmod(req.Path, req.Mode); err != nil {
 		return false, mapSharedFSError(err)
@@ -174,8 +184,12 @@ func (ctl *Controller) rpcFSChown(req sharedChownRequest) (bool, error) {
 	return true, nil
 }
 
-func (ctl *Controller) rpcFSMkdir(req sharedPathRequest) (SharedFileInfoSnapshot, error) {
-	if err := ctl.sharedMkdir(req.Path); err != nil {
+func (ctl *Controller) rpcFSMkdir(req sharedMkdirRequest) (SharedFileInfoSnapshot, error) {
+	mode := uint32(0755)
+	if req.Mode != nil {
+		mode = *req.Mode
+	}
+	if err := ctl.sharedMkdir(req.Path, mode); err != nil {
 		return SharedFileInfoSnapshot{}, mapSharedFSError(err)
 	}
 	info, err := ctl.sharedStat(req.Path)
@@ -185,8 +199,22 @@ func (ctl *Controller) rpcFSMkdir(req sharedPathRequest) (SharedFileInfoSnapshot
 	return info, nil
 }
 
+func (ctl *Controller) rpcFSRmdir(req sharedPathRequest) (bool, error) {
+	if err := ctl.sharedRmdir(req.Path); err != nil {
+		return false, mapSharedFSError(err)
+	}
+	return true, nil
+}
+
 func (ctl *Controller) rpcFSRemove(req sharedPathRequest) (bool, error) {
 	if err := ctl.sharedRemove(req.Path); err != nil {
+		return false, mapSharedFSError(err)
+	}
+	return true, nil
+}
+
+func (ctl *Controller) rpcFSUnlink(req sharedPathRequest) (bool, error) {
+	if err := ctl.sharedUnlink(req.Path); err != nil {
 		return false, mapSharedFSError(err)
 	}
 	return true, nil
@@ -212,7 +240,7 @@ func (ctl *Controller) rpcFSOpen(req sharedOpenFDRequest) (SharedOpenFDResult, e
 }
 
 func (ctl *Controller) rpcFSRead(req sharedReadFDRequest) (SharedReadFDResult, error) {
-	result, err := ctl.sharedReadFD(req.FD, req.Length)
+	result, err := ctl.sharedReadFD(req.FD, req.Length, req.Position)
 	if err != nil {
 		return SharedReadFDResult{}, mapSharedFSError(err)
 	}
@@ -224,7 +252,7 @@ func (ctl *Controller) rpcFSWrite(req sharedWriteFDRequest) (SharedWriteFDResult
 	if err != nil {
 		return SharedWriteFDResult{}, invalidParamsError(err)
 	}
-	result, err := ctl.sharedWriteFD(req.FD, data)
+	result, err := ctl.sharedWriteFD(req.FD, data, req.Position)
 	if err != nil {
 		return SharedWriteFDResult{}, mapSharedFSError(err)
 	}

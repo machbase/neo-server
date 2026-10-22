@@ -57,7 +57,7 @@ function doGen(config, args) {
                 const basePath = path.resolve(output);
                 const certPath = `${basePath}_cert.pem`;
                 const keyPath = `${basePath}_key.pem`;
-                fs.mkdirSync(basePath);
+                fs.mkdirSync(basePath, { recursive: true });
                 fs.writeFileSync(certPath, certificate);
                 fs.writeFileSync(keyPath, key);
 

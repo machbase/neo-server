@@ -228,11 +228,29 @@ func (ctl *Controller) sharedBackendPath(name string) string {
 	return engine.CleanPath(path.Join(ctl.backendDir, strings.TrimPrefix(name, "/")))
 }
 
-func (ctl *Controller) persistSharedMkdir(name string) error {
+func (ctl *Controller) persistSharedMkdir(name string, mode uint32) error {
 	if ctl.backendDir == "" {
 		return nil
 	}
-	return ctl.fs.Mkdir(ctl.sharedBackendPath(name))
+	return ctl.fs.MkdirMode(ctl.sharedBackendPath(name), mode)
+}
+
+func (ctl *Controller) persistSharedRmdir(name string) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	target := ctl.sharedBackendPath(name)
+	info, err := ctl.fs.Lstat(target)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return &fs.PathError{Op: "rmdir", Path: target, Err: fs.ErrInvalid}
+	}
+	return ctl.fs.Rmdir(target)
 }
 
 func (ctl *Controller) persistSharedWriteFile(name string, data []byte) error {
@@ -241,11 +259,18 @@ func (ctl *Controller) persistSharedWriteFile(name string, data []byte) error {
 	}
 	parent := path.Dir(ctl.sharedBackendPath(name))
 	if parent != "/" {
-		if err := ctl.fs.Mkdir(parent); err != nil {
+		if err := ctl.fs.MkdirAll(parent); err != nil {
 			return err
 		}
 	}
 	return ctl.fs.WriteFile(ctl.sharedBackendPath(name), data)
+}
+
+func (ctl *Controller) persistSharedTruncate(name string, size int64) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	return ctl.fs.Truncate(ctl.sharedBackendPath(name), size)
 }
 
 func (ctl *Controller) persistSharedAppendFile(name string, data []byte) error {
@@ -254,7 +279,7 @@ func (ctl *Controller) persistSharedAppendFile(name string, data []byte) error {
 	}
 	parent := path.Dir(ctl.sharedBackendPath(name))
 	if parent != "/" {
-		if err := ctl.fs.Mkdir(parent); err != nil {
+		if err := ctl.fs.MkdirAll(parent); err != nil {
 			return err
 		}
 	}
@@ -266,7 +291,7 @@ func (ctl *Controller) persistSharedRemove(name string) error {
 		return nil
 	}
 	target := ctl.sharedBackendPath(name)
-	info, err := ctl.fs.Stat(target)
+	info, err := ctl.fs.Lstat(target)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
@@ -283,13 +308,31 @@ func (ctl *Controller) persistSharedRemove(name string) error {
 	return ctl.fs.Remove(target)
 }
 
+func (ctl *Controller) persistSharedUnlink(name string) error {
+	if ctl.backendDir == "" {
+		return nil
+	}
+	target := ctl.sharedBackendPath(name)
+	info, err := ctl.fs.Lstat(target)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if info.IsDir() {
+		return &fs.PathError{Op: "unlink", Path: target, Err: fs.ErrInvalid}
+	}
+	return ctl.fs.Unlink(target)
+}
+
 func (ctl *Controller) persistSharedRename(oldName string, newName string) error {
 	if ctl.backendDir == "" {
 		return nil
 	}
 	parent := path.Dir(ctl.sharedBackendPath(newName))
 	if parent != "/" {
-		if err := ctl.fs.Mkdir(parent); err != nil {
+		if err := ctl.fs.MkdirAll(parent); err != nil {
 			return err
 		}
 	}

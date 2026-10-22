@@ -1381,6 +1381,34 @@ func cleanupDatabase(t *testing.T, dsn, dbName string) {
 	}
 }
 
+// dropDatabaseWhenIdle drops dbName on a dedicated session switched back to
+// MACHBASEDB. Sessions closed just before (e.g. a pool opened with
+// database=<dbName>) are released by the server asynchronously, so the drop is
+// retried while the server still reports the database as in use.
+func dropDatabaseWhenIdle(db *sql.DB, dbName string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "USE MACHBASEDB"); err != nil {
+		return err
+	}
+	for {
+		_, err = conn.ExecContext(ctx, "DROP DATABASE "+dbName+" CASCADE")
+		if err == nil || !strings.Contains(err.Error(), "active sessions or statements") {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
 func TestMachbaseSQLCompatibilityDatabase(t *testing.T) {
 	dsn := fmt.Sprintf("server=127.0.0.1:%d;user=sys;password=manager;fetch_rows=100", testServer.MachPort())
 	db, err := sql.Open("machbase", dsn)
@@ -1393,15 +1421,17 @@ func TestMachbaseSQLCompatibilityDatabase(t *testing.T) {
 	_, err = db.ExecContext(t.Context(), "CREATE DATABASE IF NOT EXISTS testdb")
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, err = db.ExecContext(context.Background(), "USE MACHBASEDB")
-		require.NoError(t, err)
-		_, err = db.ExecContext(context.Background(), "DROP DATABASE testdb CASCADE")
-		require.NoError(t, err)
+		require.NoError(t, dropDatabaseWhenIdle(db, "testdb", 10*time.Second))
 	})
 
 	dbConn, err := db.Conn(t.Context())
 	require.NoError(t, err)
-	defer dbConn.Close()
+	defer func() {
+		// Return the session to the pool without a reference to testdb.
+		_, err := dbConn.ExecContext(context.Background(), "USE MACHBASEDB")
+		require.NoError(t, err)
+		require.NoError(t, dbConn.Close())
+	}()
 
 	_, err = dbConn.ExecContext(t.Context(), "USE testdb")
 	require.NoError(t, err)

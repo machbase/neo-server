@@ -19,14 +19,14 @@ function ensureParentDir(targetPath) {
 }
 
 function toWritableBytes(data) {
-    if (data instanceof Uint8Array) {
-        return Array.from(data);
+    if (ArrayBuffer.isView(data)) {
+        return data;
     }
     if (data instanceof ArrayBuffer) {
-        return Array.from(new Uint8Array(data));
+        return new Uint8Array(data);
     }
     if (Array.isArray(data)) {
-        return data;
+        return Uint8Array.from(data);
     }
     return data;
 }

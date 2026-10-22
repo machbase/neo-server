@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/dop251/goja"
@@ -31,8 +32,24 @@ type mkdirFS interface {
 	Mkdir(name string) error
 }
 
+type mkdirModeFS interface {
+	MkdirMode(name string, mode uint32) error
+}
+
+type truncateFS interface {
+	Truncate(name string, size int64) error
+}
+
+type rmdirFS interface {
+	Rmdir(name string) error
+}
+
 type removeFS interface {
 	Remove(name string) error
+}
+
+type unlinkFS interface {
+	Unlink(name string) error
 }
 
 type renameFS interface {
@@ -57,7 +74,9 @@ type readlinkFS interface {
 
 type fdHandle interface {
 	io.Reader
+	io.ReaderAt
 	io.Writer
+	io.WriterAt
 	io.Closer
 	Stat() (fs.FileInfo, error)
 	Sync() error
@@ -70,7 +89,8 @@ type openFDFileSystem interface {
 }
 
 type localFDHandle struct {
-	file *os.File
+	file   *os.File
+	append bool
 }
 
 func (h *localFDHandle) Read(p []byte) (int, error) {
@@ -79,6 +99,17 @@ func (h *localFDHandle) Read(p []byte) (int, error) {
 
 func (h *localFDHandle) Write(p []byte) (int, error) {
 	return h.file.Write(p)
+}
+
+func (h *localFDHandle) ReadAt(p []byte, off int64) (int, error) {
+	return h.file.ReadAt(p, off)
+}
+
+func (h *localFDHandle) WriteAt(p []byte, off int64) (int, error) {
+	if h.append {
+		return h.file.Write(p)
+	}
+	return h.file.WriteAt(p, off)
 }
 
 func (h *localFDHandle) Close() error {
@@ -108,11 +139,19 @@ type readOnlyFDHandle struct {
 
 func (h *readOnlyFDHandle) Read(p []byte) (int, error)  { return h.file.Read(p) }
 func (h *readOnlyFDHandle) Write(_ []byte) (int, error) { return 0, fs.ErrPermission }
-func (h *readOnlyFDHandle) Close() error                { return h.file.Close() }
-func (h *readOnlyFDHandle) Stat() (fs.FileInfo, error)  { return h.file.Stat() }
-func (h *readOnlyFDHandle) Sync() error                 { return nil }
-func (h *readOnlyFDHandle) Chmod(_ fs.FileMode) error   { return fs.ErrPermission }
-func (h *readOnlyFDHandle) Chown(_, _ int) error        { return fs.ErrPermission }
+func (h *readOnlyFDHandle) ReadAt(p []byte, off int64) (int, error) {
+	reader, ok := h.file.(io.ReaderAt)
+	if !ok {
+		return 0, errors.ErrUnsupported
+	}
+	return reader.ReadAt(p, off)
+}
+func (h *readOnlyFDHandle) WriteAt(_ []byte, _ int64) (int, error) { return 0, fs.ErrPermission }
+func (h *readOnlyFDHandle) Close() error                           { return h.file.Close() }
+func (h *readOnlyFDHandle) Stat() (fs.FileInfo, error)             { return h.file.Stat() }
+func (h *readOnlyFDHandle) Sync() error                            { return errors.ErrUnsupported }
+func (h *readOnlyFDHandle) Chmod(_ fs.FileMode) error              { return fs.ErrPermission }
+func (h *readOnlyFDHandle) Chown(_, _ int) error                   { return fs.ErrPermission }
 
 // FS allows mounting multiple fs.FS at different paths
 type FS struct {
@@ -231,6 +270,25 @@ func (m *FS) isVirtualMountDir(name string) bool {
 		}
 	}
 	return false
+}
+
+// isMountPoint reports whether the cleaned name is a mount point itself or an
+// implied directory created by nested mount points.
+func (m *FS) isMountPoint(name string) bool {
+	if _, ok := m.mounts[name]; ok {
+		return true
+	}
+	return m.isVirtualMountDir(name)
+}
+
+// checkNotMountPoint rejects removing a mount point with EBUSY, matching the
+// behavior of removing a mounted directory on Linux.
+func (m *FS) checkNotMountPoint(op string, name string) error {
+	name = CleanPath(name)
+	if m.isMountPoint(name) {
+		return &fs.PathError{Op: op, Path: name, Err: syscall.EBUSY}
+	}
+	return nil
 }
 
 // virtualMountDirFile represents a synthetic directory with no backing
@@ -355,7 +413,7 @@ func (m *FS) performOSOperation(name string, operation func(string) error) error
 	}
 
 	if err := operation(target); err != nil {
-		return fs.ErrInvalid
+		return err
 	}
 	return nil
 }
@@ -496,6 +554,103 @@ func (m *FS) Stat(name string) (fs.FileInfo, error) {
 	return f.Stat()
 }
 
+var errnoCodes = map[syscall.Errno]string{
+	syscall.ENOENT:       "ENOENT",
+	ErrnoNotDir:          "ENOTDIR",
+	syscall.EEXIST:       "EEXIST",
+	syscall.ENOTEMPTY:    "ENOTEMPTY",
+	syscall.EACCES:       "EACCES",
+	syscall.EPERM:        "EPERM",
+	syscall.EINVAL:       "EINVAL",
+	syscall.EISDIR:       "EISDIR",
+	syscall.ELOOP:        "ELOOP",
+	syscall.ENOTSUP:      "ENOTSUP",
+	syscall.EIO:          "EIO",
+	syscall.ENOSPC:       "ENOSPC",
+	syscall.EROFS:        "EROFS",
+	syscall.ENAMETOOLONG: "ENAMETOOLONG",
+	syscall.EFBIG:        "EFBIG",
+	syscall.EBUSY:        "EBUSY",
+	syscall.EBADF:        "EBADF",
+	syscall.EXDEV:        "EXDEV",
+}
+
+// FilesystemErrorCode returns a Node.js style error code for err, or an empty
+// string when the error cannot be classified. It relies on error identity
+// rather than message text so that platform specific messages are handled.
+func FilesystemErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		if code, ok := errnoCodes[errno]; ok {
+			return code
+		}
+		if code := platformErrnoCode(err, errno); code != "" {
+			return code
+		}
+	}
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "ENOENT"
+	case errors.Is(err, fs.ErrExist):
+		return "EEXIST"
+	case errors.Is(err, fs.ErrPermission):
+		return "EACCES"
+	case errors.Is(err, errors.ErrUnsupported):
+		return "ENOTSUP"
+	case errors.Is(err, fs.ErrInvalid):
+		return "EINVAL"
+	}
+	return ""
+}
+
+// ErrnoForCode converts a code returned by FilesystemErrorCode back to an errno
+// so that errors relayed over RPC keep their identity.
+func ErrnoForCode(code string) (syscall.Errno, bool) {
+	for errno, name := range errnoCodes {
+		if name == code {
+			return errno, true
+		}
+	}
+	return 0, false
+}
+
+func (m *FS) Access(name string, mode uint32) error {
+	const validModes = uint32(0x7)
+	if mode&^validModes != 0 {
+		return &fs.PathError{Op: "access", Path: CleanPath(name), Err: fs.ErrInvalid}
+	}
+
+	if _, _, _, hostPath, err := m.resolveHostPath(name); err == nil {
+		err = accessOS(hostPath, mode)
+		// A directory that exists only because of a nested mount is missing on
+		// the host but visible to Stat, so it is checked like a virtual directory.
+		if err == nil || !errors.Is(err, fs.ErrNotExist) || !m.isVirtualMountDir(CleanPath(name)) {
+			return err
+		}
+	}
+
+	info, err := m.Stat(name)
+	if err != nil {
+		return err
+	}
+	if mode&2 != 0 && !m.isVirtualMountDir(CleanPath(name)) {
+		if bestFS, _ := m.bestMatch(CleanPath(name)); bestFS != nil {
+			if _, ok := bestFS.(writeFileFS); !ok {
+				return &fs.PathError{Op: "access", Path: CleanPath(name), Err: fs.ErrPermission}
+			}
+		}
+	}
+	// The JSH process owns non-OS mounts, so check the owner permission bits.
+	ownerMode := fs.FileMode(mode) << 6
+	if info.Mode().Perm()&ownerMode != ownerMode {
+		return &fs.PathError{Op: "access", Path: CleanPath(name), Err: fs.ErrPermission}
+	}
+	return nil
+}
+
 func (m *FS) CountLines(name string) (int, error) {
 	name = CleanPath(name)
 	f, err := m.Open(name)
@@ -560,25 +715,94 @@ func (m *FS) ReadLines(name string) ([]string, error) {
 
 // Mkdir creates a directory at the specified path
 func (m *FS) Mkdir(name string) error {
+	return m.MkdirMode(name, 0755)
+}
+
+func (m *FS) MkdirMode(name string, mode uint32) error {
 	bestFS, relPath, err := m.resolveMount(name)
 	if err != nil {
 		return err
 	}
+	if modeFS, ok := bestFS.(mkdirModeFS); ok {
+		return modeFS.MkdirMode(relPath, mode)
+	}
 	if dirFS, ok := bestFS.(mkdirFS); ok {
 		return dirFS.Mkdir(relPath)
 	}
-	return m.performOSOperation(name, func(target string) error {
-		return os.MkdirAll(target, 0755)
-	})
+	target, err := getOSPath(bestFS, relPath)
+	if err != nil {
+		return err
+	}
+	return os.Mkdir(target, os.FileMode(mode))
+}
+
+func (m *FS) MkdirAll(name string) error {
+	name = CleanPath(name)
+	if name == "/" || name == "." {
+		return nil
+	}
+
+	current := ""
+	for _, part := range strings.Split(strings.Trim(name, "/"), "/") {
+		if part == "" || part == "." {
+			continue
+		}
+		current += "/" + part
+		if err := m.Mkdir(current); err != nil {
+			info, statErr := m.Stat(current)
+			if statErr == nil && info.IsDir() {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *FS) Truncate(name string, size int64) error {
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if fileFS, ok := bestFS.(truncateFS); ok {
+		return fileFS.Truncate(relPath, size)
+	}
+	target, err := getOSPath(bestFS, relPath)
+	if err != nil {
+		return err
+	}
+	return os.Truncate(target, size)
 }
 
 // Rmdir removes a directory at the specified path
 func (m *FS) Rmdir(name string) error {
-	return m.performOSOperation(name, os.Remove)
+	if err := m.checkNotMountPoint("rmdir", name); err != nil {
+		return err
+	}
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if dirFS, ok := bestFS.(rmdirFS); ok {
+		return dirFS.Rmdir(relPath)
+	}
+	return m.performOSOperation(name, func(target string) error {
+		info, err := os.Lstat(target)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return &fs.PathError{Op: "rmdir", Path: target, Err: ErrnoNotDir}
+		}
+		return rmdirOS(target)
+	})
 }
 
 // Remove removes a file at the specified path
 func (m *FS) Remove(name string) error {
+	if err := m.checkNotMountPoint("remove", name); err != nil {
+		return err
+	}
 	bestFS, relPath, err := m.resolveMount(name)
 	if err != nil {
 		return err
@@ -589,10 +813,62 @@ func (m *FS) Remove(name string) error {
 	return m.performOSOperation(name, os.Remove)
 }
 
+// Unlink removes a file or symbolic link without recursively removing directories.
+func (m *FS) Unlink(name string) error {
+	if err := m.checkNotMountPoint("unlink", name); err != nil {
+		return err
+	}
+	bestFS, relPath, err := m.resolveMount(name)
+	if err != nil {
+		return err
+	}
+	if fileFS, ok := bestFS.(unlinkFS); ok {
+		return fileFS.Unlink(relPath)
+	}
+	return m.performOSOperation(name, func(target string) error {
+		info, err := os.Lstat(target)
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return &fs.PathError{Op: "unlink", Path: target, Err: syscall.EISDIR}
+		}
+		return unlinkOS(target)
+	})
+}
+
+// Lstat returns file information without following a final symbolic link.
+func (m *FS) Lstat(name string) (fs.FileInfo, error) {
+	name = CleanPath(name)
+	bestFS, bestMatch := m.bestMatch(name)
+	if bestFS == nil {
+		if m.isVirtualMountDir(name) {
+			return (&virtualMountDirFile{fs: m, name: name}).Stat()
+		}
+		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fs.ErrNotExist}
+	}
+	relPath := getRelativePath(name, bestMatch)
+	if target, err := getOSPath(bestFS, relPath); err == nil {
+		info, err := os.Lstat(target)
+		if err != nil && errors.Is(err, fs.ErrNotExist) && m.isVirtualMountDir(name) {
+			return (&virtualMountDirFile{fs: m, name: name}).Stat()
+		}
+		return info, err
+	}
+	info, err := fs.Stat(bestFS, relPath)
+	if err != nil && errors.Is(err, fs.ErrNotExist) && m.isVirtualMountDir(name) {
+		return (&virtualMountDirFile{fs: m, name: name}).Stat()
+	}
+	return info, err
+}
+
 // Rename renames a file or directory from oldName to newName
 func (m *FS) Rename(oldName, newName string) error {
 	oldName = CleanPath(oldName)
 	newName = CleanPath(newName)
+	if m.isMountPoint(oldName) || m.isMountPoint(newName) {
+		return &os.LinkError{Op: "rename", Old: oldName, New: newName, Err: syscall.EBUSY}
+	}
 
 	// Find the longest matching mount point for oldName
 	oldFS, oldMatch := m.bestMatch(oldName)
@@ -608,7 +884,7 @@ func (m *FS) Rename(oldName, newName string) error {
 
 	// Ensure both paths are on the same filesystem
 	if oldFS != newFS {
-		return fs.ErrInvalid
+		return &os.LinkError{Op: "rename", Old: oldName, New: newName, Err: syscall.EXDEV}
 	}
 
 	oldRelPath := getRelativePath(oldName, oldMatch)
@@ -628,7 +904,7 @@ func (m *FS) Rename(oldName, newName string) error {
 	}
 
 	if err := os.Rename(oldTarget, newTarget); err != nil {
-		return fs.ErrInvalid
+		return err
 	}
 	return nil
 }
@@ -714,13 +990,23 @@ func (m *FS) Chown(name string, uid, gid int) error {
 
 // Symlink creates a symbolic link from newName to oldName
 func (m *FS) Symlink(oldName, newName string) error {
-	_, _, _, hostTarget, err := m.resolveHostPath(oldName)
-	if err != nil {
-		return err
-	}
 	_, _, _, hostLink, err := m.resolveHostPath(newName)
 	if err != nil {
 		return err
+	}
+	var hostTarget string
+	if strings.HasPrefix(oldName, "/") {
+		_, _, _, hostTarget, err = m.resolveHostPath(oldName)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Keep relative targets relative, but do not allow them to point outside mounted roots.
+		hostTarget = filepath.FromSlash(oldName)
+		resolved := filepath.Join(filepath.Dir(hostLink), hostTarget)
+		if _, err := m.mapHostPathToVirtual(resolved); err != nil {
+			return &fs.PathError{Op: "symlink", Path: CleanPath(newName), Err: fs.ErrPermission}
+		}
 	}
 	return os.Symlink(hostTarget, hostLink)
 }
@@ -776,7 +1062,7 @@ func (m *FS) OpenFD(name string, flags int, mode uint32) (int, error) {
 		defer m.fdMu.Unlock()
 		fd := m.nextFD
 		m.nextFD++
-		m.fds[fd] = &localFDHandle{file: file}
+		m.fds[fd] = &localFDHandle{file: file, append: flags&os.O_APPEND != 0}
 		return fd, nil
 	}
 
@@ -794,7 +1080,7 @@ func (m *FS) OpenFD(name string, flags int, mode uint32) (int, error) {
 		return fd, nil
 	}
 
-	return -1, fs.ErrPermission
+	return -1, errors.ErrUnsupported
 }
 
 // CloseFD closes a file descriptor
@@ -844,7 +1130,7 @@ func (m *FS) ReadFD(fd int, buffer []byte, offset int, length int) (int, error) 
 		return 0, fs.ErrInvalid
 	}
 
-	if offset < 0 || length < 0 || offset+length > len(buffer) {
+	if offset < 0 || length < 0 || offset > len(buffer) || length > len(buffer)-offset {
 		return 0, fs.ErrInvalid
 	}
 
@@ -853,6 +1139,26 @@ func (m *FS) ReadFD(fd int, buffer []byte, offset int, length int) (int, error) 
 		return 0, err
 	}
 
+	return n, nil
+}
+
+// ReadAtFD reads from a file descriptor at a byte offset without changing its current position.
+func (m *FS) ReadAtFD(fd int, buffer []byte, offset int, length int, position int64) (int, error) {
+	m.fdMu.Lock()
+	file, ok := m.fds[fd]
+	m.fdMu.Unlock()
+
+	if !ok {
+		return 0, fs.ErrInvalid
+	}
+	if offset < 0 || length < 0 || offset > len(buffer) || length > len(buffer)-offset || position < 0 {
+		return 0, fs.ErrInvalid
+	}
+
+	n, err := file.ReadAt(buffer[offset:offset+length], position)
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
 	return n, nil
 }
 
@@ -867,6 +1173,21 @@ func (m *FS) WriteFD(fd int, data []byte) (int, error) {
 	}
 
 	return file.Write(data)
+}
+
+// WriteAtFD writes to a file descriptor at a byte offset without changing its current position.
+func (m *FS) WriteAtFD(fd int, data []byte, position int64) (int, error) {
+	m.fdMu.Lock()
+	file, ok := m.fds[fd]
+	m.fdMu.Unlock()
+
+	if !ok {
+		return 0, fs.ErrInvalid
+	}
+	if position < 0 {
+		return 0, fs.ErrInvalid
+	}
+	return file.WriteAt(data, position)
 }
 
 // FstatFD gets file info for a file descriptor
@@ -892,8 +1213,8 @@ func (m *FS) FchmodFD(fd int, mode uint32) error {
 		return fs.ErrInvalid
 	}
 
-	if runtime.GOOS == "windows" {
-		return nil // Fchmod is not supported on Windows
+	if _, isHostFile := file.(*localFDHandle); isHostFile && runtime.GOOS == "windows" {
+		return nil // Fchmod is not supported on Windows host files
 	}
 
 	return file.Chmod(fs.FileMode(mode))
@@ -909,8 +1230,8 @@ func (m *FS) FchownFD(fd int, uid, gid int) error {
 		return fs.ErrInvalid
 	}
 
-	if runtime.GOOS == "windows" {
-		return nil // Fchown is not supported on Windows
+	if _, isHostFile := file.(*localFDHandle); isHostFile && runtime.GOOS == "windows" {
+		return nil // Fchown is not supported on Windows host files
 	}
 
 	return file.Chown(uid, gid)
@@ -972,6 +1293,13 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 			entries, err = fs.ReadDir(bestFS, relPath)
 		}
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				// Win32 reports a non-directory target with the same code as a
+				// missing path, so classify it from the entry itself.
+				if info, statErr := fs.Stat(bestFS, relPath); statErr == nil && !info.IsDir() {
+					return nil, &fs.PathError{Op: "readdir", Path: name, Err: ErrnoNotDir}
+				}
+			}
 			if !isVirtual || !errors.Is(err, fs.ErrNotExist) {
 				return nil, err
 			}
@@ -1138,9 +1466,23 @@ func (jr *JSRuntime) Filesystem(_ context.Context, vm *goja.Runtime, module *goj
 	exports.Set("writeFile", func(path string, data []byte) error { return jr.filesystem.WriteFile(path, data) })
 	exports.Set("appendFile", func(path string, data []byte) error { return jr.filesystem.AppendFile(path, data) })
 	exports.Set("stat", func(path string) (fs.FileInfo, error) { return jr.filesystem.Stat(path) })
-	exports.Set("mkdir", func(path string) error { return jr.filesystem.Mkdir(path) })
+	exports.Set("lstat", func(path string) (fs.FileInfo, error) { return jr.filesystem.Lstat(path) })
+	exports.Set("access", func(path string, mode uint32) error { return jr.filesystem.Access(path, mode) })
+	exports.Set("errorCode", func(value goja.Value) string {
+		if value == nil || goja.IsUndefined(value) || goja.IsNull(value) {
+			return ""
+		}
+		err, ok := value.Export().(error)
+		if !ok {
+			return ""
+		}
+		return FilesystemErrorCode(err)
+	})
+	exports.Set("mkdir", func(path string, mode uint32) error { return jr.filesystem.MkdirMode(path, mode) })
+	exports.Set("truncate", func(path string, size int64) error { return jr.filesystem.Truncate(path, size) })
 	exports.Set("rmdir", func(path string) error { return jr.filesystem.Rmdir(path) })
 	exports.Set("remove", func(path string) error { return jr.filesystem.Remove(path) })
+	exports.Set("unlink", func(path string) error { return jr.filesystem.Unlink(path) })
 	exports.Set("rename", func(oldPath, newPath string) error { return jr.filesystem.Rename(oldPath, newPath) })
 	exports.Set("readDir", func(path string) ([]fs.DirEntry, error) { return jr.filesystem.ReadDir(path) })
 	exports.Set("chmod", func(path string, mode uint32) error { return jr.filesystem.Chmod(path, mode) })
@@ -1176,8 +1518,45 @@ func (jr *JSRuntime) Filesystem(_ context.Context, vm *goja.Runtime, module *goj
 
 		return vm.ToValue(bytesRead)
 	})
-	exports.Set("write", func(fd int, data []byte) (int, error) {
-		return jr.filesystem.WriteFD(fd, data)
+	exports.Set("readAt", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 5 {
+			panic(vm.NewTypeError("readAt requires 5 arguments: fd, buffer, offset, length, position"))
+		}
+		fd := int(call.Arguments[0].ToInteger())
+		buffer, ok := call.Arguments[1].Export().([]byte)
+		if !ok {
+			panic(vm.NewTypeError("buffer argument must be a Uint8Array"))
+		}
+		offset := int(call.Arguments[2].ToInteger())
+		length := int(call.Arguments[3].ToInteger())
+		position := call.Arguments[4].ToInteger()
+		bytesRead, err := jr.filesystem.ReadAtFD(fd, buffer, offset, length, position)
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+		return vm.ToValue(bytesRead)
+	})
+	exports.Set("write", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 2 {
+			panic(vm.NewTypeError("write requires 2 arguments: fd, data"))
+		}
+		fd := int(call.Arguments[0].ToInteger())
+		data, ok := call.Arguments[1].Export().([]byte)
+		if !ok {
+			panic(vm.NewTypeError("data argument must be a Uint8Array"))
+		}
+		var n int
+		var err error
+		position := call.Argument(2)
+		if position == nil || goja.IsUndefined(position) || goja.IsNull(position) {
+			n, err = jr.filesystem.WriteFD(fd, data)
+		} else {
+			n, err = jr.filesystem.WriteAtFD(fd, data, position.ToInteger())
+		}
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+		return vm.ToValue(n)
 	})
 	exports.Set("fstat", func(fd int) (fs.FileInfo, error) { return jr.filesystem.FstatFD(fd) })
 	exports.Set("fchmod", func(fd int, mode uint32) error { return jr.filesystem.FchmodFD(fd, mode) })

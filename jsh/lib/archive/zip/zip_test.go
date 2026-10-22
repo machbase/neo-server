@@ -176,7 +176,7 @@ func TestZipClass(t *testing.T) {
 					{ name: 'dir/a.txt', data: 'A' },
 					{ name: 'dir/b.txt', data: 'B' }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.zip', new Uint8Array(archive), 'buffer');
 
 				const z = new zip.Zip(base + '/file.zip');
 				z.extractAllTo(base + '/out', true);
@@ -201,7 +201,7 @@ func TestZipClass(t *testing.T) {
 				const archive = zip.zipSync([
 					{ name: 'assets/logo.bin', data: original }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.zip', new Uint8Array(archive), 'buffer');
 				const z = new zip.Zip(base + '/file.zip');
 				z.extractAllTo(base + '/out', true);
 				const extracted = fs.readFileSync(base + '/out/assets/logo.bin', { encoding: null });
@@ -230,7 +230,7 @@ func TestZipClass(t *testing.T) {
 					{ name: 'keep.txt', data: 'KEEP' },
 					{ name: 'skip.txt', data: 'SKIP' }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.zip', new Uint8Array(archive), 'buffer');
 				const z = new zip.Zip(base + '/file.zip');
 				z.extractAllTo(base + '/out', {
 					overwrite: true,
@@ -270,7 +270,7 @@ func TestZipClass(t *testing.T) {
 					{ name: 'one.txt', data: 'one' },
 					{ name: 'two.txt', data: 'two' }
 				]);
-				fs.writeFileSync(base + '/file.zip', Array.from(new Uint8Array(archive)), 'buffer');
+				fs.writeFileSync(base + '/file.zip', new Uint8Array(archive), 'buffer');
 				const z = new zip.Zip(base + '/file.zip');
 				const entries = z.getEntries();
 				console.println('entry count:', entries.length);

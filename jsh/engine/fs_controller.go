@@ -11,6 +11,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -49,8 +50,9 @@ type controllerFSResponse struct {
 	Version string          `json:"jsonrpc"`
 	Result  json.RawMessage `json:"result"`
 	Error   *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	} `json:"error"`
 }
 
@@ -182,32 +184,56 @@ func (cfs *ControllerFS) WriteFile(name string, data []byte) error {
 	}, nil)
 }
 
+func (cfs *ControllerFS) Truncate(name string, size int64) error {
+	path, err := normalizeControllerFSPath("truncate", name, false)
+	if err != nil {
+		return err
+	}
+	return cfs.call("fs.truncate", map[string]any{"path": path, "size": size}, nil)
+}
+
 func (cfs *ControllerFS) Mkdir(name string) error {
+	return cfs.MkdirMode(name, 0755)
+}
+
+func (cfs *ControllerFS) MkdirMode(name string, mode uint32) error {
 	path, err := normalizeControllerFSPath("mkdir", name, false)
 	if err != nil {
 		return err
 	}
-	return cfs.call("fs.mkdir", map[string]any{"path": path}, nil)
+	return cfs.call("fs.mkdir", map[string]any{"path": path, "mode": mode}, nil)
+}
+
+func (cfs *ControllerFS) Rmdir(name string) error {
+	path, err := normalizeControllerFSRemovalPath("rmdir", name)
+	if err != nil {
+		return err
+	}
+	return cfs.call("fs.rmdir", map[string]any{"path": path}, nil)
 }
 
 func (cfs *ControllerFS) Remove(name string) error {
-	trimmed := strings.TrimPrefix(name, "/")
-	if name == "" || trimmed == "" || trimmed == "." {
-		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrPermission}
-	}
-	path, err := normalizeControllerFSPath("remove", name, false)
+	path, err := normalizeControllerFSRemovalPath("remove", name)
 	if err != nil {
 		return err
 	}
 	return cfs.call("fs.remove", map[string]any{"path": path}, nil)
 }
 
-func (cfs *ControllerFS) Rename(oldName string, newName string) error {
-	oldPath, err := normalizeControllerFSPath("rename", oldName, false)
+func (cfs *ControllerFS) Unlink(name string) error {
+	path, err := normalizeControllerFSRemovalPath("unlink", name)
 	if err != nil {
 		return err
 	}
-	newPath, err := normalizeControllerFSPath("rename", newName, false)
+	return cfs.call("fs.unlink", map[string]any{"path": path}, nil)
+}
+
+func (cfs *ControllerFS) Rename(oldName string, newName string) error {
+	oldPath, err := normalizeControllerFSRemovalPath("rename", oldName)
+	if err != nil {
+		return err
+	}
+	newPath, err := normalizeControllerFSRemovalPath("rename", newName)
 	if err != nil {
 		return err
 	}
@@ -381,7 +407,7 @@ func (cfs *ControllerFS) callOnConnection(conn net.Conn, method string, params a
 		return err
 	}
 	if resp.Error != nil {
-		return controllerFSPathError(method, params, resp.Error.Code, resp.Error.Message)
+		return controllerFSPathError(method, params, resp.Error.Code, resp.Error.Message, resp.Error.Data)
 	}
 	if out == nil {
 		return nil
@@ -457,6 +483,19 @@ func normalizeControllerFSPath(op string, name string, allowRoot bool) (string, 
 	return CleanPath(trimmed), nil
 }
 
+// normalizeControllerFSRemovalPath rejects the shared filesystem root with EBUSY
+// because it is a mount point that cannot be removed or renamed.
+func normalizeControllerFSRemovalPath(op string, name string) (string, error) {
+	path, err := normalizeControllerFSPath(op, name, true)
+	if err != nil {
+		return "", err
+	}
+	if path == "/" {
+		return "", &fs.PathError{Op: op, Path: path, Err: syscall.EBUSY}
+	}
+	return path, nil
+}
+
 func controllerSnapshotToFileInfo(snapshot controllerFSInfoSnapshot) fs.FileInfo {
 	return controllerFSFileInfo{snapshot: snapshot}
 }
@@ -469,13 +508,25 @@ const (
 	controllerFSRPCConflict  = -32009 // ECONFLICT (file locked / busy)
 )
 
-func controllerFSPathError(method string, params any, code int, message string) error {
+func controllerFSPathError(method string, params any, code int, message string, data json.RawMessage) error {
 	path := "/"
 	if typed, ok := params.(map[string]any); ok {
 		if value, ok := typed["path"].(string); ok && value != "" {
 			path = value
 		} else if value, ok := typed["old_path"].(string); ok && value != "" {
 			path = value
+		}
+	}
+	if code != controllerFSRPCConflict {
+		// Controllers that report the errno let the client keep the exact code;
+		// older controllers fall back to the coarse JSON-RPC code mapping below.
+		var detail struct {
+			Errno string `json:"errno"`
+		}
+		if len(data) > 0 && json.Unmarshal(data, &detail) == nil {
+			if errno, ok := ErrnoForCode(detail.Errno); ok {
+				return &fs.PathError{Op: method, Path: path, Err: &controllerFSErrnoError{errno: errno, message: message}}
+			}
 		}
 	}
 	switch code {
@@ -489,6 +540,15 @@ func controllerFSPathError(method string, params any, code int, message string) 
 		return &fs.PathError{Op: method, Path: path, Err: fmt.Errorf("%w: %s", fs.ErrInvalid, message)}
 	}
 }
+
+// controllerFSErrnoError keeps the controller's message while exposing the errno.
+type controllerFSErrnoError struct {
+	errno   syscall.Errno
+	message string
+}
+
+func (e *controllerFSErrnoError) Error() string { return e.message }
+func (e *controllerFSErrnoError) Unwrap() error { return e.errno }
 
 func (fi controllerFSFileInfo) Name() string {
 	return fi.snapshot.Name
@@ -549,11 +609,41 @@ func (fd *controllerFSRemoteFD) Read(p []byte) (int, error) {
 	return result.BytesRead, nil
 }
 
+func (fd *controllerFSRemoteFD) ReadAt(p []byte, off int64) (int, error) {
+	var result controllerFSReadFDResult
+	if err := fd.fs.call("fs.read", map[string]any{"fd": fd.id, "length": len(p), "position": off}, &result); err != nil {
+		return 0, err
+	}
+	data, err := base64.StdEncoding.DecodeString(result.Data)
+	if err != nil {
+		return 0, err
+	}
+	copy(p, data)
+	if result.BytesRead < len(p) {
+		return result.BytesRead, io.EOF
+	}
+	return result.BytesRead, nil
+}
+
 func (fd *controllerFSRemoteFD) Write(p []byte) (int, error) {
 	var result struct {
 		BytesWritten int `json:"bytes_written"`
 	}
 	if err := fd.fs.call("fs.write", map[string]any{"fd": fd.id, "data": base64.StdEncoding.EncodeToString(p)}, &result); err != nil {
+		return 0, err
+	}
+	return result.BytesWritten, nil
+}
+
+func (fd *controllerFSRemoteFD) WriteAt(p []byte, off int64) (int, error) {
+	var result struct {
+		BytesWritten int `json:"bytes_written"`
+	}
+	if err := fd.fs.call("fs.write", map[string]any{
+		"fd":       fd.id,
+		"data":     base64.StdEncoding.EncodeToString(p),
+		"position": off,
+	}, &result); err != nil {
 		return 0, err
 	}
 	return result.BytesWritten, nil
@@ -582,4 +672,3 @@ func (fd *controllerFSRemoteFD) Chmod(mode fs.FileMode) error {
 func (fd *controllerFSRemoteFD) Chown(uid, gid int) error {
 	return fd.fs.call("fs.fchown", map[string]any{"fd": fd.id, "uid": uid, "gid": gid}, nil)
 }
-

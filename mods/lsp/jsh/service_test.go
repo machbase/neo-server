@@ -198,8 +198,8 @@ func TestSignatureHelpReturnsRequireInfo(t *testing.T) {
 func TestWebUIMessageForJshContexts(t *testing.T) {
 	svc := NewService()
 	ctx := context.Background()
-	expectedDocumentation := "```js\nreadFileSync(path: string, options: object): string|Array File contents as string or byte array\n```\n\nRead file contents synchronously\n\nReturns: string|Array File contents as string or byte array"
-	readFileSyncSignature := "readFileSync(path: string, options: object): string|Array File contents as string or byte array"
+	expectedDocumentation := "```js\nreadFileSync(path: string, options: object): string|Buffer File contents as string or Buffer\n```\n\nRead file contents synchronously\n\nReturns: string|Buffer File contents as string or Buffer"
+	readFileSyncSignature := "readFileSync(path: string, options: object): string|Buffer File contents as string or Buffer"
 
 	completionCases := []webUICompletionCase{
 		{
