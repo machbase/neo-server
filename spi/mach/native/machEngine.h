@@ -23,7 +23,8 @@
 #define MACH_DATA_TYPE_TEXT     13
 #define MACH_DATA_TYPE_JSON     14
 #define MACH_DATA_TYPE_DECIMAL  15
-#define MACH_DATA_TYPE_MAX      16
+#define MACH_DATA_TYPE_VECTOR   16
+#define MACH_DATA_TYPE_MAX      17
 
 #define MACH_ENGINE_NULLABLE_NO       0
 #define MACH_ENGINE_NULLABLE_YES      1
@@ -40,6 +41,14 @@ typedef struct MachEngineAppendVarStruct
     unsigned int    mLength;
     void*           mData;
 } MachEngineAppendVarStruct;
+
+/* VECTOR payload is an array of native FLOAT32 values.  The embedded
+ * implementation canonicalizes it to the little-endian storage format. */
+typedef struct MachEngineAppendVectorStruct
+{
+    unsigned int    mDimension;
+    float*          mData;
+} MachEngineAppendVectorStruct;
 
 /*
  * mLength: length of IP value
@@ -90,6 +99,7 @@ typedef union MachEngineAppendParamData
     MachEngineAppendVarStruct       mClob;
     MachEngineAppendDateTimeStruct  mDateTime;
     MachEngineDecimal*              mDecimal;
+    MachEngineAppendVectorStruct    mVector;
 } MachEngineAppendParamData;
 
 typedef struct MachEngineAppendParam
@@ -142,6 +152,7 @@ typedef union MachEngineBindParamData
     MachEngineAppendIPStruct        mIP;
     MachEngineAppendVarStruct       mVar;
     MachEngineAppendDateTimeStruct  mDateTime;
+    MachEngineAppendVectorStruct    mVector;
 } MachEngineBindParamData;
 
 typedef struct MachEngineBindParam
@@ -372,6 +383,9 @@ int MachColumnDataIPV6(void* aMachStmt, int aColumnIndex, void* aDest, char* aIs
 int MachColumnDataString(void* aMachStmt, int aColumnIndex, char* aDest, int aBufSize, char* aIsNull);
 int MachColumnDataBinary(void* aMachStmt, int aColumnIndex, void* aDest, int aBufSize, char* aIsNull);
 int MachColumnDataDecimal(void* aMachStmt, int aColumnIndex, char* aDest, int aBufSize, char* aIsNull);
+int MachColumnDataVector(void* aMachStmt, int aColumnIndex, float* aDest,
+                         unsigned int aMaxDimension,
+                         unsigned int* aDimension, char* aIsNull);
 
 int MachDecimalFromString(void* aMachStmt, MachEngineDecimal* aDecimal, char* aValue, int aLength);
 int MachDecimalFromInt64(void* aMachStmt, MachEngineDecimal* aDecimal, long long aValue);
