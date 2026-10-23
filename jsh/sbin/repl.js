@@ -61,4 +61,7 @@ if (values.transcript !== undefined) {
 }
 
 const r = new Repl();
-r.loop(opts);
+const code = r.loop(opts);
+if (code) {
+    process.exit(code);
+}

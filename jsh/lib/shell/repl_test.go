@@ -919,3 +919,210 @@ func TestMergeTranscriptPath(t *testing.T) {
 		t.Errorf("TranscriptPath = %q, want %q", cfg.TranscriptPath, "/tmp/test.ndjson")
 	}
 }
+
+// ── Eval-mode regressions ───────────────────────────────────────────────────
+
+// newEvalLoopRepl returns a Repl whose output is captured in buf. When
+// withRequire is true, a minimal require('fs') backed by the host file system
+// is installed so preloads can be exercised.
+func newEvalLoopRepl(t *testing.T, buf *bytes.Buffer, withRequire bool) *Repl {
+	t.Helper()
+	rt := goja.New()
+	if withRequire {
+		fsObj := rt.NewObject()
+		fsObj.Set("readFileSync", func(path string, _ string) string {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				panic(rt.NewGoError(err))
+			}
+			return string(data)
+		})
+		rt.Set("require", func(name string) goja.Value {
+			if name == "fs" {
+				return fsObj
+			}
+			panic(rt.NewGoError(fmt.Errorf("Cannot find module '%s'", name)))
+		})
+	}
+	cfg := defaultReplConfig()
+	cfg.Writer = buf
+	r := &Repl{rt: rt, cfg: cfg}
+	r.registerBuiltinCommands()
+	return r
+}
+
+func runEvalLoop(r *Repl, opts map[string]any) int64 {
+	return r.Loop(goja.FunctionCall{Arguments: []goja.Value{r.rt.ToValue(opts)}}).ToInteger()
+}
+
+func decodeJSONLines(t *testing.T, data []byte) []map[string]any {
+	t.Helper()
+	var events []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("invalid JSON line %q: %v", line, err)
+		}
+		events = append(events, ev)
+	}
+	return events
+}
+
+// TestReplEvalExitCodes verifies Loop returns 1 when eval-mode evaluation fails
+// or times out, so repl.js can propagate it as the process exit code.
+func TestReplEvalExitCodes(t *testing.T) {
+	tests := []struct {
+		name string
+		opts map[string]any
+		want int64
+	}{
+		{"success", map[string]any{"json": true, "eval": "1 + 1"}, 0},
+		{"throw", map[string]any{"json": true, "eval": "throw new Error('boom')"}, 1},
+		{"syntax error", map[string]any{"json": true, "eval": ")("}, 1},
+		{"timeout", map[string]any{"json": true, "eval": "while (true) {}", "timeoutMs": int64(50)}, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			r := newEvalLoopRepl(t, &buf, false)
+			if got := runEvalLoop(r, tc.opts); got != tc.want {
+				t.Fatalf("exit = %d, want %d; output=%s", got, tc.want, buf.String())
+			}
+			events := decodeJSONLines(t, buf.Bytes())
+			if len(events) != 1 {
+				t.Fatalf("expected one JSON result, got %d: %s", len(events), buf.String())
+			}
+			if ok, _ := events[0]["ok"].(bool); ok != (tc.want == 0) {
+				t.Fatalf("ok = %v, want %v: %s", events[0]["ok"], tc.want == 0, buf.String())
+			}
+		})
+	}
+}
+
+// TestReplEvalRunsPreloads verifies --load/--require run before eval-mode code.
+func TestReplEvalRunsPreloads(t *testing.T) {
+	dir := t.TempDir()
+	preload := dir + "/pre.js"
+	if err := os.WriteFile(preload, []byte("globalThis.preloaded = 7;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("load file is evaluated", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := newEvalLoopRepl(t, &buf, true)
+		got := runEvalLoop(r, map[string]any{"json": true, "eval": "preloaded * 6", "load": []any{preload}})
+		if got != 0 {
+			t.Fatalf("exit = %d, want 0; output=%s", got, buf.String())
+		}
+		events := decodeJSONLines(t, buf.Bytes())
+		if len(events) != 1 || events[0]["value"] != float64(42) {
+			t.Fatalf("unexpected output: %s", buf.String())
+		}
+	})
+	t.Run("missing load file fails", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := newEvalLoopRepl(t, &buf, true)
+		got := runEvalLoop(r, map[string]any{"json": true, "eval": "1", "load": []any{dir + "/missing.js"}})
+		if got != 1 {
+			t.Fatalf("exit = %d, want 1; output=%s", got, buf.String())
+		}
+		if !strings.Contains(buf.String(), "missing.js") {
+			t.Fatalf("expected preload error, got %s", buf.String())
+		}
+	})
+	t.Run("missing require module fails", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := newEvalLoopRepl(t, &buf, true)
+		got := runEvalLoop(r, map[string]any{"json": true, "eval": "1", "require": []any{"no-such-module"}})
+		if got != 1 {
+			t.Fatalf("exit = %d, want 1; output=%s", got, buf.String())
+		}
+		if !strings.Contains(buf.String(), "no-such-module") {
+			t.Fatalf("expected require error, got %s", buf.String())
+		}
+	})
+}
+
+// TestReplEvalJSONTranscript verifies JSON output survives the transcript
+// decorator in eval mode and that the transcript records input and result.
+func TestReplEvalJSONTranscript(t *testing.T) {
+	transcript := t.TempDir() + "/t.ndjson"
+	var buf bytes.Buffer
+	r := newEvalLoopRepl(t, &buf, false)
+	got := runEvalLoop(r, map[string]any{"json": true, "transcript": transcript, "eval": "({answer: 42, password: 'x'})"})
+	if got != 0 {
+		t.Fatalf("exit = %d, want 0; output=%s", got, buf.String())
+	}
+	out := decodeJSONLines(t, buf.Bytes())
+	if len(out) != 1 || out[0]["ok"] != true || out[0]["type"] != "object" {
+		t.Fatalf("unexpected JSON output: %s", buf.String())
+	}
+	if _, ok := out[0]["elapsedMs"]; !ok {
+		t.Fatalf("JSON output lacks elapsedMs: %s", buf.String())
+	}
+
+	data, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := decodeJSONLines(t, data)
+	if len(events) != 2 {
+		t.Fatalf("expected input and result events, got %s", data)
+	}
+	if events[0]["event"] != "input" || events[0]["input"] != "({answer: 42, password: 'x'})" {
+		t.Fatalf("unexpected input event: %v", events[0])
+	}
+	result, _ := events[1]["result"].(map[string]any)
+	if events[1]["event"] != "result" || result["answer"] != float64(42) || result["password"] != "[REDACTED]" {
+		t.Fatalf("unexpected result event: %v", events[1])
+	}
+}
+
+// TestReplEvalTranscriptRecordsError verifies eval errors are recorded once.
+func TestReplEvalTranscriptRecordsError(t *testing.T) {
+	transcript := t.TempDir() + "/t.ndjson"
+	var buf bytes.Buffer
+	r := newEvalLoopRepl(t, &buf, false)
+	if got := runEvalLoop(r, map[string]any{"json": true, "transcript": transcript, "eval": "throw new Error('boom')"}); got != 1 {
+		t.Fatalf("exit = %d, want 1", got)
+	}
+	data, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := decodeJSONLines(t, data)
+	if len(events) != 2 || events[1]["event"] != "error" || !strings.Contains(fmt.Sprint(events[1]["error"]), "boom") {
+		t.Fatalf("unexpected transcript: %s", data)
+	}
+}
+
+// TestReplTranscriptOpenFailure verifies an unwritable transcript path is
+// reported instead of being silently ignored.
+func TestReplTranscriptOpenFailure(t *testing.T) {
+	var buf bytes.Buffer
+	r := newEvalLoopRepl(t, &buf, false)
+	path := t.TempDir() + "/missing-dir/t.ndjson"
+	if got := runEvalLoop(r, map[string]any{"json": true, "transcript": path, "eval": "1"}); got != 1 {
+		t.Fatalf("exit = %d, want 1; output=%s", got, buf.String())
+	}
+	if !strings.Contains(buf.String(), "transcript") {
+		t.Fatalf("expected transcript error, got %s", buf.String())
+	}
+}
+
+// TestIsJSONRendererUnwrapsTranscript verifies JSON detection through the
+// transcript decorator.
+func TestIsJSONRendererUnwrapsTranscript(t *testing.T) {
+	if !isJSONRenderer(&JSONRenderer{}) {
+		t.Fatal("JSONRenderer should be detected")
+	}
+	if !isJSONRenderer(NewTranscriptWriter(&JSONRenderer{}, "", "default")) {
+		t.Fatal("JSONRenderer wrapped by TranscriptWriter should be detected")
+	}
+	if isJSONRenderer(NewTranscriptWriter(WriterRenderer{}, "", "default")) {
+		t.Fatal("non-JSON renderer should not be detected as JSON")
+	}
+}

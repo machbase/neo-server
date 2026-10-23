@@ -131,16 +131,30 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	// Phase D: wrap renderer with transcript recording when a path is configured.
 	var tw *TranscriptWriter
 	if cfg.TranscriptPath != "" {
-		tw = NewTranscriptWriter(renderer, cfg.TranscriptPath, cfg.Profile.Name)
+		f, err := repl.openTranscriptFile(cfg.TranscriptPath)
+		if err != nil {
+			renderer.RenderError(writer, fmt.Errorf("transcript(%q): %w", cfg.TranscriptPath, err)) //nolint:errcheck
+			return repl.rt.ToValue(1)
+		}
+		tw = newTranscriptWriterTo(renderer, f, cfg.Profile.Name)
 		renderer = tw
 	}
 
 	// Eval-and-exit mode: run code without entering interactive loop.
 	// Profile.Startup must run before evaluation so profile-injected globals are available.
 	if cfg.Eval != "" {
+		if tw != nil {
+			defer tw.Close() //nolint:errcheck
+		}
 		if err := cfg.Profile.RunStartup(repl.rt); err != nil {
 			renderer.RenderError(writer, err) //nolint:errcheck
 			return repl.rt.ToValue(1)
+		}
+		if err := repl.runPreloads(cfg, writer, renderer); err != nil {
+			return repl.rt.ToValue(1)
+		}
+		if tw != nil {
+			tw.WriteInput(cfg.Eval)
 		}
 		return repl.runEval(cfg.Eval, cfg.PrintEval, writer, renderer, cfg.TimeoutMs)
 	}
@@ -158,6 +172,9 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	})
 	if err := ses.Start(repl.rt); err != nil {
 		ses.Renderer.RenderError(ses.Writer, err) //nolint:errcheck
+		if tw != nil {
+			tw.Close() //nolint:errcheck
+		}
 		return repl.rt.ToValue(1)
 	}
 	var loopErr error
@@ -236,12 +253,11 @@ func (repl *Repl) runEval(code string, printResult bool, w io.Writer, renderer R
 	val, err := repl.evalWithTimeout(code, timeoutMs)
 	elapsed := time.Since(start)
 	if err != nil {
-		renderer.RenderError(w, err) //nolint:errcheck
+		renderEvalResult(repl.rt, renderer, w, nil, err, elapsed)
 		return repl.rt.ToValue(1)
 	}
 	// JSONRenderer always outputs a structured result; human mode respects printResult.
-	_, isJSON := renderer.(*JSONRenderer)
-	if printResult || isJSON {
+	if printResult || isJSONRenderer(renderer) {
 		renderEvalResult(repl.rt, renderer, w, val, nil, elapsed)
 	}
 	return repl.rt.ToValue(0)
@@ -263,12 +279,31 @@ func (repl *Repl) evalWithTimeout(code string, timeoutMs int64) (goja.Value, err
 	return val, err
 }
 
+// evalResultRenderer is implemented by renderers that need the full evaluation
+// context (value, error, and elapsed time), such as JSONRenderer and the
+// TranscriptWriter decorator.
+type evalResultRenderer interface {
+	RenderEvalResult(w io.Writer, rt *goja.Runtime, val goja.Value, evalErr error, elapsed time.Duration) error
+}
+
+// isJSONRenderer reports whether renderer, or the renderer it decorates, is a
+// JSONRenderer.
+func isJSONRenderer(renderer Renderer) bool {
+	switch r := renderer.(type) {
+	case *JSONRenderer:
+		return true
+	case *TranscriptWriter:
+		return isJSONRenderer(r.inner)
+	}
+	return false
+}
+
 // renderEvalResult routes an evaluation result through the appropriate renderer.
-// When renderer is *JSONRenderer, elapsed time is forwarded for structured JSON.
+// Renderers implementing evalResultRenderer receive the full timing context.
 // For all other renderers the standard RenderValue/RenderError path is used.
 func renderEvalResult(rt *goja.Runtime, renderer Renderer, w io.Writer, val goja.Value, evalErr error, elapsed time.Duration) {
-	if ar, ok := renderer.(*JSONRenderer); ok {
-		ar.RenderEvalResult(w, rt, val, evalErr, elapsed) //nolint:errcheck
+	if er, ok := renderer.(evalResultRenderer); ok {
+		er.RenderEvalResult(w, rt, val, evalErr, elapsed) //nolint:errcheck
 		return
 	}
 	if evalErr != nil {
@@ -548,7 +583,7 @@ func (r *consoleRenderer) RenderError(w io.Writer, err error) error {
 	if err == nil {
 		return nil
 	}
-	r.consolePrintln(r.rt.NewGoError(err))
+	r.consolePrintln(r.rt.ToValue(err.Error()))
 	return nil
 }
 
