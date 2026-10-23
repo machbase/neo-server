@@ -4,8 +4,7 @@ package shell
 // It allows consumers to query the current runtime profile and registered
 // metadata without coupling to Shell or Repl internals.
 //
-// Intended uses include \help, \globals, and \profile slash commands in the
-// human REPL and structured inspection in the agent REPL.
+// Intended uses include \help, \globals, and \profile slash commands in the REPL.
 type MetadataProvider interface {
 	Metadata() RuntimeMetadata
 }

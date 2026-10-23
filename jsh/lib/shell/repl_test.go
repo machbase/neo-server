@@ -604,54 +604,78 @@ func TestUserProfileName(t *testing.T) {
 	}
 }
 
-// ── Phase A: Agent profile ────────────────────────────────────────────────────
-
-// TestAgentProfileName verifies the agent profile has correct Name field.
-func TestAgentProfileName(t *testing.T) {
-	p := agentReplProfile()
-	if p.Name != "agent" {
-		t.Errorf("agentReplProfile().Name = %q, want %q", p.Name, "agent")
-	}
-}
-
-// TestAgentProfileNoBanner verifies the agent profile banner is nil
-// so AgentRenderer emits no banner JSON event by default.
-func TestAgentProfileNoBanner(t *testing.T) {
-	p := agentReplProfile()
-	if p.Banner != nil {
-		t.Errorf("agentReplProfile().Banner should be nil for clean JSON output")
-	}
-}
-
-// TestMergeProfileAgent verifies mergeReplConfigFromMap("agent") installs
-// agentReplProfile and an AgentRenderer.
-func TestMergeProfileAgent(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"profile": "agent"})
-	if cfg.Profile.Name != "agent" {
-		t.Errorf("profile.Name = %q, want %q", cfg.Profile.Name, "agent")
-	}
-	if _, ok := cfg.Renderer.(*AgentRenderer); !ok {
-		t.Errorf("Renderer should be *AgentRenderer for profile:agent, got %T", cfg.Renderer)
-	}
-}
-
-// TestMergeJsonFlag verifies mergeReplConfigFromMap(json:true) installs AgentRenderer.
+// TestMergeJsonFlag verifies mergeReplConfigFromMap(json:true) installs JSONRenderer.
 func TestMergeJsonFlag(t *testing.T) {
 	base := defaultReplConfig()
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"json": true})
-	if _, ok := cfg.Renderer.(*AgentRenderer); !ok {
-		t.Errorf("Renderer should be *AgentRenderer for json:true, got %T", cfg.Renderer)
+	if _, ok := cfg.Renderer.(*JSONRenderer); !ok {
+		t.Errorf("Renderer should be *JSONRenderer for json:true, got %T", cfg.Renderer)
 	}
 }
 
-// ── Phase B: AgentRenderer output ────────────────────────────────────────────
+func TestReplRejectsUnsupportedProfile(t *testing.T) {
+	for _, name := range []string{"agent", "unknown"} {
+		t.Run(name, func(t *testing.T) {
+			rt := goja.New()
+			var output bytes.Buffer
+			cfg := defaultReplConfig()
+			cfg.Writer = &output
+			r := &Repl{rt: rt, cfg: cfg}
+			result := r.Loop(goja.FunctionCall{Arguments: []goja.Value{
+				rt.ToValue(map[string]any{
+					"profile": name,
+					"json":    true,
+					"eval":    "globalThis.executed = true",
+				}),
+			}})
+			if result.ToInteger() != 1 {
+				t.Fatalf("exit status = %v, want 1", result)
+			}
+			if rt.Get("executed") != nil {
+				t.Fatal("evaluation ran despite unsupported profile")
+			}
+			var event evalResult
+			if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+				t.Fatalf("invalid error output: %v\n%s", err, output.String())
+			}
+			if event.OK || !strings.Contains(event.Error, fmt.Sprintf("unsupported REPL profile %q", name)) {
+				t.Fatalf("unexpected error output: %s", output.String())
+			}
+		})
+	}
+}
 
-// TestAgentRendererBannerNoop verifies that a nil-banner profile emits no output.
-func TestAgentRendererBannerNoop(t *testing.T) {
-	r := &AgentRenderer{}
+func TestReplDefaultJSONEval(t *testing.T) {
+	rt := goja.New()
+	var output bytes.Buffer
+	cfg := defaultReplConfig()
+	cfg.Writer = &output
+	r := &Repl{rt: rt, cfg: cfg}
+	result := r.Loop(goja.FunctionCall{Arguments: []goja.Value{
+		rt.ToValue(map[string]any{"profile": "default", "json": true, "eval": "6 * 7"}),
+	}})
+	if result.ToInteger() != 0 {
+		t.Fatalf("exit status = %v, want 0", result)
+	}
+	var event evalResult
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, output.String())
+	}
+	if !event.OK || event.Type != "number" || event.Value != float64(42) {
+		t.Fatalf("unexpected evaluation result: %s", output.String())
+	}
+	if rt.Get("agent") != nil || rt.Get("__agentConfig") != nil {
+		t.Fatal("default JSON evaluation injected agent globals")
+	}
+}
+
+// ── Phase B: JSONRenderer output ────────────────────────────────────────────
+
+// TestJSONRendererBannerNoop verifies that a nil-banner profile emits no output.
+func TestJSONRendererBannerNoop(t *testing.T) {
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
-	p := agentReplProfile()
+	p := RuntimeProfile{Name: "default"}
 	if err := r.RenderBanner(&buf, p); err != nil {
 		t.Fatalf("RenderBanner error: %v", err)
 	}
@@ -660,9 +684,9 @@ func TestAgentRendererBannerNoop(t *testing.T) {
 	}
 }
 
-// TestAgentRendererBannerEmit verifies that a non-empty banner emits a JSON event.
-func TestAgentRendererBannerEmit(t *testing.T) {
-	r := &AgentRenderer{}
+// TestJSONRendererBannerEmit verifies that a non-empty banner emits a JSON event.
+func TestJSONRendererBannerEmit(t *testing.T) {
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	p := userReplProfile()
 	if err := r.RenderBanner(&buf, p); err != nil {
@@ -678,9 +702,9 @@ func TestAgentRendererBannerEmit(t *testing.T) {
 	}
 }
 
-// TestAgentRendererError verifies RenderError emits ok:false JSON with error field.
-func TestAgentRendererError(t *testing.T) {
-	r := &AgentRenderer{}
+// TestJSONRendererError verifies RenderError emits ok:false JSON with error field.
+func TestJSONRendererError(t *testing.T) {
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	if err := r.RenderError(&buf, fmt.Errorf("something went wrong")); err != nil {
 		t.Fatalf("RenderError error: %v", err)
@@ -698,10 +722,10 @@ func TestAgentRendererError(t *testing.T) {
 	}
 }
 
-// TestAgentRendererValue verifies RenderValue emits ok:true JSON with type and value.
-func TestAgentRendererValue(t *testing.T) {
+// TestJSONRendererValue verifies RenderValue emits ok:true JSON with type and value.
+func TestJSONRendererValue(t *testing.T) {
 	rt := goja.New()
-	r := &AgentRenderer{}
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	val := rt.ToValue(42)
 	if err := r.RenderValue(&buf, val); err != nil {
@@ -720,10 +744,10 @@ func TestAgentRendererValue(t *testing.T) {
 	}
 }
 
-// TestAgentRendererEvalResult verifies RenderEvalResult includes elapsedMs.
-func TestAgentRendererEvalResult(t *testing.T) {
+// TestJSONRendererEvalResult verifies RenderEvalResult includes elapsedMs.
+func TestJSONRendererEvalResult(t *testing.T) {
 	rt := goja.New()
-	r := &AgentRenderer{}
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	val := rt.ToValue("hello")
 	elapsed := 7 * time.Millisecond
@@ -743,10 +767,10 @@ func TestAgentRendererEvalResult(t *testing.T) {
 	}
 }
 
-// TestAgentRendererTruncation verifies MaxOutputBytes causes truncated:true.
-func TestAgentRendererTruncation(t *testing.T) {
+// TestJSONRendererTruncation verifies MaxOutputBytes causes truncated:true.
+func TestJSONRendererTruncation(t *testing.T) {
 	rt := goja.New()
-	r := &AgentRenderer{MaxOutputBytes: 10}
+	r := &JSONRenderer{MaxOutputBytes: 10}
 	var buf bytes.Buffer
 	// A long string will exceed the 10-byte limit.
 	val := rt.ToValue("this is a very long string that exceeds the byte limit")
@@ -765,30 +789,12 @@ func TestAgentRendererTruncation(t *testing.T) {
 
 // ── Phase C: Capability and limits ───────────────────────────────────────────
 
-// TestMergeReadOnly verifies mergeReplConfigFromMap sets ReadOnly from opts.
-func TestMergeReadOnly(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"readOnly": true})
-	if !cfg.ReadOnly {
-		t.Errorf("ReadOnly should be true")
-	}
-}
-
 // TestMergeTimeoutMs verifies mergeReplConfigFromMap sets TimeoutMs from opts.
 func TestMergeTimeoutMs(t *testing.T) {
 	base := defaultReplConfig()
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"timeoutMs": float64(5000)})
 	if cfg.TimeoutMs != 5000 {
 		t.Errorf("TimeoutMs = %d, want 5000", cfg.TimeoutMs)
-	}
-}
-
-// TestMergeMaxRows verifies mergeReplConfigFromMap sets MaxRows from opts.
-func TestMergeMaxRows(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"maxRows": float64(500)})
-	if cfg.MaxRows != 500 {
-		t.Errorf("MaxRows = %d, want 500", cfg.MaxRows)
 	}
 }
 
@@ -801,39 +807,20 @@ func TestMergeMaxOutputBytes(t *testing.T) {
 	}
 }
 
-// TestMergeAgentProfileWithReadOnly verifies profile:"agent" + readOnly:true
-// propagates ReadOnly into the Renderer and profile metadata.
-func TestMergeAgentProfileWithReadOnly(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{
-		"readOnly": true,
-		"profile":  "agent",
-	})
-	if !cfg.ReadOnly {
-		t.Errorf("ReadOnly should be true")
-	}
-	if cfg.Profile.Name != "agent" {
-		t.Errorf("Profile.Name = %q, want agent", cfg.Profile.Name)
-	}
-	if ro, _ := cfg.Profile.Metadata["readOnly"].(bool); !ro {
-		t.Errorf("Profile.Metadata[readOnly] should be true")
-	}
-}
-
 // TestMergeMaxOutputBytesReconcile verifies that maxOutputBytes is propagated
-// to an existing AgentRenderer when set alongside profile:"agent".
+// to an existing JSONRenderer.
 func TestMergeMaxOutputBytesReconcile(t *testing.T) {
 	base := defaultReplConfig()
+	base.Renderer = &JSONRenderer{}
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{
-		"profile":        "agent",
 		"maxOutputBytes": float64(8192),
 	})
-	ar, ok := cfg.Renderer.(*AgentRenderer)
+	ar, ok := cfg.Renderer.(*JSONRenderer)
 	if !ok {
-		t.Fatalf("Renderer should be *AgentRenderer")
+		t.Fatalf("Renderer should be *JSONRenderer")
 	}
 	if ar.MaxOutputBytes != 8192 {
-		t.Errorf("AgentRenderer.MaxOutputBytes = %d, want 8192", ar.MaxOutputBytes)
+		t.Errorf("JSONRenderer.MaxOutputBytes = %d, want 8192", ar.MaxOutputBytes)
 	}
 }
 

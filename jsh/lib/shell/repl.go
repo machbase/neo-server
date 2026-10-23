@@ -29,11 +29,8 @@ type ReplConfig struct {
 	PreloadModules []string // require(mod) before interactive loop
 	PreloadFiles   []string // eval file content before interactive loop
 
-	// Phase C: operational limits and capability controls.
-	// These are enforced by the agent profile and AgentRenderer.
-	ReadOnly       bool  // deny write operations in agent helpers (agent.db.exec)
+	// Evaluation and JSON output limits.
 	TimeoutMs      int64 // per-evaluation timeout in milliseconds; 0 = no limit
-	MaxRows        int   // maximum rows per query; 0 = use profile default (1000)
 	MaxOutputBytes int   // maximum serialized output bytes; 0 = no limit
 
 	// Phase D: transcript and audit.
@@ -137,69 +134,16 @@ func userReplProfile() RuntimeProfile {
 	}
 }
 
-// agentProfileConfig holds the capability and resource limit parameters
-// injected into the JS runtime before the agent module is loaded.
-type agentProfileConfig struct {
-	ReadOnly       bool
-	MaxRows        int
-	MaxOutputBytes int
-	ClientContext  map[string]any
-}
-
-// agentReplProfile returns the default agent RuntimeProfile (no limits overrides).
-func agentReplProfile() RuntimeProfile {
-	return agentReplProfileWith(agentProfileConfig{
-		MaxRows:        1000,
-		MaxOutputBytes: 65536,
-	})
-}
-
-// agentReplProfileWith returns a RuntimeProfile configured for LLM agent use
-// with the given capability and limit settings. All output is structured JSON
-// via AgentRenderer; no ANSI banner is emitted.
-func agentReplProfileWith(cfg agentProfileConfig) RuntimeProfile {
-	base := defaultReplProfile()
-	return RuntimeProfile{
-		Name:        "agent",
-		Description: "JSH REPL for LLM agent use — structured JSON output",
-		Banner:      nil, // no banner; AgentRenderer emits JSON events
-		Startup: func(rt *goja.Runtime) error {
-			// Inject limits before requiring agent module so it can read them.
-			agentConfig := map[string]any{
-				"readOnly":       cfg.ReadOnly,
-				"maxRows":        cfg.MaxRows,
-				"maxOutputBytes": cfg.MaxOutputBytes,
-			}
-			if len(cfg.ClientContext) > 0 {
-				agentConfig["clientContext"] = cfg.ClientContext
-			}
-			if err := rt.Set("__agentConfig", agentConfig); err != nil {
-				return err
-			}
-			_, err := rt.RunString(`globalThis.agent = require('repl/profiles/agent');`)
-			return err
-		},
-		Metadata: map[string]any{
-			"product":        "repl",
-			"mode":           "javascript",
-			"profile":        "agent",
-			"readOnly":       cfg.ReadOnly,
-			"maxRows":        cfg.MaxRows,
-			"maxOutputBytes": cfg.MaxOutputBytes,
-			"clientContext":  cfg.ClientContext,
-		},
-		KnownModules: append(base.KnownModules,
-			"repl/profiles/agent  — agent.db.*, agent.schema.*, agent.runtime.*",
-		),
-	}
-}
-
 func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	cfg := repl.cfg
+	var configErr error
 	// Read optional JS config object passed from repl.js (Phase 2).
 	if len(call.Arguments) > 0 {
 		if obj, ok := call.Arguments[0].Export().(map[string]interface{}); ok {
 			cfg = mergeReplConfigFromMap(cfg, obj)
+			if name, ok := obj["profile"].(string); ok && name != "default" && name != "user" {
+				configErr = fmt.Errorf("unsupported REPL profile %q (available: default, user)", name)
+			}
 		}
 	}
 
@@ -211,6 +155,10 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	if renderer == nil {
 		renderer = newConsoleRenderer(repl.rt)
 	}
+	if configErr != nil {
+		renderer.RenderError(writer, configErr) //nolint:errcheck
+		return repl.rt.ToValue(1)
+	}
 
 	// Phase D: wrap renderer with transcript recording when a path is configured.
 	var tw *TranscriptWriter
@@ -220,7 +168,7 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	}
 
 	// Eval-and-exit mode: run code without entering interactive loop.
-	// Profile.Startup must run first so profile-injected globals (e.g. globalThis.agent)
+	// Profile.Startup must run first so profile-injected globals (e.g. globalThis.user)
 	// are available to the evaluated code.
 	if cfg.Eval != "" {
 		if err := cfg.Profile.RunStartup(repl.rt); err != nil {
@@ -324,9 +272,9 @@ func (repl *Repl) runEval(code string, printResult bool, w io.Writer, renderer R
 		renderer.RenderError(w, err) //nolint:errcheck
 		return repl.rt.ToValue(1)
 	}
-	// AgentRenderer always outputs a structured result; human mode respects printResult.
-	_, isAgent := renderer.(*AgentRenderer)
-	if printResult || isAgent {
+	// JSONRenderer always outputs a structured result; human mode respects printResult.
+	_, isJSON := renderer.(*JSONRenderer)
+	if printResult || isJSON {
 		renderEvalResult(repl.rt, renderer, w, val, nil, elapsed)
 	}
 	return repl.rt.ToValue(0)
@@ -349,10 +297,10 @@ func (repl *Repl) evalWithTimeout(code string, timeoutMs int64) (goja.Value, err
 }
 
 // renderEvalResult routes an evaluation result through the appropriate renderer.
-// When renderer is *AgentRenderer, elapsed time is forwarded for structured JSON.
+// When renderer is *JSONRenderer, elapsed time is forwarded for structured JSON.
 // For all other renderers the standard RenderValue/RenderError path is used.
 func renderEvalResult(rt *goja.Runtime, renderer Renderer, w io.Writer, val goja.Value, evalErr error, elapsed time.Duration) {
-	if ar, ok := renderer.(*AgentRenderer); ok {
+	if ar, ok := renderer.(*JSONRenderer); ok {
 		ar.RenderEvalResult(w, rt, val, evalErr, elapsed) //nolint:errcheck
 		return
 	}
@@ -395,7 +343,7 @@ func (repl *Repl) runPreloads(cfg ReplConfig, w io.Writer, renderer Renderer) er
 
 // mergeReplConfigFromMap merges a JS options map into a ReplConfig.
 // Unknown keys are silently ignored.
-// Processing order: scalar limits first, then profile (which reads limits), then json flag.
+// Processing order: scalar limits first, then profile, then json flag.
 func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplConfig {
 	cfg := base
 	if v, ok := opts["eval"]; ok {
@@ -419,20 +367,8 @@ func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplCo
 	if v, ok := opts["require"]; ok {
 		cfg.PreloadModules = appendStrings(cfg.PreloadModules, v)
 	}
-	// Phase C: process operational limits before profile so they are available
-	// when building agentProfileConfig inside the "agent" profile case.
-	if v, ok := opts["readOnly"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.ReadOnly = b
-		}
-	}
 	if v, ok := opts["timeoutMs"]; ok {
 		cfg.TimeoutMs = toInt64(v)
-	}
-	if v, ok := opts["maxRows"]; ok {
-		if n := toInt64(v); n > 0 {
-			cfg.MaxRows = int(n)
-		}
 	}
 	if v, ok := opts["maxOutputBytes"]; ok {
 		if n := toInt64(v); n > 0 {
@@ -447,27 +383,10 @@ func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplCo
 	if v, ok := opts["profile"]; ok {
 		if s, ok := v.(string); ok {
 			switch s {
+			case "default":
+				cfg.Profile = defaultReplProfile()
 			case "user":
 				cfg.Profile = userReplProfile()
-			case "agent":
-				var clientContext map[string]any
-				if raw, ok := opts["clientContext"].(map[string]any); ok {
-					clientContext = raw
-				}
-				agentCfg := agentProfileConfig{
-					ReadOnly:       cfg.ReadOnly,
-					MaxRows:        cfg.MaxRows,
-					MaxOutputBytes: cfg.MaxOutputBytes,
-					ClientContext:  clientContext,
-				}
-				if agentCfg.MaxRows == 0 {
-					agentCfg.MaxRows = 1000
-				}
-				if agentCfg.MaxOutputBytes == 0 {
-					agentCfg.MaxOutputBytes = 65536
-				}
-				cfg.Profile = agentReplProfileWith(agentCfg)
-				cfg.Renderer = &AgentRenderer{MaxOutputBytes: agentCfg.MaxOutputBytes}
 			}
 		}
 	}
@@ -477,11 +396,11 @@ func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplCo
 			if maxOut == 0 {
 				maxOut = 65536
 			}
-			cfg.Renderer = &AgentRenderer{MaxOutputBytes: maxOut}
+			cfg.Renderer = &JSONRenderer{MaxOutputBytes: maxOut}
 		}
 	}
-	// Reconcile: if Renderer is AgentRenderer, keep MaxOutputBytes in sync.
-	if ar, ok := cfg.Renderer.(*AgentRenderer); ok && cfg.MaxOutputBytes > 0 {
+	// Reconcile: if Renderer is JSONRenderer, keep MaxOutputBytes in sync.
+	if ar, ok := cfg.Renderer.(*JSONRenderer); ok && cfg.MaxOutputBytes > 0 {
 		ar.MaxOutputBytes = cfg.MaxOutputBytes
 	}
 	if v, ok := opts["historyName"]; ok {
