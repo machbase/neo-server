@@ -176,6 +176,7 @@ func neoShellConfigure(executables []string, args []string) func(conf *engine.Co
 			}
 			os.Exit(1)
 		}
+		conf.Env["NEOSHELL_SESSION_ACTIVE"] = true
 		for k, v := range defaultSession.env {
 			if _, ok := conf.Env[k]; !ok {
 				conf.Env[k] = v

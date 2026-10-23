@@ -3,7 +3,6 @@ const { simple } = require('help/config');
 module.exports = simple('repl', 'Interactive JavaScript console', 'Usage: repl [options]', {
     strict: false,
     options: {
-        profile: { type: 'string', short: 'p', description: 'Profile to use (default, user)', default: 'default' },
         load: { type: 'string', short: 'l', description: 'Execute a file at startup (may be specified multiple times)', multiple: true },
         require: { type: 'string', short: 'r', description: 'Require a module at startup (may be specified multiple times)', multiple: true },
         eval: { type: 'string', short: 'e', description: 'Evaluate JavaScript code and exit' },

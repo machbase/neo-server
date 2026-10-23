@@ -15,18 +15,6 @@ import (
 	"github.com/nyaosorg/go-readline-ny/keys"
 )
 
-//go:embed profile_user.js
-var userJS []byte
-
-// Files returns JavaScript library files embedded in this package.
-// They are mounted under /lib inside the virtual file system:
-//   - require('repl/profiles/user')  — human operator helpers
-func Files() map[string][]byte {
-	return map[string][]byte{
-		"repl/profiles/user.js": userJS,
-	}
-}
-
 func Module(_ context.Context, rt *goja.Runtime, module *goja.Object) {
 	o := module.Get("exports").(*goja.Object)
 

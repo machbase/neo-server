@@ -45,9 +45,6 @@ if (values.noHistory) {
 if (values.historyName) {
     opts.historyName = values.historyName;
 }
-if (values.profile && values.profile !== 'default') {
-    opts.profile = values.profile;
-}
 if (values.json) {
     opts.json = true;
 }

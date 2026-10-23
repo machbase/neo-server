@@ -596,52 +596,12 @@ func TestHistoryNameConfig(t *testing.T) {
 	}
 }
 
-// TestUserProfileName verifies the user profile has correct Name field.
-func TestUserProfileName(t *testing.T) {
-	p := userReplProfile()
-	if p.Name != "user" {
-		t.Errorf("userReplProfile().Name = %q, want %q", p.Name, "user")
-	}
-}
-
 // TestMergeJsonFlag verifies mergeReplConfigFromMap(json:true) installs JSONRenderer.
 func TestMergeJsonFlag(t *testing.T) {
 	base := defaultReplConfig()
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"json": true})
 	if _, ok := cfg.Renderer.(*JSONRenderer); !ok {
 		t.Errorf("Renderer should be *JSONRenderer for json:true, got %T", cfg.Renderer)
-	}
-}
-
-func TestReplRejectsUnsupportedProfile(t *testing.T) {
-	for _, name := range []string{"agent", "unknown"} {
-		t.Run(name, func(t *testing.T) {
-			rt := goja.New()
-			var output bytes.Buffer
-			cfg := defaultReplConfig()
-			cfg.Writer = &output
-			r := &Repl{rt: rt, cfg: cfg}
-			result := r.Loop(goja.FunctionCall{Arguments: []goja.Value{
-				rt.ToValue(map[string]any{
-					"profile": name,
-					"json":    true,
-					"eval":    "globalThis.executed = true",
-				}),
-			}})
-			if result.ToInteger() != 1 {
-				t.Fatalf("exit status = %v, want 1", result)
-			}
-			if rt.Get("executed") != nil {
-				t.Fatal("evaluation ran despite unsupported profile")
-			}
-			var event evalResult
-			if err := json.Unmarshal(output.Bytes(), &event); err != nil {
-				t.Fatalf("invalid error output: %v\n%s", err, output.String())
-			}
-			if event.OK || !strings.Contains(event.Error, fmt.Sprintf("unsupported REPL profile %q", name)) {
-				t.Fatalf("unexpected error output: %s", output.String())
-			}
-		})
 	}
 }
 
@@ -652,7 +612,7 @@ func TestReplDefaultJSONEval(t *testing.T) {
 	cfg.Writer = &output
 	r := &Repl{rt: rt, cfg: cfg}
 	result := r.Loop(goja.FunctionCall{Arguments: []goja.Value{
-		rt.ToValue(map[string]any{"profile": "default", "json": true, "eval": "6 * 7"}),
+		rt.ToValue(map[string]any{"json": true, "eval": "6 * 7"}),
 	}})
 	if result.ToInteger() != 0 {
 		t.Fatalf("exit status = %v, want 0", result)
@@ -688,7 +648,7 @@ func TestJSONRendererBannerNoop(t *testing.T) {
 func TestJSONRendererBannerEmit(t *testing.T) {
 	r := &JSONRenderer{}
 	var buf bytes.Buffer
-	p := userReplProfile()
+	p := defaultReplProfile()
 	if err := r.RenderBanner(&buf, p); err != nil {
 		t.Fatalf("RenderBanner error: %v", err)
 	}

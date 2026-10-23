@@ -150,7 +150,7 @@ func (repl *Repl) registerBuiltinCommands() {
 					cleared++
 				}
 			}
-			// Re-run profile startup to restore profile-injected globals (e.g. user).
+			// Re-run profile startup to restore profile-injected globals.
 			if err := ctx.Profile.RunStartup(rt); err != nil {
 				fmt.Fprintf(ctx.Writer, "Warning: profile startup error: %s\n", err)
 			}

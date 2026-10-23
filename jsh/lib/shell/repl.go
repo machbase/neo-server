@@ -111,39 +111,12 @@ func defaultReplProfile() RuntimeProfile {
 	}
 }
 
-// userReplProfile returns a RuntimeProfile enriched with Machbase Neo helpers.
-// It preloads repl/profiles/user and exposes it as the global `user` object.
-func userReplProfile() RuntimeProfile {
-	base := defaultReplProfile()
-	return RuntimeProfile{
-		Name:        "user",
-		Description: "JSH REPL with Machbase Neo helpers",
-		Banner:      base.Banner,
-		Startup: func(rt *goja.Runtime) error {
-			_, err := rt.RunString(`globalThis.user = require('repl/profiles/user');`)
-			return err
-		},
-		Metadata: map[string]any{
-			"product": "repl",
-			"mode":    "javascript",
-			"profile": "user",
-		},
-		KnownModules: append(base.KnownModules,
-			"repl/profiles/user  — user.db.* query helpers (this profile)",
-		),
-	}
-}
-
 func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	cfg := repl.cfg
-	var configErr error
 	// Read optional JS config object passed from repl.js (Phase 2).
 	if len(call.Arguments) > 0 {
 		if obj, ok := call.Arguments[0].Export().(map[string]interface{}); ok {
 			cfg = mergeReplConfigFromMap(cfg, obj)
-			if name, ok := obj["profile"].(string); ok && name != "default" && name != "user" {
-				configErr = fmt.Errorf("unsupported REPL profile %q (available: default, user)", name)
-			}
 		}
 	}
 
@@ -155,11 +128,6 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	if renderer == nil {
 		renderer = newConsoleRenderer(repl.rt)
 	}
-	if configErr != nil {
-		renderer.RenderError(writer, configErr) //nolint:errcheck
-		return repl.rt.ToValue(1)
-	}
-
 	// Phase D: wrap renderer with transcript recording when a path is configured.
 	var tw *TranscriptWriter
 	if cfg.TranscriptPath != "" {
@@ -168,8 +136,7 @@ func (repl *Repl) Loop(call goja.FunctionCall) goja.Value {
 	}
 
 	// Eval-and-exit mode: run code without entering interactive loop.
-	// Profile.Startup must run first so profile-injected globals (e.g. globalThis.user)
-	// are available to the evaluated code.
+	// Profile.Startup must run before evaluation so profile-injected globals are available.
 	if cfg.Eval != "" {
 		if err := cfg.Profile.RunStartup(repl.rt); err != nil {
 			renderer.RenderError(writer, err) //nolint:errcheck
@@ -343,7 +310,7 @@ func (repl *Repl) runPreloads(cfg ReplConfig, w io.Writer, renderer Renderer) er
 
 // mergeReplConfigFromMap merges a JS options map into a ReplConfig.
 // Unknown keys are silently ignored.
-// Processing order: scalar limits first, then profile, then json flag.
+// Processing order: scalar limits first, then json flag.
 func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplConfig {
 	cfg := base
 	if v, ok := opts["eval"]; ok {
@@ -378,16 +345,6 @@ func mergeReplConfigFromMap(base ReplConfig, opts map[string]interface{}) ReplCo
 	if v, ok := opts["transcript"]; ok {
 		if s, ok := v.(string); ok && s != "" {
 			cfg.TranscriptPath = s
-		}
-	}
-	if v, ok := opts["profile"]; ok {
-		if s, ok := v.(string); ok {
-			switch s {
-			case "default":
-				cfg.Profile = defaultReplProfile()
-			case "user":
-				cfg.Profile = userReplProfile()
-			}
 		}
 	}
 	if v, ok := opts["json"]; ok {

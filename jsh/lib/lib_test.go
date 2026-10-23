@@ -21,9 +21,15 @@ func TestUserModuleFilesIncludesPublicWrappers(t *testing.T) {
 	if _, ok := files["process.js"]; !ok {
 		t.Fatal("expected process.js wrapper")
 	}
-	for _, name := range []string{"ai/prompt.js", "ai/executor.js", "ai/transcript.js", "repl/profiles/agent.js"} {
+	for _, name := range []string{
+		"ai/prompt.js",
+		"ai/executor.js",
+		"ai/transcript.js",
+		"repl/profiles/agent.js",
+		"repl/profiles/user.js",
+	} {
 		if _, ok := files[name]; ok {
-			t.Errorf("removed AI module %s is still embedded", name)
+			t.Errorf("removed module %s is still embedded", name)
 		}
 	}
 }
@@ -44,7 +50,7 @@ func TestHelpModule(t *testing.T) {
 				console.println(help.find(['jsh'], ['ai']) === null);
 				console.println(help.find(['jsh'], ['ai_kpi']) === null);
 				const replHelp = require('/usr/share/help/jsh/repl');
-				console.println(replHelp.options.profile.description);
+				console.println(replHelp.options.profile === undefined);
 				console.println(replHelp.options.readOnly === undefined);
 				console.println(replHelp.options.maxRows === undefined);
 			`,
@@ -52,7 +58,7 @@ func TestHelpModule(t *testing.T) {
 				"Repl,Shell",
 				"false", "false", "false", "false",
 				"true", "true",
-				"Profile to use (default, user)",
+				"true",
 				"true", "true",
 			},
 		},
@@ -372,7 +378,7 @@ func TestFS_Module(t *testing.T) {
 			console.println('7. Listing /lib directory:');
 			const files = fs.readdirSync('/lib');
 			const knownFiles = ['events.js', 'fs.js', 'stream.js', 'path.js', 'os.js'];
-			const knownDirs = ['archive', 'util', 'parser', 'repl'];
+			const knownDirs = ['archive', 'util', 'parser'];
 			let allFound = true;
 			knownFiles.forEach(f => {
 				if (!files.includes(f)) { console.println('  MISSING file:', f); allFound = false; }
@@ -400,7 +406,7 @@ func TestFS_Module(t *testing.T) {
 				console.println('  ' + type + ' ' + f);
 			});
 			// Known dirs must be [DIR]
-			['archive', 'util', 'parser', 'repl'].forEach(d => {
+			['archive', 'util', 'parser'].forEach(d => {
 				if (!byName[d]) { console.println('  MISSING:', d); return; }
 				const type = byName[d].isDirectory() ? '[DIR]' : '[FILE]';
 				console.println('  ' + type + ' ' + d);
@@ -528,7 +534,6 @@ func TestFS_Module(t *testing.T) {
 			"  [DIR] archive",
 			"  [DIR] util",
 			"  [DIR] parser",
-			"  [DIR] repl",
 			"",
 			"9. Creating nested directories /work/tmp/a/b/c:",
 			"Nested directories created",

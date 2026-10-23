@@ -6,6 +6,9 @@ const _machcli = require('@jsh/machcli');
 const DEFAULT_CONFIG_PATH = '/proc/share/db.json';
 
 function loadDefaultConfig() {
+    if (require('process').env.get('NEOSHELL_SESSION_ACTIVE') === true) {
+        return require('@jsh/session').getMachCliConfig();
+    }
     try {
         const raw = fs.readFileSync(DEFAULT_CONFIG_PATH, 'utf8');
         return JSON.parse(raw);
