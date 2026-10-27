@@ -8,9 +8,9 @@ import (
 	"github.com/dop251/goja"
 )
 
-// AgentRenderer implements Renderer for agent/machine-readable output.
+// JSONRenderer implements Renderer for machine-readable REPL output.
 // Every output line is a self-contained JSON object, enabling simple
-// line-by-line parsing by agent orchestrators without any screen-scraping.
+// line-by-line parsing without any screen-scraping.
 //
 // Output schema:
 //
@@ -21,14 +21,14 @@ import (
 //
 // When MaxOutputBytes is non-zero and the serialized value exceeds that limit,
 // the value field is replaced with a truncation notice and truncated=true is set.
-type AgentRenderer struct {
+type JSONRenderer struct {
 	// MaxOutputBytes limits the JSON-serialized value size in bytes.
 	// When exceeded, value is replaced with "[truncated: N bytes]" and
 	// truncated=true is set in the output object. 0 = no limit.
 	MaxOutputBytes int
 }
 
-// evalResult is the wire format for a single agent evaluation result.
+// evalResult is the wire format for a single JSON evaluation result.
 type evalResult struct {
 	OK        bool   `json:"ok"`
 	Type      string `json:"type,omitempty"`
@@ -38,10 +38,9 @@ type evalResult struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
-// RenderBanner emits a JSON banner event. In agent mode banners are structural
-// events rather than human-readable text. If the profile has no banner the
-// method is a no-op (agent profiles set Banner=nil for clean output).
-func (r *AgentRenderer) RenderBanner(w io.Writer, profile RuntimeProfile) error {
+// RenderBanner emits a JSON banner event.
+// If the profile has no banner the method is a no-op.
+func (r *JSONRenderer) RenderBanner(w io.Writer, profile RuntimeProfile) error {
 	text := profile.ResolveBanner()
 	if text == "" {
 		return nil
@@ -56,12 +55,12 @@ func (r *AgentRenderer) RenderBanner(w io.Writer, profile RuntimeProfile) error 
 // RenderValue emits a structured JSON result for a value produced outside the
 // evaluation loop (e.g. from a preload module). ElapsedMs is 0 because no
 // timing context is available.
-func (r *AgentRenderer) RenderValue(w io.Writer, value any) error {
+func (r *JSONRenderer) RenderValue(w io.Writer, value any) error {
 	return r.emitResult(w, value, nil, 0)
 }
 
 // RenderError emits a structured JSON error line.
-func (r *AgentRenderer) RenderError(w io.Writer, err error) error {
+func (r *JSONRenderer) RenderError(w io.Writer, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -71,7 +70,7 @@ func (r *AgentRenderer) RenderError(w io.Writer, err error) error {
 // RenderEvalResult is called by renderEvalResult() in repl.go with full timing
 // context from the evaluation loop. It is NOT part of the Renderer interface;
 // it is dispatched via type assertion in renderEvalResult().
-func (r *AgentRenderer) RenderEvalResult(w io.Writer, rt *goja.Runtime, val goja.Value, evalErr error, elapsed time.Duration) error {
+func (r *JSONRenderer) RenderEvalResult(w io.Writer, rt *goja.Runtime, val goja.Value, evalErr error, elapsed time.Duration) error {
 	ms := elapsed.Milliseconds()
 	if evalErr != nil {
 		return r.emitResult(w, nil, evalErr, ms)
@@ -80,7 +79,7 @@ func (r *AgentRenderer) RenderEvalResult(w io.Writer, rt *goja.Runtime, val goja
 }
 
 // emitResult serializes a value or error into one JSON line.
-func (r *AgentRenderer) emitResult(w io.Writer, value any, evalErr error, elapsedMs int64) error {
+func (r *JSONRenderer) emitResult(w io.Writer, value any, evalErr error, elapsedMs int64) error {
 	res := evalResult{ElapsedMs: elapsedMs}
 
 	if evalErr != nil {
@@ -110,7 +109,7 @@ func (r *AgentRenderer) emitResult(w io.Writer, value any, evalErr error, elapse
 // marshalGojaValue extracts the JS type name and a serializable Go value from
 // a goja.Value. When MaxOutputBytes is set and the serialized form exceeds it,
 // the value is replaced with a truncation notice.
-func (r *AgentRenderer) marshalGojaValue(val goja.Value) (typeName string, exported any, truncated bool) {
+func (r *JSONRenderer) marshalGojaValue(val goja.Value) (typeName string, exported any, truncated bool) {
 	if val == nil || val == goja.Null() {
 		return "null", nil, false
 	}
@@ -153,7 +152,7 @@ func (r *AgentRenderer) marshalGojaValue(val goja.Value) (typeName string, expor
 }
 
 // writeJSON marshals v as a single JSON line (no indent) followed by a newline.
-func (r *AgentRenderer) writeJSON(w io.Writer, v any) error {
+func (r *JSONRenderer) writeJSON(w io.Writer, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

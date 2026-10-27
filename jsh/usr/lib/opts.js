@@ -4,14 +4,8 @@ const process = require('process');
 const parseArgs = require('util/parseArgs');
 const help = require('help');
 
-function getMachCliConfig(conf = {}) {
-    const session = require('@jsh/session');
-    return { ...session.getMachCliConfig(), ...conf };
-}
-
 function newMachCliClient(conf = {}) {
-    const machCliConf = getMachCliConfig(conf);
-    return new (require('machcli').Client)(machCliConf);
+    return new (require('machcli').Client)(conf);
 }
 
 function formatCommandHelp(argv, defaultConfig, configs) {
@@ -86,7 +80,6 @@ function parseAndRun(argv, defaultConfig, configs) {
 
 module.exports = {
     formatCommandHelp,
-    getMachCliConfig,
     newMachCliClient,
     parseAndRun,
 }

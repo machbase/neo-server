@@ -45,22 +45,12 @@ if (values.noHistory) {
 if (values.historyName) {
     opts.historyName = values.historyName;
 }
-if (values.profile && values.profile !== 'default') {
-    opts.profile = values.profile; // 'user' / 'agent' selects the profile
-}
 if (values.json) {
     opts.json = true;
-}
-if (values.readOnly) {
-    opts.readOnly = true;
 }
 if (values.timeout !== undefined) {
     const n = parseInt(values.timeout, 10);
     if (!isNaN(n) && n > 0) { opts.timeoutMs = n; }
-}
-if (values.maxRows !== undefined) {
-    const n = parseInt(values.maxRows, 10);
-    if (!isNaN(n) && n > 0) { opts.maxRows = n; }
 }
 if (values.maxOutputBytes !== undefined) {
     const n = parseInt(values.maxOutputBytes, 10);
@@ -71,4 +61,7 @@ if (values.transcript !== undefined) {
 }
 
 const r = new Repl();
-r.loop(opts);
+const code = r.loop(opts);
+if (code) {
+    process.exit(code);
+}

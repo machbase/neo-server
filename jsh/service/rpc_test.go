@@ -12,6 +12,26 @@ import (
 	"time"
 )
 
+func TestRemovedLLMRPCMethods(t *testing.T) {
+	ctl, err := NewController(&ControllerConfig{ConfigDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewController failed: %v", err)
+	}
+	for _, method := range []string{
+		"llm.session.open", "llm.session.get", "llm.session.reset",
+		"llm.turn.ask", "llm.turn.cancel", "llm.provider.set", "llm.model.set",
+	} {
+		t.Run(method, func(t *testing.T) {
+			if _, rpcErr := ctl.CallJsonRpc(method, nil, nil); rpcErr == nil || rpcErr.Code != jsonRPCMethodMiss {
+				t.Fatalf("CallJsonRpc(%q) error=%+v, want method not found", method, rpcErr)
+			}
+			if _, rpcErr := ctl.dispatchRPC(method, json.RawMessage("[]")); rpcErr == nil || rpcErr.Code != jsonRPCMethodMiss {
+				t.Fatalf("dispatchRPC(%q) error=%+v, want method not found", method, rpcErr)
+			}
+		})
+	}
+}
+
 // TestControllerRPCConnectionLimit verifies that concurrent RPC connections are bounded
 // by the rpcConnMax (256) limit. Connections beyond the limit should be dropped gracefully.
 func TestControllerRPCConnectionLimit(t *testing.T) {

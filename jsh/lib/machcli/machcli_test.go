@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/lib/machcli"
@@ -476,6 +477,55 @@ func TestClientLoadsSharedConfigAndMergesCallerConfig(t *testing.T) {
 	require.NoError(t, jr.Run())
 
 	require.Equal(t, "shared-user: DEMO\nmerged-user: SYS\nconnected: true\n", writer.String())
+}
+
+func TestClientUsesNeoShellSessionConfig(t *testing.T) {
+	sharedDir := t.TempDir()
+	sharedConfig := fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"user":"sys","password":"manager"}`,
+		machcliTestServer.MachPort(),
+	)
+	require.NoError(t, os.WriteFile(filepath.Join(sharedDir, "db.json"), []byte(sharedConfig), 0o644))
+
+	writer := &bytes.Buffer{}
+	jr, err := engine.New(engine.Config{
+		Name: "machcli_session_config",
+		Code: `
+			const { Client } = require('machcli');
+			const dbFromSession = new Client();
+			console.println("session-user:", dbFromSession.user());
+			dbFromSession.close();
+
+			const dbWithOverride = new Client({ user: "sys", password: "manager" });
+			console.println("override-user:", dbWithOverride.user());
+			dbWithOverride.close();
+		`,
+		FSTabs: []engine.FSTab{
+			root.RootFSTab(),
+			{MountPoint: "/proc/share", Source: sharedDir},
+			{MountPoint: "/lib", FS: lib.LibFS()},
+		},
+		Env: map[string]any{
+			"LIBRARY_PATH":            "/lib",
+			"NEOSHELL_SESSION_ACTIVE": true,
+		},
+		Writer: writer,
+	})
+	require.NoError(t, err)
+	lib.Enable(jr)
+	jr.RegisterNativeModule("@jsh/session", func(_ context.Context, rt *goja.Runtime, module *goja.Object) {
+		exports := module.Get("exports").(*goja.Object)
+		exports.Set("getMachCliConfig", func() map[string]any {
+			return map[string]any{
+				"host":     "127.0.0.1",
+				"port":     machcliTestServer.MachPort(),
+				"user":     "demo",
+				"password": "demo",
+			}
+		})
+	})
+	require.NoError(t, jr.Run())
+
+	require.Equal(t, "session-user: DEMO\noverride-user: SYS\n", writer.String())
 }
 
 func TestClientTimezoneOptions(t *testing.T) {

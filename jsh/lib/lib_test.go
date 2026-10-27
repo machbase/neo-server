@@ -21,10 +21,47 @@ func TestUserModuleFilesIncludesPublicWrappers(t *testing.T) {
 	if _, ok := files["process.js"]; !ok {
 		t.Fatal("expected process.js wrapper")
 	}
+	for _, name := range []string{
+		"ai/prompt.js",
+		"ai/executor.js",
+		"ai/transcript.js",
+		"repl/profiles/agent.js",
+		"repl/profiles/user.js",
+	} {
+		if _, ok := files[name]; ok {
+			t.Errorf("removed module %s is still embedded", name)
+		}
+	}
 }
 
 func TestHelpModule(t *testing.T) {
 	tests := []test_engine.TestCase{
+		{
+			Name: "shell exports constructors without AI integration",
+			Script: `
+				const shell = require('@jsh/shell');
+				console.println(Object.keys(shell).sort().join(','));
+				const fs = require('fs');
+				for (const name of ['ai', 'ai_kpi']) {
+					console.println(fs.existsSync('/sbin/' + name + '.js'));
+					console.println(fs.existsSync('/usr/share/help/jsh/' + name + '.js'));
+				}
+				const help = require('help');
+				console.println(help.find(['jsh'], ['ai']) === null);
+				console.println(help.find(['jsh'], ['ai_kpi']) === null);
+				const replHelp = require('/usr/share/help/jsh/repl');
+				console.println(replHelp.options.profile === undefined);
+				console.println(replHelp.options.readOnly === undefined);
+				console.println(replHelp.options.maxRows === undefined);
+			`,
+			Output: []string{
+				"Repl,Shell",
+				"false", "false", "false", "false",
+				"true", "true",
+				"true",
+				"true", "true",
+			},
+		},
 		{
 			Name: "find namespaced command without session module",
 			Script: `
@@ -163,7 +200,7 @@ func TestHelpModule(t *testing.T) {
 				console.println('missing:', missing.join(','));
 			`,
 			Output: []string{
-				"ai,ai_kpi,alias,authkey,cat,cd,echo,env,exit,help,ls,mkdir,mqtt_pub,nats_pub,pkg,ps,pwd,quit,repl,rm,servicectl,setenv,shell,sleep,tail,unsetenv,viz,wc,which",
+				"alias,authkey,cat,cd,echo,env,exit,help,ls,mkdir,mqtt_pub,nats_pub,pkg,ps,pwd,quit,repl,rm,servicectl,setenv,shell,sleep,tail,unsetenv,viz,wc,which",
 				"missing: ",
 			},
 		},
@@ -341,7 +378,7 @@ func TestFS_Module(t *testing.T) {
 			console.println('7. Listing /lib directory:');
 			const files = fs.readdirSync('/lib');
 			const knownFiles = ['events.js', 'fs.js', 'stream.js', 'path.js', 'os.js'];
-			const knownDirs = ['archive', 'util', 'parser', 'repl'];
+			const knownDirs = ['archive', 'util', 'parser'];
 			let allFound = true;
 			knownFiles.forEach(f => {
 				if (!files.includes(f)) { console.println('  MISSING file:', f); allFound = false; }
@@ -369,7 +406,7 @@ func TestFS_Module(t *testing.T) {
 				console.println('  ' + type + ' ' + f);
 			});
 			// Known dirs must be [DIR]
-			['archive', 'util', 'parser', 'repl'].forEach(d => {
+			['archive', 'util', 'parser'].forEach(d => {
 				if (!byName[d]) { console.println('  MISSING:', d); return; }
 				const type = byName[d].isDirectory() ? '[DIR]' : '[FILE]';
 				console.println('  ' + type + ' ' + d);
@@ -497,7 +534,6 @@ func TestFS_Module(t *testing.T) {
 			"  [DIR] archive",
 			"  [DIR] util",
 			"  [DIR] parser",
-			"  [DIR] repl",
 			"",
 			"9. Creating nested directories /work/tmp/a/b/c:",
 			"Nested directories created",

@@ -596,62 +596,46 @@ func TestHistoryNameConfig(t *testing.T) {
 	}
 }
 
-// TestUserProfileName verifies the user profile has correct Name field.
-func TestUserProfileName(t *testing.T) {
-	p := userReplProfile()
-	if p.Name != "user" {
-		t.Errorf("userReplProfile().Name = %q, want %q", p.Name, "user")
-	}
-}
-
-// ── Phase A: Agent profile ────────────────────────────────────────────────────
-
-// TestAgentProfileName verifies the agent profile has correct Name field.
-func TestAgentProfileName(t *testing.T) {
-	p := agentReplProfile()
-	if p.Name != "agent" {
-		t.Errorf("agentReplProfile().Name = %q, want %q", p.Name, "agent")
-	}
-}
-
-// TestAgentProfileNoBanner verifies the agent profile banner is nil
-// so AgentRenderer emits no banner JSON event by default.
-func TestAgentProfileNoBanner(t *testing.T) {
-	p := agentReplProfile()
-	if p.Banner != nil {
-		t.Errorf("agentReplProfile().Banner should be nil for clean JSON output")
-	}
-}
-
-// TestMergeProfileAgent verifies mergeReplConfigFromMap("agent") installs
-// agentReplProfile and an AgentRenderer.
-func TestMergeProfileAgent(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"profile": "agent"})
-	if cfg.Profile.Name != "agent" {
-		t.Errorf("profile.Name = %q, want %q", cfg.Profile.Name, "agent")
-	}
-	if _, ok := cfg.Renderer.(*AgentRenderer); !ok {
-		t.Errorf("Renderer should be *AgentRenderer for profile:agent, got %T", cfg.Renderer)
-	}
-}
-
-// TestMergeJsonFlag verifies mergeReplConfigFromMap(json:true) installs AgentRenderer.
+// TestMergeJsonFlag verifies mergeReplConfigFromMap(json:true) installs JSONRenderer.
 func TestMergeJsonFlag(t *testing.T) {
 	base := defaultReplConfig()
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"json": true})
-	if _, ok := cfg.Renderer.(*AgentRenderer); !ok {
-		t.Errorf("Renderer should be *AgentRenderer for json:true, got %T", cfg.Renderer)
+	if _, ok := cfg.Renderer.(*JSONRenderer); !ok {
+		t.Errorf("Renderer should be *JSONRenderer for json:true, got %T", cfg.Renderer)
 	}
 }
 
-// ── Phase B: AgentRenderer output ────────────────────────────────────────────
+func TestReplDefaultJSONEval(t *testing.T) {
+	rt := goja.New()
+	var output bytes.Buffer
+	cfg := defaultReplConfig()
+	cfg.Writer = &output
+	r := &Repl{rt: rt, cfg: cfg}
+	result := r.Loop(goja.FunctionCall{Arguments: []goja.Value{
+		rt.ToValue(map[string]any{"json": true, "eval": "6 * 7"}),
+	}})
+	if result.ToInteger() != 0 {
+		t.Fatalf("exit status = %v, want 0", result)
+	}
+	var event evalResult
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, output.String())
+	}
+	if !event.OK || event.Type != "number" || event.Value != float64(42) {
+		t.Fatalf("unexpected evaluation result: %s", output.String())
+	}
+	if rt.Get("agent") != nil || rt.Get("__agentConfig") != nil {
+		t.Fatal("default JSON evaluation injected agent globals")
+	}
+}
 
-// TestAgentRendererBannerNoop verifies that a nil-banner profile emits no output.
-func TestAgentRendererBannerNoop(t *testing.T) {
-	r := &AgentRenderer{}
+// ── Phase B: JSONRenderer output ────────────────────────────────────────────
+
+// TestJSONRendererBannerNoop verifies that a nil-banner profile emits no output.
+func TestJSONRendererBannerNoop(t *testing.T) {
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
-	p := agentReplProfile()
+	p := RuntimeProfile{Name: "default"}
 	if err := r.RenderBanner(&buf, p); err != nil {
 		t.Fatalf("RenderBanner error: %v", err)
 	}
@@ -660,11 +644,11 @@ func TestAgentRendererBannerNoop(t *testing.T) {
 	}
 }
 
-// TestAgentRendererBannerEmit verifies that a non-empty banner emits a JSON event.
-func TestAgentRendererBannerEmit(t *testing.T) {
-	r := &AgentRenderer{}
+// TestJSONRendererBannerEmit verifies that a non-empty banner emits a JSON event.
+func TestJSONRendererBannerEmit(t *testing.T) {
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
-	p := userReplProfile()
+	p := defaultReplProfile()
 	if err := r.RenderBanner(&buf, p); err != nil {
 		t.Fatalf("RenderBanner error: %v", err)
 	}
@@ -678,9 +662,9 @@ func TestAgentRendererBannerEmit(t *testing.T) {
 	}
 }
 
-// TestAgentRendererError verifies RenderError emits ok:false JSON with error field.
-func TestAgentRendererError(t *testing.T) {
-	r := &AgentRenderer{}
+// TestJSONRendererError verifies RenderError emits ok:false JSON with error field.
+func TestJSONRendererError(t *testing.T) {
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	if err := r.RenderError(&buf, fmt.Errorf("something went wrong")); err != nil {
 		t.Fatalf("RenderError error: %v", err)
@@ -698,10 +682,10 @@ func TestAgentRendererError(t *testing.T) {
 	}
 }
 
-// TestAgentRendererValue verifies RenderValue emits ok:true JSON with type and value.
-func TestAgentRendererValue(t *testing.T) {
+// TestJSONRendererValue verifies RenderValue emits ok:true JSON with type and value.
+func TestJSONRendererValue(t *testing.T) {
 	rt := goja.New()
-	r := &AgentRenderer{}
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	val := rt.ToValue(42)
 	if err := r.RenderValue(&buf, val); err != nil {
@@ -720,10 +704,10 @@ func TestAgentRendererValue(t *testing.T) {
 	}
 }
 
-// TestAgentRendererEvalResult verifies RenderEvalResult includes elapsedMs.
-func TestAgentRendererEvalResult(t *testing.T) {
+// TestJSONRendererEvalResult verifies RenderEvalResult includes elapsedMs.
+func TestJSONRendererEvalResult(t *testing.T) {
 	rt := goja.New()
-	r := &AgentRenderer{}
+	r := &JSONRenderer{}
 	var buf bytes.Buffer
 	val := rt.ToValue("hello")
 	elapsed := 7 * time.Millisecond
@@ -743,10 +727,10 @@ func TestAgentRendererEvalResult(t *testing.T) {
 	}
 }
 
-// TestAgentRendererTruncation verifies MaxOutputBytes causes truncated:true.
-func TestAgentRendererTruncation(t *testing.T) {
+// TestJSONRendererTruncation verifies MaxOutputBytes causes truncated:true.
+func TestJSONRendererTruncation(t *testing.T) {
 	rt := goja.New()
-	r := &AgentRenderer{MaxOutputBytes: 10}
+	r := &JSONRenderer{MaxOutputBytes: 10}
 	var buf bytes.Buffer
 	// A long string will exceed the 10-byte limit.
 	val := rt.ToValue("this is a very long string that exceeds the byte limit")
@@ -765,30 +749,12 @@ func TestAgentRendererTruncation(t *testing.T) {
 
 // ── Phase C: Capability and limits ───────────────────────────────────────────
 
-// TestMergeReadOnly verifies mergeReplConfigFromMap sets ReadOnly from opts.
-func TestMergeReadOnly(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"readOnly": true})
-	if !cfg.ReadOnly {
-		t.Errorf("ReadOnly should be true")
-	}
-}
-
 // TestMergeTimeoutMs verifies mergeReplConfigFromMap sets TimeoutMs from opts.
 func TestMergeTimeoutMs(t *testing.T) {
 	base := defaultReplConfig()
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"timeoutMs": float64(5000)})
 	if cfg.TimeoutMs != 5000 {
 		t.Errorf("TimeoutMs = %d, want 5000", cfg.TimeoutMs)
-	}
-}
-
-// TestMergeMaxRows verifies mergeReplConfigFromMap sets MaxRows from opts.
-func TestMergeMaxRows(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"maxRows": float64(500)})
-	if cfg.MaxRows != 500 {
-		t.Errorf("MaxRows = %d, want 500", cfg.MaxRows)
 	}
 }
 
@@ -801,39 +767,20 @@ func TestMergeMaxOutputBytes(t *testing.T) {
 	}
 }
 
-// TestMergeAgentProfileWithReadOnly verifies profile:"agent" + readOnly:true
-// propagates ReadOnly into the Renderer and profile metadata.
-func TestMergeAgentProfileWithReadOnly(t *testing.T) {
-	base := defaultReplConfig()
-	cfg := mergeReplConfigFromMap(base, map[string]interface{}{
-		"readOnly": true,
-		"profile":  "agent",
-	})
-	if !cfg.ReadOnly {
-		t.Errorf("ReadOnly should be true")
-	}
-	if cfg.Profile.Name != "agent" {
-		t.Errorf("Profile.Name = %q, want agent", cfg.Profile.Name)
-	}
-	if ro, _ := cfg.Profile.Metadata["readOnly"].(bool); !ro {
-		t.Errorf("Profile.Metadata[readOnly] should be true")
-	}
-}
-
 // TestMergeMaxOutputBytesReconcile verifies that maxOutputBytes is propagated
-// to an existing AgentRenderer when set alongside profile:"agent".
+// to an existing JSONRenderer.
 func TestMergeMaxOutputBytesReconcile(t *testing.T) {
 	base := defaultReplConfig()
+	base.Renderer = &JSONRenderer{}
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{
-		"profile":        "agent",
 		"maxOutputBytes": float64(8192),
 	})
-	ar, ok := cfg.Renderer.(*AgentRenderer)
+	ar, ok := cfg.Renderer.(*JSONRenderer)
 	if !ok {
-		t.Fatalf("Renderer should be *AgentRenderer")
+		t.Fatalf("Renderer should be *JSONRenderer")
 	}
 	if ar.MaxOutputBytes != 8192 {
-		t.Errorf("AgentRenderer.MaxOutputBytes = %d, want 8192", ar.MaxOutputBytes)
+		t.Errorf("JSONRenderer.MaxOutputBytes = %d, want 8192", ar.MaxOutputBytes)
 	}
 }
 
@@ -970,5 +917,212 @@ func TestMergeTranscriptPath(t *testing.T) {
 	cfg := mergeReplConfigFromMap(base, map[string]interface{}{"transcript": "/tmp/test.ndjson"})
 	if cfg.TranscriptPath != "/tmp/test.ndjson" {
 		t.Errorf("TranscriptPath = %q, want %q", cfg.TranscriptPath, "/tmp/test.ndjson")
+	}
+}
+
+// ── Eval-mode regressions ───────────────────────────────────────────────────
+
+// newEvalLoopRepl returns a Repl whose output is captured in buf. When
+// withRequire is true, a minimal require('fs') backed by the host file system
+// is installed so preloads can be exercised.
+func newEvalLoopRepl(t *testing.T, buf *bytes.Buffer, withRequire bool) *Repl {
+	t.Helper()
+	rt := goja.New()
+	if withRequire {
+		fsObj := rt.NewObject()
+		fsObj.Set("readFileSync", func(path string, _ string) string {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				panic(rt.NewGoError(err))
+			}
+			return string(data)
+		})
+		rt.Set("require", func(name string) goja.Value {
+			if name == "fs" {
+				return fsObj
+			}
+			panic(rt.NewGoError(fmt.Errorf("Cannot find module '%s'", name)))
+		})
+	}
+	cfg := defaultReplConfig()
+	cfg.Writer = buf
+	r := &Repl{rt: rt, cfg: cfg}
+	r.registerBuiltinCommands()
+	return r
+}
+
+func runEvalLoop(r *Repl, opts map[string]any) int64 {
+	return r.Loop(goja.FunctionCall{Arguments: []goja.Value{r.rt.ToValue(opts)}}).ToInteger()
+}
+
+func decodeJSONLines(t *testing.T, data []byte) []map[string]any {
+	t.Helper()
+	var events []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("invalid JSON line %q: %v", line, err)
+		}
+		events = append(events, ev)
+	}
+	return events
+}
+
+// TestReplEvalExitCodes verifies Loop returns 1 when eval-mode evaluation fails
+// or times out, so repl.js can propagate it as the process exit code.
+func TestReplEvalExitCodes(t *testing.T) {
+	tests := []struct {
+		name string
+		opts map[string]any
+		want int64
+	}{
+		{"success", map[string]any{"json": true, "eval": "1 + 1"}, 0},
+		{"throw", map[string]any{"json": true, "eval": "throw new Error('boom')"}, 1},
+		{"syntax error", map[string]any{"json": true, "eval": ")("}, 1},
+		{"timeout", map[string]any{"json": true, "eval": "while (true) {}", "timeoutMs": int64(50)}, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			r := newEvalLoopRepl(t, &buf, false)
+			if got := runEvalLoop(r, tc.opts); got != tc.want {
+				t.Fatalf("exit = %d, want %d; output=%s", got, tc.want, buf.String())
+			}
+			events := decodeJSONLines(t, buf.Bytes())
+			if len(events) != 1 {
+				t.Fatalf("expected one JSON result, got %d: %s", len(events), buf.String())
+			}
+			if ok, _ := events[0]["ok"].(bool); ok != (tc.want == 0) {
+				t.Fatalf("ok = %v, want %v: %s", events[0]["ok"], tc.want == 0, buf.String())
+			}
+		})
+	}
+}
+
+// TestReplEvalRunsPreloads verifies --load/--require run before eval-mode code.
+func TestReplEvalRunsPreloads(t *testing.T) {
+	dir := t.TempDir()
+	preload := dir + "/pre.js"
+	if err := os.WriteFile(preload, []byte("globalThis.preloaded = 7;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("load file is evaluated", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := newEvalLoopRepl(t, &buf, true)
+		got := runEvalLoop(r, map[string]any{"json": true, "eval": "preloaded * 6", "load": []any{preload}})
+		if got != 0 {
+			t.Fatalf("exit = %d, want 0; output=%s", got, buf.String())
+		}
+		events := decodeJSONLines(t, buf.Bytes())
+		if len(events) != 1 || events[0]["value"] != float64(42) {
+			t.Fatalf("unexpected output: %s", buf.String())
+		}
+	})
+	t.Run("missing load file fails", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := newEvalLoopRepl(t, &buf, true)
+		got := runEvalLoop(r, map[string]any{"json": true, "eval": "1", "load": []any{dir + "/missing.js"}})
+		if got != 1 {
+			t.Fatalf("exit = %d, want 1; output=%s", got, buf.String())
+		}
+		if !strings.Contains(buf.String(), "missing.js") {
+			t.Fatalf("expected preload error, got %s", buf.String())
+		}
+	})
+	t.Run("missing require module fails", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := newEvalLoopRepl(t, &buf, true)
+		got := runEvalLoop(r, map[string]any{"json": true, "eval": "1", "require": []any{"no-such-module"}})
+		if got != 1 {
+			t.Fatalf("exit = %d, want 1; output=%s", got, buf.String())
+		}
+		if !strings.Contains(buf.String(), "no-such-module") {
+			t.Fatalf("expected require error, got %s", buf.String())
+		}
+	})
+}
+
+// TestReplEvalJSONTranscript verifies JSON output survives the transcript
+// decorator in eval mode and that the transcript records input and result.
+func TestReplEvalJSONTranscript(t *testing.T) {
+	transcript := t.TempDir() + "/t.ndjson"
+	var buf bytes.Buffer
+	r := newEvalLoopRepl(t, &buf, false)
+	got := runEvalLoop(r, map[string]any{"json": true, "transcript": transcript, "eval": "({answer: 42, password: 'x'})"})
+	if got != 0 {
+		t.Fatalf("exit = %d, want 0; output=%s", got, buf.String())
+	}
+	out := decodeJSONLines(t, buf.Bytes())
+	if len(out) != 1 || out[0]["ok"] != true || out[0]["type"] != "object" {
+		t.Fatalf("unexpected JSON output: %s", buf.String())
+	}
+	if _, ok := out[0]["elapsedMs"]; !ok {
+		t.Fatalf("JSON output lacks elapsedMs: %s", buf.String())
+	}
+
+	data, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := decodeJSONLines(t, data)
+	if len(events) != 2 {
+		t.Fatalf("expected input and result events, got %s", data)
+	}
+	if events[0]["event"] != "input" || events[0]["input"] != "({answer: 42, password: 'x'})" {
+		t.Fatalf("unexpected input event: %v", events[0])
+	}
+	result, _ := events[1]["result"].(map[string]any)
+	if events[1]["event"] != "result" || result["answer"] != float64(42) || result["password"] != "[REDACTED]" {
+		t.Fatalf("unexpected result event: %v", events[1])
+	}
+}
+
+// TestReplEvalTranscriptRecordsError verifies eval errors are recorded once.
+func TestReplEvalTranscriptRecordsError(t *testing.T) {
+	transcript := t.TempDir() + "/t.ndjson"
+	var buf bytes.Buffer
+	r := newEvalLoopRepl(t, &buf, false)
+	if got := runEvalLoop(r, map[string]any{"json": true, "transcript": transcript, "eval": "throw new Error('boom')"}); got != 1 {
+		t.Fatalf("exit = %d, want 1", got)
+	}
+	data, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := decodeJSONLines(t, data)
+	if len(events) != 2 || events[1]["event"] != "error" || !strings.Contains(fmt.Sprint(events[1]["error"]), "boom") {
+		t.Fatalf("unexpected transcript: %s", data)
+	}
+}
+
+// TestReplTranscriptOpenFailure verifies an unwritable transcript path is
+// reported instead of being silently ignored.
+func TestReplTranscriptOpenFailure(t *testing.T) {
+	var buf bytes.Buffer
+	r := newEvalLoopRepl(t, &buf, false)
+	path := t.TempDir() + "/missing-dir/t.ndjson"
+	if got := runEvalLoop(r, map[string]any{"json": true, "transcript": path, "eval": "1"}); got != 1 {
+		t.Fatalf("exit = %d, want 1; output=%s", got, buf.String())
+	}
+	if !strings.Contains(buf.String(), "transcript") {
+		t.Fatalf("expected transcript error, got %s", buf.String())
+	}
+}
+
+// TestIsJSONRendererUnwrapsTranscript verifies JSON detection through the
+// transcript decorator.
+func TestIsJSONRendererUnwrapsTranscript(t *testing.T) {
+	if !isJSONRenderer(&JSONRenderer{}) {
+		t.Fatal("JSONRenderer should be detected")
+	}
+	if !isJSONRenderer(NewTranscriptWriter(&JSONRenderer{}, "", "default")) {
+		t.Fatal("JSONRenderer wrapped by TranscriptWriter should be detected")
+	}
+	if isJSONRenderer(NewTranscriptWriter(WriterRenderer{}, "", "default")) {
+		t.Fatal("non-JSON renderer should not be detected as JSON")
 	}
 }
