@@ -343,14 +343,11 @@ func procProcessArgs(ex *exec.Cmd) []string {
 }
 
 func procProcessCwd(jr *JSRuntime, ex *exec.Cmd) string {
-	if ex != nil && strings.TrimSpace(ex.Dir) != "" {
-		// ex.Dir is a host path; /proc reports virtual paths.
-		if jr != nil && jr.filesystem != nil {
-			if virtualPath, err := jr.filesystem.mapHostPathToVirtual(ex.Dir); err == nil {
-				return virtualPath
-			}
+	// ex.Dir is a host path; /proc reports virtual paths.
+	if ex != nil && strings.TrimSpace(ex.Dir) != "" && jr != nil && jr.filesystem != nil {
+		if virtualPath, err := jr.filesystem.mapHostPathToVirtual(ex.Dir); err == nil {
+			return virtualPath
 		}
-		return procProcessRuntimeCwd(jr)
 	}
 	return procProcessRuntimeCwd(jr)
 }
