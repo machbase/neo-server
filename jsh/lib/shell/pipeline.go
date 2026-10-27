@@ -324,7 +324,9 @@ func (sh *Shell) buildExternalExecCmd(command string, args []string, assignments
 		return nil, err
 	}
 	if strings.HasPrefix(resolvedPath, "@") {
-		return exec.Command(resolvedPath[1:], resolvedArgs...), nil
+		cmd := exec.Command(resolvedPath[1:], resolvedArgs...)
+		cmd.Dir = sh.env.HostWorkingDir()
+		return cmd, nil
 	}
 	builder := sh.env.ExecBuilder()
 	if builder == nil {

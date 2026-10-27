@@ -303,6 +303,7 @@ func (jr *JSRuntime) ExecWithOptions(path string, opts ExecOptions, args ...stri
 		// when path starts with "@",
 		// treat it as calling a native executable with args
 		cmd := exec.Command(path[1:], args...)
+		cmd.Dir = jr.Env.HostWorkingDir()
 		return jr.exec0(cmd, opts)
 	}
 	eb := jr.Env.ExecBuilder()

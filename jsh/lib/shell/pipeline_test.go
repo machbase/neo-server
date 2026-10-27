@@ -1309,3 +1309,80 @@ func TestProcessAssignmentPrefix(t *testing.T) {
 		})
 	}
 }
+
+// pwdCommand prints the OS working directory of the child process.
+func pwdCommand() string {
+	if runtime.GOOS == "windows" {
+		return "@cmd /c cd"
+	}
+	return "@pwd -P"
+}
+
+func newExternalCwdTestShell(t *testing.T, workDir string) (*Shell, *lockedBuffer) {
+	t.Helper()
+	fileSystem := engine.NewFS()
+	rootTab := root.RootFSTab()
+	if err := fileSystem.Mount(rootTab.MountPoint, rootTab.FS); err != nil {
+		t.Fatalf("mount root fs: %v", err)
+	}
+	workFS, err := engine.DirFS(workDir)
+	if err != nil {
+		t.Fatalf("work dir fs: %v", err)
+	}
+	if err := fileSystem.Mount("/work", workFS); err != nil {
+		t.Fatalf("mount work fs: %v", err)
+	}
+	output := &lockedBuffer{}
+	env := engine.NewEnv(
+		engine.WithFilesystem(fileSystem),
+		engine.WithWriter(output),
+		engine.WithReader(strings.NewReader("")),
+	)
+	env.Set("PATH", "/work:/sbin")
+	env.Set("PWD", "/work")
+	env.Set("HOME", "/work")
+	return &Shell{env: env}, output
+}
+
+func canonicalDir(t *testing.T, dir string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(strings.TrimSpace(dir))
+	if err != nil {
+		t.Fatalf("resolve %q: %v", dir, err)
+	}
+	return strings.ToLower(filepath.Clean(resolved))
+}
+
+// The process working directory differs from the /work mount, as it does for a
+// Windows service started in C:\Windows\System32 (machbase/neo#1569).
+func TestExternalCommandRunsInShellWorkingDirectory(t *testing.T) {
+	workDir := t.TempDir()
+	subDir := filepath.Join(workDir, "sub")
+	if err := os.Mkdir(subDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		pwd    string
+		line   string
+		expect string
+	}{
+		{name: "single", pwd: "/work", line: pwdCommand(), expect: workDir},
+		{name: "single_subdir", pwd: "/work/sub", line: pwdCommand(), expect: subDir},
+		{name: "pipeline", pwd: "/work/sub", line: pwdCommand() + " | " + pwdCommand(), expect: subDir},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sh, output := newExternalCwdTestShell(t, workDir)
+			sh.env.Set("PWD", tc.pwd)
+			exitCode, _ := sh.process(tc.line)
+			if exitCode != 0 {
+				t.Fatalf("exit code = %d, output:\n%s", exitCode, output.String())
+			}
+			if got, want := canonicalDir(t, output.String()), canonicalDir(t, tc.expect); got != want {
+				t.Fatalf("child working directory = %q, want %q", got, want)
+			}
+		})
+	}
+}

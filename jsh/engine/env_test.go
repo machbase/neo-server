@@ -4,11 +4,73 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"io/fs"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
+
+func TestHostWorkingDir(t *testing.T) {
+	workDir := t.TempDir()
+	subDir := filepath.Join(workDir, "sub")
+	if err := os.Mkdir(subDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "file.txt"), []byte("x"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	mounted := NewFS()
+	if err := mounted.Mount("/work", os.DirFS(workDir)); err != nil {
+		t.Fatalf("mount /work: %v", err)
+	}
+	if err := mounted.Mount("/mem", fstest.MapFS{"dir": &fstest.MapFile{Mode: fs.ModeDir}}); err != nil {
+		t.Fatalf("mount /mem: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		fs     fs.FS
+		pwd    any
+		expect string
+	}{
+		{name: "no_filesystem", fs: nil, pwd: "/work", expect: ""},
+		{name: "not_mount_fs", fs: fstest.MapFS{}, pwd: "/work", expect: ""},
+		{name: "pwd_unset", fs: mounted, pwd: nil, expect: ""},
+		{name: "pwd_not_string", fs: mounted, pwd: 1, expect: ""},
+		{name: "pwd_unmounted", fs: mounted, pwd: "/nowhere", expect: ""},
+		{name: "pwd_not_host_backed", fs: mounted, pwd: "/mem/dir", expect: ""},
+		{name: "pwd_missing", fs: mounted, pwd: "/work/missing", expect: ""},
+		{name: "pwd_is_file", fs: mounted, pwd: "/work/file.txt", expect: ""},
+		{name: "pwd_root", fs: mounted, pwd: "/work", expect: workDir},
+		{name: "pwd_subdir", fs: mounted, pwd: "/work/sub", expect: subDir},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := []EnvOption{}
+			if tc.fs != nil {
+				opts = append(opts, WithFilesystem(tc.fs))
+			}
+			env := NewEnv(opts...)
+			if tc.pwd != nil {
+				env.Set("PWD", tc.pwd)
+			}
+			got := env.HostWorkingDir()
+			if tc.expect == "" {
+				if got != "" {
+					t.Fatalf("HostWorkingDir() = %q, want empty", got)
+				}
+				return
+			}
+			want, _ := filepath.Abs(tc.expect)
+			if got != filepath.Clean(want) {
+				t.Fatalf("HostWorkingDir() = %q, want %q", got, want)
+			}
+		})
+	}
+}
 
 func TestWhich(t *testing.T) {
 	// Create a mounted filesystem with proper absolute paths
