@@ -378,6 +378,58 @@ func TestProcessExec(t *testing.T) {
 	}
 }
 
+// The process working directory differs from the /work mount, as it does for a
+// Windows service started in C:\Windows\System32 (machbase/neo#1569).
+func TestProcessExecNativeCommandRunsInRuntimeWorkingDirectory(t *testing.T) {
+	workDir := t.TempDir()
+	subDir := filepath.Join(workDir, "sub")
+	if err := os.Mkdir(subDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	command, args := "@pwd", []string{"-P"}
+	if runtime.GOOS == "windows" {
+		command, args = "@cmd", []string{"/c", "cd"}
+	}
+
+	for _, tc := range []struct{ pwd, expect string }{
+		{pwd: "/work", expect: workDir},
+		{pwd: "/work/sub", expect: subDir},
+	} {
+		t.Run(tc.pwd, func(t *testing.T) {
+			output := &bytes.Buffer{}
+			jr, err := engine.New(engine.Config{
+				Name:   "exec_cwd",
+				FSTabs: []engine.FSTab{root.RootFSTab(), {MountPoint: "/work", Source: workDir}},
+				Env:    map[string]any{"PATH": "/work:/sbin", "PWD": tc.pwd, "HOME": "/work"},
+				Reader: &bytes.Buffer{},
+				Writer: output,
+			})
+			if err != nil {
+				t.Fatalf("engine.New() error = %v", err)
+			}
+			lib.Enable(jr)
+
+			exitCode, err := jr.Exec(command, args...)
+			if err != nil || exitCode != 0 {
+				t.Fatalf("Exec() exitCode=%d err=%v output=%q", exitCode, err, output.String())
+			}
+			if got, want := canonicalExecDir(t, output.String()), canonicalExecDir(t, tc.expect); got != want {
+				t.Fatalf("child working directory = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func canonicalExecDir(t *testing.T, dir string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(strings.TrimSpace(dir))
+	if err != nil {
+		t.Fatalf("resolve %q: %v", dir, err)
+	}
+	return strings.ToLower(filepath.Clean(resolved))
+}
+
 func TestProcessExecRegistersProcEntry(t *testing.T) {
 	procFS := newWatchedProcFS()
 
