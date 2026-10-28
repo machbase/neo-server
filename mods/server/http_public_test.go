@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,6 +45,20 @@ func TestPublicCGI_Basic(t *testing.T) {
 	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
 	require.Equal(t, "text/plain; charset=utf-8;", rsp.Header.Get("Content-Type"))
 	require.Equal(t, "GREETING: Good morning \n", string(payload))
+}
+
+// TestPublicCGI_WorkIsAppOnly verifies that a CGI child process sees only the
+// app mount under "/work" and never falls back to the server's current directory.
+func TestPublicCGI_WorkIsAppOnly(t *testing.T) {
+	rsp, payload := requestPublic(t, http.MethodGet, "/public/app/cgi-bin/work_visibility", nil)
+	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
+	var result struct {
+		Work     []string `json:"work"`
+		Greeting string   `json:"greeting"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &result), string(payload))
+	require.Equal(t, []string{"public"}, result.Work, "CGI /work must expose only the app mount")
+	require.Equal(t, "Good morning", result.Greeting)
 }
 
 func TestPublicCGI_Basic201(t *testing.T) {

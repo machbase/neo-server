@@ -145,7 +145,9 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		fsTabs := []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
-			// Mount the app directory to /work in the script's virtual filesystem
+			// An empty source mounts a virtual "/work", so the child process does not
+			// fall back to the server's current directory; only the app mount is visible.
+			{MountPoint: "/work"},
 			{MountPoint: mountPoint, Source: appRealPath.AbsPath},
 		}
 

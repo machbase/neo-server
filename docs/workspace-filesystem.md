@@ -49,7 +49,9 @@ Runtime visibility remains intentionally different:
 
 - Default shell/JSH commands receive all configured workspace mounts.
 - TQL `SCRIPT()` and services retain root-only visibility.
-- Public CGI retains its app-only mount.
+- Public CGI retains its app-only mount. Its `/work` is an in-memory directory
+  that contains only the app mount, so CGI child processes never fall back to
+  the server's working directory.
 - SFTP remains OS-based and uses the configured root mount as its working
   directory; it is not a mounted VFS endpoint.
 
