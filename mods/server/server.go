@@ -124,6 +124,12 @@ func NewServer(conf *Config) (*Server, error) {
 			}
 		}
 	}
+	// --file "/=/dir,/a=/other" mounts "/dir" at "/work" and "/other" at "/work/a"
+	if fileDirs, err := ssfs.NormalizeFileDirs(conf.FileDirs); err != nil {
+		return nil, fmt.Errorf("invalid --file, %w", err)
+	} else {
+		conf.FileDirs = fileDirs
+	}
 	return &Server{
 		Config:       *conf,
 		servicePorts: make(map[string][]*spi.ServicePort),
@@ -333,12 +339,7 @@ func (s *Server) Start() error {
 	if runtime.GOOS == "windows" {
 		userEnv = "USERNAME"
 	}
-	fileDir := ""
-	for _, d := range s.Config.FileDirs {
-		if strings.HasPrefix(d, "/=") {
-			fileDir = strings.TrimPrefix(d, "/=")
-		}
-	}
+	fileDir := s.fileRootDir()
 	sharedInfo = map[string]interface{}{
 		"machbase": map[string]any{
 			"home":   s.Config.DataDir,
@@ -800,8 +801,25 @@ func (s *Server) startServerFileSystem() error {
 		s.log.Warnf("Server filesystem, %s", err.Error())
 		return fmt.Errorf("server side file system, %s", err.Error())
 	}
+	for _, spec := range serverFs.MountSpecs() {
+		s.log.Infof("File mount %s => %s", spec.WorkMountPoint(), spec.Dir)
+	}
+	for _, warn := range serverFs.CheckWorkMounts() {
+		s.log.Warn(warn)
+	}
 	ssfs.SetDefault(serverFs)
 	return nil
+}
+
+// fileRootDir returns the host directory of the --file root mount ("/work"),
+// or an empty string if no root is mounted.
+func (s *Server) fileRootDir() string {
+	for _, d := range s.Config.FileDirs {
+		if strings.HasPrefix(d, "/=") {
+			return strings.TrimPrefix(d, "/=")
+		}
+	}
+	return ""
 }
 
 func (s *Server) checkAndInstallLicense() error {
@@ -1048,12 +1066,9 @@ func (s *Server) startSshServer() error {
 
 func (s *Server) initServiceController() error {
 	executable, _ := os.Executable()
-	workspacePath := "."
-	for _, path := range s.FileDirs {
-		if strings.HasPrefix(path, "/=") {
-			workspacePath = strings.TrimPrefix(path, "/=")
-			break
-		}
+	workspacePath := s.fileRootDir()
+	if workspacePath == "" {
+		workspacePath = "."
 	}
 	confPath := filepath.Join(workspacePath, "etc", "services")
 	if _, err := os.Stat(confPath); os.IsNotExist(err) {
@@ -1062,6 +1077,7 @@ func (s *Server) initServiceController() error {
 			return fmt.Errorf("mkdir %s, %s", confPath, err.Error())
 		}
 	}
+	// the service controller keeps the root-only visibility: only "/work" is mounted
 	ctrl, err := service.NewController(&service.ControllerConfig{
 		Launcher: []string{
 			executable, // how to launch a service command as a child process.
@@ -3230,17 +3246,8 @@ func (s *Server) initShellProvider() error {
 		}
 	}
 	fsMgr := ssfs.Default()
-	lst := fsMgr.ListMounts()
-	for _, mnt := range lst {
-		if mnt == "/" {
-			if root, err := fsMgr.RealPath("/"); err == nil {
-				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work=%s"`, root))
-			}
-		} else {
-			if realPath, err := fsMgr.RealPath(mnt); err == nil {
-				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work%s=%s"`, mnt, realPath))
-			}
-		}
+	for _, tab := range fsMgr.WorkFSTabs() {
+		shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"%s=%s"`, tab.MountPoint, tab.Source))
 	}
 	cmdLine := strings.Join(shellCmd, " ")
 	// neo-shell require -server option

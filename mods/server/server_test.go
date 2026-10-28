@@ -2550,6 +2550,31 @@ func TestServerCoverage_NewServerAndExecutable(t *testing.T) {
 	require.NotEmpty(t, b)
 }
 
+func TestServerCoverage_NewServerFileDirs(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+
+	base := NewConfig()
+	// the config template wraps the --file value as "/=<value>"
+	base.FileDirs = []string{"/=/=" + root + ",/a=" + other}
+	svr, err := NewServer(base)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/=" + root, "/a=" + other}, svr.FileDirs)
+	require.Equal(t, root, svr.fileRootDir())
+
+	base = NewConfig()
+	base.FileDirs = []string{"/=/a=" + other}
+	svr, err = NewServer(base)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/a=" + other}, svr.FileDirs)
+	require.Equal(t, "", svr.fileRootDir())
+
+	base = NewConfig()
+	base.FileDirs = []string{"/=" + root + ",/../etc=" + other}
+	_, err = NewServer(base)
+	require.Error(t, err)
+}
+
 func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
 	oldHeadless := Headless
 	Headless = false
