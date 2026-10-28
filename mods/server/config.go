@@ -25,6 +25,7 @@ func init() {
 			return NewConfig()
 		},
 		func(conf *Config) (booter.Boot, error) {
+			conf.fileFlagSet = hasFileFlag(booter.Args)
 			return NewServer(conf)
 		},
 	)
@@ -90,6 +91,9 @@ type Config struct {
 	MaxOpenQuery       int     // deprecated
 	MaxOpenQueryFactor float64 // deprecated
 	StatzOut           string
+
+	fileFlagSet      bool
+	implicitFileRoot string
 }
 
 var PreferredPreset string = "auto"

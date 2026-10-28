@@ -26,6 +26,24 @@ func TestParseArgs(t *testing.T) {
 
 }
 
+func TestHasFileFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "not specified", args: []string{"neo", "serve"}, want: false},
+		{name: "separate value", args: []string{"neo", "serve", "--file", "/data=/srv/data"}, want: true},
+		{name: "equals value", args: []string{"neo", "serve", "--file=/data=/srv/data"}, want: true},
+		{name: "after terminator", args: []string{"neo", "serve", "--", "--file=/data=/srv/data"}, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, hasFileFlag(tc.args))
+		})
+	}
+}
+
 func TestParseServe(t *testing.T) {
 	var args []string
 	var cli *NeoCommand

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,6 +166,46 @@ func TestValidateWorkMounts(t *testing.T) {
 	err = lateFs.ValidateWorkMounts()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `"/work/f/b"`)
+}
+
+func TestWorkMountConflictDiagnostics(t *testing.T) {
+	for _, kind := range []string{"directory", "file", "intermediate file"} {
+		for _, childFirst := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/childFirst=%t", kind, childFirst), func(t *testing.T) {
+				root := t.TempDir()
+				other := t.TempDir()
+				mountPoint := "/backups"
+				if kind == "intermediate file" {
+					mountPoint = "/backups/daily"
+				}
+				values := []string{"/=" + root, mountPoint + "=" + other}
+				if childFirst {
+					values[0], values[1] = values[1], values[0]
+				}
+				files, err := NewWorkspaceFileSystem(values)
+				require.NoError(t, err)
+
+				conflictPath := filepath.Join(root, "backups")
+				if kind == "directory" {
+					require.NoError(t, os.Mkdir(conflictPath, 0755))
+				} else {
+					require.NoError(t, os.WriteFile(conflictPath, []byte("existing"), 0644))
+				}
+				checkError := func(err error) {
+					t.Helper()
+					require.ErrorIs(t, err, engine.ErrMountConflict)
+					require.Contains(t, err.Error(), WorkPath(mountPoint))
+					require.Contains(t, err.Error(), root)
+					require.Contains(t, err.Error(), other)
+					require.Contains(t, err.Error(), "move or rename the conflicting host entry")
+					require.Contains(t, err.Error(), "change the mount point or root directory")
+				}
+				checkError(files.ValidateWorkMounts())
+				_, err = NewWorkspaceFileSystem(values)
+				checkError(err)
+			})
+		}
+	}
 }
 
 func TestProcessWorkFSTabsRootless(t *testing.T) {

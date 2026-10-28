@@ -91,10 +91,7 @@ func (service *WorkspaceFileSystem) Mount(mntPoint, path string, readOnly bool) 
 	// Keep unavailable sources configured, as before. Runtime mount arguments
 	// omit them with a startup warning rather than rejecting the configuration.
 	if err := service.fs.MountStrict(workPoint, os.DirFS(abspath)); err != nil {
-		if errors.Is(err, engine.ErrMountConflict) {
-			return fmt.Errorf("nested file mount conflict: %w", err)
-		}
-		return fmt.Errorf("file mount %q: %w", mntPoint, err)
+		return service.workMountError(MountSpec{MountPoint: mntPoint, Dir: abspath}, err)
 	}
 	service.mounts[workPoint] = &WorkspaceBaseDir{abspath: abspath, mountPoint: mntPoint, readOnly: readOnly}
 	return nil

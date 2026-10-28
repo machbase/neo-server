@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -198,8 +199,24 @@ func (service *WorkspaceFileSystem) ValidateWorkMounts() error {
 	validationFS := engine.NewFS()
 	for _, spec := range service.MountSpecs() {
 		if err := validationFS.MountStrict(spec.WorkMountPoint(), os.DirFS(spec.Dir)); err != nil {
-			return fmt.Errorf("nested file mount conflict: %w", err)
+			return service.workMountError(spec, err)
 		}
 	}
 	return nil
+}
+
+func (service *WorkspaceFileSystem) workMountError(spec MountSpec, err error) error {
+	if !errors.Is(err, engine.ErrMountConflict) {
+		return fmt.Errorf("file mount %q -> %q: %w", spec.WorkMountPoint(), spec.Dir, err)
+	}
+	related := []string{}
+	workPoint := spec.WorkMountPoint()
+	for _, other := range service.MountSpecs() {
+		otherPoint := other.WorkMountPoint()
+		if strings.HasPrefix(workPoint, otherPoint+"/") || strings.HasPrefix(otherPoint, workPoint+"/") {
+			related = append(related, fmt.Sprintf("%q -> %q", otherPoint, other.Dir))
+		}
+	}
+	return fmt.Errorf("nested file mount conflict: cannot mount %q -> %q (configured parent/child mounts: %s): %w; move or rename the conflicting host entry, or change the mount point or root directory",
+		workPoint, spec.Dir, strings.Join(related, ", "), err)
 }

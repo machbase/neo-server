@@ -49,6 +49,18 @@ func Main(args []string) int {
 	return 0
 }
 
+func hasFileFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "--file" || strings.HasPrefix(arg, "--file=") {
+			return true
+		}
+	}
+	return false
+}
+
 func doServe(preset string, headless bool, doNotExit bool) int {
 	PreferredPreset = preset
 	Headless = headless

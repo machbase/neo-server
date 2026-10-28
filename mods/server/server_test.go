@@ -2570,6 +2570,27 @@ func TestServerCoverage_NewServerFileDirs(t *testing.T) {
 	require.Equal(t, "", svr.fileRootDir())
 
 	base = NewConfig()
+	base.fileFlagSet = true
+	base.FileDirs = []string{"/=/data=" + other}
+	svr, err = NewServer(base)
+	require.NoError(t, err)
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	execDir, err := filepath.Abs(filepath.Dir(executable))
+	require.NoError(t, err)
+	require.Equal(t, []string{"/=" + execDir, "/data=" + other}, svr.FileDirs)
+	require.Equal(t, execDir, svr.fileRootDir())
+	require.Equal(t, execDir, svr.implicitFileRoot)
+
+	base = NewConfig()
+	base.fileFlagSet = true
+	base.FileDirs = []string{"/=/=" + root + ",/a=" + other}
+	svr, err = NewServer(base)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/=" + root, "/a=" + other}, svr.FileDirs)
+	require.Empty(t, svr.implicitFileRoot)
+
+	base = NewConfig()
 	base.FileDirs = []string{"/=" + root + ",/../etc=" + other}
 	_, err = NewServer(base)
 	require.Error(t, err)
@@ -2618,6 +2639,21 @@ func TestServerCoverage_StartServerFileSystemConflict(t *testing.T) {
 	err := newSvr().startServerFileSystem()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nested file mount conflict")
+	require.ErrorIs(t, err, engine.ErrMountConflict)
+	require.Contains(t, err.Error(), root)
+	require.Contains(t, err.Error(), other)
+	require.Contains(t, err.Error(), "move or rename the conflicting host entry")
+	require.NotContains(t, err.Error(), "added implicitly")
+
+	implicitSvr := newSvr()
+	implicitSvr.implicitFileRoot = root
+	err = implicitSvr.startServerFileSystem()
+	require.ErrorIs(t, err, engine.ErrMountConflict)
+	require.Contains(t, err.Error(), root)
+	require.Contains(t, err.Error(), other)
+	require.Contains(t, err.Error(), "added implicitly from the executable directory")
+	require.Contains(t, err.Error(), "--file has no '/' mount")
+	require.Contains(t, err.Error(), "--file '/=/path/to/workspace,...'")
 }
 
 func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {

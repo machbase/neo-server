@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -125,10 +126,27 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	// --file "/=/dir,/a=/other" mounts "/dir" at "/work" and "/other" at "/work/a"
-	if fileDirs, err := NormalizeFileDirs(conf.FileDirs); err != nil {
+	specs, err := ParseFileDirs(conf.FileDirs)
+	if err != nil {
 		return nil, fmt.Errorf("invalid --file, %w", err)
-	} else {
-		conf.FileDirs = fileDirs
+	}
+	if conf.fileFlagSet && !slices.ContainsFunc(specs, func(spec MountSpec) bool {
+		return spec.MountPoint == "/"
+	}) {
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("resolve default --file root: %w", err)
+		}
+		execDir, err := filepath.Abs(filepath.Dir(executable))
+		if err != nil {
+			return nil, fmt.Errorf("resolve default --file root: %w", err)
+		}
+		specs = append([]MountSpec{{MountPoint: "/", Dir: execDir}}, specs...)
+		conf.implicitFileRoot = execDir
+	}
+	conf.FileDirs = make([]string, len(specs))
+	for i, spec := range specs {
+		conf.FileDirs[i] = spec.String()
 	}
 	return &Server{
 		Config:       *conf,
@@ -796,10 +814,20 @@ func (s *Server) startBackupService() error {
 }
 
 func (s *Server) startServerFileSystem() error {
+	if s.implicitFileRoot != "" {
+		s.log.Infof("File root %s => %q (implicit executable directory: --file has no '/' mount)", WorkMountPoint, s.implicitFileRoot)
+	}
+	fail := func(err error) error {
+		if errors.Is(err, engine.ErrMountConflict) && s.implicitFileRoot != "" {
+			err = fmt.Errorf("%w; root mount %q -> %q was added implicitly from the executable directory because --file has no '/' mount; specify an explicit root with --file '/=/path/to/workspace,...'", err, WorkMountPoint, s.implicitFileRoot)
+		}
+		err = fmt.Errorf("server side file system: %w", err)
+		s.log.Error(err.Error())
+		return err
+	}
 	serverFs, err := NewWorkspaceFileSystem(s.FileDirs)
 	if err != nil {
-		s.log.Warnf("Server filesystem, %s", err.Error())
-		return fmt.Errorf("server side file system, %s", err.Error())
+		return fail(err)
 	}
 	for _, spec := range serverFs.MountSpecs() {
 		s.log.Infof("File mount %s => %s", spec.WorkMountPoint(), spec.Dir)
@@ -808,8 +836,7 @@ func (s *Server) startServerFileSystem() error {
 		s.log.Warn(warn)
 	}
 	if err := serverFs.ValidateWorkMounts(); err != nil {
-		s.log.Error(err.Error())
-		return err
+		return fail(err)
 	}
 	s.fileService = serverFs
 	return nil

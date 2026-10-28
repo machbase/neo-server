@@ -19,15 +19,22 @@ machbase-neo serve --file '/=/srv/project,/data=/srv/data'
 | `/=/srv/project` | `/work` | `/srv/project` |
 | `/data=/srv/data` | `/work/data` | `/srv/data` |
 
-A single directory, `--file /srv/project`, still selects the workspace root.
+A root mount is implicit when `--file` is specified without one: it uses the
+directory containing the running executable. For example,
+`--file '/data=/srv/data'` keeps that default root and adds `/work/data`.
+Specify `/=<dir>` to replace the default root, as in
+`--file '/=/srv/project,/data=/srv/data'`. A single directory,
+`--file /srv/project`, still selects the workspace root.
+
 Multiple entries use commas, not semicolons. Relative host paths are resolved
 at server configuration time, so child process working directories do not
 change their meaning. Commas and equals signs in host paths are not supported.
 
 Mount destinations are always workspace-relative. For example, `/work=/srv/other`
-mounts at `/work/work`, not at the JSH system root. A rootless configuration such
-as `--file '/apps/demo=/srv/demo'` provides implicit workspace parent directories
-without mapping those parents to the process working directory.
+mounts at `/work/work`, not at the JSH system root. A rootless configuration
+can still be supplied directly through server configuration; in that case,
+implicit workspace parent directories are not mapped to the process working
+directory.
 
 ## Public paths and runtime visibility
 
@@ -88,7 +95,13 @@ HTTP DSL `< /data/payload.json` uses the supplied workspace reader.
 
 - Duplicate mounts and nested mounts that overlap an existing host entry
   cause server startup to fail. Mount registration order does not select a
-  different target.
+  different target. Conflict errors include the requested mount's host directory,
+  related parent/child mount mappings, and guidance for resolving the conflict.
+  For example, `--file '/backups=/srv/backups'` conflicts if the executable
+  directory already contains `backups`. In this case the error explains that the
+  root was added implicitly and suggests selecting a different root with
+  `--file '/=/srv/workspace,/backups=/srv/backups'`, or moving or renaming the
+  conflicting host entry.
 - Rootless implicit parent directories can be listed but have no host path.
 - Mount points and their ancestors cannot be removed or renamed.
 - Server rename continues to reject an existing destination. Host-backed
