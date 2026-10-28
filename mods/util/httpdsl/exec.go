@@ -342,11 +342,8 @@ func resolveRequestBody(method string, headers []headerLine, lines []string, fil
 				_, _ = out.WriteString(line + "\n")
 				continue
 			}
-			if _, err := io.Copy(out, r); err != nil {
+			if err := copyAndClose(out, r); err != nil {
 				return nil, err
-			}
-			if closer, ok := r.(io.Closer); ok {
-				_ = closer.Close()
 			}
 		}
 		return out.Bytes(), nil
@@ -358,11 +355,8 @@ func resolveRequestBody(method string, headers []headerLine, lines []string, fil
 	}
 	if r != nil {
 		out := &bytes.Buffer{}
-		if _, err := io.Copy(out, r); err != nil {
+		if err := copyAndClose(out, r); err != nil {
 			return nil, err
-		}
-		if closer, ok := r.(io.Closer); ok {
-			_ = closer.Close()
 		}
 		for _, line := range lines[1:] {
 			r, err := parseFileLine(method, line, files)
@@ -374,17 +368,23 @@ func resolveRequestBody(method string, headers []headerLine, lines []string, fil
 				_, _ = out.WriteString(line + "\n")
 				continue
 			}
-			if _, err := io.Copy(out, r); err != nil {
+			if err := copyAndClose(out, r); err != nil {
 				return nil, err
-			}
-			if closer, ok := r.(io.Closer); ok {
-				_ = closer.Close()
 			}
 		}
 		return out.Bytes(), nil
 	}
 
 	return []byte(strings.Join(lines, "\n")), nil
+}
+
+// copyAndClose copies r into w and always closes r, even if the copy fails.
+func copyAndClose(w io.Writer, r io.Reader) error {
+	if closer, ok := r.(io.Closer); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, r)
+	return err
 }
 
 func parseFileLine(method string, line string, files FileSystem) (io.Reader, error) {

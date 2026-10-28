@@ -26,7 +26,11 @@ func New(conf Config) (*JSRuntime, error) {
 	// Build filesystem from FSTabs
 	filesystem := NewFS()
 	for _, tab := range conf.FSTabs {
-		if tab.FS == nil {
+		if tab.FS == nil && tab.Source == "" {
+			if err := filesystem.Mount(tab.MountPoint, NewVirtualFS()); err != nil {
+				return nil, fmt.Errorf("error mounting virtual directory to %s: %v", tab.MountPoint, err)
+			}
+		} else if tab.FS == nil {
 			if fsDir, err := DirFS(filepath.FromSlash(tab.Source)); err != nil {
 				return nil, fmt.Errorf("error mounting %s to %s: %v", tab.Source, tab.MountPoint, err)
 			} else if err := filesystem.Mount(tab.MountPoint, fsDir); err != nil {
@@ -377,12 +381,21 @@ type FSTabs []FSTab
 // Set(string) error is required to implement flag.Value interface.
 // Set parses and adds a new FSTab from the given string.
 // The format is /mountpoint=source
+// An empty source ("/mountpoint=") mounts an empty in-memory directory,
+// which also prevents the default "/work" fallback to the current directory.
 func (m *FSTabs) Set(value string) error {
 	tokens := strings.SplitN(value, "=", 2)
 	if len(tokens) != 2 {
 		return fmt.Errorf("invalid mount option: %s", value)
 	}
 	mountPoint, source := tokens[0], tokens[1]
+	if mountPoint == "" {
+		return fmt.Errorf("invalid mount option: %s", value)
+	}
+	if source == "" {
+		*m = append(*m, FSTab{MountPoint: mountPoint})
+		return nil
+	}
 	info, err := os.Lstat(source) // Lstat to check for symbolic link
 	if err != nil {
 		return fmt.Errorf("stating source %q: %v", source, err)
@@ -430,7 +443,8 @@ func (m FSTabs) MarshalJSON() ([]byte, error) {
 	type fstabAlias FSTab
 	aliasList := []fstabAlias{}
 	for _, tab := range m {
-		if tab.MountPoint == "" || tab.Source == "" {
+		// FS-only tabs cannot be serialized; a tab without FS and Source is a virtual directory.
+		if tab.MountPoint == "" || (tab.Source == "" && tab.FS != nil) {
 			continue
 		}
 		aliasList = append(aliasList, fstabAlias{

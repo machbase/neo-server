@@ -146,6 +146,69 @@ func TestFS_MountStrictRejectsConflictWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestFS_MountStrictRejectsIntermediateFile(t *testing.T) {
+	newBacking := map[string]func(t *testing.T) fs.FS{
+		"os": func(t *testing.T) fs.FS {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "a"), []byte("file"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return os.DirFS(root)
+		},
+		"generic": func(t *testing.T) fs.FS {
+			return fstest.MapFS{"a": &fstest.MapFile{Data: []byte("file")}}
+		},
+	}
+	for backingName, backing := range newBacking {
+		for _, childFirst := range []bool{false, true} {
+			name := backingName + "/parent-first"
+			if childFirst {
+				name = backingName + "/child-first"
+			}
+			t.Run(name, func(t *testing.T) {
+				mfs := NewFS()
+				firstPoint, secondPoint := "/work", "/work/a/b"
+				firstFS, secondFS := backing(t), fs.FS(NewVirtualFS())
+				if childFirst {
+					firstPoint, secondPoint = secondPoint, firstPoint
+					firstFS, secondFS = secondFS, firstFS
+				}
+				if err := mfs.MountStrict(firstPoint, firstFS); err != nil {
+					t.Fatal(err)
+				}
+				if err := mfs.MountStrict(secondPoint, secondFS); !errors.Is(err, ErrMountConflict) {
+					t.Fatalf("MountStrict() error=%v, want mount conflict", err)
+				}
+				if got := mfs.Mounts(); !reflect.DeepEqual(got, []string{firstPoint}) {
+					t.Fatalf("failed MountStrict changed mounts: %v", got)
+				}
+			})
+		}
+	}
+
+	// a missing intermediate path and an intermediate directory are not conflicts
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mfs := NewFS()
+	if err := mfs.MountStrict("/work", os.DirFS(root)); err != nil {
+		t.Fatal(err)
+	}
+	for _, point := range []string{"/work/missing/b", "/work/dir/b"} {
+		if err := mfs.MountStrict(point, NewVirtualFS()); err != nil {
+			t.Fatalf("MountStrict(%q) error=%v", point, err)
+		}
+	}
+	// non-strict Mount keeps its behavior for an intermediate file
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := mfs.Mount("/work/file/b", NewVirtualFS()); err != nil {
+		t.Fatalf("Mount() error=%v", err)
+	}
+}
+
 func TestFS_ResolveHostMountAndVirtualDirectory(t *testing.T) {
 	mfs := NewFS()
 	root := t.TempDir()

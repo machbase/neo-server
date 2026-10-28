@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/stretchr/testify/require"
 )
 
@@ -146,11 +147,45 @@ func TestValidateWorkMounts(t *testing.T) {
 	err = deepFs.ValidateWorkMounts()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `"/work/a/b"`)
+
+	// an intermediate path component is a real file, regardless of order
+	fileRoot := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(fileRoot, "f"), []byte("x"), 0644))
+	for _, values := range [][]string{
+		{"/=" + fileRoot, "/f/b=" + deep},
+		{"/f/b=" + deep, "/=" + fileRoot},
+	} {
+		_, err = NewWorkspaceFileSystem(values)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "nested file mount conflict")
+	}
+	lateFileRoot := t.TempDir()
+	lateFs := newFs("/="+lateFileRoot, "/f/b="+deep)
+	require.NoError(t, os.WriteFile(filepath.Join(lateFileRoot, "f"), []byte("x"), 0644))
+	err = lateFs.ValidateWorkMounts()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"/work/f/b"`)
+}
+
+func TestProcessWorkFSTabsRootless(t *testing.T) {
+	other := t.TempDir()
+	dirs, err := NormalizeFileDirs([]string{"/a=" + other})
+	require.NoError(t, err)
+	fs, err := NewWorkspaceFileSystem(dirs)
+	require.NoError(t, err)
+
+	require.Equal(t, engine.FSTabs{{MountPoint: "/work/a", Source: other}}, fs.WorkFSTabs())
+	require.Equal(t, engine.FSTabs{
+		{MountPoint: "/work"},
+		{MountPoint: "/work/a", Source: other},
+	}, fs.ProcessWorkFSTabs())
+	require.Equal(t, []string{"-v", "/work=", "-v", "/work/a=" + other}, fs.WorkMountArgs())
 }
 
 func TestWorkFSTabsNil(t *testing.T) {
 	var fs *WorkspaceFileSystem
 	require.Empty(t, fs.WorkFSTabs())
+	require.Equal(t, engine.FSTabs{{MountPoint: "/work"}}, fs.ProcessWorkFSTabs())
 	_, ok := fs.RootDir()
 	require.False(t, ok)
 }

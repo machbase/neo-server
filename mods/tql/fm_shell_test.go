@@ -3,6 +3,7 @@ package tql
 import (
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -105,7 +106,7 @@ func TestSetServiceWorkspace(t *testing.T) {
 	require.Equal(t, "/tmp/service-workspace", _serviceWorkspace)
 }
 
-func TestShellExecutableOmitsEmptyWorkMount(t *testing.T) {
+func TestShellExecutableMountsVirtualWorkWhenRootless(t *testing.T) {
 	oldWorkspace := _serviceWorkspace
 	oldController := _serviceControllerAddr
 	oldKeyPath := _serverKeyPath
@@ -120,7 +121,9 @@ func TestShellExecutableOmitsEmptyWorkMount(t *testing.T) {
 
 	args, err := ShellExecutable("tcp://127.0.0.1:5678", "/tmp/service.js")
 	require.NoError(t, err)
-	require.NotContains(t, strings.Join(args, " "), "-v /work=")
+	// an empty source makes the child mount a virtual "/work" instead of its current directory
+	require.Contains(t, args, "/work=")
+	require.Equal(t, "-v", args[slices.Index(args, "/work=")-1])
 
 	_serviceWorkspace = "/tmp/service-workspace"
 	args, err = ShellExecutable("tcp://127.0.0.1:5678", "/tmp/service.js")

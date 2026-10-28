@@ -2592,6 +2592,8 @@ func TestInitServiceControllerRootlessUsesVirtualWorkspace(t *testing.T) {
 	t.Cleanup(func() { svr.serviceController.Stop(nil) })
 
 	require.NoDirExists(t, filepath.Join(cwd, "etc"))
+	require.Equal(t, []string{"neo", "jsh", "-v", "/work="}, serviceLauncher("neo", svr.fileRootDir()))
+	require.Equal(t, []string{"neo", "jsh", "-v", "/work=/ws"}, serviceLauncher("neo", "/ws"))
 	require.NoError(t, svr.serviceController.Install(&service.Config{Name: "volatile"}))
 	require.NotNil(t, svr.serviceController.StatusOf("volatile"))
 	require.NoError(t, svr.serviceController.Read())
@@ -2904,6 +2906,9 @@ func TestInitShellProvider(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, jshDef.Command, "jsh")
 		require.NotContains(t, jshDef.Command, " -server ")
+		// rootless: an explicit virtual "/work" prevents the current directory fallback
+		require.Contains(t, shellDef.Command, `-v "/work="`)
+		require.Contains(t, jshDef.Command, `-v "/work="`)
 	})
 
 	t.Run("rewrites_any_interface_to_loopback", func(t *testing.T) {

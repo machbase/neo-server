@@ -218,10 +218,10 @@ func (m *FS) mount(mountPoint string, filesystem fs.FS, strict bool) error {
 		if strings.HasPrefix(existing, mountPoint+"/") {
 			// mountPoint is an ancestor of an already-registered, deeper mount.
 			relPath := getRelativePath(existing, mountPoint)
+			if strict && strictPathConflicts(filesystem, relPath) {
+				return fmt.Errorf("%w: %q conflicts with a real entry under %q", ErrMountConflict, existing, mountPoint)
+			}
 			if realPathExists(filesystem, relPath) {
-				if strict {
-					return fmt.Errorf("%w: %q conflicts with a real entry under %q", ErrMountConflict, existing, mountPoint)
-				}
 				// The ancestor's real directory already has this path; it wins
 				// over the previously registered nested mount.
 				delete(m.mounts, existing)
@@ -234,10 +234,10 @@ func (m *FS) mount(mountPoint string, filesystem fs.FS, strict bool) error {
 		if strings.HasPrefix(mountPoint, existing+"/") {
 			// mountPoint is nested inside an already-registered, shallower mount.
 			relPath := getRelativePath(mountPoint, existing)
+			if strict && strictPathConflicts(existingFS, relPath) {
+				return fmt.Errorf("%w: %q conflicts with a real entry under %q", ErrMountConflict, mountPoint, existing)
+			}
 			if realPathExists(existingFS, relPath) {
-				if strict {
-					return fmt.Errorf("%w: %q conflicts with a real entry under %q", ErrMountConflict, mountPoint, existing)
-				}
 				// The ancestor's real directory already has this path; keep it
 				// and skip mounting the conflicting nested mount.
 				m.warnings = append(m.warnings, fmt.Sprintf(
@@ -271,6 +271,32 @@ func realPathExists(filesystem fs.FS, relPath string) bool {
 	}
 	_, err := fs.Stat(filesystem, relPath)
 	return err == nil
+}
+
+// statRealPath stats relPath in filesystem, using the OS filesystem when possible.
+func statRealPath(filesystem fs.FS, relPath string) (fs.FileInfo, error) {
+	if osPath, err := getOSPath(filesystem, relPath); err == nil {
+		return os.Stat(osPath)
+	}
+	return fs.Stat(filesystem, relPath)
+}
+
+// strictPathConflicts reports whether a nested mount at relPath would overlap
+// a real entry: either relPath itself exists, or one of its intermediate
+// components exists as a non-directory (which would be shadowed by the
+// implied mount directory).
+func strictPathConflicts(filesystem fs.FS, relPath string) bool {
+	parts := strings.Split(strings.Trim(relPath, "/"), "/")
+	for i := range parts {
+		info, err := statRealPath(filesystem, strings.Join(parts[:i+1], "/"))
+		if err != nil {
+			return false
+		}
+		if i == len(parts)-1 || !info.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // isVirtualMountDir reports whether name is an implied directory that has no

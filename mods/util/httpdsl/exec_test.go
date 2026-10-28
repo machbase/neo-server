@@ -293,3 +293,60 @@ func mustURL(t *testing.T, raw string) *url.URL {
 	require.NoError(t, err)
 	return u
 }
+
+type trackedReadCloser struct {
+	io.Reader
+	fail   bool
+	closed *int
+}
+
+func (r *trackedReadCloser) Read(p []byte) (int, error) {
+	if r.fail {
+		return 0, fmt.Errorf("read failure")
+	}
+	return r.Reader.Read(p)
+}
+
+func (r *trackedReadCloser) Close() error {
+	*r.closed++
+	return nil
+}
+
+// trackedFileSystem fails reads of "/fail" and counts opened and closed readers.
+type trackedFileSystem struct {
+	opened int
+	closed int
+}
+
+func (fsys *trackedFileSystem) OpenFile(path string) (io.ReadCloser, error) {
+	fsys.opened++
+	return &trackedReadCloser{Reader: strings.NewReader("ok"), fail: path == "/fail", closed: &fsys.closed}, nil
+}
+
+func TestResolveRequestBodyClosesReaderOnCopyError(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		lines       []string
+		opened      int
+	}{
+		{name: "single", contentType: "application/json", lines: []string{"< /fail"}, opened: 1},
+		{name: "following_line", contentType: "application/json", lines: []string{"< /ok", "< /fail"}, opened: 2},
+		{name: "multipart", contentType: "multipart/form-data; boundary=foo", lines: []string{"--foo", "< /ok", "< /fail"}, opened: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := &trackedFileSystem{}
+			_, err := resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: tt.contentType}}, tt.lines, fsys)
+			require.ErrorContains(t, err, "read failure")
+			require.Equal(t, tt.opened, fsys.opened)
+			require.Equal(t, tt.opened, fsys.closed)
+		})
+	}
+
+	fsys := &trackedFileSystem{}
+	body, err := resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "application/json"}}, []string{"< /ok", "< /ok"}, fsys)
+	require.NoError(t, err)
+	require.Equal(t, "ok\nok\n", string(body))
+	require.Equal(t, 2, fsys.closed)
+}

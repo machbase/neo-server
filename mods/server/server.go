@@ -1068,14 +1068,18 @@ func (s *Server) startSshServer() error {
 	return nil
 }
 
+// serviceLauncher returns the command that starts service processes.
+// Services see only the root mount at "/work"; when rootless, the empty source
+// mounts a virtual "/work" so the child does not fall back to its current directory.
+func serviceLauncher(executable string, workspacePath string) []string {
+	return []string{executable, "jsh", "-v", "/work=" + workspacePath}
+}
+
 func (s *Server) initServiceController() error {
 	executable, _ := os.Executable()
 	workspacePath := s.fileRootDir()
 	var workFS fs.FS
-	launcher := []string{
-		executable,
-		"jsh",
-	}
+	launcher := serviceLauncher(executable, workspacePath)
 	if workspacePath == "" {
 		virtualFS := engine.NewVirtualFS()
 		if err := virtualFS.Mkdir("/etc"); err != nil {
@@ -1094,7 +1098,6 @@ func (s *Server) initServiceController() error {
 			}
 		}
 		workFS = os.DirFS(workspacePath)
-		launcher = append(launcher, "-v", "/work="+workspacePath)
 	}
 	// the service controller keeps the root-only visibility: only "/work" is mounted
 	ctrl, err := service.NewController(&service.ControllerConfig{
@@ -3261,7 +3264,7 @@ func (s *Server) initShellProvider() error {
 		}
 	}
 	fsMgr := s.fileService
-	for _, tab := range fsMgr.WorkFSTabs() {
+	for _, tab := range fsMgr.ProcessWorkFSTabs() {
 		shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"%s=%s"`, tab.MountPoint, tab.Source))
 	}
 	cmdLine := strings.Join(shellCmd, " ")

@@ -297,9 +297,8 @@ var ShellExecutable = func(serverAddr string, scriptPath string) ([]string, erro
 	}
 	serverAddr = strings.TrimPrefix(serverAddr, "tcp://")
 	args := []string{ex, "shell", "--server", serverAddr}
-	if _serviceWorkspace != "" {
-		args = append(args, "-v", "/work="+_serviceWorkspace)
-	}
+	// an empty source mounts a virtual "/work" instead of the current directory
+	args = append(args, "-v", "/work="+_serviceWorkspace)
 	args = append(args,
 		"-v", "/tmp="+filepath.Dir(scriptPath),
 		"-e", "SERVICE_CONTROLLER="+_serviceControllerAddr,

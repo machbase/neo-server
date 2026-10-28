@@ -156,11 +156,22 @@ func (service *WorkspaceFileSystem) WorkFSTabs() engine.FSTabs {
 	return ret
 }
 
+// ProcessWorkFSTabs returns WorkFSTabs for a child jsh/shell process.
+// When no host directory is mounted at WorkMountPoint, a virtual "/work" tab
+// (empty Source) is prepended so the child does not fall back to its current directory.
+func (service *WorkspaceFileSystem) ProcessWorkFSTabs() engine.FSTabs {
+	tabs := service.WorkFSTabs()
+	if tabs.HasMountPoint(WorkMountPoint) {
+		return tabs
+	}
+	return append(engine.FSTabs{{MountPoint: WorkMountPoint}}, tabs...)
+}
+
 // WorkMountArgs returns the "-v" command line arguments of the jsh/shell commands
-// equivalent to WorkFSTabs.
+// equivalent to ProcessWorkFSTabs.
 func (service *WorkspaceFileSystem) WorkMountArgs() []string {
 	ret := []string{}
-	for _, tab := range service.WorkFSTabs() {
+	for _, tab := range service.ProcessWorkFSTabs() {
 		ret = append(ret, "-v", tab.MountPoint+"="+tab.Source)
 	}
 	return ret
