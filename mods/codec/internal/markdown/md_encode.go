@@ -18,12 +18,14 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/httpdsl"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
 type Exporter struct {
 	internal.RowsEncoderBase
 	logger     facility.Logger
+	fileSystem httpdsl.FileSystem
 	htmlRender bool
 	brief      int64
 	rownum     int64
@@ -62,6 +64,10 @@ func (ex *Exporter) ContentType() string {
 
 func (ex *Exporter) SetLogger(l facility.Logger) {
 	ex.logger = l
+}
+
+func (ex *Exporter) SetFileSystem(files httpdsl.FileSystem) {
+	ex.fileSystem = files
 }
 
 func (ex *Exporter) SetOutputStream(o io.Writer) {
@@ -156,7 +162,7 @@ func (ex *Exporter) Close() {
 		if ex.htmlRender {
 			ex.mdLines = append(headLines, ex.mdLines...)
 			ex.mdLines = append(ex.mdLines, tailLines...)
-			conv := mdconv.New(mdconv.WithDarkMode(false))
+			conv := mdconv.New(mdconv.WithDarkMode(false), mdconv.WithFileSystem(ex.fileSystem))
 			ex.output.Write([]byte("<div>\n"))
 			conv.ConvertString(strings.Join(ex.mdLines, ""), ex.output)
 			ex.output.Write([]byte("</div>"))
@@ -195,7 +201,7 @@ func (ex *Exporter) closeTemplatePath() {
 
 	content := strings.Join(ex.mdLines, "")
 	if ex.htmlRender {
-		conv := mdconv.New(mdconv.WithDarkMode(false))
+		conv := mdconv.New(mdconv.WithDarkMode(false), mdconv.WithFileSystem(ex.fileSystem))
 		ex.output.Write([]byte("<div>\n"))
 		conv.ConvertString(content, ex.output)
 		ex.output.Write([]byte("</div>"))

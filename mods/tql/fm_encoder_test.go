@@ -84,6 +84,17 @@ func TestTemplateOption(t *testing.T) {
 	opt(recorder)
 	require.Equal(t, []string{"file-template"}, recorder.templates)
 
+	opt, err = toTemplateOption(&FilePath{
+		Path: "/virtual-template.txt",
+		OpenFile: func() (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("virtual-template")), nil
+		},
+	})
+	require.NoError(t, err)
+	recorder = &templateRecorder{}
+	opt(recorder)
+	require.Equal(t, []string{"virtual-template"}, recorder.templates)
+
 	_, err = toTemplateOption(&FilePath{Path: "/missing.txt"})
 	require.EqualError(t, err, "template file '/missing.txt' not found")
 

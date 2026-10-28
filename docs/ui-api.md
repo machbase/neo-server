@@ -3,6 +3,11 @@
 
 All user interface API are authorizing client with JWT based authentication.
 
+File API paths remain workspace-relative: `/web/api/files/a.txt` maps to JSH
+`/work/a.txt`, not to the JSH system root. See
+[workspace filesystem](./workspace-filesystem.md) for mount configuration,
+runtime visibility, and compatibility notes.
+
 ## LOGIN
 
 ### POST /web/api/login

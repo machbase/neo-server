@@ -22,7 +22,6 @@ import (
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 func (node *Node) fmScript(args ...any) (any, error) {
@@ -114,16 +113,13 @@ type JSContext struct {
 	onceInterrupt sync.Once
 }
 
-// scriptWorkDir returns the host directory of the server file root ("/" of --file),
-// which is what the file explorer and JSH see as /work.
-// It falls back to the process working directory when no root is mounted.
-func scriptWorkDir() string {
-	if fsmgr := ssfs.Default(); fsmgr != nil {
-		if bd := fsmgr.FindBaseDir("/"); bd != nil {
-			return bd.RealPath("/")
-		}
+// scriptWorkDir returns the host directory of the server file root ("/" of --file).
+func scriptWorkDir(node *Node) string {
+	if files := node.ensureRuntime().config.fileSystem; files != nil {
+		dir, _ := files.RootDir()
+		return dir
 	}
-	return "."
+	return ""
 }
 
 func newJSContext(node *Node, initCode string, mainCode string, deinitCode string) (*JSContext, error) {
@@ -133,6 +129,10 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		initCodeLine := strings.Count(initCode, "\n")
 		mainCode = strings.Repeat("\n", initCodeLine+node.tqlLine.line-1) + mainCode
 	}
+	workTab := engine.FSTab{MountPoint: "/work", Source: scriptWorkDir(node)}
+	if workTab.Source == "" {
+		workTab.FS = engine.NewVirtualFS()
+	}
 	conf := engine.Config{
 		Name:    "SCRIPT",
 		Code:    `(()=>{})()`,
@@ -140,7 +140,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
-			{MountPoint: "/work", Source: scriptWorkDir()},
+			workTab,
 		},
 		Env: map[string]any{
 			"LIBRARY_PATH": "/lib",

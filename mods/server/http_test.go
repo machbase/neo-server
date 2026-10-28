@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,7 +31,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/stretchr/testify/require"
@@ -1980,7 +1980,7 @@ type SplitHttpResult struct {
 func newTestHTTPServer(t *testing.T) *httpd {
 	t.Helper()
 	root := t.TempDir()
-	serverFs, err := ssfs.NewServerSideFileSystem([]string{"/=" + root})
+	serverFs, err := NewWorkspaceFileSystem([]string{"/=" + root})
 	require.NoError(t, err)
 	gin.SetMode(gin.TestMode)
 	return &httpd{log: logging.GetLog("httpd-fake"), serverFs: serverFs}
@@ -2218,6 +2218,133 @@ func TestHandleFiles(t *testing.T) {
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
 	})
+}
+
+func TestHandleFilesErrorResponseContract(t *testing.T) {
+	svr := newTestHTTPServer(t)
+	_, err := svr.serverFs.MkDir("/docs")
+	require.NoError(t, err)
+	require.NoError(t, svr.serverFs.Set("/docs/readme.txt", []byte("hello")))
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		target     string
+		path       string
+		status     int
+		reasonPart string
+	}{
+		{
+			name:       "missing-file",
+			method:     http.MethodGet,
+			target:     "/web/api/files/missing.txt",
+			path:       "/missing.txt",
+			status:     http.StatusNotFound,
+			reasonPart: "missing.txt",
+		},
+		{
+			name:       "rename-missing-source",
+			method:     http.MethodPut,
+			target:     "/web/api/files/missing.txt",
+			path:       "/missing.txt",
+			status:     http.StatusInternalServerError,
+			reasonPart: "unable to access",
+		},
+		{
+			name:       "remove-mount-point",
+			method:     http.MethodDelete,
+			target:     "/web/api/files/?recursive=true",
+			path:       "/",
+			status:     http.StatusInternalServerError,
+			reasonPart: "mount point",
+		},
+		{
+			name:       "non-empty-directory-without-recursive",
+			method:     http.MethodDelete,
+			target:     "/web/api/files/docs",
+			path:       "/docs",
+			status:     http.StatusUnprocessableEntity,
+			reasonPart: "directory is not empty",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, writer := newTestHTTPContext(tc.method, tc.target, nil)
+			ctx.Params = gin.Params{{Key: "path", Value: tc.path}}
+			if tc.method == http.MethodPut {
+				payload, err := json.Marshal(RenameReq{Dest: "/destination.txt"})
+				require.NoError(t, err)
+				ctx.Request = httptest.NewRequest(tc.method, tc.target, bytes.NewReader(payload))
+				ctx.Request.Header.Set("Content-Type", "application/json")
+			}
+
+			svr.handleFiles(ctx)
+
+			require.Equal(t, tc.status, writer.Code)
+			var body map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &body))
+			require.Equal(t, []string{"elapse", "reason", "success"}, sortedMapKeys(body))
+
+			var success bool
+			require.NoError(t, json.Unmarshal(body["success"], &success))
+			require.False(t, success)
+			var reason string
+			require.NoError(t, json.Unmarshal(body["reason"], &reason))
+			require.Contains(t, reason, tc.reasonPart)
+			var elapse string
+			require.NoError(t, json.Unmarshal(body["elapse"], &elapse))
+			require.NotEmpty(t, elapse)
+		})
+	}
+}
+
+func TestHandleFilesRootlessWorkspace(t *testing.T) {
+	svr := newTestHTTPServer(t)
+	source := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(source, "readme.md"), []byte("app"), 0o644))
+	var err error
+	svr.serverFs, err = NewWorkspaceFileSystem([]string{"/apps/tool=" + source})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		path  string
+		child string
+	}{
+		{"/", "apps"},
+		{"/apps", "tool"},
+	} {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files"+tc.path, nil)
+		ctx.Params = gin.Params{{Key: "path", Value: tc.path}}
+		svr.handleFiles(ctx)
+		require.Equal(t, http.StatusOK, writer.Code)
+		var response SsfsResponse
+		require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		require.NotNil(t, response.Data)
+		require.True(t, response.Data.ReadOnly)
+		require.Len(t, response.Data.Children, 1)
+		require.Equal(t, tc.child, response.Data.Children[0].Name)
+	}
+
+	ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files/apps/tool/readme.md", nil)
+	ctx.Params = gin.Params{{Key: "path", Value: "/apps/tool/readme.md"}}
+	svr.handleFiles(ctx)
+	require.Equal(t, http.StatusOK, writer.Code)
+	require.Equal(t, "app", writer.Body.String())
+	require.Equal(t, "text/markdown", writer.Header().Get("Content-Type"))
+
+	ctx, writer = newTestHTTPContext(http.MethodGet, "/web/api/files/work/apps/tool/readme.md", nil)
+	ctx.Params = gin.Params{{Key: "path", Value: "/work/apps/tool/readme.md"}}
+	svr.handleFiles(ctx)
+	require.Equal(t, http.StatusNotFound, writer.Code)
+}
+
+func sortedMapKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func TestRouterRegistersApiTokenFileEndpoint(t *testing.T) {

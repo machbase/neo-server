@@ -61,6 +61,9 @@ type csvSource struct {
 	srcString   string
 	srcBytes    []byte
 	srcFile     string
+	srcOpen     func() (io.ReadCloser, error)
+	srcPath     string
+	srcIsDir    bool
 	srcHttp     string
 	srcEncoding encoding.Encoding
 
@@ -76,31 +79,42 @@ func (src *csvSource) gen(node *Node) {
 		reader = csv.NewReader(bytes.NewBuffer(src.srcBytes))
 	} else if src.srcReader != nil {
 		reader = csv.NewReader(src.srcReader)
-	} else if src.srcFile != "" {
-		stat, err := os.Stat(src.srcFile)
-		if err != nil {
-			node.ensureRuntime().LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
-			node.emit(ErrorRecord(err))
-			return
+	} else if src.srcFile != "" || src.srcOpen != nil {
+		fileName := src.srcPath
+		if src.srcFile != "" {
+			fileName = src.srcFile
+			stat, err := os.Stat(src.srcFile)
+			if err != nil {
+				node.ensureRuntime().LogErrorf("Fail to read %q, %s", fileName, err.Error())
+				node.emit(ErrorRecord(err))
+				return
+			}
+			src.srcIsDir = stat.IsDir()
 		}
-		if stat.IsDir() {
-			node.ensureRuntime().LogErrorf("Fail to read %q, it is a directory", src.srcFile)
+		if src.srcIsDir {
+			node.ensureRuntime().LogErrorf("Fail to read %q, it is a directory", fileName)
 			node.emit(ErrorRecord(errors.New("failed to read directory as CSV")))
 			return
 		}
-		content, err := os.Open(src.srcFile)
+		var content io.ReadCloser
+		var err error
+		if src.srcOpen != nil {
+			content, err = src.srcOpen()
+		} else {
+			content, err = os.Open(src.srcFile)
+		}
 		if err != nil {
-			node.ensureRuntime().LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
+			node.ensureRuntime().LogErrorf("Fail to read %q, %s", fileName, err.Error())
 			node.emit(ErrorRecord(err))
 			return
 		}
 		defer content.Close()
 
 		var inputReader io.Reader = content
-		if strings.HasSuffix(src.srcFile, ".gz") {
+		if strings.HasSuffix(fileName, ".gz") {
 			gzReader, err := gzip.NewReader(content)
 			if err != nil {
-				node.ensureRuntime().LogErrorf("Fail to create gzip reader for %q, %s", src.srcFile, err.Error())
+				node.ensureRuntime().LogErrorf("Fail to create gzip reader for %q, %s", fileName, err.Error())
 				node.emit(ErrorRecord(err))
 				return
 			}
@@ -282,8 +296,13 @@ func newCsvSource(args ...any) (*csvSource, error) {
 		case *FilePath:
 			if v.HttpPath != "" {
 				ret.srcHttp = v.HttpPath
+			} else if v.OpenFile != nil {
+				ret.srcOpen = v.OpenFile
+				ret.srcPath = v.Path
+				ret.srcIsDir = v.IsDir
 			} else {
 				ret.srcFile = v.AbsPath
+				ret.srcPath = v.Path
 			}
 		case *columnOpt:
 			ret.columns[v.idx] = v

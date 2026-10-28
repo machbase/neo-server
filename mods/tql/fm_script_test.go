@@ -3,6 +3,7 @@ package tql
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -10,8 +11,9 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/v2/api"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/machbase/neo-server/v8/mods/logging"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,16 +23,14 @@ func TestScriptWorkMountFollowsFileRoot(t *testing.T) {
 	fileRoot := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(fileRoot, "marker-1569.txt"), []byte("ok"), 0644))
 
-	prevFs := ssfs.Default()
-	serverFs, err := ssfs.NewServerSideFileSystem([]string{"/=" + fileRoot})
+	serverFs, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: fileRoot})
 	require.NoError(t, err)
-	ssfs.SetDefault(serverFs)
-	t.Cleanup(func() { ssfs.SetDefault(prevFs) })
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	output := &bytes.Buffer{}
 	task := NewTaskContext(ctx)
+	task.SetFileSystem(serverFs)
 	task.SetOutputWriter(output)
 	require.NoError(t, task.CompileString(`
 SCRIPT({
@@ -44,30 +44,84 @@ CSV()
 	require.Equal(t, "ok\n\n", output.String())
 }
 
-func TestScriptWorkDir(t *testing.T) {
-	prevFs := ssfs.Default()
-	t.Cleanup(func() { ssfs.SetDefault(prevFs) })
+func TestFilePathOpensThroughVFS(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "payload.txt"), []byte("virtual content"), 0644))
+	serverFs, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
+	require.NoError(t, err)
 
+	task := NewTask()
+	task.SetFileSystem(serverFs)
+	filePath, err := NewNode(task).fmFile("/payload.txt")
+	require.NoError(t, err)
+	require.Empty(t, filePath.AbsPath)
+	require.False(t, filePath.IsDir)
+	require.NotNil(t, filePath.OpenFile)
+
+	file, err := filePath.OpenFile()
+	require.NoError(t, err)
+	content, err := io.ReadAll(file)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	require.Equal(t, "virtual content", string(content))
+}
+
+func TestScriptWorkDir(t *testing.T) {
 	fileRoot := t.TempDir()
 	tests := []struct {
 		name   string
-		dirs   []string
+		dirs   engine.FSTabs
 		expect string
 	}{
-		{name: "no_server_fs", dirs: nil, expect: "."},
-		{name: "no_root_mount", dirs: []string{"/data=" + fileRoot}, expect: "."},
-		{name: "root_mount", dirs: []string{"/=" + fileRoot}, expect: fileRoot},
+		{name: "no_server_fs", dirs: nil, expect: ""},
+		{name: "no_root_mount", dirs: engine.FSTabs{{MountPoint: "/work/data", Source: fileRoot}}, expect: ""},
+		{name: "root_mount", dirs: engine.FSTabs{{MountPoint: "/work", Source: fileRoot}}, expect: fileRoot},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.dirs == nil {
-				ssfs.SetDefault(nil)
-			} else {
-				serverFs, err := ssfs.NewServerSideFileSystem(tc.dirs)
+			task := NewTask()
+			if tc.dirs != nil {
+				serverFs, err := test_engine.NewWorkspace(tc.dirs...)
 				require.NoError(t, err)
-				ssfs.SetDefault(serverFs)
+				task.SetFileSystem(serverFs)
 			}
-			require.Equal(t, tc.expect, scriptWorkDir())
+			require.Equal(t, tc.expect, scriptWorkDir(NewNode(task)))
+		})
+	}
+}
+
+func TestScriptRootlessWorkMountIsEmpty(t *testing.T) {
+	submount := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(submount, "marker.txt"), []byte("hidden"), 0644))
+	tests := []struct {
+		name string
+		dirs engine.FSTabs
+	}{
+		{name: "no_server_fs"},
+		{name: "child_mount_only", dirs: engine.FSTabs{{MountPoint: "/work/data", Source: submount}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			output := &bytes.Buffer{}
+			task := NewTaskContext(ctx)
+			if tc.dirs != nil {
+				serverFs, err := test_engine.NewWorkspace(tc.dirs...)
+				require.NoError(t, err)
+				task.SetFileSystem(serverFs)
+			}
+			task.SetOutputWriter(output)
+			require.NoError(t, task.CompileString(`
+SCRIPT({
+	const fs = require("fs");
+	$.yield(fs.readdirSync("/work").length === 2);
+})
+CSV()
+`))
+			result := task.Execute()
+			require.NoError(t, result.Err)
+			require.Equal(t, "true\n\n", output.String())
 		})
 	}
 }

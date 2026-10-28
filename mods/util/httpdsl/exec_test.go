@@ -14,7 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,6 +109,23 @@ func TestExecutePostBodyFromOSFileDirective(t *testing.T) {
 	require.JSONEq(t, `{"name":"John","doc":"ok"}`, body)
 }
 
+func TestExecutePostBodyFromVFSFileDirective(t *testing.T) {
+	ts := newHTTPDSLTestServer(t)
+	defer ts.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "payload.json"), []byte(`{"name":"John","doc":"ok"}`), 0o600))
+
+	fsys, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
+	require.NoError(t, err)
+
+	script := fmt.Sprintf("POST %s/api/echo\nContent-Type: application/json\n\n< /payload.json", ts.URL)
+	ex, err := Execute(script, WithFileSystem(fsys))
+	require.NoError(t, err)
+	_, body := splitRawHTTPMessage(ex.ResponseRaw)
+	require.JSONEq(t, `{"name":"John","doc":"ok"}`, body)
+}
+
 func TestExecutePostMultipartWithFileDirectives(t *testing.T) {
 	ts := newHTTPDSLTestServer(t)
 	defer ts.Close()
@@ -117,11 +135,8 @@ func TestExecutePostMultipartWithFileDirectives(t *testing.T) {
 	require.NoError(t, os.WriteFile(imagePath, []byte("PNGDATA"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "한글.xml"), []byte("<doc/>"), 0o600))
 
-	prev := ssfs.Default()
-	fsys, err := ssfs.NewServerSideFileSystem([]string{"/=" + dir})
+	fsys, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
 	require.NoError(t, err)
-	ssfs.SetDefault(fsys)
-	t.Cleanup(func() { ssfs.SetDefault(prev) })
 
 	boundary := "----WebKitFormBoundary7MA4YWxkTrZu0gW"
 	script := strings.Join([]string{
@@ -145,7 +160,7 @@ func TestExecutePostMultipartWithFileDirectives(t *testing.T) {
 		"--" + boundary + "--",
 	}, "\n")
 
-	ex, err := Execute(script)
+	ex, err := Execute(script, WithFileSystem(fsys))
 	require.NoError(t, err)
 	_, body := splitRawHTTPMessage(ex.ResponseRaw)
 	require.JSONEq(t, `{"name":"John","image":"1.png","imageBody":"PNGDATA","doc":"한글.xml","docBody":"<doc/>"}`, body)
@@ -170,7 +185,7 @@ func TestBuildRawRequestGzipContentLength(t *testing.T) {
 		Headers: []headerLine{{Name: "Content-Encoding", Value: "gzip"}, {Name: "Content-Length", Value: "1"}},
 		Body:    []string{"hello world"},
 	}
-	raw, err := buildRawRequest(req)
+	raw, err := buildRawRequest(req, nil)
 	require.NoError(t, err)
 	head, body := splitRawHTTPMessage(string(raw))
 	require.Contains(t, head, "Content-Encoding: gzip\r\n")
@@ -205,41 +220,37 @@ func TestParseAndHelperBranches(t *testing.T) {
 }
 
 func TestResolveBodyAndHelperBranches(t *testing.T) {
-	body, err := resolveRequestBody(http.MethodPost, nil, nil)
+	body, err := resolveRequestBody(http.MethodPost, nil, nil, nil)
 	require.NoError(t, err)
 	require.Nil(t, body)
 
-	body, err = resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "application/json"}}, []string{"a", "b"})
+	body, err = resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "application/json"}}, []string{"a", "b"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "a\nb", string(body))
 
-	body, err = resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "application/json"}}, []string{"< @/no/such/file"})
+	body, err = resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "application/json"}}, []string{"< @/no/such/file"}, nil)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Error opening file")
 
-	body, err = resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "multipart/form-data; boundary=foo"}}, []string{"plain-line"})
+	body, err = resolveRequestBody(http.MethodPost, []headerLine{{Name: "Content-Type", Value: "multipart/form-data; boundary=foo"}}, []string{"plain-line"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "plain-line\n", string(body))
 
-	r, err := parseFileLine(http.MethodGet, "plain")
+	r, err := parseFileLine(http.MethodGet, "plain", nil)
 	require.NoError(t, err)
 	raw, err := io.ReadAll(r)
 	require.NoError(t, err)
 	require.Equal(t, "plain\n", string(raw))
 
-	prev := ssfs.Default()
-	ssfs.SetDefault(nil)
-	t.Cleanup(func() { ssfs.SetDefault(prev) })
-	_, err = parseFileLine(http.MethodPost, "< /a.txt")
+	_, err = parseFileLine(http.MethodPost, "< /a.txt", nil)
 	require.ErrorContains(t, err, "server side file system is not initialized")
 
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "legacy.txt"), []byte("legacy"), 0o600))
-	fsys, err := ssfs.NewServerSideFileSystem([]string{"/=" + dir})
+	fsys, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
 	require.NoError(t, err)
-	ssfs.SetDefault(fsys)
 
-	r, err = parseFileLine(http.MethodPost, "<@utf-8 /legacy.txt")
+	r, err = parseFileLine(http.MethodPost, "<@utf-8 /legacy.txt", fsys)
 	require.NoError(t, err)
 	raw, err = io.ReadAll(r)
 	require.NoError(t, err)
@@ -264,10 +275,10 @@ func TestResolveBodyAndHelperBranches(t *testing.T) {
 	require.True(t, fd.FromOS)
 	require.Equal(t, "/tmp/file2.txt", fd.Path)
 
-	fd = parseFileDirective("<@ /ssfs/path/file.txt")
+	fd = parseFileDirective("<@ /serverfs/path/file.txt")
 	require.True(t, fd.Directive)
 	require.False(t, fd.FromOS)
-	require.Equal(t, "/ssfs/path/file.txt", fd.Path)
+	require.Equal(t, "/serverfs/path/file.txt", fd.Path)
 }
 
 func TestExecuteDialErrorReturnsRequestRaw(t *testing.T) {

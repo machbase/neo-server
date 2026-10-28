@@ -793,6 +793,9 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 
 	requestContext := ctx.Request.Context()
 	task, _ := newTqlRequestTask(requestContext)
+	if svr.serverFs != nil {
+		task.SetFileSystem(svr.serverFs)
+	}
 	task.SetParams(params)
 	task.SetInputReader(input)
 	task.SetLogWriter(logging.GetLog("anonymous.tql"))

@@ -20,7 +20,6 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/machbase/neo-server/v8/mods/tql/expression"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 var instance *loader
@@ -55,25 +54,49 @@ type Loader interface {
 	Load(path string) (*Script, error)
 }
 
-type loader struct {
-	vap *MemoryFS
+// FileSystem supplies workspace-relative files and the host root for SCRIPT.
+// Implementations belong to callers, not the TQL package.
+type FileSystem interface {
+	OpenFile(path string) (io.ReadCloser, error)
+	Stat(path string) (os.FileInfo, error)
+	RootDir() (string, bool)
 }
 
-func NewLoader() Loader {
-	return instance
+type loader struct {
+	vap   *MemoryFS
+	files FileSystem
+}
+
+func NewLoader(files FileSystem) Loader {
+	return &loader{vap: instance.vap, files: files}
 }
 
 func (ld *loader) Load(path string) (*Script, error) {
-	var ret *Script
-	fsmgr := ssfs.Default()
-	ent, err := fsmgr.Get("/" + strings.TrimPrefix(path, "/"))
-	if err != nil || ent.IsDir {
+	if ld.files == nil {
 		return nil, fmt.Errorf("not found '%s'", path)
 	}
-	ret = &Script{
+	filePath := "/" + strings.TrimPrefix(path, "/")
+	info, err := ld.files.Stat(filePath)
+	if err != nil || info.IsDir() {
+		return nil, fmt.Errorf("not found '%s'", path)
+	}
+	file, err := ld.files.OpenFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("not found '%s'", path)
+	}
+	content, err := io.ReadAll(file)
+	closeErr := file.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return nil, fmt.Errorf("not found '%s'", path)
+	}
+	ret := &Script{
 		path0:   filepath.ToSlash(path),
-		content: ent.Content,
+		content: content,
 		vap:     ld.vap,
+		files:   ld.files,
 	}
 	return ret, nil
 }
@@ -82,6 +105,7 @@ type Script struct {
 	path0   string
 	content []byte
 	vap     VolatileAssetsProvider
+	files   FileSystem
 }
 
 func (sc *Script) String() string {

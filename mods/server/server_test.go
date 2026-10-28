@@ -2575,6 +2575,49 @@ func TestServerCoverage_NewServerFileDirs(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestInitServiceControllerRootlessUsesVirtualWorkspace(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	config := NewConfig()
+	config.DataDir = t.TempDir()
+	config.PrefDir = filepath.Join(t.TempDir(), "pref")
+	config.FileDirs = []string{"/data=" + t.TempDir()}
+	svr, err := NewServer(config)
+	require.NoError(t, err)
+	svr.log = logging.GetLog("rootless-service-test")
+
+	require.NoError(t, svr.initServiceController())
+	require.NotNil(t, svr.serviceController)
+	t.Cleanup(func() { svr.serviceController.Stop(nil) })
+
+	require.NoDirExists(t, filepath.Join(cwd, "etc"))
+	require.NoError(t, svr.serviceController.Install(&service.Config{Name: "volatile"}))
+	require.NotNil(t, svr.serviceController.StatusOf("volatile"))
+	require.NoError(t, svr.serviceController.Read())
+	require.NotNil(t, svr.serviceController.StatusOf("volatile"))
+}
+
+func TestServerCoverage_StartServerFileSystemConflict(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+
+	newSvr := func() *Server {
+		base := NewConfig()
+		base.FileDirs = []string{"/=/=" + root + ",/a=" + other}
+		svr, err := NewServer(base)
+		require.NoError(t, err)
+		svr.log = logging.GetLog("serverfs-conflict-test")
+		return svr
+	}
+	require.NoError(t, newSvr().startServerFileSystem())
+
+	require.NoError(t, os.Mkdir(filepath.Join(root, "a"), 0755))
+	err := newSvr().startServerFileSystem()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "nested file mount conflict")
+}
+
 func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
 	oldHeadless := Headless
 	Headless = false

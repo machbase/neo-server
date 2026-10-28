@@ -12,12 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/nats-io/nats.go"
@@ -611,17 +612,14 @@ func TestSubscriberTqlCompileFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "bad.tql"), []byte("THIS IS NOT TQL"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	fsys, err := ssfs.NewServerSideFileSystem([]string{"/=" + dir})
+	fsys, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous := ssfs.Default()
-	ssfs.SetDefault(fsys)
-	t.Cleanup(func() { ssfs.SetDefault(previous) })
 	descriptor, err := util.NewWriteDescriptor("bad.tql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := &SubscriberEntry{BaseEntry: NewBaseEntry("bad", RUNNING, false), TaskTql: "bad.tql", ctx: context.Background(), log: logging.GetLog("subscriber-compile-test"), wd: descriptor, s: NewService(WithTqlLoader(tql.NewLoader()))}
+	entry := &SubscriberEntry{BaseEntry: NewBaseEntry("bad", RUNNING, false), TaskTql: "bad.tql", ctx: context.Background(), log: logging.GetLog("subscriber-compile-test"), wd: descriptor, s: NewService(WithTqlLoader(tql.NewLoader(fsys)))}
 	entry.doTql([]byte("payload"), map[string][]string{}, &Reason{})
 }

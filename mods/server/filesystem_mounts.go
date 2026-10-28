@@ -1,4 +1,4 @@
-package ssfs
+package server
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ type MountSpec struct {
 	Dir        string
 }
 
-// String returns the "mountPoint=dir" form accepted by NewServerSideFileSystem.
+// String returns the "mountPoint=dir" form accepted by NewWorkspaceFileSystem.
 func (ms MountSpec) String() string {
 	return ms.MountPoint + "=" + ms.Dir
 }
@@ -119,14 +119,12 @@ func NormalizeFileDirs(values []string) ([]string, error) {
 
 // MountSpecs returns the current mounts sorted by mount point,
 // so that a parent mount always precedes its nested mounts.
-func (ssfs *SSFS) MountSpecs() []MountSpec {
-	if ssfs == nil {
+func (service *WorkspaceFileSystem) MountSpecs() []MountSpec {
+	if service == nil {
 		return nil
 	}
-	ssfs.mountLock.RLock()
-	defer ssfs.mountLock.RUnlock()
-	ret := make([]MountSpec, 0, len(ssfs.bases))
-	for _, bd := range ssfs.bases {
+	ret := make([]MountSpec, 0, len(service.mounts))
+	for _, bd := range service.mounts {
 		ret = append(ret, MountSpec{MountPoint: bd.mountPoint, Dir: bd.abspath})
 	}
 	slices.SortFunc(ret, func(a, b MountSpec) int { return strings.Compare(a.MountPoint, b.MountPoint) })
@@ -134,16 +132,12 @@ func (ssfs *SSFS) MountSpecs() []MountSpec {
 }
 
 // RootDir returns the host directory mounted at "/" (JSH "/work").
-func (ssfs *SSFS) RootDir() (string, bool) {
-	if ssfs == nil {
+func (service *WorkspaceFileSystem) RootDir() (string, bool) {
+	if service == nil {
 		return "", false
 	}
-	ssfs.mountLock.RLock()
-	defer ssfs.mountLock.RUnlock()
-	for _, bd := range ssfs.bases {
-		if bd.mountPoint == "/" {
-			return bd.abspath, true
-		}
+	if bd := service.mounts[WorkMountPoint]; bd != nil {
+		return bd.abspath, true
 	}
 	return "", false
 }
@@ -151,9 +145,9 @@ func (ssfs *SSFS) RootDir() (string, bool) {
 // WorkFSTabs returns the JSH mount table that maps every server side file system
 // mount under WorkMountPoint. Mounts whose host directory is not accessible are skipped
 // so that a single broken mount does not prevent the runtime from starting.
-func (ssfs *SSFS) WorkFSTabs() engine.FSTabs {
+func (service *WorkspaceFileSystem) WorkFSTabs() engine.FSTabs {
 	ret := engine.FSTabs{}
-	for _, spec := range ssfs.MountSpecs() {
+	for _, spec := range service.MountSpecs() {
 		if info, err := os.Stat(spec.Dir); err != nil || !info.IsDir() {
 			continue
 		}
@@ -164,43 +158,37 @@ func (ssfs *SSFS) WorkFSTabs() engine.FSTabs {
 
 // WorkMountArgs returns the "-v" command line arguments of the jsh/shell commands
 // equivalent to WorkFSTabs.
-func (ssfs *SSFS) WorkMountArgs() []string {
+func (service *WorkspaceFileSystem) WorkMountArgs() []string {
 	ret := []string{}
-	for _, tab := range ssfs.WorkFSTabs() {
+	for _, tab := range service.WorkFSTabs() {
 		ret = append(ret, "-v", tab.MountPoint+"="+tab.Source)
 	}
 	return ret
 }
 
-// CheckWorkMounts reports problems of the mounts that would make the JSH view
-// differ from the server side file system view.
-func (ssfs *SSFS) CheckWorkMounts() []string {
+// CheckWorkMounts reports mounts whose host directory is not accessible.
+// Such mounts are skipped by WorkFSTabs, so they are reported as warnings.
+func (service *WorkspaceFileSystem) CheckWorkMounts() []string {
 	ret := []string{}
-	specs := ssfs.MountSpecs()
-	for _, spec := range specs {
+	for _, spec := range service.MountSpecs() {
 		info, err := os.Stat(spec.Dir)
 		if err != nil {
 			ret = append(ret, fmt.Sprintf("file mount %q -> %q is not accessible, %s", spec.WorkMountPoint(), spec.Dir, err.Error()))
-			continue
 		} else if !info.IsDir() {
 			ret = append(ret, fmt.Sprintf("file mount %q -> %q is not a directory", spec.WorkMountPoint(), spec.Dir))
-			continue
-		}
-		// a nested mount is shadowed in JSH when the parent mount has a real entry at the same path
-		for _, parent := range specs {
-			if parent.MountPoint == spec.MountPoint {
-				continue
-			}
-			prefix := strings.TrimSuffix(parent.MountPoint, "/") + "/"
-			if !strings.HasPrefix(spec.MountPoint, prefix) {
-				continue
-			}
-			rel := strings.TrimPrefix(spec.MountPoint, prefix)
-			if _, err := os.Stat(filepath.Join(parent.Dir, filepath.FromSlash(rel))); err == nil {
-				ret = append(ret, fmt.Sprintf("file mount %q conflicts with the real directory %q",
-					spec.WorkMountPoint(), filepath.Join(parent.Dir, filepath.FromSlash(rel))))
-			}
 		}
 	}
 	return ret
+}
+
+// ValidateWorkMounts rechecks the configured mounts against current host entries.
+// The engine owns conflict detection, including changes since construction.
+func (service *WorkspaceFileSystem) ValidateWorkMounts() error {
+	validationFS := engine.NewFS()
+	for _, spec := range service.MountSpecs() {
+		if err := validationFS.MountStrict(spec.WorkMountPoint(), os.DirFS(spec.Dir)); err != nil {
+			return fmt.Errorf("nested file mount conflict: %w", err)
+		}
+	}
+	return nil
 }

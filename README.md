@@ -23,6 +23,8 @@ API and Interfaces
 
 [https://docs.machbase.com/neo](https://docs.machbase.com/neo)
 
+- [Workspace mounts and filesystem compatibility](./docs/workspace-filesystem.md)
+
 ## Install Prebuilt Binary
 
 - Download

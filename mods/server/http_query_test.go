@@ -26,7 +26,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -1314,12 +1313,6 @@ func TestHandleTqlQuery(t *testing.T) {
 }
 
 func TestHandleTqlFile(t *testing.T) {
-	oldDefault := ssfs.Default()
-	ssfs.SetDefault(httpServer.serverFs)
-	t.Cleanup(func() {
-		ssfs.SetDefault(oldDefault)
-	})
-
 	writeServerFile := func(t *testing.T, path string, content []byte) {
 		t.Helper()
 		require.NoError(t, httpServer.serverFs.Set(path, content))
@@ -1423,10 +1416,6 @@ func TestHandleTqlFile(t *testing.T) {
 // stored .tql file executed via /web/api/tql/*path must run as the JWT's own
 // user (task.SetConsole), not always "sys".
 func TestHandleTqlFileExecUserScope(t *testing.T) {
-	oldDefault := ssfs.Default()
-	ssfs.SetDefault(httpServer.serverFs)
-	t.Cleanup(func() { ssfs.SetDefault(oldDefault) })
-
 	username := fmt.Sprintf("tqlfile_scope_user_%d", time.Now().UnixNano())
 	table := "OWN_TQLFILE_TBL"
 

@@ -29,6 +29,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/httpdsl"
 )
 
 const (
@@ -69,6 +70,7 @@ type Task struct {
 	argValues []any
 
 	httpClientFactory func() *http.Client
+	fileSystem        FileSystem
 
 	volatileAssetsProvider VolatileAssetsProvider
 
@@ -264,6 +266,7 @@ type executionConfig struct {
 	consoleOTP        string
 	httpClientFactory func() *http.Client
 	volatileProvider  VolatileAssetsProvider
+	fileSystem        FileSystem
 }
 
 func newExecutionRuntime(task *Task, execution *execution) *executionRuntime {
@@ -281,6 +284,7 @@ func newExecutionRuntime(task *Task, execution *execution) *executionRuntime {
 		consoleOTP:        task.consoleOtp,
 		httpClientFactory: task.httpClientFactory,
 		volatileProvider:  task.volatileAssetsProvider,
+		fileSystem:        task.fileSystem,
 	}
 	if len(task.params) > 0 {
 		config.params = make(map[string][]string, len(task.params))
@@ -442,6 +446,7 @@ func (x *executionRuntime) NewChildTask() *Task {
 	child.SetLogLevel(x.config.logLevel)
 	child.SetHttpClientFactory(x.config.httpClientFactory)
 	child.SetVolatileAssetsProvider(x.config.volatileProvider)
+	child.SetFileSystem(x.config.fileSystem)
 	return child
 }
 
@@ -732,6 +737,10 @@ func (x *Task) SetHttpClientFactory(factory func() *http.Client) {
 	x.httpClientFactory = factory
 }
 
+func (x *Task) SetFileSystem(files FileSystem) {
+	x.fileSystem = files
+}
+
 func (x *Task) SetInputReader(r io.Reader) {
 	x.inputReader = r
 }
@@ -810,6 +819,9 @@ func (x *Task) GetVariable(name string) (any, error) {
 
 func (x *Task) CompileScript(sc *Script) error {
 	x.volatileAssetsProvider = sc.vap
+	if sc.files != nil {
+		x.fileSystem = sc.files
+	}
 	x.sourcePath = sc.path0
 	return x.Compile(bytes.NewBuffer(sc.content))
 }
@@ -1120,6 +1132,7 @@ func (x *Task) cloneForExecution(ctx context.Context, writer io.Writer) (*Task, 
 	clone.argValues = append([]any(nil), x.argValues...)
 	clone.httpClientFactory = x.httpClientFactory
 	clone.volatileAssetsProvider = x.volatileAssetsProvider
+	clone.fileSystem = x.fileSystem
 	clone.sourcePath = x.sourcePath
 	if cacheWriter, ok := writer.(*bytes.Buffer); ok {
 		clone.cacheWriterOverride = cacheWriter
@@ -2427,6 +2440,9 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 			opts.VolatileFileWriter(node.runtime),
 		}
 		ret.encoder = val.RowEncoder(options...)
+		if enc, ok := ret.encoder.(interface{ SetFileSystem(httpdsl.FileSystem) }); ok {
+			enc.SetFileSystem(node.runtime.config.fileSystem)
+		}
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
 		} else if _, ok := ret.encoder.(opts.CanSetGeoMapJson); ok {

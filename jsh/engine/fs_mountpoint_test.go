@@ -193,9 +193,104 @@ func TestFS_AccessVirtualMountDirectoryMatchesStat(t *testing.T) {
 					t.Fatalf("Access(/a, %d) error=%v, want nil", mode, err)
 				}
 			}
+
 			if err := mfs.Access("/a/missing", 0); !errors.Is(err, fs.ErrNotExist) {
 				t.Fatalf("Access(/a/missing) error=%v, want ENOENT", err)
 			}
 		})
+	}
+}
+
+func TestFS_ReadDirIncludesEveryImplicitMountParent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "apps", "central"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mfs := NewFS()
+	if err := mfs.Mount("/work", os.DirFS(root)); err != nil {
+		t.Fatal(err)
+	}
+	if err := mfs.Mount("/work/apps/central/app", os.DirFS(t.TempDir())); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{"/work", "apps"},
+		{"/work/apps", "central"},
+		{"/work/apps/central", "app"},
+	} {
+		entries, err := mfs.ReadDir(tc.path)
+		if err != nil {
+			t.Fatalf("ReadDir(%s) error=%v", tc.path, err)
+		}
+		count := 0
+		for _, entry := range entries {
+			if entry.Name() == tc.want {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("ReadDir(%s) has %d entries named %q, want exactly one", tc.path, count, tc.want)
+		}
+
+		file, err := mfs.Open(tc.path)
+		if err != nil {
+			t.Fatalf("Open(%s) error=%v", tc.path, err)
+		}
+		info, err := file.Stat()
+		file.Close()
+		if err != nil || !info.IsDir() {
+			t.Errorf("Open(%s).Stat() = %v, %v; want directory", tc.path, info, err)
+		}
+		if info, err := mfs.Stat(tc.path); err != nil || !info.IsDir() {
+			t.Errorf("Stat(%s) = %v, %v; want directory", tc.path, info, err)
+		}
+	}
+}
+
+func TestFS_ReadDirWithoutRootMount(t *testing.T) {
+	mfs := NewFS()
+	if err := mfs.Mount("/work/a/b", os.DirFS(t.TempDir())); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{"/", "work"},
+		{"/work", "a"},
+		{"/work/a", "b"},
+	} {
+		entries, err := mfs.ReadDir(tc.path)
+		if err != nil {
+			t.Fatalf("ReadDir(%s) error=%v", tc.path, err)
+		}
+		found := false
+		for _, entry := range entries {
+			if entry.Name() == tc.want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("ReadDir(%s) does not contain %q", tc.path, tc.want)
+		}
+
+		file, err := mfs.Open(tc.path)
+		if err != nil {
+			t.Fatalf("Open(%s) error=%v", tc.path, err)
+		}
+		info, err := file.Stat()
+		file.Close()
+		if err != nil || !info.IsDir() {
+			t.Errorf("Open(%s).Stat() = %v, %v; want directory", tc.path, info, err)
+		}
+		if info, err := mfs.Stat(tc.path); err != nil || !info.IsDir() {
+			t.Errorf("Stat(%s) = %v, %v; want directory", tc.path, info, err)
+		}
 	}
 }

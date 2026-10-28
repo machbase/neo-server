@@ -11,7 +11,6 @@ import (
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util/charset"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 func (x *Node) fmCharset(charsetName string) (opts.Option, error) {
@@ -58,7 +57,10 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 	case io.Reader:
 		ret.srcReader = src
 	case *FilePath:
-		if src.AbsPath != "" {
+		if src.OpenFile != nil {
+			ret.srcOpen = src.OpenFile
+			ret.srcPath = src.Path
+		} else if src.AbsPath != "" {
 			ret.srcFile = src.AbsPath
 		} else if src.HttpPath != "" {
 			ret.srcHttp = src.HttpPath
@@ -85,6 +87,8 @@ type FilePath struct {
 	Path     string // Original path
 	HttpPath string
 	AbsPath  string
+	IsDir    bool
+	OpenFile func() (io.ReadCloser, error)
 }
 
 func (x *Node) fmFile(path string) (*FilePath, error) {
@@ -93,15 +97,21 @@ func (x *Node) fmFile(path string) (*FilePath, error) {
 	} else if strings.HasPrefix(path, "https://") {
 		return &FilePath{Path: path, HttpPath: path}, nil
 	} else {
-		serverFs := ssfs.Default()
+		serverFs := x.ensureRuntime().config.fileSystem
 		if serverFs == nil {
 			return nil, os.ErrNotExist
 		}
-		realPath, err := serverFs.RealPath(path)
+		info, err := serverFs.Stat(path)
 		if err != nil {
 			return nil, err
 		}
-		return &FilePath{Path: path, AbsPath: realPath}, nil
+		return &FilePath{
+			Path:  path,
+			IsDir: info.IsDir(),
+			OpenFile: func() (io.ReadCloser, error) {
+				return serverFs.OpenFile(path)
+			},
+		}, nil
 	}
 }
 
@@ -127,9 +137,11 @@ type bytesSource struct {
 	trimspace bool
 
 	srcReader io.Reader
+	srcOpen   func() (io.ReadCloser, error)
 	srcString string
 	srcBytes  []byte
 	srcFile   string
+	srcPath   string
 	srcHttp   string
 }
 
@@ -141,6 +153,15 @@ func (src *bytesSource) gen(node *Node) {
 		reader = bytes.NewBuffer(src.srcBytes)
 	} else if src.srcReader != nil {
 		reader = src.srcReader
+	} else if src.srcOpen != nil {
+		content, err := src.srcOpen()
+		if err != nil {
+			node.ensureRuntime().LogErrorf("Fail to read %q, %s", src.srcPath, err.Error())
+			node.emit(ErrorRecord(err))
+			return
+		}
+		defer content.Close()
+		reader = content
 	} else if src.srcFile != "" {
 		content, err := os.Open(src.srcFile)
 		if err != nil {

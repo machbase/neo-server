@@ -580,6 +580,37 @@ func TestSSHSession(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSSHSftpRootlessRejected(t *testing.T) {
+	handler := &sshd{
+		log:        logging.GetLog("rootless-sftp-test"),
+		authServer: &Server{},
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := &gliderssh.Server{
+		SubsystemHandlers: map[string]gliderssh.SubsystemHandler{"sftp": handler.SftpHandler},
+	}
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		require.NoError(t, server.Close())
+		require.ErrorIs(t, <-done, gliderssh.ErrServerClosed)
+	})
+
+	client, err := ssh.Dial("tcp", listener.Addr().String(), &ssh.ClientConfig{
+		User:            "sys",
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { client.Close() })
+	sftpClient, err := sftp.NewClient(client)
+	if sftpClient != nil {
+		sftpClient.Close()
+	}
+	require.Error(t, err)
+}
+
 func TestSSHSftp(t *testing.T) {
 	authMethods := []ssh.AuthMethod{ssh.Password("manager")}
 	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", shellPort), &ssh.ClientConfig{

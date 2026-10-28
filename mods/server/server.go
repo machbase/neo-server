@@ -40,7 +40,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/trigger/subscriber"
 	"github.com/machbase/neo-server/v8/mods/trigger/timer"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/crypto/ssh"
@@ -72,6 +71,7 @@ type Server struct {
 
 	proxyMgr          *ProxyManager
 	serviceController *service.Controller
+	fileService       *WorkspaceFileSystem
 	models            *model.Provider
 	apiTokenVerifier  *ApiTokenVerifier
 	x509CertVerifier  *X509CertVerifier
@@ -125,7 +125,7 @@ func NewServer(conf *Config) (*Server, error) {
 		}
 	}
 	// --file "/=/dir,/a=/other" mounts "/dir" at "/work" and "/other" at "/work/a"
-	if fileDirs, err := ssfs.NormalizeFileDirs(conf.FileDirs); err != nil {
+	if fileDirs, err := NormalizeFileDirs(conf.FileDirs); err != nil {
 		return nil, fmt.Errorf("invalid --file, %w", err)
 	} else {
 		conf.FileDirs = fileDirs
@@ -796,7 +796,7 @@ func (s *Server) startBackupService() error {
 }
 
 func (s *Server) startServerFileSystem() error {
-	serverFs, err := ssfs.NewServerSideFileSystem(s.FileDirs)
+	serverFs, err := NewWorkspaceFileSystem(s.FileDirs)
 	if err != nil {
 		s.log.Warnf("Server filesystem, %s", err.Error())
 		return fmt.Errorf("server side file system, %s", err.Error())
@@ -807,7 +807,11 @@ func (s *Server) startServerFileSystem() error {
 	for _, warn := range serverFs.CheckWorkMounts() {
 		s.log.Warn(warn)
 	}
-	ssfs.SetDefault(serverFs)
+	if err := serverFs.ValidateWorkMounts(); err != nil {
+		s.log.Error(err.Error())
+		return err
+	}
+	s.fileService = serverFs
 	return nil
 }
 
@@ -886,7 +890,7 @@ func (s *Server) runInitScripts() error {
 }
 
 func (s *Server) startBridgeAndTriggerService() error {
-	tqlLoader := tql.NewLoader()
+	tqlLoader := tql.NewLoader(s.fileService)
 	s.timerSvc = timer.NewService(
 		timer.WithVerbose(false),
 		timer.WithProvider(s.models),
@@ -939,7 +943,7 @@ func (s *Server) startMqttServer() error {
 	opts := []MqttOption{
 		WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
 		WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
-		WithMqttTqlLoader(tql.NewLoader()),
+		WithMqttTqlLoader(tql.NewLoader(s.fileService)),
 		WithMqttWsHandleListener(s.Http.Listeners),
 	}
 	if s.Mqtt.EnableTls {
@@ -989,8 +993,8 @@ func (s *Server) startHttpServer() error {
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
 		WithHttpListenAddress(s.Http.Listeners...),
 		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
-		WithHttpTqlLoader(tql.NewLoader()),
-		WithHttpServerSideFileSystem(ssfs.Default()),
+		WithHttpTqlLoader(tql.NewLoader(s.fileService)),
+		WithHttpServerSideFileSystem(s.fileService),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 		WithHttpPathMap("data", s.homeDirPath),
@@ -1067,27 +1071,38 @@ func (s *Server) startSshServer() error {
 func (s *Server) initServiceController() error {
 	executable, _ := os.Executable()
 	workspacePath := s.fileRootDir()
-	if workspacePath == "" {
-		workspacePath = "."
+	var workFS fs.FS
+	launcher := []string{
+		executable,
+		"jsh",
 	}
-	confPath := filepath.Join(workspacePath, "etc", "services")
-	if _, err := os.Stat(confPath); os.IsNotExist(err) {
-		err = os.MkdirAll(confPath, 0755)
-		if err != nil {
-			return fmt.Errorf("mkdir %s, %s", confPath, err.Error())
+	if workspacePath == "" {
+		virtualFS := engine.NewVirtualFS()
+		if err := virtualFS.Mkdir("/etc"); err != nil {
+			return fmt.Errorf("mkdir virtual service config directory: %w", err)
 		}
+		if err := virtualFS.Mkdir("/etc/services"); err != nil {
+			return fmt.Errorf("mkdir virtual service config directory: %w", err)
+		}
+		workFS = virtualFS
+	} else {
+		confPath := filepath.Join(workspacePath, "etc", "services")
+		if _, err := os.Stat(confPath); os.IsNotExist(err) {
+			err = os.MkdirAll(confPath, 0755)
+			if err != nil {
+				return fmt.Errorf("mkdir %s, %s", confPath, err.Error())
+			}
+		}
+		workFS = os.DirFS(workspacePath)
+		launcher = append(launcher, "-v", "/work="+workspacePath)
 	}
 	// the service controller keeps the root-only visibility: only "/work" is mounted
 	ctrl, err := service.NewController(&service.ControllerConfig{
-		Launcher: []string{
-			executable, // how to launch a service command as a child process.
-			"jsh",
-			"-v", "/work=" + workspacePath,
-		},
+		Launcher: launcher,
 		// how to manage service configs by controller
 		ConfigDir: "/work/etc/services",
 		Mounts: engine.FSTabs{
-			{MountPoint: "/work", FS: os.DirFS(workspacePath)},
+			{MountPoint: "/work", FS: workFS},
 		},
 	})
 	if err != nil {
@@ -1134,7 +1149,7 @@ func (s *Server) registerJsonRpcHandlers() {
 	if ctl == nil {
 		return
 	}
-	ctl.RegisterJsonRpcHandler("markdown.render", rpcMarkdownRender)
+	ctl.RegisterJsonRpcHandler("markdown.render", s.rpcMarkdownRender)
 	ctl.RegisterJsonRpcHandler("vizspec.render", viz.RPCVizspecRender)
 	ctl.RegisterJsonRpcHandler("vizspec.export", viz.RPCVizspecExport)
 	ctl.RegisterJsonRpcHandler("server.info.get", s.getServerInfo)
@@ -3245,7 +3260,7 @@ func (s *Server) initShellProvider() error {
 			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "[[shell]]")
 		}
 	}
-	fsMgr := ssfs.Default()
+	fsMgr := s.fileService
 	for _, tab := range fsMgr.WorkFSTabs() {
 		shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"%s=%s"`, tab.MountPoint, tab.Source))
 	}

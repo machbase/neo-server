@@ -29,7 +29,7 @@ var scanDirs = []string{
 
 // add function names here not to generate
 var ignores = []string{
-	// "SetXYZ",
+	"SetFileSystem", // Injected by the task, not exposed as a script option.
 }
 
 func main() {

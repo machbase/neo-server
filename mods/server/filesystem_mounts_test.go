@@ -1,4 +1,4 @@
-package ssfs
+package server
 
 import (
 	"os"
@@ -76,7 +76,7 @@ func TestWorkFSTabs(t *testing.T) {
 
 	dirs, err := NormalizeFileDirs([]string{"/=" + root + ",/b/c=" + third + ",/a=" + other + ",/m=" + missing})
 	require.NoError(t, err)
-	fs, err := NewServerSideFileSystem(dirs)
+	fs, err := NewWorkspaceFileSystem(dirs)
 	require.NoError(t, err)
 
 	rootDir, ok := fs.RootDir()
@@ -101,16 +101,55 @@ func TestWorkFSTabs(t *testing.T) {
 	warns := fs.CheckWorkMounts()
 	require.Len(t, warns, 1)
 	require.Contains(t, warns[0], `"/work/m"`)
+	require.NoError(t, fs.ValidateWorkMounts())
+}
 
-	// nested mount shadowed by a real directory in the parent mount
+func TestValidateWorkMounts(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	deep := t.TempDir()
+	newFs := func(values ...string) *WorkspaceFileSystem {
+		dirs, err := NormalizeFileDirs(values)
+		require.NoError(t, err)
+		fs, err := NewWorkspaceFileSystem(dirs)
+		require.NoError(t, err)
+		return fs
+	}
+
+	// no real entry at the nested path
+	rootFs := newFs("/="+root, "/a="+other)
+	require.NoError(t, rootFs.ValidateWorkMounts())
+	// sibling prefix is not nested ("/ab" is not under "/a")
+	require.NoError(t, os.Mkdir(filepath.Join(other, "b"), 0755))
+	require.NoError(t, newFs("/a="+other, "/ab="+deep).ValidateWorkMounts())
+
+	// nested mount over a real directory of the root mount
 	require.NoError(t, os.Mkdir(filepath.Join(root, "a"), 0755))
-	warns = fs.CheckWorkMounts()
-	require.Len(t, warns, 2)
-	require.Contains(t, warns[0], `"/work/a" conflicts`)
+	err := rootFs.ValidateWorkMounts()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"/work/a"`)
+	_, err = NewWorkspaceFileSystem([]string{"/=" + root, "/a=" + other})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "nested file mount conflict")
+
+	// nested mount over a real file of a non-root mount, regardless of order
+	fileFs := newFs("/x/f="+deep, "/x="+other)
+	require.NoError(t, os.WriteFile(filepath.Join(other, "f"), []byte("x"), 0644))
+	err = fileFs.ValidateWorkMounts()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"/work/x/f"`)
+
+	// only the intermediate directory exists: not a conflict
+	deepFs := newFs("/="+root, "/a/b="+deep)
+	require.NoError(t, deepFs.ValidateWorkMounts())
+	require.NoError(t, os.Mkdir(filepath.Join(root, "a", "b"), 0755))
+	err = deepFs.ValidateWorkMounts()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `"/work/a/b"`)
 }
 
 func TestWorkFSTabsNil(t *testing.T) {
-	var fs *SSFS
+	var fs *WorkspaceFileSystem
 	require.Empty(t, fs.WorkFSTabs())
 	_, ok := fs.RootDir()
 	require.False(t, ok)
