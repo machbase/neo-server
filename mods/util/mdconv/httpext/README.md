@@ -112,8 +112,8 @@ This preserves header case/order from the wire response.
 
 `httpext` supports file directives in request body content, compatible with the existing HTTP DSL behavior.
 
-- `< /ssfs/path/file`:
-    load body content from server-side file system (SSFS).
+- `< /workspace/path/file`:
+    load body content from the supplied server workspace filesystem.
 - `< @/os/abs_path.file`:
     load body content from OS file path.
 
@@ -122,8 +122,12 @@ Notes:
 - File path strings are UTF-8 and may include Korean characters.
 - For multipart bodies, directives can be mixed inside each part payload line.
 - Loaded file content is appended with a newline, same as existing HTTP DSL behavior.
-- Legacy form `<@utf-8 /ssfs/path/file` is accepted for backward compatibility.
-- Loader selection rule: if parsed path starts with `@`, OS loader is used; otherwise SSFS loader is used.
+- Legacy form `<@utf-8 /workspace/path/file` is accepted for backward compatibility.
+- Loader selection rule: if the parsed path starts with `@`, the OS loader is used; otherwise the supplied workspace reader is used.
+- Go callers supply the workspace using `mdconv.WithFileSystem(files)` or
+  `httpext.Extender{FileSystem: files}`. There is no process-global default
+  filesystem or implicit process working directory fallback. OS directives do
+  not require a workspace reader.
 
 Multipart example:
 

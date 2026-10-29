@@ -75,6 +75,141 @@ func TestFS_HostMountDirectoryOperations(t *testing.T) {
 	}
 }
 
+func TestFS_RemoveAllHostTree(t *testing.T) {
+	mfs, root := newHostMountedFS(t)
+	tree := filepath.Join(root, "tree")
+	if err := os.MkdirAll(filepath.Join(tree, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tree, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "nested", "file.txt"), []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	requireFSCode(t, "Remove(non-empty directory)", mfs.Remove("/tree"), "ENOTEMPTY")
+	if _, err := os.Stat(filepath.Join(tree, "nested", "file.txt")); err != nil {
+		t.Fatalf("non-recursive Remove changed the tree: %v", err)
+	}
+	if err := mfs.Rmdir("/tree/empty"); err != nil {
+		t.Fatalf("Rmdir(empty directory) error=%v", err)
+	}
+
+	if err := mfs.RemoveAll("/tree"); err != nil {
+		t.Fatalf("RemoveAll(tree) error=%v", err)
+	}
+	if _, err := os.Lstat(tree); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("RemoveAll left the tree: %v", err)
+	}
+	if err := mfs.RemoveAll("/missing"); err != nil {
+		t.Fatalf("RemoveAll(missing) error=%v, want nil", err)
+	}
+}
+
+func TestFS_RemoveAllUnlinksSymlinkWithoutFollowing(t *testing.T) {
+	mfs, root := newHostMountedFS(t)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	if err := mfs.RemoveAll("/link"); err != nil {
+		t.Fatalf("RemoveAll(link) error=%v", err)
+	}
+	if _, err := os.Lstat(link); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("RemoveAll left the symlink: %v", err)
+	}
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "keep" {
+		t.Fatalf("RemoveAll followed the symlink: content=%q err=%v", data, err)
+	}
+}
+
+func TestFS_RemoveAllRejectsMountAndAncestorBeforeDeleting(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "parent")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(parent, "keep.txt")
+	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mfs := NewFS()
+	if err := mfs.Mount("/", os.DirFS(root)); err != nil {
+		t.Fatal(err)
+	}
+	mountDir := t.TempDir()
+	if err := mfs.Mount("/parent/nested", os.DirFS(mountDir)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.RemoveAll("/parent"); !errors.Is(err, syscall.EBUSY) {
+		t.Fatalf("RemoveAll(ancestor) error=%v, want EBUSY", err)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("RemoveAll changed the ancestor before rejecting: %v", err)
+	}
+	if err := mfs.RemoveAll("/parent/nested"); !errors.Is(err, syscall.EBUSY) {
+		t.Fatalf("RemoveAll(mount point) error=%v, want EBUSY", err)
+	}
+}
+
+type removeAllFailUnlinkFS struct {
+	*VirtualFS
+}
+
+func (vfs *removeAllFailUnlinkFS) Unlink(name string) error {
+	if name == "tree/b.txt" {
+		return fs.ErrPermission
+	}
+	return vfs.VirtualFS.Unlink(name)
+}
+
+func TestFS_RemoveAllReturnsPartialFailure(t *testing.T) {
+	vfs := &removeAllFailUnlinkFS{VirtualFS: NewVirtualFS()}
+	if err := vfs.Mkdir("tree"); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.WriteFile("tree/a.txt", []byte("a")); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.WriteFile("tree/b.txt", []byte("b")); err != nil {
+		t.Fatal(err)
+	}
+	mfs := NewFS()
+	if err := mfs.Mount("/mem", vfs); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mfs.RemoveAll("/mem/tree"); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("RemoveAll error=%v, want permission error", err)
+	}
+	if _, err := mfs.Stat("/mem/tree/a.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("entry before the failure should have been removed: %v", err)
+	}
+	if _, err := mfs.Stat("/mem/tree/b.txt"); err != nil {
+		t.Fatalf("entry that failed to remove should remain: %v", err)
+	}
+}
+
+func TestFS_HostPathConversionRequiresOSBackedMount(t *testing.T) {
+	mfs := NewFS()
+	if err := mfs.Mount("/mem", fstest.MapFS{"file.txt": {Data: []byte("x")}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := mfs.OSPath("/mem/file.txt"); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("OSPath(non-OS mount) error=%v, want permission error", err)
+	}
+	if _, err := mfs.ResolveHostPath("/mem/file.txt"); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("ResolveHostPath(non-OS mount) error=%v, want permission error", err)
+	}
+}
+
 func TestFS_LstatAcrossMountKinds(t *testing.T) {
 	mfs, _ := newHostMountedFS(t)
 	if err := mfs.Mount("/mem", fstest.MapFS{"file.txt": {Data: []byte("x")}}); err != nil {

@@ -2,6 +2,7 @@ package tql
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"time"
@@ -41,15 +42,30 @@ func toTemplateOption(arg any) (opts.Option, error) {
 	case string:
 		return opts.Template(v), nil
 	case *FilePath:
-		if v.AbsPath != "" {
-			if content, err := os.ReadFile(v.AbsPath); err != nil {
+		var content []byte
+		if v.OpenFile != nil {
+			file, err := v.OpenFile()
+			if err != nil {
 				return nil, fmt.Errorf("template file '%s' not found: %w", v.Path, err)
-			} else {
-				return opts.Template(string(content)), nil
 			}
-		} else {
+			content, err = io.ReadAll(file)
+			closeErr := file.Close()
+			if err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				return nil, fmt.Errorf("template file '%s' not found: %w", v.Path, err)
+			}
+			return opts.Template(string(content)), nil
+		}
+		if v.AbsPath == "" {
 			return nil, fmt.Errorf("template file '%s' not found", v.Path)
 		}
+		content, err := os.ReadFile(v.AbsPath)
+		if err != nil {
+			return nil, fmt.Errorf("template file '%s' not found: %w", v.Path, err)
+		}
+		return opts.Template(string(content)), nil
 	}
 	return nil, nil
 }
@@ -174,7 +190,7 @@ func (node *Node) fmHttp(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	exchange, err := httpdsl.Execute(content)
+	exchange, err := httpdsl.Execute(content, httpdsl.WithFileSystem(node.ensureRuntime().config.fileSystem))
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request error: %w", err)
 	}

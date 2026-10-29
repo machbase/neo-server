@@ -25,7 +25,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"github.com/stretchr/testify/require"
@@ -164,6 +163,7 @@ func loadLines(file string) []string {
 
 var testServer *machsvr.TestServer
 var testHttpAddress string
+var testFileSystem *server.WorkspaceFileSystem
 
 func TestMain(m *testing.M) {
 	testServer = &machsvr.TestServer{}
@@ -174,8 +174,11 @@ func TestMain(m *testing.M) {
 
 	spi.StartMetrics()
 
-	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
-	ssfs.SetDefault(f)
+	var fsErr error
+	testFileSystem, fsErr = server.NewWorkspaceFileSystem([]string{"/=test"})
+	if fsErr != nil {
+		panic(fsErr)
+	}
 
 	tql.Init()
 
@@ -241,6 +244,7 @@ func (tc TqlTestCase) run(t *testing.T) {
 	output := &bytes.Buffer{}
 	log := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
+	task.SetFileSystem(testFileSystem)
 	task.SetLogWriter(log)
 	if tc.ExecUser != "" {
 		task.SetConsole(tc.ExecUser, "", "")
@@ -390,6 +394,7 @@ func TestTqlCache(t *testing.T) {
 
 			output := &bytes.Buffer{}
 			task := tql.NewTaskContext(ctx)
+			task.SetFileSystem(testFileSystem)
 			//task.sourcePath = tc.Filename
 			task.SetLogWriter(os.Stdout)
 			task.SetOutputWriterJson(output, true)

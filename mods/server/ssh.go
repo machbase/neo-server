@@ -395,7 +395,11 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
 
 func (svr *sshd) SftpHandler(sess ssh.Session) {
 	debugStream := io.Discard
-	workDir := strings.TrimPrefix(svr.authServer.FileDirs[0], "/=")
+	workDir := svr.authServer.fileRootDir()
+	if workDir == "" {
+		svr.log.Warn("sftp request rejected: no --file root is configured")
+		return
+	}
 	serverOptions := []sftp.ServerOption{
 		sftp.WithDebug(debugStream),
 		sftp.WithServerWorkingDirectory(workDir),

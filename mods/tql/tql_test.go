@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,11 +18,12 @@ import (
 	"time"
 
 	client "github.com/machbase/neo-client/v2"
+	"github.com/machbase/neo-server/v8/jsh/engine"
+	"github.com/machbase/neo-server/v8/jsh/test_engine"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -2541,7 +2543,10 @@ func TestExecutionSinkPrepareErrorIsScriptError(t *testing.T) {
 	defer cancel()
 
 	task := NewTaskContext(ctx)
-	err := task.CompileString(code)
+	files, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: "test"})
+	require.NoError(t, err)
+	task.SetFileSystem(files)
+	err = task.CompileString(code)
 	require.NoError(t, err)
 
 	result := task.Execute()
@@ -2964,11 +2969,11 @@ func TestRecordEqualKeyAndValue(t *testing.T) {
 }
 
 func TestLoader(t *testing.T) {
-	fileDirs := []string{"/=./test"}
-	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
-	ssfs.SetDefault(serverFs)
+	fileDirs := engine.FSTabs{{MountPoint: "/work", Source: "./test"}}
+	serverFs, fsErr := test_engine.NewWorkspace(fileDirs...)
+	require.NoError(t, fsErr)
 
-	loader := NewLoader()
+	loader := NewLoader(serverFs)
 	var task *Task
 	var sc *Script
 	var expect string
@@ -3001,9 +3006,6 @@ func TestLoader(t *testing.T) {
 		{"transpose_hdr"},
 		{"transpose_nohdr"},
 	}
-
-	f, _ := ssfs.NewServerSideFileSystem([]string{"/=./test"})
-	ssfs.SetDefault(f)
 
 	for _, tt := range tests {
 		sc, err = loader.Load(fmt.Sprintf("%s.tql", tt.name))
@@ -3568,6 +3570,88 @@ func TestCompileLogsAbsoluteParseErrorLocations(t *testing.T) {
 			if !strings.Contains(logOutput, "near=\""+tc.expectNear+"\"") {
 				t.Fatalf("expected near=%q in log, got %q", tc.expectNear, logOutput)
 			}
+		})
+	}
+}
+
+func TestWorkspaceReaderInheritance(t *testing.T) {
+	const code = "STRING(file('/payload.txt'))\nCSV()"
+	for _, value := range []string{"alpha", "beta"} {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "payload.txt"), []byte(value), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "task.tql"), []byte(code), 0600))
+		files, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
+		require.NoError(t, err)
+		script, err := NewLoader(files).Load("/task.tql")
+		require.NoError(t, err)
+
+		parent := NewTaskContext(t.Context())
+		parentOutput := &bytes.Buffer{}
+		parent.SetOutputWriter(parentOutput)
+		require.NoError(t, parent.CompileScript(script))
+
+		child := newExecutionRuntime(parent, parent.currentExecution()).NewChildTask()
+		childOutput := &bytes.Buffer{}
+		child.SetOutputWriter(childOutput)
+		require.NoError(t, child.CompileString(code))
+
+		cloneOutput := &bytes.Buffer{}
+		clone, err := parent.cloneForExecution(t.Context(), cloneOutput)
+		require.NoError(t, err)
+
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			for _, run := range []struct {
+				name   string
+				task   *Task
+				output *bytes.Buffer
+			}{
+				{name: "loaded_script", task: parent, output: parentOutput},
+				{name: "child", task: child, output: childOutput},
+				{name: "cache_clone", task: clone, output: cloneOutput},
+			} {
+				t.Run(run.name, func(t *testing.T) {
+					require.NoError(t, run.task.Execute().Err)
+					require.Equal(t, value+"\n\n", run.output.String())
+				})
+			}
+		})
+	}
+}
+
+func TestWorkspaceHTTPAndMarkdownReaders(t *testing.T) {
+	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(w, r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(echo.Close)
+	request := fmt.Sprintf("POST %s\nContent-Type: text/plain\n\n< /payload.txt", echo.URL)
+	for _, value := range []string{"alpha", "beta"} {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "payload.txt"), []byte(value), 0600))
+		template := "```http\n" + request + "\n```\n"
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "template.md"), []byte(template), 0600))
+		files, err := test_engine.NewWorkspace(engine.FSTab{MountPoint: "/work", Source: dir})
+		require.NoError(t, err)
+
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			task := NewTaskContext(t.Context())
+			task.SetFileSystem(files)
+			record, err := NewNode(task).fmHttp(request)
+			require.NoError(t, err)
+			require.Contains(t, record.(*Record).Value().(string), "\r\n\r\n"+value+"\n")
+
+			markdown := NewTaskContext(t.Context())
+			markdown.SetFileSystem(files)
+			output := &bytes.Buffer{}
+			markdown.SetOutputWriter(output)
+			require.NoError(t, markdown.CompileString("FAKE(json({[\"row\"]}))\nMARKDOWN(file('/template.md'), html(true))"))
+			require.NoError(t, markdown.Execute().Err)
+			require.Contains(t, output.String(), value)
+			require.NotContains(t, output.String(), "Error opening file")
 		})
 	}
 }

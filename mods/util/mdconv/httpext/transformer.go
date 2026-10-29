@@ -3,12 +3,15 @@ package httpext
 import (
 	"bytes"
 
+	"github.com/machbase/neo-server/v8/mods/util/httpdsl"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 )
 
-type Transformer struct{}
+type Transformer struct {
+	fileSystem httpdsl.FileSystem
+}
 
 var httpClientLang = []byte("http")
 
@@ -43,7 +46,7 @@ func (t *Transformer) Transform(doc *ast.Document, reader text.Reader, _ parser.
 			opts = parseFenceOptions(string(cb.Info.Segment.Value(reader.Source())))
 		}
 
-		req, rsp, err := executeRawHTTPClient(b.String())
+		req, rsp, err := executeRawHTTPClient(b.String(), httpdsl.WithFileSystem(t.fileSystem))
 		node := &Block{ShowRequest: opts.ShowRequest, ShowLineNumbers: opts.ShowLineNumbers, IndentJSON: opts.IndentJSON, ClassStyles: opts.ClassStyles, Warnings: opts.Warnings}
 		if err != nil {
 			node.Request = req

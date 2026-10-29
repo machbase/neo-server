@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,7 +41,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/trigger/subscriber"
 	"github.com/machbase/neo-server/v8/mods/trigger/timer"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 	"golang.org/x/crypto/ssh"
@@ -72,6 +72,7 @@ type Server struct {
 
 	proxyMgr          *ProxyManager
 	serviceController *service.Controller
+	fileService       *WorkspaceFileSystem
 	models            *model.Provider
 	apiTokenVerifier  *ApiTokenVerifier
 	x509CertVerifier  *X509CertVerifier
@@ -123,6 +124,29 @@ func NewServer(conf *Config) (*Server, error) {
 				Port: int(port),
 			}
 		}
+	}
+	// --file "/=/dir,/a=/other" mounts "/dir" at "/work" and "/other" at "/work/a"
+	specs, err := ParseFileDirs(conf.FileDirs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --file, %w", err)
+	}
+	if conf.fileFlagSet && !slices.ContainsFunc(specs, func(spec MountSpec) bool {
+		return spec.MountPoint == "/"
+	}) {
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("resolve default --file root: %w", err)
+		}
+		execDir, err := filepath.Abs(filepath.Dir(executable))
+		if err != nil {
+			return nil, fmt.Errorf("resolve default --file root: %w", err)
+		}
+		specs = append([]MountSpec{{MountPoint: "/", Dir: execDir}}, specs...)
+		conf.implicitFileRoot = execDir
+	}
+	conf.FileDirs = make([]string, len(specs))
+	for i, spec := range specs {
+		conf.FileDirs[i] = spec.String()
 	}
 	return &Server{
 		Config:       *conf,
@@ -333,12 +357,7 @@ func (s *Server) Start() error {
 	if runtime.GOOS == "windows" {
 		userEnv = "USERNAME"
 	}
-	fileDir := ""
-	for _, d := range s.Config.FileDirs {
-		if strings.HasPrefix(d, "/=") {
-			fileDir = strings.TrimPrefix(d, "/=")
-		}
-	}
+	fileDir := s.fileRootDir()
 	sharedInfo = map[string]interface{}{
 		"machbase": map[string]any{
 			"home":   s.Config.DataDir,
@@ -795,13 +814,43 @@ func (s *Server) startBackupService() error {
 }
 
 func (s *Server) startServerFileSystem() error {
-	serverFs, err := ssfs.NewServerSideFileSystem(s.FileDirs)
-	if err != nil {
-		s.log.Warnf("Server filesystem, %s", err.Error())
-		return fmt.Errorf("server side file system, %s", err.Error())
+	if s.implicitFileRoot != "" {
+		s.log.Infof("File root %s => %q (implicit executable directory: --file has no '/' mount)", WorkMountPoint, s.implicitFileRoot)
 	}
-	ssfs.SetDefault(serverFs)
+	fail := func(err error) error {
+		if errors.Is(err, engine.ErrMountConflict) && s.implicitFileRoot != "" {
+			err = fmt.Errorf("%w; root mount %q -> %q was added implicitly from the executable directory because --file has no '/' mount; specify an explicit root with --file '/=/path/to/workspace,...'", err, WorkMountPoint, s.implicitFileRoot)
+		}
+		err = fmt.Errorf("server side file system: %w", err)
+		s.log.Error(err.Error())
+		return err
+	}
+	serverFs, err := NewWorkspaceFileSystem(s.FileDirs)
+	if err != nil {
+		return fail(err)
+	}
+	for _, spec := range serverFs.MountSpecs() {
+		s.log.Infof("File mount %s => %s", spec.WorkMountPoint(), spec.Dir)
+	}
+	for _, warn := range serverFs.CheckWorkMounts() {
+		s.log.Warn(warn)
+	}
+	if err := serverFs.ValidateWorkMounts(); err != nil {
+		return fail(err)
+	}
+	s.fileService = serverFs
 	return nil
+}
+
+// fileRootDir returns the host directory of the --file root mount ("/work"),
+// or an empty string if no root is mounted.
+func (s *Server) fileRootDir() string {
+	for _, d := range s.Config.FileDirs {
+		if strings.HasPrefix(d, "/=") {
+			return strings.TrimPrefix(d, "/=")
+		}
+	}
+	return ""
 }
 
 func (s *Server) checkAndInstallLicense() error {
@@ -868,7 +917,7 @@ func (s *Server) runInitScripts() error {
 }
 
 func (s *Server) startBridgeAndTriggerService() error {
-	tqlLoader := tql.NewLoader()
+	tqlLoader := tql.NewLoader(s.fileService)
 	s.timerSvc = timer.NewService(
 		timer.WithVerbose(false),
 		timer.WithProvider(s.models),
@@ -921,7 +970,7 @@ func (s *Server) startMqttServer() error {
 	opts := []MqttOption{
 		WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
 		WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
-		WithMqttTqlLoader(tql.NewLoader()),
+		WithMqttTqlLoader(tql.NewLoader(s.fileService)),
 		WithMqttWsHandleListener(s.Http.Listeners),
 	}
 	if s.Mqtt.EnableTls {
@@ -971,8 +1020,8 @@ func (s *Server) startHttpServer() error {
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
 		WithHttpListenAddress(s.Http.Listeners...),
 		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
-		WithHttpTqlLoader(tql.NewLoader()),
-		WithHttpServerSideFileSystem(ssfs.Default()),
+		WithHttpTqlLoader(tql.NewLoader(s.fileService)),
+		WithHttpServerSideFileSystem(s.fileService),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 		WithHttpPathMap("data", s.homeDirPath),
@@ -1046,32 +1095,44 @@ func (s *Server) startSshServer() error {
 	return nil
 }
 
+// serviceLauncher returns the command that starts service processes.
+// Services see only the root mount at "/work"; when rootless, the empty source
+// mounts a virtual "/work" so the child does not fall back to its current directory.
+func serviceLauncher(executable string, workspacePath string) []string {
+	return []string{executable, "jsh", "-v", "/work=" + workspacePath}
+}
+
 func (s *Server) initServiceController() error {
 	executable, _ := os.Executable()
-	workspacePath := "."
-	for _, path := range s.FileDirs {
-		if strings.HasPrefix(path, "/=") {
-			workspacePath = strings.TrimPrefix(path, "/=")
-			break
+	workspacePath := s.fileRootDir()
+	var workFS fs.FS
+	launcher := serviceLauncher(executable, workspacePath)
+	if workspacePath == "" {
+		virtualFS := engine.NewVirtualFS()
+		if err := virtualFS.Mkdir("/etc"); err != nil {
+			return fmt.Errorf("mkdir virtual service config directory: %w", err)
 		}
-	}
-	confPath := filepath.Join(workspacePath, "etc", "services")
-	if _, err := os.Stat(confPath); os.IsNotExist(err) {
-		err = os.MkdirAll(confPath, 0755)
-		if err != nil {
-			return fmt.Errorf("mkdir %s, %s", confPath, err.Error())
+		if err := virtualFS.Mkdir("/etc/services"); err != nil {
+			return fmt.Errorf("mkdir virtual service config directory: %w", err)
 		}
+		workFS = virtualFS
+	} else {
+		confPath := filepath.Join(workspacePath, "etc", "services")
+		if _, err := os.Stat(confPath); os.IsNotExist(err) {
+			err = os.MkdirAll(confPath, 0755)
+			if err != nil {
+				return fmt.Errorf("mkdir %s, %s", confPath, err.Error())
+			}
+		}
+		workFS = os.DirFS(workspacePath)
 	}
+	// the service controller keeps the root-only visibility: only "/work" is mounted
 	ctrl, err := service.NewController(&service.ControllerConfig{
-		Launcher: []string{
-			executable, // how to launch a service command as a child process.
-			"jsh",
-			"-v", "/work=" + workspacePath,
-		},
+		Launcher: launcher,
 		// how to manage service configs by controller
 		ConfigDir: "/work/etc/services",
 		Mounts: engine.FSTabs{
-			{MountPoint: "/work", FS: os.DirFS(workspacePath)},
+			{MountPoint: "/work", FS: workFS},
 		},
 	})
 	if err != nil {
@@ -1118,7 +1179,7 @@ func (s *Server) registerJsonRpcHandlers() {
 	if ctl == nil {
 		return
 	}
-	ctl.RegisterJsonRpcHandler("markdown.render", rpcMarkdownRender)
+	ctl.RegisterJsonRpcHandler("markdown.render", s.rpcMarkdownRender)
 	ctl.RegisterJsonRpcHandler("vizspec.render", viz.RPCVizspecRender)
 	ctl.RegisterJsonRpcHandler("vizspec.export", viz.RPCVizspecExport)
 	ctl.RegisterJsonRpcHandler("server.info.get", s.getServerInfo)
@@ -3229,18 +3290,9 @@ func (s *Server) initShellProvider() error {
 			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "[[shell]]")
 		}
 	}
-	fsMgr := ssfs.Default()
-	lst := fsMgr.ListMounts()
-	for _, mnt := range lst {
-		if mnt == "/" {
-			if root, err := fsMgr.RealPath("/"); err == nil {
-				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work=%s"`, root))
-			}
-		} else {
-			if realPath, err := fsMgr.RealPath(mnt); err == nil {
-				shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"/work%s=%s"`, mnt, realPath))
-			}
-		}
+	fsMgr := s.fileService
+	for _, tab := range fsMgr.ProcessWorkFSTabs() {
+		shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"%s=%s"`, tab.MountPoint, tab.Source))
 	}
 	cmdLine := strings.Join(shellCmd, " ")
 	// neo-shell require -server option

@@ -40,7 +40,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/crypto/ssh"
@@ -74,7 +73,7 @@ type httpd struct {
 	authServer        *Server
 	serviceController *service.Controller
 	tqlLoader         tql.Loader
-	serverFs          *ssfs.SSFS
+	serverFs          *WorkspaceFileSystem
 
 	eulaPassed             bool
 	eulaFilePath           string
@@ -167,9 +166,9 @@ func WithHttpTqlLoader(loader tql.Loader) HttpOption {
 	}
 }
 
-func WithHttpServerSideFileSystem(ssfs *ssfs.SSFS) HttpOption {
+func WithHttpServerSideFileSystem(files *WorkspaceFileSystem) HttpOption {
 	return func(s *httpd) {
-		s.serverFs = ssfs
+		s.serverFs = files
 	}
 }
 
@@ -2000,10 +1999,10 @@ func isWellKnownFileType(name string) bool {
 }
 
 type SsfsResponse struct {
-	Success bool        `json:"success"`
-	Reason  string      `json:"reason"`
-	Elapse  string      `json:"elapse"`
-	Data    *ssfs.Entry `json:"data,omitempty"`
+	Success bool            `json:"success"`
+	Reason  string          `json:"reason"`
+	Elapse  string          `json:"elapse"`
+	Data    *WorkspaceEntry `json:"data,omitempty"`
 }
 
 func isFsFile(path string) bool {
@@ -2081,12 +2080,26 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 
 	switch ctx.Request.Method {
 	case http.MethodGet:
-		var ent *ssfs.Entry
+		if info, err := svr.serverFs.Stat(path); err == nil && !info.IsDir() {
+			// The editor needs the current content, so conditional requests are not honored.
+			rsp.Reason = fmt.Sprintf("not found: %s", path)
+			if contentTypeOfFile(info.Name()) != "" {
+				err := svr.serveWorkspaceFile(ctx, path, false)
+				if err == nil {
+					return
+				}
+				rsp.Reason = fmt.Sprintf("not found: %s, %s", path, err.Error())
+			}
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusNotFound, rsp)
+			return
+		}
+		var ent *WorkspaceEntry
 		var err error
 		if isFsFile(filter) {
-			ent, err = svr.serverFs.GetGlob(path, filter)
+			ent, err = svr.serverFs.GetFilter(path, GlobFilter(filter))
 		} else {
-			ent, err = svr.serverFs.GetFilter(path, func(se *ssfs.SubEntry) bool {
+			ent, err = svr.serverFs.GetFilter(path, func(se *WorkspaceSubEntry) bool {
 				if se.IsDir {
 					return true
 				}
@@ -2099,18 +2112,12 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, rsp)
 			return
 		}
-		if ent != nil {
-			if ent.IsDir {
-				rsp.Success, rsp.Reason = true, "success"
-				rsp.Elapse = time.Since(tick).String()
-				rsp.Data = ent
-				ctx.JSON(http.StatusOK, rsp)
-				return
-			}
-			if contentType := contentTypeOfFile(ent.Name); contentType != "" {
-				ctx.Data(http.StatusOK, contentType, ent.Content)
-				return
-			}
+		if ent != nil && ent.IsDir {
+			rsp.Success, rsp.Reason = true, "success"
+			rsp.Elapse = time.Since(tick).String()
+			rsp.Data = ent
+			ctx.JSON(http.StatusOK, rsp)
+			return
 		}
 		rsp.Reason = fmt.Sprintf("not found: %s", path)
 		rsp.Elapse = time.Since(tick).String()
@@ -2196,7 +2203,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
-			var entry *ssfs.Entry
+			var entry *WorkspaceEntry
 			if len(content) > 0 && ctx.ContentType() == "application/json" {
 				var topic string
 				if claim, exists := svr.getJwtClaim(ctx); exists {
@@ -2380,7 +2387,7 @@ var (
 //     "http://127.0.0.1:5654/web/ui" // file is not saved
 //
 // return: rendered HTML text
-func rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, error) {
+func (s *Server) rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, error) {
 	var filePath, fileName, fileDir string
 	if u, err := url.Parse(referer); err == nil {
 		// {{ file_path }} => /web/api/tql/path/to/file.wrk
@@ -2398,7 +2405,7 @@ func rpcMarkdownRender(markdown string, darkMode bool, referer string) (string, 
 	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
 	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
 
-	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
+	conv := mdconv.New(mdconv.WithDarkMode(darkMode), mdconv.WithFileSystem(s.fileService))
 	w := &strings.Builder{}
 	w.Write([]byte(`<div>`))
 	if err := conv.Convert(src, w); err != nil {

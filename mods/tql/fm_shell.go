@@ -296,13 +296,15 @@ var ShellExecutable = func(serverAddr string, scriptPath string) ([]string, erro
 		return nil, err
 	}
 	serverAddr = strings.TrimPrefix(serverAddr, "tcp://")
-	return []string{
-		ex, "shell", "--server", serverAddr,
-		"-v", "/work=" + _serviceWorkspace,
-		"-v", "/tmp=" + filepath.Dir(scriptPath),
-		"-e", "SERVICE_CONTROLLER=" + _serviceControllerAddr,
-		"-e", "NEOSHELL_IDENTITY_FILE=@" + _serverKeyPath,
+	args := []string{ex, "shell", "--server", serverAddr}
+	// an empty source mounts a virtual "/work" instead of the current directory
+	args = append(args, "-v", "/work="+_serviceWorkspace)
+	args = append(args,
+		"-v", "/tmp="+filepath.Dir(scriptPath),
+		"-e", "SERVICE_CONTROLLER="+_serviceControllerAddr,
+		"-e", "NEOSHELL_IDENTITY_FILE=@"+_serverKeyPath,
 		"run",
-		"/tmp/" + filepath.Base(scriptPath),
-	}, nil
+		"/tmp/"+filepath.Base(scriptPath),
+	)
+	return args, nil
 }

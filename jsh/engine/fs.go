@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -187,6 +188,19 @@ func NewFS() *FS {
 //
 // Returns error if mountPoint is invalid or already mounted exactly.
 func (m *FS) Mount(mountPoint string, filesystem fs.FS) error {
+	return m.mount(mountPoint, filesystem, false)
+}
+
+// ErrMountConflict indicates that a nested mount overlaps a backing entry.
+var ErrMountConflict = errors.New("nested mount conflict")
+
+// MountStrict rejects conflicting nested mounts without changing existing mounts.
+// Mount retains its real-entry-wins behavior for standalone runtimes.
+func (m *FS) MountStrict(mountPoint string, filesystem fs.FS) error {
+	return m.mount(mountPoint, filesystem, true)
+}
+
+func (m *FS) mount(mountPoint string, filesystem fs.FS, strict bool) error {
 	if filesystem == nil {
 		return fs.ErrInvalid
 	}
@@ -204,6 +218,9 @@ func (m *FS) Mount(mountPoint string, filesystem fs.FS) error {
 		if strings.HasPrefix(existing, mountPoint+"/") {
 			// mountPoint is an ancestor of an already-registered, deeper mount.
 			relPath := getRelativePath(existing, mountPoint)
+			if strict && strictPathConflicts(filesystem, relPath) {
+				return fmt.Errorf("%w: %q conflicts with a real entry under %q", ErrMountConflict, existing, mountPoint)
+			}
 			if realPathExists(filesystem, relPath) {
 				// The ancestor's real directory already has this path; it wins
 				// over the previously registered nested mount.
@@ -217,6 +234,9 @@ func (m *FS) Mount(mountPoint string, filesystem fs.FS) error {
 		if strings.HasPrefix(mountPoint, existing+"/") {
 			// mountPoint is nested inside an already-registered, shallower mount.
 			relPath := getRelativePath(mountPoint, existing)
+			if strict && strictPathConflicts(existingFS, relPath) {
+				return fmt.Errorf("%w: %q conflicts with a real entry under %q", ErrMountConflict, mountPoint, existing)
+			}
 			if realPathExists(existingFS, relPath) {
 				// The ancestor's real directory already has this path; keep it
 				// and skip mounting the conflicting nested mount.
@@ -253,19 +273,41 @@ func realPathExists(filesystem fs.FS, relPath string) bool {
 	return err == nil
 }
 
+// statRealPath stats relPath in filesystem, using the OS filesystem when possible.
+func statRealPath(filesystem fs.FS, relPath string) (fs.FileInfo, error) {
+	if osPath, err := getOSPath(filesystem, relPath); err == nil {
+		return os.Stat(osPath)
+	}
+	return fs.Stat(filesystem, relPath)
+}
+
+// strictPathConflicts reports whether a nested mount at relPath would overlap
+// a real entry: either relPath itself exists, or one of its intermediate
+// components exists as a non-directory (which would be shadowed by the
+// implied mount directory).
+func strictPathConflicts(filesystem fs.FS, relPath string) bool {
+	parts := strings.Split(strings.Trim(relPath, "/"), "/")
+	for i := range parts {
+		info, err := statRealPath(filesystem, strings.Join(parts[:i+1], "/"))
+		if err != nil {
+			return false
+		}
+		if i == len(parts)-1 || !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // isVirtualMountDir reports whether name is an implied directory that has no
 // mount of its own but exists only because a deeper mount point is nested
 // under it (e.g. "/work" when only "/work/data" is mounted).
 func (m *FS) isVirtualMountDir(name string) bool {
-	prefix := name
-	if prefix != "/" {
-		prefix += "/"
-	}
 	for mountPoint := range m.mounts {
-		if mountPoint == name {
+		if len(mountPoint) <= len(name) || !strings.HasPrefix(mountPoint, name) {
 			continue
 		}
-		if strings.HasPrefix(mountPoint, prefix) {
+		if name == "/" || mountPoint[len(name)] == '/' {
 			return true
 		}
 	}
@@ -279,6 +321,28 @@ func (m *FS) isMountPoint(name string) bool {
 		return true
 	}
 	return m.isVirtualMountDir(name)
+}
+
+// IsMountPoint reports whether name is a mount point or an ancestor of one.
+func (m *FS) IsMountPoint(name string) bool {
+	return m.isMountPoint(CleanPath(name))
+}
+
+// IsVirtualDirectory distinguishes implied mount parents from backing entries.
+func (m *FS) IsVirtualDirectory(name string) (bool, error) {
+	name = CleanPath(name)
+	if !m.isVirtualMountDir(name) {
+		return false, nil
+	}
+	filesystem, mountPoint := m.bestMatch(name)
+	if filesystem == nil {
+		return true, nil
+	}
+	_, err := fs.Stat(filesystem, getRelativePath(name, mountPoint))
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	return false, err
 }
 
 // checkNotMountPoint rejects removing a mount point with EBUSY, matching the
@@ -393,7 +457,7 @@ func getRelativePath(name, bestMatch string) string {
 func getOSPath(filesystem fs.FS, relPath string) (string, error) {
 	// os.DirFS is a string type, so we can use reflection to check
 	if reflect.TypeOf(filesystem).Kind() == reflect.String {
-		return filepath.Join(fmt.Sprintf("%v", filesystem), relPath), nil
+		return filepath.Join(reflect.ValueOf(filesystem).String(), relPath), nil
 	}
 	return "", fs.ErrPermission
 }
@@ -508,15 +572,17 @@ func (m *FS) ResolveHostPath(name string) (string, error) {
 	return hostPath, nil
 }
 
+// ResolveHostMount returns the selected mount, relative path and absolute host
+// path without requiring the target entry to exist.
+func (m *FS) ResolveHostMount(name string) (mountPoint, relativePath, hostPath string, err error) {
+	_, mountPoint, relativePath, hostPath, err = m.resolveHostPath(name)
+	return
+}
+
 // Open implements fs.FS
 func (m *FS) Open(name string) (fs.File, error) {
 	name = CleanPath(name)
-	// Validate path: skip leading / for fs.ValidPath check
-	validPath := strings.TrimPrefix(name, "/")
-	if validPath == "" {
-		validPath = "."
-	}
-	if !fs.ValidPath(validPath) {
+	if !validFSPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
 
@@ -544,14 +610,29 @@ func (m *FS) CleanPath(name string) string {
 	return CleanPath(name)
 }
 
+func validFSPath(name string) bool {
+	name = strings.TrimPrefix(name, "/")
+	if name == "" {
+		name = "."
+	}
+	return fs.ValidPath(name)
+}
+
 func (m *FS) Stat(name string) (fs.FileInfo, error) {
 	name = CleanPath(name)
-	f, err := m.Open(name)
-	if err != nil {
-		return nil, err
+	if !validFSPath(name) {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
-	defer f.Close()
-	return f.Stat()
+	filesystem, mountPoint := m.bestMatch(name)
+	if filesystem != nil {
+		info, err := fs.Stat(filesystem, getRelativePath(name, mountPoint))
+		if err == nil || !errors.Is(err, fs.ErrNotExist) || !m.isVirtualMountDir(name) {
+			return info, err
+		}
+	} else if !m.isVirtualMountDir(name) {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	}
+	return (&virtualMountDirFile{fs: m, name: name}).Stat()
 }
 
 var errnoCodes = map[syscall.Errno]string{
@@ -686,6 +767,15 @@ func (m *FS) CountLines(name string) (int, error) {
 
 func (m *FS) ReadFile(name string) ([]byte, error) {
 	name = CleanPath(name)
+	if !validFSPath(name) {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
+	}
+	if filesystem, mountPoint := m.bestMatch(name); filesystem != nil {
+		content, err := fs.ReadFile(filesystem, getRelativePath(name, mountPoint))
+		if err == nil || !errors.Is(err, fs.ErrNotExist) || !m.isVirtualMountDir(name) {
+			return content, err
+		}
+	}
 	f, err := m.Open(name)
 	if err != nil {
 		return nil, err
@@ -813,6 +903,61 @@ func (m *FS) Remove(name string) error {
 	return m.performOSOperation(name, os.Remove)
 }
 
+// RemoveAll recursively removes name. Mount points and their ancestors are
+// rejected before any entries are removed. A failure during traversal may
+// leave entries already removed, matching ordinary filesystem semantics.
+func (m *FS) RemoveAll(name string) error {
+	name = CleanPath(name)
+	if err := m.checkNotMountPoint("remove", name); err != nil {
+		return err
+	}
+
+	bestFS, relPath, err := m.resolveMount(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if target, pathErr := getOSPath(bestFS, relPath); pathErr == nil {
+		return os.RemoveAll(target)
+	} else if !errors.Is(pathErr, fs.ErrPermission) {
+		return pathErr
+	}
+
+	info, err := m.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return m.Unlink(name)
+	}
+
+	entries, err := m.ReadDir(name)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		childName := entry.Name()
+		if childName == "." || childName == ".." {
+			continue
+		}
+		childPath := path.Join(name, childName)
+		if entry.IsDir() {
+			err = m.RemoveAll(childPath)
+		} else {
+			err = m.Unlink(childPath)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return m.Rmdir(name)
+}
+
 // Unlink removes a file or symbolic link without recursively removing directories.
 func (m *FS) Unlink(name string) error {
 	if err := m.checkNotMountPoint("unlink", name); err != nil {
@@ -907,6 +1052,26 @@ func (m *FS) Rename(oldName, newName string) error {
 		return err
 	}
 	return nil
+}
+
+// RenameHost uses OS rename semantics across host-backed mounts. Unlike Rename,
+// different mount objects do not imply EXDEV; the OS decides device boundaries.
+// Callers that reject existing destinations must check them before calling.
+func (m *FS) RenameHost(oldName, newName string) error {
+	oldName = CleanPath(oldName)
+	newName = CleanPath(newName)
+	if m.isMountPoint(oldName) || m.isMountPoint(newName) {
+		return &os.LinkError{Op: "rename", Old: oldName, New: newName, Err: syscall.EBUSY}
+	}
+	oldPath, err := m.ResolveHostPath(oldName)
+	if err != nil {
+		return err
+	}
+	newPath, err := m.ResolveHostPath(newName)
+	if err != nil {
+		return err
+	}
+	return os.Rename(oldPath, newPath)
 }
 
 func (m *FS) OSPath(path string) (string, error) {
@@ -1261,12 +1426,7 @@ func (m *FS) Arch() string {
 // ReadDir implements fs.ReadDirFS
 func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	name = CleanPath(name)
-	// Validate path: skip leading / for fs.ValidPath check
-	validPath := strings.TrimPrefix(name, "/")
-	if validPath == "" {
-		validPath = "."
-	}
-	if !fs.ValidPath(validPath) {
+	if !validFSPath(name) {
 		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrInvalid}
 	}
 
@@ -1309,19 +1469,13 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		}
 
 		// Get current directory info for "." entry
-		if f, err := bestFS.Open(relPath); err == nil {
-			currentInfo, _ = f.Stat()
-			f.Close()
-		}
+		currentInfo, _ = fs.Stat(bestFS, relPath)
 
 		// Get parent directory info for ".." entry
 		parentRelPath := relPath
 		if relPath == "." {
 			// Already at the root of this mount, use root info for parent
-			if f, err := bestFS.Open("."); err == nil {
-				parentInfo, _ = f.Stat()
-				f.Close()
-			}
+			parentInfo = currentInfo
 		} else {
 			// Get parent directory
 			lastSlash := strings.LastIndex(relPath, "/")
@@ -1330,10 +1484,7 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 			} else {
 				parentRelPath = "."
 			}
-			if f, err := bestFS.Open(parentRelPath); err == nil {
-				parentInfo, _ = f.Stat()
-				f.Close()
-			}
+			parentInfo, _ = fs.Stat(bestFS, parentRelPath)
 		}
 	}
 
@@ -1353,35 +1504,38 @@ func (m *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 	entries = append(dotEntries, entries...)
 
-	// Add mounted directories as entries
+	// Add the first path element of each descendant mount. This exposes
+	// intermediate directories even when there is no real backing directory.
+	mountChildren := make(map[string]struct{})
 	for mountPoint := range m.mounts {
-		// Skip the root mount
-		if mountPoint == "/" {
+		if mountPoint == name {
+			continue
+		}
+		prefix := name
+		if prefix != "/" {
+			prefix += "/"
+		}
+		if !strings.HasPrefix(mountPoint, prefix) {
 			continue
 		}
 
-		// Check if this mount point is a direct child of the current directory
-		// For example, if name is "/" and mountPoint is "/bin", add "bin"
-		// If name is "/usr" and mountPoint is "/usr/local", add "local"
-		if strings.HasPrefix(mountPoint, name+"/") || (name == "/" && mountPoint != "/") {
-			relativePath := strings.TrimPrefix(mountPoint, name)
-			relativePath = strings.TrimPrefix(relativePath, "/")
-
-			// Only include direct children (not nested)
-			if !strings.Contains(relativePath, "/") && relativePath != "" {
-				// Check if this entry already exists in the base entries
-				exists := false
-				for _, entry := range entries {
-					if entry.Name() == relativePath {
-						exists = true
-						break
-					}
-				}
-				if !exists {
-					entries = append(entries, &dotDirEntry{name: relativePath, isDir: true})
-				}
-			}
+		relativePath := strings.TrimPrefix(mountPoint, prefix)
+		child, _, _ := strings.Cut(relativePath, "/")
+		if child != "" {
+			mountChildren[child] = struct{}{}
 		}
+	}
+
+	for _, entry := range entries {
+		delete(mountChildren, entry.Name())
+	}
+	childNames := make([]string, 0, len(mountChildren))
+	for child := range mountChildren {
+		childNames = append(childNames, child)
+	}
+	sort.Strings(childNames)
+	for _, child := range childNames {
+		entries = append(entries, &dotDirEntry{name: child, isDir: true})
 	}
 
 	return entries, nil

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -18,19 +19,21 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
+	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/stretchr/testify/require"
@@ -1980,7 +1983,7 @@ type SplitHttpResult struct {
 func newTestHTTPServer(t *testing.T) *httpd {
 	t.Helper()
 	root := t.TempDir()
-	serverFs, err := ssfs.NewServerSideFileSystem([]string{"/=" + root})
+	serverFs, err := NewWorkspaceFileSystem([]string{"/=" + root})
 	require.NoError(t, err)
 	gin.SetMode(gin.TestMode)
 	return &httpd{log: logging.GetLog("httpd-fake"), serverFs: serverFs}
@@ -1992,6 +1995,96 @@ func newTestHTTPContext(method, target string, body []byte) (*gin.Context, *http
 	ctx.Request = httptest.NewRequest(method, target, bytes.NewReader(body))
 	return ctx, writer
 }
+
+// faultFS wraps a directory filesystem so tests can inject open, stat and
+// read faults deterministically. Stat bypasses the open hook so that the
+// pre-check of a handler succeeds while opening the file fails.
+type faultFS struct {
+	base    fs.FS
+	openErr func(name string) error
+	wrap    func(name string, f fs.File) fs.File
+}
+
+func (f *faultFS) Open(name string) (fs.File, error) {
+	if f.openErr != nil {
+		if err := f.openErr(name); err != nil {
+			return nil, err
+		}
+	}
+	file, err := f.base.Open(name)
+	if err != nil || f.wrap == nil {
+		return file, err
+	}
+	return f.wrap(name, file), nil
+}
+
+func (f *faultFS) Stat(name string) (fs.FileInfo, error) {
+	return fs.Stat(f.base, name)
+}
+
+// faultFile hides the optional interfaces of the wrapped file, so the
+// response is produced by plain Read calls.
+type faultFile struct {
+	fs.File
+	statErr    error
+	beforeRead func()
+	readLimit  int   // when > 0, the first Read returns at most readLimit bytes
+	readErr    error // returned by the Read call after the first one
+	reads      int
+	closed     atomic.Bool
+	closeDone  chan struct{}
+}
+
+func (f *faultFile) Stat() (fs.FileInfo, error) {
+	if f.statErr != nil {
+		return nil, f.statErr
+	}
+	return f.File.Stat()
+}
+
+func (f *faultFile) Read(p []byte) (int, error) {
+	f.reads++
+	if f.reads == 1 && f.beforeRead != nil {
+		f.beforeRead()
+	}
+	if f.readErr != nil && f.reads > 1 {
+		return 0, f.readErr
+	}
+	if f.reads == 1 && f.readLimit > 0 && len(p) > f.readLimit {
+		p = p[:f.readLimit]
+	}
+	return f.File.Read(p)
+}
+
+func (f *faultFile) Close() error {
+	err := f.File.Close()
+	f.closed.Store(true)
+	if f.closeDone != nil {
+		close(f.closeDone)
+	}
+	return err
+}
+
+// newFaultHTTPServer serves the file handlers through a real HTTP server with
+// the production recovery middleware over faultFS mounted at WorkMountPoint.
+func newFaultHTTPServer(t *testing.T, ffs *faultFS) *httptest.Server {
+	t.Helper()
+	serverFs := &WorkspaceFileSystem{fs: engine.NewFS(), mounts: map[string]MountSpec{}}
+	require.NoError(t, serverFs.fs.Mount(WorkMountPoint, ffs))
+	svr := &httpd{log: logging.GetLog("httpd-fault"), serverFs: serverFs}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RecoveryWithLogging(svr.log))
+	r.GET("/web/api/files/*path", svr.handleFiles)
+	r.GET("/db/tql/*path", svr.handleTqlFile)
+	r.Any("/public/*path", svr.handlePublic)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func strPtr(s string) *string { return &s }
 
 func TestTerminalsRegisterFindUnregister(t *testing.T) {
 	terms := &Terminals{}
@@ -2218,6 +2311,288 @@ func TestHandleFiles(t *testing.T) {
 		require.Equal(t, http.StatusOK, writer.Code)
 		require.Contains(t, writer.Body.String(), `"success":true`)
 	})
+}
+
+// The file API serves editor content, so conditional requests must not hide
+// a file saved within the same second as the previous response.
+func TestHandleFilesGetIgnoresConditionalRequest(t *testing.T) {
+	svr := newTestHTTPServer(t)
+	require.NoError(t, svr.serverFs.Set("/note.md", []byte("fresh")))
+
+	ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files/note.md", nil)
+	ctx.Params = gin.Params{{Key: "path", Value: "/note.md"}}
+	ctx.Request.Header.Set("If-Modified-Since", time.Now().Add(time.Hour).UTC().Format(http.TimeFormat))
+	ctx.Request.Header.Set("Range", "bytes=0-1")
+	svr.handleFiles(ctx)
+
+	require.Equal(t, http.StatusOK, writer.Code)
+	require.Equal(t, "text/markdown", writer.Header().Get("Content-Type"))
+	require.Equal(t, "fresh", writer.Body.String())
+
+	ctx, writer = newTestHTTPContext(http.MethodGet, "/web/api/files/blob.bin", nil)
+	ctx.Params = gin.Params{{Key: "path", Value: "/blob.bin"}}
+	require.NoError(t, svr.serverFs.Set("/blob.bin", []byte("x")))
+	svr.handleFiles(ctx)
+	require.Equal(t, http.StatusNotFound, writer.Code)
+}
+
+func TestHandleFilesStreamsCurrentFileLength(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		initial string
+		updated *string
+	}{
+		{name: "regular", initial: "hello world"},
+		{name: "empty", initial: ""},
+		{name: "grown-before-read", initial: "hello", updated: strPtr("hello, grown file")},
+		{name: "shrunk-before-read", initial: "hello, long content", updated: strPtr("short")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			target := filepath.Join(dir, "note.txt")
+			require.NoError(t, os.WriteFile(target, []byte(tc.initial), 0o644))
+			ffs := &faultFS{base: os.DirFS(dir), wrap: func(name string, f fs.File) fs.File {
+				ff := &faultFile{File: f}
+				if tc.updated != nil {
+					// The handler has already taken the size from Stat at this point.
+					ff.beforeRead = func() { require.NoError(t, os.WriteFile(target, []byte(*tc.updated), 0o644)) }
+				}
+				return ff
+			}}
+			ts := newFaultHTTPServer(t, ffs)
+
+			rsp, err := ts.Client().Get(ts.URL + "/web/api/files/note.txt")
+			require.NoError(t, err)
+			defer rsp.Body.Close()
+			body, err := io.ReadAll(rsp.Body)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, "text/plain", rsp.Header.Get("Content-Type"))
+			expect := tc.initial
+			if tc.updated != nil {
+				expect = *tc.updated
+			}
+			require.Equal(t, expect, string(body))
+		})
+	}
+}
+
+func TestHandleFilesReadErrorAfterResponseStartAbortsTransfer(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("0123456789abcdef"), 0o644))
+	closeDone := make(chan struct{})
+	var file *faultFile
+	ffs := &faultFS{base: os.DirFS(dir), wrap: func(name string, f fs.File) fs.File {
+		file = &faultFile{File: f, readLimit: 4, readErr: errors.New("injected read failure"), closeDone: closeDone}
+		return file
+	}}
+	ts := newFaultHTTPServer(t, ffs)
+
+	rsp, err := ts.Client().Get(ts.URL + "/web/api/files/note.txt")
+	require.NoError(t, err)
+	defer rsp.Body.Close()
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	body, err := io.ReadAll(rsp.Body)
+	require.Error(t, err, "a failed transfer must not end like a complete response")
+	require.NotContains(t, string(body), "success", "no JSON error is appended to a started response")
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler did not close the file after aborting the transfer")
+	}
+	require.True(t, file.closed.Load())
+}
+
+func TestHandleFilesReportsFileOpenErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		ffs    func(dir string, file **faultFile) *faultFS
+		reason string
+	}{
+		{
+			name: "open-permission",
+			ffs: func(dir string, _ **faultFile) *faultFS {
+				return &faultFS{base: os.DirFS(dir), openErr: func(name string) error {
+					return &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+				}}
+			},
+			reason: "permission denied",
+		},
+		{
+			name: "opened-file-stat",
+			ffs: func(dir string, file **faultFile) *faultFS {
+				return &faultFS{base: os.DirFS(dir), wrap: func(name string, f fs.File) fs.File {
+					*file = &faultFile{File: f, statErr: errors.New("injected stat failure")}
+					return *file
+				}}
+			},
+			reason: "injected stat failure",
+		},
+		{
+			name: "first-read",
+			ffs: func(dir string, file **faultFile) *faultFS {
+				return &faultFS{base: os.DirFS(dir), wrap: func(name string, f fs.File) fs.File {
+					// reads starts at 1 so that the first Read already fails.
+					*file = &faultFile{File: f, reads: 1, readErr: errors.New("injected read failure")}
+					return *file
+				}}
+			},
+			reason: "injected read failure",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("hello"), 0o644))
+			var file *faultFile
+			ts := newFaultHTTPServer(t, tc.ffs(dir, &file))
+
+			rsp, err := ts.Client().Get(ts.URL + "/web/api/files/note.txt")
+			require.NoError(t, err)
+			defer rsp.Body.Close()
+			body, err := io.ReadAll(rsp.Body)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusNotFound, rsp.StatusCode)
+			require.Contains(t, rsp.Header.Get("Content-Type"), "application/json")
+
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(body, &payload), string(body))
+			require.Equal(t, false, payload["success"])
+			require.NotEmpty(t, payload["elapse"])
+			reason, _ := payload["reason"].(string)
+			require.Contains(t, reason, "/note.txt")
+			require.Contains(t, reason, tc.reason)
+			if file != nil {
+				require.True(t, file.closed.Load())
+			}
+		})
+	}
+}
+
+func TestHandleFilesErrorResponseContract(t *testing.T) {
+	svr := newTestHTTPServer(t)
+	_, err := svr.serverFs.MkDir("/docs")
+	require.NoError(t, err)
+	require.NoError(t, svr.serverFs.Set("/docs/readme.txt", []byte("hello")))
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		target     string
+		path       string
+		status     int
+		reasonPart string
+	}{
+		{
+			name:       "missing-file",
+			method:     http.MethodGet,
+			target:     "/web/api/files/missing.txt",
+			path:       "/missing.txt",
+			status:     http.StatusNotFound,
+			reasonPart: "missing.txt",
+		},
+		{
+			name:       "rename-missing-source",
+			method:     http.MethodPut,
+			target:     "/web/api/files/missing.txt",
+			path:       "/missing.txt",
+			status:     http.StatusInternalServerError,
+			reasonPart: "unable to access",
+		},
+		{
+			name:       "remove-mount-point",
+			method:     http.MethodDelete,
+			target:     "/web/api/files/?recursive=true",
+			path:       "/",
+			status:     http.StatusInternalServerError,
+			reasonPart: "mount point",
+		},
+		{
+			name:       "non-empty-directory-without-recursive",
+			method:     http.MethodDelete,
+			target:     "/web/api/files/docs",
+			path:       "/docs",
+			status:     http.StatusUnprocessableEntity,
+			reasonPart: "directory is not empty",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, writer := newTestHTTPContext(tc.method, tc.target, nil)
+			ctx.Params = gin.Params{{Key: "path", Value: tc.path}}
+			if tc.method == http.MethodPut {
+				payload, err := json.Marshal(RenameReq{Dest: "/destination.txt"})
+				require.NoError(t, err)
+				ctx.Request = httptest.NewRequest(tc.method, tc.target, bytes.NewReader(payload))
+				ctx.Request.Header.Set("Content-Type", "application/json")
+			}
+
+			svr.handleFiles(ctx)
+
+			require.Equal(t, tc.status, writer.Code)
+			var body map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &body))
+			require.Equal(t, []string{"elapse", "reason", "success"}, sortedMapKeys(body))
+
+			var success bool
+			require.NoError(t, json.Unmarshal(body["success"], &success))
+			require.False(t, success)
+			var reason string
+			require.NoError(t, json.Unmarshal(body["reason"], &reason))
+			require.Contains(t, reason, tc.reasonPart)
+			var elapse string
+			require.NoError(t, json.Unmarshal(body["elapse"], &elapse))
+			require.NotEmpty(t, elapse)
+		})
+	}
+}
+
+func TestHandleFilesRootlessWorkspace(t *testing.T) {
+	svr := newTestHTTPServer(t)
+	source := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(source, "readme.md"), []byte("app"), 0o644))
+	var err error
+	svr.serverFs, err = NewWorkspaceFileSystem([]string{"/apps/tool=" + source})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		path  string
+		child string
+	}{
+		{"/", "apps"},
+		{"/apps", "tool"},
+	} {
+		ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files"+tc.path, nil)
+		ctx.Params = gin.Params{{Key: "path", Value: tc.path}}
+		svr.handleFiles(ctx)
+		require.Equal(t, http.StatusOK, writer.Code)
+		var response SsfsResponse
+		require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		require.NotNil(t, response.Data)
+		require.True(t, response.Data.ReadOnly)
+		require.Len(t, response.Data.Children, 1)
+		require.Equal(t, tc.child, response.Data.Children[0].Name)
+	}
+
+	ctx, writer := newTestHTTPContext(http.MethodGet, "/web/api/files/apps/tool/readme.md", nil)
+	ctx.Params = gin.Params{{Key: "path", Value: "/apps/tool/readme.md"}}
+	svr.handleFiles(ctx)
+	require.Equal(t, http.StatusOK, writer.Code)
+	require.Equal(t, "app", writer.Body.String())
+	require.Equal(t, "text/markdown", writer.Header().Get("Content-Type"))
+
+	ctx, writer = newTestHTTPContext(http.MethodGet, "/web/api/files/work/apps/tool/readme.md", nil)
+	ctx.Params = gin.Params{{Key: "path", Value: "/work/apps/tool/readme.md"}}
+	svr.handleFiles(ctx)
+	require.Equal(t, http.StatusNotFound, writer.Code)
+}
+
+func sortedMapKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func TestRouterRegistersApiTokenFileEndpoint(t *testing.T) {

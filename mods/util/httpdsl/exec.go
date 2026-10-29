@@ -14,9 +14,21 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
+
+type FileSystem interface {
+	OpenFile(path string) (io.ReadCloser, error)
+}
+
+type executionOptions struct {
+	files FileSystem
+}
+
+type Option func(*executionOptions)
+
+func WithFileSystem(files FileSystem) Option {
+	return func(opts *executionOptions) { opts.files = files }
+}
 
 type Exchange struct {
 	RequestRaw  string
@@ -75,7 +87,7 @@ func (r *fileBodyReader) Close() error {
 // - If version is omitted, HTTP/1.1 is used.
 // - Query extension lines ('?' and '&') are appended to the request URL.
 // - Request body file directives:
-//   - < /ssfs/path/file      -> load from server-side file system (SSFS)
+//   - < /workspace/path/file -> load from the configured server workspace
 //   - < @/os/path/file       -> load from OS file system
 //   - <@utf-8 /path/file     -> legacy form, charset token is parsed but ignored
 //
@@ -101,14 +113,18 @@ func (r *fileBodyReader) Close() error {
 //
 // Example (mixed loaders in multipart):
 // - OS file part: < @/abs/path/image.png
-// - SSFS file part: < /files/doc.xml
-func Execute(content string) (Exchange, error) {
+// - Workspace file part: < /files/doc.xml
+func Execute(content string, options ...Option) (Exchange, error) {
+	opts := executionOptions{}
+	for _, option := range options {
+		option(&opts)
+	}
 	req, err := parseHTTPClient(content)
 	if err != nil {
 		return Exchange{}, err
 	}
 
-	rawReqBytes, err := buildRawRequest(req)
+	rawReqBytes, err := buildRawRequest(req, opts.files)
 	if err != nil {
 		return Exchange{}, err
 	}
@@ -244,12 +260,12 @@ func parseRequestLine(line string) (method, rawURL, version string) {
 	return method, rawURL, version
 }
 
-func buildRawRequest(req *parsedRequest) ([]byte, error) {
+func buildRawRequest(req *parsedRequest, files FileSystem) ([]byte, error) {
 	target := req.URL.RequestURI()
 	if target == "" {
 		target = "/"
 	}
-	body, err := resolveRequestBody(req.Method, req.Headers, req.Body)
+	body, err := resolveRequestBody(req.Method, req.Headers, req.Body, files)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +313,7 @@ func buildRawRequest(req *parsedRequest) ([]byte, error) {
 	return w.Bytes(), nil
 }
 
-func resolveRequestBody(method string, headers []headerLine, lines []string) ([]byte, error) {
+func resolveRequestBody(method string, headers []headerLine, lines []string, files FileSystem) ([]byte, error) {
 	if len(lines) == 0 {
 		return nil, nil
 	}
@@ -317,7 +333,7 @@ func resolveRequestBody(method string, headers []headerLine, lines []string) ([]
 	if strings.Contains(contentType, "multipart/form-data") {
 		out := &bytes.Buffer{}
 		for _, line := range lines {
-			r, err := parseFileLine(method, line)
+			r, err := parseFileLine(method, line, files)
 			if err != nil {
 				_, _ = out.WriteString(fmt.Sprintf("Error opening file: %v", err))
 				continue
@@ -326,30 +342,24 @@ func resolveRequestBody(method string, headers []headerLine, lines []string) ([]
 				_, _ = out.WriteString(line + "\n")
 				continue
 			}
-			if _, err := io.Copy(out, r); err != nil {
+			if err := copyAndClose(out, r); err != nil {
 				return nil, err
-			}
-			if closer, ok := r.(io.Closer); ok {
-				_ = closer.Close()
 			}
 		}
 		return out.Bytes(), nil
 	}
 
-	r, err := parseFileLine(method, lines[0])
+	r, err := parseFileLine(method, lines[0], files)
 	if err != nil {
 		return []byte(fmt.Sprintf("Error opening file: %v", err)), nil
 	}
 	if r != nil {
 		out := &bytes.Buffer{}
-		if _, err := io.Copy(out, r); err != nil {
+		if err := copyAndClose(out, r); err != nil {
 			return nil, err
 		}
-		if closer, ok := r.(io.Closer); ok {
-			_ = closer.Close()
-		}
 		for _, line := range lines[1:] {
-			r, err := parseFileLine(method, line)
+			r, err := parseFileLine(method, line, files)
 			if err != nil {
 				_, _ = out.WriteString(fmt.Sprintf("Error opening file: %v", err))
 				continue
@@ -358,11 +368,8 @@ func resolveRequestBody(method string, headers []headerLine, lines []string) ([]
 				_, _ = out.WriteString(line + "\n")
 				continue
 			}
-			if _, err := io.Copy(out, r); err != nil {
+			if err := copyAndClose(out, r); err != nil {
 				return nil, err
-			}
-			if closer, ok := r.(io.Closer); ok {
-				_ = closer.Close()
 			}
 		}
 		return out.Bytes(), nil
@@ -371,7 +378,16 @@ func resolveRequestBody(method string, headers []headerLine, lines []string) ([]
 	return []byte(strings.Join(lines, "\n")), nil
 }
 
-func parseFileLine(method string, line string) (io.Reader, error) {
+// copyAndClose copies r into w and always closes r, even if the copy fails.
+func copyAndClose(w io.Writer, r io.Reader) error {
+	if closer, ok := r.(io.Closer); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, r)
+	return err
+}
+
+func parseFileLine(method string, line string, files FileSystem) (io.Reader, error) {
 	directive := parseFileDirective(line)
 	if strings.EqualFold(method, http.MethodPost) || strings.EqualFold(method, http.MethodPut) || strings.EqualFold(method, http.MethodPatch) {
 		if !directive.Directive {
@@ -393,15 +409,14 @@ func parseFileLine(method string, line string) (io.Reader, error) {
 		return &fileBodyReader{reader: io.MultiReader(in, strings.NewReader("\n")), closer: in}, nil
 	}
 
-	def := ssfs.Default()
-	if def == nil {
+	if files == nil {
 		return nil, fmt.Errorf("server side file system is not initialized")
 	}
-	ent, err := def.Get(directive.Path)
+	in, err := files.OpenFile(directive.Path)
 	if err != nil {
 		return nil, err
 	}
-	return io.MultiReader(bytes.NewReader(ent.Content), strings.NewReader("\n")), nil
+	return &fileBodyReader{reader: io.MultiReader(in, strings.NewReader("\n")), closer: in}, nil
 }
 
 func parseFileDirective(line string) fileDirective {
@@ -411,11 +426,11 @@ func parseFileDirective(line string) fileDirective {
 	}
 
 	// File directive syntax/semantics:
-	// - < path            -> SSFS file by default
+	// - < path            -> workspace file by default
 	// - < @path           -> OS file (path first char '@')
-	// - <@charset path    -> SSFS file (charset token parsed but ignored)
+	// - <@charset path    -> workspace file (charset token parsed but ignored)
 	// - <@charset @path   -> OS file
-	// - <@ path           -> SSFS file (no charset token)
+	// - <@ path           -> workspace file (no charset token)
 	if strings.HasPrefix(trimmed, "< ") {
 		path := strings.TrimSpace(strings.TrimPrefix(trimmed, "<"))
 		if path == "" {

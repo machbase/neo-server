@@ -8,6 +8,7 @@ import (
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	pikchr "github.com/jchenry/goldmark-pikchr"
+	"github.com/machbase/neo-server/v8/mods/util/httpdsl"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/chartext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/d2ext"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv/geomapext"
@@ -28,9 +29,14 @@ import (
 type Converter struct {
 	darkMode     bool
 	katexOptions katex.RenderOptions
+	fileSystem   httpdsl.FileSystem
 }
 
 type Option func(*Converter)
+
+func WithFileSystem(files httpdsl.FileSystem) Option {
+	return func(c *Converter) { c.fileSystem = files }
+}
 
 func WithDarkMode(flag bool) Option {
 	return func(c *Converter) {
@@ -99,7 +105,7 @@ func (c *Converter) Convert(src []byte, w io.Writer) (retErr error) {
 			},
 			&chartext.Extender{DarkMode: c.darkMode},
 			&geomapext.Extender{DarkMode: c.darkMode},
-			&httpext.Extender{},
+			&httpext.Extender{FileSystem: c.fileSystem},
 			&jshext.Extender{},
 			&sqlext.Extender{},
 			&katex.Extender{Options: c.katexOptions},

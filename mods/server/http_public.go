@@ -88,6 +88,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -96,12 +97,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/lib"
 	"github.com/machbase/neo-server/v8/jsh/root"
+	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 const cgiDiagnosticMaxBytes = 4096
@@ -120,7 +123,7 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		if !strings.HasSuffix(path, ".js") {
 			path = path + ".js"
 		}
-		if ent, err := svr.serverFs.Get(path); err != nil || ent.IsDir {
+		if info, err := svr.serverFs.Stat(path); err != nil || info.IsDir() {
 			handleError(ctx, http.StatusNotFound, "not found", tick)
 			return
 		}
@@ -145,7 +148,9 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		fsTabs := []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
-			// Mount the app directory to /work in the script's virtual filesystem
+			// An empty source mounts a virtual "/work", so the child process does not
+			// fall back to the server's current directory; only the app mount is visible.
+			{MountPoint: "/work"},
 			{MountPoint: mountPoint, Source: appRealPath.AbsPath},
 		}
 
@@ -223,35 +228,127 @@ func (svr *httpd) handlePublic(ctx *gin.Context) {
 		}
 		return
 	} else if ctx.Request.Method == http.MethodGet {
-		ent, err := svr.serverFs.Get(path)
+		info, err := svr.serverFs.Stat(path)
 		if err != nil {
 			handleError(ctx, http.StatusNotFound, "not found", tick)
 			return
 		}
-		if ent.IsDir {
+		if info.IsDir() {
 			path, _ = url.JoinPath(path, "index.html")
-			ent, err = svr.serverFs.Get(path)
-			if err != nil || ent.IsDir {
-				handleError(ctx, http.StatusNotFound, "not found", tick)
-				return
-			}
-		} else {
+		} else if strings.HasSuffix(path, "/index.html") {
 			// Redirect to path without "index.html" suffix if it exists
 			// e.g. redirect "/public/foo/index.html" to "/public/foo/"
-			if strings.HasSuffix(path, "/index.html") {
-				ctx.Redirect(http.StatusFound, strings.TrimSuffix(path, "index.html"))
-				return
+			ctx.Redirect(http.StatusFound, strings.TrimSuffix(path, "index.html"))
+			return
+		}
+		err = svr.serveWorkspaceFile(ctx, path, true)
+		if err == nil {
+			return
+		}
+		logStaticServeError(svr.log, path, err)
+	}
+	handleError(ctx, http.StatusNotFound, "not found", tick)
+}
+
+// serveWorkspaceFile streams the regular file of the server workspace with the
+// Content-Type of contentTypeOfFile. With conditional, Range and If-Modified-Since
+// requests are honored as http.ServeContent does.
+//
+// A nil error means the response has been handled. A non-nil error means nothing
+// has been written, so the caller writes its own error response. When reading
+// fails after the response has started, the transfer is aborted and nil is returned.
+func (svr *httpd) serveWorkspaceFile(ctx *gin.Context, path string, conditional bool) error {
+	f, err := svr.serverFs.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return &fs.PathError{Op: "open", Path: path, Err: syscall.EISDIR}
+	}
+	contentType := contentTypeOfFile(info.Name())
+	if rs, ok := f.(io.ReadSeeker); ok && conditional {
+		if contentType != "" {
+			ctx.Header("Content-Type", contentType)
+		}
+		http.ServeContent(ctx.Writer, ctx.Request, info.Name(), info.ModTime(), rs)
+		return nil
+	}
+	// The file may change after Stat, so the length is not declared in advance
+	// and net/http frames whatever is read until EOF.
+	buf := make([]byte, 32*1024)
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			if !ctx.Writer.Written() {
+				if contentType != "" {
+					ctx.Header("Content-Type", contentType)
+				}
+				ctx.Status(http.StatusOK)
+			}
+			if _, err := ctx.Writer.Write(buf[:n]); err != nil {
+				// The client has gone away; there is nobody to report to.
+				svr.log.Debug("serve file", path, err.Error())
+				return nil
 			}
 		}
-		// Serve the file content with correct Content-Type
-		contentType := contentTypeOfFile(ent.Name)
-		if ent, err := svr.serverFs.Get(path); err == nil && !ent.IsDir {
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			if !ctx.Writer.Written() {
+				return fmt.Errorf("read %s: %w", path, readErr)
+			}
+			svr.log.Warnf("serve file %s aborted: %v", path, readErr)
+			abortResponse(ctx)
+			return nil
+		}
+	}
+	if !ctx.Writer.Written() {
+		if contentType != "" {
 			ctx.Header("Content-Type", contentType)
-			ctx.Writer.Write(ent.Content)
+		}
+		ctx.Status(http.StatusOK)
+		ctx.Writer.WriteHeaderNow()
+	}
+	return nil
+}
+
+// logStaticServeError records why a public static file could not be served.
+// The public response stays a generic 404, so a missing file or a directory is not logged.
+func logStaticServeError(log logging.Log, path string, err error) {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.EISDIR) {
+		return
+	}
+	log.Warnf("serve static file %s: %v", path, err)
+}
+
+// abortResponse terminates a response whose body has already started, so the
+// client can not mistake the truncated body for a complete one.
+// gin's recovery treats http.ErrAbortHandler as a broken pipe and finishes the
+// response normally, and gin's writer refuses to hijack after body writes,
+// so the underlying net/http connection is hijacked and closed instead.
+func abortResponse(ctx *gin.Context) {
+	ctx.Abort()
+	var w http.ResponseWriter = ctx.Writer
+	for {
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			break
+		}
+		w = u.Unwrap()
+	}
+	if hj, ok := w.(http.Hijacker); ok {
+		if conn, _, err := hj.Hijack(); err == nil {
+			conn.Close()
 			return
 		}
 	}
-	handleError(ctx, http.StatusNotFound, "not found", tick)
+	panic(http.ErrAbortHandler)
 }
 
 func contextToCGIEnv(ctx *gin.Context, scriptName string) map[string]any {
