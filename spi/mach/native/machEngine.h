@@ -227,6 +227,11 @@ int MachGetCurrentDatabase(void* aConHandle, char* aBuffer, int aBufferSize);
 
 /**
  * @brief disconnect machbase DB
+ * @details A call with a valid connection consumes the connection handle even
+ * if cleanup returns an error. Clear the caller's handle after the call;
+ * do not disconnect again, reuse it, or query its error state.
+ * @return 0 on successful cleanup, otherwise a cleanup error code. A nonzero
+ * return does not make the consumed handle valid again.
  */
 int MachDisconnect(void* aConHandle);
 
