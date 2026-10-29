@@ -266,6 +266,15 @@ func TestRepresentativePort(t *testing.T) {
 	}
 }
 
+func TestQuoteCommandArgKeepsPathVerbatim(t *testing.T) {
+	exe := `C:\Program Files\machbase-neo\machbase-neo.exe`
+	mount := `/work=C:\Users\testuser\my data`
+	cmd := strings.Join([]string{quoteCommandArg(exe), "shell", "-v", quoteCommandArg(mount), "-server", "127.0.0.1:5654"}, " ")
+
+	require.Equal(t, `"C:\Program Files\machbase-neo\machbase-neo.exe" shell -v "/work=C:\Users\testuser\my data" -server 127.0.0.1:5654`, cmd)
+	require.Equal(t, []string{exe, "shell", "-v", mount, "-server", "127.0.0.1:5654"}, util.SplitFields(cmd, true))
+}
+
 func TestWithHttpAuthServerSharesRpcController(t *testing.T) {
 	authSvc := &Server{
 		serviceController: &service.Controller{},
@@ -2942,6 +2951,13 @@ func TestInitShellProvider(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, jshDef.Command, "jsh")
 		require.NotContains(t, jshDef.Command, " -server ")
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		for _, command := range []string{shellDef.Command, jshDef.Command} {
+			args := util.SplitFields(command, true)
+			require.NotEmpty(t, args)
+			require.Equal(t, executable, args[0])
+		}
 		// rootless: an explicit virtual "/work" prevents the current directory fallback
 		require.Contains(t, shellDef.Command, `-v "/work="`)
 		require.Contains(t, jshDef.Command, `-v "/work="`)

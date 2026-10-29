@@ -3285,14 +3285,14 @@ func (s *Server) initShellProvider() error {
 	if len(os.Args) > 0 {
 		// The "[[shell]]" is placeholder for "shell" and "jsh"
 		if executable, err := os.Executable(); err != nil {
-			shellCmd = append(shellCmd, fmt.Sprintf("%q", os.Args[0]), "[[shell]]")
+			shellCmd = append(shellCmd, quoteCommandArg(os.Args[0]), "[[shell]]")
 		} else {
-			shellCmd = append(shellCmd, fmt.Sprintf("%q", executable), "[[shell]]")
+			shellCmd = append(shellCmd, quoteCommandArg(executable), "[[shell]]")
 		}
 	}
 	fsMgr := s.fileService
 	for _, tab := range fsMgr.ProcessWorkFSTabs() {
-		shellCmd = append(shellCmd, "-v", fmt.Sprintf(`"%s=%s"`, tab.MountPoint, tab.Source))
+		shellCmd = append(shellCmd, "-v", quoteCommandArg(tab.MountPoint+"="+tab.Source))
 	}
 	cmdLine := strings.Join(shellCmd, " ")
 	// neo-shell require -server option
@@ -3301,9 +3301,16 @@ func (s *Server) initShellProvider() error {
 	s.log.Trace("Set shell command:", defaultShellCmd)
 	// jsh
 	defaultJshCmd := strings.Replace(cmdLine, "[[shell]]", "jsh", 1)
-	s.log.Trace("Set jsh command:", defaultShellCmd)
+	s.log.Trace("Set jsh command:", defaultJshCmd)
 	s.models.SetDefaultJshCommand(defaultJshCmd)
 	return nil
+}
+
+// quoteCommandArg wraps arg in double quotes for the user-visible shell command.
+// The value is kept verbatim, unlike %q, so Windows paths keep single
+// backslashes; util.SplitFields only strips the surrounding quotes.
+func quoteCommandArg(arg string) string {
+	return `"` + arg + `"`
 }
 
 func isLoopbackCandidate(candidate string) bool {
