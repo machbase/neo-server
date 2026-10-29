@@ -252,6 +252,9 @@ func TestResolveBodyAndHelperBranches(t *testing.T) {
 
 	r, err = parseFileLine(http.MethodPost, "<@utf-8 /legacy.txt", fsys)
 	require.NoError(t, err)
+	closer, ok := r.(io.Closer)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 	raw, err = io.ReadAll(r)
 	require.NoError(t, err)
 	require.Equal(t, "legacy\n", string(raw))

@@ -87,9 +87,7 @@ func TestFS_RemoveAllHostTree(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tree, "nested", "file.txt"), []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := mfs.Remove("/tree"); !errors.Is(err, syscall.ENOTEMPTY) {
-		t.Fatalf("Remove(non-empty directory) error=%v, want ENOTEMPTY", err)
-	}
+	requireFSCode(t, "Remove(non-empty directory)", mfs.Remove("/tree"), "ENOTEMPTY")
 	if _, err := os.Stat(filepath.Join(tree, "nested", "file.txt")); err != nil {
 		t.Fatalf("non-recursive Remove changed the tree: %v", err)
 	}

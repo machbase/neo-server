@@ -210,8 +210,8 @@ func TestWorkMountConflictDiagnostics(t *testing.T) {
 					t.Helper()
 					require.ErrorIs(t, err, engine.ErrMountConflict)
 					require.Contains(t, err.Error(), WorkPath(mountPoint))
-					require.Contains(t, err.Error(), root)
-					require.Contains(t, err.Error(), other)
+					require.Contains(t, err.Error(), fmt.Sprintf("%q", root))
+					require.Contains(t, err.Error(), fmt.Sprintf("%q", other))
 					require.Contains(t, err.Error(), "move or rename the conflicting host entry")
 					require.Contains(t, err.Error(), "change the mount point or root directory")
 				}

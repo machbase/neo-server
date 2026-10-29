@@ -2032,6 +2032,7 @@ type faultFile struct {
 	readErr    error // returned by the Read call after the first one
 	reads      int
 	closed     atomic.Bool
+	closeDone  chan struct{}
 }
 
 func (f *faultFile) Stat() (fs.FileInfo, error) {
@@ -2056,8 +2057,12 @@ func (f *faultFile) Read(p []byte) (int, error) {
 }
 
 func (f *faultFile) Close() error {
+	err := f.File.Close()
 	f.closed.Store(true)
-	return f.File.Close()
+	if f.closeDone != nil {
+		close(f.closeDone)
+	}
+	return err
 }
 
 // newFaultHTTPServer serves the file handlers through a real HTTP server with
@@ -2375,9 +2380,10 @@ func TestHandleFilesStreamsCurrentFileLength(t *testing.T) {
 func TestHandleFilesReadErrorAfterResponseStartAbortsTransfer(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("0123456789abcdef"), 0o644))
+	closeDone := make(chan struct{})
 	var file *faultFile
 	ffs := &faultFS{base: os.DirFS(dir), wrap: func(name string, f fs.File) fs.File {
-		file = &faultFile{File: f, readLimit: 4, readErr: errors.New("injected read failure")}
+		file = &faultFile{File: f, readLimit: 4, readErr: errors.New("injected read failure"), closeDone: closeDone}
 		return file
 	}}
 	ts := newFaultHTTPServer(t, ffs)
@@ -2389,6 +2395,11 @@ func TestHandleFilesReadErrorAfterResponseStartAbortsTransfer(t *testing.T) {
 	body, err := io.ReadAll(rsp.Body)
 	require.Error(t, err, "a failed transfer must not end like a complete response")
 	require.NotContains(t, string(body), "success", "no JSON error is appended to a started response")
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler did not close the file after aborting the transfer")
+	}
 	require.True(t, file.closed.Load())
 }
 
