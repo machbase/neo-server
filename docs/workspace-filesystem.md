@@ -109,6 +109,23 @@ HTTP DSL `< /data/payload.json` uses the supplied workspace reader.
   without a copy-and-delete fallback.
 - File API JSON fields, ordering, hidden-file filtering, and public paths
   remain unchanged.
+- Static files under `/public/...` and the non-TQL static fallback of
+  `/db/tql/...` are streamed from the workspace without loading the whole file
+  into memory. They report `Content-Length` and `Last-Modified`, and honor
+  `Range` (206) and `If-Modified-Since` (304) requests. When the extension has
+  no explicit server mapping, `Content-Type` falls back to the Go MIME table and
+  then to content sniffing.
+- The file APIs (`/web/api/files`, `/db/files`) stream file content as well, but always
+  return the full current content (200) and ignore conditional and range
+  request headers, because `Last-Modified` has one-second resolution and could
+  hide an editor save made within the same second. The length is not taken from
+  a prior stat, so a file that grows or shrinks concurrently is sent until EOF
+  (no snapshot consistency is implied). If the file cannot be opened, stat'ed,
+  or read before the response starts, the JSON error `reason` includes the
+  cause. A read failure after the response has started aborts the connection
+  instead of ending the response normally.
+- The public static paths keep a generic `404` without host paths or OS error
+  details; unexpected failures other than missing files are logged as warnings.
 
 These mounts are not an OS sandbox. Existing symlink behavior and explicit
 OS-path features remain separate from workspace path routing. Mounts are

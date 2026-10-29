@@ -1366,6 +1366,25 @@ func TestHandleTqlFile(t *testing.T) {
 		require.Equal(t, "hello from static file", string(body))
 	})
 
+	t.Run("non tql static file supports range and conditional requests", func(t *testing.T) {
+		const staticPath = "/query_test_static_range.txt"
+		writeServerFile(t, staticPath, []byte("hello from static file"))
+
+		rsp := doRequest(t, http.MethodGet, "/db/tql"+staticPath, nil, map[string]string{"Range": "bytes=0-4"})
+		body, err := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, http.StatusPartialContent, rsp.StatusCode)
+		require.Equal(t, "text/plain", rsp.Header.Get("Content-Type"))
+		require.Equal(t, "hello", string(body))
+		lastModified := rsp.Header.Get("Last-Modified")
+		require.NotEmpty(t, lastModified)
+
+		rsp = doRequest(t, http.MethodGet, "/db/tql"+staticPath, nil, map[string]string{"If-Modified-Since": lastModified})
+		rsp.Body.Close()
+		require.Equal(t, http.StatusNotModified, rsp.StatusCode)
+	})
+
 	t.Run("missing tql file returns not found", func(t *testing.T) {
 		rsp := doRequest(t, http.MethodGet, "/db/tql/query_test_missing.tql", nil, nil)
 		defer rsp.Body.Close()

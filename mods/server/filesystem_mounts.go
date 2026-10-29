@@ -29,6 +29,20 @@ func (ms MountSpec) String() string {
 	return ms.MountPoint + "=" + ms.Dir
 }
 
+// parseCanonicalMountSpec is the inverse of MountSpec.String. Unlike ParseFileDirs,
+// it splits at the first '=' only, so a host directory may contain '=' or ','.
+func parseCanonicalMountSpec(entry string) (MountSpec, error) {
+	mnt, dir, ok := strings.Cut(entry, "=")
+	if !ok {
+		mnt, dir = filepath.Base(entry), entry
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return MountSpec{}, fmt.Errorf("invalid file mount %q, %w", entry, err)
+	}
+	return MountSpec{MountPoint: cleanVirtualPath(mnt), Dir: abs}, nil
+}
+
 // WorkMountPoint returns the JSH virtual filesystem mount point of the spec.
 func (ms MountSpec) WorkMountPoint() string {
 	return WorkPath(ms.MountPoint)
@@ -125,8 +139,8 @@ func (service *WorkspaceFileSystem) MountSpecs() []MountSpec {
 		return nil
 	}
 	ret := make([]MountSpec, 0, len(service.mounts))
-	for _, bd := range service.mounts {
-		ret = append(ret, MountSpec{MountPoint: bd.mountPoint, Dir: bd.abspath})
+	for _, spec := range service.mounts {
+		ret = append(ret, spec)
 	}
 	slices.SortFunc(ret, func(a, b MountSpec) int { return strings.Compare(a.MountPoint, b.MountPoint) })
 	return ret
@@ -137,8 +151,8 @@ func (service *WorkspaceFileSystem) RootDir() (string, bool) {
 	if service == nil {
 		return "", false
 	}
-	if bd := service.mounts[WorkMountPoint]; bd != nil {
-		return bd.abspath, true
+	if spec, ok := service.mounts[WorkMountPoint]; ok {
+		return spec.Dir, true
 	}
 	return "", false
 }
@@ -166,16 +180,6 @@ func (service *WorkspaceFileSystem) ProcessWorkFSTabs() engine.FSTabs {
 		return tabs
 	}
 	return append(engine.FSTabs{{MountPoint: WorkMountPoint}}, tabs...)
-}
-
-// WorkMountArgs returns the "-v" command line arguments of the jsh/shell commands
-// equivalent to ProcessWorkFSTabs.
-func (service *WorkspaceFileSystem) WorkMountArgs() []string {
-	ret := []string{}
-	for _, tab := range service.ProcessWorkFSTabs() {
-		ret = append(ret, "-v", tab.MountPoint+"="+tab.Source)
-	}
-	return ret
 }
 
 // CheckWorkMounts reports mounts whose host directory is not accessible.

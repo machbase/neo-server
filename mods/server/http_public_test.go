@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -38,6 +41,133 @@ func TestPublicStatic(t *testing.T) {
 	require.Equal(t, http.StatusOK, rsp.StatusCode, string(payload))
 	require.Equal(t, "text/html", rsp.Header.Get("Content-Type"))
 	require.Equal(t, "<html><body>CGI Test</body></html>", string(payload))
+}
+
+func newPublicStaticTestServer(t *testing.T) *httpd {
+	t.Helper()
+	svr := newTestHTTPServer(t)
+	for path, content := range map[string]string{
+		"/public/app/index.html":         "<html>app</html>",
+		"/public/app/data.json":          `{"a":1}`,
+		"/public/app/blob.bin":           "0123456789",
+		"/public/noindex/readme.txt":     "no index",
+		"/public/dirindex/index.html/ok": "nested",
+	} {
+		rp, err := svr.serverFs.FindRealPath(path)
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Dir(rp.AbsPath), 0o755))
+		require.NoError(t, os.WriteFile(rp.AbsPath, []byte(content), 0o644))
+	}
+	return svr
+}
+
+func servePublic(svr *httpd, path string, headers map[string]string) *httptest.ResponseRecorder {
+	ctx, writer := newTestHTTPContext(http.MethodGet, "/public"+path, nil)
+	ctx.Params = gin.Params{{Key: "path", Value: path}}
+	for k, v := range headers {
+		ctx.Request.Header.Set(k, v)
+	}
+	svr.handlePublic(ctx)
+	ctx.Writer.WriteHeaderNow() // as gin.Engine does after the handler chain
+	return writer
+}
+
+func TestStaticFallbackHidesFileOpenErrors(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "public"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "public", "note.txt"), []byte("hello"), 0o644))
+	var mu sync.Mutex
+	opened := map[string]bool{}
+	ffs := &faultFS{base: os.DirFS(dir), openErr: func(name string) error {
+		mu.Lock()
+		opened[name] = true
+		mu.Unlock()
+		return &fs.PathError{Op: "open", Path: filepath.Join(dir, name), Err: fs.ErrPermission}
+	}}
+	ts := newFaultHTTPServer(t, ffs)
+
+	for _, tc := range []struct {
+		target string
+		file   string
+		reason string
+	}{
+		{target: "/public/note.txt", file: "public/note.txt", reason: "not found"},
+		{target: "/db/tql/note.txt", file: "note.txt", reason: "tql not found"},
+	} {
+		rsp, err := ts.Client().Get(ts.URL + tc.target)
+		require.NoError(t, err)
+		body, err := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNotFound, rsp.StatusCode, tc.target)
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(body, &payload), string(body))
+		require.Equal(t, tc.reason, payload["reason"], tc.target)
+		require.NotContains(t, string(body), "permission", tc.target)
+		require.NotContains(t, string(body), dir, tc.target)
+		mu.Lock()
+		require.True(t, opened[tc.file], tc.target)
+		mu.Unlock()
+	}
+}
+
+func TestPublicStaticContract(t *testing.T) {
+	svr := newPublicStaticTestServer(t)
+	for _, tc := range []struct {
+		name        string
+		path        string
+		status      int
+		contentType string
+		body        string
+		location    string
+	}{
+		{name: "dir with slash serves index", path: "/app/", status: http.StatusOK, contentType: "text/html", body: "<html>app</html>"},
+		{name: "dir without slash serves index", path: "/app", status: http.StatusOK, contentType: "text/html", body: "<html>app</html>"},
+		{name: "index.html redirects to dir", path: "/app/index.html", status: http.StatusFound, location: "/public/app/"},
+		{name: "file with known type", path: "/app/data.json", status: http.StatusOK, contentType: "application/json", body: `{"a":1}`},
+		{name: "file with unknown type", path: "/app/blob.bin", status: http.StatusOK, body: "0123456789"},
+		{name: "dir without index", path: "/noindex/", status: http.StatusNotFound},
+		{name: "dir with index directory", path: "/dirindex/", status: http.StatusNotFound},
+		{name: "missing file", path: "/app/missing.txt", status: http.StatusNotFound},
+		{name: "missing app", path: "/missing/", status: http.StatusNotFound},
+		{name: "parent traversal", path: "/app/../../etc/passwd", status: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writer := servePublic(svr, tc.path, nil)
+			require.Equal(t, tc.status, writer.Code, writer.Body.String())
+			if tc.location != "" {
+				require.Equal(t, tc.location, writer.Header().Get("Location"))
+			}
+			if tc.status != http.StatusOK {
+				return
+			}
+			if tc.contentType != "" {
+				require.Equal(t, tc.contentType, writer.Header().Get("Content-Type"))
+			}
+			require.Equal(t, tc.body, writer.Body.String())
+		})
+	}
+}
+
+func TestPublicStaticRangeAndConditional(t *testing.T) {
+	svr := newPublicStaticTestServer(t)
+
+	writer := servePublic(svr, "/app/blob.bin", map[string]string{"Range": "bytes=2-5"})
+	require.Equal(t, http.StatusPartialContent, writer.Code)
+	require.Equal(t, "2345", writer.Body.String())
+	require.Equal(t, "bytes 2-5/10", writer.Header().Get("Content-Range"))
+
+	writer = servePublic(svr, "/app/", nil)
+	require.Equal(t, http.StatusOK, writer.Code)
+	require.Equal(t, "text/html", writer.Header().Get("Content-Type"))
+	require.Equal(t, "16", writer.Header().Get("Content-Length"))
+	lastModified := writer.Header().Get("Last-Modified")
+	require.NotEmpty(t, lastModified)
+
+	writer = servePublic(svr, "/app/", map[string]string{"If-Modified-Since": lastModified})
+	require.Equal(t, http.StatusNotModified, writer.Code)
+	require.Empty(t, writer.Body.String())
 }
 
 func TestPublicCGI_Basic(t *testing.T) {

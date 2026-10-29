@@ -2080,10 +2080,24 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 
 	switch ctx.Request.Method {
 	case http.MethodGet:
+		if info, err := svr.serverFs.Stat(path); err == nil && !info.IsDir() {
+			// The editor needs the current content, so conditional requests are not honored.
+			rsp.Reason = fmt.Sprintf("not found: %s", path)
+			if contentTypeOfFile(info.Name()) != "" {
+				err := svr.serveWorkspaceFile(ctx, path, false)
+				if err == nil {
+					return
+				}
+				rsp.Reason = fmt.Sprintf("not found: %s, %s", path, err.Error())
+			}
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusNotFound, rsp)
+			return
+		}
 		var ent *WorkspaceEntry
 		var err error
 		if isFsFile(filter) {
-			ent, err = svr.serverFs.GetGlob(path, filter)
+			ent, err = svr.serverFs.GetFilter(path, GlobFilter(filter))
 		} else {
 			ent, err = svr.serverFs.GetFilter(path, func(se *WorkspaceSubEntry) bool {
 				if se.IsDir {
@@ -2098,18 +2112,12 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, rsp)
 			return
 		}
-		if ent != nil {
-			if ent.IsDir {
-				rsp.Success, rsp.Reason = true, "success"
-				rsp.Elapse = time.Since(tick).String()
-				rsp.Data = ent
-				ctx.JSON(http.StatusOK, rsp)
-				return
-			}
-			if contentType := contentTypeOfFile(ent.Name); contentType != "" {
-				ctx.Data(http.StatusOK, contentType, ent.Content)
-				return
-			}
+		if ent != nil && ent.IsDir {
+			rsp.Success, rsp.Reason = true, "success"
+			rsp.Elapse = time.Since(tick).String()
+			rsp.Data = ent
+			ctx.JSON(http.StatusOK, rsp)
+			return
 		}
 		rsp.Reason = fmt.Sprintf("not found: %s", path)
 		rsp.Elapse = time.Since(tick).String()

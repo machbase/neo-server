@@ -271,9 +271,11 @@ func TestCharNoRootMount(t *testing.T) {
 	require.True(t, parent.ReadOnly)
 	require.Equal(t, []string{"b"}, childNames(parent))
 	for _, path := range []string{"/", "/a"} {
-		hostPath, err := s.RealPath(path)
-		require.ErrorIs(t, err, os.ErrNotExist)
-		require.Empty(t, hostPath)
+		ent, err := s.Get(path)
+		require.NoError(t, err)
+		require.Empty(t, ent.abspath, path) // virtual directories have no host path
+		_, err = s.FindRealPath(path)
+		require.Error(t, err, path)
 	}
 	ent, err := s.Get("/a/b/o.txt")
 	require.NoError(t, err)
@@ -306,10 +308,10 @@ func TestCharMountPrefixBoundary(t *testing.T) {
 	require.Equal(t, "root-database", string(ent.Content))
 	rp, err := s.FindRealPath("/database/x.txt")
 	require.NoError(t, err)
-	require.Equal(t, "/", rp.BaseDir.mountPoint)
+	require.Equal(t, "/", rp.Mount.MountPoint)
 	rp, err = s.FindRealPath("/data/base/x.txt")
 	require.NoError(t, err)
-	require.Equal(t, "/data", rp.BaseDir.mountPoint)
+	require.Equal(t, "/data", rp.Mount.MountPoint)
 	require.Equal(t, "base/x.txt", rp.RelativePath)
 
 	b, err := efs.ReadFile("/work/database/x.txt")
@@ -353,6 +355,10 @@ func TestCharDuplicateMounts(t *testing.T) {
 	s, err := NewWorkspaceFileSystem([]string{"/a=" + cf.dir("one"), "/a=" + cf.dir("two")})
 	require.ErrorIs(t, err, os.ErrExist)
 	require.Nil(t, s)
+	// Equivalent spellings of a mount point are duplicates as well.
+	s, err = NewWorkspaceFileSystem([]string{"/a=" + cf.dir("one"), "a/=" + cf.dir("two")})
+	require.ErrorIs(t, err, os.ErrExist)
+	require.Nil(t, s)
 }
 
 func TestCharListingContract(t *testing.T) {
@@ -371,7 +377,7 @@ func TestCharListingContract(t *testing.T) {
 	// directories first, then names; dot files and ignored names are hidden
 	require.Equal(t, []string{"adir", "zdir", "a.sql", "b.txt", "empty.txt"}, childNames(ent))
 
-	ent, err = s.GetGlob("/", "*.sql")
+	ent, err = s.GetFilter("/", GlobFilter("*.sql"))
 	require.NoError(t, err)
 	require.Equal(t, []string{"adir", "zdir", "a.sql"}, childNames(ent))
 
@@ -570,25 +576,28 @@ func TestCharHostPathContracts(t *testing.T) {
 	rp, err := s.FindRealPath("/missing.txt")
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(cf.base, "root", "missing.txt"), rp.AbsPath)
-	_, err = s.RealPath("/missing.txt")
+	_, err = s.Get("/missing.txt")
 	require.ErrorIs(t, err, os.ErrNotExist)
 
 	entry, err := s.Get("/apps")
 	require.NoError(t, err)
 	require.True(t, entry.ReadOnly)
 	require.Empty(t, entry.abspath)
-	_, err = s.RealPath("/apps")
-	require.ErrorIs(t, err, os.ErrNotExist)
 
-	host, err := s.RealPath("/apps/tool/file.txt")
+	rp, err = s.FindRealPath("/apps/tool/file.txt")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(cf.base, "app", "file.txt"), host)
+	require.Equal(t, filepath.Join(cf.base, "app", "file.txt"), rp.AbsPath)
+	require.Equal(t, "/apps/tool", rp.Mount.MountPoint)
+	require.Equal(t, "file.txt", rp.RelativePath)
+	entry, err = s.Get("/apps/tool/file.txt")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(cf.base, "app", "file.txt"), entry.abspath)
 	entry, err = s.Get("/work/file.txt")
 	require.NoError(t, err)
 	require.Equal(t, "nested-work", string(entry.Content))
 }
 
-func TestCharUnavailableSourceAndMountLifecycle(t *testing.T) {
+func TestCharUnavailableSource(t *testing.T) {
 	cf := newCharFixture(t)
 	missing := filepath.Join(cf.base, "missing")
 	s, err := NewWorkspaceFileSystem([]string{"/a=" + missing})
@@ -603,14 +612,7 @@ func TestCharUnavailableSourceAndMountLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "data", string(entry.Content))
 	require.Empty(t, s.CheckWorkMounts())
-	require.ErrorIs(t, s.Mount("/a", cf.dir("other"), false), os.ErrExist)
-	require.Equal(t, []string{"/a"}, s.ListMounts())
-
-	require.NoError(t, s.Unmount("/a"))
-	require.Empty(t, s.ListMounts())
-	_, err = s.Get("/a/file.txt")
-	require.ErrorIs(t, err, os.ErrNotExist)
-	require.NoError(t, s.Unmount("/a"))
+	require.Equal(t, []MountSpec{{MountPoint: "/a", Dir: missing}}, s.MountSpecs())
 }
 
 // Mutation APIs clean the path, so ".." can not escape the mounts (fixed defect).
@@ -635,7 +637,7 @@ func TestCharMutationPathEscape(t *testing.T) {
 	// "/a/../../x" is cleaned to "/x" in the root mount, not in "/a"
 	rp, err := s.FindRealPath("/a/../../moved.txt")
 	require.NoError(t, err)
-	require.Equal(t, "/", rp.BaseDir.mountPoint)
+	require.Equal(t, "/", rp.Mount.MountPoint)
 	require.NoError(t, s.Rename("/a/o.txt", "/a/../../moved.txt"))
 	require.False(t, cf.exists("moved.txt"))
 	require.True(t, cf.exists("ws/root/moved.txt"))
@@ -657,7 +659,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, files)
 
-	ret, err := files.GetGlob("/", "*.sql")
+	ret, err := files.GetFilter("/", GlobFilter("*.sql"))
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
@@ -770,11 +772,11 @@ func TestFsGET(t *testing.T) {
 	err = files.Remove("/data1/newdir2")
 	require.Nil(t, err)
 
-	// RealPath()
-	realpath, err := files.RealPath("/data1/simple.tql")
+	// host path
+	rp, err := files.FindRealPath("/data1/simple.tql")
 	require.Nil(t, err)
 	abspath, _ := filepath.Abs("test/workspace/data1/simple.tql")
-	require.Equal(t, realpath, abspath)
+	require.Equal(t, abspath, rp.AbsPath)
 }
 
 func TestFsGit(t *testing.T) {
@@ -805,57 +807,48 @@ func TestFsGit(t *testing.T) {
 }
 
 func TestMounts(t *testing.T) {
-	files, err := NewWorkspaceFileSystem([]string{"/=./test/workspace/root", "data1=./test/workspace/data1", "apps/neo-docs/=./test/workspace/apps/neo-docs"})
+	files, err := NewWorkspaceFileSystem([]string{"/=./test/workspace/root", "data1=./test/workspace/data1", "data1/apps/neo-docs/=./test/workspace/apps/neo-docs"})
 	require.Nil(t, err)
 	require.NotNil(t, files)
 
-	files.Unmount("/apps/neo-docs")
-	mnts := files.ListMounts()
-	require.Equal(t, []string{"/", "/data1"}, mnts)
-
-	err = files.Unmount("/")
-	require.Error(t, err)
-	err = files.Unmount("")
-	require.Error(t, err)
-
-	err = files.Mount("data1/apps/neo-docs", "./test/workspace/apps/neo-docs", true)
-	require.NoError(t, err)
-
-	mnts = files.ListMounts()
+	mnts := []string{}
+	for _, spec := range files.MountSpecs() {
+		mnts = append(mnts, spec.MountPoint)
+	}
 	require.Equal(t, []string{"/", "/data1", "/data1/apps/neo-docs"}, mnts)
 
-	bd := files.FindBaseDir("/data1/simple.tql")
-	require.NotNil(t, bd)
-	require.Equal(t, "/data1", bd.mountPoint)
-
-	neo_docs_bd := files.FindBaseDir("/data1/apps/neo-docs/simple.tql")
-	require.NotNil(t, bd)
-	require.Equal(t, "/data1/apps/neo-docs", neo_docs_bd.mountPoint)
-	require.False(t, bd.ReadOnly())
-
-	rp, err := files.FindRealPath("/data1/apps/neo-docs")
+	rp, err := files.FindRealPath("/data1/simple.tql")
 	require.Nil(t, err)
-	require.Equal(t, neo_docs_bd.abspath, rp.AbsPath)
-	require.True(t, rp.ReadOnly)
+	require.Equal(t, "/data1", rp.Mount.MountPoint)
+
+	neoDocsDir, _ := filepath.Abs("./test/workspace/apps/neo-docs")
+	rp, err = files.FindRealPath("/data1/apps/neo-docs")
+	require.Nil(t, err)
+	require.Equal(t, "/data1/apps/neo-docs", rp.Mount.MountPoint)
+	require.Equal(t, neoDocsDir, rp.AbsPath)
+	require.Empty(t, rp.RelativePath)
 
 	rp, err = files.FindRealPath("/data1/apps/neo-docs/simple.tql")
 	require.Nil(t, err)
-	require.Equal(t, filepath.Join(neo_docs_bd.abspath, "simple.tql"), rp.AbsPath)
-	require.False(t, bd.ReadOnly())
+	require.Equal(t, "/data1/apps/neo-docs", rp.Mount.MountPoint)
+	require.Equal(t, filepath.Join(neoDocsDir, "simple.tql"), rp.AbsPath)
 }
 
 func TestMountsMultiDepth(t *testing.T) {
-	files, err := NewWorkspaceFileSystem(nil)
+	files, err := NewWorkspaceFileSystem([]string{
+		"/=./test/workspace/root",
+		"apps/myapp1=./test/workspace/apps/myapp1",
+		"apps/myapp2=./test/workspace/apps/myapp2",
+		"apps/central/myapp4=./test/workspace/apps/central/myapp4",
+		"apps/central/myapp3=./test/workspace/apps/central/myapp3",
+	})
 	require.Nil(t, err)
 	require.NotNil(t, files)
 
-	files.Mount("/", "./test/workspace/root", false)
-	files.Mount("apps/myapp1", "./test/workspace/apps/myapp1", true)
-	files.Mount("apps/myapp2", "./test/workspace/apps/myapp2", true)
-	files.Mount("apps/central/myapp4", "./test/workspace/apps/central/myapp4", true)
-	files.Mount("apps/central/myapp3", "./test/workspace/apps/central/myapp3", true)
-
-	mnts := files.ListMounts()
+	mnts := []string{}
+	for _, spec := range files.MountSpecs() {
+		mnts = append(mnts, spec.MountPoint)
+	}
 	require.Equal(t, []string{"/", "/apps/central/myapp3", "/apps/central/myapp4", "/apps/myapp1", "/apps/myapp2"}, mnts)
 
 	entry, err := files.Get("/")

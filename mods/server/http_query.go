@@ -865,13 +865,12 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 			ctx.Redirect(http.StatusFound, "/public/"+path)
 			return
 		}
-		contentType := contentTypeOfFile(path)
-		if contentType != "" && ctx.Request.Method == http.MethodGet {
-			if ent, err := svr.serverFs.Get(path); err == nil && !ent.IsDir {
-				ctx.Header("Content-Type", contentType)
-				ctx.Writer.Write(ent.Content)
+		if contentTypeOfFile(path) != "" && ctx.Request.Method == http.MethodGet {
+			err := svr.serveWorkspaceFile(ctx, path, true)
+			if err == nil {
 				return
 			}
+			logStaticServeError(svr.log, path, err)
 		}
 		handleError(ctx, http.StatusNotFound, "tql not found", tick)
 		return

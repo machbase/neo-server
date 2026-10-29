@@ -63,6 +63,25 @@ func TestNormalizeFileDirsIdempotent(t *testing.T) {
 	require.Len(t, first, 2)
 }
 
+// The constructor accepts the canonical MountSpec.String form, whose host
+// directory may contain '=' (e.g. t.TempDir of a "name=value" subtest).
+func TestNewWorkspaceFileSystemCanonicalSpecs(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root=dir")
+	other := filepath.Join(base, "a=b,c")
+	require.NoError(t, os.MkdirAll(root, 0755))
+	require.NoError(t, os.MkdirAll(other, 0755))
+	specs := []MountSpec{{MountPoint: "/", Dir: root}, {MountPoint: "/a", Dir: other}}
+
+	files, err := NewWorkspaceFileSystem([]string{specs[0].String(), specs[1].String()})
+	require.NoError(t, err)
+	require.Equal(t, specs, files.MountSpecs())
+
+	files, err = NewWorkspaceFileSystem([]string{"x/y/=" + other})
+	require.NoError(t, err)
+	require.Equal(t, []MountSpec{{MountPoint: "/x/y", Dir: other}}, files.MountSpecs())
+}
+
 func TestWorkPath(t *testing.T) {
 	require.Equal(t, "/work", WorkPath("/"))
 	require.Equal(t, "/work", WorkPath(""))
@@ -94,11 +113,7 @@ func TestWorkFSTabs(t *testing.T) {
 	require.Equal(t, "/work/b/c", tabs[2].MountPoint)
 	require.Equal(t, third, tabs[2].Source)
 
-	require.Equal(t, []string{
-		"-v", "/work=" + root,
-		"-v", "/work/a=" + other,
-		"-v", "/work/b/c=" + third,
-	}, fs.WorkMountArgs())
+	require.Equal(t, tabs, fs.ProcessWorkFSTabs())
 
 	warns := fs.CheckWorkMounts()
 	require.Len(t, warns, 1)
@@ -220,7 +235,6 @@ func TestProcessWorkFSTabsRootless(t *testing.T) {
 		{MountPoint: "/work"},
 		{MountPoint: "/work/a", Source: other},
 	}, fs.ProcessWorkFSTabs())
-	require.Equal(t, []string{"-v", "/work=", "-v", "/work/a=" + other}, fs.WorkMountArgs())
 }
 
 func TestWorkFSTabsNil(t *testing.T) {

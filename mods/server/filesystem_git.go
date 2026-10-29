@@ -34,9 +34,6 @@ func (service *WorkspaceFileSystem) GitClone(path string, gitUrl string, progres
 	if err != nil {
 		return nil, err
 	}
-	if rp.ReadOnly {
-		return nil, fmt.Errorf("unable to clone, %s is read-only", path)
-	}
 	if progress == nil {
 		progress = os.Stdout
 	}
@@ -86,9 +83,6 @@ func (service *WorkspaceFileSystem) GitPull(path string, gitUrl string, progress
 	rp, err := service.FindRealPath(path)
 	if err != nil {
 		return nil, err
-	}
-	if rp.ReadOnly {
-		return nil, fmt.Errorf("unable to pull, %s is read-only", path)
 	}
 
 	if progress == nil {
