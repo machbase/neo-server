@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -12,6 +13,48 @@ import (
 func TestServerGetConfig(t *testing.T) {
 	s := &Server{}
 	require.Equal(t, string(DefaultFallbackConfig), s.GetConfig())
+}
+
+func TestServerTokenAuthConfig(t *testing.T) {
+	savedArgs := booter.Args
+	t.Cleanup(func() { booter.Args = savedArgs })
+
+	tests := []struct {
+		name string
+		args []string
+		http bool
+		mqtt bool
+	}{
+		{name: "default", http: true, mqtt: true},
+		{name: "disable HTTP", args: []string{"--http-enable-token-auth", "false"}, mqtt: true},
+		{name: "disable MQTT", args: []string{"--mqtt-enable-token-auth", "false"}, http: true},
+		{
+			name: "disable both",
+			args: []string{"--http-enable-token-auth", "false", "--mqtt-enable-token-auth", "false"},
+		},
+		{
+			name: "disable both with equals",
+			args: []string{"--http-enable-token-auth=false", "--mqtt-enable-token-auth=false"},
+		},
+		{
+			name: "enable both explicitly",
+			args: []string{"--http-enable-token-auth", "true", "--mqtt-enable-token-auth", "true"},
+			http: true, mqtt: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			booter.Args = append([]string{"neo", "serve"}, tt.args...)
+			bt, err := booter.NewBuilder().BuildWithContent(DefaultFallbackConfig)
+			require.NoError(t, err)
+			def := bt.GetDefinition("machbase.com/neo-server")
+			require.NotNil(t, def)
+			conf := NewConfig()
+			require.NoError(t, booter.EvalObject("Config", conf, def.Config))
+			require.Equal(t, tt.http, conf.Http.EnableTokenAuth)
+			require.Equal(t, tt.mqtt, conf.Mqtt.EnableTokenAuth)
+		})
+	}
 }
 
 func TestServerCheckRewriteMachbaseConf(t *testing.T) {

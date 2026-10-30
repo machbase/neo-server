@@ -23,6 +23,21 @@ API and Interfaces
 
 [https://docs.machbase.com/neo](https://docs.machbase.com/neo)
 
+## API Token Authentication
+
+HTTP and MQTT token authentication are enabled by default. Clients using these APIs
+must provide valid API tokens.
+
+To explicitly disable token authentication for trusted environments, start the server with:
+
+```sh
+machbase-neo serve --http-enable-token-auth=false --mqtt-enable-token-auth=false
+```
+
+Each flag controls its protocol independently. Existing custom configuration files
+that explicitly disable token authentication retain their configured behavior.
+MQTT TLS client-certificate authentication is unchanged.
+
 ## Install Prebuilt Binary
 
 - Download
