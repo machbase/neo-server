@@ -98,7 +98,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		},
 	}
 
-	if err := req.Execute(ctx, ctx.Writer, hook); err != nil {
+	if err := req.Execute(ctx.Request.Context(), ctx.Writer, hook); err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(statusCode, rsp)

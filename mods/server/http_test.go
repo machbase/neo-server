@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,6 +22,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +39,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
 	cmap "github.com/orcaman/concurrent-map/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -4395,6 +4399,187 @@ func osReadFileWithRetry(path string) ([]byte, error) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return nil, lastErr
+}
+
+func TestHTTPDisconnectCancelsSQL(t *testing.T) {
+	conn, err := spi.Connect(t.Context(), "sys")
+	require.NoError(t, err)
+	defer conn.Close()
+
+	table := fmt.Sprintf("HTTP_CANCEL_%d", time.Now().UnixNano())
+	resultTable := table + "_RESULT"
+	for _, name := range []string{table, resultTable} {
+		_, err := conn.ExecContext(t.Context(), "CREATE LOOKUP TABLE "+name+" (ID LONG PRIMARY KEY)")
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cleanupConn, err := spi.Connect(ctx, "sys")
+			require.NoError(t, err)
+			defer cleanupConn.Close()
+			_, err = cleanupConn.ExecContext(ctx, "DROP TABLE "+name)
+			require.NoError(t, err)
+		})
+	}
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO "+table+" VALUES (1)")
+	require.NoError(t, err)
+	// The aggregate cannot return its first row until the large join completes.
+	for size := 1; size < 1024; size *= 2 {
+		_, err = conn.ExecContext(t.Context(),
+			fmt.Sprintf("INSERT INTO %s SELECT ID+%d FROM %s", table, size, table))
+		require.NoError(t, err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		mode   string
+		exec   bool
+		params bool
+	}{
+		{name: "query_get", method: http.MethodGet, mode: "query"},
+		{name: "query_post", method: http.MethodPost, mode: "query", params: true},
+		{name: "query_exec", method: http.MethodPost, mode: "query", exec: true},
+		{name: "tql_get", method: http.MethodGet, mode: "sql"},
+		{name: "tql_post", method: http.MethodPost, mode: "sql"},
+		{name: "tql_exec", method: http.MethodPost, mode: "sql", exec: true},
+		{name: "tql_file_get", method: http.MethodGet, mode: "file"},
+		{name: "tql_file_post", method: http.MethodPost, mode: "file"},
+		{name: "tql_script_query", method: http.MethodPost, mode: "script_yield"},
+		{name: "tql_script_for_each", method: http.MethodPost, mode: "script_for_each"},
+		{name: "tql_script_exec", method: http.MethodPost, mode: "script_exec", exec: true},
+		{name: "tql_script_module_query", method: http.MethodPost, mode: "script_module"},
+		{name: "tql_script_module_exec", method: http.MethodPost, mode: "script_module", exec: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sqlText := fmt.Sprintf(
+				"SELECT /* %s */ SUM(A.ID+B.ID+C.ID) FROM %s A, %s B, %s C WHERE A.ID >= B.ID AND B.ID >= C.ID",
+				tc.name, table, table, table)
+			if tc.params {
+				sqlText += " AND C.ID >= ?"
+			}
+			if tc.exec {
+				sqlText = "INSERT INTO " + resultTable + " " + sqlText
+			}
+
+			path := "/db/tql"
+			var body string
+			contentType := "text/plain"
+			if tc.mode == "query" {
+				path = "/db/query"
+				if tc.method == http.MethodGet {
+					path += "?q=" + url.QueryEscape(sqlText)
+				} else {
+					payload := map[string]any{"q": sqlText}
+					if tc.params {
+						payload["p"] = []any{1}
+					}
+					data, err := json.Marshal(payload)
+					require.NoError(t, err)
+					body = string(data)
+					contentType = "application/json"
+				}
+			} else {
+				quoted := strconv.Quote(sqlText)
+				script := "SQL(" + quoted + ")\nCSV()"
+				switch tc.mode {
+				case "script_yield":
+					script = "SCRIPT({ $.db().query(" + quoted + ").yield(); })\nCSV()"
+				case "script_for_each":
+					script = "SCRIPT({ $.db().query(" + quoted + ").forEach(function(row) { $.yield(row); }); })\nCSV()"
+				case "script_exec":
+					script = "SCRIPT({ $.db().exec(" + quoted + "); })\nCSV()"
+				case "script_module":
+					call := "var rows = connection.query(" + quoted + "); rows.close();"
+					if tc.exec {
+						call = "connection.exec(" + quoted + ");"
+					}
+					script = `SCRIPT({
+						const db = require('@jsh/db');
+						const connection = new db.Client().connect();
+						try { ` + call + ` } finally { connection.close(); }
+					})
+					CSV()`
+				}
+				if tc.mode == "file" {
+					file := "/" + strings.ToLower(table) + "_" + tc.name + ".tql"
+					require.NoError(t, httpServer.serverFs.Set(file, []byte(script)))
+					t.Cleanup(func() { require.NoError(t, httpServer.serverFs.Remove(file)) })
+					path += file
+				} else if tc.method == http.MethodGet {
+					path += "?$=" + url.QueryEscape(script)
+				} else {
+					body = script
+				}
+			}
+
+			requestStarted := make(chan context.Context, 1)
+			handlerDone := make(chan struct{})
+			router := httpServer.Router()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(handlerDone)
+				requestStarted <- r.Context()
+				router.ServeHTTP(w, r)
+			}))
+			t.Cleanup(server.Close)
+
+			socket, err := net.DialTimeout("tcp", server.Listener.Addr().String(), time.Second)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = socket.Close() })
+			require.NoError(t, socket.SetWriteDeadline(time.Now().Add(time.Second)))
+			request, err := http.NewRequest(tc.method, server.URL+path, strings.NewReader(body))
+			require.NoError(t, err)
+			request.Header.Set("Content-Type", contentType)
+			require.NoError(t, request.Write(socket))
+
+			var requestContext context.Context
+			select {
+			case requestContext = <-requestStarted:
+			case <-time.After(time.Second):
+				t.Fatal("HTTP request did not start")
+			}
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				count, err := httpCancelStatementCount(t.Context(), conn, sqlText)
+				require.NoError(c, err)
+				require.Positive(c, count)
+			}, 3*time.Second, 10*time.Millisecond, "SQL did not reach the database")
+			select {
+			case <-handlerDone:
+				t.Fatal("SQL finished before the client disconnected")
+			case <-time.After(100 * time.Millisecond):
+			}
+
+			disconnectedAt := time.Now()
+			require.NoError(t, socket.Close())
+			select {
+			case <-requestContext.Done():
+				require.ErrorIs(t, requestContext.Err(), context.Canceled)
+			case <-time.After(time.Second):
+				t.Fatal("HTTP disconnect did not cancel the server request")
+			}
+			select {
+			case <-handlerDone:
+			case <-time.After(time.Second):
+				t.Fatal("HTTP disconnect did not interrupt the long-running SQL call")
+			}
+			handlerElapsed := time.Since(disconnectedAt)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				count, err := httpCancelStatementCount(t.Context(), conn, sqlText)
+				require.NoError(c, err)
+				require.Zero(c, count)
+			}, 2*time.Second, 20*time.Millisecond, "canceled SQL statement remained in the engine")
+			t.Logf("after disconnect: handler released in %s, engine statement removed in %s",
+				handlerElapsed, time.Since(disconnectedAt))
+		})
+	}
+}
+
+func httpCancelStatementCount(ctx context.Context, conn *sql.Conn, sqlText string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	var count int
+	err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM V$STMT WHERE QUERY = ?", sqlText).Scan(&count)
+	return count, err
 }
 
 func closeLogOnCleanup(t *testing.T, log logging.Log) {
