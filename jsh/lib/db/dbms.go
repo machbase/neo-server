@@ -84,7 +84,7 @@ func NewClient(ctx context.Context, scope model.UserScope, rt *goja.Runtime, opt
 
 func NewClientWithOptions(ctx context.Context, scope model.UserScope, rt *goja.Runtime, opts ClientOptions) *Client {
 	ret := &Client{
-		ctx:              context.Background(),
+		ctx:              ctx,
 		rt:               rt,
 		scope:            scope,
 		BridgeName:       opts.BridgeName,
