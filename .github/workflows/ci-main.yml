@@ -25,13 +25,32 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Setup MINGW64
+      - name: Setup UCRT64
+        id: msys2
         if: matrix.os == 'windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: ucrt64
           install: >-
             mingw-w64-ucrt-x86_64-gcc
+      - name: Select UCRT64 compiler
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $bin = Join-Path $env:MSYS2_ROOT 'ucrt64\bin'
+          $gcc = Join-Path $bin 'gcc.exe'
+          if (-not (Test-Path $gcc)) {
+            throw "UCRT64 compiler not found: $gcc"
+          }
+          & $gcc --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "UCRT64 compiler failed with exit code $LASTEXITCODE"
+          }
+          "CC=gcc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CXX=g++" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Setup go compiler
         uses: actions/setup-go@v6
         with:
