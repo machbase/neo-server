@@ -154,7 +154,7 @@ func (gm *GeoMap) SetIcon(name string, opt string) {
 	}
 	icn := &Icon{}
 	if err := json.Unmarshal([]byte(opt), icn); err != nil {
-		gm.logger.LogWarnf("GEOMAP icon option", err.Error())
+		gm.logger.LogWarn("GEOMAP icon option", err.Error())
 		return
 	}
 	icn.Name = name

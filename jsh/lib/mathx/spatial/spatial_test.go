@@ -125,7 +125,7 @@ func TestParseGeoJSONErrors(t *testing.T) {
 			Output: []string{
 				"missing type: GeoJSONError missing a GeoJSON type",
 				"unsupported type: GeoJSONError unsupported GeoJSON type",
-				"invalid feature collection: GeoJSONError json: cannot unmarshal string into Go value of type []*geojson.Feature",
+				"invalid feature collection: GeoJSONError json: cannot unmarshal string into Go value of type []*geojson.Feature...",
 				"invalid feature: GeoJSONError json: cannot unmarshal string into Go value of type geojson.jsonGeometry",
 				"invalid geometry: GeoJSONError json: cannot unmarshal string into Go value of type orb.Point",
 			},

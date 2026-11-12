@@ -1034,7 +1034,9 @@ scrape_configs:
 	// in statzAllowed so the allowDebug middleware permits scrape requests.
 	// On Linux with host network mode, source IP is 127.0.0.1 and always allowed.
 	if runtime.GOOS != "linux" {
-		for _, nw := range prom.Container.NetworkSettings.Networks {
+		settings := prom.Container().NetworkSettings
+		require.NotNil(t, settings, "prometheus container has no network settings")
+		for _, nw := range settings.Networks {
 			if nw != nil && nw.IPAddress.IsValid() {
 				httpServer.statzAllowed = append(httpServer.statzAllowed, nw.IPAddress.String())
 				break
@@ -1138,8 +1140,10 @@ scrape_configs:
 		return nil
 	})
 	if err != nil {
-		if logs, logErr := prom.Logs(t.Context()); logErr == nil {
-			t.Logf("prometheus logs:\n%s", logs)
+		if stdout, stderr, logErr := prom.Logs(t.Context()); logErr == nil {
+			t.Logf("prometheus stdout:\n%s\nprometheus stderr:\n%s", stdout, stderr)
+		} else {
+			t.Logf("failed to retrieve prometheus logs: %v", logErr)
 		}
 	}
 	require.NoError(t, err)

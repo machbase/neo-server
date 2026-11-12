@@ -113,7 +113,7 @@ func (w *ChartW) SetVisualMapColor(min float64, max float64, colors ...string) {
 func (w *ChartW) SetXAxis(args ...any) {
 	if len(args) != 2 && len(args) != 3 {
 		if w.logger != nil {
-			w.logger.LogError("xAxis(idx, label [, type]), got %d args", len(args))
+			w.logger.LogErrorf("xAxis(idx, label [, type]), got %d args", len(args))
 		}
 		return
 	}
@@ -126,7 +126,7 @@ func (w *ChartW) SetXAxis(args ...any) {
 	}
 	if label, ok := args[1].(string); !ok {
 		if w.logger != nil {
-			w.logger.LogError("xAxis() label should be string, got %T", args[1])
+			w.logger.LogErrorf("xAxis() label should be string, got %T", args[1])
 		}
 	} else {
 		w.xAxisLabel = label
@@ -134,7 +134,7 @@ func (w *ChartW) SetXAxis(args ...any) {
 	if len(args) == 3 {
 		if typ, ok := args[2].(string); !ok {
 			if w.logger != nil {
-				w.logger.LogError("xAxis() type should be string, got %T", args[1])
+				w.logger.LogErrorf("xAxis() type should be string, got %T", args[2])
 			}
 		} else {
 			w.xAxisType = typ
@@ -146,7 +146,7 @@ func (w *ChartW) SetXAxis(args ...any) {
 func (w *ChartW) SetYAxis(args ...any) {
 	if len(args) != 2 && len(args) != 3 {
 		if w.logger != nil {
-			w.logger.LogError("yAxis(idx, label [, type]), got %d args", len(args))
+			w.logger.LogErrorf("yAxis(idx, label [, type]), got %d args", len(args))
 		}
 		return
 	}
@@ -159,7 +159,7 @@ func (w *ChartW) SetYAxis(args ...any) {
 	}
 	if label, ok := args[1].(string); !ok {
 		if w.logger != nil {
-			w.logger.LogError("yAxis() label should be string, got %T", args[1])
+			w.logger.LogErrorf("yAxis() label should be string, got %T", args[1])
 		}
 	} else {
 		w.yAxisLabel = label
@@ -167,7 +167,7 @@ func (w *ChartW) SetYAxis(args ...any) {
 	if len(args) == 3 {
 		if typ, ok := args[2].(string); !ok {
 			if w.logger != nil {
-				w.logger.LogError("yAxis() type should be string, got %T", args[1])
+				w.logger.LogErrorf("yAxis() type should be string, got %T", args[2])
 			}
 		} else {
 			w.yAxisType = typ
@@ -179,7 +179,7 @@ func (w *ChartW) SetYAxis(args ...any) {
 func (w *ChartW) SetZAxis(args ...any) {
 	if len(args) != 2 && len(args) != 3 {
 		if w.logger != nil {
-			w.logger.LogError("zAxis(idx, label [, type]), got %d args", len(args))
+			w.logger.LogErrorf("zAxis(idx, label [, type]), got %d args", len(args))
 		}
 		return
 	}
@@ -192,7 +192,7 @@ func (w *ChartW) SetZAxis(args ...any) {
 	}
 	if label, ok := args[1].(string); !ok {
 		if w.logger != nil {
-			w.logger.LogError("zAxis() label should be string, got %T", args[1])
+			w.logger.LogErrorf("zAxis() label should be string, got %T", args[1])
 		}
 	} else {
 		w.zAxisLabel = label
@@ -200,7 +200,7 @@ func (w *ChartW) SetZAxis(args ...any) {
 	if len(args) == 3 {
 		if typ, ok := args[2].(string); !ok {
 			if w.logger != nil {
-				w.logger.LogError("zAxis() type should be string, got %T", args[1])
+				w.logger.LogErrorf("zAxis() type should be string, got %T", args[2])
 			}
 		} else {
 			w.zAxisType = typ
