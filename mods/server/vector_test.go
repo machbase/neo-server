@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -22,7 +25,7 @@ func TestVectorIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	const table = "GO_VECTOR_4211"
-	if _, err := db.ExecContext(ctx, "CREATE TRANSACTION TABLE "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(3))"); err != nil {
+	if _, err := db.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(3))"); err != nil {
 		t.Fatal(err)
 	}
 	defer db.ExecContext(context.Background(), "DROP TABLE "+table)
@@ -90,6 +93,54 @@ func TestVectorIntegration(t *testing.T) {
 		!reflect.DeepEqual(got, api.Vector{3, 2, 1}) {
 		t.Fatalf("dynamic VECTOR query = %v, %v", got, err)
 	}
+	var nearestID int32
+	var distance float64
+	if err := db.QueryRowContext(ctx,
+		"SELECT ID, VECTOR_DISTANCE(V, TO_VECTOR('[1,2,3]',3), 'COSINE') AS DISTANCE FROM "+table+
+			" WHERE ID IN (1,3) ORDER BY DISTANCE ASC LIMIT 1",
+	).Scan(&nearestID, &distance); err != nil || nearestID != 1 || distance != 0 {
+		t.Fatalf("nearest VECTOR = ID %d, distance %v, err %v", nearestID, distance, err)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"q": "SELECT ID, VECTOR_DISTANCE(V, TO_VECTOR(?,3), 'COSINE') AS DISTANCE FROM " + table + " ORDER BY DISTANCE ASC LIMIT ?",
+		"p": []any{"[1,2,3]", 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, httpServerAddress+"/db/query", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	httpResponse, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("HTTP VECTOR parameter query: %v", err)
+	}
+	defer httpResponse.Body.Close()
+	var response map[string]any
+	if err := json.NewDecoder(httpResponse.Body).Decode(&response); err != nil {
+		t.Fatalf("decode HTTP VECTOR parameter query: %v", err)
+	}
+	if response["success"] != true {
+		t.Fatalf("HTTP VECTOR parameter query failed: %#v", response)
+	}
+	data, ok := response["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("HTTP VECTOR parameter query data = %#v", response["data"])
+	}
+	resultRows, ok := data["rows"].([]any)
+	if !ok || len(resultRows) != 2 {
+		t.Fatalf("HTTP VECTOR parameter query rows = %#v", data["rows"])
+	}
+	row, ok := resultRows[0].([]any)
+	if !ok || len(row) != 2 {
+		t.Fatalf("HTTP VECTOR parameter query row = %#v", resultRows[0])
+	}
+	httpDistance, ok := row[1].(float64)
+	if !ok || httpDistance < 0 || httpDistance >= 1 {
+		t.Fatalf("HTTP VECTOR parameter distance = %#v", row[1])
+	}
 
 	appender := &client.Appender{}
 	if err := appender.Connect(ctx, dsn, table, "ID", "V"); err != nil {
@@ -133,7 +184,7 @@ func TestVectorLargeWireIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	const table = "GO_VECTOR_LARGE_4211"
-	if _, err := db.ExecContext(ctx, "CREATE TRANSACTION TABLE "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(17000))"); err != nil {
+	if _, err := db.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+table+"(ID INTEGER PRIMARY KEY,V VECTOR(17000))"); err != nil {
 		t.Fatal(err)
 	}
 	defer db.ExecContext(context.Background(), "DROP TABLE "+table)
