@@ -54,7 +54,7 @@ jobs:
       - name: Setup go compiler
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Install Neo Engine
