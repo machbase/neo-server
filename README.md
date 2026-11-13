@@ -81,9 +81,22 @@ docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages centos-build-env
 - Install Go latest version
 - Require a C compiler and linker (e.g., gcc)
 - Checkout `machbase/neo-server`
-- Execute `go run mage.go install-neo-web` to download the web-UI package
 - Execute `go run mage.go machbase-neo` to build `machbase-neo`
 - Find the executable binary in `./tmp/machbase-neo`
+
+The build automatically installs the versions specified in
+`magefiles/neo-web-version.txt` and `magefiles/neo-engine-version.txt`. Release
+archives are cached by version and platform under `tmp/release-cache`, so
+switching branches can reuse previously downloaded versions. The web UI and
+engine library are restored from the cache if they differ from the selected
+release. `go run mage.go test`, `testN`, and `testAll` also ensure that the
+selected engine is installed before running tests. The checked-in engine
+header is not replaced.
+
+Run `go run mage.go install-neo-web` or `go run mage.go install-neo-engine` to
+download the selected release again and refresh its cache. A build replaces
+locally modified embedded UI files; use the server's `--ui` option to test a
+local web build instead.
 
 ## Web User Interface
 

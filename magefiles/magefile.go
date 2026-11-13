@@ -4,7 +4,9 @@ import (
 	"archive/zip"
 	_ "embed"
 	"fmt"
+	"hash/crc32"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -59,6 +61,13 @@ func BuildNeoShell() error {
 func Build(target string, strip bool) error {
 	mg.Deps(CheckTmp, GetVersion)
 
+	if target == "machbase-neo" {
+		targetOS, targetArch := goTarget()
+		if err := ensureBuildArtifacts(targetOS, targetArch); err != nil {
+			return err
+		}
+	}
+
 	fmt.Println("Build", target, vBuildVersion, "...")
 
 	mod := "github.com/machbase/neo-server/v8"
@@ -75,6 +84,7 @@ func Build(target string, strip bool) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		"-X", fmt.Sprintf("%s/spi/mach/native.Version=%s", mod, strings.TrimSpace(neo_engine_version)),
 	}, " ")
 	if strip {
 		// this may reduce binary size about (110M -> 86M)
@@ -109,6 +119,11 @@ func Build(target string, strip bool) error {
 
 func BuildX(target string, targetOS string, targetArch string) error {
 	mg.Deps(GetVersion, CheckTmp)
+	if target == "machbase-neo" {
+		if err := ensureBuildArtifacts(targetOS, targetArch); err != nil {
+			return err
+		}
+	}
 	fmt.Println("Build", target, vBuildVersion, "...")
 
 	zigVer, err := sh.Output("zig", "version")
@@ -181,6 +196,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		"-X", fmt.Sprintf("%s/spi/mach/native.Version=%s", mod, strings.TrimSpace(neo_engine_version)),
 	}, " ")
 	args = append(args, "-ldflags", ldflags)
 
@@ -220,6 +236,11 @@ func TestAll() error {
 
 func runTest(extraArgs ...string) error {
 	mg.Deps(CheckTmp)
+
+	targetOS, targetArch := goTarget()
+	if err := installArtifact(engineArtifact(neo_engine_version, targetOS, targetArch), false); err != nil {
+		return err
+	}
 
 	env := map[string]string{
 		"GO111MODULE": "on",
@@ -558,33 +579,7 @@ func InstallNeoWeb() error {
 }
 
 func InstallNeoWebX(ver string) error {
-	mg.Deps(CheckTmp)
-
-	ver = strings.TrimSpace(ver)
-	url := fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver)
-	dst := "./tmp/web-ui.zip"
-	uiDir := "./mods/server/web/ui"
-
-	if runtime.GOOS == "windows" {
-		if err := wget(url, dst); err != nil {
-			return err
-		}
-	} else {
-		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
-			return err
-		}
-	}
-
-	// remove web/ui/
-	os.RemoveAll(uiDir)
-	// create web/ui/
-	if err := os.Mkdir(uiDir, 0755); err != nil {
-		return err
-	}
-	if err := unzip(dst, uiDir); err != nil {
-		return err
-	}
-	return nil
+	return installArtifact(webArtifact(ver), true)
 }
 
 //go:embed neo-engine-version.txt
@@ -595,34 +590,298 @@ func InstallNeoEngine() error {
 }
 
 func InstallNeoEngineX(ver string) error {
-	mg.Deps(CheckTmp)
+	return installArtifact(engineArtifact(ver, runtime.GOOS, runtime.GOARCH), true)
+}
 
+type releaseArtifact struct {
+	version, name, url, destination, required string
+	web                                       bool
+}
+
+func webArtifact(ver string) releaseArtifact {
 	ver = strings.TrimSpace(ver)
-	archiveOS := runtime.GOOS
-	archiveArch := runtime.GOARCH
+	return releaseArtifact{
+		version: ver, name: "web-ui.zip",
+		url:         fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver),
+		destination: "./mods/server/web/ui", required: "index.html", web: true,
+	}
+}
+
+func engineArtifact(ver, archiveOS, archiveArch string) releaseArtifact {
+	ver = strings.TrimSpace(ver)
 	if archiveOS == "linux" && archiveArch == "arm" {
 		archiveArch = "arm32"
 	}
 	archiveName := fmt.Sprintf("libmachengine_standard_%s_%s.zip", archiveOS, archiveArch)
-	url := fmt.Sprintf("https://github.com/machbase/packages/releases/download/%s/%s", ver, archiveName)
-	dst := filepath.Join("./tmp", archiveName)
-	nativeDir := "./spi/mach/native"
-
-	if runtime.GOOS == "windows" {
-		if err := wget(url, dst); err != nil {
-			return err
-		}
-	} else {
-		if err := sh.RunV("curl", "-f", "-o", dst, "-L", url); err != nil {
-			return err
-		}
+	return releaseArtifact{
+		version: ver, name: archiveName,
+		url:         fmt.Sprintf("https://github.com/machbase/packages/releases/download/%s/%s", ver, archiveName),
+		destination: "./spi/mach/native", required: strings.TrimSuffix(archiveName, ".zip") + ".a",
 	}
+}
 
-	if err := os.MkdirAll(nativeDir, 0755); err != nil {
+func goTarget() (string, string) {
+	targetOS, targetArch := os.Getenv("GOOS"), os.Getenv("GOARCH")
+	if targetOS == "" {
+		targetOS = runtime.GOOS
+	}
+	if targetArch == "" {
+		targetArch = runtime.GOARCH
+	}
+	return targetOS, targetArch
+}
+
+func ensureBuildArtifacts(targetOS, targetArch string) error {
+	if err := installArtifact(webArtifact(neo_web_version), false); err != nil {
 		return err
 	}
-	_ = os.Remove(filepath.Join(nativeDir, strings.TrimSuffix(archiveName, ".zip")+".a"))
-	if err := unzip(dst, nativeDir); err != nil {
+	return installArtifact(engineArtifact(neo_engine_version, targetOS, targetArch), false)
+}
+
+func installArtifact(a releaseArtifact, force bool) error {
+	if a.version == "" || a.version == "." || a.version == ".." ||
+		strings.ContainsAny(a.version, `/\`) {
+		return fmt.Errorf("invalid artifact version %q", a.version)
+	}
+	cacheDir := filepath.Join("tmp", "release-cache", strings.TrimSuffix(a.name, ".zip"), a.version)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return err
+	}
+	cache := filepath.Join(cacheDir, a.name)
+	if !force {
+		if err := validateArtifact(cache, a); err == nil {
+			fmt.Printf("Using cached %s %s\n", a.name, a.version)
+		} else if !os.IsNotExist(err) {
+			fmt.Printf("Invalid cached %s %s: %v; downloading again\n", a.name, a.version, err)
+			force = true
+		} else {
+			force = true
+		}
+	}
+	if force {
+		fmt.Printf("Downloading %s %s\n", a.name, a.version)
+		if err := downloadArtifact(a, cache); err != nil {
+			return err
+		}
+	}
+	matches, err := artifactInstalled(cache, a)
+	if err != nil {
+		return err
+	}
+	if matches && !force {
+		return nil
+	}
+	fmt.Printf("Installing %s %s\n", a.name, a.version)
+	return extractArtifact(cache, a)
+}
+
+func downloadArtifact(a releaseArtifact, cache string) error {
+	client := &http.Client{Timeout: 10 * time.Minute}
+	response, err := client.Get(a.url)
+	if err != nil {
+		return fmt.Errorf("download %s: %w", a.url, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("download %s: %s", a.url, response.Status)
+	}
+	file, err := os.CreateTemp(filepath.Dir(cache), ".download-*.zip")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := io.Copy(file, response.Body); err != nil {
+		file.Close()
+		return fmt.Errorf("download %s: %w", a.url, err)
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := validateArtifact(file.Name(), a); err != nil {
+		return fmt.Errorf("invalid download %s: %w", a.url, err)
+	}
+	if err := os.Rename(file.Name(), cache); err != nil {
+		return fmt.Errorf("cache %s: %w", a.name, err)
+	}
+	return nil
+}
+
+func validateArtifact(path string, a releaseArtifact) error {
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	found := false
+	seen := make(map[string]bool)
+	for _, file := range archive.File {
+		name := file.Name
+		if !fs.ValidPath(strings.TrimSuffix(name, "/")) || !filepath.IsLocal(filepath.FromSlash(name)) ||
+			strings.Contains(name, `\`) || seen[name] ||
+			(!file.FileInfo().IsDir() && !file.Mode().IsRegular()) {
+			return fmt.Errorf("invalid archive entry %q", name)
+		}
+		seen[name] = true
+		if name == a.required && file.Mode().IsRegular() {
+			found = true
+		}
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		reader, err := file.Open()
+		if err != nil {
+			return err
+		}
+		_, readErr := io.Copy(io.Discard, reader)
+		closeErr := reader.Close()
+		if readErr != nil {
+			return fmt.Errorf("read %s: %w", name, readErr)
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	if !found {
+		return fmt.Errorf("archive missing %s", a.required)
+	}
+	return nil
+}
+
+func artifactInstalled(path string, a releaseArtifact) (bool, error) {
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		return false, err
+	}
+	defer archive.Close()
+	expected := make(map[string]bool)
+	for _, entry := range archive.File {
+		if entry.FileInfo().IsDir() || (!a.web && entry.Name != a.required) {
+			continue
+		}
+		expected[entry.Name] = true
+		installedPath := filepath.Join(a.destination, filepath.FromSlash(entry.Name))
+		info, err := os.Lstat(installedPath)
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if !info.Mode().IsRegular() {
+			return false, nil
+		}
+		file, err := os.Open(installedPath)
+		if err != nil {
+			return false, err
+		}
+		hash := crc32.NewIEEE()
+		size, readErr := io.Copy(hash, file)
+		closeErr := file.Close()
+		if readErr != nil {
+			return false, readErr
+		}
+		if closeErr != nil {
+			return false, closeErr
+		}
+		if uint64(size) != entry.UncompressedSize64 || hash.Sum32() != entry.CRC32 {
+			return false, nil
+		}
+	}
+	if a.web {
+		extra := false
+		err := filepath.WalkDir(a.destination, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() {
+				rel, err := filepath.Rel(a.destination, path)
+				if err != nil {
+					return err
+				}
+				if !expected[filepath.ToSlash(rel)] {
+					extra = true
+					return fs.SkipAll
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return false, err
+		}
+		return !extra, nil
+	}
+	return true, nil
+}
+
+func extractArtifact(path string, a releaseArtifact) error {
+	stage, err := os.MkdirTemp("tmp", "install-*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if stage != "" {
+			os.RemoveAll(stage)
+		}
+	}()
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	output := filepath.Join(stage, "output")
+	if err := os.Mkdir(output, 0755); err != nil {
+		return err
+	}
+	for _, entry := range archive.File {
+		if entry.FileInfo().IsDir() || (!a.web && entry.Name != a.required) {
+			continue
+		}
+		dst := filepath.Join(output, filepath.FromSlash(entry.Name))
+		if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+			return err
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			return err
+		}
+		writer, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, entry.Mode().Perm())
+		if err != nil {
+			reader.Close()
+			return err
+		}
+		_, copyErr := io.Copy(writer, reader)
+		readCloseErr, writeCloseErr := reader.Close(), writer.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if readCloseErr != nil {
+			return readCloseErr
+		}
+		if writeCloseErr != nil {
+			return writeCloseErr
+		}
+	}
+	if !a.web {
+		if err := os.MkdirAll(a.destination, 0755); err != nil {
+			return err
+		}
+		return os.Rename(filepath.Join(output, a.required), filepath.Join(a.destination, a.required))
+	}
+	backup := filepath.Join(stage, "previous")
+	hadPrevious := false
+	if err := os.Rename(a.destination, backup); err == nil {
+		hadPrevious = true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(output, a.destination); err != nil {
+		if hadPrevious {
+			if restoreErr := os.Rename(backup, a.destination); restoreErr != nil {
+				// Keep the previous UI if the rollback fails.
+				stage = ""
+				return fmt.Errorf("install UI: %v; restore previous UI at %s: %w", err, backup, restoreErr)
+			}
+		}
 		return err
 	}
 	return nil
