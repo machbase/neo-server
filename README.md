@@ -92,6 +92,14 @@ docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages centos-build-env
 - Execute `go run mage.go machbase-neo` to build `machbase-neo`
 - Find the executable binary in `./tmp/machbase-neo`
 
+The build version uses the closest reachable version tag in the current
+commit's history. If multiple tags are equally close, the highest semantic
+version is selected. A source tree without Git metadata uses
+`v0.0.0-snapshot.nogit`, reports its commit as `unknown`, and does not embed
+VCS metadata from a parent directory. If a Git
+repository exists but has no reachable version tag, the build fails; fetch
+the repository history and tags if using a shallow checkout.
+
 The build automatically installs the versions specified in
 `magefiles/neo-web-version.txt` and `magefiles/neo-engine-version.txt`. Release
 archives are cached by version and platform under `tmp/release-cache`, so
