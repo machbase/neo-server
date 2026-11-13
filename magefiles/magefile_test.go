@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -131,6 +133,96 @@ func TestReleaseArtifactCache(t *testing.T) {
 	}
 	assertFileContent(t, "ui/index.html", "refreshed")
 	install(false, 5, "refreshed")
+}
+
+func TestCopyWebUI(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "ui")
+	backup := filepath.Join(root, "backup")
+	requireMkdirAll(t, filepath.Join(source, "assets"))
+	requireWriteFile(t, filepath.Join(source, "index.html"), []byte("old UI"), 0644)
+	requireWriteFile(t, filepath.Join(source, "assets", "app.js"), []byte("old script"), 0600)
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink("assets/app.js", filepath.Join(source, "link")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := copyWebUI(source, backup); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContent(t, filepath.Join(backup, "index.html"), "old UI")
+	assertFileContent(t, filepath.Join(backup, "assets", "app.js"), "old script")
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(filepath.Join(backup, "assets", "app.js"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0600 {
+			t.Fatalf("copied file mode = %v, want 0600", info.Mode().Perm())
+		}
+		target, err := os.Readlink(filepath.Join(backup, "link"))
+		if err != nil || target != "assets/app.js" {
+			t.Fatalf("copied symlink = %q, err = %v", target, err)
+		}
+	}
+	if err := copyWebUI(filepath.Join(root, "missing"), filepath.Join(root, "missing-backup")); err == nil {
+		t.Fatal("copying a missing UI succeeded")
+	}
+	assertFileContent(t, filepath.Join(source, "index.html"), "old UI")
+}
+
+func TestReplaceWebUICrossDevice(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		failInstall bool
+		failRestore bool
+	}{
+		{name: "install"},
+		{name: "restore after install failure", failInstall: true},
+		{name: "retain backup after restore failure", failInstall: true, failRestore: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			destination := filepath.Join(root, "ui")
+			output := filepath.Join(root, "output")
+			backup := filepath.Join(root, "previous")
+			requireMkdirAll(t, destination)
+			requireMkdirAll(t, output)
+			requireWriteFile(t, filepath.Join(destination, "index.html"), []byte("old UI"), 0644)
+			requireWriteFile(t, filepath.Join(destination, "old.js"), []byte("old asset"), 0644)
+			requireWriteFile(t, filepath.Join(output, "index.html"), []byte("new UI"), 0644)
+
+			rename := func(from, to string) error {
+				if from == destination {
+					return &os.LinkError{Op: "rename", Old: from, New: to, Err: syscall.EXDEV}
+				}
+				if (from == output && tt.failInstall) || (from == backup && tt.failRestore) {
+					return os.ErrPermission
+				}
+				return os.Rename(from, to)
+			}
+			keepBackup, err := replaceWebUI(output, destination, backup, rename)
+			if (err != nil) != tt.failInstall || keepBackup != tt.failRestore {
+				t.Fatalf("keepBackup = %v, err = %v", keepBackup, err)
+			}
+			if tt.failRestore {
+				if !strings.Contains(err.Error(), backup) || !errors.Is(err, os.ErrPermission) {
+					t.Fatalf("restore error does not identify backup: %v", err)
+				}
+				assertFileContent(t, filepath.Join(backup, "index.html"), "old UI")
+				assertFileContent(t, filepath.Join(backup, "old.js"), "old asset")
+			} else if tt.failInstall {
+				assertFileContent(t, filepath.Join(destination, "index.html"), "old UI")
+				assertFileContent(t, filepath.Join(destination, "old.js"), "old asset")
+			} else {
+				assertFileContent(t, filepath.Join(destination, "index.html"), "new UI")
+				if _, err := os.Stat(filepath.Join(destination, "old.js")); !os.IsNotExist(err) {
+					t.Fatalf("old asset still exists: %v", err)
+				}
+			}
+		})
+	}
 }
 
 func TestEngineArtifactPreservesHeader(t *testing.T) {
