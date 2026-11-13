@@ -112,7 +112,8 @@ header is not replaced.
 Run `go run mage.go install-neo-web` or `go run mage.go install-neo-engine` to
 download the selected release again and refresh its cache. A build replaces
 locally modified embedded UI files; use the server's `--ui` option to test a
-local web build instead.
+local web build instead. If replacing the UI fails and its backup cannot be
+restored, the error reports where the previous UI was retained.
 
 ## Web User Interface
 
