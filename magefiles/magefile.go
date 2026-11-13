@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	_ "embed"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	_ "github.com/magefile/mage/mage"
 	"github.com/magefile/mage/mg"
@@ -40,6 +42,8 @@ var vLastVersion string
 var vLastCommit string
 var vIsNightly bool
 var vBuildVersion string
+
+const unknownGitSHA = "unknown"
 
 func BuildVersion() {
 	mg.Deps(GetVersion)
@@ -73,11 +77,14 @@ func Build(target string, strip bool) error {
 	mod := "github.com/machbase/neo-server/v8"
 	edition := "standard"
 	timestamp := time.Now().Format("2006-01-02T15:04:05")
-	gitSHA := vLastCommit[0:8]
+	gitSHA := shortGitSHA()
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
 	env := map[string]string{"GO111MODULE": "on"}
 	args := []string{"build"}
+	if vLastCommit == unknownGitSHA {
+		args = append(args, "-buildvcs=false")
+	}
 	ldflags := strings.Join([]string{
 		"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
 		"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
@@ -137,7 +144,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	mod := "github.com/machbase/neo-server/v8"
 	edition := "standard"
 	timestamp := time.Now().Format("2006-01-02T15:04:05")
-	gitSHA := vLastCommit[0:8]
+	gitSHA := shortGitSHA()
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
 	env := map[string]string{"GO111MODULE": "on"}
@@ -190,6 +197,9 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	}
 
 	args := []string{"build"}
+	if vLastCommit == unknownGitSHA {
+		args = append(args, "-buildvcs=false")
+	}
 	ldflags := strings.Join([]string{
 		"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
 		"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
@@ -461,6 +471,20 @@ func CleanPackage() error {
 func GetVersion() error {
 	repo, err := git.PlainOpen(".")
 	if err != nil {
+		if errors.Is(err, git.ErrRepositoryNotExists) {
+			_, statErr := os.Lstat(".git")
+			if os.IsNotExist(statErr) {
+				vLastVersion = ""
+				vLastCommit = unknownGitSHA
+				vIsNightly = true
+				vBuildVersion = "v0.0.0-snapshot.nogit"
+				fmt.Fprintln(os.Stderr, "Git repository not found; using", vBuildVersion)
+				return nil
+			}
+			if statErr != nil {
+				return statErr
+			}
+		}
 		return err
 	}
 	headRef, err := repo.Head()
@@ -473,34 +497,13 @@ func GetVersion() error {
 		return err
 	}
 
-	var lastTag *object.Tag
-	iter, err := repo.TagObjects()
+	tagName, tagCommit, err := nearestVersionTag(repo, headCommit.Hash)
 	if err != nil {
 		return err
 	}
-	iter.ForEach(func(tagObj *object.Tag) error {
-		if !strings.HasPrefix(tagObj.Name, "v") {
-			return nil
-		}
-		if lastTag == nil {
-			lastTag = tagObj
-		} else {
-			lastCommit, _ := lastTag.Commit()
-			tagCommit, _ := tagObj.Commit()
-			if tagCommit.Author.When.Sub(lastCommit.Author.When) > 0 {
-				lastTag = tagObj
-			}
-		}
-		return nil
-	})
-
-	lastTagCommit, err := lastTag.Commit()
-	if err != nil {
-		return err
-	}
-	vLastVersion = lastTag.Name
+	vLastVersion = tagName
 	vLastCommit = headCommit.Hash.String()
-	vIsNightly = lastTagCommit.Hash.String() != vLastCommit
+	vIsNightly = tagCommit != headCommit.Hash
 	lastTagSemVer, err := semver.NewVersion(vLastVersion)
 	if err != nil {
 		return err
@@ -522,6 +525,93 @@ func GetVersion() error {
 	}
 
 	return nil
+}
+
+func shortGitSHA() string {
+	if len(vLastCommit) > 8 {
+		return vLastCommit[:8]
+	}
+	return vLastCommit
+}
+
+func nearestVersionTag(repo *git.Repository, head plumbing.Hash) (string, plumbing.Hash, error) {
+	type versionTag struct {
+		name    string
+		version *semver.Version
+	}
+	tags := make(map[plumbing.Hash]versionTag)
+	iter, err := repo.Tags()
+	if err != nil {
+		return "", plumbing.ZeroHash, err
+	}
+	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		name := ref.Name().Short()
+		if !strings.HasPrefix(name, "v") {
+			return nil
+		}
+		version, err := semver.NewVersion(name)
+		if err != nil {
+			return nil
+		}
+		obj, err := repo.Object(plumbing.AnyObject, ref.Hash())
+		if err != nil {
+			return fmt.Errorf("resolve tag %s: %w", name, err)
+		}
+		for {
+			tag, ok := obj.(*object.Tag)
+			if !ok {
+				break
+			}
+			obj, err = tag.Object()
+			if err != nil {
+				return fmt.Errorf("resolve tag %s: %w", name, err)
+			}
+		}
+		commit, ok := obj.(*object.Commit)
+		if !ok {
+			return nil
+		}
+		old, exists := tags[commit.Hash]
+		if !exists || version.GreaterThan(old.version) || (version.Equal(old.version) && name > old.name) {
+			tags[commit.Hash] = versionTag{name: name, version: version}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", plumbing.ZeroHash, err
+	}
+
+	visited := map[plumbing.Hash]bool{head: true}
+	level := []plumbing.Hash{head}
+	for len(level) > 0 {
+		var best versionTag
+		var bestCommit plumbing.Hash
+		for _, hash := range level {
+			tag, ok := tags[hash]
+			if ok && (best.version == nil || tag.version.GreaterThan(best.version) ||
+				(tag.version.Equal(best.version) && tag.name > best.name)) {
+				best, bestCommit = tag, hash
+			}
+		}
+		if best.version != nil {
+			return best.name, bestCommit, nil
+		}
+		var next []plumbing.Hash
+		for _, hash := range level {
+			commit, err := repo.CommitObject(hash)
+			if err != nil {
+				return "", plumbing.ZeroHash, fmt.Errorf("read commit %s: %w", hash, err)
+			}
+			for _, parent := range commit.ParentHashes {
+				if !visited[parent] {
+					visited[parent] = true
+					next = append(next, parent)
+				}
+			}
+		}
+		level = next
+	}
+	return "", plumbing.ZeroHash, fmt.Errorf("no version tag reachable from %s", head)
 }
 
 //go:embed neo-launcher-version.txt

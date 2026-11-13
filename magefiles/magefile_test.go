@@ -13,7 +13,177 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
+
+func TestGetVersionReachableTags(t *testing.T) {
+	root := t.TempDir()
+	repo, err := git.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature := &object.Signature{Name: "Test", Email: "test@example.com", When: time.Unix(1000, 0)}
+	commit := func(message string, parents ...plumbing.Hash) plumbing.Hash {
+		t.Helper()
+		signature.When = signature.When.Add(time.Hour)
+		hash, err := worktree.Commit(message, &git.CommitOptions{
+			Author: signature, Parents: parents, AllowEmptyCommits: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return hash
+	}
+	tag := func(name string, hash plumbing.Hash, annotated bool) {
+		t.Helper()
+		var options *git.CreateTagOptions
+		if annotated {
+			options = &git.CreateTagOptions{Tagger: signature, Message: name}
+		}
+		if _, err := repo.CreateTag(name, hash, options); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := commit("base")
+	tag("v8.5.10", base, true)
+	mainRelease := commit("main release", base)
+	tag("v8.7.3", mainRelease, true)
+	mainHead := commit("main development", mainRelease)
+	maintenance := commit("maintenance release", base)
+	tag("v8.5.13", maintenance, true)
+	merge := commit("merge", mainHead, maintenance)
+	equalDistanceMerge := commit("equal distance merge", mainRelease, maintenance)
+	rc := commit("release candidate", mainHead)
+	tag("v8.9.0-rc1", rc, false)
+	rcHead := commit("after release candidate", rc)
+	tag("v-not-semver", rcHead, false)
+
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	check := func(hash plumbing.Hash, wantTag, wantVersion string, nightly bool) {
+		t.Helper()
+		if err := repo.Storer.SetReference(plumbing.NewHashReference(plumbing.HEAD, hash)); err != nil {
+			t.Fatal(err)
+		}
+		if err := GetVersion(); err != nil {
+			t.Fatal(err)
+		}
+		if vLastVersion != wantTag || vBuildVersion != wantVersion || vIsNightly != nightly || vLastCommit != hash.String() {
+			t.Fatalf("got tag=%s version=%s nightly=%t commit=%s; want tag=%s version=%s nightly=%t commit=%s",
+				vLastVersion, vBuildVersion, vIsNightly, vLastCommit, wantTag, wantVersion, nightly, hash)
+		}
+	}
+	check(mainHead, "v8.7.3", "v8.7.4-snapshot", true)
+	check(maintenance, "v8.5.13", "v8.5.13", false)
+	check(merge, "v8.5.13", "v8.5.14-snapshot", true)
+	check(equalDistanceMerge, "v8.7.3", "v8.7.4-snapshot", true)
+	check(rc, "v8.9.0-rc1", "v8.9.0-rc1", false)
+	check(rcHead, "v8.9.0-rc1", "v8.9.0-rc2-snapshot", true)
+	tag("v8.9.0", rc, true)
+	check(rc, "v8.9.0", "v8.9.0", false)
+}
+
+func TestGetVersionWithoutReachableTag(t *testing.T) {
+	root := t.TempDir()
+	repo, err := git.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature := &object.Signature{Name: "Test", Email: "test@example.com", When: time.Unix(1000, 0)}
+	first, err := worktree.Commit("first", &git.CommitOptions{Author: signature, AllowEmptyCommits: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateTag("v1.0.0", first, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("orphan"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worktree.Commit("orphan", &git.CommitOptions{Author: signature, AllowEmptyCommits: true}); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	if err := GetVersion(); err == nil || !strings.Contains(err.Error(), "no version tag reachable") {
+		t.Fatalf("GetVersion() error = %v, want no reachable version tag", err)
+	}
+}
+
+func TestGetVersionWithoutGit(t *testing.T) {
+	root := t.TempDir()
+	lastVersion, lastCommit, nightly, buildVersion := vLastVersion, vLastCommit, vIsNightly, vBuildVersion
+	t.Cleanup(func() {
+		vLastVersion, vLastCommit, vIsNightly, vBuildVersion = lastVersion, lastCommit, nightly, buildVersion
+	})
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+
+	vLastVersion = "v8.7.3"
+	vLastCommit = "1234567890"
+	vIsNightly = false
+	vBuildVersion = "v8.7.3"
+	if err := GetVersion(); err != nil {
+		t.Fatal(err)
+	}
+	if vLastVersion != "" || vLastCommit != "unknown" || !vIsNightly || vBuildVersion != "v0.0.0-snapshot.nogit" {
+		t.Fatalf("unexpected no-Git version state: tag=%q commit=%q nightly=%t version=%q",
+			vLastVersion, vLastCommit, vIsNightly, vBuildVersion)
+	}
+	if got := shortGitSHA(); got != "unknown" {
+		t.Fatalf("shortGitSHA() = %q, want unknown", got)
+	}
+	vLastCommit = "1234567890"
+	if got := shortGitSHA(); got != "12345678" {
+		t.Fatalf("shortGitSHA() = %q, want 12345678", got)
+	}
+
+	requireWriteFile(t, ".git", []byte("invalid git file"), 0644)
+	if err := GetVersion(); err == nil {
+		t.Fatal("GetVersion() accepted an invalid .git file")
+	}
+	requireWriteFile(t, ".git", []byte("gitdir: missing\n"), 0644)
+	if err := GetVersion(); err == nil {
+		t.Fatal("GetVersion() accepted a missing Git directory")
+	}
+	if err := os.Remove(".git"); err != nil {
+		t.Fatal(err)
+	}
+	requireMkdirAll(t, ".git")
+	if err := GetVersion(); err == nil {
+		t.Fatal("GetVersion() accepted an incomplete .git directory")
+	}
+}
 
 func TestMageTestInstallsEngine(t *testing.T) {
 	if runtime.GOOS == "windows" {
