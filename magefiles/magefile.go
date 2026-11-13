@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -904,7 +905,11 @@ func artifactInstalled(path string, a releaseArtifact) (bool, error) {
 }
 
 func extractArtifact(path string, a releaseArtifact) error {
-	stage, err := os.MkdirTemp("tmp", "install-*")
+	stageDir, stagePattern := "tmp", "install-*"
+	if a.web {
+		stageDir, stagePattern = filepath.Dir(a.destination), ".install-*"
+	}
+	stage, err := os.MkdirTemp(stageDir, stagePattern)
 	if err != nil {
 		return err
 	}
@@ -958,21 +963,100 @@ func extractArtifact(path string, a releaseArtifact) error {
 		return os.Rename(filepath.Join(output, a.required), filepath.Join(a.destination, a.required))
 	}
 	backup := filepath.Join(stage, "previous")
+	keepBackup, err := replaceWebUI(output, a.destination, backup, os.Rename)
+	if keepBackup {
+		stage = ""
+	}
+	return err
+}
+
+func replaceWebUI(output, destination, backup string, rename func(string, string) error) (bool, error) {
 	hadPrevious := false
-	if err := os.Rename(a.destination, backup); err == nil {
+	if err := rename(destination, backup); err == nil {
+		hadPrevious = true
+	} else if errors.Is(err, syscall.EXDEV) {
+		if err := copyWebUI(destination, backup); err != nil {
+			return false, fmt.Errorf("backup previous UI: %w", err)
+		}
+		if err := os.RemoveAll(destination); err != nil {
+			return true, fmt.Errorf("remove previous UI: %w; backup retained at %s", err, backup)
+		}
 		hadPrevious = true
 	} else if !os.IsNotExist(err) {
-		return err
+		return false, err
 	}
-	if err := os.Rename(output, a.destination); err != nil {
+	if err := rename(output, destination); err != nil {
 		if hadPrevious {
-			if restoreErr := os.Rename(backup, a.destination); restoreErr != nil {
-				// Keep the previous UI if the rollback fails.
-				stage = ""
-				return fmt.Errorf("install UI: %v; restore previous UI at %s: %w", err, backup, restoreErr)
+			if restoreErr := rename(backup, destination); restoreErr != nil {
+				return true, fmt.Errorf("install UI: %v; restore previous UI at %s: %w", err, backup, restoreErr)
 			}
 		}
+		return false, err
+	}
+	return false, nil
+}
+
+func copyWebUI(source, destination string) error {
+	var directories []struct {
+		path string
+		mode os.FileMode
+	}
+	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(destination, rel)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		switch {
+		case info.IsDir():
+			if err := os.Mkdir(dst, 0700); err != nil {
+				return err
+			}
+			directories = append(directories, struct {
+				path string
+				mode os.FileMode
+			}{dst, info.Mode().Perm()})
+		case info.Mode().IsRegular():
+			src, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+			if err != nil {
+				src.Close()
+				return err
+			}
+			_, copyErr := io.Copy(out, src)
+			readCloseErr, writeCloseErr := src.Close(), out.Close()
+			if err := errors.Join(copyErr, readCloseErr, writeCloseErr); err != nil {
+				return err
+			}
+			return os.Chmod(dst, info.Mode().Perm())
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(target, dst)
+		default:
+			return fmt.Errorf("unsupported UI file %s: %s", path, info.Mode())
+		}
+		return nil
+	})
+	if err != nil {
 		return err
+	}
+	for i := len(directories) - 1; i >= 0; i-- {
+		if err := os.Chmod(directories[i].path, directories[i].mode); err != nil {
+			return err
+		}
 	}
 	return nil
 }
