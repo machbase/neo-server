@@ -1,6 +1,6 @@
 module github.com/machbase/neo-server/v8
 
-go 1.25.12
+go 1.26.10
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
