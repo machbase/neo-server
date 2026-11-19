@@ -2135,6 +2135,8 @@ return: null on success
 #### timer.list
 
 listTimers returns all timer schedules.
+lastError and lastErrorAt describe the most recent failure, including when
+the timer remains running, and are retained after successful executions.
 
 `timer.list()`
 
@@ -2150,6 +2152,9 @@ listTimers returns all timer schedules.
   - `[].execUser` *string, optional*
   - `[].name` *string, optional*
   - `[].autoStart` *bool, optional*
+  - `[].continueOnError` *bool, optional*
+  - `[].lastError` *string, optional*
+  - `[].lastErrorAt` *string, optional*
   - `[].state` *string, optional*
   - `[].task` *string, optional*
   - `[].schedule` *string, optional*
@@ -2191,6 +2196,7 @@ listTimers returns all timer schedules.
 #### timer.get
 
 getTimer returns a timer schedule by ID.
+lastError and lastErrorAt describe the most recent failure.
 
 `timer.get(id)`
 
@@ -2205,6 +2211,9 @@ getTimer returns a timer schedule by ID.
   - `execUser` *string, optional*
   - `name` *string, optional*
   - `autoStart` *bool, optional*
+  - `continueOnError` *bool, optional*
+  - `lastError` *string, optional*
+  - `lastErrorAt` *string, optional*
   - `state` *string, optional*
   - `task` *string, optional*
   - `schedule` *string, optional*
@@ -2248,6 +2257,8 @@ getTimer returns a timer schedule by ID.
 #### timer.add
 
 addTimer creates a timer schedule and returns its ID.
+When continueOnError is true, task failures are recorded and the timer
+remains scheduled. The default is true.
 
 `timer.add(req)`
 
@@ -2257,6 +2268,7 @@ addTimer creates a timer schedule and returns its ID.
   - `req.spec` *string*
   - `req.command` *string*
   - `req.autoStart` *bool, optional*
+  - `req.continueOnError` *bool, optional*
 
 *Return*
 
@@ -2279,6 +2291,7 @@ addTimer creates a timer schedule and returns its ID.
             {
                 "autoStart": false,
                 "command": "string",
+                "continueOnError": false,
                 "name": "string",
                 "spec": "string"
             }
@@ -2306,6 +2319,7 @@ addTimer creates a timer schedule and returns its ID.
 #### timer.update
 
 updateTimer updates an existing timer schedule by ID.
+Omitting continueOnError preserves its existing value.
 
 
 return: null on success
@@ -2316,6 +2330,7 @@ return: null on success
 - `req` *object* - timer schedule update request
   - `req.id` *int64*
   - `req.autoStart` *bool, optional*
+  - `req.continueOnError` *bool, optional*
   - `req.spec` *string*
   - `req.command` *string*
 
@@ -2340,6 +2355,7 @@ return: null on success
             {
                 "autoStart": false,
                 "command": "string",
+                "continueOnError": false,
                 "id": 0,
                 "spec": "string"
             }

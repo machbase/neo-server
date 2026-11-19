@@ -1990,6 +1990,8 @@ func (s *Server) getServerCertificate(ctx context.Context, format string) (strin
 }
 
 // listTimers returns all timer schedules.
+// lastError and lastErrorAt describe the most recent failure, including when
+// the timer remains running, and are retained after successful executions.
 //
 // params:
 //
@@ -2010,6 +2012,7 @@ func (s *Server) listTimers(ctx context.Context) ([]*timer.Info, error) {
 }
 
 // getTimer returns a timer schedule by ID.
+// lastError and lastErrorAt describe the most recent failure.
 //
 // params:
 //   - id: timer ID
@@ -2198,13 +2201,16 @@ func (s *Server) stopSubscriber(ctx context.Context, id int64) error {
 }
 
 type addTimerRequest struct {
-	Name      string `json:"name"`
-	Spec      string `json:"spec"`
-	Command   string `json:"command"`
-	AutoStart bool   `json:"autoStart,omitempty"`
+	Name            string `json:"name"`
+	Spec            string `json:"spec"`
+	Command         string `json:"command"`
+	AutoStart       bool   `json:"autoStart,omitempty"`
+	ContinueOnError *bool  `json:"continueOnError,omitempty"`
 }
 
 // addTimer creates a timer schedule and returns its ID.
+// When continueOnError is true, task failures are recorded and the timer
+// remains scheduled. The default is true.
 //
 // params:
 //   - req: timer schedule request
@@ -2216,11 +2222,12 @@ func (s *Server) addTimer(ctx context.Context, req addTimerRequest) (int64, erro
 		return 0, err
 	}
 	rsp, err := s.timerSvc.Add(ctx, scope, &timer.AddRequest{
-		Name:      strings.ToLower(req.Name),
-		AutoStart: req.AutoStart,
-		Schedule:  req.Spec,
-		Task:      req.Command,
-		ExecUser:  scope.User,
+		Name:            strings.ToLower(req.Name),
+		AutoStart:       req.AutoStart,
+		ContinueOnError: req.ContinueOnError,
+		Schedule:        req.Spec,
+		Task:            req.Command,
+		ExecUser:        scope.User,
 	})
 	if err != nil {
 		return 0, err
@@ -2291,10 +2298,11 @@ func (s *Server) addSubscriber(ctx context.Context, req addSubscriberRequest) (i
 }
 
 type updateTimerRequest struct {
-	Id        int64  `json:"id"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Spec      string `json:"spec"`
-	Command   string `json:"command"`
+	Id              int64  `json:"id"`
+	AutoStart       bool   `json:"autoStart,omitempty"`
+	ContinueOnError *bool  `json:"continueOnError,omitempty"`
+	Spec            string `json:"spec"`
+	Command         string `json:"command"`
 }
 
 type updateSubscriberRequest struct {
@@ -2353,6 +2361,7 @@ func (s *Server) updateSubscriber(ctx context.Context, req updateSubscriberReque
 }
 
 // updateTimer updates an existing timer schedule by ID.
+// Omitting continueOnError preserves its existing value.
 //
 // params:
 //   - req: timer schedule update request
@@ -2364,10 +2373,11 @@ func (s *Server) updateTimer(ctx context.Context, req updateTimerRequest) error 
 		return err
 	}
 	rsp, err := s.timerSvc.Update(ctx, scope, &timer.UpdateRequest{
-		Id:        req.Id,
-		AutoStart: req.AutoStart,
-		Schedule:  req.Spec,
-		Task:      req.Command,
+		Id:              req.Id,
+		AutoStart:       req.AutoStart,
+		ContinueOnError: req.ContinueOnError,
+		Schedule:        req.Spec,
+		Task:            req.Command,
 	})
 	if err != nil {
 		return err

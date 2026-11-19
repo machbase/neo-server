@@ -156,6 +156,8 @@ func (c *fakeSubscriberConn) QueryContext(_ context.Context, query string, args 
 		return &fakeSubscriberRows{columns: []string{"USER_NAME"}}, nil
 	case strings.HasPrefix(q, "SELECT USER_NAME FROM _NEO_TIMER_DEF WHERE 1=0"):
 		return &fakeSubscriberRows{columns: []string{"USER_NAME"}}, nil
+	case strings.HasPrefix(q, "SELECT CONTINUE_ON_ERROR FROM _NEO_TIMER_DEF WHERE 1=0"):
+		return &fakeSubscriberRows{columns: []string{"CONTINUE_ON_ERROR"}}, nil
 	case strings.Contains(q, "FROM _NEO_SUBSCRIBER_DEF WHERE USER_NAME = ?"):
 		user := subscriberStringValue(args[0])
 		rows := make([]fakeSubscriberRow, 0, len(c.store.subs))
