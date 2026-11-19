@@ -43,7 +43,7 @@ type GetResponse struct {
 type AddRequest struct {
 	Name            string `json:"name,omitempty"`
 	AutoStart       bool   `json:"autoStart,omitempty"`
-	ContinueOnError bool   `json:"continueOnError,omitempty"`
+	ContinueOnError *bool  `json:"continueOnError,omitempty"`
 	Task            string `json:"task,omitempty"`
 	Schedule        string `json:"schedule,omitempty"`
 	ExecUser        string `json:"execUser,omitempty"`
@@ -118,7 +118,11 @@ func (service *Service) Add(ctx context.Context, scope model.UserScope, request 
 	if scope.User != "SYS" && scope.User != "sys" || execUser == "" {
 		execUser = scope.User
 	}
-	definition := &model.TimerDefinition{Name: request.Name, ExecUser: execUser, AutoStart: request.AutoStart, ContinueOnError: request.ContinueOnError, Task: request.Task, Schedule: request.Schedule}
+	continueOnError := true
+	if request.ContinueOnError != nil {
+		continueOnError = *request.ContinueOnError
+	}
+	definition := &model.TimerDefinition{Name: request.Name, ExecUser: execUser, AutoStart: request.AutoStart, ContinueOnError: continueOnError, Task: request.Task, Schedule: request.Schedule}
 	if err := service.models.SaveTimerForUser(ctx, scope, definition); err != nil {
 		return response(start, err), nil
 	}

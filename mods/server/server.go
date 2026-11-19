@@ -2205,12 +2205,12 @@ type addTimerRequest struct {
 	Spec            string `json:"spec"`
 	Command         string `json:"command"`
 	AutoStart       bool   `json:"autoStart,omitempty"`
-	ContinueOnError bool   `json:"continueOnError,omitempty"`
+	ContinueOnError *bool  `json:"continueOnError,omitempty"`
 }
 
 // addTimer creates a timer schedule and returns its ID.
 // When continueOnError is true, task failures are recorded and the timer
-// remains scheduled. The default is false.
+// remains scheduled. The default is true.
 //
 // params:
 //   - req: timer schedule request

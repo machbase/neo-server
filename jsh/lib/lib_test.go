@@ -188,9 +188,11 @@ func TestHelpModule(t *testing.T) {
 					...metadata.commands[name], command: name,
 					func: (config) => console.println(config.continueonerror)
 				}));
+				parseAndRun(['add', 'test', '@every 1m', '/test.tql'], metadata, configs);
 				parseAndRun(['add', '--continueonerror', 'test', '@every 1m', '/test.tql'], metadata, configs);
+				parseAndRun(['add', '--no-continueonerror', 'test', '@every 1m', '/test.tql'], metadata, configs);
 			`,
-			Output: []string{"true"},
+			Output: []string{"true", "true", "false"},
 		},
 		{
 			Name: "list all neo shell commands",

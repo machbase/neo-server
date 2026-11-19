@@ -51,7 +51,7 @@ function doAdd(config, args) {
     const spec = args.spec;
     const tqlPath = args.tqlPath;
     const autostart = config.autostart || false;
-    client.addTimer({ name: name, spec: spec, command: tqlPath, autoStart: autostart, continueOnError: config.continueonerror || false })
+    client.addTimer({ name: name, spec: spec, command: tqlPath, autoStart: autostart, continueOnError: config.continueonerror })
         .then(() => {
             console.println(`Timer '${name}' added successfully.`);
         })

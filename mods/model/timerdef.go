@@ -86,7 +86,7 @@ func scanTimerDefinition(scanner scheduleRowScanner) (*TimerDefinition, error) {
 		Name:            name.String,
 		ExecUser:        execUser.String,
 		AutoStart:       autoStart != 0,
-		ContinueOnError: continueOnError.Valid && continueOnError.Int64 != 0,
+		ContinueOnError: !continueOnError.Valid || continueOnError.Int64 != 0,
 		Disabled:        disabled != 0,
 		LastError:       lastError.String,
 		Task:            task.String,

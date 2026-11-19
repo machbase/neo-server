@@ -7,8 +7,9 @@ module.exports = root('timer', 'Manage timers', 'Usage: timer <command> [options
     add: command('timer add [options] <name> <spec> <tql-path>', 'Add a new timer', {
         options: {
             autostart: { type: 'boolean', description: 'Enable autostart for the timer', default: false },
-            continueonerror: { type: 'boolean', description: 'Keep the timer running after a task error', default: false },
+            continueonerror: { type: 'boolean', description: 'Keep the timer running after a task error', default: true },
         },
+        allowNegative: true,
         positionals: [
             { name: 'name', description: 'Name of the timer' },
             { name: 'spec', description: 'Timer specification in cron format' },

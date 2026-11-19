@@ -2258,7 +2258,7 @@ lastError and lastErrorAt describe the most recent failure.
 
 addTimer creates a timer schedule and returns its ID.
 When continueOnError is true, task failures are recorded and the timer
-remains scheduled. The default is false.
+remains scheduled. The default is true.
 
 `timer.add(req)`
 

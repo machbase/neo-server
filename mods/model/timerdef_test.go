@@ -36,6 +36,7 @@ type fakeTimerStore struct {
 
 type fakeTimerRow struct {
 	id, autoStart, continueOnError, disabled                        int64
+	continueOnErrorNull                                             bool
 	userName, name, execUser, lastError, task, schedule, attributes string
 	lastErrorAt                                                     time.Time
 }
@@ -82,6 +83,10 @@ func (c *fakeTimerConn) ExecContext(_ context.Context, query string, args []driv
 			return nil, c.store.alterError
 		}
 		c.store.missingContinueOnError = false
+		for id, row := range c.store.timers {
+			row.continueOnErrorNull = true
+			c.store.timers[id] = row
+		}
 		c.store.alterCount++
 		return fakeTimerResult{}, nil
 	case strings.HasPrefix(q, "DROP TABLE _NEO_TIMER_DEF"):
@@ -128,6 +133,7 @@ func (c *fakeTimerConn) ExecContext(_ context.Context, query string, args []driv
 			return fakeTimerResult{}, nil
 		}
 		row.name, row.execUser, row.autoStart, row.continueOnError, row.disabled, row.task, row.schedule, row.attributes = timerStringValue(args[0]), timerStringValue(args[1]), timerIntValue(args[2]), timerIntValue(args[3]), timerIntValue(args[4]), timerStringValue(args[5]), timerStringValue(args[6]), timerStringValue(args[7])
+		row.continueOnErrorNull = false
 		c.store.timers[id] = row
 		return fakeTimerResult{rowsAffected: 1}, nil
 	case strings.HasPrefix(q, "DELETE FROM _NEO_TIMER_DEF"):
@@ -247,14 +253,21 @@ func (r *fakeTimerRows) Next(dest []driver.Value) error {
 	return nil
 }
 func timerRows(row fakeTimerRow) driver.Rows {
-	return &fakeTimerRows{columns: timerColumns, values: [][]driver.Value{{row.id, row.userName, row.name, row.execUser, row.autoStart, row.continueOnError, row.disabled, row.lastError, row.lastErrorAt, row.task, row.schedule, row.attributes}}}
+	return &fakeTimerRows{columns: timerColumns, values: [][]driver.Value{{row.id, row.userName, row.name, row.execUser, row.autoStart, timerContinueValue(row), row.disabled, row.lastError, row.lastErrorAt, row.task, row.schedule, row.attributes}}}
 }
 func timerListRows(rows []fakeTimerRow) driver.Rows {
 	r := &fakeTimerRows{columns: timerColumns}
 	for _, row := range rows {
-		r.values = append(r.values, []driver.Value{row.id, row.userName, row.name, row.execUser, row.autoStart, row.continueOnError, row.disabled, row.lastError, row.lastErrorAt, row.task, row.schedule, row.attributes})
+		r.values = append(r.values, []driver.Value{row.id, row.userName, row.name, row.execUser, row.autoStart, timerContinueValue(row), row.disabled, row.lastError, row.lastErrorAt, row.task, row.schedule, row.attributes})
 	}
 	return r
+}
+
+func timerContinueValue(row fakeTimerRow) driver.Value {
+	if row.continueOnErrorNull {
+		return nil
+	}
+	return row.continueOnError
 }
 
 type fakeTimerResult struct{ lastInsertID, rowsAffected int64 }
@@ -368,7 +381,7 @@ func TestTimerDefinitionUpgradePreservesRowsAndRetries(t *testing.T) {
 	timers, err := provider.LoadAllTimers(context.Background())
 	require.NoError(t, err)
 	require.Len(t, timers, 1)
-	require.False(t, timers[0].ContinueOnError)
+	require.True(t, timers[0].ContinueOnError)
 	require.Equal(t, "old failure", timers[0].LastError)
 	require.Equal(t, "old.tql", timers[0].Task)
 	require.Equal(t, 1, store.alterCount)

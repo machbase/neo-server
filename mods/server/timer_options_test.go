@@ -45,6 +45,29 @@ type timerOptionsLoader struct{}
 
 func (timerOptionsLoader) Load(string) (*tql.Script, error) { return nil, nil }
 
+func TestTimerRPCAddContinueOnErrorDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		json string
+		want bool
+	}{
+		{"omitted", `{"name":"timer","spec":"@every 1m","command":"task.tql"}`, true},
+		{"true", `{"name":"timer","spec":"@every 1m","command":"task.tql","continueOnError":true}`, true},
+		{"false", `{"name":"timer","spec":"@every 1m","command":"task.tql","continueOnError":false}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := &timerOptionsProvider{}
+			s := &Server{timerSvc: timer.NewService(timer.WithProvider(provider), timer.WithTqlLoader(timerOptionsLoader{}))}
+			var add addTimerRequest
+			require.NoError(t, json.Unmarshal([]byte(tc.json), &add))
+			id, err := s.addTimer(contextWithModelUser(context.Background(), "sys"), add)
+			require.NoError(t, err)
+			t.Cleanup(func() { timer.Unregister(id) })
+			require.Equal(t, tc.want, provider.def.ContinueOnError)
+		})
+	}
+}
+
 func TestTimerRPCContinueOnError(t *testing.T) {
 	provider := &timerOptionsProvider{}
 	s := &Server{timerSvc: timer.NewService(timer.WithProvider(provider), timer.WithTqlLoader(timerOptionsLoader{}))}

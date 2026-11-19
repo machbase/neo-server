@@ -370,7 +370,7 @@ func TestManagementUsesOwnerScopeAndSysExecUser(t *testing.T) {
 		t.Fatal("missing task add was persisted")
 	}
 	service.tqlLoader = loaderStub{}
-	added, _ := service.Add(ctx, user, &AddRequest{Name: "timer", Task: "task", Schedule: "* * * * * *", ExecUser: "bob", ContinueOnError: true})
+	added, _ := service.Add(ctx, user, &AddRequest{Name: "timer", Task: "task", Schedule: "* * * * * *", ExecUser: "bob"})
 	if !added.Success || provider.timers[added.Id].ExecUser != "alice" || provider.savedScope != user {
 		t.Fatal("user add did not retain owner scope")
 	}
