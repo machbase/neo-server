@@ -5,7 +5,10 @@ const { command, root } = require('help/config');
 module.exports = root('timer', 'Manage timers', 'Usage: timer <command> [options]', {
     list: command('timer list', 'List all registered timers', { table: true }),
     add: command('timer add [options] <name> <spec> <tql-path>', 'Add a new timer', {
-        options: { autostart: { type: 'boolean', description: 'Enable autostart for the timer', default: false } },
+        options: {
+            autostart: { type: 'boolean', description: 'Enable autostart for the timer', default: false },
+            continueonerror: { type: 'boolean', description: 'Keep the timer running after a task error', default: false },
+        },
         positionals: [
             { name: 'name', description: 'Name of the timer' },
             { name: 'spec', description: 'Timer specification in cron format' },

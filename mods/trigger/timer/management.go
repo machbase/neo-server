@@ -10,14 +10,17 @@ import (
 )
 
 type Info struct {
-	Id        int64  `json:"id,omitempty"`
-	UserName  string `json:"userName,omitempty"`
-	ExecUser  string `json:"execUser,omitempty"`
-	Name      string `json:"name,omitempty"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	State     string `json:"state,omitempty"`
-	Task      string `json:"task,omitempty"`
-	Schedule  string `json:"schedule,omitempty"`
+	Id              int64  `json:"id,omitempty"`
+	UserName        string `json:"userName,omitempty"`
+	ExecUser        string `json:"execUser,omitempty"`
+	Name            string `json:"name,omitempty"`
+	AutoStart       bool   `json:"autoStart,omitempty"`
+	ContinueOnError bool   `json:"continueOnError,omitempty"`
+	LastError       string `json:"lastError,omitempty"`
+	LastErrorAt     string `json:"lastErrorAt,omitempty"`
+	State           string `json:"state,omitempty"`
+	Task            string `json:"task,omitempty"`
+	Schedule        string `json:"schedule,omitempty"`
 }
 
 type Response struct {
@@ -38,19 +41,21 @@ type GetResponse struct {
 }
 
 type AddRequest struct {
-	Name      string `json:"name,omitempty"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Task      string `json:"task,omitempty"`
-	Schedule  string `json:"schedule,omitempty"`
-	ExecUser  string `json:"execUser,omitempty"`
+	Name            string `json:"name,omitempty"`
+	AutoStart       bool   `json:"autoStart,omitempty"`
+	ContinueOnError bool   `json:"continueOnError,omitempty"`
+	Task            string `json:"task,omitempty"`
+	Schedule        string `json:"schedule,omitempty"`
+	ExecUser        string `json:"execUser,omitempty"`
 }
 
 type UpdateRequest struct {
-	Id        int64  `json:"id"`
-	AutoStart bool   `json:"autoStart,omitempty"`
-	Task      string `json:"task,omitempty"`
-	Schedule  string `json:"schedule,omitempty"`
-	ExecUser  string `json:"execUser,omitempty"`
+	Id              int64  `json:"id"`
+	AutoStart       bool   `json:"autoStart,omitempty"`
+	ContinueOnError *bool  `json:"continueOnError,omitempty"`
+	Task            string `json:"task,omitempty"`
+	Schedule        string `json:"schedule,omitempty"`
+	ExecUser        string `json:"execUser,omitempty"`
 }
 
 func info(definition *model.TimerDefinition) *Info {
@@ -61,7 +66,11 @@ func info(definition *model.TimerDefinition) *Info {
 			state = fmt.Sprintf("%s, %s", state, err)
 		}
 	}
-	return &Info{Id: definition.Id, UserName: definition.UserName, ExecUser: definition.ExecUser, Name: definition.Name, AutoStart: definition.AutoStart, State: state, Task: definition.Task, Schedule: definition.Schedule}
+	result := &Info{Id: definition.Id, UserName: definition.UserName, ExecUser: definition.ExecUser, Name: definition.Name, AutoStart: definition.AutoStart, ContinueOnError: definition.ContinueOnError, LastError: definition.LastError, State: state, Task: definition.Task, Schedule: definition.Schedule}
+	if !definition.LastErrorAt.IsZero() {
+		result.LastErrorAt = definition.LastErrorAt.Format(time.RFC3339Nano)
+	}
+	return result
 }
 
 func response(start time.Time, err error) *Response {
@@ -109,7 +118,7 @@ func (service *Service) Add(ctx context.Context, scope model.UserScope, request 
 	if scope.User != "SYS" && scope.User != "sys" || execUser == "" {
 		execUser = scope.User
 	}
-	definition := &model.TimerDefinition{Name: request.Name, ExecUser: execUser, AutoStart: request.AutoStart, Task: request.Task, Schedule: request.Schedule}
+	definition := &model.TimerDefinition{Name: request.Name, ExecUser: execUser, AutoStart: request.AutoStart, ContinueOnError: request.ContinueOnError, Task: request.Task, Schedule: request.Schedule}
 	if err := service.models.SaveTimerForUser(ctx, scope, definition); err != nil {
 		return response(start, err), nil
 	}
@@ -128,6 +137,9 @@ func (service *Service) Update(ctx context.Context, scope model.UserScope, reque
 		return response(start, err), nil
 	}
 	definition.AutoStart, definition.Task, definition.Schedule = request.AutoStart, request.Task, request.Schedule
+	if request.ContinueOnError != nil {
+		definition.ContinueOnError = *request.ContinueOnError
+	}
 	if scope.User == "SYS" || scope.User == "sys" {
 		if request.ExecUser != "" {
 			definition.ExecUser = request.ExecUser

@@ -180,6 +180,19 @@ func TestHelpModule(t *testing.T) {
 			},
 		},
 		{
+			Name: "timer continue on error option",
+			Script: `
+				const metadata = require('/usr/share/help/neo-shell/timer');
+				const { parseAndRun } = require('/usr/lib/opts');
+				const configs = Object.keys(metadata.commands).map((name) => ({
+					...metadata.commands[name], command: name,
+					func: (config) => console.println(config.continueonerror)
+				}));
+				parseAndRun(['add', '--continueonerror', 'test', '@every 1m', '/test.tql'], metadata, configs);
+			`,
+			Output: []string{"true"},
+		},
+		{
 			Name: "list all neo shell commands",
 			Script: `
 				const help = require('help');

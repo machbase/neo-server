@@ -26,7 +26,7 @@ function doList(config, args) {
     client.listTimers()
         .then((lst) => {
             let box = pretty.Table(config);
-            box.appendHeader(["ID", "NAME", "SPEC", "TQL", "AUTOSTART", "STATE"]);
+            box.appendHeader(["ID", "NAME", "SPEC", "TQL", "AUTOSTART", "CONTINUE ON ERROR", "STATE"]);
             for (const timer of lst) {
                 box.append([
                     timer.id,
@@ -34,6 +34,7 @@ function doList(config, args) {
                     timer.schedule,
                     timer.task,
                     timer.autoStart ? 'YES' : 'NO',
+                    timer.continueOnError ? 'YES' : 'NO',
                     timer.state,
                 ]);
             }
@@ -50,7 +51,7 @@ function doAdd(config, args) {
     const spec = args.spec;
     const tqlPath = args.tqlPath;
     const autostart = config.autostart || false;
-    client.addTimer({ name: name, spec: spec, command: tqlPath, autoStart: autostart })
+    client.addTimer({ name: name, spec: spec, command: tqlPath, autoStart: autostart, continueOnError: config.continueonerror || false })
         .then(() => {
             console.println(`Timer '${name}' added successfully.`);
         })

@@ -30,7 +30,11 @@ func (service *Service) Register(definition *model.TimerDefinition) error {
 	}
 	if _, err := service.tqlLoader.Load(definition.Task); err != nil {
 		entry.SetState(FAILED)
-		service.replace(definition.Id, entry)
+		if old := service.replace(definition.Id, entry); old != nil {
+			if stopErr := old.Stop(); stopErr != nil {
+				service.log.Warn("failed to stop replaced timer", definition.Id, stopErr)
+			}
+		}
 		service.recordRuntimeError(definition.Id, err)
 		return err
 	}
@@ -48,7 +52,6 @@ func (service *Service) Register(definition *model.TimerDefinition) error {
 			return err
 		}
 	}
-	service.recordRuntimeError(definition.Id, nil)
 	return nil
 }
 
@@ -88,5 +91,7 @@ func (service *Service) recordRuntimeError(id int64, err error) {
 	if err != nil {
 		message = err.Error()
 	}
-	_ = service.models.SetTimerRuntimeError(context.Background(), id, message)
+	if err := service.models.SetTimerRuntimeError(context.Background(), id, message); err != nil {
+		service.log.Warn("failed to record timer error", id, err)
+	}
 }
