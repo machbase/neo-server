@@ -437,14 +437,32 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 	// -- env: named.arr=[1,2,3,4]
 	// -- env: named.arr=[1=>1.0, 2=>2.1, 11=>3.14]
 	text = strings.TrimSpace(strings.TrimPrefix(text, "env:"))
-	pairs := ParseNameValuePairs(text)
+	pairs, err := parseStatementEnvPairs(text)
+	if err != nil {
+		return nil, err
+	}
 	if len(pairs) == 0 {
 		return prev, nil
 	}
 	env := &SqlStatementEnv{}
-	*env = *prev
+	if prev != nil {
+		*env = *prev
+	}
 	namedCloned := false
-	for _, pair := range pairs {
+	tz := env.Tz
+	for i, pair := range pairs {
+		// Resolve the last timezone in each reset-delimited segment.
+		if i == 0 || pairs[i-1].Name == "reset" {
+			tz = env.Tz
+			for _, next := range pairs[i:] {
+				if next.Name == "reset" {
+					break
+				}
+				if next.Name == "tz" {
+					tz = next.Value
+				}
+			}
+		}
 		switch {
 		case pair.Name == "bridge":
 			env.Bridge = pair.Value
@@ -458,7 +476,7 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 			env.BinaryFormat = pair.Value
 		case pair.Name == "reset":
 			env.Reset()
-			namedCloned = true
+			namedCloned = false
 		case strings.HasPrefix(pair.Name, "named."):
 			bindName := strings.TrimPrefix(pair.Name, "named.")
 			if bindName == "" {
@@ -467,19 +485,71 @@ func ParseStatementEnv(prev *SqlStatementEnv, text string) (*SqlStatementEnv, er
 			}
 			if !namedCloned {
 				// copy-on-write: keep prev.Named untouched until the first mutation
-				named := make(map[string]string, len(prev.Named)+1)
-				for k, v := range prev.Named {
+				named := make(map[string]string, len(env.Named)+1)
+				for k, v := range env.Named {
 					named[k] = v
 				}
 				env.Named = named
 				namedCloned = true
 			}
-			env.Named[bindName] = pair.Value
+			value := pair.Value
+			typ, _ := namedLiteralType(strings.TrimSpace(value))
+			if pair.quoted && typ != "" {
+				value = quoteNamedString(value)
+			} else if typ == "datetime" {
+				parsed, err := ParseNamedLiteral(value, tz)
+				if err != nil {
+					return nil, fmt.Errorf("named parameter %q: %w", bindName, err)
+				}
+				if datetime, ok := parsed.(time.Time); ok {
+					value = "datetime(" + datetime.UTC().Format(time.RFC3339Nano) + ")"
+				}
+			}
+			env.Named[bindName] = value
 		default:
 			env.Error = fmt.Sprintf("unknown env: %s", pair.Name)
 		}
 	}
 	return env, nil
+}
+
+type statementEnvPair struct {
+	NameValuePair
+	quoted bool
+}
+
+func parseStatementEnvPairs(text string) ([]statementEnvPair, error) {
+	var pairs []statementEnvPair
+	for {
+		match := parseNameValuePairsRegexp.FindStringSubmatchIndex(text)
+		if match == nil {
+			return pairs, nil
+		}
+		name := text[match[2]:match[3]]
+		end := match[1]
+		pair := statementEnvPair{NameValuePair: NameValuePair{Name: name}}
+		if start := match[4]; start >= 0 {
+			raw := text[start:]
+			if typ, open := namedLiteralType(raw); strings.HasPrefix(name, "named.") && typ != "" {
+				literalEnd, err := namedLiteralEnd(raw, open)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %s literal: %w", name, typ, err)
+				}
+				end = start + literalEnd
+				if end < len(text) {
+					r, _ := utf8.DecodeRuneInString(text[end:])
+					if !unicode.IsSpace(r) {
+						return nil, fmt.Errorf("%s: unexpected text after %s literal", name, typ)
+					}
+				}
+				pair.Value = text[start:end]
+			} else {
+				pair.Value, pair.quoted = unquoteNameValue(text[start:match[5]])
+			}
+		}
+		pairs = append(pairs, pair)
+		text = strings.TrimLeftFunc(text[end:], unicode.IsSpace)
+	}
 }
 
 type NameValuePair struct {
@@ -513,22 +583,19 @@ func ParseNameValuePairs(input string) []NameValuePair {
 	matches := parseNameValuePairsRegexp.FindAllStringSubmatch(input, -1)
 
 	for _, match := range matches {
-		key := match[1]
-		value := match[2]
-		if value == "" {
-			value = ""
-		} else if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
-			value = value[1 : len(value)-1]
-			if match[2][0] == '"' {
-				value = strings.ReplaceAll(value, `\"`, `"`)
-			} else {
-				value = strings.ReplaceAll(value, `\'`, `'`)
-			}
-		}
-		pairs = append(pairs, NameValuePair{key, value})
+		value, _ := unquoteNameValue(match[2])
+		pairs = append(pairs, NameValuePair{match[1], value})
 	}
 
 	return pairs
+}
+
+func unquoteNameValue(value string) (string, bool) {
+	if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+		quote := value[:1]
+		return strings.ReplaceAll(value[1:len(value)-1], `\`+quote, quote), true
+	}
+	return value, false
 }
 
 // /////////////////

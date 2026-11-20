@@ -12,6 +12,7 @@ import (
 	client "github.com/machbase/neo-client/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/spi"
 )
 
@@ -328,8 +329,15 @@ func (x *Node) fmUse(dbname string) *useDatabase {
 }
 
 // named("name", "value")
-func (x *Node) fmNamed(name string, value any) sql.NamedArg {
-	return sql.NamedArg{Name: name, Value: value}
+func (x *Node) fmNamed(name string, value any) (sql.NamedArg, error) {
+	if text, ok := value.(string); ok {
+		var err error
+		value, err = util.ParseNamedLiteral(text, "")
+		if err != nil {
+			return sql.NamedArg{}, fmt.Errorf("named parameter %q: %w", name, err)
+		}
+	}
+	return sql.NamedArg{Name: name, Value: value}, nil
 }
 
 // SQL('select ....', arg1, arg2)

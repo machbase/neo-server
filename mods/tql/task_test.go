@@ -582,6 +582,57 @@ func TestSql_insert_flush_select(t *testing.T) {
 	}.run(t)
 }
 
+func TestSqlTypedNamedArgs(t *testing.T) {
+	TqlTestCase{
+		Name: "typed named arguments preserve nanoseconds",
+		Script: `
+			SQL('SELECT TO_TIMESTAMP(FROM_TIMESTAMP(:epoch)), TO_TIMESTAMP(:date)',
+				named('epoch', 'long(1793577127279628041)'),
+				named('date', 'datetime(\'2026-11-02 10:32:07.197719833\')'))
+			CSV()
+		`,
+		ExpectCSV: []string{"1793577127279628041,1793615527197719833", "", ""},
+	}.run(t)
+	TqlTestCase{
+		Name: "string escape binds a literal instead of interpreting its type",
+		Script: `
+			FAKE(once(1))
+			SQL('INSERT INTO tag_data (name,time,value) VALUES(:label, now, 1)',
+				named('label', 'string(\'long(abc)\')'))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "flush the typed named argument fixture",
+		Script: `
+			FAKE(once(1))
+			SQL('exec table_flush(tag_data)')
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "executed.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Name: "the stored label retains the reserved syntax",
+		Script: `
+			SQL('SELECT name FROM tag_data WHERE name = :label LIMIT 1',
+				named('label', 'string(\'long(abc)\')'))
+			CSV()
+		`,
+		ExpectCSV: []string{"long(abc)", "", ""},
+	}.run(t)
+	t.Run("invalid literal stops execution", func(t *testing.T) {
+		task := tql.NewTaskContext(t.Context())
+		err := task.CompileString("SQL('select :n', named('n', 'short(32768)'))\nCSV()")
+		if err == nil {
+			err = task.Execute().Err
+		}
+		require.ErrorContains(t, err, `named parameter "n": short literal`)
+	})
+}
+
 func TestSql_insert_bind_args(t *testing.T) {
 	TqlTestCase{
 		Name: "SQL_insert-with-named-params",
