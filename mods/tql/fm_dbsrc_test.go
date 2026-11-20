@@ -166,7 +166,8 @@ func TestFmNamedArrayLiteralPassthrough(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			arg := node.fmNamed("arr", tc.value)
+			arg, err := node.fmNamed("arr", tc.value)
+			require.NoError(t, err)
 			require.Equal(t, sql.NamedArg{Name: "arr", Value: tc.value}, arg)
 			// unquoted [1,2,3,4] and quoted "[1,2,3,4]" both arrive here as the
 			// same Go string; there is no separate "array literal" tql type.

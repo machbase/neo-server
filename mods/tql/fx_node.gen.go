@@ -2208,8 +2208,7 @@ func (x *Node) gen_named(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmNamed(p0, p1)
-	return ret, nil
+	return x.fmNamed(p0, p1)
 }
 
 // gen_minHz

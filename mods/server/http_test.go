@@ -1808,6 +1808,15 @@ func TestTQL(t *testing.T) {
 			},
 		},
 		{
+			name: "csv_typed_named_values",
+			codes: `SQL('SELECT TO_TIMESTAMP(FROM_TIMESTAMP(:epoch)), TO_TIMESTAMP(:date)',
+				named('epoch', 'long(1793577127279628041)'),
+				named('date', 'datetime(2026-11-02T01:32:07.197719833Z)'))
+				CSV()`,
+			contentType: "text/csv; charset=utf-8",
+			expect:      []string{"1793577127279628041,1793583127197719833", "\n"},
+		},
+		{
 			name: "json_output",
 			codes: `FAKE(linspace(0,1,2))
 					JSON()`,
@@ -3030,6 +3039,16 @@ SELECT * FROM example WHERE name = :name;`},
 			require.Equal(t, "my-car", result.Get("2.env.named.name").String(), rsp.String())
 			require.False(t, result.Get("2.env.named.value").Exists(), rsp.String())
 			require.False(t, result.Get("2.env.error").Exists(), rsp.String())
+		},
+	}.run(t, at)
+	JsonRpcTestCase{
+		name:   "splitSql_preserves_typed_named_values_as_strings",
+		method: "sql.split",
+		params: []interface{}{`-- env: named.epoch=long(1793577127279628041) named.date=datetime('2026-11-02 10:32:07') tz=Asia/Seoul named.text="long(123)"
+SELECT :epoch, :date, :text;`},
+		expectFunc: func(t *testing.T, rsp gjson.Result) {
+			require.JSONEq(t, `{"epoch":"long(1793577127279628041)","date":"datetime(2026-11-02T01:32:07Z)","text":"string('long(123)')"}`,
+				rsp.Get("result.1.env.named").Raw)
 		},
 	}.run(t, at)
 	JsonRpcTestCase{
