@@ -164,6 +164,9 @@ func parseNamedLiteral(text string, typ string, open int, timezone string) (any,
 		return int32(v), err
 	case "uinteger":
 		v, err := strconv.ParseUint(arg, 10, 32)
+		if err == nil && v == math.MaxUint32 {
+			return nil, fmt.Errorf("value %d is reserved for Machbase NULL", v)
+		}
 		return uint32(v), err
 	case "long":
 		return strconv.ParseInt(arg, 10, 64)
@@ -172,8 +175,8 @@ func parseNamedLiteral(text string, typ string, open int, timezone string) (any,
 		if err != nil {
 			return nil, err
 		}
-		if v > math.MaxInt64 {
-			return nil, fmt.Errorf("value exceeds the named SQL argument limit of %d", int64(math.MaxInt64))
+		if v == math.MaxUint64 {
+			return nil, fmt.Errorf("value %d is reserved for Machbase NULL", v)
 		}
 		return v, nil
 	case "float", "double":

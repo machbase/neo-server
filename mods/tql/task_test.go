@@ -637,8 +637,9 @@ func TestSqlTypedNamedULongBoundary(t *testing.T) {
 	TqlTestCase{
 		Script: `
 			FAKE(once(1))
-			SQL('INSERT INTO tag_data (name,time,value,ulong_value) VALUES(\'named-ulong-boundary\', now, 1, :n)',
-				named('n', 'ulong(9223372036854775807)'))
+			SQL('INSERT INTO tag_data (name,time,value,uint_value,ulong_value) VALUES(\'named-ulong-boundary\', now, 1, :u32, :n)',
+				named('u32', 'uinteger(4294967294)'),
+				named('n', 'ulong(18446744073709551614)'))
 		`,
 		ExpectFunc: func(t *testing.T, result string) {
 			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
@@ -655,17 +656,17 @@ func TestSqlTypedNamedULongBoundary(t *testing.T) {
 	}.run(t)
 	TqlTestCase{
 		Script: `
-			SQL('SELECT ulong_value FROM tag_data WHERE name = \'named-ulong-boundary\' LIMIT 1')
+			SQL('SELECT uint_value, ulong_value FROM tag_data WHERE name = \'named-ulong-boundary\' LIMIT 1')
 			CSV()
 		`,
-		ExpectCSV: []string{"9223372036854775807", "", ""},
+		ExpectCSV: []string{"4294967294,18446744073709551614", "", ""},
 	}.run(t)
 	task := tql.NewTaskContext(t.Context())
-	err := task.CompileString("SQL('select :n', named('n', 'uint64(9223372036854775808)'))\nCSV()")
+	err := task.CompileString("SQL('select :n', named('n', 'uint64(18446744073709551615)'))\nCSV()")
 	if err == nil {
 		err = task.Execute().Err
 	}
-	require.ErrorContains(t, err, `named parameter "n": ulong literal: value exceeds the named SQL argument limit of 9223372036854775807`)
+	require.ErrorContains(t, err, `named parameter "n": ulong literal: value 18446744073709551615 is reserved for Machbase NULL`)
 }
 
 func TestSql_insert_bind_args(t *testing.T) {

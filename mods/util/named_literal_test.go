@@ -16,10 +16,11 @@ func TestParseNamedLiteral(t *testing.T) {
 		{"SHORT(-32768)", int16(-32768)},
 		{"uint16(65535)", uint16(65535)},
 		{"integer(2147483647)", int32(2147483647)},
-		{"uinteger(4294967295)", uint32(4294967295)},
+		{"uinteger(4294967294)", uint32(4294967294)},
 		{"long(1793577127279628041)", int64(1793577127279628041)},
 		{"int64(-9223372036854775808)", int64(-9223372036854775808)},
-		{"ulong(9223372036854775807)", uint64(9223372036854775807)},
+		{"uint64(9223372036854775808)", uint64(9223372036854775808)},
+		{"ulong(18446744073709551614)", uint64(18446744073709551614)},
 		{"float(1.25)", float32(1.25)},
 		{"double(-2.5e2)", float64(-250)},
 		{"string('')", ""},
@@ -39,7 +40,7 @@ func TestParseNamedLiteral(t *testing.T) {
 	for _, text := range []string{
 		"short(32768)", "ushort(65536)", "int(-2147483649)", "uint32(-1)",
 		"long(9223372036854775808)", "ulong(18446744073709551616)", "long(1.25)",
-		"uint64(9223372036854775808)", "ulong(18446744073709551615)",
+		"uinteger(4294967295)", "ulong(18446744073709551615)",
 		"long(abc)", "long(1)extra", "float(1e40)", "double(NaN)", "double(Inf)",
 		"string('a', 'b')", "string(long(1))", "string(abc)", "long(",
 	} {
