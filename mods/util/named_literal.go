@@ -168,7 +168,14 @@ func parseNamedLiteral(text string, typ string, open int, timezone string) (any,
 	case "long":
 		return strconv.ParseInt(arg, 10, 64)
 	case "ulong":
-		return strconv.ParseUint(arg, 10, 64)
+		v, err := strconv.ParseUint(arg, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		if v > math.MaxInt64 {
+			return nil, fmt.Errorf("value exceeds the named SQL argument limit of %d", int64(math.MaxInt64))
+		}
+		return v, nil
 	case "float", "double":
 		if !namedDecimalFloat.MatchString(arg) {
 			return nil, fmt.Errorf("expected a finite decimal number")
@@ -193,12 +200,9 @@ func parseNamedDatetime(arg string, timezone string) (time.Time, error) {
 	if match[1] != "" {
 		t, err = time.Parse(time.RFC3339Nano, arg)
 	} else {
-		loc := time.UTC
-		if timezone != "" {
-			loc, err = time.LoadLocation(timezone)
-			if err != nil {
-				return time.Time{}, err
-			}
+		loc, locErr := ParseTimeLocation(timezone, time.UTC)
+		if locErr != nil {
+			return time.Time{}, locErr
 		}
 		layout := "2006-01-02 15:04:05"
 		if arg[10] == 'T' {

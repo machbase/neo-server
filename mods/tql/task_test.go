@@ -633,6 +633,41 @@ func TestSqlTypedNamedArgs(t *testing.T) {
 	})
 }
 
+func TestSqlTypedNamedULongBoundary(t *testing.T) {
+	TqlTestCase{
+		Script: `
+			FAKE(once(1))
+			SQL('INSERT INTO tag_data (name,time,value,ulong_value) VALUES(\'named-ulong-boundary\', now, 1, :n)',
+				named('n', 'ulong(9223372036854775807)'))
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "a row inserted.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Script: `
+			FAKE(once(1))
+			SQL('exec table_flush(tag_data)')
+		`,
+		ExpectFunc: func(t *testing.T, result string) {
+			require.Equal(t, "executed.", gjson.Get(result, "data.message").String())
+		},
+	}.run(t)
+	TqlTestCase{
+		Script: `
+			SQL('SELECT ulong_value FROM tag_data WHERE name = \'named-ulong-boundary\' LIMIT 1')
+			CSV()
+		`,
+		ExpectCSV: []string{"9223372036854775807", "", ""},
+	}.run(t)
+	task := tql.NewTaskContext(t.Context())
+	err := task.CompileString("SQL('select :n', named('n', 'uint64(9223372036854775808)'))\nCSV()")
+	if err == nil {
+		err = task.Execute().Err
+	}
+	require.ErrorContains(t, err, `named parameter "n": ulong literal: value exceeds the named SQL argument limit of 9223372036854775807`)
+}
+
 func TestSql_insert_bind_args(t *testing.T) {
 	TqlTestCase{
 		Name: "SQL_insert-with-named-params",
