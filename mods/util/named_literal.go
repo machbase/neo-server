@@ -155,28 +155,41 @@ func parseNamedLiteral(text string, typ string, open int, timezone string) (any,
 	switch typ {
 	case "short":
 		v, err := strconv.ParseInt(arg, 10, 16)
+		if err == nil && v == math.MinInt16 {
+			return nil, namedLiteralReservedNull(arg)
+		}
 		return int16(v), err
 	case "ushort":
 		v, err := strconv.ParseUint(arg, 10, 16)
+		if err == nil && v == math.MaxUint16 {
+			return nil, namedLiteralReservedNull(arg)
+		}
 		return uint16(v), err
 	case "int":
 		v, err := strconv.ParseInt(arg, 10, 32)
+		if err == nil && v == math.MinInt32 {
+			return nil, namedLiteralReservedNull(arg)
+		}
 		return int32(v), err
 	case "uinteger":
 		v, err := strconv.ParseUint(arg, 10, 32)
 		if err == nil && v == math.MaxUint32 {
-			return nil, fmt.Errorf("value %d is reserved for Machbase NULL", v)
+			return nil, namedLiteralReservedNull(arg)
 		}
 		return uint32(v), err
 	case "long":
-		return strconv.ParseInt(arg, 10, 64)
+		v, err := strconv.ParseInt(arg, 10, 64)
+		if err == nil && v == math.MinInt64 {
+			return nil, namedLiteralReservedNull(arg)
+		}
+		return v, err
 	case "ulong":
 		v, err := strconv.ParseUint(arg, 10, 64)
 		if err != nil {
 			return nil, err
 		}
 		if v == math.MaxUint64 {
-			return nil, fmt.Errorf("value %d is reserved for Machbase NULL", v)
+			return nil, namedLiteralReservedNull(arg)
 		}
 		return v, nil
 	case "float", "double":
@@ -185,12 +198,23 @@ func parseNamedLiteral(text string, typ string, open int, timezone string) (any,
 		}
 		if typ == "float" {
 			v, err := strconv.ParseFloat(arg, 32)
+			if err == nil && float32(v) == math.MaxFloat32 {
+				return nil, namedLiteralReservedNull(arg)
+			}
 			return float32(v), err
 		}
-		return strconv.ParseFloat(arg, 64)
+		v, err := strconv.ParseFloat(arg, 64)
+		if err == nil && v == math.MaxFloat64 {
+			return nil, namedLiteralReservedNull(arg)
+		}
+		return v, err
 	default:
 		return nil, fmt.Errorf("unsupported type %q", typ)
 	}
+}
+
+func namedLiteralReservedNull(arg string) error {
+	return fmt.Errorf("value %s is reserved for Machbase NULL", arg)
 }
 
 func parseNamedDatetime(arg string, timezone string) (time.Time, error) {
@@ -221,6 +245,9 @@ func parseNamedDatetime(arg string, timezone string) (time.Time, error) {
 	}
 	if t.Before(time.Unix(0, math.MinInt64)) || t.After(time.Unix(0, math.MaxInt64)) {
 		return time.Time{}, fmt.Errorf("datetime is out of range for Unix nanoseconds")
+	}
+	if t.UnixNano() == -1 {
+		return time.Time{}, namedLiteralReservedNull(arg)
 	}
 	return t, nil
 }
