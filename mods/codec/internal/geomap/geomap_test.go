@@ -22,6 +22,24 @@ type VolatileFileWriterMock struct {
 	buff     bytes.Buffer
 }
 
+type warningLogger struct {
+	facility.Logger
+	message string
+}
+
+func (l *warningLogger) LogWarn(args ...any) {
+	l.message = fmt.Sprintln(args...)
+}
+
+func TestSetIconInvalidJSONWarning(t *testing.T) {
+	gm := geomap.New()
+	logger := &warningLogger{Logger: facility.DiscardLogger}
+	gm.SetLogger(logger)
+	gm.SetIcon("invalid", `{"iconUrl":`)
+	require.Contains(t, logger.message, "GEOMAP icon option")
+	require.Contains(t, logger.message, "unexpected end of JSON input")
+}
+
 func (v *VolatileFileWriterMock) VolatileFilePrefix() string { return "/web/api/tql-assets/" }
 
 func (v *VolatileFileWriterMock) VolatileFileWrite(name string, data []byte, deadline time.Time) {

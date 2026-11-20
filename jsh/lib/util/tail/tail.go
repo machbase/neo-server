@@ -270,7 +270,7 @@ func (t *tailer) readNewLinesFromCurrent() ([]string, error) {
 		return nil, err
 	}
 	reader := bufio.NewReaderSize(t.file, 4096)
-	var lines []string
+	lines := make([]string, 0)
 	for {
 		chunk, err := reader.ReadBytes('\n')
 		if len(chunk) > 0 {

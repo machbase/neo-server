@@ -284,8 +284,13 @@ func diagnosticFromCompileError(err error) base.Diagnostic {
 }
 
 func diagnosticFromParserError(parserErr *parser.Error) base.Diagnostic {
+	line, column := 1, 1
+	if parserErr.File != nil {
+		position := parserErr.File.Position(parserErr.Offset)
+		line, column = position.Line, position.Column
+	}
 	return base.Diagnostic{
-		Range:    normalizeRange(parserErr.Position.Line, parserErr.Position.Column, parserErr.Position.Column+1),
+		Range:    normalizeRange(line, column, column+1),
 		Severity: base.SeverityError,
 		Code:     "syntax_error",
 		Source:   "jsh",

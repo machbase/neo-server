@@ -5,8 +5,35 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dop251/goja/parser"
 	base "github.com/machbase/neo-server/v8/mods/lsp"
 )
+
+func TestDiagnosticFromParserError(t *testing.T) {
+	const source = "const a = 1;\nconst b = ;"
+	_, err := parser.ParseFile(nil, "test.js", source, 0)
+	errs, ok := err.(parser.ErrorList)
+	if !ok || len(errs) == 0 {
+		t.Fatalf("expected parser errors, got %v", err)
+	}
+	position := errs[0].File.Position(errs[0].Offset)
+	if position.Line != 2 {
+		t.Fatalf("expected an error on line 2, got %+v", position)
+	}
+	diag := diagnosticFromCompileError(err)
+	if diag.Range.Start != (base.Position{Line: position.Line, Column: position.Column}) ||
+		diag.Range.End != (base.Position{Line: position.Line, Column: position.Column + 1}) ||
+		diag.Message != errs[0].Message {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+}
+
+func TestDiagnosticFromParserErrorWithoutFile(t *testing.T) {
+	diag := diagnosticFromParserError(&parser.Error{Message: "test error"})
+	if diag.Range != normalizeRange(1, 1, 2) || diag.Message != "test error" {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+}
 
 func TestDiagnosticsSyntaxError(t *testing.T) {
 	svc := NewService()

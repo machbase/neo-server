@@ -3,7 +3,7 @@
 
 package mach
 
-// #cgo LDFLAGS: ${SRCDIR}/native/libmachengine_standard_darwin_arm64.a
+// #cgo LDFLAGS: ${SRCDIR}/native/libmachengine_standard_darwin_arm64.a -lc++
 import "C"
 
 const LibMachLinkInfo = "static_standard_darwin_arm64"
