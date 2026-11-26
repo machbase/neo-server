@@ -17,7 +17,7 @@ import (
 	"github.com/gliderlabs/ssh"
 )
 
-func doService(_ *Service) {
+func doService(_ *Service, _ []string) {
 	fmt.Println("command 'service' is only available on Windows")
 }
 

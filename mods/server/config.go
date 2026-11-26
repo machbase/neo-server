@@ -13,50 +13,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/machbase/neo-server/v8/booter"
-	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
-
-func init() {
-	booter.Register(
-		"machbase.com/neo-server",
-		func() *Config {
-			return NewConfig()
-		},
-		func(conf *Config) (booter.Boot, error) {
-			conf.fileFlagSet = hasFileFlag(booter.Args)
-			return NewServer(conf)
-		},
-	)
-
-	defaultLogConf := logging.Config{
-		Console:                     false,
-		Filename:                    "-",
-		Append:                      true,
-		RotateSchedule:              "@midnight",
-		MaxSize:                     10,
-		MaxBackups:                  1,
-		MaxAge:                      7,
-		Compress:                    false,
-		UTC:                         false,
-		DefaultPrefixWidth:          10,
-		DefaultEnableSourceLocation: false,
-		DefaultLevel:                "TRACE",
-	}
-
-	booter.Register(
-		"machbase.com/neo-logging",
-		func() *logging.Config {
-			conf := defaultLogConf
-			return &conf
-		},
-		func(conf *logging.Config) (booter.Boot, error) {
-			logging.Configure(conf)
-			return &logging.Module{}, nil
-		},
-	)
-}
 
 type Config struct {
 	DataDir        string
@@ -94,14 +52,17 @@ type Config struct {
 
 	fileFlagSet      bool
 	implicitFileRoot string
+	headlessMode     bool
+	notifyShutdown   func()
 }
 
-var PreferredPreset string = "auto"
-var Headless bool = false
-
 func NewConfig() *Config {
+	return newConfig("auto", false)
+}
+
+func newConfig(preferredPreset string, headless bool) *Config {
 	conf := Config{}
-	switch strings.ToLower(PreferredPreset) {
+	switch strings.ToLower(preferredPreset) {
 	case "fog":
 		conf.MachbasePreset = PresetFog
 	case "edge":
@@ -115,6 +76,7 @@ func NewConfig() *Config {
 		}
 	}
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
+	conf.headlessMode = headless
 	return &conf
 }
 

@@ -428,7 +428,8 @@ func TestClientTxHelper(t *testing.T) {
 			return err
 		})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "MACHCLI-ERR-2362")
+		// MACHCLI-ERR-2388, Writes to this table type are not supported in a transaction.
+		require.Contains(t, err.Error(), "MACHCLI-ERR-2388, Writes to this table type are not supported in a transaction.")
 	})
 }
 

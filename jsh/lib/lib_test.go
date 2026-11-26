@@ -1861,6 +1861,10 @@ func TestFSModule(t *testing.T) {
 				} catch (e) {
 					symlinkCode = e.code;
 				}
+				// On Windows, Go may retry after EEXIST and return a privilege error instead.
+				if (symlinkCode !== 'EEXIST' && !(require('os').platform() === 'windows' && symlinkCode === 'EPERM')) {
+					throw new Error('unexpected symlink error code: ' + symlinkCode);
+				}
 				let renameCode = '';
 				try {
 					fs.renameSync(file + '-missing', file + '-renamed');
@@ -1893,7 +1897,8 @@ func TestFSModule(t *testing.T) {
 				console.println('readdir regular file:', readdirCode);
 				console.println('mkdir over regular file:', mkdirCode);
 				console.println('unlink missing file:', unlinkCode);
-				console.println('symlink over regular file:', symlinkCode);
+				console.println('symlink over regular file rejected:', symlinkCode !== '');
+				console.println('symlink destination preserved:', fs.readFileSync(file, 'utf8'));
 				console.println('rename missing file:', renameCode);
 				console.println('write to read-only mount:', readOnlyWriteCode);
 				console.println('rmdir regular file:', rmdirFileCode);
@@ -1911,7 +1916,8 @@ func TestFSModule(t *testing.T) {
 				"readdir regular file: ENOTDIR",
 				"mkdir over regular file: EEXIST",
 				"unlink missing file: ENOENT",
-				"symlink over regular file: EEXIST",
+				"symlink over regular file rejected: true",
+				"symlink destination preserved: content",
 				"rename missing file: ENOENT",
 				"write to read-only mount: EACCES",
 				"rmdir regular file: ENOTDIR",

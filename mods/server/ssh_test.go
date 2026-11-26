@@ -1481,7 +1481,7 @@ func TestServerCoverage_DoServiceUnix(t *testing.T) {
 		os.Stdout = oldStdout
 	})
 
-	doService(nil)
+	doService(nil, nil)
 	require.NoError(t, w.Close())
 	out, err := io.ReadAll(r)
 	require.NoError(t, err)

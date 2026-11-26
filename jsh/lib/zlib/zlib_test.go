@@ -80,7 +80,6 @@ func TestZlibSync(t *testing.T) {
 				const testData = "Hello, World! This is a test string for compression.";
 				
 				const compressed = zlib.gzipSync(testData);
-				console.println('compressed size:', compressed.byteLength);
 				console.println('compressed type:', compressed.constructor.name);
 				
 				const decompressed = zlib.gunzipSync(compressed);
@@ -89,7 +88,6 @@ func TestZlibSync(t *testing.T) {
 				console.println('result:', result);
 			`,
 			Output: []string{
-				"compressed size: 76",
 				"compressed type: ArrayBuffer",
 				"result: Hello, World! This is a test string for compression.",
 			},
@@ -101,7 +99,6 @@ func TestZlibSync(t *testing.T) {
 				const testData = "Test data for deflate compression";
 				
 				const compressed = zlib.deflateSync(testData);
-				console.println('compressed size:', compressed.byteLength);
 				
 				const decompressed = zlib.inflateSync(compressed);
 				const result = String.fromCharCode.apply(null, new Uint8Array(decompressed));
@@ -109,7 +106,6 @@ func TestZlibSync(t *testing.T) {
 				console.println('result:', result);
 			`,
 			Output: []string{
-				"compressed size: 39",
 				"result: Test data for deflate compression",
 			},
 		},

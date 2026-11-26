@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-client/v2/api"
-	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/jsh/viz"
@@ -89,13 +88,12 @@ type Server struct {
 	neoShellAddress string
 }
 
-var _ booter.Boot = (*Server)(nil)
-
 // ///////////////////////////
 // test purpose only, not set in normal execution
 var binExecutable string
-var serverAfterStartC = make(chan struct{})
-var serverBeforeStopC = make(chan struct{})
+var serverAfterStartC chan struct{}
+var serverBeforeStopC chan struct{}
+var lastStartedServer *Server
 
 type modelUserContextKey struct{}
 
@@ -199,13 +197,18 @@ func Restore(dataDir string, backupDir string) error {
 }
 
 func (s *Server) Start() error {
-	defer close(serverAfterStartC)
-	util.AddShutdownHook(func() { close(serverBeforeStopC) })
+	if serverAfterStartC != nil {
+		lastStartedServer = s
+		defer close(serverAfterStartC)
+	}
+	if serverBeforeStopC != nil {
+		util.AddShutdownHook(func() { close(serverBeforeStopC) })
+	}
 
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
 
-	s.hasHead = !Headless
+	s.hasHead = !s.headlessMode
 	s.hasEngine = !strings.HasPrefix(s.DataDir, "machbase://")
 	if !s.hasHead && !s.hasEngine {
 		return fmt.Errorf("headless mode is not possible alongside head-only mode, %s", s.DataDir)
@@ -426,6 +429,12 @@ func (s *Server) Stop() {
 		s.machEngine = nil
 	}
 	s.log.Infof("shutdown.")
+}
+
+func (s *Server) requestShutdown() {
+	if s.notifyShutdown != nil {
+		s.notifyShutdown()
+	}
 }
 
 func (s *Server) startMachbaseSvr() error {

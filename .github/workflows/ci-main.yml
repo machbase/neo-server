@@ -70,6 +70,18 @@ jobs:
         env:
           ENABLE_DOCKER_TESTS: 'true'
         run: go run mage.go test
+      - name: Test Windows SCM integration
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          CGO_ENABLED: '1'
+          GO_WANT_DO_RESTORE_HELPER: '1'
+          RUN_WINDOWS_SCM_TESTS: '1'
+        run: |
+          $env:TEMP = Join-Path $env:GITHUB_WORKSPACE 'tmp'
+          $env:TMP = $env:TEMP
+          go test ./mods/server -run '^TestWindowsSCMIntegration$' -count=1 -timeout 10m -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Set up Docker Buildx
         if: matrix.os == 'linux'
         uses: docker/setup-buildx-action@v4

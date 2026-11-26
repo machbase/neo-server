@@ -40,6 +40,23 @@ type Config struct {
 	Writer                      io.Writer     `json:"-" hidden:""` // log writer for testing
 }
 
+func DefaultConfig() *Config {
+	return &Config{
+		Console:                     false,
+		Filename:                    "-",
+		Append:                      true,
+		RotateSchedule:              "@midnight",
+		MaxSize:                     10,
+		MaxBackups:                  1,
+		MaxAge:                      7,
+		Compress:                    false,
+		UTC:                         false,
+		DefaultPrefixWidth:          10,
+		DefaultEnableSourceLocation: false,
+		DefaultLevel:                "TRACE",
+	}
+}
+
 type LogServerConfig struct {
 	Address string
 	Labels  map[string]string

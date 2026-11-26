@@ -1259,6 +1259,8 @@ func TestAppendTagAndQuery(t *testing.T) {
 
 	conn, err = spi.Connect(t.Context(), "sys")
 	require.NoError(t, err)
+	result, err = conn.ExecContext(t.Context(), fmt.Sprintf("EXEC table_flush(%s)", tableName))
+	require.NoError(t, err, "table_flush fail")
 	row := conn.QueryRowContext(t.Context(), "select count(*) from "+tableName+" where time >= ?", ts)
 	require.NoError(t, row.Err())
 	defer conn.Close()
@@ -1355,6 +1357,8 @@ func TestAppendTagPartial(t *testing.T) {
 
 	conn, err = spi.Connect(t.Context(), "sys")
 	require.NoError(t, err)
+	result, err = conn.ExecContext(t.Context(), fmt.Sprintf("EXEC table_flush(%s)", tableName))
+	require.NoError(t, err, "table_flush fail")
 	row := conn.QueryRowContext(t.Context(), "select count(*) from "+tableName+" where time >= ?", ts)
 	require.NoError(t, row.Err())
 

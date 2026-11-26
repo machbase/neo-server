@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/util/conpty"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
@@ -25,7 +24,7 @@ import (
 
 const svcName = "machbase-neo"
 
-func doService(sc *Service) {
+func doService(sc *Service, processArgs []string) {
 	if sc == nil {
 		fmt.Println("Usage: machbase-neo service [install, remove, debug, start, stop]")
 		return
@@ -37,7 +36,7 @@ func doService(sc *Service) {
 		return
 	}
 	if inService {
-		runService(svcName, false, sc.Args[1:]...)
+		runService(svcName, false, processArgs, sc.Args[1:]...)
 		return
 	}
 
@@ -49,7 +48,7 @@ func doService(sc *Service) {
 	var cmd = strings.ToLower(sc.Args[0])
 	switch cmd {
 	case "debug":
-		runService(svcName, true, sc.Args[1:]...)
+		runService(svcName, true, processArgs, sc.Args[1:]...)
 		return
 	case "install":
 		err = installService(svcName, "machbase-neo service", sc.Args[1:]...)
@@ -191,7 +190,7 @@ func controlService(name string, c svc.Cmd, to svc.State) error {
 
 var elog debug.Log
 
-func runService(name string, debugMode bool, args ...string) {
+func runService(name string, debugMode bool, processArgs []string, args ...string) {
 	var err error
 	if debugMode {
 		elog = debug.New(name)
@@ -207,61 +206,87 @@ func runService(name string, debugMode bool, args ...string) {
 	if debugMode {
 		run = debug.Run
 	}
-	cli, err := ParseCommand(append([]string{"machbase-neo", "serve"}, args...))
-	if err != nil {
-		elog.Warning(1, err.Error())
-		return
-	}
-
 	elog.Info(1, fmt.Sprintf("%s service starting", name))
-	err = run(name, &proxyService{args: args, preset: cli.Serve.Preset})
+	err = run(name, newProxyService(processArgs, args))
 	if err != nil {
 		elog.Error(1, fmt.Sprintf("%s service failed: %v", name, err))
 	}
 	elog.Info(1, fmt.Sprintf("%s service stopped ", name))
 }
 
+func newProxyService(processArgs, args []string) *proxyService {
+	stopRequest := make(chan struct{}, 1)
+	return &proxyService{
+		args:        args,
+		stopRequest: stopRequest,
+		serve: func(ready func() error) error {
+			cli, err := ParseCommand(append([]string{"machbase-neo", "serve"}, args...))
+			if err != nil {
+				return err
+			}
+			return serveWithSignal(processArgs, cli.Serve.options, false, stopRequest, ready)
+		},
+	}
+}
+
 type proxyService struct {
-	args   []string
-	preset string
+	args        []string
+	stopRequest chan struct{}
+	serve       func(func() error) error
 }
 
 func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
 	const cmdsAccepts = svc.AcceptStop | svc.AcceptShutdown /*| svc.AcceptPauseAndContinue */
 	elog.Info(1, fmt.Sprintf("running... %v", m.args))
-	changes <- svc.Status{State: svc.StartPending}
+	changes <- svc.Status{State: svc.StartPending, WaitHint: 120000}
 
-	os.Args = m.args
-	serveWg := sync.WaitGroup{}
-	serveWg.Add(1)
+	serveDone := make(chan error, 1)
+	ready := make(chan struct{}, 1)
 	go func() {
-		changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
-		doServe(m.preset, false, true)
-		serveWg.Done()
+		serveDone <- m.serve(func() error {
+			ready <- struct{}{}
+			return nil
+		})
 	}()
-loop:
-	for c := range r {
-		switch c.Cmd {
-		case svc.Interrogate:
-			changes <- c.CurrentStatus
-			time.Sleep(100 * time.Millisecond)
-			changes <- c.CurrentStatus
-		case svc.Stop, svc.Shutdown:
-			booter.NotifySignal()
-			changes <- svc.Status{State: svc.StopPending}
-			elog.Info(1, "shutting down...")
-			serveWg.Wait()
-			break loop
-		case svc.Pause:
-			changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepts}
-		case svc.Continue:
+	for {
+		select {
+		case <-ready:
 			changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
-		default:
-			elog.Error(1, fmt.Sprintf("unexpected control request #%d", c))
+		case err := <-serveDone:
+			if err != nil {
+				elog.Error(1, fmt.Sprintf("server failed: %v", err))
+				return true, 1
+			}
+			changes <- svc.Status{State: svc.StopPending, WaitHint: 120000}
+			return false, 0
+		case c, ok := <-r:
+			if !ok {
+				c.Cmd = svc.Stop
+			}
+			switch c.Cmd {
+			case svc.Interrogate:
+				changes <- c.CurrentStatus
+			case svc.Stop, svc.Shutdown:
+				changes <- svc.Status{State: svc.StopPending, WaitHint: 120000}
+				select {
+				case m.stopRequest <- struct{}{}:
+				default:
+				}
+				elog.Info(1, "shutting down...")
+				if err := <-serveDone; err != nil {
+					elog.Error(1, fmt.Sprintf("server failed: %v", err))
+					return true, 1
+				}
+				return false, 0
+			case svc.Pause:
+				changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepts}
+			case svc.Continue:
+				changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
+			default:
+				elog.Error(1, fmt.Sprintf("unexpected control request #%d", c))
+			}
 		}
 	}
-	changes <- svc.Status{State: svc.StopPending}
-	return
 }
 
 func (svr *sshd) shellHandler(ss ssh.Session) {

@@ -1,10 +1,11 @@
-package booter
+package server
 
 import (
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -15,46 +16,80 @@ import (
 	"github.com/zclconf/go-cty/cty/function"
 )
 
-type Definition struct {
+type configEvalContext struct {
+	Args      []string
+	Arguments []serverArgument
+	Pname     string
+	Version   string
+}
+
+type configModuleDefinition struct {
 	Id       string
 	Name     string
 	Priority int
 	Disabled bool
 	Config   cty.Value
-	Injects  []InjectionDef // key: target module id, value: fieldName
+	Injects  []configInjection // key: target module id, value: fieldName
 }
 
-type InjectionDef struct {
+type configInjection struct {
 	Target    string
 	FieldName string
 }
 
-func LoadDefinitionFiles(files []string, evalCtx *hcl.EvalContext) ([]*Definition, error) {
-	body, err := LoadFile(files...)
+func loadServerConfigDefinitions(context configEvalContext, options serverBootOptions) ([]*configModuleDefinition, error) {
+	evalContext := &hcl.EvalContext{
+		Functions: configFunctions(context),
+		Variables: make(map[string]cty.Value),
+	}
+	if options.configFile != "" {
+		return loadConfigDefinitionFiles([]string{options.configFile}, evalContext)
+	}
+	if options.configDir == "" {
+		return loadConfigDefinitions(DefaultFallbackConfig, evalContext)
+	}
+	entries, err := os.ReadDir(options.configDir)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config directory: %w", err)
+	}
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".conf") {
+			files = append(files, filepath.Join(options.configDir, entry.Name()))
+		}
+	}
+	return loadConfigDefinitionFiles(files, evalContext)
+}
+
+func loadConfigDefinitionFiles(files []string, evalCtx *hcl.EvalContext) ([]*configModuleDefinition, error) {
+	body, err := loadConfigFiles(files...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDefinitions(body, evalCtx)
+	return parseConfigDefinitions(body, evalCtx)
 }
 
-func LoadDefinitions(content []byte, evalCtx *hcl.EvalContext) ([]*Definition, error) {
-	body, err := Load(content)
+func loadConfigDefinitions(content []byte, evalCtx *hcl.EvalContext) ([]*configModuleDefinition, error) {
+	body, err := loadConfigContent(content)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDefinitions(body, evalCtx)
+	return parseConfigDefinitions(body, evalCtx)
 }
 
-func ParseDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*Definition, error) {
+func parseConfigDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*configModuleDefinition, error) {
 	if evalCtx == nil {
 		evalCtx = &hcl.EvalContext{
-			Functions: DefaultFunctions,
+			Functions: configFunctions(configEvalContext{Args: os.Args}),
 			Variables: make(map[string]cty.Value),
 		}
-	} else if evalCtx.Functions == nil {
-		evalCtx.Functions = make(map[string]function.Function)
-	} else if evalCtx.Variables == nil {
-		evalCtx.Variables = make(map[string]cty.Value)
+	} else {
+		if evalCtx.Functions == nil {
+			evalCtx.Functions = make(map[string]function.Function)
+		}
+		if evalCtx.Variables == nil {
+			evalCtx.Variables = make(map[string]cty.Value)
+		}
 	}
 
 	moduleSchema := &hcl.BodySchema{
@@ -106,22 +141,15 @@ func ParseDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*Definition, e
 		},
 	}
 
-	// injectSchema := &hcl.BodySchema{
-	// 	Attributes: []hcl.AttributeSchema{
-	// 		{Name: "target", Required: true},
-	// 		{Name: "field", Required: true},
-	// 	},
-	// }
-
 	priorityBase := 1000
-	result := make([]*Definition, 0)
+	result := make([]*configModuleDefinition, 0)
 	for i, m := range modules {
 		moduleId := m.Labels[0]
 		moduleName := fmt.Sprintf("$mod_%d", i+1)
 		if offset := strings.LastIndex(moduleId, "/"); offset > 0 && offset < len(moduleId)-1 {
 			moduleName = fmt.Sprintf("%s%02d", moduleId[offset+1:], i)
 		}
-		moduleDef := &Definition{
+		moduleDef := &configModuleDefinition{
 			Id:       moduleId,
 			Name:     moduleName,
 			Priority: priorityBase + i,
@@ -138,18 +166,39 @@ func ParseDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*Definition, e
 			if diag.HasErrors() {
 				return nil, errors.New(diag.Error())
 			}
+			if !value.IsKnown() || value.IsNull() {
+				return nil, fmt.Errorf("module %s %s must not be null or unknown", moduleId, name)
+			}
 			switch name {
 			case "priority":
-				moduleDef.Priority = PriorityFromCty(value)
+				if value.Type() != cty.Number {
+					return nil, fmt.Errorf("module %s priority must be an integer", moduleId)
+				}
+				priority, err := int64FromCty(value)
+				if err != nil || int64(int(priority)) != priority {
+					return nil, fmt.Errorf("module %s priority must be an integer in range", moduleId)
+				}
+				moduleDef.Priority = int(priority)
 			case "disabled":
-				moduleDef.Disabled, _ = BoolFromCty(value)
+				disabled, err := boolFromCty(value)
+				if err != nil {
+					return nil, fmt.Errorf("module %s disabled: %w", moduleId, err)
+				}
+				moduleDef.Disabled = disabled
 			case "name":
-				moduleDef.Name = StringFromCty(value)
+				if value.Type() != cty.String {
+					return nil, fmt.Errorf("module %s name must be a string", moduleId)
+				}
+				moduleDef.Name = value.AsString()
 			}
+		}
+		if moduleDef.Disabled && moduleId != loggingModuleID && moduleId != serverModuleID {
+			result = append(result, moduleDef)
+			continue
 		}
 		for _, c := range content.Blocks {
 			if c.Type == "config" {
-				obj, err := ObjectValFromBody(c.Body.(*hclsyntax.Body), evalCtx)
+				obj, err := configObjectFromBody(c.Body.(*hclsyntax.Body), evalCtx)
 				if err != nil {
 					return nil, err
 				}
@@ -157,24 +206,6 @@ func ParseDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*Definition, e
 			} else if c.Type == "inject" {
 				target := c.Labels[0]
 				fieldName := c.Labels[1]
-				// inject, diag := c.Body.Content(injectSchema)
-				// if diag.HasErrors() {
-				// 	return nil, errors.New(diag.Error())
-				// }
-				// // inject attributes
-				// for _, attr := range inject.Attributes {
-				// 	attrName := attr.Name
-				// 	attrValue, diag := attr.Expr.Value(evalCtx)
-				// 	if diag.HasErrors() {
-				// 		return nil, errors.New(diag.Error())
-				// 	}
-				// 	switch attrName {
-				// 	case "field":
-				// 		fieldName = StringFromCty(attrValue)
-				// 	case "target":
-				// 		target = StringFromCty(attrValue)
-				// 	}
-				// }
 				if target == "" {
 					return nil, fmt.Errorf("module %s inject target not defined", moduleDef.Id)
 				}
@@ -182,9 +213,9 @@ func ParseDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*Definition, e
 					return nil, fmt.Errorf("module %s inject %s requires target field", moduleDef.Id, target)
 				}
 				if moduleDef.Injects == nil {
-					moduleDef.Injects = []InjectionDef{}
+					moduleDef.Injects = []configInjection{}
 				}
-				moduleDef.Injects = append(moduleDef.Injects, InjectionDef{Target: target, FieldName: fieldName})
+				moduleDef.Injects = append(moduleDef.Injects, configInjection{Target: target, FieldName: fieldName})
 			} else {
 				return nil, fmt.Errorf("unknown block %s", c.Type)
 			}
@@ -198,7 +229,7 @@ func ParseDefinitions(body hcl.Body, evalCtx *hcl.EvalContext) ([]*Definition, e
 	return result, nil
 }
 
-func LoadFile(files ...string) (hcl.Body, error) {
+func loadConfigFiles(files ...string) (hcl.Body, error) {
 	hclFiles := make([]*hcl.File, 0)
 	for _, file := range files {
 		content, err := os.ReadFile(file)
@@ -214,7 +245,7 @@ func LoadFile(files ...string) (hcl.Body, error) {
 	return hcl.MergeFiles(hclFiles), nil
 }
 
-func Load(content []byte) (hcl.Body, error) {
+func loadConfigContent(content []byte) (hcl.Body, error) {
 	hclFile, hclDiag := hclsyntax.ParseConfig(content, "nofile.hcl", hcl.Pos{Line: 1})
 	if hclDiag.HasErrors() {
 		return nil, errors.New(hclDiag.Error())
@@ -222,7 +253,7 @@ func Load(content []byte) (hcl.Body, error) {
 	return hclFile.Body, nil
 }
 
-func ObjectValFromBody(body *hclsyntax.Body, evalCtx *hcl.EvalContext) (cty.Value, error) {
+func configObjectFromBody(body *hclsyntax.Body, evalCtx *hcl.EvalContext) (cty.Value, error) {
 	rt := make(map[string]cty.Value)
 	for _, attr := range body.Attributes {
 		value, diag := attr.Expr.Value(evalCtx)
@@ -232,7 +263,7 @@ func ObjectValFromBody(body *hclsyntax.Body, evalCtx *hcl.EvalContext) (cty.Valu
 		rt[attr.Name] = value
 	}
 	for _, block := range body.Blocks {
-		bval, err := ObjectValFromBody(block.Body, evalCtx)
+		bval, err := configObjectFromBody(block.Body, evalCtx)
 		if err != nil {
 			return cty.NilVal, err
 		}
@@ -241,14 +272,26 @@ func ObjectValFromBody(body *hclsyntax.Body, evalCtx *hcl.EvalContext) (cty.Valu
 	return cty.ObjectVal(rt), nil
 }
 
-func EvalObject(objName string, obj any, value cty.Value) error {
+func evalConfigObject(objName string, obj any, value cty.Value) error {
 	ref := reflect.ValueOf(obj)
-	return EvalReflectValue(objName, ref, value)
+	return evalConfigValue(objName, ref, value)
 }
 
-func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error {
-	if ref.Kind() == reflect.Pointer {
-		ref = reflect.Indirect(ref)
+func evalConfigValue(refName string, ref reflect.Value, value cty.Value) error {
+	if value.Type() == cty.NilType || !value.IsKnown() || value.IsNull() {
+		return fmt.Errorf("%s must not be null or unknown", refName)
+	}
+	for ref.Kind() == reflect.Pointer {
+		if ref.IsNil() {
+			if !ref.CanSet() {
+				return fmt.Errorf("%s cannot be set", refName)
+			}
+			ref.Set(reflect.New(ref.Type().Elem()))
+		}
+		ref = ref.Elem()
+	}
+	if !ref.IsValid() || !ref.CanSet() {
+		return fmt.Errorf("%s cannot be set", refName)
 	}
 	switch ref.Kind() {
 	case reflect.Struct:
@@ -259,13 +302,12 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 				if !field.IsValid() {
 					return fmt.Errorf("%s field not found in %s", k, refName)
 				}
-				err := EvalReflectValue(fmt.Sprintf("%s.%s", refName, k), field, v)
+				err := evalConfigValue(fmt.Sprintf("%s.%s", refName, k), field, v)
 				if err != nil {
 					return err
 				}
 			}
 		} else if ref.Type() == reflect.TypeOf(url.URL{}) && value.Type() == cty.String {
-			// string config를 url.URL struct로 변환
 			v, err := url.Parse(value.AsString())
 			if err != nil {
 				return fmt.Errorf("%s should be url, %s", refName, err.Error())
@@ -282,8 +324,8 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 		}
 	case reflect.Bool:
 		if value.Type() == cty.Bool || value.Type() == cty.String {
-			if v, err := BoolFromCty(value); err != nil {
-				return err
+			if v, err := boolFromCty(value); err != nil {
+				return fmt.Errorf("%s: %w", refName, err)
 			} else {
 				ref.SetBool(v)
 			}
@@ -292,8 +334,10 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if value.Type() == cty.Number || value.Type() == cty.String {
-			if v, err := Int64FromCty(value); err != nil {
-				return err
+			if v, err := int64FromCty(value); err != nil {
+				return fmt.Errorf("%s: %w", refName, err)
+			} else if ref.OverflowInt(v) {
+				return fmt.Errorf("%s overflows %s", refName, ref.Type())
 			} else {
 				ref.SetInt(v)
 			}
@@ -302,8 +346,10 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		if value.Type() == cty.Number || value.Type() == cty.String {
-			if v, err := Uint64FromCty(value); err != nil {
-				return err
+			if v, err := uint64FromCty(value); err != nil {
+				return fmt.Errorf("%s: %w", refName, err)
+			} else if ref.OverflowUint(v) {
+				return fmt.Errorf("%s overflows %s", refName, ref.Type())
 			} else {
 				ref.SetUint(v)
 			}
@@ -312,8 +358,10 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 		}
 	case reflect.Float32, reflect.Float64:
 		if value.Type() == cty.Number || value.Type() == cty.String {
-			if v, err := Float64FromCty(value); err != nil {
-				return err
+			if v, err := float64FromCty(value); err != nil {
+				return fmt.Errorf("%s: %w", refName, err)
+			} else if ref.OverflowFloat(v) {
+				return fmt.Errorf("%s overflows %s", refName, ref.Type())
 			} else {
 				ref.SetFloat(v)
 			}
@@ -321,34 +369,19 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 			return fmt.Errorf("%s should be float", refName)
 		}
 	case reflect.Slice:
+		if !value.Type().IsListType() && !value.Type().IsTupleType() && !value.Type().IsSetType() {
+			return fmt.Errorf("%s should be a list", refName)
+		}
 		vs := value.AsValueSlice()
 		slice := reflect.MakeSlice(ref.Type(), len(vs), len(vs))
 		for i, elm := range vs {
 			elmName := fmt.Sprintf("%s[%d]", refName, i)
-			err := EvalReflectValue(elmName, slice.Index(i), elm)
+			err := evalConfigValue(elmName, slice.Index(i), elm)
 			if err != nil {
 				return err
 			}
 		}
 		ref.Set(slice)
-	case reflect.Map:
-		vm := value.AsValueMap()
-		maps := reflect.MakeMap(ref.Type())
-		keyType := ref.Type().Key()
-		if keyType.Kind() != reflect.String {
-			panic(fmt.Errorf("unsupported map key type: %v", keyType))
-		}
-		valType := ref.Type().Elem()
-		if valType.Kind() == reflect.Pointer {
-			fmt.Printf("pointer map val type: %v", valType)
-		}
-		for k, v := range vm {
-			val := reflect.Indirect(reflect.New(valType))
-			elmName := fmt.Sprintf("%s[\"%s\"]", refName, k)
-			EvalReflectValue(elmName, val, v)
-			maps.SetMapIndex(reflect.ValueOf(k), val)
-		}
-		ref.Set(maps)
 	default:
 		return fmt.Errorf("unsupported reflection %s type: %s", refName, ref.Kind())
 	}

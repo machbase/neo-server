@@ -45,7 +45,6 @@ require (
 	github.com/pkg/sftp v1.13.12
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sevlyar/go-daemon v0.1.7
 	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/sony/sonyflake v1.3.0
 	github.com/stretchr/testify v1.12.1
@@ -124,7 +123,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.20.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect

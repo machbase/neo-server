@@ -1,33 +1,35 @@
+// Server startup parses boot options, loads HCL configuration, and starts the
+// configured logging and server modules. Arguments are scanned once for both
+// boot options and HCL flag expressions; their precedence rules differ.
+// Unix daemon readiness and Windows service lifecycle are platform-specific.
 package server
 
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"unicode"
 
-	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/spi/machsvr"
 )
 
 func Main(args []string) int {
-	booter.Args = args
 	cli, err := ParseCommand(args)
 	if err != nil {
 		if cli != nil {
-			doHelp(cli.Command)
+			doHelp(cli.Command, args)
 		} else {
-			doHelp("")
+			doHelp("", args)
 		}
 		fmt.Println("ERR", err.Error())
 		return 1
-	}
-	if len(args) > 1 && args[1] == "serve" {
-		return doServe(cli.Serve.Preset, false, false)
 	}
 	switch cli.Command {
 	case "gen-config":
@@ -35,53 +37,305 @@ func Main(args []string) int {
 	case "version":
 		fmt.Println(mods.GenBanner())
 	case "help":
-		doHelp(cli.Help.Command)
+		doHelp(cli.Help.Command, args)
 	case "serve":
-		return doServe(cli.Serve.Preset, false, false)
+		return doServeWithSignal(args, cli.Serve.options, false, nil)
 	case "serve-headless":
-		return doServe(cli.Serve.Preset, true, false)
+		return doServeWithSignal(args, cli.Serve.options, true, nil)
 	case "restore":
 		return doRestore(&cli.Restore)
 	case "service":
-		doService(&cli.Service)
+		doService(&cli.Service, args)
 	case "help <command> <sub-command>":
 	}
 	return 0
 }
 
-func hasFileFlag(args []string) bool {
-	for _, arg := range args {
-		if arg == "--" {
-			return false
-		}
-		if arg == "--file" || strings.HasPrefix(arg, "--file=") {
-			return true
-		}
-	}
-	return false
-}
-
-func doServe(preset string, headless bool, doNotExit bool) int {
-	PreferredPreset = preset
-	Headless = headless
-
-	booter.SetConfigFileSuffix(".conf")
-	booter.SetFallbackConfig(DefaultFallbackConfig)
-	booter.SetFallbackPname(DefaultFallbackPname)
-	booter.SetVersionString(mods.VersionString() + " " + machsvr.LinkInfo())
-	booter.Startup()
-	booter.WaitSignal()
-	if doNotExit {
-		// If process is running as an Windows Service, it should not call os.Exit()
-		// before send the notification report to the service manager.
-		// Otherwise Windows service control panel reports "Error 1067, the process terminated unexpectedly"
-		booter.Shutdown()
-	} else {
-		// The other cases, when process is running in foreground or other OS except Windows.
-		// it can shutdown and exit.
-		booter.ShutdownAndExit(0)
+func doServeWithSignal(args []string, options serverBootOptions, headless bool, requested chan struct{}) int {
+	if err := serveWithSignal(args, options, headless, requested, nil); err != nil {
+		fmt.Fprintln(os.Stderr, "ERR", err)
+		return 1
 	}
 	return 0
+}
+
+func serveWithSignal(args []string, options serverBootOptions, headless bool, requested chan struct{}, ready func() error) error {
+	if options.help {
+		command := "serve"
+		if headless {
+			command = "serve-headless"
+		}
+		doHelp(command, args)
+		return nil
+	}
+	if options.generateConfig {
+		fmt.Println(string(DefaultFallbackConfig))
+		return nil
+	}
+
+	if options.daemon {
+		return daemonizeWithError(options.bootlogFile, options.pidFile, func(daemonReady func() error, pidFile *os.File) error {
+			return runServer(args, options.preset, headless, options, requested, func() error {
+				if err := daemonReady(); err != nil {
+					return err
+				}
+				if ready != nil {
+					return ready()
+				}
+				return nil
+			}, pidFile)
+		})
+	}
+	return runServer(args, options.preset, headless, options, requested, ready, nil)
+}
+
+func runServer(args []string, preset string, headless bool, options serverBootOptions, requested chan struct{}, ready func() error, pidFile *os.File) (err error) {
+	logger, logFile, err := serverBootLogger(options.pname, options.bootlogFile, options.daemon)
+	if err != nil {
+		return err
+	}
+	if logFile != nil {
+		defer func() { err = errors.Join(err, logFile.Close()) }()
+	}
+	execution := newServerExecution(args, preset, headless, options, logger, requested)
+	removePID, err := createPIDFile(options.pidFile, pidFile)
+	if err != nil {
+		execution.shutdown()
+		return err
+	}
+	defer func() { err = errors.Join(err, removePID()) }()
+
+	defer execution.shutdown()
+	if err := execution.loadConfig(); err != nil {
+		return err
+	}
+	logger.Println("pid:", os.Getpid())
+	if err := execution.start(); err != nil {
+		return err
+	}
+	if ready != nil {
+		if err := ready(); err != nil {
+			return fmt.Errorf("report daemon readiness: %w", err)
+		}
+	}
+	execution.waitSignal()
+	return nil
+}
+
+func removeOwnedPID(path string, info os.FileInfo) error {
+	current, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat pid file %q: %w", path, err)
+	}
+	if !os.SameFile(info, current) {
+		return fmt.Errorf("pid file %q was replaced", path)
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove pid file %q: %w", path, err)
+	}
+	return nil
+}
+
+func createPIDFile(path string, file *os.File) (func() error, error) {
+	if path == "" {
+		return func() error { return nil }, nil
+	}
+	if file == nil {
+		var err error
+		file, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err != nil {
+			return nil, fmt.Errorf("create pid file %q: %w", path, err)
+		}
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("stat pid file %q: %w", path, err), file.Close())
+	}
+	remove := func() error {
+		return removeOwnedPID(path, info)
+	}
+	_, writeErr := fmt.Fprintf(file, "%d", os.Getpid())
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		return nil, errors.Join(fmt.Errorf("write pid file %q: %w", path, err), remove())
+	}
+	current, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat pid file %q: %w", path, err)
+	}
+	if !os.SameFile(info, current) {
+		return nil, fmt.Errorf("pid file %q was replaced", path)
+	}
+	return remove, nil
+}
+
+type serverBootOptions struct {
+	configDir      string
+	configFile     string
+	pname          string
+	pidFile        string
+	bootlogFile    string
+	daemon         bool
+	generateConfig bool
+	help           bool
+	preset         string
+	arguments      []serverArgument
+}
+
+type serverArgument struct {
+	name     string
+	value    string
+	hasValue bool
+}
+
+func scanServerArguments(args []string) []serverArgument {
+	var arguments []serverArgument
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			break
+		}
+		if len(arg) < 2 || arg[0] != '-' {
+			continue
+		}
+		name, value, hasValue := strings.Cut(arg, "=")
+		isBool := name == "--daemon" || name == "--gen-config" || name == "--help" || name == "-d" || name == "-h"
+		if !hasValue && isBool {
+			value, hasValue = "true", true
+		} else if !hasValue && i+1 < len(args) && isServerOptionValue(args[i+1]) {
+			i++
+			value, hasValue = args[i], true
+		}
+		arguments = append(arguments, serverArgument{name: name, value: value, hasValue: hasValue})
+	}
+	return arguments
+}
+
+func isServerOptionValue(value string) bool {
+	if value == "-" || !strings.HasPrefix(value, "-") {
+		return true
+	}
+	return len(value) > 1 && (value[1] >= '0' && value[1] <= '9' || value[1] == '.')
+}
+
+func parseServerBootOptions(args []string) (serverBootOptions, error) {
+	options := serverBootOptions{pname: DefaultFallbackPname, arguments: scanServerArguments(args)}
+	flags := make(map[string]serverArgument)
+	valueOf := func(flag serverArgument, allowEmpty bool) (string, error) {
+		if !flag.hasValue {
+			return "", fmt.Errorf("command line: %s requires a value", flag.name)
+		}
+		value := flag.value
+		if value != "" {
+			first := []rune(value)[0]
+			if unicode.In(first, unicode.Quotation_Mark) {
+				value = strings.Trim(value, string(first))
+			}
+		}
+		if value == "" && !allowEmpty {
+			return "", fmt.Errorf("command line: %s requires a value", flag.name)
+		}
+		return value, nil
+	}
+	for _, arg := range options.arguments {
+		name := strings.TrimPrefix(arg.name, "-")
+		if after, ok := strings.CutPrefix(name, "-"); ok {
+			name = after
+		}
+		if name == "" || name[0] == '-' || name[0] == '=' {
+			return options, fmt.Errorf("command line: bad flag syntax: %s", arg.name)
+		}
+		switch arg.name {
+		case "--config", "-c", "--config-dir", "--pid", "--bootlog", "--preset", "--file", "--pname":
+			if _, err := valueOf(arg, arg.name == "--pname"); err != nil {
+				return options, err
+			}
+		case "--daemon", "-d", "--gen-config", "--help", "-h":
+			if _, err := strconv.ParseBool(arg.value); err != nil {
+				return options, fmt.Errorf("command line: invalid value %q for %s: %w", arg.value, arg.name, err)
+			}
+		}
+		flags[arg.name] = arg
+	}
+	find := func(long, short string) (serverArgument, bool) {
+		if flag, ok := flags["--"+long]; ok {
+			return flag, true
+		}
+		flag, ok := flags["-"+short]
+		return flag, ok && short != ""
+	}
+	setString := func(target *string, long, short string, allowEmpty bool) error {
+		if flag, ok := find(long, short); ok {
+			value, err := valueOf(flag, allowEmpty)
+			if err != nil {
+				return err
+			}
+			*target = value
+		}
+		return nil
+	}
+	setBool := func(target *bool, long, short string) error {
+		if flag, ok := find(long, short); ok && flag.hasValue {
+			value, err := strconv.ParseBool(flag.value)
+			if err != nil {
+				return fmt.Errorf("command line: invalid value %q for --%s: %w", flag.value, long, err)
+			}
+			*target = value
+		}
+		return nil
+	}
+	for _, flag := range []struct {
+		target      *string
+		long, short string
+		allowEmpty  bool
+	}{
+		{&options.configDir, "config-dir", "", false},
+		{&options.configFile, "config", "c", false},
+		{&options.pname, "pname", "", true},
+		{&options.pidFile, "pid", "", false},
+		{&options.bootlogFile, "bootlog", "", false},
+		{&options.preset, "preset", "", false},
+	} {
+		if err := setString(flag.target, flag.long, flag.short, flag.allowEmpty); err != nil {
+			return options, err
+		}
+	}
+	for _, flag := range []struct {
+		target      *bool
+		long, short string
+	}{
+		{&options.daemon, "daemon", "d"},
+		{&options.generateConfig, "gen-config", ""},
+		{&options.help, "help", "h"},
+	} {
+		if err := setBool(flag.target, flag.long, flag.short); err != nil {
+			return options, err
+		}
+	}
+	if options.pname == "" {
+		options.pname = DefaultFallbackPname
+		if options.pname == "" {
+			options.pname = fmt.Sprintf("boot-%d", os.Getpid())
+		}
+	}
+	return options, nil
+}
+
+func serverBootLogger(pname, bootlogPath string, daemon bool) (*log.Logger, *os.File, error) {
+	var writer io.Writer = os.Stdout
+	var file *os.File
+	if bootlogPath != "" && !daemon {
+		var err error
+		file, err = os.OpenFile(bootlogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return nil, nil, fmt.Errorf("open boot log %q: %w", bootlogPath, err)
+		}
+		writer = io.MultiWriter(os.Stdout, file)
+	}
+	return log.New(writer, fmt.Sprintf("boot-%s ", pname), log.LstdFlags|log.Lmsgprefix), file, nil
 }
 
 func doRestore(r *RestoreCmd) int {
@@ -95,7 +349,8 @@ func doRestore(r *RestoreCmd) int {
 type NeoCommand struct {
 	Command string
 	Serve   struct {
-		Preset string
+		Preset  string
+		options serverBootOptions
 	}
 	GenConfig struct{}
 	Version   struct{}
@@ -115,6 +370,17 @@ func ParseCommand(args []string) (*NeoCommand, error) {
 	}
 
 	cli := &NeoCommand{}
+	if args[1] == "serve" || args[1] == "serve-headless" {
+		cli.Command = args[1]
+		cli.args = args[2:]
+		options, err := parseServerBootOptions(args)
+		if err != nil {
+			return cli, err
+		}
+		cli.Serve.Preset = options.preset
+		cli.Serve.options = options
+		return cli, nil
+	}
 
 	hasHelpFlag := false
 	idxHelpFlag := -1
@@ -142,8 +408,6 @@ func ParseCommand(args []string) (*NeoCommand, error) {
 	}
 
 	switch cli.Command {
-	case "serve", "serve-headless":
-		return parseServe(cli)
 	case "restore":
 		return parseRestore(cli)
 	case "help":
@@ -177,19 +441,6 @@ func parseHelp(cli *NeoCommand) (*NeoCommand, error) {
 	}
 	if len(cli.args) >= 2 {
 		cli.Help.SubCommand = cli.args[1]
-	}
-	return cli, nil
-}
-
-func parseServe(cli *NeoCommand) (*NeoCommand, error) {
-	for i := 0; i < len(cli.args); i++ {
-		s := cli.args[i]
-		if strings.HasPrefix(s, "--preset=") {
-			cli.Serve.Preset = s[9:]
-		} else if s == "--preset" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
-			cli.Serve.Preset = cli.args[i+1]
-			i++
-		}
 	}
 	return cli, nil
 }
@@ -252,22 +503,28 @@ func parseService(cli *NeoCommand) (*NeoCommand, error) {
 	return cli, nil
 }
 
-func doHelp(command string) error {
+func doHelp(command string, args []string) error {
 	showShellHelp := true
 	showServeHelp := true
+	bin := "machbase-neo"
+	if len(args) > 0 && args[0] != "" {
+		bin = args[0]
+	} else if executable, err := os.Executable(); err == nil {
+		bin = executable
+	}
 
 	switch command {
 	case "serve":
-		fmt.Println(booter.Args[0] + " serve [args...]")
+		fmt.Println(bin + " serve [args...]")
 		showShellHelp = false
 	case "serve-headless":
-		fmt.Println(booter.Args[0] + " serve-headless [args...]")
+		fmt.Println(bin + " serve-headless [args...]")
 		showShellHelp = false
 	case "shell":
-		fmt.Println(booter.Args[0] + " shell [flags] <sub-command> [args...]")
+		fmt.Println(bin + " shell [flags] <sub-command> [args...]")
 		showServeHelp = false
 	case "restore":
-		fmt.Println(booter.Args[0] + " restore --data <machbase_home_dir> <backup_dir>")
+		fmt.Println(bin + " restore --data <machbase_home_dir> <backup_dir>")
 		showShellHelp = false
 		showServeHelp = false
 	case "timeformat":
@@ -279,7 +536,7 @@ func doHelp(command string) error {
 		fmt.Printf("%s\n", util.HelpTimeZones())
 		return nil
 	default:
-		fmt.Println(filepath.Base(booter.Args[0]) + helpRootText)
+		fmt.Println(filepath.Base(bin) + helpRootText)
 	}
 
 	if showServeHelp {

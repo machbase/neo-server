@@ -11,7 +11,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -24,7 +23,7 @@ func (s *Server) StartNavelCord() {
 		go func() {
 			s.log.Error("Shutdown by NavelCord failure.")
 			time.Sleep(100 * time.Millisecond)
-			booter.NotifySignal()
+			s.requestShutdown()
 		}()
 		return
 	} else {
@@ -105,7 +104,7 @@ func (s *Server) StartNavelCord() {
 
 		if shouldNotify {
 			s.log.Info("Shutdown by NavelCord")
-			booter.NotifySignal()
+			s.requestShutdown()
 		}
 	}()
 	util.AddShutdownHook(func() { s.StopNavelCord() })

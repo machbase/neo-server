@@ -23,7 +23,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/spi"
 	"golang.org/x/crypto/ssh"
 )
@@ -723,13 +722,13 @@ func (s *Server) Shutdown(ctx context.Context) (*ShutdownResponse, error) {
 		if !isTcpLocal {
 			return nil, fmt.Errorf("remote shutdown not allowed")
 		}
-		booter.NotifySignal()
+		s.requestShutdown()
 		return nil, nil
 	}
 	tick := time.Now()
 	rsp := &ShutdownResponse{}
 
-	booter.NotifySignal()
+	s.requestShutdown()
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.Elapse = time.Since(tick).String()
 	return rsp, nil

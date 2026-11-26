@@ -22,7 +22,6 @@ import (
 	"time"
 
 	client "github.com/machbase/neo-client/v2"
-	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/jsh/engine"
 	"github.com/machbase/neo-server/v8/jsh/service"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -52,9 +51,12 @@ var shellPort = 15622
 var shellArgs = []string{}
 
 func TestMain(m *testing.M) {
-	if os.Getenv("GO_WANT_DO_RESTORE_HELPER") == "1" {
+	if os.Getenv("GO_WANT_DO_RESTORE_HELPER") == "1" ||
+		(runtime.GOOS == "windows" && len(os.Args) > 1 && os.Args[1] == "-test.run=^TestWindowsSCMHelper$") {
 		os.Exit(m.Run())
 	}
+	serverAfterStartC = make(chan struct{})
+	serverBeforeStopC = make(chan struct{})
 
 	// get project root based current test case file path
 	_, filename, _, ok := runtime.Caller(0)
@@ -105,11 +107,10 @@ func TestMain(m *testing.M) {
 		})
 	}()
 	<-serverAfterStartC
-	if b := booter.GetInstance("machbase.com/neo-server"); b != nil {
-		server = b.(*Server)
-	} else {
-		panic("failed to get server instance from booter")
+	if lastStartedServer == nil {
+		panic("server instance was not captured during startup")
 	}
+	server = lastStartedServer
 
 	binExecutable = binPath
 	httpServer = server.httpd
@@ -229,7 +230,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 
 	// cleanup
-	booter.NotifySignal()
+	server.requestShutdown()
 	<-serverBeforeStopC
 }
 
@@ -2318,11 +2319,8 @@ func (c *coverageConn) Explain(ctx context.Context, sqlText string, full bool) (
 
 func coverageRunningServer(t *testing.T) *Server {
 	t.Helper()
-	b := booter.GetInstance("machbase.com/neo-server")
-	require.NotNil(t, b)
-	svr, ok := b.(*Server)
-	require.True(t, ok)
-	return svr
+	require.NotNil(t, lastStartedServer)
+	return lastStartedServer
 }
 
 func TestServerCoverage_ScheduleWrappers(t *testing.T) {
@@ -2670,12 +2668,6 @@ func TestServerCoverage_StartServerFileSystemConflict(t *testing.T) {
 }
 
 func TestServerCoverage_PrepareDirectoriesAndPorts(t *testing.T) {
-	oldHeadless := Headless
-	Headless = false
-	t.Cleanup(func() {
-		Headless = oldHeadless
-	})
-
 	home := filepath.Join(t.TempDir(), "machbase_home")
 	pref := filepath.Join(t.TempDir(), "pref")
 

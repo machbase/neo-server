@@ -16,10 +16,12 @@ func AddShutdownHook(f func()) {
 
 func RunShutdownHooks() {
 	shutdownHooksMutex.Lock()
-	slices.Reverse(shutdownHooks)
-	for _, f := range shutdownHooks {
+	hooks := shutdownHooks
+	shutdownHooks = nil
+	slices.Reverse(hooks)
+	shutdownHooksMutex.Unlock()
+
+	for _, f := range hooks {
 		f()
 	}
-	shutdownHooks = nil
-	shutdownHooksMutex.Unlock()
 }

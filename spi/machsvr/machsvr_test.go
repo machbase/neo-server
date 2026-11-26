@@ -970,6 +970,8 @@ func testAppendTag(t *testing.T) {
 
 	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
+	result = conn.Exec(ctx, fmt.Sprintf("EXEC table_flush(%s)", tableName))
+	require.NoError(t, result.Err(), "table_flush fail")
 	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
 	if row.Err() != nil {
 		panic(row.Err())
@@ -1080,6 +1082,8 @@ func testAppendTagPartial(t *testing.T) {
 
 	conn, err = db.Connect(ctx, WithPassword("sys", "manager"))
 	require.NoError(t, err)
+	result = conn.Exec(ctx, fmt.Sprintf("EXEC table_flush(%s)", tableName))
+	require.NoError(t, result.Err(), "table_flush fail")
 	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
 	if row.Err() != nil {
 		panic(row.Err())
