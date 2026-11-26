@@ -4,9 +4,44 @@ import (
 	"bytes"
 	"errors"
 	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestProcProcessCwd(t *testing.T) {
+	workDir := t.TempDir()
+	mounted := NewFS()
+	if err := mounted.Mount("/work", os.DirFS(workDir)); err != nil {
+		t.Fatalf("mount /work: %v", err)
+	}
+	withPwd := &JSRuntime{Env: NewEnv(), filesystem: mounted}
+	withPwd.Env.Set("PWD", "/work/current")
+
+	tests := []struct {
+		name   string
+		jr     *JSRuntime
+		cmd    *exec.Cmd
+		expect string
+	}{
+		{name: "nil_runtime", jr: nil, cmd: &exec.Cmd{Dir: workDir}, expect: "/"},
+		{name: "nil_cmd", jr: withPwd, cmd: nil, expect: "/work/current"},
+		{name: "empty_dir", jr: withPwd, cmd: &exec.Cmd{}, expect: "/work/current"},
+		{name: "no_filesystem", jr: &JSRuntime{Env: withPwd.Env}, cmd: &exec.Cmd{Dir: workDir}, expect: "/work/current"},
+		{name: "mounted_root", jr: withPwd, cmd: &exec.Cmd{Dir: workDir}, expect: "/work"},
+		{name: "mounted_subdir", jr: withPwd, cmd: &exec.Cmd{Dir: filepath.Join(workDir, "sub")}, expect: "/work/sub"},
+		{name: "outside_mounts", jr: withPwd, cmd: &exec.Cmd{Dir: t.TempDir()}, expect: "/work/current"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := procProcessCwd(tc.jr, tc.cmd); got != tc.expect {
+				t.Fatalf("procProcessCwd() = %q, want %q", got, tc.expect)
+			}
+		})
+	}
+}
 
 type failingProcFS struct {
 	*VirtualFS

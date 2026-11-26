@@ -20,6 +20,7 @@ import (
 	mod_dbms "github.com/machbase/neo-server/v8/jsh/lib/db"
 	"github.com/machbase/neo-server/v8/jsh/root"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 type bridgeName struct {
@@ -120,6 +121,18 @@ type JSContext struct {
 	onceInterrupt sync.Once
 }
 
+// scriptWorkDir returns the host directory of the server file root ("/" of --file),
+// which is what the file explorer and JSH see as /work.
+// It falls back to the process working directory when no root is mounted.
+func scriptWorkDir() string {
+	if fsmgr := ssfs.Default(); fsmgr != nil {
+		if bd := fsmgr.FindBaseDir("/"); bd != nil {
+			return bd.RealPath("/")
+		}
+	}
+	return "."
+}
+
 func newJSContext(node *Node, initCode string, mainCode string, deinitCode string) (*JSContext, error) {
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -134,7 +147,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		FSTabs: []engine.FSTab{
 			root.RootFSTab(),
 			lib.LibFSTab(),
-			{MountPoint: "/work", Source: "."}, // TODO: /work directory should match with data directory of the process
+			{MountPoint: "/work", Source: scriptWorkDir()},
 		},
 		Env: map[string]any{
 			"LIBRARY_PATH": "/lib",

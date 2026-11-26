@@ -287,6 +287,28 @@ func (env *Env) ResolveAbsPath(path string) string {
 	return path
 }
 
+// HostWorkingDir returns the host directory that backs the virtual PWD,
+// so a native child process starts where the shell is, not where the server
+// process happens to be. It returns "" when PWD is not on a host-backed mount.
+func (env *Env) HostWorkingDir() string {
+	fileSystem, ok := env.fs.(*FS)
+	if !ok || fileSystem == nil {
+		return ""
+	}
+	pwd, ok := env.Get("PWD").(string)
+	if !ok || pwd == "" {
+		return ""
+	}
+	hostPath, err := fileSystem.ResolveHostPath(pwd)
+	if err != nil {
+		return ""
+	}
+	if info, err := os.Stat(hostPath); err != nil || !info.IsDir() {
+		return ""
+	}
+	return hostPath
+}
+
 func (env *Env) GlobalFolders() []string {
 	path := env.Get("LIBRARY_PATH")
 	if pathStr, ok := path.(string); ok && pathStr != "" {
