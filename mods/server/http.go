@@ -172,7 +172,7 @@ func (svr *httpd) Stop() {
 	if svr.httpServer == nil {
 		return
 	}
-	svr.log.Infof("gracefully stopping server")
+	svr.log.Info("gracefully stopping server")
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 3*time.Second)
 	svr.httpServer.Shutdown(ctx)
 	cancelFunc()
@@ -259,7 +259,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
 			if svr.mqttWsHandler != nil {
 				group.GET("/api/mqtt", svr.mqttWsHandler)
-				svr.log.Infof("MQTT websocket handler enabled")
+				svr.log.Info("MQTT websocket handler enabled")
 			}
 			if svr.tqlLoader != nil {
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
@@ -273,7 +273,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/tql", svr.handleTqlQuery)
 			group.POST("/api/tql", svr.handleTqlQuery)
 			group.Any("/machbase", func(c *gin.Context) {
-				svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
+				svr.log.Debug("/web/api/machbase is deprecated, use /web/api/query")
 				svr.handleQuery(c)
 			})
 			group.Any("/api/query", svr.handleQuery)

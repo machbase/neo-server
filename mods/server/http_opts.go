@@ -30,9 +30,9 @@ func WithHttpAuthServer(authSvc *Server, enabled bool) HttpOption {
 			s.rpcController = authSvc.rpcController
 		}
 		if enabled {
-			s.log.Infof("HTTP token authentication enabled")
+			s.log.Info("HTTP token authentication enabled")
 		} else {
-			s.log.Infof("HTTP token authentication disabled")
+			s.log.Info("HTTP token authentication disabled")
 		}
 	}
 }

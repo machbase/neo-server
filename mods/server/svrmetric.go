@@ -48,7 +48,7 @@ func collectSysStatz(g *metric.Gather) error {
 	defer cancel()
 	conn, err := spi.Connect(ctx, "sys")
 	if err != nil {
-		statzLog.Error("failed to connect to machbase: %v", err)
+		statzLog.Errorf("failed to connect to machbase: %v", err)
 		return err
 	}
 	defer conn.Close()
@@ -94,7 +94,7 @@ func collectSysStatz(g *metric.Gather) error {
 func collectDefaultPoolStatz(g *metric.Gather) error {
 	db, err := spi.DefaultPool()
 	if err != nil {
-		statzLog.Trace("default pool is unavailable: %v", err)
+		statzLog.Tracef("default pool is unavailable: %v", err)
 		return nil
 	}
 	addDefaultPoolStatz(g, db.Stats())
@@ -117,11 +117,11 @@ func addExecuteStatz(ctx context.Context, conn *sql.Conn, g *metric.Gather) erro
 	var count, min, max, avg int64
 	row := conn.QueryRowContext(ctx, "select count, min_msec, max_msec, avg_msec from v$systime where name=?", "EXECUTE")
 	if err := row.Err(); err != nil {
-		statzLog.Error("failed to query machbase: %v", err)
+		statzLog.Errorf("failed to query machbase: %v", err)
 		return err
 	}
 	if err := row.Scan(&count, &min, &max, &avg); err != nil {
-		statzLog.Error("failed to scan machbase: %v", err)
+		statzLog.Errorf("failed to scan machbase: %v", err)
 		return err
 	}
 	g.Add("sys:execute:count", float64(count), metric.OdometerType(metric.UnitShort))
@@ -159,7 +159,7 @@ ORDER BY NAME`
 	defer rows.Close()
 	for rows.Next() {
 		if err := rows.Scan(&name, &count, &msec); err != nil {
-			statzLog.Error("failed to scan rollup gap: %v", err)
+			statzLog.Errorf("failed to scan rollup gap: %v", err)
 			continue
 		}
 		name = strings.ToLower(name)
@@ -184,11 +184,11 @@ func queryRowInt64(ctx context.Context, conn *sql.Conn, sqlText string, params .
 	var result int64
 	row := conn.QueryRowContext(ctx, sqlText, params...)
 	if err := row.Err(); err != nil {
-		statzLog.Error("failed to query machbase: %v", err)
+		statzLog.Errorf("failed to query machbase: %v", err)
 		return 0, err
 	}
 	if err := row.Scan(&result); err != nil {
-		statzLog.Error("failed to scan machbase: %v", err)
+		statzLog.Errorf("failed to scan machbase: %v", err)
 		return 0, err
 	}
 	return result, nil

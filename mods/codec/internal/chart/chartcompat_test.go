@@ -8,10 +8,50 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/stretchr/testify/require"
 )
+
+type axisLogCapture struct {
+	facility.Logger
+	message string
+}
+
+func (l *axisLogCapture) LogError(args ...any) {
+	l.message = fmt.Sprint(args...)
+}
+
+func (l *axisLogCapture) LogErrorf(format string, args ...any) {
+	l.message = fmt.Sprintf(format, args...)
+}
+
+func TestAxisInvalidArgumentsLogging(t *testing.T) {
+	c := chart.NewRectChart("line")
+	log := &axisLogCapture{Logger: facility.DiscardLogger}
+	c.SetLogger(log)
+
+	for _, axis := range []struct {
+		name string
+		set  func(...any)
+	}{
+		{"xAxis", c.SetXAxis},
+		{"yAxis", c.SetYAxis},
+		{"zAxis", c.SetZAxis},
+	} {
+		t.Run(axis.name, func(t *testing.T) {
+			axis.set(0)
+			require.Equal(t, axis.name+"(idx, label [, type]), got 1 args", log.message)
+
+			axis.set(0, 123)
+			require.Equal(t, axis.name+"() label should be string, got int", log.message)
+
+			axis.set(0, "label", true)
+			require.Equal(t, axis.name+"() type should be string, got bool", log.message)
+		})
+	}
+}
 
 func TestCompat(t *testing.T) {
 	for _, output := range []string{"json", "html"} {

@@ -414,7 +414,7 @@ func (s *svr) iterateBridgeDefs(cb func(*BridgeDefinition) bool) error {
 		}
 		content, err := os.ReadFile(filepath.Join(s.bridgeDir, entry.Name()))
 		if err != nil {
-			s.log.Warn(" %s", err.Error())
+			s.log.Warnf(" %s", err.Error())
 			continue
 		}
 		def := &BridgeDefinition{}

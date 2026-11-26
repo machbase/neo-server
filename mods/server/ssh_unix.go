@@ -126,20 +126,20 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		wg.Add(1)
 		go func() {
 			io.Copy(stdin, ss)
-			svr.log.Tracef("shell stdin closed")
+			svr.log.Trace("shell stdin closed")
 			stdin.Close()
 			wg.Done()
 		}()
 		wg.Add(1)
 		go func() {
 			io.Copy(ss, stdout)
-			svr.log.Tracef("shell stdout closed")
+			svr.log.Trace("shell stdout closed")
 			wg.Done()
 		}()
 		wg.Add(1)
 		go func() {
 			io.Copy(ss, stderr)
-			svr.log.Tracef("shell stderr closed")
+			svr.log.Trace("shell stderr closed")
 			wg.Done()
 		}()
 
@@ -157,7 +157,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		go func() {
 			svr.log.Tracef("shell cmd waiting pid %d", cmd.Process.Pid)
 			cmd.Wait()
-			svr.log.Tracef("shell cmd waiting done.")
+			svr.log.Trace("shell cmd waiting done.")
 			svr.removeChild(cmd.Process)
 			ss.Exit(0)
 			wg.Done()
@@ -165,10 +165,10 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 		wg.Add(1)
 		go func() {
-			svr.log.Tracef("shell session ctx waiting")
+			svr.log.Trace("shell session ctx waiting")
 			<-ss.Context().Done()
 			ss.Close()
-			svr.log.Tracef("shell session ctx closed")
+			svr.log.Trace("shell session ctx closed")
 			stdout.Close()
 			stderr.Close()
 			if cmd.Process != nil {

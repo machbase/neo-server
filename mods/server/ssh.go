@@ -248,7 +248,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 	}
 
 	if valid, _, err := svr.authServer.ValidateUserPassword(ctx, user, password); err != nil {
-		svr.log.Errorf("user auth", err.Error())
+		svr.log.Errorf("user auth: %v", err)
 		return false
 	} else if !valid {
 		return false
@@ -545,7 +545,7 @@ eventLoop:
 		svr.log.Tracef("%s wait command to finish", ss.User())
 		select {
 		case sig := <-sigChan:
-			svr.log.Tracef("%s signal %d", ss.User(), sig)
+			svr.log.Tracef("%s signal %s", ss.User(), sig)
 			break eventLoop
 		case flag := <-breakChan:
 			svr.log.Tracef("%s break %t", ss.User(), flag)

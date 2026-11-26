@@ -145,7 +145,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 	}
 	if reader == nil {
-		node.task.LogErrorf("CSV() no input is specified")
+		node.task.LogError("CSV() no input is specified")
 		return
 	}
 

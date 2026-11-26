@@ -178,7 +178,7 @@ func WithMqttAuthServer(authSvc AuthServer, enableTokenAuth bool) MqttOption {
 		if s.enableTokenAuth {
 			s.log.Info("MQTT token authentication enabled")
 		} else {
-			s.log.Infof("MQTT token authentication disabled")
+			s.log.Info("MQTT token authentication disabled")
 		}
 		return nil
 	}

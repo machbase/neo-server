@@ -59,7 +59,7 @@ func (s *Backupd) Start() error {
 }
 
 func (s *Backupd) Stop() {
-	s.log.Infof("backupd stop")
+	s.log.Info("backupd stop")
 }
 
 func (s *Backupd) HttpRouter(r gin.IRouter) {

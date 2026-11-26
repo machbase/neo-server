@@ -382,7 +382,7 @@ func (s *Server) Stop() {
 		}
 		s.machEngine = nil
 	}
-	s.log.Infof("shutdown.")
+	s.log.Info("shutdown.")
 }
 
 func (s *Server) startMachbaseSvr() error {

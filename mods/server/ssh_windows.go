@@ -158,7 +158,7 @@ func (svr *sshd) shellHandlerNoPty(ss ssh.Session, user string) {
 	go func() {
 		svr.log.Tracef("shell cmd waiting pid %d", cmd.Process.Pid)
 		cmd.Wait()
-		svr.log.Tracef("shell cmd waiting done.")
+		svr.log.Trace("shell cmd waiting done.")
 		svr.removeChild(cmd.Process)
 		ss.Exit(0)
 		wg.Done()
@@ -166,10 +166,10 @@ func (svr *sshd) shellHandlerNoPty(ss ssh.Session, user string) {
 
 	wg.Add(1)
 	go func() {
-		svr.log.Tracef("shell session ctx waiting")
+		svr.log.Trace("shell session ctx waiting")
 		<-ss.Context().Done()
 		ss.Close()
-		svr.log.Tracef("shell session ctx closed")
+		svr.log.Trace("shell session ctx closed")
 		if cmd.Process != nil {
 			cmd.Process.Kill()
 		}

@@ -22,6 +22,25 @@ type VolatileFileWriterMock struct {
 	buff     bytes.Buffer
 }
 
+type iconLogCapture struct {
+	facility.Logger
+	message string
+}
+
+func (l *iconLogCapture) LogWarnf(format string, args ...any) {
+	l.message = fmt.Sprintf(format, args...)
+}
+
+func TestInvalidIconOptionLogging(t *testing.T) {
+	log := &iconLogCapture{Logger: facility.DiscardLogger}
+	gm := geomap.New()
+	gm.SetLogger(log)
+	gm.SetIcon("invalid", "{invalid}")
+
+	require.Contains(t, log.message, "GEOMAP icon option: invalid character")
+	require.NotContains(t, log.message, "%!(EXTRA")
+}
+
 func (v *VolatileFileWriterMock) VolatileFilePrefix() string { return "/web/api/tql-assets/" }
 
 func (v *VolatileFileWriterMock) VolatileFileWrite(name string, data []byte, deadline time.Time) {

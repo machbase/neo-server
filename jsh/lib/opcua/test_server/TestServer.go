@@ -103,7 +103,7 @@ func startOPCUAServer() *opc_server.Server {
 		}
 		pk, ok := c.PrivateKey.(*rsa.PrivateKey)
 		if !ok {
-			log.Fatalf("Private key is not RSA")
+			log.Fatal("Private key is not RSA")
 		}
 		cert := c.Certificate[0]
 		opts = append(opts, opc_server.PrivateKey(pk), server.Certificate(cert))

@@ -93,7 +93,7 @@ func (cons *WebConsole) readerLoop() {
 	defer func() {
 		cons.Close()
 		if e := recover(); e != nil {
-			cons.log.Error("panic recover %s", e)
+			cons.log.Errorf("panic recover %v", e)
 		}
 	}()
 

@@ -100,11 +100,11 @@ func (c *ConPty) Spawn(argv0 string, argv []string, attr *syscall.ProcAttr) (pid
 	}
 
 	if attr.Sys != nil {
-		log.Printf("Warning: SysProc attributes are not supported by Spawn.")
+		log.Print("Warning: SysProc attributes are not supported by Spawn.")
 	}
 
 	if len(attr.Files) != 0 {
-		log.Printf("Warning: Ignoring 'Files' attribute in ProcAttr argument.")
+		log.Print("Warning: Ignoring 'Files' attribute in ProcAttr argument.")
 	}
 
 	if len(attr.Dir) != 0 {
